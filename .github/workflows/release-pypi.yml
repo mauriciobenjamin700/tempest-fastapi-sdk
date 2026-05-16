@@ -72,9 +72,8 @@ jobs:
 
       - name: Smoke-install built wheel in a clean venv
         run: |
-          python -m venv /tmp/smoke-venv
-          /tmp/smoke-venv/bin/pip install --quiet --upgrade pip
-          /tmp/smoke-venv/bin/pip install --quiet "$(ls dist/*.whl)[all]"
+          uv venv --python 3.13 /tmp/smoke-venv
+          uv pip install --python /tmp/smoke-venv/bin/python --quiet "$(ls dist/*.whl)[all]"
           /tmp/smoke-venv/bin/python -c "import tempest_fastapi_sdk as m; \
             assert m.__version__, 'no __version__'; \
             assert m.BaseModel and m.BaseRepository and m.AsyncDatabaseManager, 'core primitives missing'; \

@@ -1369,15 +1369,28 @@ Subclasses set `message`/`code`/`status_code` as class attributes; instances can
 ## Development
 
 ```bash
-uv sync --all-extras             # install + lock with every optional extra
-uv run pytest                    # run tests with coverage
-uv run ruff check .              # lint
-uv run ruff format .             # auto-format
-uv run mypy tempest_fastapi_sdk  # type-check
-uv build                         # build sdist + wheel into dist/
+make install     # uv sync --all-extras
+make test        # pytest with coverage
+make lint        # ruff check .
+make fmt         # ruff format .
+make type        # mypy --strict
+make check       # lint + fmt-check + type + test (every gate)
+make ci          # check + build + smoke install in a clean venv (mirrors GitHub Actions)
+make build       # uv build → dist/
+make clean       # remove caches and build artifacts
 ```
 
-The CI gate (`.github/workflows/ci.yml`) runs lint + format check + mypy + tests + wheel build + smoke install on every push and pull request against `main`. The wheel-build smoke step installs the freshly built artifact into a clean virtualenv and imports the top-level surface to guard against the empty-wheel / missing-package-data class of bugs.
+Run `make` (or `make help`) to list every target. The Makefile is just thin wrappers around `uv` — direct invocations still work too:
+
+```bash
+uv sync --all-extras
+uv run pytest
+uv run ruff check .
+uv run mypy tempest_fastapi_sdk
+uv build
+```
+
+The CI gate (`.github/workflows/ci.yml`) runs the equivalent of `make ci` on every push and pull request against `main`. The wheel-build smoke step installs the freshly built artifact into a clean Python 3.13 virtualenv and imports the top-level surface to guard against the empty-wheel / missing-package-data class of bugs.
 
 ---
 
@@ -1394,17 +1407,35 @@ The pipeline (`.github/workflows/release-pypi.yml`) does three things:
 ### Cutting a release
 
 ```bash
-# 1. Bump the version in both places
+make release VERSION=0.2.0
+```
+
+This single target:
+
+1. Refuses to run if the working tree is dirty.
+2. Bumps `pyproject.toml` and `tempest_fastapi_sdk/__init__.py` to the requested version.
+3. Runs `make check` (lint + format + mypy + tests) so a broken commit never gets tagged.
+4. Commits the bump as `chore: release v0.2.0` and creates the `v0.2.0` tag locally.
+5. Prints the two `git push` commands you still need to run — pushing is left manual on purpose so you can review the commit one last time.
+
+```bash
+# Review then push
+git show v0.2.0
+git push origin main
+git push origin v0.2.0
+```
+
+GitHub Actions picks up the tag, runs the release pipeline and publishes the artifacts to PyPI.
+
+Manual flow (no Makefile) — same result:
+
+```bash
 $EDITOR pyproject.toml                              # version = "0.2.0"
 $EDITOR tempest_fastapi_sdk/__init__.py             # __version__ = "0.2.0"
-
-# 2. Commit + tag + push
 git commit -am "chore: release v0.2.0"
 git tag v0.2.0
 git push origin main v0.2.0
 ```
-
-GitHub Actions picks up the tag, runs the release pipeline and pushes the artifacts to PyPI.
 
 ### One-time PyPI Trusted Publishing setup
 
