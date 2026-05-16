@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install project with all extras + dev dependencies
+        run: uv sync --all-extras
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+      - name: Type check
+        run: uv run mypy tempest_fastapi_sdk
+
+      - name: Run tests
+        run: uv run pytest
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Verify distributions
+        run: |
+          uv tool install twine
+          uv tool run twine check dist/*
+
+      - name: Verify wheel contains package source
+        run: |
+          python -c "import zipfile, glob; \
+            wheel = glob.glob('dist/*.whl')[0]; \
+            members = zipfile.ZipFile(wheel).namelist(); \
+            py_files = [n for n in members if n.startswith('tempest_fastapi_sdk/') and n.endswith('.py')]; \
+            template = [n for n in members if n.endswith('env.py.template')]; \
+            print('Python files in wheel:', len(py_files)); \
+            print('Alembic templates in wheel:', len(template)); \
+            assert len(py_files) >= 20, f'wheel suspiciously empty ({len(py_files)} files)'; \
+            assert len(template) == 1, f'env.py.template missing from wheel'; \
+            print('OK')"
+
+      - name: Smoke-install built wheel in a clean venv
+        run: |
+          python -m venv /tmp/smoke-core
+          /tmp/smoke-core/bin/pip install --quiet --upgrade pip
+          /tmp/smoke-core/bin/pip install --quiet dist/*.whl
+          /tmp/smoke-core/bin/python -c "import tempest_fastapi_sdk as m; \
+            assert m.__version__, 'no __version__'; \
+            assert m.BaseModel and m.BaseRepository and m.AsyncDatabaseManager, 'core primitives missing'; \
+            assert m.AlembicHelper and m.NAMING_CONVENTION, 'alembic helpers missing'; \
+            assert m.AppException and m.NotFoundException and m.ConflictException, 'exceptions missing'; \
+            assert m.BaseSchema and m.BaseResponseSchema and m.BasePaginationSchema, 'schemas missing'; \
+            assert m.BaseAppSettings, 'settings missing'; \
+            assert m.register_exception_handlers, 'api helpers missing'; \
+            assert m.is_valid_cpf and m.is_valid_cnpj and m.is_valid_phone_br, 'BR regex helpers missing'; \
+            print('Core smoke OK · version =', m.__version__)"
+
+      - name: Smoke-install with [all] extras and verify utilities
+        run: |
+          python -m venv /tmp/smoke-all
+          /tmp/smoke-all/bin/pip install --quiet --upgrade pip
+          /tmp/smoke-all/bin/pip install --quiet "$(ls dist/*.whl)[all]"
+          /tmp/smoke-all/bin/python -c "from tempest_fastapi_sdk import (\
+            PasswordUtils, JWTUtils, EmailUtils, UploadUtils); \
+            assert PasswordUtils and JWTUtils and EmailUtils and UploadUtils, 'utils missing'; \
+            print('Extras smoke OK')"

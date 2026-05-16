@@ -1,0 +1,172 @@
+[project]
+name = "tempest-fastapi-sdk"
+version = "0.1.0"
+description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+authors = [
+    { name = "Mauricio Benjamin", email = "mauricio.benjamin@reloverelations.com" },
+]
+keywords = [
+    "fastapi",
+    "sqlalchemy",
+    "pydantic",
+    "async",
+    "repository",
+    "pagination",
+    "sdk",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: FastAPI",
+    "Framework :: Pydantic :: 2",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "alembic>=1.18.4",
+    "fastapi>=0.118.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.6.0",
+    "sqlalchemy[asyncio]>=2.0.49",
+]
+
+[project.optional-dependencies]
+auth = [
+    "bcrypt>=5.0.0",
+    "pyjwt>=2.12.1",
+]
+email = [
+    "aiosmtplib>=4.0.0",
+]
+upload = [
+    "aiofiles>=24.1.0",
+    "python-multipart>=0.0.12",
+]
+all = [
+    "bcrypt>=5.0.0",
+    "pyjwt>=2.12.1",
+    "aiosmtplib>=4.0.0",
+    "aiofiles>=24.1.0",
+    "python-multipart>=0.0.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/mauriciobenjamin700/tempest-fastapi-sdk"
+Repository = "https://github.com/mauriciobenjamin700/tempest-fastapi-sdk"
+Issues = "https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tempest_fastapi_sdk"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"tempest_fastapi_sdk/db/_alembic_templates/env.py.template" = "tempest_fastapi_sdk/db/_alembic_templates/env.py.template"
+
+[dependency-groups]
+dev = [
+    "aiofiles>=24.1.0",
+    "aiosmtplib>=4.0.0",
+    "aiosqlite>=0.20.0",
+    "bcrypt>=5.0.0",
+    "httpx>=0.28.1",
+    "mypy>=1.13.0",
+    "pyjwt>=2.12.1",
+    "pytest>=8.3.3",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "python-multipart>=0.0.12",
+    "ruff>=0.8.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+src = [".", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "C4",
+    "UP",
+    "N",
+    "SIM",
+    "RUF",
+]
+ignore = [
+    "B008",
+    "B006",
+    "UP046",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+"**/__init__.py" = ["F401"]
+"tempest_fastapi_sdk/db/repository.py" = ["UP006", "UP035"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = ["aiosmtplib.*", "aiofiles.*", "aiofiles"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=tempest_fastapi_sdk",
+    "--cov-report=term-missing",
+]
+
+[tool.coverage.run]
+source = ["tempest_fastapi_sdk"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
