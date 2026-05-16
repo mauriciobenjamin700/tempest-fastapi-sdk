@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Any, ClassVar, Generic, List, TypeVar, cast
 from uuid import UUID
@@ -15,7 +16,23 @@ from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
 
+logger = logging.getLogger(__name__)
+
 ModelType = TypeVar("ModelType", bound=BaseModel)
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE/ILIKE wildcards so user input is treated literally.
+
+    Backslash is escaped first to avoid double-escaping the others.
+
+    Args:
+        value (str): The raw user-supplied search term.
+
+    Returns:
+        str: The same string with ``\\``, ``%`` and ``_`` escaped.
+    """
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class BaseRepository(Generic[ModelType]):
@@ -150,7 +167,8 @@ class BaseRepository(Generic[ModelType]):
                 continue
 
             if field == "name" and isinstance(value, str):
-                query = query.where(column.ilike(f"%{value}%"))
+                pattern = f"%{_escape_like(value)}%"
+                query = query.where(column.ilike(pattern, escape="\\"))
             elif isinstance(value, bool):
                 query = query.where(column.is_(value))
             elif isinstance(value, list):
@@ -404,9 +422,11 @@ class BaseRepository(Generic[ModelType]):
             return model
         except IntegrityError as exc:
             await self.session.rollback()
+            logger.warning(
+                "IntegrityError on %s.add: %s", self.model.__name__, exc.orig
+            )
             raise ConflictException(
                 message=self._create_conflict_message,
-                details={"error": str(exc.orig)},
             ) from exc
         except Exception:
             await self.session.rollback()
@@ -433,9 +453,11 @@ class BaseRepository(Generic[ModelType]):
             return models
         except IntegrityError as exc:
             await self.session.rollback()
+            logger.warning(
+                "IntegrityError on %s.add_all: %s", self.model.__name__, exc.orig
+            )
             raise ConflictException(
                 message=self._bulk_create_conflict_message,
-                details={"error": str(exc.orig)},
             ) from exc
         except Exception:
             await self.session.rollback()
@@ -463,9 +485,11 @@ class BaseRepository(Generic[ModelType]):
             return model
         except IntegrityError as exc:
             await self.session.rollback()
+            logger.warning(
+                "IntegrityError on %s.update: %s", self.model.__name__, exc.orig
+            )
             raise ConflictException(
                 message=self._update_conflict_message,
-                details={"error": str(exc.orig)},
             ) from exc
         except Exception:
             await self.session.rollback()
@@ -488,9 +512,13 @@ class BaseRepository(Generic[ModelType]):
             return models
         except IntegrityError as exc:
             await self.session.rollback()
+            logger.warning(
+                "IntegrityError on %s.update_many: %s",
+                self.model.__name__,
+                exc.orig,
+            )
             raise ConflictException(
                 message=self._bulk_update_conflict_message,
-                details={"error": str(exc.orig)},
             ) from exc
         except Exception:
             await self.session.rollback()
@@ -534,9 +562,13 @@ class BaseRepository(Generic[ModelType]):
             return result.rowcount or 0
         except IntegrityError as exc:
             await self.session.rollback()
+            logger.warning(
+                "IntegrityError on %s.bulk_update: %s",
+                self.model.__name__,
+                exc.orig,
+            )
             raise ConflictException(
                 message=self._bulk_update_conflict_message,
-                details={"error": str(exc.orig)},
             ) from exc
         except Exception:
             await self.session.rollback()

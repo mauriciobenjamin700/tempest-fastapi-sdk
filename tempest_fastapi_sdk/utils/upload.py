@@ -149,16 +149,27 @@ class UploadUtils:
         """
         self.validate(file)
 
-        target_dir = self.upload_dir / subdir if subdir else self.upload_dir
+        base_dir = self.upload_dir.resolve()
+        target_dir = (base_dir / subdir).resolve() if subdir else base_dir
+        if base_dir != target_dir and base_dir not in target_dir.parents:
+            raise InvalidFileTypeException(
+                details={"subdir": subdir, "reason": "escapes upload_dir"},
+            )
         target_dir.mkdir(parents=True, exist_ok=True)
 
         original = Path(file.filename or "upload")
         if keep_original_name:
-            filename = original.name
+            filename = Path(original.name).name
+            if not filename or filename in {".", ".."}:
+                filename = f"{uuid4().hex}{original.suffix}"
         else:
             filename = f"{uuid4().hex}{original.suffix}"
 
-        target_path = target_dir / filename
+        target_path = (target_dir / filename).resolve()
+        if base_dir != target_path.parent and base_dir not in target_path.parents:
+            raise InvalidFileTypeException(
+                details={"filename": filename, "reason": "escapes upload_dir"},
+            )
         total = 0
         try:
             async with aiofiles.open(target_path, "wb") as out:

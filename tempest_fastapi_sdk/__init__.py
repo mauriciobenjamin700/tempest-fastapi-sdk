@@ -1,8 +1,20 @@
 """tempest-fastapi-sdk — shared FastAPI/SQLAlchemy/Pydantic primitives."""
 
 from tempest_fastapi_sdk.api import (
+    RequestIDMiddleware,
     app_exception_handler,
+    make_token_dependency,
     register_exception_handlers,
+    require_x_token,
+)
+from tempest_fastapi_sdk.controllers import BaseController
+from tempest_fastapi_sdk.core import (
+    JSONFormatter,
+    clear_request_id,
+    configure_logging,
+    get_request_id,
+    request_id_ctx,
+    set_request_id,
 )
 from tempest_fastapi_sdk.db import (
     NAMING_CONVENTION,
@@ -29,6 +41,7 @@ from tempest_fastapi_sdk.schemas import (
     BaseResponseSchema,
     BaseSchema,
 )
+from tempest_fastapi_sdk.services import BaseService
 from tempest_fastapi_sdk.settings import BaseAppSettings
 from tempest_fastapi_sdk.utils import (
     CNPJ,
@@ -57,7 +70,7 @@ from tempest_fastapi_sdk.utils import (
     utcnow,
 )
 
-__version__: str = "0.2.0"
+__version__: str = "0.3.0"
 
 __all__: list[str] = [
     "CNPJ",
@@ -71,12 +84,14 @@ __all__: list[str] = [
     "AppException",
     "AsyncDatabaseManager",
     "BaseAppSettings",
+    "BaseController",
     "BaseModel",
     "BasePaginationFilterSchema",
     "BasePaginationSchema",
     "BaseRepository",
     "BaseResponseSchema",
     "BaseSchema",
+    "BaseService",
     "CPFOrCNPJ",
     "ConflictException",
     "EmailUtils",
@@ -85,19 +100,25 @@ __all__: list[str] = [
     "ForbiddenException",
     "InvalidFileTypeException",
     "InvalidTokenException",
+    "JSONFormatter",
     "JWTUtils",
     "NotFoundException",
     "PasswordUtils",
     "PhoneBR",
+    "RequestIDMiddleware",
     "UnauthorizedException",
     "UploadUtils",
     "ValidationException",
     "__version__",
     "app_exception_handler",
+    "clear_request_id",
+    "configure_logging",
+    "get_request_id",
     "is_valid_cnpj",
     "is_valid_cpf",
     "is_valid_cpf_cnpj",
     "is_valid_phone_br",
+    "make_token_dependency",
     "modify_dict",
     "normalize_cnpj",
     "normalize_cpf",
@@ -105,6 +126,9 @@ __all__: list[str] = [
     "normalize_phone_br",
     "only_digits",
     "register_exception_handlers",
+    "request_id_ctx",
+    "require_x_token",
+    "set_request_id",
     "to_utc",
     "utcnow",
 ]
