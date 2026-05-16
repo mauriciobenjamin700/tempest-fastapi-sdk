@@ -60,6 +60,7 @@ from tempest_fastapi_sdk.settings import (
     RedisSettings,
     ServerSettings,
 )
+from tempest_fastapi_sdk.sse import EventStream, ServerSentEvent, sse_response
 from tempest_fastapi_sdk.utils import (
     CNPJ,
     CNPJ_PATTERN,
@@ -86,8 +87,16 @@ from tempest_fastapi_sdk.utils import (
     to_utc,
     utcnow,
 )
+from tempest_fastapi_sdk.webpush import (
+    WebPushDispatcher,
+    WebPushError,
+    WebPushGoneError,
+    WebPushKeysSchema,
+    WebPushPayloadSchema,
+    WebPushSubscriptionSchema,
+)
 
-__version__: str = "0.5.0"
+__version__: str = "0.6.0"
 
 __all__: list[str] = [
     "CNPJ",
@@ -117,6 +126,7 @@ __all__: list[str] = [
     "CursorPaginationSchema",
     "DatabaseSettings",
     "EmailUtils",
+    "EventStream",
     "ExpiredTokenException",
     "FileTooLargeException",
     "ForbiddenException",
@@ -132,11 +142,18 @@ __all__: list[str] = [
     "RabbitMQSettings",
     "RedisSettings",
     "RequestIDMiddleware",
+    "ServerSentEvent",
     "ServerSettings",
     "SoftDeleteMixin",
     "UnauthorizedException",
     "UploadUtils",
     "ValidationException",
+    "WebPushDispatcher",
+    "WebPushError",
+    "WebPushGoneError",
+    "WebPushKeysSchema",
+    "WebPushPayloadSchema",
+    "WebPushSubscriptionSchema",
     "__version__",
     "app_exception_handler",
     "apply_cors",
@@ -161,6 +178,7 @@ __all__: list[str] = [
     "request_id_ctx",
     "require_x_token",
     "set_request_id",
+    "sse_response",
     "to_utc",
     "utcnow",
 ]
