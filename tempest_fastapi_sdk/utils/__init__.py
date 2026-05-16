@@ -3,9 +3,11 @@
 The feature-rich helpers each require an optional extra
 (:class:`PasswordUtils` → ``[auth]``, :class:`JWTUtils` → ``[auth]``,
 :class:`EmailUtils` → ``[email]``, :class:`UploadUtils` → ``[upload]``,
-:class:`MetricsUtils` → ``[metrics]``). Importing this package
-eagerly imports them, so the missing extra surfaces immediately
-with a clear ``ImportError``.
+:class:`MetricsUtils` → ``[metrics]``). The missing dependency is
+deferred until first instantiation, so ``import tempest_fastapi_sdk``
+keeps working when only a subset of extras is installed; the
+``ImportError`` is raised with a clear hint the moment the helper is
+actually constructed.
 """
 
 from tempest_fastapi_sdk.utils.datetime import to_utc, utcnow

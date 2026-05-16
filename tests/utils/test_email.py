@@ -22,7 +22,7 @@ class FakeSendCalls:
 @pytest.fixture
 def fake_send(monkeypatch: pytest.MonkeyPatch) -> FakeSendCalls:
     fake = FakeSendCalls()
-    monkeypatch.setattr(email_module.aiosmtplib, "send", fake)
+    monkeypatch.setattr(email_module._aiosmtplib, "send", fake)
     return fake
 
 

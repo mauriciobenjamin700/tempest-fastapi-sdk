@@ -164,4 +164,4 @@ class TestSnapshot:
 
 
 def test_module_imports_psutil() -> None:
-    assert metrics_module.psutil is not None
+    assert metrics_module._psutil is not None

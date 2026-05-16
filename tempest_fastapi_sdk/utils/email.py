@@ -1,20 +1,20 @@
 """SMTP email helpers backed by aiosmtplib.
 
-Requires the ``[email]`` extra. Importing this module without
-``aiosmtplib`` installed raises :class:`ImportError` with a hint.
+Requires the ``[email]`` extra. The dependency is imported lazily so
+``import tempest_fastapi_sdk`` keeps working when the extra is not
+installed — :class:`EmailUtils` raises :class:`ImportError` on first
+instantiation instead.
 """
 
 from collections.abc import Iterable
 from email.message import EmailMessage
 from pathlib import Path
+from typing import Any
 
 try:
-    import aiosmtplib
-except ImportError as exc:  # pragma: no cover - guarded by extras
-    raise ImportError(
-        "EmailUtils requires the [email] extra. "
-        "Install with `pip install tempest-fastapi-sdk[email]`."
-    ) from exc
+    import aiosmtplib as _aiosmtplib
+except ImportError:  # pragma: no cover - guarded by extras
+    _aiosmtplib: Any = None  # type: ignore[no-redef]
 
 
 class EmailUtils:
@@ -63,7 +63,15 @@ class EmailUtils:
             use_starttls (bool): Upgrade to TLS via STARTTLS after
                 connect. Set this for port ``587`` (default).
             timeout (float): SMTP socket timeout in seconds.
+
+        Raises:
+            ImportError: When the ``[email]`` extra is not installed.
         """
+        if _aiosmtplib is None:
+            raise ImportError(
+                "EmailUtils requires the [email] extra. "
+                "Install with `pip install tempest-fastapi-sdk[email]`."
+            )
         self.host: str = host
         self.port: int = port
         self.from_addr: str = from_addr
@@ -134,7 +142,7 @@ class EmailUtils:
                     filename=path.name,
                 )
 
-        await aiosmtplib.send(
+        await _aiosmtplib.send(
             message,
             hostname=self.host,
             port=self.port,

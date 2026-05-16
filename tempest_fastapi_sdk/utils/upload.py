@@ -1,19 +1,19 @@
 """File upload helpers with validation and local disk persistence.
 
-Requires the ``[upload]`` extra. Importing this module without
-``aiofiles`` installed raises :class:`ImportError` with a hint.
+Requires the ``[upload]`` extra. The dependency is imported lazily so
+``import tempest_fastapi_sdk`` keeps working when the extra is not
+installed — :class:`UploadUtils` raises :class:`ImportError` on first
+instantiation instead.
 """
 
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 try:
-    import aiofiles
-except ImportError as exc:  # pragma: no cover - guarded by extras
-    raise ImportError(
-        "UploadUtils requires the [upload] extra. "
-        "Install with `pip install tempest-fastapi-sdk[upload]`."
-    ) from exc
+    import aiofiles as _aiofiles
+except ImportError:  # pragma: no cover - guarded by extras
+    _aiofiles: Any = None  # type: ignore[no-redef]
 
 from fastapi import UploadFile
 
@@ -69,7 +69,15 @@ class UploadUtils:
                 types (case-insensitive, e.g. ``{"image/png"}``).
             chunk_size (int): Stream read chunk in bytes. Defaults to
                 1 MiB; raise to trade memory for fewer syscalls.
+
+        Raises:
+            ImportError: When the ``[upload]`` extra is not installed.
         """
+        if _aiofiles is None:
+            raise ImportError(
+                "UploadUtils requires the [upload] extra. "
+                "Install with `pip install tempest-fastapi-sdk[upload]`."
+            )
         self.upload_dir: Path = Path(upload_dir)
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.max_size_bytes: int | None = max_size_bytes
@@ -172,7 +180,7 @@ class UploadUtils:
             )
         total = 0
         try:
-            async with aiofiles.open(target_path, "wb") as out:
+            async with _aiofiles.open(target_path, "wb") as out:
                 while chunk := await file.read(self._chunk_size):
                     total += len(chunk)
                     if self.max_size_bytes is not None and total > self.max_size_bytes:

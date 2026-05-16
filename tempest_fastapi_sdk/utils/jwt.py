@@ -1,19 +1,18 @@
 """JWT encode/decode helpers backed by PyJWT.
 
-Requires the ``[auth]`` extra. Importing this module without
-``PyJWT`` installed raises :class:`ImportError` with a clear hint.
+Requires the ``[auth]`` extra. The dependency is imported lazily so
+``import tempest_fastapi_sdk`` keeps working when the extra is not
+installed — :class:`JWTUtils` raises :class:`ImportError` on first
+instantiation instead.
 """
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 try:
-    import jwt
-except ImportError as exc:  # pragma: no cover - guarded by extras
-    raise ImportError(
-        "JWTUtils requires the [auth] extra. "
-        "Install with `pip install tempest-fastapi-sdk[auth]`."
-    ) from exc
+    import jwt as _jwt
+except ImportError:  # pragma: no cover - guarded by extras
+    _jwt: Any = None  # type: ignore[no-redef]
 
 from tempest_fastapi_sdk.exceptions.jwt import (
     ExpiredTokenException,
@@ -55,7 +54,15 @@ class JWTUtils:
             issuer (str | None): Value for the ``iss`` claim. When set,
                 :meth:`decode` rejects tokens whose ``iss`` doesn't
                 match (i.e. domain-level isolation).
+
+        Raises:
+            ImportError: When the ``[auth]`` extra is not installed.
         """
+        if _jwt is None:
+            raise ImportError(
+                "JWTUtils requires the [auth] extra. "
+                "Install with `pip install tempest-fastapi-sdk[auth]`."
+            )
         self._secret: str = secret
         self.algorithm: str = algorithm
         self.default_ttl: timedelta = default_ttl
@@ -86,7 +93,7 @@ class JWTUtils:
         }
         if self._issuer is not None:
             claims.setdefault("iss", self._issuer)
-        return jwt.encode(claims, self._secret, algorithm=self.algorithm)
+        return _jwt.encode(claims, self._secret, algorithm=self.algorithm)
 
     def decode(self, token: str) -> dict[str, Any]:
         """Decode and verify a JWT.
@@ -104,16 +111,16 @@ class JWTUtils:
                 malformed payload, etc.).
         """
         try:
-            decoded: dict[str, Any] = jwt.decode(
+            decoded: dict[str, Any] = _jwt.decode(
                 token,
                 self._secret,
                 algorithms=[self.algorithm],
                 issuer=self._issuer,
             )
             return decoded
-        except jwt.ExpiredSignatureError as exc:
+        except _jwt.ExpiredSignatureError as exc:
             raise ExpiredTokenException() from exc
-        except jwt.InvalidTokenError as exc:
+        except _jwt.InvalidTokenError as exc:
             raise InvalidTokenException() from exc
 
     def decode_or_none(self, token: str) -> dict[str, Any] | None:

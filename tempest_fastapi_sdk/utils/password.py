@@ -1,16 +1,17 @@
 """Password hashing helpers backed by bcrypt.
 
-Requires the ``[auth]`` extra. Importing this module without
-``bcrypt`` installed raises :class:`ImportError` with a clear hint.
+Requires the ``[auth]`` extra. The dependency is imported lazily so
+``import tempest_fastapi_sdk`` keeps working when the extra is not
+installed — :class:`PasswordUtils` raises :class:`ImportError` on
+first instantiation instead.
 """
 
+from typing import Any
+
 try:
-    import bcrypt
-except ImportError as exc:  # pragma: no cover - guarded by extras
-    raise ImportError(
-        "PasswordUtils requires the [auth] extra. "
-        "Install with `pip install tempest-fastapi-sdk[auth]`."
-    ) from exc
+    import bcrypt as _bcrypt
+except ImportError:  # pragma: no cover - guarded by extras
+    _bcrypt: Any = None  # type: ignore[no-redef]
 
 
 class PasswordUtils:
@@ -32,7 +33,15 @@ class PasswordUtils:
             rounds (int): The bcrypt cost factor. Higher values make
                 hashing slower and brute-force attacks harder.
                 Defaults to ``12``.
+
+        Raises:
+            ImportError: When the ``[auth]`` extra is not installed.
         """
+        if _bcrypt is None:
+            raise ImportError(
+                "PasswordUtils requires the [auth] extra. "
+                "Install with `pip install tempest-fastapi-sdk[auth]`."
+            )
         self.rounds: int = rounds
 
     def hash(self, plain: str) -> str:
@@ -45,8 +54,8 @@ class PasswordUtils:
             str: The bcrypt hash encoded as a UTF-8 string, ready to
             persist in a database column.
         """
-        salt = bcrypt.gensalt(rounds=self.rounds)
-        return bcrypt.hashpw(plain.encode("utf-8"), salt).decode("utf-8")
+        salt = _bcrypt.gensalt(rounds=self.rounds)
+        return _bcrypt.hashpw(plain.encode("utf-8"), salt).decode("utf-8")
 
     def verify(self, plain: str, hashed: str) -> bool:
         """Verify a plaintext password against an existing hash.
@@ -63,9 +72,11 @@ class PasswordUtils:
             bool: ``True`` if the password matches.
         """
         try:
-            return bcrypt.checkpw(
-                plain.encode("utf-8"),
-                hashed.encode("utf-8"),
+            return bool(
+                _bcrypt.checkpw(
+                    plain.encode("utf-8"),
+                    hashed.encode("utf-8"),
+                )
             )
         except (ValueError, TypeError):
             return False

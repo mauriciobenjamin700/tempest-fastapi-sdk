@@ -1,4 +1,10 @@
-"""System metrics helpers — CPU, memory, disk and GPU usage."""
+"""System metrics helpers — CPU, memory, disk and GPU usage.
+
+Requires the ``[metrics]`` extra. The dependency is imported lazily
+so ``import tempest_fastapi_sdk`` keeps working when the extra is
+not installed — :class:`MetricsUtils` methods raise
+:class:`ImportError` on first call instead.
+"""
 
 from __future__ import annotations
 
@@ -9,12 +15,27 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 try:
-    import psutil
-except ImportError as exc:  # pragma: no cover - guarded by extras
-    raise ImportError(
-        "MetricsUtils requires the [metrics] extra. "
-        "Install with `pip install tempest-fastapi-sdk[metrics]`."
-    ) from exc
+    import psutil as _psutil
+except ImportError:  # pragma: no cover - guarded by extras
+    _psutil: Any = None  # type: ignore[no-redef]
+
+
+def _require_psutil() -> Any:
+    """Return the imported ``psutil`` module or raise a helpful error.
+
+    Returns:
+        Any: The ``psutil`` module.
+
+    Raises:
+        ImportError: When the ``[metrics]`` extra is not installed.
+    """
+    if _psutil is None:
+        raise ImportError(
+            "MetricsUtils requires the [metrics] extra. "
+            "Install with `pip install tempest-fastapi-sdk[metrics]`."
+        )
+    return _psutil
+
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +214,7 @@ class MetricsUtils:
         Returns:
             CPUMetrics: The sampled metrics.
         """
+        psutil = _require_psutil()
         percent = float(psutil.cpu_percent(interval=interval))
         logical = psutil.cpu_count(logical=True) or 0
         physical = psutil.cpu_count(logical=False) or 0
@@ -228,7 +250,7 @@ class MetricsUtils:
         Returns:
             MemoryMetrics: The current memory snapshot.
         """
-        vm = psutil.virtual_memory()
+        vm = _require_psutil().virtual_memory()
         return MemoryMetrics(
             total_bytes=int(vm.total),
             used_bytes=int(vm.used),
@@ -259,7 +281,7 @@ class MetricsUtils:
         Raises:
             FileNotFoundError: When ``path`` does not exist.
         """
-        usage = psutil.disk_usage(path)
+        usage = _require_psutil().disk_usage(path)
         return DiskMetrics(
             path=path,
             total_bytes=int(usage.total),
