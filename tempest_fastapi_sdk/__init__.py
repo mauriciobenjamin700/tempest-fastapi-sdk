@@ -4,6 +4,7 @@ from tempest_fastapi_sdk.api import (
     HealthCheck,
     RequestIDMiddleware,
     app_exception_handler,
+    apply_cors,
     make_health_router,
     make_token_dependency,
     register_exception_handlers,
@@ -50,7 +51,15 @@ from tempest_fastapi_sdk.schemas import (
     encode_cursor,
 )
 from tempest_fastapi_sdk.services import BaseService
-from tempest_fastapi_sdk.settings import BaseAppSettings
+from tempest_fastapi_sdk.settings import (
+    BaseAppSettings,
+    CORSSettings,
+    DatabaseSettings,
+    JWTSettings,
+    RabbitMQSettings,
+    RedisSettings,
+    ServerSettings,
+)
 from tempest_fastapi_sdk.utils import (
     CNPJ,
     CNPJ_PATTERN,
@@ -78,7 +87,7 @@ from tempest_fastapi_sdk.utils import (
     utcnow,
 )
 
-__version__: str = "0.4.0"
+__version__: str = "0.5.0"
 
 __all__: list[str] = [
     "CNPJ",
@@ -101,10 +110,12 @@ __all__: list[str] = [
     "BaseResponseSchema",
     "BaseSchema",
     "BaseService",
+    "CORSSettings",
     "CPFOrCNPJ",
     "ConflictException",
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
+    "DatabaseSettings",
     "EmailUtils",
     "ExpiredTokenException",
     "FileTooLargeException",
@@ -113,17 +124,22 @@ __all__: list[str] = [
     "InvalidFileTypeException",
     "InvalidTokenException",
     "JSONFormatter",
+    "JWTSettings",
     "JWTUtils",
     "NotFoundException",
     "PasswordUtils",
     "PhoneBR",
+    "RabbitMQSettings",
+    "RedisSettings",
     "RequestIDMiddleware",
+    "ServerSettings",
     "SoftDeleteMixin",
     "UnauthorizedException",
     "UploadUtils",
     "ValidationException",
     "__version__",
     "app_exception_handler",
+    "apply_cors",
     "clear_request_id",
     "configure_logging",
     "decode_cursor",
