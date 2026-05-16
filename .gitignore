@@ -20,3 +20,4 @@ htmlcov/
 # Editor
 .vscode/
 .idea/
+.claude/
