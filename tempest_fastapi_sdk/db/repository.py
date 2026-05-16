@@ -401,6 +401,101 @@ class BaseRepository(Generic[ModelType]):
             "pages": pages,
         }
 
+    async def cursor_paginate(
+        self,
+        filters: dict[str, Any] | None = None,
+        cursor: str | None = None,
+        limit: int = 20,
+        order_by: str = "created_at",
+        ascending: bool = False,
+    ) -> dict[str, Any]:
+        """Return a single cursor-paginated page of records.
+
+        Cursor pagination orders by ``(order_by, id)`` so the result
+        is stable under concurrent inserts and scales without a
+        ``COUNT(*)``. The cursor encodes the last row's
+        ``(order_by_value, id)`` so the next page can continue
+        precisely past it.
+
+        Args:
+            filters (dict[str, Any] | None): Filter conditions.
+            cursor (str | None): Opaque cursor from the previous page;
+                ``None`` requests the first page.
+            limit (int): Maximum items to return in this page.
+            order_by (str): Column to sort by. Must exist on the model.
+            ascending (bool): Whether to sort ascending. Defaults to
+                ``False``.
+
+        Returns:
+            dict[str, Any]: Mapping with ``items``, ``next_cursor``,
+            ``has_more`` and ``limit``.
+
+        Raises:
+            ValueError: When ``order_by`` is not a column on the
+                model, or when ``cursor`` is malformed.
+        """
+        from tempest_fastapi_sdk.schemas.pagination import (
+            decode_cursor,
+            encode_cursor,
+        )
+
+        column = getattr(self.model, order_by, None)
+        if column is None:
+            raise ValueError(
+                f"{self.model.__name__!r} has no column {order_by!r}",
+            )
+
+        query = select(self.model)
+        if filters:
+            query = self._apply_filters(query, filters)
+
+        if cursor is not None:
+            payload = decode_cursor(cursor)
+            last_value = payload.get("value")
+            last_id_raw = payload.get("id")
+            try:
+                last_id = (
+                    UUID(last_id_raw) if isinstance(last_id_raw, str) else last_id_raw
+                )
+            except (ValueError, AttributeError) as exc:
+                raise ValueError("Invalid cursor id") from exc
+            if ascending:
+                query = query.where(
+                    (column > last_value)
+                    | ((column == last_value) & (self.model.id > last_id)),
+                )
+            else:
+                query = query.where(
+                    (column < last_value)
+                    | ((column == last_value) & (self.model.id < last_id)),
+                )
+
+        primary = column if ascending else column.desc()
+        secondary = self.model.id if ascending else self.model.id.desc()
+        query = query.order_by(primary, secondary).limit(limit + 1)
+
+        result = await self.session.execute(query)
+        rows = list(result.unique().scalars().all())
+        has_more = len(rows) > limit
+        items = rows[:limit]
+
+        next_cursor: str | None = None
+        if has_more and items:
+            last = items[-1]
+            next_cursor = encode_cursor(
+                {
+                    "value": getattr(last, order_by),
+                    "id": last.id,
+                },
+            )
+
+        return {
+            "items": items,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+            "limit": limit,
+        }
+
     async def add(self, model: ModelType) -> ModelType:
         """Insert ``model`` into the database.
 

@@ -4,6 +4,10 @@ from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.schemas.pagination import (
     BasePaginationFilterSchema,
     BasePaginationSchema,
+    CursorPaginationFilterSchema,
+    CursorPaginationSchema,
+    decode_cursor,
+    encode_cursor,
 )
 from tempest_fastapi_sdk.schemas.response import BaseResponseSchema
 
@@ -12,4 +16,8 @@ __all__: list[str] = [
     "BasePaginationSchema",
     "BaseResponseSchema",
     "BaseSchema",
+    "CursorPaginationFilterSchema",
+    "CursorPaginationSchema",
+    "decode_cursor",
+    "encode_cursor",
 ]

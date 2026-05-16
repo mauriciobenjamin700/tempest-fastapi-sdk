@@ -1,8 +1,10 @@
 """tempest-fastapi-sdk — shared FastAPI/SQLAlchemy/Pydantic primitives."""
 
 from tempest_fastapi_sdk.api import (
+    HealthCheck,
     RequestIDMiddleware,
     app_exception_handler,
+    make_health_router,
     make_token_dependency,
     register_exception_handlers,
     require_x_token,
@@ -20,8 +22,10 @@ from tempest_fastapi_sdk.db import (
     NAMING_CONVENTION,
     AlembicHelper,
     AsyncDatabaseManager,
+    AuditMixin,
     BaseModel,
     BaseRepository,
+    SoftDeleteMixin,
 )
 from tempest_fastapi_sdk.exceptions import (
     AppException,
@@ -40,6 +44,10 @@ from tempest_fastapi_sdk.schemas import (
     BasePaginationSchema,
     BaseResponseSchema,
     BaseSchema,
+    CursorPaginationFilterSchema,
+    CursorPaginationSchema,
+    decode_cursor,
+    encode_cursor,
 )
 from tempest_fastapi_sdk.services import BaseService
 from tempest_fastapi_sdk.settings import BaseAppSettings
@@ -70,7 +78,7 @@ from tempest_fastapi_sdk.utils import (
     utcnow,
 )
 
-__version__: str = "0.3.0"
+__version__: str = "0.4.0"
 
 __all__: list[str] = [
     "CNPJ",
@@ -83,6 +91,7 @@ __all__: list[str] = [
     "AlembicHelper",
     "AppException",
     "AsyncDatabaseManager",
+    "AuditMixin",
     "BaseAppSettings",
     "BaseController",
     "BaseModel",
@@ -94,10 +103,13 @@ __all__: list[str] = [
     "BaseService",
     "CPFOrCNPJ",
     "ConflictException",
+    "CursorPaginationFilterSchema",
+    "CursorPaginationSchema",
     "EmailUtils",
     "ExpiredTokenException",
     "FileTooLargeException",
     "ForbiddenException",
+    "HealthCheck",
     "InvalidFileTypeException",
     "InvalidTokenException",
     "JSONFormatter",
@@ -106,6 +118,7 @@ __all__: list[str] = [
     "PasswordUtils",
     "PhoneBR",
     "RequestIDMiddleware",
+    "SoftDeleteMixin",
     "UnauthorizedException",
     "UploadUtils",
     "ValidationException",
@@ -113,11 +126,14 @@ __all__: list[str] = [
     "app_exception_handler",
     "clear_request_id",
     "configure_logging",
+    "decode_cursor",
+    "encode_cursor",
     "get_request_id",
     "is_valid_cnpj",
     "is_valid_cpf",
     "is_valid_cpf_cnpj",
     "is_valid_phone_br",
+    "make_health_router",
     "make_token_dependency",
     "modify_dict",
     "normalize_cnpj",
