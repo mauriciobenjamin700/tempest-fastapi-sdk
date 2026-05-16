@@ -72,7 +72,7 @@ jobs:
 
       - name: Smoke-install built wheel in a clean venv
         run: |
-          uv venv --python 3.13 /tmp/smoke-venv
+          uv venv --python 3.11 /tmp/smoke-venv
           uv pip install --python /tmp/smoke-venv/bin/python --quiet "$(ls dist/*.whl)[all]"
           /tmp/smoke-venv/bin/python -c "import tempest_fastapi_sdk as m; \
             assert m.__version__, 'no __version__'; \

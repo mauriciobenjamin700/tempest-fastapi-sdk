@@ -4,7 +4,7 @@
 # Override defaults: `make release VERSION=0.2.0`.
 
 PACKAGE := tempest_fastapi_sdk
-PYTHON_VERSION := 3.13
+PYTHON_VERSION := 3.11
 
 .DEFAULT_GOAL := help
 .PHONY: help install sync clean test cov lint fmt fmt-check type check ci build smoke release tag version

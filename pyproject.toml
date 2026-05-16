@@ -1,9 +1,9 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
     { name = "Mauricio Benjamin", email = "mauricio.benjamin@reloverelations.com" },
@@ -24,6 +24,8 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
@@ -89,7 +91,7 @@ dev = [
 
 [tool.ruff]
 line-length = 88
-target-version = "py313"
+target-version = "py311"
 src = [".", "tests"]
 
 [tool.ruff.lint]
@@ -121,7 +123,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_configs = true

@@ -57,7 +57,7 @@ from tempest_fastapi_sdk.utils import (
     utcnow,
 )
 
-__version__: str = "0.1.0"
+__version__: str = "0.2.0"
 
 __all__: list[str] = [
     "CNPJ",
