@@ -67,7 +67,7 @@ jobs:
       - name: Smoke-install built wheel in a clean venv
         run: |
           uv venv --python ${{ matrix.python-version }} /tmp/smoke-core
-          uv pip install --python /tmp/smoke-core/bin/python --quiet dist/*.whl
+          uv pip install --python /tmp/smoke-core/bin/python --quiet "$(ls dist/*.whl)[all]"
           /tmp/smoke-core/bin/python -c "import tempest_fastapi_sdk as m; \
             assert m.__version__, 'no __version__'; \
             assert m.BaseModel and m.BaseRepository and m.AsyncDatabaseManager, 'core primitives missing'; \
