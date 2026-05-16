@@ -1,6 +1,6 @@
 # tempest-fastapi-sdk
 
-Shared FastAPI/SQLAlchemy/Pydantic building blocks used across Tempest projects: base schemas, ORM model, async repository, pagination, settings, exceptions, Alembic helper and the four utility classes (`PasswordUtils`, `JWTUtils`, `EmailUtils`, `UploadUtils`).
+Shared FastAPI/SQLAlchemy/Pydantic building blocks used across Tempest projects: base schemas, ORM model, async repository, pagination, settings, exceptions, Alembic helper, FastStream/TaskIQ broker managers, Redis cache, Server-Sent Events, Web Push and the utility classes (`PasswordUtils`, `JWTUtils`, `EmailUtils`, `UploadUtils`, `MetricsUtils`, `LogUtils`).
 
 The goal is to start every new backend with the same opinionated foundation already in place — no copy-pasting `BaseModel`, no rewriting the same CRUD repository, no re-inventing the exception envelope.
 
@@ -47,28 +47,34 @@ Via `pyproject.toml`:
 
 ```toml
 dependencies = [
-    "tempest-fastapi-sdk>=0.1.0",
+    "tempest-fastapi-sdk>=0.7.1",
 ]
 ```
 
-Requires Python `>=3.13`.
+Requires Python `>=3.11`.
 
 ### Optional extras
 
-The four helpers in `tempest_fastapi_sdk.utils` pull in third-party dependencies that you only need when you actually use the helper. Pick the matching extra:
+Feature-rich helpers pull in third-party dependencies that you only need when you actually use the helper. Pick the extras the service consumes:
 
 | Extra | Pulls in | Unlocks |
 | --- | --- | --- |
 | `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils` |
 | `[email]` | `aiosmtplib` | `EmailUtils` |
 | `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils` |
-| `[all]` | everything above | all four utilities |
+| `[cache]` | `redis` | `AsyncRedisManager` |
+| `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
+| `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
+| `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` (FastStream) |
+| `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager` (TaskIQ) |
+| `[all]` | everything above | every helper |
 
 ```bash
-pip install "tempest-fastapi-sdk[all]"
+pip install "tempest-fastapi-sdk[auth,upload]"   # only what the service uses
+pip install "tempest-fastapi-sdk[all]"           # or pull everything
 ```
 
-Importing a utility without its extra installed raises `ImportError` with a clear hint pointing at the missing extra.
+Since `0.7.1` every optional dependency is imported lazily at first instantiation, so `import tempest_fastapi_sdk` works with any subset of extras — instantiating a helper whose extra is missing raises `ImportError` with a clear hint pointing at the right one.
 
 ---
 
@@ -76,14 +82,22 @@ Importing a utility without its extra installed raises `ImportError` with a clea
 
 | Module | Exports |
 | --- | --- |
-| `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]` |
-| `tempest_fastapi_sdk.db` | `BaseModel`, `BaseRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper`, `NAMING_CONVENTION` |
+| `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]`, `CursorPaginationFilterSchema`, `CursorPaginationSchema`, `encode_cursor`, `decode_cursor` |
+| `tempest_fastapi_sdk.db` | `BaseModel`, `BaseRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin` |
 | `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `FileTooLargeException`, `InvalidFileTypeException` |
-| `tempest_fastapi_sdk.settings` | `BaseAppSettings` |
-| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler` |
-| `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `PasswordUtils`, `JWTUtils`, `EmailUtils`, `UploadUtils`, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`) |
+| `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings` |
+| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_token_dependency`, `require_x_token`, `RequestIDMiddleware`, `HealthCheck` |
+| `tempest_fastapi_sdk.controllers` | `BaseController` |
+| `tempest_fastapi_sdk.services` | `BaseService` |
+| `tempest_fastapi_sdk.core` | `configure_logging`, `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx` |
+| `tempest_fastapi_sdk.sse` | `EventStream`, `ServerSentEvent`, `sse_response` |
+| `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager` |
+| `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
+| `tempest_fastapi_sdk.queue` *(extra: `[queue]`)* | `AsyncBrokerManager` (FastStream lifecycle wrapper) |
+| `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `AsyncTaskBrokerManager` (TaskIQ lifecycle wrapper) |
+| `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils` *(extra: `[upload]`)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`) |
 
-Everything is re-exported from `tempest_fastapi_sdk` at the top level — `from tempest_fastapi_sdk import BaseModel, BaseRepository, AppException` always works.
+Core primitives are re-exported from `tempest_fastapi_sdk` at the top level — `from tempest_fastapi_sdk import BaseModel, BaseRepository, AppException` always works. The extras-gated managers in `tempest_fastapi_sdk.cache`, `tempest_fastapi_sdk.queue` and `tempest_fastapi_sdk.tasks` must be imported from their own submodule (`from tempest_fastapi_sdk.queue import AsyncBrokerManager`).
 
 ---
 
