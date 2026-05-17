@@ -29,6 +29,18 @@ The goal is to start every new backend with the same opinionated foundation alre
   - [Alembic migrations](#alembic-migrations-recipe)
   - [BR document & phone validation](#br-document--phone-validation-recipe)
   - [Testing](#testing-recipe)
+  - [Application bootstrap (`create_app`)](#application-bootstrap-recipe)
+  - [Structured logging & request IDs](#structured-logging--request-ids-recipe)
+  - [Settings mixins composition](#settings-mixins-composition-recipe)
+  - [Controllers & services layering](#controllers--services-layering-recipe)
+  - [Audit & soft-delete mixins](#audit--soft-delete-mixins-recipe)
+  - [Cursor pagination](#cursor-pagination-recipe)
+  - [Redis cache (`AsyncRedisManager`)](#redis-cache-recipe)
+  - [Server-Sent Events (SSE)](#server-sent-events-recipe)
+  - [Web Push notifications](#web-push-notifications-recipe)
+  - [Message queues — FastStream (`AsyncBrokerManager`)](#message-queues--faststream-recipe)
+  - [Background tasks — TaskIQ (`AsyncTaskBrokerManager`)](#background-tasks--taskiq-recipe)
+  - [System metrics (`MetricsUtils`)](#system-metrics-recipe)
 - [Reference](#reference)
 - [Conventions](#conventions)
 - [Development](#development)
@@ -1289,6 +1301,634 @@ class TestUsersAPI:
         # SDK envelope is always {detail, code, details}
         assert body["code"] == "USER_NOT_FOUND"
 ```
+
+The SDK also ships `tempest_fastapi_sdk.testing` helpers (`create_test_engine`, `create_test_session_factory`, `init_test_metadata`, `drop_test_metadata`, `test_database`, `test_session`) for tests that don't need a full `AsyncDatabaseManager`:
+
+```python
+from tempest_fastapi_sdk.testing import test_session
+
+async def test_repo_directly() -> None:
+    async with test_session() as session:
+        repo = UserRepository(session)
+        await repo.add(UserModel(name="Ana", email="ana@example.com", password_hash="x"))
+        assert await repo.count() == 1
+```
+
+### Application bootstrap recipe
+
+The SDK ships every piece of an `app.py` factory: exception handlers, CORS, request-ID middleware, the health router and a shared-secret token dependency. A full bootstrap looks like this:
+
+```python
+# app/api/factory.py
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    RequestIDMiddleware,
+    apply_cors,
+    configure_logging,
+    make_health_router,
+    make_token_dependency,
+    register_exception_handlers,
+)
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+
+from app.core.settings import settings
+
+
+configure_logging(level=settings.LOG_LEVEL, json_output=settings.LOG_JSON)
+
+db = AsyncDatabaseManager(
+    settings.DATABASE_URL,
+    echo=settings.DATABASE_ECHO,
+    pool_size=settings.DATABASE_POOL_SIZE,
+    max_overflow=settings.DATABASE_MAX_OVERFLOW,
+    pool_recycle=settings.DATABASE_POOL_RECYCLE,
+)
+redis = AsyncRedisManager(settings.REDIS_URL)
+require_token = make_token_dependency(settings.TOKEN_SECRET)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    await db.connect()
+    await redis.connect()
+    try:
+        yield
+    finally:
+        await redis.disconnect()
+        await db.disconnect()
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="my-service",
+        version=settings.VERSION,
+        lifespan=lifespan,
+    )
+
+    app.add_middleware(RequestIDMiddleware)
+    apply_cors(app, settings)
+    register_exception_handlers(app)
+
+    app.include_router(
+        make_health_router(
+            db=db,
+            checks={"redis": redis.health_check},
+            version=settings.VERSION,
+        ),
+    )
+
+    from app.api.routers import users
+
+    app.include_router(users.router, prefix="/api", dependencies=[Depends(require_token)])
+    return app
+```
+
+Key points:
+
+- `RequestIDMiddleware` reads/writes `X-Request-ID` and seeds `request_id_ctx` so every log line emitted during the request carries the correlation ID.
+- `apply_cors(app, settings)` reads `CORSSettings` defaults; pass keyword overrides for one-off changes.
+- `register_exception_handlers(app)` wires every `AppException` subclass to the canonical `{detail, code, details}` envelope.
+- `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` mounts `GET /health/liveness` and `GET /health/readiness` (returns `503` when any check fails).
+- `make_token_dependency(secret)` returns an async dependency that validates `X-Token` with `hmac.compare_digest`; pass empty string to disable in dev.
+
+### Structured logging & request IDs recipe
+
+`configure_logging` installs a JSON handler on the root logger that emits one-line JSON records carrying the active request ID. `LogUtils` is a thin facade that adds level methods accepting structured `**fields`.
+
+```python
+from tempest_fastapi_sdk import LogUtils, configure_logging
+from tempest_fastapi_sdk.core import get_request_id
+
+# Imperative — call once during bootstrap.
+configure_logging(level="INFO", json_output=True)
+
+# Facade — handy for service-wide singletons.
+log = LogUtils("app.users", level="INFO")
+log.info("user_created", user_id=str(user.id), email=user.email)
+log.warning("login_throttled", ip="1.2.3.4", attempts=5)
+
+try:
+    risky()
+except RuntimeError:
+    log.exception("risky_failed", op="reconcile")  # appends traceback
+
+# Surface the correlation ID outside the log line if needed.
+request_id = get_request_id()
+```
+
+JSON output (single line — formatted here for readability):
+
+```json
+{
+  "timestamp": "2026-05-16T20:14:33.412+00:00Z",
+  "level": "INFO",
+  "logger": "app.users",
+  "message": "user_created",
+  "request_id": "d83e4b0c-7c2f-4bd6-aaa1-7d4f6cf5e5e9",
+  "user_id": "9c1a5b2d-...",
+  "email": "ana@example.com"
+}
+```
+
+The middleware accepts a custom header name (`RequestIDMiddleware(app, header_name="X-Correlation-ID")`); the same header is echoed back on every response.
+
+### Settings mixins composition recipe
+
+`BaseAppSettings` is the configured `pydantic-settings` base. The SDK also exposes composable mixins for the most common dependencies; pick the ones the service needs and put `BaseAppSettings` at the **end** of the MRO so its `model_config` wins.
+
+```python
+# app/core/settings.py
+from pydantic import Field
+
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    CORSSettings,
+    DatabaseSettings,
+    JWTSettings,
+    RabbitMQSettings,
+    RedisSettings,
+    ServerSettings,
+)
+
+
+class Settings(
+    ServerSettings,
+    DatabaseSettings,
+    RedisSettings,
+    RabbitMQSettings,
+    JWTSettings,
+    CORSSettings,
+    BaseAppSettings,
+):
+    """Service-wide settings."""
+
+    VERSION: str = Field(default="0.0.0")
+    TOKEN_SECRET: str = Field(default="")
+
+
+settings = Settings()
+```
+
+Each mixin advertises its own env vars (`SERVER_*` lives on `ServerSettings`, `DATABASE_*` on `DatabaseSettings`, `REDIS_*` on `RedisSettings`, `RABBITMQ_*` on `RabbitMQSettings`, `JWT_*` on `JWTSettings`, `CORS_*` on `CORSSettings`). Skip the mixins the service doesn't use; mix them in and the `.env` keys are picked up automatically.
+
+### Controllers & services layering recipe
+
+`BaseService[RepositoryT, ResponseT]` and `BaseController[ServiceT, ResponseT]` are generic skeletons matching the SDK layering (router → controller → service → repository). They expose pass-through CRUD methods so simple endpoints can subclass them without overriding anything; you override only methods that need orchestration.
+
+```python
+# app/services/user_service.py
+from uuid import UUID
+
+from tempest_fastapi_sdk import BaseService
+
+from app.repositories.user import UserRepository
+from app.schemas.user import UserCreate, UserResponse, UserUpdate
+from app.utils.security import password_utils
+
+
+class UserService(BaseService[UserRepository, UserResponse]):
+    """Business logic for the user feature."""
+
+    async def signup(self, data: UserCreate) -> UserResponse:
+        # Business logic — hash the password, then delegate to the repo.
+        instance = self.repository.map_to_model(
+            {
+                "name": data.name,
+                "email": data.email,
+                "password_hash": password_utils.hash(data.password),
+            },
+        )
+        created = await self.repository.add(instance)
+        return self.repository.map_to_response(created)
+
+
+# app/controllers/user_controller.py
+from tempest_fastapi_sdk import BaseController
+
+from app.schemas.user import UserCreate, UserResponse
+from app.services.user_service import UserService
+
+
+class UserController(BaseController[UserService, UserResponse]):
+    """Thin orchestration over UserService."""
+
+    async def signup(self, data: UserCreate) -> UserResponse:
+        # Pass-through today; the controller is the seam to add
+        # cross-service coordination later (audit log, outbox event,
+        # downstream notification, etc.) without touching the router.
+        return await self.service.signup(data)
+
+
+# app/api/dependencies/controllers.py
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.factory import db
+from app.controllers.user_controller import UserController
+from app.repositories.user import UserRepository
+from app.services.user_service import UserService
+
+
+def get_user_controller(
+    session: AsyncSession = Depends(db.session_dependency),
+) -> UserController:
+    return UserController(UserService(UserRepository(session)))
+
+
+# app/api/routers/users.py
+from fastapi import APIRouter, Depends, status
+
+from app.api.dependencies.controllers import get_user_controller
+from app.controllers.user_controller import UserController
+from app.schemas.user import UserCreate, UserResponse
+
+router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.post(
+    "/",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_user(
+    data: UserCreate,
+    controller: UserController = Depends(get_user_controller),
+) -> UserResponse:
+    return await controller.signup(data)
+```
+
+Keep controllers present even when they only pass through — the import graph stays uniform across services, so adding cross-cutting policy later doesn't change the router signature.
+
+### Audit & soft-delete mixins recipe
+
+`SoftDeleteMixin` adds a `deleted_at` timestamp column with `mark_deleted()` / `mark_restored()` / `is_deleted` helpers. `AuditMixin` adds `created_by` / `updated_by` UUID columns with `stamp_created_by(user_id)` / `stamp_updated_by(user_id)` helpers. Mix them in alongside `BaseModel`:
+
+```python
+# app/db/models/user.py
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import AuditMixin, BaseModel, SoftDeleteMixin
+
+
+class UserModel(BaseModel, SoftDeleteMixin, AuditMixin):
+    """Users — soft-deletable and audited."""
+
+    name: Mapped[str] = mapped_column()
+    email: Mapped[str] = mapped_column(unique=True)
+    password_hash: Mapped[str] = mapped_column()
+```
+
+Filtering is the caller's responsibility — the mixin doesn't install a global filter. Hide soft-deleted rows from list endpoints by passing `deleted_at=None` (or filtering in your repository subclass):
+
+```python
+async def list_alive(self) -> list[UserResponse]:
+    instances = await self.repository.list(filters={"deleted_at": None})
+    return [self.repository.map_to_response(i) for i in instances]
+```
+
+Stamping audit columns belongs to the service layer where the current user is in scope:
+
+```python
+async def update(self, user_id: UUID, data: UserUpdate, *, actor_id: UUID) -> UserResponse:
+    instance = await self.repository.get_by_id(user_id)
+    instance.update_from_dict(data.model_dump(exclude_unset=True))
+    instance.stamp_updated_by(actor_id)
+    updated = await self.repository.update(instance)
+    return self.repository.map_to_response(updated)
+```
+
+Use the mixin's helpers (`mark_deleted` / `mark_restored`) when you want the `deleted_at` semantics; use `BaseRepository.soft_delete(id)` when the existing `is_active` flag is enough.
+
+### Cursor pagination recipe
+
+Cursor pagination scales better than offset pagination on big tables (no `COUNT(*)`, stable under concurrent inserts) at the cost of losing random-access. The SDK provides `CursorPaginationFilterSchema`, `CursorPaginationSchema[T]` and the opaque `encode_cursor` / `decode_cursor` helpers.
+
+```python
+# app/schemas/user.py
+from tempest_fastapi_sdk import CursorPaginationFilterSchema, CursorPaginationSchema
+
+from app.schemas.user import UserResponse
+
+
+class UserCursorFilter(CursorPaginationFilterSchema):
+    name: str | None = None  # ILIKE %value% via repository convention
+
+
+UserCursorPage = CursorPaginationSchema[UserResponse]
+```
+
+Repository helper (cursor over `created_at` + `id` tie-break):
+
+```python
+# app/repositories/user.py
+from sqlalchemy import asc, desc
+
+from tempest_fastapi_sdk import BaseRepository, decode_cursor, encode_cursor
+
+from app.db.models.user import UserModel
+from app.schemas.user import UserResponse
+
+
+class UserRepository(BaseRepository[UserModel]):
+    model = UserModel
+
+    async def cursor_page(
+        self,
+        *,
+        cursor: str | None,
+        limit: int,
+        ascending: bool,
+        filters: dict[str, Any] | None = None,
+    ) -> UserCursorPage:
+        query = select(UserModel)
+        if filters:
+            query = self._apply_filters(query, filters)
+
+        order = asc if ascending else desc
+        query = query.order_by(order(UserModel.created_at), order(UserModel.id))
+
+        if cursor is not None:
+            state = decode_cursor(cursor)
+            cmp = (UserModel.created_at, UserModel.id) > (state["value"], state["id"])
+            query = query.where(cmp if ascending else ~cmp)
+
+        query = query.limit(limit + 1)  # peek one ahead to set has_more
+        result = await self.session.execute(query)
+        rows = list(result.unique().scalars().all())
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        next_cursor = (
+            encode_cursor(
+                {"id": str(rows[-1].id), "value": rows[-1].created_at.isoformat()},
+            )
+            if has_more and rows
+            else None
+        )
+        return UserCursorPage(
+            items=[self.map_to_response(r) for r in rows],
+            next_cursor=next_cursor,
+            has_more=has_more,
+            limit=limit,
+        )
+```
+
+Router:
+
+```python
+@router.get("/", response_model=UserCursorPage)
+async def list_users(
+    f: UserCursorFilter = Depends(),
+    controller: UserController = Depends(get_user_controller),
+) -> UserCursorPage:
+    return await controller.service.repository.cursor_page(
+        cursor=f.cursor,
+        limit=f.limit,
+        ascending=f.ascending,
+        filters=f.get_conditions(),
+    )
+```
+
+The cursor is opaque base64-url-safe JSON — clients never inspect it; they pass back the value verbatim until `next_cursor` becomes `null`.
+
+### Redis cache recipe
+
+`AsyncRedisManager` wraps `redis.asyncio` with the same connect/disconnect/health-check surface as `AsyncDatabaseManager`. Install with `[cache]`.
+
+```python
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+
+cache = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
+
+# Lifespan
+await cache.connect()
+...
+await cache.disconnect()
+
+# Direct use
+await cache.client.set("user:123:name", "Ana", ex=300)
+name = await cache.client.get("user:123:name")
+
+# FastAPI dependency — yields the live client.
+from fastapi import Depends
+from redis.asyncio import Redis
+
+
+@router.get("/cached")
+async def cached_endpoint(
+    redis: Redis = Depends(cache.client_dependency),
+) -> dict[str, str]:
+    value = await redis.get("greeting") or "hello"
+    return {"value": value}
+```
+
+Wire the health check on the canonical router with `make_health_router(checks={"redis": cache.health_check})` so readiness probes fail when Redis is down.
+
+### Server-Sent Events recipe
+
+`EventStream` is an in-memory async queue feeding one SSE HTTP connection. `ServerSentEvent` encodes one frame; `sse_response` wraps the byte stream in a Starlette `StreamingResponse` with SSE-friendly headers.
+
+```python
+# app/api/routers/events.py
+import asyncio
+
+from fastapi import APIRouter
+
+from tempest_fastapi_sdk import EventStream, sse_response
+
+router = APIRouter()
+
+
+@router.get("/events")
+async def events() -> "StreamingResponse":  # forward-declared by Starlette
+    stream = EventStream(heartbeat_seconds=15.0)
+
+    async def producer() -> None:
+        for n in range(1, 4):
+            await stream.publish({"n": n}, event="counter", id=str(n))
+            await asyncio.sleep(1)
+        await stream.close()
+
+    asyncio.create_task(producer())
+    return sse_response(stream.stream())
+```
+
+Browser side:
+
+```javascript
+const es = new EventSource("/events");
+es.addEventListener("counter", (e) => console.log("got", JSON.parse(e.data)));
+```
+
+`heartbeat_seconds` emits a `: keepalive` SSE comment when idle so load-balancers don't close long-lived connections. `ServerSentEvent.data` accepts strings, bytes or any JSON-serializable Python object — non-strings are JSON-encoded automatically. Pass `retry=` to hint the browser at the reconnect delay (milliseconds).
+
+### Web Push notifications recipe
+
+`WebPushDispatcher` wraps the synchronous `pywebpush` library in `asyncio.to_thread` and surfaces the two errors the application cares about: `WebPushGoneError` (HTTP 404/410 — delete the subscription) and `WebPushError` (everything else). Install with `[webpush]`.
+
+```python
+# app/services/notifications.py
+from tempest_fastapi_sdk import (
+    WebPushDispatcher,
+    WebPushGoneError,
+    WebPushPayloadSchema,
+    WebPushSubscriptionSchema,
+)
+
+
+dispatcher = WebPushDispatcher(
+    settings.VAPID_PRIVATE_KEY,
+    vapid_subject="mailto:ops@example.com",
+    ttl_seconds=60,
+)
+
+
+async def notify_order_paid(
+    subscription: WebPushSubscriptionSchema,
+    order_id: str,
+) -> None:
+    payload = WebPushPayloadSchema(
+        title="Pagamento confirmado",
+        body=f"Pedido {order_id} aprovado.",
+        icon="/static/icons/order.png",
+        data={"orderId": order_id, "url": f"/orders/{order_id}"},
+    )
+    try:
+        await dispatcher.send(subscription, payload)
+    except WebPushGoneError:
+        # Prune the subscription from your store.
+        await subscriptions_repo.delete_by_endpoint(subscription.endpoint)
+
+
+async def broadcast(subs: list[WebPushSubscriptionSchema], payload: WebPushPayloadSchema) -> None:
+    gone = await dispatcher.send_many(subs, payload)
+    if gone:
+        await subscriptions_repo.delete_by_endpoints(gone)
+```
+
+`WebPushSubscriptionSchema` round-trips the exact JSON `PushSubscription.toJSON()` emits in the browser (it aliases `expiration_time` ↔ `expirationTime`), so you can store inbound subscriptions verbatim and replay them on dispatch.
+
+### Message queues — FastStream recipe
+
+`AsyncBrokerManager` wraps any FastStream broker (RabbitMQ, Kafka, NATS, Redis Streams) with a uniform connect/disconnect/health-check surface. The broker instance is injected so the SDK doesn't pin a single transport.
+
+Install with `[queue]` (pulls `faststream[rabbit]`). Pick the matching FastStream extra for other transports.
+
+```python
+# app/queue/__init__.py
+from faststream.rabbit import RabbitBroker
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.queue import AsyncBrokerManager
+
+from app.core.settings import settings
+
+
+broker = RabbitBroker(settings.RABBITMQ_URL)
+queue = AsyncBrokerManager(broker)
+
+
+class OrderMessage(BaseModel):
+    order_id: str
+    user_id: str
+
+
+@broker.subscriber("orders.paid")
+async def handle_order_paid(msg: OrderMessage) -> None:
+    await mark_order_paid(msg.order_id, msg.user_id)
+
+
+# app/api/factory.py lifespan
+await queue.connect()
+...
+await queue.disconnect()
+
+
+# Publish from anywhere in the application
+await queue.publish(OrderMessage(order_id="abc", user_id="x"), queue="orders.paid")
+```
+
+The manager exposes:
+
+- `connect()` / `disconnect()` — idempotent; safe to call from FastAPI lifespan.
+- `publish(message, *args, **kwargs)` — passthrough to `broker.publish` with a `RuntimeError` guard when the broker isn't started.
+- `lifespan()` — async context manager handling start/stop, handy for short scripts.
+- `broker_dependency` — FastAPI `Depends` that yields the live broker.
+- `health_check()` / `is_connected` — true while the broker is started.
+
+Wire it on the health router with `make_health_router(checks={"queue": queue.health_check})`.
+
+### Background tasks — TaskIQ recipe
+
+`AsyncTaskBrokerManager` wraps any TaskIQ broker (AioPika for RabbitMQ, Redis, in-memory for tests). Install with `[tasks]` (pulls `taskiq` + `taskiq-aio-pika`).
+
+```python
+# app/tasks/__init__.py
+from taskiq_aio_pika import AioPikaBroker
+
+from tempest_fastapi_sdk.tasks import AsyncTaskBrokerManager
+
+from app.core.settings import settings
+
+
+tasks = AsyncTaskBrokerManager(AioPikaBroker(settings.RABBITMQ_URL))
+
+
+@tasks.task
+async def send_welcome_email(to: str, name: str) -> None:
+    await email_utils.send(
+        to=to,
+        subject="Bem-vindo!",
+        body=f"Olá, {name} — sua conta foi criada.",
+    )
+
+
+# app/api/factory.py lifespan
+await tasks.connect()
+...
+await tasks.disconnect()
+
+
+# Enqueue from a request handler
+await send_welcome_email.kiq(to=user.email, name=user.name)
+```
+
+`register_task(callable, task_name=..., **kwargs)` registers a function without decorator syntax — useful when wiring third-party callables that you can't decorate at definition time. For tests, swap the broker for `taskiq.InMemoryBroker()` so kicked tasks execute synchronously.
+
+The same lifespan guard rails as the queue manager apply: `connect()`/`disconnect()`/`lifespan()`/`broker_dependency`/`health_check()`/`is_connected`.
+
+### System metrics recipe
+
+`MetricsUtils` collects CPU, memory, disk and NVIDIA GPU usage via `psutil` + `pynvml`. Every method has a sync and an async variant (the async wrapper runs the same code via `asyncio.to_thread`). GPU sampling gracefully degrades to `[]` when `pynvml` or NVIDIA drivers are missing.
+
+Install with `[metrics]`.
+
+```python
+from tempest_fastapi_sdk import MetricsUtils
+
+# Synchronous, blocking call
+snapshot = MetricsUtils.snapshot(disk_paths=["/", "/data"], cpu_interval=0.1)
+print(snapshot.cpu.percent, snapshot.memory.percent)
+for disk in snapshot.disks:
+    print(disk.path, disk.percent)
+for gpu in snapshot.gpus:
+    print(gpu.name, gpu.utilization_percent, gpu.memory_used_bytes)
+
+# Async — runs every collector concurrently via asyncio.gather
+snapshot = await MetricsUtils.snapshot_async(disk_paths=["/"])
+
+
+@router.get("/metrics")
+async def metrics() -> dict[str, Any]:
+    snap = await MetricsUtils.snapshot_async()
+    return snap.to_dict()
+```
+
+Individual collectors are also available: `MetricsUtils.cpu(interval=...)`, `MetricsUtils.memory()`, `MetricsUtils.disk(path)`, `MetricsUtils.disks(paths)`, `MetricsUtils.gpus()` — and their `*_async` variants. Each returns a typed dataclass (`CPUMetrics`, `MemoryMetrics`, `DiskMetrics`, `GPUMetrics`, `SystemMetrics`) with a `to_dict()` helper for JSON serialization.
 
 ---
 
