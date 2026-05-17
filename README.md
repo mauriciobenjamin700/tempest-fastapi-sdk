@@ -14,19 +14,22 @@ The goal is to start every new backend with the same opinionated foundation alre
 - [Architecture overview](#architecture-overview)
 - [Tutorial — building the *Users* feature](#tutorial--building-the-users-feature)
   - [1. Project layout](#1-project-layout)
-  - [2. Settings & app entry point](#2-settings--app-entry-point)
+  - [2. Settings, server, app factory & entry point](#2-settings-server-app-factory--entry-point)
   - [3. ORM model](#3-orm-model)
   - [4. Schemas](#4-schemas)
   - [5. Domain exceptions](#5-domain-exceptions)
   - [6. Repository](#6-repository)
   - [7. Service](#7-service)
-  - [8. Router](#8-router)
-  - [9. Pagination](#9-pagination)
+  - [8. Controller](#8-controller)
+  - [9. Dependency providers](#9-dependency-providers)
+  - [10. Router](#10-router)
+  - [11. Pagination](#11-pagination)
 - [Recipes](#recipes)
   - [Authentication](#authentication-recipe)
   - [File uploads](#file-uploads-recipe)
   - [Transactional email](#transactional-email-recipe)
   - [Alembic migrations](#alembic-migrations-recipe)
+  - [Utility helpers (`utcnow`, `to_utc`, `modify_dict`)](#utility-helpers-recipe)
   - [BR document & phone validation](#br-document--phone-validation-recipe)
   - [Testing](#testing-recipe)
   - [Application bootstrap (`create_app`)](#application-bootstrap-recipe)
@@ -40,7 +43,18 @@ The goal is to start every new backend with the same opinionated foundation alre
   - [Web Push notifications](#web-push-notifications-recipe)
   - [Message queues — FastStream (`AsyncBrokerManager`)](#message-queues--faststream-recipe)
   - [Background tasks — TaskIQ (`AsyncTaskBrokerManager`)](#background-tasks--taskiq-recipe)
+  - [Periodic tasks scheduler (`AsyncTaskScheduler`)](#periodic-tasks-scheduler-recipe)
   - [System metrics (`MetricsUtils`)](#system-metrics-recipe)
+  - [Programmatic server entry point (`run_server`)](#programmatic-server-entry-point-recipe)
+  - [JWT bearer / current-user / role dependencies](#jwt-bearer--current-user--role-dependencies-recipe)
+  - [CEP (Brazilian zipcode)](#cep-brazilian-zipcode-recipe)
+  - [Cache decorator (`@cached`)](#cache-decorator-recipe)
+  - [Tool-spec router (`make_tool_spec_router`)](#tool-spec-router-recipe)
+  - [Webhook signature verification (`WebhookSignatureVerifier`)](#webhook-signature-verification-recipe)
+  - [Pagination Link headers (`build_pagination_link_header`)](#pagination-link-headers-recipe)
+  - [Rate limit middleware (`RateLimitMiddleware`)](#rate-limit-middleware-recipe)
+  - [Outbox dispatcher pattern](#outbox-dispatcher-pattern-recipe)
+  - [Migration guide 0.7 → 0.8](#migration-guide-07--08)
 - [Reference](#reference)
 - [Conventions](#conventions)
 - [Development](#development)
@@ -94,20 +108,20 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 
 | Module | Exports |
 | --- | --- |
-| `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]`, `CursorPaginationFilterSchema`, `CursorPaginationSchema`, `encode_cursor`, `decode_cursor` |
+| `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]`, `CursorPaginationFilterSchema`, `CursorPaginationSchema`, `encode_cursor`, `decode_cursor`, `build_pagination_link_header` |
 | `tempest_fastapi_sdk.db` | `BaseModel`, `BaseRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin` |
 | `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `FileTooLargeException`, `InvalidFileTypeException` |
-| `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings` |
-| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_token_dependency`, `require_x_token`, `RequestIDMiddleware`, `HealthCheck` |
+| `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings` |
+| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware`, `WebhookSignatureVerifier`, `HealthCheck` |
 | `tempest_fastapi_sdk.controllers` | `BaseController` |
 | `tempest_fastapi_sdk.services` | `BaseService` |
 | `tempest_fastapi_sdk.core` | `configure_logging`, `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx` |
 | `tempest_fastapi_sdk.sse` | `EventStream`, `ServerSentEvent`, `sse_response` |
-| `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager` |
+| `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager`, `cached` |
 | `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
 | `tempest_fastapi_sdk.queue` *(extra: `[queue]`)* | `AsyncBrokerManager` (FastStream lifecycle wrapper) |
-| `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `AsyncTaskBrokerManager` (TaskIQ lifecycle wrapper) |
-| `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils` *(extra: `[upload]`)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`) |
+| `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `AsyncTaskBrokerManager` (TaskIQ lifecycle wrapper), `AsyncTaskScheduler` (periodic / cron tasks) |
+| `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils` *(extra: `[upload]`)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`) |
 
 Core primitives are re-exported from `tempest_fastapi_sdk` at the top level — `from tempest_fastapi_sdk import BaseModel, BaseRepository, AppException` always works. The extras-gated managers in `tempest_fastapi_sdk.cache`, `tempest_fastapi_sdk.queue` and `tempest_fastapi_sdk.tasks` must be imported from their own submodule (`from tempest_fastapi_sdk.queue import AsyncBrokerManager`).
 
@@ -156,53 +170,76 @@ We'll build a complete `Users` feature from scratch, end to end. Every file belo
 
 ### 1. Project layout
 
+The canonical layout every Python service shipped against this SDK should adopt — `main.py` is a one-liner, `src/server.py` exposes both `run()` and the importable `app` (or re-exports it from `src/api/app.py`), `api/dependencies/` is **always a package** (auth + factory providers), `controllers/` is mandatory even when it's only a thin pass-through, and `repositories/` lives **under** `db/`.
+
 ```text
-app/
-├── __init__.py
-├── core/
-│   ├── __init__.py
-│   ├── settings.py       # Settings(BaseAppSettings)
-│   └── exceptions.py     # domain exceptions (UserNotFoundError, ...)
-├── db/
-│   ├── __init__.py       # re-exports BaseModel + every model
-│   └── models/
-│       ├── __init__.py
-│       └── user.py       # UserModel(BaseModel)
-├── schemas/
-│   ├── __init__.py
-│   └── user.py           # UserCreate/Update/Response/Filter
-├── repositories/
-│   ├── __init__.py
-│   └── user.py           # UserRepository(BaseRepository[UserModel])
-├── services/
-│   ├── __init__.py
-│   └── user.py           # UserService
-├── api/
-│   ├── __init__.py
-│   ├── factory.py        # create_app()
-│   └── routers/
-│       ├── __init__.py
-│       └── users.py
-└── main.py               # uvicorn entry point
+my-service/
+├── main.py                       # one-liner: from src.server import run; run()
+└── src/
+    ├── __init__.py               # re-exports `run` from src.server
+    ├── server.py                 # programmatic uvicorn.run(...) + module-level `app`
+    ├── core/
+    │   ├── __init__.py
+    │   ├── settings.py           # Settings(BaseAppSettings, mixins...)
+    │   └── exceptions.py         # domain exceptions (UserNotFoundError, ...)
+    ├── db/
+    │   ├── __init__.py           # re-exports BaseModel + every model
+    │   ├── models/
+    │   │   ├── __init__.py
+    │   │   └── user.py           # UserModel(BaseModel)
+    │   └── repositories/
+    │       ├── __init__.py
+    │       └── user.py           # UserRepository(BaseRepository[UserModel])
+    ├── schemas/
+    │   ├── __init__.py
+    │   └── user.py               # UserCreate/Update/Response/Filter
+    ├── services/
+    │   ├── __init__.py
+    │   └── user.py               # UserService — business logic
+    ├── controllers/
+    │   ├── __init__.py
+    │   └── user.py               # UserController — orchestration (thin pass-through OK)
+    └── api/
+        ├── __init__.py
+        ├── app.py                # create_app() — middleware, CORS, exception handlers, routers
+        ├── routers/
+        │   ├── __init__.py
+        │   └── users.py
+        └── dependencies/         # ALWAYS a package, never a flat module
+            ├── __init__.py
+            ├── auth.py           # X-Token / current_user / require_role dependencies
+            └── controllers.py    # get_<X>_controller / get_<X>_service factories
 ```
 
-`__init__.py` re-exports every public symbol from its directory so consumers always do `from app.schemas import UserCreateSchema` (not `from app.schemas.user import UserCreateSchema`). This keeps refactors painless — move files around without breaking imports.
+Each `__init__.py` re-exports every public symbol from its directory so consumers always do `from src.schemas import UserCreateSchema` (not `from src.schemas.user import UserCreateSchema`). This keeps refactors painless — move files around without breaking imports.
 
-### 2. Settings & app entry point
+If your service has no controllers/services/repositories yet, **still ship empty packages with the right names** — uniformity matters more than skipping a directory. Drop `db/`, `utils/`, `queue/` or `tasks/` only when the service genuinely doesn't need persistence/utilities/messaging.
+
+### 2. Settings, server, app factory & entry point
+
+Four files map onto four responsibilities:
+
+| File | Responsibility |
+| --- | --- |
+| `src/core/settings.py` | `Settings(BaseAppSettings, ...mixins)` — one source of truth for env vars. |
+| `src/api/app.py` | `create_app()` factory + middleware + CORS + exception handlers + router includes + module-level `app` instance. |
+| `src/server.py` | `run()` invoking `uvicorn.run("src.api.app:app", ...)` programmatically, plus re-exports `app` so external runners (gunicorn, uvicorn CLI) can import it. |
+| `main.py` | Process entry point — a single line under `if __name__ == "__main__":` calling `run()`. |
 
 ```python
-# app/core/settings.py
-from tempest_fastapi_sdk import BaseAppSettings
+# src/core/settings.py
+from tempest_fastapi_sdk import BaseAppSettings, DatabaseSettings, ServerSettings
 
 
-class Settings(BaseAppSettings):
+class Settings(ServerSettings, DatabaseSettings, BaseAppSettings):
     """All environment-driven configuration lives here.
 
-    BaseAppSettings already ships `env_file=.env`, `extra=ignore`,
+    BaseAppSettings ships `env_file=.env`, `extra=ignore`,
     `case_sensitive=True`, `frozen=True` and `str_strip_whitespace=True`.
+    ServerSettings adds SERVER_HOST/PORT/RELOAD, DatabaseSettings adds
+    DATABASE_URL/ECHO/POOL_*.
     """
 
-    DB_URL: str
     JWT_SECRET: str
     JWT_ALGORITHM: str = "HS256"
     JWT_TTL_HOURS: int = 1
@@ -220,43 +257,48 @@ settings = Settings()
 ```
 
 ```python
-# app/api/factory.py
+# src/api/app.py
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from fastapi import FastAPI
 
 from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
+    RequestIDMiddleware,
+    make_health_router,
     register_exception_handlers,
 )
 
-from app.api.routers import users
-from app.core.settings import settings
+from src.api.routers import users
+from src.core.settings import settings
 
 
-db = AsyncDatabaseManager(settings.DB_URL)
+db = AsyncDatabaseManager(settings.DATABASE_URL)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Connect on startup, dispose on shutdown."""
     await db.connect()
-    yield
-    await db.disconnect()
+    try:
+        yield
+    finally:
+        await db.disconnect()
 
 
 def create_app() -> FastAPI:
     """Build and configure the FastAPI app."""
-    app = FastAPI(title="My API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="my-service", version="0.1.0", lifespan=lifespan)
+
+    app.add_middleware(RequestIDMiddleware)
     register_exception_handlers(app)
 
-    app.include_router(users.router)
+    # Meta endpoints sit at the root prefix.
+    app.include_router(make_health_router(db=db, version="0.1.0"))
 
-    @app.get("/health", tags=["health"])
-    async def health() -> dict[str, bool]:
-        return {"db": await db.health_check()}
-
+    # Business endpoints sit under /api/<domain>.
+    app.include_router(users.router, prefix="/api")
     return app
 
 
@@ -264,19 +306,44 @@ app = create_app()
 ```
 
 ```python
-# app/main.py
-import uvicorn
+# src/server.py
+from tempest_fastapi_sdk import run_server
 
-from app.api.factory import app
+from src.api.app import app  # noqa: F401 — re-exported for external runners
+from src.core.settings import settings
+
+
+def run() -> None:
+    """Start the API server programmatically."""
+    run_server("src.api.app:app", settings=settings)
+
+
+__all__: list[str] = ["app", "run"]
+```
+
+`run_server` reads `SERVER_HOST` / `SERVER_PORT` / `SERVER_RELOAD` from `settings` (falling back to `127.0.0.1` / `8000` / `False`) and forwards any extra kwargs (`workers=`, `log_config=`, `ssl_*=`) verbatim to `uvicorn.run`. See the [Programmatic server entry point recipe](#programmatic-server-entry-point-recipe).
+
+```python
+# src/__init__.py
+from src.server import run
+
+__all__: list[str] = ["run"]
+```
+
+```python
+# main.py
+from src.server import run
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    run()
 ```
+
+Bind defaults: `127.0.0.1` for internal services (the SDK's `ServerSettings.SERVER_HOST` default), `0.0.0.0` only when the service is consumed by a separate origin (e.g. a frontend dev server). Never start uvicorn via `subprocess.run(["uvicorn", ...])` — always go through `run_server` (or `uvicorn.run("src.api.app:app", ...)` directly) so reload, signal handling and graceful shutdown behave correctly.
 
 ### 3. ORM model
 
 ```python
-# app/db/models/user.py
+# src/db/models/user.py
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -307,28 +374,28 @@ class UserModel(BaseModel):
 Re-export it:
 
 ```python
-# app/db/models/__init__.py
-from app.db.models.user import UserModel
+# src/db/models/__init__.py
+from src.db.models.user import UserModel
 
 __all__: list[str] = ["UserModel"]
 ```
 
 ```python
-# app/db/__init__.py
-from app.db.models import UserModel
+# src/db/__init__.py
+from src.db.models import UserModel
 from tempest_fastapi_sdk import BaseModel
 
 __all__: list[str] = ["BaseModel", "UserModel"]
 ```
 
-> **Tip:** Always import models in `app/db/__init__.py`. SQLAlchemy needs to "see" every model before `BaseModel.metadata` is complete, so Alembic autogenerate and `create_tables()` work correctly.
+> **Tip:** Always import models in `src/db/__init__.py`. SQLAlchemy needs to "see" every model before `BaseModel.metadata` is complete, so Alembic autogenerate and `create_tables()` work correctly.
 
 ### 4. Schemas
 
 The recommended naming pattern: one `*Create`, `*Update`, `*Response` and `*Filter` schema per resource.
 
 ```python
-# app/schemas/user.py
+# src/schemas/user.py
 from pydantic import EmailStr, Field
 
 from tempest_fastapi_sdk import (
@@ -376,8 +443,8 @@ class UserFilterSchema(BasePaginationFilterSchema):
 ```
 
 ```python
-# app/schemas/__init__.py
-from app.schemas.user import (
+# src/schemas/__init__.py
+from src.schemas.user import (
     UserCreateSchema,
     UserFilterSchema,
     UserResponseSchema,
@@ -397,7 +464,7 @@ __all__: list[str] = [
 The SDK ships generic `NotFoundException`, `ConflictException`, etc. Subclass them per domain so error responses have a useful `code` field:
 
 ```python
-# app/core/exceptions.py
+# src/core/exceptions.py
 from typing import ClassVar
 
 from tempest_fastapi_sdk import ConflictException, NotFoundException
@@ -413,7 +480,7 @@ class UserEmailAlreadyTakenError(ConflictException):
     code: ClassVar[str] = "USER_EMAIL_TAKEN"
 ```
 
-The SDK's exception handler ([`register_exception_handlers`](#2-settings--app-entry-point)) serializes them to:
+The SDK's exception handler ([`register_exception_handlers`](#2-settings-server-app-factory--entry-point)) serializes them to:
 
 ```json
 {
@@ -428,14 +495,14 @@ The frontend branches on `code`, not on the (potentially translated) message.
 ### 6. Repository
 
 ```python
-# app/repositories/user.py
+# src/db/repositories/user.py
 from typing import ClassVar
 
 from tempest_fastapi_sdk import AppException, BaseRepository
 
-from app.core.exceptions import UserNotFoundError
-from app.db.models import UserModel
-from app.schemas import UserResponseSchema
+from src.core.exceptions import UserNotFoundError
+from src.db.models import UserModel
+from src.schemas import UserResponseSchema
 
 
 class UserRepository(BaseRepository[UserModel]):
@@ -480,17 +547,17 @@ async def get_by_email(self, email: str) -> UserModel:
 The service is where business rules live. It calls one or more repositories and never touches HTTP or SQLAlchemy types directly.
 
 ```python
-# app/services/user.py
-from sqlalchemy.ext.asyncio import AsyncSession
+# src/services/user.py
+from uuid import UUID
 
 from tempest_fastapi_sdk import (
     BasePaginationSchema,
     PasswordUtils,
 )
 
-from app.core.exceptions import UserEmailAlreadyTakenError
-from app.repositories.user import UserRepository
-from app.schemas import (
+from src.core.exceptions import UserEmailAlreadyTakenError
+from src.db.repositories import UserRepository
+from src.schemas import (
     UserCreateSchema,
     UserFilterSchema,
     UserResponseSchema,
@@ -499,13 +566,21 @@ from app.schemas import (
 
 
 class UserService:
+    """Business logic for the user domain."""
+
     def __init__(
         self,
-        session: AsyncSession,
+        repository: UserRepository,
         passwords: PasswordUtils,
     ) -> None:
-        self.repo = UserRepository(session)
-        self.passwords = passwords
+        """Initialize the service.
+
+        Args:
+            repository (UserRepository): User-domain repository.
+            passwords (PasswordUtils): Shared bcrypt helper.
+        """
+        self.repo: UserRepository = repository
+        self.passwords: PasswordUtils = passwords
 
     async def create(self, data: UserCreateSchema) -> UserResponseSchema:
         if await self.repo.exists({"email": data.email}):
@@ -559,38 +634,121 @@ class UserService:
         )
 ```
 
-### 8. Router
+### 8. Controller
+
+Even when there's no orchestration to do, `controllers/` exists as a **thin pass-through** so the import graph stays uniform across services. The day a use case needs to coordinate two services (or fan out to a queue), the controller is already there.
 
 ```python
-# app/api/routers/users.py
+# src/controllers/user.py
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from tempest_fastapi_sdk import BasePaginationSchema
 
-from tempest_fastapi_sdk import BasePaginationSchema, PasswordUtils
-
-from app.api.factory import db
-from app.core.settings import settings
-from app.schemas import (
+from src.schemas import (
     UserCreateSchema,
     UserFilterSchema,
     UserResponseSchema,
     UserUpdateSchema,
 )
-from app.services.user import UserService
+from src.services.user import UserService
+
+
+class UserController:
+    """Orchestrate user use cases.
+
+    Today every method is a thin pass-through to ``UserService``. As
+    soon as a use case needs to coordinate more than one service —
+    e.g. signup also sends a welcome email and enqueues a CRM sync —
+    the orchestration lives here, not in the router and not in the
+    service.
+    """
+
+    def __init__(self, service: UserService) -> None:
+        self.service: UserService = service
+
+    async def create(self, data: UserCreateSchema) -> UserResponseSchema:
+        return await self.service.create(data)
+
+    async def get(self, user_id: UUID) -> UserResponseSchema:
+        return await self.service.get(user_id)
+
+    async def update(
+        self,
+        user_id: UUID,
+        data: UserUpdateSchema,
+    ) -> UserResponseSchema:
+        return await self.service.update(user_id, data)
+
+    async def soft_delete(self, user_id: UUID) -> None:
+        await self.service.soft_delete(user_id)
+
+    async def list_paginated(
+        self,
+        filters: UserFilterSchema,
+    ) -> BasePaginationSchema[UserResponseSchema]:
+        return await self.service.list_paginated(filters)
+```
+
+### 9. Dependency providers
+
+`api/dependencies/` is **always a package**. `auth.py` hosts the shared-secret / current-user dependencies; `controllers.py` (or `services.py` when there is no controller layer yet) hosts the factory providers the routers depend on. Never construct controllers or services inline inside the router file.
+
+```python
+# src/api/dependencies/controllers.py
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import PasswordUtils
+
+from src.api.app import db
+from src.controllers.user import UserController
+from src.db.repositories import UserRepository
+from src.services.user import UserService
+
+
+# Stateless utilities — instantiate once per process.
+_passwords: PasswordUtils = PasswordUtils()
+
+
+def get_user_controller(
+    session: AsyncSession = Depends(db.session_dependency),
+) -> UserController:
+    """Wire repository → service → controller for a single request."""
+    repository = UserRepository(session)
+    service = UserService(repository=repository, passwords=_passwords)
+    return UserController(service=service)
+```
+
+```python
+# src/api/dependencies/__init__.py
+from src.api.dependencies.controllers import get_user_controller
+
+__all__: list[str] = ["get_user_controller"]
+```
+
+### 10. Router
+
+Routers receive controllers via FastAPI `Depends` — no inline construction, no business logic, no DB calls. Business endpoints sit under `/api/<domain>` (the prefix is added at the include site in `src/api/app.py`); meta endpoints (`/health`, `/tool-spec`) stay at the root prefix.
+
+```python
+# src/api/routers/users.py
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, status
+
+from tempest_fastapi_sdk import BasePaginationSchema
+
+from src.api.dependencies import get_user_controller
+from src.controllers.user import UserController
+from src.schemas import (
+    UserCreateSchema,
+    UserFilterSchema,
+    UserResponseSchema,
+    UserUpdateSchema,
+)
 
 
 router = APIRouter(prefix="/users", tags=["users"])
-
-# Single PasswordUtils instance per process — bcrypt is stateless.
-_passwords = PasswordUtils()
-
-
-def get_service(
-    session: AsyncSession = Depends(db.session_dependency),
-) -> UserService:
-    return UserService(session, _passwords)
 
 
 @router.post(
@@ -600,45 +758,45 @@ def get_service(
 )
 async def create_user(
     data: UserCreateSchema,
-    service: UserService = Depends(get_service),
+    controller: UserController = Depends(get_user_controller),
 ) -> UserResponseSchema:
-    return await service.create(data)
+    return await controller.create(data)
 
 
 @router.get("/{user_id}", response_model=UserResponseSchema)
 async def get_user(
     user_id: UUID,
-    service: UserService = Depends(get_service),
+    controller: UserController = Depends(get_user_controller),
 ) -> UserResponseSchema:
-    return await service.get(user_id)
+    return await controller.get(user_id)
 
 
 @router.patch("/{user_id}", response_model=UserResponseSchema)
 async def update_user(
     user_id: UUID,
     data: UserUpdateSchema,
-    service: UserService = Depends(get_service),
+    controller: UserController = Depends(get_user_controller),
 ) -> UserResponseSchema:
-    return await service.update(user_id, data)
+    return await controller.update(user_id, data)
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
     user_id: UUID,
-    service: UserService = Depends(get_service),
+    controller: UserController = Depends(get_user_controller),
 ) -> None:
-    await service.soft_delete(user_id)
+    await controller.soft_delete(user_id)
 
 
 @router.get("", response_model=BasePaginationSchema[UserResponseSchema])
 async def list_users(
     filters: UserFilterSchema = Depends(),
-    service: UserService = Depends(get_service),
+    controller: UserController = Depends(get_user_controller),
 ) -> BasePaginationSchema[UserResponseSchema]:
-    return await service.list_paginated(filters)
+    return await controller.list_paginated(filters)
 ```
 
-### 9. Pagination
+### 11. Pagination
 
 The pagination contract is enforced end-to-end by SDK primitives:
 
@@ -647,7 +805,7 @@ The pagination contract is enforced end-to-end by SDK primitives:
 - `BasePaginationSchema[UserResponseSchema]` wraps the result so OpenAPI documents the response shape correctly.
 
 ```http
-GET /users?page=2&size=20&order_by=name&ascending=true&is_active=true&name=ana
+GET /api/users?page=2&size=20&order_by=name&ascending=true&is_active=true&name=ana
 ```
 
 Returns:
@@ -676,12 +834,12 @@ End-to-end signup + login + protected route using `PasswordUtils` and `JWTUtils`
 #### Wire the utility singletons
 
 ```python
-# app/core/security.py
+# src/core/security.py
 from datetime import timedelta
 
 from tempest_fastapi_sdk import JWTUtils, PasswordUtils
 
-from app.core.settings import settings
+from src.core.settings import settings
 
 
 passwords = PasswordUtils(rounds=12)
@@ -701,7 +859,7 @@ Reuse the `UserService.create` defined in the tutorial — it already hashes the
 #### Login
 
 ```python
-# app/schemas/auth.py
+# src/schemas/auth.py
 from pydantic import EmailStr
 
 from tempest_fastapi_sdk import BaseSchema
@@ -718,13 +876,13 @@ class TokenResponseSchema(BaseSchema):
 ```
 
 ```python
-# app/services/auth.py
+# src/services/auth.py
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import JWTUtils, PasswordUtils, UnauthorizedException
 
-from app.repositories.user import UserRepository
-from app.schemas.auth import LoginSchema, TokenResponseSchema
+from src.db.repositories import UserRepository
+from src.schemas.auth import LoginSchema, TokenResponseSchema
 
 
 class AuthService:
@@ -750,14 +908,14 @@ class AuthService:
 ```
 
 ```python
-# app/api/routers/auth.py
+# src/api/routers/auth.py
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.factory import db
-from app.core.security import passwords, tokens
-from app.schemas.auth import LoginSchema, TokenResponseSchema
-from app.services.auth import AuthService
+from src.api.app import db
+from src.core.security import passwords, tokens
+from src.schemas.auth import LoginSchema, TokenResponseSchema
+from src.services.auth import AuthService
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -779,37 +937,34 @@ async def login(
 
 #### Protect a route — JWT dependency
 
+Use `make_jwt_user_dependency` to wire the bearer scheme + JWT decode + user load in one call. The single seam is `user_loader(subject)`, an async callable that maps the JWT subject claim to your domain `UserModel`.
+
 ```python
-# app/api/dependencies/auth.py
+# src/api/dependencies/auth.py
 from uuid import UUID
 
-from fastapi import Depends
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.ext.asyncio import AsyncSession
+from tempest_fastapi_sdk import make_jwt_user_dependency
 
-from tempest_fastapi_sdk import UnauthorizedException
-
-from app.api.factory import db
-from app.core.security import tokens
-from app.db.models import UserModel
-from app.repositories.user import UserRepository
+from src.api.app import db
+from src.core.security import tokens
+from src.db.models import UserModel
+from src.db.repositories import UserRepository
 
 
-bearer = HTTPBearer(auto_error=False)
+async def load_user(subject: str) -> UserModel:
+    """Resolve the JWT subject (a UUID string) to a persisted user.
+
+    Opens its own session so the dependency stays request-scope-agnostic
+    (the loader is called once per request, and SDK exceptions raised
+    inside translate to the canonical 401/404 envelope).
+    """
+    async with db.get_session_context() as session:
+        repo = UserRepository(session)
+        return await repo.get_by_id(UUID(subject))
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
-    session: AsyncSession = Depends(db.session_dependency),
-) -> UserModel:
-    if credentials is None:
-        raise UnauthorizedException(message="Token ausente")
-    payload = tokens.decode(credentials.credentials)
-    # `tokens.decode` raises InvalidTokenException / ExpiredTokenException
-    # already — both serialize to 401 with proper `code`.
-    user_id = UUID(payload["sub"])
-    repo = UserRepository(session)
-    return await repo.get_by_id(user_id)
+get_current_user = make_jwt_user_dependency(tokens, load_user)
+get_current_user_or_none = make_jwt_user_dependency(tokens, load_user, soft=True)
 ```
 
 ```python
@@ -821,21 +976,17 @@ async def me(current: UserModel = Depends(get_current_user)) -> UserResponseSche
 
 #### Soft auth (optional user)
 
-For endpoints that work both authenticated and anonymous, use `decode_or_none`:
+`get_current_user_or_none` above already uses `soft=True` — it returns `None` instead of raising on a missing or invalid token, so endpoints can work both authenticated and anonymous:
 
 ```python
-async def get_current_user_or_none(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
-    session: AsyncSession = Depends(db.session_dependency),
-) -> UserModel | None:
-    if credentials is None:
-        return None
-    payload = tokens.decode_or_none(credentials.credentials)
-    if payload is None:
-        return None
-    repo = UserRepository(session)
-    return await repo.get_or_none({"id": UUID(payload["sub"])})
+@router.get("/feed")
+async def feed(
+    current: UserModel | None = Depends(get_current_user_or_none),
+) -> FeedResponseSchema:
+    return await feed_service.list(viewer=current)
 ```
+
+Under the hood `soft=True` calls `tokens.decode_or_none` (no exception on expired/invalid tokens) and skips the loader when the subject is missing.
 
 ---
 
@@ -844,10 +995,10 @@ async def get_current_user_or_none(
 Avatar endpoint with validation + cleanup. Requires the `[upload]` extra.
 
 ```python
-# app/core/storage.py
+# src/core/storage.py
 from tempest_fastapi_sdk import UploadUtils
 
-from app.core.settings import settings
+from src.core.settings import settings
 
 
 avatar_storage = UploadUtils(
@@ -859,10 +1010,12 @@ avatar_storage = UploadUtils(
 ```
 
 ```python
-# app/api/routers/users.py (extension)
+# src/api/routers/users.py (extension)
 from fastapi import UploadFile
 
-from app.core.storage import avatar_storage
+from src.api.dependencies import get_user_controller
+from src.controllers.user import UserController
+from src.core.storage import avatar_storage
 
 
 @router.post("/{user_id}/avatar", response_model=UserResponseSchema)
@@ -870,25 +1023,33 @@ async def upload_avatar(
     user_id: UUID,
     file: UploadFile,
     current: UserModel = Depends(get_current_user),
-    service: UserService = Depends(get_service),
+    controller: UserController = Depends(get_user_controller),
 ) -> UserResponseSchema:
     if current.id != user_id:
         raise ForbiddenException(message="Só pode editar o próprio avatar")
     path = await avatar_storage.save(file, subdir=str(user_id))
-    return await service.set_avatar(user_id, str(path))
+    return await controller.set_avatar(user_id, str(path))
 ```
 
-Inside the service:
+Add `set_avatar` to both the service and the controller (the controller stays a thin pass-through unless orchestration is needed — e.g. firing an "avatar updated" event):
 
 ```python
-async def set_avatar(self, user_id: UUID, path: str) -> UserResponseSchema:
-    user = await self.repo.get_by_id(user_id)
-    # Delete previous file when replacing.
-    if user.avatar_path and user.avatar_path != path:
-        avatar_storage.delete(user.avatar_path)
-    user.avatar_path = path
-    user = await self.repo.update(user)
-    return self.repo.map_to_response(user)
+# src/services/user.py
+class UserService:
+    async def set_avatar(self, user_id: UUID, path: str) -> UserResponseSchema:
+        user = await self.repo.get_by_id(user_id)
+        # Delete previous file when replacing.
+        if user.avatar_path and user.avatar_path != path:
+            avatar_storage.delete(user.avatar_path)
+        user.avatar_path = path
+        user = await self.repo.update(user)
+        return self.repo.map_to_response(user)
+
+
+# src/controllers/user.py
+class UserController:
+    async def set_avatar(self, user_id: UUID, path: str) -> UserResponseSchema:
+        return await self.service.set_avatar(user_id, path)
 ```
 
 `UploadUtils.save()` raises `FileTooLargeException` (413) or `InvalidFileTypeException` (415) on rejection — the SDK's exception handler already returns the right status code with a `code` field on the response.
@@ -931,10 +1092,10 @@ class UserResponseSchema(BaseResponseSchema):
 Password reset flow using `EmailUtils` + a short-lived JWT. Requires the `[email]` extra.
 
 ```python
-# app/core/mailer.py
+# src/core/mailer.py
 from tempest_fastapi_sdk import EmailUtils
 
-from app.core.settings import settings
+from src.core.settings import settings
 
 
 mailer = EmailUtils(
@@ -948,12 +1109,12 @@ mailer = EmailUtils(
 ```
 
 ```python
-# app/services/password_reset.py
+# src/services/password_reset.py
 from datetime import timedelta
 
 from tempest_fastapi_sdk import EmailUtils, JWTUtils, NotFoundException
 
-from app.repositories.user import UserRepository
+from src.db.repositories import UserRepository
 
 
 class PasswordResetService:
@@ -1016,7 +1177,7 @@ Full workflow: bootstrap → first migration → apply → CI gate.
 # scripts/alembic_init.py
 from tempest_fastapi_sdk import AlembicHelper
 
-from app.core.settings import settings
+from src.core.settings import settings
 
 helper = AlembicHelper(config_path="alembic.ini", db_url=settings.DB_URL)
 helper.init(
@@ -1047,7 +1208,7 @@ import sys
 
 from tempest_fastapi_sdk import AlembicHelper
 
-from app.core.settings import settings
+from src.core.settings import settings
 
 helper = AlembicHelper("alembic.ini", db_url=settings.DB_URL)
 helper.revision(
@@ -1065,7 +1226,7 @@ Generated file lands at `alembic/versions/2026_05_16_1432-ae12cd34_add_users_tab
 #### Apply on startup
 
 ```python
-# app/api/factory.py — extend lifespan
+# src/api/app.py — extend lifespan
 import asyncio
 
 from tempest_fastapi_sdk import AlembicHelper
@@ -1090,7 +1251,7 @@ import sys
 
 from tempest_fastapi_sdk import AlembicHelper
 
-from app.core.settings import settings
+from src.core.settings import settings
 
 helper = AlembicHelper("alembic.ini", db_url=settings.DB_URL)
 if not helper.check():
@@ -1106,6 +1267,73 @@ print("Schema is in sync.")
 ```
 
 ---
+
+### Utility helpers recipe
+
+Small stateless helpers from `tempest_fastapi_sdk.utils` that the SDK itself relies on and that show up across every service. Available without any extra.
+
+| Helper | Signature | Purpose |
+| --- | --- | --- |
+| `utcnow()` | `() -> datetime` | Current time as a timezone-aware UTC datetime — the SDK uses this for `created_at` / `updated_at` defaults. |
+| `to_utc(value)` | `(datetime) -> datetime` | Coerce naive datetimes to UTC (assumed UTC) and aware datetimes to UTC via `astimezone`. Used by `BaseResponseSchema` field validators. |
+| `modify_dict(data, exclude=None, include=None)` | `(dict, list[str] \| None, dict \| None) -> dict` | Single-pass filter + merge. Drop sensitive keys before logging or merge computed fields when mapping payloads to ORM models. |
+
+#### Timestamps the same way everywhere
+
+`utcnow` is the canonical "now" for the SDK. Use it for soft-delete timestamps, JWT `iat` / `exp`, audit trails — anything where mixing naive and aware datetimes would burn you later.
+
+```python
+from datetime import timedelta
+
+from tempest_fastapi_sdk import to_utc, utcnow
+
+
+now = utcnow()                      # timezone-aware UTC
+expires_at = now + timedelta(hours=1)
+
+# Normalize whatever the caller gave you
+incoming = request.json()["scheduled_for"]              # naive or aware
+scheduled_for = to_utc(datetime.fromisoformat(incoming))
+```
+
+A naive datetime is tagged with UTC (not converted from local time) so it's predictable in headless workers and Docker containers where `time.timezone` is anyone's guess.
+
+#### Drop sensitive keys before logging / mapping
+
+`modify_dict` is the tiny utility that powers `BaseSchema.to_dict(exclude=..., include=...)` and `BaseModel.update_from_dict(...)`. Use it directly when you don't want to call into Pydantic round-trips:
+
+```python
+from tempest_fastapi_sdk import LogUtils, modify_dict
+
+log = LogUtils("app.users")
+
+payload = {"email": "ana@example.com", "password": "s3cr3t", "name": "Ana"}
+
+# Strip password before logging
+log.info("user_signup", **modify_dict(payload, exclude=["password"]))
+
+# Merge a computed hash before persisting
+user_row = modify_dict(
+    payload,
+    exclude=["password"],
+    include={"password_hash": passwords.hash(payload["password"])},
+)
+```
+
+`include` wins over `data`, so it doubles as a "set or override" helper without mutating the source dict.
+
+#### Where every other helper is documented
+
+Every helper has its own recipe — this section is the quick map:
+
+| Helper | Recipe |
+| --- | --- |
+| `PasswordUtils`, `JWTUtils` | [Authentication recipe](#authentication-recipe) |
+| `EmailUtils` | [Transactional email recipe](#transactional-email-recipe) |
+| `UploadUtils` | [File uploads recipe](#file-uploads-recipe) |
+| `LogUtils` + `configure_logging` | [Structured logging & request IDs recipe](#structured-logging--request-ids-recipe) |
+| `MetricsUtils` (CPU/memory/disk/GPU) | [System metrics recipe](#system-metrics-recipe) |
+| `CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `is_valid_*`, `normalize_*`, `only_digits` | [BR document & phone validation recipe](#br-document--phone-validation-recipe) |
 
 ### BR document & phone validation recipe
 
@@ -1203,8 +1431,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import AsyncDatabaseManager
 
-from app.api.factory import create_app
-from app.db import BaseModel       # importing BaseModel ensures models are registered
+from src.api.app import create_app
+from src.db import BaseModel       # importing BaseModel ensures models are registered
 
 
 @pytest_asyncio.fixture
@@ -1232,7 +1460,7 @@ async def client(db: AsyncDatabaseManager) -> AsyncGenerator[TestClient, None]:
     """FastAPI TestClient with the SDK manager overridden to use SQLite."""
     app = create_app()
     # Override the session dependency to use the test DB.
-    from app.api.factory import db as production_db
+    from src.api.app import db as production_db
 
     app.dependency_overrides[production_db.session_dependency] = db.session_dependency
 
@@ -1247,9 +1475,9 @@ async def client(db: AsyncDatabaseManager) -> AsyncGenerator[TestClient, None]:
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import UserNotFoundError
-from app.db.models import UserModel
-from app.repositories.user import UserRepository
+from src.core.exceptions import UserNotFoundError
+from src.db.models import UserModel
+from src.db.repositories import UserRepository
 
 
 class TestUserRepository:
@@ -1281,7 +1509,7 @@ from fastapi.testclient import TestClient
 class TestUsersAPI:
     def test_create_user(self, client: TestClient) -> None:
         response = client.post(
-            "/users",
+            "/api/users",
             json={
                 "name": "Ana",
                 "email": "ana@example.com",
@@ -1295,17 +1523,58 @@ class TestUsersAPI:
         assert "password_hash" not in body
 
     def test_get_user_not_found(self, client: TestClient) -> None:
-        response = client.get("/users/00000000-0000-0000-0000-000000000000")
+        response = client.get("/api/users/00000000-0000-0000-0000-000000000000")
         assert response.status_code == 404
         body = response.json()
         # SDK envelope is always {detail, code, details}
         assert body["code"] == "USER_NOT_FOUND"
 ```
 
-The SDK also ships `tempest_fastapi_sdk.testing` helpers (`create_test_engine`, `create_test_session_factory`, `init_test_metadata`, `drop_test_metadata`, `test_database`, `test_session`) for tests that don't need a full `AsyncDatabaseManager`:
+#### `tempest_fastapi_sdk.testing` helpers
+
+`tempest_fastapi_sdk.testing` ships framework-agnostic helpers that don't require `pytest` to be importable — wrap them in `@pytest.fixture` (or any other harness) inside the consuming project's `conftest.py`. Useful when a test doesn't need a full `AsyncDatabaseManager` (no `lifespan`, no health-check probes).
+
+| Helper | Purpose |
+| --- | --- |
+| `create_test_engine(url="sqlite+aiosqlite:///:memory:", **engine_kwargs)` | Build a throw-away `AsyncEngine`. |
+| `create_test_session_factory(engine)` | Build a `sessionmaker` bound to the engine. |
+| `init_test_metadata(engine, metadata=None)` | Create every SQLAlchemy table on the engine (defaults to `BaseModel.metadata`). |
+| `drop_test_metadata(engine, metadata=None)` | Drop every table. |
+| `test_database(url="sqlite+aiosqlite:///:memory:", metadata=None)` | Async context manager — yields an engine with metadata pre-created, drops everything and disposes on exit. |
+| `test_session(url="sqlite+aiosqlite:///:memory:", metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `test_database`. |
+
+```python
+# tests/conftest.py
+from collections.abc import AsyncGenerator
+
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+
+from tempest_fastapi_sdk.testing import test_database, test_session
+
+
+@pytest_asyncio.fixture
+async def engine() -> AsyncGenerator[AsyncEngine, None]:
+    """Yield a fresh in-memory SQLite engine for each test."""
+    async with test_database() as e:
+        yield e
+
+
+@pytest_asyncio.fixture
+async def session() -> AsyncGenerator[AsyncSession, None]:
+    """Yield a managed AsyncSession bound to the in-memory engine."""
+    async with test_session() as s:
+        yield s
+```
+
+Use the one-shot `test_session()` context manager for ad-hoc tests that don't need cross-fixture sharing:
 
 ```python
 from tempest_fastapi_sdk.testing import test_session
+
+from src.db.models import UserModel
+from src.db.repositories import UserRepository
+
 
 async def test_repo_directly() -> None:
     async with test_session() as session:
@@ -1314,16 +1583,18 @@ async def test_repo_directly() -> None:
         assert await repo.count() == 1
 ```
 
+Pass `metadata=` when the project mixes the SDK `BaseModel.metadata` with a second, isolated metadata (rare — keep one `BaseModel` per service whenever possible).
+
 ### Application bootstrap recipe
 
-The SDK ships every piece of an `app.py` factory: exception handlers, CORS, request-ID middleware, the health router and a shared-secret token dependency. A full bootstrap looks like this:
+[Section 2 of the tutorial](#2-settings-server-app-factory--entry-point) shows the minimal `create_app()`. This recipe is the **extended** version, wiring everything `tempest_fastapi_sdk.api` ships — exception handlers, CORS, request-ID middleware, the health router with extra checks, a shared-secret token dependency and an extra Redis manager — all from the same canonical `src/api/app.py` location. The bootstrapping pattern stays identical; only the contents of `create_app()` grow.
 
 ```python
-# app/api/factory.py
-from contextlib import asynccontextmanager
+# src/api/app.py
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
@@ -1336,7 +1607,7 @@ from tempest_fastapi_sdk import (
 )
 from tempest_fastapi_sdk.cache import AsyncRedisManager
 
-from app.core.settings import settings
+from src.core.settings import settings
 
 
 configure_logging(level=settings.LOG_LEVEL, json_output=settings.LOG_JSON)
@@ -1364,6 +1635,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    """Build and configure the FastAPI app."""
     app = FastAPI(
         title="my-service",
         version=settings.VERSION,
@@ -1374,6 +1646,7 @@ def create_app() -> FastAPI:
     apply_cors(app, settings)
     register_exception_handlers(app)
 
+    # Meta endpoints at the root prefix.
     app.include_router(
         make_health_router(
             db=db,
@@ -1382,19 +1655,28 @@ def create_app() -> FastAPI:
         ),
     )
 
-    from app.api.routers import users
+    # Business endpoints under /api/<domain>, guarded by the shared secret.
+    from src.api.routers import users
 
-    app.include_router(users.router, prefix="/api", dependencies=[Depends(require_token)])
+    app.include_router(
+        users.router,
+        prefix="/api",
+        dependencies=[Depends(require_token)],
+    )
     return app
+
+
+app = create_app()
 ```
 
 Key points:
 
+- `src/server.py` and `main.py` (one-liner) stay exactly as in [Section 2 of the tutorial](#2-settings-server-app-factory--entry-point) — only `create_app()` changes when you add primitives. Never start uvicorn via `subprocess.run(["uvicorn", ...])`; always import `app` from `src.api.app` or call `uvicorn.run("src.api.app:app", ...)` programmatically from `src/server.py`.
 - `RequestIDMiddleware` reads/writes `X-Request-ID` and seeds `request_id_ctx` so every log line emitted during the request carries the correlation ID.
 - `apply_cors(app, settings)` reads `CORSSettings` defaults; pass keyword overrides for one-off changes.
 - `register_exception_handlers(app)` wires every `AppException` subclass to the canonical `{detail, code, details}` envelope.
-- `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` mounts `GET /health/liveness` and `GET /health/readiness` (returns `503` when any check fails).
-- `make_token_dependency(secret)` returns an async dependency that validates `X-Token` with `hmac.compare_digest`; pass empty string to disable in dev.
+- `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` mounts `GET /health/liveness` and `GET /health/readiness` (returns `503` when any check fails) at the root prefix.
+- `make_token_dependency(secret)` returns an async dependency that validates `X-Token` via `hmac.compare_digest`; pass an empty string to disable in dev. The dependency lives next to the rest of the auth glue in `src/api/dependencies/auth.py` once it grows beyond the one-liner above.
 
 ### Structured logging & request IDs recipe
 
@@ -1442,53 +1724,81 @@ The middleware accepts a custom header name (`RequestIDMiddleware(app, header_na
 `BaseAppSettings` is the configured `pydantic-settings` base. The SDK also exposes composable mixins for the most common dependencies; pick the ones the service needs and put `BaseAppSettings` at the **end** of the MRO so its `model_config` wins.
 
 ```python
-# app/core/settings.py
+# src/core/settings.py
 from pydantic import Field
 
 from tempest_fastapi_sdk import (
     BaseAppSettings,
     CORSSettings,
     DatabaseSettings,
+    EmailSettings,
     JWTSettings,
+    LogSettings,
     RabbitMQSettings,
     RedisSettings,
     ServerSettings,
+    TaskIQSettings,
+    TokenSettings,
+    UploadSettings,
+    WebPushSettings,
 )
 
 
 class Settings(
     ServerSettings,
+    LogSettings,
     DatabaseSettings,
     RedisSettings,
     RabbitMQSettings,
+    TaskIQSettings,
     JWTSettings,
     CORSSettings,
+    EmailSettings,
+    UploadSettings,
+    TokenSettings,
+    WebPushSettings,
     BaseAppSettings,
 ):
     """Service-wide settings."""
 
     VERSION: str = Field(default="0.0.0")
-    TOKEN_SECRET: str = Field(default="")
 
 
 settings = Settings()
 ```
 
-Each mixin advertises its own env vars (`SERVER_*` lives on `ServerSettings`, `DATABASE_*` on `DatabaseSettings`, `REDIS_*` on `RedisSettings`, `RABBITMQ_*` on `RabbitMQSettings`, `JWT_*` on `JWTSettings`, `CORS_*` on `CORSSettings`). Skip the mixins the service doesn't use; mix them in and the `.env` keys are picked up automatically.
+Each mixin owns its own env-var prefix — pick only the ones the service needs:
+
+| Mixin | Env vars |
+| --- | --- |
+| `ServerSettings` | `SERVER_HOST`, `SERVER_PORT`, `SERVER_RELOAD`, `SERVER_DEBUG` |
+| `LogSettings` | `LOG_LEVEL`, `LOG_JSON` |
+| `DatabaseSettings` | `DATABASE_URL`, `DATABASE_ECHO`, `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW`, `DATABASE_POOL_RECYCLE` |
+| `RedisSettings` | `REDIS_URL`, `REDIS_DECODE_RESPONSES` |
+| `RabbitMQSettings` | `RABBITMQ_URL`, `RABBITMQ_PREFETCH_COUNT` |
+| `TaskIQSettings` | `TASKIQ_BROKER_URL`, `TASKIQ_RESULT_BACKEND_URL` |
+| `JWTSettings` | `JWT_SECRET`, `JWT_ALGORITHM`, `JWT_ACCESS_TTL_SECONDS`, `JWT_REFRESH_TTL_SECONDS`, `JWT_ISSUER` |
+| `CORSSettings` | `CORS_ORIGINS`, `CORS_ALLOW_CREDENTIALS`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS`, `CORS_EXPOSE_HEADERS`, `CORS_MAX_AGE` |
+| `EmailSettings` | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_ADDR`, `SMTP_USE_TLS`, `SMTP_USE_SSL`, `SMTP_TIMEOUT_SECONDS` |
+| `UploadSettings` | `UPLOAD_DIR`, `UPLOAD_MAX_SIZE_BYTES`, `UPLOAD_ALLOWED_EXTENSIONS`, `UPLOAD_ALLOWED_MIMETYPES` |
+| `TokenSettings` | `TOKEN_SECRET` |
+| `WebPushSettings` | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `WEBPUSH_DEFAULT_TTL_SECONDS` |
+
+> **Breaking change in 0.8.0:** `ServerSettings` previously exposed bare `HOST` / `PORT` / `DEBUG` / `LOG_LEVEL` / `LOG_JSON` fields. They were renamed to `SERVER_HOST` / `SERVER_PORT` / `SERVER_RELOAD` / `SERVER_DEBUG`, and `LOG_LEVEL` / `LOG_JSON` moved to the new `LogSettings` mixin. Update both your `.env` file (env var names) and any code reading `settings.HOST` etc.
 
 ### Controllers & services layering recipe
 
 `BaseService[RepositoryT, ResponseT]` and `BaseController[ServiceT, ResponseT]` are generic skeletons matching the SDK layering (router → controller → service → repository). They expose pass-through CRUD methods so simple endpoints can subclass them without overriding anything; you override only methods that need orchestration.
 
 ```python
-# app/services/user_service.py
+# src/services/user_service.py
 from uuid import UUID
 
 from tempest_fastapi_sdk import BaseService
 
-from app.repositories.user import UserRepository
-from app.schemas.user import UserCreate, UserResponse, UserUpdate
-from app.utils.security import password_utils
+from src.db.repositories import UserRepository
+from src.schemas.user import UserCreate, UserResponse, UserUpdate
+from src.utils.security import password_utils
 
 
 class UserService(BaseService[UserRepository, UserResponse]):
@@ -1507,11 +1817,11 @@ class UserService(BaseService[UserRepository, UserResponse]):
         return self.repository.map_to_response(created)
 
 
-# app/controllers/user_controller.py
+# src/controllers/user_controller.py
 from tempest_fastapi_sdk import BaseController
 
-from app.schemas.user import UserCreate, UserResponse
-from app.services.user_service import UserService
+from src.schemas.user import UserCreate, UserResponse
+from src.services.user_service import UserService
 
 
 class UserController(BaseController[UserService, UserResponse]):
@@ -1524,14 +1834,14 @@ class UserController(BaseController[UserService, UserResponse]):
         return await self.service.signup(data)
 
 
-# app/api/dependencies/controllers.py
+# src/api/dependencies/controllers.py
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.factory import db
-from app.controllers.user_controller import UserController
-from app.repositories.user import UserRepository
-from app.services.user_service import UserService
+from src.api.app import db
+from src.controllers.user_controller import UserController
+from src.db.repositories import UserRepository
+from src.services.user_service import UserService
 
 
 def get_user_controller(
@@ -1540,12 +1850,12 @@ def get_user_controller(
     return UserController(UserService(UserRepository(session)))
 
 
-# app/api/routers/users.py
+# src/api/routers/users.py
 from fastapi import APIRouter, Depends, status
 
-from app.api.dependencies.controllers import get_user_controller
-from app.controllers.user_controller import UserController
-from app.schemas.user import UserCreate, UserResponse
+from src.api.dependencies.controllers import get_user_controller
+from src.controllers.user_controller import UserController
+from src.schemas.user import UserCreate, UserResponse
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -1569,7 +1879,7 @@ Keep controllers present even when they only pass through — the import graph s
 `SoftDeleteMixin` adds a `deleted_at` timestamp column with `mark_deleted()` / `mark_restored()` / `is_deleted` helpers. `AuditMixin` adds `created_by` / `updated_by` UUID columns with `stamp_created_by(user_id)` / `stamp_updated_by(user_id)` helpers. Mix them in alongside `BaseModel`:
 
 ```python
-# app/db/models/user.py
+# src/db/models/user.py
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import AuditMixin, BaseModel, SoftDeleteMixin
@@ -1609,10 +1919,10 @@ Use the mixin's helpers (`mark_deleted` / `mark_restored`) when you want the `de
 Cursor pagination scales better than offset pagination on big tables (no `COUNT(*)`, stable under concurrent inserts) at the cost of losing random-access. The SDK provides `CursorPaginationFilterSchema`, `CursorPaginationSchema[T]` and the opaque `encode_cursor` / `decode_cursor` helpers.
 
 ```python
-# app/schemas/user.py
+# src/schemas/user.py
 from tempest_fastapi_sdk import CursorPaginationFilterSchema, CursorPaginationSchema
 
-from app.schemas.user import UserResponse
+from src.schemas.user import UserResponse
 
 
 class UserCursorFilter(CursorPaginationFilterSchema):
@@ -1625,13 +1935,13 @@ UserCursorPage = CursorPaginationSchema[UserResponse]
 Repository helper (cursor over `created_at` + `id` tie-break):
 
 ```python
-# app/repositories/user.py
+# src/db/repositories/user.py
 from sqlalchemy import asc, desc
 
 from tempest_fastapi_sdk import BaseRepository, decode_cursor, encode_cursor
 
-from app.db.models.user import UserModel
-from app.schemas.user import UserResponse
+from src.db.models.user import UserModel
+from src.schemas.user import UserResponse
 
 
 class UserRepository(BaseRepository[UserModel]):
@@ -1733,7 +2043,7 @@ Wire the health check on the canonical router with `make_health_router(checks={"
 `EventStream` is an in-memory async queue feeding one SSE HTTP connection. `ServerSentEvent` encodes one frame; `sse_response` wraps the byte stream in a Starlette `StreamingResponse` with SSE-friendly headers.
 
 ```python
-# app/api/routers/events.py
+# src/api/routers/events.py
 import asyncio
 
 from fastapi import APIRouter
@@ -1771,7 +2081,7 @@ es.addEventListener("counter", (e) => console.log("got", JSON.parse(e.data)));
 `WebPushDispatcher` wraps the synchronous `pywebpush` library in `asyncio.to_thread` and surfaces the two errors the application cares about: `WebPushGoneError` (HTTP 404/410 — delete the subscription) and `WebPushError` (everything else). Install with `[webpush]`.
 
 ```python
-# app/services/notifications.py
+# src/services/notifications.py
 from tempest_fastapi_sdk import (
     WebPushDispatcher,
     WebPushGoneError,
@@ -1819,13 +2129,13 @@ async def broadcast(subs: list[WebPushSubscriptionSchema], payload: WebPushPaylo
 Install with `[queue]` (pulls `faststream[rabbit]`). Pick the matching FastStream extra for other transports.
 
 ```python
-# app/queue/__init__.py
+# src/queue/__init__.py
 from faststream.rabbit import RabbitBroker
 from pydantic import BaseModel
 
 from tempest_fastapi_sdk.queue import AsyncBrokerManager
 
-from app.core.settings import settings
+from src.core.settings import settings
 
 
 broker = RabbitBroker(settings.RABBITMQ_URL)
@@ -1842,7 +2152,7 @@ async def handle_order_paid(msg: OrderMessage) -> None:
     await mark_order_paid(msg.order_id, msg.user_id)
 
 
-# app/api/factory.py lifespan
+# src/api/app.py lifespan
 await queue.connect()
 ...
 await queue.disconnect()
@@ -1867,15 +2177,15 @@ Wire it on the health router with `make_health_router(checks={"queue": queue.hea
 `AsyncTaskBrokerManager` wraps any TaskIQ broker (AioPika for RabbitMQ, Redis, in-memory for tests). Install with `[tasks]` (pulls `taskiq` + `taskiq-aio-pika`).
 
 ```python
-# app/tasks/__init__.py
+# src/tasks/__init__.py
 from taskiq_aio_pika import AioPikaBroker
 
 from tempest_fastapi_sdk.tasks import AsyncTaskBrokerManager
 
-from app.core.settings import settings
+from src.core.settings import settings
 
 
-tasks = AsyncTaskBrokerManager(AioPikaBroker(settings.RABBITMQ_URL))
+tasks = AsyncTaskBrokerManager(AioPikaBroker(settings.TASKIQ_BROKER_URL))
 
 
 @tasks.task
@@ -1887,7 +2197,7 @@ async def send_welcome_email(to: str, name: str) -> None:
     )
 
 
-# app/api/factory.py lifespan
+# src/api/app.py lifespan
 await tasks.connect()
 ...
 await tasks.disconnect()
@@ -1900,6 +2210,96 @@ await send_welcome_email.kiq(to=user.email, name=user.name)
 `register_task(callable, task_name=..., **kwargs)` registers a function without decorator syntax — useful when wiring third-party callables that you can't decorate at definition time. For tests, swap the broker for `taskiq.InMemoryBroker()` so kicked tasks execute synchronously.
 
 The same lifespan guard rails as the queue manager apply: `connect()`/`disconnect()`/`lifespan()`/`broker_dependency`/`health_check()`/`is_connected`.
+
+### Periodic tasks scheduler recipe
+
+`AsyncTaskScheduler` wraps `taskiq.TaskiqScheduler` + `LabelScheduleSource` so periodic tasks are declared with decorators alongside regular tasks and the scheduler is driven from the FastAPI lifespan. It **does not execute task bodies** — it kicks them into the same broker `AsyncTaskBrokerManager` wraps, so a worker process must be running to consume them. Requires the `[tasks]` extra.
+
+```python
+# src/tasks/__init__.py
+from datetime import timedelta
+
+from taskiq_aio_pika import AioPikaBroker
+
+from tempest_fastapi_sdk.tasks import AsyncTaskBrokerManager, AsyncTaskScheduler
+
+from src.core.settings import settings
+
+
+# Use TASKIQ_BROKER_URL (from TaskIQSettings) when the scheduler /
+# task broker is a different broker than the FastStream queue
+# (RABBITMQ_URL). Reuse the same RabbitMQ URL when they share the
+# broker — both env vars can point to the same value.
+broker = AioPikaBroker(settings.TASKIQ_BROKER_URL)
+tasks = AsyncTaskBrokerManager(broker)
+scheduler = AsyncTaskScheduler(broker)
+
+
+@tasks.task
+async def reconcile_invoices(batch_size: int = 100) -> None:
+    """Background task — kicked by handlers or the scheduler."""
+    ...
+
+
+@scheduler.cron("*/5 * * * *")          # every five minutes
+async def heartbeat() -> None:
+    """Liveness ping written to the audit log."""
+    ...
+
+
+@scheduler.cron("0 9 * * MON-FRI", cron_offset="-03:00")  # 09:00 BRT, weekdays
+async def daily_digest() -> None:
+    ...
+
+
+@scheduler.interval(seconds=30)         # every 30s
+async def poll_remote_queue() -> None:
+    ...
+
+
+@scheduler.interval(timedelta(minutes=15))
+async def warm_cache() -> None:
+    ...
+```
+
+Wire it into the app lifespan next to the broker manager:
+
+```python
+# src/api/app.py
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    await tasks.connect()
+    await scheduler.connect()
+    await scheduler.run_in_background()   # dev / single-process services
+    try:
+        yield
+    finally:
+        await scheduler.disconnect()
+        await tasks.disconnect()
+```
+
+Decorator surface:
+
+| Method | When to use |
+| --- | --- |
+| `@scheduler.cron("*/5 * * * *", cron_offset=None)` | Cron expression; pass `cron_offset` (string like `"-03:00"` or `timedelta`) to anchor to a timezone other than UTC. |
+| `@scheduler.interval(seconds=30)` / `@scheduler.interval(timedelta(...))` | Fixed-interval recurrence. |
+| `@scheduler.schedule([{...}, {...}])` | Raw TaskIQ schedule list — combine triggers, use one-shot `time`, etc. |
+| `scheduler.register(func, schedule=[...], task_name=...)` | Register without decorator syntax (third-party callables). |
+
+Production deployments with multiple workers should run the standalone scheduler CLI instead of `run_in_background()`, so only one scheduler is active across the cluster:
+
+```bash
+taskiq scheduler src.tasks:scheduler.scheduler
+```
+
+(`scheduler.scheduler` is the inner `TaskiqScheduler` instance exposed on `AsyncTaskScheduler`.) The worker process stays the same:
+
+```bash
+taskiq worker src.tasks:tasks.broker
+```
+
+Lifecycle controls mirror the broker manager: `connect()` / `disconnect()` / `lifespan()` / `run_in_background()` / `health_check()` / `is_connected`.
 
 ### System metrics recipe
 
@@ -1929,6 +2329,529 @@ async def metrics() -> dict[str, Any]:
 ```
 
 Individual collectors are also available: `MetricsUtils.cpu(interval=...)`, `MetricsUtils.memory()`, `MetricsUtils.disk(path)`, `MetricsUtils.disks(paths)`, `MetricsUtils.gpus()` — and their `*_async` variants. Each returns a typed dataclass (`CPUMetrics`, `MemoryMetrics`, `DiskMetrics`, `GPUMetrics`, `SystemMetrics`) with a `to_dict()` helper for JSON serialization.
+
+### Programmatic server entry point recipe
+
+`run_server` is the canonical helper imported from `src/server.py`. It centralizes the `host` / `port` / `reload` defaults — pulling values from a `ServerSettings`-flavoured `settings` object when present — and keeps the entry point a single line.
+
+```python
+# src/server.py
+from tempest_fastapi_sdk import run_server
+
+from src.api.app import app  # noqa: F401 — re-exported for external runners
+from src.core.settings import settings
+
+
+def run() -> None:
+    """Start the API server programmatically."""
+    run_server("src.api.app:app", settings=settings)
+
+
+__all__: list[str] = ["app", "run"]
+```
+
+```python
+# main.py
+from src.server import run
+
+if __name__ == "__main__":
+    run()
+```
+
+Resolution order for each kwarg is `explicit argument → settings.SERVER_* → SDK default` (`"127.0.0.1"` / `8000` / `False`). Extra uvicorn kwargs (`workers=`, `log_config=`, `ssl_*=`) are forwarded verbatim.
+
+### JWT bearer / current-user / role dependencies recipe
+
+Four dependency factories live in `tempest_fastapi_sdk.api.dependencies.auth` — pick the level of abstraction you need.
+
+| Factory | What you get |
+| --- | --- |
+| `make_token_dependency(secret)` | Validate the `X-Token` shared-secret header (constant time). |
+| `make_bearer_token_dependency(tokens, soft=False)` | Decode `Authorization: Bearer <jwt>` and return the claims dict. |
+| `make_jwt_user_dependency(tokens, user_loader, soft=False, subject_claim="sub")` | Decode the bearer JWT, await `user_loader(subject)`, return the loaded user. |
+| `make_role_dependency(tokens, ["admin"], require_all=False, roles_claim="roles")` / `make_permission_dependency(tokens, ["users:write"], require_all=True, permissions_claim="permissions")` | Decode the bearer JWT and gate the route on roles / permissions. |
+
+```python
+# src/api/dependencies/auth.py
+from uuid import UUID
+
+from tempest_fastapi_sdk import (
+    JWTUtils,
+    make_bearer_token_dependency,
+    make_jwt_user_dependency,
+    make_permission_dependency,
+    make_role_dependency,
+)
+
+from src.api.app import db
+from src.core.settings import settings
+from src.db.models import UserModel
+from src.db.repositories import UserRepository
+
+
+tokens = JWTUtils(
+    secret=settings.JWT_SECRET,
+    algorithm=settings.JWT_ALGORITHM,
+)
+
+
+async def load_user(subject: str) -> UserModel:
+    """Resolve the JWT subject (a UUID string) to a persisted user."""
+    async with db.get_session_context() as session:
+        repo = UserRepository(session)
+        return await repo.get_by_id(UUID(subject))
+
+
+require_bearer = make_bearer_token_dependency(tokens)
+get_current_user = make_jwt_user_dependency(tokens, load_user)
+get_current_user_or_none = make_jwt_user_dependency(tokens, load_user, soft=True)
+
+require_admin = make_role_dependency(tokens, ["admin"])
+require_users_write = make_permission_dependency(tokens, ["users:write"])
+```
+
+```python
+# src/api/routers/users.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.auth import (
+    get_current_user,
+    require_admin,
+    require_users_write,
+)
+
+router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/me")
+async def me(current: UserModel = Depends(get_current_user)) -> UserResponseSchema:
+    return UserResponseSchema.model_validate(current)
+
+
+@router.delete("/{user_id}", dependencies=[Depends(require_admin)])
+async def delete_user(user_id: UUID) -> None:
+    ...
+
+
+@router.patch(
+    "/{user_id}/permissions",
+    dependencies=[Depends(require_users_write)],
+)
+async def update_perms(user_id: UUID) -> None:
+    ...
+```
+
+`soft=True` returns `None` instead of raising on missing/invalid tokens — useful for endpoints that work both authenticated and anonymous. `subject_claim` defaults to `"sub"` but can be any custom claim (`"user_id"`, `"uid"`, ...). Role dependencies accept either a string or a list of strings on the JWT claim; `require_all=True` requires every listed role/permission, `False` (default for roles, override for permissions) requires any.
+
+### CEP (Brazilian zipcode) recipe
+
+`CEP` is an `Annotated[str, AfterValidator(normalize_cep)]` type — drop it into a Pydantic schema and inbound values are accepted as `"01310-100"` or `"01310100"`, normalized to 8 digits, and rejected (`ValidationError` → HTTP 422 envelope) when they don't match the shape. CEPs have no check digits, so validation is format-only.
+
+```python
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import CEP
+
+
+class AddressCreateSchema(BaseSchema):
+    cep: CEP
+    street: str
+    number: str
+```
+
+Imperative variants: `is_valid_cep(value)`, `normalize_cep(value)`, plus `CEP_PATTERN` for raw regex use. Use them inside services / queue handlers where you don't want a Pydantic round-trip.
+
+### Cache decorator recipe
+
+`@cached(redis, ttl=..., key_prefix=...)` memoizes the result of an async function in Redis. Cache keys are derived from the function's `__qualname__` plus a SHA-256 of args/kwargs; pass `key_prefix=` to namespace entries so invalidation works by prefix scan.
+
+```python
+from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
+
+from src.core.settings import settings
+
+
+redis = AsyncRedisManager(settings.REDIS_URL)
+
+
+@cached(redis, ttl=300, key_prefix="users:")
+async def get_user_profile(user_id: str) -> dict[str, str]:
+    """Hits Redis on warm cache; runs the body once every 5 minutes."""
+    return await load_from_db(user_id)
+
+
+# Selectively bypass the cache (read AND write) for some calls
+@cached(
+    redis,
+    ttl=60,
+    skip_cache=lambda args, kwargs: kwargs.get("fresh") is True,
+)
+async def list_orders(user_id: str, *, fresh: bool = False) -> list[dict]:
+    ...
+```
+
+Defaults: `ttl=300` seconds (`0` disables expiry), `serializer=json.dumps` / `deserializer=json.loads`. Override `serializer` / `deserializer` for non-JSON payloads (Pydantic models — pass `model_dump_json` / `MyModel.model_validate_json`, or use `pickle.dumps` / `pickle.loads` for arbitrary objects). Corrupt cached values fall back to running the wrapped function and warn on the SDK logger.
+
+### Tool-spec router recipe
+
+`make_tool_spec_router(spec)` mounts a `GET /tool-spec` endpoint exposing a machine-readable manifest at the root prefix — meant to sit alongside `/health/liveness` so external callers can discover capabilities without parsing the full OpenAPI document.
+
+```python
+# src/api/app.py
+from tempest_fastapi_sdk import (
+    make_health_router,
+    make_tool_spec_router,
+)
+
+
+def _tool_spec() -> dict[str, object]:
+    """Computed per request — keeps version + counts in sync with state."""
+    return {
+        "service": "my-service",
+        "version": settings.VERSION,
+        "tools": [
+            {"path": "/api/users", "method": "GET", "summary": "List users"},
+            {"path": "/api/orders", "method": "POST", "summary": "Place order"},
+        ],
+    }
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(...)
+    app.include_router(make_health_router(db=db))
+    app.include_router(make_tool_spec_router(_tool_spec))
+    ...
+    return app
+```
+
+Pass a dict (served verbatim), a sync callable (called every request) or an async callable (awaited). Override `path=` to expose the manifest at a different URL or `tag=` to group it under a different OpenAPI tag.
+
+### Webhook signature verification recipe
+
+`WebhookSignatureVerifier` validates HMAC-signed inbound webhooks (Stripe / GitHub style) and exposes a FastAPI dependency that reads the raw body, checks the signature with `hmac.compare_digest`, and yields the body bytes so the route handler can re-parse it without re-reading the stream.
+
+```python
+# src/api/dependencies/webhooks.py
+from tempest_fastapi_sdk import WebhookSignatureVerifier
+
+from src.core.settings import settings
+
+
+github = WebhookSignatureVerifier(
+    secret=settings.GITHUB_WEBHOOK_SECRET,
+    algorithm="sha256",
+    header_name="X-Hub-Signature-256",
+    prefix="sha256=",
+)
+stripe = WebhookSignatureVerifier(
+    secret=settings.STRIPE_WEBHOOK_SECRET,
+    algorithm="sha256",
+    header_name="Stripe-Signature",
+    encoding="hex",
+)
+```
+
+```python
+# src/api/routers/webhooks.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.webhooks import github
+
+router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+
+
+@router.post("/github")
+async def github_event(body: bytes = Depends(github.dependency())) -> None:
+    payload = json.loads(body)
+    ...
+```
+
+Supports `hex` (default) and `base64` encodings, any hashlib algorithm guaranteed across platforms, and an optional `prefix` (e.g. `"sha256="`) stripped before comparison. Use the imperative `verifier.verify(body, signature)` from queue handlers when validation happens outside the FastAPI pipeline.
+
+### Pagination Link headers recipe
+
+`build_pagination_link_header` emits an RFC 8288 `Link` header with `first` / `prev` / `next` / `last` rels — pair it with (or use instead of) the `BasePaginationSchema` body wrapper for REST clients that expect GitHub-style headers. Existing query parameters on the base URL are preserved.
+
+```python
+from fastapi import Request, Response
+
+from tempest_fastapi_sdk import (
+    BasePaginationSchema,
+    build_pagination_link_header,
+)
+
+
+@router.get("", response_model=list[UserResponseSchema])
+async def list_users(
+    request: Request,
+    response: Response,
+    filters: UserFilterSchema = Depends(),
+    controller: UserController = Depends(get_user_controller),
+) -> list[UserResponseSchema]:
+    page: BasePaginationSchema[UserResponseSchema] = await controller.list_paginated(filters)
+    response.headers["Link"] = build_pagination_link_header(
+        str(request.url),
+        page=page.page,
+        size=page.size,
+        pages=page.pages,
+    )
+    response.headers["X-Total-Count"] = str(page.total)
+    return page.items
+```
+
+Tweak `page_param=` / `size_param=` when your service uses non-standard query parameter names (e.g. `offset` / `limit`). Pass `extra_params={"sort": "name"}` to bake the current sort/filter state into every link.
+
+### Rate limit middleware recipe
+
+`RateLimitMiddleware` is a lightweight in-process sliding-window limiter — each unique key (client IP by default) is allowed at most `max_requests` requests inside every `window_seconds` window. Exceeded requests get a `429 Too Many Requests` with a `Retry-After` header.
+
+```python
+# src/api/app.py
+from tempest_fastapi_sdk import RateLimitMiddleware
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(...)
+    app.add_middleware(
+        RateLimitMiddleware,
+        max_requests=120,
+        window_seconds=60.0,
+        exempt_paths=("/health/liveness", "/health/readiness"),
+    )
+    ...
+```
+
+Pass `key_func=` to partition state by tenant header, authenticated user, or any request attribute:
+
+```python
+def by_tenant(request: Request) -> str:
+    return request.headers.get("X-Tenant", request.client.host or "anon")
+
+
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests=600,
+    window_seconds=60.0,
+    key_func=by_tenant,
+)
+```
+
+The state is held **in-process** — for multi-worker deployments either run a single uvicorn worker behind a single reverse-proxy node, or push rate limiting to the edge (nginx / Cloudflare / AWS WAF). The middleware is intentionally simple; a Redis-backed sliding-window limiter is one issue away if it shows up as a real need.
+
+### Outbox dispatcher pattern recipe
+
+The transactional outbox pattern keeps a "to publish" table in the same database as the domain rows, so writing the row and recording the side-effect happen in a single transaction. A worker reads the outbox in order and publishes to RabbitMQ (FastStream) / TaskIQ, marking each row as dispatched only after the broker ACKs. Crashes between commit and publish replay safely on the next poll.
+
+The SDK does **not** ship a dedicated `OutboxDispatcher` primitive — the implementation is short, opinionated, and benefits from staying in the service's `db/models/` + `tasks/` boundary. Use the recipe below.
+
+```python
+# src/db/models/outbox.py
+from sqlalchemy import JSON, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel
+
+
+class OutboxEventModel(BaseModel):
+    """One row per domain event waiting to be published."""
+
+    topic: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="pending",
+        index=True,
+    )
+    # is_active / created_at / updated_at come from BaseModel.
+```
+
+```python
+# src/db/repositories/outbox.py
+from sqlalchemy import select, update
+
+from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import OutboxEventModel
+
+
+class OutboxRepository(BaseRepository[OutboxEventModel]):
+    model: type[OutboxEventModel] = OutboxEventModel
+
+    async def claim_pending(self, *, limit: int = 100) -> list[OutboxEventModel]:
+        """Lock-free claim — fine for single-worker dispatcher."""
+        stmt = (
+            select(OutboxEventModel)
+            .where(OutboxEventModel.status == "pending")
+            .order_by(OutboxEventModel.created_at)
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def mark_dispatched(self, ids: list[str]) -> None:
+        await self.session.execute(
+            update(OutboxEventModel)
+            .where(OutboxEventModel.id.in_(ids))
+            .values(status="dispatched"),
+        )
+        await self.session.commit()
+```
+
+```python
+# src/services/orders.py — produce side
+from src.db.models import OrderModel, OutboxEventModel
+
+
+class OrderService:
+    async def place_order(self, data: OrderCreateSchema) -> OrderResponseSchema:
+        order = OrderModel(**data.to_dict())
+        self.repo.session.add(order)
+        # Same transaction as the order row.
+        self.repo.session.add(
+            OutboxEventModel(
+                topic="orders.placed",
+                payload={"order_id": str(order.id), "amount": order.amount},
+            ),
+        )
+        await self.repo.session.flush()
+        await self.repo.session.commit()
+        return self.repo.map_to_response(order)
+```
+
+```python
+# src/tasks/__init__.py — dispatcher side
+from tempest_fastapi_sdk.tasks import AsyncTaskScheduler
+
+from src.api.app import broker as queue_broker  # FastStream AsyncBrokerManager
+from src.api.app import db
+
+scheduler = AsyncTaskScheduler(broker)
+
+
+@scheduler.interval(seconds=5)
+async def dispatch_outbox() -> None:
+    """Poll the outbox and publish each pending event."""
+    async with db.get_session_context() as session:
+        repo = OutboxRepository(session)
+        events = await repo.claim_pending(limit=100)
+        if not events:
+            return
+        dispatched: list[str] = []
+        for event in events:
+            try:
+                await queue_broker.publish(event.payload, event.topic)
+                dispatched.append(str(event.id))
+            except Exception:  # noqa: BLE001 — retry on next tick
+                continue
+        if dispatched:
+            await repo.mark_dispatched(dispatched)
+```
+
+Trade-offs to keep in mind:
+
+- **Order is best-effort.** When a batch contains one failing publish, every later event in the same batch still runs — but they're still published in `created_at` order. If strict ordering matters, break on the first failure.
+- **Single dispatcher.** The naive `claim_pending` does not lock rows; running multiple dispatcher workers will double-publish. Use `SELECT ... FOR UPDATE SKIP LOCKED` on PostgreSQL when you need to scale out.
+- **Retention.** Add a periodic `TRUNCATE`-style job to delete `dispatched` rows older than N days, otherwise the outbox table grows unbounded.
+- **At-least-once.** Consumers must be idempotent — the dispatcher can crash after publishing but before `mark_dispatched`.
+
+### Migration guide 0.7 → 0.8
+
+0.8.0 renames every field on `ServerSettings`, extracts log fields to a new `LogSettings` mixin, and adds eleven other primitives. The renames are the only **breaking** changes — every new primitive is opt-in.
+
+#### 1. Rename env vars
+
+| Old | New | Mixin |
+| --- | --- | --- |
+| `HOST` | `SERVER_HOST` | `ServerSettings` |
+| `PORT` | `SERVER_PORT` | `ServerSettings` |
+| `DEBUG` | `SERVER_DEBUG` | `ServerSettings` |
+| *(new)* | `SERVER_RELOAD` | `ServerSettings` |
+| `LOG_LEVEL` | `LOG_LEVEL` | **moved to** `LogSettings` |
+| `LOG_JSON` | `LOG_JSON` | **moved to** `LogSettings` |
+
+Mechanical `sed` on every `.env` / `docker-compose.yml` / deployment manifest:
+
+```bash
+sed -i \
+  -e 's/^HOST=/SERVER_HOST=/' \
+  -e 's/^PORT=/SERVER_PORT=/' \
+  -e 's/^DEBUG=/SERVER_DEBUG=/' \
+  .env .env.example .env.test
+```
+
+`LOG_LEVEL` and `LOG_JSON` keep their names — only the mixin moves.
+
+#### 2. Rename code references
+
+```bash
+# `settings.HOST` → `settings.SERVER_HOST`, same for PORT/DEBUG
+grep -rn "settings\.\(HOST\|PORT\|DEBUG\)\b" src/ tests/
+```
+
+Replace each match with the `SERVER_*` form. If a service was using the
+old `settings.DEBUG` flag for application-level debug behavior, switch
+to `settings.SERVER_DEBUG`; if it was only being read for uvicorn
+auto-reload, switch to `settings.SERVER_RELOAD`.
+
+#### 3. Mix `LogSettings` into the project `Settings`
+
+```diff
+ from tempest_fastapi_sdk import (
+     BaseAppSettings,
+     CORSSettings,
+     DatabaseSettings,
+     JWTSettings,
++    LogSettings,
+     RabbitMQSettings,
+     RedisSettings,
+     ServerSettings,
+ )
+
+
+ class Settings(
+     ServerSettings,
++    LogSettings,
+     DatabaseSettings,
+     RedisSettings,
+     RabbitMQSettings,
+     JWTSettings,
+     CORSSettings,
+     BaseAppSettings,
+ ):
+     ...
+```
+
+Skip this step if the service never read `settings.LOG_LEVEL` /
+`settings.LOG_JSON` — `configure_logging` accepts the values as
+keyword arguments directly.
+
+#### 4. (Optional) Adopt the new primitives
+
+Pick what fits. None of these are required.
+
+- Replace the hand-written `src/server.py` `uvicorn.run(...)` with
+  [`run_server(...)`](#programmatic-server-entry-point-recipe).
+- Replace the hand-written `get_current_user` with
+  [`make_jwt_user_dependency(tokens, load_user)`](#jwt-bearer--current-user--role-dependencies-recipe).
+- Move `SMTP_*` / `UPLOAD_*` / `TOKEN_SECRET` / `VAPID_*` /
+  `TASKIQ_*` fields out of the project's `Settings` and onto the
+  matching SDK mixin ([Settings mixins composition](#settings-mixins-composition-recipe)).
+- Adopt the
+  [`Outbox dispatcher pattern`](#outbox-dispatcher-pattern-recipe) if
+  you already write side-effects from the same transaction as your
+  domain rows.
+
+#### 5. Verify
+
+```bash
+uv sync                      # picks up new pyproject deps
+uv run pytest -q             # full suite
+uv run ruff check src tests  # confirm no `HOST`/`PORT`/`DEBUG` references slipped
+```
+
+If `pytest` fails with a Pydantic `ValidationError` referencing
+`HOST` / `PORT` / `DEBUG`, an env var was not renamed (look at the
+process environment or `.env`).
 
 ---
 
@@ -1976,6 +2899,99 @@ The dict passed to `get` / `list` / `paginate` / `count` / `exists` / `delete_ma
 | `{"col": None}` | filter is skipped (omit-when-None semantics) |
 
 Pass the dict from `BasePaginationFilterSchema.get_conditions()` for query-string-driven filters.
+
+### Lifecycle managers
+
+Every SDK-shipped manager follows the same core shape: `connect()` to start,
+`disconnect()` to stop, and `health_check()` to plug into
+`make_health_router(checks=...)`. Brokers and the scheduler additionally
+expose `lifespan()` (async context manager) and `is_connected`
+(read-only state). The tables below list the manager-specific surface.
+
+#### `AsyncDatabaseManager`
+
+| Method / Property | Purpose |
+| --- | --- |
+| `__init__(url, *, echo=False, pool_size=10, max_overflow=20, pool_recycle=3600, **engine_kwargs)` | Build the manager (engine is lazy). |
+| `await connect()` | Create the engine + sessionmaker. |
+| `await disconnect()` | Dispose the engine. |
+| `is_connected` (property) | `True` while the engine is alive. |
+| `db_url_safe` (property) | DSN with password redacted (safe to log). |
+| `await get_session()` | Return a single `AsyncSession`. |
+| `async with get_session_context()` | Yield an `AsyncSession`; commits on success, rolls back on raise. |
+| `async session_dependency()` | FastAPI `Depends`-compatible generator. |
+| `await create_tables()` | Issue `CREATE TABLE` for every model on `BaseModel.metadata` (tests / local dev — production schemas go through Alembic). |
+| `await drop_tables()` | Issue `DROP TABLE` for every model on `BaseModel.metadata`. |
+| `await health_check()` | Ping with `SELECT 1`; returns `bool`. |
+
+#### `AsyncRedisManager` *(extra: `[cache]`)*
+
+| Method / Property | Purpose |
+| --- | --- |
+| `__init__(url, *, decode_responses=True, **client_kwargs)` | Wrap a `redis.asyncio.Redis` client. |
+| `await connect()` | Build the client. |
+| `await disconnect()` | Close the client + release the pool. |
+| `client` (property) | Live `Redis` instance; raises `RuntimeError` before `connect`. |
+| `async with get_client_context()` | Yield the same client inside an `async with`. |
+| `async client_dependency()` | FastAPI `Depends`-compatible generator. |
+| `await health_check()` | `PING` returns `bool`. |
+
+Pair with `@cached(redis, ttl=..., key_prefix=...)` for function-level memoization — see the [Cache decorator recipe](#cache-decorator-recipe).
+
+#### `AsyncBrokerManager` *(extra: `[queue]`)*
+
+| Method / Property | Purpose |
+| --- | --- |
+| `__init__(broker)` | Wrap any FastStream broker (`RabbitBroker`, `KafkaBroker`, ...). |
+| `await connect()` | Start the broker; idempotent. |
+| `await disconnect()` | Stop the broker. |
+| `broker` (attribute) | The wrapped FastStream broker — use `broker.publisher(...)` / `broker.subscriber(...)` directly. |
+| `await publish(message, *args, **kwargs)` | Forward to `broker.publish`; raises before `connect`. |
+| `async with lifespan()` | Connect on enter, disconnect on exit. |
+| `async broker_dependency()` | FastAPI `Depends`-compatible generator yielding the broker. |
+| `await health_check()` | `True` while the broker is started. |
+| `is_connected` (property) | Read-only state. |
+
+#### `AsyncTaskBrokerManager` *(extra: `[tasks]`)*
+
+| Method / Property | Purpose |
+| --- | --- |
+| `__init__(broker)` | Wrap any TaskIQ broker (`AioPikaBroker`, `RedisBroker`, `InMemoryBroker`, ...). |
+| `await connect()` | `broker.startup()`; idempotent. |
+| `await disconnect()` | `broker.shutdown()`. |
+| `broker` (attribute) | The wrapped TaskIQ broker. |
+| `task(*args, **kwargs)` | Decorator forwarding to `broker.task`. |
+| `register_task(func, *, task_name=None, **kwargs)` | Register without decorator syntax. |
+| `async with lifespan()` | Connect on enter, disconnect on exit. |
+| `async broker_dependency()` | FastAPI `Depends`-compatible generator. |
+| `await health_check()` | `True` while the broker is started. |
+| `is_connected` (property) | Read-only state. |
+
+#### `AsyncTaskScheduler` *(extra: `[tasks]`)*
+
+| Method / Property | Purpose |
+| --- | --- |
+| `__init__(broker, sources=None)` | Wrap `TaskiqScheduler` + `LabelScheduleSource` (default). |
+| `broker` (attribute) | Same broker tasks are kicked into. |
+| `sources` (attribute) | List of `ScheduleSource` instances. |
+| `scheduler` (attribute) | Underlying `taskiq.TaskiqScheduler`. |
+| `@cron(expr, *, cron_offset=None, task_name=None, **labels)` | Register a cron-scheduled task. |
+| `@interval(seconds_or_timedelta, *, task_name=None, **labels)` | Register a fixed-interval task. |
+| `@schedule(spec, *, task_name=None, **labels)` | Register with raw TaskIQ schedule list. |
+| `register(func, *, schedule, task_name=None, **labels)` | Decorator-free registration. |
+| `await connect()` | `scheduler.startup()` + every `source.startup()`. |
+| `await disconnect()` | Cancel the background loop (if any) and shut down. |
+| `await run_in_background()` | Spawn an in-process `SchedulerLoop` task (dev / single-process). |
+| `async with lifespan()` | Connect on enter, disconnect on exit. |
+| `await health_check()` | `True` while started and (when applicable) the loop is alive. |
+| `is_connected` (property) | Read-only state. |
+
+Production deployments should run the standalone CLI instead of `run_in_background()`:
+
+```bash
+taskiq worker src.tasks:tasks.broker
+taskiq scheduler src.tasks:scheduler.scheduler
+```
 
 ### Error envelope
 
