@@ -4,14 +4,17 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from tempest_fastapi_sdk.utils import (
+    CEP,
     CNPJ,
     CPF,
     CPFOrCNPJ,
     PhoneBR,
+    is_valid_cep,
     is_valid_cnpj,
     is_valid_cpf,
     is_valid_cpf_cnpj,
     is_valid_phone_br,
+    normalize_cep,
     normalize_cnpj,
     normalize_cpf,
     normalize_cpf_cnpj,
@@ -205,3 +208,55 @@ class TestPydanticTypes:
     def test_phone_type_rejects(self) -> None:
         with pytest.raises(ValidationError):
             PhoneSchema(phone="abc")
+
+
+class TestIsValidCep:
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "01310-100",
+            "01310100",
+            "00000-000",
+            "12345-678",
+        ],
+    )
+    def test_accepts_valid_shapes(self, value: str) -> None:
+        assert is_valid_cep(value) is True
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "",
+            "1234567",       # 7 digits
+            "123456789",     # 9 digits
+            "01310.100",     # wrong mask char
+            "abcde-123",     # letters
+            "01310 100",     # space mask
+        ],
+    )
+    def test_rejects_invalid(self, value: str) -> None:
+        assert is_valid_cep(value) is False
+
+
+class TestNormalizeCep:
+    def test_masked_to_digits(self) -> None:
+        assert normalize_cep("01310-100") == "01310100"
+
+    def test_already_digits(self) -> None:
+        assert normalize_cep("01310100") == "01310100"
+
+    def test_invalid_raises(self) -> None:
+        with pytest.raises(ValueError, match="CEP"):
+            normalize_cep("01310 100")
+
+
+class TestCepAnnotatedType:
+    class _Schema(BaseModel):
+        cep: CEP
+
+    def test_normalizes_on_validate(self) -> None:
+        assert self._Schema(cep="01310-100").cep == "01310100"
+
+    def test_rejects_invalid(self) -> None:
+        with pytest.raises(ValidationError):
+            self._Schema(cep="not-a-cep")

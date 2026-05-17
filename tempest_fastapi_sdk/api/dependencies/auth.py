@@ -1,14 +1,19 @@
-"""Authentication dependencies (shared-secret token validation)."""
+"""Authentication / authorization dependencies."""
 
 from __future__ import annotations
 
 import hmac
-from collections.abc import Callable, Coroutine
-from typing import Any
+from collections.abc import Callable, Coroutine, Iterable
+from typing import TYPE_CHECKING, Any
 
-from fastapi import Header
+from fastapi import Depends, Header
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from tempest_fastapi_sdk.exceptions.forbidden import ForbiddenException
 from tempest_fastapi_sdk.exceptions.unauthorized import UnauthorizedException
+
+if TYPE_CHECKING:
+    from tempest_fastapi_sdk.utils.jwt import JWTUtils
 
 
 def make_token_dependency(
@@ -78,7 +83,245 @@ async def require_x_token(
         raise UnauthorizedException(message=error_message)
 
 
+def make_bearer_token_dependency(
+    tokens: JWTUtils,
+    *,
+    soft: bool = False,
+    bearer_scheme: HTTPBearer | None = None,
+    error_message: str = "Authorization token is missing or invalid",
+) -> Callable[..., Coroutine[Any, Any, dict[str, Any] | None]]:
+    """Build a FastAPI dependency that decodes an ``Authorization: Bearer`` JWT.
+
+    Returns the decoded claims dict so the caller can wire its own
+    ``get_current_user`` on top, combining the decoded subject with
+    the project's session / repository conventions.
+
+    Args:
+        tokens (JWTUtils): The JWT helper used to verify the token.
+        soft (bool): When ``True``, return ``None`` on missing or
+            invalid tokens instead of raising. Useful for endpoints
+            that work both authenticated and anonymous.
+        bearer_scheme (HTTPBearer | None): Override the bearer scheme.
+            Defaults to ``HTTPBearer(auto_error=False)``.
+        error_message (str): Message attached to the raised
+            :class:`UnauthorizedException` when ``soft`` is ``False``.
+
+    Returns:
+        Callable[..., Coroutine[Any, Any, dict[str, Any] | None]]: An
+        async FastAPI dependency yielding the decoded claims dict
+        (or ``None`` when ``soft=True`` and the token is absent /
+        invalid).
+    """
+    scheme: HTTPBearer = bearer_scheme or HTTPBearer(auto_error=False)
+
+    async def _decode_bearer(
+        credentials: HTTPAuthorizationCredentials | None = Depends(scheme),
+    ) -> dict[str, Any] | None:
+        if credentials is None:
+            if soft:
+                return None
+            raise UnauthorizedException(message=error_message)
+        if soft:
+            return tokens.decode_or_none(credentials.credentials)
+        return tokens.decode(credentials.credentials)
+
+    _decode_bearer.__doc__ = (
+        "Decode the Authorization: Bearer JWT and return its claims."
+    )
+    return _decode_bearer
+
+
+def make_jwt_user_dependency(
+    tokens: JWTUtils,
+    user_loader: Callable[..., Coroutine[Any, Any, Any]],
+    *,
+    soft: bool = False,
+    bearer_scheme: HTTPBearer | None = None,
+    subject_claim: str = "sub",
+    error_message: str = "Authorization token is missing or invalid",
+) -> Callable[..., Coroutine[Any, Any, Any]]:
+    """Build a FastAPI dependency that returns the authenticated user.
+
+    The dependency:
+
+    1. Reads ``Authorization: Bearer <jwt>`` via :class:`HTTPBearer`.
+    2. Decodes / verifies the JWT with ``tokens``.
+    3. Pulls the user identifier from the configured ``subject_claim``.
+    4. Awaits ``user_loader(<id>)`` and returns whatever it yields.
+
+    ``user_loader`` is the single seam where the service maps
+    ``payload[subject_claim]`` to an actual user. It's an async
+    callable (so it can open / close its own DB session) — the SDK
+    doesn't impose a session shape.
+
+    Args:
+        tokens (JWTUtils): The JWT helper used to verify the token.
+        user_loader (Callable[..., Coroutine[Any, Any, Any]]): Async
+            callable that receives the subject (typically the user id
+            as a string) and returns the loaded user. Raise
+            :class:`UnauthorizedException` or
+            :class:`NotFoundException` from inside the loader when the
+            user no longer exists.
+        soft (bool): When ``True``, return ``None`` instead of
+            raising on missing/invalid tokens.
+        bearer_scheme (HTTPBearer | None): Override the bearer scheme.
+        subject_claim (str): Which JWT claim carries the user id.
+            Defaults to ``"sub"``.
+        error_message (str): Message attached to the raised
+            :class:`UnauthorizedException` when ``soft`` is ``False``.
+
+    Returns:
+        Callable[..., Coroutine[Any, Any, Any]]: An async FastAPI
+        dependency yielding the user (or ``None`` in soft mode).
+    """
+    decode_bearer = make_bearer_token_dependency(
+        tokens,
+        soft=soft,
+        bearer_scheme=bearer_scheme,
+        error_message=error_message,
+    )
+
+    async def _current_user(
+        payload: dict[str, Any] | None = Depends(decode_bearer),
+    ) -> Any:
+        if payload is None:
+            return None
+        subject = payload.get(subject_claim)
+        if subject is None:
+            if soft:
+                return None
+            raise UnauthorizedException(message=error_message)
+        return await user_loader(subject)
+
+    _current_user.__doc__ = (
+        "Decode the bearer JWT and resolve the authenticated user."
+    )
+    return _current_user
+
+
+def make_role_dependency(
+    tokens: JWTUtils,
+    required_roles: Iterable[str],
+    *,
+    roles_claim: str = "roles",
+    require_all: bool = False,
+    bearer_scheme: HTTPBearer | None = None,
+    unauthorized_message: str = "Authorization token is missing or invalid",
+    forbidden_message: str = "Insufficient role for this operation",
+) -> Callable[..., Coroutine[Any, Any, None]]:
+    """Build a FastAPI dependency that gates a route by JWT role claims.
+
+    The dependency decodes the bearer JWT, reads the configured roles
+    claim (a string or list of strings) and compares it against
+    ``required_roles``. ``require_all=False`` (default) authorizes the
+    request when any required role is present; ``require_all=True``
+    requires every listed role.
+
+    Args:
+        tokens (JWTUtils): The JWT helper used to verify the token.
+        required_roles (Iterable[str]): Roles the route accepts.
+        roles_claim (str): Which JWT claim carries the roles.
+            Defaults to ``"roles"``.
+        require_all (bool): When ``True``, every role in
+            ``required_roles`` must be present.
+        bearer_scheme (HTTPBearer | None): Override the bearer scheme.
+        unauthorized_message (str): Message attached to the raised
+            :class:`UnauthorizedException` when the token is missing
+            or invalid.
+        forbidden_message (str): Message attached to the raised
+            :class:`ForbiddenException` when the token is valid but
+            the role requirement is not satisfied.
+
+    Returns:
+        Callable[..., Coroutine[Any, Any, None]]: An async FastAPI
+        dependency raising :class:`UnauthorizedException` /
+        :class:`ForbiddenException` as appropriate, ``None`` on
+        success.
+    """
+    required: set[str] = set(required_roles)
+    decode_bearer = make_bearer_token_dependency(
+        tokens,
+        bearer_scheme=bearer_scheme,
+        error_message=unauthorized_message,
+    )
+
+    async def _require_roles(
+        payload: dict[str, Any] | None = Depends(decode_bearer),
+    ) -> None:
+        if payload is None:
+            raise UnauthorizedException(message=unauthorized_message)
+        raw = payload.get(roles_claim, [])
+        if isinstance(raw, str):
+            held: set[str] = {raw}
+        elif isinstance(raw, Iterable):
+            held = {str(r) for r in raw}
+        else:
+            held = set()
+
+        authorized = (
+            required.issubset(held) if require_all else bool(required & held)
+        )
+
+        if not authorized:
+            raise ForbiddenException(message=forbidden_message)
+
+    _require_roles.__doc__ = (
+        f"Require {'all' if require_all else 'any'} of: {sorted(required)}."
+    )
+    return _require_roles
+
+
+def make_permission_dependency(
+    tokens: JWTUtils,
+    required_permissions: Iterable[str],
+    *,
+    permissions_claim: str = "permissions",
+    require_all: bool = True,
+    bearer_scheme: HTTPBearer | None = None,
+    unauthorized_message: str = "Authorization token is missing or invalid",
+    forbidden_message: str = "Insufficient permissions for this operation",
+) -> Callable[..., Coroutine[Any, Any, None]]:
+    """Build a FastAPI dependency that gates a route by permission claims.
+
+    Same shape as :func:`make_role_dependency` but defaults to
+    ``require_all=True`` since permissions are usually fine-grained
+    capabilities (``orders:write``, ``users:delete``) where every
+    listed permission must be granted.
+
+    Args:
+        tokens (JWTUtils): The JWT helper used to verify the token.
+        required_permissions (Iterable[str]): Permissions the route
+            requires.
+        permissions_claim (str): JWT claim carrying the permissions.
+            Defaults to ``"permissions"``.
+        require_all (bool): When ``True`` (default), every listed
+            permission must be present.
+        bearer_scheme (HTTPBearer | None): Override the bearer scheme.
+        unauthorized_message (str): Message attached to the
+            :class:`UnauthorizedException`.
+        forbidden_message (str): Message attached to the
+            :class:`ForbiddenException`.
+
+    Returns:
+        Callable[..., Coroutine[Any, Any, None]]: An async FastAPI
+        dependency.
+    """
+    return make_role_dependency(
+        tokens,
+        required_permissions,
+        roles_claim=permissions_claim,
+        require_all=require_all,
+        bearer_scheme=bearer_scheme,
+        unauthorized_message=unauthorized_message,
+        forbidden_message=forbidden_message,
+    )
+
+
 __all__: list[str] = [
+    "make_bearer_token_dependency",
+    "make_jwt_user_dependency",
+    "make_permission_dependency",
+    "make_role_dependency",
     "make_token_dependency",
     "require_x_token",
 ]

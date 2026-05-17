@@ -40,6 +40,11 @@ PHONE_BR_PATTERN: Final[re.Pattern[str]] = re.compile(
 )
 """Match a BR phone number with optional ``+55``, DDD, mask or 9th digit."""
 
+CEP_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^\d{5}-?\d{3}$",
+)
+"""Match a Brazilian CEP in either masked (``00000-000``) or raw form."""
+
 
 def only_digits(value: str) -> str:
     """Strip every non-digit character from ``value``.
@@ -151,6 +156,22 @@ def is_valid_cpf_cnpj(value: str) -> bool:
     return False
 
 
+def is_valid_cep(value: str) -> bool:
+    """Check whether ``value`` looks like a Brazilian CEP.
+
+    CEPs have no check digits — validation only enforces the
+    eight-digit shape (with or without the canonical ``00000-000``
+    mask). Use the official Correios API for existence checks.
+
+    Args:
+        value (str): The CEP string to inspect.
+
+    Returns:
+        bool: ``True`` when the value matches the CEP pattern.
+    """
+    return CEP_PATTERN.fullmatch(value) is not None
+
+
 def is_valid_phone_br(value: str) -> bool:
     """Check whether ``value`` looks like a Brazilian phone number.
 
@@ -224,6 +245,23 @@ def normalize_cpf_cnpj(value: str) -> str:
     return only_digits(value)
 
 
+def normalize_cep(value: str) -> str:
+    """Return ``value`` as 8 digits, validating along the way.
+
+    Args:
+        value (str): The CEP string (masked or unmasked).
+
+    Returns:
+        str: The CEP stripped down to 8 digits.
+
+    Raises:
+        ValueError: If ``value`` is not a valid CEP.
+    """
+    if not is_valid_cep(value):
+        raise ValueError("invalid CEP")
+    return only_digits(value)
+
+
 def normalize_phone_br(value: str) -> str:
     """Return ``value`` as digits-only with an optional ``55`` prefix.
 
@@ -253,8 +291,13 @@ CPFOrCNPJ = Annotated[str, AfterValidator(normalize_cpf_cnpj)]
 PhoneBR = Annotated[str, AfterValidator(normalize_phone_br)]
 """Pydantic type that validates a BR phone and normalizes to digits."""
 
+CEP = Annotated[str, AfterValidator(normalize_cep)]
+"""Pydantic type that validates a Brazilian CEP and normalizes to 8 digits."""
+
 
 __all__: list[str] = [
+    "CEP",
+    "CEP_PATTERN",
     "CNPJ",
     "CNPJ_PATTERN",
     "CPF",
@@ -263,10 +306,12 @@ __all__: list[str] = [
     "PHONE_BR_PATTERN",
     "CPFOrCNPJ",
     "PhoneBR",
+    "is_valid_cep",
     "is_valid_cnpj",
     "is_valid_cpf",
     "is_valid_cpf_cnpj",
     "is_valid_phone_br",
+    "normalize_cep",
     "normalize_cnpj",
     "normalize_cpf",
     "normalize_cpf_cnpj",

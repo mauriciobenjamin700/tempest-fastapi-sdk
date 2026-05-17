@@ -25,6 +25,8 @@ from tempest_fastapi_sdk.utils.metrics import (
 )
 from tempest_fastapi_sdk.utils.password import PasswordUtils
 from tempest_fastapi_sdk.utils.regex import (
+    CEP,
+    CEP_PATTERN,
     CNPJ,
     CNPJ_PATTERN,
     CPF,
@@ -33,10 +35,12 @@ from tempest_fastapi_sdk.utils.regex import (
     PHONE_BR_PATTERN,
     CPFOrCNPJ,
     PhoneBR,
+    is_valid_cep,
     is_valid_cnpj,
     is_valid_cpf,
     is_valid_cpf_cnpj,
     is_valid_phone_br,
+    normalize_cep,
     normalize_cnpj,
     normalize_cpf,
     normalize_cpf_cnpj,
@@ -46,6 +50,8 @@ from tempest_fastapi_sdk.utils.regex import (
 from tempest_fastapi_sdk.utils.upload import UploadUtils
 
 __all__: list[str] = [
+    "CEP",
+    "CEP_PATTERN",
     "CNPJ",
     "CNPJ_PATTERN",
     "CPF",
@@ -65,11 +71,13 @@ __all__: list[str] = [
     "PhoneBR",
     "SystemMetrics",
     "UploadUtils",
+    "is_valid_cep",
     "is_valid_cnpj",
     "is_valid_cpf",
     "is_valid_cpf_cnpj",
     "is_valid_phone_br",
     "modify_dict",
+    "normalize_cep",
     "normalize_cnpj",
     "normalize_cpf",
     "normalize_cpf_cnpj",

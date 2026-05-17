@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.7.3"
+version = "0.8.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -122,6 +122,7 @@ dev = [
     "faststream[rabbit]>=0.5.30",
     "taskiq>=0.11.0",
     "taskiq-aio-pika>=0.4.0",
+    "uvicorn>=0.30.0",
 ]
 
 [tool.ruff]

@@ -23,20 +23,37 @@ class ServerSettings(BaseSettings):
     """HTTP server bind configuration.
 
     Attributes:
-        HOST (str): Interface to bind to. ``127.0.0.1`` for internal
-            services, ``0.0.0.0`` when consumed from a different
-            origin (e.g. local frontend dev server).
-        PORT (int): TCP port to listen on.
-        DEBUG (bool): Whether to enable debug behavior (auto-reload,
-            verbose error responses).
+        SERVER_HOST (str): Interface to bind to. ``127.0.0.1`` for
+            internal services, ``0.0.0.0`` only when consumed from a
+            different origin (e.g. local frontend dev server).
+        SERVER_PORT (int): TCP port to listen on.
+        SERVER_RELOAD (bool): Whether uvicorn should hot-reload on
+            file changes — development only.
+        SERVER_DEBUG (bool): Generic debug flag for the application
+            (verbose error responses, extra logging hooks).
+    """
+
+    SERVER_HOST: str = Field(default="127.0.0.1", description="Bind interface.")
+    SERVER_PORT: int = Field(default=8000, ge=1, le=65535, description="Listen port.")
+    SERVER_RELOAD: bool = Field(
+        default=False,
+        description="Enable uvicorn auto-reload.",
+    )
+    SERVER_DEBUG: bool = Field(
+        default=False,
+        description="Enable application debug mode.",
+    )
+
+
+class LogSettings(BaseSettings):
+    """Structured logging configuration.
+
+    Attributes:
         LOG_LEVEL (str): Default logger level passed to
             :func:`tempest_fastapi_sdk.configure_logging`.
         LOG_JSON (bool): Whether logs should be emitted as JSON.
     """
 
-    HOST: str = Field(default="127.0.0.1", description="Bind interface.")
-    PORT: int = Field(default=8000, ge=1, le=65535, description="Listen port.")
-    DEBUG: bool = Field(default=False, description="Enable debug mode.")
     LOG_LEVEL: str = Field(default="INFO", description="Root log level.")
     LOG_JSON: bool = Field(default=True, description="Emit logs as JSON.")
 
@@ -155,11 +172,147 @@ class CORSSettings(BaseSettings):
     CORS_MAX_AGE: int = Field(default=600, ge=0)
 
 
+class EmailSettings(BaseSettings):
+    """SMTP / transactional email configuration.
+
+    Mirrors the constructor arguments of
+    :class:`tempest_fastapi_sdk.EmailUtils` so a service can wire it up
+    with ``EmailUtils(**settings.email_kwargs())``.
+
+    Attributes:
+        SMTP_HOST (str): Hostname of the SMTP server.
+        SMTP_PORT (int): TCP port. ``587`` for STARTTLS, ``465`` for
+            SMTPS, ``25`` for plain SMTP.
+        SMTP_USERNAME (str | None): SMTP authentication username.
+            ``None`` disables authentication.
+        SMTP_PASSWORD (str | None): SMTP authentication password.
+        SMTP_FROM_ADDR (str): Default ``From`` address used when the
+            caller doesn't pass one.
+        SMTP_USE_TLS (bool): Whether STARTTLS should be negotiated.
+        SMTP_USE_SSL (bool): Whether the connection should be wrapped
+            in TLS from the start (SMTPS).
+        SMTP_TIMEOUT_SECONDS (float): Network timeout for SMTP
+            operations.
+    """
+
+    SMTP_HOST: str = Field(default="localhost", description="SMTP server host.")
+    SMTP_PORT: int = Field(default=587, ge=1, le=65535)
+    SMTP_USERNAME: str | None = Field(default=None)
+    SMTP_PASSWORD: str | None = Field(default=None)
+    SMTP_FROM_ADDR: str = Field(
+        default="noreply@example.com",
+        description="Default From address.",
+    )
+    SMTP_USE_TLS: bool = Field(default=True, description="Use STARTTLS.")
+    SMTP_USE_SSL: bool = Field(default=False, description="Wrap in TLS from start.")
+    SMTP_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0.0)
+
+
+class UploadSettings(BaseSettings):
+    """File upload constraints.
+
+    Mirrors the constructor arguments of
+    :class:`tempest_fastapi_sdk.UploadUtils`.
+
+    Attributes:
+        UPLOAD_DIR (str): Root directory where uploaded files are
+            persisted (relative paths resolve from the process CWD).
+        UPLOAD_MAX_SIZE_BYTES (int): Hard limit per file. ``0``
+            disables the check.
+        UPLOAD_ALLOWED_EXTENSIONS (set[str]): Lowercase file
+            extensions (without the leading dot) allowed by default.
+            Empty set means "any extension".
+        UPLOAD_ALLOWED_MIMETYPES (set[str]): MIME types allowed by
+            default. Empty set means "any mime type".
+    """
+
+    UPLOAD_DIR: str = Field(default="./var/uploads")
+    UPLOAD_MAX_SIZE_BYTES: int = Field(default=10 * 1024 * 1024, ge=0)
+    UPLOAD_ALLOWED_EXTENSIONS: set[str] = Field(default_factory=set)
+    UPLOAD_ALLOWED_MIMETYPES: set[str] = Field(default_factory=set)
+
+
+class TokenSettings(BaseSettings):
+    """Shared-secret ``X-Token`` configuration.
+
+    Used by :func:`tempest_fastapi_sdk.make_token_dependency` for
+    internal service-to-service authentication. Validation is performed
+    with :func:`hmac.compare_digest`.
+
+    Attributes:
+        TOKEN_SECRET (str): The expected ``X-Token`` value. Empty
+            string disables the check (dev only).
+    """
+
+    TOKEN_SECRET: str = Field(
+        default="",
+        description="Shared secret. Empty disables the check (dev only).",
+    )
+
+
+class WebPushSettings(BaseSettings):
+    """Web Push / VAPID configuration.
+
+    Mirrors the constructor arguments of
+    :class:`tempest_fastapi_sdk.WebPushDispatcher`.
+
+    Attributes:
+        VAPID_PUBLIC_KEY (str): URL-safe base64 VAPID public key.
+        VAPID_PRIVATE_KEY (str): URL-safe base64 VAPID private key.
+        VAPID_SUBJECT (str): ``mailto:`` or ``https://`` contact URL
+            advertised in the VAPID JWT.
+        WEBPUSH_DEFAULT_TTL_SECONDS (int): Default TTL applied to
+            outgoing notifications when the caller doesn't override.
+    """
+
+    VAPID_PUBLIC_KEY: str = Field(
+        default="",
+        description="URL-safe base64 public key.",
+    )
+    VAPID_PRIVATE_KEY: str = Field(
+        default="",
+        description="URL-safe base64 private key.",
+    )
+    VAPID_SUBJECT: str = Field(
+        default="mailto:admin@example.com",
+        description="VAPID `sub` claim.",
+    )
+    WEBPUSH_DEFAULT_TTL_SECONDS: int = Field(default=86_400, ge=0)
+
+
+class TaskIQSettings(BaseSettings):
+    """TaskIQ broker / result backend configuration.
+
+    Use this when the TaskIQ broker is **not** the same RabbitMQ /
+    Redis instance covered by :class:`RabbitMQSettings` /
+    :class:`RedisSettings`.
+
+    Attributes:
+        TASKIQ_BROKER_URL (str): URL of the TaskIQ broker (AMQP, Redis,
+            in-memory, etc.).
+        TASKIQ_RESULT_BACKEND_URL (str | None): Optional URL of the
+            result backend; ``None`` keeps results in-memory (fine for
+            fire-and-forget workloads).
+    """
+
+    TASKIQ_BROKER_URL: str = Field(
+        default="amqp://guest:guest@localhost:5672/",
+        description="TaskIQ broker URL.",
+    )
+    TASKIQ_RESULT_BACKEND_URL: str | None = Field(default=None)
+
+
 __all__: list[str] = [
     "CORSSettings",
     "DatabaseSettings",
+    "EmailSettings",
     "JWTSettings",
+    "LogSettings",
     "RabbitMQSettings",
     "RedisSettings",
     "ServerSettings",
+    "TaskIQSettings",
+    "TokenSettings",
+    "UploadSettings",
+    "WebPushSettings",
 ]

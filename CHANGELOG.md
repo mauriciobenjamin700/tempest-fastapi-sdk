@@ -1,0 +1,159 @@
+# Changelog
+
+All notable changes to **tempest-fastapi-sdk** are listed below.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.8.0] — 2026-05-17
+
+### Breaking changes
+
+- **`ServerSettings` field rename.** `HOST`, `PORT` and `DEBUG` were renamed to
+  `SERVER_HOST`, `SERVER_PORT` and `SERVER_DEBUG`, and a new `SERVER_RELOAD`
+  field was added. `LOG_LEVEL` and `LOG_JSON` moved out to a new
+  `LogSettings` mixin.
+  - **Migration:** rename the matching env vars in every `.env` /
+    deployment manifest and replace `settings.HOST` / `settings.PORT` /
+    `settings.DEBUG` / `settings.LOG_LEVEL` / `settings.LOG_JSON`
+    accordingly. Mix `LogSettings` into `Settings` if the service was
+    relying on `ServerSettings` for the log fields.
+  - See the [Migration guide 0.7 → 0.8](README.md#migration-guide-07--08)
+    in the README for the full checklist.
+
+### Added — Settings mixins (Tier 1)
+
+- `LogSettings` (`LOG_LEVEL`, `LOG_JSON`) — extracted from `ServerSettings`.
+- `EmailSettings` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`,
+  `SMTP_FROM_ADDR`, `SMTP_USE_TLS`, `SMTP_USE_SSL`, `SMTP_TIMEOUT_SECONDS`).
+- `UploadSettings` (`UPLOAD_DIR`, `UPLOAD_MAX_SIZE_BYTES`,
+  `UPLOAD_ALLOWED_EXTENSIONS`, `UPLOAD_ALLOWED_MIMETYPES`).
+- `TokenSettings` (`TOKEN_SECRET`).
+- `WebPushSettings` (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`,
+  `VAPID_SUBJECT`, `WEBPUSH_DEFAULT_TTL_SECONDS`).
+- `TaskIQSettings` (`TASKIQ_BROKER_URL`, `TASKIQ_RESULT_BACKEND_URL`).
+
+### Added — API helpers (Tier 2)
+
+- `tempest_fastapi_sdk.run_server(app, *, settings=None, host=None,
+  port=None, reload=None, **uvicorn_kwargs)` — canonical
+  `src/server.py` entry point.
+- `make_bearer_token_dependency(tokens, soft=False, ...)` —
+  `Authorization: Bearer <jwt>` decoder returning the claims dict.
+- `make_jwt_user_dependency(tokens, user_loader, *, soft=False,
+  subject_claim="sub", ...)` — bearer + user loader in one factory.
+- `is_valid_cep`, `normalize_cep`, `CEP`, `CEP_PATTERN` — Brazilian
+  zipcode validators in `tempest_fastapi_sdk.utils.regex`.
+
+### Added — Opt-in primitives (Tier 3)
+
+- `tempest_fastapi_sdk.cache.cached(redis, ttl=300, key_prefix="",
+  serializer=..., deserializer=..., skip_cache=...)` — Redis-backed
+  function cache decorator.
+- `make_tool_spec_router(spec, *, path="/tool-spec", tag="meta")` —
+  `/tool-spec` manifest router; accepts dict / sync / async providers.
+- `make_role_dependency(tokens, roles, *, require_all=False, ...)` and
+  `make_permission_dependency(tokens, permissions, *, require_all=True,
+  ...)` — JWT-claim-based authorization.
+
+### Added — Advanced primitives (Tier 4)
+
+- `tempest_fastapi_sdk.WebhookSignatureVerifier(secret, *, algorithm,
+  header_name, encoding, prefix)` — HMAC webhook signature
+  verification with FastAPI dependency factory.
+- `tempest_fastapi_sdk.RateLimitMiddleware(max_requests, window_seconds,
+  key_func, exempt_paths)` — in-process sliding-window rate limiter.
+- `build_pagination_link_header(base_url, *, page, size, pages,
+  extra_params, page_param, size_param)` — RFC 8288 `Link` header
+  builder for offset paginated responses.
+
+### Docs
+
+- README — full reorganization, every new primitive has a recipe with
+  full code samples. New sections: Periodic tasks scheduler,
+  Programmatic server entry point, JWT bearer / current-user / role
+  dependencies, CEP, Cache decorator, Tool-spec router, Webhook
+  signature verification, Pagination Link headers, Rate limit
+  middleware, Utility helpers, Outbox dispatcher pattern, Migration
+  guide 0.7 → 0.8.
+- Tutorial sections 1–11 realigned to the canonical layout mandated by
+  the SDK consumers' shared `CLAUDE.md` (single `main.py` one-liner,
+  `src/server.py` exposing `run()`, `src/api/app.py` with `create_app()`,
+  `src/db/repositories/` location, mandatory `src/controllers/`
+  pass-through, `src/api/dependencies/` package).
+- Reference section — method tables for `AsyncDatabaseManager`,
+  `AsyncRedisManager`, `AsyncBrokerManager`, `AsyncTaskBrokerManager`
+  and `AsyncTaskScheduler`.
+
+### Dev
+
+- Added `uvicorn>=0.30.0` to the dev dependency group so `run_server`
+  tests can monkey-patch `uvicorn.run`.
+
+## [0.7.3] — 2026-05-17
+
+- Hardened request-ID middleware, SSE writer, web-push dispatcher and
+  database manager lifecycle.
+
+## [0.7.2] — 2026-05-16
+
+- Release packaging fix only.
+
+## [0.7.1] — 2026-05-16
+
+### Changed
+
+- Optional extras (`[auth]`, `[email]`, `[upload]`, `[cache]`,
+  `[webpush]`, `[metrics]`, `[queue]`, `[tasks]`) are now lazy-loaded
+  at first instantiation, so `import tempest_fastapi_sdk` works when
+  only a subset of extras is installed.
+
+## [0.7.0] — 2026-05-15
+
+### Added
+
+- `LogUtils`, `configure_logging`, `JSONFormatter`,
+  `RequestIDMiddleware` and the `request_id_ctx` contextvar.
+- `MetricsUtils` (CPU / memory / disk / GPU snapshots).
+- `AsyncBrokerManager` (FastStream wrapper, `[queue]` extra) and
+  `AsyncTaskBrokerManager` (TaskIQ wrapper, `[tasks]` extra).
+
+## [0.6.0] — 2026-05-13
+
+### Added
+
+- SSE primitives (`EventStream`, `ServerSentEvent`, `sse_response`).
+- Web Push dispatch (`WebPushDispatcher`, `WebPushSubscriptionSchema`,
+  `WebPushPayloadSchema`, `WebPushGoneError`, `[webpush]` extra).
+
+## [0.5.0] — 2026-05-10
+
+### Added
+
+- `AsyncRedisManager` (`[cache]` extra).
+- CORS helpers (`apply_cors`, `CORSSettings`).
+- Composable settings mixins (`ServerSettings`, `DatabaseSettings`,
+  `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`).
+
+## [0.4.0] — 2026-05-07
+
+### Added
+
+- `make_health_router`, audit / soft-delete mixins, cursor pagination.
+
+## [0.3.0] — 2026-05-04
+
+### Added
+
+- `BaseController` + `BaseService` generics, DI scaffolding, logging,
+  `tempest_fastapi_sdk.testing` helpers.
+
+## [0.2.0]
+
+### Changed
+
+- Drop Python 3.10 support; SDK now targets Python ≥ 3.11.
+
+## [0.1.0]
+
+- Initial public release.
