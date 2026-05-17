@@ -53,9 +53,7 @@ def run_server(
         else getattr(settings, "SERVER_HOST", None) or "127.0.0.1"
     )
     resolved_port: int = (
-        port
-        if port is not None
-        else getattr(settings, "SERVER_PORT", None) or 8000
+        port if port is not None else getattr(settings, "SERVER_PORT", None) or 8000
     )
     resolved_reload: bool = (
         reload

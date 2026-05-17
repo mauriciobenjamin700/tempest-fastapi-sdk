@@ -23,8 +23,7 @@ class TestBuildPaginationLinkHeader:
 
     def test_empty_when_no_pages(self) -> None:
         assert (
-            build_pagination_link_header("/api/users", page=1, size=20, pages=0)
-            == ""
+            build_pagination_link_header("/api/users", page=1, size=20, pages=0) == ""
         )
 
     def test_first_page_only_has_next_and_last(self) -> None:

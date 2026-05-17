@@ -193,9 +193,7 @@ def make_jwt_user_dependency(
             raise UnauthorizedException(message=error_message)
         return await user_loader(subject)
 
-    _current_user.__doc__ = (
-        "Decode the bearer JWT and resolve the authenticated user."
-    )
+    _current_user.__doc__ = "Decode the bearer JWT and resolve the authenticated user."
     return _current_user
 
 
@@ -258,9 +256,7 @@ def make_role_dependency(
         else:
             held = set()
 
-        authorized = (
-            required.issubset(held) if require_all else bool(required & held)
-        )
+        authorized = required.issubset(held) if require_all else bool(required & held)
 
         if not authorized:
             raise ForbiddenException(message=forbidden_message)

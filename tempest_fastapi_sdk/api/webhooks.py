@@ -89,7 +89,7 @@ class WebhookSignatureVerifier:
             bool: ``True`` when the signature matches.
         """
         if self.prefix and signature.startswith(self.prefix):
-            signature = signature[len(self.prefix):]
+            signature = signature[len(self.prefix) :]
         return hmac.compare_digest(self.expected(body), signature)
 
     def dependency(

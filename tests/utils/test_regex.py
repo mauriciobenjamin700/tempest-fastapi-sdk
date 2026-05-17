@@ -227,11 +227,11 @@ class TestIsValidCep:
         "value",
         [
             "",
-            "1234567",       # 7 digits
-            "123456789",     # 9 digits
-            "01310.100",     # wrong mask char
-            "abcde-123",     # letters
-            "01310 100",     # space mask
+            "1234567",  # 7 digits
+            "123456789",  # 9 digits
+            "01310.100",  # wrong mask char
+            "abcde-123",  # letters
+            "01310 100",  # space mask
         ],
     )
     def test_rejects_invalid(self, value: str) -> None:
