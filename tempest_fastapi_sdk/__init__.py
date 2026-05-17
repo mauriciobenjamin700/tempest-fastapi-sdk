@@ -103,7 +103,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-__version__: str = "0.7.1"
+__version__: str = "0.7.2"
 
 __all__: list[str] = [
     "CNPJ",
