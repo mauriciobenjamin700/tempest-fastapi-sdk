@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 
@@ -11,6 +12,16 @@ from starlette.responses import Response
 from starlette.types import ASGIApp
 
 from tempest_fastapi_sdk.core.context import clear_request_id, set_request_id
+
+_VALID_REQUEST_ID = re.compile(r"^[A-Za-z0-9._\-:+/=]{1,128}$")
+"""Whitelist for inbound request IDs.
+
+Restricts the header value to printable ASCII without whitespace or
+control characters so it cannot be used to forge log lines (CRLF
+injection inside :class:`JSONFormatter`) or response headers when
+echoed back. Generous enough to cover UUIDs, ULIDs, base64 trace
+IDs, and most OpenTelemetry trace identifiers.
+"""
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -51,7 +62,12 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             Response: The handler's response with the request ID
             echoed in the configured header.
         """
-        rid = request.headers.get(self.header_name) or str(uuid.uuid4())
+        inbound = request.headers.get(self.header_name)
+        rid = (
+            inbound
+            if inbound is not None and _VALID_REQUEST_ID.fullmatch(inbound)
+            else str(uuid.uuid4())
+        )
         token = set_request_id(rid)
         try:
             response = await call_next(request)

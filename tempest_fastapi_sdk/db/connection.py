@@ -31,8 +31,11 @@ class AsyncDatabaseManager:
     relying on substring tricks.
 
     Attributes:
-        db_url (str): The database connection URL.
         is_sqlite (bool): Whether the URL targets a SQLite backend.
+
+    The connection URL itself is stored on a private attribute so it
+    never leaks through ``repr()`` or accidental logging. Use the
+    :attr:`db_url_safe` property when a redacted form is needed.
     """
 
     def __init__(
@@ -69,7 +72,7 @@ class AsyncDatabaseManager:
             **engine_kwargs: Any additional keyword arguments are
                 passed through to ``create_async_engine`` verbatim.
         """
-        self.db_url: str = db_url
+        self._db_url: str = db_url
         self.is_sqlite: bool = make_url(db_url).get_backend_name() == "sqlite"
         self._echo: bool = echo
         self._pool_size: int = pool_size
@@ -80,6 +83,20 @@ class AsyncDatabaseManager:
         self._engine_kwargs: dict[str, Any] = engine_kwargs
         self._engine: AsyncEngine | None = None
         self._session_maker: async_sessionmaker[AsyncSession] | None = None
+
+    @property
+    def db_url_safe(self) -> str:
+        """Return the URL with credentials masked.
+
+        Useful for diagnostics, health payloads or log lines —
+        ``postgresql+asyncpg://user:pass@host/db`` becomes
+        ``postgresql+asyncpg://***@host/db``.
+
+        Returns:
+            str: The URL safe to surface outside the manager.
+        """
+        url = make_url(self._db_url)
+        return url.render_as_string(hide_password=True)
 
     @property
     def is_connected(self) -> bool:
@@ -115,7 +132,7 @@ class AsyncDatabaseManager:
         if self._poolclass is not None:
             kwargs["poolclass"] = self._poolclass
 
-        self._engine = create_async_engine(self.db_url, **kwargs)
+        self._engine = create_async_engine(self._db_url, **kwargs)
         self._session_maker = async_sessionmaker(
             self._engine,
             expire_on_commit=False,

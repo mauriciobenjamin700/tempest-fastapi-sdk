@@ -123,9 +123,19 @@ class JWTSettings(BaseSettings):
 class CORSSettings(BaseSettings):
     """CORS middleware configuration.
 
+    .. warning::
+        The default ``CORS_ORIGINS=["*"]`` is permissive on purpose
+        so local development works out of the box. **Never** ship
+        this default to production — set ``CORS_ORIGINS`` to the
+        explicit list of trusted frontend origins (e.g.
+        ``["https://app.example.com"]``) in your production
+        configuration. ``"*"`` is also incompatible with
+        ``CORS_ALLOW_CREDENTIALS=True`` (browsers ignore credentialed
+        requests sent to a wildcard origin).
+
     Attributes:
-        CORS_ORIGINS (list[str]): Allowed origins. Use ``["*"]`` only
-            in dev — disables credentialed requests in browsers.
+        CORS_ORIGINS (list[str]): Allowed origins. **Override in
+            production.** Defaults to ``["*"]`` for development only.
         CORS_ALLOW_CREDENTIALS (bool): Whether to allow cookies/auth
             headers cross-origin.
         CORS_ALLOW_METHODS (list[str]): Allowed HTTP methods.

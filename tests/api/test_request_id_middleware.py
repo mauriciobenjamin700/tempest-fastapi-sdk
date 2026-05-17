@@ -55,6 +55,29 @@ async def test_context_is_isolated_between_requests() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "malicious",
+    [
+        "abc\r\nX-Injected: 1",
+        "abc\nlevel=CRITICAL",
+        "abc with spaces",
+        "abc;rm -rf /",
+        "x" * 200,  # exceeds 128-char cap
+    ],
+)
+async def test_malicious_header_replaced_with_uuid(malicious: str) -> None:
+    """Reject CRLF and other unsafe characters to block log/header injection."""
+    app = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/echo", headers={"X-Request-ID": malicious})
+    rid = response.headers["X-Request-ID"]
+    uuid.UUID(rid)  # must be a fresh UUID, not the attacker's value
+    assert rid != malicious
+    assert response.json()["request_id"] == rid
+
+
+@pytest.mark.asyncio
 async def test_custom_header_name() -> None:
     app = FastAPI()
     app.add_middleware(RequestIDMiddleware, header_name="X-Correlation-ID")

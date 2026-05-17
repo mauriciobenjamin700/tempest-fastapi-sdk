@@ -76,3 +76,22 @@ async def test_custom_prefix() -> None:
     async with _client(app) as client:
         liveness = await client.get("/ops/health/liveness")
     assert liveness.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_readiness_hides_checks_when_expose_checks_false() -> None:
+    """Production deployments can hide the per-dependency breakdown."""
+
+    async def db_check() -> bool:
+        return False
+
+    app = FastAPI()
+    app.include_router(
+        make_health_router(checks={"database": db_check}, expose_checks=False),
+    )
+    async with _client(app) as client:
+        response = await client.get("/health/readiness")
+    body = response.json()
+    assert response.status_code == 503
+    assert body["status"] == "not_ready"
+    assert "checks" not in body

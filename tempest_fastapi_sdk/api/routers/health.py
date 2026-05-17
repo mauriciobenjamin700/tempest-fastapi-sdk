@@ -29,6 +29,7 @@ def make_health_router(
     prefix: str = "/health",
     tag: str = "health",
     version: str | None = None,
+    expose_checks: bool = True,
 ) -> APIRouter:
     """Build the canonical ``/health`` router.
 
@@ -40,8 +41,8 @@ def make_health_router(
       liveness probes as "restart the pod"). This endpoint takes
       precedence over readiness for that reason.
     * ``GET <prefix>/readiness`` — runs every configured check and
-      returns ``200`` only when all pass. Returns ``503`` with the
-      per-check breakdown when at least one fails.
+      returns ``200`` only when all pass. Returns ``503`` when at
+      least one fails.
 
     Args:
         db (AsyncDatabaseManager | None): When provided, a
@@ -55,6 +56,11 @@ def make_health_router(
         tag (str): OpenAPI tag applied to both endpoints.
         version (str | None): When provided, attached to the
             readiness payload as ``version``.
+        expose_checks (bool): Whether to surface the per-dependency
+            breakdown in the readiness payload. Defaults to ``True``
+            for development ergonomics; set ``False`` in production
+            so unauthenticated probes don't reveal which backends
+            (database, Redis, RabbitMQ, etc.) the service depends on.
 
     Returns:
         APIRouter: A router ready to ``include_router(...)`` on the
@@ -96,8 +102,9 @@ def make_health_router(
         overall = all(results.values()) if results else True
         payload: dict[str, Any] = {
             "status": "ready" if overall else "not_ready",
-            "checks": results,
         }
+        if expose_checks:
+            payload["checks"] = results
         if version is not None:
             payload["version"] = version
         return JSONResponse(

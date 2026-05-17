@@ -45,6 +45,24 @@ class TestWebPushSubscription:
                 keys=WebPushKeysSchema(p256dh="pk", auth="a"),
             )
 
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "http://push.example.com/abc",
+            "file:///etc/passwd",
+            "ftp://push.example.com/abc",
+            "javascript:alert(1)",
+            "not-a-url",
+        ],
+    )
+    def test_non_https_endpoint_rejected(self, endpoint: str) -> None:
+        """Reject non-HTTPS endpoints to prevent SSRF via subscriptions."""
+        with pytest.raises(ValueError):
+            WebPushSubscriptionSchema(
+                endpoint=endpoint,
+                keys=WebPushKeysSchema(p256dh="pk", auth="a"),
+            )
+
 
 class TestWebPushPayload:
     def test_all_fields_optional(self) -> None:

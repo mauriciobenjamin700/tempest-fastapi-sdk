@@ -120,6 +120,30 @@ class TestHealthCheck:
         await manager.disconnect()
 
 
+class TestUrlMasking:
+    def test_db_url_safe_hides_password(self) -> None:
+        manager = AsyncDatabaseManager(
+            "postgresql+asyncpg://alice:supersecret@db.internal:5432/app",
+        )
+        safe = manager.db_url_safe
+        assert "supersecret" not in safe
+        assert "alice" in safe
+        assert "db.internal" in safe
+
+    def test_db_url_safe_handles_url_without_password(self) -> None:
+        manager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+        assert manager.db_url_safe.startswith("sqlite+aiosqlite://")
+
+    def test_db_url_no_public_attribute(self) -> None:
+        manager = AsyncDatabaseManager(
+            "postgresql+asyncpg://alice:supersecret@db.internal:5432/app",
+        )
+        # Credentials must not be reachable via a public attribute.
+        assert not hasattr(manager, "db_url") or "supersecret" not in str(
+            getattr(manager, "db_url", "")
+        )
+
+
 class TestRequireConnected:
     async def test_session_methods_lazy_connect(self) -> None:
         # get_session / get_session_context / session_dependency all

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlsplit
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator
 
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
@@ -57,6 +58,33 @@ class WebPushSubscriptionSchema(BaseSchema):
         alias="expirationTime",
         description="Optional expiration time (ms since epoch).",
     )
+
+    @field_validator("endpoint")
+    @classmethod
+    def _endpoint_must_be_https(cls, value: str) -> str:
+        """Reject endpoints that aren't ``https://`` URLs.
+
+        The Web Push spec requires HTTPS, and accepting arbitrary
+        schemes (``file://``, ``http://localhost``, etc.) would turn
+        the server into an SSRF proxy when subscriptions come from
+        untrusted clients.
+
+        Args:
+            value (str): The candidate endpoint URL.
+
+        Returns:
+            str: The same URL when valid.
+
+        Raises:
+            ValueError: When the URL is malformed or not HTTPS.
+        """
+        try:
+            parsed = urlsplit(value)
+        except ValueError as exc:
+            raise ValueError("Invalid endpoint URL") from exc
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise ValueError("Push endpoints must be HTTPS URLs.")
+        return value
 
 
 class WebPushPayloadSchema(BaseSchema):

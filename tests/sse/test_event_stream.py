@@ -1,6 +1,7 @@
 """Tests for tempest_fastapi_sdk.sse."""
 
 import asyncio
+from collections.abc import AsyncIterator
 
 import pytest
 from fastapi import FastAPI
@@ -98,3 +99,32 @@ async def test_sse_response_end_to_end() -> None:
     assert b"event: ping" in response.content
     assert b"data: hello" in response.content
     assert b"data: world" in response.content
+
+
+async def test_sse_response_caller_headers_cannot_override_defaults() -> None:
+    """Caller-supplied headers must not override SSE-critical headers."""
+    from fastapi import FastAPI
+
+    app = FastAPI()
+
+    async def empty() -> AsyncIterator[bytes]:
+        if False:  # pragma: no cover - generator never yields
+            yield b""
+
+    @app.get("/events")
+    async def events() -> object:
+        return sse_response(
+            empty(),
+            headers={
+                "Cache-Control": "public, max-age=3600",
+                "X-Accel-Buffering": "yes",
+                "X-Custom": "ok",
+            },
+        )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/events")
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["x-accel-buffering"] == "no"
+    assert response.headers["x-custom"] == "ok"

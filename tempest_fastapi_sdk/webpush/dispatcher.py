@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 from tempest_fastapi_sdk.webpush.schemas import (
     WebPushPayloadSchema,
@@ -13,6 +15,29 @@ from tempest_fastapi_sdk.webpush.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _mask_endpoint(endpoint: str) -> str:
+    """Return a stable but non-sensitive identifier for an endpoint.
+
+    Keeps the host (useful for routing errors to the right push
+    service) and replaces the full path + query with a short SHA-256
+    prefix so subscription tokens never reach logs or API responses.
+
+    Args:
+        endpoint (str): The full push service URL.
+
+    Returns:
+        str: ``<host>/<sha256-prefix>`` or the original string when it
+        cannot be parsed.
+    """
+    try:
+        parsed = urlsplit(endpoint)
+    except ValueError:
+        return "<unparsable-endpoint>"
+    host = parsed.netloc or "<unknown-host>"
+    digest = hashlib.sha256(endpoint.encode("utf-8")).hexdigest()[:12]
+    return f"{host}/{digest}"
 
 
 class WebPushError(RuntimeError):
@@ -169,14 +194,15 @@ class WebPushDispatcher:
                 )
             except pywebpush.WebPushException as exc:
                 status = exc.response.status_code if exc.response is not None else None
+                masked = _mask_endpoint(subscription.endpoint)
                 if status in {404, 410}:
                     raise WebPushGoneError(
-                        f"Subscription gone (HTTP {status})",
+                        f"Subscription gone (HTTP {status}) for {masked}",
                         status_code=status,
                         endpoint=subscription.endpoint,
                     ) from exc
                 raise WebPushError(
-                    f"Web Push delivery failed: {exc}",
+                    f"Web Push delivery failed for {masked} (HTTP {status})",
                     status_code=status,
                     endpoint=subscription.endpoint,
                 ) from exc
@@ -216,7 +242,11 @@ class WebPushDispatcher:
             except WebPushGoneError:
                 gone.append(sub.endpoint)
             except WebPushError as exc:
-                logger.warning("Web Push send failed for %s: %s", sub.endpoint, exc)
+                logger.warning(
+                    "Web Push send failed for %s: %s",
+                    _mask_endpoint(sub.endpoint),
+                    exc,
+                )
 
         await asyncio.gather(*(_one(sub) for sub in subscriptions))
         return gone

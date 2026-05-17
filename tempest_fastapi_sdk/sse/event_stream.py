@@ -176,8 +176,9 @@ def sse_response(
     Adds the SSE-specific headers (``Cache-Control: no-cache``,
     ``Connection: keep-alive``, ``X-Accel-Buffering: no``) so
     intermediate proxies don't buffer or cache the long-lived
-    response. Custom headers passed via ``headers`` are merged on
-    top of the defaults.
+    response. Caller-supplied ``headers`` are layered **below** the
+    SSE defaults so the three critical headers above cannot be
+    accidentally overridden — pass extra metadata, not replacements.
 
     Args:
         stream (AsyncIterable[bytes]): The byte stream produced by
@@ -188,7 +189,7 @@ def sse_response(
     Returns:
         StreamingResponse: A ready-to-return SSE response.
     """
-    merged: dict[str, str] = {**_SSE_HEADERS, **(headers or {})}
+    merged: dict[str, str] = {**(headers or {}), **_SSE_HEADERS}
     return StreamingResponse(
         stream,
         media_type="text/event-stream",
