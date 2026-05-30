@@ -109,6 +109,7 @@ from tempest_fastapi_sdk.utils import (
     CPFOrCNPJ,
     CPUMetrics,
     DiskMetrics,
+    DownloadUtils,
     EmailUtils,
     GPUMetrics,
     JWTUtils,
@@ -121,6 +122,7 @@ from tempest_fastapi_sdk.utils import (
     ThrottleBackend,
     ThrottleStatus,
     UploadUtils,
+    build_content_disposition,
     generate_opaque_token,
     get_client_ip,
     get_client_ip_from_scope,
@@ -151,7 +153,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-__version__: str = "0.16.2"
+__version__: str = "0.17.0"
 
 __all__: list[str] = [
     "CEP",
@@ -193,6 +195,7 @@ __all__: list[str] = [
     "CursorPaginationSchema",
     "DatabaseSettings",
     "DiskMetrics",
+    "DownloadUtils",
     "EmailSettings",
     "EmailUtils",
     "EventStream",
@@ -247,6 +250,7 @@ __all__: list[str] = [
     "__version__",
     "app_exception_handler",
     "apply_cors",
+    "build_content_disposition",
     "build_pagination_link_header",
     "clear_cookie",
     "clear_request_id",

@@ -16,6 +16,10 @@ from tempest_fastapi_sdk.utils.client_ip import (
 )
 from tempest_fastapi_sdk.utils.datetime import to_utc, utcnow
 from tempest_fastapi_sdk.utils.dict import modify_dict
+from tempest_fastapi_sdk.utils.download import (
+    DownloadUtils,
+    build_content_disposition,
+)
 from tempest_fastapi_sdk.utils.email import EmailUtils
 from tempest_fastapi_sdk.utils.jwt import JWTUtils
 from tempest_fastapi_sdk.utils.log import LogUtils
@@ -76,6 +80,7 @@ __all__: list[str] = [
     "CPFOrCNPJ",
     "CPUMetrics",
     "DiskMetrics",
+    "DownloadUtils",
     "EmailUtils",
     "GPUMetrics",
     "JWTUtils",
@@ -88,6 +93,7 @@ __all__: list[str] = [
     "ThrottleBackend",
     "ThrottleStatus",
     "UploadUtils",
+    "build_content_disposition",
     "generate_opaque_token",
     "get_client_ip",
     "get_client_ip_from_scope",

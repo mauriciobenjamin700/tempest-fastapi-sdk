@@ -1,6 +1,6 @@
 # tempest-fastapi-sdk
 
-Shared FastAPI/SQLAlchemy/Pydantic building blocks used across Tempest projects: base schemas, ORM model, async repository, pagination, settings, exceptions, Alembic helper, FastStream/TaskIQ broker managers, Redis cache, Server-Sent Events, Web Push, a Django-style **admin site** (`AdminSite` + `AdminModel`), and the utility classes (`PasswordUtils`, `JWTUtils`, `EmailUtils`, `UploadUtils`, `MetricsUtils`, `LogUtils`).
+Shared FastAPI/SQLAlchemy/Pydantic building blocks used across Tempest projects: base schemas, ORM model, async repository, pagination, settings, exceptions, Alembic helper, FastStream/TaskIQ broker managers, Redis cache, Server-Sent Events, Web Push, a Django-style **admin site** (`AdminSite` + `AdminModel`), and the utility classes (`PasswordUtils`, `JWTUtils`, `EmailUtils`, `UploadUtils`, `DownloadUtils`, `MetricsUtils`, `LogUtils`).
 
 The goal is to start every new backend with the same opinionated foundation already in place — no copy-pasting `BaseModel`, no rewriting the same CRUD repository, no re-inventing the exception envelope.
 
@@ -130,7 +130,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
 | `tempest_fastapi_sdk.queue` *(extra: `[queue]`)* | `AsyncBrokerManager` (FastStream lifecycle wrapper) |
 | `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `AsyncTaskBrokerManager` (TaskIQ lifecycle wrapper), `AsyncTaskScheduler` (periodic / cron tasks) |
-| `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `AttemptThrottle`/`ThrottleBackend`/`ThrottleStatus`, `generate_opaque_token`/`hash_opaque_token`/`verify_opaque_token`, `get_client_ip`/`get_client_ip_from_scope`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`) |
+| `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `AttemptThrottle`/`ThrottleBackend`/`ThrottleStatus`, `generate_opaque_token`/`hash_opaque_token`/`verify_opaque_token`, `get_client_ip`/`get_client_ip_from_scope`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `DownloadUtils`/`build_content_disposition` *(no extra)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`) |
 | `tempest_fastapi_sdk.cli` | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `version` / `--version` |
 
 Core primitives are re-exported from `tempest_fastapi_sdk` at the top level — `from tempest_fastapi_sdk import BaseModel, BaseRepository, AppException` always works. The extras-gated managers in `tempest_fastapi_sdk.cache`, `tempest_fastapi_sdk.queue` and `tempest_fastapi_sdk.tasks` must be imported from their own submodule (`from tempest_fastapi_sdk.queue import AsyncBrokerManager`).
@@ -1121,6 +1121,73 @@ class UserResponseSchema(BaseResponseSchema):
         return f"/static/uploads/{value}"
 ```
 
+#### Serving private files through the API (`DownloadUtils`)
+
+When a file must stay **behind auth** — invoices, contracts, medical scans — a public `/static` URL leaks it to anyone who learns the path. `DownloadUtils` streams the bytes through the endpoint itself, so the same `Depends(get_current_user)` / permission checks that guard every other route guard the download too. No public link is ever exposed. It needs **no extra** (uses Starlette's `FileResponse` / `StreamingResponse`, which ship with FastAPI).
+
+```python
+# src/core/storage.py
+from tempest_fastapi_sdk import DownloadUtils
+
+from src.core.settings import settings
+
+
+invoice_files = DownloadUtils(base_dir=f"{settings.UPLOAD_DIR}/invoices")
+```
+
+```python
+# src/api/routers/invoices.py
+from fastapi.responses import FileResponse
+
+from src.api.dependencies import get_invoice_controller
+from src.controllers.invoice import InvoiceController
+from src.core.storage import invoice_files
+
+
+@router.get("/{invoice_id}/file")
+async def download_invoice(
+    invoice_id: UUID,
+    current: UserModel = Depends(get_current_user),
+    controller: InvoiceController = Depends(get_invoice_controller),
+) -> FileResponse:
+    invoice = await controller.get_by_id(invoice_id)
+    if invoice.owner_id != current.id:
+        raise ForbiddenException(message="Fatura de outro usuário")
+    # base_dir confines the read — a stored "../../etc/passwd" path 404s.
+    return invoice_files.file_response(
+        invoice.file_path,                 # relative to base_dir
+        filename=f"fatura-{invoice.number}.pdf",
+        as_attachment=True,                # force a download dialog
+    )
+```
+
+Any relative path that escapes `base_dir` (`../` traversal, absolute paths, symlink escapes) raises `NotFoundException` (404) instead of leaking the file — the same 404 you get for a genuinely missing file, so callers never distinguish "forbidden" from "absent". `file_response` guesses the MIME type from the filename (override with `media_type=`), and `as_attachment=False` serves **inline** (e.g. preview a PDF in-browser).
+
+For payloads built on the fly — a generated report, an in-memory zip, decrypted bytes — use `stream()` instead of touching disk:
+
+```python
+import io
+
+from fastapi.responses import StreamingResponse
+
+from src.core.storage import invoice_files
+
+
+@router.get("/{invoice_id}/receipt.csv")
+async def download_receipt(
+    invoice_id: UUID,
+    current: UserModel = Depends(get_current_user),
+    controller: InvoiceController = Depends(get_invoice_controller),
+) -> StreamingResponse:
+    csv_bytes: bytes = await controller.render_receipt_csv(invoice_id, current.id)
+    return invoice_files.stream(
+        csv_bytes,                         # bytes, or a (sync/async) byte generator
+        filename="recibo.csv",
+    )
+```
+
+`stream()` accepts raw `bytes`, a sync `Iterable[bytes]`, or an `AsyncIterable[bytes]`, so a large export can be yielded chunk-by-chunk without buffering it all in memory. Both methods set a UTF-8-safe `Content-Disposition` (non-ASCII filenames survive via the RFC 5987 `filename*` parameter); `build_content_disposition()` is exported if you need to set that header on a hand-rolled response.
+
 ---
 
 ### Transactional email recipe
@@ -1367,6 +1434,7 @@ Every helper has its own recipe — this section is the quick map:
 | `PasswordUtils`, `JWTUtils` | [Authentication recipe](#authentication-recipe) |
 | `EmailUtils` | [Transactional email recipe](#transactional-email-recipe) |
 | `UploadUtils` | [File uploads recipe](#file-uploads-recipe) |
+| `DownloadUtils`, `build_content_disposition` | [Serving private files through the API](#serving-private-files-through-the-api-downloadutils) |
 | `LogUtils` + `configure_logging` | [Structured logging & request IDs recipe](#structured-logging--request-ids-recipe) |
 | `MetricsUtils` (CPU/memory/disk/GPU) | [System metrics recipe](#system-metrics-recipe) |
 | `CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `is_valid_*`, `normalize_*`, `only_digits` | [BR document & phone validation recipe](#br-document--phone-validation-recipe) |
