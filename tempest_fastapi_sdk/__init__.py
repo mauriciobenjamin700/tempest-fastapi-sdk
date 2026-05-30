@@ -26,6 +26,8 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.controllers import BaseController
 from tempest_fastapi_sdk.core import (
+    BaseIntEnum,
+    BaseStrEnum,
     JSONFormatter,
     clear_request_id,
     configure_logging,
@@ -138,7 +140,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-__version__: str = "0.10.0"
+__version__: str = "0.11.0"
 
 __all__: list[str] = [
     "CEP",
@@ -158,6 +160,7 @@ __all__: list[str] = [
     "AuditMixin",
     "BaseAppSettings",
     "BaseController",
+    "BaseIntEnum",
     "BaseModel",
     "BasePaginationFilterSchema",
     "BasePaginationSchema",
@@ -165,6 +168,7 @@ __all__: list[str] = [
     "BaseResponseSchema",
     "BaseSchema",
     "BaseService",
+    "BaseStrEnum",
     "CORSSettings",
     "CPFOrCNPJ",
     "CPUMetrics",

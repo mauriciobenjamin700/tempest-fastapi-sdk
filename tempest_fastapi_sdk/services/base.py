@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, Generic, TypeVar
 from uuid import UUID
 
@@ -37,6 +38,26 @@ class BaseService(Generic[RepositoryT, ResponseT]):
         """
         self.repository: RepositoryT = repository
 
+    async def _map_to_response(self, instance: Any) -> ResponseT:
+        """Map an ORM instance to a response, awaiting if needed.
+
+        Supports repositories whose ``map_to_response`` is either
+        synchronous (the SDK default) or asynchronous (projects that
+        need to await nested lookups while mapping). When the call
+        returns an awaitable it is awaited; otherwise the value is
+        returned as-is.
+
+        Args:
+            instance (Any): The ORM instance to map.
+
+        Returns:
+            ResponseT: The mapped response schema.
+        """
+        result = self.repository.map_to_response(instance)
+        if inspect.isawaitable(result):
+            return await result  # type: ignore[no-any-return]
+        return result  # type: ignore[no-any-return]
+
     async def get_by_id(self, id: UUID) -> ResponseT:
         """Fetch a single record by primary key and map it to a response.
 
@@ -51,7 +72,7 @@ class BaseService(Generic[RepositoryT, ResponseT]):
                 record matches.
         """
         instance = await self.repository.get_by_id(id)
-        return self.repository.map_to_response(instance)  # type: ignore[no-any-return]
+        return await self._map_to_response(instance)
 
     async def get_or_none(self, filters: dict[str, Any]) -> ResponseT | None:
         """Return the matching record (mapped) or ``None``.
@@ -65,7 +86,7 @@ class BaseService(Generic[RepositoryT, ResponseT]):
         instance = await self.repository.get_or_none(filters)
         if instance is None:
             return None
-        return self.repository.map_to_response(instance)  # type: ignore[no-any-return]
+        return await self._map_to_response(instance)
 
     async def list(
         self,
@@ -92,7 +113,7 @@ class BaseService(Generic[RepositoryT, ResponseT]):
             order_by=order_by,
             ascending=ascending,
         )
-        return [self.repository.map_to_response(i) for i in instances]
+        return [await self._map_to_response(i) for i in instances]
 
     async def paginate(
         self,
@@ -122,7 +143,7 @@ class BaseService(Generic[RepositoryT, ResponseT]):
             page_size=page_size,
             ascending=ascending,
         )
-        items = [self.repository.map_to_response(i) for i in result["items"]]
+        items = [await self._map_to_response(i) for i in result["items"]]
         return {**result, "items": items}
 
     async def count(self, filters: dict[str, Any] | None = None) -> int:

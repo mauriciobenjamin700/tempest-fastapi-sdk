@@ -103,3 +103,67 @@ class TestBaseService:
         await service.delete(created.id)
         with pytest.raises(NotFoundException):
             await service.get_by_id(created.id)
+
+
+class AsyncWidgetRepository(BaseRepository[Widget]):
+    model: type[Widget] = Widget
+    not_found_exception: ClassVar[type[NotFoundException]] = NotFoundException
+
+    async def map_to_response(self, instance: Widget) -> WidgetResponse:
+        return WidgetResponse(
+            id=instance.id,
+            is_active=instance.is_active,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+            name=instance.name,
+        )
+
+
+class AsyncWidgetService(BaseService[AsyncWidgetRepository, WidgetResponse]):
+    pass
+
+
+@pytest.fixture
+def async_service(session: AsyncSession) -> AsyncWidgetService:
+    return AsyncWidgetService(AsyncWidgetRepository(session))
+
+
+class TestBaseServiceAsyncMapToResponse:
+    """BaseService must also support repositories whose
+    ``map_to_response`` is a coroutine, awaiting it transparently."""
+
+    async def test_get_by_id_awaits_async_mapper(
+        self, async_service: AsyncWidgetService
+    ) -> None:
+        created = await async_service.repository.add(Widget(name="async-alpha"))
+        result = await async_service.get_by_id(created.id)
+        assert isinstance(result, WidgetResponse)
+        assert result.name == "async-alpha"
+
+    async def test_get_or_none_awaits_async_mapper(
+        self, async_service: AsyncWidgetService
+    ) -> None:
+        created = await async_service.repository.add(Widget(name="async-beta"))
+        result = await async_service.get_or_none({"name": "async-beta"})
+        assert result is not None
+        assert result.id == created.id
+
+    async def test_list_awaits_async_mapper(
+        self, async_service: AsyncWidgetService
+    ) -> None:
+        await async_service.repository.add_all(
+            [Widget(name="async-x"), Widget(name="async-y")],
+        )
+        items = await async_service.list()
+        assert {item.name for item in items} == {"async-x", "async-y"}
+        assert all(isinstance(i, WidgetResponse) for i in items)
+
+    async def test_paginate_awaits_async_mapper(
+        self, async_service: AsyncWidgetService
+    ) -> None:
+        await async_service.repository.add_all(
+            [Widget(name=f"async-w{i}") for i in range(3)],
+        )
+        result: dict[str, Any] = await async_service.paginate(page=1, page_size=10)
+        assert result["total"] == 3
+        assert all(isinstance(i, WidgetResponse) for i in result["items"])
