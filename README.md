@@ -3229,23 +3229,37 @@ app.include_router(
 `AdminAuthBackend` is an ABC, so swap the default for LDAP / OAuth / external IAM by subclassing:
 
 ```python
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError
 
 
 class OAuthAdminBackend(AdminAuthBackend):
-    async def authenticate(self, session, *, identifier, password):
+    async def authenticate(
+        self,
+        session: AsyncSession,
+        *,
+        identifier: str,
+        password: str,
+    ) -> Any:
         principal = await my_oauth_client.authenticate(identifier, password)
         if not principal.has_role("admin"):
             raise AdminAuthError("not an admin")
         return principal
 
-    async def load_principal(self, session, principal_id):
+    async def load_principal(
+        self,
+        session: AsyncSession,
+        principal_id: str,
+    ) -> Any | None:
         return await my_oauth_client.get_user(principal_id)
 
-    def principal_id(self, principal):
+    def principal_id(self, principal: Any) -> str:
         return principal.sub
 
-    def display_name(self, principal):
+    def display_name(self, principal: Any) -> str:
         return principal.email
 ```
 
