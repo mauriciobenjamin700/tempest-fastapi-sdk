@@ -11,11 +11,21 @@ from typing import Any
 import typer
 
 _VALID_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
-"""Slug whitelist accepted by ``tempest new``.
+"""Slug whitelist accepted by ``tempest new <name>``.
 
 Matches PEP 8 package/module naming: lowercase, underscores, no leading
 digit, no hyphens. Rejected names raise :class:`typer.Exit` so the
 user can rename before the scaffolder writes any files.
+"""
+
+_VALID_DIST_NAME = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$")
+"""PEP 503 normalized distribution-name whitelist for ``tempest new .``.
+
+The cwd basename only feeds ``__PROJECT_NAME__`` (pyproject ``name``,
+README header, app title, health-check service field) — none of which
+need to be a Python identifier. Hyphens are common on existing repos
+(``todolist-api``) and are accepted here even though the strict
+``<name>`` form still rejects them.
 """
 
 _TEMPLATE_SUFFIX = ".tmpl"
@@ -80,8 +90,16 @@ def _resolve_name_and_target(
             )
             raise typer.Exit(2)
         target = Path.cwd().resolve()
-        derived = target.name
-        _validate_name(derived)
+        derived = target.name.lower()
+        if not _VALID_DIST_NAME.fullmatch(derived):
+            typer.echo(
+                f"error: cwd basename {target.name!r} is not a valid "
+                f"PEP 503 distribution name (lowercase letters, digits, "
+                f"and `.`/`_`/`-` separators between alphanumerics). "
+                f"Rename the directory or pass an explicit project name.",
+                err=True,
+            )
+            raise typer.Exit(2)
         return derived, target
 
     _validate_name(name)

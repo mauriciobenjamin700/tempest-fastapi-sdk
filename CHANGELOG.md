@@ -5,6 +5,32 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.2] — 2026-05-30
+
+### Fixed
+
+- **`tempest new .` still rejected the `.` shorthand when the cwd
+  basename contained a hyphen.** 0.16.1 special-cased `.` but then
+  validated the derived name (`Path.cwd().name`) with the strict
+  Python-identifier regex `^[a-z][a-z0-9_]*$`, so a real-world cwd
+  like `todolist-api` died with `error: project name must match
+  ^[a-z][a-z0-9_]*$`. The derived name is now matched against a
+  PEP 503 normalized distribution-name regex
+  (`^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$`) — the same shape pyproject
+  accepts under `[project] name`. Explicit names (`tempest new
+  myproject`) keep the stricter Python-identifier rule because the
+  string is also used as the package directory name.
+
+### Changed
+
+- **`tempest new` (no positional argument) now defaults to `.`.**
+  Previously typer rejected the bare invocation with
+  `Missing argument 'NAME'`. The default matches the
+  scaffold-in-current-directory shape: running `tempest new` inside
+  an empty project directory writes `main.py` / `pyproject.toml` /
+  `src/` / `tests/` directly under that directory. Pass an explicit
+  name to keep the legacy "create a new subdir" behavior.
+
 ## [0.16.1] — 2026-05-30
 
 ### Fixed

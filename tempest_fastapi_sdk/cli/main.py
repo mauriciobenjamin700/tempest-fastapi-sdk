@@ -66,9 +66,13 @@ def new_cmd(
     name: Annotated[
         str,
         typer.Argument(
-            help="Project / package name. Must be a valid Python identifier.",
+            help=(
+                "Project / package name (must be a valid Python identifier), "
+                "or '.' to scaffold flatly in the current working directory. "
+                "Omitting the argument is equivalent to '.'."
+            ),
         ),
-    ],
+    ] = ".",
     path: Annotated[
         str | None,
         typer.Option(
