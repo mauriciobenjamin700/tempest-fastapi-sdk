@@ -47,7 +47,7 @@ from tempest_fastapi_sdk.utils.regex import (
     normalize_phone_br,
     only_digits,
 )
-from tempest_fastapi_sdk.utils.upload import UploadUtils
+from tempest_fastapi_sdk.utils.upload import UploadUtils, sniff_mime
 
 __all__: list[str] = [
     "CEP",
@@ -83,6 +83,7 @@ __all__: list[str] = [
     "normalize_cpf_cnpj",
     "normalize_phone_br",
     "only_digits",
+    "sniff_mime",
     "to_utc",
     "utcnow",
 ]

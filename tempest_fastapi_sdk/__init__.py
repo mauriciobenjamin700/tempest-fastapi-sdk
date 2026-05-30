@@ -110,6 +110,7 @@ from tempest_fastapi_sdk.utils import (
     normalize_cpf_cnpj,
     normalize_phone_br,
     only_digits,
+    sniff_mime,
     to_utc,
     utcnow,
 )
@@ -122,7 +123,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-__version__: str = "0.8.0"
+__version__: str = "0.9.0"
 
 __all__: list[str] = [
     "CEP",
@@ -230,6 +231,7 @@ __all__: list[str] = [
     "require_x_token",
     "run_server",
     "set_request_id",
+    "sniff_mime",
     "sse_response",
     "to_utc",
     "utcnow",

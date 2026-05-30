@@ -5,6 +5,29 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] — 2026-05-30
+
+### Added
+
+- **`UploadUtils` magic-byte content verification.** New opt-in
+  `verify_magic_bytes=True` constructor flag sniffs the first bytes of every
+  upload and rejects content whose real type does not match its declared
+  `Content-Type` / the `allowed_mimetypes` allow-list — closing the polyglot
+  hole where an HTML+JS payload served as `image/jpeg` passed the
+  extension/MIME check. Recognizes JPEG, PNG, GIF, BMP, WebP and PDF.
+- **`sniff_mime(prefix)` helper** (exported at the top level) — magic-byte
+  MIME detector usable on its own to build custom `content_validator`
+  predicates.
+- **`UploadUtils.save(..., content_validator=...)`** — optional predicate run
+  on the first chunk; returning `False` aborts the save and removes the
+  partial file before any further bytes are written.
+- **`UploadUtils.save(..., filename=...)`** — explicit, deterministic final
+  filename (e.g. `f"{user_id}.jpg"`), reduced to its basename and guarded
+  against path traversal. Takes precedence over `keep_original_name`.
+
+All four additions are backwards compatible — existing `UploadUtils` calls
+behave exactly as in 0.8.0 unless the new options are passed.
+
 ## [0.8.0] — 2026-05-17
 
 ### Breaking changes
