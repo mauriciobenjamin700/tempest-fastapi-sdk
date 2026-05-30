@@ -36,6 +36,25 @@ async def test_allows_requests_below_limit() -> None:
 
 
 @pytest.mark.asyncio
+async def test_trusted_ip_header_buckets_per_client() -> None:
+    """With a trusted header, distinct client IPs get independent buckets."""
+    app = _make_app(
+        max_requests=1,
+        window_seconds=10.0,
+        trusted_ip_header="x-real-ip",
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        a1 = await client.get("/ping", headers={"x-real-ip": "1.1.1.1"})
+        b1 = await client.get("/ping", headers={"x-real-ip": "2.2.2.2"})
+        a2 = await client.get("/ping", headers={"x-real-ip": "1.1.1.1"})
+    # Each IP gets its own quota; only the second hit from 1.1.1.1 is 429.
+    assert a1.status_code == 200
+    assert b1.status_code == 200
+    assert a2.status_code == 429
+
+
+@pytest.mark.asyncio
 async def test_rejects_extra_requests_inside_window() -> None:
     app = _make_app(max_requests=2, window_seconds=10.0)
     transport = ASGITransport(app=app)

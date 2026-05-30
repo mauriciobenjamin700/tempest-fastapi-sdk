@@ -1,5 +1,10 @@
 """FastAPI integration primitives exposed at module level."""
 
+from tempest_fastapi_sdk.api.cookies import (
+    SameSite,
+    clear_cookie,
+    set_cookie,
+)
 from tempest_fastapi_sdk.api.dependencies import (
     make_bearer_token_dependency,
     make_jwt_user_dependency,
@@ -23,15 +28,27 @@ from tempest_fastapi_sdk.api.routers import (
     make_tool_spec_router,
 )
 from tempest_fastapi_sdk.api.server import run_server
-from tempest_fastapi_sdk.api.webhooks import WebhookSignatureVerifier
+from tempest_fastapi_sdk.api.static import (
+    DEFAULT_STATIC_SECURITY_HEADERS,
+    HardenedStaticFiles,
+)
+from tempest_fastapi_sdk.api.webhooks import (
+    RSAWebhookSignatureVerifier,
+    WebhookSignatureVerifier,
+)
 
 __all__: list[str] = [
+    "DEFAULT_STATIC_SECURITY_HEADERS",
+    "HardenedStaticFiles",
     "HealthCheck",
+    "RSAWebhookSignatureVerifier",
     "RateLimitMiddleware",
     "RequestIDMiddleware",
+    "SameSite",
     "WebhookSignatureVerifier",
     "app_exception_handler",
     "apply_cors",
+    "clear_cookie",
     "make_bearer_token_dependency",
     "make_health_router",
     "make_jwt_user_dependency",
@@ -42,4 +59,5 @@ __all__: list[str] = [
     "register_exception_handlers",
     "require_x_token",
     "run_server",
+    "set_cookie",
 ]

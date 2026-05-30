@@ -5,6 +5,50 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] — 2026-05-30
+
+Security hardening primitives, hoisted from a downstream service so every
+project inherits the same defenses instead of re-rolling them.
+
+### Fixed
+
+- **`RateLimitMiddleware` keyed on the transport peer behind a proxy.** The
+  default key was `request.client.host`, which is the *reverse-proxy* IP
+  once the app is fronted by one — collapsing every client into a single
+  bucket (one abuser exhausts everyone's quota; the limit is effectively
+  global). Added `trusted_ip_header=` so the key is the client IP resolved
+  from a single edge-set header (e.g. `"x-real-ip"`). Default behavior is
+  unchanged (peer IP) for the no-proxy case.
+
+### Added
+
+- **`get_client_ip` / `get_client_ip_from_scope`** — spoof-resistant client
+  IP resolution. Trusts only a single, explicitly named edge-set header
+  (never the client-controlled `X-Forwarded-For`), falling back to the
+  transport peer.
+- **`AttemptThrottle`** + **`TooManyRequestsException` (429)** — a
+  backend-agnostic fixed-window failure counter for login / OTP / code
+  verification flows. Keyed by any string, counts only failures, raises a
+  429 with `Retry-After` when the budget is exhausted, and fails open on a
+  backend outage. Works with any async Redis-like client (`ThrottleBackend`
+  protocol).
+- **`generate_opaque_token` / `hash_opaque_token` / `verify_opaque_token`**
+  — single-use opaque tokens hashed at rest (SHA-256) with constant-time
+  verification, for password reset / email verification / magic links.
+  Pure standard library.
+- **`HardenedStaticFiles`** — a `StaticFiles` subclass that stamps
+  `X-Content-Type-Options: nosniff`, a locked-down `Content-Security-Policy`
+  and `Cross-Origin-Resource-Policy` on every response, so serving
+  user-uploaded files can't become a stored-XSS vector. Headers
+  configurable via `DEFAULT_STATIC_SECURITY_HEADERS`.
+- **`set_cookie` / `clear_cookie`** — secure-by-default cookie helpers
+  (`HttpOnly`, `Secure`, `SameSite`) with matching set/clear flags so
+  logout actually drops the cookie.
+- **`RSAWebhookSignatureVerifier`** — asymmetric (RSA-SHA256/384/512)
+  webhook signature verification for providers that sign with a private
+  key and publish a public key (OpenPix/Woovi-style), complementing the
+  existing HMAC `WebhookSignatureVerifier`. Requires `cryptography`.
+
 ## [0.9.0] — 2026-05-30
 
 ### Added

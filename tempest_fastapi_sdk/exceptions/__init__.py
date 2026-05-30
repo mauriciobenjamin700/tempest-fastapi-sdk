@@ -8,6 +8,9 @@ from tempest_fastapi_sdk.exceptions.jwt import (
     InvalidTokenException,
 )
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
+from tempest_fastapi_sdk.exceptions.too_many_requests import (
+    TooManyRequestsException,
+)
 from tempest_fastapi_sdk.exceptions.unauthorized import UnauthorizedException
 from tempest_fastapi_sdk.exceptions.upload import (
     FileTooLargeException,
@@ -24,6 +27,7 @@ __all__: list[str] = [
     "InvalidFileTypeException",
     "InvalidTokenException",
     "NotFoundException",
+    "TooManyRequestsException",
     "UnauthorizedException",
     "ValidationException",
 ]

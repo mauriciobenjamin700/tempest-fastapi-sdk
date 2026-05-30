@@ -10,6 +10,10 @@ keeps working when only a subset of extras is installed; the
 actually constructed.
 """
 
+from tempest_fastapi_sdk.utils.client_ip import (
+    get_client_ip,
+    get_client_ip_from_scope,
+)
 from tempest_fastapi_sdk.utils.datetime import to_utc, utcnow
 from tempest_fastapi_sdk.utils.dict import modify_dict
 from tempest_fastapi_sdk.utils.email import EmailUtils
@@ -22,6 +26,11 @@ from tempest_fastapi_sdk.utils.metrics import (
     MemoryMetrics,
     MetricsUtils,
     SystemMetrics,
+)
+from tempest_fastapi_sdk.utils.opaque_token import (
+    generate_opaque_token,
+    hash_opaque_token,
+    verify_opaque_token,
 )
 from tempest_fastapi_sdk.utils.password import PasswordUtils
 from tempest_fastapi_sdk.utils.regex import (
@@ -47,6 +56,11 @@ from tempest_fastapi_sdk.utils.regex import (
     normalize_phone_br,
     only_digits,
 )
+from tempest_fastapi_sdk.utils.throttle import (
+    AttemptThrottle,
+    ThrottleBackend,
+    ThrottleStatus,
+)
 from tempest_fastapi_sdk.utils.upload import UploadUtils, sniff_mime
 
 __all__: list[str] = [
@@ -58,6 +72,7 @@ __all__: list[str] = [
     "CPF_CNPJ_PATTERN",
     "CPF_PATTERN",
     "PHONE_BR_PATTERN",
+    "AttemptThrottle",
     "CPFOrCNPJ",
     "CPUMetrics",
     "DiskMetrics",
@@ -70,7 +85,13 @@ __all__: list[str] = [
     "PasswordUtils",
     "PhoneBR",
     "SystemMetrics",
+    "ThrottleBackend",
+    "ThrottleStatus",
     "UploadUtils",
+    "generate_opaque_token",
+    "get_client_ip",
+    "get_client_ip_from_scope",
+    "hash_opaque_token",
     "is_valid_cep",
     "is_valid_cnpj",
     "is_valid_cpf",
@@ -86,4 +107,5 @@ __all__: list[str] = [
     "sniff_mime",
     "to_utc",
     "utcnow",
+    "verify_opaque_token",
 ]
