@@ -7,7 +7,7 @@ PACKAGE := tempest_fastapi_sdk
 PYTHON_VERSION := 3.11
 
 .DEFAULT_GOAL := help
-.PHONY: help install sync clean test cov lint fmt fmt-check type check ci build smoke release tag version
+.PHONY: help install sync clean test cov lint fix fmt fmt-check type check ci build smoke release tag version
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -30,6 +30,10 @@ cov: ## Open the last coverage HTML report (run `pytest --cov-report=html` first
 
 lint: ## Run ruff lint
 	uv run ruff check .
+
+fix: ## Apply every ruff autofix + format (imports, quotes, whitespace, unused)
+	uv run ruff check --fix .
+	uv run ruff format .
 
 fmt: ## Auto-format with ruff
 	uv run ruff format .
