@@ -1,0 +1,20 @@
+"""Uvicorn entry point — exposes ``app`` and a one-line ``run()`` helper."""
+
+from __future__ import annotations
+
+from tempest_fastapi_sdk import run_server
+
+from src.api.app import create_app
+from src.core.settings import settings
+
+app = create_app()
+
+
+def run() -> None:
+    """Start the HTTP server programmatically via :func:`run_server`.
+
+    Reads ``SERVER_HOST`` / ``SERVER_PORT`` / ``SERVER_RELOAD`` from
+    ``settings``. ``run_server`` imports uvicorn lazily so tests that
+    only need the FastAPI app can import this module without it.
+    """
+    run_server("src.server:app", settings=settings)

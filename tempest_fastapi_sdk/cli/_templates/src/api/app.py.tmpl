@@ -1,0 +1,66 @@
+"""``create_app()`` — wires middleware, exception handlers, health and routers."""
+
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    RequestIDMiddleware,
+    apply_cors,
+    configure_logging,
+    make_health_router,
+    register_exception_handlers,
+)
+
+from src.core.settings import settings
+
+configure_logging(level=settings.LOG_LEVEL, json_output=settings.LOG_JSON)
+
+db = AsyncDatabaseManager(
+    settings.DATABASE_URL,
+    echo=settings.DATABASE_ECHO,
+    pool_size=settings.DATABASE_POOL_SIZE,
+    max_overflow=settings.DATABASE_MAX_OVERFLOW,
+    pool_recycle=settings.DATABASE_POOL_RECYCLE,
+)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Open and close shared resources for the app lifecycle."""
+    await db.connect()
+    try:
+        yield
+    finally:
+        await db.disconnect()
+
+
+def create_app() -> FastAPI:
+    """Build the configured FastAPI instance.
+
+    Returns:
+        FastAPI: A fully wired application ready for uvicorn.
+    """
+    app = FastAPI(
+        title="__PROJECT_NAME__",
+        version="0.1.0",
+        lifespan=lifespan,
+    )
+
+    app.add_middleware(RequestIDMiddleware)
+    apply_cors(app, settings)
+    register_exception_handlers(app)
+
+    app.include_router(
+        make_health_router(db=db, version="0.1.0"),
+    )
+
+    from src.api.routers import router as api_router
+
+    app.include_router(api_router, prefix="/api")
+
+    return app

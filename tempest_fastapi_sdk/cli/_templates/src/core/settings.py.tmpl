@@ -1,0 +1,39 @@
+"""Application settings — composed from SDK mixins + service overrides."""
+
+from __future__ import annotations
+
+from pydantic import Field
+
+from tempest_fastapi_sdk import (
+    BaseAppSettings,
+    CORSSettings,
+    DatabaseSettings,
+    JWTSettings,
+    LogSettings,
+    ServerSettings,
+    TokenSettings,
+)
+
+
+class Settings(
+    ServerSettings,
+    LogSettings,
+    DatabaseSettings,
+    JWTSettings,
+    TokenSettings,
+    CORSSettings,
+    BaseAppSettings,
+):
+    """Service-wide settings backed by the ``.env`` file.
+
+    Attributes:
+        VERSION (str): Version surfaced on the health router.
+    """
+
+    VERSION: str = Field(default="0.1.0")
+
+
+settings = Settings()
+
+
+__all__: list[str] = ["Settings", "settings"]

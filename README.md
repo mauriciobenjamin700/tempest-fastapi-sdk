@@ -54,6 +54,11 @@ The goal is to start every new backend with the same opinionated foundation alre
   - [Pagination Link headers (`build_pagination_link_header`)](#pagination-link-headers-recipe)
   - [Rate limit middleware (`RateLimitMiddleware`)](#rate-limit-middleware-recipe)
   - [Outbox dispatcher pattern](#outbox-dispatcher-pattern-recipe)
+  - [Base enums (`BaseStrEnum` / `BaseIntEnum`)](#base-enums-recipe)
+  - [Hardened static files + cookie helpers](#hardened-static-files--cookie-helpers-recipe)
+  - [Brute-force throttling (`AttemptThrottle`)](#brute-force-throttling-recipe)
+  - [Opaque tokens (password reset / API keys)](#opaque-tokens-recipe)
+  - [Client IP extraction (`get_client_ip`)](#client-ip-extraction-recipe)
   - [Command-line interface (`tempest new` / `lint` / `check`)](#command-line-interface-recipe)
   - [Admin site (`AdminSite` + `AdminModel`)](#admin-site-recipe)
   - [Migration guide 0.7 → 0.8](#migration-guide-07--08)
@@ -125,7 +130,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
 | `tempest_fastapi_sdk.queue` *(extra: `[queue]`)* | `AsyncBrokerManager` (FastStream lifecycle wrapper) |
 | `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `AsyncTaskBrokerManager` (TaskIQ lifecycle wrapper), `AsyncTaskScheduler` (periodic / cron tasks) |
-| `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`) |
+| `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `AttemptThrottle`/`ThrottleBackend`/`ThrottleStatus`, `generate_opaque_token`/`hash_opaque_token`/`verify_opaque_token`, `get_client_ip`/`get_client_ip_from_scope`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`) |
 | `tempest_fastapi_sdk.cli` | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `version` / `--version` |
 
 Core primitives are re-exported from `tempest_fastapi_sdk` at the top level — `from tempest_fastapi_sdk import BaseModel, BaseRepository, AppException` always works. The extras-gated managers in `tempest_fastapi_sdk.cache`, `tempest_fastapi_sdk.queue` and `tempest_fastapi_sdk.tasks` must be imported from their own submodule (`from tempest_fastapi_sdk.queue import AsyncBrokerManager`).
@@ -2575,6 +2580,19 @@ async def github_event(body: bytes = Depends(github.dependency())) -> None:
 
 Supports `hex` (default) and `base64` encodings, any hashlib algorithm guaranteed across platforms, and an optional `prefix` (e.g. `"sha256="`) stripped before comparison. Use the imperative `verifier.verify(body, signature)` from queue handlers when validation happens outside the FastAPI pipeline.
 
+For providers that sign with an RSA private key (Apple App Store, Google Play, custom enterprise services), swap `WebhookSignatureVerifier` for `RSAWebhookSignatureVerifier` — same `dependency()` / `verify()` surface, but it validates the signature against a PEM-encoded public key (`PKCS1v15` over SHA-256 by default; pass `hash_algorithm="sha512"` or `padding="pss"` to match the provider).
+
+```python
+from tempest_fastapi_sdk import RSAWebhookSignatureVerifier
+
+apple = RSAWebhookSignatureVerifier(
+    public_key_pem=settings.APPLE_PUBLIC_KEY_PEM,
+    header_name="X-Apple-Signature",
+    encoding="base64",
+    hash_algorithm="sha256",
+)
+```
+
 ### Pagination Link headers recipe
 
 `build_pagination_link_header` emits an RFC 8288 `Link` header with `first` / `prev` / `next` / `last` rels — pair it with (or use instead of) the `BasePaginationSchema` body wrapper for REST clients that expect GitHub-style headers. Existing query parameters on the base URL are preserved.
@@ -2762,6 +2780,172 @@ Trade-offs to keep in mind:
 - **Retention.** Add a periodic `TRUNCATE`-style job to delete `dispatched` rows older than N days, otherwise the outbox table grows unbounded.
 - **At-least-once.** Consumers must be idempotent — the dispatcher can crash after publishing but before `mark_dispatched`.
 
+### Base enums recipe
+
+`BaseStrEnum` / `BaseIntEnum` extend the stdlib `Enum` with helpers tuned for Pydantic + SQLAlchemy round-tripping (lookup by value, JSON-serializable `str` / `int` inheritance, `__contains__` that accepts raw values). Use them for every enum that crosses the API boundary.
+
+```python
+from tempest_fastapi_sdk import BaseIntEnum, BaseStrEnum
+
+
+class OrderStatus(BaseStrEnum):
+    PENDING = "pending"
+    PAID = "paid"
+    SHIPPED = "shipped"
+    CANCELLED = "cancelled"
+
+
+class Priority(BaseIntEnum):
+    LOW = 0
+    NORMAL = 1
+    HIGH = 2
+
+assert OrderStatus.PENDING == "pending"          # str inheritance
+assert "paid" in OrderStatus                      # raw value membership
+assert OrderStatus("paid") is OrderStatus.PAID    # canonical lookup
+assert Priority.NORMAL + 1 == Priority.HIGH       # int math
+```
+
+Because they inherit from `str` / `int`, Pydantic serializes them transparently as their underlying value and SQLAlchemy can persist them via the standard `Enum` column without an extra converter.
+
+### Hardened static files + cookie helpers recipe
+
+`HardenedStaticFiles` extends Starlette's `StaticFiles` with three production-grade defaults: it resolves the served path against a symlink-free base, refuses any path that escapes that base (path-traversal defense in depth), and attaches a configurable set of security headers (`DEFAULT_STATIC_SECURITY_HEADERS` — `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-site`).
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import DEFAULT_STATIC_SECURITY_HEADERS, HardenedStaticFiles
+
+app = FastAPI()
+app.mount(
+    "/static",
+    HardenedStaticFiles(
+        directory="public/",
+        # Override or extend the defaults — merging is the caller's job.
+        security_headers={
+            **DEFAULT_STATIC_SECURITY_HEADERS,
+            "Cache-Control": "public, max-age=86400, immutable",
+        },
+    ),
+    name="static",
+)
+```
+
+For cookie-based session flows, `set_cookie` / `clear_cookie` write headers that already include the safe combo (`HttpOnly`, `Secure`, `SameSite=Lax`) so the caller only picks the bits they want to deviate from. `SameSite` is a `BaseStrEnum` (`SameSite.LAX` / `STRICT` / `NONE`) — using `SameSite.NONE` forces `Secure=True` to honor the browser requirement.
+
+```python
+from fastapi import Response
+
+from tempest_fastapi_sdk import SameSite, clear_cookie, set_cookie
+
+
+def login(response: Response, token: str) -> None:
+    set_cookie(
+        response,
+        key="session",
+        value=token,
+        max_age=3600,
+        same_site=SameSite.LAX,         # default
+        # secure=True,                  # auto-enabled for SameSite.NONE
+        # http_only=True,               # default
+        path="/",
+    )
+
+
+def logout(response: Response) -> None:
+    clear_cookie(response, key="session", path="/")
+```
+
+### Brute-force throttling recipe
+
+`AttemptThrottle` counts failed attempts per key (typically `<endpoint>:<identifier>` — login email, password-reset target, etc.) and either yields a free attempt, locks the caller for a cooldown, or signals "back off" once the threshold is crossed. Two backends ship: `MemoryThrottleBackend` (defaults — process-local, perfect for tests and single-process services) and `RedisThrottleBackend` (multi-process / multi-host deployments).
+
+```python
+from tempest_fastapi_sdk import AttemptThrottle, ThrottleStatus, TooManyRequestsException
+from tempest_fastapi_sdk.utils.throttle import RedisThrottleBackend
+
+throttle = AttemptThrottle(
+    backend=RedisThrottleBackend(redis_manager=cache),
+    max_attempts=5,
+    window_seconds=300,           # rolling window
+    lock_seconds=900,             # cooldown applied when threshold trips
+)
+
+
+async def login(email: str, password: str) -> User:
+    status = await throttle.check(f"login:{email}")
+    if status is ThrottleStatus.LOCKED:
+        raise TooManyRequestsException(message="Too many attempts; try again later.")
+
+    user = await users_repo.get_by_email(email)
+    if not password_utils.verify(password, user.password_hash):
+        await throttle.record_failure(f"login:{email}")
+        raise UnauthorizedException(message="Invalid credentials.")
+
+    await throttle.reset(f"login:{email}")
+    return user
+```
+
+`check()` returns a `ThrottleStatus` enum (`ALLOWED` / `LOCKED`); inspecting `.attempts_left` and `.retry_after_seconds` on the result lets you surface friendly error payloads. Pair with `TooManyRequestsException` so the SDK exception handler emits the canonical `{detail, code, details}` envelope with HTTP 429 and a `Retry-After` header.
+
+### Opaque tokens recipe
+
+`generate_opaque_token` produces a high-entropy URL-safe token (default 32 bytes / 256 bits via `secrets.token_urlsafe`); `hash_opaque_token` stores it as an HMAC-SHA-256 digest so a leaked database row is useless on its own; `verify_opaque_token` performs constant-time comparison. Use them for password reset links, email confirmation, API keys, opaque session IDs — anything where the issued secret is never inspected by the recipient.
+
+```python
+from tempest_fastapi_sdk import (
+    generate_opaque_token,
+    hash_opaque_token,
+    verify_opaque_token,
+)
+from src.core.settings import settings
+
+
+def issue_reset_token(user_id: UUID) -> str:
+    plain = generate_opaque_token()
+    digest = hash_opaque_token(plain, secret=settings.OPAQUE_TOKEN_PEPPER)
+    await reset_tokens_repo.add(
+        PasswordResetToken(user_id=user_id, digest=digest, expires_at=...),
+    )
+    return plain  # send this in the email — never store it
+
+
+async def consume_reset_token(plain: str, user_id: UUID) -> bool:
+    record = await reset_tokens_repo.get_or_none({"user_id": user_id})
+    if record is None or record.is_expired:
+        return False
+    return verify_opaque_token(
+        plain,
+        record.digest,
+        secret=settings.OPAQUE_TOKEN_PEPPER,
+    )
+```
+
+`secret=` is optional — passing the same pepper across `hash_*` / `verify_*` adds a service-wide secret so the digest column alone cannot be brute-forced. Defaults: 32 bytes of entropy, HMAC-SHA-256, constant-time compare. Override `nbytes=` for longer keys (API keys / refresh tokens).
+
+### Client IP extraction recipe
+
+`get_client_ip(request)` and `get_client_ip_from_scope(scope)` return the real client IP behind an arbitrary chain of proxies. They inspect `Forwarded` (RFC 7239) first, fall back to `X-Forwarded-For` honoring an explicit `trusted_proxies` allowlist, and finally use the raw socket address — never naively trusting an inbound header.
+
+```python
+from fastapi import Request
+
+from tempest_fastapi_sdk import get_client_ip
+
+
+@router.post("/login")
+async def login(request: Request, payload: LoginIn) -> LoginOut:
+    ip = get_client_ip(
+        request,
+        trusted_proxies={"10.0.0.0/8", "192.168.0.0/16"},
+    )
+    await throttle.check(f"login:{ip}")
+    ...
+```
+
+Use `get_client_ip_from_scope(scope)` from middleware or websocket handlers where only the ASGI scope is in reach. Both helpers normalize IPv6 brackets and refuse to return private addresses when `accept_private=False` is passed — handy when only public traffic should ever populate audit logs.
+
 ### Command-line interface recipe
 
 Installing `tempest-fastapi-sdk` exposes a `tempest` console script. It does two jobs: bootstrap a new layered service from the SDK's preferred skeleton, and run the four quality gates (`ruff check`, `ruff format`, `mypy`, `pytest`) without copy-pasting the same commands into every project.
@@ -2810,7 +2994,7 @@ my_service/
     └── test_smoke.py        # asserts /api/ and /health/liveness boot
 ```
 
-The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[auth]>=0.12.0` by default — change with `--extras`). Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
+The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[auth]>=<version>` by default — change with `--extras`). The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
 
 After scaffolding:
 

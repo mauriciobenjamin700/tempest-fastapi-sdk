@@ -1,0 +1,42 @@
+# __PROJECT_NAME__
+
+FastAPI service scaffolded with [`tempest-fastapi-sdk`](https://pypi.org/project/tempest-fastapi-sdk/).
+
+## Layout
+
+```text
+__PROJECT_NAME__/
+├── main.py                # one-liner — delegates to src.server.run
+└── src/
+    ├── server.py          # uvicorn.run() + module-level FastAPI app
+    ├── api/
+    │   ├── app.py         # create_app() factory + middleware
+    │   ├── routers/       # HTTP endpoints
+    │   └── dependencies/  # FastAPI Depends providers
+    ├── controllers/       # orchestration between services
+    ├── services/          # business logic
+    ├── schemas/           # Pydantic DTOs
+    ├── core/              # settings, exceptions, logging
+    ├── db/
+    │   ├── models/        # SQLAlchemy ORM models
+    │   └── repositories/  # async CRUD
+    └── utils/             # stateless helpers
+```
+
+## Quickstart
+
+```bash
+uv sync
+cp .env.example .env
+uv run python main.py
+```
+
+## Quality gates
+
+```bash
+tempest lint       # ruff check
+tempest fmt-check  # ruff format --check
+tempest type       # mypy
+tempest test       # pytest
+tempest check      # all four sequentially
+```

@@ -1,0 +1,23 @@
+"""Smoke test — app factory is wired correctly."""
+
+from fastapi.testclient import TestClient
+
+from src.api.app import create_app
+
+
+def test_root_endpoint_returns_service_name() -> None:
+    """The placeholder ``/api/`` endpoint returns the project name."""
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get("/api/")
+    assert response.status_code == 200
+    assert response.json() == {"service": "__PROJECT_NAME__"}
+
+
+def test_liveness_endpoint_is_up() -> None:
+    """The SDK health router exposes ``GET /health/liveness``."""
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get("/health/liveness")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}

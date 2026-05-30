@@ -1,0 +1,18 @@
+"""Mounted business routers — extend ``router`` with your endpoints."""
+
+from fastapi import APIRouter
+
+router = APIRouter()
+
+
+@router.get("/", tags=["root"])
+async def index() -> dict[str, str]:
+    """Placeholder root endpoint returning the service name.
+
+    Returns:
+        dict[str, str]: A simple greeting payload.
+    """
+    return {"service": "__PROJECT_NAME__"}
+
+
+__all__: list[str] = ["router"]
