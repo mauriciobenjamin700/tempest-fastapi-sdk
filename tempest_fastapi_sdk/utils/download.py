@@ -48,9 +48,7 @@ def build_content_disposition(filename: str, *, as_attachment: bool = True) -> s
     if not ascii_fallback:
         ascii_fallback = "download"
     encoded: str = quote(safe_name, safe="")
-    return (
-        f'{disposition}; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded}'
-    )
+    return f"{disposition}; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded}"
 
 
 class DownloadUtils:
@@ -144,9 +142,7 @@ class DownloadUtils:
         target: Path = self.resolve(relative_path, subdir=subdir)
         download_name: str = filename or target.name
         resolved_media_type: str = (
-            media_type
-            or mimetypes.guess_type(download_name)[0]
-            or _DEFAULT_MEDIA_TYPE
+            media_type or mimetypes.guess_type(download_name)[0] or _DEFAULT_MEDIA_TYPE
         )
         response_headers: dict[str, str] = dict(headers or {})
         response_headers["content-disposition"] = build_content_disposition(

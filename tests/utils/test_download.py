@@ -96,9 +96,7 @@ class TestFileResponse:
         assert response.media_type == "application/pdf"
         assert 'filename="fatura.pdf"' in response.headers["content-disposition"]
 
-    def test_unknown_extension_falls_back_to_octet_stream(
-        self, tmp_path: Path
-    ) -> None:
+    def test_unknown_extension_falls_back_to_octet_stream(self, tmp_path: Path) -> None:
         _write(tmp_path, "blob.unknownext")
         utils = DownloadUtils(tmp_path)
         response = utils.file_response("blob.unknownext")
