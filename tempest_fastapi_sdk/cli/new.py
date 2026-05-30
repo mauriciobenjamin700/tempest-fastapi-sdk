@@ -44,6 +44,51 @@ def _validate_name(name: str) -> None:
         raise typer.Exit(2)
 
 
+def _resolve_name_and_target(
+    name: str,
+    path: str | None,
+) -> tuple[str, Path]:
+    """Resolve the (project name, target directory) pair from CLI args.
+
+    Two shapes are accepted:
+
+    * ``tempest new <name>`` (with optional ``--path``) — name is the
+      slug used as the package name AND the new subdirectory inside
+      ``path`` (or cwd). Validated against the Python-identifier rules.
+    * ``tempest new .`` — scaffold flatly in the current directory.
+      The package name is derived from ``Path.cwd().name`` and must
+      itself be a valid Python identifier; ``--path`` is rejected
+      because the target is unambiguous.
+
+    Args:
+        name (str): The positional argument (``<name>`` or ``"."``).
+        path (str | None): Optional parent directory.
+
+    Returns:
+        tuple[str, Path]: The resolved project name and absolute
+        target directory.
+
+    Raises:
+        typer.Exit: On invalid input.
+    """
+    if name == ".":
+        if path is not None:
+            typer.echo(
+                "error: --path is not compatible with the '.' shorthand; "
+                "the target is the current working directory.",
+                err=True,
+            )
+            raise typer.Exit(2)
+        target = Path.cwd().resolve()
+        derived = target.name
+        _validate_name(derived)
+        return derived, target
+
+    _validate_name(name)
+    parent = Path(path).expanduser().resolve() if path else Path.cwd()
+    return name, parent / name
+
+
 def _templates_root() -> Path:
     """Return the directory holding the bundled templates.
 
@@ -77,8 +122,11 @@ def _render(content: str, context: dict[str, str]) -> str:
 def _resolve_target(name: str, path: str | None) -> Path:
     """Return the absolute target directory for the scaffold.
 
+    Kept as a thin shim around :func:`_resolve_name_and_target` so
+    callers that already validated the name keep working.
+
     Args:
-        name (str): The project name.
+        name (str): The project name (must already be valid).
         path (str | None): Optional parent directory. When ``None`` the
             current working directory is used.
 
@@ -167,10 +215,10 @@ def scaffold(
         typer.Exit: On invalid input or target collision without
             ``--force``.
     """
-    _validate_name(name)
+    resolved_name, target = _resolve_name_and_target(name, path)
 
-    target = _resolve_target(name, path)
-    if target.exists() and not force:
+    is_cwd_scaffold = target == Path.cwd().resolve()
+    if target.exists() and not is_cwd_scaffold and not force:
         typer.echo(
             f"error: target {target} already exists. Pass --force to overwrite.",
             err=True,
@@ -179,7 +227,7 @@ def scaffold(
     target.mkdir(parents=True, exist_ok=True)
 
     context: dict[str, str] = {
-        "PROJECT_NAME": name,
+        "PROJECT_NAME": resolved_name,
         "HOST": bind_host,
         "PORT": str(bind_port),
         "SDK_DEP": _build_sdk_dep(extras),
@@ -218,6 +266,7 @@ def __getattr__(item: str) -> Any:  # pragma: no cover - typer test helper
         "_build_sdk_dep",
         "_iter_templates",
         "_render",
+        "_resolve_name_and_target",
         "_resolve_target",
         "_target_path",
         "_templates_root",

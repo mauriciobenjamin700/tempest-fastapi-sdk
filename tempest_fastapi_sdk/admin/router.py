@@ -10,7 +10,6 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
-from fastapi.templating import Jinja2Templates
 
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend, AdminAuthError
 from tempest_fastapi_sdk.admin.session import (
@@ -120,6 +119,14 @@ def make_admin_router(
     Returns:
         APIRouter: A router ready to attach via ``app.include_router``.
     """
+    try:
+        from fastapi.templating import Jinja2Templates
+    except ImportError as exc:
+        raise ImportError(
+            "Admin requires the [admin] extra. "
+            "Install with `pip install tempest-fastapi-sdk[admin]`."
+        ) from exc
+
     store: SessionStore = session_store or SignedCookieSessionStore(
         secret_key,
         secure=cookie_secure,

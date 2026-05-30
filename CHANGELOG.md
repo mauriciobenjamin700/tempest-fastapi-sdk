@@ -5,6 +5,27 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.1] — 2026-05-30
+
+### Fixed
+
+- **CLI required `jinja2` even though `[admin]` was not installed.** Importing
+  `tempest_fastapi_sdk` eagerly walked into `admin/router.py`, which had a
+  top-level `from fastapi.templating import Jinja2Templates`. Starlette's
+  `templating` module raises `ImportError("jinja2 must be installed to use
+  Jinja2Templates")` at import time, so `tempest --version` (or any other
+  CLI command) blew up on environments that legitimately skipped the admin
+  extra. The import is now deferred inside `make_admin_router`, raising a
+  clear `Install with pip install tempest-fastapi-sdk[admin]` only when the
+  router is actually constructed.
+- **`tempest new .` rejected the `.` shorthand for "scaffold here".** The
+  positional `name` was always run through the Python-identifier regex
+  before resolving the target, so `tempest new .` died with
+  `error: project name must match ^[a-z][a-z0-9_]*$`. The CLI now accepts
+  `.` and treats it as "scaffold flatly in the current working directory";
+  the package name is derived from the cwd's basename (still validated).
+  `--path` is rejected alongside `.` because the target is unambiguous.
+
 ## [0.16.0] — 2026-05-30
 
 Repository and exception APIs join the admin in dropping Django-style class-attribute configuration. The constructor signature is now the contract; subclasses survive only when they add behavior (custom queries, `except DomainError`) — never to "fill in" a required class attribute.
