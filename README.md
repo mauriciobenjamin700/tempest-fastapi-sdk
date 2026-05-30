@@ -3145,11 +3145,11 @@ The four highlighted lines under the divider comment are the only admin-bootstra
 
 #### 2. Register your admin classes
 
-`AdminModel` mirrors Django's `ModelAdmin`. The defaults work out of the box; override the class attributes when you need richer list views:
+`AdminModel` is a plain typed configuration instance — the constructor signature is the contract (no class-attribute / metaclass magic), and every field accepts a real SQLAlchemy column attribute (`UserModel.email`), so typos surface in your editor instead of at runtime. The defaults work out of the box; pass the fields you want to enrich the list view:
 
 ```python
 # src/admin/site.py
-from typing import ClassVar
+from sqlalchemy import desc
 
 from tempest_fastapi_sdk import AdminModel, AdminSite
 
@@ -3161,19 +3161,18 @@ site = AdminSite(
     site_url="https://myapp.com",   # optional outbound "View site" link
 )
 
-
-@site.register
-class UserAdmin(AdminModel[UserModel]):
-    model = UserModel
-    list_display: ClassVar[list[str]] = ["email", "is_admin", "is_active", "last_login_at"]
-    list_filter: ClassVar[list[str]] = ["is_active", "is_admin"]
-    search_fields: ClassVar[list[str]] = ["email"]
-    readonly_fields: ClassVar[list[str]] = ["id", "hashed_password", "created_at", "updated_at"]
-    ordering = "-created_at"
-    page_size = 25
+site.register(AdminModel(
+    model=UserModel,
+    list_display=[UserModel.email, UserModel.is_admin, UserModel.is_active, UserModel.last_login_at],
+    list_filter=[UserModel.is_active, UserModel.is_admin],
+    search_fields=[UserModel.email],
+    readonly_fields=[UserModel.id, UserModel.hashed_password, UserModel.created_at, UserModel.updated_at],
+    ordering=desc(UserModel.created_at),
+    page_size=25,
+))
 ```
 
-The decorator form (`@site.register`) is equivalent to `site.register(UserAdmin)`. Duplicate registrations under the same slug raise `ValueError`. Slugs default to the model's `__tablename__` so URLs and database tables stay in sync.
+Every field reference also accepts a plain string (`list_display=["email", ...]`) for dynamic configuration, and `ordering` accepts a column (ascending), `desc(column)` / `asc(column)`, or a Django-style `"-created_at"` string. `register` returns the instance and raises `ValueError` on a duplicate slug. Slugs default to the model's `__tablename__` so URLs and database tables stay in sync.
 
 #### 3. Mount the router
 

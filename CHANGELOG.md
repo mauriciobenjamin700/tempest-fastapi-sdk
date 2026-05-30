@@ -5,6 +5,42 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] — 2026-05-30
+
+Admin configuration is now a plain typed instance instead of a Django-style subclass. The class form (`class UserAdmin(AdminModel[UserModel])` with `ClassVar` attributes and the `@site.register` decorator) is gone — register a constructed instance instead. Field options accept real SQLAlchemy column attributes, so typos surface in the editor rather than at runtime.
+
+### Changed
+
+- **BREAKING — `AdminModel` is an instance, not a subclass.** Replace
+
+  ```python
+  @site.register
+  class UserAdmin(AdminModel[UserModel]):
+      model = UserModel
+      list_display: ClassVar[list[str]] = ["email", "is_admin"]
+      ordering = "-created_at"
+  ```
+
+  with
+
+  ```python
+  site.register(AdminModel(
+      model=UserModel,
+      list_display=[UserModel.email, UserModel.is_admin],
+      ordering=desc(UserModel.created_at),
+  ))
+  ```
+
+  `list_display`, `list_filter`, `search_fields`, `readonly_fields` and `identity_field` accept SQLAlchemy column attributes (`UserModel.email`) **or** plain strings. `ordering` accepts a column (ascending), `desc(column)` / `asc(column)`, or a `"-field"` string. `AdminSite.register` / `get` / `require` / `iter_models` now take and return instances. The `@site.register` decorator form is removed.
+
+### Added
+
+- **`FieldRef` / `OrderRef`** — public type aliases for the admin field- and ordering-reference unions, exported from the package root.
+
+### Fixed
+
+- **Admin list-view descending `ordering` raised `AttributeError`.** A configured `"-created_at"` was passed verbatim to `paginate(order_by=...)`, which did `getattr(model, "-created_at")`. Ordering is now normalized to a `(column, ascending)` pair, so descending orders and `desc()` / `asc()` wrappers work correctly.
+
 ## [0.13.1] — 2026-05-30
 
 ### Fixed

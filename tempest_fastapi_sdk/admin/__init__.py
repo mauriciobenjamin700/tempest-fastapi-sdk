@@ -17,7 +17,7 @@ from tempest_fastapi_sdk.admin.auth import (
     AdminAuthError,
     UserModelAuthBackend,
 )
-from tempest_fastapi_sdk.admin.config import AdminModel
+from tempest_fastapi_sdk.admin.config import AdminModel, FieldRef, OrderRef
 from tempest_fastapi_sdk.admin.router import make_admin_router
 from tempest_fastapi_sdk.admin.session import (
     AdminSession,
@@ -32,6 +32,8 @@ __all__: list[str] = [
     "AdminModel",
     "AdminSession",
     "AdminSite",
+    "FieldRef",
+    "OrderRef",
     "SessionStore",
     "SignedCookieSessionStore",
     "UserModelAuthBackend",

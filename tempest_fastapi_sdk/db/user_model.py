@@ -16,6 +16,8 @@ from sqlalchemy import TIMESTAMP, Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk.db.model import BaseModel
+from tempest_fastapi_sdk.utils.password import PasswordUtils
+
 
 
 class BaseUserModel(BaseModel):
@@ -84,8 +86,6 @@ class BaseUserModel(BaseModel):
         Raises:
             ImportError: When the ``[auth]`` extra is not installed.
         """
-        from tempest_fastapi_sdk.utils.password import PasswordUtils
-
         self.hashed_password = PasswordUtils(rounds=rounds).hash(plain)
 
     def check_password(self, plain: str) -> bool:
@@ -100,8 +100,6 @@ class BaseUserModel(BaseModel):
         Raises:
             ImportError: When the ``[auth]`` extra is not installed.
         """
-        from tempest_fastapi_sdk.utils.password import PasswordUtils
-
         if not self.hashed_password:
             return False
         return PasswordUtils().verify(plain, self.hashed_password)

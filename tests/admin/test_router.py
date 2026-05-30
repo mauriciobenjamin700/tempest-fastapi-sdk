@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -30,11 +28,12 @@ class WidgetModel(BaseModel):
     name: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
-class WidgetAdmin(AdminModel[WidgetModel]):
-    model = WidgetModel
-    list_display: ClassVar[list[str]] = ["id", "name", "is_active"]
-    list_filter: ClassVar[list[str]] = ["is_active"]
-    search_fields: ClassVar[list[str]] = ["name"]
+widget_admin = AdminModel(
+    model=WidgetModel,
+    list_display=[WidgetModel.id, WidgetModel.name, WidgetModel.is_active],
+    list_filter=[WidgetModel.is_active],
+    search_fields=[WidgetModel.name],
+)
 
 
 SECRET = "x" * 48
@@ -57,7 +56,7 @@ async def app_with_admin() -> tuple[FastAPI, AsyncDatabaseManager, RouterUser]:
         await session.refresh(user)
 
     site = AdminSite(title="Test Admin")
-    site.register(WidgetAdmin)
+    site.register(widget_admin)
     backend = UserModelAuthBackend(RouterUser)
 
     app = FastAPI()

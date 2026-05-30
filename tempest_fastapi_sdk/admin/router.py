@@ -376,36 +376,37 @@ def make_admin_router(
         Returns:
             HTMLResponse: The list template.
         """
-        admin_cls = site.get(slug)
-        if admin_cls is None:
+        admin = site.get(slug)
+        if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         principal = await _resolve_principal(request, db_session, session)
 
-        repository = admin_cls.build_repository(db_session)
+        repository = admin.build_repository(db_session)
 
         filters: dict[str, Any] = {}
         active_filters: dict[str, str] = {}
-        for field in admin_cls.list_filter:
+        for field in admin.list_filter:
             value = request.query_params.get(f"filter_{field}")
             if value:
                 active_filters[field] = value
                 filters[field] = _coerce_filter_value(value)
         if q:
-            for field in admin_cls.search_fields:
+            for field in admin.search_fields:
                 filters[field] = q
 
         page = max(1, page)
-        size = max(1, admin_cls.page_size)
+        size = max(1, admin.page_size)
         result = await repository.paginate(
             filters=filters,
             page=page,
             page_size=size,
-            order_by=admin_cls.ordering,
+            order_by=admin.order_key,
+            ascending=admin.order_ascending,
         )
 
-        columns = admin_cls.resolved_list_display()
+        columns = admin.resolved_list_display()
         rows = [
-            _RowView(instance, columns, admin_cls.identity_field)
+            _RowView(instance, columns, admin.identity_field)
             for instance in result["items"]
         ]
 
@@ -429,14 +430,14 @@ def make_admin_router(
                 "user": principal,
                 "session": session,
                 "user_display": auth_backend.display_name(principal),
-                "admin": admin_cls,
+                "admin": admin,
                 "columns": columns,
                 "rows": rows,
                 "pagination": pagination,
                 "query": {"q": q},
                 "filter_options": {
-                    field: _filter_options(admin_cls, field, active_filters.get(field))
-                    for field in admin_cls.list_filter
+                    field: _filter_options(admin, field, active_filters.get(field))
+                    for field in admin.list_filter
                 },
             },
         )
@@ -461,11 +462,11 @@ def make_admin_router(
         Returns:
             HTMLResponse: The detail template.
         """
-        admin_cls = site.get(slug)
-        if admin_cls is None:
+        admin = site.get(slug)
+        if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         principal = await _resolve_principal(request, db_session, session)
-        repository = admin_cls.build_repository(db_session)
+        repository = admin.build_repository(db_session)
         try:
             from uuid import UUID
 
@@ -473,12 +474,12 @@ def make_admin_router(
         except (ValueError, TypeError):
             value = identity
 
-        instance = await repository.get_or_none({admin_cls.identity_field: value})
+        instance = await repository.get_or_none({admin.identity_field: value})
         if instance is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
 
-        columns = admin_cls.column_names()
-        readonly = set(admin_cls.readonly_fields)
+        columns = admin.column_names()
+        readonly = set(admin.readonly_fields)
         fields: list[tuple[str, Any]] = []
         for column in columns:
             if column == "hashed_password":
@@ -492,7 +493,7 @@ def make_admin_router(
                 "user": principal,
                 "session": session,
                 "user_display": auth_backend.display_name(principal),
-                "admin": admin_cls,
+                "admin": admin,
                 "identity": identity,
                 "fields": fields,
                 "readonly": readonly,
@@ -547,7 +548,7 @@ def _coerce_filter_value(raw: str) -> Any:
 
 
 def _filter_options(
-    admin_cls: Any,
+    admin: Any,
     field: str,
     active: str | None,
 ) -> list[dict[str, Any]]:
@@ -558,14 +559,14 @@ def _filter_options(
     phases can broaden this to enums and FK lookups.
 
     Args:
-        admin_cls (Any): The admin configuration.
+        admin (Any): The admin configuration.
         field (str): The filter field name.
         active (str | None): The currently selected value.
 
     Returns:
         list[dict[str, Any]]: Option dicts ready for the template.
     """
-    column = getattr(admin_cls.model, field, None)
+    column = getattr(admin.model, field, None)
     if column is None:
         return []
     python_type = getattr(getattr(column, "type", None), "python_type", None)

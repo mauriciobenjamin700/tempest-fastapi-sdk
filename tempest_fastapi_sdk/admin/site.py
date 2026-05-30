@@ -40,38 +40,36 @@ class AdminSite:
         self.title: str = title
         self.index_subtitle: str = index_subtitle
         self.site_url: str | None = site_url
-        self._registry: dict[str, type[AdminModel[Any]]] = {}
+        self._registry: dict[str, AdminModel[Any]] = {}
 
-    def register(self, admin_cls: type[AdminModel[Any]]) -> type[AdminModel[Any]]:
-        """Register ``admin_cls`` against its model slug.
+    def register(self, admin: AdminModel[Any]) -> AdminModel[Any]:
+        """Register ``admin`` against its model slug.
 
-        Doubles as a class decorator::
+        Example::
 
-            @site.register
-            class UserAdmin(AdminModel[UserModel]):
-                model = UserModel
+            site.register(AdminModel(model=UserModel))
 
         Args:
-            admin_cls (type[AdminModel[Any]]): The admin configuration.
+            admin (AdminModel[Any]): The admin configuration instance.
 
         Returns:
-            type[AdminModel[Any]]: The same class (so the decorator
-            form is non-destructive).
+            AdminModel[Any]: The same instance (so the call can be
+            chained or assigned).
 
         Raises:
             ValueError: When another admin is already registered under
                 the same slug.
         """
-        slug = admin_cls.get_slug()
+        slug = admin.get_slug()
         if slug in self._registry:
             existing = self._registry[slug]
             raise ValueError(
                 f"AdminModel for slug {slug!r} already registered "
-                f"({existing.__name__}); refusing to overwrite with "
-                f"{admin_cls.__name__}"
+                f"({existing.model.__name__}); refusing to overwrite with "
+                f"{admin.model.__name__}"
             )
-        self._registry[slug] = admin_cls
-        return admin_cls
+        self._registry[slug] = admin
+        return admin
 
     def unregister(self, slug: str) -> None:
         """Remove a previously registered admin.
@@ -84,25 +82,25 @@ class AdminSite:
         """
         del self._registry[slug]
 
-    def get(self, slug: str) -> type[AdminModel[Any]] | None:
+    def get(self, slug: str) -> AdminModel[Any] | None:
         """Return the admin registered under ``slug``, or ``None``.
 
         Args:
             slug (str): The admin slug.
 
         Returns:
-            type[AdminModel[Any]] | None: The configuration class.
+            AdminModel[Any] | None: The configuration instance.
         """
         return self._registry.get(slug)
 
-    def require(self, slug: str) -> type[AdminModel[Any]]:
+    def require(self, slug: str) -> AdminModel[Any]:
         """Return the admin registered under ``slug`` or raise.
 
         Args:
             slug (str): The admin slug.
 
         Returns:
-            type[AdminModel[Any]]: The configuration class.
+            AdminModel[Any]: The configuration instance.
 
         Raises:
             KeyError: When no admin matches the slug.
@@ -113,23 +111,23 @@ class AdminSite:
         return admin
 
     @property
-    def registry(self) -> dict[str, type[AdminModel[Any]]]:
+    def registry(self) -> dict[str, AdminModel[Any]]:
         """Return a copy of the slug→admin mapping.
 
         Returns:
-            dict[str, type[AdminModel[Any]]]: The current registry.
+            dict[str, AdminModel[Any]]: The current registry.
         """
         return dict(self._registry)
 
-    def iter_models(self) -> list[type[AdminModel[Any]]]:
+    def iter_models(self) -> list[AdminModel[Any]]:
         """Return registered admins ordered by display name.
 
         Returns:
-            list[type[AdminModel[Any]]]: Ordered admin classes.
+            list[AdminModel[Any]]: Ordered admin instances.
         """
         return sorted(
             self._registry.values(),
-            key=lambda cls: cls.get_verbose_name_plural().lower(),
+            key=lambda admin: admin.get_verbose_name_plural().lower(),
         )
 
 

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 
 from sqlalchemy.inspection import inspect
+from sqlalchemy.orm import InstrumentedAttribute
+from sqlalchemy.sql import operators
+from sqlalchemy.sql.elements import UnaryExpression
 
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.db.repository import BaseRepository
@@ -14,91 +18,122 @@ if TYPE_CHECKING:
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
+FieldRef = InstrumentedAttribute[Any] | str
+"""A column reference: either a mapped attribute (``Model.email``) or its
+string key (``"email"``). Column references give editor autocomplete and
+typo-checking; strings remain accepted for dynamic configuration."""
+
+OrderRef = InstrumentedAttribute[Any] | UnaryExpression[Any] | str
+"""An ordering reference: a column (``Model.created_at``, ascending), a
+direction-wrapped column (``desc(Model.created_at)``), or a Django-style
+string (``"created_at"`` / ``"-created_at"``)."""
+
 
 class AdminModel(Generic[ModelT]):
     """Declarative admin configuration for one SQLAlchemy model.
 
-    Subclass per managed model and assign to a registered
-    :class:`AdminSite`. Mirrors the surface of Django's ``ModelAdmin``:
+    Instantiate once per managed model and pass it to
+    :meth:`AdminSite.register`. Unlike Django's class-based ``ModelAdmin``,
+    this is a plain typed instance — the constructor signature is the
+    contract, fields accept real SQLAlchemy column attributes (so typos
+    surface in the editor, not at runtime), and there is no metaclass
+    magic::
 
-    * ``list_display`` — columns shown in the list view. Defaults to
-      every column except the password hash.
-    * ``list_filter`` — fields surfaced as filter controls. The list
-      view emits one dropdown per entry; values are matched via the
-      repository's standard filter pipeline.
-    * ``search_fields`` — string columns searched for matches.
-      Uses ``ILIKE %value%`` via the repository's ``name`` convention
-      (rerouted automatically per field).
-    * ``readonly_fields`` — fields locked in the detail view.
-    * ``ordering`` — default ordering column. ``None`` falls back to
-      ``created_at desc``.
-    * ``page_size`` — default rows per page in the list view.
-    * ``repository_class`` — concrete :class:`BaseRepository`. The
-      default builds an anonymous repository bound to :attr:`model`
-      with no overrides.
-    * ``identity_field`` — the column used to look up a single row
-      from the detail/edit URL. Defaults to ``"id"`` (UUID PK).
+        site.register(AdminModel(
+            model=UserModel,
+            list_display=[UserModel.email, UserModel.is_admin],
+            search_fields=[UserModel.email],
+            ordering=desc(UserModel.created_at),
+        ))
 
-    Attributes:
+    Args:
         model (type[ModelT]): The SQLAlchemy model class.
-        verbose_name (str): Singular display name; defaults to the
-            class name humanized.
-        verbose_name_plural (str): Plural display name; defaults to
+        list_display (Sequence[FieldRef] | None): Columns shown in the
+            list view. ``None`` defaults to every column except the
+            password hash.
+        list_filter (Sequence[FieldRef]): Fields surfaced as filter
+            dropdowns; matched via the repository's standard filter
+            pipeline.
+        search_fields (Sequence[FieldRef]): String columns searched with
+            ``ILIKE %value%`` via the repository's ``name`` convention.
+        readonly_fields (Sequence[FieldRef]): Fields locked in the detail
+            view.
+        ordering (OrderRef | None): Default ordering. Accepts a column
+            (ascending), ``desc(column)`` / ``asc(column)``, or a string
+            column name with an optional leading ``-`` for descending.
+            ``None`` falls back to ``created_at`` descending.
+        page_size (int): Default rows per page in the list view.
+        identity_field (FieldRef): Column used to look up a single row
+            from the detail URL. Defaults to ``"id"`` (UUID PK).
+        repository_class (type[BaseRepository[Any]] | None): Concrete
+            repository. ``None`` synthesizes an anonymous repository bound
+            to :attr:`model`.
+        verbose_name (str | None): Singular display name; defaults to the
+            model name humanized.
+        verbose_name_plural (str | None): Plural display name; defaults to
             ``verbose_name + "s"``.
+
+    Raises:
+        TypeError: When ``model`` is not a subclass of :class:`BaseModel`,
+            or when a field reference cannot be resolved to a column key.
     """
 
-    model: type[ModelT]
-    repository_class: ClassVar[type[BaseRepository[Any]] | None] = None
-    list_display: ClassVar[list[str] | None] = None
-    list_filter: ClassVar[list[str]] = []
-    search_fields: ClassVar[list[str]] = []
-    readonly_fields: ClassVar[list[str]] = []
-    ordering: ClassVar[str | None] = None
-    page_size: ClassVar[int] = 25
-    identity_field: ClassVar[str] = "id"
-    verbose_name: ClassVar[str | None] = None
-    verbose_name_plural: ClassVar[str | None] = None
+    def __init__(
+        self,
+        model: type[ModelT],
+        *,
+        list_display: Sequence[FieldRef] | None = None,
+        list_filter: Sequence[FieldRef] = (),
+        search_fields: Sequence[FieldRef] = (),
+        readonly_fields: Sequence[FieldRef] = (),
+        ordering: OrderRef | None = None,
+        page_size: int = 25,
+        identity_field: FieldRef = "id",
+        repository_class: type[BaseRepository[Any]] | None = None,
+        verbose_name: str | None = None,
+        verbose_name_plural: str | None = None,
+    ) -> None:
+        """Build and validate the configuration. See class docstring."""
+        if not isinstance(model, type) or not issubclass(model, BaseModel):
+            raise TypeError("AdminModel `model` must be a subclass of BaseModel")
 
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Validate the subclass at definition time.
+        self.model: type[ModelT] = model
+        self.list_display: list[str] | None = (
+            None if list_display is None else _normalize_fields(list_display)
+        )
+        self.list_filter: list[str] = _normalize_fields(list_filter)
+        self.search_fields: list[str] = _normalize_fields(search_fields)
+        self.readonly_fields: list[str] = _normalize_fields(readonly_fields)
+        self.order_key: str | None
+        self.order_ascending: bool
+        self.order_key, self.order_ascending = _normalize_ordering(ordering)
+        self.page_size: int = page_size
+        self.identity_field: str = _field_key(identity_field)
+        self.repository_class: type[BaseRepository[Any]] | None = repository_class
+        self.verbose_name: str | None = verbose_name
+        self.verbose_name_plural: str | None = verbose_name_plural
 
-        Raises:
-            TypeError: When ``model`` is missing or not a subclass of
-                :class:`BaseModel`.
-        """
-        super().__init_subclass__(**kwargs)
-        if not hasattr(cls, "model"):
-            raise TypeError(f"{cls.__name__} must set `model` to a BaseModel subclass")
-        if not isinstance(cls.model, type) or not issubclass(cls.model, BaseModel):
-            raise TypeError(
-                f"{cls.__name__}.model must be a subclass of BaseModel",
-            )
-
-    @classmethod
-    def get_verbose_name(cls) -> str:
+    def get_verbose_name(self) -> str:
         """Return the configured (or auto-derived) singular display name.
 
         Returns:
             str: The display name.
         """
-        if cls.verbose_name:
-            return cls.verbose_name
-        return _humanize(cls.model.__name__.removesuffix("Model"))
+        if self.verbose_name:
+            return self.verbose_name
+        return _humanize(self.model.__name__.removesuffix("Model"))
 
-    @classmethod
-    def get_verbose_name_plural(cls) -> str:
+    def get_verbose_name_plural(self) -> str:
         """Return the configured (or auto-derived) plural display name.
 
         Returns:
             str: The plural display name.
         """
-        if cls.verbose_name_plural:
-            return cls.verbose_name_plural
-        singular = cls.get_verbose_name()
-        return f"{singular}s"
+        if self.verbose_name_plural:
+            return self.verbose_name_plural
+        return f"{self.get_verbose_name()}s"
 
-    @classmethod
-    def get_slug(cls) -> str:
+    def get_slug(self) -> str:
         """Return the URL slug under which the model is exposed.
 
         Defaults to ``__tablename__`` so admin URLs and DB tables
@@ -107,19 +142,17 @@ class AdminModel(Generic[ModelT]):
         Returns:
             str: The slug.
         """
-        return cls.model.__tablename__
+        return self.model.__tablename__
 
-    @classmethod
-    def column_names(cls) -> list[str]:
+    def column_names(self) -> list[str]:
         """Return every mapped column name on :attr:`model`.
 
         Returns:
             list[str]: Column keys in declaration order.
         """
-        return [attr.key for attr in inspect(cls.model).mapper.column_attrs]
+        return [attr.key for attr in inspect(self.model).mapper.column_attrs]
 
-    @classmethod
-    def resolved_list_display(cls) -> list[str]:
+    def resolved_list_display(self) -> list[str]:
         """Return the effective ``list_display`` column list.
 
         Defaults to every column except ``hashed_password`` when
@@ -128,12 +161,11 @@ class AdminModel(Generic[ModelT]):
         Returns:
             list[str]: The list of columns to render.
         """
-        if cls.list_display is not None:
-            return list(cls.list_display)
-        return [name for name in cls.column_names() if name not in {"hashed_password"}]
+        if self.list_display is not None:
+            return list(self.list_display)
+        return [name for name in self.column_names() if name not in {"hashed_password"}]
 
-    @classmethod
-    def build_repository(cls, session: AsyncSession) -> BaseRepository[ModelT]:
+    def build_repository(self, session: AsyncSession) -> BaseRepository[ModelT]:
         """Instantiate the repository for ``session``.
 
         Args:
@@ -142,10 +174,76 @@ class AdminModel(Generic[ModelT]):
         Returns:
             BaseRepository[ModelT]: A repository ready to use.
         """
-        repo_cls = cls.repository_class
+        repo_cls = self.repository_class
         if repo_cls is None:
-            repo_cls = _build_default_repository_class(cls.model)
+            repo_cls = _build_default_repository_class(self.model)
         return repo_cls(session)
+
+
+def _field_key(ref: FieldRef) -> str:
+    """Resolve a field reference to its column key.
+
+    Args:
+        ref (FieldRef): A mapped attribute or its string key.
+
+    Returns:
+        str: The column key.
+
+    Raises:
+        TypeError: When ``ref`` is neither a string nor a mapped
+            attribute exposing a ``key``.
+    """
+    if isinstance(ref, str):
+        return ref
+    key = getattr(ref, "key", None)
+    if not isinstance(key, str):
+        raise TypeError(
+            f"Expected a column attribute or string, got {ref!r}",
+        )
+    return key
+
+
+def _normalize_fields(refs: Sequence[FieldRef]) -> list[str]:
+    """Resolve a sequence of field references to column keys.
+
+    Args:
+        refs (Sequence[FieldRef]): The references to normalize.
+
+    Returns:
+        list[str]: The resolved column keys.
+    """
+    return [_field_key(ref) for ref in refs]
+
+
+def _normalize_ordering(ref: OrderRef | None) -> tuple[str | None, bool]:
+    """Resolve an ordering reference to a ``(column_key, ascending)`` pair.
+
+    Args:
+        ref (OrderRef | None): A column, ``desc()``/``asc()`` wrapper, or
+            string column name (optionally prefixed with ``-``). ``None``
+            defers to the repository default.
+
+    Returns:
+        tuple[str | None, bool]: The column key (or ``None``) and whether
+        ordering is ascending.
+
+    Raises:
+        TypeError: When ``ref`` cannot be resolved to a column key.
+    """
+    if ref is None:
+        return (None, True)
+    if isinstance(ref, str):
+        if ref.startswith("-"):
+            return (ref[1:], False)
+        return (ref, True)
+    if isinstance(ref, UnaryExpression):
+        ascending = ref.modifier is not operators.desc_op
+        element = ref.element
+        key = getattr(element, "key", None) or getattr(element, "name", None)
+        if not isinstance(key, str):
+            raise TypeError(f"Cannot resolve ordering column from {ref!r}")
+        return (key, ascending)
+    return (_field_key(ref), True)
 
 
 def _humanize(value: str) -> str:
@@ -201,4 +299,6 @@ def _build_default_repository_class(
 
 __all__: list[str] = [
     "AdminModel",
+    "FieldRef",
+    "OrderRef",
 ]
