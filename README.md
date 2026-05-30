@@ -1,6 +1,6 @@
 # tempest-fastapi-sdk
 
-Shared FastAPI/SQLAlchemy/Pydantic building blocks used across Tempest projects: base schemas, ORM model, async repository, pagination, settings, exceptions, Alembic helper, FastStream/TaskIQ broker managers, Redis cache, Server-Sent Events, Web Push and the utility classes (`PasswordUtils`, `JWTUtils`, `EmailUtils`, `UploadUtils`, `MetricsUtils`, `LogUtils`).
+Shared FastAPI/SQLAlchemy/Pydantic building blocks used across Tempest projects: base schemas, ORM model, async repository, pagination, settings, exceptions, Alembic helper, FastStream/TaskIQ broker managers, Redis cache, Server-Sent Events, Web Push, a Django-style **admin site** (`AdminSite` + `AdminModel`), and the utility classes (`PasswordUtils`, `JWTUtils`, `EmailUtils`, `UploadUtils`, `MetricsUtils`, `LogUtils`).
 
 The goal is to start every new backend with the same opinionated foundation already in place — no copy-pasting `BaseModel`, no rewriting the same CRUD repository, no re-inventing the exception envelope.
 
@@ -54,6 +54,8 @@ The goal is to start every new backend with the same opinionated foundation alre
   - [Pagination Link headers (`build_pagination_link_header`)](#pagination-link-headers-recipe)
   - [Rate limit middleware (`RateLimitMiddleware`)](#rate-limit-middleware-recipe)
   - [Outbox dispatcher pattern](#outbox-dispatcher-pattern-recipe)
+  - [Command-line interface (`tempest new` / `lint` / `check`)](#command-line-interface-recipe)
+  - [Admin site (`AdminSite` + `AdminModel`)](#admin-site-recipe)
   - [Migration guide 0.7 → 0.8](#migration-guide-07--08)
 - [Reference](#reference)
 - [Conventions](#conventions)
@@ -73,7 +75,7 @@ Via `pyproject.toml`:
 
 ```toml
 dependencies = [
-    "tempest-fastapi-sdk>=0.7.1",
+    "tempest-fastapi-sdk>=0.13.1",
 ]
 ```
 
@@ -93,6 +95,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` (FastStream) |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager` (TaskIQ) |
+| `[admin]` | `jinja2`, `itsdangerous` | `AdminSite`, `AdminModel`, `make_admin_router` |
 | `[all]` | everything above | every helper |
 
 ```bash
@@ -109,19 +112,21 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | Module | Exports |
 | --- | --- |
 | `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]`, `CursorPaginationFilterSchema`, `CursorPaginationSchema`, `encode_cursor`, `decode_cursor`, `build_pagination_link_header` |
-| `tempest_fastapi_sdk.db` | `BaseModel`, `BaseRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin` |
-| `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `FileTooLargeException`, `InvalidFileTypeException` |
+| `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin` |
+| `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `FileTooLargeException`, `InvalidFileTypeException`, `TooManyRequestsException` |
 | `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings` |
-| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware`, `WebhookSignatureVerifier`, `HealthCheck` |
+| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck` |
 | `tempest_fastapi_sdk.controllers` | `BaseController` |
 | `tempest_fastapi_sdk.services` | `BaseService` |
-| `tempest_fastapi_sdk.core` | `configure_logging`, `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx` |
+| `tempest_fastapi_sdk.core` | `configure_logging`, `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx`, `BaseStrEnum`, `BaseIntEnum` |
+| `tempest_fastapi_sdk.admin` *(extra: `[admin]`)* | `AdminSite`, `AdminModel`, `make_admin_router`, `AdminAuthBackend`, `UserModelAuthBackend`, `AdminAuthError` |
 | `tempest_fastapi_sdk.sse` | `EventStream`, `ServerSentEvent`, `sse_response` |
 | `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager`, `cached` |
 | `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
 | `tempest_fastapi_sdk.queue` *(extra: `[queue]`)* | `AsyncBrokerManager` (FastStream lifecycle wrapper) |
 | `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `AsyncTaskBrokerManager` (TaskIQ lifecycle wrapper), `AsyncTaskScheduler` (periodic / cron tasks) |
 | `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`) |
+| `tempest_fastapi_sdk.cli` | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `version` / `--version` |
 
 Core primitives are re-exported from `tempest_fastapi_sdk` at the top level — `from tempest_fastapi_sdk import BaseModel, BaseRepository, AppException` always works. The extras-gated managers in `tempest_fastapi_sdk.cache`, `tempest_fastapi_sdk.queue` and `tempest_fastapi_sdk.tasks` must be imported from their own submodule (`from tempest_fastapi_sdk.queue import AsyncBrokerManager`).
 
@@ -2756,6 +2761,224 @@ Trade-offs to keep in mind:
 - **Single dispatcher.** The naive `claim_pending` does not lock rows; running multiple dispatcher workers will double-publish. Use `SELECT ... FOR UPDATE SKIP LOCKED` on PostgreSQL when you need to scale out.
 - **Retention.** Add a periodic `TRUNCATE`-style job to delete `dispatched` rows older than N days, otherwise the outbox table grows unbounded.
 - **At-least-once.** Consumers must be idempotent — the dispatcher can crash after publishing but before `mark_dispatched`.
+
+### Command-line interface recipe
+
+Installing `tempest-fastapi-sdk` exposes a `tempest` console script. It does two jobs: bootstrap a new layered service from the SDK's preferred skeleton, and run the four quality gates (`ruff check`, `ruff format`, `mypy`, `pytest`) without copy-pasting the same commands into every project.
+
+```bash
+tempest --help                                  # list every command
+tempest --version                               # show the SDK version
+```
+
+#### Scaffold a new service
+
+```bash
+tempest new my_service                          # scaffold under ./my_service
+tempest new my_service --path ~/projects        # custom parent dir
+tempest new my_service \
+    --bind-host 0.0.0.0 \                       # default HOST in .env.example
+    --bind-port 9090 \                          # default PORT in .env.example
+    --extras auth,upload                        # pinned SDK extras
+tempest new my_service --force                  # overwrite existing dir
+```
+
+The skeleton matches the layered architecture documented in this README:
+
+```text
+my_service/
+├── main.py                  # one-liner → src.server.run()
+├── pyproject.toml           # pins tempest-fastapi-sdk + ruff/mypy/pytest
+├── .env.example             # HOST/PORT/DATABASE_URL/JWT_SECRET/CORS_ORIGINS
+├── .gitignore
+├── README.md
+├── src/
+│   ├── server.py            # uvicorn.run() + module-level FastAPI app
+│   ├── api/
+│   │   ├── app.py           # create_app() wires SDK middleware + handlers
+│   │   ├── routers/         # placeholder business router
+│   │   └── dependencies/    # auth.py (require_token) + factories
+│   ├── controllers/         # orchestration between services
+│   ├── services/            # business logic
+│   ├── schemas/             # Pydantic DTOs
+│   ├── core/                # settings.py + exceptions.py
+│   ├── db/
+│   │   ├── models/
+│   │   └── repositories/
+│   └── utils/
+└── tests/
+    └── test_smoke.py        # asserts /api/ and /health/liveness boot
+```
+
+The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[auth]>=0.12.0` by default — change with `--extras`). Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
+
+After scaffolding:
+
+```bash
+cd my_service
+uv sync                                         # installs SDK + dev tools
+cp .env.example .env
+uv run python main.py                           # serves on the configured HOST:PORT
+uv run pytest                                   # the bundled smoke test
+```
+
+#### Quality gates
+
+The lint commands shell out to the project's tooling. They look for the executable on `PATH` first, and otherwise fall back to `uv run <tool>` so a project-local virtualenv works without manual activation.
+
+```bash
+tempest lint                                    # ruff check .
+tempest format                                  # ruff format .          (writes)
+tempest fmt-check                               # ruff format --check .   (read-only)
+tempest type                                    # mypy .
+tempest test                                    # pytest
+tempest test tests/api/                         # pytest with a path filter
+tempest check                                   # all four sequentially, stops at first failure
+```
+
+Every command returns the underlying tool's exit code, so `tempest check` is safe to wire into CI (`tempest check || exit 1`) or pre-commit hooks. When neither the executable nor `uv` is on `PATH`, the wrapper prints `error: '<tool>' is not on PATH and 'uv' is unavailable` and exits with `127` instead of failing silently.
+
+### Admin site recipe
+
+Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. Phase 1 ships read-only views; create/edit/delete land in 0.14.0 and inline + bulk actions in 0.15.0.
+
+Requires the `[admin]` extra:
+
+```bash
+pip install "tempest-fastapi-sdk[admin]"
+```
+
+#### 1. User model
+
+Subclass `BaseUserModel` to get the four columns the admin auth backend expects (`email`, `hashed_password`, `is_admin`, `last_login_at`) on top of the standard `BaseModel` row:
+
+```python
+# src/db/models/user.py
+from tempest_fastapi_sdk import BaseUserModel
+
+
+class UserModel(BaseUserModel):
+    __tablename__ = "user"
+```
+
+`set_password()` / `check_password()` delegate to `PasswordUtils`; `normalize_email()` lowercases and strips. The default `is_active` (inherited from `BaseModel`) and `is_admin` (defaults to `False`) gate access — only `is_active=True` AND `is_admin=True` rows may sign in.
+
+Bootstrap the first admin via your CLI / migration / seed script:
+
+```python
+admin = UserModel(email="root@example.com", is_admin=True)
+admin.set_password("hunter2")  # bcrypt via PasswordUtils
+session.add(admin)
+await session.commit()
+```
+
+#### 2. Register your admin classes
+
+`AdminModel` mirrors Django's `ModelAdmin`. The defaults work out of the box; override the class attributes when you need richer list views:
+
+```python
+# src/admin/site.py
+from typing import ClassVar
+
+from tempest_fastapi_sdk import AdminModel, AdminSite
+
+from src.db.models import UserModel, OrderModel
+
+site = AdminSite(
+    title="MyApp Admin",
+    index_subtitle="Site administration",
+    site_url="https://myapp.com",   # optional outbound "View site" link
+)
+
+
+@site.register
+class UserAdmin(AdminModel[UserModel]):
+    model = UserModel
+    list_display: ClassVar[list[str]] = ["email", "is_admin", "is_active", "last_login_at"]
+    list_filter: ClassVar[list[str]] = ["is_active", "is_admin"]
+    search_fields: ClassVar[list[str]] = ["email"]
+    readonly_fields: ClassVar[list[str]] = ["id", "hashed_password", "created_at", "updated_at"]
+    ordering = "-created_at"
+    page_size = 25
+```
+
+The decorator form (`@site.register`) is equivalent to `site.register(UserAdmin)`. Duplicate registrations under the same slug raise `ValueError`. Slugs default to the model's `__tablename__` so URLs and database tables stay in sync.
+
+#### 3. Mount the router
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+
+from src.admin.site import site
+from src.core.settings import settings
+from src.db.models import UserModel
+
+db = AsyncDatabaseManager(settings.DATABASE_URL)
+app = FastAPI()
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key=settings.ADMIN_SECRET_KEY,    # at least 32 bytes
+        prefix="/admin",
+        cookie_secure=not settings.DEBUG,        # True in production HTTPS
+    )
+)
+```
+
+`make_admin_router` mounts:
+
+- `GET  /admin/login`, `POST /admin/login`, `POST /admin/logout` — auth flow.
+- `GET  /admin/` — dashboard listing every registered admin.
+- `GET  /admin/m/{slug}/` — list view with pagination + free-text search (`?q=`) + per-field filters (`?filter_<field>=value`).
+- `GET  /admin/m/{slug}/{identity}` — read-only detail view.
+- `GET  /admin/static/{path}` — bundled CSS/HTMX assets.
+
+#### 4. Session security defaults
+
+`SignedCookieSessionStore` uses `itsdangerous.TimestampSigner` (HMAC-SHA256) to sign a single cookie:
+
+- `HttpOnly` always set.
+- `Secure` flagged when `cookie_secure=True` (default; flip off in local HTTP dev).
+- `SameSite=Lax` (`"lax"`/`"strict"`/`"none"` accepted).
+- Default lifetime `8h`; expired or tampered cookies are rejected silently.
+- Per-session CSRF token is generated at login and required by every form POST (only `logout` in Phase 1).
+- `secret_key` must be at least 32 bytes — short keys raise `ValueError` at construction time.
+
+#### 5. Plug in a custom auth backend
+
+`AdminAuthBackend` is an ABC, so swap the default for LDAP / OAuth / external IAM by subclassing:
+
+```python
+from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError
+
+
+class OAuthAdminBackend(AdminAuthBackend):
+    async def authenticate(self, session, *, identifier, password):
+        principal = await my_oauth_client.authenticate(identifier, password)
+        if not principal.has_role("admin"):
+            raise AdminAuthError("not an admin")
+        return principal
+
+    async def load_principal(self, session, principal_id):
+        return await my_oauth_client.get_user(principal_id)
+
+    def principal_id(self, principal):
+        return principal.sub
+
+    def display_name(self, principal):
+        return principal.email
+```
+
+Pass the instance via `auth_backend=` and the rest of the admin pipeline (sessions, dashboard, list, detail) keeps working unchanged.
 
 ### Migration guide 0.7 → 0.8
 

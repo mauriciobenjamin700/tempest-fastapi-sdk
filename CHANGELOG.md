@@ -5,6 +5,58 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] — 2026-05-30
+
+### Fixed
+
+- **PyPI wheel duplicate-filename rejection.** `tool.hatch.build.targets.wheel.force-include` was double-listing the admin templates and static assets (already picked up by the default package scan), producing a wheel that PyPI rejected with
+  `400 Invalid distribution file. ZIP archive not accepted: Duplicate filename in local headers`. Removed the redundant directives; `admin/templates/` and `admin/static/` continue to be bundled by hatchling's default sdist/wheel rules.
+
+## [0.13.0] — 2026-05-30
+
+Django-style admin site — Phase 1 (read-only). Mount under `/admin` so the database port can stay private; operators sign in with a user row owned by the application instead of a shared admin password.
+
+### Added
+
+- **`BaseUserModel`** — abstract `BaseModel` subclass with `email` (unique,
+  lowercased), `hashed_password`, `is_admin`, `last_login_at`, plus
+  `set_password()` / `check_password()` / `normalize_email()` helpers.
+- **`AdminAuthBackend`** ABC + **`UserModelAuthBackend`** default. Enforces
+  `is_admin=True` and `is_active=True`, stamps `last_login_at`, exposes
+  `principal_id` / `load_principal` / `display_name` so custom backends
+  (LDAP, OAuth, external IAM) plug into the same flow.
+- **`AdminSite`** — slug registry with `register`/`unregister`/`require`
+  and decorator-style usage (`@site.register`).
+- **`AdminModel[ModelT]`** — Django-flavored declarative configuration:
+  `list_display`, `list_filter`, `search_fields`, `readonly_fields`,
+  `ordering`, `page_size`, `identity_field`, `verbose_name(_plural)`,
+  `repository_class`. Auto-synthesizes a default repository when one
+  is not supplied.
+- **`make_admin_router`** — wires the HTML routes: login / logout /
+  dashboard / list (paginated + search + filter) / detail (read-only)
+  / static. Jinja2 templates + minimal admin.css ship with the wheel.
+- **`SignedCookieSessionStore`** — itsdangerous `TimestampSigner`, signed
+  HttpOnly + Secure + SameSite=Lax cookie scoped to the admin prefix,
+  8-hour default lifetime, per-session CSRF token.
+- New optional extra **`[admin]`** (`jinja2`, `itsdangerous`).
+
+## [0.11.0] — 2026-05-30
+
+### Added
+
+- **`BaseStrEnum` / `BaseIntEnum`** — shared enum bases under
+  `tempest_fastapi_sdk.core.enums` with `values()` / `keys()` /
+  `to_dict()` helpers so str- and int-valued enums no longer need a
+  per-project base class. Exported from the package root.
+
+### Changed
+
+- **`BaseService.map_to_response` is now async-aware.** The base awaits
+  the repository's `map_to_response` only when it returns an
+  awaitable (`inspect.isawaitable`), so concrete services with async
+  mappers no longer need to override the read methods. Existing sync
+  mappers keep working unchanged.
+
 ## [0.10.0] — 2026-05-30
 
 Security hardening primitives, hoisted from a downstream service so every
