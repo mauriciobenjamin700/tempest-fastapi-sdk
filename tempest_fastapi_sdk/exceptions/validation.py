@@ -1,7 +1,5 @@
 """422 Unprocessable Entity exception."""
 
-from typing import ClassVar
-
 from tempest_fastapi_sdk.exceptions.base import AppException
 
 
@@ -14,7 +12,7 @@ class ValidationException(AppException):
 
     status_code: int = 422
     message: str = "Validation error"
-    code: ClassVar[str] = "VALIDATION_ERROR"
+    code: str = "VALIDATION_ERROR"
 
 
 __all__: list[str] = [

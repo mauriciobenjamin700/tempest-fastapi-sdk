@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 
 from sqlalchemy.inspection import inspect
@@ -168,16 +168,23 @@ class AdminModel(Generic[ModelT]):
     def build_repository(self, session: AsyncSession) -> BaseRepository[ModelT]:
         """Instantiate the repository for ``session``.
 
+        Uses :attr:`repository_class` when provided (typically a subclass
+        adding custom queries), otherwise instantiates :class:`BaseRepository`
+        directly with ``model=self.model``.
+
         Args:
             session (AsyncSession): The DB session to bind.
 
         Returns:
             BaseRepository[ModelT]: A repository ready to use.
         """
-        repo_cls = self.repository_class
-        if repo_cls is None:
-            repo_cls = _build_default_repository_class(self.model)
-        return repo_cls(session)
+        if self.repository_class is not None:
+            factory = cast(
+                "Callable[[AsyncSession], BaseRepository[ModelT]]",
+                self.repository_class,
+            )
+            return factory(session)
+        return BaseRepository(session, model=self.model)
 
 
 def _field_key(ref: FieldRef) -> str:
@@ -263,38 +270,6 @@ def _humanize(value: str) -> str:
         out.append(char)
         last = char
     return "".join(out).strip().title()
-
-
-def _build_default_repository_class(
-    model: type[BaseModel],
-) -> type[BaseRepository[Any]]:
-    """Synthesize a minimal repository class for ``model``.
-
-    The synthesized class is cached on the model so subsequent calls
-    reuse the same type instead of producing distinct anonymous
-    classes (which would confuse :func:`isinstance` checks).
-
-    Args:
-        model (type[BaseModel]): The model class.
-
-    Returns:
-        type[BaseRepository[Any]]: The repository subclass.
-    """
-    attr = "_tempest_default_admin_repository"
-    cached = getattr(model, attr, None)
-    if cached is not None:
-        return cast("type[BaseRepository[Any]]", cached)
-    name = f"{model.__name__}AdminRepository"
-    new_cls = type(
-        name,
-        (BaseRepository,),
-        {
-            "model": model,
-            "__module__": model.__module__,
-        },
-    )
-    setattr(model, attr, new_cls)
-    return cast("type[BaseRepository[Any]]", new_cls)
 
 
 __all__: list[str] = [

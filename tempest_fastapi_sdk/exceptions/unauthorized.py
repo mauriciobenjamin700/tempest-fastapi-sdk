@@ -1,7 +1,5 @@
 """401 Unauthorized exception."""
 
-from typing import ClassVar
-
 from tempest_fastapi_sdk.exceptions.base import AppException
 
 
@@ -15,7 +13,7 @@ class UnauthorizedException(AppException):
 
     status_code: int = 401
     message: str = "Unauthorized"
-    code: ClassVar[str] = "UNAUTHORIZED"
+    code: str = "UNAUTHORIZED"
 
 
 __all__: list[str] = [

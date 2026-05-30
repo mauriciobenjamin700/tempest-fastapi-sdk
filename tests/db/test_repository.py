@@ -1,14 +1,11 @@
 """Tests for tempest_fastapi_sdk.db.repository.BaseRepository."""
 
-from typing import ClassVar
-
 import pytest
 from sqlalchemy import String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
-    AppException,
     BaseModel,
     BaseRepository,
     ConflictException,
@@ -24,13 +21,29 @@ class Product(BaseModel):
 
 
 class ProductNotFoundError(NotFoundException):
+    """Subclass kept only for isinstance/except matching."""
+
     message: str = "Product not found"
-    code: ClassVar[str] = "PRODUCT_NOT_FOUND"
+    code: str = "PRODUCT_NOT_FOUND"
 
 
 class ProductRepository(BaseRepository[Product]):
-    model: type[Product] = Product
-    not_found_exception: ClassVar[type[AppException]] = ProductNotFoundError
+    """Subclass kept around to demonstrate the custom-methods pattern."""
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        not_found_message: str | None = None,
+        create_conflict_message: str | None = None,
+    ) -> None:
+        super().__init__(
+            session,
+            model=Product,
+            not_found_exception=ProductNotFoundError,
+            not_found_message=not_found_message,
+            create_conflict_message=create_conflict_message,
+        )
 
 
 @pytest.fixture

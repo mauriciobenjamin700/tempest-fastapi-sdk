@@ -1,7 +1,5 @@
 """File-upload related exceptions."""
 
-from typing import ClassVar
-
 from tempest_fastapi_sdk.exceptions.base import AppException
 
 
@@ -10,7 +8,7 @@ class FileTooLargeException(AppException):
 
     status_code: int = 413
     message: str = "File too large"
-    code: ClassVar[str] = "FILE_TOO_LARGE"
+    code: str = "FILE_TOO_LARGE"
 
 
 class InvalidFileTypeException(AppException):
@@ -18,7 +16,7 @@ class InvalidFileTypeException(AppException):
 
     status_code: int = 415
     message: str = "Invalid file type"
-    code: ClassVar[str] = "INVALID_FILE_TYPE"
+    code: str = "INVALID_FILE_TYPE"
 
 
 __all__: list[str] = [

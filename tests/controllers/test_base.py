@@ -1,6 +1,5 @@
 """Tests for tempest_fastapi_sdk.controllers.BaseController."""
 
-from typing import ClassVar
 from uuid import uuid4
 
 import pytest
@@ -29,8 +28,8 @@ class GadgetResponse(BaseResponseSchema):
 
 
 class GadgetRepository(BaseRepository[Gadget]):
-    model: type[Gadget] = Gadget
-    not_found_exception: ClassVar[type[NotFoundException]] = NotFoundException
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, model=Gadget)
 
     def map_to_response(self, instance: Gadget) -> GadgetResponse:
         return GadgetResponse(

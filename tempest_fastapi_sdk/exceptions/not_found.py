@@ -1,7 +1,5 @@
 """404 Not Found exception."""
 
-from typing import ClassVar
-
 from tempest_fastapi_sdk.exceptions.base import AppException
 
 
@@ -14,7 +12,7 @@ class NotFoundException(AppException):
 
     status_code: int = 404
     message: str = "Resource not found"
-    code: ClassVar[str] = "NOT_FOUND"
+    code: str = "NOT_FOUND"
 
 
 __all__: list[str] = [

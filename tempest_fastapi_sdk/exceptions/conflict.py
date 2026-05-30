@@ -1,7 +1,5 @@
 """409 Conflict exception."""
 
-from typing import ClassVar
-
 from tempest_fastapi_sdk.exceptions.base import AppException
 
 
@@ -14,7 +12,7 @@ class ConflictException(AppException):
 
     status_code: int = 409
     message: str = "Resource conflict"
-    code: ClassVar[str] = "CONFLICT"
+    code: str = "CONFLICT"
 
 
 __all__: list[str] = [

@@ -1,6 +1,6 @@
 """Base application exception integrated with FastAPI."""
 
-from typing import Any, ClassVar
+from typing import Any
 
 from fastapi import HTTPException
 
@@ -8,10 +8,20 @@ from fastapi import HTTPException
 class AppException(HTTPException):
     """Base exception for all application-level errors.
 
-    Subclasses override ``status_code``, ``message`` and ``code`` as
-    class attributes. The constructor allows overriding the message
-    for dynamic error cases and attaching structured ``details`` that
-    are surfaced to API clients alongside the human-readable message.
+    Concrete projects raise either a domain-specific subclass (kept
+    around for ``except DomainError`` matching) or the base directly,
+    passing ``code`` / ``status_code`` / ``message`` via constructor
+    keyword arguments. Class-level attributes are the defaults each
+    constructor argument falls back to, never required overrides::
+
+        class UserNotFoundError(NotFoundException):
+            \"\"\"Subclass exists only for isinstance/except matching.\"\"\"
+
+        raise UserNotFoundError(
+            "Usuário não encontrado",
+            code="USER_NOT_FOUND",
+            details={"email": email},
+        )
 
     The matching exception handler (see
     :mod:`tempest_fastapi_sdk.api.handlers`) emits the JSON shape::
@@ -22,25 +32,28 @@ class AppException(HTTPException):
             "details": {"<any>": "<context>"}
         }
 
-    Class attributes:
-        status_code (int): The HTTP status code returned to clients.
-        message (str): The default human-readable error message.
-        code (ClassVar[str]): Stable, machine-readable identifier.
-            Defaults to ``INTERNAL_SERVER_ERROR``; subclasses set
-            their own.
+    Class attributes (defaults the constructor falls back to):
+        status_code (int): HTTP status code.
+        message (str): Default human-readable message.
+        code (str): Stable, machine-readable identifier.
 
     Instance attributes:
+        status_code (int): The status code attached to this instance.
+        code (str): The error code attached to this instance.
         details (dict[str, Any]): Free-form context attached to the
             response payload.
     """
 
     status_code: int = 500
     message: str = "Internal server error"
-    code: ClassVar[str] = "INTERNAL_SERVER_ERROR"
+    code: str = "INTERNAL_SERVER_ERROR"
 
     def __init__(
         self,
         message: str | None = None,
+        *,
+        code: str | None = None,
+        status_code: int | None = None,
         details: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
     ) -> None:
@@ -48,15 +61,25 @@ class AppException(HTTPException):
 
         Args:
             message (str | None): Override the class-level message.
+            code (str | None): Override the class-level error code on
+                this instance only — leaves other instances of the
+                same class untouched.
+            status_code (int | None): Override the class-level HTTP
+                status code on this instance only.
             details (dict[str, Any] | None): Structured context to
                 attach to the JSON response.
             headers (dict[str, str] | None): Optional HTTP headers
                 to include in the response.
         """
+        cls = type(self)
+        self.code: str = code if code is not None else cls.code
+        effective_status: int = (
+            status_code if status_code is not None else cls.status_code
+        )
         self.details: dict[str, Any] = details or {}
         super().__init__(
-            status_code=self.status_code,
-            detail=message or self.message,
+            status_code=effective_status,
+            detail=message or cls.message,
             headers=headers,
         )
 

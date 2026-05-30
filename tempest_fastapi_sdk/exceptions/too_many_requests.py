@@ -1,6 +1,6 @@
 """429 Too Many Requests exception."""
 
-from typing import Any, ClassVar
+from typing import Any
 
 from tempest_fastapi_sdk.exceptions.base import AppException
 
@@ -17,7 +17,7 @@ class TooManyRequestsException(AppException):
 
     status_code: int = 429
     message: str = "Too many requests"
-    code: ClassVar[str] = "TOO_MANY_REQUESTS"
+    code: str = "TOO_MANY_REQUESTS"
 
     def __init__(
         self,

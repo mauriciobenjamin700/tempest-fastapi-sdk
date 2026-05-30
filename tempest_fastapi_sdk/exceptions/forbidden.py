@@ -1,7 +1,5 @@
 """403 Forbidden exception."""
 
-from typing import ClassVar
-
 from tempest_fastapi_sdk.exceptions.base import AppException
 
 
@@ -10,7 +8,7 @@ class ForbiddenException(AppException):
 
     status_code: int = 403
     message: str = "Forbidden"
-    code: ClassVar[str] = "FORBIDDEN"
+    code: str = "FORBIDDEN"
 
 
 __all__: list[str] = [

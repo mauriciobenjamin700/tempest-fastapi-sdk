@@ -5,6 +5,43 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] — 2026-05-30
+
+Repository and exception APIs join the admin in dropping Django-style class-attribute configuration. The constructor signature is now the contract; subclasses survive only when they add behavior (custom queries, `except DomainError`) — never to "fill in" a required class attribute.
+
+### Changed
+
+- **BREAKING — `BaseRepository.model` / `not_found_exception` are constructor kwargs, not class attributes.** Plain CRUD works without a subclass:
+
+  ```python
+  repository = BaseRepository(session, model=UserModel)
+  ```
+
+  Subclasses kept around for custom queries forward both via `super().__init__`:
+
+  ```python
+  class UserRepository(BaseRepository[UserModel]):
+      def __init__(self, session: AsyncSession) -> None:
+          super().__init__(
+              session,
+              model=UserModel,
+              not_found_exception=UserNotFoundError,
+              not_found_message="Usuário não encontrado",
+          )
+  ```
+
+  Replaces the previous `class UserRepository(BaseRepository[UserModel]): model = UserModel; not_found_exception: ClassVar[...] = ...` form. The synthesized `_build_default_repository_class` helper in `admin/config.py` is gone — `AdminModel.build_repository` now calls `BaseRepository(session, model=self.model)` directly.
+
+- **BREAKING — `AppException.code` is a plain `str` class attribute and is overridable at the raise site via `code=`.** Same for `status_code=`. The `code: ClassVar[str]` annotation is removed from every shipped subclass (`NotFoundException`, `ConflictException`, `ForbiddenException`, `UnauthorizedException`, `ValidationException`, `TooManyRequestsException`, `InvalidTokenException`, `ExpiredTokenException`, `FileTooLargeException`, `InvalidFileTypeException`). Subclasses still exist for `isinstance` / `except DomainError` matching; class-level defaults still work; constructor wins when both are present:
+
+  ```python
+  raise NotFoundException(
+      "Pedido não encontrado",
+      code="ORDER_NOT_FOUND",
+      details={"order_id": str(order_id)},
+  )
+  ```
+
 ## [0.15.0] — 2026-05-30
 
 Admin configuration is now a plain typed instance instead of a Django-style subclass. The class form (`class UserAdmin(AdminModel[UserModel])` with `ClassVar` attributes and the `@site.register` decorator) is gone — register a constructed instance instead. Field options accept real SQLAlchemy column attributes, so typos surface in the editor rather than at runtime.

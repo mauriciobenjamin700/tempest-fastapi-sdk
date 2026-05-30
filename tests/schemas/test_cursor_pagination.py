@@ -1,6 +1,5 @@
 """Tests for cursor pagination schemas + repository support."""
 
-from typing import ClassVar
 from uuid import uuid4
 
 import pytest
@@ -13,7 +12,6 @@ from tempest_fastapi_sdk import (
     BaseRepository,
     CursorPaginationFilterSchema,
     CursorPaginationSchema,
-    NotFoundException,
     decode_cursor,
     encode_cursor,
 )
@@ -24,14 +22,9 @@ class Note(BaseModel):
     title: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
-class NoteRepository(BaseRepository[Note]):
-    model: type[Note] = Note
-    not_found_exception: ClassVar[type[NotFoundException]] = NotFoundException
-
-
 @pytest.fixture
-def repo(session: AsyncSession) -> NoteRepository:
-    return NoteRepository(session)
+def repo(session: AsyncSession) -> BaseRepository[Note]:
+    return BaseRepository(session, model=Note)
 
 
 class TestCursorEncoding:
@@ -72,7 +65,7 @@ class TestCursorPaginationFilterSchema:
 
 
 class TestCursorPaginate:
-    async def test_first_page_no_cursor(self, repo: NoteRepository) -> None:
+    async def test_first_page_no_cursor(self, repo: BaseRepository[Note]) -> None:
         await repo.add_all([Note(title=f"n{i}") for i in range(5)])
         result = await repo.cursor_paginate(limit=2, order_by="title", ascending=True)
         assert len(result["items"]) == 2
@@ -80,7 +73,7 @@ class TestCursorPaginate:
         assert result["next_cursor"] is not None
         assert result["limit"] == 2
 
-    async def test_walks_through_pages(self, repo: NoteRepository) -> None:
+    async def test_walks_through_pages(self, repo: BaseRepository[Note]) -> None:
         await repo.add_all([Note(title=f"n{i:02d}") for i in range(7)])
         seen_titles: list[str] = []
         cursor: str | None = None
@@ -97,18 +90,20 @@ class TestCursorPaginate:
                 break
         assert seen_titles == [f"n{i:02d}" for i in range(7)]
 
-    async def test_last_page_has_no_next_cursor(self, repo: NoteRepository) -> None:
+    async def test_last_page_has_no_next_cursor(
+        self, repo: BaseRepository[Note]
+    ) -> None:
         await repo.add_all([Note(title=f"n{i}") for i in range(3)])
         result = await repo.cursor_paginate(limit=10, order_by="title", ascending=True)
         assert result["has_more"] is False
         assert result["next_cursor"] is None
         assert len(result["items"]) == 3
 
-    async def test_invalid_order_by_raises(self, repo: NoteRepository) -> None:
+    async def test_invalid_order_by_raises(self, repo: BaseRepository[Note]) -> None:
         with pytest.raises(ValueError):
             await repo.cursor_paginate(order_by="ghost_column")
 
-    async def test_descending_order(self, repo: NoteRepository) -> None:
+    async def test_descending_order(self, repo: BaseRepository[Note]) -> None:
         await repo.add_all([Note(title=f"n{i}") for i in range(3)])
         result = await repo.cursor_paginate(limit=10, order_by="title", ascending=False)
         titles = [n.title for n in result["items"]]

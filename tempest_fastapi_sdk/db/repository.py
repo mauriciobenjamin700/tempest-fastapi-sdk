@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from typing import Any, ClassVar, Generic, List, TypeVar, cast
+from typing import Any, Generic, List, TypeVar, cast
 from uuid import UUID
 
 from sqlalchemy import CursorResult, Select, delete, func, select, update
@@ -38,10 +38,15 @@ def _escape_like(value: str) -> str:
 class BaseRepository(Generic[ModelType]):
     """Base async repository with generic CRUD operations.
 
-    Subclasses MUST set the ``model`` class attribute and SHOULD
-    override ``not_found_exception`` with a domain-specific subclass
-    of :class:`NotFoundException`. The default filter logic supports
-    equality on every column plus the following conventions:
+    Instantiate directly for plain CRUD (``BaseRepository(session,
+    model=UserModel)``) or subclass when adding custom queries — the
+    subclass forwards ``model`` / ``not_found_exception`` to
+    ``super().__init__`` instead of declaring class attributes. The
+    constructor signature is the contract; there are no magic class
+    attributes to override.
+
+    The default filter logic supports equality on every column plus
+    the following conventions:
 
     * ``name`` (string) → case-insensitive ``ILIKE %value%`` search.
     * ``bool`` values → ``.is_(value)`` (correct SQL boolean check).
@@ -61,22 +66,18 @@ class BaseRepository(Generic[ModelType]):
     translation between ORM rows and DTOs.
 
     Attributes:
-        model (type[ModelType]): The SQLAlchemy model class operated
-            on. MUST be set by subclasses.
-        not_found_exception (type[AppException]): The exception class
-            raised when single-record lookups miss. Defaults to
-            :class:`NotFoundException`; override in subclasses for
-            domain-specific 404 messages.
+        model (type[ModelType]): The SQLAlchemy model class operated on.
+        not_found_exception (type[AppException]): Exception class raised
+            when single-record lookups miss.
         session (AsyncSession): The async database session.
     """
-
-    model: type[ModelType]
-    not_found_exception: ClassVar[type[AppException]] = NotFoundException
 
     def __init__(
         self,
         session: AsyncSession,
         *,
+        model: type[ModelType],
+        not_found_exception: type[AppException] = NotFoundException,
         not_found_message: str | None = None,
         create_conflict_message: str | None = None,
         update_conflict_message: str | None = None,
@@ -92,6 +93,12 @@ class BaseRepository(Generic[ModelType]):
 
         Args:
             session (AsyncSession): The async database session.
+            model (type[ModelType]): The SQLAlchemy model class this
+                repository operates on. Required.
+            not_found_exception (type[AppException]): Exception class
+                raised when single-record lookups miss. Defaults to
+                :class:`NotFoundException`; pass a domain-specific
+                subclass for richer 404 messages.
             not_found_message (str | None): Message used when ``get``,
                 ``get_by_id``, ``delete``, ``soft_delete`` or
                 ``restore`` find no matching record.
@@ -104,8 +111,18 @@ class BaseRepository(Generic[ModelType]):
             bulk_update_conflict_message (str | None): Message used
                 when ``update_many`` or ``bulk_update`` raises
                 ``IntegrityError``.
+
+        Raises:
+            TypeError: When ``model`` is not a subclass of
+                :class:`BaseModel`.
         """
+        if not isinstance(model, type) or not issubclass(model, BaseModel):
+            raise TypeError(
+                "BaseRepository `model` must be a subclass of BaseModel",
+            )
         self.session: AsyncSession = session
+        self.model: type[ModelType] = model
+        self.not_found_exception: type[AppException] = not_found_exception
         name = self.model.__name__
         self._not_found_message: str = not_found_message or f"{name} not found"
         self._create_conflict_message: str = (

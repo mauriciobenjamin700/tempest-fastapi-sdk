@@ -471,23 +471,33 @@ __all__: list[str] = [
 
 ### 5. Domain exceptions
 
-The SDK ships generic `NotFoundException`, `ConflictException`, etc. Subclass them per domain so error responses have a useful `code` field:
+The SDK ships generic `NotFoundException`, `ConflictException`, etc. Subclass them per domain so the `isinstance` / `except DomainError` matching stays explicit. Class-level `message` / `code` / `status_code` are defaults the constructor falls back to — you can also override any of them at the raise site without subclassing:
 
 ```python
 # src/core/exceptions.py
-from typing import ClassVar
-
 from tempest_fastapi_sdk import ConflictException, NotFoundException
 
 
 class UserNotFoundError(NotFoundException):
+    """Subclass kept only for ``except UserNotFoundError`` matching."""
+
     message: str = "Usuário não encontrado"
-    code: ClassVar[str] = "USER_NOT_FOUND"
+    code: str = "USER_NOT_FOUND"
 
 
 class UserEmailAlreadyTakenError(ConflictException):
     message: str = "Já existe um usuário com esse e-mail"
-    code: ClassVar[str] = "USER_EMAIL_TAKEN"
+    code: str = "USER_EMAIL_TAKEN"
+```
+
+For one-off codes you don't need a subclass — pass them to the constructor:
+
+```python
+raise NotFoundException(
+    "Pedido não encontrado",
+    code="ORDER_NOT_FOUND",
+    details={"order_id": str(order_id)},
+)
 ```
 
 The SDK's exception handler ([`register_exception_handlers`](#2-settings-server-app-factory--entry-point)) serializes them to:
@@ -504,11 +514,25 @@ The frontend branches on `code`, not on the (potentially translated) message.
 
 ### 6. Repository
 
+For plain CRUD you don't need a subclass at all — instantiate `BaseRepository` directly and bind the model via the constructor:
+
+```python
+# anywhere a session is in scope
+from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import UserModel
+
+repository = BaseRepository(session, model=UserModel)
+await repository.add(UserModel(email="ana@example.com"))
+```
+
+Subclass when you want to bake in domain-specific messages, swap the not-found exception, override the mapper methods or add custom queries. The constructor signature (not class attributes) is the contract:
+
 ```python
 # src/db/repositories/user.py
-from typing import ClassVar
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from tempest_fastapi_sdk import AppException, BaseRepository
+from tempest_fastapi_sdk import BaseRepository
 
 from src.core.exceptions import UserNotFoundError
 from src.db.models import UserModel
@@ -518,8 +542,15 @@ from src.schemas import UserResponseSchema
 class UserRepository(BaseRepository[UserModel]):
     """Data-access layer for users."""
 
-    model: type[UserModel] = UserModel
-    not_found_exception: ClassVar[type[AppException]] = UserNotFoundError
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(
+            session,
+            model=UserModel,
+            not_found_exception=UserNotFoundError,
+            not_found_message="Usuário não encontrado",
+            create_conflict_message="Já existe um usuário com esse e-mail",
+            update_conflict_message="Conflito ao atualizar usuário",
+        )
 
     def map_to_schema(self, instance: UserModel) -> UserResponseSchema:
         return UserResponseSchema.model_validate(instance)
@@ -528,49 +559,12 @@ class UserRepository(BaseRepository[UserModel]):
         return self.map_to_schema(instance)
 ```
 
-Per-domain error messages (optional but recommended in real apps):
+The base repo gives you 17 methods for free — see the [reference table](#baserepository-methods) below. Add custom queries on top of the same `UserRepository`:
 
 ```python
+# src/db/repositories/user.py  (continued)
 class UserRepository(BaseRepository[UserModel]):
-    model: type[UserModel] = UserModel
-    not_found_exception: ClassVar[type[AppException]] = UserNotFoundError
-
-    def __init__(self, session: AsyncSession) -> None:
-        super().__init__(
-            session,
-            not_found_message="Usuário não encontrado",
-            create_conflict_message="Já existe um usuário com esse e-mail",
-            update_conflict_message="Conflito ao atualizar usuário",
-        )
-```
-
-The base repo gives you 17 methods for free — see the [reference table](#baserepository-methods) below. Add custom methods on top by extending the `UserRepository` class shown above. The full file then looks like:
-
-```python
-# src/db/repositories/user.py
-from typing import ClassVar
-
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from tempest_fastapi_sdk import AppException, BaseRepository
-
-from src.core.exceptions import UserNotFoundError
-from src.db.models import UserModel
-
-
-class UserRepository(BaseRepository[UserModel]):
-    """Repository for the ``user`` table."""
-
-    model: type[UserModel] = UserModel
-    not_found_exception: ClassVar[type[AppException]] = UserNotFoundError
-
-    def __init__(self, session: AsyncSession) -> None:
-        super().__init__(
-            session,
-            not_found_message="Usuário não encontrado",
-            create_conflict_message="Já existe um usuário com esse e-mail",
-            update_conflict_message="Conflito ao atualizar usuário",
-        )
+    # ... __init__ and mappers above ...
 
     # ──────── custom queries on top of the 17 inherited methods ────────
 
@@ -2765,7 +2759,8 @@ from src.db.models import OutboxEventModel
 
 
 class OutboxRepository(BaseRepository[OutboxEventModel]):
-    model: type[OutboxEventModel] = OutboxEventModel
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, model=OutboxEventModel)
 
     async def claim_pending(self, *, limit: int = 100) -> list[OutboxEventModel]:
         """Lock-free claim — fine for single-worker dispatcher."""

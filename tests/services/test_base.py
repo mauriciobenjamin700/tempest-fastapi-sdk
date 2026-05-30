@@ -1,6 +1,6 @@
 """Tests for tempest_fastapi_sdk.services.BaseService."""
 
-from typing import Any, ClassVar
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -28,8 +28,8 @@ class WidgetResponse(BaseResponseSchema):
 
 
 class WidgetRepository(BaseRepository[Widget]):
-    model: type[Widget] = Widget
-    not_found_exception: ClassVar[type[NotFoundException]] = NotFoundException
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, model=Widget)
 
     def map_to_response(self, instance: Widget) -> WidgetResponse:
         return WidgetResponse(
@@ -106,8 +106,8 @@ class TestBaseService:
 
 
 class AsyncWidgetRepository(BaseRepository[Widget]):
-    model: type[Widget] = Widget
-    not_found_exception: ClassVar[type[NotFoundException]] = NotFoundException
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, model=Widget)
 
     async def map_to_response(self, instance: Widget) -> WidgetResponse:
         return WidgetResponse(
