@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="tempest-admin-dashboard">
+  <h1>{{ site.title }}</h1>
+  <p>{{ site.index_subtitle }}</p>
+  {% if admins %}
+  <table class="tempest-admin-dashboard__table">
+    <thead>
+      <tr>
+        <th>Model</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for admin in admins %}
+      <tr>
+        <td>{{ admin.get_verbose_name_plural() }}</td>
+        <td><a href="{{ url_for('admin_list', slug=admin.get_slug()) }}">Browse</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No models registered. Register an <code>AdminModel</code> on the
+  <code>AdminSite</code> to populate this dashboard.</p>
+  {% endif %}
+</section>
+{% endblock %}

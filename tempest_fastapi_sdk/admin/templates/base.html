@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ site.title }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ static_url }}/admin.css">
+  <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
+</head>
+<body>
+  <header class="tempest-admin-header">
+    <div class="tempest-admin-header__brand">
+      <a href="{{ url_for('admin_index') }}">{{ site.title }}</a>
+    </div>
+    {% if user %}
+    <nav class="tempest-admin-header__nav">
+      <span class="tempest-admin-header__user">{{ user_display }}</span>
+      {% if site.site_url %}<a href="{{ site.site_url }}">View site</a>{% endif %}
+      <form method="post" action="{{ url_for('admin_logout') }}" class="tempest-admin-header__logout">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <button type="submit">Logout</button>
+      </form>
+    </nav>
+    {% endif %}
+  </header>
+  <main class="tempest-admin-main">
+    {% if messages %}
+    <ul class="tempest-admin-messages">
+      {% for message in messages %}
+      <li class="tempest-admin-messages__item tempest-admin-messages__item--{{ message.level }}">
+        {{ message.text }}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="tempest-admin-footer">
+    <small>Powered by tempest-fastapi-sdk</small>
+  </footer>
+</body>
+</html>

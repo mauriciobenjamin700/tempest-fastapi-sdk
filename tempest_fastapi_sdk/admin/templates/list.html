@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ admin.get_verbose_name_plural() }} · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-list">
+  <header class="tempest-admin-list__header">
+    <h1>{{ admin.get_verbose_name_plural() }}</h1>
+    <p>{{ pagination.total }} record{{ pagination.total|pluralize }}.</p>
+  </header>
+  <form method="get" class="tempest-admin-list__filters">
+    {% if admin.search_fields %}
+    <input type="search" name="q" value="{{ query.q or '' }}" placeholder="Search…" aria-label="Search">
+    {% endif %}
+    {% for field in admin.list_filter %}
+    <label>
+      <span>{{ field }}</span>
+      <select name="filter_{{ field }}">
+        <option value="">— any —</option>
+        {% for option in filter_options.get(field, []) %}
+        <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
+          {{ option.label }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endfor %}
+    {% if admin.search_fields or admin.list_filter %}
+    <button type="submit">Apply</button>
+    {% endif %}
+  </form>
+  <table class="tempest-admin-list__table">
+    <thead>
+      <tr>
+        {% for column in columns %}<th>{{ column }}</th>{% endfor %}
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        {% for column in columns %}<td>{{ row.values[column] }}</td>{% endfor %}
+        <td>
+          <a href="{{ url_for('admin_detail', slug=admin.get_slug(), identity=row.identity) }}">View</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ columns|length + 1 }}">No records.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if pagination.pages > 1 %}
+  <nav class="tempest-admin-list__pagination" aria-label="Pagination">
+    {% if pagination.page > 1 %}
+    <a href="?{{ pagination.query_for(pagination.page - 1) }}">← Prev</a>
+    {% endif %}
+    <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    {% if pagination.page < pagination.pages %}
+    <a href="?{{ pagination.query_for(pagination.page + 1) }}">Next →</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+</section>
+{% endblock %}

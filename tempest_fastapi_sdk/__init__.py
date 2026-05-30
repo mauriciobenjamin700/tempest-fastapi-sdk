@@ -1,5 +1,13 @@
 """tempest-fastapi-sdk — shared FastAPI/SQLAlchemy/Pydantic primitives."""
 
+from tempest_fastapi_sdk.admin import (
+    AdminAuthBackend,
+    AdminAuthError,
+    AdminModel,
+    AdminSite,
+    UserModelAuthBackend,
+    make_admin_router,
+)
 from tempest_fastapi_sdk.api import (
     DEFAULT_STATIC_SECURITY_HEADERS,
     HardenedStaticFiles,
@@ -42,6 +50,7 @@ from tempest_fastapi_sdk.db import (
     AuditMixin,
     BaseModel,
     BaseRepository,
+    BaseUserModel,
     SoftDeleteMixin,
 )
 from tempest_fastapi_sdk.exceptions import (
@@ -140,7 +149,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-__version__: str = "0.11.0"
+__version__: str = "0.13.0"
 
 __all__: list[str] = [
     "CEP",
@@ -153,6 +162,10 @@ __all__: list[str] = [
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "NAMING_CONVENTION",
     "PHONE_BR_PATTERN",
+    "AdminAuthBackend",
+    "AdminAuthError",
+    "AdminModel",
+    "AdminSite",
     "AlembicHelper",
     "AppException",
     "AsyncDatabaseManager",
@@ -169,6 +182,7 @@ __all__: list[str] = [
     "BaseSchema",
     "BaseService",
     "BaseStrEnum",
+    "BaseUserModel",
     "CORSSettings",
     "CPFOrCNPJ",
     "CPUMetrics",
@@ -216,6 +230,7 @@ __all__: list[str] = [
     "UnauthorizedException",
     "UploadSettings",
     "UploadUtils",
+    "UserModelAuthBackend",
     "ValidationException",
     "WebPushDispatcher",
     "WebPushError",
@@ -244,6 +259,7 @@ __all__: list[str] = [
     "is_valid_cpf",
     "is_valid_cpf_cnpj",
     "is_valid_phone_br",
+    "make_admin_router",
     "make_bearer_token_dependency",
     "make_health_router",
     "make_jwt_user_dependency",

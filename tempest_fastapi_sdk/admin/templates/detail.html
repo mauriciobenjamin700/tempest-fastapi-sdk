@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ admin.get_verbose_name() }} · {{ identity }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-detail">
+  <header class="tempest-admin-detail__header">
+    <h1>{{ admin.get_verbose_name() }} · {{ identity }}</h1>
+    <a href="{{ url_for('admin_list', slug=admin.get_slug()) }}">← Back to list</a>
+  </header>
+  <dl class="tempest-admin-detail__fields">
+    {% for column, value in fields %}
+    <dt>{{ column }}</dt>
+    <dd>
+      {% if value is none %}<em>—</em>{% else %}{{ value }}{% endif %}
+    </dd>
+    {% endfor %}
+  </dl>
+</section>
+{% endblock %}

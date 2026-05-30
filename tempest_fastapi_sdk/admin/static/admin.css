@@ -1,0 +1,245 @@
+:root {
+  --tempest-bg: #0f172a;
+  --tempest-bg-soft: #1e293b;
+  --tempest-bg-row: #f8fafc;
+  --tempest-bg-row-alt: #f1f5f9;
+  --tempest-fg: #0f172a;
+  --tempest-fg-soft: #475569;
+  --tempest-accent: #2563eb;
+  --tempest-accent-hover: #1d4ed8;
+  --tempest-danger: #b91c1c;
+  --tempest-radius: 6px;
+  --tempest-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--tempest-fg);
+  background: #f8fafc;
+}
+
+a {
+  color: var(--tempest-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--tempest-accent-hover);
+  text-decoration: underline;
+}
+
+button {
+  border: 0;
+  background: var(--tempest-accent);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: var(--tempest-radius);
+  cursor: pointer;
+  font: inherit;
+}
+
+button:hover {
+  background: var(--tempest-accent-hover);
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--tempest-radius);
+  border: 1px solid #cbd5e1;
+  background: #fff;
+}
+
+.tempest-admin-header {
+  background: var(--tempest-bg);
+  color: #f8fafc;
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: var(--tempest-shadow);
+}
+
+.tempest-admin-header__brand a {
+  color: #fff;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.tempest-admin-header__nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: #cbd5e1;
+}
+
+.tempest-admin-header__nav a {
+  color: #cbd5e1;
+}
+
+.tempest-admin-header__user {
+  font-weight: 500;
+  color: #f1f5f9;
+}
+
+.tempest-admin-header__logout {
+  margin: 0;
+}
+
+.tempest-admin-header__logout button {
+  background: transparent;
+  color: #f1f5f9;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #475569;
+}
+
+.tempest-admin-header__logout button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tempest-admin-main {
+  max-width: 1080px;
+  margin: 2rem auto;
+  padding: 0 1.5rem;
+}
+
+.tempest-admin-messages {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tempest-admin-messages__item {
+  padding: 0.75rem 1rem;
+  border-radius: var(--tempest-radius);
+  border-left: 4px solid var(--tempest-accent);
+  background: #eff6ff;
+}
+
+.tempest-admin-messages__item--error {
+  border-left-color: var(--tempest-danger);
+  background: #fef2f2;
+}
+
+.tempest-admin-login {
+  max-width: 360px;
+  margin: 4rem auto;
+  background: #fff;
+  border-radius: var(--tempest-radius);
+  padding: 2rem;
+  box-shadow: var(--tempest-shadow);
+}
+
+.tempest-admin-login h1 {
+  margin-top: 0;
+}
+
+.tempest-admin-login__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.tempest-admin-login__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tempest-admin-login__error {
+  background: #fef2f2;
+  color: var(--tempest-danger);
+  padding: 0.75rem 1rem;
+  border-radius: var(--tempest-radius);
+}
+
+.tempest-admin-dashboard__table,
+.tempest-admin-list__table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border-radius: var(--tempest-radius);
+  overflow: hidden;
+  box-shadow: var(--tempest-shadow);
+}
+
+.tempest-admin-dashboard__table th,
+.tempest-admin-dashboard__table td,
+.tempest-admin-list__table th,
+.tempest-admin-list__table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: top;
+}
+
+.tempest-admin-list__table tr:nth-child(even) td {
+  background: var(--tempest-bg-row-alt);
+}
+
+.tempest-admin-list__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 1rem;
+}
+
+.tempest-admin-list__filters {
+  display: flex;
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.tempest-admin-list__filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tempest-admin-list__pagination {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1.5rem;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-detail__fields {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 0.5rem 1.5rem;
+  background: #fff;
+  border-radius: var(--tempest-radius);
+  padding: 1.5rem;
+  box-shadow: var(--tempest-shadow);
+}
+
+.tempest-admin-detail__fields dt {
+  font-weight: 600;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-detail__fields dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.tempest-admin-footer {
+  text-align: center;
+  padding: 2rem 0;
+  color: var(--tempest-fg-soft);
+}
