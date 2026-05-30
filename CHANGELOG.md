@@ -5,6 +5,21 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] — 2026-05-30
+
+### Added
+
+- **`tempest fix`** — one-shot "organize the project" CLI command that
+  runs `ruff check --fix <target>` followed by `ruff format <target>`.
+  Sorts and dedupes imports, drops unused imports, normalizes string
+  quotes to double, strips trailing whitespace, then normalizes
+  indentation / line length / blank lines / trailing newlines. Pass
+  `--unsafe` to also apply ruff's unsafe-fixes pass.
+- **`py.typed` marker** shipped inside the wheel so downstream mypy
+  reads the SDK's inline type hints instead of bailing out with
+  `Skipping analyzing "tempest_fastapi_sdk": module is installed, but
+  missing library stubs or py.typed marker`. PEP 561-compliant.
+
 ## [0.16.2] — 2026-05-30
 
 ### Fixed

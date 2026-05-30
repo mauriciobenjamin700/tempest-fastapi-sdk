@@ -3139,13 +3139,17 @@ The lint commands shell out to the project's tooling. They look for the executab
 
 ```bash
 tempest lint                                    # ruff check .
+tempest fix                                     # ruff check --fix . + ruff format .   (writes)
+tempest fix --unsafe                            # also apply ruff's --unsafe-fixes
 tempest format                                  # ruff format .          (writes)
 tempest fmt-check                               # ruff format --check .   (read-only)
 tempest type                                    # mypy .
 tempest test                                    # pytest
 tempest test tests/api/                         # pytest with a path filter
-tempest check                                   # all four sequentially, stops at first failure
+tempest check                                   # lint + fmt-check + type + test, stops at first failure
 ```
+
+`tempest fix` is the one-shot "organize the project" pass — sorts and dedupes imports, drops unused imports, normalizes string quotes, removes trailing whitespace, then runs `ruff format` to align indentation, line length, blank lines and trailing newlines. Run it before pushing when CI keeps catching style nits.
 
 Every command returns the underlying tool's exit code, so `tempest check` is safe to wire into CI (`tempest check || exit 1`) or pre-commit hooks. When neither the executable nor `uv` is on `PATH`, the wrapper prints `error: '<tool>' is not on PATH and 'uv' is unavailable` and exits with `127` instead of failing silently.
 

@@ -145,6 +145,34 @@ def lint_cmd(
     raise typer.Exit(lint_module.run_ruff_check(target))
 
 
+@app.command("fix")
+def fix_cmd(
+    target: Annotated[
+        str,
+        typer.Argument(help="Path to fix. Defaults to the current directory."),
+    ] = ".",
+    unsafe: Annotated[
+        bool,
+        typer.Option(
+            "--unsafe",
+            help=(
+                "Also apply ruff's unsafe autofixes (rules with possible "
+                "behavior changes). Off by default — review the diff after "
+                "enabling."
+            ),
+        ),
+    ] = False,
+) -> None:
+    """Apply every ruff autofix + format the target in one pass.
+
+    Equivalent to running ``ruff check --fix`` followed by ``ruff format``:
+    sorts and dedupes imports, drops unused imports, normalizes string
+    quotes, removes trailing whitespace, normalizes indentation, line
+    length and blank lines.
+    """
+    raise typer.Exit(lint_module.run_ruff_fix(target, unsafe=unsafe))
+
+
 @app.command("format")
 def format_cmd(
     target: Annotated[

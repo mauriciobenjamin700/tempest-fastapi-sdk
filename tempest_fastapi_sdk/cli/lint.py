@@ -69,6 +69,39 @@ def run_ruff_check(target: str) -> int:
     return _execute("ruff", ["check", target])
 
 
+def run_ruff_fix(target: str, *, unsafe: bool = False) -> int:
+    """Apply every automatic fix ruff can perform, then format the target.
+
+    Runs in two passes so the second one sees the rewritten file:
+
+    1. ``ruff check --fix [--unsafe-fixes] <target>`` — autofix imports
+       (sort + dedupe), remove unused imports, normalize string quotes,
+       drop trailing whitespace, fix the rest of the lint rules that
+       have safe (or, with ``unsafe=True``, also unsafe) autofixers.
+    2. ``ruff format <target>`` — normalize indentation, line length,
+       blank lines and trailing newlines.
+
+    The first non-zero exit short-circuits the run.
+
+    Args:
+        target (str): The path passed verbatim to ruff.
+        unsafe (bool): When True, pass ``--unsafe-fixes`` so ruff also
+            applies the fixes it would otherwise leave alone.
+
+    Returns:
+        int: ``0`` when both passes succeed; the first non-zero exit
+        code otherwise.
+    """
+    check_args = ["check", "--fix"]
+    if unsafe:
+        check_args.append("--unsafe-fixes")
+    check_args.append(target)
+    code = _execute("ruff", check_args)
+    if code != 0:
+        return code
+    return _execute("ruff", ["format", target])
+
+
 def run_ruff_format(target: str, *, check: bool) -> int:
     """Invoke ``ruff format`` (write or check-only).
 
@@ -144,6 +177,7 @@ __all__: list[str] = [
     "run_mypy",
     "run_pytest",
     "run_ruff_check",
+    "run_ruff_fix",
     "run_ruff_format",
 ]
 
