@@ -19,7 +19,6 @@ from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.utils.password import PasswordUtils
 
 
-
 class BaseUserModel(BaseModel):
     """Abstract user table with the columns the admin auth flow needs.
 
