@@ -256,8 +256,7 @@ class UploadUtils:
             if detected not in self.allowed_mimetypes:
                 raise InvalidFileTypeException(
                     details={
-                        "reason": "file content does not match an allowed"
-                        " type",
+                        "reason": "file content does not match an allowed type",
                         "detected": detected,
                         "declared": declared,
                         "allowed": sorted(self.allowed_mimetypes),
@@ -266,8 +265,7 @@ class UploadUtils:
         elif declared and detected != declared:
             raise InvalidFileTypeException(
                 details={
-                    "reason": "file content does not match the declared"
-                    " content type",
+                    "reason": "file content does not match the declared content type",
                     "detected": detected,
                     "declared": declared,
                 },
@@ -332,10 +330,7 @@ class UploadUtils:
         )
 
         target_path = (target_dir / resolved_name).resolve()
-        if (
-            base_dir != target_path.parent
-            and base_dir not in target_path.parents
-        ):
+        if base_dir != target_path.parent and base_dir not in target_path.parents:
             raise InvalidFileTypeException(
                 details={
                     "filename": resolved_name,
@@ -352,10 +347,7 @@ class UploadUtils:
                         first_chunk = False
                         self._verify_content(chunk, file, content_validator)
                     total += len(chunk)
-                    if (
-                        self.max_size_bytes is not None
-                        and total > self.max_size_bytes
-                    ):
+                    if self.max_size_bytes is not None and total > self.max_size_bytes:
                         raise FileTooLargeException(
                             details={"max_size_bytes": self.max_size_bytes},
                         )

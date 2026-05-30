@@ -213,10 +213,10 @@ class RSAWebhookSignatureVerifier:
         if not signature:
             return False
 
-        hash_cls = {
-            "sha256": hashes.SHA256,
-            "sha384": hashes.SHA384,
-            "sha512": hashes.SHA512,
+        hash_algorithm: hashes.HashAlgorithm = {
+            "sha256": hashes.SHA256(),
+            "sha384": hashes.SHA384(),
+            "sha512": hashes.SHA512(),
         }[self.algorithm]
 
         try:
@@ -229,7 +229,7 @@ class RSAWebhookSignatureVerifier:
                 base64.b64decode(signature),
                 body,
                 padding.PKCS1v15(),
-                hash_cls(),
+                hash_algorithm,
             )
         except (InvalidSignature, ValueError, TypeError):
             return False

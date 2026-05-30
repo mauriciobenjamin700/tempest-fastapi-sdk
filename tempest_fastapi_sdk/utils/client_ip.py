@@ -75,10 +75,12 @@ def get_client_ip_from_scope(
         wanted = trusted_header.lower().encode("latin-1")
         for key, raw in scope.get("headers") or []:
             if key.lower() == wanted and raw:
-                return raw.decode("latin-1").strip()
+                decoded: str = raw.decode("latin-1")
+                return decoded.strip()
     client = scope.get("client")
     if client and len(client) >= 1 and client[0]:
-        return client[0]
+        host: str = client[0]
+        return host
     return _UNKNOWN
 
 

@@ -168,9 +168,7 @@ class TestFilenameOverride:
         assert path.parent == tmp_path.resolve()
 
     @pytest.mark.parametrize("bad", [".", "..", "/"])
-    async def test_invalid_filename_rejected(
-        self, tmp_path: Path, bad: str
-    ) -> None:
+    async def test_invalid_filename_rejected(self, tmp_path: Path, bad: str) -> None:
         utils = UploadUtils(tmp_path)
         with pytest.raises(InvalidFileTypeException):
             await utils.save(_make_upload(_PNG), filename=bad)
@@ -208,9 +206,7 @@ class TestVerifyMagicBytes:
         path = await utils.save(upload)
         assert path.exists()
 
-    async def test_polyglot_declared_as_image_rejected(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_polyglot_declared_as_image_rejected(self, tmp_path: Path) -> None:
         """HTML+JS payload sent as image/png must be rejected."""
         utils = UploadUtils(
             tmp_path,
@@ -237,35 +233,25 @@ class TestVerifyMagicBytes:
         )
         # Extension/MIME checks happen first; declare jpeg so we reach
         # the magic-byte stage, where the PNG signature is caught.
-        upload = _make_upload(
-            _PNG, filename="a.jpg", content_type="image/jpeg"
-        )
+        upload = _make_upload(_PNG, filename="a.jpg", content_type="image/jpeg")
         with pytest.raises(InvalidFileTypeException):
             await utils.save(upload)
 
     async def test_jpg_jpeg_alias_accepted(self, tmp_path: Path) -> None:
         """Declared image/jpg matches the sniffed image/jpeg."""
         utils = UploadUtils(tmp_path, verify_magic_bytes=True)
-        upload = _make_upload(
-            _JPEG, filename="a.jpg", content_type="image/jpg"
-        )
+        upload = _make_upload(_JPEG, filename="a.jpg", content_type="image/jpg")
         path = await utils.save(upload)
         assert path.exists()
 
-    async def test_mismatch_without_allowlist_rejected(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_mismatch_without_allowlist_rejected(self, tmp_path: Path) -> None:
         """Without an allow-list, sniffed type must match declared."""
         utils = UploadUtils(tmp_path, verify_magic_bytes=True)
-        upload = _make_upload(
-            _PNG, filename="a.jpg", content_type="image/jpeg"
-        )
+        upload = _make_upload(_PNG, filename="a.jpg", content_type="image/jpeg")
         with pytest.raises(InvalidFileTypeException):
             await utils.save(upload)
 
-    async def test_unrecognized_signature_rejected(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_unrecognized_signature_rejected(self, tmp_path: Path) -> None:
         utils = UploadUtils(tmp_path, verify_magic_bytes=True)
         upload = _make_upload(
             b"just plain text" + b"\x00" * 16,

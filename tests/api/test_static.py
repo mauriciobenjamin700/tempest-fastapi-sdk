@@ -44,6 +44,4 @@ class TestHardenedStaticFiles:
         assert "X-Content-Type-Options" not in resp.headers
 
     def test_default_headers_constant_shape(self) -> None:
-        assert DEFAULT_STATIC_SECURITY_HEADERS["X-Content-Type-Options"] == (
-            "nosniff"
-        )
+        assert DEFAULT_STATIC_SECURITY_HEADERS["X-Content-Type-Options"] == ("nosniff")

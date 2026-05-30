@@ -53,17 +53,11 @@ class TestGetClientIPFromScope:
 
     def test_prefers_trusted_header(self) -> None:
         scope = _scope(headers={"x-real-ip": "9.9.9.9"})
-        assert (
-            get_client_ip_from_scope(scope, trusted_header="x-real-ip")
-            == "9.9.9.9"
-        )
+        assert get_client_ip_from_scope(scope, trusted_header="x-real-ip") == "9.9.9.9"
 
     def test_ignores_untrusted_header(self) -> None:
         scope = _scope(headers={"x-forwarded-for": "6.6.6.6"})
-        assert (
-            get_client_ip_from_scope(scope, trusted_header="x-real-ip")
-            == "1.2.3.4"
-        )
+        assert get_client_ip_from_scope(scope, trusted_header="x-real-ip") == "1.2.3.4"
 
     def test_unknown_when_unavailable(self) -> None:
         assert get_client_ip_from_scope(_scope(client=None)) == "unknown"
