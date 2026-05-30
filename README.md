@@ -544,13 +544,42 @@ class UserRepository(BaseRepository[UserModel]):
         )
 ```
 
-The base repo gives you 17 methods for free — see the [reference table](#baserepository-methods) below. Add custom methods on top:
+The base repo gives you 17 methods for free — see the [reference table](#baserepository-methods) below. Add custom methods on top by extending the `UserRepository` class shown above. The full file then looks like:
 
 ```python
-async def get_by_email(self, email: str) -> UserModel:
-    """Look up a user by email. Raises UserNotFoundError on miss."""
-    return await self.get({"email": email})
+# src/db/repositories/user.py
+from typing import ClassVar
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import AppException, BaseRepository
+
+from src.core.exceptions import UserNotFoundError
+from src.db.models import UserModel
+
+
+class UserRepository(BaseRepository[UserModel]):
+    """Repository for the ``user`` table."""
+
+    model: type[UserModel] = UserModel
+    not_found_exception: ClassVar[type[AppException]] = UserNotFoundError
+
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(
+            session,
+            not_found_message="Usuário não encontrado",
+            create_conflict_message="Já existe um usuário com esse e-mail",
+            update_conflict_message="Conflito ao atualizar usuário",
+        )
+
+    # ──────── custom queries on top of the 17 inherited methods ────────
+
+    async def get_by_email(self, email: str) -> UserModel:
+        """Look up a user by email. Raises ``UserNotFoundError`` on miss."""
+        return await self.get({"email": email})
 ```
+
+The highlighted block (under the divider comment) is what you typically add per project — everything above it is the boilerplate the base class already takes care of.
 
 ### 7. Service
 
@@ -1906,24 +1935,46 @@ class UserModel(BaseModel, SoftDeleteMixin, AuditMixin):
     password_hash: Mapped[str] = mapped_column()
 ```
 
-Filtering is the caller's responsibility — the mixin doesn't install a global filter. Hide soft-deleted rows from list endpoints by passing `deleted_at=None` (or filtering in your repository subclass):
+Filtering is the caller's responsibility — the mixin doesn't install a global filter. Hide soft-deleted rows from list endpoints by passing `deleted_at=None` (or filtering in your repository subclass). Stamping audit columns belongs to the service layer where the current user is in scope. Both patterns live inside the service:
 
 ```python
-async def list_alive(self) -> list[UserResponse]:
-    instances = await self.repository.list(filters={"deleted_at": None})
-    return [self.repository.map_to_response(i) for i in instances]
+# src/services/user.py
+from uuid import UUID
+
+from tempest_fastapi_sdk import BaseService
+
+from src.db.repositories import UserRepository
+from src.schemas import UserResponse, UserUpdateSchema
+
+
+class UserService(BaseService[UserRepository, UserResponse]):
+    """Business logic for the user domain."""
+
+    # ──────── soft-delete-aware read ────────
+
+    async def list_alive(self) -> list[UserResponse]:
+        """Return only rows where ``deleted_at IS NULL``."""
+        instances = await self.repository.list(filters={"deleted_at": None})
+        return [self.repository.map_to_response(i) for i in instances]
+
+    # ──────── audit-stamped update ────────
+
+    async def update(
+        self,
+        user_id: UUID,
+        data: UserUpdateSchema,
+        *,
+        actor_id: UUID,
+    ) -> UserResponse:
+        """Apply a partial update and stamp ``updated_by`` with the actor."""
+        instance = await self.repository.get_by_id(user_id)
+        instance.update_from_dict(data.model_dump(exclude_unset=True))
+        instance.stamp_updated_by(actor_id)
+        updated = await self.repository.update(instance)
+        return self.repository.map_to_response(updated)
 ```
 
-Stamping audit columns belongs to the service layer where the current user is in scope:
-
-```python
-async def update(self, user_id: UUID, data: UserUpdate, *, actor_id: UUID) -> UserResponse:
-    instance = await self.repository.get_by_id(user_id)
-    instance.update_from_dict(data.model_dump(exclude_unset=True))
-    instance.stamp_updated_by(actor_id)
-    updated = await self.repository.update(instance)
-    return self.repository.map_to_response(updated)
-```
+The two highlighted methods under the divider comments are the only soft-delete- and audit-specific code the consumer writes — the columns and helpers (`mark_deleted` / `mark_restored` / `stamp_updated_by`) come from the mixins.
 
 Use the mixin's helpers (`mark_deleted` / `mark_restored`) when you want the `deleted_at` semantics; use `BaseRepository.soft_delete(id)` when the existing `is_active` flag is enough.
 
@@ -2646,20 +2697,33 @@ def create_app() -> FastAPI:
     ...
 ```
 
-Pass `key_func=` to partition state by tenant header, authenticated user, or any request attribute:
+Pass `key_func=` to partition state by tenant header, authenticated user, or any request attribute. The full app factory then looks like:
 
 ```python
+# src/api/app.py
+from fastapi import FastAPI, Request
+
+from tempest_fastapi_sdk import RateLimitMiddleware
+
+
 def by_tenant(request: Request) -> str:
+    """Bucket every request under its tenant header, falling back to IP."""
     return request.headers.get("X-Tenant", request.client.host or "anon")
 
 
-app.add_middleware(
-    RateLimitMiddleware,
-    max_requests=600,
-    window_seconds=60.0,
-    key_func=by_tenant,
-)
+def create_app() -> FastAPI:
+    app = FastAPI(...)
+    app.add_middleware(
+        RateLimitMiddleware,
+        max_requests=600,
+        window_seconds=60.0,
+        key_func=by_tenant,                                  # ← swap the default IP key
+        exempt_paths=("/health/liveness", "/health/readiness"),
+    )
+    return app
 ```
+
+The two highlighted pieces — the `by_tenant` helper and the `key_func=by_tenant` wiring — are the only diff against the default snippet above.
 
 The state is held **in-process** — for multi-worker deployments either run a single uvicorn worker behind a single reverse-proxy node, or push rate limiting to the edge (nginx / Cloudflare / AWS WAF). The middleware is intentionally simple; a Redis-backed sliding-window limiter is one issue away if it shows up as a real need.
 
@@ -3047,14 +3111,37 @@ class UserModel(BaseUserModel):
 
 `set_password()` / `check_password()` delegate to `PasswordUtils`; `normalize_email()` lowercases and strips. The default `is_active` (inherited from `BaseModel`) and `is_admin` (defaults to `False`) gate access — only `is_active=True` AND `is_admin=True` rows may sign in.
 
-Bootstrap the first admin via your CLI / migration / seed script:
+Bootstrap the first admin via your CLI / migration / seed script. The full script wires an `AsyncDatabaseManager`, opens one session, inserts the row and commits — exactly the same pattern your repositories follow at runtime:
 
 ```python
-admin = UserModel(email="root@example.com", is_admin=True)
-admin.set_password("hunter2")  # bcrypt via PasswordUtils
-session.add(admin)
-await session.commit()
+# scripts/create_admin.py
+import asyncio
+
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+from src.core.settings import settings
+from src.db.models import UserModel
+
+
+async def main() -> None:
+    db = AsyncDatabaseManager(settings.DATABASE_URL)
+    await db.connect()
+    try:
+        async with db.get_session_context() as session:
+            # ──────── the only admin-specific lines ────────
+            admin = UserModel(email="root@example.com", is_admin=True)
+            admin.set_password("hunter2")  # bcrypt via PasswordUtils
+            session.add(admin)
+            await session.commit()
+    finally:
+        await db.disconnect()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
+
+The four highlighted lines under the divider comment are the only admin-bootstrap code; everything around them is the standard async DB lifecycle the SDK already uses.
 
 #### 2. Register your admin classes
 
