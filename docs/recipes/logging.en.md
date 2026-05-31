@@ -1,16 +1,16 @@
 # Logging
 
 
-`configure_logging` instala um handler JSON no logger raiz que emite registros JSON de uma linha carregando o request ID ativo. `LogUtils` é uma fachada fina que adiciona métodos por nível aceitando `**fields` estruturados.
+`configure_logging` installs a JSON handler on the root logger that emits one-line JSON records carrying the active request ID. `LogUtils` is a thin facade that adds level methods accepting structured `**fields`.
 
 ```python
 from tempest_fastapi_sdk import LogUtils, configure_logging
 from tempest_fastapi_sdk.core import get_request_id
 
-# Imperativo — chame uma vez durante o bootstrap.
+# Imperative — call once during bootstrap.
 configure_logging(level="INFO", json_output=True)
 
-# Fachada — útil para singletons de serviço.
+# Facade — handy for service-wide singletons.
 log = LogUtils("app.users", level="INFO")
 log.info("user_created", user_id=str(user.id), email=user.email)
 log.warning("login_throttled", ip="1.2.3.4", attempts=5)
@@ -20,11 +20,11 @@ try:
 except RuntimeError:
     log.exception("risky_failed", op="reconcile")  # appends traceback
 
-# Exponha o ID de correlação fora da linha de log, se necessário.
+# Surface the correlation ID outside the log line if needed.
 request_id = get_request_id()
 ```
 
-Saída JSON (uma linha — formatada aqui para legibilidade):
+JSON output (single line — formatted here for readability):
 
 ```json
 {
@@ -38,13 +38,13 @@ Saída JSON (uma linha — formatada aqui para legibilidade):
 }
 ```
 
-O middleware aceita um nome de header customizado (`RequestIDMiddleware(app, header_name="X-Correlation-ID")`); o mesmo header é ecoado de volta em toda resposta.
+The middleware accepts a custom header name (`RequestIDMiddleware(app, header_name="X-Correlation-ID")`); the same header is echoed back on every response.
 
 
-## Enums base
+## Base enums
 
 
-`BaseStrEnum` / `BaseIntEnum` estendem o `Enum` da stdlib com helpers ajustados para o round-trip Pydantic + SQLAlchemy (lookup por valor, herança serializável `str` / `int` em JSON, `__contains__` que aceita valores crus). Use-os em todo enum que cruza a fronteira da API.
+`BaseStrEnum` / `BaseIntEnum` extend the stdlib `Enum` with helpers tuned for Pydantic + SQLAlchemy round-tripping (lookup by value, JSON-serializable `str` / `int` inheritance, `__contains__` that accepts raw values). Use them for every enum that crosses the API boundary.
 
 ```python
 from tempest_fastapi_sdk import BaseIntEnum, BaseStrEnum
@@ -68,4 +68,5 @@ assert OrderStatus("paid") is OrderStatus.PAID    # canonical lookup
 assert Priority.NORMAL + 1 == Priority.HIGH       # int math
 ```
 
-Por herdarem de `str` / `int`, o Pydantic os serializa de forma transparente como o valor subjacente e o SQLAlchemy consegue persisti-los pela coluna `Enum` padrão sem um conversor extra.
+Because they inherit from `str` / `int`, Pydantic serializes them transparently as their underlying value and SQLAlchemy can persist them via the standard `Enum` column without an extra converter.
+

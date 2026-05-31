@@ -1,27 +1,27 @@
 # Cache
 
-Redis-backed caching primitives. Requires `[cache]` extra.
+Primitivos de cache apoiados em Redis. Requer o extra `[cache]`.
 
 ## AsyncRedisManager
 
 
-`AsyncRedisManager` wraps `redis.asyncio` with the same connect/disconnect/health-check surface as `AsyncDatabaseManager`. Install with `[cache]`.
+`AsyncRedisManager` embrulha `redis.asyncio` com a mesma superfície de connect/disconnect/health-check do `AsyncDatabaseManager`. Instale com `[cache]`.
 
 ```python
 from tempest_fastapi_sdk.cache import AsyncRedisManager
 
 cache = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
 
-# Lifespan
+# Ciclo de vida
 await cache.connect()
 ...
 await cache.disconnect()
 
-# Direct use
+# Uso direto
 await cache.client.set("user:123:name", "Ana", ex=300)
 name = await cache.client.get("user:123:name")
 
-# FastAPI dependency — yields the live client.
+# Dependência FastAPI — entrega o client ativo.
 from fastapi import Depends
 from redis.asyncio import Redis
 
@@ -34,13 +34,13 @@ async def cached_endpoint(
     return {"value": value}
 ```
 
-Wire the health check on the canonical router with `make_health_router(checks={"redis": cache.health_check})` so readiness probes fail when Redis is down.
+Conecte o health check no router canônico com `make_health_router(checks={"redis": cache.health_check})` para que as readiness probes falhem quando o Redis cair.
 
 
-## @cached decorator
+## Decorator @cached
 
 
-`@cached(redis, ttl=..., key_prefix=...)` memoizes the result of an async function in Redis. Cache keys are derived from the function's `__qualname__` plus a SHA-256 of args/kwargs; pass `key_prefix=` to namespace entries so invalidation works by prefix scan.
+`@cached(redis, ttl=..., key_prefix=...)` memoiza o resultado de uma função async no Redis. As chaves de cache são derivadas do `__qualname__` da função mais um SHA-256 de args/kwargs; passe `key_prefix=` para dar namespace às entradas, de modo que a invalidação funcione por scan de prefixo.
 
 ```python
 from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
@@ -57,7 +57,7 @@ async def get_user_profile(user_id: str) -> dict[str, str]:
     return await load_from_db(user_id)
 
 
-# Selectively bypass the cache (read AND write) for some calls
+# Pula o cache (leitura E escrita) seletivamente em algumas chamadas
 @cached(
     redis,
     ttl=60,
@@ -67,5 +67,4 @@ async def list_orders(user_id: str, *, fresh: bool = False) -> list[dict]:
     ...
 ```
 
-Defaults: `ttl=300` seconds (`0` disables expiry), `serializer=json.dumps` / `deserializer=json.loads`. Override `serializer` / `deserializer` for non-JSON payloads (Pydantic models — pass `model_dump_json` / `MyModel.model_validate_json`, or use `pickle.dumps` / `pickle.loads` for arbitrary objects). Corrupt cached values fall back to running the wrapped function and warn on the SDK logger.
-
+Defaults: `ttl=300` segundos (`0` desabilita a expiração), `serializer=json.dumps` / `deserializer=json.loads`. Sobrescreva `serializer` / `deserializer` para payloads não-JSON (modelos Pydantic — passe `model_dump_json` / `MyModel.model_validate_json`, ou use `pickle.dumps` / `pickle.loads` para objetos arbitrários). Valores corrompidos no cache caem de volta para rodar a função embrulhada e emitem um warning no logger do SDK.

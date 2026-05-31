@@ -12,7 +12,7 @@ copyright: Copyright &copy; 2026 Mauricio Benjamin — MIT License
 
 theme:
   name: material
-  language: en
+  language: pt-BR
   features:
     - announce.dismiss
     - content.action.edit
@@ -24,8 +24,6 @@ theme:
     - navigation.expand
     - navigation.footer
     - navigation.indexes
-    - navigation.instant
-    - navigation.instant.prefetch
     - navigation.path
     - navigation.sections
     - navigation.tabs
@@ -64,6 +62,45 @@ theme:
 plugins:
   - search:
       separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  # Seletor de idioma PT-BR / EN-US no header. Arquivos sem sufixo são PT
+  # (default); traduções vivem em `<nome>.en.md`. Páginas sem tradução caem
+  # para o PT (fallback_to_default).
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: pt
+          name: Português (BR)
+          default: true
+          build: true
+        - locale: en
+          name: English (US)
+          build: true
+          site_name: tempest-fastapi-sdk
+          nav_translations:
+            Início: Home
+            Instalação: Installation
+            Arquitetura: Architecture
+            Tutorial: Tutorial
+            Receitas: Recipes
+            Banco de dados: Database
+            Camada HTTP: HTTP layer
+            Cache: Cache
+            Tempo real: Real-time
+            Fila e Tarefas: Queue & Tasks
+            Logging: Logging
+            Métricas: Metrics
+            Painel admin: Admin site
+            Testes: Testing
+            CLI: CLI
+            Segurança: Security
+            Helpers brasileiros: Brazilian helpers
+            Referência: Reference
+            Guia de migração: Migration guide
+            Contribuindo: Contributing
+            Changelog: Changelog
   - include-markdown
   - mkdocstrings:
       default_handler: python
@@ -136,27 +173,27 @@ markdown_extensions:
   - pymdownx.tilde
 
 nav:
-  - Home: index.md
-  - Installation: installation.md
-  - Architecture: architecture.md
+  - Início: index.md
+  - Instalação: installation.md
+  - Arquitetura: architecture.md
   - Tutorial: tutorial.md
-  - Recipes:
+  - Receitas:
       - recipes/index.md
-      - Database: recipes/database.md
-      - HTTP layer: recipes/http.md
+      - Banco de dados: recipes/database.md
+      - Camada HTTP: recipes/http.md
       - Cache: recipes/cache.md
-      - Real-time: recipes/realtime.md
-      - Queue & Tasks: recipes/queue-tasks.md
+      - Tempo real: recipes/realtime.md
+      - Fila e Tarefas: recipes/queue-tasks.md
       - Logging: recipes/logging.md
-      - Metrics: recipes/metrics.md
-      - Admin site: recipes/admin.md
-      - Testing: recipes/testing.md
+      - Métricas: recipes/metrics.md
+      - Painel admin: recipes/admin.md
+      - Testes: recipes/testing.md
       - CLI: recipes/cli.md
-      - Security: recipes/security.md
-      - Brazilian helpers: recipes/br-helpers.md
-  - Reference: reference.md
-  - Migration guide: migration.md
-  - Contributing: contributing.md
+      - Segurança: recipes/security.md
+      - Helpers brasileiros: recipes/br-helpers.md
+  - Referência: reference.md
+  - Guia de migração: migration.md
+  - Contribuindo: contributing.md
   - Changelog: changelog.md
 
 extra:

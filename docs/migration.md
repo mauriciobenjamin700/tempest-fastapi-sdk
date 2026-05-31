@@ -1,22 +1,22 @@
-# Migration guide
+# Guia de migração
 
-Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**.
+Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando.
 
 
-0.8.0 renames every field on `ServerSettings`, extracts log fields to a new `LogSettings` mixin, and adds eleven other primitives. The renames are the only **breaking** changes — every new primitive is opt-in.
+A 0.8.0 renomeia todos os campos de `ServerSettings`, extrai os campos de log para um novo mixin `LogSettings` e adiciona onze outros primitivos. As renomeações são as únicas mudanças **que quebram** — todo primitivo novo é opt-in.
 
-#### 1. Rename env vars
+#### 1. Renomeie as variáveis de ambiente
 
-| Old | New | Mixin |
+| Antiga | Nova | Mixin |
 | --- | --- | --- |
 | `HOST` | `SERVER_HOST` | `ServerSettings` |
 | `PORT` | `SERVER_PORT` | `ServerSettings` |
 | `DEBUG` | `SERVER_DEBUG` | `ServerSettings` |
-| *(new)* | `SERVER_RELOAD` | `ServerSettings` |
-| `LOG_LEVEL` | `LOG_LEVEL` | **moved to** `LogSettings` |
-| `LOG_JSON` | `LOG_JSON` | **moved to** `LogSettings` |
+| *(nova)* | `SERVER_RELOAD` | `ServerSettings` |
+| `LOG_LEVEL` | `LOG_LEVEL` | **movida para** `LogSettings` |
+| `LOG_JSON` | `LOG_JSON` | **movida para** `LogSettings` |
 
-Mechanical `sed` on every `.env` / `docker-compose.yml` / deployment manifest:
+`sed` mecânico em todo `.env` / `docker-compose.yml` / manifesto de deploy:
 
 ```bash
 sed -i \
@@ -26,21 +26,21 @@ sed -i \
   .env .env.example .env.test
 ```
 
-`LOG_LEVEL` and `LOG_JSON` keep their names — only the mixin moves.
+`LOG_LEVEL` e `LOG_JSON` mantêm os nomes — só o mixin muda.
 
-#### 2. Rename code references
+#### 2. Renomeie as referências no código
 
 ```bash
-# `settings.HOST` → `settings.SERVER_HOST`, same for PORT/DEBUG
+# `settings.HOST` → `settings.SERVER_HOST`, idem para PORT/DEBUG
 grep -rn "settings\.\(HOST\|PORT\|DEBUG\)\b" src/ tests/
 ```
 
-Replace each match with the `SERVER_*` form. If a service was using the
-old `settings.DEBUG` flag for application-level debug behavior, switch
-to `settings.SERVER_DEBUG`; if it was only being read for uvicorn
-auto-reload, switch to `settings.SERVER_RELOAD`.
+Substitua cada ocorrência pela forma `SERVER_*`. Se um serviço usava a
+flag antiga `settings.DEBUG` para comportamento de debug a nível de
+aplicação, troque para `settings.SERVER_DEBUG`; se ela era lida apenas
+para o auto-reload do uvicorn, troque para `settings.SERVER_RELOAD`.
 
-#### 3. Mix `LogSettings` into the project `Settings`
+#### 3. Misture `LogSettings` no `Settings` do projeto
 
 ```diff
  from tempest_fastapi_sdk import (
@@ -68,37 +68,36 @@ auto-reload, switch to `settings.SERVER_RELOAD`.
      ...
 ```
 
-Skip this step if the service never read `settings.LOG_LEVEL` /
-`settings.LOG_JSON` — `configure_logging` accepts the values as
-keyword arguments directly.
+Pule este passo se o serviço nunca leu `settings.LOG_LEVEL` /
+`settings.LOG_JSON` — `configure_logging` aceita os valores diretamente
+como argumentos nomeados.
 
-#### 4. (Optional) Adopt the new primitives
+#### 4. (Opcional) Adote os novos primitivos
 
-Pick what fits. None of these are required.
+Escolha o que se encaixa. Nenhum deles é obrigatório.
 
-- Replace the hand-written `src/server.py` `uvicorn.run(...)` with
-  [`run_server(...)`](recipes/http.md#programmatic-server-entry-point).
-- Replace the hand-written `get_current_user` with
-  [`make_jwt_user_dependency(tokens, load_user)`](recipes/http.md#jwt-bearer-current-user-role-dependencies).
-- Move `SMTP_*` / `UPLOAD_*` / `TOKEN_SECRET` / `VAPID_*` /
-  `TASKIQ_*` fields out of the project's `Settings` and onto the
-  matching SDK mixin ([Settings mixins composition](recipes/http.md#settings-mixins-composition)).
-- Adopt the
-  [`Outbox dispatcher pattern`](recipes/queue-tasks.md#outbox-dispatcher-pattern) if
-  you already write side-effects from the same transaction as your
-  domain rows.
+- Substitua o `uvicorn.run(...)` escrito à mão no `src/server.py` por
+  [`run_server(...)`](recipes/http.md#ponto-de-entrada-programatico-do-servidor).
+- Substitua o `get_current_user` escrito à mão por
+  [`make_jwt_user_dependency(tokens, load_user)`](recipes/http.md#dependencias-jwt-bearer-usuario-atual-role).
+- Mova os campos `SMTP_*` / `UPLOAD_*` / `TOKEN_SECRET` / `VAPID_*` /
+  `TASKIQ_*` do `Settings` do projeto para o mixin correspondente do
+  SDK ([Composição de mixins de settings](recipes/http.md#composicao-de-mixins-de-settings)).
+- Adote o
+  [`padrão de outbox dispatcher`](recipes/queue-tasks.md#padrao-outbox-dispatcher) se
+  você já escreve efeitos colaterais a partir da mesma transação que
+  grava as linhas de domínio.
 
-#### 5. Verify
+#### 5. Verifique
 
 ```bash
-uv sync                      # picks up new pyproject deps
-uv run pytest -q             # full suite
-uv run ruff check src tests  # confirm no `HOST`/`PORT`/`DEBUG` references slipped
+uv sync                      # pega as novas deps do pyproject
+uv run pytest -q             # suite completa
+uv run ruff check src tests  # confirma que nenhuma referência a `HOST`/`PORT`/`DEBUG` escapou
 ```
 
-If `pytest` fails with a Pydantic `ValidationError` referencing
-`HOST` / `PORT` / `DEBUG`, an env var was not renamed (look at the
-process environment or `.env`).
+Se o `pytest` falhar com um `ValidationError` do Pydantic referenciando
+`HOST` / `PORT` / `DEBUG`, alguma variável de ambiente não foi renomeada
+(olhe o ambiente do processo ou o `.env`).
 
 ---
-
