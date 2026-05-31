@@ -1,9 +1,9 @@
-# Testes {#testing}
+# Testing
 
 
-pytest + pytest-asyncio + SQLite em memória + FastAPI TestClient.
+pytest + pytest-asyncio + in-memory SQLite + FastAPI TestClient.
 
-#### Fixtures compartilhadas {#shared-fixtures}
+#### Shared fixtures
 
 ```python
 # tests/conftest.py
@@ -52,7 +52,7 @@ async def client(db: AsyncDatabaseManager) -> AsyncGenerator[TestClient, None]:
         yield client
 ```
 
-#### Teste de repository {#repository-test}
+#### Repository test
 
 ```python
 # tests/repositories/test_user.py
@@ -83,7 +83,7 @@ class TestUserRepository:
         assert loaded.name == "Ana"
 ```
 
-#### Teste de endpoint {#endpoint-test}
+#### Endpoint test
 
 ```python
 # tests/api/test_users.py
@@ -114,18 +114,18 @@ class TestUsersAPI:
         assert body["code"] == "USER_NOT_FOUND"
 ```
 
-#### Helpers de `tempest_fastapi_sdk.testing` {#tempest_fastapi_sdktesting-helpers}
+#### `tempest_fastapi_sdk.testing` helpers
 
-`tempest_fastapi_sdk.testing` traz helpers agnósticos de framework que não exigem que `pytest` seja importável — envolva-os em `@pytest.fixture` (ou qualquer outro harness) dentro do `conftest.py` do projeto consumidor. Útil quando um teste não precisa de um `AsyncDatabaseManager` completo (sem `lifespan`, sem probes de health-check).
+`tempest_fastapi_sdk.testing` ships framework-agnostic helpers that don't require `pytest` to be importable — wrap them in `@pytest.fixture` (or any other harness) inside the consuming project's `conftest.py`. Useful when a test doesn't need a full `AsyncDatabaseManager` (no `lifespan`, no health-check probes).
 
-| Helper | Finalidade |
+| Helper | Purpose |
 | --- | --- |
-| `create_test_engine(url="sqlite+aiosqlite:///:memory:", **engine_kwargs)` | Cria um `AsyncEngine` descartável. |
-| `create_test_session_factory(engine)` | Cria um `sessionmaker` vinculado ao engine. |
-| `init_test_metadata(engine, metadata=None)` | Cria todas as tabelas SQLAlchemy no engine (padrão `BaseModel.metadata`). |
-| `drop_test_metadata(engine, metadata=None)` | Remove todas as tabelas. |
-| `test_database(url="sqlite+aiosqlite:///:memory:", metadata=None)` | Context manager async — entrega um engine com a metadata já criada, remove tudo e descarta na saída. |
-| `test_session(url="sqlite+aiosqlite:///:memory:", metadata=None)` | Context manager async — entrega uma `AsyncSession` sobre um `test_database` novo. |
+| `create_test_engine(url="sqlite+aiosqlite:///:memory:", **engine_kwargs)` | Build a throw-away `AsyncEngine`. |
+| `create_test_session_factory(engine)` | Build a `sessionmaker` bound to the engine. |
+| `init_test_metadata(engine, metadata=None)` | Create every SQLAlchemy table on the engine (defaults to `BaseModel.metadata`). |
+| `drop_test_metadata(engine, metadata=None)` | Drop every table. |
+| `test_database(url="sqlite+aiosqlite:///:memory:", metadata=None)` | Async context manager — yields an engine with metadata pre-created, drops everything and disposes on exit. |
+| `test_session(url="sqlite+aiosqlite:///:memory:", metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `test_database`. |
 
 ```python
 # tests/conftest.py
@@ -151,7 +151,7 @@ async def session() -> AsyncGenerator[AsyncSession, None]:
         yield s
 ```
 
-Use o context manager one-shot `test_session()` para testes pontuais que não precisam de compartilhamento entre fixtures:
+Use the one-shot `test_session()` context manager for ad-hoc tests that don't need cross-fixture sharing:
 
 ```python
 from tempest_fastapi_sdk.testing import test_session
@@ -167,4 +167,5 @@ async def test_repo_directly() -> None:
         assert await repo.count() == 1
 ```
 
-Passe `metadata=` quando o projeto mistura a `BaseModel.metadata` do SDK com uma segunda metadata isolada (raro — mantenha um único `BaseModel` por serviço sempre que possível).
+Pass `metadata=` when the project mixes the SDK `BaseModel.metadata` with a second, isolated metadata (rare — keep one `BaseModel` per service whenever possible).
+

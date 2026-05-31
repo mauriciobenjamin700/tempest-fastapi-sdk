@@ -1,21 +1,21 @@
-# Instalação {#installation}
+# Installation
 
-## TL;DR {#tldr}
+## TL;DR
 
 ```bash
 pip install tempest-fastapi-sdk
 ```
 
-Requer **Python 3.11+**.
+Requires **Python 3.11+**.
 
-!!! tip "Use `uv` no lugar"
-    `uv add tempest-fastapi-sdk` é mais rápido e escreve no `pyproject.toml` por você.
+!!! tip "Use `uv` instead"
+    `uv add tempest-fastapi-sdk` is faster and writes to `pyproject.toml` for you.
 
-## Extras opcionais {#optional-extras}
+## Optional extras
 
-Helpers com muitos recursos trazem dependências de terceiros que você só precisa quando realmente usa o helper. Escolha os extras que o seu serviço consome:
+Feature-rich helpers pull in third-party dependencies that you only need when you actually use the helper. Pick the extras your service consumes:
 
-| Extra | Traz | Habilita |
+| Extra | Pulls in | Unlocks |
 | --- | --- | --- |
 | `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils` |
 | `[email]` | `aiosmtplib` | `EmailUtils` |
@@ -26,15 +26,15 @@ Helpers com muitos recursos trazem dependências de terceiros que você só prec
 | `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
 | `[admin]` | `jinja2`, `itsdangerous` | `AdminSite`, `AdminModel`, `make_admin_router` |
-| `[all]` | tudo acima | todos os helpers |
+| `[all]` | everything above | every helper |
 
-=== "Subconjunto (recomendado)"
+=== "Subset (recommended)"
 
     ```bash
     pip install "tempest-fastapi-sdk[auth,upload,cache]"
     ```
 
-=== "Tudo"
+=== "Everything"
 
     ```bash
     pip install "tempest-fastapi-sdk[all]"
@@ -54,12 +54,12 @@ Helpers com muitos recursos trazem dependências de terceiros que você só prec
     ]
     ```
 
-!!! info "Imports preguiçosos"
-    Desde a 0.7.1 toda dependência opcional é importada de forma preguiçosa na primeira instanciação, então `import tempest_fastapi_sdk` funciona mesmo quando apenas um subconjunto dos extras está instalado. Instanciar um helper cujo extra está faltando levanta `ImportError` com uma dica clara apontando para o extra correto.
+!!! info "Lazy imports"
+    Since 0.7.1 every optional dependency is imported lazily at first instantiation, so `import tempest_fastapi_sdk` works even when only a subset of extras is installed. Instantiating a helper whose extra is missing raises `ImportError` with a clear hint pointing at the right extra.
 
-## CLI {#cli}
+## CLI
 
-A CLI `tempest` vem na instalação base (nenhum extra necessário):
+The `tempest` CLI ships in the base install (no extra needed):
 
 ```bash
 tempest --version              # show installed SDK version
@@ -69,19 +69,19 @@ tempest fix                    # ruff check --fix . + ruff format .
 tempest check                  # lint + fmt-check + mypy + pytest
 ```
 
-Veja **[Receitas → CLI »](recipes/cli.md)** para o detalhamento completo.
+See **[Recipes → CLI »](recipes/cli.md)** for the full breakdown.
 
-## Verifique a instalação {#verify-the-install}
+## Verify the install
 
 ```bash
 python -c "import tempest_fastapi_sdk; print(tempest_fastapi_sdk.__version__)"
 ```
 
-## Política de versões do Python {#python-version-policy}
+## Python version policy
 
 | Python | Status |
 | --- | --- |
-| 3.13 | Matriz principal do CI |
-| 3.12 | Suportado |
-| 3.11 | Suportado (mínimo) |
-| 3.10 e anteriores | Não suportado (usa a sintaxe `X \| None` do PEP 604) |
+| 3.13 | Primary CI matrix |
+| 3.12 | Supported |
+| 3.11 | Supported (minimum) |
+| 3.10 and older | Not supported (uses `X \| None` PEP 604 syntax) |

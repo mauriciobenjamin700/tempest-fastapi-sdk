@@ -1,11 +1,11 @@
-# Camada HTTP {#http-layer}
+# HTTP layer
 
-Middlewares, dependencies, routers e composição de middleware para a superfície da API.
+Middlewares, dependencies, routers and middleware composition for the API surface.
 
-## Bootstrap da aplicação {#application-bootstrap}
+## Application bootstrap
 
 
-A [Seção 2 do tutorial](../tutorial.md#2-settings-server-app-factory-entry-point) mostra o `create_app()` mínimo. Esta receita é a versão **estendida**, conectando tudo que `tempest_fastapi_sdk.api` oferece — exception handlers, CORS, middleware de request-ID, o router de health com checks extras, uma dependency de token por shared-secret e um manager Redis adicional — tudo a partir do mesmo local canônico `src/api/app.py`. O padrão de bootstrapping permanece idêntico; apenas o conteúdo de `create_app()` cresce.
+[Section 2 of the tutorial](../tutorial.md#2-settings-server-app-factory-entry-point) shows the minimal `create_app()`. This recipe is the **extended** version, wiring everything `tempest_fastapi_sdk.api` ships — exception handlers, CORS, request-ID middleware, the health router with extra checks, a shared-secret token dependency and an extra Redis manager — all from the same canonical `src/api/app.py` location. The bootstrapping pattern stays identical; only the contents of `create_app()` grow.
 
 ```python
 # src/api/app.py
@@ -87,27 +87,27 @@ def create_app() -> FastAPI:
 app = create_app()
 ```
 
-Pontos-chave:
+Key points:
 
-- `src/server.py` e `main.py` (one-liner) permanecem exatamente como na [Seção 2 do tutorial](../tutorial.md#2-settings-server-app-factory-entry-point) — apenas `create_app()` muda quando você adiciona primitivos. Nunca inicie o uvicorn via `subprocess.run(["uvicorn", ...])`; sempre importe `app` de `src.api.app` ou chame `uvicorn.run("src.api.app:app", ...)` programaticamente a partir de `src/server.py`.
-- `RequestIDMiddleware` lê/escreve `X-Request-ID` e popula `request_id_ctx` para que toda linha de log emitida durante a request carregue o ID de correlação.
-- `apply_cors(app, settings)` lê os defaults de `CORSSettings`; passe overrides por keyword para mudanças pontuais.
-- `register_exception_handlers(app)` conecta toda subclasse de `AppException` ao envelope canônico `{detail, code, details}`.
-- `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` monta `GET /health/liveness` e `GET /health/readiness` (retorna `503` quando qualquer check falha) no prefixo raiz.
-- `make_token_dependency(secret)` retorna uma dependency async que valida `X-Token` via `hmac.compare_digest`; passe uma string vazia para desabilitar em dev. A dependency fica junto ao resto da cola de auth em `src/api/dependencies/auth.py` assim que cresce além do one-liner acima.
-
-
-## Dependencies de JWT bearer / current-user / role {#jwt-bearer-current-user-role-dependencies}
+- `src/server.py` and `main.py` (one-liner) stay exactly as in [Section 2 of the tutorial](../tutorial.md#2-settings-server-app-factory-entry-point) — only `create_app()` changes when you add primitives. Never start uvicorn via `subprocess.run(["uvicorn", ...])`; always import `app` from `src.api.app` or call `uvicorn.run("src.api.app:app", ...)` programmatically from `src/server.py`.
+- `RequestIDMiddleware` reads/writes `X-Request-ID` and seeds `request_id_ctx` so every log line emitted during the request carries the correlation ID.
+- `apply_cors(app, settings)` reads `CORSSettings` defaults; pass keyword overrides for one-off changes.
+- `register_exception_handlers(app)` wires every `AppException` subclass to the canonical `{detail, code, details}` envelope.
+- `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` mounts `GET /health/liveness` and `GET /health/readiness` (returns `503` when any check fails) at the root prefix.
+- `make_token_dependency(secret)` returns an async dependency that validates `X-Token` via `hmac.compare_digest`; pass an empty string to disable in dev. The dependency lives next to the rest of the auth glue in `src/api/dependencies/auth.py` once it grows beyond the one-liner above.
 
 
-Quatro factories de dependency vivem em `tempest_fastapi_sdk.api.dependencies.auth` — escolha o nível de abstração que você precisa.
+## JWT bearer / current-user / role dependencies
 
-| Factory | O que você obtém |
+
+Four dependency factories live in `tempest_fastapi_sdk.api.dependencies.auth` — pick the level of abstraction you need.
+
+| Factory | What you get |
 | --- | --- |
-| `make_token_dependency(secret)` | Valida o header de shared-secret `X-Token` (tempo constante). |
-| `make_bearer_token_dependency(tokens, soft=False)` | Decodifica `Authorization: Bearer <jwt>` e retorna o dict de claims. |
-| `make_jwt_user_dependency(tokens, user_loader, soft=False, subject_claim="sub")` | Decodifica o JWT bearer, faz `await user_loader(subject)`, retorna o usuário carregado. |
-| `make_role_dependency(tokens, ["admin"], require_all=False, roles_claim="roles")` / `make_permission_dependency(tokens, ["users:write"], require_all=True, permissions_claim="permissions")` | Decodifica o JWT bearer e restringe a rota por roles / permissions. |
+| `make_token_dependency(secret)` | Validate the `X-Token` shared-secret header (constant time). |
+| `make_bearer_token_dependency(tokens, soft=False)` | Decode `Authorization: Bearer <jwt>` and return the claims dict. |
+| `make_jwt_user_dependency(tokens, user_loader, soft=False, subject_claim="sub")` | Decode the bearer JWT, await `user_loader(subject)`, return the loaded user. |
+| `make_role_dependency(tokens, ["admin"], require_all=False, roles_claim="roles")` / `make_permission_dependency(tokens, ["users:write"], require_all=True, permissions_claim="permissions")` | Decode the bearer JWT and gate the route on roles / permissions. |
 
 ```python
 # src/api/dependencies/auth.py
@@ -179,13 +179,13 @@ async def update_perms(user_id: UUID) -> None:
     ...
 ```
 
-`soft=True` retorna `None` em vez de levantar exceção em tokens ausentes/inválidos — útil para endpoints que funcionam tanto autenticados quanto anônimos. `subject_claim` tem default `"sub"` mas pode ser qualquer claim customizada (`"user_id"`, `"uid"`, ...). As dependencies de role aceitam tanto uma string quanto uma lista de strings na claim do JWT; `require_all=True` exige todas as roles/permissions listadas, `False` (default para roles, override para permissions) exige qualquer uma.
+`soft=True` returns `None` instead of raising on missing/invalid tokens — useful for endpoints that work both authenticated and anonymous. `subject_claim` defaults to `"sub"` but can be any custom claim (`"user_id"`, `"uid"`, ...). Role dependencies accept either a string or a list of strings on the JWT claim; `require_all=True` requires every listed role/permission, `False` (default for roles, override for permissions) requires any.
 
 
-## Middleware de rate limit {#rate-limit-middleware}
+## Rate limit middleware
 
 
-`RateLimitMiddleware` é um limitador leve in-process de janela deslizante — cada chave única (IP do cliente por default) tem permissão para no máximo `max_requests` requests dentro de cada janela `window_seconds`. Requests excedentes recebem um `429 Too Many Requests` com um header `Retry-After`.
+`RateLimitMiddleware` is a lightweight in-process sliding-window limiter — each unique key (client IP by default) is allowed at most `max_requests` requests inside every `window_seconds` window. Exceeded requests get a `429 Too Many Requests` with a `Retry-After` header.
 
 ```python
 # src/api/app.py
@@ -203,7 +203,7 @@ def create_app() -> FastAPI:
     ...
 ```
 
-Passe `key_func=` para particionar o estado por header de tenant, usuário autenticado ou qualquer atributo da request. A app factory completa então fica assim:
+Pass `key_func=` to partition state by tenant header, authenticated user, or any request attribute. The full app factory then looks like:
 
 ```python
 # src/api/app.py
@@ -229,15 +229,15 @@ def create_app() -> FastAPI:
     return app
 ```
 
-As duas partes destacadas — o helper `by_tenant` e a ligação `key_func=by_tenant` — são o único diff em relação ao snippet default acima.
+The two highlighted pieces — the `by_tenant` helper and the `key_func=by_tenant` wiring — are the only diff against the default snippet above.
 
-O estado é mantido **in-process** — para deploys com múltiplos workers, ou rode um único worker uvicorn atrás de um único nó reverse-proxy, ou empurre o rate limiting para a borda (nginx / Cloudflare / AWS WAF). O middleware é intencionalmente simples; um limitador de janela deslizante apoiado em Redis está a uma issue de distância se surgir como uma necessidade real.
-
-
-## Verificação de assinatura de webhook {#webhook-signature-verification}
+The state is held **in-process** — for multi-worker deployments either run a single uvicorn worker behind a single reverse-proxy node, or push rate limiting to the edge (nginx / Cloudflare / AWS WAF). The middleware is intentionally simple; a Redis-backed sliding-window limiter is one issue away if it shows up as a real need.
 
 
-`WebhookSignatureVerifier` valida webhooks de entrada assinados via HMAC (estilo Stripe / GitHub) e expõe uma dependency FastAPI que lê o body bruto, verifica a assinatura com `hmac.compare_digest` e devolve os bytes do body para que o route handler possa reparseá-lo sem reler o stream.
+## Webhook signature verification
+
+
+`WebhookSignatureVerifier` validates HMAC-signed inbound webhooks (Stripe / GitHub style) and exposes a FastAPI dependency that reads the raw body, checks the signature with `hmac.compare_digest`, and yields the body bytes so the route handler can re-parse it without re-reading the stream.
 
 ```python
 # src/api/dependencies/webhooks.py
@@ -275,9 +275,9 @@ async def github_event(body: bytes = Depends(github.dependency())) -> None:
     ...
 ```
 
-Suporta as codificações `hex` (default) e `base64`, qualquer algoritmo do hashlib garantido entre plataformas, e um `prefix` opcional (ex.: `"sha256="`) removido antes da comparação. Use o imperativo `verifier.verify(body, signature)` a partir de handlers de queue quando a validação acontece fora do pipeline do FastAPI.
+Supports `hex` (default) and `base64` encodings, any hashlib algorithm guaranteed across platforms, and an optional `prefix` (e.g. `"sha256="`) stripped before comparison. Use the imperative `verifier.verify(body, signature)` from queue handlers when validation happens outside the FastAPI pipeline.
 
-Para provedores que assinam com uma chave privada RSA (Apple App Store, Google Play, serviços enterprise customizados), troque `WebhookSignatureVerifier` por `RSAWebhookSignatureVerifier` — mesma superfície `dependency()` / `verify()`, mas valida a assinatura contra uma chave pública codificada em PEM (`PKCS1v15` sobre SHA-256 por default; passe `hash_algorithm="sha512"` ou `padding="pss"` para casar com o provedor).
+For providers that sign with an RSA private key (Apple App Store, Google Play, custom enterprise services), swap `WebhookSignatureVerifier` for `RSAWebhookSignatureVerifier` — same `dependency()` / `verify()` surface, but it validates the signature against a PEM-encoded public key (`PKCS1v15` over SHA-256 by default; pass `hash_algorithm="sha512"` or `padding="pss"` to match the provider).
 
 ```python
 from tempest_fastapi_sdk import RSAWebhookSignatureVerifier
@@ -291,10 +291,10 @@ apple = RSAWebhookSignatureVerifier(
 ```
 
 
-## Headers Link de paginação {#pagination-link-headers}
+## Pagination Link headers
 
 
-`build_pagination_link_header` emite um header `Link` RFC 8288 com as rels `first` / `prev` / `next` / `last` — combine-o com (ou use no lugar do) wrapper de body `BasePaginationSchema` para clientes REST que esperam headers no estilo GitHub. Os query parameters existentes na URL base são preservados.
+`build_pagination_link_header` emits an RFC 8288 `Link` header with `first` / `prev` / `next` / `last` rels — pair it with (or use instead of) the `BasePaginationSchema` body wrapper for REST clients that expect GitHub-style headers. Existing query parameters on the base URL are preserved.
 
 ```python
 from fastapi import Request, Response
@@ -323,13 +323,13 @@ async def list_users(
     return page.items
 ```
 
-Ajuste `page_param=` / `size_param=` quando seu serviço usa nomes de query parameter não padronizados (ex.: `offset` / `limit`). Passe `extra_params={"sort": "name"}` para embutir o estado atual de sort/filter em cada link.
+Tweak `page_param=` / `size_param=` when your service uses non-standard query parameter names (e.g. `offset` / `limit`). Pass `extra_params={"sort": "name"}` to bake the current sort/filter state into every link.
 
 
-## Router de tool-spec {#tool-spec-router}
+## Tool-spec router
 
 
-`make_tool_spec_router(spec)` monta um endpoint `GET /tool-spec` que expõe um manifest legível por máquina no prefixo raiz — pensado para ficar ao lado de `/health/liveness` para que callers externos possam descobrir capacidades sem parsear o documento OpenAPI completo.
+`make_tool_spec_router(spec)` mounts a `GET /tool-spec` endpoint exposing a machine-readable manifest at the root prefix — meant to sit alongside `/health/liveness` so external callers can discover capabilities without parsing the full OpenAPI document.
 
 ```python
 # src/api/app.py
@@ -359,13 +359,13 @@ def create_app() -> FastAPI:
     return app
 ```
 
-Passe um dict (servido literalmente), um callable sync (chamado a cada request) ou um callable async (aguardado). Sobrescreva `path=` para expor o manifest em uma URL diferente ou `tag=` para agrupá-lo sob uma tag OpenAPI diferente.
+Pass a dict (served verbatim), a sync callable (called every request) or an async callable (awaited). Override `path=` to expose the manifest at a different URL or `tag=` to group it under a different OpenAPI tag.
 
 
-## Entry point programático do servidor {#programmatic-server-entry-point}
+## Programmatic server entry point
 
 
-`run_server` é o helper canônico importado de `src/server.py`. Ele centraliza os defaults de `host` / `port` / `reload` — puxando valores de um objeto `settings` no estilo `ServerSettings` quando presente — e mantém o entry point em uma única linha.
+`run_server` is the canonical helper imported from `src/server.py`. It centralizes the `host` / `port` / `reload` defaults — pulling values from a `ServerSettings`-flavoured `settings` object when present — and keeps the entry point a single line.
 
 ```python
 # src/server.py
@@ -391,13 +391,13 @@ if __name__ == "__main__":
     run()
 ```
 
-A ordem de resolução para cada kwarg é `argumento explícito → settings.SERVER_* → default do SDK` (`"127.0.0.1"` / `8000` / `False`). Kwargs extras do uvicorn (`workers=`, `log_config=`, `ssl_*=`) são repassados literalmente.
+Resolution order for each kwarg is `explicit argument → settings.SERVER_* → SDK default` (`"127.0.0.1"` / `8000` / `False`). Extra uvicorn kwargs (`workers=`, `log_config=`, `ssl_*=`) are forwarded verbatim.
 
 
-## Composição de mixins de settings {#settings-mixins-composition}
+## Settings mixins composition
 
 
-`BaseAppSettings` é a base configurada de `pydantic-settings`. O SDK também expõe mixins componíveis para as dependências mais comuns; escolha as que o serviço precisa e coloque `BaseAppSettings` no **final** da MRO para que seu `model_config` prevaleça.
+`BaseAppSettings` is the configured `pydantic-settings` base. The SDK also exposes composable mixins for the most common dependencies; pick the ones the service needs and put `BaseAppSettings` at the **end** of the MRO so its `model_config` wins.
 
 ```python
 # src/core/settings.py
@@ -443,7 +443,7 @@ class Settings(
 settings = Settings()
 ```
 
-Cada mixin tem seu próprio prefixo de env-var — escolha apenas os que o serviço precisa:
+Each mixin owns its own env-var prefix — pick only the ones the service needs:
 
 | Mixin | Env vars |
 | --- | --- |
@@ -460,15 +460,15 @@ Cada mixin tem seu próprio prefixo de env-var — escolha apenas os que o servi
 | `TokenSettings` | `TOKEN_SECRET` |
 | `WebPushSettings` | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `WEBPUSH_DEFAULT_TTL_SECONDS` |
 
-> **Breaking change na 0.8.0:** `ServerSettings` antes expunha os campos puros `HOST` / `PORT` / `DEBUG` / `LOG_LEVEL` / `LOG_JSON`. Eles foram renomeados para `SERVER_HOST` / `SERVER_PORT` / `SERVER_RELOAD` / `SERVER_DEBUG`, e `LOG_LEVEL` / `LOG_JSON` foram movidos para o novo mixin `LogSettings`. Atualize tanto seu arquivo `.env` (nomes das env vars) quanto qualquer código lendo `settings.HOST` etc.
+> **Breaking change in 0.8.0:** `ServerSettings` previously exposed bare `HOST` / `PORT` / `DEBUG` / `LOG_LEVEL` / `LOG_JSON` fields. They were renamed to `SERVER_HOST` / `SERVER_PORT` / `SERVER_RELOAD` / `SERVER_DEBUG`, and `LOG_LEVEL` / `LOG_JSON` moved to the new `LogSettings` mixin. Update both your `.env` file (env var names) and any code reading `settings.HOST` etc.
 
 
-## Autenticação {#authentication}
+## Authentication
 
 
-Fluxo ponta a ponta de signup + login + rota protegida usando `PasswordUtils` e `JWTUtils`. Requer o extra `[auth]`.
+End-to-end signup + login + protected route using `PasswordUtils` and `JWTUtils`. Requires the `[auth]` extra.
 
-#### Conecte os singletons utilitários {#wire-the-utility-singletons}
+#### Wire the utility singletons
 
 ```python
 # src/core/security.py
@@ -489,11 +489,11 @@ tokens = JWTUtils(
 )
 ```
 
-#### Signup {#signup}
+#### Signup
 
-Reaproveite o `UserService.create` definido no tutorial — ele já faz hash da senha.
+Reuse the `UserService.create` defined in the tutorial — it already hashes the password.
 
-#### Login {#login}
+#### Login
 
 ```python
 # src/schemas/auth.py
@@ -572,9 +572,9 @@ async def login(
     return await service.login(data)
 ```
 
-#### Proteja uma rota — dependency de JWT {#protect-a-route-jwt-dependency}
+#### Protect a route — JWT dependency
 
-Use `make_jwt_user_dependency` para conectar o esquema bearer + decode do JWT + carga do usuário em uma única chamada. A única costura é `user_loader(subject)`, um callable async que mapeia a claim subject do JWT para seu `UserModel` de domínio.
+Use `make_jwt_user_dependency` to wire the bearer scheme + JWT decode + user load in one call. The single seam is `user_loader(subject)`, an async callable that maps the JWT subject claim to your domain `UserModel`.
 
 ```python
 # src/api/dependencies/auth.py
@@ -611,9 +611,9 @@ async def me(current: UserModel = Depends(get_current_user)) -> UserResponseSche
     return UserResponseSchema.model_validate(current)
 ```
 
-#### Soft auth (usuário opcional) {#soft-auth-optional-user}
+#### Soft auth (optional user)
 
-`get_current_user_or_none` acima já usa `soft=True` — ele retorna `None` em vez de levantar exceção em um token ausente ou inválido, para que endpoints possam funcionar tanto autenticados quanto anônimos:
+`get_current_user_or_none` above already uses `soft=True` — it returns `None` instead of raising on a missing or invalid token, so endpoints can work both authenticated and anonymous:
 
 ```python
 @router.get("/feed")
@@ -623,15 +623,15 @@ async def feed(
     return await feed_service.list(viewer=current)
 ```
 
-Por baixo dos panos, `soft=True` chama `tokens.decode_or_none` (sem exceção em tokens expirados/inválidos) e pula o loader quando o subject está ausente.
+Under the hood `soft=True` calls `tokens.decode_or_none` (no exception on expired/invalid tokens) and skips the loader when the subject is missing.
 
 ---
 
 
-## Uploads de arquivo {#file-uploads}
+## File uploads
 
 
-Endpoint de avatar com validação + cleanup. Requer o extra `[upload]`.
+Avatar endpoint with validation + cleanup. Requires the `[upload]` extra.
 
 ```python
 # src/core/storage.py
@@ -649,7 +649,7 @@ avatar_storage = UploadUtils(
 )
 ```
 
-`verify_magic_bytes=True` lê os primeiros bytes de cada upload e confirma que o arquivo *realmente é* um dos tipos permitidos — um payload HTML+JS enviado como `image/png` é rejeitado mesmo que sua extensão e o header `Content-Type` pareçam válidos. Só habilite isso quando todo formato aceito for um que `sniff_mime` reconhece (JPEG, PNG, GIF, BMP, WebP, PDF); caso contrário um upload legítimo mas não detectável seria recusado. Para controle mais fino, passe um predicado `content_validator` para `save()` (`save(file, content_validator=lambda b: sniff_mime(b) in {"image/png"})`), e passe `filename="..."` para um nome determinístico e endereçável (ex.: `f"{user_id}.jpg"`) em vez do UUID default.
+`verify_magic_bytes=True` reads the first bytes of each upload and confirms the file *really is* one of the allowed types — an HTML+JS payload sent as `image/png` is rejected even though its extension and `Content-Type` header look valid. Only enable it when every accepted format is one `sniff_mime` recognizes (JPEG, PNG, GIF, BMP, WebP, PDF); otherwise a legitimate but unsniffable upload would be refused. For finer control, pass a `content_validator` predicate to `save()` (`save(file, content_validator=lambda b: sniff_mime(b) in {"image/png"})`), and pass `filename="..."` for a deterministic, addressable name (e.g. `f"{user_id}.jpg"`) instead of the default UUID.
 
 ```python
 # src/api/routers/users.py (extension)
@@ -673,7 +673,7 @@ async def upload_avatar(
     return await controller.set_avatar(user_id, str(path))
 ```
 
-Adicione `set_avatar` tanto ao service quanto ao controller (o controller permanece um pass-through fino a menos que orquestração seja necessária — ex.: disparar um evento "avatar atualizado"):
+Add `set_avatar` to both the service and the controller (the controller stays a thin pass-through unless orchestration is needed — e.g. firing an "avatar updated" event):
 
 ```python
 # src/services/user.py
@@ -694,11 +694,11 @@ class UserController:
         return await self.service.set_avatar(user_id, path)
 ```
 
-`UploadUtils.save()` levanta `FileTooLargeException` (413) ou `InvalidFileTypeException` (415) na rejeição — o exception handler do SDK já retorna o status code correto com um campo `code` na response.
+`UploadUtils.save()` raises `FileTooLargeException` (413) or `InvalidFileTypeException` (415) on rejection — the SDK's exception handler already returns the right status code with a `code` field on the response.
 
-#### Servindo o arquivo de volta {#serving-the-file-back}
+#### Serving the file back
 
-Uploads em disco local são melhor servidos por um upstream (nginx / Caddy) para que o FastAPI não faça streaming dos bytes. Para dev:
+Local-disk uploads are best served by an upstream (nginx / Caddy) so FastAPI doesn't stream bytes. For dev:
 
 ```python
 from fastapi.staticfiles import StaticFiles
@@ -710,7 +710,7 @@ app.mount(
 )
 ```
 
-Construa a URL pública no schema de response:
+Construct the public URL in the response schema:
 
 ```python
 class UserResponseSchema(BaseResponseSchema):
@@ -727,9 +727,9 @@ class UserResponseSchema(BaseResponseSchema):
         return f"/static/uploads/{value}"
 ```
 
-#### Servindo arquivos privados pela API (`DownloadUtils`) {#serving-private-files-through-the-api-downloadutils}
+#### Serving private files through the API (`DownloadUtils`)
 
-Quando um arquivo precisa ficar **atrás de auth** — faturas, contratos, exames médicos — uma URL pública `/static` o vaza para qualquer um que descubra o caminho. `DownloadUtils` faz streaming dos bytes pelo próprio endpoint, para que os mesmos checks de `Depends(get_current_user)` / permission que guardam todas as outras rotas guardem o download também. Nenhum link público é exposto. Não precisa de **nenhum extra** (usa o `FileResponse` / `StreamingResponse` do Starlette, que vêm com o FastAPI).
+When a file must stay **behind auth** — invoices, contracts, medical scans — a public `/static` URL leaks it to anyone who learns the path. `DownloadUtils` streams the bytes through the endpoint itself, so the same `Depends(get_current_user)` / permission checks that guard every other route guard the download too. No public link is ever exposed. It needs **no extra** (uses Starlette's `FileResponse` / `StreamingResponse`, which ship with FastAPI).
 
 ```python
 # src/core/storage.py
@@ -767,9 +767,9 @@ async def download_invoice(
     )
 ```
 
-Qualquer caminho relativo que escape de `base_dir` (traversal `../`, caminhos absolutos, escapes via symlink) levanta `NotFoundException` (404) em vez de vazar o arquivo — o mesmo 404 que você obtém para um arquivo genuinamente ausente, para que callers nunca distingam "proibido" de "ausente". `file_response` adivinha o tipo MIME a partir do filename (sobrescreva com `media_type=`), e `as_attachment=False` serve **inline** (ex.: visualizar um PDF no navegador).
+Any relative path that escapes `base_dir` (`../` traversal, absolute paths, symlink escapes) raises `NotFoundException` (404) instead of leaking the file — the same 404 you get for a genuinely missing file, so callers never distinguish "forbidden" from "absent". `file_response` guesses the MIME type from the filename (override with `media_type=`), and `as_attachment=False` serves **inline** (e.g. preview a PDF in-browser).
 
-Para payloads construídos na hora — um relatório gerado, um zip em memória, bytes decriptados — use `stream()` em vez de tocar o disco:
+For payloads built on the fly — a generated report, an in-memory zip, decrypted bytes — use `stream()` instead of touching disk:
 
 ```python
 import io
@@ -792,15 +792,15 @@ async def download_receipt(
     )
 ```
 
-`stream()` aceita `bytes` brutos, um `Iterable[bytes]` sync ou um `AsyncIterable[bytes]`, para que um export grande possa ser produzido chunk a chunk sem bufferizar tudo na memória. Ambos os métodos definem um `Content-Disposition` seguro em UTF-8 (filenames não-ASCII sobrevivem via o parâmetro `filename*` da RFC 5987); `build_content_disposition()` é exportado caso você precise definir esse header em uma response feita à mão.
+`stream()` accepts raw `bytes`, a sync `Iterable[bytes]`, or an `AsyncIterable[bytes]`, so a large export can be yielded chunk-by-chunk without buffering it all in memory. Both methods set a UTF-8-safe `Content-Disposition` (non-ASCII filenames survive via the RFC 5987 `filename*` parameter); `build_content_disposition()` is exported if you need to set that header on a hand-rolled response.
 
 ---
 
 
-## E-mail transacional {#transactional-email}
+## Transactional email
 
 
-Fluxo de reset de senha usando `EmailUtils` + um JWT de curta duração. Requer o extra `[email]`.
+Password reset flow using `EmailUtils` + a short-lived JWT. Requires the `[email]` extra.
 
 ```python
 # src/core/mailer.py
@@ -877,3 +877,4 @@ class PasswordResetService:
 ```
 
 ---
+

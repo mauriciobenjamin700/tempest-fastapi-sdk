@@ -1,6 +1,6 @@
-# Contributing
+# Contribuindo {#contributing}
 
-## Development environment
+## Ambiente de desenvolvimento {#development-environment}
 
 ```bash
 # Clone + sync every extra and the dev/docs groups
@@ -9,25 +9,25 @@ cd tempest-fastapi-sdk
 uv sync --all-extras --group dev --group docs
 ```
 
-!!! tip "Quick verification"
-    `make check` runs the full quality gate (lint + format check + mypy + pytest). CI runs the same target on every push, so a green `make check` locally means a green PR.
+!!! tip "Verificação rápida"
+    `make check` roda o quality gate completo (lint + verificação de formatação + mypy + pytest). A CI roda o mesmo target em cada push, então um `make check` verde localmente significa um PR verde.
 
-## Quality gates
+## Quality gates {#quality-gates}
 
-| Command | What it does |
+| Comando | O que faz |
 | --- | --- |
-| `make lint` | `ruff check .` (no auto-fix) |
-| `make fix` | `ruff check --fix .` + `ruff format .` (writes) |
-| `make fmt` | `ruff format .` (writes) |
-| `make fmt-check` | `ruff format --check .` (read-only) |
+| `make lint` | `ruff check .` (sem auto-fix) |
+| `make fix` | `ruff check --fix .` + `ruff format .` (escreve) |
+| `make fmt` | `ruff format .` (escreve) |
+| `make fmt-check` | `ruff format --check .` (somente leitura) |
 | `make type` | `mypy tempest_fastapi_sdk` (strict) |
-| `make test` | `pytest` with coverage |
-| `make check` | `lint + fmt-check + type + test` (stops at first failure) |
-| `make ci` | `check + build + smoke` (full CI mirror) |
+| `make test` | `pytest` com cobertura |
+| `make check` | `lint + fmt-check + type + test` (para na primeira falha) |
+| `make ci` | `check + build + smoke` (espelho completo da CI) |
 
-The same gates are available via the bundled CLI: `tempest lint` / `tempest fix` / `tempest check` work in any consuming project too.
+Os mesmos gates estão disponíveis via a CLI incluída: `tempest lint` / `tempest fix` / `tempest check` também funcionam em qualquer projeto consumidor.
 
-## Tests
+## Testes {#tests}
 
 ```bash
 make test                    # full suite + coverage
@@ -36,34 +36,34 @@ uv run pytest -k cursor      # tests matching "cursor"
 uv run pytest -x             # stop at first failure
 ```
 
-The suite uses in-memory SQLite via `tempest_fastapi_sdk.testing.test_session`. Repository tests share the `session` fixture from `tests/conftest.py`.
+A suíte usa SQLite em memória via `tempest_fastapi_sdk.testing.test_session`. Os testes de repositório compartilham a fixture `session` de `tests/conftest.py`.
 
-## Docs
+## Docs {#docs}
 
 ```bash
 make docs-serve              # mkdocs serve — live reload at http://127.0.0.1:8000
 make docs-build              # build the static site into ./site/
 ```
 
-Edits land on the deployed Pages site on push to `main` via [`.github/workflows/docs.yml`](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/blob/main/.github/workflows/docs.yml).
+As edições chegam ao site do Pages publicado no push para a `main` via [`.github/workflows/docs.yml`](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/blob/main/.github/workflows/docs.yml).
 
-## Commit message style
+## Estilo das mensagens de commit {#commit-message-style}
 
-Conventional Commits prefixes:
+Prefixos de Conventional Commits:
 
-- `feat:` — new user-facing capability
-- `fix:` — bug fix
-- `refactor:` — internal restructuring with no behavior change
-- `docs:` — documentation only
-- `style:` — formatting / whitespace
-- `tests:` — test-only changes
-- `chore:` — tooling, deps, release plumbing
+- `feat:` — nova capacidade voltada ao usuário
+- `fix:` — correção de bug
+- `refactor:` — reestruturação interna sem mudança de comportamento
+- `docs:` — somente documentação
+- `style:` — formatação / espaços em branco
+- `tests:` — mudanças somente em testes
+- `chore:` — tooling, deps, encanamento de release
 
-Add `!` after the prefix for breaking changes (`feat!: drop class-attr config`). Tag the version that ships the change in the message.
+Adicione `!` após o prefixo para mudanças breaking (`feat!: drop class-attr config`). Marque na mensagem a versão que entrega a mudança.
 
-## Release
+## Release {#release}
 
-`make release VERSION=X.Y.Z` bumps both version locations, runs every gate, creates the commit + tag, and tells you what to push:
+`make release VERSION=X.Y.Z` atualiza ambos os locais de versão, roda todos os gates, cria o commit + a tag e diz o que você deve dar push:
 
 ```bash
 make release VERSION=0.20.0
@@ -71,12 +71,12 @@ git push origin main
 git push origin v0.20.0
 ```
 
-The PyPI publish workflow fires on the `vX.Y.Z` tag push (trusted publishing — no API token in the repo).
+O workflow de publicação no PyPI dispara no push da tag `vX.Y.Z` (trusted publishing — sem API token no repositório).
 
-## Where to file things
+## Onde registrar as coisas {#where-to-file-things}
 
-| Need | Channel |
+| Necessidade | Canal |
 | --- | --- |
-| Bug report / feature request | [GitHub Issues](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues) |
-| Security disclosure | mauricio.benjamin@reloverelations.com (private) |
-| Docs typo | PR straight against `docs/<page>.md` |
+| Reporte de bug / pedido de feature | [GitHub Issues](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues) |
+| Divulgação de segurança | mauricio.benjamin@reloverelations.com (privado) |
+| Erro de digitação na doc | PR direto contra `docs/<page>.md` |

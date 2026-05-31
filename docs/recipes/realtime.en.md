@@ -1,11 +1,11 @@
-# Tempo real {#real-time}
+# Real-time
 
-Envie dados para os clientes sem que o cliente faça polling. SSE para broadcasts servidor→navegador, Web Push para notificações mesmo quando a página está fechada.
+Push data to clients without the client polling. SSE for server→browser broadcasts, Web Push for notifications even when the page is closed.
 
-## Server-Sent Events (SSE) {#server-sent-events-sse}
+## Server-Sent Events (SSE)
 
 
-`EventStream` é uma fila async em memória que alimenta uma conexão HTTP SSE. `ServerSentEvent` codifica um frame; `sse_response` envolve o stream de bytes em um `StreamingResponse` do Starlette com headers compatíveis com SSE.
+`EventStream` is an in-memory async queue feeding one SSE HTTP connection. `ServerSentEvent` encodes one frame; `sse_response` wraps the byte stream in a Starlette `StreamingResponse` with SSE-friendly headers.
 
 ```python
 # src/api/routers/events.py
@@ -32,20 +32,20 @@ async def events() -> "StreamingResponse":  # forward-declared by Starlette
     return sse_response(stream.stream())
 ```
 
-Lado do navegador:
+Browser side:
 
 ```javascript
 const es = new EventSource("/events");
 es.addEventListener("counter", (e) => console.log("got", JSON.parse(e.data)));
 ```
 
-`heartbeat_seconds` emite um comentário SSE `: keepalive` quando ocioso, para que load-balancers não fechem conexões de longa duração. `ServerSentEvent.data` aceita strings, bytes ou qualquer objeto Python serializável em JSON — valores não-string são codificados em JSON automaticamente. Passe `retry=` para sugerir ao navegador o atraso de reconexão (em milissegundos).
+`heartbeat_seconds` emits a `: keepalive` SSE comment when idle so load-balancers don't close long-lived connections. `ServerSentEvent.data` accepts strings, bytes or any JSON-serializable Python object — non-strings are JSON-encoded automatically. Pass `retry=` to hint the browser at the reconnect delay (milliseconds).
 
 
-## Notificações Web Push {#web-push-notifications}
+## Web Push notifications
 
 
-`WebPushDispatcher` envolve a biblioteca síncrona `pywebpush` em `asyncio.to_thread` e expõe os dois erros que a aplicação se importa: `WebPushGoneError` (HTTP 404/410 — apague a subscription) e `WebPushError` (todo o resto). Instale com `[webpush]`.
+`WebPushDispatcher` wraps the synchronous `pywebpush` library in `asyncio.to_thread` and surfaces the two errors the application cares about: `WebPushGoneError` (HTTP 404/410 — delete the subscription) and `WebPushError` (everything else). Install with `[webpush]`.
 
 ```python
 # src/services/notifications.py
@@ -87,4 +87,5 @@ async def broadcast(subs: list[WebPushSubscriptionSchema], payload: WebPushPaylo
         await subscriptions_repo.delete_by_endpoints(gone)
 ```
 
-`WebPushSubscriptionSchema` faz round-trip do JSON exato que `PushSubscription.toJSON()` emite no navegador (ele faz alias de `expiration_time` ↔ `expirationTime`), então você pode armazenar subscriptions recebidas literalmente e reproduzi-las no dispatch.
+`WebPushSubscriptionSchema` round-trips the exact JSON `PushSubscription.toJSON()` emits in the browser (it aliases `expiration_time` ↔ `expirationTime`), so you can store inbound subscriptions verbatim and replay them on dispatch.
+

@@ -1,7 +1,7 @@
 # Logging
 
 
-`configure_logging` instala um handler JSON no logger raiz que emite registros JSON de uma linha carregando o ID da request ativa. `LogUtils` é uma fachada fina que adiciona métodos de nível aceitando `**fields` estruturados.
+`configure_logging` installs a JSON handler on the root logger that emits one-line JSON records carrying the active request ID. `LogUtils` is a thin facade that adds level methods accepting structured `**fields`.
 
 ```python
 from tempest_fastapi_sdk import LogUtils, configure_logging
@@ -24,7 +24,7 @@ except RuntimeError:
 request_id = get_request_id()
 ```
 
-Saída JSON (linha única — formatada aqui para facilitar a leitura):
+JSON output (single line — formatted here for readability):
 
 ```json
 {
@@ -38,13 +38,13 @@ Saída JSON (linha única — formatada aqui para facilitar a leitura):
 }
 ```
 
-O middleware aceita um nome de header customizado (`RequestIDMiddleware(app, header_name="X-Correlation-ID")`); o mesmo header é devolvido em cada response.
+The middleware accepts a custom header name (`RequestIDMiddleware(app, header_name="X-Correlation-ID")`); the same header is echoed back on every response.
 
 
-## Enums base {#base-enums}
+## Base enums
 
 
-`BaseStrEnum` / `BaseIntEnum` estendem o `Enum` da stdlib com helpers ajustados para o round-trip de Pydantic + SQLAlchemy (busca por valor, herança de `str` / `int` serializável em JSON, `__contains__` que aceita valores brutos). Use-os para todo enum que atravessa a fronteira da API.
+`BaseStrEnum` / `BaseIntEnum` extend the stdlib `Enum` with helpers tuned for Pydantic + SQLAlchemy round-tripping (lookup by value, JSON-serializable `str` / `int` inheritance, `__contains__` that accepts raw values). Use them for every enum that crosses the API boundary.
 
 ```python
 from tempest_fastapi_sdk import BaseIntEnum, BaseStrEnum
@@ -68,4 +68,5 @@ assert OrderStatus("paid") is OrderStatus.PAID    # canonical lookup
 assert Priority.NORMAL + 1 == Priority.HIGH       # int math
 ```
 
-Como herdam de `str` / `int`, o Pydantic os serializa de forma transparente como seu valor subjacente e o SQLAlchemy consegue persisti-los via a coluna `Enum` padrão sem um conversor extra.
+Because they inherit from `str` / `int`, Pydantic serializes them transparently as their underlying value and SQLAlchemy can persist them via the standard `Enum` column without an extra converter.
+

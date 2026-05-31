@@ -1,25 +1,25 @@
-# Tutorial — construindo a feature *Users* {#tutorial-building-the-users-feature}
+# Tutorial — building the *Users* feature
 
-Este tutorial percorre a montagem da feature **Users** usando todas as convenções do SDK. Ao final você terá:
+This tutorial walks through wiring the **Users** feature using every SDK convention. By the end you'll have:
 
-- Um `UserModel` SQLAlchemy com colunas de auditoria + soft-delete
-- Schemas Pydantic para create / update / response / filter
-- Um repository, service e controller herdando das bases do SDK
-- Routers com controllers injetados via `Depends`
-- Subclasses de exceções de domínio serializadas pelo exception handler do SDK
-- Um `GET /users` paginado e um `POST /users` protegido por JWT
+- A SQLAlchemy `UserModel` with audit + soft-delete columns
+- Pydantic schemas for create / update / response / filter
+- A repository, service and controller subclassing the SDK bases
+- Routers with `Depends`-injected controllers
+- Domain exception subclasses serialized by the SDK's exception handler
+- A paginated `GET /users` and a JWT-protected `POST /users`
 
 !!! tip "Tom for the impatient"
-    Se você só quer copiar o layout, faça o scaffold: `tempest new my-service`. A CLI entrega o mesmo esqueleto que este tutorial percorre.
+    If you only want to copy the layout, scaffold it: `tempest new my-service`. The CLI ships the same skeleton this tutorial walks through.
 
 !!! info "Following along"
-    Cada snippet é **standalone** — cole-o no caminho de arquivo mostrado no comentário. A árvore completa do projeto é o [layout de projeto obrigatório de Arquitetura →](architecture.md#mandatory-project-layout).
+    Every snippet is **standalone** — paste it into the file path shown in the comment. The full project tree is the [mandatory project layout from Architecture →](architecture.md#mandatory-project-layout).
 
-Vamos construir uma feature `Users` completa do zero, de ponta a ponta. Cada arquivo abaixo é algo que você escreve no seu projeto; as primitivas do SDK são importadas.
+We'll build a complete `Users` feature from scratch, end to end. Every file below is something you write in your project; SDK primitives are imported.
 
-### 1. Layout do projeto {#1-project-layout}
+### 1. Project layout
 
-O layout canônico que todo serviço Python construído sobre este SDK deve adotar — `main.py` é uma única linha, `src/server.py` expõe tanto `run()` quanto o `app` importável (ou o re-exporta de `src/api/app.py`), `api/dependencies/` é **sempre um pacote** (auth + factory providers), `controllers/` é obrigatório mesmo quando é só um pass-through fino, e `repositories/` fica **dentro** de `db/`.
+The canonical layout every Python service shipped against this SDK should adopt — `main.py` is a one-liner, `src/server.py` exposes both `run()` and the importable `app` (or re-exports it from `src/api/app.py`), `api/dependencies/` is **always a package** (auth + factory providers), `controllers/` is mandatory even when it's only a thin pass-through, and `repositories/` lives **under** `db/`.
 
 ```text
 my-service/
@@ -60,20 +60,20 @@ my-service/
             └── controllers.py    # get_<X>_controller / get_<X>_service factories
 ```
 
-Cada `__init__.py` re-exporta todo símbolo público do seu diretório para que os consumidores sempre façam `from src.schemas import UserCreateSchema` (e não `from src.schemas.user import UserCreateSchema`). Isso mantém as refatorações indolores — mova arquivos sem quebrar imports.
+Each `__init__.py` re-exports every public symbol from its directory so consumers always do `from src.schemas import UserCreateSchema` (not `from src.schemas.user import UserCreateSchema`). This keeps refactors painless — move files around without breaking imports.
 
-Se o seu serviço ainda não tem controllers/services/repositories, **mesmo assim entregue pacotes vazios com os nomes corretos** — uniformidade importa mais do que pular um diretório. Descarte `db/`, `utils/`, `queue/` ou `tasks/` apenas quando o serviço genuinamente não precisar de persistência/utilitários/mensageria.
+If your service has no controllers/services/repositories yet, **still ship empty packages with the right names** — uniformity matters more than skipping a directory. Drop `db/`, `utils/`, `queue/` or `tasks/` only when the service genuinely doesn't need persistence/utilities/messaging.
 
-### 2. Settings, server, app factory e entry point {#2-settings-server-app-factory-entry-point}
+### 2. Settings, server, app factory & entry point
 
-Quatro arquivos mapeiam para quatro responsabilidades:
+Four files map onto four responsibilities:
 
-| Arquivo | Responsabilidade |
+| File | Responsibility |
 | --- | --- |
-| `src/core/settings.py` | `Settings(BaseAppSettings, ...mixins)` — fonte única de verdade para env vars. |
-| `src/api/app.py` | factory `create_app()` + middleware + CORS + exception handlers + inclusão de routers + instância `app` em nível de módulo. |
-| `src/server.py` | `run()` invocando `uvicorn.run("src.api.app:app", ...)` programaticamente, além de re-exportar `app` para que runners externos (gunicorn, CLI do uvicorn) possam importá-lo. |
-| `main.py` | Entry point do processo — uma única linha sob `if __name__ == "__main__":` chamando `run()`. |
+| `src/core/settings.py` | `Settings(BaseAppSettings, ...mixins)` — one source of truth for env vars. |
+| `src/api/app.py` | `create_app()` factory + middleware + CORS + exception handlers + router includes + module-level `app` instance. |
+| `src/server.py` | `run()` invoking `uvicorn.run("src.api.app:app", ...)` programmatically, plus re-exports `app` so external runners (gunicorn, uvicorn CLI) can import it. |
+| `main.py` | Process entry point — a single line under `if __name__ == "__main__":` calling `run()`. |
 
 ```python
 # src/core/settings.py
@@ -170,7 +170,7 @@ def run() -> None:
 __all__: list[str] = ["app", "run"]
 ```
 
-`run_server` lê `SERVER_HOST` / `SERVER_PORT` / `SERVER_RELOAD` de `settings` (caindo para `127.0.0.1` / `8000` / `False`) e repassa quaisquer kwargs extras (`workers=`, `log_config=`, `ssl_*=`) literalmente para `uvicorn.run`. Veja a [receita de entry point programático do server](recipes/http.md#programmatic-server-entry-point).
+`run_server` reads `SERVER_HOST` / `SERVER_PORT` / `SERVER_RELOAD` from `settings` (falling back to `127.0.0.1` / `8000` / `False`) and forwards any extra kwargs (`workers=`, `log_config=`, `ssl_*=`) verbatim to `uvicorn.run`. See the [Programmatic server entry point recipe](recipes/http.md#programmatic-server-entry-point).
 
 ```python
 # src/__init__.py
@@ -187,9 +187,9 @@ if __name__ == "__main__":
     run()
 ```
 
-Defaults de bind: `127.0.0.1` para serviços internos (o default de `ServerSettings.SERVER_HOST` do SDK), `0.0.0.0` apenas quando o serviço é consumido por uma origem separada (ex.: um dev server de frontend). Nunca inicie o uvicorn via `subprocess.run(["uvicorn", ...])` — sempre passe por `run_server` (ou `uvicorn.run("src.api.app:app", ...)` diretamente) para que reload, tratamento de sinais e shutdown gracioso se comportem corretamente.
+Bind defaults: `127.0.0.1` for internal services (the SDK's `ServerSettings.SERVER_HOST` default), `0.0.0.0` only when the service is consumed by a separate origin (e.g. a frontend dev server). Never start uvicorn via `subprocess.run(["uvicorn", ...])` — always go through `run_server` (or `uvicorn.run("src.api.app:app", ...)` directly) so reload, signal handling and graceful shutdown behave correctly.
 
-### 3. Modelo ORM {#3-orm-model}
+### 3. ORM model
 
 ```python
 # src/db/models/user.py
@@ -220,7 +220,7 @@ class UserModel(BaseModel):
     password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
 ```
 
-Re-exporte-o:
+Re-export it:
 
 ```python
 # src/db/models/__init__.py
@@ -237,11 +237,11 @@ from tempest_fastapi_sdk import BaseModel
 __all__: list[str] = ["BaseModel", "UserModel"]
 ```
 
-> **Tip:** Sempre importe os models em `src/db/__init__.py`. O SQLAlchemy precisa "enxergar" todo model antes que `BaseModel.metadata` esteja completo, para que o autogenerate do Alembic e `create_tables()` funcionem corretamente.
+> **Tip:** Always import models in `src/db/__init__.py`. SQLAlchemy needs to "see" every model before `BaseModel.metadata` is complete, so Alembic autogenerate and `create_tables()` work correctly.
 
-### 4. Schemas {#4-schemas}
+### 4. Schemas
 
-O padrão de nomenclatura recomendado: um schema `*Create`, `*Update`, `*Response` e `*Filter` por recurso.
+The recommended naming pattern: one `*Create`, `*Update`, `*Response` and `*Filter` schema per resource.
 
 ```python
 # src/schemas/user.py
@@ -308,9 +308,9 @@ __all__: list[str] = [
 ]
 ```
 
-### 5. Exceções de domínio {#5-domain-exceptions}
+### 5. Domain exceptions
 
-O SDK entrega `NotFoundException`, `ConflictException`, etc. genéricos. Faça subclasse deles por domínio para que o matching de `isinstance` / `except DomainError` permaneça explícito. `message` / `code` / `status_code` em nível de classe são defaults para os quais o construtor recorre — você também pode sobrescrever qualquer um deles no ponto do raise sem fazer subclasse:
+The SDK ships generic `NotFoundException`, `ConflictException`, etc. Subclass them per domain so the `isinstance` / `except DomainError` matching stays explicit. Class-level `message` / `code` / `status_code` are defaults the constructor falls back to — you can also override any of them at the raise site without subclassing:
 
 ```python
 # src/core/exceptions.py
@@ -329,7 +329,7 @@ class UserEmailAlreadyTakenError(ConflictException):
     code: str = "USER_EMAIL_TAKEN"
 ```
 
-Para códigos pontuais você não precisa de subclasse — passe-os ao construtor:
+For one-off codes you don't need a subclass — pass them to the constructor:
 
 ```python
 raise NotFoundException(
@@ -339,7 +339,7 @@ raise NotFoundException(
 )
 ```
 
-O exception handler do SDK ([`register_exception_handlers`](#2-settings-server-app-factory-entry-point)) os serializa para:
+The SDK's exception handler ([`register_exception_handlers`](#2-settings-server-app-factory-entry-point)) serializes them to:
 
 ```json
 {
@@ -349,11 +349,11 @@ O exception handler do SDK ([`register_exception_handlers`](#2-settings-server-a
 }
 ```
 
-O frontend ramifica em `code`, não na mensagem (potencialmente traduzida).
+The frontend branches on `code`, not on the (potentially translated) message.
 
-### 6. Repository {#6-repository}
+### 6. Repository
 
-Para CRUD simples você não precisa de subclasse nenhuma — instancie `BaseRepository` diretamente e vincule o model via construtor:
+For plain CRUD you don't need a subclass at all — instantiate `BaseRepository` directly and bind the model via the constructor:
 
 ```python
 # anywhere a session is in scope
@@ -365,7 +365,7 @@ repository = BaseRepository(session, model=UserModel)
 await repository.add(UserModel(email="ana@example.com"))
 ```
 
-Faça subclasse quando quiser embutir mensagens específicas de domínio, trocar a exceção de not-found, sobrescrever os métodos de mapper ou adicionar queries customizadas. A assinatura do construtor (não os atributos de classe) é o contrato:
+Subclass when you want to bake in domain-specific messages, swap the not-found exception, override the mapper methods or add custom queries. The constructor signature (not class attributes) is the contract:
 
 ```python
 # src/db/repositories/user.py
@@ -398,7 +398,7 @@ class UserRepository(BaseRepository[UserModel]):
         return self.map_to_schema(instance)
 ```
 
-O repo base te dá 17 métodos de graça — veja a [tabela de referência](reference.md#tempest_fastapi_sdk.db.repository.BaseRepository) abaixo. Adicione queries customizadas sobre o mesmo `UserRepository`:
+The base repo gives you 17 methods for free — see the [reference table](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/#tempest_fastapi_sdk.db.repository.BaseRepository). Add custom queries on top of the same `UserRepository`:
 
 ```python
 # src/db/repositories/user.py  (continued)
@@ -412,13 +412,13 @@ class UserRepository(BaseRepository[UserModel]):
         return await self.get({"email": email})
 ```
 
-O bloco destacado (sob o comentário divisor) é o que você tipicamente adiciona por projeto — tudo acima dele é o boilerplate que a classe base já cuida.
+The highlighted block (under the divider comment) is what you typically add per project — everything above it is the boilerplate the base class already takes care of.
 
-### 7. Service {#7-service}
+### 7. Service
 
-O service é onde as regras de negócio vivem. Ele chama um ou mais repositories e nunca toca em tipos de HTTP ou SQLAlchemy diretamente.
+The service is where business rules live. It calls one or more repositories and never touches HTTP or SQLAlchemy types directly.
 
-Herde de `BaseService[RepositoryT, ResponseT]`. Fazer isso te dá `get_by_id`, `get_or_none`, `list`, `paginate`, `count`, `exists` e `delete` de graça — cada um já está conectado ao `repository.map_to_response` (sync ou async). Sobrescreva apenas os métodos que precisam de lógica de domínio; adicione novos para casos de uso que a base não cobre (signup, reset de senha, etc.):
+Inherit from `BaseService[RepositoryT, ResponseT]`. Doing so gives you `get_by_id`, `get_or_none`, `list`, `paginate`, `count`, `exists` and `delete` for free — every one is already wired to `repository.map_to_response` (sync or async). Override only the methods that need domain logic; add new ones for use cases the base doesn't cover (signup, password reset, etc.):
 
 ```python
 # src/services/user.py
@@ -492,9 +492,9 @@ class UserService(BaseService[UserRepository, UserResponseSchema]):
         await self.repository.soft_delete(user_id)
 ```
 
-Os métodos que você **não** escreve — `get_by_id(user_id)`, `list(filters)`, `paginate(filters, page, page_size, order_by, ascending)`, `count(filters)`, `exists(filters)`, `delete(user_id)` — já existem na base, já fazem await de um `map_to_response` async, e já retornam o `UserResponseSchema` tipado declarado no parâmetro genérico.
+The methods you do **not** write — `get_by_id(user_id)`, `list(filters)`, `paginate(filters, page, page_size, order_by, ascending)`, `count(filters)`, `exists(filters)`, `delete(user_id)` — already exist on the base, already await an async `map_to_response`, and already return the typed `UserResponseSchema` declared in the generic parameter.
 
-Quando o caso de uso precisa de um pipeline customizado (joins, projeções, fan-out transacional), sobrescreva o método herdado. A assinatura permanece a mesma para que o controller não perceba:
+When the use case needs a custom pipeline (joins, projections, transactional fan-out), override the inherited method. The signature stays the same so the controller doesn't notice:
 
 ```python
 class UserService(BaseService[UserRepository, UserResponseSchema]):
@@ -511,11 +511,11 @@ class UserService(BaseService[UserRepository, UserResponseSchema]):
         return await super().list(filters=merged, order_by=order_by, ascending=ascending)
 ```
 
-### 8. Controller {#8-controller}
+### 8. Controller
 
-Mesmo quando não há orquestração a fazer, `controllers/` existe como um **pass-through fino** para que o grafo de imports permaneça uniforme entre os serviços. No dia em que um caso de uso precisar coordenar dois services (ou fazer fan-out para uma queue), o controller já está lá.
+Even when there's no orchestration to do, `controllers/` exists as a **thin pass-through** so the import graph stays uniform across services. The day a use case needs to coordinate two services (or fan out to a queue), the controller is already there.
 
-Herde de `BaseController[ServiceT, ResponseT]`. A base encaminha `get_by_id`, `list`, `paginate`, `count` e `delete` para o service por você — você só declara métodos que adicionam coordenação entre services ou que não existem no service (casos de uso customizados como `signup`):
+Inherit from `BaseController[ServiceT, ResponseT]`. The base forwards `get_by_id`, `list`, `paginate`, `count` and `delete` to the service for you — you only declare methods that add cross-service coordination or that don't exist on the service (custom use cases like `signup`):
 
 ```python
 # src/controllers/user.py
@@ -556,7 +556,7 @@ class UserController(BaseController[UserService, UserResponseSchema]):
         await self.service.soft_delete(user_id)
 ```
 
-`get_by_id` / `list` / `paginate` / `count` não são redeclarados — `BaseController` já os expõe. Quando o dia da coordenação entre services chegar, sobrescreva o pass-through no lugar:
+`get_by_id` / `list` / `paginate` / `count` are not redeclared — `BaseController` already exposes them. When the cross-service coordination day arrives, override the pass-through in place:
 
 ```python
 class UserController(BaseController[UserService, UserResponseSchema]):
@@ -570,11 +570,11 @@ class UserController(BaseController[UserService, UserResponseSchema]):
         return user
 ```
 
-A assinatura do router nunca muda — só o corpo do controller cresce.
+The router signature never changes — only the controller's body grows.
 
-### 9. Dependency providers {#9-dependency-providers}
+### 9. Dependency providers
 
-`api/dependencies/` é **sempre um pacote**. `auth.py` hospeda as dependências de shared-secret / current-user; `controllers.py` (ou `services.py` quando ainda não há camada de controller) hospeda os factory providers dos quais os routers dependem. Nunca construa controllers ou services inline dentro do arquivo do router.
+`api/dependencies/` is **always a package**. `auth.py` hosts the shared-secret / current-user dependencies; `controllers.py` (or `services.py` when there is no controller layer yet) hosts the factory providers the routers depend on. Never construct controllers or services inline inside the router file.
 
 ```python
 # src/api/dependencies/controllers.py
@@ -609,9 +609,9 @@ from src.api.dependencies.controllers import get_user_controller
 __all__: list[str] = ["get_user_controller"]
 ```
 
-### 10. Router {#10-router}
+### 10. Router
 
-Os routers recebem controllers via `Depends` do FastAPI — sem construção inline, sem lógica de negócio, sem chamadas ao DB. Os business endpoints ficam sob `/api/<domain>` (o prefixo é adicionado no ponto de inclusão em `src/api/app.py`); os meta endpoints (`/health`, `/tool-spec`) permanecem no prefixo raiz.
+Routers receive controllers via FastAPI `Depends` — no inline construction, no business logic, no DB calls. Business endpoints sit under `/api/<domain>` (the prefix is added at the include site in `src/api/app.py`); meta endpoints (`/health`, `/tool-spec`) stay at the root prefix.
 
 ```python
 # src/api/routers/users.py
@@ -679,19 +679,19 @@ async def list_users(
     return await controller.list_paginated(filters)
 ```
 
-### 11. Paginação {#11-pagination}
+### 11. Pagination
 
-O contrato de paginação é garantido de ponta a ponta pelas primitivas do SDK:
+The pagination contract is enforced end-to-end by SDK primitives:
 
-- `UserFilterSchema(BasePaginationFilterSchema)` faz o parse de `?page=&size=&order_by=&ascending=&is_active=&name=` da query string e expõe `.get_conditions()` retornando apenas os filtros de nível de domínio (sem as chaves de paginação).
-- `UserRepository.paginate(...)` roda a query com o dict de filtros + ordenação + offset/limit + count, retornando `{items, total, page, size, pages}`.
-- `BasePaginationSchema[UserResponseSchema]` envolve o resultado para que o OpenAPI documente o formato da response corretamente.
+- `UserFilterSchema(BasePaginationFilterSchema)` parses `?page=&size=&order_by=&ascending=&is_active=&name=` from the query string and exposes `.get_conditions()` returning only the domain-level filters (without pagination keys).
+- `UserRepository.paginate(...)` runs the query with the filter dict + ordering + offset/limit + count, returning `{items, total, page, size, pages}`.
+- `BasePaginationSchema[UserResponseSchema]` wraps the result so OpenAPI documents the response shape correctly.
 
 ```http
 GET /api/users?page=2&size=20&order_by=name&ascending=true&is_active=true&name=ana
 ```
 
-Retorna:
+Returns:
 
 ```json
 {

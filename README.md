@@ -1,6 +1,6 @@
 # tempest-fastapi-sdk
 
-[**📖 Full documentation site →**](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/) · [Tutorial](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/tutorial/) · [Recipes](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/) · [API reference](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)
+[**📖 Documentação completa →**](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/) 🇧🇷 · [**Full documentation (EN) →**](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/) 🇺🇸 · [Tutorial](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/tutorial/) · [Recipes](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/) · [API reference](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)
 
 Shared FastAPI/SQLAlchemy/Pydantic building blocks used across Tempest projects: base schemas, ORM model, async repository, pagination, settings, exceptions, Alembic helper, FastStream/TaskIQ broker managers, Redis cache, Server-Sent Events, Web Push, a Django-style **admin site** (`AdminSite` + `AdminModel`), and the utility classes (`PasswordUtils`, `JWTUtils`, `EmailUtils`, `UploadUtils`, `DownloadUtils`, `MetricsUtils`, `LogUtils`).
 

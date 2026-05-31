@@ -1,22 +1,22 @@
-# Brazilian helpers
+# Helpers brasileiros {#brazilian-helpers}
 
-Document validators (CPF, CNPJ, CEP) and phone number normalizer/validator for BR formats. Pure stdlib — no extra deps.
+Validadores de documentos (CPF, CNPJ, CEP) e normalizador/validador de números de telefone para formatos BR. Pura stdlib — sem dependências extras.
 
-## CPF / CNPJ / phone
+## CPF / CNPJ / telefone {#cpf-cnpj-phone}
 
 
-`tempest_fastapi_sdk.utils.regex` ships ready-to-use regex patterns, validators, normalizers and Pydantic types for the identity/contact fields that show up in almost every Brazilian API. No extra required — pure stdlib + Pydantic (already a core dependency).
+`tempest_fastapi_sdk.utils.regex` traz padrões de regex prontos para uso, validadores, normalizadores e tipos Pydantic para os campos de identidade/contato que aparecem em quase toda API brasileira. Nenhum extra necessário — pura stdlib + Pydantic (já uma dependência core).
 
-| Symbol | Kind | Purpose |
+| Símbolo | Tipo | Finalidade |
 | --- | --- | --- |
-| `CPF_PATTERN`, `CNPJ_PATTERN`, `CPF_CNPJ_PATTERN`, `PHONE_BR_PATTERN` | `re.Pattern[str]` | Compiled regex (masked or raw input). |
-| `is_valid_cpf`, `is_valid_cnpj`, `is_valid_cpf_cnpj` | `(str) -> bool` | Format match **+** check-digit math. All-same-digit sequences rejected. |
-| `is_valid_phone_br` | `(str) -> bool` | BR phone shape: optional `+55`, optional DDD, optional 9th digit. |
-| `normalize_cpf`, `normalize_cnpj`, `normalize_cpf_cnpj`, `normalize_phone_br` | `(str) -> str` | Strip mask to digits-only; raise `ValueError` if invalid. |
-| `only_digits` | `(str) -> str` | Strip every non-digit character. |
-| `CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR` | `Annotated[str, AfterValidator(...)]` | Drop-in Pydantic field types — validate + normalize automatically. |
+| `CPF_PATTERN`, `CNPJ_PATTERN`, `CPF_CNPJ_PATTERN`, `PHONE_BR_PATTERN` | `re.Pattern[str]` | Regex compilada (entrada mascarada ou crua). |
+| `is_valid_cpf`, `is_valid_cnpj`, `is_valid_cpf_cnpj` | `(str) -> bool` | Verificação de formato **+** cálculo dos dígitos verificadores. Sequências de dígitos todos iguais são rejeitadas. |
+| `is_valid_phone_br` | `(str) -> bool` | Formato de telefone BR: `+55` opcional, DDD opcional, nono dígito opcional. |
+| `normalize_cpf`, `normalize_cnpj`, `normalize_cpf_cnpj`, `normalize_phone_br` | `(str) -> str` | Remove a máscara deixando apenas dígitos; lança `ValueError` se inválido. |
+| `only_digits` | `(str) -> str` | Remove todo caractere que não seja dígito. |
+| `CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR` | `Annotated[str, AfterValidator(...)]` | Tipos de campo Pydantic prontos para uso — validam + normalizam automaticamente. |
 
-#### Schema usage
+#### Uso em schema {#schema-usage}
 
 ```python
 from pydantic import EmailStr, Field
@@ -40,7 +40,7 @@ class CustomerCreateSchema(BaseSchema):
     phone: PhoneBR
 ```
 
-Valid input:
+Entrada válida:
 
 ```json
 {
@@ -51,14 +51,14 @@ Valid input:
 }
 ```
 
-After validation:
+Após a validação:
 
 ```python
 CustomerCreateSchema(...).document  # "52998224725"
 CustomerCreateSchema(...).phone     # "5511988887777"
 ```
 
-#### Manual validation (services, controllers, queue handlers)
+#### Validação manual (services, controllers, queue handlers) {#manual-validation-services-controllers-queue-handlers}
 
 ```python
 from tempest_fastapi_sdk.utils import (
@@ -73,9 +73,9 @@ if not is_valid_cpf_cnpj(raw_document):
 document_digits = normalize_cpf_cnpj(raw_document)
 ```
 
-#### Filtering by stored digits
+#### Filtrando pelos dígitos armazenados {#filtering-by-stored-digits}
 
-The normalizers strip masks before saving, so repository filters and unique constraints all work on the canonical digits-only form:
+Os normalizadores removem as máscaras antes de salvar, então filtros de repositório e constraints de unicidade trabalham todos sobre a forma canônica de apenas dígitos:
 
 ```python
 await repo.get({"document": normalize_cpf_cnpj(query)})
@@ -84,10 +84,10 @@ await repo.get({"document": normalize_cpf_cnpj(query)})
 ---
 
 
-## CEP (zipcode)
+## CEP (código postal) {#cep-zipcode}
 
 
-`CEP` is an `Annotated[str, AfterValidator(normalize_cep)]` type — drop it into a Pydantic schema and inbound values are accepted as `"01310-100"` or `"01310100"`, normalized to 8 digits, and rejected (`ValidationError` → HTTP 422 envelope) when they don't match the shape. CEPs have no check digits, so validation is format-only.
+`CEP` é um tipo `Annotated[str, AfterValidator(normalize_cep)]` — coloque-o em um schema Pydantic e os valores recebidos são aceitos como `"01310-100"` ou `"01310100"`, normalizados para 8 dígitos e rejeitados (`ValidationError` → envelope HTTP 422) quando não correspondem ao formato. CEPs não têm dígitos verificadores, então a validação é apenas de formato.
 
 ```python
 from tempest_fastapi_sdk import BaseSchema
@@ -100,23 +100,23 @@ class AddressCreateSchema(BaseSchema):
     number: str
 ```
 
-Imperative variants: `is_valid_cep(value)`, `normalize_cep(value)`, plus `CEP_PATTERN` for raw regex use. Use them inside services / queue handlers where you don't want a Pydantic round-trip.
+Variantes imperativas: `is_valid_cep(value)`, `normalize_cep(value)`, além de `CEP_PATTERN` para uso direto da regex. Use-as dentro de services / queue handlers onde você não quer um round-trip pelo Pydantic.
 
 
-## Utility helpers (utcnow, to_utc, modify_dict)
+## Helpers utilitários (utcnow, to_utc, modify_dict) {#utility-helpers-utcnow-to_utc-modify_dict}
 
 
-Small stateless helpers from `tempest_fastapi_sdk.utils` that the SDK itself relies on and that show up across every service. Available without any extra.
+Pequenos helpers stateless de `tempest_fastapi_sdk.utils` dos quais o próprio SDK depende e que aparecem em todos os services. Disponíveis sem nenhum extra.
 
-| Helper | Signature | Purpose |
+| Helper | Assinatura | Finalidade |
 | --- | --- | --- |
-| `utcnow()` | `() -> datetime` | Current time as a timezone-aware UTC datetime — the SDK uses this for `created_at` / `updated_at` defaults. |
-| `to_utc(value)` | `(datetime) -> datetime` | Coerce naive datetimes to UTC (assumed UTC) and aware datetimes to UTC via `astimezone`. Used by `BaseResponseSchema` field validators. |
-| `modify_dict(data, exclude=None, include=None)` | `(dict, list[str] \| None, dict \| None) -> dict` | Single-pass filter + merge. Drop sensitive keys before logging or merge computed fields when mapping payloads to ORM models. |
+| `utcnow()` | `() -> datetime` | Hora atual como um datetime UTC timezone-aware — o SDK usa isso para os defaults de `created_at` / `updated_at`. |
+| `to_utc(value)` | `(datetime) -> datetime` | Coage datetimes naive para UTC (assumido como UTC) e datetimes aware para UTC via `astimezone`. Usado pelos field validators de `BaseResponseSchema`. |
+| `modify_dict(data, exclude=None, include=None)` | `(dict, list[str] \| None, dict \| None) -> dict` | Filtro + merge em uma única passagem. Remove chaves sensíveis antes do logging ou mescla campos computados ao mapear payloads para models ORM. |
 
-#### Timestamps the same way everywhere
+#### Timestamps do mesmo jeito em todo lugar {#timestamps-the-same-way-everywhere}
 
-`utcnow` is the canonical "now" for the SDK. Use it for soft-delete timestamps, JWT `iat` / `exp`, audit trails — anything where mixing naive and aware datetimes would burn you later.
+`utcnow` é o "now" canônico do SDK. Use-o para timestamps de soft-delete, `iat` / `exp` de JWT, trilhas de auditoria — qualquer coisa onde misturar datetimes naive e aware te queimaria mais tarde.
 
 ```python
 from datetime import timedelta
@@ -132,11 +132,11 @@ incoming = request.json()["scheduled_for"]              # naive or aware
 scheduled_for = to_utc(datetime.fromisoformat(incoming))
 ```
 
-A naive datetime is tagged with UTC (not converted from local time) so it's predictable in headless workers and Docker containers where `time.timezone` is anyone's guess.
+Um datetime naive é marcado como UTC (não convertido do horário local) para que seja previsível em workers headless e containers Docker onde `time.timezone` é uma incógnita.
 
-#### Drop sensitive keys before logging / mapping
+#### Remova chaves sensíveis antes do logging / mapeamento {#drop-sensitive-keys-before-logging-mapping}
 
-`modify_dict` is the tiny utility that powers `BaseSchema.to_dict(exclude=..., include=...)` and `BaseModel.update_from_dict(...)`. Use it directly when you don't want to call into Pydantic round-trips:
+`modify_dict` é o pequeno utilitário que alimenta `BaseSchema.to_dict(exclude=..., include=...)` e `BaseModel.update_from_dict(...)`. Use-o diretamente quando não quiser recorrer a round-trips pelo Pydantic:
 
 ```python
 from tempest_fastapi_sdk import LogUtils, modify_dict
@@ -156,19 +156,18 @@ user_row = modify_dict(
 )
 ```
 
-`include` wins over `data`, so it doubles as a "set or override" helper without mutating the source dict.
+`include` prevalece sobre `data`, então ele também serve como um helper de "definir ou sobrescrever" sem mutar o dict de origem.
 
-#### Where every other helper is documented
+#### Onde cada um dos outros helpers está documentado {#where-every-other-helper-is-documented}
 
-Every helper has its own recipe — this section is the quick map:
+Cada helper tem sua própria recipe — esta seção é o mapa rápido:
 
 | Helper | Recipe |
 | --- | --- |
-| `PasswordUtils`, `JWTUtils` | [Authentication recipe](http.md#authentication) |
-| `EmailUtils` | [Transactional email recipe](http.md#transactional-email) |
-| `UploadUtils` | [File uploads recipe](http.md#file-uploads) |
-| `DownloadUtils`, `build_content_disposition` | [Serving private files through the API](http.md#serving-private-files-through-the-api-downloadutils) |
-| `LogUtils` + `configure_logging` | [Structured logging & request IDs recipe](logging.md) |
-| `MetricsUtils` (CPU/memory/disk/GPU) | [System metrics recipe](metrics.md) |
-| `CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `is_valid_*`, `normalize_*`, `only_digits` | [CPF / CNPJ / phone](#cpf-cnpj-phone) |
-
+| `PasswordUtils`, `JWTUtils` | [Recipe de autenticação](http.md#authentication) |
+| `EmailUtils` | [Recipe de email transacional](http.md#transactional-email) |
+| `UploadUtils` | [Recipe de upload de arquivos](http.md#file-uploads) |
+| `DownloadUtils`, `build_content_disposition` | [Servindo arquivos privados pela API](http.md#serving-private-files-through-the-api-downloadutils) |
+| `LogUtils` + `configure_logging` | [Recipe de logging estruturado & request IDs](logging.md) |
+| `MetricsUtils` (CPU/memória/disco/GPU) | [Recipe de métricas de sistema](metrics.md) |
+| `CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `is_valid_*`, `normalize_*`, `only_digits` | [CPF / CNPJ / telefone](#cpf-cnpj-phone) |

@@ -1,34 +1,34 @@
-# Recipes
+# Receitas {#recipes}
 
-Bite-sized "I want to wire X" walkthroughs. Each page starts with **what problem it solves**, **when to reach for it**, and a complete code example you can copy verbatim.
+Tutoriais objetivos no estilo "quero conectar X". Cada página começa com **qual problema ela resolve**, **quando recorrer a ela** e um exemplo de código completo que você pode copiar literalmente.
 
-!!! tip "When to read what"
-    - Just need to look up a signature? Jump to **[Reference »](../reference.md)**.
-    - Building a brand-new service? Follow the linear **[Tutorial »](../tutorial.md)** first.
-    - Wiring a specific SDK piece? You're in the right place — pick the recipe below.
+!!! tip "O que ler em cada caso"
+    - Só precisa consultar uma assinatura? Pule para a **[Referência »](../reference.md)**.
+    - Construindo um serviço totalmente novo? Siga primeiro o **[Tutorial »](../tutorial.md)** linear.
+    - Conectando uma peça específica do SDK? Você está no lugar certo — escolha a receita abaixo.
 
-| Theme | Covers |
+| Tema | Cobre |
 | --- | --- |
-| **[Database »](database.md)** | `BaseRepository`, `BaseModel`, `AuditMixin` / `SoftDeleteMixin`, cursor pagination, Alembic helper |
-| **[HTTP layer »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware`, `make_health_router`, JWT / role / permission dependencies, webhook signature verifier, pagination Link headers, tool-spec router |
-| **[Cache »](cache.md)** | `AsyncRedisManager`, `@cached` decorator |
-| **[Real-time »](realtime.md)** | Server-Sent Events (`EventStream`), Web Push (`WebPushDispatcher`) |
-| **[Queue & Tasks »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, transactional outbox |
-| **[Logging »](logging.md)** | `LogUtils`, structured JSON logging, request-ID propagation |
-| **[Metrics »](metrics.md)** | `MetricsUtils` — CPU / RAM / disk / GPU snapshots |
-| **[Admin site »](admin.md)** | `AdminSite`, `AdminModel`, `make_admin_router`, `BaseUserModel` |
-| **[Testing »](testing.md)** | `test_session`, `test_database`, in-memory SQLite, pytest fixtures |
+| **[Banco de dados »](database.md)** | `BaseRepository`, `BaseModel`, `AuditMixin` / `SoftDeleteMixin`, paginação por cursor, helper do Alembic |
+| **[Camada HTTP »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware`, `make_health_router`, dependências de JWT / role / permissão, verificador de assinatura de webhook, headers Link de paginação, router de tool-spec |
+| **[Cache »](cache.md)** | `AsyncRedisManager`, decorador `@cached` |
+| **[Tempo real »](realtime.md)** | Server-Sent Events (`EventStream`), Web Push (`WebPushDispatcher`) |
+| **[Fila e Tarefas »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, outbox transacional |
+| **[Logging »](logging.md)** | `LogUtils`, logging JSON estruturado, propagação de request-ID |
+| **[Métricas »](metrics.md)** | `MetricsUtils` — snapshots de CPU / RAM / disco / GPU |
+| **[Site admin »](admin.md)** | `AdminSite`, `AdminModel`, `make_admin_router`, `BaseUserModel` |
+| **[Testes »](testing.md)** | `test_session`, `test_database`, SQLite em memória, fixtures do pytest |
 | **[CLI »](cli.md)** | `tempest new` / `lint` / `fix` / `format` / `type` / `test` / `check` |
-| **[Security »](security.md)** | `AttemptThrottle`, opaque-token helpers, `HardenedStaticFiles`, security headers |
-| **[Brazilian helpers »](br-helpers.md)** | CPF / CNPJ / CEP / phone validation + normalization |
+| **[Segurança »](security.md)** | `AttemptThrottle`, helpers de token opaco, `HardenedStaticFiles`, headers de segurança |
+| **[Helpers brasileiros »](br-helpers.md)** | validação + normalização de CPF / CNPJ / CEP / telefone |
 
-## Anatomy of a recipe
+## Anatomia de uma receita {#anatomy-of-a-recipe}
 
-Every recipe follows the same four-section shape so you can skim:
+Toda receita segue o mesmo formato de quatro seções para que você possa fazer uma leitura rápida:
 
-1. **What it solves** — one paragraph in plain language.
-2. **When to use it** — bullet list of situations + when *not* to.
-3. **The code** — complete, runnable, with `# 1. setup` / `# 2. wire` / `# 3. test` annotations.
-4. **Gotchas** — production caveats, security defaults, scaling notes.
+1. **O que resolve** — um parágrafo em linguagem simples.
+2. **Quando usar** — lista de situações + quando *não* usar.
+3. **O código** — completo, executável, com anotações `# 1. setup` / `# 2. wire` / `# 3. test`.
+4. **Pegadinhas** — ressalvas de produção, defaults de segurança, notas de escalabilidade.
 
-If you spot a recipe that doesn't follow this shape, [open an issue](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/new) — we treat docs regressions like code regressions.
+Se você encontrar uma receita que não segue esse formato, [abra uma issue](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/new) — tratamos regressões de documentação como regressões de código.

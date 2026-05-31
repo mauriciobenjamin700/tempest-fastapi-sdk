@@ -1,8 +1,8 @@
-# Arquitetura {#architecture}
+# Architecture
 
-O SDK impõe um estrito camadamento **router → controller → service → repository**. Todo projeto Tempest segue o mesmo formato, então um desenvolvedor que cai em um repositório novo encontra o arquivo de que precisa na primeira tentativa.
+The SDK enforces a strict **router → controller → service → repository** layering. Every Tempest project follows the same shape, so a developer dropped into a new repo finds the file they need on the first try.
 
-## As quatro camadas {#the-four-layers}
+## The four layers
 
 ```mermaid
 flowchart LR
@@ -28,20 +28,20 @@ flowchart LR
     Model -->|async SQLAlchemy| DB
 ```
 
-## O que mora onde {#what-lives-where}
+## What lives where
 
-!!! abstract "Responsabilidades das camadas"
+!!! abstract "Layer responsibilities"
 
-    | Camada | Responsável por | NUNCA mexe em |
+    | Layer | Owns | NEVER touches |
     | --- | --- | --- |
-    | **Router** | Verbos HTTP, status codes, schemas de request/response, `Depends()` | DB, lógica de negócio |
-    | **Controller** | Coordenação entre múltiplos services, política transversal (audit log, emissão de outbox, notificação downstream) | DB, formato de request/response |
-    | **Service** | Regras de domínio (unicidade, estado derivado, fluxo transacional) | HTTP, tipos do SQLAlchemy |
-    | **Repository** | Queries async cruas do SQLAlchemy, CRUD + filtro + paginação | Regras de domínio, HTTP |
+    | **Router** | HTTP verbs, status codes, request/response schemas, `Depends()` | DB, business logic |
+    | **Controller** | Coordination across multiple services, cross-cutting policy (audit log, outbox emit, downstream notify) | DB, request/response shape |
+    | **Service** | Domain rules (uniqueness, derived state, transactional flow) | HTTP, SQLAlchemy types |
+    | **Repository** | Raw async SQLAlchemy queries, CRUD + filter + pagination | Domain rules, HTTP |
 
-O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[ModelType]`][tempest_fastapi_sdk.BaseRepository]. O service **DEVE** ser uma subclasse de [`BaseService[RepositoryT, ResponseT]`][tempest_fastapi_sdk.BaseService]. O controller **DEVE** ser uma subclasse de [`BaseController[ServiceT, ResponseT]`][tempest_fastapi_sdk.BaseController] — mesmo quando todo método é um pass-through, porque o controller é a costura para adicionar coordenação entre services depois.
+The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.BaseRepository] subclass (or instance). The service **MUST** be a [`BaseService[RepositoryT, ResponseT]`][tempest_fastapi_sdk.BaseService] subclass. The controller **MUST** be a [`BaseController[ServiceT, ResponseT]`][tempest_fastapi_sdk.BaseController] subclass — even when every method is a pass-through, because the controller is the seam to add cross-service coordination later.
 
-## Layout obrigatório do projeto {#mandatory-project-layout}
+## Mandatory project layout
 
 ```text
 <service>/
@@ -66,15 +66,15 @@ O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[Mode
     └── tasks/ (optional)            # TaskIQ background tasks
 ```
 
-!!! warning "Regras que não são negociáveis"
+!!! warning "Rules that are not negotiable"
 
-    - `main.py` na raiz do service é um **one-liner** que importa `run` de `src.server`. Nunca `subprocess.run(["uvicorn", ...])`.
-    - `src/server.py` expõe tanto uma função `run()` quanto a instância `app` importável.
-    - `api/dependencies/` é **sempre um pacote**, nunca um arquivo solto. A autenticação mora em `auth.py`; os provedores de fábrica moram em `controllers.py` (ou `services.py` quando ainda não há camada de controller).
-    - Os routers recebem controllers via `Depends`, nunca construídos inline.
-    - Endpoints meta (`/health`, `/tool-spec`) moram no **prefixo raiz**; endpoints de negócio moram sob `/api/<domain>`.
+    - `main.py` at the service root is a **one-liner** that imports `run` from `src.server`. Never `subprocess.run(["uvicorn", ...])`.
+    - `src/server.py` exposes both a `run()` function and the importable `app` instance.
+    - `api/dependencies/` is **always a package**, never a flat file. Auth lives in `auth.py`; factory providers live in `controllers.py` (or `services.py` when there is no controller layer yet).
+    - Routers receive controllers via `Depends`, never constructed inline.
+    - Meta endpoints (`/health`, `/tool-spec`) live at the **root prefix**; business endpoints live under `/api/<domain>`.
 
-## Ciclo de vida da request {#request-lifecycle}
+## Request lifecycle
 
 ```mermaid
 sequenceDiagram
@@ -106,11 +106,11 @@ sequenceDiagram
     M-->>C: HTTP response + X-Request-ID header
 ```
 
-Cada passo tem um dono claro — o **router nunca fala com o SQLAlchemy**, o **repository nunca levanta exceções HTTP** (ele levanta a `not_found_exception` configurada no `__init__`, e o exception handler a converte no envelope JSON).
+Every step has a clear owner — the **router never talks to SQLAlchemy**, the **repository never raises HTTP exceptions** (it raises the `not_found_exception` configured on `__init__`, and the exception handler turns it into the JSON envelope).
 
-## Envelope de exceção {#exception-envelope}
+## Exception envelope
 
-O SDK fornece [`AppException`][tempest_fastapi_sdk.AppException] + [`register_exception_handlers`][tempest_fastapi_sdk.register_exception_handlers] para que todo erro no seu service serialize no mesmo formato JSON:
+The SDK ships [`AppException`][tempest_fastapi_sdk.AppException] + [`register_exception_handlers`][tempest_fastapi_sdk.register_exception_handlers] so every error in your service serializes to the same JSON shape:
 
 ```json
 {
@@ -120,47 +120,47 @@ O SDK fornece [`AppException`][tempest_fastapi_sdk.AppException] + [`register_ex
 }
 ```
 
-O frontend ramifica com base no `code` (estável, legível por máquina), nunca no `detail` (potencialmente traduzido).
+The frontend branches on `code` (stable, machine-readable), never on the (potentially translated) `detail`.
 
-## Para onde ir a seguir {#where-to-go-next}
+## Where to go next
 
-| Você quer… | Leia |
+| You want to… | Read |
 | --- | --- |
-| Construir uma feature passo a passo | **[Tutorial »](tutorial.md)** |
-| Conectar um helper específico | **[Recipes »](recipes/index.md)** |
-| Consultar a assinatura de uma classe | **[Reference »](reference.md)** |
-| Atualizar de uma versão mais antiga | **[Guia de migração »](migration.md)** |
+| Build a feature step by step | **[Tutorial »](tutorial.md)** |
+| Wire a specific helper | **[Recipes »](recipes/index.md)** |
+| Look up a class signature | **[Reference »](reference.md)** |
+| Upgrade from an older version | **[Migration guide »](migration.md)** |
 
-## Camadamento de controllers e services {#controllers-services-layering}
+## Controllers & services layering
 
 
-`BaseService[RepositoryT, ResponseT]` e `BaseController[ServiceT, ResponseT]` são esqueletos genéricos que casam com o camadamento do SDK (router → controller → service → repository). Eles expõem métodos CRUD pass-through para que endpoints simples possam herdá-los sem sobrescrever nada; você só sobrescreve os métodos que precisam de orquestração.
+`BaseService[RepositoryT, ResponseT]` and `BaseController[ServiceT, ResponseT]` are generic skeletons matching the SDK layering (router → controller → service → repository). They expose pass-through CRUD methods so simple endpoints can subclass them without overriding anything; you override only methods that need orchestration.
 
-O que você herda ao criar subclasse de `BaseService[RepositoryT, ResponseT]`:
+What you inherit by subclassing `BaseService[RepositoryT, ResponseT]`:
 
-| Método | Retorna | Notas |
+| Method | Returns | Notes |
 | --- | --- | --- |
-| `get_by_id(id)` | `ResponseT` | Aguarda `repository.get_by_id` + `repository.map_to_response`. Levanta `repository.not_found_exception` quando não encontra. |
-| `get_or_none(filters)` | `ResponseT \| None` | Mesmo formato, retorna `None` em vez de levantar. |
-| `list(filters=None, order_by=None, ascending=True)` | `list[ResponseT]` | Retorna `[]` quando nada casa (nunca levanta). |
-| `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` com `items` mapeados + `total`/`page`/`size`/`pages`. | Paginação por offset via `repository.paginate`. |
-| `count(filters=None)` | `int` | Pass-through para `repository.count`. |
-| `exists(filters)` | `bool` | Pass-through para `repository.exists`. |
+| `get_by_id(id)` | `ResponseT` | Awaits `repository.get_by_id` + `repository.map_to_response`. Raises `repository.not_found_exception` on miss. |
+| `get_or_none(filters)` | `ResponseT \| None` | Same shape, returns `None` instead of raising. |
+| `list(filters=None, order_by=None, ascending=True)` | `list[ResponseT]` | Returns `[]` on empty match (never raises). |
+| `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` with mapped `items` + `total`/`page`/`size`/`pages`. | Offset pagination via `repository.paginate`. |
+| `count(filters=None)` | `int` | Pass-through to `repository.count`. |
+| `exists(filters)` | `bool` | Pass-through to `repository.exists`. |
 | `delete(id)` | `None` | Hard delete via `repository.delete`. |
 
-O `map_to_response` é aguardado (`await`) quando retorna uma coroutine, então mappers async funcionam de forma transparente — sem precisar sobrescrever método.
+`map_to_response` is `await`-ed when it returns a coroutine, so async mappers work transparently — no method override needed.
 
-O que você herda ao criar subclasse de `BaseController[ServiceT, ResponseT]`:
+What you inherit by subclassing `BaseController[ServiceT, ResponseT]`:
 
-| Método | Encaminha para | Notas |
+| Method | Forwards to | Notes |
 | --- | --- | --- |
-| `get_by_id(id)` | `service.get_by_id` | Mesmo tipo de retorno do service. |
-| `list(filters, order_by, ascending)` | `service.list` | Igual. |
-| `paginate(filters, order_by, page, page_size, ascending)` | `service.paginate` | Igual. |
-| `count(filters)` | `service.count` | Igual. |
-| `delete(id)` | `service.delete` | Igual. |
+| `get_by_id(id)` | `service.get_by_id` | Same return type as the service. |
+| `list(filters, order_by, ascending)` | `service.list` | Same. |
+| `paginate(filters, order_by, page, page_size, ascending)` | `service.paginate` | Same. |
+| `count(filters)` | `service.count` | Same. |
+| `delete(id)` | `service.delete` | Same. |
 
-Quando um caso de uso precisa de regras de domínio, sobrescreva o método herdado no service. Quando um caso de uso precisa coordenar mais de um service, sobrescreva o método herdado (ou adicione um novo) no controller. O router nunca cresce — ele só depende do controller.
+When a use case needs domain rules, override the inherited method in the service. When a use case needs to coordinate more than one service, override the inherited method (or add a new one) in the controller. The router never grows — it only depends on the controller.
 
 ```python
 # src/services/user_service.py
@@ -244,4 +244,5 @@ async def create_user(
     return await controller.signup(data)
 ```
 
-Mantenha os controllers presentes mesmo quando só fazem pass-through — o grafo de imports permanece uniforme entre os services, então adicionar política transversal depois não muda a assinatura do router.
+Keep controllers present even when they only pass through — the import graph stays uniform across services, so adding cross-cutting policy later doesn't change the router signature.
+

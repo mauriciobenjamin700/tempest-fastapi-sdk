@@ -1,17 +1,17 @@
-# Admin site
+# Site de administração {#admin-site}
 
 
-Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. Phase 1 ships read-only views; create/edit/delete land in 0.14.0 and inline + bulk actions in 0.15.0.
+UI de gerenciamento no estilo Django montada sob `/admin`. Os operadores fazem login com uma linha de usuário do banco de dados (sem um armazenamento de senha de admin separado) e navegam por todos os modelos registrados a partir do navegador, de modo que a porta do banco de dados pode permanecer fechada em redes privadas. A fase 1 entrega visualizações somente leitura; criar/editar/excluir chegam na 0.14.0 e as ações inline + em lote na 0.15.0.
 
-Requires the `[admin]` extra:
+Requer o extra `[admin]`:
 
 ```bash
 pip install "tempest-fastapi-sdk[admin]"
 ```
 
-#### 1. User model
+#### 1. Modelo de usuário {#1-user-model}
 
-Subclass `BaseUserModel` to get the four columns the admin auth backend expects (`email`, `hashed_password`, `is_admin`, `last_login_at`) on top of the standard `BaseModel` row:
+Faça uma subclasse de `BaseUserModel` para obter as quatro colunas que o backend de autenticação do admin espera (`email`, `hashed_password`, `is_admin`, `last_login_at`) por cima da linha padrão do `BaseModel`:
 
 ```python
 # src/db/models/user.py
@@ -22,9 +22,9 @@ class UserModel(BaseUserModel):
     __tablename__ = "user"
 ```
 
-`set_password()` / `check_password()` delegate to `PasswordUtils`; `normalize_email()` lowercases and strips. The default `is_active` (inherited from `BaseModel`) and `is_admin` (defaults to `False`) gate access — only `is_active=True` AND `is_admin=True` rows may sign in.
+`set_password()` / `check_password()` delegam para `PasswordUtils`; `normalize_email()` converte para minúsculas e remove espaços. O `is_active` padrão (herdado de `BaseModel`) e o `is_admin` (com padrão `False`) controlam o acesso — apenas linhas com `is_active=True` E `is_admin=True` podem fazer login.
 
-Bootstrap the first admin via your CLI / migration / seed script. The full script wires an `AsyncDatabaseManager`, opens one session, inserts the row and commits — exactly the same pattern your repositories follow at runtime:
+Crie o primeiro admin via seu CLI / migration / script de seed. O script completo conecta um `AsyncDatabaseManager`, abre uma sessão, insere a linha e faz commit — exatamente o mesmo padrão que seus repositórios seguem em tempo de execução:
 
 ```python
 # scripts/create_admin.py
@@ -54,11 +54,11 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-The four highlighted lines under the divider comment are the only admin-bootstrap code; everything around them is the standard async DB lifecycle the SDK already uses.
+As quatro linhas destacadas sob o comentário divisor são o único código de bootstrap do admin; tudo ao redor é o ciclo de vida assíncrono padrão do banco de dados que o SDK já usa.
 
-#### 2. Register your admin classes
+#### 2. Registre suas classes de admin {#2-register-your-admin-classes}
 
-`AdminModel` is a plain typed configuration instance — the constructor signature is the contract (no class-attribute / metaclass magic), and every field accepts a real SQLAlchemy column attribute (`UserModel.email`), so typos surface in your editor instead of at runtime. The defaults work out of the box; pass the fields you want to enrich the list view:
+`AdminModel` é uma instância de configuração tipada e simples — a assinatura do construtor é o contrato (sem mágica de atributo de classe / metaclasse), e cada campo aceita um atributo de coluna real do SQLAlchemy (`UserModel.email`), de modo que erros de digitação aparecem no seu editor em vez de em tempo de execução. Os padrões funcionam de imediato; passe os campos que quiser para enriquecer a visualização de lista:
 
 ```python
 # src/admin/site.py
@@ -85,9 +85,9 @@ site.register(AdminModel(
 ))
 ```
 
-Every field reference also accepts a plain string (`list_display=["email", ...]`) for dynamic configuration, and `ordering` accepts a column (ascending), `desc(column)` / `asc(column)`, or a Django-style `"-created_at"` string. `register` returns the instance and raises `ValueError` on a duplicate slug. Slugs default to the model's `__tablename__` so URLs and database tables stay in sync.
+Cada referência de campo também aceita uma string simples (`list_display=["email", ...]`) para configuração dinâmica, e `ordering` aceita uma coluna (ascendente), `desc(column)` / `asc(column)`, ou uma string no estilo Django `"-created_at"`. `register` retorna a instância e levanta `ValueError` em caso de slug duplicado. Os slugs têm como padrão o `__tablename__` do modelo, então as URLs e as tabelas do banco de dados ficam em sincronia.
 
-#### 3. Mount the router
+#### 3. Monte o router {#3-mount-the-router}
 
 ```python
 # src/api/app.py
@@ -117,28 +117,28 @@ app.include_router(
 )
 ```
 
-`make_admin_router` mounts:
+`make_admin_router` monta:
 
-- `GET  /admin/login`, `POST /admin/login`, `POST /admin/logout` — auth flow.
-- `GET  /admin/` — dashboard listing every registered admin.
-- `GET  /admin/m/{slug}/` — list view with pagination + free-text search (`?q=`) + per-field filters (`?filter_<field>=value`).
-- `GET  /admin/m/{slug}/{identity}` — read-only detail view.
-- `GET  /admin/static/{path}` — bundled CSS/HTMX assets.
+- `GET  /admin/login`, `POST /admin/login`, `POST /admin/logout` — fluxo de autenticação.
+- `GET  /admin/` — dashboard listando cada admin registrado.
+- `GET  /admin/m/{slug}/` — visualização de lista com paginação + busca em texto livre (`?q=`) + filtros por campo (`?filter_<field>=value`).
+- `GET  /admin/m/{slug}/{identity}` — visualização de detalhe somente leitura.
+- `GET  /admin/static/{path}` — assets de CSS/HTMX empacotados.
 
-#### 4. Session security defaults
+#### 4. Padrões de segurança de sessão {#4-session-security-defaults}
 
-`SignedCookieSessionStore` uses `itsdangerous.TimestampSigner` (HMAC-SHA256) to sign a single cookie:
+`SignedCookieSessionStore` usa `itsdangerous.TimestampSigner` (HMAC-SHA256) para assinar um único cookie:
 
-- `HttpOnly` always set.
-- `Secure` flagged when `cookie_secure=True` (default; flip off in local HTTP dev).
-- `SameSite=Lax` (`"lax"`/`"strict"`/`"none"` accepted).
-- Default lifetime `8h`; expired or tampered cookies are rejected silently.
-- Per-session CSRF token is generated at login and required by every form POST (only `logout` in Phase 1).
-- `secret_key` must be at least 32 bytes — short keys raise `ValueError` at construction time.
+- `HttpOnly` sempre definido.
+- `Secure` sinalizado quando `cookie_secure=True` (padrão; desligue no dev local em HTTP).
+- `SameSite=Lax` (`"lax"`/`"strict"`/`"none"` aceitos).
+- Tempo de vida padrão `8h`; cookies expirados ou adulterados são rejeitados silenciosamente.
+- Um token CSRF por sessão é gerado no login e exigido em todo POST de formulário (apenas `logout` na fase 1).
+- `secret_key` deve ter ao menos 32 bytes — chaves curtas levantam `ValueError` no momento da construção.
 
-#### 5. Plug in a custom auth backend
+#### 5. Conecte um backend de autenticação personalizado {#5-plug-in-a-custom-auth-backend}
 
-`AdminAuthBackend` is an ABC, so swap the default for LDAP / OAuth / external IAM by subclassing:
+`AdminAuthBackend` é uma ABC, então troque o padrão por LDAP / OAuth / IAM externo fazendo uma subclasse:
 
 ```python
 from typing import Any
@@ -175,5 +175,4 @@ class OAuthAdminBackend(AdminAuthBackend):
         return principal.email
 ```
 
-Pass the instance via `auth_backend=` and the rest of the admin pipeline (sessions, dashboard, list, detail) keeps working unchanged.
-
+Passe a instância via `auth_backend=` e o resto do pipeline do admin (sessões, dashboard, lista, detalhe) continua funcionando sem alterações.

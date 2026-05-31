@@ -1,9 +1,9 @@
-# Metrics
+# Métricas {#metrics}
 
 
-`MetricsUtils` collects CPU, memory, disk and NVIDIA GPU usage via `psutil` + `pynvml`. Every method has a sync and an async variant (the async wrapper runs the same code via `asyncio.to_thread`). GPU sampling gracefully degrades to `[]` when `pynvml` or NVIDIA drivers are missing.
+`MetricsUtils` coleta uso de CPU, memória, disco e GPU NVIDIA via `psutil` + `pynvml`. Todo método tem uma variante sync e uma async (o wrapper async executa o mesmo código via `asyncio.to_thread`). A amostragem de GPU degrada de forma elegante para `[]` quando `pynvml` ou os drivers NVIDIA estão ausentes.
 
-Install with `[metrics]`.
+Instale com `[metrics]`.
 
 ```python
 from tempest_fastapi_sdk import MetricsUtils
@@ -26,5 +26,4 @@ async def metrics() -> dict[str, Any]:
     return snap.to_dict()
 ```
 
-Individual collectors are also available: `MetricsUtils.cpu(interval=...)`, `MetricsUtils.memory()`, `MetricsUtils.disk(path)`, `MetricsUtils.disks(paths)`, `MetricsUtils.gpus()` — and their `*_async` variants. Each returns a typed dataclass (`CPUMetrics`, `MemoryMetrics`, `DiskMetrics`, `GPUMetrics`, `SystemMetrics`) with a `to_dict()` helper for JSON serialization.
-
+Coletores individuais também estão disponíveis: `MetricsUtils.cpu(interval=...)`, `MetricsUtils.memory()`, `MetricsUtils.disk(path)`, `MetricsUtils.disks(paths)`, `MetricsUtils.gpus()` — e suas variantes `*_async`. Cada um retorna uma dataclass tipada (`CPUMetrics`, `MemoryMetrics`, `DiskMetrics`, `GPUMetrics`, `SystemMetrics`) com um helper `to_dict()` para serialização em JSON.

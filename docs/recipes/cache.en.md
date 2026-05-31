@@ -1,11 +1,11 @@
-# Cache {#cache}
+# Cache
 
-Primitivos de cache baseados em Redis. Requer o extra `[cache]`.
+Redis-backed caching primitives. Requires `[cache]` extra.
 
-## AsyncRedisManager {#asyncredismanager}
+## AsyncRedisManager
 
 
-O `AsyncRedisManager` envolve o `redis.asyncio` com a mesma superfície de connect/disconnect/health-check do `AsyncDatabaseManager`. Instale com `[cache]`.
+`AsyncRedisManager` wraps `redis.asyncio` with the same connect/disconnect/health-check surface as `AsyncDatabaseManager`. Install with `[cache]`.
 
 ```python
 from tempest_fastapi_sdk.cache import AsyncRedisManager
@@ -34,13 +34,13 @@ async def cached_endpoint(
     return {"value": value}
 ```
 
-Conecte o health check no router canônico com `make_health_router(checks={"redis": cache.health_check})` para que as readiness probes falhem quando o Redis estiver fora do ar.
+Wire the health check on the canonical router with `make_health_router(checks={"redis": cache.health_check})` so readiness probes fail when Redis is down.
 
 
-## Decorator @cached {#cached-decorator}
+## @cached decorator
 
 
-O `@cached(redis, ttl=..., key_prefix=...)` memoiza o resultado de uma função async no Redis. As chaves de cache são derivadas do `__qualname__` da função mais um SHA-256 dos args/kwargs; passe `key_prefix=` para dar namespace às entradas, de modo que a invalidação funcione por prefix scan.
+`@cached(redis, ttl=..., key_prefix=...)` memoizes the result of an async function in Redis. Cache keys are derived from the function's `__qualname__` plus a SHA-256 of args/kwargs; pass `key_prefix=` to namespace entries so invalidation works by prefix scan.
 
 ```python
 from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
@@ -67,4 +67,5 @@ async def list_orders(user_id: str, *, fresh: bool = False) -> list[dict]:
     ...
 ```
 
-Defaults: `ttl=300` segundos (`0` desabilita a expiração), `serializer=json.dumps` / `deserializer=json.loads`. Sobrescreva `serializer` / `deserializer` para payloads não-JSON (modelos Pydantic — passe `model_dump_json` / `MyModel.model_validate_json`, ou use `pickle.dumps` / `pickle.loads` para objetos arbitrários). Valores cacheados corrompidos recaem para a execução da função decorada e emitem um warning no logger do SDK.
+Defaults: `ttl=300` seconds (`0` disables expiry), `serializer=json.dumps` / `deserializer=json.loads`. Override `serializer` / `deserializer` for non-JSON payloads (Pydantic models — pass `model_dump_json` / `MyModel.model_validate_json`, or use `pickle.dumps` / `pickle.loads` for arbitrary objects). Corrupt cached values fall back to running the wrapped function and warn on the SDK logger.
+

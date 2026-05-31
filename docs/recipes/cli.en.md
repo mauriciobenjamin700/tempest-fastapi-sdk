@@ -1,13 +1,14 @@
 # CLI
 
-Instalar o `tempest-fastapi-sdk` expõe um console script `tempest`. Ele faz dois trabalhos: dar bootstrap em um novo serviço em camadas a partir do esqueleto preferido do SDK e rodar as quatro quality gates (`ruff check`, `ruff format`, `mypy`, `pytest`) sem copiar e colar os mesmos comandos em cada projeto.
+
+Installing `tempest-fastapi-sdk` exposes a `tempest` console script. It does two jobs: bootstrap a new layered service from the SDK's preferred skeleton, and run the four quality gates (`ruff check`, `ruff format`, `mypy`, `pytest`) without copy-pasting the same commands into every project.
 
 ```bash
 tempest --help                                  # list every command
 tempest --version                               # show the SDK version
 ```
 
-#### Criar um novo serviço (scaffold) {#scaffold-a-new-service}
+#### Scaffold a new service
 
 ```bash
 tempest new my_service                          # scaffold under ./my_service
@@ -19,7 +20,7 @@ tempest new my_service \
 tempest new my_service --force                  # overwrite existing dir
 ```
 
-O esqueleto segue a arquitetura em camadas documentada neste README:
+The skeleton matches the layered architecture documented in this README:
 
 ```text
 my_service/
@@ -46,9 +47,9 @@ my_service/
     └── test_smoke.py        # asserts /api/ and /health/liveness boot
 ```
 
-O `pyproject.toml` gerado fixa a versão atual do SDK (`tempest-fastapi-sdk[auth]>=<version>` por default — altere com `--extras`). O `.env.example` gerado usa a nomenclatura de settings da v0.8.0 (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), e o `src/server.py` delega ao `tempest_fastapi_sdk.run_server` para que o uvicorn seja importado de forma lazy e os testes consigam importar a app sem ele. Regras de validação: o nome do projeto deve casar com `^[a-z][a-z0-9_]*$` e não pode colidir com uma palavra-chave do Python, então `tempest new Bad-Name` e `tempest new class` saem com código 2 antes que qualquer arquivo seja escrito.
+The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[auth]>=<version>` by default — change with `--extras`). The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
 
-Após o scaffold:
+After scaffolding:
 
 ```bash
 cd my_service
@@ -58,9 +59,9 @@ uv run python main.py                           # serves on the configured HOST:
 uv run pytest                                   # the bundled smoke test
 ```
 
-#### Quality gates {#quality-gates}
+#### Quality gates
 
-Os comandos de lint delegam para o tooling do projeto. Eles procuram o executável no `PATH` primeiro e, caso contrário, recorrem a `uv run <tool>` para que um virtualenv local do projeto funcione sem ativação manual.
+The lint commands shell out to the project's tooling. They look for the executable on `PATH` first, and otherwise fall back to `uv run <tool>` so a project-local virtualenv works without manual activation.
 
 ```bash
 tempest lint                                    # ruff check .
@@ -74,6 +75,7 @@ tempest test tests/api/                         # pytest with a path filter
 tempest check                                   # lint + fmt-check + type + test, stops at first failure
 ```
 
-`tempest fix` é o passo "organize o projeto" de uma só vez — ordena e remove imports duplicados, descarta imports não usados, normaliza as aspas de strings, remove espaços em branco no final das linhas e então roda `ruff format` para alinhar indentação, comprimento de linha, linhas em branco e quebras de linha finais. Rode-o antes do push quando o CI fica pegando detalhes de estilo.
+`tempest fix` is the one-shot "organize the project" pass — sorts and dedupes imports, drops unused imports, normalizes string quotes, removes trailing whitespace, then runs `ruff format` to align indentation, line length, blank lines and trailing newlines. Run it before pushing when CI keeps catching style nits.
 
-Cada comando retorna o exit code da ferramenta subjacente, então `tempest check` é seguro para conectar ao CI (`tempest check || exit 1`) ou a hooks de pre-commit. Quando nem o executável nem o `uv` estão no `PATH`, o wrapper imprime `error: '<tool>' is not on PATH and 'uv' is unavailable` e sai com `127` em vez de falhar silenciosamente.
+Every command returns the underlying tool's exit code, so `tempest check` is safe to wire into CI (`tempest check || exit 1`) or pre-commit hooks. When neither the executable nor `uv` is on `PATH`, the wrapper prints `error: '<tool>' is not on PATH and 'uv' is unavailable` and exits with `127` instead of failing silently.
+
