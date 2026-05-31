@@ -5,7 +5,7 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.20.0] — 2026-05-31
+## [0.21.0] — 2026-05-31
 
 ### Added
 
@@ -69,6 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected rule that is autofixable (`I`, `UP`, `W`, `E501`, …) is
   cleared at generation time. Requires `ruff` on `PATH` — already a
   dev dependency in every `tempest new` scaffold.
+
+## [0.20.0] — 2026-05-31
 
 ### Changed
 

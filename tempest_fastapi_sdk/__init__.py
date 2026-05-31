@@ -157,7 +157,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-__version__: str = "0.20.0"
+__version__: str = "0.21.0"
 
 __all__: list[str] = [
     "CEP",
