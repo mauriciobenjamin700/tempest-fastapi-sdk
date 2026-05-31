@@ -15,6 +15,7 @@ from tempest_fastapi_sdk.api.dependencies import (
 )
 from tempest_fastapi_sdk.api.handlers import (
     app_exception_handler,
+    make_http_exception_handler,
     make_unhandled_exception_handler,
     register_exception_handlers,
 )
@@ -55,6 +56,7 @@ __all__: list[str] = [
     "clear_cookie",
     "make_bearer_token_dependency",
     "make_health_router",
+    "make_http_exception_handler",
     "make_jwt_user_dependency",
     "make_logs_router",
     "make_permission_dependency",

@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from tempest_fastapi_sdk.core.context import get_request_id
 from tempest_fastapi_sdk.core.logging import HTTP_500_MARKER
@@ -132,6 +133,92 @@ def make_unhandled_exception_handler(
     return _handler
 
 
+def make_http_exception_handler(
+    *,
+    log_traceback: bool = True,
+    log_level: int = logging.ERROR,
+) -> Any:
+    """Build the handler for raw :class:`starlette.exceptions.HTTPException`.
+
+    Without this, ``raise HTTPException(500, "...")`` (or ``404``,
+    ``403``, …) bypasses the SDK's ``Exception`` catch-all entirely:
+    Starlette intercepts ``HTTPException`` instances inside its
+    ``ExceptionMiddleware`` and routes them to its own default — a
+    bare ``JSONResponse({"detail": exc.detail})`` with no log entry.
+    Operators see the 500 in the access log and *no* trace.
+
+    This handler closes that gap for 5xx HTTPExceptions:
+
+    1. Whenever ``exc.status_code >= 500``, the failure is logged at
+       ``log_level`` (ERROR by default) under
+       ``tempest_fastapi_sdk.api.handlers``. The record is flagged
+       with :data:`HTTP_500_MARKER` so ``configure_logging(log_dir=…)``
+       routes it to the dedicated ``500.log`` alongside the trace.
+    2. The response keeps the original ``status_code`` /
+       ``headers`` and adds the SDK envelope shape
+       (``detail`` / ``code`` / ``details``), so frontends consuming
+       the same envelope across :class:`AppException` and raw
+       ``HTTPException`` don't need to branch.
+
+    4xx HTTPExceptions are returned untouched (Starlette's default
+    behavior), since those represent normal client-side outcomes that
+    don't deserve a stack trace.
+
+    Args:
+        log_traceback (bool): Whether to attach ``exc_info=exc`` to
+            the 5xx log record. ``True`` by default.
+        log_level (int): Logging level used for 5xx records.
+
+    Returns:
+        Any: An async ``(request, exc) -> JSONResponse`` callable
+        ready to pass to :meth:`FastAPI.add_exception_handler`.
+    """
+
+    async def _handler(
+        request: Request,
+        exc: StarletteHTTPException,
+    ) -> JSONResponse:
+        request_id = (
+            get_request_id()
+            or request.headers.get("X-Request-ID")
+            or request.headers.get("x-request-id")
+        )
+        if exc.status_code >= 500:
+            logger.log(
+                log_level,
+                "HTTPException %s during %s %s: %s",
+                exc.status_code,
+                request.method,
+                request.url.path,
+                exc.detail,
+                exc_info=exc if log_traceback else None,
+                extra={
+                    "request_id": request_id,
+                    "path": request.url.path,
+                    "status_code": exc.status_code,
+                    HTTP_500_MARKER: True,
+                },
+            )
+            body: dict[str, Any] = {
+                "detail": str(exc.detail or "Internal server error"),
+                "code": "INTERNAL_SERVER_ERROR",
+                "details": ({"request_id": request_id} if request_id else {}),
+            }
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=body,
+                headers=getattr(exc, "headers", None),
+            )
+        # 4xx — return Starlette's default shape, no log.
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=getattr(exc, "headers", None),
+        )
+
+    return _handler
+
+
 def register_exception_handlers(
     app: FastAPI,
     *,
@@ -141,11 +228,17 @@ def register_exception_handlers(
 ) -> None:
     """Register the SDK's exception handlers on a FastAPI app.
 
-    Wires two handlers:
+    Wires three handlers, in order of specificity:
 
     * :class:`AppException` → :func:`app_exception_handler`. Every
       domain-specific subclass returned by routers, services and
       repositories is serialized consistently.
+    * :class:`starlette.exceptions.HTTPException` →
+      :func:`make_http_exception_handler` factory. ``raise
+      HTTPException(500, ...)`` would otherwise bypass the SDK's
+      catch-all (Starlette intercepts HTTPException inside its own
+      middleware), so this handler restores the log + envelope
+      behavior for 5xx HTTPExceptions while leaving 4xx untouched.
     * :class:`Exception` (catch-all) → traceback logger + generic
       500 envelope. Without this, FastAPI's default returns the
       string ``"Internal Server Error"`` with no log entry beyond
@@ -153,18 +246,25 @@ def register_exception_handlers(
 
     Args:
         app (FastAPI): The FastAPI application to wire.
-        log_traceback (bool): Whether the catch-all handler attaches
-            the full traceback to the log record. Defaults to
-            ``True`` (always emit the trace). Pass ``False`` to
-            silence the trace when an APM / Sentry / equivalent is
-            already capturing the failure.
+        log_traceback (bool): Whether the 5xx handlers attach the
+            full traceback to the log record. Defaults to ``True``
+            (always emit the trace). Pass ``False`` to silence the
+            trace when an APM / Sentry / equivalent is already
+            capturing the failure.
         include_traceback (bool): When ``True``, the unhandled-500
             response body includes the formatted traceback under
             ``details.traceback``. Use only in development.
-        log_level (int): Logging level used by the catch-all
-            handler. Defaults to :data:`logging.ERROR`.
+        log_level (int): Logging level used by the 5xx handlers.
+            Defaults to :data:`logging.ERROR`.
     """
     app.add_exception_handler(AppException, app_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(
+        StarletteHTTPException,
+        make_http_exception_handler(
+            log_traceback=log_traceback,
+            log_level=log_level,
+        ),
+    )
     app.add_exception_handler(
         Exception,
         make_unhandled_exception_handler(
@@ -177,6 +277,7 @@ def register_exception_handlers(
 
 __all__: list[str] = [
     "app_exception_handler",
+    "make_http_exception_handler",
     "make_unhandled_exception_handler",
     "register_exception_handlers",
 ]

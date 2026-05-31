@@ -5,6 +5,38 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.1] — 2026-05-31
+
+### Fixed
+
+- **`raise HTTPException(500, ...)` bypassed the SDK 500 logger.**
+  Starlette intercepts every `HTTPException` inside its own
+  `ExceptionMiddleware` and routes it to a default handler that
+  emits a bare `JSONResponse({"detail": exc.detail})` with no log
+  entry. The 0.21.0 catch-all `Exception` handler never saw those
+  raises, so `tempest-fastapi-sdk[0.21.0]` users hitting a 5xx
+  endpoint reported `Internal Server Error` in the browser with
+  zero output in stdout / `error.log` / `500.log`.
+
+  Added a third handler — `make_http_exception_handler` registered
+  for `starlette.exceptions.HTTPException` — that:
+
+  - logs every 5xx (`status_code >= 500`) at ERROR with
+    `exc_info=exc` and `HTTP_500_MARKER` so the record lands in
+    both `error.log` and the dedicated `500.log`;
+  - returns the SDK envelope (`detail` / `code` / `details`),
+    preserving the original status code and any custom headers,
+    so frontends consuming the same envelope across `AppException`
+    and raw `HTTPException` don't need to branch;
+  - leaves 4xx HTTPExceptions untouched (Starlette's default body
+    and no log) since those represent normal client outcomes.
+
+  `make_http_exception_handler` and the existing `log_traceback`
+  / `log_level` knobs on `register_exception_handlers` are wired
+  end-to-end; opt out of the trace with
+  `register_exception_handlers(app, log_traceback=False)` when an
+  APM is already capturing the stack.
+
 ## [0.21.0] — 2026-05-31
 
 ### Added

@@ -25,6 +25,7 @@ from tempest_fastapi_sdk.api import (
     clear_cookie,
     make_bearer_token_dependency,
     make_health_router,
+    make_http_exception_handler,
     make_jwt_user_dependency,
     make_logs_router,
     make_permission_dependency,
@@ -157,7 +158,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-__version__: str = "0.21.0"
+__version__: str = "0.21.1"
 
 __all__: list[str] = [
     "CEP",
@@ -276,6 +277,7 @@ __all__: list[str] = [
     "make_admin_router",
     "make_bearer_token_dependency",
     "make_health_router",
+    "make_http_exception_handler",
     "make_jwt_user_dependency",
     "make_logs_router",
     "make_permission_dependency",

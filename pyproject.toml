@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.21.0"
+version = "0.21.1"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
