@@ -179,40 +179,17 @@ class AlembicHelper:
             "ruff_format.executable = ruff",
             "ruff_format.options = format REVISION_SCRIPT_FILENAME",
             "",
-            "[loggers]",
-            "keys = root,sqlalchemy,alembic",
-            "",
-            "[handlers]",
-            "keys = console",
-            "",
-            "[formatters]",
-            "keys = generic",
-            "",
-            "[logger_root]",
-            "level = WARN",
-            "handlers = console",
-            "qualname =",
-            "",
-            "[logger_sqlalchemy]",
-            "level = WARN",
-            "handlers =",
-            "qualname = sqlalchemy.engine",
-            "",
-            "[logger_alembic]",
-            "level = INFO",
-            "handlers =",
-            "qualname = alembic",
-            "",
-            "[handler_console]",
-            "class = StreamHandler",
-            "args = (sys.stderr,)",
-            "level = NOTSET",
-            "formatter = generic",
-            "",
-            "[formatter_generic]",
-            "format = %(levelname)-5.5s [%(name)s] %(message)s",
-            "datefmt = %H:%M:%S",
-            "",
+            # No [loggers]/[handlers]/[formatters] sections on purpose.
+            # ``env.py`` runs inside the host application process, and
+            # the host already configured Python's logging tree via
+            # ``configure_logging``. If we shipped the stock alembic.ini
+            # ``[logger_root] level = WARN handlers = console`` block,
+            # ``fileConfig(alembic.ini)`` from env.py would reset the
+            # root logger to WARN + a stderr handler, silencing the SDK
+            # 500 handler, the /logs writer and every JSON record the
+            # app emits. The companion env.py template still calls
+            # ``fileConfig`` (guarded on the section presence) so users
+            # who manually re-add a ``[loggers]`` block keep working.
         ]
         ini_path.write_text("\n".join(ini_lines), encoding="utf-8")
 
