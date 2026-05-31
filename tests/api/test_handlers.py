@@ -15,10 +15,18 @@ from tempest_fastapi_sdk import (
 )
 
 
-def _make_app(*, include_traceback: bool = False) -> FastAPI:
+def _make_app(
+    *,
+    include_traceback: bool = False,
+    log_traceback: bool = True,
+) -> FastAPI:
     app = FastAPI()
     app.add_middleware(RequestIDMiddleware)
-    register_exception_handlers(app, include_traceback=include_traceback)
+    register_exception_handlers(
+        app,
+        include_traceback=include_traceback,
+        log_traceback=log_traceback,
+    )
 
     @app.get("/missing")
     async def missing() -> None:
@@ -126,3 +134,30 @@ class TestUnhandledExceptionHandler:
         body = response.json()
         assert body["code"] == "NOT_FOUND"
         assert "traceback" not in body["details"]
+
+    def test_log_traceback_default_emits_exc_info(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """``log_traceback=True`` (default) attaches the trace to the record."""
+        client = TestClient(_make_app(), raise_server_exceptions=False)
+        with caplog.at_level(logging.ERROR, logger="tempest_fastapi_sdk.api.handlers"):
+            client.get("/unhandled")
+        record = next(r for r in caplog.records if "Unhandled exception" in r.message)
+        assert record.exc_info is not None
+        assert record.exc_info[0] is RuntimeError
+
+    def test_log_traceback_disabled_omits_exc_info(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """``log_traceback=False`` keeps the log line but drops the trace."""
+        client = TestClient(
+            _make_app(log_traceback=False),
+            raise_server_exceptions=False,
+        )
+        with caplog.at_level(logging.ERROR, logger="tempest_fastapi_sdk.api.handlers"):
+            response = client.get("/unhandled")
+        assert response.status_code == 500
+        record = next(r for r in caplog.records if "Unhandled exception" in r.message)
+        assert record.exc_info is None

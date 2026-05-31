@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.2] — 2026-05-31
+
+### Added
+
+- **Explicit `log_traceback` flag on the 500 catch-all handler.**
+  The default is `True` — every uncaught exception emits the full
+  traceback via `logger.log(..., exc_info=exc)` so the operator
+  always has it. Set `log_traceback=False` only when an APM agent /
+  Sentry / equivalent is already capturing the failure and the
+  duplicated stack noise is unwanted. The flag is forwarded by
+  `register_exception_handlers` and `make_unhandled_exception_handler`.
+
 ## [0.19.1] — 2026-05-31
 
 ### Fixed

@@ -51,6 +51,7 @@ async def app_exception_handler(
 
 def make_unhandled_exception_handler(
     *,
+    log_traceback: bool = True,
     include_traceback: bool = False,
     log_level: int = logging.ERROR,
 ) -> Any:
@@ -62,10 +63,11 @@ def make_unhandled_exception_handler(
     the logger and never reaches the operator. This handler closes
     that gap:
 
-    1. Logs the full traceback at ``log_level`` (ERROR by default)
-       under the ``tempest_fastapi_sdk.api.handlers`` logger, with
-       the active request ID attached so the failure correlates
-       with the inbound request line.
+    1. Logs the failure at ``log_level`` (ERROR by default) under the
+       ``tempest_fastapi_sdk.api.handlers`` logger. When
+       ``log_traceback=True`` (the default), the full traceback is
+       attached via ``exc_info`` so the application's
+       ``LogUtils`` / ``configure_logging`` setup serializes it.
     2. Returns the canonical SDK JSON envelope with
        ``code="INTERNAL_SERVER_ERROR"`` and ``status_code=500``.
     3. When ``include_traceback=True`` (development only) appends
@@ -75,9 +77,14 @@ def make_unhandled_exception_handler(
        ``repr`` output and SQL fragments.
 
     Args:
-        include_traceback (bool): Whether to surface the traceback
-            in the response body. Off in production.
-        log_level (int): Logging level used to emit the traceback.
+        log_traceback (bool): Whether to attach the full traceback to
+            the log record via ``exc_info``. Defaults to ``True`` — we
+            want operators to see the cause every time. Pass ``False``
+            only when the trace would be noisy AND the failure is
+            already being captured elsewhere (e.g. an APM agent).
+        include_traceback (bool): Whether to surface the traceback in
+            the *response body*. Off in production.
+        log_level (int): Logging level used by the catch-all handler.
 
     Returns:
         Any: An async ``(request, exc) -> JSONResponse`` callable
@@ -99,7 +106,7 @@ def make_unhandled_exception_handler(
             "Unhandled exception during %s %s",
             request.method,
             request.url.path,
-            exc_info=exc,
+            exc_info=exc if log_traceback else None,
             extra={"request_id": request_id, "path": request.url.path},
         )
         body: dict[str, Any] = {
@@ -119,6 +126,7 @@ def make_unhandled_exception_handler(
 def register_exception_handlers(
     app: FastAPI,
     *,
+    log_traceback: bool = True,
     include_traceback: bool = False,
     log_level: int = logging.ERROR,
 ) -> None:
@@ -136,6 +144,11 @@ def register_exception_handlers(
 
     Args:
         app (FastAPI): The FastAPI application to wire.
+        log_traceback (bool): Whether the catch-all handler attaches
+            the full traceback to the log record. Defaults to
+            ``True`` (always emit the trace). Pass ``False`` to
+            silence the trace when an APM / Sentry / equivalent is
+            already capturing the failure.
         include_traceback (bool): When ``True``, the unhandled-500
             response body includes the formatted traceback under
             ``details.traceback``. Use only in development.
@@ -146,6 +159,7 @@ def register_exception_handlers(
     app.add_exception_handler(
         Exception,
         make_unhandled_exception_handler(
+            log_traceback=log_traceback,
             include_traceback=include_traceback,
             log_level=log_level,
         ),
