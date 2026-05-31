@@ -17,9 +17,23 @@ class BasePaginationFilterSchema(BaseSchema):
     the pagination/sort keys, which is the contract expected by
     :class:`tempest_fastapi_sdk.db.repository.BaseRepository.paginate`.
 
+    Field names and defaults mirror the ``BaseRepository.paginate``
+    keyword arguments so passing the schema straight through works
+    without renaming:
+
+    .. code-block:: python
+
+        result = await repo.paginate(
+            filters=f.get_conditions(),
+            order_by=f.order_by,
+            page=f.page,
+            page_size=f.page_size,
+            ascending=f.ascending,
+        )
+
     Attributes:
         page (int): The page number to retrieve (1-indexed).
-        size (int): The number of items per page.
+        page_size (int): The number of items per page.
         order_by (str | None): The column name to order by. ``None``
             falls back to the repository default (``created_at``
             descending).
@@ -36,11 +50,11 @@ class BasePaginationFilterSchema(BaseSchema):
         default=1,
         ge=1,
     )
-    size: int = Field(
+    page_size: int = Field(
         title="Page Size",
         description="The number of items per page.",
         examples=[10, 20, 50],
-        default=10,
+        default=20,
         ge=1,
     )
     order_by: str | None = Field(
@@ -76,7 +90,7 @@ class BasePaginationFilterSchema(BaseSchema):
             dict[str, Any]: The dictionary of filter conditions.
         """
         return self.to_dict(
-            exclude=["page", "size", "order_by", "ascending"],
+            exclude=["page", "page_size", "order_by", "ascending"],
         )
 
 
@@ -87,13 +101,16 @@ class BasePaginationSchema(BaseSchema, Generic[T]):
     """Generic envelope returned by paginated endpoints.
 
     Wraps the page of items together with the pagination metadata
-    the frontend needs to render controls.
+    the frontend needs to render controls. Field names match the
+    request-side :class:`BasePaginationFilterSchema` and the
+    repository keyword arguments, so the round-trip stays free of
+    renames.
 
     Attributes:
         items (list[T]): The items in the current page.
         total (int): The total number of items across all pages.
         page (int): The current page number (1-indexed).
-        size (int): The number of items per page.
+        page_size (int): The number of items per page.
         pages (int): The total number of pages.
     """
 
@@ -114,7 +131,7 @@ class BasePaginationSchema(BaseSchema, Generic[T]):
         examples=[1, 2],
         ge=1,
     )
-    size: int = Field(
+    page_size: int = Field(
         title="Page Size",
         description="The number of items per page.",
         examples=[10, 25],

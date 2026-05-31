@@ -414,7 +414,7 @@ class BaseRepository(Generic[ModelType]):
             "items": items,
             "total": total,
             "page": page,
-            "size": page_size,
+            "page_size": page_size,
             "pages": pages,
         }
 

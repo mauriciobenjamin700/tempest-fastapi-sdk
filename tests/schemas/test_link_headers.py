@@ -23,14 +23,15 @@ class TestBuildPaginationLinkHeader:
 
     def test_empty_when_no_pages(self) -> None:
         assert (
-            build_pagination_link_header("/api/users", page=1, size=20, pages=0) == ""
+            build_pagination_link_header("/api/users", page=1, page_size=20, pages=0)
+            == ""
         )
 
     def test_first_page_only_has_next_and_last(self) -> None:
         value = build_pagination_link_header(
             "/api/users",
             page=1,
-            size=20,
+            page_size=20,
             pages=5,
         )
         links = _parse_links(value)
@@ -42,7 +43,7 @@ class TestBuildPaginationLinkHeader:
         value = build_pagination_link_header(
             "/api/users",
             page=3,
-            size=20,
+            page_size=20,
             pages=5,
         )
         links = _parse_links(value)
@@ -56,7 +57,7 @@ class TestBuildPaginationLinkHeader:
         value = build_pagination_link_header(
             "/api/users",
             page=5,
-            size=20,
+            page_size=20,
             pages=5,
         )
         links = _parse_links(value)
@@ -67,7 +68,7 @@ class TestBuildPaginationLinkHeader:
         value = build_pagination_link_header(
             "/api/users?name=ana&active=true",
             page=2,
-            size=20,
+            page_size=20,
             pages=5,
         )
         links = _parse_links(value)
@@ -79,7 +80,7 @@ class TestBuildPaginationLinkHeader:
         value = build_pagination_link_header(
             "/api/users",
             page=1,
-            size=20,
+            page_size=20,
             pages=3,
             extra_params={"sort": "name"},
         )
@@ -91,7 +92,7 @@ class TestBuildPaginationLinkHeader:
         value = build_pagination_link_header(
             "/api/users",
             page=1,
-            size=20,
+            page_size=20,
             pages=3,
             page_param="offset",
             size_param="limit",
@@ -104,7 +105,7 @@ class TestBuildPaginationLinkHeader:
         value = build_pagination_link_header(
             "https://api.example.com/api/users?name=ana",
             page=2,
-            size=20,
+            page_size=20,
             pages=5,
         )
         next_url = value.split(", ")[2].split(";")[0].strip("<>")

@@ -316,7 +316,7 @@ async def list_users(
     response.headers["Link"] = build_pagination_link_header(
         str(request.url),
         page=page.page,
-        size=page.size,
+        page_size=page.page_size,
         pages=page.pages,
     )
     response.headers["X-Total-Count"] = str(page.total)

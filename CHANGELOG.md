@@ -5,6 +5,49 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] — 2026-05-31
+
+### Changed
+
+- **BREAKING — pagination uses `page_size` everywhere instead of `size`.**
+  The field on `BasePaginationFilterSchema` was named `size` (default
+  `10`) while the controller / service / repository keyword argument
+  was named `page_size` (default `20`), forcing every consumer to
+  rename the attribute on the way through:
+
+  ```python
+  # before — required renaming + a default-value gotcha
+  result = await controller.paginate(
+      filters=f.get_conditions(),
+      page=f.page,
+      page_size=f.size,
+      ...,
+  )
+  ```
+
+  Aligned the request schema, the response envelope and the
+  repository return dict on a single name + default:
+
+  - `BasePaginationFilterSchema.size` → `BasePaginationFilterSchema.page_size`
+  - Default `10` → `20`
+  - `BasePaginationFilterSchema.get_conditions()` strips
+    `["page", "page_size", "order_by", "ascending"]`
+  - `BasePaginationSchema.size` → `BasePaginationSchema.page_size`
+  - `BaseRepository.paginate` return dict key `"size"` →
+    `"page_size"`. `BaseService.paginate` and
+    `BaseController.paginate` propagate the new key.
+  - `build_pagination_link_header(size=..., size_param="size")` →
+    `build_pagination_link_header(page_size=..., size_param="page_size")`.
+    URLs now look like `?page=2&page_size=20` by default. Pass
+    `size_param="size"` to keep the old query-string spelling
+    without renaming the function argument.
+
+  Migration: rename `size` to `page_size` on every consumer; if a
+  service relied on the previous default of `10` items per page,
+  pass `page_size=10` explicitly. The admin router's `_Pagination`
+  helper now reads `result["page_size"]` from the repository
+  response.
+
 ## [0.19.2] — 2026-05-31
 
 ### Added

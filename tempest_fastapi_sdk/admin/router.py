@@ -425,7 +425,7 @@ def make_admin_router(
 
         pagination = _Pagination(
             page=result["page"],
-            size=result["size"],
+            size=result["page_size"],
             total=result["total"],
             query_params=query_params,
         )

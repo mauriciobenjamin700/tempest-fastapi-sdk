@@ -701,7 +701,7 @@ Retorna:
     ],
     "total": 142,
     "page": 2,
-    "size": 20,
+    "page_size": 20,
     "pages": 8
 }
 ```

@@ -9,11 +9,11 @@ def build_pagination_link_header(
     base_url: str,
     *,
     page: int,
-    size: int,
+    page_size: int,
     pages: int,
     extra_params: dict[str, str] | None = None,
     page_param: str = "page",
-    size_param: str = "size",
+    size_param: str = "page_size",
 ) -> str:
     """Build a ``Link`` header for offset-based pagination.
 
@@ -26,7 +26,9 @@ def build_pagination_link_header(
             endpoint (e.g. ``"https://api.example.com/api/users"`` or
             ``"/api/users"``). Existing query parameters are preserved.
         page (int): Current page number (1-based).
-        size (int): Page size.
+        page_size (int): Page size. Field name matches
+            :class:`BasePaginationFilterSchema.page_size` and the
+            ``BaseRepository.paginate`` keyword argument.
         pages (int): Total number of pages.
         extra_params (dict[str, str] | None): Extra query parameters
             that must be preserved on every link (filters, sort,
@@ -34,7 +36,7 @@ def build_pagination_link_header(
         page_param (str): Query parameter name for the page index.
             Defaults to ``"page"``.
         size_param (str): Query parameter name for the page size.
-            Defaults to ``"size"``.
+            Defaults to ``"page_size"``.
 
     Returns:
         str: A ``Link`` header value ready to assign to
@@ -57,7 +59,11 @@ def build_pagination_link_header(
     base_params: dict[str, str] = {**(extra_params or {}), **existing_params}
 
     def _url_for(target_page: int) -> str:
-        params = {**base_params, page_param: str(target_page), size_param: str(size)}
+        params = {
+            **base_params,
+            page_param: str(target_page),
+            size_param: str(page_size),
+        }
         query = urlencode(params, doseq=True)
         return urlunparse(
             (

@@ -162,6 +162,23 @@ class AlembicHelper:
             ),
             "timezone = UTC",
             "",
+            # Auto-format every freshly generated revision so the files
+            # autogenerate emits (long ``sa.Column`` lines, trailing
+            # whitespace in the docstring header when ``down_revision``
+            # is ``None``) are lint-clean out of the box. ``ruff check
+            # --fix`` sorts imports / applies safe fixes; ``ruff format``
+            # wraps over-length lines and strips docstring trailing
+            # whitespace. Both are no-ops when ruff is not installed
+            # only if the hook fails — keep ruff in the dev deps.
+            "[post_write_hooks]",
+            "hooks = ruff_fix, ruff_format",
+            "ruff_fix.type = exec",
+            "ruff_fix.executable = ruff",
+            "ruff_fix.options = check --fix REVISION_SCRIPT_FILENAME",
+            "ruff_format.type = exec",
+            "ruff_format.executable = ruff",
+            "ruff_format.options = format REVISION_SCRIPT_FILENAME",
+            "",
             "[loggers]",
             "keys = root,sqlalchemy,alembic",
             "",
