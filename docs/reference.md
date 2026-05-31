@@ -1,13 +1,13 @@
-# API Reference
+# Referência da API
 
-Auto-generated from the SDK's docstrings via [`mkdocstrings`](https://mkdocstrings.github.io/). Every public symbol exported by `tempest_fastapi_sdk` is documented here with its full signature, parameters, return type, raised exceptions and source location.
+Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https://mkdocstrings.github.io/). Todo símbolo público exportado por `tempest_fastapi_sdk` está documentado aqui com sua assinatura completa, parâmetros, tipo de retorno, exceções levantadas e localização no código-fonte.
 
-!!! tip "Searching"
-    Use the search bar at the top of the page (or press `/`) to jump to a symbol by name. The full-text index includes docstrings, so searches like "soft delete" or "request id" land on the right class.
+!!! tip "Buscando"
+    Use a barra de busca no topo da página (ou pressione `/`) para pular para um símbolo pelo nome. O índice full-text inclui as docstrings, então buscas como "soft delete" ou "request id" caem na classe certa.
 
 ---
 
-## Top-level surface
+## Superfície de topo
 
 ::: tempest_fastapi_sdk
     options:
@@ -20,7 +20,7 @@ Auto-generated from the SDK's docstrings via [`mkdocstrings`](https://mkdocstrin
 
 ---
 
-## Database
+## Banco de dados
 
 ### `tempest_fastapi_sdk.db`
 
@@ -54,7 +54,7 @@ Auto-generated from the SDK's docstrings via [`mkdocstrings`](https://mkdocstrin
 
 ---
 
-## Exceptions
+## Exceções
 
 ### `tempest_fastapi_sdk.exceptions`
 
@@ -72,7 +72,7 @@ Auto-generated from the SDK's docstrings via [`mkdocstrings`](https://mkdocstrin
 
 ---
 
-## API (FastAPI integration)
+## API (integração FastAPI)
 
 ### `tempest_fastapi_sdk.api`
 

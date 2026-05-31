@@ -1,6 +1,13 @@
 # tempest-fastapi-sdk
 
-[**📖 Full documentation site →**](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/) · [Tutorial](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/tutorial/) · [Recipes](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/) · [API reference](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)
+[**📖 Documentação completa (PT-BR) →**](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/) · [**📖 Full documentation (EN-US) →**](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/)
+
+> O site MkDocs é bilíngue (**PT-BR** padrão · **EN-US**) com seletor de idioma 🇧🇷/🇺🇸 no cabeçalho. — The MkDocs site is bilingual (**PT-BR** default · **EN-US**) with a 🇧🇷/🇺🇸 language switcher in the header.
+
+- **PT-BR:** [Tutorial](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/tutorial/) · [Receitas](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/) · [Referência da API](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)
+- **EN-US:** [Tutorial](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/tutorial/) · [Recipes](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/) · [API reference](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/)
+
+> 💡 `uv run mkdocs serve` (ou `make docs-serve`) é só para preview local — em produção use as URLs do GitHub Pages acima. / For local preview only — in production use the GitHub Pages URLs above.
 
 Shared FastAPI/SQLAlchemy/Pydantic building blocks used across Tempest projects: base schemas, ORM model, async repository, pagination, settings, exceptions, Alembic helper, FastStream/TaskIQ broker managers, Redis cache, Server-Sent Events, Web Push, a Django-style **admin site** (`AdminSite` + `AdminModel`), and the utility classes (`PasswordUtils`, `JWTUtils`, `EmailUtils`, `UploadUtils`, `DownloadUtils`, `MetricsUtils`, `LogUtils`).
 

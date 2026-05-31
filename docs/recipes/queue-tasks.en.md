@@ -1,13 +1,13 @@
-# Fila e Tarefas
+# Queue & Tasks
 
-Trabalho em background — filas de mensagens at-least-once (FastStream/RabbitMQ), filas de tarefas (TaskIQ), schedulers periódicos e o padrão de outbox transacional.
+Background work — at-least-once message queues (FastStream/RabbitMQ), task queues (TaskIQ), periodic schedulers, and the transactional outbox pattern.
 
-## Filas de mensagens — FastStream
+## Message queues — FastStream
 
 
-`AsyncBrokerManager` embrulha qualquer broker FastStream (RabbitMQ, Kafka, NATS, Redis Streams) com uma superfície uniforme de connect/disconnect/health-check. A instância do broker é injetada para que o SDK não fixe um único transporte.
+`AsyncBrokerManager` wraps any FastStream broker (RabbitMQ, Kafka, NATS, Redis Streams) with a uniform connect/disconnect/health-check surface. The broker instance is injected so the SDK doesn't pin a single transport.
 
-Instale com `[queue]` (puxa `faststream[rabbit]`). Escolha o extra FastStream correspondente para outros transportes.
+Install with `[queue]` (pulls `faststream[rabbit]`). Pick the matching FastStream extra for other transports.
 
 ```python
 # src/queue/__init__.py
@@ -39,25 +39,25 @@ await queue.connect()
 await queue.disconnect()
 
 
-# Publique de qualquer lugar da aplicação
+# Publish from anywhere in the application
 await queue.publish(OrderMessage(order_id="abc", user_id="x"), queue="orders.paid")
 ```
 
-O manager expõe:
+The manager exposes:
 
-- `connect()` / `disconnect()` — idempotentes; seguros de chamar a partir do lifespan do FastAPI.
-- `publish(message, *args, **kwargs)` — passthrough para `broker.publish` com uma guarda `RuntimeError` quando o broker não está iniciado.
-- `lifespan()` — context manager async que lida com start/stop, útil para scripts curtos.
-- `broker_dependency` — `Depends` do FastAPI que entrega o broker ativo.
-- `health_check()` / `is_connected` — verdadeiro enquanto o broker está iniciado.
+- `connect()` / `disconnect()` — idempotent; safe to call from FastAPI lifespan.
+- `publish(message, *args, **kwargs)` — passthrough to `broker.publish` with a `RuntimeError` guard when the broker isn't started.
+- `lifespan()` — async context manager handling start/stop, handy for short scripts.
+- `broker_dependency` — FastAPI `Depends` that yields the live broker.
+- `health_check()` / `is_connected` — true while the broker is started.
 
-Conecte-o no health router com `make_health_router(checks={"queue": queue.health_check})`.
-
-
-## Tarefas em background — TaskIQ
+Wire it on the health router with `make_health_router(checks={"queue": queue.health_check})`.
 
 
-`AsyncTaskBrokerManager` embrulha qualquer broker TaskIQ (AioPika para RabbitMQ, Redis, in-memory para testes). Instale com `[tasks]` (puxa `taskiq` + `taskiq-aio-pika`).
+## Background tasks — TaskIQ
+
+
+`AsyncTaskBrokerManager` wraps any TaskIQ broker (AioPika for RabbitMQ, Redis, in-memory for tests). Install with `[tasks]` (pulls `taskiq` + `taskiq-aio-pika`).
 
 ```python
 # src/tasks/__init__.py
@@ -86,19 +86,19 @@ await tasks.connect()
 await tasks.disconnect()
 
 
-# Enfileire de um handler de request
+# Enqueue from a request handler
 await send_welcome_email.kiq(to=user.email, name=user.name)
 ```
 
-`register_task(callable, task_name=..., **kwargs)` registra uma função sem a sintaxe de decorator — útil ao conectar callables de terceiros que você não pode decorar no ponto de definição. Para testes, troque o broker por `taskiq.InMemoryBroker()` para que as tarefas executem de forma síncrona.
+`register_task(callable, task_name=..., **kwargs)` registers a function without decorator syntax — useful when wiring third-party callables that you can't decorate at definition time. For tests, swap the broker for `taskiq.InMemoryBroker()` so kicked tasks execute synchronously.
 
-As mesmas guarda de lifespan do manager de fila se aplicam: `connect()`/`disconnect()`/`lifespan()`/`broker_dependency`/`health_check()`/`is_connected`.
-
-
-## Scheduler de tarefas periódicas
+The same lifespan guard rails as the queue manager apply: `connect()`/`disconnect()`/`lifespan()`/`broker_dependency`/`health_check()`/`is_connected`.
 
 
-`AsyncTaskScheduler` embrulha `taskiq.TaskiqScheduler` + `LabelScheduleSource` para que tarefas periódicas sejam declaradas com decorators ao lado de tarefas normais e o scheduler seja dirigido pelo lifespan do FastAPI. Ele **não executa os corpos das tarefas** — ele as enfileira no mesmo broker que o `AsyncTaskBrokerManager` embrulha, então um processo worker precisa estar rodando para consumi-las. Requer o extra `[tasks]`.
+## Periodic tasks scheduler
+
+
+`AsyncTaskScheduler` wraps `taskiq.TaskiqScheduler` + `LabelScheduleSource` so periodic tasks are declared with decorators alongside regular tasks and the scheduler is driven from the FastAPI lifespan. It **does not execute task bodies** — it kicks them into the same broker `AsyncTaskBrokerManager` wraps, so a worker process must be running to consume them. Requires the `[tasks]` extra.
 
 ```python
 # src/tasks/__init__.py
@@ -111,10 +111,10 @@ from tempest_fastapi_sdk.tasks import AsyncTaskBrokerManager, AsyncTaskScheduler
 from src.core.settings import settings
 
 
-# Use TASKIQ_BROKER_URL (de TaskIQSettings) quando o scheduler /
-# broker de tarefas for um broker diferente da fila FastStream
-# (RABBITMQ_URL). Reutilize a mesma URL do RabbitMQ quando
-# compartilharem o broker — ambas env vars podem apontar pro mesmo valor.
+# Use TASKIQ_BROKER_URL (from TaskIQSettings) when the scheduler /
+# task broker is a different broker than the FastStream queue
+# (RABBITMQ_URL). Reuse the same RabbitMQ URL when they share the
+# broker — both env vars can point to the same value.
 broker = AioPikaBroker(settings.TASKIQ_BROKER_URL)
 tasks = AsyncTaskBrokerManager(broker)
 scheduler = AsyncTaskScheduler(broker)
@@ -147,7 +147,7 @@ async def warm_cache() -> None:
     ...
 ```
 
-Conecte-o ao lifespan do app, ao lado do manager de broker:
+Wire it into the app lifespan next to the broker manager:
 
 ```python
 # src/api/app.py
@@ -163,36 +163,36 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await tasks.disconnect()
 ```
 
-Superfície de decorators:
+Decorator surface:
 
-| Método | Quando usar |
+| Method | When to use |
 | --- | --- |
-| `@scheduler.cron("*/5 * * * *", cron_offset=None)` | Expressão cron; passe `cron_offset` (string como `"-03:00"` ou `timedelta`) para ancorar a um timezone diferente de UTC. |
-| `@scheduler.interval(seconds=30)` / `@scheduler.interval(timedelta(...))` | Recorrência em intervalo fixo. |
-| `@scheduler.schedule([{...}, {...}])` | Lista crua de schedule do TaskIQ — combine triggers, use `time` de uma vez só, etc. |
-| `scheduler.register(func, schedule=[...], task_name=...)` | Registro sem sintaxe de decorator (callables de terceiros). |
+| `@scheduler.cron("*/5 * * * *", cron_offset=None)` | Cron expression; pass `cron_offset` (string like `"-03:00"` or `timedelta`) to anchor to a timezone other than UTC. |
+| `@scheduler.interval(seconds=30)` / `@scheduler.interval(timedelta(...))` | Fixed-interval recurrence. |
+| `@scheduler.schedule([{...}, {...}])` | Raw TaskIQ schedule list — combine triggers, use one-shot `time`, etc. |
+| `scheduler.register(func, schedule=[...], task_name=...)` | Register without decorator syntax (third-party callables). |
 
-Deploys de produção com múltiplos workers devem rodar a CLI standalone do scheduler em vez de `run_in_background()`, para que só um scheduler esteja ativo no cluster:
+Production deployments with multiple workers should run the standalone scheduler CLI instead of `run_in_background()`, so only one scheduler is active across the cluster:
 
 ```bash
 taskiq scheduler src.tasks:scheduler.scheduler
 ```
 
-(`scheduler.scheduler` é a instância interna `TaskiqScheduler` exposta em `AsyncTaskScheduler`.) O processo worker continua o mesmo:
+(`scheduler.scheduler` is the inner `TaskiqScheduler` instance exposed on `AsyncTaskScheduler`.) The worker process stays the same:
 
 ```bash
 taskiq worker src.tasks:tasks.broker
 ```
 
-Os controles de ciclo de vida espelham o manager de broker: `connect()` / `disconnect()` / `lifespan()` / `run_in_background()` / `health_check()` / `is_connected`.
+Lifecycle controls mirror the broker manager: `connect()` / `disconnect()` / `lifespan()` / `run_in_background()` / `health_check()` / `is_connected`.
 
 
-## Padrão outbox dispatcher
+## Outbox dispatcher pattern
 
 
-O padrão de outbox transacional mantém uma tabela "a publicar" no mesmo banco das linhas de domínio, para que escrever a linha e registrar o efeito colateral aconteçam em uma única transação. Um worker lê o outbox em ordem e publica no RabbitMQ (FastStream) / TaskIQ, marcando cada linha como despachada só depois que o broker dá ACK. Crashes entre o commit e o publish reproduzem com segurança no próximo poll.
+The transactional outbox pattern keeps a "to publish" table in the same database as the domain rows, so writing the row and recording the side-effect happen in a single transaction. A worker reads the outbox in order and publishes to RabbitMQ (FastStream) / TaskIQ, marking each row as dispatched only after the broker ACKs. Crashes between commit and publish replay safely on the next poll.
 
-O SDK **não** traz um primitivo dedicado `OutboxDispatcher` — a implementação é curta, opinativa e se beneficia de ficar na fronteira `db/models/` + `tasks/` do serviço. Use a receita abaixo.
+The SDK does **not** ship a dedicated `OutboxDispatcher` primitive — the implementation is short, opinionated, and benefits from staying in the service's `db/models/` + `tasks/` boundary. Use the recipe below.
 
 ```python
 # src/db/models/outbox.py
@@ -250,7 +250,7 @@ class OutboxRepository(BaseRepository[OutboxEventModel]):
 ```
 
 ```python
-# src/services/orders.py — lado produtor
+# src/services/orders.py — produce side
 from src.db.models import OrderModel, OutboxEventModel
 
 
@@ -271,7 +271,7 @@ class OrderService:
 ```
 
 ```python
-# src/tasks/__init__.py — lado dispatcher
+# src/tasks/__init__.py — dispatcher side
 from tempest_fastapi_sdk.tasks import AsyncTaskScheduler
 
 from src.api.app import broker as queue_broker  # FastStream AsyncBrokerManager
@@ -299,9 +299,10 @@ async def dispatch_outbox() -> None:
             await repo.mark_dispatched(dispatched)
 ```
 
-Trade-offs para ter em mente:
+Trade-offs to keep in mind:
 
-- **A ordem é best-effort.** Quando um lote contém um publish que falha, todo evento posterior no mesmo lote ainda roda — mas eles continuam sendo publicados em ordem de `created_at`. Se a ordem estrita importa, pare na primeira falha.
-- **Dispatcher único.** O `claim_pending` ingênuo não trava linhas; rodar múltiplos workers dispatcher vai publicar em duplicidade. Use `SELECT ... FOR UPDATE SKIP LOCKED` no PostgreSQL quando precisar escalar horizontalmente.
-- **Retenção.** Adicione um job periódico no estilo `TRUNCATE` para apagar linhas `dispatched` mais antigas que N dias, senão a tabela de outbox cresce sem limite.
-- **At-least-once.** Os consumidores devem ser idempotentes — o dispatcher pode crashar depois de publicar mas antes do `mark_dispatched`.
+- **Order is best-effort.** When a batch contains one failing publish, every later event in the same batch still runs — but they're still published in `created_at` order. If strict ordering matters, break on the first failure.
+- **Single dispatcher.** The naive `claim_pending` does not lock rows; running multiple dispatcher workers will double-publish. Use `SELECT ... FOR UPDATE SKIP LOCKED` on PostgreSQL when you need to scale out.
+- **Retention.** Add a periodic `TRUNCATE`-style job to delete `dispatched` rows older than N days, otherwise the outbox table grows unbounded.
+- **At-least-once.** Consumers must be idempotent — the dispatcher can crash after publishing but before `mark_dispatched`.
+

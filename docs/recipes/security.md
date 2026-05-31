@@ -1,11 +1,11 @@
-# Security
+# Segurança
 
-Defensive primitives: rate-limit by failure (login/OTP), opaque single-use tokens, hardened static-file serving with security headers, and the spoof-resistant client IP resolver.
+Primitivos defensivos: rate-limit por falha (login/OTP), tokens opacos de uso único, serviço de arquivos estáticos endurecido com headers de segurança, e o resolvedor de IP do cliente resistente a spoofing.
 
-## Brute-force throttling
+## Throttling de força bruta
 
 
-`AttemptThrottle` counts failed attempts per key (typically `<endpoint>:<identifier>` — login email, password-reset target, etc.) and either yields a free attempt, locks the caller for a cooldown, or signals "back off" once the threshold is crossed. Two backends ship: `MemoryThrottleBackend` (defaults — process-local, perfect for tests and single-process services) and `RedisThrottleBackend` (multi-process / multi-host deployments).
+`AttemptThrottle` conta tentativas falhas por chave (tipicamente `<endpoint>:<identificador>` — e-mail de login, alvo de reset de senha, etc.) e ou libera uma tentativa, trava quem chama por um cooldown, ou sinaliza "recue" quando o limite é cruzado. Dois backends vêm: `MemoryThrottleBackend` (default — local ao processo, perfeito para testes e serviços de processo único) e `RedisThrottleBackend` (deploys multi-processo / multi-host).
 
 ```python
 from tempest_fastapi_sdk import AttemptThrottle, ThrottleStatus, TooManyRequestsException
@@ -33,13 +33,13 @@ async def login(email: str, password: str) -> User:
     return user
 ```
 
-`check()` returns a `ThrottleStatus` enum (`ALLOWED` / `LOCKED`); inspecting `.attempts_left` and `.retry_after_seconds` on the result lets you surface friendly error payloads. Pair with `TooManyRequestsException` so the SDK exception handler emits the canonical `{detail, code, details}` envelope with HTTP 429 and a `Retry-After` header.
+`check()` retorna um enum `ThrottleStatus` (`ALLOWED` / `LOCKED`); inspecionar `.attempts_left` e `.retry_after_seconds` no resultado permite exibir payloads de erro amigáveis. Combine com `TooManyRequestsException` para que o exception handler do SDK emita o envelope canônico `{detail, code, details}` com HTTP 429 e um header `Retry-After`.
 
 
-## Opaque tokens
+## Tokens opacos
 
 
-`generate_opaque_token` produces a high-entropy URL-safe token (default 32 bytes / 256 bits via `secrets.token_urlsafe`); `hash_opaque_token` stores it as an HMAC-SHA-256 digest so a leaked database row is useless on its own; `verify_opaque_token` performs constant-time comparison. Use them for password reset links, email confirmation, API keys, opaque session IDs — anything where the issued secret is never inspected by the recipient.
+`generate_opaque_token` produz um token URL-safe de alta entropia (default 32 bytes / 256 bits via `secrets.token_urlsafe`); `hash_opaque_token` o armazena como um digest HMAC-SHA-256 para que uma linha de banco vazada seja inútil por si só; `verify_opaque_token` faz comparação em tempo constante. Use-os para links de reset de senha, confirmação de e-mail, API keys, IDs de sessão opacos — qualquer coisa onde o segredo emitido nunca é inspecionado pelo destinatário.
 
 ```python
 from tempest_fastapi_sdk import (
@@ -70,13 +70,13 @@ async def consume_reset_token(plain: str, user_id: UUID) -> bool:
     )
 ```
 
-`secret=` is optional — passing the same pepper across `hash_*` / `verify_*` adds a service-wide secret so the digest column alone cannot be brute-forced. Defaults: 32 bytes of entropy, HMAC-SHA-256, constant-time compare. Override `nbytes=` for longer keys (API keys / refresh tokens).
+`secret=` é opcional — passar o mesmo pepper em `hash_*` / `verify_*` adiciona um segredo a nível de serviço para que a coluna de digest sozinha não possa ser quebrada por força bruta. Defaults: 32 bytes de entropia, HMAC-SHA-256, comparação em tempo constante. Sobrescreva `nbytes=` para chaves mais longas (API keys / refresh tokens).
 
 
-## Hardened static files + cookie helpers
+## Arquivos estáticos endurecidos + helpers de cookie
 
 
-`HardenedStaticFiles` extends Starlette's `StaticFiles` with three production-grade defaults: it resolves the served path against a symlink-free base, refuses any path that escapes that base (path-traversal defense in depth), and attaches a configurable set of security headers (`DEFAULT_STATIC_SECURITY_HEADERS` — `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-site`).
+`HardenedStaticFiles` estende o `StaticFiles` do Starlette com três defaults de nível de produção: resolve o caminho servido contra uma base livre de symlinks, recusa qualquer caminho que escape dessa base (defesa em profundidade contra path-traversal), e anexa um conjunto configurável de headers de segurança (`DEFAULT_STATIC_SECURITY_HEADERS` — `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-site`).
 
 ```python
 from fastapi import FastAPI
@@ -98,7 +98,7 @@ app.mount(
 )
 ```
 
-For cookie-based session flows, `set_cookie` / `clear_cookie` write headers that already include the safe combo (`HttpOnly`, `Secure`, `SameSite=Lax`) so the caller only picks the bits they want to deviate from. `SameSite` is a `BaseStrEnum` (`SameSite.LAX` / `STRICT` / `NONE`) — using `SameSite.NONE` forces `Secure=True` to honor the browser requirement.
+Para fluxos de sessão baseados em cookie, `set_cookie` / `clear_cookie` escrevem headers que já incluem o combo seguro (`HttpOnly`, `Secure`, `SameSite=Lax`) para que quem chama só escolha os bits dos quais quer desviar. `SameSite` é um `BaseStrEnum` (`SameSite.LAX` / `STRICT` / `NONE`) — usar `SameSite.NONE` força `Secure=True` para honrar a exigência do navegador.
 
 ```python
 from fastapi import Response
@@ -124,10 +124,10 @@ def logout(response: Response) -> None:
 ```
 
 
-## Client IP extraction
+## Extração do IP do cliente
 
 
-`get_client_ip(request)` and `get_client_ip_from_scope(scope)` return the real client IP behind an arbitrary chain of proxies. They inspect `Forwarded` (RFC 7239) first, fall back to `X-Forwarded-For` honoring an explicit `trusted_proxies` allowlist, and finally use the raw socket address — never naively trusting an inbound header.
+`get_client_ip(request)` e `get_client_ip_from_scope(scope)` retornam o IP real do cliente por trás de uma cadeia arbitrária de proxies. Eles inspecionam `Forwarded` (RFC 7239) primeiro, caem para `X-Forwarded-For` honrando uma allowlist explícita `trusted_proxies`, e por fim usam o endereço de socket cru — nunca confiando ingenuamente em um header de entrada.
 
 ```python
 from fastapi import Request
@@ -145,5 +145,4 @@ async def login(request: Request, payload: LoginIn) -> LoginOut:
     ...
 ```
 
-Use `get_client_ip_from_scope(scope)` from middleware or websocket handlers where only the ASGI scope is in reach. Both helpers normalize IPv6 brackets and refuse to return private addresses when `accept_private=False` is passed — handy when only public traffic should ever populate audit logs.
-
+Use `get_client_ip_from_scope(scope)` de middleware ou handlers de websocket onde só o scope ASGI está ao alcance. Ambos os helpers normalizam colchetes de IPv6 e se recusam a retornar endereços privados quando `accept_private=False` é passado — útil quando só tráfego público deveria popular logs de auditoria.

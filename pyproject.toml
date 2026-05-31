@@ -142,6 +142,7 @@ docs = [
     "mkdocstrings[python]>=0.27.0",
     "pymdown-extensions>=10.0",
     "mkdocs-include-markdown-plugin>=7.0.0",
+    "mkdocs-static-i18n>=1.2",
 ]
 
 [tool.ruff]

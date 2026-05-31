@@ -1,14 +1,14 @@
-# Metrics
+# Métricas
 
 
-`MetricsUtils` collects CPU, memory, disk and NVIDIA GPU usage via `psutil` + `pynvml`. Every method has a sync and an async variant (the async wrapper runs the same code via `asyncio.to_thread`). GPU sampling gracefully degrades to `[]` when `pynvml` or NVIDIA drivers are missing.
+`MetricsUtils` coleta uso de CPU, memória, disco e GPU NVIDIA via `psutil` + `pynvml`. Todo método tem uma variante sync e uma async (o wrapper async roda o mesmo código via `asyncio.to_thread`). A amostragem de GPU degrada graciosamente para `[]` quando `pynvml` ou os drivers da NVIDIA estão ausentes.
 
-Install with `[metrics]`.
+Instale com `[metrics]`.
 
 ```python
 from tempest_fastapi_sdk import MetricsUtils
 
-# Synchronous, blocking call
+# Síncrono, chamada bloqueante
 snapshot = MetricsUtils.snapshot(disk_paths=["/", "/data"], cpu_interval=0.1)
 print(snapshot.cpu.percent, snapshot.memory.percent)
 for disk in snapshot.disks:
@@ -16,7 +16,7 @@ for disk in snapshot.disks:
 for gpu in snapshot.gpus:
     print(gpu.name, gpu.utilization_percent, gpu.memory_used_bytes)
 
-# Async — runs every collector concurrently via asyncio.gather
+# Async — roda cada coletor concorrentemente via asyncio.gather
 snapshot = await MetricsUtils.snapshot_async(disk_paths=["/"])
 
 
@@ -26,5 +26,4 @@ async def metrics() -> dict[str, Any]:
     return snap.to_dict()
 ```
 
-Individual collectors are also available: `MetricsUtils.cpu(interval=...)`, `MetricsUtils.memory()`, `MetricsUtils.disk(path)`, `MetricsUtils.disks(paths)`, `MetricsUtils.gpus()` — and their `*_async` variants. Each returns a typed dataclass (`CPUMetrics`, `MemoryMetrics`, `DiskMetrics`, `GPUMetrics`, `SystemMetrics`) with a `to_dict()` helper for JSON serialization.
-
+Os coletores individuais também estão disponíveis: `MetricsUtils.cpu(interval=...)`, `MetricsUtils.memory()`, `MetricsUtils.disk(path)`, `MetricsUtils.disks(paths)`, `MetricsUtils.gpus()` — e suas variantes `*_async`. Cada um retorna uma dataclass tipada (`CPUMetrics`, `MemoryMetrics`, `DiskMetrics`, `GPUMetrics`, `SystemMetrics`) com um helper `to_dict()` para serialização JSON.

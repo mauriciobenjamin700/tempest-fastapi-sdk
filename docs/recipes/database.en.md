@@ -1,11 +1,11 @@
-# Banco de dados
+# Database
 
-Tudo que toca PostgreSQL/SQLite via SQLAlchemy 2.0 async — modelo base, repository async, mixins, migrações, paginação por cursor.
+Everything that touches PostgreSQL/SQLite via SQLAlchemy 2.0 async — base model, async repository, mixins, migrations, cursor pagination.
 
-## Mixins de auditoria & soft-delete
+## Audit & soft-delete mixins
 
 
-`SoftDeleteMixin` adiciona uma coluna de timestamp `deleted_at` com helpers `mark_deleted()` / `mark_restored()` / `is_deleted`. `AuditMixin` adiciona colunas UUID `created_by` / `updated_by` com helpers `stamp_created_by(user_id)` / `stamp_updated_by(user_id)`. Misture-os ao lado do `BaseModel`:
+`SoftDeleteMixin` adds a `deleted_at` timestamp column with `mark_deleted()` / `mark_restored()` / `is_deleted` helpers. `AuditMixin` adds `created_by` / `updated_by` UUID columns with `stamp_created_by(user_id)` / `stamp_updated_by(user_id)` helpers. Mix them in alongside `BaseModel`:
 
 ```python
 # src/db/models/user.py
@@ -22,7 +22,7 @@ class UserModel(BaseModel, SoftDeleteMixin, AuditMixin):
     password_hash: Mapped[str] = mapped_column()
 ```
 
-A filtragem é responsabilidade de quem chama — o mixin não instala um filtro global. Esconda linhas soft-deleted dos endpoints de listagem passando `deleted_at=None` (ou filtrando na sua subclasse de repository). Carimbar as colunas de auditoria pertence à camada de service, onde o usuário atual está em escopo. Ambos os padrões vivem dentro do service:
+Filtering is the caller's responsibility — the mixin doesn't install a global filter. Hide soft-deleted rows from list endpoints by passing `deleted_at=None` (or filtering in your repository subclass). Stamping audit columns belongs to the service layer where the current user is in scope. Both patterns live inside the service:
 
 ```python
 # src/services/user.py
@@ -61,15 +61,15 @@ class UserService(BaseService[UserRepository, UserResponse]):
         return self.repository.map_to_response(updated)
 ```
 
-Os dois métodos destacados sob os comentários divisores são o único código específico de soft-delete e auditoria que o consumidor escreve — as colunas e helpers (`mark_deleted` / `mark_restored` / `stamp_updated_by`) vêm dos mixins.
+The two highlighted methods under the divider comments are the only soft-delete- and audit-specific code the consumer writes — the columns and helpers (`mark_deleted` / `mark_restored` / `stamp_updated_by`) come from the mixins.
 
-Use os helpers do mixin (`mark_deleted` / `mark_restored`) quando quiser a semântica de `deleted_at`; use `BaseRepository.soft_delete(id)` quando a flag `is_active` existente já basta.
-
-
-## Paginação por cursor
+Use the mixin's helpers (`mark_deleted` / `mark_restored`) when you want the `deleted_at` semantics; use `BaseRepository.soft_delete(id)` when the existing `is_active` flag is enough.
 
 
-A paginação por cursor escala melhor que a por offset em tabelas grandes (sem `COUNT(*)`, estável sob inserts concorrentes) ao custo de perder o acesso aleatório. O SDK fornece `CursorPaginationFilterSchema`, `CursorPaginationSchema[T]` e os helpers opacos `encode_cursor` / `decode_cursor`.
+## Cursor pagination
+
+
+Cursor pagination scales better than offset pagination on big tables (no `COUNT(*)`, stable under concurrent inserts) at the cost of losing random-access. The SDK provides `CursorPaginationFilterSchema`, `CursorPaginationSchema[T]` and the opaque `encode_cursor` / `decode_cursor` helpers.
 
 ```python
 # src/schemas/user.py
@@ -85,7 +85,7 @@ class UserCursorFilter(CursorPaginationFilterSchema):
 UserCursorPage = CursorPaginationSchema[UserResponse]
 ```
 
-Helper de repository (cursor sobre `created_at` + desempate por `id`):
+Repository helper (cursor over `created_at` + `id` tie-break):
 
 ```python
 # src/db/repositories/user.py
@@ -157,15 +157,15 @@ async def list_users(
     )
 ```
 
-O cursor é JSON opaco em base64 url-safe — os clientes nunca o inspecionam; eles devolvem o valor literalmente até que `next_cursor` vire `null`.
+The cursor is opaque base64-url-safe JSON — clients never inspect it; they pass back the value verbatim until `next_cursor` becomes `null`.
 
 
-## Migrações Alembic
+## Alembic migrations
 
 
-Fluxo completo: bootstrap → primeira migração → aplicar → gate de CI.
+Full workflow: bootstrap → first migration → apply → CI gate.
 
-#### Bootstrap uma vez por projeto
+#### Bootstrap once per project
 
 ```python
 # scripts/alembic_init.py
@@ -182,19 +182,19 @@ helper.init(
 )
 ```
 
-Rode uma vez: `uv run python scripts/alembic_init.py`.
+Run once: `uv run python scripts/alembic_init.py`.
 
-Isso cria:
+This creates:
 
 ```text
-alembic.ini                 # config curada pelo SDK (timezone UTC, template de arquivo com prefixo de data)
+alembic.ini                 # SDK-curated config (UTC timezone, date-prefixed file template)
 alembic/
-├── env.py                  # template do SDK (já conecta target_metadata, compare_type, modo batch)
+├── env.py                  # SDK template (already wires target_metadata, compare_type, batch mode)
 ├── script.py.mako
 └── versions/
 ```
 
-#### Escreva as migrações
+#### Author migrations
 
 ```python
 # scripts/make_migration.py
@@ -215,12 +215,12 @@ helper.revision(
 uv run python scripts/make_migration.py "add users table"
 ```
 
-O arquivo gerado cai em `alembic/versions/2026_05_16_1432-ae12cd34_add_users_table.py` — o prefixo de data faz os arquivos ordenarem cronologicamente e torna os conflitos de merge óbvios.
+Generated file lands at `alembic/versions/2026_05_16_1432-ae12cd34_add_users_table.py` — the date prefix means files sort chronologically and merge conflicts are obvious.
 
-#### Aplique no startup
+#### Apply on startup
 
 ```python
-# src/api/app.py — estenda o lifespan
+# src/api/app.py — extend lifespan
 import asyncio
 
 from tempest_fastapi_sdk import AlembicHelper
@@ -237,7 +237,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await db.disconnect()
 ```
 
-#### Gate de CI — o schema deve casar com os modelos
+#### CI gate — schema must match models
 
 ```python
 # scripts/check_migrations.py
@@ -261,3 +261,4 @@ print("Schema is in sync.")
 ```
 
 ---
+
