@@ -81,7 +81,14 @@ def run_ruff_fix(target: str, *, unsafe: bool = False) -> int:
     2. ``ruff format <target>`` — normalize indentation, line length,
        blank lines and trailing newlines.
 
-    The first non-zero exit short-circuits the run.
+    Both passes always run. ``ruff check --fix`` exits non-zero whenever
+    *any* residual violation remains that it cannot autofix (an
+    over-length string/comment, an undefined name, etc.) — even though
+    it already rewrote everything it could. Short-circuiting on that
+    exit code would skip ``ruff format`` entirely, leaving the file
+    un-wrapped and its extra blank lines intact. So the formatter runs
+    unconditionally; the lint exit code is surfaced afterwards so CI
+    still fails on the leftover issues.
 
     Args:
         target (str): The path passed verbatim to ruff.
@@ -89,17 +96,17 @@ def run_ruff_fix(target: str, *, unsafe: bool = False) -> int:
             applies the fixes it would otherwise leave alone.
 
     Returns:
-        int: ``0`` when both passes succeed; the first non-zero exit
-        code otherwise.
+        int: ``0`` when both passes succeed with nothing left to fix;
+        otherwise the lint pass exit code (residual violations), or the
+        format pass exit code when the lint pass was clean.
     """
     check_args = ["check", "--fix"]
     if unsafe:
         check_args.append("--unsafe-fixes")
     check_args.append(target)
-    code = _execute("ruff", check_args)
-    if code != 0:
-        return code
-    return _execute("ruff", ["format", target])
+    check_code = _execute("ruff", check_args)
+    format_code = _execute("ruff", ["format", target])
+    return check_code or format_code
 
 
 def run_ruff_format(target: str, *, check: bool) -> int:

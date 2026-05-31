@@ -75,6 +75,13 @@ class TestInit:
         assert "file_template" in ini_text
         assert "%%(year)d" in ini_text
 
+    def test_ini_has_ruff_post_write_hooks(self, alembic_project: Path) -> None:
+        ini_text = (alembic_project / "alembic.ini").read_text()
+        assert "[post_write_hooks]" in ini_text
+        assert "hooks = ruff_fix, ruff_format" in ini_text
+        assert "ruff_fix.options = check --fix REVISION_SCRIPT_FILENAME" in ini_text
+        assert "ruff_format.options = format REVISION_SCRIPT_FILENAME" in ini_text
+
 
 class TestCurrentAndHistory:
     def test_current_is_none_on_fresh_db(self, alembic_project: Path) -> None:

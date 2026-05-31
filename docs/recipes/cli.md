@@ -77,4 +77,20 @@ tempest check                                   # lint + fmt-check + type + test
 
 `tempest fix` é a passada única de "organize o projeto" — ordena e remove imports duplicados, descarta imports não usados, normaliza aspas de strings, remove espaços em branco no fim das linhas e então roda `ruff format` para alinhar indentação, comprimento de linha, linhas em branco e a quebra de linha final. Rode-o antes do push quando o CI fica pegando detalhes de estilo.
 
+!!! info "O `ruff format` roda sempre — mesmo com erros restantes"
+    O `ruff check --fix` sai com código ≠ 0 quando sobra **qualquer**
+    violação que ele não consegue corrigir sozinho (uma string ou
+    comentário longo demais, um nome indefinido, …). O `tempest fix`
+    roda o `ruff format` mesmo assim, então uma única linha não-corrigível
+    não impede a formatação do arquivo inteiro — as linhas de **código**
+    longas continuam sendo quebradas e as linhas em branco extras
+    removidas. O exit code do lint ainda é propagado depois, então o CI
+    continua falhando nas pendências reais.
+
+!!! warning "Strings e comentários longos não quebram"
+    Nem o `ruff format` nem o `tempest fix` quebram **strings literais ou
+    comentários** longos — comportamento idêntico ao Black. Essas linhas
+    `E501` permanecem e precisam ser encurtadas à mão ou silenciadas com
+    `# noqa: E501`.
+
 Todo comando retorna o exit code da ferramenta subjacente, então `tempest check` é seguro para conectar ao CI (`tempest check || exit 1`) ou a hooks de pre-commit. Quando nem o executável nem o `uv` estão no `PATH`, o wrapper imprime `error: '<tool>' is not on PATH and 'uv' is unavailable` e sai com `127` em vez de falhar silenciosamente.

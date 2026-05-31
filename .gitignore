@@ -17,6 +17,9 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
+# Logs
+logs/
+
 # Editor
 .vscode/
 .idea/

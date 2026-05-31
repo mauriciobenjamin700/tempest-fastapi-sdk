@@ -217,6 +217,17 @@ uv run python scripts/make_migration.py "add users table"
 
 Generated file lands at `alembic/versions/2026_05_16_1432-ae12cd34_add_users_table.py` — the date prefix means files sort chronologically and merge conflicts are obvious.
 
+!!! check "Migrations come out lint-clean"
+    The `alembic.ini` that `init()` writes includes a
+    `[post_write_hooks]` block that runs `ruff check --fix` then
+    `ruff format` on every freshly generated revision. Without it, the
+    files Alembic emits fail `tempest lint` with `W291` (trailing
+    whitespace on the `Revises: ` line when `down_revision` is `None`)
+    and `E501` (over-length `sa.Column(...)` lines). The hooks resolve
+    **your** project's `ruff` config, so every autofixable rule (`I`,
+    `UP`, `E501`, …) is fixed at generation time. Requires `ruff` on
+    `PATH` — already a dev dependency in every `tempest new` scaffold.
+
 #### Apply on startup
 
 ```python

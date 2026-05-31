@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from tempest_fastapi_sdk.core.context import get_request_id
+from tempest_fastapi_sdk.core.logging import HTTP_500_MARKER
 from tempest_fastapi_sdk.exceptions.base import AppException
 
 logger = logging.getLogger("tempest_fastapi_sdk.api.handlers")
@@ -67,7 +68,11 @@ def make_unhandled_exception_handler(
        ``tempest_fastapi_sdk.api.handlers`` logger. When
        ``log_traceback=True`` (the default), the full traceback is
        attached via ``exc_info`` so the application's
-       ``LogUtils`` / ``configure_logging`` setup serializes it.
+       ``LogUtils`` / ``configure_logging`` setup serializes it. The
+       record is flagged with
+       :data:`tempest_fastapi_sdk.core.logging.HTTP_500_MARKER` so
+       ``configure_logging(log_dir=...)`` can route it to a dedicated
+       ``500.log``.
     2. Returns the canonical SDK JSON envelope with
        ``code="INTERNAL_SERVER_ERROR"`` and ``status_code=500``.
     3. When ``include_traceback=True`` (development only) appends
@@ -107,7 +112,11 @@ def make_unhandled_exception_handler(
             request.method,
             request.url.path,
             exc_info=exc if log_traceback else None,
-            extra={"request_id": request_id, "path": request.url.path},
+            extra={
+                "request_id": request_id,
+                "path": request.url.path,
+                HTTP_500_MARKER: True,
+            },
         )
         body: dict[str, Any] = {
             "detail": "Internal server error",
