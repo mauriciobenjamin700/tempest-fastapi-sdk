@@ -15,6 +15,7 @@ from tempest_fastapi_sdk.api.dependencies import (
 )
 from tempest_fastapi_sdk.api.handlers import (
     app_exception_handler,
+    make_unhandled_exception_handler,
     register_exception_handlers,
 )
 from tempest_fastapi_sdk.api.middlewares import (
@@ -56,6 +57,7 @@ __all__: list[str] = [
     "make_role_dependency",
     "make_token_dependency",
     "make_tool_spec_router",
+    "make_unhandled_exception_handler",
     "register_exception_handlers",
     "require_x_token",
     "run_server",

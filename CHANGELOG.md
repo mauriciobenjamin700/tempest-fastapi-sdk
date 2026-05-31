@@ -5,6 +5,55 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.1] — 2026-05-31
+
+### Fixed
+
+- **Unhandled exceptions returned a bare `Internal Server Error`
+  string with no log entry.** `register_exception_handlers` only
+  wired a handler for `AppException`, so every uncaught `Exception`
+  (e.g. `RuntimeError`, `KeyError`, downstream library failures)
+  fell through to Starlette's default — which writes nothing beyond
+  the access line and returns a six-word body. Operators were left
+  blind to real failures.
+  - Added a catch-all `Exception` handler that logs the full
+    traceback at ERROR via the `tempest_fastapi_sdk.api.handlers`
+    logger (so the application's `LogUtils` / `configure_logging`
+    setup picks it up), attaches the active `X-Request-ID` for
+    correlation, and returns the canonical SDK envelope:
+
+    ```json
+    {
+        "detail": "Internal server error",
+        "code": "INTERNAL_SERVER_ERROR",
+        "details": {"request_id": "<id>"}
+    }
+    ```
+
+  - `register_exception_handlers(app, include_traceback=True)`
+    embeds the formatted traceback under `details.traceback` so
+    development environments can surface the failure in the
+    response body too. Production callers leave it off so module
+    paths / SQL fragments / object reprs don't leak.
+  - `register_exception_handlers(app, log_level=logging.WARNING)`
+    overrides the log level when needed.
+  - Reads the request ID from the contextvar first, then falls
+    back to the `X-Request-ID` header — `BaseHTTPMiddleware`
+    spawns a child task so the contextvar set in
+    `RequestIDMiddleware.dispatch` doesn't always reach the
+    handler.
+  - New `make_unhandled_exception_handler` factory exported from
+    `tempest_fastapi_sdk.api`.
+
+### Documentation
+
+- Repository recipe in `docs/recipes/database.md` and the README
+  Alembic walk-through still showed the deprecated
+  `class UserRepository(BaseRepository[UserModel]): model = UserModel`
+  Django-style class-attribute pattern dropped in 0.16.0. Replaced
+  with the constructor signature
+  `super().__init__(session, model=UserModel)`.
+
 ## [0.19.0] — 2026-05-30
 
 ### Added

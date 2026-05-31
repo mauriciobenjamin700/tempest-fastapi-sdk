@@ -98,7 +98,8 @@ from src.schemas.user import UserResponse
 
 
 class UserRepository(BaseRepository[UserModel]):
-    model = UserModel
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, model=UserModel)
 
     async def cursor_page(
         self,

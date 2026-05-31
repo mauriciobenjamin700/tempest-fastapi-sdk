@@ -29,6 +29,7 @@ from tempest_fastapi_sdk.api import (
     make_role_dependency,
     make_token_dependency,
     make_tool_spec_router,
+    make_unhandled_exception_handler,
     register_exception_handlers,
     require_x_token,
     run_server,
@@ -153,7 +154,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-__version__: str = "0.19.0"
+__version__: str = "0.19.1"
 
 __all__: list[str] = [
     "CEP",
@@ -275,6 +276,7 @@ __all__: list[str] = [
     "make_role_dependency",
     "make_token_dependency",
     "make_tool_spec_router",
+    "make_unhandled_exception_handler",
     "modify_dict",
     "normalize_cep",
     "normalize_cnpj",
