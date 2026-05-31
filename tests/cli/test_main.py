@@ -221,6 +221,33 @@ class TestLintRunner:
         executed = [c[0] for c in calls]
         assert executed == ["ruff", "ruff", "mypy"]
 
+    def test_fix_runs_format_even_when_check_fix_fails(self) -> None:
+        from tempest_fastapi_sdk.cli import lint
+
+        calls: list[list[str]] = []
+
+        def fake_execute(executable: str, args: list[str]) -> int:
+            calls.append(args)
+            # ``ruff check --fix`` exits non-zero on residual unfixable
+            # violations; ``ruff format`` still must run after it.
+            return 1 if args[0] == "check" else 0
+
+        with patch.object(lint, "_execute", side_effect=fake_execute):
+            code = lint.run_ruff_fix("src/")
+
+        assert [a[0] for a in calls] == ["check", "format"]
+        # Residual lint exit code is surfaced, but only after format ran.
+        assert code == 1
+
+    def test_fix_returns_format_code_when_check_clean(self) -> None:
+        from tempest_fastapi_sdk.cli import lint
+
+        def fake_execute(executable: str, args: list[str]) -> int:
+            return 0 if args[0] == "check" else 3
+
+        with patch.object(lint, "_execute", side_effect=fake_execute):
+            assert lint.run_ruff_fix("src/") == 3
+
 
 class TestScaffoldHelpers:
     def test_build_sdk_dep_pins_current_version(self) -> None:
