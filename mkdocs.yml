@@ -1,0 +1,166 @@
+site_name: tempest-fastapi-sdk
+site_description: >-
+  Shared FastAPI/SQLAlchemy/Pydantic building blocks for Tempest projects —
+  base schemas, async repository, exceptions, pagination, settings, admin,
+  Web Push, Server-Sent Events, FastStream/TaskIQ brokers and Brazilian
+  document/phone validation.
+site_url: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/
+repo_url: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk
+repo_name: mauriciobenjamin700/tempest-fastapi-sdk
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Mauricio Benjamin — MIT License
+
+theme:
+  name: material
+  language: en
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - content.tooltips
+    - navigation.expand
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.path
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+plugins:
+  - search:
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - include-markdown
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_object_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            docstring_style: google
+            docstring_section_style: table
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            line_length: 88
+            filters:
+              - "!^_"
+          paths: [.]
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: mauriciobenjamin700
+      repo: tempest-fastapi-sdk
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      base_path: [., docs]
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Architecture: architecture.md
+  - Tutorial: tutorial.md
+  - Recipes:
+      - recipes/index.md
+      - Database: recipes/database.md
+      - HTTP layer: recipes/http.md
+      - Cache: recipes/cache.md
+      - Real-time: recipes/realtime.md
+      - Queue & Tasks: recipes/queue-tasks.md
+      - Logging: recipes/logging.md
+      - Metrics: recipes/metrics.md
+      - Admin site: recipes/admin.md
+      - Testing: recipes/testing.md
+      - CLI: recipes/cli.md
+      - Security: recipes/security.md
+      - Brazilian helpers: recipes/br-helpers.md
+  - Reference: reference.md
+  - Migration guide: migration.md
+  - Contributing: contributing.md
+  - Changelog: changelog.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/tempest-fastapi-sdk/

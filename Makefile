@@ -7,7 +7,7 @@ PACKAGE := tempest_fastapi_sdk
 PYTHON_VERSION := 3.11
 
 .DEFAULT_GOAL := help
-.PHONY: help install sync clean test cov lint fix fmt fmt-check type check ci build smoke release tag version
+.PHONY: help install sync clean test cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -96,10 +96,20 @@ release: ## Bump versions, commit, tag and push. Usage: make release VERSION=0.2
 	@echo "    git push origin main"
 	@echo "    git push origin v$(VERSION)"
 
+## ---------- docs ----------
+
+docs-serve: ## Serve mkdocs with live reload at http://127.0.0.1:8000
+	uv run --group docs mkdocs serve
+
+docs-build: ## Build the static docs site into ./site/
+	uv run --group docs mkdocs build
+
+docs: docs-build ## Alias for docs-build
+
 ## ---------- housekeeping ----------
 
 clean: ## Remove caches, build artifacts and coverage data
-	rm -rf dist build *.egg-info
+	rm -rf dist build *.egg-info site
 	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov
 	rm -f .coverage .coverage.*
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

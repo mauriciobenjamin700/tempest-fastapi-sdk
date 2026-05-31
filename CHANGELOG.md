@@ -5,6 +5,33 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] — 2026-05-30
+
+### Added
+
+- **MkDocs Material documentation site** auto-deployed to GitHub
+  Pages at <https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/>.
+  Sixteen pages total: landing, installation, architecture (with
+  Mermaid layering + request-lifecycle diagrams), the eleven-step
+  tutorial as one linear page, twelve thematic recipe pages
+  (Database, HTTP, Cache, Real-time, Queue & Tasks, Logging, Metrics,
+  Admin, Testing, CLI, Security, Brazilian helpers), an auto-generated
+  API Reference via `mkdocstrings`, a migration guide, a contributing
+  guide and the bundled CHANGELOG.
+- New `[docs]` dependency group (`mkdocs`, `mkdocs-material`,
+  `mkdocstrings[python]`, `pymdown-extensions`,
+  `mkdocs-include-markdown-plugin`) installed via
+  `uv sync --group docs`.
+- **`make docs-serve` / `make docs-build` / `make docs`** Makefile
+  targets for local docs work (live reload at
+  `http://127.0.0.1:8000`).
+- **`.github/workflows/docs.yml`** publishes the site to GitHub Pages
+  on every push to `main` that touches docs, the package, the README
+  or the CHANGELOG.
+- README now opens with a docs-site banner linking to Home / Tutorial
+  / Recipes / API reference so readers landing on PyPI or GitHub
+  reach the prose-rich version in one click.
+
 ## [0.18.0] — 2026-05-30
 
 ### Added
