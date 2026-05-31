@@ -579,31 +579,35 @@ The highlighted block (under the divider comment) is what you typically add per 
 
 The service is where business rules live. It calls one or more repositories and never touches HTTP or SQLAlchemy types directly.
 
+Inherit from `BaseService[RepositoryT, ResponseT]`. Doing so gives you `get_by_id`, `get_or_none`, `list`, `paginate`, `count`, `exists` and `delete` for free — every one is already wired to `repository.map_to_response` (sync or async). Override only the methods that need domain logic; add new ones for use cases the base doesn't cover (signup, password reset, etc.):
+
 ```python
 # src/services/user.py
 from uuid import UUID
 
-from tempest_fastapi_sdk import (
-    BasePaginationSchema,
-    PasswordUtils,
-)
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseService, PasswordUtils
 
 from src.core.exceptions import UserEmailAlreadyTakenError
 from src.db.repositories import UserRepository
-from src.schemas import (
-    UserCreateSchema,
-    UserFilterSchema,
-    UserResponseSchema,
-    UserUpdateSchema,
-)
+from src.schemas import UserCreateSchema, UserResponseSchema, UserUpdateSchema
 
 
-class UserService:
-    """Business logic for the user domain."""
+class UserService(BaseService[UserRepository, UserResponseSchema]):
+    """Business logic for the user domain.
+
+    Inherits the canonical read-path methods (``get_by_id`` / ``list`` /
+    ``paginate`` / ``count`` / ``exists`` / ``delete``) from
+    :class:`BaseService` and adds the write-path methods that need
+    domain rules (uniqueness check, password hashing, mass-assignment
+    guard).
+    """
 
     def __init__(
         self,
         repository: UserRepository,
+        *,
         passwords: PasswordUtils,
     ) -> None:
         """Initialize the service.
@@ -612,81 +616,79 @@ class UserService:
             repository (UserRepository): User-domain repository.
             passwords (PasswordUtils): Shared bcrypt helper.
         """
-        self.repo: UserRepository = repository
+        super().__init__(repository)
         self.passwords: PasswordUtils = passwords
 
-    async def create(self, data: UserCreateSchema) -> UserResponseSchema:
-        if await self.repo.exists({"email": data.email}):
+    # ──────── overrides: domain rules live here ────────
+
+    async def signup(self, data: UserCreateSchema) -> UserResponseSchema:
+        """Create a new user, enforcing email uniqueness + hashing the password."""
+        if await self.repository.exists({"email": data.email}):
             raise UserEmailAlreadyTakenError()
-        user = self.repo.map_to_model(
+        instance = self.repository.map_to_model(
             {
                 **data.to_dict(exclude=["password"]),
                 "password_hash": self.passwords.hash(data.password),
-            }
+            },
         )
-        user = await self.repo.add(user)
-        return self.repo.map_to_response(user)
-
-    async def get(self, user_id: UUID) -> UserResponseSchema:
-        user = await self.repo.get_by_id(user_id)
-        return self.repo.map_to_response(user)
+        instance = await self.repository.add(instance)
+        return self.repository.map_to_response(instance)
 
     async def update(
         self,
         user_id: UUID,
         data: UserUpdateSchema,
     ) -> UserResponseSchema:
-        user = await self.repo.get_by_id(user_id)
-        user.update_from_dict(
+        """Apply a partial update, whitelisting the columns that may change."""
+        instance = await self.repository.get_by_id(user_id)
+        instance.update_from_dict(
             data.to_dict(),
             allowed_fields={"name", "email"},   # prevents mass-assignment
         )
-        user = await self.repo.update(user)
-        return self.repo.map_to_response(user)
+        instance = await self.repository.update(instance)
+        return self.repository.map_to_response(instance)
 
     async def soft_delete(self, user_id: UUID) -> None:
-        await self.repo.soft_delete(user_id)
+        """Flip ``is_active=False`` instead of hard-deleting."""
+        await self.repository.soft_delete(user_id)
+```
 
-    async def list_paginated(
+The methods you do **not** write — `get_by_id(user_id)`, `list(filters)`, `paginate(filters, page, page_size, order_by, ascending)`, `count(filters)`, `exists(filters)`, `delete(user_id)` — already exist on the base, already await an async `map_to_response`, and already return the typed `UserResponseSchema` declared in the generic parameter.
+
+When the use case needs a custom pipeline (joins, projections, transactional fan-out), override the inherited method. The signature stays the same so the controller doesn't notice:
+
+```python
+class UserService(BaseService[UserRepository, UserResponseSchema]):
+    # ... __init__ and overrides above ...
+
+    async def list(  # override the inherited pass-through
         self,
-        filters: UserFilterSchema,
-    ) -> BasePaginationSchema[UserResponseSchema]:
-        page = await self.repo.paginate(
-            filters=filters.get_conditions(),
-            page=filters.page,
-            page_size=filters.size,
-            order_by=filters.order_by,
-            ascending=filters.ascending,
-        )
-        return BasePaginationSchema[UserResponseSchema](
-            items=[self.repo.map_to_response(u) for u in page["items"]],
-            total=page["total"],
-            page=page["page"],
-            size=page["size"],
-            pages=page["pages"],
-        )
+        filters: dict[str, Any] | None = None,
+        order_by: Any | None = None,
+        ascending: bool = True,
+    ) -> list[UserResponseSchema]:
+        """List active users only — domain rule baked into the base method."""
+        merged: dict[str, Any] = {**(filters or {}), "is_active": True}
+        return await super().list(filters=merged, order_by=order_by, ascending=ascending)
 ```
 
 ### 8. Controller
 
 Even when there's no orchestration to do, `controllers/` exists as a **thin pass-through** so the import graph stays uniform across services. The day a use case needs to coordinate two services (or fan out to a queue), the controller is already there.
 
+Inherit from `BaseController[ServiceT, ResponseT]`. The base forwards `get_by_id`, `list`, `paginate`, `count` and `delete` to the service for you — you only declare methods that add cross-service coordination or that don't exist on the service (custom use cases like `signup`):
+
 ```python
 # src/controllers/user.py
 from uuid import UUID
 
-from tempest_fastapi_sdk import BasePaginationSchema
+from tempest_fastapi_sdk import BaseController
 
-from src.schemas import (
-    UserCreateSchema,
-    UserFilterSchema,
-    UserResponseSchema,
-    UserUpdateSchema,
-)
+from src.schemas import UserCreateSchema, UserResponseSchema, UserUpdateSchema
 from src.services.user import UserService
 
 
-class UserController:
+class UserController(BaseController[UserService, UserResponseSchema]):
     """Orchestrate user use cases.
 
     Today every method is a thin pass-through to ``UserService``. As
@@ -696,31 +698,40 @@ class UserController:
     service.
     """
 
-    def __init__(self, service: UserService) -> None:
-        self.service: UserService = service
+    # ──────── new methods for use cases the base doesn't cover ────────
 
-    async def create(self, data: UserCreateSchema) -> UserResponseSchema:
-        return await self.service.create(data)
-
-    async def get(self, user_id: UUID) -> UserResponseSchema:
-        return await self.service.get(user_id)
+    async def signup(self, data: UserCreateSchema) -> UserResponseSchema:
+        """Create a user and (eventually) trigger downstream side effects."""
+        return await self.service.signup(data)
 
     async def update(
         self,
         user_id: UUID,
         data: UserUpdateSchema,
     ) -> UserResponseSchema:
+        """Domain-specific partial update — distinct from the base ``delete``."""
         return await self.service.update(user_id, data)
 
     async def soft_delete(self, user_id: UUID) -> None:
+        """Soft-delete instead of the inherited hard ``delete``."""
         await self.service.soft_delete(user_id)
-
-    async def list_paginated(
-        self,
-        filters: UserFilterSchema,
-    ) -> BasePaginationSchema[UserResponseSchema]:
-        return await self.service.list_paginated(filters)
 ```
+
+`get_by_id` / `list` / `paginate` / `count` are not redeclared — `BaseController` already exposes them. When the cross-service coordination day arrives, override the pass-through in place:
+
+```python
+class UserController(BaseController[UserService, UserResponseSchema]):
+    # ... methods above ...
+
+    async def signup(self, data: UserCreateSchema) -> UserResponseSchema:
+        """Create the user, send a welcome email, enqueue the CRM sync."""
+        user = await self.service.signup(data)
+        await self.emails.send_welcome(user)            # second dependency
+        await self.tasks.enqueue("crm.user.created", {"id": str(user.id)})
+        return user
+```
+
+The router signature never changes — only the controller's body grows.
 
 ### 9. Dependency providers
 
@@ -1893,6 +1904,32 @@ Each mixin owns its own env-var prefix — pick only the ones the service needs:
 ### Controllers & services layering recipe
 
 `BaseService[RepositoryT, ResponseT]` and `BaseController[ServiceT, ResponseT]` are generic skeletons matching the SDK layering (router → controller → service → repository). They expose pass-through CRUD methods so simple endpoints can subclass them without overriding anything; you override only methods that need orchestration.
+
+What you inherit by subclassing `BaseService[RepositoryT, ResponseT]`:
+
+| Method | Returns | Notes |
+| --- | --- | --- |
+| `get_by_id(id)` | `ResponseT` | Awaits `repository.get_by_id` + `repository.map_to_response`. Raises `repository.not_found_exception` on miss. |
+| `get_or_none(filters)` | `ResponseT \| None` | Same shape, returns `None` instead of raising. |
+| `list(filters=None, order_by=None, ascending=True)` | `list[ResponseT]` | Returns `[]` on empty match (never raises). |
+| `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` with mapped `items` + `total`/`page`/`size`/`pages`. | Offset pagination via `repository.paginate`. |
+| `count(filters=None)` | `int` | Pass-through to `repository.count`. |
+| `exists(filters)` | `bool` | Pass-through to `repository.exists`. |
+| `delete(id)` | `None` | Hard delete via `repository.delete`. |
+
+`map_to_response` is `await`-ed when it returns a coroutine, so async mappers work transparently — no method override needed.
+
+What you inherit by subclassing `BaseController[ServiceT, ResponseT]`:
+
+| Method | Forwards to | Notes |
+| --- | --- | --- |
+| `get_by_id(id)` | `service.get_by_id` | Same return type as the service. |
+| `list(filters, order_by, ascending)` | `service.list` | Same. |
+| `paginate(filters, order_by, page, page_size, ascending)` | `service.paginate` | Same. |
+| `count(filters)` | `service.count` | Same. |
+| `delete(id)` | `service.delete` | Same. |
+
+When a use case needs domain rules, override the inherited method in the service. When a use case needs to coordinate more than one service, override the inherited method (or add a new one) in the controller. The router never grows — it only depends on the controller.
 
 ```python
 # src/services/user_service.py
