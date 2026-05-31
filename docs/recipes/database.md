@@ -172,12 +172,12 @@ from tempest_fastapi_sdk import AlembicHelper
 
 from src.core.settings import settings
 
-helper = AlembicHelper(config_path="alembic.ini", db_url=settings.DB_URL)
+helper = AlembicHelper(config_path="alembic.ini", db_url=settings.DATABASE_URL)
 helper.init(
     directory="alembic",
-    metadata_module="app.db",        # exposes BaseModel
+    metadata_module="src.db.models",        # exposes BaseModel
     metadata_attr="BaseModel",
-    db_url=settings.DB_URL,
+    db_url=settings.DATABASE_URL,
 )
 ```
 
@@ -203,7 +203,7 @@ from tempest_fastapi_sdk import AlembicHelper
 
 from src.core.settings import settings
 
-helper = AlembicHelper("alembic.ini", db_url=settings.DB_URL)
+helper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
 helper.revision(
     message=sys.argv[1],
     autogenerate=True,
@@ -228,7 +228,7 @@ from tempest_fastapi_sdk import AlembicHelper
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Run pending migrations before serving traffic.
-    helper = AlembicHelper("alembic.ini", db_url=settings.DB_URL)
+    helper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
     await asyncio.to_thread(helper.upgrade)
 
     await db.connect()
@@ -246,7 +246,7 @@ from tempest_fastapi_sdk import AlembicHelper
 
 from src.core.settings import settings
 
-helper = AlembicHelper("alembic.ini", db_url=settings.DB_URL)
+helper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
 if not helper.check():
     print("Schema drift detected — run make_migration.py and commit.")
     sys.exit(1)
