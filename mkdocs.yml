@@ -36,6 +36,7 @@ theme:
     - search.share
     - search.suggest
     - toc.follow
+    - toc.integrate
   palette:
     - media: "(prefers-color-scheme)"
       toggle:
@@ -96,7 +97,7 @@ markdown_extensions:
   - tables
   - toc:
       permalink: true
-      toc_depth: 3
+      toc_depth: 4
   - pymdownx.arithmatex:
       generic: true
   - pymdownx.betterem
