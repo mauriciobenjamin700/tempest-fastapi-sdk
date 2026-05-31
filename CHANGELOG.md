@@ -299,7 +299,7 @@ behave exactly as in 0.8.0 unless the new options are passed.
     `settings.DEBUG` / `settings.LOG_LEVEL` / `settings.LOG_JSON`
     accordingly. Mix `LogSettings` into `Settings` if the service was
     relying on `ServerSettings` for the log fields.
-  - See the [Migration guide 0.7 → 0.8](README.md#migration-guide-07--08)
+  - See the [Migration guide 0.7 → 0.8](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/)
     in the README for the full checklist.
 
 ### Added — Settings mixins (Tier 1)

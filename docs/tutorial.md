@@ -170,7 +170,7 @@ def run() -> None:
 __all__: list[str] = ["app", "run"]
 ```
 
-`run_server` reads `SERVER_HOST` / `SERVER_PORT` / `SERVER_RELOAD` from `settings` (falling back to `127.0.0.1` / `8000` / `False`) and forwards any extra kwargs (`workers=`, `log_config=`, `ssl_*=`) verbatim to `uvicorn.run`. See the [Programmatic server entry point recipe](#programmatic-server-entry-point-recipe).
+`run_server` reads `SERVER_HOST` / `SERVER_PORT` / `SERVER_RELOAD` from `settings` (falling back to `127.0.0.1` / `8000` / `False`) and forwards any extra kwargs (`workers=`, `log_config=`, `ssl_*=`) verbatim to `uvicorn.run`. See the [Programmatic server entry point recipe](recipes/http.md#programmatic-server-entry-point).
 
 ```python
 # src/__init__.py
@@ -339,7 +339,7 @@ raise NotFoundException(
 )
 ```
 
-The SDK's exception handler ([`register_exception_handlers`](#2-settings-server-app-factory--entry-point)) serializes them to:
+The SDK's exception handler ([`register_exception_handlers`](#2-settings-server-app-factory-entry-point)) serializes them to:
 
 ```json
 {
@@ -398,7 +398,7 @@ class UserRepository(BaseRepository[UserModel]):
         return self.map_to_schema(instance)
 ```
 
-The base repo gives you 17 methods for free — see the [reference table](#baserepository-methods) below. Add custom queries on top of the same `UserRepository`:
+The base repo gives you 17 methods for free — see the [reference table](reference.md#tempest_fastapi_sdk.db.repository.BaseRepository) below. Add custom queries on top of the same `UserRepository`:
 
 ```python
 # src/db/repositories/user.py  (continued)

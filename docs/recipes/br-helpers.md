@@ -102,3 +102,73 @@ class AddressCreateSchema(BaseSchema):
 
 Imperative variants: `is_valid_cep(value)`, `normalize_cep(value)`, plus `CEP_PATTERN` for raw regex use. Use them inside services / queue handlers where you don't want a Pydantic round-trip.
 
+
+## Utility helpers (utcnow, to_utc, modify_dict)
+
+
+Small stateless helpers from `tempest_fastapi_sdk.utils` that the SDK itself relies on and that show up across every service. Available without any extra.
+
+| Helper | Signature | Purpose |
+| --- | --- | --- |
+| `utcnow()` | `() -> datetime` | Current time as a timezone-aware UTC datetime — the SDK uses this for `created_at` / `updated_at` defaults. |
+| `to_utc(value)` | `(datetime) -> datetime` | Coerce naive datetimes to UTC (assumed UTC) and aware datetimes to UTC via `astimezone`. Used by `BaseResponseSchema` field validators. |
+| `modify_dict(data, exclude=None, include=None)` | `(dict, list[str] \| None, dict \| None) -> dict` | Single-pass filter + merge. Drop sensitive keys before logging or merge computed fields when mapping payloads to ORM models. |
+
+#### Timestamps the same way everywhere
+
+`utcnow` is the canonical "now" for the SDK. Use it for soft-delete timestamps, JWT `iat` / `exp`, audit trails — anything where mixing naive and aware datetimes would burn you later.
+
+```python
+from datetime import timedelta
+
+from tempest_fastapi_sdk import to_utc, utcnow
+
+
+now = utcnow()                      # timezone-aware UTC
+expires_at = now + timedelta(hours=1)
+
+# Normalize whatever the caller gave you
+incoming = request.json()["scheduled_for"]              # naive or aware
+scheduled_for = to_utc(datetime.fromisoformat(incoming))
+```
+
+A naive datetime is tagged with UTC (not converted from local time) so it's predictable in headless workers and Docker containers where `time.timezone` is anyone's guess.
+
+#### Drop sensitive keys before logging / mapping
+
+`modify_dict` is the tiny utility that powers `BaseSchema.to_dict(exclude=..., include=...)` and `BaseModel.update_from_dict(...)`. Use it directly when you don't want to call into Pydantic round-trips:
+
+```python
+from tempest_fastapi_sdk import LogUtils, modify_dict
+
+log = LogUtils("app.users")
+
+payload = {"email": "ana@example.com", "password": "s3cr3t", "name": "Ana"}
+
+# Strip password before logging
+log.info("user_signup", **modify_dict(payload, exclude=["password"]))
+
+# Merge a computed hash before persisting
+user_row = modify_dict(
+    payload,
+    exclude=["password"],
+    include={"password_hash": passwords.hash(payload["password"])},
+)
+```
+
+`include` wins over `data`, so it doubles as a "set or override" helper without mutating the source dict.
+
+#### Where every other helper is documented
+
+Every helper has its own recipe — this section is the quick map:
+
+| Helper | Recipe |
+| --- | --- |
+| `PasswordUtils`, `JWTUtils` | [Authentication recipe](http.md#authentication) |
+| `EmailUtils` | [Transactional email recipe](http.md#transactional-email) |
+| `UploadUtils` | [File uploads recipe](http.md#file-uploads) |
+| `DownloadUtils`, `build_content_disposition` | [Serving private files through the API](http.md#serving-private-files-through-the-api-downloadutils) |
+| `LogUtils` + `configure_logging` | [Structured logging & request IDs recipe](logging.md) |
+| `MetricsUtils` (CPU/memory/disk/GPU) | [System metrics recipe](metrics.md) |
+| `CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `is_valid_*`, `normalize_*`, `only_digits` | [CPF / CNPJ / phone](#cpf-cnpj-phone) |
+

@@ -101,8 +101,8 @@ release: ## Bump versions, commit, tag and push. Usage: make release VERSION=0.2
 docs-serve: ## Serve mkdocs with live reload at http://127.0.0.1:8000
 	uv run --group docs mkdocs serve
 
-docs-build: ## Build the static docs site into ./site/
-	uv run --group docs mkdocs build
+docs-build: ## Build the static docs site into ./site/ (strict — fails on warnings)
+	uv run --group docs mkdocs build --strict
 
 docs: docs-build ## Alias for docs-build
 

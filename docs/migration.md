@@ -77,14 +77,14 @@ keyword arguments directly.
 Pick what fits. None of these are required.
 
 - Replace the hand-written `src/server.py` `uvicorn.run(...)` with
-  [`run_server(...)`](#programmatic-server-entry-point-recipe).
+  [`run_server(...)`](recipes/http.md#programmatic-server-entry-point).
 - Replace the hand-written `get_current_user` with
-  [`make_jwt_user_dependency(tokens, load_user)`](#jwt-bearer--current-user--role-dependencies-recipe).
+  [`make_jwt_user_dependency(tokens, load_user)`](recipes/http.md#jwt-bearer-current-user-role-dependencies).
 - Move `SMTP_*` / `UPLOAD_*` / `TOKEN_SECRET` / `VAPID_*` /
   `TASKIQ_*` fields out of the project's `Settings` and onto the
-  matching SDK mixin ([Settings mixins composition](#settings-mixins-composition-recipe)).
+  matching SDK mixin ([Settings mixins composition](recipes/http.md#settings-mixins-composition)).
 - Adopt the
-  [`Outbox dispatcher pattern`](#outbox-dispatcher-pattern-recipe) if
+  [`Outbox dispatcher pattern`](recipes/queue-tasks.md#outbox-dispatcher-pattern) if
   you already write side-effects from the same transaction as your
   domain rows.
 

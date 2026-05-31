@@ -40,3 +40,33 @@ JSON output (single line — formatted here for readability):
 
 The middleware accepts a custom header name (`RequestIDMiddleware(app, header_name="X-Correlation-ID")`); the same header is echoed back on every response.
 
+
+## Base enums
+
+
+`BaseStrEnum` / `BaseIntEnum` extend the stdlib `Enum` with helpers tuned for Pydantic + SQLAlchemy round-tripping (lookup by value, JSON-serializable `str` / `int` inheritance, `__contains__` that accepts raw values). Use them for every enum that crosses the API boundary.
+
+```python
+from tempest_fastapi_sdk import BaseIntEnum, BaseStrEnum
+
+
+class OrderStatus(BaseStrEnum):
+    PENDING = "pending"
+    PAID = "paid"
+    SHIPPED = "shipped"
+    CANCELLED = "cancelled"
+
+
+class Priority(BaseIntEnum):
+    LOW = 0
+    NORMAL = 1
+    HIGH = 2
+
+assert OrderStatus.PENDING == "pending"          # str inheritance
+assert "paid" in OrderStatus                      # raw value membership
+assert OrderStatus("paid") is OrderStatus.PAID    # canonical lookup
+assert Priority.NORMAL + 1 == Priority.HIGH       # int math
+```
+
+Because they inherit from `str` / `int`, Pydantic serializes them transparently as their underlying value and SQLAlchemy can persist them via the standard `Enum` column without an extra converter.
+
