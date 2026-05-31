@@ -23,6 +23,7 @@ from tempest_fastapi_sdk.api import (
     app_exception_handler,
     apply_cors,
     clear_cookie,
+    make_app_exception_handler,
     make_bearer_token_dependency,
     make_health_router,
     make_http_exception_handler,
@@ -158,7 +159,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-__version__: str = "0.21.2"
+__version__: str = "0.21.3"
 
 __all__: list[str] = [
     "CEP",
@@ -275,6 +276,7 @@ __all__: list[str] = [
     "is_valid_cpf_cnpj",
     "is_valid_phone_br",
     "make_admin_router",
+    "make_app_exception_handler",
     "make_bearer_token_dependency",
     "make_health_router",
     "make_http_exception_handler",

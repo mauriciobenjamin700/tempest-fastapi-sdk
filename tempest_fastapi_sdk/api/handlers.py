@@ -17,38 +17,90 @@ from tempest_fastapi_sdk.exceptions.base import AppException
 logger = logging.getLogger("tempest_fastapi_sdk.api.handlers")
 
 
+def make_app_exception_handler(
+    *,
+    log_level: int = logging.INFO,
+) -> Any:
+    """Build the handler for :class:`AppException` subclasses.
+
+    Serializes the exception to the SDK envelope and emits an
+    ``INFO``-level log line (no traceback — 4xx is normal client
+    flow). ``5xx`` ``AppException`` subclasses bump up to
+    ``log_level`` with a traceback and the
+    :data:`HTTP_500_MARKER` flag so ``500.log`` captures them.
+
+    Args:
+        log_level (int): Level for 5xx ``AppException`` records.
+            Defaults to :data:`logging.ERROR` — but the 4xx path
+            always logs at ``INFO`` regardless of this value, since
+            elevating client errors to WARN/ERROR adds noise.
+
+    Returns:
+        Any: An async ``(request, exc) -> JSONResponse`` callable.
+    """
+
+    async def _handler(
+        request: Request,
+        exc: AppException,
+    ) -> JSONResponse:
+        request_id = (
+            get_request_id()
+            or request.headers.get("X-Request-ID")
+            or request.headers.get("x-request-id")
+        )
+        is_server_error = exc.status_code >= 500
+        extra: dict[str, Any] = {
+            "request_id": request_id,
+            "path": request.url.path,
+            "status_code": exc.status_code,
+            "code": exc.code,
+        }
+        if is_server_error:
+            extra[HTTP_500_MARKER] = True
+        logger.log(
+            log_level if is_server_error else logging.INFO,
+            "AppException %s (%s) during %s %s: %s",
+            exc.status_code,
+            exc.code,
+            request.method,
+            request.url.path,
+            exc.detail,
+            exc_info=exc if is_server_error else None,
+            extra=extra,
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "detail": exc.detail,
+                "code": exc.code,
+                "details": exc.details,
+            },
+            headers=exc.headers,
+        )
+
+    return _handler
+
+
 async def app_exception_handler(
     request: Request,
     exc: AppException,
 ) -> JSONResponse:
-    """Serialize an :class:`AppException` to the SDK JSON envelope.
+    """Default :class:`AppException` handler (logs at INFO).
 
-    Emits the shape::
-
-        {
-            "detail": "<message>",
-            "code": "<machine-readable code>",
-            "details": {...}
-        }
+    Thin wrapper around :func:`make_app_exception_handler` kept for
+    backwards compatibility with code that imports the handler
+    callable directly.
 
     Args:
-        request (Request): The incoming HTTP request. Unused — kept
-            for signature compatibility with FastAPI handlers.
+        request (Request): The incoming HTTP request.
         exc (AppException): The exception raised.
 
     Returns:
         JSONResponse: The serialized response.
     """
-    del request
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "detail": exc.detail,
-            "code": exc.code,
-            "details": exc.details,
-        },
-        headers=exc.headers,
-    )
+    handler = make_app_exception_handler()
+    response: JSONResponse = await handler(request, exc)
+    return response
 
 
 def make_unhandled_exception_handler(
@@ -209,7 +261,22 @@ def make_http_exception_handler(
                 content=body,
                 headers=getattr(exc, "headers", None),
             )
-        # 4xx — return Starlette's default shape, no log.
+        # 4xx — INFO-level log (no traceback, no 500.log marker) so
+        # operators can still see the request that failed without
+        # paying the cost of a stack trace.
+        logger.log(
+            logging.INFO,
+            "HTTPException %s during %s %s: %s",
+            exc.status_code,
+            request.method,
+            request.url.path,
+            exc.detail,
+            extra={
+                "request_id": request_id,
+                "path": request.url.path,
+                "status_code": exc.status_code,
+            },
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content={"detail": exc.detail},
@@ -257,7 +324,10 @@ def register_exception_handlers(
         log_level (int): Logging level used by the 5xx handlers.
             Defaults to :data:`logging.ERROR`.
     """
-    app.add_exception_handler(AppException, app_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(
+        AppException,
+        make_app_exception_handler(log_level=log_level),
+    )
     app.add_exception_handler(
         StarletteHTTPException,
         make_http_exception_handler(
@@ -277,6 +347,7 @@ def register_exception_handlers(
 
 __all__: list[str] = [
     "app_exception_handler",
+    "make_app_exception_handler",
     "make_http_exception_handler",
     "make_unhandled_exception_handler",
     "register_exception_handlers",

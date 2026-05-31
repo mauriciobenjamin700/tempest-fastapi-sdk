@@ -78,6 +78,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ### `tempest_fastapi_sdk.api`
 
 ::: tempest_fastapi_sdk.api.handlers.register_exception_handlers
+::: tempest_fastapi_sdk.api.handlers.make_app_exception_handler
+::: tempest_fastapi_sdk.api.handlers.make_http_exception_handler
+::: tempest_fastapi_sdk.api.handlers.make_unhandled_exception_handler
 ::: tempest_fastapi_sdk.api.middlewares.RequestIDMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.cors.apply_cors
 ::: tempest_fastapi_sdk.api.routers.health.make_health_router

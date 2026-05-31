@@ -5,6 +5,37 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.3] — 2026-05-31
+
+### Changed
+
+- **`AppException` and 4xx `HTTPException` now emit an `INFO`-level
+  log line.** Before, both paths were silent — the response went
+  out with the SDK envelope but operators saw nothing in stdout
+  or `info.log` for a `401`, `404`, `422` (etc.), making "API
+  returned 4xx but I see no trace" debugging painful. The new
+  behavior:
+
+  - `AppException` with `status_code < 500` → `INFO` log, no
+    traceback, no `500.log` marker.
+  - `AppException` with `status_code >= 500` → `log_level`
+    (default `ERROR`) + traceback + `HTTP_500_MARKER` so the
+    record lands in `500.log`.
+  - `HTTPException` 4xx → `INFO` log, no traceback. 5xx
+    behavior unchanged (already logged at `log_level` + 500.log).
+  - Unhandled `Exception` catch-all unchanged.
+
+  The log line includes the request method, path, status code,
+  exception code (for `AppException`) and request id — enough to
+  grep for in `info.log` without paging the operator at 3am.
+
+### Added
+
+- **`make_app_exception_handler(*, log_level)`** factory exposed
+  via `tempest_fastapi_sdk.api.handlers` and re-exported at the
+  package root. The existing `app_exception_handler` callable is
+  kept as a thin wrapper for backwards compatibility.
+
 ## [0.21.2] — 2026-05-31
 
 ### Fixed

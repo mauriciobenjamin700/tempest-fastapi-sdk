@@ -92,7 +92,12 @@ Key points:
 - `src/server.py` and `main.py` (one-liner) stay exactly as in [Section 2 of the tutorial](../tutorial.md#2-settings-server-app-factory-entry-point) — only `create_app()` changes when you add primitives. Never start uvicorn via `subprocess.run(["uvicorn", ...])`; always import `app` from `src.api.app` or call `uvicorn.run("src.api.app:app", ...)` programmatically from `src/server.py`.
 - `RequestIDMiddleware` reads/writes `X-Request-ID` and seeds `request_id_ctx` so every log line emitted during the request carries the correlation ID.
 - `apply_cors(app, settings)` reads `CORSSettings` defaults; pass keyword overrides for one-off changes.
-- `register_exception_handlers(app)` wires every `AppException` subclass to the canonical `{detail, code, details}` envelope.
+- `register_exception_handlers(app)` wires three handlers, each with its own log level:
+    - `AppException` → `{detail, code, details}` envelope + `INFO` log (4xx) or `ERROR` + traceback + `500.log` (5xx).
+    - `HTTPException` → keeps Starlette's default body (`{"detail"}`) on 4xx with an `INFO` log; on 5xx swaps in the SDK envelope + traceback + `500.log`.
+    - `Exception` (catch-all) → SDK envelope + traceback + `500.log` (fixes Starlette's default, which returns only `"Internal Server Error"` with no log entry).
+
+    Every handler honors `RequestIDMiddleware`: the log line carries the `request_id`, and the envelope exposes it under `details` so the client can correlate. Pass `log_traceback=False` when an APM (Sentry, OpenTelemetry) is already capturing the stack trace.
 - `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` mounts `GET /health/liveness` and `GET /health/readiness` (returns `503` when any check fails) at the root prefix.
 - `make_token_dependency(secret)` returns an async dependency that validates `X-Token` via `hmac.compare_digest`; pass an empty string to disable in dev. The dependency lives next to the rest of the auth glue in `src/api/dependencies/auth.py` once it grows beyond the one-liner above.
 

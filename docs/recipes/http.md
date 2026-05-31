@@ -92,7 +92,12 @@ Pontos-chave:
 - `src/server.py` e `main.py` (one-liner) ficam exatamente como na [seção 2 do tutorial](../tutorial.md#2-settings-server-factory-do-app-entrypoint) — só `create_app()` muda quando você adiciona primitivos. Nunca inicie o uvicorn via `subprocess.run(["uvicorn", ...])`; sempre importe `app` de `src.api.app` ou chame `uvicorn.run("src.api.app:app", ...)` programaticamente de `src/server.py`.
 - `RequestIDMiddleware` lê/escreve `X-Request-ID` e semeia `request_id_ctx` para que toda linha de log emitida durante a requisição carregue o ID de correlação.
 - `apply_cors(app, settings)` lê os defaults de `CORSSettings`; passe overrides nomeados para mudanças pontuais.
-- `register_exception_handlers(app)` conecta toda subclasse de `AppException` ao envelope canônico `{detail, code, details}`.
+- `register_exception_handlers(app)` conecta três handlers, cada um com seu nível de log:
+    - `AppException` → envelope `{detail, code, details}` + log `INFO` (4xx) ou `ERROR` + traceback + `500.log` (5xx).
+    - `HTTPException` → mantém o body padrão do Starlette (`{"detail"}`) em 4xx com log `INFO`; em 5xx aplica o envelope SDK + traceback + `500.log`.
+    - `Exception` (catch-all) → envelope SDK + traceback + `500.log` (corrige o default do Starlette, que devolve só `"Internal Server Error"` sem log).
+
+    Todos os handlers respeitam `RequestIDMiddleware`: a linha de log carrega o `request_id`, e o envelope expõe ele em `details` para correlacionar com o cliente. Passe `log_traceback=False` se um APM (Sentry, OpenTelemetry) já estiver capturando a trace.
 - `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` monta `GET /health/liveness` e `GET /health/readiness` (retorna `503` quando algum check falha) no prefixo raiz.
 - `make_token_dependency(secret)` retorna uma dependência async que valida `X-Token` via `hmac.compare_digest`; passe uma string vazia para desabilitar no dev. A dependência vive ao lado do resto da cola de auth em `src/api/dependencies/auth.py` quando crescer além do one-liner acima.
 
