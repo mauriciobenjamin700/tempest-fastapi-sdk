@@ -13,12 +13,17 @@ from tempest_fastapi_sdk import (
     apply_cors,
     configure_logging,
     make_health_router,
+    make_logs_router,
     register_exception_handlers,
 )
 
 from src.core.settings import settings
 
-configure_logging(level=settings.LOG_LEVEL, json_output=settings.LOG_JSON)
+configure_logging(
+    level=settings.LOG_LEVEL,
+    json_output=settings.LOG_JSON,
+    log_dir=settings.LOG_DIR,
+)
 
 db = AsyncDatabaseManager(
     settings.DATABASE_URL,
@@ -57,6 +62,12 @@ def create_app() -> FastAPI:
 
     app.include_router(
         make_health_router(db=db, version="0.1.0"),
+    )
+    app.include_router(
+        make_logs_router(
+            log_dir=settings.LOG_DIR,
+            token_secret=settings.TOKEN_SECRET,
+        ),
     )
 
     from src.api.routers import router as api_router

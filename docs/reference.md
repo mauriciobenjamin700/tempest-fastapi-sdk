@@ -44,6 +44,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.schemas.pagination.BasePaginationSchema
 ::: tempest_fastapi_sdk.schemas.pagination.CursorPaginationFilterSchema
 ::: tempest_fastapi_sdk.schemas.pagination.CursorPaginationSchema
+::: tempest_fastapi_sdk.schemas.logs.LogEntrySchema
 
 ---
 
@@ -80,6 +81,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.middlewares.RequestIDMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.cors.apply_cors
 ::: tempest_fastapi_sdk.api.routers.health.make_health_router
+::: tempest_fastapi_sdk.api.routers.logs.make_logs_router
 
 ---
 

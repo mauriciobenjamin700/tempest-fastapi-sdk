@@ -125,11 +125,11 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 
 | Module | Exports |
 | --- | --- |
-| `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]`, `CursorPaginationFilterSchema`, `CursorPaginationSchema`, `encode_cursor`, `decode_cursor`, `build_pagination_link_header` |
+| `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]`, `CursorPaginationFilterSchema`, `CursorPaginationSchema`, `LogEntrySchema`, `encode_cursor`, `decode_cursor`, `build_pagination_link_header` |
 | `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin` |
 | `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `FileTooLargeException`, `InvalidFileTypeException`, `TooManyRequestsException` |
 | `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings` |
-| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck` |
+| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_logs_router`, `LogSource`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck` |
 | `tempest_fastapi_sdk.controllers` | `BaseController` |
 | `tempest_fastapi_sdk.services` | `BaseService` |
 | `tempest_fastapi_sdk.core` | `configure_logging`, `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx`, `BaseStrEnum`, `BaseIntEnum` |
@@ -1726,6 +1726,7 @@ from tempest_fastapi_sdk import (
     apply_cors,
     configure_logging,
     make_health_router,
+    make_logs_router,
     make_token_dependency,
     register_exception_handlers,
 )
@@ -1734,7 +1735,11 @@ from tempest_fastapi_sdk.cache import AsyncRedisManager
 from src.core.settings import settings
 
 
-configure_logging(level=settings.LOG_LEVEL, json_output=settings.LOG_JSON)
+configure_logging(
+    level=settings.LOG_LEVEL,
+    json_output=settings.LOG_JSON,
+    log_dir=settings.LOG_DIR,
+)
 
 db = AsyncDatabaseManager(
     settings.DATABASE_URL,
@@ -1776,6 +1781,12 @@ def create_app() -> FastAPI:
             db=db,
             checks={"redis": redis.health_check},
             version=settings.VERSION,
+        ),
+    )
+    app.include_router(
+        make_logs_router(
+            log_dir=settings.LOG_DIR,
+            token_secret=settings.TOKEN_SECRET,
         ),
     )
 
@@ -1843,6 +1854,55 @@ JSON output (single line — formatted here for readability):
 
 The middleware accepts a custom header name (`RequestIDMiddleware(app, header_name="X-Correlation-ID")`); the same header is echoed back on every response.
 
+#### Per-level files + isolated `500.log`
+
+Pass `log_dir` to `configure_logging` to keep stdout **and** write one JSON file per level under that directory. Each file receives only its own level (exact match — an `ERROR` never lands in `warning.log`), so every severity is an isolated, greppable stream. Uncaught 500s are additionally mirrored to a dedicated `500.log` (the catch-all handler flags them), so the gravest failures are never buried:
+
+```python
+from tempest_fastapi_sdk import configure_logging
+
+# Keeps stdout AND writes logs/{debug,info,warning,error,critical,500}.log
+configure_logging(level="INFO", json_output=True, log_dir="logs")
+```
+
+```text
+logs/
+├── debug.log      # only DEBUG records
+├── info.log       # only INFO records
+├── warning.log    # only WARNING records
+├── error.log      # only ERROR records (a 500 lands here too)
+├── critical.log   # only CRITICAL records
+└── 500.log        # only uncaught-500 records (isolated)
+```
+
+The scaffold reads the directory from `LOG_DIR` (defaults to `"logs"`; set it empty to disable file logging). Add `logs/` to `.gitignore`.
+
+#### Reading logs over HTTP — `make_logs_router`
+
+`make_logs_router` mounts `GET /logs`, which parses the on-disk JSON files and returns a paginated `BasePaginationSchema[LogEntrySchema]` (newest first). It is gated by a shared-secret `X-Token` header — never expose it unauthenticated in production (the payload carries tracebacks and request metadata).
+
+```python
+from tempest_fastapi_sdk import make_logs_router
+
+app.include_router(
+    make_logs_router(log_dir="logs", token_secret=settings.TOKEN_SECRET),
+)
+```
+
+```bash
+# Latest 20 records across every level
+curl -H "X-Token: $TOKEN_SECRET" "http://localhost:8000/logs"
+
+# Only the isolated 500s, page 1, 50 per page
+curl -H "X-Token: $TOKEN_SECRET" "http://localhost:8000/logs?source=500&page_size=50"
+
+# Errors mentioning "timeout" in a time window
+curl -H "X-Token: $TOKEN_SECRET" \
+  "http://localhost:8000/logs?source=error&q=timeout&start=2026-05-31T00:00:00Z"
+```
+
+Query params: `source` (`all` | `debug` | `info` | `warning` | `error` | `critical` | `500`), `q` (case-insensitive message substring), `start` / `end` (ISO-8601 range), `page`, `page_size`.
+
 ### Settings mixins composition recipe
 
 `BaseAppSettings` is the configured `pydantic-settings` base. The SDK also exposes composable mixins for the most common dependencies; pick the ones the service needs and put `BaseAppSettings` at the **end** of the MRO so its `model_config` wins.
@@ -1896,7 +1956,7 @@ Each mixin owns its own env-var prefix — pick only the ones the service needs:
 | Mixin | Env vars |
 | --- | --- |
 | `ServerSettings` | `SERVER_HOST`, `SERVER_PORT`, `SERVER_RELOAD`, `SERVER_DEBUG` |
-| `LogSettings` | `LOG_LEVEL`, `LOG_JSON` |
+| `LogSettings` | `LOG_LEVEL`, `LOG_JSON`, `LOG_DIR` |
 | `DatabaseSettings` | `DATABASE_URL`, `DATABASE_ECHO`, `DATABASE_POOL_SIZE`, `DATABASE_MAX_OVERFLOW`, `DATABASE_POOL_RECYCLE` |
 | `RedisSettings` | `REDIS_URL`, `REDIS_DECODE_RESPONSES` |
 | `RabbitMQSettings` | `RABBITMQ_URL`, `RABBITMQ_PREFETCH_COUNT` |

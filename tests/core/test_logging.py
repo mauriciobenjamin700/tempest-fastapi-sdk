@@ -3,6 +3,7 @@
 import io
 import json
 import logging
+from pathlib import Path
 
 from tempest_fastapi_sdk import (
     JSONFormatter,
@@ -10,6 +11,7 @@ from tempest_fastapi_sdk import (
     configure_logging,
     set_request_id,
 )
+from tempest_fastapi_sdk.core.logging import HTTP_500_MARKER
 
 
 def _make_record(
@@ -110,3 +112,47 @@ class TestConfigureLogging:
         assert "WARNING" in line
         assert "plain" in line
         assert not line.startswith("{")
+
+
+class TestFileLogging:
+    def test_per_level_files_isolate_each_level(self, tmp_path: Path) -> None:
+        logger = configure_logging(
+            level="DEBUG",
+            logger_name="tempest.cfg.files",
+            log_dir=tmp_path,
+        )
+        logger.debug("d")
+        logger.info("i")
+        logger.warning("w")
+        logger.error("e")
+        logger.critical("c")
+
+        for name in ("debug", "info", "warning", "error", "critical"):
+            content = (tmp_path / f"{name}.log").read_text(encoding="utf-8")
+            lines = [line for line in content.splitlines() if line.strip()]
+            assert len(lines) == 1
+            assert json.loads(lines[0])["level"] == name.upper()
+
+    def test_500_marker_routes_to_dedicated_file(self, tmp_path: Path) -> None:
+        logger = configure_logging(
+            level="DEBUG",
+            logger_name="tempest.cfg.files500",
+            log_dir=tmp_path,
+        )
+        logger.error("plain error")
+        logger.error("grave", extra={HTTP_500_MARKER: True})
+
+        def _lines(name: str) -> list[str]:
+            content = (tmp_path / name).read_text(encoding="utf-8")
+            return [line for line in content.splitlines() if line.strip()]
+
+        error_lines = _lines("error.log")
+        http_500_lines = _lines("500.log")
+        assert len(error_lines) == 2
+        assert len(http_500_lines) == 1
+        assert json.loads(http_500_lines[0])["message"] == "grave"
+
+    def test_no_log_dir_keeps_stdout_only(self) -> None:
+        logger = configure_logging(logger_name="tempest.cfg.nofiles")
+        assert len(logger.handlers) == 1
+        assert isinstance(logger.handlers[0], logging.StreamHandler)

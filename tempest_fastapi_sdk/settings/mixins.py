@@ -52,10 +52,20 @@ class LogSettings(BaseSettings):
         LOG_LEVEL (str): Default logger level passed to
             :func:`tempest_fastapi_sdk.configure_logging`.
         LOG_JSON (bool): Whether logs should be emitted as JSON.
+        LOG_DIR (str): Directory for per-level + ``500.log`` files,
+            relative to the service root. Empty disables file logging
+            (stdout only). Defaults to ``"logs"``.
     """
 
     LOG_LEVEL: str = Field(default="INFO", description="Root log level.")
     LOG_JSON: bool = Field(default=True, description="Emit logs as JSON.")
+    LOG_DIR: str = Field(
+        default="logs",
+        description=(
+            "Directory for per-level + 500.log files. Empty disables "
+            "file logging (stdout only)."
+        ),
+    )
 
 
 class DatabaseSettings(BaseSettings):

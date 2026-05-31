@@ -41,6 +41,99 @@ Saída JSON (uma linha — formatada aqui para legibilidade):
 O middleware aceita um nome de header customizado (`RequestIDMiddleware(app, header_name="X-Correlation-ID")`); o mesmo header é ecoado de volta em toda resposta.
 
 
+## Arquivos por nível + `500.log` isolado
+
+Por padrão os logs vão só para o **stdout**. Passe `log_dir` para o `configure_logging` e além do stdout o SDK escreve **um arquivo JSON por nível** dentro daquela pasta. Cada arquivo recebe **apenas o seu próprio nível** (correspondência exata — um `ERROR` nunca cai no `warning.log`), então toda severidade vira um fluxo isolado e fácil de inspecionar com `grep`.
+
+```python
+from tempest_fastapi_sdk import configure_logging
+
+# Mantém o stdout E escreve logs/{debug,info,warning,error,critical,500}.log
+configure_logging(level="INFO", json_output=True, log_dir="logs")
+```
+
+O resultado em disco:
+
+```text
+logs/
+├── debug.log      # só registros DEBUG
+├── info.log       # só registros INFO
+├── warning.log    # só registros WARNING
+├── error.log      # só registros ERROR (um 500 também cai aqui)
+├── critical.log   # só registros CRITICAL
+└── 500.log        # só erros 500 não tratados (isolado)
+```
+
+!!! danger "Erros 500 são graves — por isso ganham arquivo próprio"
+    O handler catch-all registrado por `register_exception_handlers`
+    marca toda exceção não tratada com o `extra` `http_500=True`. O
+    `configure_logging(log_dir=...)` roteia esses registros para um
+    `500.log` dedicado, **além** do `error.log`. Assim a falha mais
+    grave nunca fica soterrada no meio dos outros erros.
+
+!!! tip "Sempre nos logs, nunca no body"
+    O traceback vai para os arquivos/terminal via logging — **não** para
+    o corpo da resposta. O body de um 500 é só o envelope genérico
+    (`{"detail": "Internal server error", "code": "INTERNAL_SERVER_ERROR"}`).
+    Veja [Camada HTTP](http.md) para os flags `log_traceback` /
+    `include_traceback`.
+
+!!! note "Arquivos são sempre JSON"
+    Os handlers de arquivo usam o `JSONFormatter` independente de
+    `json_output`, para que o endpoint `/logs` consiga parseá-los. O
+    `json_output` controla apenas o formato do stdout.
+
+No scaffold, o diretório vem de `LOG_DIR` (padrão `"logs"`; deixe vazio para desativar o log em arquivo). Adicione `logs/` ao `.gitignore`.
+
+
+## Lendo logs por HTTP — `make_logs_router`
+
+`make_logs_router` monta `GET /logs`, que lê os arquivos JSON em disco e devolve um `BasePaginationSchema[LogEntrySchema]` paginado (mais recentes primeiro).
+
+```python
+from tempest_fastapi_sdk import make_logs_router
+
+app.include_router(
+    make_logs_router(log_dir="logs", token_secret=settings.TOKEN_SECRET),
+)
+```
+
+!!! warning "Proteja o endpoint em produção"
+    O payload expõe tracebacks e metadados de request. O endpoint é
+    protegido por um header de segredo compartilhado `X-Token` via
+    `make_token_dependency`. Um `TOKEN_SECRET` vazio **desativa** a
+    checagem (apenas dev) — nunca exponha `/logs` sem auth em produção.
+
+Exemplos de consulta:
+
+```bash
+# Últimos 20 registros de todos os níveis
+curl -H "X-Token: $TOKEN_SECRET" "http://localhost:8000/logs"
+
+# Só os 500 isolados, página 1, 50 por página
+curl -H "X-Token: $TOKEN_SECRET" "http://localhost:8000/logs?source=500&page_size=50"
+
+# Erros mencionando "timeout" numa janela de tempo
+curl -H "X-Token: $TOKEN_SECRET" \
+  "http://localhost:8000/logs?source=error&q=timeout&start=2026-05-31T00:00:00Z"
+```
+
+Parâmetros de query:
+
+| Parâmetro | Valores | Descrição |
+| --- | --- | --- |
+| `source` | `all` (padrão), `debug`, `info`, `warning`, `error`, `critical`, `500` | Qual arquivo ler. `all` mescla todos os níveis; `500` retorna só os 500 isolados. |
+| `q` | texto | Substring (case-insensitive) na mensagem. |
+| `start` / `end` | ISO-8601 | Limita os registros a uma janela de tempo. |
+| `page` / `page_size` | inteiros | Paginação (1-indexada). |
+
+!!! check "Recap"
+    - `configure_logging(log_dir=...)` → stdout **+** um arquivo por nível.
+    - Exatidão por nível: cada arquivo só recebe a sua severidade.
+    - `500.log` isola erros 500 não tratados (marcador `http_500`).
+    - `make_logs_router` serve esses arquivos paginados e autenticados.
+
+
 ## Enums base
 
 
