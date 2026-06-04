@@ -7,7 +7,7 @@ from datetime import date
 from typing import Any, Generic, List, TypeVar, cast
 from uuid import UUID
 
-from sqlalchemy import CursorResult, Select, delete, func, select, update
+from sqlalchemy import CursorResult, Select, delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -681,6 +681,136 @@ class BaseRepository(Generic[ModelType]):
             )
             raise ConflictException(
                 message=self._bulk_update_conflict_message,
+            ) from exc
+        except Exception:
+            await self.session.rollback()
+            raise
+
+    async def bulk_create_values(
+        self,
+        rows: List[dict[str, Any]],
+    ) -> int:
+        """Insert many rows in a single ``INSERT ... VALUES (...), (...)`` statement.
+
+        Unlike :meth:`add_all`, this bypasses the unit-of-work — the
+        rows are not refreshed nor attached to the session. Use when
+        you have a large batch (≥ 50 rows) and don't need the ORM
+        instances back; the round-trip count drops from ``N`` to ``1``.
+
+        Args:
+            rows (list[dict[str, Any]]): One mapping per row,
+                keyed by column name (not attribute name; usually
+                they match for SDK models).
+
+        Returns:
+            int: Number of rows inserted (``len(rows)`` on success).
+
+        Raises:
+            ConflictException: On unique / FK violations.
+            ValueError: When ``rows`` is empty.
+        """
+        if not rows:
+            raise ValueError("bulk_create_values requires at least one row.")
+        try:
+            query = insert(self.model).values(rows)
+            result = cast(CursorResult[Any], await self.session.execute(query))
+            await self.session.commit()
+            return result.rowcount or len(rows)
+        except IntegrityError as exc:
+            await self.session.rollback()
+            logger.warning(
+                "IntegrityError on %s.bulk_create_values: %s",
+                self.model.__name__,
+                exc.orig,
+            )
+            raise ConflictException(
+                message=self._bulk_create_conflict_message,
+            ) from exc
+        except Exception:
+            await self.session.rollback()
+            raise
+
+    async def bulk_upsert(
+        self,
+        rows: List[dict[str, Any]],
+        *,
+        conflict_columns: List[str],
+        update_columns: List[str] | None = None,
+    ) -> int:
+        """Issue an ``INSERT ... ON CONFLICT DO UPDATE`` in one round-trip.
+
+        Picks the dialect-specific upsert syntax automatically —
+        Postgres (``postgresql.insert``) and SQLite
+        (``sqlite.insert``) are supported. Other dialects raise
+        :class:`NotImplementedError` so the caller can fall back to
+        a transactional ``SELECT FOR UPDATE`` loop.
+
+        Args:
+            rows (list[dict[str, Any]]): One mapping per row.
+            conflict_columns (list[str]): The columns whose
+                conflict triggers the ``ON CONFLICT`` clause —
+                typically the natural-key columns (e.g.
+                ``["sku"]``). Must be backed by a UNIQUE index.
+            update_columns (list[str] | None): Columns to refresh
+                on conflict. ``None`` updates every column except
+                ``conflict_columns`` and the primary key.
+
+        Returns:
+            int: Total rows touched (inserted + updated).
+
+        Raises:
+            ConflictException: On non-recoverable integrity errors.
+            NotImplementedError: When the active SQLAlchemy dialect
+                has no native upsert.
+            ValueError: When ``rows`` is empty.
+        """
+        if not rows:
+            raise ValueError("bulk_upsert requires at least one row.")
+
+        bind = self.session.get_bind()
+        dialect_name = bind.dialect.name
+        stmt: Any
+        if dialect_name == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert as _pg_insert
+
+            stmt = _pg_insert(self.model).values(rows)
+        elif dialect_name == "sqlite":
+            from sqlalchemy.dialects.sqlite import insert as _sqlite_insert
+
+            stmt = _sqlite_insert(self.model).values(rows)
+        else:
+            raise NotImplementedError(
+                f"bulk_upsert: dialect {dialect_name!r} not supported. "
+                f"Drop to a SELECT FOR UPDATE + UPDATE loop or open an "
+                f"issue at https://github.com/mauriciobenjamin700/"
+                f"tempest-fastapi-sdk/issues."
+            )
+
+        if update_columns is None:
+            pk_columns = {col.name for col in self.model.__table__.primary_key}
+            skip = set(conflict_columns) | pk_columns
+            update_columns = [
+                col.name for col in self.model.__table__.columns if col.name not in skip
+            ]
+        update_set = {col: getattr(stmt.excluded, col) for col in update_columns}
+        stmt = stmt.on_conflict_do_update(
+            index_elements=conflict_columns,
+            set_=update_set,
+        )
+
+        try:
+            result = cast(CursorResult[Any], await self.session.execute(stmt))
+            await self.session.commit()
+            return result.rowcount or len(rows)
+        except IntegrityError as exc:
+            await self.session.rollback()
+            logger.warning(
+                "IntegrityError on %s.bulk_upsert: %s",
+                self.model.__name__,
+                exc.orig,
+            )
+            raise ConflictException(
+                message=self._bulk_create_conflict_message,
             ) from exc
         except Exception:
             await self.session.rollback()

@@ -1726,6 +1726,15 @@ wheels = [
 ]
 
 [[package]]
+name = "prometheus-client"
+version = "0.25.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1b/fb/d9aa83ffe43ce1f19e557c0971d04b90561b0cfd50762aafb01968285553/prometheus_client-0.25.0.tar.gz", hash = "sha256:5e373b75c31afb3c86f1a52fa1ad470c9aace18082d39ec0d2f918d11cc9ba28", size = 86035, upload-time = "2026-04-09T19:53:42.359Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8d/9b/d4b1e644385499c8346fa9b622a3f030dce14cd6ef8a1871c221a17a67e7/prometheus_client-0.25.0-py3-none-any.whl", hash = "sha256:d5aec89e349a6ec230805d0df882f3807f74fd6c1a2fa86864e3c2279059fed1", size = 64154, upload-time = "2026-04-09T19:53:41.324Z" },
+]
+
+[[package]]
 name = "propcache"
 version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2447,7 +2456,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.26.0"
+version = "0.28.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -2469,10 +2478,12 @@ all = [
     { name = "bcrypt" },
     { name = "cryptography" },
     { name = "faststream", extra = ["rabbit"] },
+    { name = "httpx" },
     { name = "itsdangerous" },
     { name = "jinja2" },
     { name = "minio" },
     { name = "nvidia-ml-py" },
+    { name = "prometheus-client" },
     { name = "psutil" },
     { name = "pyjwt" },
     { name = "python-multipart" },
@@ -2492,12 +2503,18 @@ email = [
     { name = "aiosmtplib" },
     { name = "jinja2" },
 ]
+http = [
+    { name = "httpx" },
+]
 metrics = [
     { name = "nvidia-ml-py" },
     { name = "psutil" },
 ]
 minio = [
     { name = "minio" },
+]
+prometheus = [
+    { name = "prometheus-client" },
 ]
 queue = [
     { name = "faststream", extra = ["rabbit"] },
@@ -2530,6 +2547,7 @@ dev = [
     { name = "minio" },
     { name = "mypy" },
     { name = "nvidia-ml-py" },
+    { name = "prometheus-client" },
     { name = "psutil" },
     { name = "pyjwt" },
     { name = "pytest" },
@@ -2566,6 +2584,8 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.118.0" },
     { name = "faststream", extras = ["rabbit"], marker = "extra == 'all'", specifier = ">=0.5.30" },
     { name = "faststream", extras = ["rabbit"], marker = "extra == 'queue'", specifier = ">=0.5.30" },
+    { name = "httpx", marker = "extra == 'all'", specifier = ">=0.28.0" },
+    { name = "httpx", marker = "extra == 'http'", specifier = ">=0.28.0" },
     { name = "itsdangerous", marker = "extra == 'admin'", specifier = ">=2.2.0" },
     { name = "itsdangerous", marker = "extra == 'all'", specifier = ">=2.2.0" },
     { name = "jinja2", marker = "extra == 'admin'", specifier = ">=3.1.0" },
@@ -2575,6 +2595,8 @@ requires-dist = [
     { name = "minio", marker = "extra == 'minio'", specifier = ">=7.2.0" },
     { name = "nvidia-ml-py", marker = "extra == 'all'", specifier = ">=12.560.30" },
     { name = "nvidia-ml-py", marker = "extra == 'metrics'", specifier = ">=12.560.30" },
+    { name = "prometheus-client", marker = "extra == 'all'", specifier = ">=0.20.0" },
+    { name = "prometheus-client", marker = "extra == 'prometheus'", specifier = ">=0.20.0" },
     { name = "psutil", marker = "extra == 'all'", specifier = ">=6.0.0" },
     { name = "psutil", marker = "extra == 'metrics'", specifier = ">=6.0.0" },
     { name = "pydantic", specifier = ">=2.13.4" },
@@ -2594,7 +2616,7 @@ requires-dist = [
     { name = "taskiq-aio-pika", marker = "extra == 'tasks'", specifier = ">=0.4.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2605,12 +2627,13 @@ dev = [
     { name = "cryptography", specifier = ">=42.0.0" },
     { name = "fakeredis", specifier = ">=2.20.0" },
     { name = "faststream", extras = ["rabbit"], specifier = ">=0.5.30" },
-    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "httpx", specifier = ">=0.28.0" },
     { name = "itsdangerous", specifier = ">=2.2.0" },
     { name = "jinja2", specifier = ">=3.1.0" },
     { name = "minio", specifier = ">=7.2.0" },
     { name = "mypy", specifier = ">=1.13.0" },
     { name = "nvidia-ml-py", specifier = ">=12.560.30" },
+    { name = "prometheus-client", specifier = ">=0.20.0" },
     { name = "psutil", specifier = ">=6.0.0" },
     { name = "pyjwt", specifier = ">=2.12.1" },
     { name = "pytest", specifier = ">=8.3.3" },

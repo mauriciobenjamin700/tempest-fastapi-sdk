@@ -5,6 +5,71 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] — 2026-06-04
+
+### Added
+
+- **Prometheus ``/metrics`` endpoint + middleware.** New
+  ``tempest_fastapi_sdk.api.routers.metrics`` module exposes:
+
+  - ``PrometheusMiddleware`` — tracks
+    ``http_requests_total{method, path, status}`` (Counter),
+    ``http_request_duration_seconds{method, path}`` (Histogram),
+    ``http_requests_in_progress{method}`` (Gauge). Uses the
+    matched route template as the ``path`` label so cardinality
+    stays bounded.
+  - ``make_prometheus_registry()`` — fresh ``CollectorRegistry``
+    decoupled from the default singleton.
+  - ``make_prometheus_router(registry=…, path="/metrics",
+    dependencies=…)`` — ``GET /metrics`` rendering the exposition
+    format. Pair with ``Depends(require_x_token)`` in production.
+
+  Requires the new ``[prometheus]`` extra (``prometheus-client``).
+
+- **``HTTPClient`` — typed httpx wrapper** at
+  ``tempest_fastapi_sdk.utils.http_client``:
+
+  - Bounded retries with exponential backoff
+    (``RetryPolicy(max_attempts, backoff_initial_seconds,
+    backoff_max_seconds, retry_statuses)``); retries on network
+    errors + configurable 5xx/429.
+  - Per-host circuit breaker — trips after ``failure_threshold``
+    consecutive failures, half-open after
+    ``recovery_seconds``; raises ``CircuitOpenError`` while open.
+  - ``X-Request-ID`` propagation from the
+    ``request_id_ctx`` contextvar to outbound requests so
+    correlation flows downstream.
+  - Verb-level conveniences (``get``/``post``/``put``/``patch``/
+    ``delete``) on top of the unified ``request()`` core.
+
+  Requires the new ``[http]`` extra (``httpx``).
+
+- **``BodySizeLimitMiddleware``** — short-circuits oversized
+  requests at the ASGI layer:
+
+  - Header check on ``Content-Length`` (fast path).
+  - Streaming check for chunked / unknown-length bodies.
+  - ``exclude_paths`` lets specific routes (e.g. media uploads)
+    opt out and enforce their own per-endpoint limit.
+  - Responds ``413`` with the SDK envelope
+    ``{"code": "REQUEST_BODY_TOO_LARGE", "details": {"max_bytes": …}}``.
+
+- **``BaseRepository.bulk_create_values(rows)``** — single
+  ``INSERT … VALUES (…), (…)`` round-trip for batch persistence
+  without unit-of-work overhead.
+
+- **``BaseRepository.bulk_upsert(rows, conflict_columns,
+  update_columns=None)``** — dialect-aware
+  ``INSERT … ON CONFLICT DO UPDATE``. Picks Postgres or SQLite
+  syntax automatically; raises ``NotImplementedError`` on other
+  dialects so the caller can fall back to a
+  ``SELECT FOR UPDATE`` loop.
+
+### Changed
+
+- ``[all]`` extra now includes ``httpx`` and
+  ``prometheus-client``.
+
 ## [0.27.0] — 2026-06-04
 
 ### Added

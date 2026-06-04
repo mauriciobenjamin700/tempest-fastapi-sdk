@@ -22,6 +22,7 @@ from tempest_fastapi_sdk.api.handlers import (
 )
 from tempest_fastapi_sdk.api.middlewares import (
     IDEMPOTENCY_HEADER,
+    BodySizeLimitMiddleware,
     CachedResponse,
     IdempotencyMiddleware,
     IdempotencyStore,
@@ -32,10 +33,14 @@ from tempest_fastapi_sdk.api.middlewares import (
     apply_cors,
 )
 from tempest_fastapi_sdk.api.routers import (
+    DEFAULT_LATENCY_BUCKETS,
     HealthCheck,
     LogSource,
+    PrometheusMiddleware,
     make_health_router,
     make_logs_router,
+    make_prometheus_registry,
+    make_prometheus_router,
     make_tool_spec_router,
 )
 from tempest_fastapi_sdk.api.server import run_server
@@ -49,8 +54,10 @@ from tempest_fastapi_sdk.api.webhooks import (
 )
 
 __all__: list[str] = [
+    "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "IDEMPOTENCY_HEADER",
+    "BodySizeLimitMiddleware",
     "CachedResponse",
     "HardenedStaticFiles",
     "HealthCheck",
@@ -58,6 +65,7 @@ __all__: list[str] = [
     "IdempotencyStore",
     "LogSource",
     "MemoryIdempotencyStore",
+    "PrometheusMiddleware",
     "RSAWebhookSignatureVerifier",
     "RateLimitMiddleware",
     "RedisIdempotencyStore",
@@ -74,6 +82,8 @@ __all__: list[str] = [
     "make_jwt_user_dependency",
     "make_logs_router",
     "make_permission_dependency",
+    "make_prometheus_registry",
+    "make_prometheus_router",
     "make_role_dependency",
     "make_token_dependency",
     "make_tool_spec_router",

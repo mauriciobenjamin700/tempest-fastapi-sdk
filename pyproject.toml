@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.27.0"
+version = "0.28.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -77,6 +77,12 @@ admin = [
 minio = [
     "minio>=7.2.0",
 ]
+http = [
+    "httpx>=0.28.0",
+]
+prometheus = [
+    "prometheus-client>=0.20.0",
+]
 all = [
     "bcrypt>=5.0.0",
     "pyjwt>=2.12.1",
@@ -94,6 +100,8 @@ all = [
     "jinja2>=3.1.0",
     "itsdangerous>=2.2.0",
     "minio>=7.2.0",
+    "httpx>=0.28.0",
+    "prometheus-client>=0.20.0",
 ]
 
 [project.urls]
@@ -120,7 +128,7 @@ dev = [
     "aiosmtplib>=4.0.0",
     "aiosqlite>=0.20.0",
     "bcrypt>=5.0.0",
-    "httpx>=0.28.1",
+    "httpx>=0.28.0",
     "mypy>=1.13.0",
     "pyjwt>=2.12.1",
     "pytest>=8.3.3",
@@ -141,6 +149,7 @@ dev = [
     "jinja2>=3.1.0",
     "itsdangerous>=2.2.0",
     "minio>=7.2.0",
+    "prometheus-client>=0.20.0",
 ]
 docs = [
     "mkdocs>=1.6.0",

@@ -21,6 +21,12 @@ from tempest_fastapi_sdk.utils.download import (
     build_content_disposition,
 )
 from tempest_fastapi_sdk.utils.email import EmailUtils
+from tempest_fastapi_sdk.utils.http_client import (
+    REQUEST_ID_HEADER,
+    CircuitOpenError,
+    HTTPClient,
+    RetryPolicy,
+)
 from tempest_fastapi_sdk.utils.jwt import JWTUtils
 from tempest_fastapi_sdk.utils.log import LogUtils
 from tempest_fastapi_sdk.utils.metrics import (
@@ -82,13 +88,16 @@ __all__: list[str] = [
     "CPF_CNPJ_PATTERN",
     "CPF_PATTERN",
     "PHONE_BR_PATTERN",
+    "REQUEST_ID_HEADER",
     "AttemptThrottle",
     "CPFOrCNPJ",
     "CPUMetrics",
+    "CircuitOpenError",
     "DiskMetrics",
     "DownloadUtils",
     "EmailUtils",
     "GPUMetrics",
+    "HTTPClient",
     "JWTUtils",
     "LocalUploadStorage",
     "LogUtils",
@@ -97,6 +106,7 @@ __all__: list[str] = [
     "MinIOUploadStorage",
     "PasswordUtils",
     "PhoneBR",
+    "RetryPolicy",
     "SystemMetrics",
     "ThrottleBackend",
     "ThrottleStatus",
