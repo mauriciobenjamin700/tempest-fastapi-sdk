@@ -116,6 +116,54 @@ uv run python main.py                           # serve no HOST:PORT configurado
 uv run pytest                                   # o smoke test embutido
 ```
 
+### Banco de dados — `tempest db`
+
+Wrapper Alembic. Usa o `AlembicHelper` por trás, então a configuração (`alembic.ini` + `env.py`) continua sendo a fonte da verdade.
+
+Resolução do `DATABASE_URL` na seguinte ordem:
+
+1. Flag `--database-url`.
+2. Env var `DATABASE_URL`.
+3. `src.core.settings.settings.DATABASE_URL` (quando rodando no diretório do projeto scaffoldado).
+4. `sqlalchemy.url` do `alembic.ini`.
+
+```bash
+tempest db init                                  # cria alembic.ini + alembic/env.py
+tempest db revision -m "init users table"        # autogenerate por padrão
+tempest db revision -m "manual change" --manual  # cria arquivo vazio pra editar
+tempest db upgrade                               # alembic upgrade head
+tempest db upgrade <rev>                         # upgrade até rev específico
+tempest db downgrade                             # rollback de 1 step
+tempest db downgrade <rev>                       # rollback até rev específico
+tempest db current                               # imprime revision aplicado
+tempest db history                               # histórico de revisions
+tempest db history -v                            # com message body completo
+```
+
+### Usuários — `tempest user`
+
+Insere/lista usuários direto no banco usando o `UserModel` concreto do projeto (default `src.db.models:UserModel`). Útil pra bootstrapear o primeiro admin sem rodar SQL manual.
+
+```bash
+# Cria usuário comum
+tempest user create --email ana@example.com --password senha-forte-12
+
+# Cria admin (pode logar no /admin)
+tempest user create --email admin@local --password admin-pass-12 --admin
+
+# Pede senha interativamente (não fica no shell history)
+tempest user create --email admin@local --admin
+
+# Modelo customizado fora do layout scaffoldado
+tempest user create --email x@y --password pass --model myapp.models.user:User
+
+# Lista
+tempest user list                                # todos
+tempest user list --admin                        # só admins
+```
+
+Resolução do `DATABASE_URL` igual ao `tempest db` (env var > settings > alembic.ini).
+
 #### Gates de qualidade
 
 Os comandos de lint chamam a ferramenta do projeto. Eles procuram o executável no `PATH` primeiro e, caso contrário, caem para `uv run <tool>` para que um virtualenv local do projeto funcione sem ativação manual.

@@ -93,6 +93,54 @@ docker compose down -v
 
 Image tags are pinned by the SDK — bump them through `pyproject.toml` of the SDK, not on a per-project basis. Current versions (v0.26.0+): `postgres:18-alpine`, `redis:8-alpine`, `rabbitmq:4-management-alpine`.
 
+### Database — `tempest db`
+
+Alembic wrapper backed by ``AlembicHelper`` — your project's ``alembic.ini`` + ``env.py`` stay the source of truth.
+
+``DATABASE_URL`` resolution order:
+
+1. ``--database-url`` flag.
+2. ``DATABASE_URL`` env var.
+3. ``src.core.settings.settings.DATABASE_URL`` (when run from a scaffolded project root).
+4. ``sqlalchemy.url`` from ``alembic.ini``.
+
+```bash
+tempest db init                                  # create alembic.ini + alembic/env.py
+tempest db revision -m "init users table"        # autogenerate by default
+tempest db revision -m "manual change" --manual  # empty file you'll edit
+tempest db upgrade                               # alembic upgrade head
+tempest db upgrade <rev>                         # upgrade to a specific revision
+tempest db downgrade                             # roll back one step
+tempest db downgrade <rev>                       # roll back to a specific revision
+tempest db current                               # print the applied revision
+tempest db history                               # revisions newest → oldest
+tempest db history -v                            # with full message body
+```
+
+### Users — `tempest user`
+
+Seed and list users using the project's concrete ``UserModel`` (default ``src.db.models:UserModel``). Bootstraps the first admin without manual SQL.
+
+```bash
+# Create a regular user
+tempest user create --email ana@example.com --password strong-pass-12
+
+# Create an admin (can log into /admin)
+tempest user create --email admin@local --password admin-pass-12 --admin
+
+# Read the password interactively (never lands in shell history)
+tempest user create --email admin@local --admin
+
+# Custom model outside the scaffolded layout
+tempest user create --email x@y --password pass --model myapp.models.user:User
+
+# List
+tempest user list                                # everyone
+tempest user list --admin                        # admins only
+```
+
+``DATABASE_URL`` resolves the same way as ``tempest db`` (env var > settings > alembic.ini).
+
 ### Regenerating `docker-compose.yaml` in an existing project
 
 When you change installed extras (`uv add "tempest-fastapi-sdk[minio]"`) or the SDK bumps image versions, regenerate with:

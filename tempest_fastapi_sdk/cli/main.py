@@ -10,6 +10,8 @@ import typer
 from tempest_fastapi_sdk.cli import generate as generate_module
 from tempest_fastapi_sdk.cli import lint as lint_module
 from tempest_fastapi_sdk.cli import new as new_module
+from tempest_fastapi_sdk.cli.db import db_app
+from tempest_fastapi_sdk.cli.user import user_app
 
 app: typer.Typer = typer.Typer(
     name="tempest",
@@ -21,6 +23,8 @@ app: typer.Typer = typer.Typer(
     add_completion=False,
     rich_markup_mode="rich",
 )
+app.add_typer(db_app, name="db")
+app.add_typer(user_app, name="user")
 
 
 def _print_version(value: bool) -> None:

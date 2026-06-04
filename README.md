@@ -3262,6 +3262,34 @@ tempest check                                   # lint + fmt-check + type + test
 
 Every command returns the underlying tool's exit code, so `tempest check` is safe to wire into CI (`tempest check || exit 1`) or pre-commit hooks. When neither the executable nor `uv` is on `PATH`, the wrapper prints `error: '<tool>' is not on PATH and 'uv' is unavailable` and exits with `127` instead of failing silently.
 
+#### Database — `tempest db`
+
+Alembic wrapper backed by `AlembicHelper`. Reads `DATABASE_URL` from `--database-url` > env var > `src.core.settings.settings.DATABASE_URL` > `alembic.ini`.
+
+```bash
+tempest db init                                  # creates alembic.ini + alembic/env.py
+tempest db revision -m "init users table"        # autogenerate (default)
+tempest db revision -m "manual" --manual         # empty migration template
+tempest db upgrade                               # alembic upgrade head
+tempest db upgrade <rev>                         # upgrade to a specific revision
+tempest db downgrade                             # roll back one step
+tempest db current                               # print the applied revision
+tempest db history -v                            # revisions newest → oldest, verbose
+```
+
+#### Users — `tempest user`
+
+Seeds or lists users via the project's concrete `UserModel` (default `src.db.models:UserModel`). Bootstraps the first admin row so `/admin` login works without manual SQL.
+
+```bash
+tempest user create --email ana@example.com --password strong-pass-12
+tempest user create --email admin@local --password admin-pass-12 --admin
+tempest user create --email admin@local --admin       # prompt for password
+tempest user create --email x@y --password p --model myapp.models.user:User
+tempest user list                                     # everyone
+tempest user list --admin                             # admins only
+```
+
 ### Admin site recipe
 
 Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. Phase 1 ships read-only views; create/edit/delete land in 0.14.0 and inline + bulk actions in 0.15.0.

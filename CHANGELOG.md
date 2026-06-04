@@ -5,6 +5,55 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] — 2026-06-04
+
+### Added
+
+- **`tempest db` subcommand group** — Alembic wrapper backed by
+  the existing ``AlembicHelper``. Commands:
+
+  - ``tempest db init`` — scaffold ``alembic.ini`` + ``alembic/env.py``.
+  - ``tempest db revision -m "<msg>" [--manual]`` — create a new
+    migration (autogenerate by default).
+  - ``tempest db upgrade [target]`` — apply pending migrations
+    (``head`` by default).
+  - ``tempest db downgrade [target]`` — roll back (default
+    ``-1``, i.e. one step).
+  - ``tempest db current`` — print the applied revision.
+  - ``tempest db history [-v]`` — list revisions newest → oldest.
+
+  ``DATABASE_URL`` resolves in this order: ``--database-url`` flag
+  → ``DATABASE_URL`` env var →
+  ``src.core.settings.settings.DATABASE_URL`` →
+  ``sqlalchemy.url`` from ``alembic.ini``. The async driver
+  suffix is stripped automatically before Alembic runs.
+
+- **`tempest user` subcommand group** — seed and inspect users
+  via the project's concrete ``UserModel`` (default
+  ``src.db.models:UserModel``, overridable with ``--model``).
+  Bootstraps the first admin row so ``/admin`` login works
+  without manual SQL.
+
+  - ``tempest user create --email X --password Y [--admin]``
+    — insert one user. Omitting ``--password`` reads it
+    interactively (no shell history leak). Password ≥ 8 chars
+    enforced.
+  - ``tempest user list [--admin]`` — print
+    ``id  email  +admin/...  active/inactive`` per row.
+
+### Docs
+
+- ``docs/recipes/cli{,.en}.md`` adds full sections for
+  ``tempest db`` and ``tempest user`` with flag reference + the
+  ``DATABASE_URL`` resolution order.
+- ``docs/learning/marketplace/index{,.en}.md`` setup block now
+  runs ``tempest db revision`` + ``tempest db upgrade`` +
+  ``tempest user create --admin`` between the docker compose up
+  and the ``uv run python main.py`` so ``/admin`` login works on
+  first run.
+- ``README.md`` Command-line interface recipe grows the same
+  two sections.
+
 ## [0.29.1] — 2026-06-04
 
 ### Fixed

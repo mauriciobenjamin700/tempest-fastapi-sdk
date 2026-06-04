@@ -23,9 +23,16 @@ docker compose up -d
 
 # 3. Configure env
 cp .env.example .env
-
-# 4. Run
 uv sync
+
+# 4. Migrations (create the schema, including the users table)
+uv run tempest db revision -m "init"
+uv run tempest db upgrade
+
+# 5. Bootstrap the first admin so /admin login works
+uv run tempest user create --email admin@local --password admin-pass-12 --admin
+
+# 6. Run
 uv run python main.py
 ```
 
