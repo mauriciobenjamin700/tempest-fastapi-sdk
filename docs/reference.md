@@ -86,6 +86,11 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.routers.health.make_health_router
 ::: tempest_fastapi_sdk.api.routers.logs.make_logs_router
 
+### `tempest_fastapi_sdk.storage`
+
+::: tempest_fastapi_sdk.storage.minio_client.AsyncMinIOClient
+::: tempest_fastapi_sdk.storage.minio_client.ObjectStat
+
 ---
 
 ## Settings

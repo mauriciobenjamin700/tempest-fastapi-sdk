@@ -312,12 +312,60 @@ class TaskIQSettings(BaseSettings):
     TASKIQ_RESULT_BACKEND_URL: str | None = Field(default=None)
 
 
+class MinIOSettings(BaseSettings):
+    """MinIO / S3-compatible object storage configuration.
+
+    Consumed by :class:`tempest_fastapi_sdk.AsyncMinIOClient`. The
+    same shape works for any S3-compatible target (AWS S3, MinIO,
+    Backblaze B2, Cloudflare R2, Wasabi, DigitalOcean Spaces).
+
+    Attributes:
+        MINIO_ENDPOINT (str): ``host[:port]`` without scheme (e.g.
+            ``minio.internal:9000``, ``s3.amazonaws.com``).
+        MINIO_ACCESS_KEY (str): Access key / IAM user.
+        MINIO_SECRET_KEY (str): Secret key — keep out of source.
+        MINIO_SECURE (bool): Use HTTPS when ``True``. Default
+            ``False`` because local MinIO ships plain HTTP.
+        MINIO_REGION (str): S3 region. MinIO defaults to
+            ``us-east-1``; AWS deployments should override.
+        MINIO_DEFAULT_BUCKET (str): Bucket created by
+            :meth:`AsyncMinIOClient.ensure_bucket` and used as the
+            implicit target for object operations.
+    """
+
+    MINIO_ENDPOINT: str = Field(
+        default="localhost:9000",
+        description="host[:port] without scheme.",
+    )
+    MINIO_ACCESS_KEY: str = Field(
+        default="minioadmin",
+        description="S3 access key.",
+    )
+    MINIO_SECRET_KEY: str = Field(
+        default="minioadmin",
+        description="S3 secret key.",
+    )
+    MINIO_SECURE: bool = Field(
+        default=False,
+        description="Use HTTPS when True.",
+    )
+    MINIO_REGION: str = Field(
+        default="us-east-1",
+        description="S3 region name.",
+    )
+    MINIO_DEFAULT_BUCKET: str = Field(
+        default="uploads",
+        description="Default bucket name.",
+    )
+
+
 __all__: list[str] = [
     "CORSSettings",
     "DatabaseSettings",
     "EmailSettings",
     "JWTSettings",
     "LogSettings",
+    "MinIOSettings",
     "RabbitMQSettings",
     "RedisSettings",
     "ServerSettings",

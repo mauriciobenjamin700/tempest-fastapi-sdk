@@ -60,8 +60,11 @@ endpoint, metrics (CPU/RAM/GPU/Disk), rate limiting, pagination
 (offset + cursor), settings mixins, SSE, throttle, upload/download,
 WebPush, webhook signatures, BR validators (CPF/CNPJ/CEP/phone),
 admin panel (Jinja + HTMX), email (SMTP), Redis cache, FastStream
-queue, TaskIQ tasks, hardened static files, server runner, health,
-tool-spec router, request-id middleware, CORS, CLI scaffolder.
+queue, TaskIQ tasks, **MinIO / S3 object storage**
+(`AsyncMinIOClient` via the `[minio]` extra — bucket lifecycle,
+object I/O, streaming download, presigned URLs), hardened static
+files, server runner, health, tool-spec router, request-id
+middleware, CORS, CLI scaffolder.
 
 The list below is the deliberate next-version plan. Each tier is
 ordered by impact for a typical production FastAPI service.

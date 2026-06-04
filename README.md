@@ -110,6 +110,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` (FastStream) |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager` (TaskIQ) |
 | `[admin]` | `jinja2`, `itsdangerous` | `AdminSite`, `AdminModel`, `make_admin_router` |
+| `[minio]` | `minio` | `AsyncMinIOClient`, `ObjectStat`, `MinIOSettings` |
 | `[all]` | everything above | every helper |
 
 ```bash
@@ -128,7 +129,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]`, `CursorPaginationFilterSchema`, `CursorPaginationSchema`, `LogEntrySchema`, `encode_cursor`, `decode_cursor`, `build_pagination_link_header` |
 | `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin` |
 | `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `FileTooLargeException`, `InvalidFileTypeException`, `TooManyRequestsException` |
-| `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings` |
+| `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings`, `MinIOSettings` |
 | `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_logs_router`, `LogSource`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck` |
 | `tempest_fastapi_sdk.controllers` | `BaseController` |
 | `tempest_fastapi_sdk.services` | `BaseService` |
@@ -138,6 +139,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager`, `cached` |
 | `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
 | `tempest_fastapi_sdk.queue` *(extra: `[queue]`)* | `AsyncBrokerManager` (FastStream lifecycle wrapper) |
+| `tempest_fastapi_sdk.storage` *(extra: `[minio]`)* | `AsyncMinIOClient`, `ObjectStat` — async MinIO/S3 facade |
 | `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `AsyncTaskBrokerManager` (TaskIQ lifecycle wrapper), `AsyncTaskScheduler` (periodic / cron tasks) |
 | `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `AttemptThrottle`/`ThrottleBackend`/`ThrottleStatus`, `generate_opaque_token`/`hash_opaque_token`/`verify_opaque_token`, `get_client_ip`/`get_client_ip_from_scope`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `DownloadUtils`/`build_content_disposition` *(no extra)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`) |
 | `tempest_fastapi_sdk.cli` | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `version` / `--version` |

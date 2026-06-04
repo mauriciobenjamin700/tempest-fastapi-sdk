@@ -91,6 +91,7 @@ plugins:
             Tempo real: Real-time
             Fila e Tarefas: Queue & Tasks
             Logging: Logging
+            Storage (MinIO/S3): Storage (MinIO/S3)
             Métricas: Metrics
             Painel admin: Admin site
             Testes: Testing
@@ -186,6 +187,7 @@ nav:
       - Tempo real: recipes/realtime.md
       - Fila e Tarefas: recipes/queue-tasks.md
       - Logging: recipes/logging.md
+      - Storage (MinIO/S3): recipes/storage.md
       - Métricas: recipes/metrics.md
       - Painel admin: recipes/admin.md
       - Testes: recipes/testing.md

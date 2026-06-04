@@ -5,6 +5,51 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] — 2026-05-31
+
+### Added
+
+- **MinIO / S3 object storage module.** New
+  `tempest_fastapi_sdk.storage` package exporting
+  `AsyncMinIOClient` and `ObjectStat`. Async-friendly facade over
+  the official `minio` package — every blocking call is wrapped in
+  `asyncio.to_thread`, so the FastAPI event loop stays responsive
+  while uploads/downloads run in the executor.
+
+  Operations covered:
+
+  - **Buckets** — `bucket_exists`, `ensure_bucket`, `list_buckets`,
+    `remove_bucket`.
+  - **Objects** — `put_object` (bytes or file-like), `fput_object`
+    (from disk), `get_object_bytes`, `fget_object`, `stream_object`
+    (chunked async iterator), `stat_object`, `list_objects`
+    (prefix + recursion), `remove_object`, `copy_object`.
+  - **Presigned URLs** — `presigned_get_url`, `presigned_put_url`
+    with `timedelta` expiry.
+
+  The full synchronous `minio.Minio` client stays accessible via
+  the `.client` attribute when you need surface beyond the wrapper
+  (SSE-KMS, lifecycle XML, bucket replication, etc.).
+
+- **`MinIOSettings` mixin** under `tempest_fastapi_sdk.settings`,
+  exposing `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`,
+  `MINIO_SECURE`, `MINIO_REGION`, `MINIO_DEFAULT_BUCKET`. Re-exported
+  at the package root.
+
+- **New `[minio]` extra** — `pip install
+  "tempest-fastapi-sdk[minio]"`. The `minio` package is lazy-loaded
+  at `AsyncMinIOClient.__init__` so projects without storage don't
+  pay the import cost.
+
+### Docs
+
+- New `docs/recipes/storage{,.en}.md` recipe with end-to-end
+  examples: `UploadFile` upload, streaming download, presigned
+  upload (direct from browser), presigned download, prefix
+  listing, copy/move.
+- `docs/reference.md` adds entries for `AsyncMinIOClient` and
+  `ObjectStat`.
+
 ## [0.22.1] — 2026-05-31
 
 ### Fixed

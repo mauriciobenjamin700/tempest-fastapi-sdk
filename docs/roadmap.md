@@ -3,14 +3,14 @@
 Esta página lista o que o SDK **ainda não oferece** mas tem demanda real em serviços de produção. Está ordenado por impacto, não por ordem de implementação — a release atual é puxada pela pressão de negócio, não pela posição na lista.
 
 !!! tip "O que o SDK já cobre"
-    Auth (JWT/bearer/role/permission/X-Token), DB (`AsyncDatabaseManager` + `BaseRepository` + `AlembicHelper` + `BaseModel` + mixins de auditoria/soft-delete), exceções padronizadas, logging estruturado + arquivos por nível + endpoint `/logs`, métricas (CPU/RAM/GPU/Disco), rate limiting, paginação (offset + cursor), settings por mixin, SSE, throttle, upload/download, WebPush, assinatura de webhook, validadores BR (CPF/CNPJ/CEP/telefone), painel admin (Jinja + HTMX), email (SMTP), cache Redis, fila FastStream, tarefas TaskIQ, static files endurecidos, runner de servidor, health, tool-spec router, request-id middleware, CORS, CLI scaffolder.
+    Auth (JWT/bearer/role/permission/X-Token), DB (`AsyncDatabaseManager` + `BaseRepository` + `AlembicHelper` + `BaseModel` + mixins de auditoria/soft-delete), exceções padronizadas, logging estruturado + arquivos por nível + endpoint `/logs`, métricas (CPU/RAM/GPU/Disco), rate limiting, paginação (offset + cursor), settings por mixin, SSE, throttle, upload/download local, **storage MinIO/S3 (`AsyncMinIOClient` via extra `[minio]`)**, WebPush, assinatura de webhook, validadores BR (CPF/CNPJ/CEP/telefone), painel admin (Jinja + HTMX), email (SMTP), cache Redis, fila FastStream, tarefas TaskIQ, static files endurecidos, runner de servidor, health, tool-spec router, request-id middleware, CORS, CLI scaffolder.
 
 ## Tier S — toda API séria precisa
 
 | Feature | Por que importa |
 |---------|-----------------|
 | **`IdempotencyMiddleware`** + tabela `idempotency_keys` | Header `Idempotency-Key` obrigatório em POST de pagamento/webhook/retry. Sem ele, cliente retentando duplica linha no banco. Padrão Stripe/AWS. |
-| **`UploadUtils` com backends pluggáveis** — `LocalBackend`, `S3Backend(bucket, region)`, `GCSBackend`, `MinIOBackend` | Hoje só grava em disco local — inutiliza o SDK em qualquer deploy multi-réplica. |
+| **`UploadUtils` com backends pluggáveis** — `LocalBackend`, `S3Backend(bucket, region)`, `GCSBackend` | Hoje `UploadUtils` só grava em disco local. ⚠️ **Cliente MinIO/S3 standalone já entregue na v0.23.0** via `AsyncMinIOClient` (`[minio]` extra) — falta plugar como backend do `UploadUtils`. |
 | **OpenTelemetry tracing** — `setup_tracing(app, otlp_endpoint=…)` | `RequestIDMiddleware` correlaciona log mas não dá span cross-service. Precisa de auto-instrumentação FastAPI/SQLAlchemy/httpx. |
 | **`HTTPClient` (wrapper typed do httpx)** | Retry + backoff, propagação de `X-Request-ID`, circuit-breaker, timeout default. Hoje cada serviço roda httpx solto. |
 | **Outbox pattern** — `BaseRepository.save_with_outbox(model, event)` | Persiste evento na mesma transação do `INSERT`; `AsyncBrokerManager` drena. Sem isso, evento se perde quando o broker falha após o commit. |

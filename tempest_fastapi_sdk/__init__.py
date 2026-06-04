@@ -93,6 +93,7 @@ from tempest_fastapi_sdk.settings import (
     EmailSettings,
     JWTSettings,
     LogSettings,
+    MinIOSettings,
     RabbitMQSettings,
     RedisSettings,
     ServerSettings,
@@ -102,6 +103,7 @@ from tempest_fastapi_sdk.settings import (
     WebPushSettings,
 )
 from tempest_fastapi_sdk.sse import EventStream, ServerSentEvent, sse_response
+from tempest_fastapi_sdk.storage import AsyncMinIOClient, ObjectStat
 from tempest_fastapi_sdk.utils import (
     CEP,
     CEP_PATTERN,
@@ -159,7 +161,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-__version__: str = "0.22.1"
+__version__: str = "0.23.0"
 
 __all__: list[str] = [
     "CEP",
@@ -179,6 +181,7 @@ __all__: list[str] = [
     "AlembicHelper",
     "AppException",
     "AsyncDatabaseManager",
+    "AsyncMinIOClient",
     "AttemptThrottle",
     "AuditMixin",
     "BaseAppSettings",
@@ -223,7 +226,9 @@ __all__: list[str] = [
     "LogUtils",
     "MemoryMetrics",
     "MetricsUtils",
+    "MinIOSettings",
     "NotFoundException",
+    "ObjectStat",
     "OrderRef",
     "PasswordUtils",
     "PhoneBR",
