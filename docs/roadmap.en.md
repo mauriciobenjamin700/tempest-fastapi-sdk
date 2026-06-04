@@ -48,9 +48,9 @@ This page lists what the SDK **does not ship yet** but has real demand in produc
 - `IdempotencyMiddleware` + `MemoryIdempotencyStore` + `RedisIdempotencyStore`
 - `EmailUtils.render_template(template, ctx)` with Jinja2 + autoescape
 
-### v0.25.0 — CLI docker-compose generator
+### ✅ v0.25.0 — CLI docker-compose generator (shipped)
 
-`tempest new` emits a `docker-compose.yaml` based on the installed extras — only spins up Postgres if `[admin]`/`[db]`, only spins up Redis if `[cache]`, etc.
+`tempest new` emits a `docker-compose.yaml` matching the chosen extras — Postgres always, `[cache]`→Redis, `[queue]`/`[tasks]`→RabbitMQ, `[minio]`→MinIO + bootstrap, `[email]`→MailHog. Pinned image tags. `.env.example` gets an addendum with URLs/creds matching the containers.
 
 ### v0.26.0+ — observability + retries
 

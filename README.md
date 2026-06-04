@@ -3825,10 +3825,12 @@ Short version — recently shipped and what's next:
   `MinIOUploadStorage`, `IdempotencyMiddleware` with memory +
   Redis backends, `EmailUtils.render_template(template, ctx)`
   with Jinja2 autoescaping.
-- **Next: v0.25.0 — CLI docker-compose generator.** `tempest new`
-  emits a `docker-compose.yaml` wiring only the services covered
-  by the installed extras (Postgres, Redis, RabbitMQ, MinIO,
-  MailHog), pinned to the SDK's supported versions.
+- **v0.25.0 — CLI docker-compose generator.** ✅ Shipped —
+  `tempest new` emits a `docker-compose.yaml` wired with only
+  the services backing the chosen extras (Postgres always,
+  `[cache]`→Redis, `[queue]`/`[tasks]`→RabbitMQ, `[minio]`→MinIO
+  + bootstrap, `[email]`→MailHog) at pinned versions. `.env.example`
+  receives a matching addendum with the URLs/credentials.
 - **v0.26.0+** — observability (OpenTelemetry, Prometheus
   `/metrics`, typed `HTTPClient` httpx wrapper), outbox pattern
   for transactional events, OAuth2/OIDC providers, bulk

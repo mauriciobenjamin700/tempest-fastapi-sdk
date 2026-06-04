@@ -263,6 +263,26 @@ def scaffold(
         )
         written.append(destination)
 
+    from tempest_fastapi_sdk.cli.docker_compose import (
+        env_block_for,
+    )
+    from tempest_fastapi_sdk.cli.docker_compose import (
+        generate as generate_compose,
+    )
+
+    compose_path = target / "docker-compose.yaml"
+    compose_path.write_text(generate_compose(resolved_name, extras), encoding="utf-8")
+    written.append(compose_path)
+
+    env_example = target / ".env.example"
+    if env_example.exists():
+        env_addendum = env_block_for(extras)
+        if env_addendum:
+            env_example.write_text(
+                env_example.read_text(encoding="utf-8") + env_addendum,
+                encoding="utf-8",
+            )
+
     cwd = Path.cwd()
     display = target.relative_to(cwd) if target.is_relative_to(cwd) else target
     typer.echo(f"Scaffolded {len(written)} files in {target}", err=False)
@@ -270,6 +290,7 @@ def scaffold(
     typer.echo(f"  cd {display}", err=False)
     typer.echo("  uv sync", err=False)
     typer.echo("  cp .env.example .env", err=False)
+    typer.echo("  docker compose up -d", err=False)
     typer.echo("  uv run python main.py", err=False)
 
 

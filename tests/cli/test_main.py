@@ -59,6 +59,42 @@ class TestNew:
         assert (target / "tests" / "test_smoke.py").is_file()
         assert (target / ".gitignore").is_file()
         assert (target / ".env.example").is_file()
+        assert (target / "docker-compose.yaml").is_file()
+
+    def test_compose_only_wires_postgres_by_default(self, tmp_path: Path) -> None:
+        result = runner.invoke(app, ["new", "demo_svc", "--path", str(tmp_path)])
+        assert result.exit_code == 0
+        compose = (tmp_path / "demo_svc" / "docker-compose.yaml").read_text()
+        assert "postgres:" in compose
+        # Default --extras=auth — none of these services should appear:
+        assert "redis:" not in compose
+        assert "rabbitmq:" not in compose
+        assert "minio:" not in compose
+        assert "mailhog:" not in compose
+
+    def test_compose_picks_extras(self, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "new",
+                "demo_svc",
+                "--path",
+                str(tmp_path),
+                "--extras",
+                "auth,cache,minio,queue,email",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        compose = (tmp_path / "demo_svc" / "docker-compose.yaml").read_text()
+        assert "redis:" in compose
+        assert "rabbitmq:" in compose
+        assert "minio:" in compose
+        assert "mailhog:" in compose
+        env = (tmp_path / "demo_svc" / ".env.example").read_text()
+        assert "REDIS_URL" in env
+        assert "RABBITMQ_URL" in env
+        assert "MINIO_ENDPOINT" in env
+        assert "EMAIL_HOST=localhost" in env
 
     def test_placeholders_are_rendered(self, tmp_path: Path) -> None:
         result = runner.invoke(app, ["new", "demo_svc", "--path", str(tmp_path)])

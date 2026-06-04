@@ -27,6 +27,7 @@ my_service/
 ├── main.py                  # one-liner → src.server.run()
 ├── pyproject.toml           # pins tempest-fastapi-sdk + ruff/mypy/pytest
 ├── .env.example             # HOST/PORT/DATABASE_URL/JWT_SECRET/CORS_ORIGINS
+├── docker-compose.yaml      # services keyed to the chosen extras
 ├── .gitignore
 ├── README.md
 ├── src/
@@ -48,6 +49,49 @@ my_service/
 ```
 
 The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[auth]>=<version>` by default — change with `--extras`). The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
+
+### Extras-driven `docker-compose.yaml`
+
+Since v0.25.0 the scaffold generates a `docker-compose.yaml` carrying **only** the supporting services the chosen extras actually need — no ZooKeeper, no Kafka, nothing you won't use.
+
+| Extra | Container | Exposed port(s) |
+|-------|-----------|-----------------|
+| (always) | `postgres:16-alpine` | 5432 |
+| `[cache]` | `redis:7-alpine` | 6379 |
+| `[queue]` / `[tasks]` | `rabbitmq:3-management-alpine` | 5672 (AMQP) + 15672 (UI) |
+| `[minio]` | `minio/minio` + bootstrap mc | 9000 (API) + 9001 (Console) |
+| `[email]` | `mailhog/mailhog` | 1025 (SMTP) + 8025 (UI) |
+
+Example — service using cache + S3 uploads + emails:
+
+```bash
+tempest new my_service --extras auth,cache,minio,email
+```
+
+Generates:
+
+- `postgres`, `redis`, `minio` (+ `minio-bootstrap` creating the `uploads` bucket), `mailhog`
+- `.env.example` with `REDIS_URL`, `MINIO_*`, `EMAIL_HOST=localhost`, `EMAIL_PORT=1025`
+
+Boot it all:
+
+```bash
+docker compose up -d
+```
+
+Tear down keeping volumes:
+
+```bash
+docker compose down
+```
+
+Tear down wiping volumes:
+
+```bash
+docker compose down -v
+```
+
+Image tags are pinned by the SDK — bump them through `pyproject.toml` of the SDK, not on a per-project basis.
 
 After scaffolding:
 

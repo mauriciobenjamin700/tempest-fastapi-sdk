@@ -5,6 +5,46 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] — 2026-05-31
+
+### Added
+
+- **`tempest new` now generates a `docker-compose.yaml`** wired
+  with only the supporting infrastructure the picked extras
+  require. The mapping:
+
+  - `[cache]` → Redis 7 (alpine)
+  - `[queue]` or `[tasks]` → RabbitMQ 3 with the management UI
+    exposed at `http://localhost:15672`
+  - `[minio]` → MinIO + a one-shot bootstrap container that
+    creates the `uploads` bucket
+  - `[email]` → MailHog (catches outbound SMTP, UI at
+    `http://localhost:8025`)
+
+  Postgres is always wired (the SDK's DB primitives are core), so
+  every scaffolded project gets a one-command path to a real
+  database via `docker compose up -d`. The scaffolded `.env` keeps
+  SQLite as the default URL so the smoke run works without Docker.
+
+- **`.env.example` gains a service-aware addendum** matching the
+  same extras → environment variables. Picking `--extras cache,minio`
+  writes `REDIS_URL`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY` (etc.)
+  into `.env.example` so the developer can copy the file straight
+  to `.env` and the service connects to the compose-spawned
+  containers without further editing.
+
+- **`tempest_fastapi_sdk.cli.docker_compose` module** exposes
+  `generate(project_name, extras)` and `env_block_for(extras)` as
+  public helpers. Both pin image tags to specific versions that
+  are smoke-tested with the SDK; bumping the pins should go
+  through the smoke suite before being released.
+
+### Changed
+
+- The post-scaffold "Next steps" hint printed by `tempest new`
+  now reminds the developer to run `docker compose up -d` before
+  `uv run python main.py`.
+
 ## [0.24.0] — 2026-05-31
 
 ### Added

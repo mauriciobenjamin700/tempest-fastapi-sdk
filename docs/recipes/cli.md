@@ -27,6 +27,7 @@ my_service/
 ├── main.py                  # one-liner → src.server.run()
 ├── pyproject.toml           # fixa tempest-fastapi-sdk + ruff/mypy/pytest
 ├── .env.example             # HOST/PORT/DATABASE_URL/JWT_SECRET/CORS_ORIGINS
+├── docker-compose.yaml      # serviços baseados nos extras escolhidos
 ├── .gitignore
 ├── README.md
 ├── src/
@@ -48,6 +49,49 @@ my_service/
 ```
 
 O `pyproject.toml` gerado fixa a versão atual do SDK (`tempest-fastapi-sdk[auth]>=<versão>` por padrão — mude com `--extras`). O `.env.example` criado usa a nomenclatura de settings da v0.8.0 (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), e `src/server.py` delega a `tempest_fastapi_sdk.run_server` para que o uvicorn seja importado de forma preguiçosa e os testes possam importar o app sem ele. Regras de validação: o nome do projeto deve casar com `^[a-z][a-z0-9_]*$` e não pode colidir com uma palavra-chave do Python, então `tempest new Bad-Name` e `tempest new class` saem com código 2 antes de qualquer arquivo ser escrito.
+
+### `docker-compose.yaml` baseado nos extras
+
+Desde a v0.25.0 o scaffold gera um `docker-compose.yaml` com **apenas** os serviços que os extras escolhidos precisam — sem ZooKeeper, Kafka ou qualquer outra coisa que você não vai usar.
+
+| Extra | Container subido | Porta(s) exposta(s) |
+|-------|------------------|---------------------|
+| (sempre) | `postgres:16-alpine` | 5432 |
+| `[cache]` | `redis:7-alpine` | 6379 |
+| `[queue]` / `[tasks]` | `rabbitmq:3-management-alpine` | 5672 (AMQP) + 15672 (UI) |
+| `[minio]` | `minio/minio` + bootstrap mc | 9000 (API) + 9001 (Console) |
+| `[email]` | `mailhog/mailhog` | 1025 (SMTP) + 8025 (UI) |
+
+Exemplo — projeto que usa cache + uploads em S3 + emails:
+
+```bash
+tempest new my_service --extras auth,cache,minio,email
+```
+
+Gera:
+
+- `postgres`, `redis`, `minio` (+ `minio-bootstrap` que cria o bucket `uploads`), `mailhog`
+- `.env.example` com `REDIS_URL`, `MINIO_*`, `EMAIL_HOST=localhost`, `EMAIL_PORT=1025`
+
+Subir tudo:
+
+```bash
+docker compose up -d
+```
+
+Derrubar mantendo volumes:
+
+```bash
+docker compose down
+```
+
+Derrubar limpando volumes:
+
+```bash
+docker compose down -v
+```
+
+As tags das imagens são fixadas — atualize por `pyproject.toml` da SDK, não no projeto gerado.
 
 Depois de gerar:
 
