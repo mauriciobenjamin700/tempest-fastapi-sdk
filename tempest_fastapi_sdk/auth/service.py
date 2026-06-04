@@ -20,10 +20,11 @@ the rest of the SDK so the same code runs against any
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationToken,
@@ -128,7 +129,7 @@ class UserAuthService:
 
     async def signup(
         self,
-        session: Any,
+        session: AsyncSession,
         *,
         email: str,
         password: str,
@@ -208,7 +209,7 @@ class UserAuthService:
 
     async def activate(
         self,
-        session: Any,
+        session: AsyncSession,
         *,
         token: str,
     ) -> BaseUserModel:
@@ -244,7 +245,7 @@ class UserAuthService:
 
     async def login(
         self,
-        session: Any,
+        session: AsyncSession,
         *,
         email: str,
         password: str,
@@ -288,7 +289,7 @@ class UserAuthService:
 
     async def request_password_reset(
         self,
-        session: Any,
+        session: AsyncSession,
         *,
         email: str,
     ) -> PasswordResetToken | None:
@@ -340,7 +341,7 @@ class UserAuthService:
 
     async def confirm_password_reset(
         self,
-        session: Any,
+        session: AsyncSession,
         *,
         token: str,
         new_password: str,
@@ -411,7 +412,7 @@ class UserAuthService:
 
     async def _issue_token(
         self,
-        session: Any,
+        session: AsyncSession,
         *,
         user_id: UUID,
         purpose: UserTokenPurpose,
@@ -434,7 +435,7 @@ class UserAuthService:
 
     async def _consume_token(
         self,
-        session: Any,
+        session: AsyncSession,
         *,
         token: str,
         purpose: UserTokenPurpose,

@@ -5,6 +5,21 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.2] — 2026-06-04
+
+### Changed
+
+- **``UserAuthService`` method signatures now type ``session``
+  as ``sqlalchemy.ext.asyncio.AsyncSession``** instead of
+  ``Any``. All seven public methods (``signup``, ``activate``,
+  ``login``, ``request_password_reset``,
+  ``confirm_password_reset``, ``_issue_token``, ``_consume_token``)
+  declare the real type so mypy + IDE autocomplete can flag
+  wrong shapes at the call site. No behavior change — only the
+  annotations tightened. Aligned with the v0.25.1
+  "avoid ``Any`` in SDK code" rule that the auth module had
+  drifted away from when it landed in v0.31.0.
+
 ## [0.31.1] — 2026-06-04
 
 ### Changed
