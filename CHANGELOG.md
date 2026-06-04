@@ -5,6 +5,47 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.2] — 2026-06-04
+
+### Security
+
+- **``alembic.ini`` no longer stamps the database URL.** The
+  generated ini ships with ``sqlalchemy.url = `` empty so
+  credentials never enter version control. Both the SDK
+  ``env.py`` template and ``AlembicHelper.config`` resolve the
+  URL at runtime:
+
+  1. ``db_url`` passed to the constructor or via
+     ``--database-url`` on the CLI.
+  2. ``DATABASE_URL`` env var (loaded from ``.env``).
+  3. ``src.core.settings.settings.DATABASE_URL`` in scaffolded
+     projects.
+
+  When none of the three is set the env.py raises
+  ``RuntimeError("DATABASE_URL is empty. Set it on the
+  environment, in src/core/settings.py, or pass --database-url
+  to the CLI.")`` so missing config fails loudly instead of
+  silently connecting to whatever was left on the ini.
+
+### Migration for existing projects
+
+Open ``alembic.ini`` and blank the ``sqlalchemy.url`` line:
+
+```ini
+sqlalchemy.url =
+```
+
+Then rotate the leaked credential at the database (assume the
+secret is compromised the moment it landed in a Git commit).
+Append ``alembic.ini`` to a code-search / CI hook so the line
+stays empty across future PRs.
+
+If your ``alembic/env.py`` was older than v0.21.x and does not
+import ``tempest_fastapi_sdk.db.alembic_hooks``, rerun
+``tempest db init`` against an empty file to regenerate it, or
+copy the new template from
+``tempest_fastapi_sdk/db/_alembic_templates/env.py.template``.
+
 ## [0.30.1] — 2026-06-04
 
 ### Added

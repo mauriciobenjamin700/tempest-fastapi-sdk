@@ -16,6 +16,42 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 
 
+def _resolve_runtime_database_url() -> str | None:
+    """Read ``DATABASE_URL`` from env / scaffolded settings.
+
+    Used by :attr:`AlembicHelper.config` when ``sqlalchemy.url`` is
+    blank in ``alembic.ini`` (the SDK default since v0.30.2 — keeps
+    credentials out of version control). Both ``current()`` /
+    ``upgrade()`` etc. and the bundled ``env.py`` template share
+    this resolver so CLI commands and in-process callers agree on
+    the URL.
+
+    Returns:
+        str | None: The resolved URL, or ``None`` when neither
+        source is set.
+    """
+    import os
+    import sys
+    from pathlib import Path
+
+    env = os.environ.get("DATABASE_URL")
+    if env:
+        return env
+    cwd = Path.cwd()
+    if (cwd / "src" / "core" / "settings.py").is_file():
+        if str(cwd) not in sys.path:
+            sys.path.insert(0, str(cwd))
+        try:
+            from src.core.settings import settings  # type: ignore[import-not-found]
+
+            url = getattr(settings, "DATABASE_URL", None)
+            if isinstance(url, str) and url:
+                return url
+        except Exception:
+            return None
+    return None
+
+
 def _strip_async_driver(url: str) -> str:
     """Return a sync flavor of an async database URL.
 
@@ -78,12 +114,33 @@ class AlembicHelper:
         stateless and safe to share across threads — Alembic mutates
         the config object during command execution.
 
+        ``sqlalchemy.url`` resolution order:
+
+        1. ``db_url`` passed on the constructor (explicit override).
+        2. The value already on the ini file.
+        3. The ``DATABASE_URL`` environment variable (loaded from
+           ``.env`` before invoking the helper).
+        4. ``src.core.settings.settings.DATABASE_URL`` when the
+           scaffolded layout is detected.
+
+        The SDK-generated ini ships with ``sqlalchemy.url = `` empty
+        on purpose so secrets never enter version control — the
+        resolution chain above fills it at runtime.
+
         Returns:
             Config: The configured Alembic config.
         """
         config = Config(self.config_path)
         if self._db_url_override is not None:
             config.set_main_option("sqlalchemy.url", self._db_url_override)
+            return config
+
+        # Fall back to env/settings when the ini left ``sqlalchemy.url``
+        # empty (the SDK default since v0.30.2).
+        if not config.get_main_option("sqlalchemy.url"):
+            resolved = _resolve_runtime_database_url()
+            if resolved:
+                config.set_main_option("sqlalchemy.url", resolved)
         return config
 
     def init(
@@ -151,10 +208,17 @@ class AlembicHelper:
 
         # Overwrite the ini Alembic just wrote with the SDK's
         # opinionated layout (logger sections, file_template, UTC).
+        # ``sqlalchemy.url`` is intentionally left empty so the
+        # credentials never land in version control. The companion
+        # ``env.py`` template resolves the URL at runtime from
+        # ``DATABASE_URL`` env var (or ``src.core.settings``) and
+        # injects it back into the Alembic config before the engine
+        # is built. Pass ``db_url=...`` on the constructor to override
+        # for one-off operations (CI smoke, scripted migrations).
         ini_lines = [
             "[alembic]",
             f"script_location = {directory}",
-            f"sqlalchemy.url = {db_url}",
+            "sqlalchemy.url = ",
             (
                 "file_template = "
                 "%%(year)d_%%(month).2d_%%(day).2d_"

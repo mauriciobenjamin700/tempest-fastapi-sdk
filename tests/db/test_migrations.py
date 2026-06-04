@@ -82,17 +82,76 @@ class TestInit:
         assert "ruff_fix.options = check --fix REVISION_SCRIPT_FILENAME" in ini_text
         assert "ruff_format.options = format REVISION_SCRIPT_FILENAME" in ini_text
 
+    def test_ini_ships_empty_sqlalchemy_url(self, alembic_project: Path) -> None:
+        """Credentials must never enter version control via alembic.ini."""
+        ini_text = (alembic_project / "alembic.ini").read_text()
+        assert "sqlalchemy.url = \n" in ini_text or "sqlalchemy.url =\n" in ini_text
+        # Should NOT contain any URL with a driver scheme.
+        assert "sqlite+" not in ini_text
+        assert "postgresql" not in ini_text
+
+
+class TestRuntimeURLResolution:
+    def test_env_var_resolves_when_ini_empty(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        helper = AlembicHelper(
+            config_path=str(tmp_path / "alembic.ini"),
+        )
+        helper.init(
+            directory=str(tmp_path / "alembic"),
+            metadata_module=None,
+        )
+
+        url = f"sqlite+aiosqlite:///{tmp_path / 'runtime.db'}"
+        monkeypatch.setenv("DATABASE_URL", url)
+
+        # Build a fresh helper that does NOT receive db_url — the
+        # property should fall back to DATABASE_URL.
+        runtime_helper = AlembicHelper(
+            config_path=str(tmp_path / "alembic.ini"),
+        )
+        config = runtime_helper.config
+        assert config.get_main_option("sqlalchemy.url") == url
+
+    def test_constructor_override_beats_env_var(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///from_env.db")
+        helper = AlembicHelper(
+            config_path=str(tmp_path / "alembic.ini"),
+            db_url="sqlite+aiosqlite:///from_arg.db",
+        )
+        helper.init(directory=str(tmp_path / "alembic"))
+
+        assert (
+            helper.config.get_main_option("sqlalchemy.url")
+            == "sqlite+aiosqlite:///from_arg.db"
+        )
+
 
 class TestCurrentAndHistory:
     def test_current_is_none_on_fresh_db(self, alembic_project: Path) -> None:
+        # Pass ``db_url`` explicitly — since v0.30.2 the generated
+        # alembic.ini ships with ``sqlalchemy.url`` empty so secrets
+        # never enter version control; callers supply the URL via
+        # env / settings / constructor at runtime.
         helper = AlembicHelper(
             config_path=str(alembic_project / "alembic.ini"),
+            db_url=f"sqlite+aiosqlite:///{alembic_project / 'test.db'}",
         )
         assert helper.current() is None
 
     def test_history_returns_string(self, alembic_project: Path) -> None:
         helper = AlembicHelper(
             config_path=str(alembic_project / "alembic.ini"),
+            db_url=f"sqlite+aiosqlite:///{alembic_project / 'test.db'}",
         )
         # No revisions yet — output should be empty-ish but a str.
         result = helper.history()

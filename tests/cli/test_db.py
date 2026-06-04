@@ -52,8 +52,13 @@ class TestDbWorkflow:
     def test_revision_then_upgrade_then_current(
         self,
         project_root: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         _seed_metadata_module(project_root)
+        # The SDK alembic.ini ships with ``sqlalchemy.url`` empty; env.py
+        # resolves the URL at runtime from DATABASE_URL or settings.
+        db_url = f"sqlite+aiosqlite:///{project_root / 'cli_test.db'}"
+        monkeypatch.setenv("DATABASE_URL", db_url)
         runner.invoke(app, ["db", "init", "--metadata-import", "src.db.models"])
 
         # Manual revision (no model diff) — just exercises the
