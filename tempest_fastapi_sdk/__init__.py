@@ -74,6 +74,7 @@ from tempest_fastapi_sdk.core import (
     set_request_id,
 )
 from tempest_fastapi_sdk.db import (
+    BASE_COLUMN_ORDER,
     NAMING_CONVENTION,
     AlembicHelper,
     AsyncDatabaseManager,
@@ -82,6 +83,8 @@ from tempest_fastapi_sdk.db import (
     BaseRepository,
     BaseUserModel,
     SoftDeleteMixin,
+    compose_hooks,
+    reorder_base_columns_first,
 )
 from tempest_fastapi_sdk.exceptions import (
     AppException,
@@ -192,9 +195,10 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-__version__: str = "0.30.0"
+__version__: str = "0.30.1"
 
 __all__: list[str] = [
+    "BASE_COLUMN_ORDER",
     "CEP",
     "CEP_PATTERN",
     "CNPJ",
@@ -324,6 +328,7 @@ __all__: list[str] = [
     "build_pagination_link_header",
     "clear_cookie",
     "clear_request_id",
+    "compose_hooks",
     "configure_logging",
     "decode_cursor",
     "encode_cursor",
@@ -362,6 +367,7 @@ __all__: list[str] = [
     "normalize_phone_br",
     "only_digits",
     "register_exception_handlers",
+    "reorder_base_columns_first",
     "request_id_ctx",
     "require_x_token",
     "run_server",
