@@ -5,6 +5,8 @@ import json
 import logging
 from pathlib import Path
 
+import pytest
+
 from tempest_fastapi_sdk import (
     JSONFormatter,
     clear_request_id,
@@ -85,7 +87,11 @@ class TestJSONFormatter:
 
 class TestConfigureLogging:
     def test_named_logger_emits_json(self) -> None:
-        logger = configure_logging(level="DEBUG", logger_name="tempest.cfg.test")
+        logger = configure_logging(
+            level="DEBUG",
+            logger_name="tempest.cfg.test",
+            file_output=False,
+        )
         buf = io.StringIO()
         logger.handlers[0].stream = buf  # type: ignore[attr-defined]
         logger.info("emit", extra={"foo": "bar"})
@@ -94,9 +100,15 @@ class TestConfigureLogging:
         assert payload["foo"] == "bar"
 
     def test_replaces_existing_handlers(self) -> None:
-        first = configure_logging(logger_name="tempest.cfg.replace")
+        first = configure_logging(
+            logger_name="tempest.cfg.replace",
+            file_output=False,
+        )
         first_id = id(first.handlers[0])
-        second = configure_logging(logger_name="tempest.cfg.replace")
+        second = configure_logging(
+            logger_name="tempest.cfg.replace",
+            file_output=False,
+        )
         assert len(second.handlers) == 1
         assert id(second.handlers[0]) != first_id
 
@@ -104,6 +116,7 @@ class TestConfigureLogging:
         logger = configure_logging(
             logger_name="tempest.cfg.text",
             json_output=False,
+            file_output=False,
         )
         buf = io.StringIO()
         logger.handlers[0].stream = buf  # type: ignore[attr-defined]
@@ -112,6 +125,35 @@ class TestConfigureLogging:
         assert "WARNING" in line
         assert "plain" in line
         assert not line.startswith("{")
+
+    def test_default_enables_stdout_and_file_output(self, tmp_path: Path) -> None:
+        logger = configure_logging(
+            logger_name="tempest.cfg.defaults",
+            log_dir=tmp_path,
+        )
+        kinds = {type(h).__name__ for h in logger.handlers}
+        assert "StreamHandler" in kinds
+        # 5 per-level handlers + 1 500.log handler = 6 file handlers,
+        # plus the stdout StreamHandler = 7 total.
+        assert len(logger.handlers) == 7
+
+    def test_stdout_false_drops_stream_handler(self, tmp_path: Path) -> None:
+        logger = configure_logging(
+            logger_name="tempest.cfg.no_stdout",
+            log_dir=tmp_path,
+            stdout=False,
+        )
+        kinds = {type(h).__name__ for h in logger.handlers}
+        assert "StreamHandler" not in kinds
+        assert len(logger.handlers) == 6
+
+    def test_disabling_both_outputs_raises(self) -> None:
+        with pytest.raises(ValueError, match="silence every handler"):
+            configure_logging(
+                logger_name="tempest.cfg.silent",
+                stdout=False,
+                file_output=False,
+            )
 
 
 class TestFileLogging:
@@ -152,7 +194,18 @@ class TestFileLogging:
         assert len(http_500_lines) == 1
         assert json.loads(http_500_lines[0])["message"] == "grave"
 
-    def test_no_log_dir_keeps_stdout_only(self) -> None:
-        logger = configure_logging(logger_name="tempest.cfg.nofiles")
+    def test_file_output_false_keeps_stdout_only(self) -> None:
+        logger = configure_logging(
+            logger_name="tempest.cfg.nofiles",
+            file_output=False,
+        )
+        assert len(logger.handlers) == 1
+        assert isinstance(logger.handlers[0], logging.StreamHandler)
+
+    def test_log_dir_none_keeps_stdout_only(self) -> None:
+        logger = configure_logging(
+            logger_name="tempest.cfg.nodir",
+            log_dir=None,
+        )
         assert len(logger.handlers) == 1
         assert isinstance(logger.handlers[0], logging.StreamHandler)

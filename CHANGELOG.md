@@ -5,6 +5,50 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] — 2026-05-31
+
+### Changed
+
+- **`configure_logging` now writes to stdout *and* `logs/` by
+  default.** Before, file logging only activated when the caller
+  passed `log_dir=...`; the default scaffold often forgot it and the
+  service ran with no on-disk audit trail. The new defaults:
+
+  - `log_dir` default is now `"logs"` (was `None`).
+  - New `stdout: bool = True` flag controls the terminal handler.
+  - New `file_output: bool = True` flag controls the per-level +
+    `500.log` file handlers.
+  - Passing `stdout=False, file_output=False` raises
+    `ValueError` — that combination silences every handler and is
+    almost always a mistake.
+
+  Backwards compatibility: passing `log_dir=None` (the old sentinel
+  for "no files") still works and produces stdout-only behavior.
+  Test suites that don't want logs/ files in cwd should now pass
+  `file_output=False` explicitly.
+
+- **`LogUtils(name=..., level=..., json_output=...)` and
+  `LogUtils.configure(...)`** forward the same three flags
+  (`log_dir`, `stdout`, `file_output`) so the imperative wrapper
+  stays aligned with `configure_logging`.
+
+### Migration
+
+If your service was relying on `configure_logging(level=..., json_output=...)`
+to be stdout-only, either:
+
+```python
+# Option A — opt out explicitly:
+configure_logging(level="INFO", file_output=False)
+
+# Option B — keep stdout-only via the old sentinel:
+configure_logging(level="INFO", log_dir=None)
+```
+
+If your test suite spins up `configure_logging` or `LogUtils`
+in-process, pass `file_output=False` to avoid stray ``logs/``
+folders in the working directory.
+
 ## [0.21.3] — 2026-05-31
 
 ### Changed

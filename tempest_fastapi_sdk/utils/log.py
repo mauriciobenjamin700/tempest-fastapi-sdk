@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from tempest_fastapi_sdk.core.context import get_request_id
@@ -36,8 +37,14 @@ class LogUtils:
         *,
         level: str | int = "INFO",
         json_output: bool = True,
+        log_dir: str | Path | None = "logs",
+        stdout: bool = True,
+        file_output: bool = True,
     ) -> None:
         """Configure and bind a logger to this instance.
+
+        Mirrors :func:`configure_logging` defaults — stdout *and* file
+        output are enabled out of the box, writing under ``logs/``.
 
         Args:
             name (str): Logger name. Typically ``__name__`` of the
@@ -47,12 +54,22 @@ class LogUtils:
             json_output (bool): When ``True`` (default), structured
                 JSON output via :class:`JSONFormatter`. When ``False``,
                 a human-readable text formatter.
+            log_dir (str | Path | None): Directory for per-level files.
+                Defaults to ``"logs"``. Pass ``None`` to disable file
+                logging.
+            stdout (bool): Attach the stdout handler. Defaults to
+                ``True``.
+            file_output (bool): Attach the per-level + ``500.log`` file
+                handlers under ``log_dir``. Defaults to ``True``.
         """
         self.name: str = name
         self.logger: logging.Logger = configure_logging(
             level=level,
             json_output=json_output,
             logger_name=name,
+            log_dir=log_dir,
+            stdout=stdout,
+            file_output=file_output,
         )
 
     @staticmethod
@@ -61,14 +78,28 @@ class LogUtils:
         *,
         json_output: bool = True,
         logger_name: str | None = None,
+        log_dir: str | Path | None = "logs",
+        stdout: bool = True,
+        file_output: bool = True,
     ) -> logging.Logger:
         """Imperative shortcut for :func:`configure_logging`.
+
+        Forwards every keyword to :func:`configure_logging` so the two
+        share defaults — stdout *and* file output enabled, ``logs/``
+        directory used unless overridden.
 
         Args:
             level (str | int): Minimum log level.
             json_output (bool): Emit JSON when ``True``.
             logger_name (str | None): Target logger; ``None`` configures
                 the root logger.
+            log_dir (str | Path | None): Directory for per-level files.
+                Defaults to ``"logs"``. Pass ``None`` to disable file
+                logging.
+            stdout (bool): Attach the stdout handler. Defaults to
+                ``True``.
+            file_output (bool): Attach the per-level + ``500.log`` file
+                handlers under ``log_dir``. Defaults to ``True``.
 
         Returns:
             logging.Logger: The configured logger.
@@ -77,6 +108,9 @@ class LogUtils:
             level=level,
             json_output=json_output,
             logger_name=logger_name,
+            log_dir=log_dir,
+            stdout=stdout,
+            file_output=file_output,
         )
 
     @staticmethod

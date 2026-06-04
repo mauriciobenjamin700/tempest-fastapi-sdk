@@ -13,7 +13,11 @@ from tempest_fastapi_sdk import (
 
 class TestStaticHelpers:
     def test_configure_named_logger(self) -> None:
-        logger = LogUtils.configure(level="DEBUG", logger_name="tempest.lu.cfg")
+        logger = LogUtils.configure(
+            level="DEBUG",
+            logger_name="tempest.lu.cfg",
+            file_output=False,
+        )
         assert logger.level == logging.DEBUG
         assert len(logger.handlers) == 1
 
@@ -33,7 +37,11 @@ class TestStaticHelpers:
 
 class TestInstance:
     def _capture(self, level: str = "DEBUG") -> tuple[LogUtils, io.StringIO]:
-        util = LogUtils(name=f"tempest.lu.inst.{level}", level=level)
+        util = LogUtils(
+            name=f"tempest.lu.inst.{level}",
+            level=level,
+            file_output=False,
+        )
         buf = io.StringIO()
         util.logger.handlers[0].stream = buf  # type: ignore[attr-defined]
         return util, buf
@@ -82,7 +90,12 @@ class TestInstance:
         assert "RuntimeError: kaboom" in payload["exception"]
 
     def test_text_mode(self) -> None:
-        util = LogUtils(name="tempest.lu.text", level="INFO", json_output=False)
+        util = LogUtils(
+            name="tempest.lu.text",
+            level="INFO",
+            json_output=False,
+            file_output=False,
+        )
         buf = io.StringIO()
         util.logger.handlers[0].stream = buf  # type: ignore[attr-defined]
         util.info("plain")

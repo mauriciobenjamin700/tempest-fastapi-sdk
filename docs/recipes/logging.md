@@ -43,14 +43,28 @@ O middleware aceita um nome de header customizado (`RequestIDMiddleware(app, hea
 
 ## Arquivos por nível + `500.log` isolado
 
-Por padrão os logs vão só para o **stdout**. Passe `log_dir` para o `configure_logging` e além do stdout o SDK escreve **um arquivo JSON por nível** dentro daquela pasta. Cada arquivo recebe **apenas o seu próprio nível** (correspondência exata — um `ERROR` nunca cai no `warning.log`), então toda severidade vira um fluxo isolado e fácil de inspecionar com `grep`.
+**Por padrão, o SDK escreve simultaneamente no stdout E em `logs/`** (um arquivo JSON por nível). Cada arquivo recebe **apenas o seu próprio nível** (correspondência exata — um `ERROR` nunca cai no `warning.log`), então toda severidade vira um fluxo isolado e fácil de inspecionar com `grep`.
 
 ```python
 from tempest_fastapi_sdk import configure_logging
 
-# Mantém o stdout E escreve logs/{debug,info,warning,error,critical,500}.log
-configure_logging(level="INFO", json_output=True, log_dir="logs")
+# Defaults — stdout + logs/{debug,info,warning,error,critical,500}.log
+configure_logging(level="INFO")
+
+# Customizar diretório
+configure_logging(level="INFO", log_dir="/var/log/myapp")
+
+# Desligar arquivos (stdout puro — útil em serverless ou FS read-only)
+configure_logging(level="INFO", file_output=False)
+
+# Desligar stdout (sidecar coleta de disco)
+configure_logging(level="INFO", stdout=False)
 ```
+
+!!! warning "Não desligue os dois"
+    `configure_logging(stdout=False, file_output=False)` lança
+    `ValueError` — silenciar todos os handlers deixa a aplicação
+    cega.
 
 O resultado em disco:
 

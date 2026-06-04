@@ -202,15 +202,18 @@ def configure_logging(
     *,
     json_output: bool = True,
     logger_name: str | None = None,
-    log_dir: str | Path | None = None,
+    log_dir: str | Path | None = "logs",
+    stdout: bool = True,
+    file_output: bool = True,
 ) -> logging.Logger:
     """Install a structured stdout handler on the root (or named) logger.
 
     Replaces existing handlers on the target logger so this can be
     called safely from ``create_app`` without stacking duplicates.
 
-    When ``log_dir`` is provided, the stdout handler is kept **and**
-    per-level files are written under that directory:
+    **Default behavior** (no extra kwargs): emits to **both** stdout
+    and a ``logs/`` directory next to the service root, one file per
+    level plus a dedicated ``500.log``:
 
     * ``debug.log`` / ``info.log`` / ``warning.log`` / ``error.log`` /
       ``critical.log`` — each receives only its own level (exact match),
@@ -233,32 +236,53 @@ def configure_logging(
             stdout; files are always JSON.
         logger_name (str | None): The logger to configure. ``None``
             (default) configures the root logger.
-        log_dir (str | Path | None): When set (and non-empty), enable
-            per-level + ``500.log`` file logging under this directory
-            (created if missing). ``None`` or empty disables file
-            logging — stdout only.
+        log_dir (str | Path | None): Directory for per-level + ``500.log``
+            files. Defaults to ``"logs"`` so file logging works out of
+            the box. Pass ``None`` or an empty string to disable file
+            logging (equivalent to ``file_output=False``). Ignored when
+            ``file_output=False``.
+        stdout (bool): When ``True`` (default), attach the stdout
+            handler. Pass ``False`` to suppress terminal output
+            entirely (e.g. when a sidecar collects logs from disk).
+        file_output (bool): When ``True`` (default), attach the
+            per-level + ``500.log`` file handlers under ``log_dir``.
+            Pass ``False`` to disable file logging — useful in
+            ephemeral environments (tests, serverless) where the
+            filesystem is read-only or short-lived.
 
     Returns:
         logging.Logger: The configured logger instance.
+
+    Raises:
+        ValueError: When both ``stdout=False`` and ``file_output=False``
+            are passed — that would silence every handler and leave
+            the application blind, which is almost always a mistake.
     """
+    if not stdout and not file_output:
+        raise ValueError(
+            "configure_logging: stdout=False and file_output=False "
+            "would silence every handler. Pick at least one."
+        )
+
     logger = logging.getLogger(logger_name)
     logger.setLevel(level)
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
 
-    stream_handler = logging.StreamHandler(sys.stdout)
-    if json_output:
-        stream_handler.setFormatter(JSONFormatter())
-    else:
-        stream_handler.setFormatter(
-            logging.Formatter(
-                fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
-                datefmt="%Y-%m-%dT%H:%M:%S",
+    if stdout:
+        stream_handler = logging.StreamHandler(sys.stdout)
+        if json_output:
+            stream_handler.setFormatter(JSONFormatter())
+        else:
+            stream_handler.setFormatter(
+                logging.Formatter(
+                    fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
+                    datefmt="%Y-%m-%dT%H:%M:%S",
+                )
             )
-        )
-    logger.addHandler(stream_handler)
+        logger.addHandler(stream_handler)
 
-    if log_dir:
+    if file_output and log_dir:
         for file_handler in _build_file_handlers(Path(log_dir)):
             logger.addHandler(file_handler)
 

@@ -43,14 +43,28 @@ The middleware accepts a custom header name (`RequestIDMiddleware(app, header_na
 
 ## Per-level files + isolated `500.log`
 
-By default logs go to **stdout** only. Pass `log_dir` to `configure_logging` and, on top of stdout, the SDK writes **one JSON file per level** inside that directory. Each file receives **only its own level** (exact match — an `ERROR` never lands in `warning.log`), so every severity becomes an isolated, greppable stream.
+**By default the SDK writes to stdout AND to `logs/`** (one JSON file per level) at the same time. Each file receives **only its own level** (exact match — an `ERROR` never lands in `warning.log`), so every severity becomes an isolated, greppable stream.
 
 ```python
 from tempest_fastapi_sdk import configure_logging
 
-# Keeps stdout AND writes logs/{debug,info,warning,error,critical,500}.log
-configure_logging(level="INFO", json_output=True, log_dir="logs")
+# Defaults — stdout + logs/{debug,info,warning,error,critical,500}.log
+configure_logging(level="INFO")
+
+# Custom directory
+configure_logging(level="INFO", log_dir="/var/log/myapp")
+
+# Disable file output (stdout-only — handy for serverless / read-only FS)
+configure_logging(level="INFO", file_output=False)
+
+# Disable stdout (sidecar tails from disk)
+configure_logging(level="INFO", stdout=False)
 ```
+
+!!! warning "Don't disable both"
+    `configure_logging(stdout=False, file_output=False)` raises
+    `ValueError` — silencing every handler leaves the application
+    blind.
 
 On disk:
 
