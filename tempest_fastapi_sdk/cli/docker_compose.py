@@ -24,9 +24,9 @@ suite first.
 from __future__ import annotations
 
 # Pinned image tags — bump intentionally, not by accident.
-POSTGRES_IMAGE: str = "postgres:16-alpine"
-REDIS_IMAGE: str = "redis:7-alpine"
-RABBITMQ_IMAGE: str = "rabbitmq:3-management-alpine"
+POSTGRES_IMAGE: str = "postgres:18-alpine"
+REDIS_IMAGE: str = "redis:8-alpine"
+RABBITMQ_IMAGE: str = "rabbitmq:4-management-alpine"
 MINIO_IMAGE: str = "minio/minio:RELEASE.2024-12-13T22-19-12Z"
 MINIO_MC_IMAGE: str = "minio/mc:RELEASE.2024-11-21T17-21-54Z"
 MAILHOG_IMAGE: str = "mailhog/mailhog:v1.0.1"
@@ -46,7 +46,7 @@ def _parse_extras(extras: str) -> set[str]:
 
 
 def _postgres_block(project_name: str) -> str:
-    """Compose snippet for Postgres."""
+    """Compose snippet for Postgres 18 (scram-sha-256 default auth)."""
     safe = project_name.replace("-", "_")
     return f"""\
   postgres:
@@ -57,6 +57,8 @@ def _postgres_block(project_name: str) -> str:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
       POSTGRES_DB: {safe}
+      # Postgres 14+ defaults to scram-sha-256 — leave the explicit
+      # method off so the cluster picks the secure default.
     ports:
       - "5432:5432"
     volumes:
@@ -66,16 +68,23 @@ def _postgres_block(project_name: str) -> str:
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 10s
 """
 
 
 def _redis_block(project_name: str) -> str:
-    """Compose snippet for Redis."""
+    """Compose snippet for Redis 8 (tri-licensed since 8.0).
+
+    Protected mode is off by default in Docker — fine for the
+    compose-internal network but always set a password before
+    exposing the port outside the host.
+    """
     return f"""\
   redis:
     image: {REDIS_IMAGE}
     container_name: {project_name}-redis
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
     volumes:
@@ -85,11 +94,17 @@ def _redis_block(project_name: str) -> str:
       interval: 5s
       timeout: 3s
       retries: 10
+      start_period: 5s
 """
 
 
 def _rabbitmq_block(project_name: str) -> str:
-    """Compose snippet for RabbitMQ with management UI."""
+    """Compose snippet for RabbitMQ 4 with management plugin.
+
+    ``RABBITMQ_DEFAULT_USER`` / ``RABBITMQ_DEFAULT_PASS`` are
+    deprecated in the docker entrypoint script but still honored
+    by the broker — keep them until 5.x lands.
+    """
     return f"""\
   rabbitmq:
     image: {RABBITMQ_IMAGE}
@@ -98,16 +113,18 @@ def _rabbitmq_block(project_name: str) -> str:
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_VHOST: /
     ports:
       - "5672:5672"     # AMQP
       - "15672:15672"   # Management UI — http://localhost:15672 (guest/guest)
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
       timeout: 10s
       retries: 6
+      start_period: 30s
 """
 
 

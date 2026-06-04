@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated
 
 import typer
 
+from tempest_fastapi_sdk.cli import generate as generate_module
 from tempest_fastapi_sdk.cli import lint as lint_module
 from tempest_fastapi_sdk.cli import new as new_module
 
@@ -129,6 +131,80 @@ def new_cmd(
         path=path,
         bind_host=bind_host,
         bind_port=bind_port,
+        extras=extras,
+        force=force,
+    )
+
+
+@app.command("generate")
+def generate_cmd(
+    docker: Annotated[
+        bool,
+        typer.Option(
+            "--docker",
+            help=(
+                "Regenerate docker-compose.yaml + .env.example service "
+                "block from the project's currently pinned SDK extras."
+            ),
+        ),
+    ] = False,
+    target: Annotated[
+        str,
+        typer.Option(
+            "--path",
+            "-p",
+            help=(
+                "Project root to regenerate inside. Defaults to the "
+                "current working directory."
+            ),
+        ),
+    ] = ".",
+    extras: Annotated[
+        str | None,
+        typer.Option(
+            "--extras",
+            help=(
+                "Override the SDK extras used to decide which services "
+                "land in docker-compose.yaml. When omitted, the extras "
+                "are read from the project's pyproject.toml."
+            ),
+        ),
+    ] = None,
+    project_name: Annotated[
+        str | None,
+        typer.Option(
+            "--name",
+            help=(
+                "Override the project name used as the container-name "
+                "prefix. Defaults to the ``[project] name`` value in "
+                "pyproject.toml or the directory basename."
+            ),
+        ),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            "-f",
+            help="Overwrite docker-compose.yaml if it already exists.",
+        ),
+    ] = False,
+) -> None:
+    """Regenerate scaffolded artifacts in an existing project.
+
+    Today only ``--docker`` is supported; new generators land here
+    as the SDK grows.
+    """
+    if not docker:
+        typer.echo(
+            "error: pass --docker to select what to regenerate.",
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    generate_module.regenerate_docker_compose(
+        Path(target).expanduser().resolve(),
+        project_name=project_name,
         extras=extras,
         force=force,
     )

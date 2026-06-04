@@ -117,12 +117,13 @@ class BasePaginationSchema(BaseSchema, Generic[T]):
     items: list[T] = Field(
         title="Items",
         description="The items on the current page.",
+        examples=[[], [{"id": 1}, {"id": 2}]],
         default_factory=list,
     )
     total: int = Field(
         title="Total Items",
         description="The total number of items across all pages.",
-        examples=[100, 250],
+        examples=[0, 100, 250],
         ge=0,
     )
     page: int = Field(
@@ -171,6 +172,7 @@ class CursorPaginationFilterSchema(BaseSchema):
             "Opaque pagination cursor from the previous page; "
             "None requests the first page."
         ),
+        examples=[None, "eyJpZCI6IjEyMyIsInZhbHVlIjoxNzM3In0"],
         default=None,
     )
     limit: int = Field(
@@ -222,16 +224,19 @@ class CursorPaginationSchema(BaseSchema, Generic[T]):
     items: list[T] = Field(
         title="Items",
         description="The items on the current page.",
+        examples=[[], [{"id": 1}, {"id": 2}]],
         default_factory=list,
     )
     next_cursor: str | None = Field(
         title="Next Cursor",
         description="Cursor for the next page, or None when exhausted.",
+        examples=[None, "eyJpZCI6IjEyMyJ9"],
         default=None,
     )
     has_more: bool = Field(
         title="Has More",
         description="Whether another page is available.",
+        examples=[True, False],
         default=False,
     )
     limit: int = Field(

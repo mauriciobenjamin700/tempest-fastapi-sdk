@@ -22,8 +22,21 @@ class WebPushKeysSchema(BaseSchema):
         auth (str): Client auth secret (URL-safe base64).
     """
 
-    p256dh: str = Field(min_length=1, description="ECDH public key.")
-    auth: str = Field(min_length=1, description="Client auth secret.")
+    p256dh: str = Field(
+        min_length=1,
+        title="Client ECDH public key",
+        description="URL-safe base64 ECDH P-256 public key from the browser.",
+        examples=["BNc8R7r2EXAMPLE_p256dh_url_safe_base64"],
+    )
+    auth: str = Field(
+        min_length=1,
+        title="Client auth secret",
+        description=(
+            "URL-safe base64 auth secret. Used as the IKM for the "
+            "RFC 8291 content-encryption key derivation."
+        ),
+        examples=["kQ9p3FEXAMPLE_auth_secret"],
+    )
 
 
 class WebPushSubscriptionSchema(BaseSchema):
@@ -51,12 +64,31 @@ class WebPushSubscriptionSchema(BaseSchema):
         populate_by_name=True,
     )
 
-    endpoint: str = Field(min_length=1, description="Push service URL.")
-    keys: WebPushKeysSchema
+    endpoint: str = Field(
+        min_length=1,
+        title="Push service endpoint URL",
+        description=(
+            "HTTPS URL the push service exposes for this subscription. "
+            "Must be ``https://`` (browser spec)."
+        ),
+        examples=[
+            "https://fcm.googleapis.com/fcm/send/abcDEF123",
+            "https://updates.push.services.mozilla.com/wpush/v2/gAAAA",
+        ],
+    )
+    keys: WebPushKeysSchema = Field(
+        title="Encryption keys",
+        description="ECDH public key + auth secret from the browser.",
+    )
     expiration_time: int | None = Field(
         default=None,
         alias="expirationTime",
-        description="Optional expiration time (ms since epoch).",
+        title="Subscription expiration time",
+        description=(
+            "Optional expiration timestamp in milliseconds since epoch. "
+            "``None`` means the subscription does not auto-expire."
+        ),
+        examples=[None, 1_800_000_000_000],
     )
 
     @field_validator("endpoint")
@@ -104,13 +136,63 @@ class WebPushPayloadSchema(BaseSchema):
         actions (list[dict[str, Any]] | None): Action button specs.
     """
 
-    title: str | None = None
-    body: str | None = None
-    icon: str | None = None
-    badge: str | None = None
-    tag: str | None = None
-    data: dict[str, Any] | None = None
-    actions: list[dict[str, Any]] | None = None
+    title: str | None = Field(
+        default=None,
+        title="Notification title",
+        description="Heading shown by the OS notification UI.",
+        examples=[None, "New message", "Build failed"],
+    )
+    body: str | None = Field(
+        default=None,
+        title="Notification body",
+        description="Short text shown below the title.",
+        examples=[None, "You have 3 unread items."],
+    )
+    icon: str | None = Field(
+        default=None,
+        title="Icon URL",
+        description="HTTPS URL of the notification icon.",
+        examples=[None, "https://example.com/icons/notify.png"],
+    )
+    badge: str | None = Field(
+        default=None,
+        title="Badge icon URL",
+        description="URL of the badge icon (Android status-bar mark).",
+        examples=[None, "https://example.com/icons/badge.png"],
+    )
+    tag: str | None = Field(
+        default=None,
+        title="Notification tag",
+        description=(
+            "Tag used by the browser to coalesce notifications — newer "
+            "messages with the same tag replace older ones."
+        ),
+        examples=[None, "chat:123", "build:status"],
+    )
+    data: dict[str, Any] | None = Field(
+        default=None,
+        title="Application payload",
+        description=(
+            "Arbitrary structured payload forwarded to the service "
+            "worker's ``notificationclick`` handler."
+        ),
+        examples=[None, {"url": "/inbox", "notification_id": "abc"}],
+    )
+    actions: list[dict[str, Any]] | None = Field(
+        default=None,
+        title="Action buttons",
+        description=(
+            "Notification action button specs, each ``{action, title, "
+            "icon?}`` per the Notifications API."
+        ),
+        examples=[
+            None,
+            [
+                {"action": "open", "title": "Open"},
+                {"action": "dismiss", "title": "Dismiss"},
+            ],
+        ],
+    )
 
 
 __all__: list[str] = [

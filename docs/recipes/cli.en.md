@@ -91,7 +91,20 @@ Tear down wiping volumes:
 docker compose down -v
 ```
 
-Image tags are pinned by the SDK — bump them through `pyproject.toml` of the SDK, not on a per-project basis.
+Image tags are pinned by the SDK — bump them through `pyproject.toml` of the SDK, not on a per-project basis. Current versions (v0.26.0+): `postgres:18-alpine`, `redis:8-alpine`, `rabbitmq:4-management-alpine`.
+
+### Regenerating `docker-compose.yaml` in an existing project
+
+When you change installed extras (`uv add "tempest-fastapi-sdk[minio]"`) or the SDK bumps image versions, regenerate with:
+
+```bash
+tempest generate --docker                        # read extras from local pyproject.toml
+tempest generate --docker --extras cache,minio   # force explicit extras
+tempest generate --docker --name my-svc          # override container-name prefix
+tempest generate --docker --force                # overwrite an existing compose file
+```
+
+The command reads ``[project] name`` + extras from the current directory's `pyproject.toml` (pass `--path` for another). It refuses to overwrite without `--force` so hand edits don't get clobbered. The `.env.example` addendum is idempotent — re-running does not duplicate service blocks.
 
 After scaffolding:
 

@@ -5,6 +5,79 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] — 2026-05-31
+
+### Added
+
+- **`tempest generate --docker`** — regenerate
+  ``docker-compose.yaml`` (and refresh the ``.env.example`` service
+  block) in an existing project. Reads the project's
+  ``pyproject.toml`` to discover the currently pinned SDK extras
+  unless ``--extras`` is given explicitly. Refuses to overwrite a
+  hand-edited compose file without ``--force``. The ``.env.example``
+  addendum is idempotent — re-running the command does not
+  duplicate the service blocks.
+
+  Flags:
+
+  - ``--docker`` — selects the compose generator.
+  - ``--path / -p`` — project root (default: cwd).
+  - ``--extras`` — override discovered extras.
+  - ``--name`` — override the container-name prefix.
+  - ``--force / -f`` — overwrite existing compose file.
+
+- **All Pydantic schemas and settings mixins now ship
+  ``title`` + ``description`` + ``examples`` metadata** on every
+  field. JSON-Schema consumers (FastAPI ``/docs``, ``/redoc``,
+  IDE tooling, ``pydantic.model_json_schema()``) render rich
+  metadata out of the box; OpenAPI examples populate the
+  Swagger UI examples picker without further configuration.
+
+  Surfaces covered:
+
+  - ``settings.mixins`` — every ``*Settings`` mixin
+    (``ServerSettings``, ``LogSettings``, ``DatabaseSettings``,
+    ``RedisSettings``, ``RabbitMQSettings``, ``JWTSettings``,
+    ``CORSSettings``, ``EmailSettings``, ``UploadSettings``,
+    ``TokenSettings``, ``WebPushSettings``, ``TaskIQSettings``,
+    ``MinIOSettings``).
+  - ``schemas.pagination`` — ``BasePaginationFilterSchema``,
+    ``BasePaginationSchema``, ``CursorPaginationFilterSchema``,
+    ``CursorPaginationSchema``.
+  - ``schemas.response`` — ``BaseResponseSchema``.
+  - ``schemas.logs`` — ``LogEntrySchema``.
+  - ``webpush.schemas`` — ``WebPushKeysSchema``,
+    ``WebPushSubscriptionSchema``, ``WebPushPayloadSchema``.
+
+### Changed
+
+- **`docker-compose.yaml` image tags bumped** to the current
+  major releases on Docker Hub:
+
+  - ``postgres:16-alpine`` → ``postgres:18-alpine``. Postgres 14+
+    has used ``scram-sha-256`` by default; no client-side change
+    required.
+  - ``redis:7-alpine`` → ``redis:8-alpine``. Note Redis 8.0+
+    ships under a tri-license (RSALv2 / SSPLv1 / AGPLv3); the
+    earlier ``<=7.2.4`` line was 3-Clause BSD. Internal use is
+    unaffected; redistribution may need to pick a compatible
+    license tier.
+  - ``rabbitmq:3-management-alpine`` →
+    ``rabbitmq:4-management-alpine``. ``RABBITMQ_DEFAULT_USER`` /
+    ``RABBITMQ_DEFAULT_PASS`` remain functional;
+    ``RABBITMQ_DEFAULT_VHOST=/`` made explicit in the rendered
+    compose.
+
+  Per-service tightening:
+
+  - ``redis`` now boots with ``--appendonly yes`` so dev data
+    survives container restarts; ``start_period: 5s`` lets the
+    healthcheck wait for the AOF rewrite path.
+  - ``rabbitmq`` healthcheck uses ``rabbitmq-diagnostics -q ping``
+    (quiet) with ``start_period: 30s`` to absorb the broker's
+    cold boot.
+  - ``postgres`` healthcheck gains ``start_period: 10s``.
+
 ## [0.25.1] — 2026-05-31
 
 ### Changed

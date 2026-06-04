@@ -91,7 +91,20 @@ Derrubar limpando volumes:
 docker compose down -v
 ```
 
-As tags das imagens são fixadas — atualize por `pyproject.toml` da SDK, não no projeto gerado.
+As tags das imagens são fixadas — atualize por `pyproject.toml` da SDK, não no projeto gerado. Versões atuais (v0.26.0+): `postgres:18-alpine`, `redis:8-alpine`, `rabbitmq:4-management-alpine`.
+
+### Regerar o `docker-compose.yaml` num projeto existente
+
+Quando você muda os extras instalados (`uv add "tempest-fastapi-sdk[minio]"`) ou o SDK bumpa as imagens, regenere com:
+
+```bash
+tempest generate --docker                        # lê extras do pyproject.toml local
+tempest generate --docker --extras cache,minio   # força extras explicitos
+tempest generate --docker --name my-svc          # sobrescreve prefixo do container
+tempest generate --docker --force                # sobrescreve compose existente
+```
+
+O comando lê o `[project] name` + extras do `pyproject.toml` do diretório atual (use `--path` pra outro). Recusa overwrite sem `--force` pra não pisar em edits manuais. O `.env.example` é atualizado de forma idempotente — re-rodar não duplica blocos.
 
 Depois de gerar:
 

@@ -58,11 +58,16 @@ class LogEntrySchema(BaseSchema):
     request_id: str | None = Field(
         title="Request ID",
         description="Correlation ID attached to the request, if any.",
+        examples=[None, "b1ddc2ad-3649-4306-82b9-d442dc8f864b"],
         default=None,
     )
     exception: str | None = Field(
         title="Exception",
         description="Formatted traceback when the record carried exc_info.",
+        examples=[
+            None,
+            "Traceback (most recent call last):\n  ...\nValueError: boom",
+        ],
         default=None,
     )
 
