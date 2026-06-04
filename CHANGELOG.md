@@ -5,6 +5,42 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.1] — 2026-05-31
+
+### Fixed
+
+- **File-descriptor leak in `configure_logging`.** Calling
+  `configure_logging` twice (normal in tests, and in any service
+  that supports hot-reload) removed the previous file handlers
+  without closing them. After ~100 reconfigure cycles the kernel
+  refused new file opens with ``OSError: [Errno 24] Too many open
+  files``. The previous handlers are now `close()`-d before
+  `removeHandler` so each call releases its FDs.
+
+### Security
+
+- **`UploadUtils.delete()` now refuses paths outside `upload_dir`.**
+  Before, `utils.delete("/etc/passwd")` would happily `unlink()`
+  whatever the caller passed. Any service that forwarded a
+  user-supplied filename to `delete()` was effectively giving the
+  caller an `rm` primitive bounded only by process permissions.
+  The method now resolves the input against `upload_dir`, treats
+  relative inputs as relative to `upload_dir`, and raises
+  `InvalidFileTypeException` (with `reason="escapes upload_dir"`)
+  for anything that escapes — including absolute paths to
+  unrelated directories and `..`-style traversal.
+
+  Callers that already passed paths returned by
+  `UploadUtils.save()` keep working unchanged; only path-traversal
+  attempts begin to raise.
+
+### Changed
+
+- `make_app_exception_handler` docstring now accurately states that
+  `log_level` defaults to `logging.INFO` (the previous text claimed
+  `logging.ERROR`, which is what the function was *originally*
+  intended to do but never matched the signature).
+
 ## [0.22.0] — 2026-05-31
 
 ### Changed

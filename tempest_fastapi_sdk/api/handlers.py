@@ -30,10 +30,13 @@ def make_app_exception_handler(
     :data:`HTTP_500_MARKER` flag so ``500.log`` captures them.
 
     Args:
-        log_level (int): Level for 5xx ``AppException`` records.
-            Defaults to :data:`logging.ERROR` — but the 4xx path
-            always logs at ``INFO`` regardless of this value, since
-            elevating client errors to WARN/ERROR adds noise.
+        log_level (int): Level used **only** for 5xx ``AppException``
+            records (the 4xx path always logs at ``INFO`` regardless,
+            since elevating client errors to WARN/ERROR adds noise).
+            Defaults to :data:`logging.INFO`; pass ``logging.ERROR``
+            (or pass ``log_level=logging.ERROR`` through
+            :func:`register_exception_handlers`) when 5xx
+            ``AppException`` subclasses should trigger paging.
 
     Returns:
         Any: An async ``(request, exc) -> JSONResponse`` callable.

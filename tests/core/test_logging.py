@@ -155,6 +155,27 @@ class TestConfigureLogging:
                 file_output=False,
             )
 
+    def test_reconfiguring_closes_old_handlers(self, tmp_path: Path) -> None:
+        logger = configure_logging(
+            logger_name="tempest.cfg.reload",
+            log_dir=tmp_path,
+        )
+        old_handlers = list(logger.handlers)
+        old_file_handlers = [
+            h for h in old_handlers if isinstance(h, logging.FileHandler)
+        ]
+        assert old_file_handlers, "expected file handlers on first config"
+
+        configure_logging(
+            logger_name="tempest.cfg.reload",
+            log_dir=tmp_path,
+        )
+
+        for handler in old_file_handlers:
+            assert handler.stream is None or handler.stream.closed, (
+                "old file handler must be closed after reconfigure"
+            )
+
 
 class TestFileLogging:
     def test_per_level_files_isolate_each_level(self, tmp_path: Path) -> None:

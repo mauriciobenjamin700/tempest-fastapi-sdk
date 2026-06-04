@@ -399,16 +399,34 @@ class UploadUtils:
         return f"{uuid4().hex}{original.suffix}"
 
     def delete(self, path: Path | str) -> bool:
-        """Delete a previously saved file.
+        """Delete a previously saved file, bounded to ``upload_dir``.
+
+        Rejects any path that resolves outside ``upload_dir`` — that
+        way callers can forward a user-supplied filename without
+        risking ``rm -rf`` semantics on the rest of the filesystem.
+        Absolute paths are accepted only when they land under
+        ``upload_dir``; everything else is treated as relative to it.
 
         Args:
-            path (Path | str): The file path to delete.
+            path (Path | str): The file path to delete. Resolved
+                against ``upload_dir`` when relative.
 
         Returns:
             bool: ``True`` if the file existed and was deleted,
             ``False`` when it was already missing.
+
+        Raises:
+            InvalidFileTypeException: When ``path`` resolves outside
+                ``upload_dir`` (path traversal attempt).
         """
-        target = Path(path)
+        base_dir = self.upload_dir.resolve()
+        raw = Path(path)
+        candidate = raw if raw.is_absolute() else (base_dir / raw)
+        target = candidate.resolve()
+        if target != base_dir and base_dir not in target.parents:
+            raise InvalidFileTypeException(
+                details={"path": str(path), "reason": "escapes upload_dir"},
+            )
         if not target.exists():
             return False
         target.unlink()

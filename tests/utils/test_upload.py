@@ -119,6 +119,26 @@ class TestDelete:
         utils = UploadUtils(tmp_path)
         assert utils.delete(tmp_path / "ghost") is False
 
+    def test_delete_rejects_path_outside_upload_dir(self, tmp_path: Path) -> None:
+        upload_dir = tmp_path / "uploads"
+        upload_dir.mkdir()
+        outside = tmp_path / "outside.txt"
+        outside.write_text("secret", encoding="utf-8")
+        utils = UploadUtils(upload_dir)
+        with pytest.raises(InvalidFileTypeException):
+            utils.delete(outside)
+        assert outside.exists()
+
+    def test_delete_rejects_relative_traversal(self, tmp_path: Path) -> None:
+        upload_dir = tmp_path / "uploads"
+        upload_dir.mkdir()
+        outside = tmp_path / "outside.txt"
+        outside.write_text("secret", encoding="utf-8")
+        utils = UploadUtils(upload_dir)
+        with pytest.raises(InvalidFileTypeException):
+            utils.delete("../outside.txt")
+        assert outside.exists()
+
 
 class TestSniffMime:
     def test_recognizes_jpeg(self) -> None:

@@ -1,5 +1,6 @@
 """Structured JSON logging with request-ID correlation."""
 
+import contextlib
 import json
 import logging
 import sys
@@ -267,6 +268,13 @@ def configure_logging(
     logger = logging.getLogger(logger_name)
     logger.setLevel(level)
     for handler in list(logger.handlers):
+        # Close before removing so file descriptors held by
+        # FileHandler / RotatingFileHandler subclasses are released.
+        # configure_logging() is called once per app boot AND once per
+        # test that wants a clean state — without close() those FDs
+        # would accumulate.
+        with contextlib.suppress(Exception):
+            handler.close()
         logger.removeHandler(handler)
 
     if stdout:
