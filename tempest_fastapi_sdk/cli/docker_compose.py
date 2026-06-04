@@ -46,7 +46,23 @@ def _parse_extras(extras: str) -> set[str]:
 
 
 def _postgres_block(project_name: str) -> str:
-    """Compose snippet for Postgres 18 (scram-sha-256 default auth)."""
+    """Compose snippet for Postgres 18.
+
+    Two facts about the 18+ image worth knowing:
+
+    * The data directory layout changed — the image now expects the
+      volume mounted at ``/var/lib/postgresql`` (NOT
+      ``/var/lib/postgresql/data``). The cluster creates a
+      version-specific subdirectory so ``pg_upgrade --link`` works
+      without mount-boundary issues. See
+      https://github.com/docker-library/postgres/pull/1259.
+      Compose files pointing at the old path crash on first boot
+      with "PostgreSQL data in /var/lib/postgresql/data (unused
+      mount/volume)".
+    * Authentication defaults to ``scram-sha-256`` since 14 — leave
+      ``POSTGRES_HOST_AUTH_METHOD`` off so the secure default
+      sticks.
+    """
     safe = project_name.replace("-", "_")
     return f"""\
   postgres:
@@ -62,7 +78,10 @@ def _postgres_block(project_name: str) -> str:
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      # Postgres 18+ requires the mount at /var/lib/postgresql
+      # (not /var/lib/postgresql/data). Wipe the old volume with
+      # `docker compose down -v` when upgrading from 16.
+      - postgres-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d {safe}"]
       interval: 5s

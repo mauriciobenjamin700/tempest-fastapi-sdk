@@ -5,6 +5,67 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] — 2026-06-04
+
+### Fixed
+
+- **Postgres 18 mount path.** v0.26.0 bumped the pinned image to
+  ``postgres:18-alpine`` but kept the historical
+  ``postgres-data:/var/lib/postgresql/data`` mount. Postgres 18+
+  reorganized the data layout — the image now refuses to start
+  with ``Error: in 18+, these Docker images are configured to
+  store database data in a format which is compatible with
+  "pg_ctlcluster" (...) Counter to that, there appears to be
+  PostgreSQL data in: /var/lib/postgresql/data (unused
+  mount/volume)``. The generator now emits
+  ``postgres-data:/var/lib/postgresql`` (no ``/data`` suffix);
+  Postgres creates the version-specific subdirectory inside.
+
+  Upgrade path for existing projects:
+
+  ```bash
+  docker compose down -v          # WIPES local data — back up first
+  tempest generate --docker --force
+  docker compose up -d
+  ```
+
+### Added
+
+- **``CSRFMiddleware`` + ``make_csrf_token_dependency``** — full
+  double-submit-cookie CSRF guard for cookie-authenticated
+  endpoints. Unsafe verbs (``POST`` / ``PUT`` / ``PATCH`` /
+  ``DELETE``) must carry both the ``csrf_token`` cookie and a
+  matching ``X-CSRF-Token`` header; mismatch returns 403 with
+  the SDK envelope ``{"code": "CSRF_VALIDATION_FAILED"}``.
+
+  Safe methods always pass. ``exclude_paths`` lets bearer-auth
+  ``/api/`` routes skip the check (JWT bearer is not subject to
+  CSRF since the browser doesn't auto-attach it).
+
+  ``generate_csrf_token(n_bytes=32)`` mints fresh tokens;
+  ``make_csrf_token_dependency()`` returns a FastAPI dependency
+  that the login/template endpoint can call to seed the cookie.
+
+- **OAuth2 / OIDC providers** under ``tempest_fastapi_sdk.api.oauth``:
+
+  - ``GoogleOAuthClient`` — Google identity, OIDC-compatible,
+    default scopes ``openid email profile``.
+  - ``GitHubOAuthClient`` — GitHub OAuth (not OIDC; user info
+    via ``GET /user``), default scopes ``read:user user:email``.
+  - ``OIDCProvider`` — generic discovery-driven OIDC client for
+    Auth0 / Keycloak / Okta / Microsoft Entra / Cognito. Pass
+    the authorize / token / userinfo URLs explicitly.
+
+  All providers share the same surface — ``build_authorize_url(state, **extra)``,
+  ``exchange_code(code) -> OAuthTokens``, ``fetch_user(tokens) -> OAuthUser``.
+  Identity is normalized to ``OAuthUser(provider, subject, email,
+  name, picture, raw)`` so the application sees one shape
+  regardless of IdP. CSRF-grade state via ``generate_oauth_state()``.
+
+  Built on the v0.28.0 ``HTTPClient`` for retries + circuit-breaker
+  on the IdP — handy when Auth0 / Google occasionally hiccup.
+  Requires the ``[http]`` extra.
+
 ## [0.28.0] — 2026-06-04
 
 ### Added
