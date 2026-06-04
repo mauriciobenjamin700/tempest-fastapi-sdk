@@ -145,6 +145,7 @@ from tempest_fastapi_sdk.settings import (
     TokenSettings,
     UploadSettings,
     WebPushSettings,
+    WebSocketSettings,
 )
 from tempest_fastapi_sdk.sse import EventStream, ServerSentEvent, sse_response
 from tempest_fastapi_sdk.storage import AsyncMinIOClient, ObjectStat
@@ -212,8 +213,14 @@ from tempest_fastapi_sdk.webpush import (
     WebPushPayloadSchema,
     WebPushSubscriptionSchema,
 )
+from tempest_fastapi_sdk.websockets import (
+    WebSocketConnection,
+    WebSocketHub,
+    WSEnvelope,
+    make_websocket_router,
+)
 
-__version__: str = "0.32.1"
+__version__: str = "0.33.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -345,6 +352,7 @@ __all__: list[str] = [
     "UserModelAuthBackend",
     "UserTokenPurpose",
     "ValidationException",
+    "WSEnvelope",
     "WebPushDispatcher",
     "WebPushError",
     "WebPushGoneError",
@@ -352,6 +360,9 @@ __all__: list[str] = [
     "WebPushPayloadSchema",
     "WebPushSettings",
     "WebPushSubscriptionSchema",
+    "WebSocketConnection",
+    "WebSocketHub",
+    "WebSocketSettings",
     "WebhookSignatureVerifier",
     "__version__",
     "app_exception_handler",
@@ -393,6 +404,7 @@ __all__: list[str] = [
     "make_tool_spec_router",
     "make_unhandled_exception_handler",
     "make_user_token_model",
+    "make_websocket_router",
     "modify_dict",
     "normalize_cep",
     "normalize_cnpj",

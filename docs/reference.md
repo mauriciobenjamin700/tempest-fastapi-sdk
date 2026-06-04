@@ -170,6 +170,17 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## WebSocket
+
+### `tempest_fastapi_sdk.websockets`
+
+::: tempest_fastapi_sdk.websockets.hub.WebSocketHub
+::: tempest_fastapi_sdk.websockets.hub.WebSocketConnection
+::: tempest_fastapi_sdk.websockets.router.make_websocket_router
+::: tempest_fastapi_sdk.websockets.schemas.WSEnvelope
+
+---
+
 ## Web Push
 
 ### `tempest_fastapi_sdk.webpush`

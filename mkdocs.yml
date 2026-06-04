@@ -89,6 +89,7 @@ plugins:
             Camada HTTP: HTTP layer
             Cache: Cache
             Tempo real: Real-time
+            WebSocket router: WebSocket router
             Fila e Tarefas: Queue & Tasks
             Logging: Logging
             Storage (MinIO/S3): Storage (MinIO/S3)
@@ -194,6 +195,7 @@ nav:
       - Camada HTTP: recipes/http.md
       - Cache: recipes/cache.md
       - Tempo real: recipes/realtime.md
+      - WebSocket router: recipes/websocket.md
       - Fila e Tarefas: recipes/queue-tasks.md
       - Logging: recipes/logging.md
       - Storage (MinIO/S3): recipes/storage.md

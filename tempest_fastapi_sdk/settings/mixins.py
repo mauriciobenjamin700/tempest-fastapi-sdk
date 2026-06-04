@@ -749,6 +749,65 @@ class MinIOSettings(BaseSettings):
     )
 
 
+class WebSocketSettings(BaseSettings):
+    """WebSocket router configuration.
+
+    Consumed by :func:`tempest_fastapi_sdk.make_websocket_router` and
+    :class:`tempest_fastapi_sdk.WebSocketHub`. Defaults are tuned for
+    typical browser ↔ FastAPI deployments — heartbeats every 30s,
+    drop after 60s without pong, five concurrent connections per
+    user.
+    """
+
+    WS_HEARTBEAT_SECONDS: int = Field(
+        default=30,
+        ge=1,
+        title="Heartbeat interval (seconds)",
+        description=(
+            'How often the server sends a ``{"type": "ping"}`` frame '
+            "to keep the connection alive through HTTP proxies that "
+            "close idle sockets. Pair with "
+            "``WS_HEARTBEAT_TIMEOUT_SECONDS`` so a stuck peer is "
+            "evicted instead of held open forever."
+        ),
+        examples=[15, 30, 60],
+    )
+    WS_HEARTBEAT_TIMEOUT_SECONDS: int = Field(
+        default=60,
+        ge=1,
+        title="Heartbeat timeout (seconds)",
+        description=(
+            "Maximum delay between the server's ``ping`` and the "
+            "matching client ``pong`` before the connection is "
+            "force-closed with WebSocket code ``4408``."
+        ),
+        examples=[30, 60, 120],
+    )
+    WS_MAX_CONNECTIONS_PER_USER: int = Field(
+        default=5,
+        ge=1,
+        title="Max concurrent connections per user",
+        description=(
+            "Cap on how many WebSocket connections the same authenticated "
+            "user may hold open at once. The oldest connection is closed "
+            "with code ``4429`` when the cap is exceeded."
+        ),
+        examples=[3, 5, 20],
+    )
+    WS_MAX_MESSAGE_BYTES: int = Field(
+        default=64 * 1024,
+        ge=1,
+        title="Max incoming frame size (bytes)",
+        description=(
+            "Reject inbound frames larger than this — protects the "
+            "process from memory-exhaustion attacks via oversized "
+            "messages. The connection is closed with code ``1009`` "
+            "(message too big)."
+        ),
+        examples=[4 * 1024, 64 * 1024, 1024 * 1024],
+    )
+
+
 __all__: list[str] = [
     "AuthSettings",
     "CORSSettings",
@@ -764,4 +823,5 @@ __all__: list[str] = [
     "TokenSettings",
     "UploadSettings",
     "WebPushSettings",
+    "WebSocketSettings",
 ]

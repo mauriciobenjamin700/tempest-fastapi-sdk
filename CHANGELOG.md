@@ -5,6 +5,64 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0] — 2026-06-04
+
+### Added
+
+- **WebSocket router** (``tempest_fastapi_sdk.make_websocket_router`` +
+  ``WebSocketHub``). New ``tempest_fastapi_sdk.websockets`` module
+  ships the three concerns every WebSocket endpoint has to get right:
+    - **Bearer auth at the handshake** via ``?token=<jwt>`` query
+      string OR ``Sec-WebSocket-Protocol: bearer,<jwt>`` subprotocol
+      (preferred — does not leak to proxy logs). The
+      ``bearer_resolver`` callable maps the token to a user UUID;
+      ``None`` closes the socket with code ``4401`` before the
+      handler runs.
+    - **Heartbeat ping/pong** with timeout. The router emits
+      ``{"type": "ping"}`` every ``WS_HEARTBEAT_SECONDS`` (default
+      ``30``) and closes with code ``4408`` when the matching
+      ``{"type": "pong"}`` does not arrive within
+      ``WS_HEARTBEAT_TIMEOUT_SECONDS`` (default ``60``).
+    - **In-process registry** (``WebSocketHub``) tracking every
+      live connection by user UUID + topic subscriptions. Exposes
+      ``send_to(user_id, envelope)``, ``broadcast(envelope,
+      topic=None)``, ``subscribe`` / ``unsubscribe``, ``online_users()``
+      and ``connection_count()`` — usable from any HTTP handler in
+      the same FastAPI app. Per-user cap ``WS_MAX_CONNECTIONS_PER_USER``
+      (default ``5``) evicts the oldest connection with code ``4429``
+      when exceeded. Dead peers are evicted transparently on
+      ``send_json`` failure.
+- **``WSEnvelope`` schema** — canonical ``{type, data, request_id}``
+  envelope for SDK-managed frames (``ping``/``pong``) and the
+  recommended shape for application messages.
+- **``WebSocketConnection`` dataclass** — public handle returned by
+  ``WebSocketHub.register`` so handlers can pass a stable
+  ``connection_id`` to ``subscribe`` / ``unsubscribe``.
+- **``WebSocketSettings`` mixin** — ``WS_HEARTBEAT_SECONDS``,
+  ``WS_HEARTBEAT_TIMEOUT_SECONDS``, ``WS_MAX_CONNECTIONS_PER_USER``,
+  ``WS_MAX_MESSAGE_BYTES`` with full ``title``/``description``/
+  ``examples`` metadata.
+
+### Documentation
+
+- ``docs/recipes/websocket.{md,en.md}`` — new bilingual recipe
+  covering setup, query-vs-subprotocol auth comparison, JavaScript
+  client snippet with heartbeat + reconnect, broadcast / send_to /
+  topic patterns, every close-code table, settings reference, and
+  the single-process vs multi-replica trade-offs.
+- ``docs/reference.{md,en.md}`` — new section
+  ``tempest_fastapi_sdk.websockets`` with ``mkdocstrings`` entries
+  for ``WebSocketHub``, ``WebSocketConnection``,
+  ``make_websocket_router``, ``WSEnvelope``.
+- ``mkdocs.yml`` — recipe added to the navigation in both languages
+  with the matching i18n translation entry.
+
+### Migration
+
+- v0.33.0 is purely additive. No public-API breaking change. The
+  new module imports lazily; existing services that don't mount
+  the router pay no startup cost.
+
 ## [0.32.1] — 2026-06-04
 
 ### Changed

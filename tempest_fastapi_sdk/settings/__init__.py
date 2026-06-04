@@ -25,6 +25,7 @@ from tempest_fastapi_sdk.settings.mixins import TaskIQSettings as TaskIQSettings
 from tempest_fastapi_sdk.settings.mixins import TokenSettings as TokenSettings
 from tempest_fastapi_sdk.settings.mixins import UploadSettings as UploadSettings
 from tempest_fastapi_sdk.settings.mixins import WebPushSettings as WebPushSettings
+from tempest_fastapi_sdk.settings.mixins import WebSocketSettings as WebSocketSettings
 
 __all__: list[str] = [
     "AuthSettings",
@@ -42,4 +43,5 @@ __all__: list[str] = [
     "TokenSettings",
     "UploadSettings",
     "WebPushSettings",
+    "WebSocketSettings",
 ]
