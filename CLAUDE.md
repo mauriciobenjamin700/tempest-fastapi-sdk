@@ -174,3 +174,34 @@ aspirational.
 - **Logging tests must pass `file_output=False`** to avoid stray
   `logs/` folders in cwd. The default behavior writes to disk
   (since v0.22.0).
+- **Explicit re-exports in every `__init__.py`.** Every public
+  symbol that an `__init__.py` re-exports MUST use **both**:
+
+  1. The PEP 484 `from x import Y as Y` form (explicit re-export),
+     and
+  2. A `__all__: list[str]` listing the same symbol.
+
+  Reason: third-party consumers run a mixed bag of type-checkers
+  (mypy, pyright, pylance, basedpyright) on different strictness
+  settings and without project-aware `pyrightconfig.json`. Either
+  form ALONE is theoretically PEP 484 compliant, but in practice
+  basedpyright + Pylance strict still flag `from foo import Bar`
+  inside an `__init__.py` as "private import usage" unless the
+  symbol is aliased with `as Bar`. Always pair the two so any
+  IDE — with or without a project config — accepts
+  `from tempest_fastapi_sdk.<module> import Symbol` without a
+  diagnostic. Example:
+
+  ```python
+  # tempest_fastapi_sdk/foo/__init__.py
+  from tempest_fastapi_sdk.foo.bar import Bar as Bar
+  from tempest_fastapi_sdk.foo.baz import Baz as Baz
+
+  __all__: list[str] = ["Bar", "Baz"]
+  ```
+
+  Plain `from tempest_fastapi_sdk.foo.bar import Bar` (without
+  `as Bar`) inside an `__init__.py` is a structural defect — flag
+  it before adding features. When adding a new public symbol,
+  update **both** the import alias and `__all__` in the same
+  patch.

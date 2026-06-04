@@ -1,20 +1,33 @@
-"""Database primitives exposed at module level."""
+"""Database primitives exposed at module level.
 
+Re-exports use the PEP 484 ``from x import Y as Y`` explicit
+re-export form together with ``__all__`` so every type-checker
+(mypy, pyright, pylance, basedpyright) accepts
+``from tempest_fastapi_sdk.db import BaseUserTokenModel`` without
+a "private import usage" / "is not exported" diagnostic.
+"""
+
+from tempest_fastapi_sdk.db.alembic_hooks import BASE_COLUMN_ORDER as BASE_COLUMN_ORDER
+from tempest_fastapi_sdk.db.alembic_hooks import compose_hooks as compose_hooks
 from tempest_fastapi_sdk.db.alembic_hooks import (
-    BASE_COLUMN_ORDER,
-    compose_hooks,
-    reorder_base_columns_first,
+    reorder_base_columns_first as reorder_base_columns_first,
 )
-from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
-from tempest_fastapi_sdk.db.migrations import AlembicHelper
-from tempest_fastapi_sdk.db.mixins import AuditMixin, SoftDeleteMixin
-from tempest_fastapi_sdk.db.model import NAMING_CONVENTION, BaseModel
-from tempest_fastapi_sdk.db.repository import BaseRepository
-from tempest_fastapi_sdk.db.user_model import BaseUserModel
+from tempest_fastapi_sdk.db.connection import (
+    AsyncDatabaseManager as AsyncDatabaseManager,
+)
+from tempest_fastapi_sdk.db.migrations import AlembicHelper as AlembicHelper
+from tempest_fastapi_sdk.db.mixins import AuditMixin as AuditMixin
+from tempest_fastapi_sdk.db.mixins import SoftDeleteMixin as SoftDeleteMixin
+from tempest_fastapi_sdk.db.model import NAMING_CONVENTION as NAMING_CONVENTION
+from tempest_fastapi_sdk.db.model import BaseModel as BaseModel
+from tempest_fastapi_sdk.db.repository import BaseRepository as BaseRepository
+from tempest_fastapi_sdk.db.user_model import BaseUserModel as BaseUserModel
 from tempest_fastapi_sdk.db.user_token_model import (
-    BaseUserTokenModel,
-    UserTokenPurpose,
-    make_user_token_model,
+    BaseUserTokenModel as BaseUserTokenModel,
+)
+from tempest_fastapi_sdk.db.user_token_model import UserTokenPurpose as UserTokenPurpose
+from tempest_fastapi_sdk.db.user_token_model import (
+    make_user_token_model as make_user_token_model,
 )
 
 __all__: list[str] = [

@@ -5,6 +5,43 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.4] — 2026-06-04
+
+### Changed
+
+- **Explicit re-exports across `settings/`, `auth/`, and `db/` `__init__.py`.**
+  Every symbol is now re-exported using the PEP 484
+  ``from x import Y as Y`` form **in addition to** ``__all__``.
+  Reason: third-party consumers run a mixed bag of type-checkers
+  (mypy, pyright, pylance, basedpyright) at different strictness
+  levels and without project-aware ``pyrightconfig.json``. Either
+  form alone is theoretically PEP 484 compliant, but basedpyright
+  and Pylance strict still flag bare ``from foo import Bar`` inside
+  ``__init__.py`` as "private import usage" unless the symbol is
+  aliased with ``as Bar``. Pairing the two patterns silences every
+  IDE with no project-level config required. No behavior change —
+  same runtime imports, same public surface, same wheel contents.
+
+### Documentation
+
+- **Auth-flow recipe rewritten end-to-end** (`docs/recipes/auth-flow.{md,en.md}`):
+    - New table of contents at the top.
+    - New "Email anatomy" section disambiguating the three concepts
+      that confused readers (opaque token vs URL template vs Jinja2
+      template) with a Mermaid sequence diagram of the full flow.
+    - "Operating modes" expanded from three to **four** explicit
+      modes (A. production / B. dev with local SMTP / C. dev without
+      SMTP / D. CI), each with a copy-paste `.env` block.
+    - New **"Mailhog vs smtp4dev"** comparison table + ready-to-use
+      `docker-compose.yaml` snippets for both containers — the
+      recipe now covers local SMTP interception out of the box.
+    - "Customizing templates" rewritten with clearer prose, the full
+      context-variable table, and a copy-paste minimal
+      `emails/activation.html` example.
+- ``CLAUDE.md`` gains a new "Explicit re-exports in every
+  ``__init__.py``" rule documenting the dual ``as Y`` + ``__all__``
+  pattern and flagging bare re-exports as a structural defect.
+
 ## [0.31.3] — 2026-06-04
 
 ### Documentation
