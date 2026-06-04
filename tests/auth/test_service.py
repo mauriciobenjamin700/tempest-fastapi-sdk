@@ -369,3 +369,229 @@ class TestRouter:
         # Generic 202 always — no leak of "user not found".
         assert "matches an account" in body["message"]
         assert body["reset_url"] is None
+
+
+def _backend_service(
+    *,
+    auto_activate: bool = False,
+    return_token: bool = True,
+    login_url: str | None = "https://app.example.com/login",
+) -> UserAuthService:
+    auth = AuthSettings(
+        AUTH_AUTO_ACTIVATE=auto_activate,
+        AUTH_RETURN_TOKEN_IN_RESPONSE=return_token,
+        AUTH_BACKEND_LINKS=True,
+        AUTH_LOGIN_URL=login_url,
+    )
+    jwt = JWTSettings(JWT_SECRET="x" * 32)
+    return UserAuthService(
+        user_model=_TestUser,
+        token_model=_TestUserToken,  # type: ignore[arg-type]
+        auth_settings=auth,
+        jwt_settings=jwt,
+        email=None,
+    )
+
+
+class TestBackendOnlyMode:
+    """Backend-only HTML pages (``AUTH_BACKEND_LINKS=True``)."""
+
+    async def test_get_activate_renders_success_page(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _backend_service()
+        _user, activation = await service.signup(
+            session,
+            email="be@a.com",
+            password="strong-pass-12-chars",
+        )
+        await session.commit()
+        assert activation is not None
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app = FastAPI()
+        app.include_router(make_auth_router(service, session_factory=_factory))
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r = await c.get(f"/auth/activate/{activation.token}")
+        assert r.status_code == 200, r.text
+        assert r.headers["content-type"].startswith("text/html")
+        assert "Account activated" in r.text
+        assert "https://app.example.com/login" in r.text
+
+    async def test_get_activate_invalid_token_renders_error(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _backend_service()
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app = FastAPI()
+        app.include_router(make_auth_router(service, session_factory=_factory))
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r = await c.get("/auth/activate/this-is-not-a-real-token")
+        assert r.status_code == 400
+        assert "Activation failed" in r.text
+
+    async def test_get_password_reset_renders_form(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _backend_service(auto_activate=True)
+        await service.signup(
+            session,
+            email="reset@a.com",
+            password="strong-pass-12-chars",
+        )
+        await session.commit()
+        token = await service.request_password_reset(
+            session,
+            email="reset@a.com",
+        )
+        await session.commit()
+        assert token is not None
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app = FastAPI()
+        app.include_router(make_auth_router(service, session_factory=_factory))
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r = await c.get(f"/auth/password-reset/{token.token}")
+        assert r.status_code == 200, r.text
+        assert "Reset your password" in r.text
+        assert f'action="/auth/password-reset/{token.token}"' in r.text
+
+    async def test_get_password_reset_invalid_token_renders_error(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _backend_service()
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app = FastAPI()
+        app.include_router(make_auth_router(service, session_factory=_factory))
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r = await c.get("/auth/password-reset/bogus-token")
+        assert r.status_code == 400
+        assert "Password reset failed" in r.text
+
+    async def test_post_password_reset_form_success(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _backend_service(auto_activate=True)
+        await service.signup(
+            session,
+            email="postreset@a.com",
+            password="strong-pass-12-chars",
+        )
+        await session.commit()
+        token = await service.request_password_reset(
+            session,
+            email="postreset@a.com",
+        )
+        await session.commit()
+        assert token is not None
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app = FastAPI()
+        app.include_router(make_auth_router(service, session_factory=_factory))
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r = await c.post(
+                f"/auth/password-reset/{token.token}",
+                data={
+                    "new_password": "different-pass-12",
+                    "confirm_password": "different-pass-12",
+                },
+            )
+        assert r.status_code == 200, r.text
+        assert "Password updated" in r.text
+
+    async def test_post_password_reset_form_mismatch_rerenders_form(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _backend_service(auto_activate=True)
+        await service.signup(
+            session,
+            email="mismatch@a.com",
+            password="strong-pass-12-chars",
+        )
+        await session.commit()
+        token = await service.request_password_reset(
+            session,
+            email="mismatch@a.com",
+        )
+        await session.commit()
+        assert token is not None
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app = FastAPI()
+        app.include_router(make_auth_router(service, session_factory=_factory))
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r = await c.post(
+                f"/auth/password-reset/{token.token}",
+                data={
+                    "new_password": "different-pass-12",
+                    "confirm_password": "differentXXXXX-12",
+                },
+            )
+        assert r.status_code == 400
+        assert "Passwords do not match" in r.text
+
+        # Token must not be consumed when the form is rejected.
+        async def _factory2() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        # Second submit with matching pair should succeed.
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r2 = await c.post(
+                f"/auth/password-reset/{token.token}",
+                data={
+                    "new_password": "different-pass-12",
+                    "confirm_password": "different-pass-12",
+                },
+            )
+        assert r2.status_code == 200, r2.text
+
+    async def test_get_activate_does_not_mount_when_backend_links_disabled(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()  # AUTH_BACKEND_LINKS default False
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app = FastAPI()
+        app.include_router(make_auth_router(service, session_factory=_factory))
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r = await c.get("/auth/activate/anything")
+        assert r.status_code == 405  # POST exists, GET not mounted

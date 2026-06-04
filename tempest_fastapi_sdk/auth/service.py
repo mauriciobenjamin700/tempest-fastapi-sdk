@@ -441,6 +441,55 @@ class UserAuthService:
         purpose: UserTokenPurpose,
     ) -> BaseUserTokenModel:
         """Look up + mark used. Raise on invalid / expired tokens."""
+        record = await self._lookup_token(session, token=token, purpose=purpose)
+        record.used_at = utcnow()
+        await session.flush()
+        return record
+
+    async def peek_token(
+        self,
+        session: AsyncSession,
+        *,
+        token: str,
+        purpose: UserTokenPurpose,
+    ) -> tuple[BaseUserTokenModel, BaseUserModel]:
+        """Validate a token + load its user **without** consuming it.
+
+        Mirrors :meth:`_consume_token` (raises on
+        invalid/expired/already-used tokens) but leaves
+        ``used_at`` untouched — used by ``GET`` endpoints in
+        backend-only mode that need to render a page (e.g. the
+        password-reset form) before the user actually submits.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            token (str): Plaintext token.
+            purpose (UserTokenPurpose): Expected token purpose.
+
+        Returns:
+            tuple[BaseUserTokenModel, BaseUserModel]: The token
+            record and its associated user.
+
+        Raises:
+            InvalidTokenException: On unknown / already-used /
+                expired tokens.
+            NotFoundException: When the token references a user
+                that no longer exists.
+        """
+        record = await self._lookup_token(session, token=token, purpose=purpose)
+        user: BaseUserModel | None = await session.get(self.user_model, record.user_id)
+        if user is None:
+            raise NotFoundException(message="user not found")
+        return record, user
+
+    async def _lookup_token(
+        self,
+        session: AsyncSession,
+        *,
+        token: str,
+        purpose: UserTokenPurpose,
+    ) -> BaseUserTokenModel:
+        """Find a token record + run validity checks (without marking used)."""
         digest = hash_opaque_token(token)
         result = await session.execute(
             select(self.token_model).where(
@@ -464,8 +513,6 @@ class UserAuthService:
         )
         if expires_at < now:
             raise InvalidTokenException(message="token expired")
-        record.used_at = utcnow()
-        await session.flush()
         return record
 
     async def _maybe_send_activation_email(

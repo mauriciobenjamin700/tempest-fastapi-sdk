@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.31.4"
+version = "0.32.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -125,6 +125,11 @@ packages = ["tempest_fastapi_sdk"]
 "tempest_fastapi_sdk/db/_alembic_templates/env.py.template" = "tempest_fastapi_sdk/db/_alembic_templates/env.py.template"
 "tempest_fastapi_sdk/auth/templates/activation.html" = "tempest_fastapi_sdk/auth/templates/activation.html"
 "tempest_fastapi_sdk/auth/templates/password_reset.html" = "tempest_fastapi_sdk/auth/templates/password_reset.html"
+"tempest_fastapi_sdk/auth/templates/activation_success.html" = "tempest_fastapi_sdk/auth/templates/activation_success.html"
+"tempest_fastapi_sdk/auth/templates/activation_error.html" = "tempest_fastapi_sdk/auth/templates/activation_error.html"
+"tempest_fastapi_sdk/auth/templates/password_reset_form.html" = "tempest_fastapi_sdk/auth/templates/password_reset_form.html"
+"tempest_fastapi_sdk/auth/templates/password_reset_success.html" = "tempest_fastapi_sdk/auth/templates/password_reset_success.html"
+"tempest_fastapi_sdk/auth/templates/password_reset_error.html" = "tempest_fastapi_sdk/auth/templates/password_reset_error.html"
 
 [dependency-groups]
 dev = [

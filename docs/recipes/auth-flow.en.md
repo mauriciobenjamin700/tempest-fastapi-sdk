@@ -9,7 +9,7 @@ Since v0.31.0 the SDK ships the full local-account lifecycle — email + passwor
 3. **[Endpoints](#endpoints)** — table of the 5 endpoints + payload + behavior.
 4. **[Settings (`AuthSettings`)](#settings-authsettings)** — `.env` flag by flag.
 5. **[Email anatomy: how link, template and URL fit together](#email-anatomy)** — disambiguates the three concepts that confuse readers the most.
-6. **[Four operating modes](#four-operating-modes)** — production, dev with local SMTP (Mailhog / smtp4dev), dev without SMTP, CI without activation.
+6. **[Five operating modes](#five-operating-modes)** — production, dev with local SMTP (Mailhog / smtp4dev), dev without SMTP, CI without activation, and **backend-only** (links and pages served directly by the backend).
 7. **[Mailhog vs smtp4dev — which to pick for local dev](#mailhog-vs-smtp4dev)** — comparison + copy-paste docker-compose snippets.
 8. **[Customizing email templates](#customizing-templates)** — override `activation.html` and `password_reset.html` + variables exposed to the Jinja2 context.
 9. **[Security](#security)** — token storage, TTL, anti-enumeration.
@@ -229,14 +229,15 @@ sequenceDiagram
 
 ---
 
-## Four operating modes
+## Five operating modes
 
 | Mode | When to use | Flags | Where the link appears |
 |------|-------------|-------|------------------------|
-| **A. Production** | Public SaaS, real email | `AUTH_AUTO_ACTIVATE=false`<br>`AUTH_RETURN_TOKEN_IN_RESPONSE=false`<br>Real SMTP (Mailgun, SES, Postmark…) | The user's actual inbox |
+| **A. Production (SPA)** | Public SaaS, real email, frontend SPA owns the pages | `AUTH_AUTO_ACTIVATE=false`<br>`AUTH_RETURN_TOKEN_IN_RESPONSE=false`<br>`AUTH_BACKEND_LINKS=false`<br>Real SMTP (Mailgun, SES, Postmark…) | The user's inbox → frontend processes the token |
 | **B. Local dev with fake SMTP** | Daily development without sending real email | `AUTH_AUTO_ACTIVATE=false`<br>`AUTH_RETURN_TOKEN_IN_RESPONSE=false`<br>SMTP pointing at Mailhog (`localhost:1025`) or smtp4dev (`localhost:2525`) | Mailhog/smtp4dev web UI at `localhost:8025` / `localhost:5000` |
 | **C. Dev without SMTP** | Quick validation without spinning up any email container | `AUTH_AUTO_ACTIVATE=false`<br>`AUTH_RETURN_TOKEN_IN_RESPONSE=true`<br>`email=None` or invalid SMTP | HTTP signup response body |
 | **D. CI / tests** | Test suite that doesn't exercise activation | `AUTH_AUTO_ACTIVATE=true` | Nowhere — signup returns the JWT pair directly |
+| **E. Backend-only** *(v0.32.0+)* | You want 100% control on the backend — zero responsibility on the frontend. Ideal for APIs without a SPA, MVPs, internal tools. | `AUTH_BACKEND_LINKS=true`<br>URL templates point at the **backend** (`https://api.example.com/auth/activate/{token}`)<br>`AUTH_LOGIN_URL=https://app.example.com/login` (optional — shows a "Go to login" button on the HTML pages) | The backend renders HTML success/error directly — the user only clicks the link in the email |
 
 ### Mode A — production
 
@@ -311,6 +312,88 @@ AUTH_AUTO_ACTIVATE=true
 ```
 
 Signup skips activation entirely and returns `{access_token, refresh_token}` straight away. Use **only in tests** or when the product is internal and every user is already trusted.
+
+### Mode E — backend-only (v0.32.0+)
+
+When you'd rather have the **whole** link experience happen on the backend, with no frontend page in the loop, flip `AUTH_BACKEND_LINKS=True`. The router then mounts **three extra HTML endpoints** — `GET /auth/activate/{token}`, `GET /auth/password-reset/{token}` and `POST /auth/password-reset/{token}` (form-encoded). The email points the user straight at those endpoints; the backend activates the account / processes the reset / renders HTML success or error — using bundled Jinja2 templates you can shadow.
+
+```bash
+# .env — Mode E (backend-only)
+AUTH_BACKEND_LINKS=true
+AUTH_AUTO_ACTIVATE=false
+AUTH_RETURN_TOKEN_IN_RESPONSE=false
+
+# IMPORTANT: URL templates point at the BACKEND, not the frontend.
+AUTH_ACTIVATION_URL_TEMPLATE=https://api.example.com/auth/activate/{token}
+AUTH_PASSWORD_RESET_URL_TEMPLATE=https://api.example.com/auth/password-reset/{token}
+
+# Optional: your login URL. When set, the backend-rendered success/error
+# pages display a "Go to login" button. When null, the button is hidden
+# (pure server-side, zero coupling with any frontend).
+AUTH_LOGIN_URL=https://app.example.com/login
+
+SMTP_HOST=smtp.mailgun.org
+SMTP_PORT=587
+SMTP_FROM_ADDR=noreply@example.com
+```
+
+Flow:
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant E as Inbox
+    participant API as Backend
+    participant DB as Database
+
+    U->>API: POST /auth/signup
+    API->>DB: INSERT user (is_active=false) + token (hash, TTL)
+    API->>E: email with link https://api.example.com/auth/activate/{token}
+    U->>E: clicks the link
+    E->>API: GET /auth/activate/{token}
+    API->>DB: hash(token) valid? unused? not expired?
+    alt valid token
+        API->>DB: is_active=true + token.used_at=now
+        API->>U: HTML activation_success.html ("Go to login" button when AUTH_LOGIN_URL set)
+    else invalid / expired token
+        API->>U: HTML activation_error.html (HTTP 400)
+    end
+```
+
+Password reset follows the same pattern: GET renders an HTML form; POST (form-encoded) consumes the token and renders success/error.
+
+**Bundled HTML templates (shadow by dropping the same filename under `template_dir`):**
+
+| Template | Endpoint that renders it | Jinja2 variables exposed |
+|----------|--------------------------|--------------------------|
+| `activation_success.html` | `GET /auth/activate/{token}` (success) | `user`, `login_url` |
+| `activation_error.html` | `GET /auth/activate/{token}` (failure) | `reason`, `login_url` |
+| `password_reset_form.html` | `GET /auth/password-reset/{token}` | `user`, `form_action`, `min_length`, `error`, `login_url` |
+| `password_reset_success.html` | `POST /auth/password-reset/{token}` (success) | `user`, `login_url` |
+| `password_reset_error.html` | `POST /auth/password-reset/{token}` (bad token) | `reason`, `login_url` |
+
+**To override:** pass `template_dir` to `make_auth_router` and add files with the same filenames.
+
+```python
+app.include_router(
+    make_auth_router(
+        auth_service,
+        session_factory=db.session_dependency,
+        template_dir="src/templates/auth",   # optional
+    ),
+)
+```
+
+**Mode E trade-offs:**
+
+- ✅ **Zero frontend dependency** — the backend is the single source of truth for the auth flow.
+- ✅ **MVP in minutes** — no need to create SPA routes to process tokens.
+- ✅ **Works in frontend-less projects** — public APIs, intranets, internal tooling.
+- ⚠️ **JWT is not auto-delivered** — after activation, the user signs in manually (clicking "Go to login" and entering credentials). By design: zero token leak via URL, history, or server logs.
+- ⚠️ **Requires the `[email]` extra** (Jinja2) to render the HTML pages — same dependency as the email template renderer.
+- ⚠️ **No CSRF on the reset form** — the HTML form posts traditionally without a CSRF token. The reset token is one-shot + short TTL + bound to a single user, but consider plugging in `CSRFMiddleware` if attackers can predict active URLs.
+
+The **JSON** endpoints (`POST /auth/activate/{token}`, `POST /auth/password-reset/confirm`) are still mounted — you can mix Mode E with SPA endpoints.
 
 ---
 

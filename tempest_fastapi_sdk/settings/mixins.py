@@ -611,6 +611,83 @@ class AuthSettings(BaseSettings):
         ),
         examples=[8, 12, 16],
     )
+    AUTH_BACKEND_LINKS: bool = Field(
+        default=False,
+        title="Backend-controlled activation/reset pages",
+        description=(
+            "When ``True``, ``make_auth_router`` mounts three extra "
+            "endpoints — ``GET /auth/activate/{token}``, "
+            "``GET /auth/password-reset/{token}`` and "
+            "``POST /auth/password-reset/{token}`` (form-encoded) — "
+            "that render HTML success/error pages directly from the "
+            "backend. The email link points at the BACKEND, not the "
+            "frontend, so the project does not need a SPA route to "
+            "process tokens. Set ``AUTH_ACTIVATION_URL_TEMPLATE`` "
+            "and ``AUTH_PASSWORD_RESET_URL_TEMPLATE`` to your "
+            "backend's public URL when this is on."
+        ),
+        examples=[False, True],
+    )
+    AUTH_LOGIN_URL: str | None = Field(
+        default=None,
+        title="Login page URL (rendered in backend success pages)",
+        description=(
+            "When ``AUTH_BACKEND_LINKS=True``, the bundled HTML "
+            "success pages render a 'go to login' button pointing "
+            "at this URL. ``None`` hides the button — the user is "
+            "told the action succeeded but no link is offered."
+        ),
+        examples=[None, "https://app.example.com/login"],
+    )
+    AUTH_ACTIVATION_SUCCESS_TEMPLATE: str = Field(
+        default="activation_success.html",
+        title="Backend activation success page template",
+        description=(
+            "Jinja2 template rendered by "
+            "``GET /auth/activate/{token}`` on success. Resolved "
+            "against ``EmailUtils.template_dir``; SDK ships a "
+            "default you can shadow."
+        ),
+        examples=["activation_success.html"],
+    )
+    AUTH_ACTIVATION_ERROR_TEMPLATE: str = Field(
+        default="activation_error.html",
+        title="Backend activation error page template",
+        description=(
+            "Jinja2 template rendered when the activation token is "
+            "expired, already used, or unknown. Same resolution "
+            "rules as ``AUTH_ACTIVATION_SUCCESS_TEMPLATE``."
+        ),
+        examples=["activation_error.html"],
+    )
+    AUTH_PASSWORD_RESET_FORM_TEMPLATE: str = Field(
+        default="password_reset_form.html",
+        title="Backend password-reset form template",
+        description=(
+            "Jinja2 template rendered by "
+            "``GET /auth/password-reset/{token}`` — the HTML form "
+            "where the user types the new password."
+        ),
+        examples=["password_reset_form.html"],
+    )
+    AUTH_PASSWORD_RESET_SUCCESS_TEMPLATE: str = Field(
+        default="password_reset_success.html",
+        title="Backend password-reset success page template",
+        description=(
+            "Jinja2 template rendered after a successful "
+            "``POST /auth/password-reset/{token}``."
+        ),
+        examples=["password_reset_success.html"],
+    )
+    AUTH_PASSWORD_RESET_ERROR_TEMPLATE: str = Field(
+        default="password_reset_error.html",
+        title="Backend password-reset error page template",
+        description=(
+            "Jinja2 template rendered when the reset token is "
+            "expired, already used, or unknown."
+        ),
+        examples=["password_reset_error.html"],
+    )
 
 
 class MinIOSettings(BaseSettings):

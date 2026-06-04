@@ -5,6 +5,82 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] — 2026-06-04
+
+### Added
+
+- **Backend-only auth mode** (``AuthSettings.AUTH_BACKEND_LINKS=True``).
+  When enabled, ``make_auth_router`` mounts three extra HTML endpoints
+  on top of the JSON ones already exposed — a project can run the
+  full signup → activate → reset cycle without any frontend route
+  handling tokens. New endpoints:
+    - ``GET /auth/activate/{token}`` — consumes the activation token
+      and renders an HTML success page (or an error page on
+      bad / expired / used tokens).
+    - ``GET /auth/password-reset/{token}`` — peeks the token (does
+      NOT consume it) and renders an HTML form with the new-password
+      input + confirmation.
+    - ``POST /auth/password-reset/{token}`` (``application/x-www-form-urlencoded``)
+      — processes the form, validates the password floor, confirms
+      the reset, and renders success or error HTML.
+- **Five new bundled Jinja2 templates** under
+  ``tempest_fastapi_sdk/auth/templates``:
+  ``activation_success.html``, ``activation_error.html``,
+  ``password_reset_form.html``, ``password_reset_success.html``,
+  ``password_reset_error.html``. All responsive, inline-styled,
+  mobile-friendly. Shadow them by dropping same-named files into the
+  ``template_dir`` you pass to ``make_auth_router``.
+- **``make_auth_router(template_dir=...)``** parameter — point the
+  router at a project-owned directory whose templates override the
+  bundled defaults. Only consulted when ``AUTH_BACKEND_LINKS=True``.
+- **``UserAuthService.peek_token(session, token, purpose)``** — new
+  service method that validates a token and returns the
+  ``(token_record, user)`` pair **without** marking ``used_at``. Used
+  by ``GET /auth/password-reset/{token}`` to render the form before
+  the user actually submits.
+- **``AuthSettings`` gains six fields** documenting the new flow:
+    - ``AUTH_BACKEND_LINKS: bool`` (default ``False``)
+    - ``AUTH_LOGIN_URL: str | None`` (default ``None``) — URL for the
+      "Go to login" button rendered on success/error pages
+    - ``AUTH_ACTIVATION_SUCCESS_TEMPLATE`` /
+      ``AUTH_ACTIVATION_ERROR_TEMPLATE``
+    - ``AUTH_PASSWORD_RESET_FORM_TEMPLATE`` /
+      ``AUTH_PASSWORD_RESET_SUCCESS_TEMPLATE`` /
+      ``AUTH_PASSWORD_RESET_ERROR_TEMPLATE``
+- **``tempest_fastapi_sdk.auth.page_renderer.render_auth_page``** —
+  standalone Jinja2 renderer reused by the router; doesn't require
+  ``EmailUtils`` to be wired (only the ``[email]`` extra for Jinja2
+  itself).
+
+### Changed
+
+- ``make_auth_router`` signature now accepts the optional
+  ``template_dir: str | None = None`` keyword. Existing call sites
+  remain source-compatible.
+- All JSON endpoints (``POST /auth/signup``,
+  ``POST /auth/activate/{token}``, ``POST /auth/login``,
+  ``POST /auth/password-reset/request``,
+  ``POST /auth/password-reset/confirm``) stay mounted exactly as in
+  v0.31.x — Backend-only Mode E is purely additive.
+
+### Documentation
+
+- ``docs/recipes/auth-flow.{md,en.md}`` gains the new **Mode E
+  (backend-only)** section: ``.env`` block, Mermaid sequence
+  diagram of the activation flow, bundled-template reference table,
+  override walkthrough, trade-offs callout (zero frontend dep, no
+  JWT auto-delivery, requires ``[email]`` extra). The "Four operating
+  modes" section was renamed to "Five operating modes" and the TOC
+  entry updated.
+
+### Migration
+
+- v0.32.0 has **no breaking changes**. To opt into backend-only
+  mode, flip ``AUTH_BACKEND_LINKS=True`` in the ``.env`` and update
+  ``AUTH_ACTIVATION_URL_TEMPLATE`` / ``AUTH_PASSWORD_RESET_URL_TEMPLATE``
+  to point at your backend instead of your frontend. Everything else
+  is wired automatically.
+
 ## [0.31.4] — 2026-06-04
 
 ### Changed
