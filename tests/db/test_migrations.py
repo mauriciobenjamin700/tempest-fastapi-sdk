@@ -78,9 +78,17 @@ class TestInit:
     def test_ini_has_ruff_post_write_hooks(self, alembic_project: Path) -> None:
         ini_text = (alembic_project / "alembic.ini").read_text()
         assert "[post_write_hooks]" in ini_text
-        assert "hooks = ruff_fix, ruff_format" in ini_text
-        assert "ruff_fix.options = check --fix REVISION_SCRIPT_FILENAME" in ini_text
-        assert "ruff_format.options = format REVISION_SCRIPT_FILENAME" in ini_text
+        # ``format`` must run BEFORE ``fix`` so the formatter wraps
+        # long lines / strips trailing whitespace before the linter
+        # has a chance to complain about them on stdout.
+        assert "hooks = ruff_format, ruff_fix" in ini_text
+        assert (
+            "ruff_fix.options = check --fix --quiet REVISION_SCRIPT_FILENAME"
+            in ini_text
+        )
+        assert (
+            "ruff_format.options = format --quiet REVISION_SCRIPT_FILENAME" in ini_text
+        )
 
     def test_ini_ships_empty_sqlalchemy_url(self, alembic_project: Path) -> None:
         """Credentials must never enter version control via alembic.ini."""

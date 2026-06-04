@@ -226,22 +226,27 @@ class AlembicHelper:
             ),
             "timezone = UTC",
             "",
-            # Auto-format every freshly generated revision so the files
-            # autogenerate emits (long ``sa.Column`` lines, trailing
-            # whitespace in the docstring header when ``down_revision``
-            # is ``None``) are lint-clean out of the box. ``ruff check
-            # --fix`` sorts imports / applies safe fixes; ``ruff format``
-            # wraps over-length lines and strips docstring trailing
-            # whitespace. Both are no-ops when ruff is not installed
-            # only if the hook fails — keep ruff in the dev deps.
+            # Auto-format every freshly generated revision so the
+            # files autogenerate emits (long ``sa.Column`` lines,
+            # trailing whitespace in the docstring header when
+            # ``down_revision`` is ``None``) are lint-clean out of
+            # the box.
+            #
+            # Order matters: ``ruff format`` MUST run first — it
+            # wraps over-length lines (E501) and strips trailing
+            # whitespace (W291). Running ``ruff check --fix`` first
+            # would emit noisy "found N errors / N fixed / M
+            # remaining" output for things the formatter is about
+            # to fix on the next hook. ``--quiet`` silences the
+            # second pass when nothing actionable is left.
             "[post_write_hooks]",
-            "hooks = ruff_fix, ruff_format",
-            "ruff_fix.type = exec",
-            "ruff_fix.executable = ruff",
-            "ruff_fix.options = check --fix REVISION_SCRIPT_FILENAME",
+            "hooks = ruff_format, ruff_fix",
             "ruff_format.type = exec",
             "ruff_format.executable = ruff",
-            "ruff_format.options = format REVISION_SCRIPT_FILENAME",
+            "ruff_format.options = format --quiet REVISION_SCRIPT_FILENAME",
+            "ruff_fix.type = exec",
+            "ruff_fix.executable = ruff",
+            "ruff_fix.options = check --fix --quiet REVISION_SCRIPT_FILENAME",
             "",
             # No [loggers]/[handlers]/[formatters] sections on purpose.
             # ``env.py`` runs inside the host application process, and

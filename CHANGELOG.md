@@ -5,6 +5,29 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.3] — 2026-06-04
+
+### Fixed
+
+- **Noisy lint output after ``tempest db revision``.** The
+  post-write hooks ran in the wrong order — ``ruff_fix`` first,
+  ``ruff_format`` second — so the linter loudly complained about
+  ``W291`` (trailing whitespace in the docstring header) and
+  ``E501`` (long ``sa.Column`` lines) that the formatter would
+  fix on the very next hook. The final file was correct but
+  stdout looked like the revision failed. Two adjustments:
+
+  - Hooks reordered to ``ruff_format, ruff_fix`` so the formatter
+    wraps lines + strips whitespace **before** the linter sees
+    them.
+  - Both hooks pass ``--quiet`` so the "found N errors / N fixed
+    / M remaining" preamble is suppressed when nothing actionable
+    is left.
+
+  Existing projects: re-run ``tempest db init`` against an empty
+  ``alembic.ini`` to regenerate, or hand-edit
+  ``[post_write_hooks]`` to match the new layout.
+
 ## [0.30.2] — 2026-06-04
 
 ### Security

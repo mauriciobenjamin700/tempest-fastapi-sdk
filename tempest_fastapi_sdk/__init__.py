@@ -195,7 +195,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-__version__: str = "0.30.2"
+__version__: str = "0.30.3"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
