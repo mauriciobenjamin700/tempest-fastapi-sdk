@@ -2,6 +2,7 @@
 
 from tempest_fastapi_sdk.settings.base import BaseAppSettings
 from tempest_fastapi_sdk.settings.mixins import (
+    AuthSettings,
     CORSSettings,
     DatabaseSettings,
     EmailSettings,
@@ -18,6 +19,7 @@ from tempest_fastapi_sdk.settings.mixins import (
 )
 
 __all__: list[str] = [
+    "AuthSettings",
     "BaseAppSettings",
     "CORSSettings",
     "DatabaseSettings",

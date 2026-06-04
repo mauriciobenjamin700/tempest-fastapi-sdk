@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.30.3"
+version = "0.31.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -47,6 +47,7 @@ auth = [
 email = [
     "aiosmtplib>=4.0.0",
     "jinja2>=3.1.0",
+    "email-validator>=2.0.0",
 ]
 upload = [
     "aiofiles>=24.1.0",
@@ -102,6 +103,7 @@ all = [
     "minio>=7.2.0",
     "httpx>=0.28.0",
     "prometheus-client>=0.20.0",
+    "email-validator>=2.0.0",
 ]
 
 [project.urls]
@@ -121,6 +123,8 @@ packages = ["tempest_fastapi_sdk"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "tempest_fastapi_sdk/db/_alembic_templates/env.py.template" = "tempest_fastapi_sdk/db/_alembic_templates/env.py.template"
+"tempest_fastapi_sdk/auth/templates/activation.html" = "tempest_fastapi_sdk/auth/templates/activation.html"
+"tempest_fastapi_sdk/auth/templates/password_reset.html" = "tempest_fastapi_sdk/auth/templates/password_reset.html"
 
 [dependency-groups]
 dev = [
@@ -150,6 +154,7 @@ dev = [
     "itsdangerous>=2.2.0",
     "minio>=7.2.0",
     "prometheus-client>=0.20.0",
+    "email-validator>=2.0.0",
 ]
 docs = [
     "mkdocs>=1.6.0",

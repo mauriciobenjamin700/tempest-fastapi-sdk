@@ -223,19 +223,34 @@ class EmailUtils:
             ...     html=html,
             ... )
         """
-        if self._template_dir is None:
-            raise RuntimeError(
-                "EmailUtils.render_template requires template_dir to be set "
-                "at construction time."
-            )
         if Environment is None:
             raise ImportError(
                 "EmailUtils.render_template requires Jinja2. "
                 "Install with `pip install tempest-fastapi-sdk[email]`."
             )
         if self._jinja_env is None:
+            # ChoiceLoader: project templates first, SDK bundled
+            # templates (auth/activation, auth/password_reset) as
+            # fallback. Lets the bundled auth flow render its
+            # default emails without forcing the caller to ship
+            # ``template_dir``.
+            from jinja2 import ChoiceLoader
+
+            search_paths: list[Path] = []
+            if self._template_dir is not None:
+                search_paths.append(self._template_dir)
+            sdk_auth_templates = Path(__file__).resolve().parent.parent / (
+                "auth/templates"
+            )
+            if sdk_auth_templates.is_dir():
+                search_paths.append(sdk_auth_templates)
+            if not search_paths:
+                raise RuntimeError(
+                    "EmailUtils.render_template needs either ``template_dir`` "
+                    "set or the SDK auth templates to be reachable."
+                )
             self._jinja_env = Environment(
-                loader=FileSystemLoader(str(self._template_dir)),
+                loader=ChoiceLoader([FileSystemLoader(str(p)) for p in search_paths]),
                 autoescape=select_autoescape(["html", "htm", "xml"]),
                 enable_async=False,
             )

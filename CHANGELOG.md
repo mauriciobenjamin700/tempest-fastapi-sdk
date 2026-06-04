@@ -5,6 +5,89 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] — 2026-06-04
+
+### Added
+
+- **Bundled auth flow** — new ``tempest_fastapi_sdk.auth`` module
+  ships service + router + schemas + templates so signup,
+  activation, login, and password reset land end-to-end with a
+  single ``include_router`` call:
+
+  - ``UserAuthService`` — generic over the concrete ``UserModel``
+    + ``UserTokenModel``. Methods: ``signup``, ``activate``,
+    ``login``, ``request_password_reset``,
+    ``confirm_password_reset``, ``issue_jwt_pair``. Every method
+    accepts the active ``AsyncSession`` so the caller controls
+    transaction boundaries.
+  - ``make_auth_router(service, session_factory=…)`` mounts
+    ``POST /auth/signup``, ``POST /auth/activate/{token}``,
+    ``POST /auth/login``,
+    ``POST /auth/password-reset/request``,
+    ``POST /auth/password-reset/confirm``.
+  - DTOs: ``SignupSchema`` / ``SignupResponseSchema``,
+    ``LoginSchema`` / ``LoginResponseSchema``,
+    ``ActivationResponseSchema``,
+    ``PasswordResetRequestSchema`` /
+    ``PasswordResetResponseSchema``,
+    ``PasswordResetConfirmSchema``. Every field carries
+    ``title`` / ``description`` / ``examples`` per the SDK
+    convention.
+
+- **``BaseUserTokenModel``** (abstract) for one-shot activation /
+  reset tokens, plus ``make_user_token_model(user_table, …)`` for
+  test fixtures. The plaintext token is returned exactly once;
+  only the SHA-256 hash is persisted (via existing
+  ``generate_opaque_token`` / ``hash_opaque_token`` helpers).
+  Tokens carry a ``purpose`` (``UserTokenPurpose`` StrEnum:
+  ``activation`` / ``password_reset`` / ``email_verification``)
+  + ``expires_at`` + ``used_at``.
+
+- **``AuthSettings`` mixin** exposing every knob the bundled flow
+  needs:
+
+  - ``AUTH_AUTO_ACTIVATE`` — skip activation email entirely
+    (dev / CI mode); user is born active and the signup
+    response carries JWTs immediately.
+  - ``AUTH_RETURN_TOKEN_IN_RESPONSE`` — surface the activation /
+    reset link in the JSON body instead of (or in addition to)
+    sending the email. Toggles automatically when
+    ``EmailUtils`` isn't wired.
+  - ``AUTH_ACTIVATION_TTL_SECONDS`` (default 7d) /
+    ``AUTH_PASSWORD_RESET_TTL_SECONDS`` (default 1h).
+  - ``AUTH_ACTIVATION_URL_TEMPLATE`` /
+    ``AUTH_PASSWORD_RESET_URL_TEMPLATE`` — front-end URL
+    skeleton with ``{token}`` placeholder.
+  - ``AUTH_ACTIVATION_TEMPLATE`` /
+    ``AUTH_PASSWORD_RESET_TEMPLATE`` — Jinja2 template names.
+  - ``AUTH_PASSWORD_MIN_LENGTH`` (default 12).
+
+- **Default email templates** bundled under
+  ``tempest_fastapi_sdk/auth/templates/activation.html`` and
+  ``password_reset.html``. ``EmailUtils.render_template`` falls
+  back to the SDK directory when the caller-supplied
+  ``template_dir`` doesn't ship one with the same name, so the
+  bundled flow renders out of the box. Override by placing a
+  matching file in the project's template directory.
+
+### Changed
+
+- ``[email]`` extra now pulls ``email-validator`` so the
+  Pydantic ``EmailStr`` fields used by ``SignupSchema`` / login
+  / reset DTOs validate without a separate dependency.
+- ``EmailUtils.render_template`` now accepts callers without an
+  explicit ``template_dir`` — the SDK's bundled auth templates
+  are reachable by default.
+
+### Security
+
+- Password-reset request endpoint always returns 202 and a
+  generic message. Probing emails can no longer enumerate
+  account existence.
+- Activation + reset tokens are stored hashed (SHA-256, 48
+  bytes of entropy on the plaintext). One-shot — ``used_at``
+  prevents replay. TTL-bounded.
+
 ## [0.30.3] — 2026-06-04
 
 ### Fixed

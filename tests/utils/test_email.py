@@ -194,11 +194,24 @@ class TestRenderTemplate:
         )
         assert rendered == "Hi Ana — token: <abc>"
 
-    def test_without_template_dir_raises(self) -> None:
+    def test_without_template_dir_falls_back_to_sdk_bundled(self) -> None:
+        # Since v0.31.0 the env falls back to the SDK's bundled
+        # auth templates so the default activation / reset flows
+        # work without the caller wiring template_dir.
         utils = EmailUtils(
             host="smtp.example.com",
             port=587,
             from_addr="bot@example.com",
         )
-        with pytest.raises(RuntimeError, match="template_dir"):
-            utils.render_template("x.html", {})
+        from datetime import datetime
+
+        rendered = utils.render_template(
+            "activation.html",
+            {
+                "user": type("U", (), {"name": "Ana", "email": "ana@x"})(),
+                "activation_url": "https://app/activate?token=abc",
+                "expires_at": datetime(2026, 6, 4),
+            },
+        )
+        assert "Activate account" in rendered
+        assert "abc" in rendered

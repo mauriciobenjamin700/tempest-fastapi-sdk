@@ -496,6 +496,123 @@ class TaskIQSettings(BaseSettings):
     )
 
 
+class AuthSettings(BaseSettings):
+    """Configuration for the bundled signup / activation / reset flows.
+
+    Consumed by :class:`tempest_fastapi_sdk.auth.UserAuthService`
+    and :func:`tempest_fastapi_sdk.make_auth_router`. Each flag
+    has a sensible production default; flip ``AUTH_AUTO_ACTIVATE``
+    or ``AUTH_RETURN_TOKEN_IN_RESPONSE`` only in dev / CI.
+    """
+
+    AUTH_AUTO_ACTIVATE: bool = Field(
+        default=False,
+        title="Auto-activate on signup",
+        description=(
+            "When ``True``, signup immediately marks the user "
+            "active and skips the activation email entirely. "
+            "Useful for dev environments where users don't have "
+            "real inboxes. Never enable in production."
+        ),
+        examples=[False, True],
+    )
+    AUTH_RETURN_TOKEN_IN_RESPONSE: bool = Field(
+        default=False,
+        title="Return token in HTTP response",
+        description=(
+            "When ``True``, signup / password-reset endpoints "
+            "include the activation / reset link in the JSON "
+            "response body instead of (or in addition to) "
+            "sending the email. Useful when the SMTP host is "
+            "MailHog and you don't want to round-trip through "
+            "the inbox UI."
+        ),
+        examples=[False, True],
+    )
+    AUTH_ACTIVATION_TTL_SECONDS: int = Field(
+        default=86_400 * 7,
+        ge=60,
+        title="Activation-token TTL (seconds)",
+        description=(
+            "How long an activation token stays valid after "
+            "issuance. Defaults to 7 days."
+        ),
+        examples=[3600, 86_400, 86_400 * 7],
+    )
+    AUTH_PASSWORD_RESET_TTL_SECONDS: int = Field(
+        default=3_600,
+        ge=60,
+        title="Password-reset token TTL (seconds)",
+        description=(
+            "How long a password-reset token stays valid. "
+            "Defaults to 1 hour — shorter is safer; longer hurts "
+            "UX."
+        ),
+        examples=[900, 3_600, 7_200],
+    )
+    AUTH_ACTIVATION_URL_TEMPLATE: str = Field(
+        default="http://localhost:3000/activate?token={token}",
+        title="Activation URL template",
+        description=(
+            "Front-end URL where the user is redirected to "
+            "complete activation. The literal ``{token}`` is "
+            "replaced with the issued token."
+        ),
+        examples=[
+            "http://localhost:3000/activate?token={token}",
+            "https://app.example.com/activate/{token}",
+        ],
+    )
+    AUTH_PASSWORD_RESET_URL_TEMPLATE: str = Field(
+        default="http://localhost:3000/reset-password?token={token}",
+        title="Password-reset URL template",
+        description=(
+            "Front-end URL where the user completes the reset "
+            "flow. ``{token}`` is replaced with the issued "
+            "token."
+        ),
+        examples=[
+            "http://localhost:3000/reset-password?token={token}",
+            "https://app.example.com/reset?token={token}",
+        ],
+    )
+    AUTH_ACTIVATION_TEMPLATE: str = Field(
+        default="activation.html",
+        title="Activation email template name",
+        description=(
+            "Jinja2 template filename rendered by "
+            "``EmailUtils.render_template``. Resolved against "
+            "the ``template_dir`` configured on ``EmailUtils``; "
+            "the SDK ships a default ``activation.html`` you can "
+            "shadow by placing one with the same name in your "
+            "project's template directory."
+        ),
+        examples=["activation.html", "auth/welcome.html"],
+    )
+    AUTH_PASSWORD_RESET_TEMPLATE: str = Field(
+        default="password_reset.html",
+        title="Password-reset email template name",
+        description=(
+            "Jinja2 template filename rendered by "
+            "``EmailUtils.render_template``. Same resolution "
+            "rules as ``AUTH_ACTIVATION_TEMPLATE``."
+        ),
+        examples=["password_reset.html"],
+    )
+    AUTH_PASSWORD_MIN_LENGTH: int = Field(
+        default=12,
+        ge=8,
+        title="Minimum password length (chars)",
+        description=(
+            "Signup + reset reject passwords shorter than this. "
+            "Bumped from the OWASP 8-char floor to 12 because "
+            "longer passwords are the single biggest brute-force "
+            "deterrent."
+        ),
+        examples=[8, 12, 16],
+    )
+
+
 class MinIOSettings(BaseSettings):
     """MinIO / S3-compatible object storage configuration.
 
@@ -556,6 +673,7 @@ class MinIOSettings(BaseSettings):
 
 
 __all__: list[str] = [
+    "AuthSettings",
     "CORSSettings",
     "DatabaseSettings",
     "EmailSettings",

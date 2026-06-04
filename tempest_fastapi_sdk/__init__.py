@@ -62,6 +62,20 @@ from tempest_fastapi_sdk.api import (
     run_server,
     set_cookie,
 )
+from tempest_fastapi_sdk.auth import (
+    ActivationResponseSchema,
+    ActivationToken,
+    LoginResponseSchema,
+    LoginSchema,
+    PasswordResetConfirmSchema,
+    PasswordResetRequestSchema,
+    PasswordResetResponseSchema,
+    PasswordResetToken,
+    SignupResponseSchema,
+    SignupSchema,
+    UserAuthService,
+    make_auth_router,
+)
 from tempest_fastapi_sdk.controllers import BaseController
 from tempest_fastapi_sdk.core import (
     BaseIntEnum,
@@ -82,8 +96,11 @@ from tempest_fastapi_sdk.db import (
     BaseModel,
     BaseRepository,
     BaseUserModel,
+    BaseUserTokenModel,
     SoftDeleteMixin,
+    UserTokenPurpose,
     compose_hooks,
+    make_user_token_model,
     reorder_base_columns_first,
 )
 from tempest_fastapi_sdk.exceptions import (
@@ -113,6 +130,7 @@ from tempest_fastapi_sdk.schemas import (
 )
 from tempest_fastapi_sdk.services import BaseService
 from tempest_fastapi_sdk.settings import (
+    AuthSettings,
     BaseAppSettings,
     CORSSettings,
     DatabaseSettings,
@@ -195,7 +213,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-__version__: str = "0.30.3"
+__version__: str = "0.31.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
