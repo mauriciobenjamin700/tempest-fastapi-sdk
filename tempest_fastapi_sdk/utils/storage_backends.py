@@ -17,19 +17,25 @@ Backends only know about the bytes themselves.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, BinaryIO, Protocol, runtime_checkable
+from types import ModuleType
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.storage.minio_client import AsyncMinIOClient
 
+ContentValidator = Callable[[bytes], bool]
+"""First-chunk predicate. Returning ``False`` aborts the upload."""
+
 try:
-    import aiofiles as _aiofiles
+    import aiofiles as _aiofiles_mod
+
+    _aiofiles: ModuleType | None = _aiofiles_mod
 except ImportError:  # pragma: no cover - guarded by [upload] extra
-    _aiofiles: Any = None  # type: ignore[no-redef]
+    _aiofiles = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,7 +78,7 @@ class UploadStorage(Protocol):
         content_type: str = "application/octet-stream",
         metadata: dict[str, str] | None = None,
         max_size_bytes: int | None = None,
-        validator: Any = None,
+        validator: ContentValidator | None = None,
     ) -> UploadResult:
         """Persist a chunked async stream under ``key``.
 
@@ -85,7 +91,7 @@ class UploadStorage(Protocol):
             max_size_bytes (int | None): When set, the backend
                 aborts the write and removes any partial object
                 once the limit is exceeded.
-            validator (Any): Optional callable invoked with the
+            validator (ContentValidator | None): Optional callable invoked with the
                 first chunk. Returning ``False`` aborts the write
                 before further bytes are persisted.
 
@@ -188,7 +194,7 @@ class LocalUploadStorage:
         content_type: str = "application/octet-stream",
         metadata: dict[str, str] | None = None,
         max_size_bytes: int | None = None,
-        validator: Any = None,
+        validator: ContentValidator | None = None,
     ) -> UploadResult:
         """Persist ``chunks`` to ``base_dir / key``.
 
@@ -202,6 +208,7 @@ class LocalUploadStorage:
         )
 
         del content_type, metadata  # not stored locally
+        assert _aiofiles is not None, "guarded by __init__"
         target = self._resolve(key)
         target.parent.mkdir(parents=True, exist_ok=True)
 
@@ -290,7 +297,7 @@ class MinIOUploadStorage:
         content_type: str = "application/octet-stream",
         metadata: dict[str, str] | None = None,
         max_size_bytes: int | None = None,
-        validator: Any = None,
+        validator: ContentValidator | None = None,
     ) -> UploadResult:
         """Buffer ``chunks``, validate, then ``put_object``.
 
@@ -361,24 +368,8 @@ class MinIOUploadStorage:
         )
 
 
-async def _stream_upload_file(
-    file: BinaryIO,
-    chunk_size: int,
-) -> AsyncIterator[bytes]:
-    """Yield chunks from a sync file-like or FastAPI ``UploadFile``."""
-    read = getattr(file, "read", None)
-    if read is None:
-        raise TypeError("file argument must expose .read()")
-    while True:
-        chunk = read(chunk_size)
-        if hasattr(chunk, "__await__"):
-            chunk = await chunk
-        if not chunk:
-            return
-        yield chunk
-
-
 __all__: list[str] = [
+    "ContentValidator",
     "LocalUploadStorage",
     "MinIOUploadStorage",
     "UploadResult",

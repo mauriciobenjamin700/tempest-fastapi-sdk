@@ -5,6 +5,45 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.1] — 2026-05-31
+
+### Changed
+
+- **Tighter typing across the SDK's public surface — `Any` removed
+  from most signatures.** The recent backend/protocol additions
+  landed with `Any` in places where a concrete type or
+  `Protocol` is just as ergonomic:
+
+  - `UploadStorage.write_stream(..., validator=…)` and
+    `UploadUtils.save(..., storage=…)` now accept the explicit
+    `ContentValidator = Callable[[bytes], bool]` and
+    `UploadStorage | None` types. Mypy and IDEs can now flag
+    wrong shapes instead of waving them through.
+  - `RedisIdempotencyStore(client=…)` takes a new `_RedisLike`
+    `Protocol` (async `get(key)` / `set(key, value, ex)`) so the
+    cache is decoupled from `redis-py` for type-checking while
+    still accepting any compatible client.
+  - `make_app_exception_handler` / `make_http_exception_handler`
+    / `make_unhandled_exception_handler` return typed
+    `Callable[[Request, ExcT], Awaitable[JSONResponse]]` aliases
+    (`AppExceptionHandler`, `HTTPExceptionHandler`,
+    `UnhandledExceptionHandler`).
+  - `AsyncMinIOClient.__aexit__` and `ObjectStat.raw` annotate
+    their real types (`TracebackType | None`,
+    `minio.datatypes.Object`) via `TYPE_CHECKING` imports.
+  - `EmailUtils._jinja_env`, `_aiofiles`, `_aiosmtplib` use
+    `ModuleType | None` / `jinja2.Environment | None` instead of
+    `Any`.
+
+  The behavior is unchanged — only the types tightened, so
+  callers see better autocomplete and downstream refactors stay
+  honest.
+
+### Removed
+
+- `tempest_fastapi_sdk.utils.storage_backends._stream_upload_file`
+  helper (was private, unused).
+
 ## [0.25.0] — 2026-05-31
 
 ### Added

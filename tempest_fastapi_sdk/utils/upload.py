@@ -6,15 +6,23 @@ installed — :class:`UploadUtils` raises :class:`ImportError` on first
 instantiation instead.
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
+if TYPE_CHECKING:
+    from tempest_fastapi_sdk.utils.storage_backends import UploadStorage
+
 try:
-    import aiofiles as _aiofiles
+    import aiofiles as _aiofiles_mod
+
+    _aiofiles: ModuleType | None = _aiofiles_mod
 except ImportError:  # pragma: no cover - guarded by extras
-    _aiofiles: Any = None  # type: ignore[no-redef]
+    _aiofiles = None
 
 from fastapi import UploadFile
 
@@ -279,7 +287,7 @@ class UploadUtils:
         filename: str | None = None,
         keep_original_name: bool = False,
         content_validator: Callable[[bytes], bool] | None = None,
-        storage: Any = None,
+        storage: UploadStorage | None = None,
     ) -> Path:
         """Persist ``file`` and return the final path.
 
@@ -308,7 +316,7 @@ class UploadUtils:
                 Returning ``False`` aborts the save (and removes the
                 partial file) before any further bytes are written —
                 e.g. ``lambda b: sniff_mime(b) in {"image/png"}``.
-            storage (Any): Optional :class:`UploadStorage` backend
+            storage (UploadStorage | None): Optional :class:`UploadStorage` backend
                 (``LocalUploadStorage`` / ``MinIOUploadStorage``).
                 When ``None`` (default), writes to ``upload_dir`` on
                 local disk preserving the historical behavior. When
@@ -362,6 +370,7 @@ class UploadUtils:
                 },
             )
 
+        assert _aiofiles is not None, "guarded by __init__"
         total = 0
         first_chunk = True
         try:
@@ -386,7 +395,7 @@ class UploadUtils:
         self,
         file: UploadFile,
         *,
-        storage: Any,
+        storage: UploadStorage,
         subdir: str,
         resolved_name: str,
         content_validator: Callable[[bytes], bool] | None,
@@ -399,7 +408,7 @@ class UploadUtils:
 
         Args:
             file (UploadFile): Inbound upload.
-            storage (Any): Backend conforming to :class:`UploadStorage`.
+            storage (UploadStorage): Backend conforming to :class:`UploadStorage`.
             subdir (str): Optional key prefix.
             resolved_name (str): Sanitized basename from
                 :meth:`_resolve_filename`.

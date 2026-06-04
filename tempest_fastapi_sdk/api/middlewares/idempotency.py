@@ -35,12 +35,30 @@ import json
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
+
+
+class _RedisLike(Protocol):
+    """Minimal async-Redis surface used by :class:`RedisIdempotencyStore`.
+
+    Lets the store accept any client (``redis.asyncio.Redis``,
+    ``fakeredis.aioredis``, an in-house wrapper) without coupling
+    the SDK to ``redis-py`` for type-checking purposes.
+    """
+
+    async def get(self, key: str) -> str | bytes | None:
+        """Return the stored value (or ``None`` when absent)."""
+        ...
+
+    async def set(self, key: str, value: str, ex: int) -> object:
+        """Store ``value`` under ``key`` with TTL ``ex`` (seconds)."""
+        ...
+
 
 # Header name canonical to the industry — Stripe / AWS / GitHub all use it.
 IDEMPOTENCY_HEADER: str = "Idempotency-Key"
@@ -144,18 +162,20 @@ class RedisIdempotencyStore:
 
     def __init__(
         self,
-        client: Any,
+        client: _RedisLike,
         *,
         prefix: str = "idem:",
     ) -> None:
         """Initialize.
 
         Args:
-            client (Any): Async Redis client (``redis.asyncio.Redis``).
+            client (_RedisLike): Async Redis-like client exposing
+                ``get(key)`` / ``set(key, value, ex)`` (e.g.
+                ``redis.asyncio.Redis`` or any equivalent).
             prefix (str): Key prefix so idempotency entries don't
                 collide with other cached data.
         """
-        self.client: Any = client
+        self.client: _RedisLike = client
         self.prefix: str = prefix
 
     def _key(self, key: str) -> str:

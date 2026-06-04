@@ -26,10 +26,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, BinaryIO
+from types import TracebackType
+from typing import TYPE_CHECKING, BinaryIO
 
 if TYPE_CHECKING:
     from minio import Minio
+    from minio.datatypes import Object as _MinioObject
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +52,8 @@ class ObjectStat:
             in UTC.
         metadata (dict[str, str]): User metadata keyed without the
             ``x-amz-meta-`` prefix.
-        raw (Any): Underlying ``minio`` ``Object`` for advanced use.
+        raw (minio.datatypes.Object): Underlying ``minio`` ``Object``
+            for advanced use (versioning id, owner, restore state, …).
     """
 
     bucket: str
@@ -60,7 +63,7 @@ class ObjectStat:
     content_type: str | None
     last_modified: datetime | None
     metadata: dict[str, str]
-    raw: Any
+    raw: _MinioObject
 
 
 class AsyncMinIOClient:
@@ -146,8 +149,14 @@ class AsyncMinIOClient:
         """
         return self
 
-    async def __aexit__(self, *_: Any) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         """Exit the async context — no-op (``minio`` has no close)."""
+        del exc_type, exc, tb
         return None
 
     def _bucket(self, bucket: str | None) -> str:

@@ -6,15 +6,23 @@ installed — :class:`EmailUtils` raises :class:`ImportError` on first
 instantiation instead.
 """
 
+from __future__ import annotations
+
 from collections.abc import Iterable
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import jinja2
 
 try:
-    import aiosmtplib as _aiosmtplib
+    import aiosmtplib as _aiosmtplib_mod
+
+    _aiosmtplib: ModuleType | None = _aiosmtplib_mod
 except ImportError:  # pragma: no cover - guarded by extras
-    _aiosmtplib: Any = None  # type: ignore[no-redef]
+    _aiosmtplib = None
 
 try:
     from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -96,7 +104,7 @@ class EmailUtils:
         self._template_dir: Path | None = (
             Path(template_dir) if template_dir is not None else None
         )
-        self._jinja_env: Any = None
+        self._jinja_env: jinja2.Environment | None = None
 
     async def send(
         self,
@@ -159,6 +167,7 @@ class EmailUtils:
                     filename=path.name,
                 )
 
+        assert _aiosmtplib is not None, "guarded by __init__"
         await _aiosmtplib.send(
             message,
             hostname=self.host,

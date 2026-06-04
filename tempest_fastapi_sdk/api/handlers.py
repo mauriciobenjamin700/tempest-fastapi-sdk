@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import traceback
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -16,11 +17,23 @@ from tempest_fastapi_sdk.exceptions.base import AppException
 
 logger = logging.getLogger("tempest_fastapi_sdk.api.handlers")
 
+AppExceptionHandler = Callable[[Request, AppException], Awaitable[JSONResponse]]
+"""Async callable resolving an :class:`AppException` to a JSON response."""
+
+HTTPExceptionHandler = Callable[
+    [Request, StarletteHTTPException],
+    Awaitable[JSONResponse],
+]
+"""Async callable resolving a raw ``HTTPException`` to a JSON response."""
+
+UnhandledExceptionHandler = Callable[[Request, Exception], Awaitable[JSONResponse]]
+"""Async callable resolving any uncaught exception to a JSON response."""
+
 
 def make_app_exception_handler(
     *,
     log_level: int = logging.INFO,
-) -> Any:
+) -> AppExceptionHandler:
     """Build the handler for :class:`AppException` subclasses.
 
     Serializes the exception to the SDK envelope and emits an
@@ -39,7 +52,8 @@ def make_app_exception_handler(
             ``AppException`` subclasses should trigger paging.
 
     Returns:
-        Any: An async ``(request, exc) -> JSONResponse`` callable.
+        AppExceptionHandler: An async ``(request, exc) -> JSONResponse``
+        callable.
     """
 
     async def _handler(
@@ -111,7 +125,7 @@ def make_unhandled_exception_handler(
     log_traceback: bool = True,
     include_traceback: bool = False,
     log_level: int = logging.ERROR,
-) -> Any:
+) -> UnhandledExceptionHandler:
     """Build the catch-all handler for non-:class:`AppException` errors.
 
     Default FastAPI/Starlette behavior on uncaught exceptions is to
@@ -148,8 +162,9 @@ def make_unhandled_exception_handler(
         log_level (int): Logging level used by the catch-all handler.
 
     Returns:
-        Any: An async ``(request, exc) -> JSONResponse`` callable
-        ready to pass to :meth:`FastAPI.add_exception_handler`.
+        UnhandledExceptionHandler: An async
+        ``(request, exc) -> JSONResponse`` callable ready to pass to
+        :meth:`FastAPI.add_exception_handler`.
     """
 
     async def _handler(request: Request, exc: Exception) -> JSONResponse:
@@ -192,7 +207,7 @@ def make_http_exception_handler(
     *,
     log_traceback: bool = True,
     log_level: int = logging.ERROR,
-) -> Any:
+) -> HTTPExceptionHandler:
     """Build the handler for raw :class:`starlette.exceptions.HTTPException`.
 
     Without this, ``raise HTTPException(500, "...")`` (or ``404``,
@@ -225,8 +240,9 @@ def make_http_exception_handler(
         log_level (int): Logging level used for 5xx records.
 
     Returns:
-        Any: An async ``(request, exc) -> JSONResponse`` callable
-        ready to pass to :meth:`FastAPI.add_exception_handler`.
+        HTTPExceptionHandler: An async
+        ``(request, exc) -> JSONResponse`` callable ready to pass to
+        :meth:`FastAPI.add_exception_handler`.
     """
 
     async def _handler(
@@ -327,13 +343,18 @@ def register_exception_handlers(
         log_level (int): Logging level used by the 5xx handlers.
             Defaults to :data:`logging.ERROR`.
     """
+    # Starlette's ``add_exception_handler`` is typed to accept only
+    # callables keyed by the broad ``Exception`` — our typed
+    # handlers narrow the second arg to ``AppException`` /
+    # ``StarletteHTTPException`` for the SDK consumer, so the cast
+    # is safe at the boundary.
     app.add_exception_handler(
         AppException,
-        make_app_exception_handler(log_level=log_level),
+        make_app_exception_handler(log_level=log_level),  # type: ignore[arg-type]
     )
     app.add_exception_handler(
         StarletteHTTPException,
-        make_http_exception_handler(
+        make_http_exception_handler(  # type: ignore[arg-type]
             log_traceback=log_traceback,
             log_level=log_level,
         ),
