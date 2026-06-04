@@ -3807,6 +3807,29 @@ After this, every `v*.*.*` tag triggers a publish. No PYPI tokens are stored any
 
 ---
 
+## Roadmap
+
+The full, prioritized roadmap lives in the documentation site —
+[**Roadmap (PT-BR)**](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/roadmap/) ·
+[**Roadmap (EN-US)**](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/roadmap/).
+
+Short version — next two releases:
+
+- **v0.23.0 — observability + retries.** OpenTelemetry tracing
+  (`setup_tracing(app, otlp_endpoint=…)`), typed `HTTPClient`
+  (httpx wrapper with retry/backoff/circuit-breaker/`X-Request-ID`
+  propagation), Prometheus `/metrics` endpoint.
+- **v0.24.0 — cloud uploads + idempotency.** `UploadUtils` with
+  pluggable backends (`LocalBackend`, `S3Backend`, `GCSBackend`),
+  `IdempotencyMiddleware` + `idempotency_keys` table, Jinja2
+  templates in `EmailUtils.render_template(path, ctx)`.
+
+Tier-S features still missing beyond those (outbox pattern for
+transactional events, OAuth2/OIDC providers, bulk repository ops,
+CSRF + body-size middlewares) are tracked in the roadmap page.
+
+---
+
 ## License
 
 MIT

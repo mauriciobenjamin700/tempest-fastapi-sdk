@@ -98,6 +98,7 @@ plugins:
             Segurança: Security
             Helpers brasileiros: Brazilian helpers
             Referência: Reference
+            Roadmap: Roadmap
             Guia de migração: Migration guide
             Contribuindo: Contributing
             Changelog: Changelog
@@ -192,6 +193,7 @@ nav:
       - Segurança: recipes/security.md
       - Helpers brasileiros: recipes/br-helpers.md
   - Referência: reference.md
+  - Roadmap: roadmap.md
   - Guia de migração: migration.md
   - Contribuindo: contributing.md
   - Changelog: changelog.md
