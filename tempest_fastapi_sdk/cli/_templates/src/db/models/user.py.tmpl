@@ -1,0 +1,32 @@
+"""``UserModel`` — concrete subclass of :class:`BaseUserModel`.
+
+``BaseUserModel`` is abstract — SQLAlchemy does not map abstract
+classes, so without a concrete subclass the ``user`` table is
+never created. This module ships the minimum viable subclass; add
+your own columns here (avatar, locale, last_active_at, …) as the
+service grows.
+
+The class is imported by ``src.db.models.__init__`` so Alembic's
+``--autogenerate`` picks it up via ``BaseModel.metadata``.
+"""
+
+from __future__ import annotations
+
+from tempest_fastapi_sdk import BaseUserModel
+
+
+class UserModel(BaseUserModel):
+    """Concrete user row mapped to the ``users`` table.
+
+    Inherits every column from :class:`BaseUserModel`: ``id``,
+    ``email``, ``hashed_password``, ``is_admin``, ``last_login_at``,
+    plus the audit columns from :class:`BaseModel`
+    (``is_active``, ``created_at``, ``updated_at``).
+    """
+
+    __tablename__ = "users"
+
+
+__all__: list[str] = [
+    "UserModel",
+]

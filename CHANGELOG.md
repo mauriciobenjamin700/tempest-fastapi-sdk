@@ -5,6 +5,34 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.1] — 2026-06-04
+
+### Fixed
+
+- **Scaffold no longer ships an empty ``user`` table** — the
+  scaffolded ``src/db/models/__init__.py`` was empty, so
+  Alembic's ``--autogenerate`` found no models in
+  ``BaseModel.metadata`` and never emitted the ``user`` table.
+  The result: ``/admin`` login failed because the table didn't
+  exist. The fix:
+
+  - New ``src/db/models/user.py.tmpl`` ships a concrete
+    ``UserModel(BaseUserModel)`` mapped to the ``users`` table.
+  - ``src/db/models/__init__.py.tmpl`` re-exports ``BaseModel``
+    + ``UserModel`` so Alembic sees the metadata.
+  - ``src/api/app.py.tmpl`` now wires ``AdminSite`` +
+    ``AdminModel(UserModel)`` + ``UserModelAuthBackend`` +
+    ``make_admin_router`` out of the box.
+  - ``tempest new`` default extras bumped from ``auth`` to
+    ``auth,admin`` so the admin wiring boots without a manual
+    extras tweak.
+
+  Upgrade path for an already-scaffolded project: copy the new
+  ``UserModel`` definition into ``src/db/models/user.py``,
+  re-export from ``src/db/models/__init__.py``, then run
+  ``uv run alembic revision --autogenerate -m "user table"``
+  followed by ``uv run alembic upgrade head``.
+
 ## [0.29.0] — 2026-06-04
 
 ### Fixed

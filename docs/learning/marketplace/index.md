@@ -15,7 +15,7 @@ Plataforma multi-tenant de vendas estilo **Mercado Livre / Shopee**, sem integra
 
 ```bash
 # 1. Scaffold via SDK
-tempest new marketplace --extras auth,upload,cache,email,minio,queue,tasks,metrics
+tempest new marketplace --extras auth,admin,upload,cache,email,minio,queue,tasks,metrics
 
 # 2. Sobe infra
 cd marketplace

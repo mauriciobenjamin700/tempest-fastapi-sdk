@@ -1,1 +1,17 @@
-"""SQLAlchemy ORM models — import every model here so Alembic sees them."""
+"""SQLAlchemy ORM models — import every model here so Alembic sees them.
+
+Alembic's ``--autogenerate`` walks ``BaseModel.metadata`` at
+revision time. Models that aren't imported here are invisible to
+the metadata, so their tables never end up in the migration. Add
+``from src.db.models.<file> import <ModelClass>`` for every new
+model you create.
+"""
+
+from tempest_fastapi_sdk import BaseModel
+
+from src.db.models.user import UserModel
+
+__all__: list[str] = [
+    "BaseModel",
+    "UserModel",
+]

@@ -8,16 +8,21 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI
 
 from tempest_fastapi_sdk import (
+    AdminModel,
+    AdminSite,
     AsyncDatabaseManager,
     RequestIDMiddleware,
+    UserModelAuthBackend,
     apply_cors,
     configure_logging,
+    make_admin_router,
     make_health_router,
     make_logs_router,
     register_exception_handlers,
 )
 
 from src.core.settings import settings
+from src.db.models import UserModel
 
 configure_logging(
     level=settings.LOG_LEVEL,
@@ -67,6 +72,23 @@ def create_app() -> FastAPI:
         make_logs_router(
             log_dir=settings.LOG_DIR,
             token_secret=settings.TOKEN_SECRET,
+        ),
+    )
+
+    # Admin panel — requires the [admin] extra plus a UserModel row
+    # with ``is_admin=True``. Bootstrap one after running the first
+    # Alembic migration:
+    #   uv run alembic upgrade head
+    #   uv run python -c "..."  # set hashed_password + is_admin=True
+    admin_site = AdminSite(title="__PROJECT_NAME__ admin")
+    admin_site.register(AdminModel(model=UserModel))
+    app.include_router(
+        make_admin_router(
+            admin_site,
+            db=db,
+            auth_backend=UserModelAuthBackend(user_model=UserModel),
+            secret_key=settings.JWT_SECRET,
+            cookie_secure=not settings.SERVER_DEBUG,
         ),
     )
 

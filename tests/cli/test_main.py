@@ -101,7 +101,7 @@ class TestNew:
         assert result.exit_code == 0
         pyproject = (tmp_path / "demo_svc" / "pyproject.toml").read_text()
         assert 'name = "demo_svc"' in pyproject
-        assert "tempest-fastapi-sdk[auth]>=" in pyproject
+        assert "tempest-fastapi-sdk[auth,admin]>=" in pyproject
         env = (tmp_path / "demo_svc" / ".env.example").read_text()
         assert "SERVER_HOST=127.0.0.1" in env
         assert "SERVER_PORT=8000" in env

@@ -111,11 +111,14 @@ def new_cmd(
             "--extras",
             help=(
                 "Comma-separated SDK extras to pin in the generated "
-                "pyproject.toml (e.g. 'auth,upload'). Pass an empty string "
-                "to install the core package without extras."
+                "pyproject.toml (e.g. 'auth,admin,upload'). Pass an empty "
+                "string to install the core package without extras. "
+                "Defaults to 'auth,admin' because the scaffolded app.py "
+                "wires the admin panel and concrete UserModel out of the "
+                "box."
             ),
         ),
-    ] = "auth",
+    ] = "auth,admin",
     force: Annotated[
         bool,
         typer.Option(
