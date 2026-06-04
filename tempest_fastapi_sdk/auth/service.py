@@ -19,13 +19,16 @@ the rest of the SDK so the same code runs against any
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import select
 
+from tempest_fastapi_sdk.auth.schemas import (
+    ActivationToken,
+    PasswordResetToken,
+)
 from tempest_fastapi_sdk.db.user_token_model import (
     BaseUserTokenModel,
     UserTokenPurpose,
@@ -50,36 +53,6 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.db.user_model import BaseUserModel
     from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
     from tempest_fastapi_sdk.utils.email import EmailUtils
-
-
-@dataclass(frozen=True, slots=True)
-class ActivationToken:
-    """Returned by :meth:`UserAuthService.signup` when activation is required.
-
-    Carries the **plaintext** token alongside the rendered URL so
-    the caller can decide whether to mail it, log it, or hand it
-    back to the client (dev mode). The hash is already persisted
-    — there's no way to recover the plaintext later.
-    """
-
-    user_id: UUID
-    token: str
-    url: str
-    expires_at: datetime
-
-
-@dataclass(frozen=True, slots=True)
-class PasswordResetToken:
-    """Returned by :meth:`UserAuthService.request_password_reset`.
-
-    Same shape as :class:`ActivationToken` — only the purpose
-    differs.
-    """
-
-    user_id: UUID
-    token: str
-    url: str
-    expires_at: datetime
 
 
 class UserAuthService:

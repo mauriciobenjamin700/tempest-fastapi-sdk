@@ -11,19 +11,17 @@ return in the JSON response body instead of being mailed
 from tempest_fastapi_sdk.auth.router import make_auth_router
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationResponseSchema,
+    ActivationToken,
     LoginResponseSchema,
     LoginSchema,
     PasswordResetConfirmSchema,
     PasswordResetRequestSchema,
     PasswordResetResponseSchema,
+    PasswordResetToken,
     SignupResponseSchema,
     SignupSchema,
 )
-from tempest_fastapi_sdk.auth.service import (
-    ActivationToken,
-    PasswordResetToken,
-    UserAuthService,
-)
+from tempest_fastapi_sdk.auth.service import UserAuthService
 
 __all__: list[str] = [
     "ActivationResponseSchema",

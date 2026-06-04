@@ -5,6 +5,31 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.1] — 2026-06-04
+
+### Changed
+
+- **``ActivationToken`` and ``PasswordResetToken`` are now
+  Pydantic ``BaseSchema`` subclasses** instead of ``dataclass``
+  instances. Keeps the auth module aligned with the SDK's
+  gold-standard DTO convention — every "thing returned to the
+  caller" is a Pydantic schema with full
+  ``title``/``description``/``examples`` metadata. The fields
+  are the same; the constructor signature is the same. Callers
+  that destructure via attribute access (``activation.token``,
+  ``activation.url``) keep working unchanged.
+- Both token schemas moved from ``tempest_fastapi_sdk.auth.service``
+  to ``tempest_fastapi_sdk.auth.schemas`` — re-exports at the
+  package root are unchanged, so existing imports
+  (``from tempest_fastapi_sdk import ActivationToken``) keep
+  resolving.
+- **Every auth schema now carries a thorough class-level
+  docstring** describing the flow that uses it, the meaning of
+  each attribute, and the security / behavior contract (e.g.
+  why ``PasswordResetResponseSchema.message`` is always
+  identical, why ``ActivationToken.token`` is only handed back
+  once).
+
 ## [0.31.0] — 2026-06-04
 
 ### Added
