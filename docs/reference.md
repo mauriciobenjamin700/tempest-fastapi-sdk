@@ -85,16 +85,51 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.IdempotencyMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.MemoryIdempotencyStore
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.RedisIdempotencyStore
+::: tempest_fastapi_sdk.api.middlewares.body_size.BodySizeLimitMiddleware
+::: tempest_fastapi_sdk.api.middlewares.csrf.CSRFMiddleware
+::: tempest_fastapi_sdk.api.middlewares.csrf.make_csrf_token_dependency
+::: tempest_fastapi_sdk.api.middlewares.csrf.generate_csrf_token
 ::: tempest_fastapi_sdk.utils.storage_backends.LocalUploadStorage
 ::: tempest_fastapi_sdk.utils.storage_backends.MinIOUploadStorage
+::: tempest_fastapi_sdk.utils.http_client.HTTPClient
+::: tempest_fastapi_sdk.utils.http_client.RetryPolicy
+::: tempest_fastapi_sdk.utils.http_client.CircuitOpenError
+::: tempest_fastapi_sdk.api.oauth.GoogleOAuthClient
+::: tempest_fastapi_sdk.api.oauth.GitHubOAuthClient
+::: tempest_fastapi_sdk.api.oauth.OIDCProvider
+::: tempest_fastapi_sdk.api.oauth.OAuthUser
+::: tempest_fastapi_sdk.api.oauth.OAuthTokens
 ::: tempest_fastapi_sdk.api.middlewares.cors.apply_cors
 ::: tempest_fastapi_sdk.api.routers.health.make_health_router
 ::: tempest_fastapi_sdk.api.routers.logs.make_logs_router
+::: tempest_fastapi_sdk.api.routers.metrics.PrometheusMiddleware
+::: tempest_fastapi_sdk.api.routers.metrics.make_prometheus_router
+::: tempest_fastapi_sdk.api.routers.metrics.make_prometheus_registry
+
+### `tempest_fastapi_sdk.auth`
+
+::: tempest_fastapi_sdk.auth.service.UserAuthService
+::: tempest_fastapi_sdk.auth.router.make_auth_router
+::: tempest_fastapi_sdk.auth.schemas.SignupSchema
+::: tempest_fastapi_sdk.auth.schemas.SignupResponseSchema
+::: tempest_fastapi_sdk.auth.schemas.LoginSchema
+::: tempest_fastapi_sdk.auth.schemas.LoginResponseSchema
+::: tempest_fastapi_sdk.auth.schemas.ActivationResponseSchema
+::: tempest_fastapi_sdk.auth.schemas.PasswordResetRequestSchema
+::: tempest_fastapi_sdk.auth.schemas.PasswordResetResponseSchema
+::: tempest_fastapi_sdk.auth.schemas.PasswordResetConfirmSchema
+::: tempest_fastapi_sdk.auth.schemas.ActivationToken
+::: tempest_fastapi_sdk.auth.schemas.PasswordResetToken
 
 ### `tempest_fastapi_sdk.storage`
 
 ::: tempest_fastapi_sdk.storage.minio_client.AsyncMinIOClient
 ::: tempest_fastapi_sdk.storage.minio_client.ObjectStat
+
+### Alembic hooks
+
+::: tempest_fastapi_sdk.db.alembic_hooks.reorder_base_columns_first
+::: tempest_fastapi_sdk.db.alembic_hooks.compose_hooks
 
 ---
 

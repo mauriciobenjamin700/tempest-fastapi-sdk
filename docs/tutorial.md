@@ -12,6 +12,9 @@ Este tutorial passa pela conexão da feature **Users** usando todas as convenç�
 !!! tip "Para os impacientes"
     Se você só quer copiar o layout, gere-o: `tempest new my-service`. A CLI entrega o mesmo esqueleto que este tutorial percorre.
 
+!!! info "Já tem fluxo de auth pronto"
+    Este tutorial mostra como **construir** signup/login com `BaseRepository` + `BaseService` + `BaseController` — é a base para qualquer feature. Para o **fluxo de auth completo** (signup + activation por email + login com JWT + reset de senha), o SDK fornece `UserAuthService` + `make_auth_router` desde v0.31.0; pule para a receita **[Auth flow »](recipes/auth-flow.md)** quando quiser usar o atalho em vez de implementar manualmente.
+
 !!! info "Acompanhando"
     Todo snippet é **standalone** — cole-o no caminho de arquivo mostrado no comentário. A árvore completa do projeto é o [layout obrigatório de projeto da Arquitetura →](architecture.md#layout-obrigatorio-do-projeto).
 

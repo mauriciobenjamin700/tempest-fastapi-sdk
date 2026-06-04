@@ -94,6 +94,7 @@ plugins:
             Storage (MinIO/S3): Storage (MinIO/S3)
             Uploads (backends): Uploads (backends)
             Idempotência: Idempotency
+            "Auth flow (signup/reset)": "Auth flow (signup/reset)"
             Métricas: Metrics
             Painel admin: Admin site
             Testes: Testing
@@ -198,6 +199,7 @@ nav:
       - Storage (MinIO/S3): recipes/storage.md
       - Uploads (backends): recipes/uploads.md
       - Idempotência: recipes/idempotency.md
+      - Auth flow (signup/reset): recipes/auth-flow.md
       - Métricas: recipes/metrics.md
       - Painel admin: recipes/admin.md
       - Testes: recipes/testing.md

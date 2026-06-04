@@ -5,6 +5,57 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.3] — 2026-06-04
+
+### Documentation
+
+- **Comprehensive documentation refresh** to reflect the v0.23.0 → v0.31.2
+  surface. No code change.
+- ``README.md``: extras table now lists ``[http]`` + ``[prometheus]``;
+  module map covers ``BaseUserTokenModel``, ``UserTokenPurpose``,
+  ``BASE_COLUMN_ORDER``, ``reorder_base_columns_first``, ``compose_hooks``,
+  ``AuthSettings``, ``tempest_fastapi_sdk.auth``, ``utils.http_client``,
+  ``utils.storage_backends``. Roadmap section rewritten with every shipped
+  release v0.23.0 → v0.31.2.
+- ``docs/index.{md,en.md}``: module map updated with the new exports
+  (``auth``, ``storage``, ``IdempotencyMiddleware``,
+  ``BodySizeLimitMiddleware``, ``CSRFMiddleware``, ``PrometheusMiddleware``,
+  OAuth clients, ``HTTPClient``, bulk repo ops). Hero paragraph rewritten
+  to mention the new layers.
+- ``docs/installation.{md,en.md}``: extras table now lists ``[minio]``,
+  ``[http]``, ``[prometheus]``; CLI section documents ``tempest generate``,
+  ``tempest db <subcommand>``, ``tempest user <subcommand>``.
+- ``docs/tutorial.{md,en.md}``: new "Auth flow already ships" admonition
+  pointing readers at the bundled ``UserAuthService`` + ``make_auth_router``
+  shortcut.
+- ``docs/recipes/auth-flow.{md,en.md}`` (new): full PT-BR + EN-US recipe
+  covering the bundled signup / activate / login / password-reset flow —
+  ``UserTokenModel`` concretization, settings flags, the three operating
+  modes (production, dev without SMTP, CI tests), template overrides,
+  security guarantees.
+- ``docs/roadmap.{md,en.md}``: full rewrite with Tier S / A / B status
+  tables (Status + Where columns), every release detailed v0.23.0 →
+  v0.31.2, "What's next" section for v0.32.0+ (OpenTelemetry) and
+  v0.33.0+ (outbox).
+- ``docs/reference.{md,en.md}``: ``mkdocstrings`` entries added for
+  ``BodySizeLimitMiddleware``, ``CSRFMiddleware``, OAuth clients,
+  ``PrometheusMiddleware`` + ``make_prometheus_router``, ``HTTPClient``
+  + ``RetryPolicy`` + ``CircuitOpenError``, the full
+  ``tempest_fastapi_sdk.auth`` module (service, router, schemas),
+  ``reorder_base_columns_first``, ``compose_hooks``.
+- ``docs/learning/marketplace/index.{md,en.md}``: stack table now points
+  at ``UserAuthService`` + ``make_auth_router`` as the default auth path,
+  ``BaseRepository.bulk_create_values`` / ``bulk_upsert`` for stock seed,
+  ``PrometheusMiddleware``, ``BodySizeLimitMiddleware``, OAuth clients,
+  ``CSRFMiddleware``, ``HTTPClient``. Implementation order's step 1
+  rewritten to use the bundled auth recipe.
+- ``mkdocs.yml``: ``Auth flow (signup/reset)`` entry added to nav + i18n
+  translation map.
+- ``CLAUDE.md``: "What the SDK currently covers" section rewritten as a
+  structured category bullet list (Auth, DB, Observability, HTTP layer,
+  Pagination, Settings, SSE, Throttle, Upload, MinIO/S3, Email, WebPush,
+  Cache, Queue/tasks, BR validators, Admin panel, CLI).
+
 ## [0.31.2] — 2026-06-04
 
 ### Changed

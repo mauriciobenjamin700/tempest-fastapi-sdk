@@ -49,17 +49,22 @@ When the service boots you have:
 
 | Need | SDK primitive |
 |------|---------------|
-| Public signup + login | `BaseUserModel`, `PasswordUtils`, `JWTUtils`, `make_jwt_user_dependency` |
+| Public signup + login + password reset | `UserAuthService` + `make_auth_router` (signup / activate / login / password-reset ready since v0.31.0) + `BaseUserModel` + `BaseUserTokenModel` |
+| Access-token refresh via JWT pair | `JWTUtils` + `make_jwt_user_dependency` |
 | Multi-tenant membership | `BaseRepository[T]`, `make_role_dependency`, `make_permission_dependency` |
 | Member invitation | `EmailUtils.render_template` + `generate_opaque_token`/`hash_opaque_token` |
 | Variants + versioned prices | `BaseModel` + `AuditMixin` + SQLAlchemy 2.0 async relationships |
-| Append-only stock | `BaseModel` (movement) + `BaseRepository.bulk_create` (expected v0.27+) |
+| Append-only stock with bulk seed | `BaseModel` (movement) + `BaseRepository.bulk_create_values` / `bulk_upsert` (v0.28+) |
 | Non-duplicating checkout | `IdempotencyMiddleware` + `RedisIdempotencyStore` |
+| Upload body-size limit | `BodySizeLimitMiddleware` (v0.28+) |
 | Product images | `UploadUtils` + `MinIOUploadStorage` + presigned URLs |
 | Real-time order status | `EventStream`, `sse_response` |
 | Async notifications | `AsyncTaskBrokerManager` (TaskIQ) + `AsyncBrokerManager` (FastStream) |
 | Public catalog cache | `AsyncRedisManager`, `@cached` |
-| Oncall metrics | `MetricsUtils` (Prometheus endpoint via v0.26+) |
+| Oncall metrics | `PrometheusMiddleware` + `make_prometheus_router` (v0.28+) and `MetricsUtils` |
+| Social OAuth (Google / GitHub) | `GoogleOAuthClient` / `GitHubOAuthClient` / `OIDCProvider` (v0.29+) |
+| Safe server-rendered forms | `CSRFMiddleware` (v0.29+) |
+| Outbound calls to external services | `HTTPClient` (v0.28+) with retry + circuit-breaker |
 | Standardized errors | `AppException` hierarchy + `register_exception_handlers` |
 | Per-level logs + `/logs` | `configure_logging(log_dir=…)` + `make_logs_router` |
 
@@ -101,7 +106,7 @@ marketplace/
 
 ## Recommended implementation order
 
-1. **Auth** — `User` + signup + login + `current_user` dependency. (Covers: model, repository, service, controller, router, JWT.)
+1. **Auth** — `UserModel(BaseUserModel)` + `UserTokenModel(BaseUserTokenModel)` + wire `UserAuthService` + `make_auth_router`. Five endpoints ready: `/auth/signup`, `/auth/activate/{token}`, `/auth/login`, `/auth/password-reset/request`, `/auth/password-reset/confirm`. (Covers: abstract model concretization, bundled flow, JWT pair, Jinja2 templates.) See **[Auth flow recipe »](../../recipes/auth-flow.en.md)**.
 2. **Organizations + members** — `Organization` + `Membership` with the 2-orgs-per-user / 10-members-per-org guard. (Covers: domain invariants, role-based access.)
 3. **Invitations** — `Invitation` with opaque token, Jinja2 email, 7-day expiry. (Covers: transactional email.)
 4. **Catalog + products** — `Product` + `ProductVariant` + `PriceHistory`. (Covers: 1-N relationships, soft-delete.)

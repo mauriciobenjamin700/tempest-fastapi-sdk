@@ -9,25 +9,27 @@
 ## O que você ganha de fábrica
 
 !!! tip "Use o SDK sempre que for copiar e colar isto"
-    `BaseModel` SQLAlchemy, `BaseRepository` async, schemas Pydantic + paginação, envelope de exceções + handlers, mixins de settings, managers async de DB / Redis / RabbitMQ / TaskIQ, validadores de documentos brasileiros, utilitários de JWT / senha / e-mail / upload, Server-Sent Events, Web Push, um painel admin no estilo Django e uma CLI única (`tempest`).
+    `BaseModel` SQLAlchemy, `BaseUserModel` + `BaseUserTokenModel` abstratos, `BaseRepository` async com `bulk_create_values`/`bulk_upsert`, schemas Pydantic + paginação (offset + cursor), envelope de exceções + handlers, mixins de settings com `title`/`description`/`examples`, managers async de DB / Redis / RabbitMQ / TaskIQ, validadores brasileiros, utilitários de JWT / senha / e-mail (com templates Jinja2) / upload (com backends pluggable Local + MinIO), Server-Sent Events, Web Push, painel admin estilo Django, fluxo de auth bundled (signup / activate / login / reset), OAuth2/OIDC (Google/GitHub + genérico), middlewares de CSRF / Idempotency / BodySize / Prometheus / RateLimit, `HTTPClient` httpx tipado com retry + circuit-breaker, MinIO/S3 (`AsyncMinIOClient`), hook de Alembic que reordena colunas-base e uma CLI única (`tempest db`, `tempest user`, `tempest new`, `tempest generate`).
 
 | Módulo | Exporta |
 | --- | --- |
 | `tempest_fastapi_sdk.admin` | `AdminSite`, `AdminModel`, `make_admin_router`, `UserModelAuthBackend` |
-| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `apply_cors`, `RequestIDMiddleware`, `make_health_router`, dependências de JWT/role/permissão, `HardenedStaticFiles`, `RateLimitMiddleware`, `WebhookSignatureVerifier`, `run_server` |
+| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `apply_cors`, `RequestIDMiddleware`, `IdempotencyMiddleware`, `BodySizeLimitMiddleware`, `CSRFMiddleware`, `PrometheusMiddleware`, `make_health_router`, `make_logs_router`, `make_prometheus_router`, OAuth (`GoogleOAuthClient` / `GitHubOAuthClient` / `OIDCProvider`), dependências JWT/role/permissão, `HardenedStaticFiles`, `RateLimitMiddleware`, `WebhookSignatureVerifier`, `run_server` |
+| `tempest_fastapi_sdk.auth` | `UserAuthService`, `make_auth_router`, schemas (`SignupSchema`, `LoginSchema`, `PasswordResetRequestSchema`, …) |
 | `tempest_fastapi_sdk.cache` | `AsyncRedisManager`, `@cached` |
 | `tempest_fastapi_sdk.controllers` | `BaseController` |
 | `tempest_fastapi_sdk.core` | `JSONFormatter`, `configure_logging`, contexto de request-ID, `BaseStrEnum` / `BaseIntEnum` |
-| `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseRepository`, `AsyncDatabaseManager`, `AlembicHelper`, `AuditMixin`, `SoftDeleteMixin` |
+| `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `UserTokenPurpose`, `BaseRepository` (com `bulk_*`), `AsyncDatabaseManager`, `AlembicHelper`, `AuditMixin`, `SoftDeleteMixin`, `reorder_base_columns_first`, `compose_hooks` |
 | `tempest_fastapi_sdk.exceptions` | hierarquia `AppException` (404 / 409 / 401 / 403 / 422 / 429 / arquivo grande demais / tipo de arquivo inválido / JWT) |
 | `tempest_fastapi_sdk.queue` | `AsyncBrokerManager` (FastStream / RabbitMQ) |
 | `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema`, paginação por cursor |
 | `tempest_fastapi_sdk.services` | `BaseService` |
-| `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `LogSettings`, `TokenSettings`, `UploadSettings`, `WebPushSettings`, `TaskIQSettings` |
+| `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `AuthSettings`, `CORSSettings`, `EmailSettings`, `LogSettings`, `TokenSettings`, `UploadSettings`, `WebPushSettings`, `TaskIQSettings` |
 | `tempest_fastapi_sdk.sse` | `EventStream`, `ServerSentEvent`, `sse_response` |
+| `tempest_fastapi_sdk.storage` | `AsyncMinIOClient`, `ObjectStat` |
 | `tempest_fastapi_sdk.tasks` | `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
 | `tempest_fastapi_sdk.testing` | `test_session`, `test_database`, helpers de SQLite em memória |
-| `tempest_fastapi_sdk.utils` | `PasswordUtils`, `JWTUtils`, `EmailUtils`, `UploadUtils`, `MetricsUtils`, `LogUtils`, `AttemptThrottle`, `DownloadUtils`, helpers de documento/telefone BR, helpers de token opaco |
+| `tempest_fastapi_sdk.utils` | `PasswordUtils`, `JWTUtils`, `EmailUtils` (com `render_template`), `UploadUtils`, `LocalUploadStorage`, `MinIOUploadStorage`, `HTTPClient`, `RetryPolicy`, `MetricsUtils`, `LogUtils`, `AttemptThrottle`, `DownloadUtils`, helpers BR, helpers de token opaco |
 | `tempest_fastapi_sdk.webpush` | `WebPushDispatcher`, `WebPushPayloadSchema`, `WebPushSubscriptionSchema` |
 
 ## Início rápido em cinco minutos

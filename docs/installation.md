@@ -17,15 +17,18 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 
 | Extra | Puxa | Habilita |
 | --- | --- | --- |
-| `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils` |
-| `[email]` | `aiosmtplib` | `EmailUtils` |
-| `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils`, `DownloadUtils` |
-| `[cache]` | `redis` | `AsyncRedisManager` + `@cached` |
+| `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils`, fluxo bundled `UserAuthService` + `make_auth_router` |
+| `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (com `render_template` + templates Jinja2) |
+| `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils`, `DownloadUtils`, `LocalUploadStorage` |
+| `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
 | `[admin]` | `jinja2`, `itsdangerous` | `AdminSite`, `AdminModel`, `make_admin_router` |
+| `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
+| `[http]` | `httpx` | `HTTPClient` + `RetryPolicy` + circuit-breaker |
+| `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[all]` | tudo acima | todos os helpers |
 
 === "Subconjunto (recomendado)"
@@ -65,6 +68,15 @@ A CLI `tempest` vem na instalação base (sem extra):
 tempest --version              # mostra a versão instalada do SDK
 tempest new                    # gera um serviço em camadas no diretório atual
 tempest new myproject          # gera dentro de ./myproject
+tempest generate --docker      # regenera docker-compose.yaml a partir dos extras já escolhidos
+tempest db init                # bootstrapa diretório alembic (alembic.ini sem credenciais)
+tempest db revision -m "msg"   # autogenerate revision aplicando o reorder hook
+tempest db upgrade             # roda upgrade até head (lê DATABASE_URL do .env)
+tempest db downgrade -1        # volta uma revisão
+tempest db current             # mostra revisão atual
+tempest db history             # log de revisões
+tempest user create --admin    # cria usuário (prompts interativos pra email/senha)
+tempest user list --admin      # lista usuários (filtra admins com --admin)
 tempest fix                    # ruff check --fix . + ruff format .
 tempest check                  # lint + fmt-check + mypy + pytest
 ```

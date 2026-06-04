@@ -111,6 +111,8 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager` (TaskIQ) |
 | `[admin]` | `jinja2`, `itsdangerous` | `AdminSite`, `AdminModel`, `make_admin_router` |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `ObjectStat`, `MinIOSettings` |
+| `[http]` | `httpx` | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, OAuth2 / OIDC providers |
+| `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[all]` | everything above | every helper |
 
 ```bash
@@ -127,10 +129,11 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | Module | Exports |
 | --- | --- |
 | `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]`, `CursorPaginationFilterSchema`, `CursorPaginationSchema`, `LogEntrySchema`, `encode_cursor`, `decode_cursor`, `build_pagination_link_header` |
-| `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin` |
+| `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `UserTokenPurpose`, `BaseRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin`, `BASE_COLUMN_ORDER`, `reorder_base_columns_first`, `compose_hooks` |
 | `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `FileTooLargeException`, `InvalidFileTypeException`, `TooManyRequestsException` |
-| `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings`, `MinIOSettings` |
-| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_logs_router`, `LogSource`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck` |
+| `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings`, `MinIOSettings`, `AuthSettings` |
+| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_logs_router`, `make_prometheus_router`, `make_prometheus_registry`, `PrometheusMiddleware`, `LogSource`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware`, `IdempotencyMiddleware`, `MemoryIdempotencyStore`, `RedisIdempotencyStore`, `BodySizeLimitMiddleware`, `CSRFMiddleware`, `make_csrf_token_dependency`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, OAuth2 (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`), `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck` |
+| `tempest_fastapi_sdk.auth` *(extra: `[auth]`, opcional `[email]`)* | `UserAuthService`, `make_auth_router`, `SignupSchema` / `LoginSchema` / `PasswordResetRequestSchema` / `PasswordResetConfirmSchema` + responses, `ActivationToken`, `PasswordResetToken` — signup/activate/login/reset out of the box |
 | `tempest_fastapi_sdk.controllers` | `BaseController` |
 | `tempest_fastapi_sdk.services` | `BaseService` |
 | `tempest_fastapi_sdk.core` | `configure_logging`, `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx`, `BaseStrEnum`, `BaseIntEnum` |
@@ -140,6 +143,8 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
 | `tempest_fastapi_sdk.queue` *(extra: `[queue]`)* | `AsyncBrokerManager` (FastStream lifecycle wrapper) |
 | `tempest_fastapi_sdk.storage` *(extra: `[minio]`)* | `AsyncMinIOClient`, `ObjectStat` — async MinIO/S3 facade |
+| `tempest_fastapi_sdk.utils.http_client` *(extra: `[http]`)* | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, `REQUEST_ID_HEADER` — typed httpx wrapper |
+| `tempest_fastapi_sdk.utils.storage_backends` *(extra: `[upload]`)* | `UploadStorage` protocol, `LocalUploadStorage`, `MinIOUploadStorage`, `UploadResult`, `ContentValidator` |
 | `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `AsyncTaskBrokerManager` (TaskIQ lifecycle wrapper), `AsyncTaskScheduler` (periodic / cron tasks) |
 | `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `AttemptThrottle`/`ThrottleBackend`/`ThrottleStatus`, `generate_opaque_token`/`hash_opaque_token`/`verify_opaque_token`, `get_client_ip`/`get_client_ip_from_scope`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `DownloadUtils`/`build_content_disposition` *(no extra)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`) |
 | `tempest_fastapi_sdk.cli` | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `version` / `--version` |
@@ -3845,25 +3850,40 @@ The full, prioritized roadmap lives in the documentation site —
 
 Short version — recently shipped and what's next:
 
-- **v0.23.0 — MinIO/S3 storage.** ✅ Shipped — `AsyncMinIOClient`
-  via the `[minio]` extra. Bucket lifecycle, object I/O,
-  streaming download, presigned URLs.
-- **v0.24.0 — cloud uploads + idempotency + email templates.** ✅
-  Shipped — `UploadStorage` protocol with `LocalUploadStorage` +
-  `MinIOUploadStorage`, `IdempotencyMiddleware` with memory +
-  Redis backends, `EmailUtils.render_template(template, ctx)`
-  with Jinja2 autoescaping.
-- **v0.25.0 — CLI docker-compose generator.** ✅ Shipped —
-  `tempest new` emits a `docker-compose.yaml` wired with only
-  the services backing the chosen extras (Postgres always,
-  `[cache]`→Redis, `[queue]`/`[tasks]`→RabbitMQ, `[minio]`→MinIO
-  + bootstrap, `[email]`→MailHog) at pinned versions. `.env.example`
-  receives a matching addendum with the URLs/credentials.
-- **v0.26.0+** — observability (OpenTelemetry, Prometheus
-  `/metrics`, typed `HTTPClient` httpx wrapper), outbox pattern
-  for transactional events, OAuth2/OIDC providers, bulk
-  repository ops, CSRF + body-size middlewares. Tracked in the
-  roadmap page.
+- **v0.23.0** — MinIO/S3 storage (`AsyncMinIOClient`).
+- **v0.24.0** — pluggable upload backends + `IdempotencyMiddleware`
+  + Jinja2 email templates.
+- **v0.25.0** — `tempest new` generates `docker-compose.yaml`.
+- **v0.26.0** — `tempest generate --docker` regenerates compose
+  in place; Postgres 18 / Redis 8 / RabbitMQ 4 image bumps;
+  Pydantic schemas + settings carry `title`/`description`/`examples`.
+- **v0.28.0** — Prometheus `/metrics` + `PrometheusMiddleware`,
+  typed `HTTPClient` (retry / backoff / circuit-breaker /
+  `X-Request-ID` propagation), `BodySizeLimitMiddleware`,
+  `bulk_create_values` + `bulk_upsert` on `BaseRepository`.
+- **v0.29.0** — `CSRFMiddleware` + OAuth2/OIDC providers
+  (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`).
+- **v0.29.1** — scaffold ships `UserModel` + admin wiring;
+  `[auth,admin]` is the default extras pair.
+- **v0.30.0** — `tempest db` + `tempest user` CLI subcommands
+  cover migrations + admin bootstrap end-to-end.
+- **v0.30.1** — Alembic `reorder_base_columns_first` hook
+  emits base columns first in every autogenerated `create_table`.
+- **v0.30.2** — `alembic.ini` no longer stamps the DB URL;
+  resolved at runtime from env / settings / constructor.
+- **v0.30.3** — silenced post-write hook noise on
+  `tempest db revision`.
+- **v0.31.0** — bundled auth flow (`UserAuthService` +
+  `make_auth_router` covering signup / activate / login /
+  password-reset with default email templates bundled).
+- **v0.31.1** — `ActivationToken` / `PasswordResetToken`
+  rewritten as `BaseSchema` (no more dataclass leak); every
+  auth DTO carries a full docstring.
+- **v0.31.2** — `UserAuthService` methods type `session` as
+  `AsyncSession` everywhere (no more `Any`).
+
+Still on the roadmap: OpenTelemetry tracing + outbox pattern
+for transactional events. Tracked on the docs page.
 
 ---
 

@@ -12,6 +12,9 @@ This tutorial walks through wiring the **Users** feature using every SDK convent
 !!! tip "Tom for the impatient"
     If you only want to copy the layout, scaffold it: `tempest new my-service`. The CLI ships the same skeleton this tutorial walks through.
 
+!!! info "Auth flow already ships"
+    This tutorial shows how to **build** signup/login with `BaseRepository` + `BaseService` + `BaseController` — the foundation for any feature. For the **complete auth flow** (signup + email activation + JWT login + password reset), the SDK ships `UserAuthService` + `make_auth_router` since v0.31.0; jump to the **[Auth flow »](recipes/auth-flow.en.md)** recipe when you want the shortcut instead of implementing it manually.
+
 !!! info "Following along"
     Every snippet is **standalone** — paste it into the file path shown in the comment. The full project tree is the [mandatory project layout from Architecture →](architecture.md#mandatory-project-layout).
 

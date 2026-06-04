@@ -53,23 +53,60 @@ without the docs being green.
 
 ## Roadmap — features we still owe
 
-The SDK currently covers: auth (JWT/bearer/role/permission/X-Token),
-DB (async manager + repository + Alembic helper + base model +
-mixins), exceptions, structured logging + per-level files + `/logs`
-endpoint, metrics (CPU/RAM/GPU/Disk), rate limiting, pagination
-(offset + cursor), settings mixins, SSE, throttle, upload/download,
-WebPush, webhook signatures, BR validators (CPF/CNPJ/CEP/phone),
-admin panel (Jinja + HTMX), email (SMTP), Redis cache, FastStream
-queue, TaskIQ tasks, **MinIO / S3 object storage**
-(`AsyncMinIOClient` via the `[minio]` extra — bucket lifecycle,
-object I/O, streaming download, presigned URLs), **pluggable
-upload backends** (`UploadStorage` protocol + `LocalUploadStorage`
-+ `MinIOUploadStorage` — `UploadUtils.save(storage=…)`),
-**idempotency middleware** (`Idempotency-Key` header with
-memory + Redis stores), **email templates** (Jinja2 via
-`EmailUtils.render_template`), hardened static files, server
-runner, health, tool-spec router, request-id middleware, CORS,
-CLI scaffolder.
+The SDK currently covers (Sep 2025+, post-v0.31.x):
+
+- **Auth** — JWT/bearer/role/permission/X-Token deps, full
+  bundled flow (`UserAuthService` + `make_auth_router` covering
+  signup/activate/login/password-reset), `BaseUserModel` +
+  `BaseUserTokenModel`, OAuth2/OIDC providers
+  (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`),
+  CSRF middleware + `make_csrf_token_dependency`.
+- **DB** — `AsyncDatabaseManager`, `BaseRepository[T]` with
+  bulk ops (`bulk_create_values`, `bulk_upsert`, `bulk_update`,
+  `add_all`, etc.), `AlembicHelper`, `BaseModel`, audit /
+  soft-delete mixins, `reorder_base_columns_first` Alembic
+  hook so generated migrations ship `id`/`is_active`/
+  `created_at`/`updated_at` first. `alembic.ini` ships with
+  `sqlalchemy.url` empty — URL resolves at runtime from env /
+  settings / constructor.
+- **Standardized exceptions** (`AppException` + subclasses) +
+  `register_exception_handlers`.
+- **Observability** — structured logging + per-level files +
+  `/logs` endpoint, metrics (CPU/RAM/GPU/Disk), Prometheus
+  `/metrics` endpoint + `PrometheusMiddleware`, request-id
+  middleware with contextvar propagation, typed `HTTPClient`
+  (httpx wrapper with retry/backoff/circuit-breaker /
+  `X-Request-ID` propagation).
+- **HTTP layer** — `RequestIDMiddleware`, `RateLimitMiddleware`,
+  `IdempotencyMiddleware` (memory + Redis stores),
+  `BodySizeLimitMiddleware`, hardened static files, CORS,
+  health + tool-spec routers.
+- **Pagination** — offset + cursor.
+- **Settings mixins** — every `*Settings` carries
+  `title`/`description`/`examples` on every field.
+- **SSE** — `EventStream`, `sse_response`.
+- **Throttle** — `AttemptThrottle` (memory + Redis).
+- **Upload** — `UploadUtils` with pluggable backends
+  (`LocalUploadStorage`, `MinIOUploadStorage`), download helpers,
+  presigned URLs.
+- **MinIO / S3** — `AsyncMinIOClient` via `[minio]` extra
+  (bucket lifecycle, object I/O, streaming download, presigned
+  URLs).
+- **Email** — SMTP via `EmailUtils` + Jinja2 template rendering
+  with bundled defaults (`activation.html`, `password_reset.html`)
+  shadowable by the project's `template_dir`.
+- **WebPush** + webhook signatures.
+- **Cache** — Redis manager + `@cached`.
+- **Queue / tasks** — FastStream + TaskIQ wrappers.
+- **BR validators** — CPF/CNPJ/CEP/phone.
+- **Admin panel** — Jinja + HTMX (`AdminSite`, `AdminModel`,
+  `make_admin_router`).
+- **CLI** — `tempest new` (scaffolds layered service +
+  docker-compose), `tempest generate --docker` (regen compose),
+  `tempest db init/revision/upgrade/downgrade/current/history`,
+  `tempest user create [--admin] / list`, plus quality gates
+  (`lint`, `fix`, `format`, `fmt-check`, `type`, `test`,
+  `check`).
 
 The list below is the deliberate next-version plan. Each tier is
 ordered by impact for a typical production FastAPI service.

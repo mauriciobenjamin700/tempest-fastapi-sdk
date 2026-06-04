@@ -49,17 +49,22 @@ Quando o serviço subir você terá:
 
 | Necessidade | Primitivo do SDK |
 |-------------|------------------|
-| Cadastro público + login | `BaseUserModel`, `PasswordUtils`, `JWTUtils`, `make_jwt_user_dependency` |
+| Cadastro público + login + reset de senha | `UserAuthService` + `make_auth_router` (signup / activate / login / password-reset prontos desde v0.31.0) + `BaseUserModel` + `BaseUserTokenModel` |
+| Refresh de access token via JWT pair | `JWTUtils` + `make_jwt_user_dependency` |
 | Membership multi-tenant | `BaseRepository[T]`, `make_role_dependency`, `make_permission_dependency` |
 | Convite de membro | `EmailUtils.render_template` + `generate_opaque_token`/`hash_opaque_token` |
 | Variantes + preços versionados | `BaseModel` + `AuditMixin` + relacionamentos SQLAlchemy 2.0 async |
-| Estoque append-only | `BaseModel` (movimento) + `BaseRepository.bulk_create` (esperado v0.27+) |
+| Estoque append-only com seed em massa | `BaseModel` (movimento) + `BaseRepository.bulk_create_values` / `bulk_upsert` (v0.28+) |
 | Checkout sem duplicar | `IdempotencyMiddleware` + `RedisIdempotencyStore` |
+| Limite de tamanho do body do upload | `BodySizeLimitMiddleware` (v0.28+) |
 | Imagens de produto | `UploadUtils` + `MinIOUploadStorage` + presigned URLs |
 | Status do pedido em tempo real | `EventStream`, `sse_response` |
 | Notificações async | `AsyncTaskBrokerManager` (TaskIQ) + `AsyncBrokerManager` (FastStream) |
 | Cache catálogo público | `AsyncRedisManager`, `@cached` |
-| Métricas oncall | `MetricsUtils` (Prometheus endpoint via v0.26+) |
+| Métricas oncall | `PrometheusMiddleware` + `make_prometheus_router` (v0.28+) e `MetricsUtils` |
+| OAuth social (Google / GitHub) | `GoogleOAuthClient` / `GitHubOAuthClient` / `OIDCProvider` (v0.29+) |
+| Forms server-rendered seguros | `CSRFMiddleware` (v0.29+) |
+| Chamadas a serviços externos | `HTTPClient` (v0.28+) com retry + circuit-breaker |
 | Erros padronizados | `AppException` hierárquica + `register_exception_handlers` |
 | Logs por nível + `/logs` | `configure_logging(log_dir=…)` + `make_logs_router` |
 
@@ -101,7 +106,7 @@ marketplace/
 
 ## Ordem recomendada de implementação
 
-1. **Auth** — `User` + signup + login + dependência `current_user`. (Cobre: model, repository, service, controller, router, JWT.)
+1. **Auth** — `UserModel(BaseUserModel)` + `UserTokenModel(BaseUserTokenModel)` + montar `UserAuthService` + `make_auth_router`. Five endpoints prontos: `/auth/signup`, `/auth/activate/{token}`, `/auth/login`, `/auth/password-reset/request`, `/auth/password-reset/confirm`. (Cobre: model abstrato concretizado, fluxo bundled, JWT pair, templates Jinja2.) Veja **[Receita Auth flow »](../../recipes/auth-flow.md)**.
 2. **Organizações + membros** — `Organization` + `Membership` com regra de no máximo 2 orgs por user e 10 membros por org. (Cobre: invariantes de negócio, controle por role.)
 3. **Convites** — `Invitation` com token opaco, email Jinja2, expiração 7 dias. (Cobre: emails transacionais.)
 4. **Catálogo + produtos** — `Product` + `ProductVariant` + `PriceHistory`. (Cobre: relacionamentos 1-N, soft-delete.)

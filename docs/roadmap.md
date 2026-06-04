@@ -1,68 +1,126 @@
 # Roadmap
 
-Esta página lista o que o SDK **ainda não oferece** mas tem demanda real em serviços de produção. Está ordenado por impacto, não por ordem de implementação — a release atual é puxada pela pressão de negócio, não pela posição na lista.
+Esta página lista o que o SDK **ainda não oferece** + o que já foi entregue. Ordenado por impacto, não por ordem de implementação — a release atual é puxada pela pressão de negócio, não pela posição na lista.
 
 !!! tip "O que o SDK já cobre"
-    Auth (JWT/bearer/role/permission/X-Token), DB (`AsyncDatabaseManager` + `BaseRepository` + `AlembicHelper` + `BaseModel` + mixins de auditoria/soft-delete), exceções padronizadas, logging estruturado + arquivos por nível + endpoint `/logs`, métricas (CPU/RAM/GPU/Disco), rate limiting, paginação (offset + cursor), settings por mixin, SSE, throttle, upload/download local, **storage MinIO/S3 (`AsyncMinIOClient` via extra `[minio]`)**, WebPush, assinatura de webhook, validadores BR (CPF/CNPJ/CEP/telefone), painel admin (Jinja + HTMX), email (SMTP), cache Redis, fila FastStream, tarefas TaskIQ, static files endurecidos, runner de servidor, health, tool-spec router, request-id middleware, CORS, CLI scaffolder.
+    Auth completa (JWT/bearer/role/permission/X-Token + bundled signup/activate/login/reset via `UserAuthService` + `make_auth_router`), OAuth2/OIDC (Google/GitHub + genérico), CSRF middleware, DB (`AsyncDatabaseManager` + `BaseRepository` + bulk ops + `AlembicHelper` + `BaseModel` + `BaseUserModel` + `BaseUserTokenModel` + mixins de auditoria/soft-delete + Alembic hook que reordena colunas base), exceções padronizadas, logging estruturado + arquivos por nível + endpoint `/logs`, métricas (CPU/RAM/GPU/Disco + Prometheus `/metrics` + `PrometheusMiddleware`), rate limiting, idempotência (`IdempotencyMiddleware` + memory/Redis stores), body-size limit, paginação (offset + cursor), settings por mixin com `title`/`description`/`examples`, SSE, throttle, upload/download local + storage pluggável (`LocalUploadStorage` + `MinIOUploadStorage`), MinIO/S3 (`AsyncMinIOClient`), WebPush, assinatura de webhook, validadores BR (CPF/CNPJ/CEP/telefone), painel admin (Jinja + HTMX), email (SMTP + Jinja2 templates), cache Redis, fila FastStream, tarefas TaskIQ, hardened static files, runner de servidor, health, tool-spec router, request-id middleware, CORS, HTTP client typed (`HTTPClient` httpx wrapper com retry/backoff/circuit-breaker), CLI completo (`tempest new`, `tempest generate --docker`, `tempest db <subcommand>`, `tempest user <subcommand>`, quality gates).
 
 ## Tier S — toda API séria precisa
 
-| Feature | Por que importa |
-|---------|-----------------|
-| **`IdempotencyMiddleware`** + tabela `idempotency_keys` | Header `Idempotency-Key` obrigatório em POST de pagamento/webhook/retry. Sem ele, cliente retentando duplica linha no banco. Padrão Stripe/AWS. |
-| **`UploadUtils` com backends pluggáveis** — `LocalBackend`, `S3Backend(bucket, region)`, `GCSBackend` | Hoje `UploadUtils` só grava em disco local. ⚠️ **Cliente MinIO/S3 standalone já entregue na v0.23.0** via `AsyncMinIOClient` (`[minio]` extra) — falta plugar como backend do `UploadUtils`. |
-| **OpenTelemetry tracing** — `setup_tracing(app, otlp_endpoint=…)` | `RequestIDMiddleware` correlaciona log mas não dá span cross-service. Precisa de auto-instrumentação FastAPI/SQLAlchemy/httpx. |
-| **`HTTPClient` (wrapper typed do httpx)** | Retry + backoff, propagação de `X-Request-ID`, circuit-breaker, timeout default. Hoje cada serviço roda httpx solto. |
-| **Outbox pattern** — `BaseRepository.save_with_outbox(model, event)` | Persiste evento na mesma transação do `INSERT`; `AsyncBrokerManager` drena. Sem isso, evento se perde quando o broker falha após o commit. |
+| Feature | Status | Onde |
+|---------|--------|------|
+| `IdempotencyMiddleware` + tabela `idempotency_keys` | ✅ v0.24.0 | `tempest_fastapi_sdk.api.middlewares.idempotency` |
+| `UploadUtils` com backends pluggáveis (`LocalUploadStorage`, `MinIOUploadStorage`) | ✅ v0.24.0 | `tempest_fastapi_sdk.utils.storage_backends` |
+| `HTTPClient` (wrapper typed do httpx) com retry/backoff/circuit-breaker | ✅ v0.28.0 | `tempest_fastapi_sdk.utils.http_client` |
+| **OpenTelemetry tracing** — `setup_tracing(app, otlp_endpoint=…)` | ❌ pendente | — |
+| **Outbox pattern** — `BaseRepository.save_with_outbox(model, event)` | ❌ pendente | — |
 
 ## Tier A — comuns em backend SaaS
 
-| Feature | Por que importa |
-|---------|-----------------|
-| **`EmailUtils.render_template(path, ctx)`** com Jinja2 | Emails de boas-vindas/reset/verify — hoje SMTP só aceita string crua. |
-| **OAuth2 / OIDC providers** — `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider(discovery_url)` | `JWTUtils` só assina nossos próprios tokens; não temos cola pra login social. |
-| **`CSRFMiddleware` + `BodySizeLimitMiddleware`** | Admin hoje sem token CSRF; sem body limit = DoS via upload gigante antes do `UploadUtils.max_size_bytes` ser checado. |
-| **`BaseRepository.bulk_create / bulk_update / bulk_upsert`** | Insert linha-a-linha é o gargalo #1 de N+1. SQLAlchemy 2.0 tem `insert().values([...])` + `on_conflict_do_update`. |
-| **Endpoint Prometheus `/metrics`** | `MetricsUtils` já coleta os dados — falta exportar no formato Prometheus pro oncall fazer scrape. |
-| **CSRF do admin + `make_csrf_token_dependency`** | Admin aceita POST sem token hoje. |
+| Feature | Status | Onde |
+|---------|--------|------|
+| `EmailUtils.render_template(path, ctx)` com Jinja2 | ✅ v0.24.0 | `EmailUtils.render_template` + templates bundled |
+| OAuth2 / OIDC providers (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`) | ✅ v0.29.0 | `tempest_fastapi_sdk.api.oauth` |
+| `CSRFMiddleware` + `make_csrf_token_dependency` | ✅ v0.29.0 | `tempest_fastapi_sdk.api.middlewares.csrf` |
+| `BodySizeLimitMiddleware` | ✅ v0.28.0 | `tempest_fastapi_sdk.api.middlewares.body_size` |
+| `BaseRepository.bulk_create_values / bulk_upsert` | ✅ v0.28.0 | `BaseRepository` |
+| Endpoint Prometheus `/metrics` | ✅ v0.28.0 | `tempest_fastapi_sdk.api.routers.metrics` |
+| Bundled signup / activate / login / password-reset | ✅ v0.31.0 | `tempest_fastapi_sdk.auth` |
+| `tempest db` + `tempest user` CLI | ✅ v0.30.0 | `tempest_fastapi_sdk.cli.db` / `cli.user` |
+| `BaseRepository.bulk_update` (filters + values) | ✅ pré-existente | `BaseRepository.bulk_update` |
 
 ## Tier B — quando o serviço crescer
 
-- **2FA / TOTP** (`pyotp` wrapper + `AdminModel.totp_secret` opcional)
-- **Escopo multi-tenant** — `TenantScopedRepository(tenant_id)` auto-injetando `WHERE tenant_id = …` em todo query
-- **`SlowQueryLogger`** — evento SQLAlchemy logando query > N ms com `EXPLAIN`
-- **`AlembicHelper.safe_upgrade()`** — bloqueia migrations destrutivas (DROP COLUMN/TABLE) sem flag `--force`
-- **Graceful shutdown** — drenar requisições in-flight no `SIGTERM` antes do uvicorn morrer
-- **`make_websocket_router`** — auth bearer, heartbeat, broadcast (hoje só temos SSE)
-- **CLI:** `tempest db seed`, `tempest user create-admin`, `tempest secrets rotate`
+| Feature | Status |
+|---------|--------|
+| 2FA / TOTP (`pyotp` wrapper + `AdminModel.totp_secret`) | ❌ pendente |
+| Escopo multi-tenant — `TenantScopedRepository(tenant_id)` auto-injetando `WHERE tenant_id = …` | ❌ pendente |
+| `SlowQueryLogger` — evento SQLAlchemy logando query > N ms com `EXPLAIN` | ❌ pendente |
+| `AlembicHelper.safe_upgrade()` — bloqueia migrations destrutivas sem `--force` | ❌ pendente |
+| Graceful shutdown — drenar requisições in-flight no `SIGTERM` | ❌ pendente |
+| `make_websocket_router` — auth bearer, heartbeat, broadcast | ❌ pendente |
+| CLI: `tempest db seed`, `tempest secrets rotate` | ❌ pendente |
 
-## Plano de release
+## Tudo que já entregamos
 
-### ✅ v0.23.0 — Storage MinIO/S3 (entregue)
+### ✅ v0.23.0 — Storage MinIO/S3
 
-- `AsyncMinIOClient` (extra `[minio]`) — bucket, object I/O, streaming, presigned URLs
+`AsyncMinIOClient` via extra `[minio]` — bucket lifecycle, object I/O, streaming download, presigned URLs.
 
-### ✅ v0.24.0 — Uploads pluggáveis + idempotência + email templates (entregue)
+### ✅ v0.24.0 — Uploads pluggáveis + idempotência + email templates
 
 - `UploadStorage` protocol + `LocalUploadStorage` + `MinIOUploadStorage`
 - `IdempotencyMiddleware` + `MemoryIdempotencyStore` + `RedisIdempotencyStore`
 - `EmailUtils.render_template(template, ctx)` com Jinja2 + autoescape
 
-### ✅ v0.25.0 — CLI docker-compose generator (entregue)
+### ✅ v0.25.0 — CLI docker-compose generator
 
-`tempest new` emite `docker-compose.yaml` baseado nos extras escolhidos — Postgres sempre, `[cache]`→Redis, `[queue]`/`[tasks]`→RabbitMQ, `[minio]`→MinIO + bootstrap, `[email]`→MailHog. Tags fixadas. `.env.example` recebe addendum com URLs/creds matching os containers.
+`tempest new` emite `docker-compose.yaml` baseado nos extras escolhidos. Postgres sempre, `[cache]`→Redis, `[queue]`/`[tasks]`→RabbitMQ, `[minio]`→MinIO + bootstrap, `[email]`→MailHog. Tags fixadas. `.env.example` recebe addendum.
 
-### v0.26.0+ — observabilidade + retries
+### ✅ v0.26.0 — `tempest generate --docker` + image bumps
 
-- `setup_tracing(app, otlp_endpoint=…)` com auto-instrumentação OTel
-- `HTTPClient` (wrapper typed do httpx) — retry, backoff, propagação de `X-Request-ID`
-- Endpoint Prometheus `/metrics` (com base no `MetricsUtils`)
+Regera compose num projeto existente. Postgres 18 / Redis 8 / RabbitMQ 4. Pydantic schemas + settings com `title`/`description`/`examples`.
+
+### ✅ v0.28.0 — Observabilidade + retries
+
+- Endpoint Prometheus `/metrics` + `PrometheusMiddleware`
+- `HTTPClient` (wrapper typed do httpx) com retry/backoff/circuit-breaker/`X-Request-ID` propagation
+- `BodySizeLimitMiddleware`
+- `BaseRepository.bulk_create_values` + `bulk_upsert`
+
+### ✅ v0.29.0 — Security middlewares + OAuth providers
+
+- `CSRFMiddleware` + `make_csrf_token_dependency`
+- OAuth2/OIDC: `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`
+- Fix Postgres 18 mount path no docker-compose
+
+### ✅ v0.29.1 — Scaffold com UserModel + admin wiring
+
+`tempest new` agora gera `UserModel` concreto + monta admin out of the box. Default extras `auth,admin`.
+
+### ✅ v0.30.0 — CLI db + user
+
+- `tempest db init/revision/upgrade/downgrade/current/history`
+- `tempest user create [--admin]` + `tempest user list [--admin]`
+- Resolução `DATABASE_URL` via flag → env → settings → ini
+
+### ✅ v0.30.1 — Alembic reorder hook
+
+`reorder_base_columns_first` hook emite `id`, `is_active`, `created_at`, `updated_at` primeiro em todo `op.create_table` autogerado.
+
+### ✅ v0.30.2 — `sqlalchemy.url` vazio no `alembic.ini`
+
+Credenciais não entram mais no VCS. `env.py` resolve URL em runtime.
+
+### ✅ v0.30.3 — Post-write hooks silenciosos
+
+`ruff_format` antes de `ruff_fix` + `--quiet` em ambos — sem ruído no stdout durante `tempest db revision`.
+
+### ✅ v0.31.0 — Bundled auth flow
+
+- `UserAuthService` — signup / activate / login / request_password_reset / confirm_password_reset
+- `make_auth_router` — 5 endpoints prontos pra mount
+- `BaseUserTokenModel` + `UserTokenPurpose` (activation/password_reset/email_verification)
+- `AuthSettings` mixin — `AUTH_AUTO_ACTIVATE`, `AUTH_RETURN_TOKEN_IN_RESPONSE`, TTLs, URL templates
+- Templates Jinja2 bundled (override colocando arquivo de mesmo nome no `template_dir`)
+
+### ✅ v0.31.1 — BaseSchema em tokens + docstrings completas
+
+`ActivationToken` / `PasswordResetToken` rewritten como `BaseSchema` (não mais dataclass). Toda DTO de auth com docstring detalhada.
+
+### ✅ v0.31.2 — `session: AsyncSession` em UserAuthService
+
+`Any` removido — todas as 7 assinaturas do service tipam `AsyncSession`.
+
+## Próximos passos
+
+| Release | Conteúdo |
+|---------|----------|
+| **v0.32.0+** | OpenTelemetry tracing (`setup_tracing(app, otlp_endpoint=…)`) com auto-instrumentação FastAPI/SQLAlchemy/httpx |
+| **v0.33.0+** | Outbox pattern (`BaseRepository.save_with_outbox(model, event)`) drenado por `AsyncBrokerManager` |
 
 !!! note "O roadmap é honesto, não aspiracional"
-    Itens além de v0.24.0 só vão pro changelog quando a pressão de
-    negócio puxar o próximo. Esta página é atualizada a cada
-    release — se algo deveria estar aqui e não está, abra uma
-    issue.
+    Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
 ## Como pedir uma feature
 
@@ -72,5 +130,4 @@ Abra issue em <https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues
 2. O que você faz hoje como workaround.
 3. Por que o workaround dói (perf, segurança, ergonomia, manutenção).
 
-Issues com caso de uso concreto sobem na fila — abstrações sem
-demanda não entram, mesmo quando "fariam sentido".
+Issues com caso de uso concreto sobem na fila — abstrações sem demanda não entram, mesmo quando "fariam sentido".
