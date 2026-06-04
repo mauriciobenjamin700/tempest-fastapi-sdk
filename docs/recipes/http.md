@@ -219,7 +219,10 @@ from tempest_fastapi_sdk import RateLimitMiddleware
 
 def by_tenant(request: Request) -> str:
     """Bucket every request under its tenant header, falling back to IP."""
-    return request.headers.get("X-Tenant", request.client.host or "anon")
+    return request.headers.get(
+        "X-Tenant",
+        request.client.host if request.client else "anon",
+    )
 
 
 def create_app() -> FastAPI:
@@ -282,7 +285,7 @@ async def github_event(body: bytes = Depends(github.dependency())) -> None:
 
 Suporta encodings `hex` (default) e `base64`, qualquer algoritmo hashlib garantido entre plataformas, e um `prefix` opcional (ex.: `"sha256="`) removido antes da comparação. Use o imperativo `verifier.verify(body, signature)` de handlers de fila quando a validação acontece fora do pipeline FastAPI.
 
-Para provedores que assinam com uma chave privada RSA (Apple App Store, Google Play, serviços enterprise custom), troque `WebhookSignatureVerifier` por `RSAWebhookSignatureVerifier` — mesma superfície `dependency()` / `verify()`, mas ele valida a assinatura contra uma chave pública codificada em PEM (`PKCS1v15` sobre SHA-256 por padrão; passe `hash_algorithm="sha512"` ou `padding="pss"` para casar com o provedor).
+Para provedores que assinam com uma chave privada RSA (Apple App Store, Google Play, serviços enterprise custom), troque `WebhookSignatureVerifier` por `RSAWebhookSignatureVerifier` — mesma superfície `verify(body, signature)`, mas valida a assinatura contra uma chave pública codificada em PEM. Usa `RSASSA-PKCS1-v1_5` sobre SHA-256/384/512 (configurável via `algorithm=`). Requer o pacote `cryptography` (instalado com o extra `[webpush]`).
 
 ```python
 from tempest_fastapi_sdk import RSAWebhookSignatureVerifier
@@ -290,9 +293,11 @@ from tempest_fastapi_sdk import RSAWebhookSignatureVerifier
 apple = RSAWebhookSignatureVerifier(
     public_key_pem=settings.APPLE_PUBLIC_KEY_PEM,
     header_name="X-Apple-Signature",
-    encoding="base64",
-    hash_algorithm="sha256",
+    algorithm="sha256",
 )
+
+# Em handlers de fila / fora do FastAPI:
+ok: bool = apple.verify(raw_body_bytes, base64_signature_header_value)
 ```
 
 
@@ -317,7 +322,14 @@ async def list_users(
     filters: UserFilterSchema = Depends(),
     controller: UserController = Depends(get_user_controller),
 ) -> list[UserResponseSchema]:
-    page: BasePaginationSchema[UserResponseSchema] = await controller.list_paginated(filters)
+    result = await controller.paginate(
+        filters=filters.get_conditions(),
+        order_by=filters.order_by,
+        page=filters.page,
+        page_size=filters.page_size,
+        ascending=filters.ascending,
+    )
+    page = BasePaginationSchema[UserResponseSchema](**result)
     response.headers["Link"] = build_pagination_link_header(
         str(request.url),
         page=page.page,
@@ -489,7 +501,7 @@ passwords = PasswordUtils(rounds=12)
 tokens = JWTUtils(
     secret=settings.JWT_SECRET,
     algorithm=settings.JWT_ALGORITHM,
-    default_ttl=timedelta(hours=settings.JWT_TTL_HOURS),
+    default_ttl=timedelta(seconds=settings.JWT_ACCESS_TTL_SECONDS),
     issuer="my-app",
 )
 ```

@@ -48,7 +48,7 @@ my_service/
     └── test_smoke.py        # asserts /api/ and /health/liveness boot
 ```
 
-The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[auth]>=<version>` by default — change with `--extras`). The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
+The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[auth,admin]>=<version>` by default — change with `--extras`). The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
 
 ### Extras-driven `docker-compose.yaml`
 
@@ -131,8 +131,8 @@ tempest user create --email admin@local --password admin-pass-12 --admin
 # Read the password interactively (never lands in shell history)
 tempest user create --email admin@local --admin
 
-# Custom model outside the scaffolded layout
-tempest user create --email x@y --password pass --model myapp.models.user:User
+# Custom model outside the scaffolded layout — MUST be a BaseUserModel subclass
+tempest user create --email x@y --password pass-12-chars --model myapp.models.user:UserModel
 
 # List
 tempest user list                                # everyone

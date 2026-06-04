@@ -217,4 +217,4 @@ await storage.remove_object("uploads/draft-1")
 
 ## What's next
 
-- v0.24.0 will introduce an `S3Backend` for `UploadUtils`, letting the same upload code switch between local disk and MinIO/S3 via a settings flag. See the [Roadmap](../roadmap.md).
+- The pluggable upload backend `MinIOUploadStorage` shipped in v0.24.0 — for the upload pipeline that switches between local disk and MinIO/S3 via a settings flag, see the [uploads recipe](uploads.en.md).

@@ -48,7 +48,7 @@ my_service/
     └── test_smoke.py        # garante que /api/ e /health/liveness sobem
 ```
 
-O `pyproject.toml` gerado fixa a versão atual do SDK (`tempest-fastapi-sdk[auth]>=<versão>` por padrão — mude com `--extras`). O `.env.example` criado usa a nomenclatura de settings da v0.8.0 (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), e `src/server.py` delega a `tempest_fastapi_sdk.run_server` para que o uvicorn seja importado de forma preguiçosa e os testes possam importar o app sem ele. Regras de validação: o nome do projeto deve casar com `^[a-z][a-z0-9_]*$` e não pode colidir com uma palavra-chave do Python, então `tempest new Bad-Name` e `tempest new class` saem com código 2 antes de qualquer arquivo ser escrito.
+O `pyproject.toml` gerado fixa a versão atual do SDK (`tempest-fastapi-sdk[auth,admin]>=<versão>` por padrão — mude com `--extras`). O `.env.example` criado usa a nomenclatura de settings da v0.8.0 (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), e `src/server.py` delega a `tempest_fastapi_sdk.run_server` para que o uvicorn seja importado de forma preguiçosa e os testes possam importar o app sem ele. Regras de validação: o nome do projeto deve casar com `^[a-z][a-z0-9_]*$` e não pode colidir com uma palavra-chave do Python, então `tempest new Bad-Name` e `tempest new class` saem com código 2 antes de qualquer arquivo ser escrito.
 
 ### `docker-compose.yaml` baseado nos extras
 
@@ -154,8 +154,8 @@ tempest user create --email admin@local --password admin-pass-12 --admin
 # Pede senha interativamente (não fica no shell history)
 tempest user create --email admin@local --admin
 
-# Modelo customizado fora do layout scaffoldado
-tempest user create --email x@y --password pass --model myapp.models.user:User
+# Modelo customizado fora do layout scaffoldado — DEVE ser subclasse de BaseUserModel
+tempest user create --email x@y --password pass-12-chars --model myapp.models.user:UserModel
 
 # Lista
 tempest user list                                # todos

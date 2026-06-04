@@ -143,7 +143,7 @@ What you inherit by subclassing `BaseService[RepositoryT, ResponseT]`:
 | `get_by_id(id)` | `ResponseT` | Awaits `repository.get_by_id` + `repository.map_to_response`. Raises `repository.not_found_exception` on miss. |
 | `get_or_none(filters)` | `ResponseT \| None` | Same shape, returns `None` instead of raising. |
 | `list(filters=None, order_by=None, ascending=True)` | `list[ResponseT]` | Returns `[]` on empty match (never raises). |
-| `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` with mapped `items` + `total`/`page`/`size`/`pages`. | Offset pagination via `repository.paginate`. |
+| `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` with mapped `items` + `total`/`page`/`page_size`/`pages`. | Offset pagination via `repository.paginate`. |
 | `count(filters=None)` | `int` | Pass-through to `repository.count`. |
 | `exists(filters)` | `bool` | Pass-through to `repository.exists`. |
 | `delete(id)` | `None` | Hard delete via `repository.delete`. |
@@ -219,6 +219,10 @@ from src.services.user_service import UserService
 def get_user_controller(
     session: AsyncSession = Depends(db.session_dependency),
 ) -> UserController:
+    # UserRepository is a subclass of BaseRepository[UserModel] whose
+    # __init__ injects `model=UserModel` via super().__init__(session, model=UserModel).
+    # See the tutorial for the full skeleton:
+    # https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/tutorial/#6-repository
     return UserController(UserService(UserRepository(session)))
 
 

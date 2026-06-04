@@ -68,13 +68,39 @@ router = APIRouter()
 @router.post("/files")
 async def upload(file: UploadFile) -> dict[str, str]:
     """Validate then push straight to MinIO."""
-    key = await utils.save(file, storage=remote, filename=file.filename)
-    return {"key": str(key)}
+    # `file.filename` is `str | None` — fall back to a stable name when the
+    # client omits the Content-Disposition header.
+    safe_name = file.filename or "upload.bin"
+    key = await utils.save(file, storage=remote, filename=safe_name)
+    return {"key": key.as_posix()}
 ```
 
 ## Flag-driven backend selection
 
+Add an `UPLOAD_BACKEND` field to your `Settings` (the SDK's `UploadSettings` only carries `UPLOAD_DIR` / `UPLOAD_MAX_SIZE_BYTES` / `UPLOAD_ALLOWED_EXTENSIONS` / `UPLOAD_ALLOWED_MIMETYPES`; the backend selector flag belongs to the consuming project).
+
 ```python
+# src/core/settings.py
+from typing import Literal
+
+from pydantic import Field
+from tempest_fastapi_sdk import BaseAppSettings, MinIOSettings, UploadSettings
+
+
+class Settings(MinIOSettings, UploadSettings, BaseAppSettings):
+    UPLOAD_BACKEND: Literal["local", "minio"] = Field(
+        default="local",
+        title="Upload backend",
+        description="Selects which UploadStorage wires the upload pipeline.",
+        examples=["local", "minio"],
+    )
+
+
+settings = Settings()
+```
+
+```python
+# src/api/storage.py
 from tempest_fastapi_sdk import (
     AsyncMinIOClient,
     LocalUploadStorage,
@@ -90,7 +116,7 @@ def make_storage() -> UploadStorage:
     """Pick the backend based on environment configuration."""
     if settings.UPLOAD_BACKEND == "minio":
         client = AsyncMinIOClient(
-            endpoint=settings.MINIO_ENDPOINT,
+            settings.MINIO_ENDPOINT,
             access_key=settings.MINIO_ACCESS_KEY,
             secret_key=settings.MINIO_SECRET_KEY,
             default_bucket=settings.MINIO_DEFAULT_BUCKET,
@@ -99,8 +125,11 @@ def make_storage() -> UploadStorage:
     return LocalUploadStorage(settings.UPLOAD_DIR)
 
 
-storage = make_storage()
-utils = UploadUtils(settings.UPLOAD_DIR)
+storage: UploadStorage = make_storage()
+# `UploadUtils.__init__` always mkdirs UPLOAD_DIR — even when the active
+# backend is MinIO, the directory is created. Set UPLOAD_DIR to a path
+# the process can write to, even if you never read from it.
+utils = UploadUtils(settings.UPLOAD_DIR, max_size_bytes=settings.UPLOAD_MAX_SIZE_BYTES)
 ```
 
 ## Common operations

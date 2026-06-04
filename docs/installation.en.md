@@ -46,14 +46,14 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 === "uv add"
 
     ```bash
-    uv add "tempest-fastapi-sdk[auth,upload]>=0.19.0"
+    uv add "tempest-fastapi-sdk[auth,upload]>=0.32.0"
     ```
 
 === "pyproject.toml"
 
     ```toml
     dependencies = [
-        "tempest-fastapi-sdk[auth,upload]>=0.19.0",
+        "tempest-fastapi-sdk[auth,upload]>=0.32.0",
     ]
     ```
 
@@ -75,8 +75,8 @@ tempest db upgrade             # run upgrade to head (reads DATABASE_URL from .e
 tempest db downgrade -1        # roll back one revision
 tempest db current             # show current revision
 tempest db history             # revision log
-tempest user create --admin    # create user (interactive prompts for email/password)
-tempest user list --admin      # list users (filter admins with --admin)
+tempest user create --email admin@local --admin   # `--email` required; password prompted interactively
+tempest user list --admin      # list admins only (drop `--admin` to list everyone)
 tempest fix                    # ruff check --fix . + ruff format .
 tempest check                  # lint + fmt-check + mypy + pytest
 ```

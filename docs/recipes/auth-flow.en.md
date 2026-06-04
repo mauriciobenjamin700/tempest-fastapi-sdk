@@ -106,9 +106,13 @@ from src.db.models.user_token import UserTokenModel
 __all__: list[str] = ["UserModel", "UserTokenModel"]
 ```
 
-Generate the migration:
+Generate the migration (first time round, bootstrap Alembic with `tempest db init`):
 
 ```bash
+# First time only — generates alembic/, alembic.ini and env.py:
+uv run tempest db init
+
+# Then the usual revision cycle:
 uv run tempest db revision -m "users + user_tokens"
 uv run tempest db upgrade
 ```
@@ -292,14 +296,15 @@ curl -X POST localhost:8000/auth/signup \
   -d '{"email":"dev@local","password":"abcdefghijkl","name":"Dev"}'
 ```
 
-Response:
+Response (the actual `SignupResponseSchema` shape):
 
 ```json
 {
-  "user_id": "01HE...",
-  "email": "dev@local",
-  "is_active": false,
-  "activation_url": "http://localhost:5173/activate?token=aBcD...xYz"
+  "user_id": "0193e9ea-7c4b-7c8e-bc05-2a3a8d9f7e10",
+  "activation_required": true,
+  "activation_url": "http://localhost:5173/activate?token=aBcD...xYz",
+  "access_token": null,
+  "refresh_token": null
 }
 ```
 

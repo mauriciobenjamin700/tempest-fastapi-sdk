@@ -8,16 +8,31 @@ Redis-backed caching primitives. Requires `[cache]` extra.
 `AsyncRedisManager` wraps `redis.asyncio` with the same connect/disconnect/health-check surface as `AsyncDatabaseManager`. Install with `[cache]`.
 
 ```python
-from tempest_fastapi_sdk.cache import AsyncRedisManager
+# src/api/app.py
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import AsyncRedisManager
+from src.core.settings import settings
 
 cache = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
 
-# Lifespan
-await cache.connect()
-...
-await cache.disconnect()
 
-# Direct use
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    await cache.connect()           # without this first call, .client raises RuntimeError
+    try:
+        yield
+    finally:
+        await cache.disconnect()
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+# Direct use (inside a handler, after the lifespan startup ran)
 await cache.client.set("user:123:name", "Ana", ex=300)
 name = await cache.client.get("user:123:name")
 

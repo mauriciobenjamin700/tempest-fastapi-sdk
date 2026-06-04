@@ -40,8 +40,18 @@ class UserService(BaseService[UserRepository, UserResponse]):
     # ──────── soft-delete-aware read ────────
 
     async def list_alive(self) -> list[UserResponse]:
-        """Return only rows where ``deleted_at IS NULL``."""
-        instances = await self.repository.list(filters={"deleted_at": None})
+        """Return only rows where ``deleted_at IS NULL``.
+
+        ``BaseRepository._apply_filters`` skips ``None`` values by design
+        (a missing filter ≠ ``WHERE col IS NULL``), so an ``IS NULL`` clause
+        must be issued as a raw SQLAlchemy query bound to the same session.
+        """
+        from sqlalchemy import select
+
+        result = await self.repository.session.execute(
+            select(UserModel).where(UserModel.deleted_at.is_(None))
+        )
+        instances = result.scalars().all()
         return [self.repository.map_to_response(i) for i in instances]
 
     # ──────── audit-stamped update ────────
@@ -89,7 +99,12 @@ Repository helper (cursor over `created_at` + `id` tie-break):
 
 ```python
 # src/db/repositories/user.py
-from sqlalchemy import asc, desc
+from datetime import datetime
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import asc, desc, select, tuple_
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import BaseRepository, decode_cursor, encode_cursor
 
@@ -118,7 +133,16 @@ class UserRepository(BaseRepository[UserModel]):
 
         if cursor is not None:
             state = decode_cursor(cursor)
-            cmp = (UserModel.created_at, UserModel.id) > (state["value"], state["id"])
+            # The cursor was encoded as `created_at.isoformat()` — decode back
+            # to a datetime so the tuple comparison stays type-consistent on
+            # Postgres (which rejects str-vs-timestamp comparisons).
+            cursor_ts = datetime.fromisoformat(state["value"])
+            cursor_id = UUID(state["id"])
+            # SQLAlchemy needs `tuple_()` to express (col_a, col_b) > (val_a, val_b)
+            # — bare Python tuples on mapped columns raise at composition time.
+            cmp = tuple_(UserModel.created_at, UserModel.id) > tuple_(
+                cursor_ts, cursor_id
+            )
             query = query.where(cmp if ascending else ~cmp)
 
         query = query.limit(limit + 1)  # peek one ahead to set has_more

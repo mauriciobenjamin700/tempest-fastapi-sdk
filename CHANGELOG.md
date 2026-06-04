@@ -5,6 +5,143 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.1] — 2026-06-04
+
+### Changed
+
+- **Top-level `__all__` now re-exports the bundled auth surface.** Adds
+  ``UserAuthService``, ``make_auth_router``, ``BaseUserTokenModel``,
+  ``UserTokenPurpose``, ``make_user_token_model``, ``AuthSettings``,
+  every auth schema (``SignupSchema``/``SignupResponseSchema``/
+  ``LoginSchema``/``LoginResponseSchema``/``ActivationToken``/
+  ``ActivationResponseSchema``/``PasswordResetToken``/
+  ``PasswordResetRequestSchema``/``PasswordResetResponseSchema``/
+  ``PasswordResetConfirmSchema``) to the public re-export list. Runtime
+  imports already worked; this satisfies strict re-export checkers
+  (pyright/basedpyright/Pylance strict) without project-level
+  ``pyrightconfig.json``.
+
+### Documentation
+
+- **Full audit + fix pass against the actual SDK code.** Every recipe,
+  tutorial section, README block and learning-project example was
+  cross-checked against the source; whatever didn't match was rewritten.
+  Highlights of what changed:
+    - ``docs/tutorial.{md,en.md}`` / ``README.md``: router section now
+      calls ``controller.signup`` / ``controller.get_by_id`` / a real
+      ``controller.paginate(...)`` invocation — the previous
+      ``controller.create`` / ``controller.get`` / ``controller.list_paginated``
+      names did not exist on ``BaseController`` and would have raised
+      ``AttributeError`` on every endpoint.
+    - ``page_size`` consistently replaces the bogus ``size`` query/JSON
+      key throughout pagination snippets — the real
+      ``BasePaginationFilterSchema`` field is ``page_size`` and the
+      ``paginate(...)`` dict returns ``"page_size"``, not ``"size"``.
+    - ``BaseUserModel`` examples no longer claim a ``password_hash``
+      column — the real column is ``hashed_password`` and the docs now
+      construct rows with it.
+    - ``docs/recipes/testing.{md,en.md}`` rewritten: ``async with
+      TestClient(app)`` (which doesn't work — ``TestClient`` is sync)
+      replaced by ``httpx.AsyncClient(transport=ASGITransport(app=app))``;
+      ``test_database`` / ``test_session`` / ``create_test_engine``
+      signatures and return shapes corrected to match the helpers
+      actually shipped under ``tempest_fastapi_sdk.testing``.
+    - ``docs/recipes/security.{md,en.md}`` fully rewritten: every claim
+      pointed at fictional API (``RedisThrottleBackend``,
+      ``MemoryThrottleBackend``, ``ThrottleStatus.LOCKED``,
+      ``throttle.check()``, ``throttle.record_failure()``,
+      ``.attempts_left``, ``set_cookie(key=..., same_site=SameSite.LAX)``,
+      ``get_client_ip(..., trusted_proxies={...})``,
+      ``accept_private=False``, an HMAC-pepper claim on
+      ``hash_opaque_token(..., secret=...)``, a ``Referrer-Policy`` in
+      ``DEFAULT_STATIC_SECURITY_HEADERS``). New recipe documents the
+      real ``AttemptThrottle`` / ``ThrottleStatus`` / ``set_cookie`` /
+      ``clear_cookie`` / ``get_client_ip`` surface.
+    - ``docs/recipes/http.{md,en.md}``: ``JWT_TTL_HOURS`` (does not
+      exist) replaced by ``JWT_ACCESS_TTL_SECONDS``;
+      ``RSAWebhookSignatureVerifier(encoding="base64",
+      hash_algorithm="sha256")`` (also fictional) rewritten to the real
+      ``algorithm="sha256"`` kwarg; ``request.client.host or "anon"``
+      rewritten to handle ``request.client is None`` safely;
+      ``controller.list_paginated`` replaced with a real
+      ``controller.paginate(...)`` call.
+    - ``docs/recipes/auth-flow.{md,en.md}``: ``SignupResponseSchema``
+      example body now matches the real shape
+      (``user_id``/``activation_required``/``activation_url``/
+      ``access_token``/``refresh_token`` — no fictional ``email`` /
+      ``is_active`` fields); ``tempest db init`` prereq is called out
+      before ``tempest db revision``; UUID example replaces the bogus
+      ULID-style placeholder.
+    - ``docs/recipes/uploads.{md,en.md}``: phantom
+      ``settings.UPLOAD_BACKEND`` field (it isn't on ``UploadSettings``)
+      now has to be declared on the project's own ``Settings`` subclass
+      in a copy-pasteable snippet; ``UploadFile.filename`` (typed
+      ``str | None``) is now fallen back to ``"upload.bin"`` before
+      being passed where ``str`` is required; the ``UploadUtils.__init__``
+      mkdir side-effect is explicitly called out.
+    - ``docs/recipes/metrics.{md,en.md}`` no longer stops at
+      ``MetricsUtils`` — a full Prometheus exposition section was added
+      covering ``PrometheusMiddleware`` + ``make_prometheus_registry`` +
+      ``make_prometheus_router``, the ``[prometheus]`` extra, scrape
+      config, and the rationale for not mounting the JSON snapshot on
+      ``/metrics``.
+    - ``docs/recipes/queue-tasks.{md,en.md}``: ``NameError`` in the
+      outbox dispatcher fixed (``broker``/``queue_broker`` shadowing
+      that would crash on import).
+    - ``docs/recipes/realtime.{md,en.md}``: missing
+      ``StreamingResponse`` import added; producer pattern rewritten to
+      cancel on client disconnect (the previous fire-and-forget pattern
+      leaked tasks).
+    - ``docs/recipes/admin.{md,en.md}``: ``settings.ADMIN_SECRET_KEY``
+      (doesn't exist) replaced with the scaffold's ``settings.JWT_SECRET``;
+      ``__tablename__ = "user"`` replaced with the scaffold's actual
+      ``"users"``.
+    - ``docs/recipes/database.{md,en.md}``: ``filters={"deleted_at":
+      None}`` (silently skipped — returns deleted rows) replaced with a
+      raw ``select(...).where(col.is_(None))`` query; the tuple
+      comparison ``(col_a, col_b) > (val_a, val_b)`` (invalid in
+      SQLAlchemy) replaced with ``tuple_(col_a, col_b) > tuple_(...)``;
+      the cursor example now decodes ``state["value"]`` back to
+      ``datetime`` so Postgres tuple comparison doesn't fail on a
+      str-vs-timestamp clash; missing ``select`` / ``AsyncSession`` /
+      ``Any`` imports added.
+    - ``docs/recipes/cli.{md,en.md}``: default
+      ``--extras`` value corrected from ``auth`` to the real
+      ``auth,admin``; ``--model myapp.models.user:User`` example
+      renamed to ``UserModel`` with a comment explaining the
+      ``BaseUserModel`` subclass requirement.
+    - ``docs/recipes/cache.{md,en.md}``: the previously
+      free-floating ``await cache.connect()`` is now shown inside a real
+      ``@asynccontextmanager`` lifespan — without it ``cache.client``
+      raises ``RuntimeError`` on first use.
+    - ``docs/recipes/logging.{md,en.md}``: malformed
+      ``"2026-05-16T20:14:33.412+00:00Z"`` timestamp (impossible — the
+      formatter strips ``+00:00`` and appends ``Z``) corrected to
+      ``"2026-05-16T20:14:33.412Z"``.
+    - ``docs/recipes/br-helpers.{md,en.md}``: ``request.json()``
+      (a coroutine in FastAPI/Starlette) now ``await``-ed inside an
+      ``async def`` handler with the ``Request`` import included.
+    - ``docs/recipes/storage.{md,en.md}``: stale "v0.24.0 will introduce
+      `S3Backend`" promise replaced with a pointer to the uploads recipe
+      where ``MinIOUploadStorage`` already lives.
+    - ``docs/architecture.{md,en.md}``: ``paginate(...)`` row in the
+      BaseService table now lists ``page_size`` instead of ``size``;
+      a note next to ``UserController(UserService(UserRepository(session)))``
+      explains the required ``BaseRepository`` subclass with
+      ``model=UserModel``.
+    - ``docs/installation.{md,en.md}``: version pins bumped from
+      ``>=0.19.0`` to ``>=0.32.0``; ``tempest user create`` example now
+      passes the required ``--email`` flag instead of relying on a
+      non-existent prompt.
+    - ``README.md``: SDK version pin in the pyproject snippet bumped
+      from ``>=0.13.1`` to ``>=0.32.0``; all the same router /
+      pagination / model-field fixes applied.
+
+### Migration
+
+- Zero breaking changes — this is a pure documentation + re-export
+  audit on top of the v0.32.0 surface.
+
 ## [0.32.0] — 2026-06-04
 
 ### Added

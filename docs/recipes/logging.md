@@ -28,7 +28,7 @@ Saída JSON (uma linha — formatada aqui para legibilidade):
 
 ```json
 {
-  "timestamp": "2026-05-16T20:14:33.412+00:00Z",
+  "timestamp": "2026-05-16T20:14:33.412Z",
   "level": "INFO",
   "logger": "app.users",
   "message": "user_created",

@@ -286,7 +286,7 @@ class UserResponseSchema(BaseResponseSchema):
 class UserFilterSchema(BasePaginationFilterSchema):
     """Query-string filters for GET /users.
 
-    Inherits page/size/order_by/ascending/is_active from
+    Inherits page/page_size/order_by/ascending/is_active from
     BasePaginationFilterSchema. Add domain-level filters below.
     """
 
@@ -365,7 +365,13 @@ from tempest_fastapi_sdk import BaseRepository
 from src.db.models import UserModel
 
 repository = BaseRepository(session, model=UserModel)
-await repository.add(UserModel(email="ana@example.com"))
+await repository.add(
+    UserModel(
+        email="ana@example.com",
+        name="Ana",
+        password_hash="<bcrypt-hash>",
+    )
+)
 ```
 
 Subclass when you want to bake in domain-specific messages, swap the not-found exception, override the mapper methods or add custom queries. The constructor signature (not class attributes) is the contract:
@@ -401,14 +407,14 @@ class UserRepository(BaseRepository[UserModel]):
         return self.map_to_schema(instance)
 ```
 
-The base repo gives you 17 methods for free — see the [reference table](../reference/#tempest_fastapi_sdk.db.repository.BaseRepository). Add custom queries on top of the same `UserRepository`:
+The base repo gives you 20+ methods for free — see the [reference table](../reference/#tempest_fastapi_sdk.db.repository.BaseRepository). Add custom queries on top of the same `UserRepository`:
 
 ```python
 # src/db/repositories/user.py  (continued)
 class UserRepository(BaseRepository[UserModel]):
     # ... __init__ and mappers above ...
 
-    # ──────── custom queries on top of the 17 inherited methods ────────
+    # ──────── custom queries on top of the inherited bulk + read methods ────────
 
     async def get_by_email(self, email: str) -> UserModel:
         """Look up a user by email. Raises ``UserNotFoundError`` on miss."""
@@ -495,7 +501,7 @@ class UserService(BaseService[UserRepository, UserResponseSchema]):
         await self.repository.soft_delete(user_id)
 ```
 
-The methods you do **not** write — `get_by_id(user_id)`, `list(filters)`, `paginate(filters, page, page_size, order_by, ascending)`, `count(filters)`, `exists(filters)`, `delete(user_id)` — already exist on the base, already await an async `map_to_response`, and already return the typed `UserResponseSchema` declared in the generic parameter.
+The methods you do **not** write — `get_by_id(user_id)`, `get_or_none(filters)`, `list(filters=None, order_by=None, ascending=True)`, `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)`, `count(filters)`, `exists(filters)`, `delete(user_id)` — already exist on the base, already await an async `map_to_response`, and already return the typed `UserResponseSchema` declared in the generic parameter.
 
 When the use case needs a custom pipeline (joins, projections, transactional fan-out), override the inherited method. The signature stays the same so the controller doesn't notice:
 
@@ -646,7 +652,7 @@ async def create_user(
     data: UserCreateSchema,
     controller: UserController = Depends(get_user_controller),
 ) -> UserResponseSchema:
-    return await controller.create(data)
+    return await controller.signup(data)
 
 
 @router.get("/{user_id}", response_model=UserResponseSchema)
@@ -654,7 +660,7 @@ async def get_user(
     user_id: UUID,
     controller: UserController = Depends(get_user_controller),
 ) -> UserResponseSchema:
-    return await controller.get(user_id)
+    return await controller.get_by_id(user_id)
 
 
 @router.patch("/{user_id}", response_model=UserResponseSchema)
@@ -679,19 +685,26 @@ async def list_users(
     filters: UserFilterSchema = Depends(),
     controller: UserController = Depends(get_user_controller),
 ) -> BasePaginationSchema[UserResponseSchema]:
-    return await controller.list_paginated(filters)
+    result = await controller.paginate(
+        filters=filters.get_conditions(),
+        order_by=filters.order_by,
+        page=filters.page,
+        page_size=filters.page_size,
+        ascending=filters.ascending,
+    )
+    return BasePaginationSchema[UserResponseSchema](**result)
 ```
 
 ### 11. Pagination
 
 The pagination contract is enforced end-to-end by SDK primitives:
 
-- `UserFilterSchema(BasePaginationFilterSchema)` parses `?page=&size=&order_by=&ascending=&is_active=&name=` from the query string and exposes `.get_conditions()` returning only the domain-level filters (without pagination keys).
-- `UserRepository.paginate(...)` runs the query with the filter dict + ordering + offset/limit + count, returning `{items, total, page, size, pages}`.
+- `UserFilterSchema(BasePaginationFilterSchema)` parses `?page=&page_size=&order_by=&ascending=&is_active=&name=` from the query string and exposes `.get_conditions()` returning only the domain-level filters (without pagination keys).
+- `UserRepository.paginate(...)` runs the query with the filter dict + ordering + offset/limit + count, returning the dict `{items, total, page, page_size, pages}` that you wrap in `BasePaginationSchema[UserResponseSchema]`.
 - `BasePaginationSchema[UserResponseSchema]` wraps the result so OpenAPI documents the response shape correctly.
 
 ```http
-GET /api/users?page=2&size=20&order_by=name&ascending=true&is_active=true&name=ana
+GET /api/users?page=2&page_size=20&order_by=name&ascending=true&is_active=true&name=ana
 ```
 
 Returns:

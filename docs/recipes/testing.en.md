@@ -1,22 +1,24 @@
 # Testing
 
+pytest + pytest-asyncio + in-memory SQLite + `httpx.AsyncClient`.
 
-pytest + pytest-asyncio + in-memory SQLite + FastAPI TestClient.
+!!! tip "Why `AsyncClient` instead of `TestClient`?"
+    `fastapi.testclient.TestClient` is synchronous — it does not support `async with`. To test async endpoints painlessly, use `httpx.AsyncClient(transport=ASGITransport(app=app))`, which mounts the app over ASGI in the same event-loop as your tests. The examples below follow that pattern.
 
-#### Shared fixtures
+## Shared fixtures
 
 ```python
 # tests/conftest.py
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tempest_fastapi_sdk import AsyncDatabaseManager
+from tempest_fastapi_sdk import AsyncDatabaseManager, BaseModel
 
+import src.db.models  # noqa: F401 — side-effect: registers every model on BaseModel.metadata
 from src.api.app import create_app
-from src.db import BaseModel       # importing BaseModel ensures models are registered
 
 
 @pytest_asyncio.fixture
@@ -24,35 +26,38 @@ async def db() -> AsyncGenerator[AsyncDatabaseManager, None]:
     """Fresh in-memory DB per test."""
     manager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
     await manager.connect()
-    await manager.create_tables()
+    await manager.create_tables(BaseModel.metadata)
     try:
         yield manager
     finally:
-        await manager.drop_tables()
+        await manager.drop_tables(BaseModel.metadata)
         await manager.disconnect()
 
 
 @pytest_asyncio.fixture
 async def session(db: AsyncDatabaseManager) -> AsyncGenerator[AsyncSession, None]:
     """Managed session bound to the in-memory DB."""
-    async with db.get_session_context() as session:
-        yield session
+    async for s in db.session_dependency():
+        yield s
 
 
 @pytest_asyncio.fixture
-async def client(db: AsyncDatabaseManager) -> AsyncGenerator[TestClient, None]:
-    """FastAPI TestClient with the SDK manager overridden to use SQLite."""
+async def client(db: AsyncDatabaseManager) -> AsyncGenerator[AsyncClient, None]:
+    """ASGI-backed async client with the prod DB swapped for the in-memory one."""
     app = create_app()
     # Override the session dependency to use the test DB.
     from src.api.app import db as production_db
 
     app.dependency_overrides[production_db.session_dependency] = db.session_dependency
 
-    async with TestClient(app) as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
         yield client
 ```
 
-#### Repository test
+## Repository test
 
 ```python
 # tests/repositories/test_user.py
@@ -76,82 +81,95 @@ class TestUserRepository:
         repo = UserRepository(session)
         user = await repo.add(
             UserModel(
-                name="Ana", email="ana@example.com", password_hash="x"
+                email="ana@example.com",
+                name="Ana",
+                hashed_password="<bcrypt-hash>",
             )
         )
         loaded = await repo.get_by_id(user.id)
-        assert loaded.name == "Ana"
+        assert loaded.email == "ana@example.com"
 ```
 
-#### Endpoint test
+!!! warning "`BaseUserModel` columns"
+    The abstract `BaseUserModel` declares **`email`**, **`hashed_password`**, **`is_active`**, **`is_admin`**, **`name`** and **`last_login_at`**. The non-default fields (`email` + `hashed_password`) are `nullable=False`, so omitting either one raises `IntegrityError` on flush. Also note: the column is **`hashed_password`** — not `password_hash`.
+
+## Endpoint test
 
 ```python
 # tests/api/test_users.py
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 
 
 class TestUsersAPI:
-    def test_create_user(self, client: TestClient) -> None:
-        response = client.post(
-            "/api/users",
+    async def test_signup(self, client: AsyncClient) -> None:
+        response = await client.post(
+            "/auth/signup",
             json={
-                "name": "Ana",
                 "email": "ana@example.com",
-                "password": "hunter22",
+                "password": "strong-pass-12-chars",
+                "name": "Ana",
             },
         )
-        assert response.status_code == 201
+        assert response.status_code == 201, response.text
         body = response.json()
-        assert body["email"] == "ana@example.com"
-        assert "password" not in body
-        assert "password_hash" not in body
+        assert "user_id" in body
+        # The activation link is only present when AUTH_RETURN_TOKEN_IN_RESPONSE=true
+        # or no EmailUtils is wired — typical for the test environment.
+        assert body["activation_required"] in {True, False}
 
-    def test_get_user_not_found(self, client: TestClient) -> None:
-        response = client.get("/api/users/00000000-0000-0000-0000-000000000000")
+    async def test_get_user_not_found(self, client: AsyncClient) -> None:
+        response = await client.get(
+            "/api/users/00000000-0000-0000-0000-000000000000",
+        )
         assert response.status_code == 404
         body = response.json()
-        # SDK envelope is always {detail, code, details}
-        assert body["code"] == "USER_NOT_FOUND"
+        # SDK envelope is always {detail, code, details}. The `code` value
+        # is set by your project's UserNotFoundError subclass — use whichever
+        # constant your project chose (see Tutorial §5).
+        assert "code" in body
 ```
 
-#### `tempest_fastapi_sdk.testing` helpers
+!!! note "About the `code` field on the error envelope"
+    The SDK serializes every `AppException` as `{detail, code, details}`. The exact `code` value depends on the domain subclass **your project** defines — `UserNotFoundError(NotFoundException, code="USER_NOT_FOUND")` is just a tutorial convention. See tutorial §5 to create your own subclasses.
 
-`tempest_fastapi_sdk.testing` ships framework-agnostic helpers that don't require `pytest` to be importable — wrap them in `@pytest.fixture` (or any other harness) inside the consuming project's `conftest.py`. Useful when a test doesn't need a full `AsyncDatabaseManager` (no `lifespan`, no health-check probes).
+## Helpers from `tempest_fastapi_sdk.testing`
 
-| Helper | Purpose |
-| --- | --- |
-| `create_test_engine(url="sqlite+aiosqlite:///:memory:", **engine_kwargs)` | Build a throw-away `AsyncEngine`. |
-| `create_test_session_factory(engine)` | Build a `sessionmaker` bound to the engine. |
-| `init_test_metadata(engine, metadata=None)` | Create every SQLAlchemy table on the engine (defaults to `BaseModel.metadata`). |
-| `drop_test_metadata(engine, metadata=None)` | Drop every table. |
-| `test_database(url="sqlite+aiosqlite:///:memory:", metadata=None)` | Async context manager — yields an engine with metadata pre-created, drops everything and disposes on exit. |
-| `test_session(url="sqlite+aiosqlite:///:memory:", metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `test_database`. |
+`tempest_fastapi_sdk.testing` provides framework-agnostic helpers that don't require `pytest` to be importable — wrap them in `@pytest.fixture` inside the consuming project's `conftest.py`. Useful when a test doesn't need a full `AsyncDatabaseManager` (no lifespan, no health-check probes).
+
+| Helper | Signature | Purpose |
+| --- | --- | --- |
+| `create_test_engine` | `(database_url="sqlite+aiosqlite:///:memory:", *, echo=False) -> AsyncEngine` | Build a throwaway `AsyncEngine` (StaticPool when in-memory). |
+| `create_test_session_factory` | `(engine) -> async_sessionmaker[AsyncSession]` | Build a sessionmaker bound to the engine (`expire_on_commit=False`). |
+| `init_test_metadata` | `async (engine, metadata=None) -> None` | Create every table (defaults to `BaseModel.metadata`). |
+| `drop_test_metadata` | `async (engine, metadata=None) -> None` | Drop every table. |
+| `test_database` | `async (database_url=..., *, metadata=None) -> AsyncIterator[async_sessionmaker[AsyncSession]]` | Async context manager — yields a **session factory** with metadata pre-created, drops + disposes on exit. |
+| `test_session` | `async (database_url=..., *, metadata=None) -> AsyncIterator[AsyncSession]` | Async context manager — yields **one `AsyncSession`** on top of a fresh `test_database`. |
 
 ```python
 # tests/conftest.py
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tempest_fastapi_sdk.testing import test_database, test_session
 
 
 @pytest_asyncio.fixture
-async def engine() -> AsyncGenerator[AsyncEngine, None]:
-    """Yield a fresh in-memory SQLite engine for each test."""
-    async with test_database() as e:
-        yield e
+async def session_factory() -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
+    """Yield a session factory backed by a fresh in-memory DB per test."""
+    async with test_database() as factory:
+        yield factory
 
 
 @pytest_asyncio.fixture
 async def session() -> AsyncGenerator[AsyncSession, None]:
-    """Yield a managed AsyncSession bound to the in-memory engine."""
+    """Yield a single AsyncSession backed by a fresh in-memory DB."""
     async with test_session() as s:
         yield s
 ```
 
-Use the one-shot `test_session()` context manager for ad-hoc tests that don't need cross-fixture sharing:
+Use the `test_session()` context manager for ad-hoc tests that don't need a shared fixture:
 
 ```python
 from tempest_fastapi_sdk.testing import test_session
@@ -163,9 +181,14 @@ from src.db.repositories import UserRepository
 async def test_repo_directly() -> None:
     async with test_session() as session:
         repo = UserRepository(session)
-        await repo.add(UserModel(name="Ana", email="ana@example.com", password_hash="x"))
+        await repo.add(
+            UserModel(
+                email="ana@example.com",
+                name="Ana",
+                hashed_password="<bcrypt-hash>",
+            )
+        )
         assert await repo.count() == 1
 ```
 
-Pass `metadata=` when the project mixes the SDK `BaseModel.metadata` with a second, isolated metadata (rare — keep one `BaseModel` per service whenever possible).
-
+Pass `metadata=` when your project mixes the SDK's `BaseModel.metadata` with a second isolated metadata (rare — keep one `BaseModel` per service whenever possible).

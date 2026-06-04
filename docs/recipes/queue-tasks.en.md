@@ -275,9 +275,9 @@ class OrderService:
 from tempest_fastapi_sdk.tasks import AsyncTaskScheduler
 
 from src.api.app import broker as queue_broker  # FastStream AsyncBrokerManager
-from src.api.app import db
+from src.api.app import db, taskiq_broker
 
-scheduler = AsyncTaskScheduler(broker)
+scheduler = AsyncTaskScheduler(taskiq_broker)
 
 
 @scheduler.interval(seconds=5)

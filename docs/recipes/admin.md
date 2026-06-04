@@ -19,7 +19,7 @@ from tempest_fastapi_sdk import BaseUserModel
 
 
 class UserModel(BaseUserModel):
-    __tablename__ = "user"
+    __tablename__ = "users"   # scaffold convention; admin slug derives from __tablename__
 ```
 
 `set_password()` / `check_password()` delegam ao `PasswordUtils`; `normalize_email()` deixa minúsculo e remove espaços. O `is_active` padrão (herdado do `BaseModel`) e o `is_admin` (default `False`) controlam o acesso — somente linhas `is_active=True` E `is_admin=True` podem entrar.
@@ -110,7 +110,7 @@ app.include_router(
         site,
         db=db,
         auth_backend=UserModelAuthBackend(UserModel),
-        secret_key=settings.ADMIN_SECRET_KEY,    # at least 32 bytes
+        secret_key=settings.JWT_SECRET,          # scaffold reuses JWT_SECRET — pelo menos 32 bytes
         prefix="/admin",
         cookie_secure=not settings.DEBUG,        # True in production HTTPS
     )

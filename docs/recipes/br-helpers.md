@@ -119,7 +119,9 @@ Pequenos helpers stateless de `tempest_fastapi_sdk.utils` dos quais o próprio S
 `utcnow` é o "agora" canônico do SDK. Use-o para timestamps de soft-delete, `iat` / `exp` de JWT, trilhas de auditoria — qualquer coisa onde misturar datetimes naive e aware te queimaria depois.
 
 ```python
-from datetime import timedelta
+from datetime import datetime, timedelta
+
+from fastapi import Request
 
 from tempest_fastapi_sdk import to_utc, utcnow
 
@@ -127,9 +129,12 @@ from tempest_fastapi_sdk import to_utc, utcnow
 now = utcnow()                      # timezone-aware UTC
 expires_at = now + timedelta(hours=1)
 
-# Normalize whatever the caller gave you
-incoming = request.json()["scheduled_for"]              # naive or aware
-scheduled_for = to_utc(datetime.fromisoformat(incoming))
+
+async def parse_scheduled(request: Request) -> datetime:
+    """Normalize whatever the caller gave you to a timezone-aware UTC datetime."""
+    payload = await request.json()                              # request.json() is async
+    incoming: str = payload["scheduled_for"]                    # naive or aware ISO-8601
+    return to_utc(datetime.fromisoformat(incoming))
 ```
 
 Um datetime naive é marcado como UTC (não convertido do horário local) para ser previsível em workers headless e containers Docker onde `time.timezone` é incerto.
