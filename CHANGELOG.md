@@ -5,6 +5,52 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] — 2026-06-04
+
+### Added
+
+- **New documentation section: Learning Projects** (PT-BR + EN-US).
+  Didactic projects built end-to-end on the SDK so users can learn
+  how the primitives compose in a realistic scenario.
+
+- **First learning project: 🛒 Marketplace** — Mercado Livre /
+  Shopee–style multi-tenant sales platform without external
+  integrations. Covers the full SDK stack:
+
+  - **Business rules** — every domain invariant numbered (U-01…
+    G-04) with rationale. 41 rules across 10 sections.
+  - **Domain model** — UML class diagram, ER diagram, enum
+    diagrams (Mermaid), per-entity invariant table, and entity →
+    SDK primitive mapping.
+  - **Critical flows** — sequence diagrams for the 5 trickiest
+    flows (signup, member invitation, product creation with
+    images, idempotent checkout, shipping with SSE), plus state
+    machines for ``Order`` and ``Invitation``.
+  - **Endpoint map** — full REST surface as a table (method +
+    path + auth role + idempotency + status + description).
+
+  Exercises: ``BaseUserModel``, ``PasswordUtils``, ``JWTUtils``,
+  ``make_jwt_user_dependency``, ``make_role_dependency``,
+  ``BaseRepository[T]``, ``generate_opaque_token``,
+  ``EmailUtils.render_template``, ``UploadUtils`` +
+  ``MinIOUploadStorage``, ``IdempotencyMiddleware``,
+  ``EventStream`` / ``sse_response``, ``AsyncTaskBrokerManager``,
+  ``AsyncBrokerManager``, ``AsyncRedisManager`` + ``@cached``,
+  ``MetricsUtils``, ``register_exception_handlers`` + the
+  ``AppException`` hierarchy, ``configure_logging`` +
+  ``make_logs_router``.
+
+### Docs
+
+- ``docs/learning/index{,.en}.md`` — section index with the
+  catalog of learning projects (Marketplace shipped; library,
+  scheduling, recurring billing planned).
+- ``docs/learning/marketplace/{index,business-rules,domain,flows,api}{,.en}.md``
+  — 10 new bilingual pages.
+- ``mkdocs.yml`` adds the section to PT nav and the i18n
+  ``nav_translations`` block (now 31 navigation elements,
+  was 23).
+
 ## [0.26.0] — 2026-05-31
 
 ### Added

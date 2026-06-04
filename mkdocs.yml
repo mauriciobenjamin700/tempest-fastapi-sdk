@@ -101,6 +101,12 @@ plugins:
             Segurança: Security
             Helpers brasileiros: Brazilian helpers
             Referência: Reference
+            "Projetos de aprendizado": Learning projects
+            Marketplace: Marketplace
+            "Regras de negócio": Business rules
+            "Modelo de domínio": Domain model
+            "Fluxos críticos": Critical flows
+            "Mapa de endpoints": Endpoint map
             Roadmap: Roadmap
             Guia de migração: Migration guide
             Contribuindo: Contributing
@@ -199,6 +205,14 @@ nav:
       - Segurança: recipes/security.md
       - Helpers brasileiros: recipes/br-helpers.md
   - Referência: reference.md
+  - Projetos de aprendizado:
+      - learning/index.md
+      - Marketplace:
+          - learning/marketplace/index.md
+          - Regras de negócio: learning/marketplace/business-rules.md
+          - Modelo de domínio: learning/marketplace/domain.md
+          - Fluxos críticos: learning/marketplace/flows.md
+          - Mapa de endpoints: learning/marketplace/api.md
   - Roadmap: roadmap.md
   - Guia de migração: migration.md
   - Contribuindo: contributing.md
