@@ -38,7 +38,7 @@ auth_service = UserAuthService(
 app.include_router(
     make_auth_router(
         auth_service,
-        session_factory=lambda: db.get_session(),
+        session_factory=db.session_dependency,
     ),
 )
 ```
