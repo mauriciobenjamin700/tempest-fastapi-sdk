@@ -60,6 +60,12 @@ from tempest_fastapi_sdk.utils.regex import (
     normalize_phone_br,
     only_digits,
 )
+from tempest_fastapi_sdk.utils.storage_backends import (
+    LocalUploadStorage,
+    MinIOUploadStorage,
+    UploadResult,
+    UploadStorage,
+)
 from tempest_fastapi_sdk.utils.throttle import (
     AttemptThrottle,
     ThrottleBackend,
@@ -84,14 +90,18 @@ __all__: list[str] = [
     "EmailUtils",
     "GPUMetrics",
     "JWTUtils",
+    "LocalUploadStorage",
     "LogUtils",
     "MemoryMetrics",
     "MetricsUtils",
+    "MinIOUploadStorage",
     "PasswordUtils",
     "PhoneBR",
     "SystemMetrics",
     "ThrottleBackend",
     "ThrottleStatus",
+    "UploadResult",
+    "UploadStorage",
     "UploadUtils",
     "build_content_disposition",
     "generate_opaque_token",

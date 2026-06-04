@@ -27,18 +27,16 @@ def hide_module(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     """Simulate an uninstalled optional dependency.
 
     Yields a callable that hides a top-level package from ``import``.
-    The original module (if any) is restored when the test finishes.
+    Captures a full ``sys.modules`` snapshot up-front and fully
+    restores it on teardown — that way tests that explicitly
+    ``_drop_module("tempest_fastapi_sdk")`` and reimport the SDK
+    can't leak the freshly-built classes (which would be ``!=`` the
+    classes other test modules already captured at import time)
+    into later tests.
     """
-    saved: dict[str, Any] = {}
+    snapshot: dict[str, Any] = dict(sys.modules)
 
     def _hide(name: str) -> None:
-        saved.update(
-            {
-                k: v
-                for k, v in sys.modules.items()
-                if k == name or k.startswith(f"{name}.")
-            },
-        )
         _drop_module(name)
         monkeypatch.setattr(
             sys,
@@ -48,7 +46,13 @@ def hide_module(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
 
     yield _hide
 
-    for key, mod in saved.items():
+    # Drop anything added during the test, then re-bind every module
+    # to its original object so class identity matches what later
+    # tests captured at module-load time.
+    for key in list(sys.modules):
+        if key not in snapshot:
+            del sys.modules[key]
+    for key, mod in snapshot.items():
         sys.modules[key] = mod
 
 

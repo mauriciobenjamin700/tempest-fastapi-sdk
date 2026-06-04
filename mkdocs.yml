@@ -92,6 +92,8 @@ plugins:
             Fila e Tarefas: Queue & Tasks
             Logging: Logging
             Storage (MinIO/S3): Storage (MinIO/S3)
+            Uploads (backends): Uploads (backends)
+            Idempotência: Idempotency
             Métricas: Metrics
             Painel admin: Admin site
             Testes: Testing
@@ -188,6 +190,8 @@ nav:
       - Fila e Tarefas: recipes/queue-tasks.md
       - Logging: recipes/logging.md
       - Storage (MinIO/S3): recipes/storage.md
+      - Uploads (backends): recipes/uploads.md
+      - Idempotência: recipes/idempotency.md
       - Métricas: recipes/metrics.md
       - Painel admin: recipes/admin.md
       - Testes: recipes/testing.md

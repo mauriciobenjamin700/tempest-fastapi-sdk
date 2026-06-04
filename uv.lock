@@ -2447,7 +2447,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.23.0"
+version = "0.24.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -2490,6 +2490,7 @@ cache = [
 ]
 email = [
     { name = "aiosmtplib" },
+    { name = "jinja2" },
 ]
 metrics = [
     { name = "nvidia-ml-py" },
@@ -2569,6 +2570,7 @@ requires-dist = [
     { name = "itsdangerous", marker = "extra == 'all'", specifier = ">=2.2.0" },
     { name = "jinja2", marker = "extra == 'admin'", specifier = ">=3.1.0" },
     { name = "jinja2", marker = "extra == 'all'", specifier = ">=3.1.0" },
+    { name = "jinja2", marker = "extra == 'email'", specifier = ">=3.1.0" },
     { name = "minio", marker = "extra == 'all'", specifier = ">=7.2.0" },
     { name = "minio", marker = "extra == 'minio'", specifier = ">=7.2.0" },
     { name = "nvidia-ml-py", marker = "extra == 'all'", specifier = ">=12.560.30" },

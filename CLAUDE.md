@@ -62,9 +62,14 @@ WebPush, webhook signatures, BR validators (CPF/CNPJ/CEP/phone),
 admin panel (Jinja + HTMX), email (SMTP), Redis cache, FastStream
 queue, TaskIQ tasks, **MinIO / S3 object storage**
 (`AsyncMinIOClient` via the `[minio]` extra — bucket lifecycle,
-object I/O, streaming download, presigned URLs), hardened static
-files, server runner, health, tool-spec router, request-id
-middleware, CORS, CLI scaffolder.
+object I/O, streaming download, presigned URLs), **pluggable
+upload backends** (`UploadStorage` protocol + `LocalUploadStorage`
++ `MinIOUploadStorage` — `UploadUtils.save(storage=…)`),
+**idempotency middleware** (`Idempotency-Key` header with
+memory + Redis stores), **email templates** (Jinja2 via
+`EmailUtils.render_template`), hardened static files, server
+runner, health, tool-spec router, request-id middleware, CORS,
+CLI scaffolder.
 
 The list below is the deliberate next-version plan. Each tier is
 ordered by impact for a typical production FastAPI service.

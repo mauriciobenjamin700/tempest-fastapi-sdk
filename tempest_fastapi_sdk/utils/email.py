@@ -16,6 +16,13 @@ try:
 except ImportError:  # pragma: no cover - guarded by extras
     _aiosmtplib: Any = None  # type: ignore[no-redef]
 
+try:
+    from jinja2 import Environment, FileSystemLoader, select_autoescape
+except ImportError:  # pragma: no cover - guarded by extras
+    Environment = None  # type: ignore[assignment,misc]
+    FileSystemLoader = None  # type: ignore[assignment,misc]
+    select_autoescape = None  # type: ignore[assignment]
+
 
 class EmailUtils:
     """Send transactional emails via SMTP.
@@ -48,6 +55,7 @@ class EmailUtils:
         use_tls: bool = False,
         use_starttls: bool = True,
         timeout: float = 30.0,
+        template_dir: str | Path | None = None,
     ) -> None:
         """Initialize.
 
@@ -63,6 +71,11 @@ class EmailUtils:
             use_starttls (bool): Upgrade to TLS via STARTTLS after
                 connect. Set this for port ``587`` (default).
             timeout (float): SMTP socket timeout in seconds.
+            template_dir (str | Path | None): Directory holding Jinja2
+                templates for :meth:`render_template`. Optional —
+                templates can be opted into later, and the directory is
+                only loaded on first render. Requires the ``[email]``
+                extra (Jinja2 ships alongside aiosmtplib).
 
         Raises:
             ImportError: When the ``[email]`` extra is not installed.
@@ -80,6 +93,10 @@ class EmailUtils:
         self.use_tls: bool = use_tls
         self.use_starttls: bool = use_starttls
         self._timeout: float = timeout
+        self._template_dir: Path | None = (
+            Path(template_dir) if template_dir is not None else None
+        )
+        self._jinja_env: Any = None
 
     async def send(
         self,
@@ -153,6 +170,69 @@ class EmailUtils:
             timeout=self._timeout,
             recipients=recipients + cc_list + bcc_list,
         )
+
+    def render_template(self, template_name: str, context: dict[str, Any]) -> str:
+        """Render a Jinja2 template from ``template_dir`` with ``context``.
+
+        The Jinja environment is built lazily on first call and
+        memoized — subsequent renders reuse the same loader. HTML
+        autoescaping is enabled for ``.html`` / ``.htm`` / ``.xml``
+        templates so caller-supplied values cannot break out into
+        markup.
+
+        Args:
+            template_name (str): Template filename relative to
+                ``template_dir`` (e.g. ``"welcome.html"``,
+                ``"password_reset.txt"``).
+            context (dict[str, Any]): Variables exposed inside the
+                template.
+
+        Returns:
+            str: Rendered template body — pass this directly to
+            :meth:`send` as ``body`` (text) or ``html``.
+
+        Raises:
+            RuntimeError: When ``template_dir`` was not configured at
+                construction time.
+            ImportError: When Jinja2 is missing (it ships with the
+                ``[email]`` extra since v0.24.0; older installs may
+                need to upgrade).
+            jinja2.TemplateNotFound: When the file cannot be located
+                under ``template_dir``.
+
+        Example:
+
+            >>> emails = EmailUtils(..., template_dir="emails/")
+            >>> html = emails.render_template(
+            ...     "welcome.html",
+            ...     {"user_name": "Ana", "app_url": "https://app/"},
+            ... )
+            >>> await emails.send(
+            ...     "ana@example.com",
+            ...     subject="Welcome!",
+            ...     body="Welcome, Ana!",
+            ...     html=html,
+            ... )
+        """
+        if self._template_dir is None:
+            raise RuntimeError(
+                "EmailUtils.render_template requires template_dir to be set "
+                "at construction time."
+            )
+        if Environment is None:
+            raise ImportError(
+                "EmailUtils.render_template requires Jinja2. "
+                "Install with `pip install tempest-fastapi-sdk[email]`."
+            )
+        if self._jinja_env is None:
+            self._jinja_env = Environment(
+                loader=FileSystemLoader(str(self._template_dir)),
+                autoescape=select_autoescape(["html", "htm", "xml"]),
+                enable_async=False,
+            )
+        template = self._jinja_env.get_template(template_name)
+        rendered: str = template.render(**context)
+        return rendered
 
 
 __all__: list[str] = [

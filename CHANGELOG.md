@@ -5,6 +5,68 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] — 2026-05-31
+
+### Added
+
+- **`UploadUtils` pluggable storage backends.** New
+  ``UploadStorage`` protocol under ``tempest_fastapi_sdk.utils``
+  with two ready implementations:
+
+  - ``LocalUploadStorage(base_dir)`` — disk-backed, matches the
+    historical ``UploadUtils`` behavior.
+  - ``MinIOUploadStorage(client, bucket=None)`` — wraps the
+    ``AsyncMinIOClient`` shipped in v0.23.0, requires the
+    ``[minio]`` extra.
+
+  ``UploadUtils.save()`` now accepts an optional ``storage=``
+  keyword. When provided, the validated upload is sent to the
+  backend instead of the local filesystem — validation pipeline
+  (extension / MIME / size / magic bytes / ``content_validator``)
+  is identical for both targets. Calls without ``storage=``
+  continue to write to ``upload_dir`` unchanged.
+
+- **``IdempotencyMiddleware``** under
+  ``tempest_fastapi_sdk.api.middlewares``. Caches the full response
+  for ``POST`` / ``PUT`` / ``PATCH`` / ``DELETE`` requests keyed
+  by ``(method, path, Idempotency-Key)`` so client retries don't
+  re-execute the handler. Opt-in per request — endpoints without
+  the header pass through.
+
+  Two stores ship out of the box:
+
+  - ``MemoryIdempotencyStore`` — async-lock-guarded dict with TTL
+    eviction. Single-replica only.
+  - ``RedisIdempotencyStore(client, prefix="idem:")`` — backed by
+    an async Redis client. Required in multi-replica deployments.
+
+  Custom backends can implement the ``IdempotencyStore`` protocol.
+
+- **``EmailUtils.render_template(template_name, context)``.**
+  Optional Jinja2 template rendering for transactional emails.
+  Pass ``template_dir`` at construction time, then call
+  ``render_template`` to produce the HTML / text body fed into
+  ``send()``. HTML autoescaping is enabled for ``.html`` / ``.htm``
+  / ``.xml`` templates so caller-supplied values can't break out
+  into markup.
+
+### Changed
+
+- ``[email]`` extra now ships Jinja2 alongside ``aiosmtplib`` so
+  ``render_template`` works without a separate ``[admin]``
+  dependency. Existing installs should re-pull the extra:
+  ``pip install -U "tempest-fastapi-sdk[email]"``.
+
+### Fixed
+
+- ``tests/utils/test_lazy_extras.py::hide_module`` fixture now
+  fully restores ``sys.modules`` on teardown. The previous version
+  only saved entries matching the ``_hide`` target, so tests that
+  reimported the whole ``tempest_fastapi_sdk`` package leaked the
+  freshly-built class objects into later tests — surfaced as
+  ``pytest.raises(...)`` failing to catch exceptions that were
+  raised under a different (re-imported) class identity.
+
 ## [0.23.0] — 2026-05-31
 
 ### Added

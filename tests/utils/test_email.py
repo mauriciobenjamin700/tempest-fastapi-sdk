@@ -139,3 +139,66 @@ class TestSend:
             from_addr="alerts@example.com",
         )
         assert fake_send.calls[0]["message"]["From"] == "alerts@example.com"
+
+
+class TestRenderTemplate:
+    def test_renders_html_with_context(self, tmp_path: Path) -> None:
+        (tmp_path / "welcome.html").write_text(
+            "<p>Hello, {{ user_name }}!</p>",
+            encoding="utf-8",
+        )
+        utils = EmailUtils(
+            host="smtp.example.com",
+            port=587,
+            from_addr="bot@example.com",
+            template_dir=tmp_path,
+        )
+        rendered = utils.render_template(
+            "welcome.html",
+            {"user_name": "Ana"},
+        )
+        assert rendered == "<p>Hello, Ana!</p>"
+
+    def test_html_autoescape_protects_against_xss(self, tmp_path: Path) -> None:
+        (tmp_path / "x.html").write_text(
+            "<p>{{ user_name }}</p>",
+            encoding="utf-8",
+        )
+        utils = EmailUtils(
+            host="smtp.example.com",
+            port=587,
+            from_addr="bot@example.com",
+            template_dir=tmp_path,
+        )
+        rendered = utils.render_template(
+            "x.html",
+            {"user_name": "<script>alert(1)</script>"},
+        )
+        assert "<script>" not in rendered
+        assert "&lt;script&gt;" in rendered
+
+    def test_text_template_no_autoescape(self, tmp_path: Path) -> None:
+        (tmp_path / "msg.txt").write_text(
+            "Hi {{ name }} — token: {{ token }}",
+            encoding="utf-8",
+        )
+        utils = EmailUtils(
+            host="smtp.example.com",
+            port=587,
+            from_addr="bot@example.com",
+            template_dir=tmp_path,
+        )
+        rendered = utils.render_template(
+            "msg.txt",
+            {"name": "Ana", "token": "<abc>"},
+        )
+        assert rendered == "Hi Ana — token: <abc>"
+
+    def test_without_template_dir_raises(self) -> None:
+        utils = EmailUtils(
+            host="smtp.example.com",
+            port=587,
+            from_addr="bot@example.com",
+        )
+        with pytest.raises(RuntimeError, match="template_dir"):
+            utils.render_template("x.html", {})

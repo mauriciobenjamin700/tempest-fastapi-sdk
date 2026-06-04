@@ -279,14 +279,21 @@ class UploadUtils:
         filename: str | None = None,
         keep_original_name: bool = False,
         content_validator: Callable[[bytes], bool] | None = None,
+        storage: Any = None,
     ) -> Path:
-        """Persist ``file`` to disk and return the final path.
+        """Persist ``file`` and return the final path.
+
+        By default writes to ``upload_dir`` on local disk. Pass
+        ``storage=MinIOUploadStorage(client)`` to send the upload to
+        MinIO/S3 — the validation pipeline (extension / MIME / size /
+        magic bytes / ``content_validator``) is identical for either
+        backend.
 
         Args:
             file (UploadFile): The FastAPI upload.
             subdir (str): Optional sub-directory relative to
                 ``upload_dir`` (e.g. ``"avatars"``). Created on
-                demand.
+                demand for local; used as a key prefix for remote.
             filename (str | None): Explicit final filename (e.g.
                 ``f"{user_id}.jpg"``) for deterministic, addressable
                 names. Reduced to its basename and guarded against path
@@ -301,9 +308,17 @@ class UploadUtils:
                 Returning ``False`` aborts the save (and removes the
                 partial file) before any further bytes are written —
                 e.g. ``lambda b: sniff_mime(b) in {"image/png"}``.
+            storage (Any): Optional :class:`UploadStorage` backend
+                (``LocalUploadStorage`` / ``MinIOUploadStorage``).
+                When ``None`` (default), writes to ``upload_dir`` on
+                local disk preserving the historical behavior. When
+                set, the returned :class:`Path` is the storage key
+                wrapped in ``Path`` for back-compat — call
+                ``str(result)`` to get the bare key.
 
         Returns:
-            Path: Absolute path of the saved file.
+            Path: Local absolute path when ``storage`` is ``None``,
+            or ``Path(storage_key)`` when a backend is used.
 
         Raises:
             InvalidFileTypeException: If the extension/MIME violates the
@@ -315,6 +330,21 @@ class UploadUtils:
         """
         self.validate(file)
 
+        resolved_name = self._resolve_filename(
+            file,
+            filename=filename,
+            keep_original_name=keep_original_name,
+        )
+
+        if storage is not None:
+            return await self._save_via_storage(
+                file,
+                storage=storage,
+                subdir=subdir,
+                resolved_name=resolved_name,
+                content_validator=content_validator,
+            )
+
         base_dir = self.upload_dir.resolve()
         target_dir = (base_dir / subdir).resolve() if subdir else base_dir
         if base_dir != target_dir and base_dir not in target_dir.parents:
@@ -322,12 +352,6 @@ class UploadUtils:
                 details={"subdir": subdir, "reason": "escapes upload_dir"},
             )
         target_dir.mkdir(parents=True, exist_ok=True)
-
-        resolved_name = self._resolve_filename(
-            file,
-            filename=filename,
-            keep_original_name=keep_original_name,
-        )
 
         target_path = (target_dir / resolved_name).resolve()
         if base_dir != target_path.parent and base_dir not in target_path.parents:
@@ -357,6 +381,59 @@ class UploadUtils:
             raise
 
         return target_path.resolve()
+
+    async def _save_via_storage(
+        self,
+        file: UploadFile,
+        *,
+        storage: Any,
+        subdir: str,
+        resolved_name: str,
+        content_validator: Callable[[bytes], bool] | None,
+    ) -> Path:
+        """Validate + persist through an :class:`UploadStorage` backend.
+
+        The first chunk read from ``file`` runs through
+        :meth:`_verify_content` and then through the backend, so
+        magic-byte + caller validators stay aligned with the local path.
+
+        Args:
+            file (UploadFile): Inbound upload.
+            storage (Any): Backend conforming to :class:`UploadStorage`.
+            subdir (str): Optional key prefix.
+            resolved_name (str): Sanitized basename from
+                :meth:`_resolve_filename`.
+            content_validator (Callable[[bytes], bool] | None): Caller
+                predicate forwarded to :meth:`_verify_content`.
+
+        Returns:
+            Path: ``Path(storage_key)`` so the return type stays
+            consistent with the local branch.
+        """
+        from collections.abc import AsyncIterator as _AsyncIterator
+
+        key = f"{subdir.strip('/')}/{resolved_name}" if subdir else resolved_name
+
+        first_chunk_verified = False
+
+        async def _chunks() -> _AsyncIterator[bytes]:
+            nonlocal first_chunk_verified
+            while True:
+                chunk = await file.read(self._chunk_size)
+                if not chunk:
+                    return
+                if not first_chunk_verified:
+                    first_chunk_verified = True
+                    self._verify_content(chunk, file, content_validator)
+                yield chunk
+
+        await storage.write_stream(
+            key,
+            _chunks(),
+            content_type=file.content_type or "application/octet-stream",
+            max_size_bytes=self.max_size_bytes,
+        )
+        return Path(key)
 
     def _resolve_filename(
         self,

@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.23.0"
+version = "0.24.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -46,6 +46,7 @@ auth = [
 ]
 email = [
     "aiosmtplib>=4.0.0",
+    "jinja2>=3.1.0",
 ]
 upload = [
     "aiofiles>=24.1.0",

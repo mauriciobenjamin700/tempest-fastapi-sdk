@@ -21,7 +21,13 @@ from tempest_fastapi_sdk.api.handlers import (
     register_exception_handlers,
 )
 from tempest_fastapi_sdk.api.middlewares import (
+    IDEMPOTENCY_HEADER,
+    CachedResponse,
+    IdempotencyMiddleware,
+    IdempotencyStore,
+    MemoryIdempotencyStore,
     RateLimitMiddleware,
+    RedisIdempotencyStore,
     RequestIDMiddleware,
     apply_cors,
 )
@@ -44,11 +50,17 @@ from tempest_fastapi_sdk.api.webhooks import (
 
 __all__: list[str] = [
     "DEFAULT_STATIC_SECURITY_HEADERS",
+    "IDEMPOTENCY_HEADER",
+    "CachedResponse",
     "HardenedStaticFiles",
     "HealthCheck",
+    "IdempotencyMiddleware",
+    "IdempotencyStore",
     "LogSource",
+    "MemoryIdempotencyStore",
     "RSAWebhookSignatureVerifier",
     "RateLimitMiddleware",
+    "RedisIdempotencyStore",
     "RequestIDMiddleware",
     "SameSite",
     "WebhookSignatureVerifier",

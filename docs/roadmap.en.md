@@ -38,21 +38,25 @@ This page lists what the SDK **does not ship yet** but has real demand in produc
 
 ## Release plan
 
-### v0.23.0 — observability + retries
+### ✅ v0.23.0 — MinIO/S3 storage (shipped)
 
-High return, low cost. Unblocks production diagnostics.
+- `AsyncMinIOClient` (extra `[minio]`) — bucket, object I/O, streaming, presigned URLs
+
+### ✅ v0.24.0 — Pluggable uploads + idempotency + email templates (shipped)
+
+- `UploadStorage` protocol + `LocalUploadStorage` + `MinIOUploadStorage`
+- `IdempotencyMiddleware` + `MemoryIdempotencyStore` + `RedisIdempotencyStore`
+- `EmailUtils.render_template(template, ctx)` with Jinja2 + autoescape
+
+### v0.25.0 — CLI docker-compose generator
+
+`tempest new` emits a `docker-compose.yaml` based on the installed extras — only spins up Postgres if `[admin]`/`[db]`, only spins up Redis if `[cache]`, etc.
+
+### v0.26.0+ — observability + retries
 
 - `setup_tracing(app, otlp_endpoint=…)` with OTel auto-instrumentation
 - `HTTPClient` (typed httpx wrapper) — retry, backoff, `X-Request-ID` propagation
 - Prometheus `/metrics` endpoint (built on `MetricsUtils`)
-
-### v0.24.0 — cloud uploads + idempotency
-
-Unblocks multi-replica deploys and protects critical endpoints.
-
-- `UploadUtils` with pluggable backends + `S3Backend`
-- `IdempotencyMiddleware` + `idempotency_keys` table on `BaseModel`
-- `EmailUtils.render_template(path, ctx)`
 
 !!! note "This roadmap is honest, not aspirational"
     Items past v0.24.0 only land in the changelog when business

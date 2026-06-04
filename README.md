@@ -102,8 +102,8 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | Extra | Pulls in | Unlocks |
 | --- | --- | --- |
 | `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils` |
-| `[email]` | `aiosmtplib` | `EmailUtils` |
-| `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils` |
+| `[email]` | `aiosmtplib`, `jinja2` | `EmailUtils` + `render_template()` |
+| `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils`, `LocalUploadStorage`, `MinIOUploadStorage` (when combined with `[minio]`) |
 | `[cache]` | `redis` | `AsyncRedisManager` |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
@@ -3815,20 +3815,25 @@ The full, prioritized roadmap lives in the documentation site —
 [**Roadmap (PT-BR)**](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/roadmap/) ·
 [**Roadmap (EN-US)**](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/roadmap/).
 
-Short version — next two releases:
+Short version — recently shipped and what's next:
 
-- **v0.23.0 — observability + retries.** OpenTelemetry tracing
-  (`setup_tracing(app, otlp_endpoint=…)`), typed `HTTPClient`
-  (httpx wrapper with retry/backoff/circuit-breaker/`X-Request-ID`
-  propagation), Prometheus `/metrics` endpoint.
-- **v0.24.0 — cloud uploads + idempotency.** `UploadUtils` with
-  pluggable backends (`LocalBackend`, `S3Backend`, `GCSBackend`),
-  `IdempotencyMiddleware` + `idempotency_keys` table, Jinja2
-  templates in `EmailUtils.render_template(path, ctx)`.
-
-Tier-S features still missing beyond those (outbox pattern for
-transactional events, OAuth2/OIDC providers, bulk repository ops,
-CSRF + body-size middlewares) are tracked in the roadmap page.
+- **v0.23.0 — MinIO/S3 storage.** ✅ Shipped — `AsyncMinIOClient`
+  via the `[minio]` extra. Bucket lifecycle, object I/O,
+  streaming download, presigned URLs.
+- **v0.24.0 — cloud uploads + idempotency + email templates.** ✅
+  Shipped — `UploadStorage` protocol with `LocalUploadStorage` +
+  `MinIOUploadStorage`, `IdempotencyMiddleware` with memory +
+  Redis backends, `EmailUtils.render_template(template, ctx)`
+  with Jinja2 autoescaping.
+- **Next: v0.25.0 — CLI docker-compose generator.** `tempest new`
+  emits a `docker-compose.yaml` wiring only the services covered
+  by the installed extras (Postgres, Redis, RabbitMQ, MinIO,
+  MailHog), pinned to the SDK's supported versions.
+- **v0.26.0+** — observability (OpenTelemetry, Prometheus
+  `/metrics`, typed `HTTPClient` httpx wrapper), outbox pattern
+  for transactional events, OAuth2/OIDC providers, bulk
+  repository ops, CSRF + body-size middlewares. Tracked in the
+  roadmap page.
 
 ---
 

@@ -82,6 +82,11 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.handlers.make_http_exception_handler
 ::: tempest_fastapi_sdk.api.handlers.make_unhandled_exception_handler
 ::: tempest_fastapi_sdk.api.middlewares.RequestIDMiddleware
+::: tempest_fastapi_sdk.api.middlewares.idempotency.IdempotencyMiddleware
+::: tempest_fastapi_sdk.api.middlewares.idempotency.MemoryIdempotencyStore
+::: tempest_fastapi_sdk.api.middlewares.idempotency.RedisIdempotencyStore
+::: tempest_fastapi_sdk.utils.storage_backends.LocalUploadStorage
+::: tempest_fastapi_sdk.utils.storage_backends.MinIOUploadStorage
 ::: tempest_fastapi_sdk.api.middlewares.cors.apply_cors
 ::: tempest_fastapi_sdk.api.routers.health.make_health_router
 ::: tempest_fastapi_sdk.api.routers.logs.make_logs_router
