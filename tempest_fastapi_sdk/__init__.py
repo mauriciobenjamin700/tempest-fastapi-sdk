@@ -129,6 +129,19 @@ from tempest_fastapi_sdk.schemas import (
     encode_cursor,
 )
 from tempest_fastapi_sdk.services import BaseService
+from tempest_fastapi_sdk.sessions import (
+    MemorySessionStore,
+    RedisSessionStore,
+    Session,
+    SessionAuth,
+    SessionLoginSchema,
+    SessionMiddleware,
+    SessionResponseSchema,
+    SessionStore,
+    SessionSummarySchema,
+    make_session_dependency,
+    make_session_router,
+)
 from tempest_fastapi_sdk.settings import (
     AuthSettings,
     BaseAppSettings,
@@ -141,6 +154,7 @@ from tempest_fastapi_sdk.settings import (
     RabbitMQSettings,
     RedisSettings,
     ServerSettings,
+    SessionSettings,
     TaskIQSettings,
     TokenSettings,
     UploadSettings,
@@ -220,7 +234,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.33.0"
+__version__: str = "0.34.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -307,6 +321,7 @@ __all__: list[str] = [
     "LoginSchema",
     "MemoryIdempotencyStore",
     "MemoryMetrics",
+    "MemorySessionStore",
     "MetricsUtils",
     "MinIOSettings",
     "MinIOUploadStorage",
@@ -328,12 +343,21 @@ __all__: list[str] = [
     "RabbitMQSettings",
     "RateLimitMiddleware",
     "RedisIdempotencyStore",
+    "RedisSessionStore",
     "RedisSettings",
     "RequestIDMiddleware",
     "RetryPolicy",
     "SameSite",
     "ServerSentEvent",
     "ServerSettings",
+    "Session",
+    "SessionAuth",
+    "SessionLoginSchema",
+    "SessionMiddleware",
+    "SessionResponseSchema",
+    "SessionSettings",
+    "SessionStore",
+    "SessionSummarySchema",
     "SignupResponseSchema",
     "SignupSchema",
     "SoftDeleteMixin",
@@ -400,6 +424,8 @@ __all__: list[str] = [
     "make_prometheus_registry",
     "make_prometheus_router",
     "make_role_dependency",
+    "make_session_dependency",
+    "make_session_router",
     "make_token_dependency",
     "make_tool_spec_router",
     "make_unhandled_exception_handler",

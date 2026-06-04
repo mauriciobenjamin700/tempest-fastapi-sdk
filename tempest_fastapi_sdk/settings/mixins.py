@@ -749,6 +749,113 @@ class MinIOSettings(BaseSettings):
     )
 
 
+class SessionSettings(BaseSettings):
+    """Server-side session cookie + storage configuration.
+
+    Consumed by :class:`tempest_fastapi_sdk.SessionAuth`,
+    :class:`tempest_fastapi_sdk.SessionMiddleware`, and
+    :func:`tempest_fastapi_sdk.make_session_router`. Defaults assume
+    HTTPS in production (``SESSION_COOKIE_SECURE=True``) and a
+    same-site SaaS topology (``SESSION_COOKIE_SAMESITE="lax"``) —
+    relax both only for local HTTP development.
+    """
+
+    SESSION_TTL_SECONDS: int = Field(
+        default=86_400,
+        ge=60,
+        title="Session TTL (seconds)",
+        description=(
+            "Lifetime of a server-side session, in seconds. The cookie's "
+            "``Max-Age`` and the store's TTL both track this value. "
+            "Defaults to 24 hours."
+        ),
+        examples=[3600, 86_400, 86_400 * 7],
+    )
+    SESSION_SLIDING: bool = Field(
+        default=True,
+        title="Slide TTL on activity",
+        description=(
+            "When ``True``, every resolved request refreshes "
+            "``expires_at`` to ``now + SESSION_TTL_SECONDS`` so an "
+            "active user is never logged out. When ``False``, the "
+            "session expires exactly at ``created_at + TTL`` even if "
+            "the user is online."
+        ),
+        examples=[True, False],
+    )
+    SESSION_COOKIE_NAME: str = Field(
+        default="tempest_session",
+        title="Cookie name",
+        description=(
+            "Name of the ``Set-Cookie`` header value carrying the "
+            "plaintext session id. Pick something app-specific in "
+            "production so it does not collide with sibling services "
+            "on the same domain."
+        ),
+        examples=["tempest_session", "myapp_sid"],
+    )
+    SESSION_COOKIE_DOMAIN: str | None = Field(
+        default=None,
+        title="Cookie domain",
+        description=(
+            "``Domain`` attribute on the cookie. ``None`` (default) "
+            "scopes the cookie to the exact host that issued it; set "
+            "to ``.example.com`` to share across subdomains."
+        ),
+        examples=[None, ".example.com"],
+    )
+    SESSION_COOKIE_PATH: str = Field(
+        default="/",
+        title="Cookie path",
+        description="``Path`` attribute on the cookie.",
+        examples=["/", "/app"],
+    )
+    SESSION_COOKIE_SECURE: bool = Field(
+        default=True,
+        title="Cookie Secure flag",
+        description=(
+            "When ``True`` (default), browsers only send the cookie "
+            "over HTTPS. Set to ``False`` ONLY for local plain-HTTP "
+            "development."
+        ),
+        examples=[True, False],
+    )
+    SESSION_COOKIE_HTTPONLY: bool = Field(
+        default=True,
+        title="Cookie HttpOnly flag",
+        description=(
+            "When ``True`` (default), JavaScript on the page cannot "
+            "read the cookie value — defense against XSS-driven "
+            "session theft. There is essentially no reason to set "
+            "this to ``False``."
+        ),
+        examples=[True, False],
+    )
+    SESSION_COOKIE_SAMESITE: str = Field(
+        default="lax",
+        pattern="^(lax|strict|none)$",
+        title="Cookie SameSite policy",
+        description=(
+            "``lax`` (default) — sent on top-level cross-site GETs but "
+            "not on cross-site POSTs. ``strict`` — never sent on "
+            "cross-site requests. ``none`` — sent everywhere, **requires** "
+            "``SESSION_COOKIE_SECURE=True``."
+        ),
+        examples=["lax", "strict", "none"],
+    )
+    SESSION_ROTATE_ON_LOGIN: bool = Field(
+        default=True,
+        title="Rotate session id on login",
+        description=(
+            "When ``True`` (default), :meth:`SessionAuth.login` "
+            "issues a brand-new session id even when the same "
+            "browser already had one — closes session-fixation "
+            "vectors where an attacker plants a known id before login."
+        ),
+        examples=[True, False],
+    )
+
+
 class WebSocketSettings(BaseSettings):
     """WebSocket router configuration.
 
@@ -819,6 +926,7 @@ __all__: list[str] = [
     "RabbitMQSettings",
     "RedisSettings",
     "ServerSettings",
+    "SessionSettings",
     "TaskIQSettings",
     "TokenSettings",
     "UploadSettings",

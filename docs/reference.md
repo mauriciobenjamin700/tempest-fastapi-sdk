@@ -121,6 +121,20 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.auth.schemas.ActivationToken
 ::: tempest_fastapi_sdk.auth.schemas.PasswordResetToken
 
+### `tempest_fastapi_sdk.sessions`
+
+::: tempest_fastapi_sdk.sessions.service.SessionAuth
+::: tempest_fastapi_sdk.sessions.router.make_session_router
+::: tempest_fastapi_sdk.sessions.middleware.SessionMiddleware
+::: tempest_fastapi_sdk.sessions.dependencies.make_session_dependency
+::: tempest_fastapi_sdk.sessions.store.SessionStore
+::: tempest_fastapi_sdk.sessions.store.MemorySessionStore
+::: tempest_fastapi_sdk.sessions.store.RedisSessionStore
+::: tempest_fastapi_sdk.sessions.schemas.Session
+::: tempest_fastapi_sdk.sessions.schemas.SessionLoginSchema
+::: tempest_fastapi_sdk.sessions.schemas.SessionResponseSchema
+::: tempest_fastapi_sdk.sessions.schemas.SessionSummarySchema
+
 ### `tempest_fastapi_sdk.storage`
 
 ::: tempest_fastapi_sdk.storage.minio_client.AsyncMinIOClient

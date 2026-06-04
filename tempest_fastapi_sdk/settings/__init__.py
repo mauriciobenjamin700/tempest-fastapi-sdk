@@ -21,6 +21,7 @@ from tempest_fastapi_sdk.settings.mixins import MinIOSettings as MinIOSettings
 from tempest_fastapi_sdk.settings.mixins import RabbitMQSettings as RabbitMQSettings
 from tempest_fastapi_sdk.settings.mixins import RedisSettings as RedisSettings
 from tempest_fastapi_sdk.settings.mixins import ServerSettings as ServerSettings
+from tempest_fastapi_sdk.settings.mixins import SessionSettings as SessionSettings
 from tempest_fastapi_sdk.settings.mixins import TaskIQSettings as TaskIQSettings
 from tempest_fastapi_sdk.settings.mixins import TokenSettings as TokenSettings
 from tempest_fastapi_sdk.settings.mixins import UploadSettings as UploadSettings
@@ -39,6 +40,7 @@ __all__: list[str] = [
     "RabbitMQSettings",
     "RedisSettings",
     "ServerSettings",
+    "SessionSettings",
     "TaskIQSettings",
     "TokenSettings",
     "UploadSettings",

@@ -5,6 +5,74 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.0] — 2026-06-04
+
+### Added
+
+- **Server-side session module** — new `tempest_fastapi_sdk.sessions`
+  package ships a full alternative to the JWT auth flow. Public
+  surface:
+    - `SessionStore` Protocol + `MemorySessionStore` (dev/tests) +
+      `RedisSessionStore` (production). Stores keep sessions by the
+      SHA-256 hash of the cookie id; the plaintext only lives in the
+      Set-Cookie. Redis store gets TTL eviction for free; both
+      stores expose `get` / `set` / `delete` / `delete_by_user` /
+      `list_by_user`.
+    - `Session` schema — `session_id` (hashed), `user_id`,
+      `created_at`, `expires_at`, `last_seen_at`, `ip`,
+      `user_agent`, `data` (free-form JSON bag).
+    - `SessionAuth` service — authenticates credentials via
+      `PasswordUtils` + `UserModel`, mints sessions, slides TTL on
+      resolve, rotates on login (anti-fixation), revokes one or all
+      sessions per user.
+    - `SessionMiddleware` — reads the cookie, populates
+      `request.state.session` so handlers never re-resolve.
+    - `make_session_dependency(required=...)` — FastAPI dependency
+      returning the resolved session or raising
+      `UnauthorizedException` when required.
+    - `make_session_router(service, session_factory=..., prefix=...)` —
+      bundled 5-endpoint router: `POST /auth/session/login`,
+      `POST /auth/session/logout`, `GET /auth/session/me`,
+      `GET /auth/session/list`, `DELETE /auth/session/{id}`.
+    - `SessionLoginSchema`, `SessionResponseSchema`,
+      `SessionSummarySchema` — typed DTOs for the router.
+- **`SessionSettings` mixin** — `SESSION_TTL_SECONDS`,
+  `SESSION_SLIDING`, `SESSION_COOKIE_{NAME,DOMAIN,PATH,SECURE,HTTPONLY,SAMESITE}`,
+  `SESSION_ROTATE_ON_LOGIN`. Every field carries
+  `title`/`description`/`examples`.
+
+### Documentation
+
+- `docs/recipes/sessions.{md,en.md}` — new bilingual recipe with
+  the JWT-vs-session decision table, setup wiring, endpoints,
+  store comparison (Memory vs Redis vs custom), middleware
+  semantics, security model (hash-at-rest, anti-fixation,
+  SameSite, anti-enumeration, instant revocation) and when NOT to
+  use sessions.
+- `docs/reference.md` — new `tempest_fastapi_sdk.sessions` section
+  with `mkdocstrings` entries for `SessionAuth`,
+  `make_session_router`, `SessionMiddleware`,
+  `make_session_dependency`, `SessionStore` /
+  `MemorySessionStore` / `RedisSessionStore`, every schema.
+- `mkdocs.yml` — recipe added to the navigation in both languages
+  with the matching i18n translation entry.
+
+### Tests
+
+- 16 new cases under `tests/sessions/` covering the
+  `MemorySessionStore` lifecycle (set/get/expire/delete/list +
+  user-scoped wipe), `SessionAuth` (authenticate / login /
+  resolve+slide / rotate / revoke_all + anti-enumeration), and
+  router integration (login sets cookie, `me` returns session,
+  `me` returns 401 without cookie, logout clears cookie, list
+  marks current).
+
+### Migration
+
+- v0.34.0 is purely additive. No public-API breaking change.
+  Existing JWT flows keep working untouched; sessions are a
+  separate opt-in path.
+
 ## [0.33.0] — 2026-06-04
 
 ### Added

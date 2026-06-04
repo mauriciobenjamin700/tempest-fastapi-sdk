@@ -96,6 +96,7 @@ plugins:
             Uploads (backends): Uploads (backends)
             Idempotência: Idempotency
             "Auth flow (signup/reset)": "Auth flow (signup/reset)"
+            "Sessões server-side": "Server-side sessions"
             Métricas: Metrics
             Painel admin: Admin site
             Testes: Testing
@@ -202,6 +203,7 @@ nav:
       - Uploads (backends): recipes/uploads.md
       - Idempotência: recipes/idempotency.md
       - Auth flow (signup/reset): recipes/auth-flow.md
+      - Sessões server-side: recipes/sessions.md
       - Métricas: recipes/metrics.md
       - Painel admin: recipes/admin.md
       - Testes: recipes/testing.md
