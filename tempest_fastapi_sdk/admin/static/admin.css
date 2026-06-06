@@ -274,6 +274,28 @@ textarea {
   text-decoration: none;
 }
 
+/* Bulk-action bar above the list table. */
+.tempest-admin-bulk {
+  margin: 0;
+}
+
+.tempest-admin-bulk__bar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.tempest-admin-list__check {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.tempest-admin-list__check input {
+  width: auto;
+}
+
 /* Horizontal-scroll wrapper so wide tables never break the layout. */
 .tempest-admin-table-wrap {
   width: 100%;
@@ -526,5 +548,15 @@ textarea {
   .tempest-admin-form__actions .tempest-admin-form__cancel {
     width: 100%;
     text-align: center;
+  }
+
+  .tempest-admin-bulk__bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tempest-admin-bulk__bar select,
+  .tempest-admin-bulk__bar button {
+    width: 100%;
   }
 }

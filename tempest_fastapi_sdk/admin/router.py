@@ -110,6 +110,8 @@ def make_admin_router(
       filterable).
     * ``GET  {prefix}/m/{slug}/export.{fmt}`` — CSV/JSON export of the
       current (filtered + sorted) result set.
+    * ``POST {prefix}/m/{slug}/bulk`` — bulk delete / activate /
+      deactivate on the selected rows.
     * ``GET/POST {prefix}/m/{slug}/new`` — create form + submit
       (when ``can_create``).
     * ``GET  {prefix}/m/{slug}/{identity}`` — detail view.
@@ -516,6 +518,8 @@ def make_admin_router(
                 "export_query": export_query,
                 "can_create": admin.can_create,
                 "new_url": f"{prefix}/m/{slug}/new",
+                "bulk_actions": _bulk_actions(admin),
+                "bulk_url": f"{prefix}/m/{slug}/bulk",
                 "filter_options": {
                     field: _filter_options(admin, field, active_filters.get(field))
                     for field in admin.list_filter
@@ -681,6 +685,60 @@ def make_admin_router(
                 "form_error": form_error,
             },
             status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    @router.post("/m/{slug}/bulk", name="admin_bulk")
+    async def bulk_action(
+        request: Request,
+        slug: str,
+        csrf_token: str = Form(...),
+        action: str = Form(...),
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> Response:
+        """Apply a bulk action (delete / activate / deactivate) to rows.
+
+        Args:
+            request (Request): The inbound request (carries the
+                repeated ``ids`` form field).
+            slug (str): The admin slug.
+            csrf_token (str): CSRF token from the form.
+            action (str): One of ``delete`` / ``activate`` /
+                ``deactivate``.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            Response: Redirect back to the list view.
+
+        Raises:
+            HTTPException: ``404`` for unknown admin, ``403`` on CSRF
+                mismatch, ``400`` for an unknown / unpermitted action.
+        """
+        admin = site.get(slug)
+        if admin is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
+        await _resolve_principal(request, db_session, session)
+        _check_csrf(session, csrf_token)
+        form = await request.form()
+        ids = [_identity_value(str(raw)) for raw in form.getlist("ids")]
+        if ids:
+            repository = admin.build_repository(db_session)
+            if action == "delete":
+                if not admin.can_delete:
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "delete disabled")
+                await repository.delete_batch(ids)
+            elif action in ("activate", "deactivate"):
+                if not admin.can_edit:
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "edit disabled")
+                await repository.bulk_update(
+                    {"id": ids}, {"is_active": action == "activate"}
+                )
+            else:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown action")
+        return RedirectResponse(
+            url=f"{prefix}/m/{slug}/",
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
     @router.get("/m/{slug}/{identity}", name="admin_detail")
@@ -916,6 +974,7 @@ class _RowView:
         """
         self.instance: Any = instance
         self.identity: Any = getattr(instance, identity_field, None)
+        self.pk: Any = getattr(instance, "id", None)
         self.values: dict[str, Any] = {
             col: getattr(instance, col, None) for col in columns
         }
@@ -1012,6 +1071,28 @@ def _sort_state(
             "ascending": active_ascending if is_active else None,
         }
     return state
+
+
+def _bulk_actions(admin: Any) -> list[tuple[str, str]]:
+    """Return the bulk actions available for ``admin`` as ``(value, label)``.
+
+    Activation toggles need ``can_edit`` (every model carries the
+    ``is_active`` flag from ``BaseModel``); delete needs ``can_delete``.
+
+    Args:
+        admin (Any): The admin configuration.
+
+    Returns:
+        list[tuple[str, str]]: Action option pairs (empty when no
+        mutation is permitted).
+    """
+    actions: list[tuple[str, str]] = []
+    if admin.can_edit:
+        actions.append(("activate", "Activate"))
+        actions.append(("deactivate", "Deactivate"))
+    if admin.can_delete:
+        actions.append(("delete", "Delete"))
+    return actions
 
 
 def _identity_value(identity: str) -> Any:

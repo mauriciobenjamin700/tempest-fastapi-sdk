@@ -39,9 +39,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Detail view gains Edit / Delete controls; list view gains a
       "+ New" button. All responsive (verified at 390px / 1280px).
 
-    Bulk actions, FK-select + file-upload widgets, inline/related
-    editing, MFA on admin login, audit-log view, and the metrics
-    dashboard remain tracked as later admin phases on the roadmap.
+- **Admin bulk actions — Phase 2b.**
+    - List view gains row checkboxes + a select-all toggle and a bulk
+      action bar. `POST /admin/m/{slug}/bulk` applies **delete**
+      (`can_delete`), **activate** / **deactivate** (`can_edit`, toggling
+      the `is_active` flag) to the selected rows, CSRF-verified.
+      Backed by `BaseRepository.delete_batch` / `bulk_update`.
+      Responsive (verified at 390px / 1280px).
+
+    FK-select + file-upload widgets, inline/related editing, MFA on admin
+    login, audit-log view, and the metrics dashboard remain tracked as
+    later admin phases on the roadmap.
 
 ## [0.35.0] — 2026-06-06
 

@@ -123,6 +123,7 @@ app.include_router(
 - `GET  /admin/` — dashboard listing every registered admin.
 - `GET  /admin/m/{slug}/` — list view with pagination + free-text search (`?q=`) + per-field filters (`?filter_<field>=value`) + clickable **column sorting** (`?sort=<column>&dir=asc|desc`).
 - `GET  /admin/m/{slug}/export.csv` / `export.json` — **export** the current result set (honoring search/filters/sort) as CSV or JSON. Row cap via `make_admin_router(export_max_rows=…)` (default 5000).
+- `POST /admin/m/{slug}/bulk` — **bulk actions** (delete / activate / deactivate) on the selected rows.
 - `GET/POST /admin/m/{slug}/new` — **create** a record (when `can_create`).
 - `GET  /admin/m/{slug}/{identity}` — detail view with Edit/Delete controls.
 - `GET/POST /admin/m/{slug}/{identity}/edit` — **edit** a record (when `can_edit`).
@@ -132,7 +133,9 @@ app.include_router(
 !!! info "Write CRUD + permissions"
     Create/edit/delete are gated by `AdminModel` flags: `can_create` / `can_edit` / `can_delete` (all `True` by default; a disabled view returns `404`). Every write POST carries the session CSRF token, verified server-side (`403` on mismatch). **Field widgets** are derived from the column type — text / textarea (long strings) / number / checkbox / `datetime-local` / date / `select` for enums — with required-field + per-field validation errors re-rendered on the form.
 
-    Not yet included (later roadmap phases): bulk actions, FK-select widget, file upload, inline/related editing.
+    **Bulk actions**: the list view shows per-row checkboxes + select-all and an action bar (delete / activate / deactivate) operating on the checked rows via `POST .../bulk` (CSRF + `can_delete`/`can_edit` flags), backed by `BaseRepository.delete_batch` / `bulk_update`.
+
+    Not yet included (later roadmap phases): FK-select widget, file upload, inline/related editing.
 
 !!! tip "Responsive by default"
     The bundled templates + CSS are responsive: on narrow screens (≤600px) the header stacks, search/filters/actions go full-width, tables get horizontal scroll (never breaking the layout), and the detail grid collapses to a single column. Column headers are clickable to toggle sort order (▲/▼).

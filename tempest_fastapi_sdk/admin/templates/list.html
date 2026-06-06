@@ -34,38 +34,67 @@
       <a href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='json') }}{% if export_query %}?{{ export_query }}{% endif %}">Export JSON</a>
     </div>
   </div>
-  <div class="tempest-admin-table-wrap">
-    <table class="tempest-admin-list__table">
-      <thead>
-        <tr>
-          {% for column in columns %}
-          <th>
-            {% if column in sort_state %}
-            {% set state = sort_state[column] %}
-            <a class="tempest-sort {% if state.active %}tempest-sort--active{% endif %}" href="{{ state.url }}">
-              <span>{{ column }}</span>
-              <span class="tempest-sort__arrow" aria-hidden="true">{% if state.active %}{% if state.ascending %}▲{% else %}▼{% endif %}{% else %}↕{% endif %}</span>
-            </a>
-            {% else %}{{ column }}{% endif %}
-          </th>
-          {% endfor %}
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
-        <tr>
-          {% for column in columns %}<td>{{ row.values[column] }}</td>{% endfor %}
-          <td>
-            <a href="{{ url_for('admin_detail', slug=admin.get_slug(), identity=row.identity) }}">View</a>
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="{{ columns|length + 1 }}">No records.</td></tr>
+  {% set ncols = columns|length + 1 + (1 if bulk_actions else 0) %}
+  {% if bulk_actions %}
+  <form method="post" action="{{ bulk_url }}" class="tempest-admin-bulk" onsubmit="return confirm('Apply the selected action to the checked rows?');">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <div class="tempest-admin-bulk__bar">
+      <select name="action" aria-label="Bulk action">
+        {% for value, label in bulk_actions %}
+        <option value="{{ value }}">{{ label }}</option>
         {% endfor %}
-      </tbody>
-    </table>
-  </div>
+      </select>
+      <button type="submit">Apply to selected</button>
+    </div>
+  {% endif %}
+    <div class="tempest-admin-table-wrap">
+      <table class="tempest-admin-list__table">
+        <thead>
+          <tr>
+            {% if bulk_actions %}<th class="tempest-admin-list__check"><input type="checkbox" data-select-all aria-label="Select all"></th>{% endif %}
+            {% for column in columns %}
+            <th>
+              {% if column in sort_state %}
+              {% set state = sort_state[column] %}
+              <a class="tempest-sort {% if state.active %}tempest-sort--active{% endif %}" href="{{ state.url }}">
+                <span>{{ column }}</span>
+                <span class="tempest-sort__arrow" aria-hidden="true">{% if state.active %}{% if state.ascending %}▲{% else %}▼{% endif %}{% else %}↕{% endif %}</span>
+              </a>
+              {% else %}{{ column }}{% endif %}
+            </th>
+            {% endfor %}
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            {% if bulk_actions %}<td class="tempest-admin-list__check"><input type="checkbox" name="ids" value="{{ row.pk }}" data-row-check aria-label="Select row"></td>{% endif %}
+            {% for column in columns %}<td>{{ row.values[column] }}</td>{% endfor %}
+            <td>
+              <a href="{{ url_for('admin_detail', slug=admin.get_slug(), identity=row.identity) }}">View</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="{{ ncols }}">No records.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% if bulk_actions %}
+  </form>
+  <script>
+    (function () {
+      var master = document.querySelector('[data-select-all]');
+      if (!master) return;
+      master.addEventListener('change', function () {
+        document.querySelectorAll('[data-row-check]').forEach(function (box) {
+          box.checked = master.checked;
+        });
+      });
+    })();
+  </script>
+  {% endif %}
   {% if pagination.pages > 1 %}
   <nav class="tempest-admin-list__pagination" aria-label="Pagination">
     {% if pagination.page > 1 %}

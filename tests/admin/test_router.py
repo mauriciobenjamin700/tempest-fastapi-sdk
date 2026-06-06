@@ -536,6 +536,109 @@ async def test_detail_shows_edit_and_delete_controls(
     assert f"/admin/m/{_SLUG}/{widget_id}/delete" in detail.text
 
 
+async def _all_widget_ids(db: AsyncDatabaseManager) -> list[str]:
+    from sqlalchemy import select
+
+    async with db.get_session_context() as session:
+        rows = (await session.execute(select(WidgetModel))).scalars().all()
+        return [str(r.id) for r in rows]
+
+
+@pytest.mark.asyncio
+async def test_list_renders_bulk_controls(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.get(f"/admin/m/{_SLUG}/")
+    assert response.status_code == 200
+    assert "data-select-all" in response.text
+    assert 'name="ids"' in response.text
+    assert 'name="action"' in response.text
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_removes_selected(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, db, _user = app_with_admin
+    ids = await _all_widget_ids(db)  # 3 widgets seeded
+    async with _client(app) as client:
+        await _login(client)
+        page = await client.get(f"/admin/m/{_SLUG}/")
+        token = _csrf_from(page.text)
+        deleted = await client.post(
+            f"/admin/m/{_SLUG}/bulk",
+            data={"csrf_token": token, "action": "delete", "ids": ids[:2]},
+            follow_redirects=False,
+        )
+        assert deleted.status_code == 303
+    remaining = await _all_widget_ids(db)
+    assert len(remaining) == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_deactivate_sets_is_active_false(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    from uuid import UUID
+
+    from sqlalchemy import select
+
+    app, db, _user = app_with_admin
+    ids = await _all_widget_ids(db)
+    async with _client(app) as client:
+        await _login(client)
+        page = await client.get(f"/admin/m/{_SLUG}/")
+        token = _csrf_from(page.text)
+        response = await client.post(
+            f"/admin/m/{_SLUG}/bulk",
+            data={"csrf_token": token, "action": "deactivate", "ids": [ids[0]]},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+    async with db.get_session_context() as session:
+        widget = (
+            await session.execute(
+                select(WidgetModel).where(WidgetModel.id == UUID(ids[0]))
+            )
+        ).scalar_one()
+        assert widget.is_active is False
+
+
+@pytest.mark.asyncio
+async def test_bulk_csrf_mismatch_403(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, db, _user = app_with_admin
+    ids = await _all_widget_ids(db)
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.post(
+            f"/admin/m/{_SLUG}/bulk",
+            data={"csrf_token": "bogus", "action": "delete", "ids": ids},
+        )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_bulk_unknown_action_400(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, db, _user = app_with_admin
+    ids = await _all_widget_ids(db)
+    async with _client(app) as client:
+        await _login(client)
+        page = await client.get(f"/admin/m/{_SLUG}/")
+        token = _csrf_from(page.text)
+        response = await client.post(
+            f"/admin/m/{_SLUG}/bulk",
+            data={"csrf_token": token, "action": "explode", "ids": ids},
+        )
+    assert response.status_code == 400
+
+
 @pytest.mark.asyncio
 async def test_permissions_disable_write_views() -> None:
     """can_create / can_edit / can_delete = False hide + 404 the views."""
@@ -578,6 +681,8 @@ async def test_permissions_disable_write_views() -> None:
             listing = await client.get(f"/admin/m/{_SLUG}/")
             assert listing.status_code == 200
             assert "+ New" not in listing.text
+            # No write permission anywhere → no bulk controls.
+            assert "data-select-all" not in listing.text
             new = await client.get(f"/admin/m/{_SLUG}/new")
             assert new.status_code == 404
     finally:
