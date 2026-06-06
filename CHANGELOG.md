@@ -64,9 +64,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       absent, and disabled with `make_admin_router(show_metrics=False)`.
       Responsive card grids (verified at 390px / 1280px).
 
-    File-upload widget, inline/related editing, MFA on admin login, and
-    the audit-log view remain tracked as later admin phases on the
-    roadmap.
+- **Admin MFA login — Phase 3b.**
+    - The admin login now supports a TOTP second factor. After the
+      password step, a principal with MFA enabled gets a short
+      `mfa_pending` session and is redirected to `GET/POST /admin/mfa`
+      (a CSRF-protected TOTP challenge); only a valid code upgrades the
+      session to full access. `AdminAuthBackend` gains `mfa_enabled` /
+      `verify_mfa` (default off); `UserModelAuthBackend` implements them
+      against `MFAMixin`'s `totp_secret` / `totp_enabled_at` via
+      `TOTPHelper` (new `mfa_issuer` / `mfa_window` ctor args). Pending
+      sessions are denied every admin page until the challenge passes.
+
+    File-upload widget, inline/related editing, and the audit-log view
+    remain tracked as later admin phases on the roadmap.
 
 ## [0.35.0] — 2026-06-06
 

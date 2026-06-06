@@ -123,6 +123,37 @@ class AdminAuthBackend(ABC):
         email = getattr(principal, "email", None)
         return str(email) if email else repr(principal)
 
+    def mfa_enabled(self, principal: Any) -> bool:
+        """Whether ``principal`` must pass a TOTP challenge after login.
+
+        Defaults to ``False`` so non-user backends (LDAP, OAuth) skip
+        the second factor unless they opt in. Override to gate the
+        login behind MFA.
+
+        Args:
+            principal (Any): The authenticated principal.
+
+        Returns:
+            bool: ``True`` to require the TOTP step.
+        """
+        return False
+
+    def verify_mfa(self, principal: Any, code: str) -> bool:
+        """Verify a submitted TOTP ``code`` for ``principal``.
+
+        Only called when :meth:`mfa_enabled` returned ``True``. The
+        default rejects everything; backends that enable MFA must
+        override it.
+
+        Args:
+            principal (Any): The authenticated principal.
+            code (str): The 6-digit code from the authenticator app.
+
+        Returns:
+            bool: ``True`` when the code is valid.
+        """
+        return False
+
 
 class UserModelAuthBackend(AdminAuthBackend):
     """Default backend backed by :class:`BaseUserModel`.
@@ -138,11 +169,20 @@ class UserModelAuthBackend(AdminAuthBackend):
             Must be a subclass of :class:`BaseUserModel`.
     """
 
-    def __init__(self, user_model: type[BaseUserModel]) -> None:
+    def __init__(
+        self,
+        user_model: type[BaseUserModel],
+        *,
+        mfa_issuer: str = "Admin",
+        mfa_window: int = 1,
+    ) -> None:
         """Initialize the backend.
 
         Args:
             user_model (type[BaseUserModel]): The user model to query.
+            mfa_issuer (str): Issuer label used when verifying TOTP
+                codes (matches what the authenticator app stored).
+            mfa_window (int): TOTP clock-drift tolerance in 30s steps.
 
         Raises:
             TypeError: When ``user_model`` is not a subclass of
@@ -155,6 +195,8 @@ class UserModelAuthBackend(AdminAuthBackend):
                 "user_model must be a subclass of BaseUserModel",
             )
         self.user_model: type[BaseUserModel] = user_model
+        self.mfa_issuer: str = mfa_issuer
+        self.mfa_window: int = mfa_window
 
     async def authenticate(
         self,
@@ -234,6 +276,48 @@ class UserModelAuthBackend(AdminAuthBackend):
             str: The UUID as ``str``.
         """
         return str(principal.id)
+
+    def mfa_enabled(self, principal: Any) -> bool:
+        """Whether the user has completed MFA enrollment.
+
+        True when the user carries a populated ``totp_secret`` and a
+        non-null ``totp_enabled_at`` (from
+        :class:`tempest_fastapi_sdk.MFAMixin`). Users without the mixin
+        simply never enable MFA.
+
+        Args:
+            principal (Any): A :class:`BaseUserModel` instance.
+
+        Returns:
+            bool: ``True`` to require the TOTP step.
+        """
+        return bool(
+            getattr(principal, "totp_secret", None)
+            and getattr(principal, "totp_enabled_at", None)
+        )
+
+    def verify_mfa(self, principal: Any, code: str) -> bool:
+        """Verify ``code`` against the user's persisted TOTP secret.
+
+        Args:
+            principal (Any): A :class:`BaseUserModel` instance.
+            code (str): The submitted authenticator code.
+
+        Returns:
+            bool: ``True`` when the code is valid.
+
+        Raises:
+            ImportError: When the ``[mfa]`` extra (``pyotp``) is not
+                installed but a user has MFA enabled.
+        """
+        from tempest_fastapi_sdk.utils.totp import TOTPHelper
+
+        secret = getattr(principal, "totp_secret", None)
+        if not secret:
+            return False
+        return TOTPHelper(issuer=self.mfa_issuer).verify(
+            secret, code, window=self.mfa_window
+        )
 
 
 __all__: list[str] = [

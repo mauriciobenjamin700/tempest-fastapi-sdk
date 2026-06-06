@@ -116,6 +116,8 @@ def make_admin_router(
     * ``GET  {prefix}/login`` — login form.
     * ``POST {prefix}/login`` — login submit.
     * ``POST {prefix}/logout`` — clear session + redirect.
+    * ``GET/POST {prefix}/mfa`` — TOTP challenge for MFA-enabled
+      principals (between the password step and full access).
     * ``GET  {prefix}/`` — dashboard listing registered admins.
     * ``GET  {prefix}/m/{slug}/`` — list view (paginated, sortable,
       filterable).
@@ -215,6 +217,12 @@ def make_admin_router(
                 status_code=status.HTTP_303_SEE_OTHER,
                 detail="login required",
                 headers={"location": f"{prefix}/login"},
+            )
+        if session.mfa_pending:
+            raise HTTPException(
+                status_code=status.HTTP_303_SEE_OTHER,
+                detail="mfa required",
+                headers={"location": f"{prefix}/mfa"},
             )
         return session
 
@@ -425,13 +433,15 @@ def make_admin_router(
                 {"user": None, "error": exc.message},
                 status_code=exc.status_code,
             )
+        pending = auth_backend.mfa_enabled(principal)
         session = AdminSession(
             principal_id=auth_backend.principal_id(principal),
             issued_at=datetime.now(tz=UTC).timestamp(),
             csrf_token=secrets.token_urlsafe(32),
+            mfa_pending=pending,
         )
         response = RedirectResponse(
-            url=f"{prefix}/",
+            url=f"{prefix}/mfa" if pending else f"{prefix}/",
             status_code=status.HTTP_303_SEE_OTHER,
         )
         store.save(response, session)
@@ -464,6 +474,83 @@ def make_admin_router(
             status_code=status.HTTP_303_SEE_OTHER,
         )
         store.clear(response)
+        return response
+
+    @router.get("/mfa", name="admin_mfa")
+    async def mfa_challenge(request: Request) -> Response:
+        """Render the TOTP challenge after a password step that needs MFA.
+
+        Args:
+            request (Request): The inbound request.
+
+        Returns:
+            Response: The challenge page, or a redirect to login (no
+            session) / dashboard (already fully authenticated).
+        """
+        session = store.load(request)
+        if session is None:
+            return RedirectResponse(
+                f"{prefix}/login", status_code=status.HTTP_303_SEE_OTHER
+            )
+        if not session.mfa_pending:
+            return RedirectResponse(f"{prefix}/", status_code=status.HTTP_303_SEE_OTHER)
+        return _render(
+            request,
+            "mfa.html",
+            {"user": None, "session": session, "error": None},
+        )
+
+    @router.post("/mfa", name="admin_mfa_submit")
+    async def mfa_submit(
+        request: Request,
+        code: str = Form(...),
+        csrf_token: str = Form(...),
+        db_session: AsyncSession = Depends(_db_session),
+    ) -> Response:
+        """Verify the TOTP code and upgrade the pending session.
+
+        Args:
+            request (Request): The inbound request.
+            code (str): The submitted authenticator code.
+            csrf_token (str): CSRF token from the challenge form.
+            db_session (AsyncSession): The DB session.
+
+        Returns:
+            Response: Redirect to the dashboard on success; the
+            re-rendered challenge (``401``) on a bad code.
+
+        Raises:
+            HTTPException: ``403`` on CSRF mismatch.
+        """
+        session = store.load(request)
+        if session is None or not session.mfa_pending:
+            return RedirectResponse(
+                f"{prefix}/login", status_code=status.HTTP_303_SEE_OTHER
+            )
+        if not secrets.compare_digest(session.csrf_token, csrf_token):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "csrf token mismatch")
+        principal = await auth_backend.load_principal(db_session, session.principal_id)
+        if principal is None:
+            return RedirectResponse(
+                f"{prefix}/login", status_code=status.HTTP_303_SEE_OTHER
+            )
+        if not auth_backend.verify_mfa(principal, code):
+            return _render(
+                request,
+                "mfa.html",
+                {"user": None, "session": session, "error": "Invalid code"},
+                status_code=status.HTTP_401_UNAUTHORIZED,
+            )
+        upgraded = AdminSession(
+            principal_id=session.principal_id,
+            issued_at=datetime.now(tz=UTC).timestamp(),
+            csrf_token=secrets.token_urlsafe(32),
+            mfa_pending=False,
+        )
+        response = RedirectResponse(
+            url=f"{prefix}/", status_code=status.HTTP_303_SEE_OTHER
+        )
+        store.save(response, upgraded)
         return response
 
     @router.get("/", name="admin_index")

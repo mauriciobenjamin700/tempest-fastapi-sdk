@@ -46,11 +46,16 @@ class AdminSession:
         issued_at (float): Unix timestamp when the session was issued.
         csrf_token (str): Per-session CSRF token; required on all
             POST submissions inside the admin.
+        mfa_pending (bool): ``True`` after the password step when the
+            principal has MFA enabled but has not yet passed the TOTP
+            challenge. A pending session grants NO access to admin
+            pages — it only authorizes the ``/mfa`` challenge.
     """
 
     principal_id: str
     issued_at: float
     csrf_token: str
+    mfa_pending: bool = False
 
     def to_payload(self) -> dict[str, Any]:
         """Serialize the session for cookie storage.
@@ -62,6 +67,7 @@ class AdminSession:
             "pid": self.principal_id,
             "iat": self.issued_at,
             "csrf": self.csrf_token,
+            "mfap": self.mfa_pending,
         }
 
     @classmethod
@@ -80,6 +86,7 @@ class AdminSession:
                 principal_id=str(payload["pid"]),
                 issued_at=float(payload["iat"]),
                 csrf_token=str(payload["csrf"]),
+                mfa_pending=bool(payload.get("mfap", False)),
             )
         except (KeyError, TypeError, ValueError):
             return None
@@ -244,12 +251,20 @@ class SignedCookieSessionStore(SessionStore):
             path=self.path,
         )
 
-    def issue(self, principal_id: str, csrf_token: str) -> AdminSession:
+    def issue(
+        self,
+        principal_id: str,
+        csrf_token: str,
+        *,
+        mfa_pending: bool = False,
+    ) -> AdminSession:
         """Build a new session ready to :meth:`save`.
 
         Args:
             principal_id (str): Identifier of the authenticated user.
             csrf_token (str): CSRF token to bind to the session.
+            mfa_pending (bool): Whether the session still needs to pass
+                the TOTP challenge before granting access.
 
         Returns:
             AdminSession: The fresh session.
@@ -258,6 +273,7 @@ class SignedCookieSessionStore(SessionStore):
             principal_id=principal_id,
             issued_at=utcnow().timestamp(),
             csrf_token=csrf_token,
+            mfa_pending=mfa_pending,
         )
 
 
