@@ -4,7 +4,16 @@
 <section class="tempest-admin-detail">
   <header class="tempest-admin-detail__header">
     <h1>{{ admin.get_verbose_name() }} · {{ identity }}</h1>
-    <a href="{{ url_for('admin_list', slug=admin.get_slug()) }}">← Back to list</a>
+    <div class="tempest-admin-detail__actions">
+      <a href="{{ url_for('admin_list', slug=admin.get_slug()) }}">← Back to list</a>
+      {% if can_edit %}<a class="tempest-admin-btn" href="{{ edit_url }}">Edit</a>{% endif %}
+      {% if can_delete %}
+      <form method="post" action="{{ delete_url }}" class="tempest-admin-detail__delete" onsubmit="return confirm('Delete this record? This cannot be undone.');">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <button type="submit" class="tempest-admin-btn--danger">Delete</button>
+      </form>
+      {% endif %}
+    </div>
   </header>
   <dl class="tempest-admin-detail__fields">
     {% for column, value in fields %}

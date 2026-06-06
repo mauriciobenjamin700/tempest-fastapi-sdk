@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'create' %}New{% else %}Edit{% endif %} {{ admin.get_verbose_name() }} · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-form">
+  <header class="tempest-admin-detail__header">
+    <h1>{% if mode == 'create' %}New {{ admin.get_verbose_name() }}{% else %}Edit {{ admin.get_verbose_name() }}{% endif %}</h1>
+    <a href="{{ back_url }}">← Back</a>
+  </header>
+  {% if form_error %}
+  <p class="tempest-admin-form__error">{{ form_error }}</p>
+  {% endif %}
+  <form method="post" action="{{ action_url }}" class="tempest-admin-form__form">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    {% for f in form_fields %}
+    <div class="tempest-admin-form__field{% if f.error %} tempest-admin-form__field--error{% endif %}">
+      {% if f.widget == 'checkbox' %}
+      <label class="tempest-admin-form__check">
+        <input type="checkbox" name="{{ f.name }}" value="true" {% if f.checked %}checked{% endif %}>
+        <span>{{ f.label }}</span>
+      </label>
+      {% else %}
+      <label>
+        <span>{{ f.label }}{% if f.required %} *{% endif %}</span>
+        {% if f.widget == 'textarea' %}
+        <textarea name="{{ f.name }}" rows="4" {% if f.required %}required{% endif %}>{{ f.value }}</textarea>
+        {% elif f.widget == 'select' %}
+        <select name="{{ f.name }}" {% if f.required %}required{% endif %}>
+          {% if not f.required %}<option value="">— none —</option>{% endif %}
+          {% for val, lbl in f.options %}
+          <option value="{{ val }}" {% if (f.value | string) == val %}selected{% endif %}>{{ lbl }}</option>
+          {% endfor %}
+        </select>
+        {% elif f.widget == 'number' %}
+        <input type="number" name="{{ f.name }}" value="{{ f.value }}" {% if f.step %}step="{{ f.step }}"{% endif %} {% if f.required %}required{% endif %}>
+        {% elif f.widget == 'datetime' %}
+        <input type="datetime-local" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
+        {% elif f.widget == 'date' %}
+        <input type="date" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
+        {% else %}
+        <input type="text" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
+        {% endif %}
+      </label>
+      {% endif %}
+      {% if f.error %}<small class="tempest-admin-form__field-error">{{ f.error }}</small>{% endif %}
+    </div>
+    {% endfor %}
+    <div class="tempest-admin-form__actions">
+      <button type="submit">{% if mode == 'create' %}Create{% else %}Save{% endif %}</button>
+      <a href="{{ back_url }}" class="tempest-admin-form__cancel">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

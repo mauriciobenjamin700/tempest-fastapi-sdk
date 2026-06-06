@@ -23,9 +23,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       horizontal-scroll table wrappers, single-column detail grid.
       Verified at 390px (mobile) and 1280px (desktop).
 
-    Write CRUD (create/edit/delete → bulk actions, field widgets, inline
-    editing), MFA on admin login, audit-log view, and the metrics
-    dashboard are tracked as later admin phases on the roadmap.
+- **Admin write CRUD — Phase 2a (create / edit / delete).**
+    - `GET/POST /admin/m/{slug}/new` (create), `GET/POST
+      /admin/m/{slug}/{identity}/edit` (edit), and `POST
+      /admin/m/{slug}/{identity}/delete` (delete), each gated by new
+      `AdminModel(can_create=…, can_edit=…, can_delete=…)` flags
+      (default `True`; a disabled view returns `404`).
+    - **CSRF-protected** mutations — every write form carries the
+      session CSRF token, verified server-side (`403` on mismatch).
+    - **Type-aware field widgets** — text / textarea (long strings) /
+      number / checkbox / `datetime-local` / date / enum `select`,
+      derived from the column types, with required-field + per-field
+      validation errors re-rendered on the form, and integrity errors
+      surfaced inline.
+    - Detail view gains Edit / Delete controls; list view gains a
+      "+ New" button. All responsive (verified at 390px / 1280px).
+
+    Bulk actions, FK-select + file-upload widgets, inline/related
+    editing, MFA on admin login, audit-log view, and the metrics
+    dashboard remain tracked as later admin phases on the roadmap.
 
 ## [0.35.0] — 2026-06-06
 

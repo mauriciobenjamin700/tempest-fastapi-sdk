@@ -72,6 +72,12 @@ class AdminModel(Generic[ModelT]):
             model name humanized.
         verbose_name_plural (str | None): Plural display name; defaults to
             ``verbose_name + "s"``.
+        can_create (bool): Whether the admin exposes the create form +
+            POST endpoint. Default ``True``.
+        can_edit (bool): Whether the admin exposes the edit form + POST
+            endpoint. Default ``True``.
+        can_delete (bool): Whether the admin exposes the delete action.
+            Default ``True``.
 
     Raises:
         TypeError: When ``model`` is not a subclass of :class:`BaseModel`,
@@ -92,6 +98,9 @@ class AdminModel(Generic[ModelT]):
         repository_class: type[BaseRepository[Any]] | None = None,
         verbose_name: str | None = None,
         verbose_name_plural: str | None = None,
+        can_create: bool = True,
+        can_edit: bool = True,
+        can_delete: bool = True,
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -112,6 +121,9 @@ class AdminModel(Generic[ModelT]):
         self.repository_class: type[BaseRepository[Any]] | None = repository_class
         self.verbose_name: str | None = verbose_name
         self.verbose_name_plural: str | None = verbose_name_plural
+        self.can_create: bool = can_create
+        self.can_edit: bool = can_edit
+        self.can_delete: bool = can_delete
 
     def get_verbose_name(self) -> str:
         """Return the configured (or auto-derived) singular display name.
@@ -164,6 +176,25 @@ class AdminModel(Generic[ModelT]):
         if self.list_display is not None:
             return list(self.list_display)
         return [name for name in self.column_names() if name not in {"hashed_password"}]
+
+    def editable_field_names(self) -> list[str]:
+        """Return the columns a create/edit form should expose.
+
+        Excludes the primary key, the audit timestamps
+        (``created_at`` / ``updated_at``), the password hash, and any
+        column listed in ``readonly_fields`` — none of which a user
+        edits directly through the generic admin form.
+
+        Returns:
+            list[str]: Editable column keys in declaration order.
+        """
+        skip = set(self.readonly_fields) | {
+            "id",
+            "created_at",
+            "updated_at",
+            "hashed_password",
+        }
+        return [name for name in self.column_names() if name not in skip]
 
     def build_repository(self, session: AsyncSession) -> BaseRepository[ModelT]:
         """Instantiate the repository for ``session``.

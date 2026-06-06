@@ -123,8 +123,16 @@ app.include_router(
 - `GET  /admin/` — dashboard listando todo admin registrado.
 - `GET  /admin/m/{slug}/` — list view com paginação + busca em texto livre (`?q=`) + filtros por campo (`?filter_<field>=value`) + **ordenação por coluna** clicável (`?sort=<coluna>&dir=asc|desc`).
 - `GET  /admin/m/{slug}/export.csv` / `export.json` — **exporta** o resultado atual (respeitando busca/filtros/ordenação) como CSV ou JSON. Limite de linhas via `make_admin_router(export_max_rows=…)` (default 5000).
-- `GET  /admin/m/{slug}/{identity}` — detail view somente leitura.
+- `GET/POST /admin/m/{slug}/new` — **criar** registro (quando `can_create`).
+- `GET  /admin/m/{slug}/{identity}` — detail view com botões Edit/Delete.
+- `GET/POST /admin/m/{slug}/{identity}/edit` — **editar** registro (quando `can_edit`).
+- `POST /admin/m/{slug}/{identity}/delete` — **excluir** registro (quando `can_delete`).
 - `GET  /admin/static/{path}` — assets CSS/HTMX embutidos.
+
+!!! info "Escrita (CRUD) + permissões"
+    Create/edit/delete são controlados por flags no `AdminModel`: `can_create` / `can_edit` / `can_delete` (todas `True` por default; uma view desativada responde `404`). Todo POST de escrita carrega o token CSRF da sessão, validado no servidor (`403` em mismatch). Os **widgets de campo** são derivados do tipo da coluna — texto / textarea (strings longas) / number / checkbox / `datetime-local` / date / `select` para enums — com validação de obrigatórios + erros por campo re-renderizados no formulário.
+
+    Ainda **não** incluídos (fases futuras do roadmap): bulk actions, widget FK-select, upload de arquivo, inline/related editing.
 
 !!! tip "Responsivo por padrão"
     Os templates + CSS embutidos são responsivos: em telas estreitas (≤600px) o header empilha, busca/filtros/ações viram full-width, as tabelas ganham scroll horizontal (nunca quebram o layout) e o grid do detail colapsa para uma coluna. Headers de coluna são clicáveis para alternar a ordenação (▲/▼).

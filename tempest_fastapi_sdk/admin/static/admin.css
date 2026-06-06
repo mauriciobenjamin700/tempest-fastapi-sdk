@@ -311,6 +311,126 @@ textarea {
   color: var(--tempest-accent);
 }
 
+/* Detail header actions (back / edit / delete). */
+.tempest-admin-detail__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.tempest-admin-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.tempest-admin-detail__delete {
+  margin: 0;
+}
+
+.tempest-admin-btn {
+  display: inline-block;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--tempest-accent);
+  border-radius: var(--tempest-radius);
+  background: #fff;
+}
+
+.tempest-admin-btn:hover {
+  background: #eff6ff;
+  text-decoration: none;
+}
+
+.tempest-admin-btn--danger {
+  background: var(--tempest-danger);
+}
+
+.tempest-admin-btn--danger:hover {
+  background: #991b1b;
+}
+
+.tempest-admin-list__new {
+  background: var(--tempest-accent);
+  color: #fff !important;
+  border-color: var(--tempest-accent);
+}
+
+.tempest-admin-list__new:hover {
+  background: var(--tempest-accent-hover);
+}
+
+/* Create / edit form. */
+.tempest-admin-form__form {
+  display: grid;
+  gap: 1rem;
+  max-width: 640px;
+  background: #fff;
+  padding: 1.5rem;
+  border-radius: var(--tempest-radius);
+  box-shadow: var(--tempest-shadow);
+}
+
+.tempest-admin-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.tempest-admin-form__field > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tempest-admin-form__field > label > span {
+  font-weight: 600;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-form__field input,
+.tempest-admin-form__field select,
+.tempest-admin-form__field textarea {
+  width: 100%;
+}
+
+.tempest-admin-form__check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tempest-admin-form__check input {
+  width: auto;
+}
+
+.tempest-admin-form__field--error input,
+.tempest-admin-form__field--error select,
+.tempest-admin-form__field--error textarea {
+  border-color: var(--tempest-danger);
+}
+
+.tempest-admin-form__field-error {
+  color: var(--tempest-danger);
+}
+
+.tempest-admin-form__error {
+  background: #fef2f2;
+  color: var(--tempest-danger);
+  padding: 0.75rem 1rem;
+  border-radius: var(--tempest-radius);
+  margin-bottom: 1rem;
+}
+
+.tempest-admin-form__actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
 /* ---- Responsive ---- */
 
 /* Tablet and below. */
@@ -391,5 +511,20 @@ textarea {
   .tempest-admin-login {
     margin: 1.5rem auto;
     padding: 1.5rem;
+  }
+
+  .tempest-admin-form__form {
+    padding: 1rem;
+  }
+
+  .tempest-admin-form__actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .tempest-admin-form__actions button,
+  .tempest-admin-form__actions .tempest-admin-form__cancel {
+    width: 100%;
+    text-align: center;
   }
 }

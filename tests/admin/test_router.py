@@ -376,3 +376,210 @@ async def test_css_ships_media_queries(
         response = await client.get("/admin/static/admin.css")
     assert response.status_code == 200
     assert "@media (max-width: 600px)" in response.text
+
+
+# --- Write CRUD (create / edit / delete) --------------------------------------
+
+
+def _csrf_from(html: str) -> str:
+    import re
+
+    match = re.search(r'name="csrf_token" value="([^"]+)"', html)
+    assert match is not None, "csrf token not found in form"
+    return match.group(1)
+
+
+_SLUG = WidgetModel.__tablename__
+
+
+@pytest.mark.asyncio
+async def test_create_form_renders(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.get(f"/admin/m/{_SLUG}/new")
+    assert response.status_code == 200
+    assert 'name="name"' in response.text
+    assert 'name="csrf_token"' in response.text
+    # auto/PK columns are not part of the form.
+    assert 'name="id"' not in response.text
+    assert 'name="created_at"' not in response.text
+
+
+@pytest.mark.asyncio
+async def test_create_persists_row(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await _login(client)
+        form = await client.get(f"/admin/m/{_SLUG}/new")
+        token = _csrf_from(form.text)
+        created = await client.post(
+            f"/admin/m/{_SLUG}/new",
+            data={"csrf_token": token, "name": "Fresh Widget", "is_active": "true"},
+            follow_redirects=False,
+        )
+        assert created.status_code == 303
+        listing = await client.get(f"/admin/m/{_SLUG}/?q=Fresh Widget")
+    assert "Fresh Widget" in listing.text
+
+
+@pytest.mark.asyncio
+async def test_create_missing_required_rerenders_400(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await _login(client)
+        form = await client.get(f"/admin/m/{_SLUG}/new")
+        token = _csrf_from(form.text)
+        response = await client.post(
+            f"/admin/m/{_SLUG}/new",
+            data={"csrf_token": token, "name": ""},
+        )
+    assert response.status_code == 400
+    assert "required" in response.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_create_csrf_mismatch_403(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.post(
+            f"/admin/m/{_SLUG}/new",
+            data={"csrf_token": "bogus", "name": "X"},
+        )
+    assert response.status_code == 403
+
+
+async def _first_widget_id(db: AsyncDatabaseManager) -> str:
+    from sqlalchemy import select
+
+    async with db.get_session_context() as session:
+        widget = (await session.execute(select(WidgetModel).limit(1))).scalar_one()
+        return str(widget.id)
+
+
+@pytest.mark.asyncio
+async def test_edit_form_prefills_and_saves(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, db, _user = app_with_admin
+    widget_id = await _first_widget_id(db)
+    async with _client(app) as client:
+        await _login(client)
+        form = await client.get(f"/admin/m/{_SLUG}/{widget_id}/edit")
+        assert form.status_code == 200
+        assert "widget-0" in form.text  # prefilled value
+        token = _csrf_from(form.text)
+        saved = await client.post(
+            f"/admin/m/{_SLUG}/{widget_id}/edit",
+            data={"csrf_token": token, "name": "Renamed", "is_active": "true"},
+            follow_redirects=False,
+        )
+        assert saved.status_code == 303
+        detail = await client.get(f"/admin/m/{_SLUG}/{widget_id}")
+    assert "Renamed" in detail.text
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_row(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, db, _user = app_with_admin
+    widget_id = await _first_widget_id(db)
+    async with _client(app) as client:
+        await _login(client)
+        detail = await client.get(f"/admin/m/{_SLUG}/{widget_id}")
+        token = _csrf_from(detail.text)
+        deleted = await client.post(
+            f"/admin/m/{_SLUG}/{widget_id}/delete",
+            data={"csrf_token": token},
+            follow_redirects=False,
+        )
+        assert deleted.status_code == 303
+        gone = await client.get(f"/admin/m/{_SLUG}/{widget_id}")
+    assert gone.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_csrf_mismatch_403(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, db, _user = app_with_admin
+    widget_id = await _first_widget_id(db)
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.post(
+            f"/admin/m/{_SLUG}/{widget_id}/delete",
+            data={"csrf_token": "bogus"},
+        )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_detail_shows_edit_and_delete_controls(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, db, _user = app_with_admin
+    widget_id = await _first_widget_id(db)
+    async with _client(app) as client:
+        await _login(client)
+        detail = await client.get(f"/admin/m/{_SLUG}/{widget_id}")
+    assert f"/admin/m/{_SLUG}/{widget_id}/edit" in detail.text
+    assert f"/admin/m/{_SLUG}/{widget_id}/delete" in detail.text
+
+
+@pytest.mark.asyncio
+async def test_permissions_disable_write_views() -> None:
+    """can_create / can_edit / can_delete = False hide + 404 the views."""
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.connect()
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        user = RouterUser(email="ro@example.com", hashed_password="", is_admin=True)
+        user.set_password("hunter2")
+        session.add(user)
+        session.add(WidgetModel(name="locked"))
+        await session.commit()
+
+    site = AdminSite(title="RO Admin")
+    site.register(
+        AdminModel(
+            model=WidgetModel,
+            list_display=[WidgetModel.id, WidgetModel.name],
+            can_create=False,
+            can_edit=False,
+            can_delete=False,
+        )
+    )
+    app = FastAPI()
+    app.include_router(
+        make_admin_router(
+            site,
+            db=db,
+            auth_backend=UserModelAuthBackend(RouterUser),
+            secret_key=SECRET,
+            cookie_secure=False,
+        )
+    )
+    try:
+        async with _client(app) as client:
+            await client.post(
+                "/admin/login",
+                data={"identifier": "ro@example.com", "password": "hunter2"},
+            )
+            listing = await client.get(f"/admin/m/{_SLUG}/")
+            assert listing.status_code == 200
+            assert "+ New" not in listing.text
+            new = await client.get(f"/admin/m/{_SLUG}/new")
+            assert new.status_code == 404
+    finally:
+        await db.drop_tables()
+        await db.disconnect()

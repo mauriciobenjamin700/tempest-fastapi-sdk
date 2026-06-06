@@ -6,6 +6,7 @@ import csv
 import io
 import json
 import secrets
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -15,12 +16,15 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend, AdminAuthError
+from tempest_fastapi_sdk.admin.config import AdminModel
+from tempest_fastapi_sdk.admin.forms import build_form_fields, parse_submission
 from tempest_fastapi_sdk.admin.session import (
     AdminSession,
     SessionStore,
     SignedCookieSessionStore,
 )
 from tempest_fastapi_sdk.admin.site import AdminSite
+from tempest_fastapi_sdk.exceptions import AppException
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -106,7 +110,13 @@ def make_admin_router(
       filterable).
     * ``GET  {prefix}/m/{slug}/export.{fmt}`` — CSV/JSON export of the
       current (filtered + sorted) result set.
+    * ``GET/POST {prefix}/m/{slug}/new`` — create form + submit
+      (when ``can_create``).
     * ``GET  {prefix}/m/{slug}/{identity}`` — detail view.
+    * ``GET/POST {prefix}/m/{slug}/{identity}/edit`` — edit form +
+      submit (when ``can_edit``).
+    * ``POST {prefix}/m/{slug}/{identity}/delete`` — delete row
+      (when ``can_delete``).
     * Static files under ``{prefix}/static`` named ``admin_static``.
 
     Args:
@@ -247,6 +257,43 @@ def make_admin_router(
             context,
             status_code=status_code,
         )
+
+    def _require_admin(
+        slug: str,
+        allowed: Callable[[AdminModel[Any]], bool],
+    ) -> AdminModel[Any]:
+        """Return the admin for ``slug`` or raise ``404``.
+
+        Args:
+            slug (str): The admin slug.
+            allowed (Callable[[AdminModel[Any]], bool]): Predicate the
+                admin must satisfy (e.g. ``lambda a: a.can_create``);
+                a failing predicate is treated as "not found" so
+                disabled views don't leak their existence.
+
+        Returns:
+            AdminModel[Any]: The matched admin.
+
+        Raises:
+            HTTPException: ``404`` when missing or not permitted.
+        """
+        admin = site.get(slug)
+        if admin is None or not allowed(admin):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
+        return admin
+
+    def _check_csrf(session: AdminSession, token: str) -> None:
+        """Reject the request when the submitted CSRF token mismatches.
+
+        Args:
+            session (AdminSession): The validated session.
+            token (str): The token submitted with the form.
+
+        Raises:
+            HTTPException: ``403`` on mismatch.
+        """
+        if not secrets.compare_digest(session.csrf_token, token):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "csrf token mismatch")
 
     @router.get("/login", name="admin_login_form")
     async def login_form(
@@ -467,6 +514,8 @@ def make_admin_router(
                     admin, active_sort, active_ascending, sort_base
                 ),
                 "export_query": export_query,
+                "can_create": admin.can_create,
+                "new_url": f"{prefix}/m/{slug}/new",
                 "filter_options": {
                     field: _filter_options(admin, field, active_filters.get(field))
                     for field in admin.list_filter
@@ -538,6 +587,102 @@ def make_admin_router(
             headers={"content-disposition": f'attachment; filename="{filename}"'},
         )
 
+    @router.get("/m/{slug}/new", name="admin_create")
+    async def create_form(
+        request: Request,
+        slug: str,
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> HTMLResponse:
+        """Render the create form for a registered admin.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            HTMLResponse: The form template.
+
+        Raises:
+            HTTPException: ``404`` for unknown admin or when creation is
+                disabled.
+        """
+        admin = _require_admin(slug, lambda a: a.can_create)
+        principal = await _resolve_principal(request, db_session, session)
+        return _render(
+            request,
+            "form.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "admin": admin,
+                "mode": "create",
+                "form_fields": build_form_fields(admin),
+                "action_url": f"{prefix}/m/{slug}/new",
+                "back_url": f"{prefix}/m/{slug}/",
+                "form_error": None,
+            },
+        )
+
+    @router.post("/m/{slug}/new", name="admin_create_submit")
+    async def create_submit(
+        request: Request,
+        slug: str,
+        csrf_token: str = Form(...),
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> Response:
+        """Validate + persist a new row from the create form.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            csrf_token (str): CSRF token from the form.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            Response: Redirect to the new row's detail on success; the
+            re-rendered form (``400``) on validation/integrity errors.
+        """
+        admin = _require_admin(slug, lambda a: a.can_create)
+        principal = await _resolve_principal(request, db_session, session)
+        _check_csrf(session, csrf_token)
+        form = await request.form()
+        data, errors = parse_submission(admin, form)
+        form_error: str | None = None
+        if not errors:
+            repository = admin.build_repository(db_session)
+            try:
+                saved = await repository.add(admin.model(**data))
+            except AppException as exc:
+                form_error = exc.message
+            else:
+                identity = getattr(saved, admin.identity_field)
+                return RedirectResponse(
+                    url=f"{prefix}/m/{slug}/{identity}",
+                    status_code=status.HTTP_303_SEE_OTHER,
+                )
+        return _render(
+            request,
+            "form.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "admin": admin,
+                "mode": "create",
+                "form_fields": build_form_fields(admin, submitted=form, errors=errors),
+                "action_url": f"{prefix}/m/{slug}/new",
+                "back_url": f"{prefix}/m/{slug}/",
+                "form_error": form_error,
+            },
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
     @router.get("/m/{slug}/{identity}", name="admin_detail")
     async def detail_view(
         request: Request,
@@ -563,14 +708,10 @@ def make_admin_router(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         principal = await _resolve_principal(request, db_session, session)
         repository = admin.build_repository(db_session)
-        try:
-            from uuid import UUID
 
-            value: Any = UUID(identity)
-        except (ValueError, TypeError):
-            value = identity
-
-        instance = await repository.get_or_none({admin.identity_field: value})
+        instance = await repository.get_or_none(
+            {admin.identity_field: _identity_value(identity)}
+        )
         if instance is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
 
@@ -593,7 +734,166 @@ def make_admin_router(
                 "identity": identity,
                 "fields": fields,
                 "readonly": readonly,
+                "can_edit": admin.can_edit,
+                "can_delete": admin.can_delete,
+                "edit_url": f"{prefix}/m/{slug}/{identity}/edit",
+                "delete_url": f"{prefix}/m/{slug}/{identity}/delete",
             },
+        )
+
+    @router.get("/m/{slug}/{identity}/edit", name="admin_edit")
+    async def edit_form(
+        request: Request,
+        slug: str,
+        identity: str,
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> HTMLResponse:
+        """Render the edit form for one row.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            identity (str): The primary-key value from the URL.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            HTMLResponse: The form template.
+
+        Raises:
+            HTTPException: ``404`` for unknown admin, disabled editing,
+                or a missing row.
+        """
+        admin = _require_admin(slug, lambda a: a.can_edit)
+        principal = await _resolve_principal(request, db_session, session)
+        repository = admin.build_repository(db_session)
+        instance = await repository.get_or_none(
+            {admin.identity_field: _identity_value(identity)}
+        )
+        if instance is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
+        return _render(
+            request,
+            "form.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "admin": admin,
+                "mode": "edit",
+                "identity": identity,
+                "form_fields": build_form_fields(admin, instance=instance),
+                "action_url": f"{prefix}/m/{slug}/{identity}/edit",
+                "back_url": f"{prefix}/m/{slug}/{identity}",
+                "form_error": None,
+            },
+        )
+
+    @router.post("/m/{slug}/{identity}/edit", name="admin_edit_submit")
+    async def edit_submit(
+        request: Request,
+        slug: str,
+        identity: str,
+        csrf_token: str = Form(...),
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> Response:
+        """Validate + persist edits to one row.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            identity (str): The primary-key value from the URL.
+            csrf_token (str): CSRF token from the form.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            Response: Redirect to the row's detail on success; the
+            re-rendered form (``400``) on validation/integrity errors.
+        """
+        admin = _require_admin(slug, lambda a: a.can_edit)
+        principal = await _resolve_principal(request, db_session, session)
+        _check_csrf(session, csrf_token)
+        repository = admin.build_repository(db_session)
+        instance = await repository.get_or_none(
+            {admin.identity_field: _identity_value(identity)}
+        )
+        if instance is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
+        form = await request.form()
+        data, errors = parse_submission(admin, form)
+        form_error: str | None = None
+        if not errors:
+            for key, value in data.items():
+                setattr(instance, key, value)
+            try:
+                await repository.update(instance)
+            except AppException as exc:
+                form_error = exc.message
+            else:
+                return RedirectResponse(
+                    url=f"{prefix}/m/{slug}/{identity}",
+                    status_code=status.HTTP_303_SEE_OTHER,
+                )
+        return _render(
+            request,
+            "form.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "admin": admin,
+                "mode": "edit",
+                "identity": identity,
+                "form_fields": build_form_fields(admin, submitted=form, errors=errors),
+                "action_url": f"{prefix}/m/{slug}/{identity}/edit",
+                "back_url": f"{prefix}/m/{slug}/{identity}",
+                "form_error": form_error,
+            },
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    @router.post("/m/{slug}/{identity}/delete", name="admin_delete")
+    async def delete_submit(
+        request: Request,
+        slug: str,
+        identity: str,
+        csrf_token: str = Form(...),
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> Response:
+        """Delete one row after CSRF validation.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            identity (str): The primary-key value from the URL.
+            csrf_token (str): CSRF token from the form.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            Response: Redirect to the list view.
+
+        Raises:
+            HTTPException: ``404`` for unknown admin, disabled deletion,
+                or a missing row.
+        """
+        admin = _require_admin(slug, lambda a: a.can_delete)
+        await _resolve_principal(request, db_session, session)
+        _check_csrf(session, csrf_token)
+        repository = admin.build_repository(db_session)
+        instance = await repository.get_or_none(
+            {admin.identity_field: _identity_value(identity)}
+        )
+        if instance is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
+        await repository.delete(instance.id)
+        return RedirectResponse(
+            url=f"{prefix}/m/{slug}/",
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
     return router
@@ -712,6 +1012,24 @@ def _sort_state(
             "ascending": active_ascending if is_active else None,
         }
     return state
+
+
+def _identity_value(identity: str) -> Any:
+    """Coerce a URL identity segment to a UUID when possible.
+
+    Args:
+        identity (str): The raw path segment.
+
+    Returns:
+        Any: A :class:`uuid.UUID` when ``identity`` parses as one, else
+        the original string (so non-UUID primary keys still work).
+    """
+    from uuid import UUID
+
+    try:
+        return UUID(identity)
+    except (ValueError, TypeError):
+        return identity
 
 
 def _export_value(value: Any) -> Any:
