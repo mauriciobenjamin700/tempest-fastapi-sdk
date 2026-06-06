@@ -23,5 +23,22 @@
     </dd>
     {% endfor %}
   </dl>
+  {% if audit %}
+  <h2 class="tempest-admin-detail__audit-title">Audit</h2>
+  <dl class="tempest-admin-detail__fields tempest-admin-detail__audit">
+    <dt>created at</dt>
+    <dd>{% if audit.created_at %}{{ audit.created_at }}{% else %}<em>—</em>{% endif %}</dd>
+    {% if audit.has_actors %}
+    <dt>created by</dt>
+    <dd>{% if audit.created_by %}{{ audit.created_by }}{% else %}<em>—</em>{% endif %}</dd>
+    {% endif %}
+    <dt>updated at</dt>
+    <dd>{% if audit.updated_at %}{{ audit.updated_at }}{% else %}<em>—</em>{% endif %}</dd>
+    {% if audit.has_actors %}
+    <dt>updated by</dt>
+    <dd>{% if audit.updated_by %}{{ audit.updated_by }}{% else %}<em>—</em>{% endif %}</dd>
+    {% endif %}
+  </dl>
+  {% endif %}
 </section>
 {% endblock %}

@@ -839,8 +839,10 @@ def make_admin_router(
         form_error: str | None = None
         if not errors:
             repository = admin.build_repository(db_session)
+            instance = admin.model(**data)
+            _stamp_audit(instance, auth_backend.principal_id(principal), creating=True)
             try:
-                saved = await repository.add(admin.model(**data))
+                saved = await repository.add(instance)
             except AppException as exc:
                 form_error = exc.message
             else:
@@ -958,10 +960,26 @@ def make_admin_router(
         readonly = set(admin.readonly_fields)
         fields: list[tuple[str, Any]] = []
         for column in columns:
-            if column == "hashed_password":
+            # The hashed password is never shown; audit/timestamp columns
+            # move to the dedicated audit panel below.
+            if column == "hashed_password" or column in _AUDIT_FIELDS:
                 continue
             raw_value = getattr(instance, column, None)
             fields.append((column, raw_value))
+
+        async def _actor(uid: Any) -> str | None:
+            if uid is None:
+                return None
+            actor = await auth_backend.load_principal(db_session, str(uid))
+            return auth_backend.display_name(actor) if actor is not None else str(uid)
+
+        audit = {
+            "created_at": getattr(instance, "created_at", None),
+            "updated_at": getattr(instance, "updated_at", None),
+            "created_by": await _actor(getattr(instance, "created_by", None)),
+            "updated_by": await _actor(getattr(instance, "updated_by", None)),
+            "has_actors": "created_by" in columns or "updated_by" in columns,
+        }
         return _render(
             request,
             "detail.html",
@@ -973,6 +991,7 @@ def make_admin_router(
                 "identity": identity,
                 "fields": fields,
                 "readonly": readonly,
+                "audit": audit,
                 "can_edit": admin.can_edit,
                 "can_delete": admin.can_delete,
                 "edit_url": f"{prefix}/m/{slug}/{identity}/edit",
@@ -1067,6 +1086,7 @@ def make_admin_router(
         if not errors:
             for key, value in data.items():
                 setattr(instance, key, value)
+            _stamp_audit(instance, auth_backend.principal_id(principal), creating=False)
             try:
                 await repository.update(instance)
             except AppException as exc:
@@ -1303,6 +1323,33 @@ def _bulk_actions(admin: Any) -> list[tuple[str, str]]:
     if admin.can_delete:
         actions.append(("delete", "Delete"))
     return actions
+
+
+_AUDIT_FIELDS = ("created_at", "updated_at", "created_by", "updated_by")
+
+
+def _stamp_audit(instance: Any, actor_id: str, *, creating: bool) -> None:
+    """Stamp ``created_by`` / ``updated_by`` with the acting admin.
+
+    No-op for models without the audit columns (``AuditMixin``) or when
+    ``actor_id`` is not a UUID.
+
+    Args:
+        instance (Any): The row being created or edited.
+        actor_id (str): The acting principal's id.
+        creating (bool): ``True`` on create (stamps both columns),
+            ``False`` on edit (stamps ``updated_by`` only).
+    """
+    from uuid import UUID
+
+    try:
+        actor = UUID(actor_id)
+    except (ValueError, TypeError):
+        return
+    if creating and hasattr(instance, "created_by"):
+        instance.created_by = actor
+    if hasattr(instance, "updated_by"):
+        instance.updated_by = actor
 
 
 def _identity_value(identity: str) -> Any:

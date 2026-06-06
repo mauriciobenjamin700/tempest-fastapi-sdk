@@ -782,6 +782,92 @@ async def test_fk_field_renders_select_and_saves() -> None:
         await db.disconnect()
 
 
+class AuditedModel(BaseModel):
+    __tablename__ = "admin_audited"
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by: Mapped[_UUID | None] = mapped_column(nullable=True, default=None)
+    updated_by: Mapped[_UUID | None] = mapped_column(nullable=True, default=None)
+
+
+@pytest.mark.asyncio
+async def test_create_stamps_audit_and_detail_shows_actor() -> None:
+    """The admin stamps created_by/updated_by and the detail shows them."""
+    from sqlalchemy import select
+
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.connect()
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        user = RouterUser(email="root@example.com", hashed_password="", is_admin=True)
+        user.set_password("hunter2")
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        user_id = user.id
+
+    site = AdminSite(title="Audit Admin")
+    site.register(AdminModel(model=AuditedModel, list_display=[AuditedModel.name]))
+    app = FastAPI()
+    app.include_router(
+        make_admin_router(
+            site,
+            db=db,
+            auth_backend=UserModelAuthBackend(RouterUser),
+            secret_key=SECRET,
+            cookie_secure=False,
+            show_metrics=False,
+        )
+    )
+    try:
+        async with _client(app) as client:
+            await client.post(
+                "/admin/login",
+                data={"identifier": "root@example.com", "password": "hunter2"},
+            )
+            form = await client.get("/admin/m/admin_audited/new")
+            token = _csrf_from(form.text)
+            await client.post(
+                "/admin/m/admin_audited/new",
+                data={"csrf_token": token, "name": "Tracked"},
+                follow_redirects=False,
+            )
+            # created_by stamped with the acting admin.
+            async with db.get_session_context() as session:
+                row = (
+                    await session.execute(
+                        select(AuditedModel).where(AuditedModel.name == "Tracked")
+                    )
+                ).scalar_one()
+                assert row.created_by == user_id
+                assert row.updated_by == user_id
+                row_id = str(row.id)
+
+            detail = await client.get(f"/admin/m/admin_audited/{row_id}")
+        assert detail.status_code == 200
+        assert "Audit" in detail.text
+        # actor UUID resolved to the admin's display name
+        assert "root@example.com" in detail.text
+    finally:
+        await db.drop_tables()
+        await db.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_detail_audit_panel_without_actors(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    # WidgetModel has no AuditMixin → audit panel shows timestamps only,
+    # no "created by" row.
+    app, db, _user = app_with_admin
+    widget_id = await _first_widget_id(db)
+    async with _client(app) as client:
+        await _login(client)
+        detail = await client.get(f"/admin/m/{_SLUG}/{widget_id}")
+    assert detail.status_code == 200
+    assert "Audit" in detail.text
+    assert "created by" not in detail.text
+
+
 @pytest.mark.asyncio
 async def test_permissions_disable_write_views() -> None:
     """can_create / can_edit / can_delete = False hide + 404 the views."""

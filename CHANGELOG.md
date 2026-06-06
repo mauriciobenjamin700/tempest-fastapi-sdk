@@ -75,8 +75,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       `TOTPHelper` (new `mfa_issuer` / `mfa_window` ctor args). Pending
       sessions are denied every admin page until the challenge passes.
 
-    File-upload widget, inline/related editing, and the audit-log view
-    remain tracked as later admin phases on the roadmap.
+- **Admin audit trail — Phase 3c.**
+    - Create/edit through the admin now **stamps** `created_by` /
+      `updated_by` (from `AuditMixin`) with the acting admin's id. The
+      detail view gained an **Audit panel** showing created/updated
+      timestamps and — when the model has the audit columns — the actor,
+      with the stored UUID resolved to a display name via the auth
+      backend. Models without `AuditMixin` show the timestamps only.
+
+    File-upload widget and inline/related editing remain tracked as later
+    admin phases on the roadmap.
 
 ## [0.35.0] — 2026-06-06
 
