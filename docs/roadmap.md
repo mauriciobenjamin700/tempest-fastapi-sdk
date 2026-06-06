@@ -32,7 +32,7 @@ Esta página lista o que o SDK **ainda não oferece** + o que já foi entregue. 
 | 2FA / TOTP (`pyotp` wrapper + recovery codes) | ✅ v0.35.0 | `TOTPHelper` + `UserAuthService.mfa_*` + `BaseUserRecoveryCodeModel` |
 | `tempest db` + `tempest user` CLI | ✅ v0.30.0 | `tempest_fastapi_sdk.cli.db` / `cli.user` |
 | `BaseRepository.bulk_update` (filters + values) | ✅ pré-existente | `BaseRepository.bulk_update` |
-| **Escopo multi-tenant** — `TenantScopedRepository(tenant_id)` auto-injetando `WHERE tenant_id = …` em toda query do repository | ❌ planejado v0.36.0 | — |
+| **Escopo multi-tenant** — `TenantScopedRepository(tenant_id)` auto-injetando `WHERE tenant_id = …` em toda query do repository | ❌ planejado v0.37.0 | — |
 
 ## Tier B — quando o serviço crescer
 

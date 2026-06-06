@@ -5,7 +5,11 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.36.0] — 2026-06-06
+
+Admin panel brought to Django-admin parity: the list view, write CRUD,
+bulk actions, dashboard, login, and audit trail all landed across the
+phases below.
 
 ### Added
 
