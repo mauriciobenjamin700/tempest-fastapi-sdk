@@ -50,6 +50,21 @@ What the SDK **doesn't ship yet** + what already landed. Sorted by impact, not i
 | `tempest db seed` — load JSON/Python fixtures | ❌ pending |
 | CLI: `tempest secrets rotate` | ❌ pending |
 
+## Admin panel — evolution
+
+The admin panel already exists (`AdminSite` / `AdminModel` / `make_admin_router`, Jinja + HTMX, CSRF token). The items below take it from "functional CRUD" to "production admin", reusing primitives the SDK already ships (`AuditMixin`, `MetricsUtils`, `TOTPHelper`, `UploadUtils`).
+
+| Feature | Why it matters | Reuses |
+|---------|----------------|--------|
+| **Per-column filter / search / sort** on the list view | Large lists are unusable without it — the first thing every operator asks for. | `BaseRepository` (filters + pagination) |
+| **Bulk actions** (mass delete / activate) | Row-by-row actions don't scale; select N rows + one action is the standard admin flow. | `BaseRepository.bulk_update` / soft-delete |
+| **Field widgets** (FK select, date picker, file upload) | The form is generic today; FK as `<select>`, dates with a picker, and upload via `UploadUtils` remove manual typing and error. | `UploadUtils` + storage backends |
+| **Inline / related editing** | Edit children (1-N) on the parent's screen — the Django-admin pattern that's missing. | `BaseRepository` + relationships |
+| **CSV / JSON export** | Operator exports the filtered result without opening the database. | list view + filters |
+| **Audit log visible in the admin** | Who changed what and when, straight in the UI. | `AuditMixin` (`created_by` / `updated_by`) |
+| **Metrics dashboard** | A landing screen with CPU/RAM/counters instead of an empty page. | `MetricsUtils` |
+| **MFA on admin login** | Second factor on the most sensitive access in the system; a natural fit now that TOTP exists. | `TOTPHelper` + `MFAMixin` + recovery codes |
+
 ## Everything shipped so far
 
 ### ✅ v0.23.0 — MinIO/S3 storage

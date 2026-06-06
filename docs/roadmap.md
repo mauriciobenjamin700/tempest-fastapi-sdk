@@ -50,6 +50,21 @@ Esta página lista o que o SDK **ainda não oferece** + o que já foi entregue. 
 | `tempest db seed` — carregar fixtures JSON/Python | ❌ pendente |
 | CLI: `tempest secrets rotate` | ❌ pendente |
 
+## Painel admin — evolução
+
+O painel admin já existe (`AdminSite` / `AdminModel` / `make_admin_router`, Jinja + HTMX, CSRF token). Os itens abaixo elevam ele de "CRUD funcional" para "admin de produção", reaproveitando primitivos que o SDK já tem (`AuditMixin`, `MetricsUtils`, `TOTPHelper`, `UploadUtils`).
+
+| Feature | Por que importa | Reaproveita |
+|---------|-----------------|-------------|
+| **Filtros / busca / ordenação por coluna** na listagem | Listas grandes ficam inutilizáveis sem isso; é o primeiro pedido de todo operador. | `BaseRepository` (filtros + paginação) |
+| **Bulk actions** (deletar / ativar em massa) | Ações linha-a-linha não escalam; selecionar N linhas + uma ação é o fluxo padrão de admin. | `BaseRepository.bulk_update` / soft-delete |
+| **Widgets de campo** (FK select, date picker, file upload) | Hoje o form é genérico; FK como `<select>`, data com picker e upload via `UploadUtils` removem digitação manual e erro. | `UploadUtils` + storage backends |
+| **Inline / related editing** | Editar filhos (1-N) na mesma tela do pai — padrão Django admin que falta. | `BaseRepository` + relationships |
+| **Export CSV / JSON** | Operador exporta o resultado filtrado sem abrir o banco. | listagem + filtros |
+| **Audit log visível no admin** | Quem mudou o quê e quando, direto na UI. | `AuditMixin` (`created_by` / `updated_by`) |
+| **Dashboard com métricas** | Tela inicial com CPU/RAM/contadores em vez de página vazia. | `MetricsUtils` |
+| **MFA no login do admin** | Segundo fator no acesso mais sensível do sistema; encaixe natural agora que o TOTP existe. | `TOTPHelper` + `MFAMixin` + recovery codes |
+
 ## Tudo que já entregamos
 
 ### ✅ v0.23.0 — Storage MinIO/S3
