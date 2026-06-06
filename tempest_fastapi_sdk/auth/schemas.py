@@ -46,11 +46,13 @@ class SignupSchema(BaseSchema):
         email (EmailStr): Login identifier — validated by
             ``email-validator`` so malformed addresses fail at
             the Pydantic layer (422) instead of at insert time.
-        password (str): Plaintext password. Length floor is
-            enforced both here (schema-level) and inside
-            :class:`UserAuthService` (service-level redundancy on
-            purpose — Pydantic validators don't fire on direct
-            ``service.signup(...)`` calls from other code paths).
+        password (str): Plaintext password. The schema only rejects an
+            empty string; the *configured* minimum length (default 12)
+            and optional complexity rules are the single source of
+            truth and are applied by :class:`UserAuthService`, so
+            lowering / raising ``AUTH_PASSWORD_MIN_LENGTH`` (or toggling
+            ``AUTH_PASSWORD_REQUIRE_COMPLEXITY``) takes effect on the
+            router path without the schema fighting it.
         name (str | None): Optional display name shown in the
             admin UI / front-end profile. ``None`` keeps the
             column ``NULL``.
@@ -62,12 +64,15 @@ class SignupSchema(BaseSchema):
         examples=["ana@example.com"],
     )
     password: str = Field(
-        min_length=12,
+        min_length=1,
         title="Password",
         description=(
             "Plaintext password — hashed with bcrypt before storage. "
-            "Minimum length defaults to 12 chars; configurable via "
-            "``AUTH_PASSWORD_MIN_LENGTH``."
+            "The schema only rejects empty strings; the effective "
+            "minimum length and complexity come from "
+            "``AUTH_PASSWORD_MIN_LENGTH`` / "
+            "``AUTH_PASSWORD_REQUIRE_COMPLEXITY`` and are enforced "
+            "server-side."
         ),
         examples=["correct-horse-battery-staple"],
     )
@@ -211,15 +216,36 @@ class LoginSchema(BaseSchema):
 class LoginResponseSchema(BaseSchema):
     """Response body for ``POST /auth/login`` and the password-reset confirm.
 
-    Issued only when credentials validate; the bundled router
-    reuses this shape for both ``POST /auth/login`` and
-    ``POST /auth/password-reset/confirm`` since both flows end
+    Two shapes packed into one schema so callers can branch on
+    ``mfa_required`` without parsing different JSON layouts:
+
+    * **Normal login (or MFA disabled / not enrolled)** —
+      ``mfa_required=False``, ``access_token`` + ``refresh_token``
+      populated, ``mfa_token=None``.
+    * **MFA required (step 1 of two-step login)** —
+      ``mfa_required=True``, ``access_token`` /
+      ``refresh_token=None``, ``mfa_token`` populated. The
+      frontend prompts for the TOTP code and replays it via
+      ``POST /auth/mfa/verify`` to swap the short-lived token for
+      the real JWT pair.
+
+    The bundled router reuses this shape for both ``POST /auth/login``
+    and ``POST /auth/password-reset/confirm`` since both flows end
     with an authenticated session.
 
     Attributes:
         user_id (UUID): UUID of the authenticated user.
-        access_token (str): Short-lived JWT.
-        refresh_token (str): Long-lived JWT.
+        access_token (str | None): Short-lived JWT — populated only
+            when ``mfa_required=False``.
+        refresh_token (str | None): Long-lived JWT — populated
+            only when ``mfa_required=False``.
+        mfa_required (bool): When ``True``, the caller MUST submit
+            the TOTP code via ``POST /auth/mfa/verify`` to
+            complete the login.
+        mfa_token (str | None): Short-lived JWT (5-minute TTL by
+            default) the caller passes back to
+            ``POST /auth/mfa/verify`` together with the TOTP code.
+            Populated only when ``mfa_required=True``.
     """
 
     user_id: UUID = Field(
@@ -227,15 +253,38 @@ class LoginResponseSchema(BaseSchema):
         description="UUID of the authenticated user.",
         examples=["7d8e4d5a-9f4b-4c3a-bd0a-1234567890ab"],
     )
-    access_token: str = Field(
+    access_token: str | None = Field(
+        default=None,
         title="JWT access token",
-        description="Short-lived bearer token.",
-        examples=["eyJhbGciOi…"],
+        description=("Short-lived bearer token. ``None`` when ``mfa_required=True``."),
+        examples=["eyJhbGciOi…", None],
     )
-    refresh_token: str = Field(
+    refresh_token: str | None = Field(
+        default=None,
         title="JWT refresh token",
-        description="Long-lived refresh token.",
-        examples=["eyJhbGciOi…"],
+        description=("Long-lived refresh token. ``None`` when ``mfa_required=True``."),
+        examples=["eyJhbGciOi…", None],
+    )
+    mfa_required: bool = Field(
+        default=False,
+        title="MFA step required",
+        description=(
+            "When ``True``, the caller must complete step 2 via "
+            "``POST /auth/mfa/verify``. ``False`` (default) signals "
+            "a fully authenticated response — the JWT pair is in "
+            "the body."
+        ),
+        examples=[False, True],
+    )
+    mfa_token: str | None = Field(
+        default=None,
+        title="Intermediate MFA token",
+        description=(
+            "Short-lived JWT (``AUTH_MFA_TOKEN_TTL_SECONDS``, 5min "
+            "default) carrying the ``sub`` of the user awaiting "
+            "step 2. ``None`` when ``mfa_required=False``."
+        ),
+        examples=[None, "eyJhbGciOi…"],
     )
 
 
@@ -311,9 +360,11 @@ class PasswordResetConfirmSchema(BaseSchema):
         token (str): Opaque token issued by ``request``. The
             plaintext form — the SDK stores only the hash, so
             this value cannot be guessed from the database.
-        new_password (str): Plaintext replacement password.
-            Length floor is enforced both schema-side and inside
-            the service.
+        new_password (str): Plaintext replacement password. The schema
+            only rejects empty strings; the effective minimum length
+            and complexity come from ``AUTH_PASSWORD_MIN_LENGTH`` /
+            ``AUTH_PASSWORD_REQUIRE_COMPLEXITY`` and are applied by the
+            service.
     """
 
     token: str = Field(
@@ -323,9 +374,14 @@ class PasswordResetConfirmSchema(BaseSchema):
         examples=["abc123def456…"],
     )
     new_password: str = Field(
-        min_length=12,
+        min_length=1,
         title="New password",
-        description="Plaintext replacement password.",
+        description=(
+            "Plaintext replacement password. The schema only rejects "
+            "empty strings; the effective minimum length and complexity "
+            "come from ``AUTH_PASSWORD_MIN_LENGTH`` / "
+            "``AUTH_PASSWORD_REQUIRE_COMPLEXITY``, applied server-side."
+        ),
         examples=["new-correct-horse-battery"],
     )
 
@@ -420,11 +476,133 @@ class PasswordResetToken(BaseSchema):
     )
 
 
+class MFAEnrollResponseSchema(BaseSchema):
+    """Response body for ``POST /auth/mfa/enroll`` — shown ONCE.
+
+    The user is responsible for screenshotting / printing the
+    payload before navigating away. The SDK does NOT re-show
+    these values; calling ``enroll`` again rotates the secret
+    and invalidates every previously issued recovery code.
+
+    Attributes:
+        secret (str): Base32 TOTP secret — exposed once so an
+            advanced user can copy it manually into a desktop
+            password manager (1Password, Bitwarden). Most users
+            only scan the QR.
+        provisioning_uri (str): ``otpauth://`` URI to render as a
+            QR code. Authenticator apps scan it to import the
+            secret + issuer + account name in one step.
+        recovery_codes (list[str]): N single-use codes
+            (``AUTH_MFA_RECOVERY_CODES_COUNT``, default 10).
+            Display prominently — the user MUST save them
+            somewhere offline.
+    """
+
+    secret: str = Field(
+        title="TOTP secret (base32)",
+        description=(
+            "16-char base32 TOTP secret. Persisted on the user row; "
+            "exposed in the response ONCE for manual import into "
+            "desktop password managers."
+        ),
+        examples=["JBSWY3DPEHPK3PXP"],
+    )
+    provisioning_uri: str = Field(
+        title="otpauth:// URI",
+        description=(
+            "Provisioning URI ready to be encoded as a QR code. "
+            "Authenticator apps scan it to import the secret + "
+            "issuer + account name in one step."
+        ),
+        examples=[
+            "otpauth://totp/Acme:ana%40example.com?secret=JBSW…&issuer=Acme",
+        ],
+    )
+    recovery_codes: list[str] = Field(
+        default_factory=list,
+        title="Single-use recovery codes",
+        description=(
+            "Plaintext recovery codes shown ONCE. Each can replace "
+            "the TOTP code exactly once at login when the user "
+            "loses access to their Authenticator app."
+        ),
+        examples=[["abcde-fghij", "klmno-pqrst", "uvwxy-zabcd"]],
+    )
+
+
+class MFAConfirmSchema(BaseSchema):
+    """Request body for ``POST /auth/mfa/confirm``."""
+
+    code: str = Field(
+        min_length=6,
+        max_length=8,
+        title="TOTP code",
+        description=(
+            "6-digit code displayed by the Authenticator app. The "
+            "SDK strips spaces / dashes before validation."
+        ),
+        examples=["123456"],
+    )
+
+
+class MFADisableSchema(BaseSchema):
+    """Request body for ``POST /auth/mfa/disable``.
+
+    Requires both the account password AND an active TOTP / recovery
+    code so a hijacked session cannot silently disable MFA.
+    """
+
+    password: str = Field(
+        min_length=1,
+        title="Account password",
+        description="Plaintext password — re-verified server-side.",
+        examples=["strong-pass-12-chars"],
+    )
+    code: str = Field(
+        min_length=6,
+        max_length=16,
+        title="TOTP code OR recovery code",
+        description=(
+            "Either a 6-digit code from the Authenticator OR one of "
+            "the recovery codes printed at enrollment."
+        ),
+        examples=["123456", "abcde-fghij"],
+    )
+
+
+class MFAVerifySchema(BaseSchema):
+    """Request body for ``POST /auth/mfa/verify``."""
+
+    mfa_token: str = Field(
+        min_length=1,
+        title="Intermediate MFA token",
+        description=(
+            "Short-lived JWT returned by ``POST /auth/login`` "
+            "when ``mfa_required=True``. Identifies the user the "
+            "code belongs to without exposing the user id directly."
+        ),
+        examples=["eyJhbGciOi…"],
+    )
+    code: str = Field(
+        min_length=6,
+        max_length=16,
+        title="TOTP code OR recovery code",
+        description=(
+            "6-digit Authenticator code OR a single-use recovery code from enrollment."
+        ),
+        examples=["123456", "abcde-fghij"],
+    )
+
+
 __all__: list[str] = [
     "ActivationResponseSchema",
     "ActivationToken",
     "LoginResponseSchema",
     "LoginSchema",
+    "MFAConfirmSchema",
+    "MFADisableSchema",
+    "MFAEnrollResponseSchema",
+    "MFAVerifySchema",
     "PasswordResetConfirmSchema",
     "PasswordResetRequestSchema",
     "PasswordResetResponseSchema",

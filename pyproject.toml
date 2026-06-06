@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.34.0"
+version = "0.35.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -84,6 +84,9 @@ http = [
 prometheus = [
     "prometheus-client>=0.20.0",
 ]
+mfa = [
+    "pyotp>=2.9.0",
+]
 all = [
     "bcrypt>=5.0.0",
     "pyjwt>=2.12.1",
@@ -103,6 +106,7 @@ all = [
     "minio>=7.2.0",
     "httpx>=0.28.0",
     "prometheus-client>=0.20.0",
+    "pyotp>=2.9.0",
     "email-validator>=2.0.0",
 ]
 
@@ -159,6 +163,7 @@ dev = [
     "itsdangerous>=2.2.0",
     "minio>=7.2.0",
     "prometheus-client>=0.20.0",
+    "pyotp>=2.9.0",
     "email-validator>=2.0.0",
 ]
 docs = [
@@ -236,6 +241,8 @@ module = [
     "psutil",
     "psutil.*",
     "faststream.*",
+    "pyotp",
+    "pyotp.*",
 ]
 ignore_missing_imports = true
 
@@ -256,6 +263,10 @@ addopts = [
 [tool.coverage.run]
 source = ["tempest_fastapi_sdk"]
 branch = true
+# Async FastAPI handlers run under anyio worker threads / greenlets when
+# driven by the ASGI test client; without this the tracer misses their
+# bodies and every router handler is under-reported as uncovered.
+concurrency = ["thread", "greenlet"]
 
 [tool.coverage.report]
 exclude_lines = [

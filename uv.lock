@@ -2118,6 +2118,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pyotp"
+version = "2.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/b2/1d5994ba2acde054a443bd5e2d384175449c7d2b6d1a0614dbca3a63abfc/pyotp-2.9.0.tar.gz", hash = "sha256:346b6642e0dbdde3b4ff5a930b664ca82abfa116356ed48cc42c7d6590d36f63", size = 17763, upload-time = "2023-07-27T23:41:03.295Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c3/c0/c33c8792c3e50193ef55adb95c1c3c2786fe281123291c2dbf0eaab95a6f/pyotp-2.9.0-py3-none-any.whl", hash = "sha256:81c2e5865b8ac55e825b0358e496e1d9387c811e85bb40e71a3b29b288963612", size = 13376, upload-time = "2023-07-27T23:41:01.685Z" },
+]
+
+[[package]]
 name = "pytest"
 version = "9.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2478,7 +2487,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.34.0"
+version = "0.35.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -2509,6 +2518,7 @@ all = [
     { name = "prometheus-client" },
     { name = "psutil" },
     { name = "pyjwt" },
+    { name = "pyotp" },
     { name = "python-multipart" },
     { name = "pywebpush" },
     { name = "redis" },
@@ -2533,6 +2543,9 @@ http = [
 metrics = [
     { name = "nvidia-ml-py" },
     { name = "psutil" },
+]
+mfa = [
+    { name = "pyotp" },
 ]
 minio = [
     { name = "minio" },
@@ -2575,6 +2588,7 @@ dev = [
     { name = "prometheus-client" },
     { name = "psutil" },
     { name = "pyjwt" },
+    { name = "pyotp" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -2630,6 +2644,8 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.6.0" },
     { name = "pyjwt", marker = "extra == 'all'", specifier = ">=2.12.1" },
     { name = "pyjwt", marker = "extra == 'auth'", specifier = ">=2.12.1" },
+    { name = "pyotp", marker = "extra == 'all'", specifier = ">=2.9.0" },
+    { name = "pyotp", marker = "extra == 'mfa'", specifier = ">=2.9.0" },
     { name = "python-multipart", marker = "extra == 'all'", specifier = ">=0.0.12" },
     { name = "python-multipart", marker = "extra == 'upload'", specifier = ">=0.0.12" },
     { name = "pywebpush", marker = "extra == 'all'", specifier = ">=2.0.0" },
@@ -2643,7 +2659,7 @@ requires-dist = [
     { name = "taskiq-aio-pika", marker = "extra == 'tasks'", specifier = ">=0.4.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "mfa", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2664,6 +2680,7 @@ dev = [
     { name = "prometheus-client", specifier = ">=0.20.0" },
     { name = "psutil", specifier = ">=6.0.0" },
     { name = "pyjwt", specifier = ">=2.12.1" },
+    { name = "pyotp", specifier = ">=2.9.0" },
     { name = "pytest", specifier = ">=8.3.3" },
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
     { name = "pytest-cov", specifier = ">=6.0.0" },

@@ -5,6 +5,76 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.0] — 2026-06-06
+
+### Added
+
+- **MFA / TOTP (RFC 6238)** — the bundled auth flow now supports
+  two-factor authentication with Authenticator apps. New `[mfa]`
+  extra (`pyotp>=2.9.0`). Public surface:
+    - `TOTPHelper(issuer=...)` — stateless TOTP issuer/verifier
+      (`generate_secret`, `provisioning_uri`, `verify` with a
+      configurable clock-drift window). Lazy-imports `pyotp`, so
+      `import tempest_fastapi_sdk` still works without the extra.
+    - `BaseUserRecoveryCodeModel` + `make_user_recovery_code_model`
+      — single-use recovery-code table (stores only the SHA-256
+      hash of each code, mirroring `BaseUserTokenModel`).
+    - `MFAMixin` — opt-in SQLAlchemy mixin adding `totp_secret` +
+      `totp_enabled_at` columns (plus an `is_mfa_active` property).
+      Mix it into the concrete user model
+      (`class UserModel(MFAMixin, BaseUserModel)`) only when MFA is
+      adopted, so projects that never enable it carry no dead
+      columns. `totp_enabled_at IS NULL` means MFA is
+      staged-but-not-active, so login stays single-step until the
+      user confirms.
+    - `UserAuthService` MFA methods: `is_mfa_enrolled`,
+      `issue_mfa_token`, `mfa_enroll`, `mfa_confirm`, `mfa_verify`,
+      `mfa_disable`.
+    - `make_auth_router(..., recovery_code_model=...)` mounts four
+      endpoints behind the `AUTH_MFA_ENABLED` kill-switch:
+      `POST /auth/mfa/enroll`, `/auth/mfa/confirm`,
+      `/auth/mfa/disable`, `/auth/mfa/verify`. `POST /auth/login`
+      now returns `mfa_required=True` + a short-lived `mfa_token`
+      (instead of the JWT pair) for enrolled users; step 2 swaps
+      `mfa_token` + code for the real tokens.
+    - New schemas: `MFAEnrollResponseSchema`, `MFAConfirmSchema`,
+      `MFADisableSchema`, `MFAVerifySchema`. `LoginResponseSchema`
+      gains `mfa_required` + `mfa_token` (and `access_token` /
+      `refresh_token` are now nullable for the MFA-pending case).
+    - New `AuthSettings`: `AUTH_MFA_ENABLED`, `AUTH_MFA_ISSUER`,
+      `AUTH_MFA_RECOVERY_CODES_COUNT`, `AUTH_MFA_TOKEN_TTL_SECONDS`,
+      `AUTH_MFA_VERIFY_WINDOW`.
+- **Optional password complexity** — new
+  `AUTH_PASSWORD_REQUIRE_COMPLEXITY` flag (default `False`). When off,
+  any password meeting `AUTH_PASSWORD_MIN_LENGTH` is accepted; when on,
+  signup + reset additionally require at least one lowercase letter,
+  one uppercase letter, one digit, and one special (non-alphanumeric)
+  character, and the effective length floor is raised to at least 8
+  (a configured `AUTH_PASSWORD_MIN_LENGTH` below 8 is ignored while
+  complexity is on). Enforced server-side on both `service.signup` and
+  `service.confirm_password_reset`.
+
+### Fixed
+
+- **Password minimum length is now honored end-to-end.**
+  `SignupSchema.password` and `PasswordResetConfirmSchema.new_password`
+  hardcoded `min_length=12`, which overrode `AUTH_PASSWORD_MIN_LENGTH`
+  on the router path — a project lowering the floor still got a 422
+  from Pydantic, and raising it above 12 was enforced only by the
+  service. The schemas now reject only empty strings;
+  `AUTH_PASSWORD_MIN_LENGTH` is the single source of truth (now `ge=1`,
+  fully configurable down to 4 or any value, default 12), applied
+  server-side.
+
+### Notes
+
+- Enabling MFA requires a migration: mix `MFAMixin` into the concrete
+  user model (`class UserModel(MFAMixin, BaseUserModel)`) to add the
+  `totp_secret` / `totp_enabled_at` columns, and create the
+  recovery-code table. `AUTH_MFA_ENABLED=True` without passing
+  `recovery_code_model` to `make_auth_router` raises at
+  router-build time.
+
 ## [0.34.0] — 2026-06-04
 
 ### Added

@@ -167,7 +167,8 @@ Variáveis (com defaults seguros pra produção):
 # .env — fluxo de e-mail
 AUTH_AUTO_ACTIVATE=false                # true = pula activation, devolve JWT direto
 AUTH_RETURN_TOKEN_IN_RESPONSE=false     # true = link no body em vez de e-mail
-AUTH_PASSWORD_MIN_LENGTH=12
+AUTH_PASSWORD_MIN_LENGTH=12              # totalmente configurável (1+, ex.: 4); fonte única da verdade
+AUTH_PASSWORD_REQUIRE_COMPLEXITY=false  # true = exige minúscula + maiúscula + dígito + especial E força piso de 8
 
 # .env — TTL dos tokens
 AUTH_ACTIVATION_TTL_SECONDS=604800      # 7 dias

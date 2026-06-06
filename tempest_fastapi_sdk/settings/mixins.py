@@ -601,15 +601,34 @@ class AuthSettings(BaseSettings):
     )
     AUTH_PASSWORD_MIN_LENGTH: int = Field(
         default=12,
-        ge=8,
+        ge=1,
         title="Minimum password length (chars)",
         description=(
             "Signup + reset reject passwords shorter than this. "
-            "Bumped from the OWASP 8-char floor to 12 because "
-            "longer passwords are the single biggest brute-force "
-            "deterrent."
+            "Fully configurable — the default of 12 follows the "
+            "current OWASP guidance (longer passwords are the single "
+            "biggest brute-force deterrent), but a project can set any "
+            "value from 1 up. This floor is the single source of "
+            "truth: the request schemas do NOT impose their own length "
+            "bound, so lowering it (e.g. to 4) takes effect on the "
+            "router path too."
         ),
-        examples=[8, 12, 16],
+        examples=[4, 8, 12, 16],
+    )
+    AUTH_PASSWORD_REQUIRE_COMPLEXITY: bool = Field(
+        default=False,
+        title="Require password character complexity",
+        description=(
+            "When ``False`` (default), any password meeting "
+            "``AUTH_PASSWORD_MIN_LENGTH`` is accepted. When ``True``, "
+            "signup + reset additionally require at least one lowercase "
+            "letter, one uppercase letter, one digit, and one special "
+            "character (any non-alphanumeric), AND the effective length "
+            "floor is raised to at least 8 — a configured "
+            "``AUTH_PASSWORD_MIN_LENGTH`` below 8 is ignored while this "
+            "flag is on."
+        ),
+        examples=[False, True],
     )
     AUTH_BACKEND_LINKS: bool = Field(
         default=False,
@@ -687,6 +706,69 @@ class AuthSettings(BaseSettings):
             "expired, already used, or unknown."
         ),
         examples=["password_reset_error.html"],
+    )
+    AUTH_MFA_ENABLED: bool = Field(
+        default=False,
+        title="MFA endpoints kill-switch",
+        description=(
+            "When ``True``, ``make_auth_router`` mounts the four "
+            "``POST /auth/mfa/*`` endpoints and the login flow "
+            "issues an ``mfa_token`` for users with TOTP enabled. "
+            "When ``False`` (default), MFA endpoints respond ``404`` "
+            "and the login flow ignores any persisted TOTP secret — "
+            "useful as a global kill-switch in case of "
+            "Authenticator outage."
+        ),
+        examples=[False, True],
+    )
+    AUTH_MFA_ISSUER: str = Field(
+        default="Tempest",
+        title="MFA issuer label",
+        description=(
+            "Issuer shown next to the user's email inside the "
+            "Authenticator app (Google Authenticator, 1Password, "
+            "Authy, etc.). Use your product's user-facing name."
+        ),
+        examples=["Tempest", "Acme Inc.", "MyApp Production"],
+    )
+    AUTH_MFA_RECOVERY_CODES_COUNT: int = Field(
+        default=10,
+        ge=2,
+        le=50,
+        title="Recovery codes per enrollment",
+        description=(
+            "Number of single-use recovery codes generated when the "
+            "user enrolls in MFA. Shown ONCE during enrollment; the "
+            "SDK stores only the SHA-256 hash of each code."
+        ),
+        examples=[6, 10, 20],
+    )
+    AUTH_MFA_TOKEN_TTL_SECONDS: int = Field(
+        default=300,
+        ge=30,
+        le=900,
+        title="Intermediate MFA token TTL (seconds)",
+        description=(
+            "Lifetime of the short-lived JWT issued after step 1 of "
+            "login (password OK) and consumed by step 2 (TOTP code). "
+            "Defaults to 5 minutes — long enough for the user to "
+            "open their Authenticator, short enough to neutralize "
+            "interception."
+        ),
+        examples=[120, 300, 600],
+    )
+    AUTH_MFA_VERIFY_WINDOW: int = Field(
+        default=1,
+        ge=0,
+        le=4,
+        title="TOTP verification window (30s steps)",
+        description=(
+            "Tolerance in 30-second steps for clock drift between "
+            "the user's device and the server. ``1`` (default) "
+            "accepts previous + current + next step (90s window). "
+            "Higher values weaken security; ``0`` is strict."
+        ),
+        examples=[0, 1, 2],
     )
 
 

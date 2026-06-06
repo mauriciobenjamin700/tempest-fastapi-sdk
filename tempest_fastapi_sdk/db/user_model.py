@@ -11,6 +11,7 @@ Concrete subclasses can add domain-specific fields freely.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import TIMESTAMP, Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -74,6 +75,15 @@ class BaseUserModel(BaseModel):
         default=None,
         doc="Timestamp of the user's most recent successful login.",
     )
+
+    if TYPE_CHECKING:
+        # Runtime columns are provided by MFAMixin — declared here
+        # type-only so UserAuthService can reference them without
+        # every user model carrying the columns. A project enables MFA
+        # by mixing in MFAMixin (``class UserModel(MFAMixin, BaseUserModel)``);
+        # the columns only land in the migration then.
+        totp_secret: Mapped[str | None]
+        totp_enabled_at: Mapped[datetime | None]
 
     def set_password(self, plain: str, *, rounds: int = 12) -> None:
         """Hash ``plain`` and write it to :attr:`hashed_password`.

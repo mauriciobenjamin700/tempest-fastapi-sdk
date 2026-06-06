@@ -26,20 +26,29 @@ What the SDK **doesn't ship yet** + what already landed. Sorted by impact, not i
 | `BaseRepository.bulk_create_values / bulk_upsert` | ✅ v0.28.0 | `BaseRepository` |
 | Prometheus `/metrics` endpoint | ✅ v0.28.0 | `tempest_fastapi_sdk.api.routers.metrics` |
 | Bundled signup / activate / login / password-reset | ✅ v0.31.0 | `tempest_fastapi_sdk.auth` |
+| Backend-only mode (signup / activate / reset rendered by the backend) | ✅ v0.32.0 | `tempest_fastapi_sdk.auth` + HTML templates |
+| `make_websocket_router` — bearer auth, heartbeat, broadcast | ✅ v0.33.0 | `tempest_fastapi_sdk.websockets` |
+| Server-side sessions (alternative to JWT) | ✅ v0.34.0 | `tempest_fastapi_sdk.sessions` |
+| 2FA / TOTP (`pyotp` wrapper + recovery codes) | ✅ v0.35.0 | `TOTPHelper` + `UserAuthService.mfa_*` + `BaseUserRecoveryCodeModel` |
 | `tempest db` + `tempest user` CLI | ✅ v0.30.0 | `tempest_fastapi_sdk.cli.db` / `cli.user` |
 | `BaseRepository.bulk_update` (filters + values) | ✅ pre-existing | `BaseRepository.bulk_update` |
+| **Multi-tenant scope** — `TenantScopedRepository(tenant_id)` auto-injecting `WHERE tenant_id = …` on every repository query | ❌ planned v0.36.0 | — |
 
 ## Tier B — when the service grows
 
 | Feature | Status |
 |---------|--------|
-| 2FA / TOTP (`pyotp` wrapper + `AdminModel.totp_secret`) | ❌ pending |
-| Multi-tenant scope — `TenantScopedRepository(tenant_id)` auto-injecting `WHERE tenant_id = …` | ❌ pending |
 | `SlowQueryLogger` — SQLAlchemy event logging queries > N ms with `EXPLAIN` | ❌ pending |
 | `AlembicHelper.safe_upgrade()` — block destructive migrations without `--force` | ❌ pending |
 | Graceful shutdown — drain in-flight requests on `SIGTERM` | ❌ pending |
-| `make_websocket_router` — bearer auth, heartbeat, broadcast | ❌ pending |
-| CLI: `tempest db seed`, `tempest secrets rotate` | ❌ pending |
+| F() / Q() expression wrappers for SQLAlchemy | ❌ pending |
+| eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) | ❌ pending |
+| Signals (`pre_save`/`post_save`/`pre_delete`) via SQLAlchemy events on `BaseRepository` | ❌ pending |
+| Object-level permissions framework (`user.has_perm("order.delete", obj=order)`) | ❌ pending |
+| Startup system checks (`tempest check-config`) | ❌ pending |
+| Management commands framework — project-registered `tempest <cmd>` | ❌ pending |
+| `tempest db seed` — load JSON/Python fixtures | ❌ pending |
+| CLI: `tempest secrets rotate` | ❌ pending |
 
 ## Everything shipped so far
 

@@ -67,6 +67,10 @@ from tempest_fastapi_sdk.auth import (
     ActivationToken,
     LoginResponseSchema,
     LoginSchema,
+    MFAConfirmSchema,
+    MFADisableSchema,
+    MFAEnrollResponseSchema,
+    MFAVerifySchema,
     PasswordResetConfirmSchema,
     PasswordResetRequestSchema,
     PasswordResetResponseSchema,
@@ -96,10 +100,13 @@ from tempest_fastapi_sdk.db import (
     BaseModel,
     BaseRepository,
     BaseUserModel,
+    BaseUserRecoveryCodeModel,
     BaseUserTokenModel,
+    MFAMixin,
     SoftDeleteMixin,
     UserTokenPurpose,
     compose_hooks,
+    make_user_recovery_code_model,
     make_user_token_model,
     reorder_base_columns_first,
 )
@@ -194,6 +201,7 @@ from tempest_fastapi_sdk.utils import (
     SystemMetrics,
     ThrottleBackend,
     ThrottleStatus,
+    TOTPHelper,
     UploadResult,
     UploadStorage,
     UploadUtils,
@@ -234,7 +242,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.34.0"
+__version__: str = "0.35.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -278,6 +286,7 @@ __all__: list[str] = [
     "BaseService",
     "BaseStrEnum",
     "BaseUserModel",
+    "BaseUserRecoveryCodeModel",
     "BaseUserTokenModel",
     "BodySizeLimitMiddleware",
     "CORSSettings",
@@ -319,6 +328,11 @@ __all__: list[str] = [
     "LogUtils",
     "LoginResponseSchema",
     "LoginSchema",
+    "MFAConfirmSchema",
+    "MFADisableSchema",
+    "MFAEnrollResponseSchema",
+    "MFAMixin",
+    "MFAVerifySchema",
     "MemoryIdempotencyStore",
     "MemoryMetrics",
     "MemorySessionStore",
@@ -362,6 +376,7 @@ __all__: list[str] = [
     "SignupSchema",
     "SoftDeleteMixin",
     "SystemMetrics",
+    "TOTPHelper",
     "TaskIQSettings",
     "ThrottleBackend",
     "ThrottleStatus",
@@ -429,6 +444,7 @@ __all__: list[str] = [
     "make_token_dependency",
     "make_tool_spec_router",
     "make_unhandled_exception_handler",
+    "make_user_recovery_code_model",
     "make_user_token_model",
     "make_websocket_router",
     "modify_dict",

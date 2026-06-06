@@ -96,6 +96,7 @@ plugins:
             Uploads (backends): Uploads (backends)
             Idempotência: Idempotency
             "Auth flow (signup/reset)": "Auth flow (signup/reset)"
+            "MFA (TOTP / 2FA)": "MFA (TOTP / 2FA)"
             "Sessões server-side": "Server-side sessions"
             Métricas: Metrics
             Painel admin: Admin site
@@ -203,6 +204,7 @@ nav:
       - Uploads (backends): recipes/uploads.md
       - Idempotência: recipes/idempotency.md
       - Auth flow (signup/reset): recipes/auth-flow.md
+      - MFA (TOTP / 2FA): recipes/mfa.md
       - Sessões server-side: recipes/sessions.md
       - Métricas: recipes/metrics.md
       - Painel admin: recipes/admin.md

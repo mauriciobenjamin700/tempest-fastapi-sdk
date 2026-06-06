@@ -89,7 +89,7 @@ Via `pyproject.toml`:
 
 ```toml
 dependencies = [
-    "tempest-fastapi-sdk>=0.32.0",
+    "tempest-fastapi-sdk>=0.35.0",
 ]
 ```
 
@@ -113,6 +113,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[minio]` | `minio` | `AsyncMinIOClient`, `ObjectStat`, `MinIOSettings` |
 | `[http]` | `httpx` | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, OAuth2 / OIDC providers |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
+| `[mfa]` | `pyotp` | `TOTPHelper` + MFA/2FA endpoints on the bundled auth flow |
 | `[all]` | everything above | every helper |
 
 ```bash
@@ -129,11 +130,11 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | Module | Exports |
 | --- | --- |
 | `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]`, `CursorPaginationFilterSchema`, `CursorPaginationSchema`, `LogEntrySchema`, `encode_cursor`, `decode_cursor`, `build_pagination_link_header` |
-| `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `UserTokenPurpose`, `BaseRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin`, `BASE_COLUMN_ORDER`, `reorder_base_columns_first`, `compose_hooks` |
+| `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `BaseUserRecoveryCodeModel`, `make_user_recovery_code_model`, `UserTokenPurpose`, `BaseRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin`, `MFAMixin`, `BASE_COLUMN_ORDER`, `reorder_base_columns_first`, `compose_hooks` |
 | `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `FileTooLargeException`, `InvalidFileTypeException`, `TooManyRequestsException` |
 | `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings`, `MinIOSettings`, `AuthSettings` |
 | `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_logs_router`, `make_prometheus_router`, `make_prometheus_registry`, `PrometheusMiddleware`, `LogSource`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware`, `IdempotencyMiddleware`, `MemoryIdempotencyStore`, `RedisIdempotencyStore`, `BodySizeLimitMiddleware`, `CSRFMiddleware`, `make_csrf_token_dependency`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, OAuth2 (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`), `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck` |
-| `tempest_fastapi_sdk.auth` *(extra: `[auth]`, opcional `[email]`)* | `UserAuthService`, `make_auth_router`, `SignupSchema` / `LoginSchema` / `PasswordResetRequestSchema` / `PasswordResetConfirmSchema` + responses, `ActivationToken`, `PasswordResetToken` — signup/activate/login/reset out of the box |
+| `tempest_fastapi_sdk.auth` *(extra: `[auth]`, opcional `[email]`, `[mfa]`)* | `UserAuthService`, `make_auth_router`, `SignupSchema` / `LoginSchema` / `PasswordResetRequestSchema` / `PasswordResetConfirmSchema` + responses, `ActivationToken`, `PasswordResetToken`, MFA schemas (`MFAEnrollResponseSchema` / `MFAConfirmSchema` / `MFAVerifySchema` / `MFADisableSchema`) — signup/activate/login/reset + TOTP 2FA out of the box |
 | `tempest_fastapi_sdk.controllers` | `BaseController` |
 | `tempest_fastapi_sdk.services` | `BaseService` |
 | `tempest_fastapi_sdk.core` | `configure_logging`, `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx`, `BaseStrEnum`, `BaseIntEnum` |
@@ -146,7 +147,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.utils.http_client` *(extra: `[http]`)* | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, `REQUEST_ID_HEADER` — typed httpx wrapper |
 | `tempest_fastapi_sdk.utils.storage_backends` *(extra: `[upload]`)* | `UploadStorage` protocol, `LocalUploadStorage`, `MinIOUploadStorage`, `UploadResult`, `ContentValidator` |
 | `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `AsyncTaskBrokerManager` (TaskIQ lifecycle wrapper), `AsyncTaskScheduler` (periodic / cron tasks) |
-| `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `AttemptThrottle`/`ThrottleBackend`/`ThrottleStatus`, `generate_opaque_token`/`hash_opaque_token`/`verify_opaque_token`, `get_client_ip`/`get_client_ip_from_scope`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `DownloadUtils`/`build_content_disposition` *(no extra)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`) |
+| `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `AttemptThrottle`/`ThrottleBackend`/`ThrottleStatus`, `generate_opaque_token`/`hash_opaque_token`/`verify_opaque_token`, `get_client_ip`/`get_client_ip_from_scope`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `TOTPHelper` *(extra: `[mfa]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `DownloadUtils`/`build_content_disposition` *(no extra)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`) |
 | `tempest_fastapi_sdk.cli` | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `version` / `--version` |
 
 Core primitives are re-exported from `tempest_fastapi_sdk` at the top level — `from tempest_fastapi_sdk import BaseModel, BaseRepository, AppException` always works. The extras-gated managers in `tempest_fastapi_sdk.cache`, `tempest_fastapi_sdk.queue` and `tempest_fastapi_sdk.tasks` must be imported from their own submodule (`from tempest_fastapi_sdk.queue import AsyncBrokerManager`).

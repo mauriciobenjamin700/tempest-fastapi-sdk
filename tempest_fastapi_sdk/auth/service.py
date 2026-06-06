@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.auth.schemas import (
@@ -52,6 +52,9 @@ from tempest_fastapi_sdk.utils.password import PasswordUtils
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
     from tempest_fastapi_sdk.db.user_model import BaseUserModel
+    from tempest_fastapi_sdk.db.user_recovery_code_model import (
+        BaseUserRecoveryCodeModel,
+    )
     from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
     from tempest_fastapi_sdk.utils.email import EmailUtils
 
@@ -402,12 +405,51 @@ class UserAuthService:
     # ------------------------------------------------------------------
 
     def _enforce_password_policy(self, password: str) -> None:
-        """Raise when ``password`` is shorter than the configured floor."""
+        """Validate ``password`` against the configured policy.
+
+        Length (``AUTH_PASSWORD_MIN_LENGTH``) is always enforced.
+        When ``AUTH_PASSWORD_REQUIRE_COMPLEXITY`` is on, the effective
+        length floor is raised to at least 8 (a configured value below
+        8 is ignored in complexity mode) and the password must also
+        contain at least one lowercase letter, one uppercase letter,
+        one digit, and one special (non-alphanumeric) character.
+
+        Args:
+            password (str): The plaintext password to check.
+
+        Raises:
+            ValidationException: When the password is too short or,
+                under complexity mode, missing a required character
+                class.
+        """
+        require_complexity = self.auth_settings.AUTH_PASSWORD_REQUIRE_COMPLEXITY
         floor = self.auth_settings.AUTH_PASSWORD_MIN_LENGTH
+        if require_complexity:
+            floor = max(floor, 8)
         if len(password) < floor:
             raise ValidationException(
                 message=f"password must be at least {floor} characters",
                 details={"min_length": floor},
+            )
+        if not require_complexity:
+            return
+        missing: list[str] = []
+        if not any(c.islower() for c in password):
+            missing.append("lowercase")
+        if not any(c.isupper() for c in password):
+            missing.append("uppercase")
+        if not any(c.isdigit() for c in password):
+            missing.append("digit")
+        if not any(not c.isalnum() for c in password):
+            missing.append("special")
+        if missing:
+            raise ValidationException(
+                message=(
+                    "password must contain at least one "
+                    + ", ".join(missing)
+                    + " character"
+                ),
+                details={"missing_classes": missing},
             )
 
     async def _issue_token(
@@ -562,6 +604,250 @@ class UserAuthService:
             body=f"Open this link to reset your password: {url}",
             html=html,
         )
+
+    # ------------------------------------------------------------------
+    # MFA (TOTP)
+    # ------------------------------------------------------------------
+
+    def is_mfa_enrolled(self, user: BaseUserModel) -> bool:
+        """Return ``True`` when ``user`` has finished MFA enrollment.
+
+        Checks both ``totp_enabled_at`` and the global kill-switch
+        :attr:`AuthSettings.AUTH_MFA_ENABLED` — when the kill-switch
+        is off, every user is treated as unenrolled so the login
+        flow stays single-step.
+        """
+        if not self.auth_settings.AUTH_MFA_ENABLED:
+            return False
+        return getattr(user, "totp_enabled_at", None) is not None
+
+    def issue_mfa_token(self, user: BaseUserModel) -> str:
+        """Mint the short-lived JWT that bridges step 1 and step 2 of login."""
+        return self.jwt.encode(
+            {"sub": str(user.id), "purpose": "mfa_pending"},
+            ttl=timedelta(
+                seconds=self.auth_settings.AUTH_MFA_TOKEN_TTL_SECONDS,
+            ),
+        )
+
+    async def mfa_enroll(
+        self,
+        session: AsyncSession,
+        *,
+        user: BaseUserModel,
+        recovery_code_model: type[BaseUserRecoveryCodeModel],
+    ) -> tuple[str, str, list[str]]:
+        """Issue a fresh TOTP secret + recovery codes for ``user``.
+
+        Idempotent in spirit — calling it again rotates the secret
+        AND invalidates every previously issued recovery code.
+        ``totp_enabled_at`` is **NOT** set yet; the caller MUST
+        confirm a valid code via :meth:`mfa_confirm` before MFA is
+        actually active. Until then, the persisted secret is dead
+        weight and login keeps working without the TOTP step.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            user (BaseUserModel): The user enrolling.
+            recovery_code_model (type[BaseUserRecoveryCodeModel]): The
+                project's concrete subclass of
+                :class:`BaseUserRecoveryCodeModel`.
+
+        Returns:
+            tuple[str, str, list[str]]: ``(secret, provisioning_uri,
+            recovery_codes_plaintext)`` — show all three to the user
+            EXACTLY ONCE. The SDK persists only the hash of each
+            recovery code.
+
+        Raises:
+            ImportError: When the ``[mfa]`` extra is not installed.
+        """
+        from tempest_fastapi_sdk.utils.totp import TOTPHelper
+
+        totp = TOTPHelper(issuer=self.auth_settings.AUTH_MFA_ISSUER)
+        secret = totp.generate_secret()
+        provisioning = totp.provisioning_uri(secret, user.email)
+        # Wipe previously stored recovery codes (rotation semantics).
+        await session.execute(
+            delete(recovery_code_model).where(
+                recovery_code_model.user_id == user.id,
+            ),
+        )
+        plaintexts: list[str] = []
+        for _ in range(self.auth_settings.AUTH_MFA_RECOVERY_CODES_COUNT):
+            plaintext, code_hash = generate_opaque_token(8)
+            plaintexts.append(plaintext)
+            record = recovery_code_model(
+                user_id=user.id,
+                code_hash=code_hash,
+            )
+            session.add(record)
+        user.totp_secret = secret
+        user.totp_enabled_at = None
+        await session.flush()
+        await session.refresh(user)
+        return secret, provisioning, plaintexts
+
+    async def mfa_confirm(
+        self,
+        session: AsyncSession,
+        *,
+        user: BaseUserModel,
+        code: str,
+    ) -> None:
+        """Mark MFA as active after the user proves they can read the QR.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            user (BaseUserModel): The user finishing enrollment.
+            code (str): 6-digit code from the Authenticator app.
+
+        Raises:
+            UnauthorizedException: When the code does not match the
+                pending secret (no MFA enrollment happens).
+            ValidationException: When no secret is staged (caller
+                must run :meth:`mfa_enroll` first).
+        """
+        from tempest_fastapi_sdk.utils.totp import TOTPHelper
+
+        if not user.totp_secret:
+            raise ValidationException(
+                message="MFA not initialized — call enroll first",
+            )
+        totp = TOTPHelper(issuer=self.auth_settings.AUTH_MFA_ISSUER)
+        if not totp.verify(
+            user.totp_secret,
+            code,
+            window=self.auth_settings.AUTH_MFA_VERIFY_WINDOW,
+        ):
+            raise UnauthorizedException(message="invalid MFA code")
+        user.totp_enabled_at = utcnow()
+        await session.flush()
+        await session.refresh(user)
+
+    async def mfa_disable(
+        self,
+        session: AsyncSession,
+        *,
+        user: BaseUserModel,
+        password: str,
+        code: str,
+        recovery_code_model: type[BaseUserRecoveryCodeModel],
+    ) -> None:
+        """Disable MFA — requires password + active TOTP/recovery code.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            user (BaseUserModel): The user disabling MFA.
+            password (str): Plaintext password — re-verified.
+            code (str): Active TOTP or single-use recovery code.
+            recovery_code_model (type[BaseUserRecoveryCodeModel]): The
+                project's concrete recovery-code model — needed
+                because disabling MFA wipes every code.
+
+        Raises:
+            UnauthorizedException: On wrong password OR invalid
+                code.
+            ValidationException: When MFA is not active in the
+                first place.
+        """
+        if not self.passwords.verify(password, user.hashed_password):
+            raise UnauthorizedException(message="invalid password")
+        if not user.totp_secret or not user.totp_enabled_at:
+            raise ValidationException(message="MFA not active")
+        if not await self._verify_mfa_code(session, user, code, recovery_code_model):
+            raise UnauthorizedException(message="invalid MFA code")
+        user.totp_secret = None
+        user.totp_enabled_at = None
+        await session.execute(
+            delete(recovery_code_model).where(
+                recovery_code_model.user_id == user.id,
+            ),
+        )
+        await session.flush()
+        await session.refresh(user)
+
+    async def mfa_verify(
+        self,
+        session: AsyncSession,
+        *,
+        mfa_token: str,
+        code: str,
+        recovery_code_model: type[BaseUserRecoveryCodeModel],
+    ) -> BaseUserModel:
+        """Step 2 of two-step login — swap the intermediate token for JWTs.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            mfa_token (str): Intermediate JWT issued by step 1.
+            code (str): 6-digit TOTP code OR plaintext recovery
+                code from enrollment.
+            recovery_code_model (type[BaseUserRecoveryCodeModel]): The
+                project's concrete recovery-code model.
+
+        Returns:
+            BaseUserModel: The fully authenticated user — caller
+            mints the JWT pair next.
+
+        Raises:
+            UnauthorizedException: On bad / expired ``mfa_token``,
+                bad code, or user not enrolled in MFA.
+        """
+        try:
+            payload = self.jwt.decode(mfa_token)
+        except Exception as exc:
+            raise UnauthorizedException(message="invalid MFA token") from exc
+        if payload.get("purpose") != "mfa_pending":
+            raise UnauthorizedException(message="invalid MFA token")
+        try:
+            user_id = UUID(payload["sub"])
+        except (KeyError, ValueError) as exc:
+            raise UnauthorizedException(message="invalid MFA token") from exc
+        user: BaseUserModel | None = await session.get(self.user_model, user_id)
+        if user is None or not user.is_active:
+            raise UnauthorizedException(message="invalid MFA token")
+        if not self.is_mfa_enrolled(user):
+            raise UnauthorizedException(message="MFA not enrolled")
+        if not await self._verify_mfa_code(session, user, code, recovery_code_model):
+            raise UnauthorizedException(message="invalid MFA code")
+        user.last_login_at = utcnow()
+        await session.flush()
+        await session.refresh(user)
+        return user
+
+    async def _verify_mfa_code(
+        self,
+        session: AsyncSession,
+        user: BaseUserModel,
+        code: str,
+        recovery_code_model: type[BaseUserRecoveryCodeModel],
+    ) -> bool:
+        """Check ``code`` against TOTP first, then unused recovery codes."""
+        from tempest_fastapi_sdk.utils.totp import TOTPHelper
+
+        if user.totp_secret:
+            totp = TOTPHelper(issuer=self.auth_settings.AUTH_MFA_ISSUER)
+            if totp.verify(
+                user.totp_secret,
+                code,
+                window=self.auth_settings.AUTH_MFA_VERIFY_WINDOW,
+            ):
+                return True
+        # Fallback: single-use recovery code (plaintext from enrollment).
+        digest = hash_opaque_token(code.strip())
+        result = await session.execute(
+            select(recovery_code_model).where(
+                recovery_code_model.user_id == user.id,
+                recovery_code_model.code_hash == digest,
+                recovery_code_model.used_at.is_(None),
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            return False
+        record.used_at = utcnow()
+        await session.flush()
+        return True
 
 
 __all__: list[str] = [

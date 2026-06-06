@@ -23,6 +23,12 @@ from tempest_fastapi_sdk.auth.schemas import (
     LoginResponseSchema as LoginResponseSchema,
 )
 from tempest_fastapi_sdk.auth.schemas import LoginSchema as LoginSchema
+from tempest_fastapi_sdk.auth.schemas import MFAConfirmSchema as MFAConfirmSchema
+from tempest_fastapi_sdk.auth.schemas import MFADisableSchema as MFADisableSchema
+from tempest_fastapi_sdk.auth.schemas import (
+    MFAEnrollResponseSchema as MFAEnrollResponseSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import MFAVerifySchema as MFAVerifySchema
 from tempest_fastapi_sdk.auth.schemas import (
     PasswordResetConfirmSchema as PasswordResetConfirmSchema,
 )
@@ -44,6 +50,10 @@ __all__: list[str] = [
     "ActivationToken",
     "LoginResponseSchema",
     "LoginSchema",
+    "MFAConfirmSchema",
+    "MFADisableSchema",
+    "MFAEnrollResponseSchema",
+    "MFAVerifySchema",
     "PasswordResetConfirmSchema",
     "PasswordResetRequestSchema",
     "PasswordResetResponseSchema",

@@ -41,11 +41,16 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Form, status
 from fastapi.responses import HTMLResponse
 
+from tempest_fastapi_sdk.api.dependencies import make_jwt_user_dependency
 from tempest_fastapi_sdk.auth.page_renderer import render_auth_page
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationResponseSchema,
     LoginResponseSchema,
     LoginSchema,
+    MFAConfirmSchema,
+    MFADisableSchema,
+    MFAEnrollResponseSchema,
+    MFAVerifySchema,
     PasswordResetConfirmSchema,
     PasswordResetRequestSchema,
     PasswordResetResponseSchema,
@@ -60,9 +65,16 @@ from tempest_fastapi_sdk.exceptions import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Coroutine
+    from typing import Any
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from tempest_fastapi_sdk.auth.service import UserAuthService
+    from tempest_fastapi_sdk.db.user_model import BaseUserModel
+    from tempest_fastapi_sdk.db.user_recovery_code_model import (
+        BaseUserRecoveryCodeModel,
+    )
 
 
 def make_auth_router(
@@ -72,6 +84,7 @@ def make_auth_router(
     prefix: str = "/auth",
     tags: list[str] | None = None,
     template_dir: str | None = None,
+    recovery_code_model: type[BaseUserRecoveryCodeModel] | None = None,
 ) -> APIRouter:
     """Build the bundled auth router.
 
@@ -204,8 +217,17 @@ def make_auth_router(
             email=payload.email,
             password=payload.password,
         )
-        access, refresh = service.issue_jwt_pair(user)
         await session.commit()
+        if service.is_mfa_enrolled(user):
+            mfa_token = service.issue_mfa_token(user)
+            return LoginResponseSchema(
+                user_id=user.id,
+                access_token=None,
+                refresh_token=None,
+                mfa_required=True,
+                mfa_token=mfa_token,
+            )
+        access, refresh = service.issue_jwt_pair(user)
         return LoginResponseSchema(
             user_id=user.id,
             access_token=access,
@@ -405,7 +427,120 @@ def make_auth_router(
             )
             return HTMLResponse(content=html)
 
+    # ------------------------------------------------------------------
+    # MFA endpoints — mounted only when AUTH_MFA_ENABLED.
+    # ------------------------------------------------------------------
+
+    if auth_settings.AUTH_MFA_ENABLED:
+        if recovery_code_model is None:
+            raise RuntimeError(
+                "AUTH_MFA_ENABLED=True requires a concrete recovery_code_model "
+                "(subclass of BaseUserRecoveryCodeModel) passed to "
+                "make_auth_router(recovery_code_model=...)."
+            )
+
+        current_user_dep = make_jwt_user_dependency(
+            service.jwt,
+            user_loader=_make_user_loader(service, session_factory),
+        )
+
+        @router.post(
+            "/mfa/enroll",
+            response_model=MFAEnrollResponseSchema,
+            summary="Enroll the current user in TOTP (returns secret + codes once)",
+        )
+        async def mfa_enroll(
+            session: AsyncSession = session_dep,
+            user: BaseUserModel = Depends(current_user_dep),
+        ) -> MFAEnrollResponseSchema:
+            secret, uri, codes = await service.mfa_enroll(
+                session,
+                user=user,
+                recovery_code_model=recovery_code_model,
+            )
+            await session.commit()
+            return MFAEnrollResponseSchema(
+                secret=secret,
+                provisioning_uri=uri,
+                recovery_codes=codes,
+            )
+
+        @router.post(
+            "/mfa/confirm",
+            status_code=status.HTTP_204_NO_CONTENT,
+            summary="Confirm enrollment by submitting the first TOTP code",
+        )
+        async def mfa_confirm(
+            payload: MFAConfirmSchema,
+            session: AsyncSession = session_dep,
+            user: BaseUserModel = Depends(current_user_dep),
+        ) -> None:
+            await service.mfa_confirm(session, user=user, code=payload.code)
+            await session.commit()
+
+        @router.post(
+            "/mfa/disable",
+            status_code=status.HTTP_204_NO_CONTENT,
+            summary="Disable MFA (requires password + active code)",
+        )
+        async def mfa_disable(
+            payload: MFADisableSchema,
+            session: AsyncSession = session_dep,
+            user: BaseUserModel = Depends(current_user_dep),
+        ) -> None:
+            await service.mfa_disable(
+                session,
+                user=user,
+                password=payload.password,
+                code=payload.code,
+                recovery_code_model=recovery_code_model,
+            )
+            await session.commit()
+
+        @router.post(
+            "/mfa/verify",
+            response_model=LoginResponseSchema,
+            summary="Step 2 of login — exchange mfa_token + code for JWT pair",
+        )
+        async def mfa_verify(
+            payload: MFAVerifySchema,
+            session: AsyncSession = session_dep,
+        ) -> LoginResponseSchema:
+            user = await service.mfa_verify(
+                session,
+                mfa_token=payload.mfa_token,
+                code=payload.code,
+                recovery_code_model=recovery_code_model,
+            )
+            access, refresh = service.issue_jwt_pair(user)
+            await session.commit()
+            return LoginResponseSchema(
+                user_id=user.id,
+                access_token=access,
+                refresh_token=refresh,
+            )
+
     return router
+
+
+def _make_user_loader(
+    service: UserAuthService,
+    session_factory: Callable[[], AsyncIterator[AsyncSession]],
+) -> Callable[[str], Coroutine[Any, Any, BaseUserModel | None]]:
+    """Build the awaitable ``(user_id) -> BaseUserModel`` JWT user loader.
+
+    Opens a fresh session per call so the dependency stays
+    request-scope-agnostic.
+    """
+    from uuid import UUID
+
+    async def _load(user_id: str) -> BaseUserModel | None:
+        async for s in session_factory():
+            obj: BaseUserModel | None = await s.get(service.user_model, UUID(user_id))
+            return obj
+        return None  # pragma: no cover - session_factory always yields once
+
+    return _load
 
 
 __all__: list[str] = [

@@ -77,6 +77,7 @@ from tempest_fastapi_sdk.utils.throttle import (
     ThrottleBackend,
     ThrottleStatus,
 )
+from tempest_fastapi_sdk.utils.totp import TOTPHelper
 from tempest_fastapi_sdk.utils.upload import UploadUtils, sniff_mime
 
 __all__: list[str] = [
@@ -108,6 +109,7 @@ __all__: list[str] = [
     "PhoneBR",
     "RetryPolicy",
     "SystemMetrics",
+    "TOTPHelper",
     "ThrottleBackend",
     "ThrottleStatus",
     "UploadResult",

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import TIMESTAMP, Uuid
+from sqlalchemy import TIMESTAMP, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk.utils.datetime import utcnow
@@ -104,7 +104,76 @@ class AuditMixin:
         self.updated_by = user_id
 
 
+class MFAMixin:
+    """Add TOTP (2FA) columns to a user model.
+
+    Opt-in companion to :class:`tempest_fastapi_sdk.BaseUserModel`.
+    Mix it into the concrete user model when the project enables the
+    bundled MFA flow (``AUTH_MFA_ENABLED=True``) so the secret and
+    activation timestamp live on the user row:
+
+    ```python
+    from tempest_fastapi_sdk import BaseUserModel, MFAMixin
+
+
+    class UserModel(MFAMixin, BaseUserModel):
+        __tablename__ = "users"
+    ```
+
+    Keeping these columns in a mixin (rather than on
+    ``BaseUserModel``) means projects that never enable MFA do not
+    carry dead columns, and the migration only lands when the
+    feature is actually adopted.
+
+    Attributes:
+        totp_secret (str | None): Base32 TOTP secret persisted by the
+            MFA flow. ``NULL`` until enrollment. Consider storing it
+            encrypted at rest (Postgres ``pgcrypto`` or an
+            application-level Fernet wrapper).
+        totp_enabled_at (datetime | None): Set by the MFA confirm
+            step the first time the user supplies a valid TOTP code.
+            ``NULL`` means MFA is not active yet — login skips the
+            TOTP step entirely.
+    """
+
+    totp_secret: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        default=None,
+        doc=(
+            "Base32 TOTP secret persisted by the MFA flow. NULL when "
+            "the user has not enrolled yet OR has not completed "
+            "enrollment. Consider storing this column encrypted at "
+            "rest (Postgres pgcrypto or an application-level Fernet "
+            "wrapper)."
+        ),
+    )
+    totp_enabled_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=True,
+        default=None,
+        doc=(
+            "Set by the MFA confirm step the first time the user "
+            "supplies a valid TOTP code. NULL means MFA is not yet "
+            "active for this user — login skips the TOTP step entirely."
+        ),
+    )
+
+    @property
+    def is_mfa_active(self) -> bool:
+        """Whether the user has completed MFA enrollment.
+
+        Returns:
+            bool: ``True`` when ``totp_enabled_at`` is non-null. Does
+            NOT account for the ``AUTH_MFA_ENABLED`` kill-switch — use
+            :meth:`tempest_fastapi_sdk.UserAuthService.is_mfa_enrolled`
+            for the kill-switch-aware check.
+        """
+        return self.totp_enabled_at is not None
+
+
 __all__: list[str] = [
     "AuditMixin",
+    "MFAMixin",
     "SoftDeleteMixin",
 ]

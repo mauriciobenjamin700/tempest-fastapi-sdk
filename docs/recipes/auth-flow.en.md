@@ -167,7 +167,8 @@ Variables (with production-safe defaults):
 # .env — email flow
 AUTH_AUTO_ACTIVATE=false                # true = skip activation, return JWT immediately
 AUTH_RETURN_TOKEN_IN_RESPONSE=false     # true = link in body instead of email
-AUTH_PASSWORD_MIN_LENGTH=12
+AUTH_PASSWORD_MIN_LENGTH=12              # fully configurable (1+, e.g. 4); single source of truth
+AUTH_PASSWORD_REQUIRE_COMPLEXITY=false  # true = require lowercase + uppercase + digit + special AND force a floor of 8
 
 # .env — token TTL
 AUTH_ACTIVATION_TTL_SECONDS=604800      # 7 days
