@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from uuid import UUID as _UUID
+
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import ForeignKey as _ForeignKey
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -637,6 +640,86 @@ async def test_bulk_unknown_action_400(
             data={"csrf_token": token, "action": "explode", "ids": ids},
         )
     assert response.status_code == 400
+
+
+class CategoryModel(BaseModel):
+    __tablename__ = "admin_fk_category"
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class ProductModel(BaseModel):
+    __tablename__ = "admin_fk_product"
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    category_id: Mapped[_UUID | None] = mapped_column(
+        _ForeignKey("admin_fk_category.id"), nullable=True, default=None
+    )
+
+
+@pytest.mark.asyncio
+async def test_fk_field_renders_select_and_saves() -> None:
+    """A FK to a registered admin renders as a related-rows dropdown."""
+    from sqlalchemy import select
+
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.connect()
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        user = RouterUser(email="fk@example.com", hashed_password="", is_admin=True)
+        user.set_password("hunter2")
+        session.add(user)
+        category = CategoryModel(name="Hardware")
+        session.add(category)
+        await session.commit()
+        await session.refresh(category)
+        category_id = str(category.id)
+
+    site = AdminSite(title="FK Admin")
+    site.register(AdminModel(model=CategoryModel, search_fields=[CategoryModel.name]))
+    site.register(AdminModel(model=ProductModel))
+    app = FastAPI()
+    app.include_router(
+        make_admin_router(
+            site,
+            db=db,
+            auth_backend=UserModelAuthBackend(RouterUser),
+            secret_key=SECRET,
+            cookie_secure=False,
+        )
+    )
+    try:
+        async with _client(app) as client:
+            await client.post(
+                "/admin/login",
+                data={"identifier": "fk@example.com", "password": "hunter2"},
+            )
+            form = await client.get("/admin/m/admin_fk_product/new")
+            assert form.status_code == 200
+            # FK renders a <select> listing the related row by its label.
+            assert '<select name="category_id"' in form.text
+            assert category_id in form.text
+            assert "Hardware" in form.text
+
+            token = _csrf_from(form.text)
+            created = await client.post(
+                "/admin/m/admin_fk_product/new",
+                data={
+                    "csrf_token": token,
+                    "name": "Drill",
+                    "category_id": category_id,
+                },
+                follow_redirects=False,
+            )
+            assert created.status_code == 303
+        async with db.get_session_context() as session:
+            product = (
+                await session.execute(
+                    select(ProductModel).where(ProductModel.name == "Drill")
+                )
+            ).scalar_one()
+            assert str(product.category_id) == category_id
+    finally:
+        await db.drop_tables()
+        await db.disconnect()
 
 
 @pytest.mark.asyncio

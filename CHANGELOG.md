@@ -47,9 +47,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       Backed by `BaseRepository.delete_batch` / `bulk_update`.
       Responsive (verified at 390px / 1280px).
 
-    FK-select + file-upload widgets, inline/related editing, MFA on admin
-    login, audit-log view, and the metrics dashboard remain tracked as
-    later admin phases on the roadmap.
+- **Admin foreign-key select — Phase 2c.**
+    - A foreign-key column whose referenced table has its own
+      `AdminModel` now renders as a **dropdown of the related rows**
+      (Django's FK select) on the create/edit form, instead of a raw
+      UUID input. Option labels come from the referenced admin's first
+      `search_fields` entry (falling back to a `name`/`title`/`email`
+      attribute, then the id). Capped at 1000 rows. FKs to unmanaged
+      tables stay plain UUID inputs.
+
+    File-upload widget, inline/related editing, MFA on admin login,
+    audit-log view, and the metrics dashboard remain tracked as later
+    admin phases on the roadmap.
 
 ## [0.35.0] — 2026-06-06
 

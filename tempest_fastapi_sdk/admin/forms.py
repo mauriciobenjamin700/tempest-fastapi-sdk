@@ -9,6 +9,7 @@ unit-testable in isolation.
 from __future__ import annotations
 
 import datetime as _dt
+import uuid as _uuid
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
@@ -134,12 +135,57 @@ def _is_optional(column: Column[Any]) -> bool:
     )
 
 
+def fk_fields(admin: AdminModel[Any]) -> dict[str, str]:
+    """Return editable foreign-key columns as ``{field: target_table}``.
+
+    Args:
+        admin (AdminModel[Any]): The admin configuration.
+
+    Returns:
+        dict[str, str]: Mapping of FK column key → referenced table name.
+    """
+    columns = sa_inspect(admin.model).columns
+    out: dict[str, str] = {}
+    for name in admin.editable_field_names():
+        column = columns.get(name)
+        if column is None or not column.foreign_keys:
+            continue
+        fk = next(iter(column.foreign_keys))
+        out[name] = fk.column.table.name
+    return out
+
+
+def fk_label(admin: AdminModel[Any], instance: Any) -> str:
+    """Build a human label for a referenced row (Django ``__str__`` analog).
+
+    Prefers the referenced admin's first search field, then a common
+    display attribute, then the primary key.
+
+    Args:
+        admin (AdminModel[Any]): The referenced model's admin config.
+        instance (Any): The referenced row.
+
+    Returns:
+        str: A label for the option.
+    """
+    for fname in admin.search_fields:
+        value = getattr(instance, fname, None)
+        if value:
+            return str(value)
+    for attr in ("name", "title", "email", "label"):
+        value = getattr(instance, attr, None)
+        if value:
+            return str(value)
+    return str(getattr(instance, "id", instance))
+
+
 def build_form_fields(
     admin: AdminModel[Any],
     *,
     instance: Any | None = None,
     submitted: Mapping[str, Any] | None = None,
     errors: Mapping[str, str] | None = None,
+    fk_options: Mapping[str, list[tuple[str, str]]] | None = None,
 ) -> list[FormField]:
     """Build the ordered list of form fields for create/edit.
 
@@ -150,12 +196,17 @@ def build_form_fields(
         submitted (Mapping[str, Any] | None): A rejected submission to
             re-render (takes precedence over ``instance``).
         errors (Mapping[str, str] | None): Per-field error messages.
+        fk_options (Mapping[str, list[tuple[str, str]]] | None): For
+            foreign-key fields whose target is a registered admin, the
+            ``(value, label)`` option pairs — turns the field into a
+            select. Resolved by the router (needs a DB query).
 
     Returns:
         list[FormField]: Descriptors ready for the template.
     """
     columns = sa_inspect(admin.model).columns
     errors = errors or {}
+    fk_options = fk_options or {}
     fields: list[FormField] = []
     for name in admin.editable_field_names():
         column = columns.get(name)
@@ -163,6 +214,9 @@ def build_form_fields(
             continue
         py = _python_type(column)
         widget, step, options = _widget_for(column, py)
+        if name in fk_options:
+            widget = "select"
+            options = list(fk_options[name])
         required = not _is_optional(column)
 
         value: Any = ""
@@ -295,11 +349,15 @@ def _coerce_scalar(py: type, raw: str) -> Any:
         return _dt.datetime.fromisoformat(raw)
     if py is _dt.date:
         return _dt.date.fromisoformat(raw)
+    if py is _uuid.UUID:
+        return _uuid.UUID(raw)
     return raw
 
 
 __all__: list[str] = [
     "FormField",
     "build_form_fields",
+    "fk_fields",
+    "fk_label",
     "parse_submission",
 ]

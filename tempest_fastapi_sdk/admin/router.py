@@ -17,7 +17,12 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend, AdminAuthError
 from tempest_fastapi_sdk.admin.config import AdminModel
-from tempest_fastapi_sdk.admin.forms import build_form_fields, parse_submission
+from tempest_fastapi_sdk.admin.forms import (
+    build_form_fields,
+    fk_fields,
+    fk_label,
+    parse_submission,
+)
 from tempest_fastapi_sdk.admin.session import (
     AdminSession,
     SessionStore,
@@ -34,6 +39,11 @@ if TYPE_CHECKING:
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _STATIC_DIR = Path(__file__).parent / "static"
+
+# Max related rows loaded into a foreign-key <select>. Beyond this the
+# dropdown would be unusable (Django switches to raw-id widgets); we cap
+# and rely on the plain UUID input being acceptable for huge tables.
+FK_OPTION_CAP = 1000
 
 
 def _pluralize(value: int) -> str:
@@ -296,6 +306,65 @@ def make_admin_router(
         """
         if not secrets.compare_digest(session.csrf_token, token):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "csrf token mismatch")
+
+    async def _resolve_fk_options(
+        admin: AdminModel[Any],
+        db_session: AsyncSession,
+    ) -> dict[str, list[tuple[str, str]]]:
+        """Build select options for FK fields whose target is registered.
+
+        A foreign key whose referenced table has its own
+        :class:`AdminModel` becomes a dropdown of related rows
+        (Django's FK select). FKs to unmanaged tables stay plain
+        UUID text inputs.
+
+        Args:
+            admin (AdminModel[Any]): The admin being rendered.
+            db_session (AsyncSession): The DB session.
+
+        Returns:
+            dict[str, list[tuple[str, str]]]: Field → ``(value, label)``
+            options, capped at ``FK_OPTION_CAP`` rows.
+        """
+        options: dict[str, list[tuple[str, str]]] = {}
+        for field_name, table in fk_fields(admin).items():
+            referenced = site.get(table)
+            if referenced is None:
+                continue
+            rows = await referenced.build_repository(db_session).list()
+            options[field_name] = [
+                (str(row.id), fk_label(referenced, row)) for row in rows[:FK_OPTION_CAP]
+            ]
+        return options
+
+    async def _form_fields(
+        admin: AdminModel[Any],
+        db_session: AsyncSession,
+        *,
+        instance: Any | None = None,
+        submitted: Any | None = None,
+        errors: Any | None = None,
+    ) -> Any:
+        """Resolve FK options then build the form-field descriptors.
+
+        Args:
+            admin (AdminModel[Any]): The admin being rendered.
+            db_session (AsyncSession): The DB session.
+            instance (Any | None): Row being edited (pre-fill).
+            submitted (Any | None): Rejected submission to re-render.
+            errors (Any | None): Per-field error messages.
+
+        Returns:
+            Any: The list of form-field descriptors.
+        """
+        fk_options = await _resolve_fk_options(admin, db_session)
+        return build_form_fields(
+            admin,
+            instance=instance,
+            submitted=submitted,
+            errors=errors,
+            fk_options=fk_options,
+        )
 
     @router.get("/login", name="admin_login_form")
     async def login_form(
@@ -624,7 +693,7 @@ def make_admin_router(
                 "user_display": auth_backend.display_name(principal),
                 "admin": admin,
                 "mode": "create",
-                "form_fields": build_form_fields(admin),
+                "form_fields": await _form_fields(admin, db_session),
                 "action_url": f"{prefix}/m/{slug}/new",
                 "back_url": f"{prefix}/m/{slug}/",
                 "form_error": None,
@@ -679,7 +748,9 @@ def make_admin_router(
                 "user_display": auth_backend.display_name(principal),
                 "admin": admin,
                 "mode": "create",
-                "form_fields": build_form_fields(admin, submitted=form, errors=errors),
+                "form_fields": await _form_fields(
+                    admin, db_session, submitted=form, errors=errors
+                ),
                 "action_url": f"{prefix}/m/{slug}/new",
                 "back_url": f"{prefix}/m/{slug}/",
                 "form_error": form_error,
@@ -841,7 +912,7 @@ def make_admin_router(
                 "admin": admin,
                 "mode": "edit",
                 "identity": identity,
-                "form_fields": build_form_fields(admin, instance=instance),
+                "form_fields": await _form_fields(admin, db_session, instance=instance),
                 "action_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "back_url": f"{prefix}/m/{slug}/{identity}",
                 "form_error": None,
@@ -905,7 +976,9 @@ def make_admin_router(
                 "admin": admin,
                 "mode": "edit",
                 "identity": identity,
-                "form_fields": build_form_fields(admin, submitted=form, errors=errors),
+                "form_fields": await _form_fields(
+                    admin, db_session, submitted=form, errors=errors
+                ),
                 "action_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "back_url": f"{prefix}/m/{slug}/{identity}",
                 "form_error": form_error,
