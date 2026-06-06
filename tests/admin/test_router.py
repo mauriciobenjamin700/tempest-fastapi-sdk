@@ -211,3 +211,168 @@ async def test_static_css_served(
         response = await client.get("/admin/static/admin.css")
     assert response.status_code == 200
     assert "tempest-admin" in response.text
+
+
+# --- Sortable columns ---------------------------------------------------------
+
+
+async def _login(client: AsyncClient) -> None:
+    await client.post(
+        "/admin/login",
+        data={"identifier": "root@example.com", "password": "hunter2"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_renders_sort_links(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.get(f"/admin/m/{WidgetModel.__tablename__}/")
+    assert response.status_code == 200
+    # Sortable header link for the `name` column is present.
+    assert "sort=name" in response.text
+    assert "tempest-sort" in response.text
+
+
+@pytest.mark.asyncio
+async def test_list_sort_by_name_desc_orders_rows(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.get(
+            f"/admin/m/{WidgetModel.__tablename__}/?sort=name&dir=desc"
+        )
+    assert response.status_code == 200
+    # Descending: widget-2 must appear before widget-0 in the markup.
+    assert response.text.index("widget-2") < response.text.index("widget-0")
+    # Active descending arrow rendered.
+    assert "▼" in response.text
+
+
+@pytest.mark.asyncio
+async def test_list_sort_unknown_column_ignored(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await _login(client)
+        # A non-existent / non-sortable column must not break the page.
+        response = await client.get(
+            f"/admin/m/{WidgetModel.__tablename__}/?sort=__nope__&dir=desc"
+        )
+    assert response.status_code == 200
+    assert "widget-0" in response.text
+
+
+# --- CSV / JSON export --------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_export_csv(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.get(f"/admin/m/{WidgetModel.__tablename__}/export.csv")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+    lines = response.text.strip().splitlines()
+    assert lines[0].split(",") == ["id", "name", "is_active"]
+    assert len(lines) == 1 + 3  # header + 3 widgets
+    assert any("widget-0" in line for line in lines[1:])
+
+
+@pytest.mark.asyncio
+async def test_export_json(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    import json
+
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.get(f"/admin/m/{WidgetModel.__tablename__}/export.json")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    data = json.loads(response.text)
+    assert isinstance(data, list)
+    assert len(data) == 3
+    assert {row["name"] for row in data} == {"widget-0", "widget-1", "widget-2"}
+    # bool column stays JSON-native, not stringified.
+    assert data[0]["is_active"] is True
+
+
+@pytest.mark.asyncio
+async def test_export_respects_search(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.get(
+            f"/admin/m/{WidgetModel.__tablename__}/export.csv?q=widget-1"
+        )
+    assert response.status_code == 200
+    lines = response.text.strip().splitlines()
+    assert len(lines) == 1 + 1  # header + only widget-1
+    assert "widget-1" in lines[1]
+
+
+@pytest.mark.asyncio
+async def test_export_unsupported_format_404(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.get(f"/admin/m/{WidgetModel.__tablename__}/export.xml")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_export_requires_login(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        response = await client.get(
+            f"/admin/m/{WidgetModel.__tablename__}/export.csv",
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/login"
+
+
+# --- Responsive markup --------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_has_responsive_table_wrapper(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await _login(client)
+        response = await client.get(f"/admin/m/{WidgetModel.__tablename__}/")
+    assert response.status_code == 200
+    assert "tempest-admin-table-wrap" in response.text
+    # viewport meta is what makes the responsive CSS apply on mobile.
+    assert "width=device-width" in response.text
+
+
+@pytest.mark.asyncio
+async def test_css_ships_media_queries(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        response = await client.get("/admin/static/admin.css")
+    assert response.status_code == 200
+    assert "@media (max-width: 600px)" in response.text

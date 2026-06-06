@@ -121,9 +121,13 @@ app.include_router(
 
 - `GET  /admin/login`, `POST /admin/login`, `POST /admin/logout` — fluxo de auth.
 - `GET  /admin/` — dashboard listando todo admin registrado.
-- `GET  /admin/m/{slug}/` — list view com paginação + busca em texto livre (`?q=`) + filtros por campo (`?filter_<field>=value`).
+- `GET  /admin/m/{slug}/` — list view com paginação + busca em texto livre (`?q=`) + filtros por campo (`?filter_<field>=value`) + **ordenação por coluna** clicável (`?sort=<coluna>&dir=asc|desc`).
+- `GET  /admin/m/{slug}/export.csv` / `export.json` — **exporta** o resultado atual (respeitando busca/filtros/ordenação) como CSV ou JSON. Limite de linhas via `make_admin_router(export_max_rows=…)` (default 5000).
 - `GET  /admin/m/{slug}/{identity}` — detail view somente leitura.
 - `GET  /admin/static/{path}` — assets CSS/HTMX embutidos.
+
+!!! tip "Responsivo por padrão"
+    Os templates + CSS embutidos são responsivos: em telas estreitas (≤600px) o header empilha, busca/filtros/ações viram full-width, as tabelas ganham scroll horizontal (nunca quebram o layout) e o grid do detail colapsa para uma coluna. Headers de coluna são clicáveis para alternar a ordenação (▲/▼).
 
 #### 4. Defaults de segurança de sessão
 

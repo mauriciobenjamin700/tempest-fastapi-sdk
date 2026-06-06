@@ -6,47 +6,65 @@
     <h1>{{ admin.get_verbose_name_plural() }}</h1>
     <p>{{ pagination.total }} record{{ pagination.total|pluralize }}.</p>
   </header>
-  <form method="get" class="tempest-admin-list__filters">
-    {% if admin.search_fields %}
-    <input type="search" name="q" value="{{ query.q or '' }}" placeholder="Search…" aria-label="Search">
-    {% endif %}
-    {% for field in admin.list_filter %}
-    <label>
-      <span>{{ field }}</span>
-      <select name="filter_{{ field }}">
-        <option value="">— any —</option>
-        {% for option in filter_options.get(field, []) %}
-        <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
-          {{ option.label }}
-        </option>
-        {% endfor %}
-      </select>
-    </label>
-    {% endfor %}
-    {% if admin.search_fields or admin.list_filter %}
-    <button type="submit">Apply</button>
-    {% endif %}
-  </form>
-  <table class="tempest-admin-list__table">
-    <thead>
-      <tr>
-        {% for column in columns %}<th>{{ column }}</th>{% endfor %}
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in rows %}
-      <tr>
-        {% for column in columns %}<td>{{ row.values[column] }}</td>{% endfor %}
-        <td>
-          <a href="{{ url_for('admin_detail', slug=admin.get_slug(), identity=row.identity) }}">View</a>
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="{{ columns|length + 1 }}">No records.</td></tr>
+  <div class="tempest-admin-list__toolbar">
+    <form method="get" class="tempest-admin-list__filters">
+      {% if admin.search_fields %}
+      <input type="search" name="q" value="{{ query.q or '' }}" placeholder="Search…" aria-label="Search">
+      {% endif %}
+      {% for field in admin.list_filter %}
+      <label>
+        <span>{{ field }}</span>
+        <select name="filter_{{ field }}">
+          <option value="">— any —</option>
+          {% for option in filter_options.get(field, []) %}
+          <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
+            {{ option.label }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
       {% endfor %}
-    </tbody>
-  </table>
+      {% if admin.search_fields or admin.list_filter %}
+      <button type="submit">Apply</button>
+      {% endif %}
+    </form>
+    <div class="tempest-admin-list__actions">
+      <a href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='csv') }}{% if export_query %}?{{ export_query }}{% endif %}">Export CSV</a>
+      <a href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='json') }}{% if export_query %}?{{ export_query }}{% endif %}">Export JSON</a>
+    </div>
+  </div>
+  <div class="tempest-admin-table-wrap">
+    <table class="tempest-admin-list__table">
+      <thead>
+        <tr>
+          {% for column in columns %}
+          <th>
+            {% if column in sort_state %}
+            {% set state = sort_state[column] %}
+            <a class="tempest-sort {% if state.active %}tempest-sort--active{% endif %}" href="{{ state.url }}">
+              <span>{{ column }}</span>
+              <span class="tempest-sort__arrow" aria-hidden="true">{% if state.active %}{% if state.ascending %}▲{% else %}▼{% endif %}{% else %}↕{% endif %}</span>
+            </a>
+            {% else %}{{ column }}{% endif %}
+          </th>
+          {% endfor %}
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          {% for column in columns %}<td>{{ row.values[column] }}</td>{% endfor %}
+          <td>
+            <a href="{{ url_for('admin_detail', slug=admin.get_slug(), identity=row.identity) }}">View</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ columns|length + 1 }}">No records.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% if pagination.pages > 1 %}
   <nav class="tempest-admin-list__pagination" aria-label="Pagination">
     {% if pagination.page > 1 %}

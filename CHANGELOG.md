@@ -5,6 +5,28 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Admin list view — Phase 1 (read-only enhancements + responsive).**
+    - Clickable **column sorting** on the list view
+      (`?sort=<column>&dir=asc|desc`), validated against the displayed
+      real columns; the admin's configured `ordering` remains the
+      default.
+    - **CSV / JSON export** endpoint
+      (`GET /admin/m/{slug}/export.csv` / `.json`) honoring the active
+      search / filters / sort. New `make_admin_router(export_max_rows=…)`
+      caps export size (default 5000).
+    - **Responsive admin UI** — bundled templates + CSS now adapt to
+      mobile (≤600px): stacked header, full-width search/filters/actions,
+      horizontal-scroll table wrappers, single-column detail grid.
+      Verified at 390px (mobile) and 1280px (desktop).
+
+    Write CRUD (create/edit/delete → bulk actions, field widgets, inline
+    editing), MFA on admin login, audit-log view, and the metrics
+    dashboard are tracked as later admin phases on the roadmap.
+
 ## [0.35.0] — 2026-06-06
 
 ### Added

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 import secrets
 from datetime import UTC, datetime
 from pathlib import Path
@@ -89,6 +92,7 @@ def make_admin_router(
     prefix: str = "/admin",
     session_store: SessionStore | None = None,
     cookie_secure: bool = True,
+    export_max_rows: int = 5000,
 ) -> APIRouter:
     """Build the FastAPI router that mounts the admin site.
 
@@ -98,7 +102,10 @@ def make_admin_router(
     * ``POST {prefix}/login`` — login submit.
     * ``POST {prefix}/logout`` — clear session + redirect.
     * ``GET  {prefix}/`` — dashboard listing registered admins.
-    * ``GET  {prefix}/m/{slug}/`` — list view (paginated).
+    * ``GET  {prefix}/m/{slug}/`` — list view (paginated, sortable,
+      filterable).
+    * ``GET  {prefix}/m/{slug}/export.{fmt}`` — CSV/JSON export of the
+      current (filtered + sorted) result set.
     * ``GET  {prefix}/m/{slug}/{identity}`` — detail view.
     * Static files under ``{prefix}/static`` named ``admin_static``.
 
@@ -115,6 +122,9 @@ def make_admin_router(
             :class:`SignedCookieSessionStore`.
         cookie_secure (bool): Set the ``Secure`` flag on cookies.
             Default ``True``; disable only for local HTTP dev.
+        export_max_rows (int): Hard cap on rows returned by the
+            CSV/JSON export endpoint. Exports beyond this are
+            truncated (a header/log notes it) to bound memory.
 
     Returns:
         APIRouter: A router ready to attach via ``app.include_router``.
@@ -367,6 +377,8 @@ def make_admin_router(
         slug: str,
         page: int = 1,
         q: str = "",
+        sort: str = "",
+        dir: str = "asc",
         db_session: AsyncSession = Depends(_db_session),
         session: AdminSession = Depends(_require_session),
     ) -> HTMLResponse:
@@ -377,6 +389,9 @@ def make_admin_router(
             slug (str): The admin slug from the URL.
             page (int): 1-indexed page number.
             q (str): Free-text search term.
+            sort (str): Column to sort by (validated against the
+                sortable columns; the admin default applies otherwise).
+            dir (str): Sort direction, ``"asc"`` or ``"desc"``.
             db_session (AsyncSession): The DB session.
             session (AdminSession): The validated session.
 
@@ -390,16 +405,14 @@ def make_admin_router(
 
         repository = admin.build_repository(db_session)
 
-        filters: dict[str, Any] = {}
-        active_filters: dict[str, str] = {}
-        for field in admin.list_filter:
-            value = request.query_params.get(f"filter_{field}")
-            if value:
-                active_filters[field] = value
-                filters[field] = _coerce_filter_value(value)
-        if q:
-            for field in admin.search_fields:
-                filters[field] = q
+        (
+            filters,
+            active_filters,
+            order_key,
+            ascending,
+            active_sort,
+            active_ascending,
+        ) = _resolve_filters_and_order(admin, request, q, sort, dir)
 
         page = max(1, page)
         size = max(1, admin.page_size)
@@ -407,8 +420,8 @@ def make_admin_router(
             filters=filters,
             page=page,
             page_size=size,
-            order_by=admin.order_key,
-            ascending=admin.order_ascending,
+            order_by=order_key,
+            ascending=ascending,
         )
 
         columns = admin.resolved_list_display()
@@ -417,11 +430,17 @@ def make_admin_router(
             for instance in result["items"]
         ]
 
+        # Params preserved on pagination links (search + filters + sort).
         query_params: dict[str, str] = {}
         if q:
             query_params["q"] = q
         for field, value in active_filters.items():
             query_params[f"filter_{field}"] = value
+        # Params preserved on sort links — same minus paging/sort.
+        sort_base = dict(query_params)
+        if active_sort:
+            query_params["sort"] = active_sort
+            query_params["dir"] = "asc" if active_ascending else "desc"
 
         pagination = _Pagination(
             page=result["page"],
@@ -429,6 +448,8 @@ def make_admin_router(
             total=result["total"],
             query_params=query_params,
         )
+
+        export_query = urlencode(query_params)
 
         return _render(
             request,
@@ -442,11 +463,79 @@ def make_admin_router(
                 "rows": rows,
                 "pagination": pagination,
                 "query": {"q": q},
+                "sort_state": _sort_state(
+                    admin, active_sort, active_ascending, sort_base
+                ),
+                "export_query": export_query,
                 "filter_options": {
                     field: _filter_options(admin, field, active_filters.get(field))
                     for field in admin.list_filter
                 },
             },
+        )
+
+    @router.get("/m/{slug}/export.{fmt}", name="admin_export")
+    async def export_view(
+        request: Request,
+        slug: str,
+        fmt: str,
+        q: str = "",
+        sort: str = "",
+        dir: str = "asc",
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> Response:
+        """Export the current (filtered + sorted) result set as CSV/JSON.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            fmt (str): ``"csv"`` or ``"json"``.
+            q (str): Free-text search term (same semantics as the list).
+            sort (str): Sort column.
+            dir (str): Sort direction.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            Response: An attachment with the serialized rows.
+
+        Raises:
+            HTTPException: ``404`` for an unknown admin or unsupported
+                format.
+        """
+        admin = site.get(slug)
+        if admin is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
+        if fmt not in {"csv", "json"}:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unsupported format")
+        await _resolve_principal(request, db_session, session)
+
+        repository = admin.build_repository(db_session)
+        filters, _active, order_key, ascending, _sort, _asc = (
+            _resolve_filters_and_order(admin, request, q, sort, dir)
+        )
+        result = await repository.paginate(
+            filters=filters,
+            page=1,
+            page_size=export_max_rows,
+            order_by=order_key,
+            ascending=ascending,
+        )
+        columns = admin.resolved_list_display()
+        items = result["items"]
+        filename = f"{admin.get_slug()}.{fmt}"
+
+        if fmt == "csv":
+            payload = _to_csv(columns, items)
+            media = "text/csv; charset=utf-8"
+        else:
+            payload = _to_json(columns, items)
+            media = "application/json; charset=utf-8"
+        return Response(
+            content=payload,
+            media_type=media,
+            headers={"content-disposition": f'attachment; filename="{filename}"'},
         )
 
     @router.get("/m/{slug}/{identity}", name="admin_detail")
@@ -530,6 +619,155 @@ class _RowView:
         self.values: dict[str, Any] = {
             col: getattr(instance, col, None) for col in columns
         }
+
+
+def _resolve_filters_and_order(
+    admin: Any,
+    request: Request,
+    q: str,
+    sort: str,
+    direction: str,
+) -> tuple[dict[str, Any], dict[str, str], str | None, bool, str, bool]:
+    """Build the repository filters + ordering from the request.
+
+    Shared by the list view and the export endpoint so both honor the
+    same search / filter / sort semantics.
+
+    Args:
+        admin (Any): The admin configuration.
+        request (Request): The inbound request (for filter query params).
+        q (str): Free-text search term.
+        sort (str): Requested sort column (validated against the
+            sortable columns; ignored otherwise).
+        direction (str): ``"asc"`` or ``"desc"``.
+
+    Returns:
+        tuple: ``(filters, active_filters, order_key, ascending,
+        active_sort, active_ascending)`` — ``active_sort`` is ``""``
+        when the request did not select a valid sortable column (the
+        admin default ordering applies instead).
+    """
+    filters: dict[str, Any] = {}
+    active_filters: dict[str, str] = {}
+    for field in admin.list_filter:
+        value = request.query_params.get(f"filter_{field}")
+        if value:
+            active_filters[field] = value
+            filters[field] = _coerce_filter_value(value)
+    if q:
+        for field in admin.search_fields:
+            filters[field] = q
+
+    sortable = _sortable_columns(admin)
+    if sort and sort in sortable:
+        ascending = direction != "desc"
+        return filters, active_filters, sort, ascending, sort, ascending
+    return filters, active_filters, admin.order_key, admin.order_ascending, "", True
+
+
+def _sortable_columns(admin: Any) -> list[str]:
+    """Return the displayed columns that map to a real DB column.
+
+    Only real mapped columns can be ordered by, so this filters the
+    ``list_display`` down to what is safe to pass to ``ORDER BY``.
+
+    Args:
+        admin (Any): The admin configuration.
+
+    Returns:
+        list[str]: Sortable column keys.
+    """
+    real = set(admin.column_names())
+    return [col for col in admin.resolved_list_display() if col in real]
+
+
+def _sort_state(
+    admin: Any,
+    active_sort: str,
+    active_ascending: bool,
+    base_params: dict[str, str],
+) -> dict[str, dict[str, Any]]:
+    """Build the per-column sort link + state for the list header.
+
+    Args:
+        admin (Any): The admin configuration.
+        active_sort (str): The currently active sort column (``""`` for
+            none).
+        active_ascending (bool): Direction of the active sort.
+        base_params (dict[str, str]): Query params to preserve in each
+            sort link (search + filters); paging is intentionally reset.
+
+    Returns:
+        dict[str, dict[str, Any]]: Keyed by column → ``{url, active,
+        ascending}``. Columns absent from the mapping are not sortable.
+    """
+    state: dict[str, dict[str, Any]] = {}
+    for col in _sortable_columns(admin):
+        is_active = col == active_sort
+        next_dir = "desc" if (is_active and active_ascending) else "asc"
+        params = {**base_params, "sort": col, "dir": next_dir}
+        state[col] = {
+            "url": "?" + urlencode(params),
+            "active": is_active,
+            "ascending": active_ascending if is_active else None,
+        }
+    return state
+
+
+def _export_value(value: Any) -> Any:
+    """Normalize a column value for export serialization.
+
+    Args:
+        value (Any): The raw ORM attribute value.
+
+    Returns:
+        Any: ``None`` untouched (so CSV emits blank / JSON emits null);
+        ``datetime`` as ISO 8601; everything else stringified for CSV
+        safety but JSON-native scalars (bool/int/float) preserved by the
+        caller.
+    """
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def _to_csv(columns: list[str], items: list[Any]) -> str:
+    """Serialize ``items`` to a CSV document with a header row.
+
+    Args:
+        columns (list[str]): Column keys (header + value order).
+        items (list[Any]): ORM rows.
+
+    Returns:
+        str: The CSV text.
+    """
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(columns)
+    for instance in items:
+        writer.writerow(
+            [_export_value(getattr(instance, col, None)) for col in columns]
+        )
+    return buffer.getvalue()
+
+
+def _to_json(columns: list[str], items: list[Any]) -> str:
+    """Serialize ``items`` to a JSON array of column→value objects.
+
+    Args:
+        columns (list[str]): Column keys.
+        items (list[Any]): ORM rows.
+
+    Returns:
+        str: The JSON text.
+    """
+    rows = [
+        {col: _export_value(getattr(instance, col, None)) for col in columns}
+        for instance in items
+    ]
+    return json.dumps(rows, ensure_ascii=False, default=str)
 
 
 def _coerce_filter_value(raw: str) -> Any:

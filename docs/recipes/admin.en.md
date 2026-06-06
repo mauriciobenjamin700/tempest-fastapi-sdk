@@ -121,9 +121,13 @@ app.include_router(
 
 - `GET  /admin/login`, `POST /admin/login`, `POST /admin/logout` — auth flow.
 - `GET  /admin/` — dashboard listing every registered admin.
-- `GET  /admin/m/{slug}/` — list view with pagination + free-text search (`?q=`) + per-field filters (`?filter_<field>=value`).
+- `GET  /admin/m/{slug}/` — list view with pagination + free-text search (`?q=`) + per-field filters (`?filter_<field>=value`) + clickable **column sorting** (`?sort=<column>&dir=asc|desc`).
+- `GET  /admin/m/{slug}/export.csv` / `export.json` — **export** the current result set (honoring search/filters/sort) as CSV or JSON. Row cap via `make_admin_router(export_max_rows=…)` (default 5000).
 - `GET  /admin/m/{slug}/{identity}` — read-only detail view.
 - `GET  /admin/static/{path}` — bundled CSS/HTMX assets.
+
+!!! tip "Responsive by default"
+    The bundled templates + CSS are responsive: on narrow screens (≤600px) the header stacks, search/filters/actions go full-width, tables get horizontal scroll (never breaking the layout), and the detail grid collapses to a single column. Column headers are clickable to toggle sort order (▲/▼).
 
 #### 4. Session security defaults
 
