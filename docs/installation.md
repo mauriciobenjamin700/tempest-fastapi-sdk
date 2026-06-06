@@ -29,6 +29,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
 | `[http]` | `httpx` | `HTTPClient` + `RetryPolicy` + circuit-breaker |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
+| `[mfa]` | `pyotp` | `TOTPHelper` + endpoints MFA/2FA (TOTP) do fluxo bundled de auth |
 | `[all]` | tudo acima | todos os helpers |
 
 === "Subconjunto (recomendado)"

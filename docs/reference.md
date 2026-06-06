@@ -26,9 +26,14 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ::: tempest_fastapi_sdk.db.model.BaseModel
 ::: tempest_fastapi_sdk.db.user_model.BaseUserModel
+::: tempest_fastapi_sdk.db.user_token_model.BaseUserTokenModel
+::: tempest_fastapi_sdk.db.user_token_model.make_user_token_model
+::: tempest_fastapi_sdk.db.user_recovery_code_model.BaseUserRecoveryCodeModel
+::: tempest_fastapi_sdk.db.user_recovery_code_model.make_user_recovery_code_model
 ::: tempest_fastapi_sdk.db.repository.BaseRepository
 ::: tempest_fastapi_sdk.db.mixins.SoftDeleteMixin
 ::: tempest_fastapi_sdk.db.mixins.AuditMixin
+::: tempest_fastapi_sdk.db.mixins.MFAMixin
 ::: tempest_fastapi_sdk.db.connection.AsyncDatabaseManager
 ::: tempest_fastapi_sdk.db.migrations.AlembicHelper
 
@@ -120,6 +125,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.auth.schemas.PasswordResetConfirmSchema
 ::: tempest_fastapi_sdk.auth.schemas.ActivationToken
 ::: tempest_fastapi_sdk.auth.schemas.PasswordResetToken
+::: tempest_fastapi_sdk.auth.schemas.MFAEnrollResponseSchema
+::: tempest_fastapi_sdk.auth.schemas.MFAConfirmSchema
+::: tempest_fastapi_sdk.auth.schemas.MFAVerifySchema
+::: tempest_fastapi_sdk.auth.schemas.MFADisableSchema
 
 ### `tempest_fastapi_sdk.sessions`
 
@@ -211,6 +220,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ::: tempest_fastapi_sdk.utils.password.PasswordUtils
 ::: tempest_fastapi_sdk.utils.jwt.JWTUtils
+::: tempest_fastapi_sdk.utils.totp.TOTPHelper
 ::: tempest_fastapi_sdk.utils.email.EmailUtils
 ::: tempest_fastapi_sdk.utils.upload.UploadUtils
 ::: tempest_fastapi_sdk.utils.metrics.MetricsUtils

@@ -29,6 +29,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
 | `[http]` | `httpx` | `HTTPClient` + `RetryPolicy` + circuit-breaker |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
+| `[mfa]` | `pyotp` | `TOTPHelper` + MFA/2FA (TOTP) endpoints on the bundled auth flow |
 | `[all]` | everything above | every helper |
 
 === "Subset (recommended)"
