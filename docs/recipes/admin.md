@@ -120,7 +120,7 @@ app.include_router(
 `make_admin_router` monta:
 
 - `GET  /admin/login`, `POST /admin/login`, `POST /admin/logout` — fluxo de auth.
-- `GET  /admin/` — dashboard listando todo admin registrado.
+- `GET  /admin/` — dashboard: card por modelo com **contagem de linhas** + Browse/New, e um **painel de métricas** (CPU/RAM/disco via `MetricsUtils`). Painel ligado por default, omitido sem o extra `[metrics]`, desligável com `make_admin_router(show_metrics=False)`.
 - `GET  /admin/m/{slug}/` — list view com paginação + busca em texto livre (`?q=`) + filtros por campo (`?filter_<field>=value`) + **ordenação por coluna** clicável (`?sort=<coluna>&dir=asc|desc`).
 - `GET  /admin/m/{slug}/export.csv` / `export.json` — **exporta** o resultado atual (respeitando busca/filtros/ordenação) como CSV ou JSON. Limite de linhas via `make_admin_router(export_max_rows=…)` (default 5000).
 - `POST /admin/m/{slug}/bulk` — **ações em massa** (delete / activate / deactivate) nas linhas selecionadas.
@@ -137,7 +137,7 @@ app.include_router(
 
     **FK-select**: uma coluna FK cujo destino tem `AdminModel` registrado vira um dropdown das linhas relacionadas (igual ao FK select do Django) no formulário, em vez de um input UUID cru. O label da opção vem do primeiro `search_fields` do admin referenciado (fallback: atributo `name`/`title`/`email`, depois o id). Limitado a 1000 linhas; FK para tabela não-gerenciada continua input UUID.
 
-    Ainda **não** incluídos (fases futuras do roadmap): upload de arquivo, inline/related editing.
+    Ainda **não** incluídos (fases futuras do roadmap): upload de arquivo, inline/related editing, MFA no login admin, audit log visível.
 
 !!! tip "Responsivo por padrão"
     Os templates + CSS embutidos são responsivos: em telas estreitas (≤600px) o header empilha, busca/filtros/ações viram full-width, as tabelas ganham scroll horizontal (nunca quebram o layout) e o grid do detail colapsa para uma coluna. Headers de coluna são clicáveis para alternar a ordenação (▲/▼).

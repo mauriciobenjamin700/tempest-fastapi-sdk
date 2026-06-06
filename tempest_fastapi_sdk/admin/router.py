@@ -107,6 +107,7 @@ def make_admin_router(
     session_store: SessionStore | None = None,
     cookie_secure: bool = True,
     export_max_rows: int = 5000,
+    show_metrics: bool = True,
 ) -> APIRouter:
     """Build the FastAPI router that mounts the admin site.
 
@@ -147,6 +148,10 @@ def make_admin_router(
         export_max_rows (int): Hard cap on rows returned by the
             CSV/JSON export endpoint. Exports beyond this are
             truncated (a header/log notes it) to bound memory.
+        show_metrics (bool): When ``True`` (default), the dashboard
+            renders a CPU/RAM/disk panel via ``MetricsUtils`` — silently
+            omitted when the ``[metrics]`` extra is not installed. Set
+            ``False`` to skip the per-request sample entirely.
 
     Returns:
         APIRouter: A router ready to attach via ``app.include_router``.
@@ -478,6 +483,22 @@ def make_admin_router(
             HTMLResponse: The dashboard template.
         """
         principal = await _resolve_principal(request, db_session, session)
+        models_view: list[dict[str, Any]] = []
+        for admin in site.iter_models():
+            try:
+                count = await admin.build_repository(db_session).count()
+            except Exception:
+                count = None
+            models_view.append(
+                {
+                    "admin": admin,
+                    "count": count,
+                    "url": f"{prefix}/m/{admin.get_slug()}/",
+                    "new_url": f"{prefix}/m/{admin.get_slug()}/new"
+                    if admin.can_create
+                    else None,
+                }
+            )
         return _render(
             request,
             "dashboard.html",
@@ -486,6 +507,8 @@ def make_admin_router(
                 "session": session,
                 "user_display": auth_backend.display_name(principal),
                 "admins": site.iter_models(),
+                "models_view": models_view,
+                "metrics": await _system_metrics() if show_metrics else None,
             },
         )
 
@@ -1144,6 +1167,33 @@ def _sort_state(
             "ascending": active_ascending if is_active else None,
         }
     return state
+
+
+async def _system_metrics() -> dict[str, Any] | None:
+    """Return a compact CPU/RAM/disk snapshot for the dashboard.
+
+    Degrades to ``None`` when the ``[metrics]`` extra is missing or the
+    sample fails, so the dashboard never errors on metrics.
+
+    Returns:
+        dict[str, Any] | None: ``cpu_percent`` / ``mem_percent`` /
+        ``mem_used_gb`` / ``mem_total_gb`` / ``disk_percent``, or
+        ``None`` when unavailable.
+    """
+    try:
+        from tempest_fastapi_sdk.utils.metrics import MetricsUtils
+
+        snap = await MetricsUtils.snapshot_async()
+    except Exception:
+        return None
+    disk = snap.disks[0] if snap.disks else None
+    return {
+        "cpu_percent": round(snap.cpu.percent, 1),
+        "mem_percent": round(snap.memory.percent, 1),
+        "mem_used_gb": round(snap.memory.used_bytes / 1e9, 2),
+        "mem_total_gb": round(snap.memory.total_bytes / 1e9, 2),
+        "disk_percent": round(disk.percent, 1) if disk else None,
+    }
 
 
 def _bulk_actions(admin: Any) -> list[tuple[str, str]]:

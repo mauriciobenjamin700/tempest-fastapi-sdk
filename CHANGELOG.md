@@ -56,9 +56,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       attribute, then the id). Capped at 1000 rows. FKs to unmanaged
       tables stay plain UUID inputs.
 
-    File-upload widget, inline/related editing, MFA on admin login,
-    audit-log view, and the metrics dashboard remain tracked as later
-    admin phases on the roadmap.
+- **Admin dashboard — counts + metrics (Phase 3a).**
+    - The dashboard now renders each registered model as a card with its
+      **live row count** and Browse / + New links, plus a **system
+      metrics panel** (CPU / RAM / disk) via `MetricsUtils`. The panel
+      is on by default, silently omitted when the `[metrics]` extra is
+      absent, and disabled with `make_admin_router(show_metrics=False)`.
+      Responsive card grids (verified at 390px / 1280px).
+
+    File-upload widget, inline/related editing, MFA on admin login, and
+    the audit-log view remain tracked as later admin phases on the
+    roadmap.
 
 ## [0.35.0] — 2026-06-06
 

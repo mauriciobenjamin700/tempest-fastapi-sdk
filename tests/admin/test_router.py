@@ -216,6 +216,66 @@ async def test_static_css_served(
     assert "tempest-admin" in response.text
 
 
+# --- Dashboard (counts + metrics) --------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dashboard_shows_model_counts_and_metrics(
+    app_with_admin: tuple[FastAPI, AsyncDatabaseManager, RouterUser],
+) -> None:
+    app, _db, _user = app_with_admin
+    async with _client(app) as client:
+        await client.post(
+            "/admin/login",
+            data={"identifier": "root@example.com", "password": "hunter2"},
+        )
+        dash = await client.get("/admin/")
+    assert dash.status_code == 200
+    # per-model count badge (3 widgets seeded)
+    assert "tempest-admin-model-card__count" in dash.text
+    assert ">3<" in dash.text
+    # metrics panel on by default ([metrics]/psutil is a dev dep)
+    assert "CPU" in dash.text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_metrics_can_be_disabled() -> None:
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.connect()
+    await db.create_tables()
+    async with db.get_session_context() as session:
+        user = RouterUser(email="nm@example.com", hashed_password="", is_admin=True)
+        user.set_password("hunter2")
+        session.add(user)
+        await session.commit()
+
+    site = AdminSite(title="No-Metrics Admin")
+    site.register(AdminModel(model=WidgetModel, list_display=[WidgetModel.name]))
+    app = FastAPI()
+    app.include_router(
+        make_admin_router(
+            site,
+            db=db,
+            auth_backend=UserModelAuthBackend(RouterUser),
+            secret_key=SECRET,
+            cookie_secure=False,
+            show_metrics=False,
+        )
+    )
+    try:
+        async with _client(app) as client:
+            await client.post(
+                "/admin/login",
+                data={"identifier": "nm@example.com", "password": "hunter2"},
+            )
+            dash = await client.get("/admin/")
+        assert dash.status_code == 200
+        assert "System metrics" not in dash.text
+    finally:
+        await db.drop_tables()
+        await db.disconnect()
+
+
 # --- Sortable columns ---------------------------------------------------------
 
 
