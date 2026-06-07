@@ -88,6 +88,39 @@ class TestMixinDefaults:
         assert settings.SMTP_USERNAME is None
         assert settings.SMTP_PASSWORD is None
 
+    def test_email_kwargs_maps_smtp_names_to_emailutils(self) -> None:
+        settings = EmailSettings(
+            SMTP_HOST="smtp.example.com",
+            SMTP_PORT=465,
+            SMTP_FROM_ADDR="ops@example.com",
+            SMTP_USERNAME="apikey",
+            SMTP_PASSWORD="secret",
+            SMTP_USE_TLS=False,  # STARTTLS off
+            SMTP_USE_SSL=True,  # implicit TLS on
+            SMTP_TIMEOUT_SECONDS=10.0,
+        )
+        kwargs = settings.email_kwargs()
+        assert kwargs == {
+            "host": "smtp.example.com",
+            "port": 465,
+            "from_addr": "ops@example.com",
+            "username": "apikey",
+            "password": "secret",
+            # SMTP_USE_TLS (STARTTLS) -> use_starttls; SMTP_USE_SSL -> use_tls.
+            "use_tls": True,
+            "use_starttls": False,
+            "timeout": 10.0,
+        }
+
+    def test_email_kwargs_splats_into_emailutils(self) -> None:
+        # Guards the documented `EmailUtils(**settings.email_kwargs())`
+        # recipe: every key must be a real constructor parameter.
+        from tempest_fastapi_sdk import EmailUtils
+
+        mailer = EmailUtils(**EmailSettings().email_kwargs())
+        assert mailer.host == "localhost"
+        assert mailer.use_starttls is True  # mirrors SMTP_USE_TLS default
+
     def test_upload_settings_defaults(self) -> None:
         settings = UploadSettings()
         assert settings.UPLOAD_DIR == "./var/uploads"

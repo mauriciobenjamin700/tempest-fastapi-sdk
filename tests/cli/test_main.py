@@ -94,7 +94,8 @@ class TestNew:
         assert "REDIS_URL" in env
         assert "RABBITMQ_URL" in env
         assert "MINIO_ENDPOINT" in env
-        assert "EMAIL_HOST=localhost" in env
+        assert "SMTP_HOST=localhost" in env
+        assert "SMTP_USE_TLS=false" in env
 
     def test_placeholders_are_rendered(self, tmp_path: Path) -> None:
         result = runner.invoke(app, ["new", "demo_svc", "--path", str(tmp_path)])

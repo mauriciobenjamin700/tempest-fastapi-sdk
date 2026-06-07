@@ -49,14 +49,14 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 === "uv add"
 
     ```bash
-    uv add "tempest-fastapi-sdk[auth,upload,postgres]>=0.37.0"
+    uv add "tempest-fastapi-sdk[auth,upload,postgres]>=0.38.0"
     ```
 
 === "pyproject.toml"
 
     ```toml
     dependencies = [
-        "tempest-fastapi-sdk[auth,upload,postgres]>=0.37.0",
+        "tempest-fastapi-sdk[auth,upload,postgres]>=0.38.0",
     ]
     ```
 

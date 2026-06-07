@@ -326,11 +326,13 @@ def env_block_for(extras: str) -> str:
     if "email" in extras_set:
         blocks.append(
             "\n# SMTP via MailHog (dev catch-all — UI at http://localhost:8025)\n"
-            "EMAIL_HOST=localhost\n"
-            "EMAIL_PORT=1025\n"
-            "EMAIL_FROM=noreply@localhost\n"
-            "EMAIL_USE_TLS=false\n"
-            "EMAIL_USE_STARTTLS=false\n"
+            "# Names match EmailSettings; MailHog speaks plain SMTP, so both\n"
+            "# TLS toggles are off (STARTTLS on a plain server would crash).\n"
+            "SMTP_HOST=localhost\n"
+            "SMTP_PORT=1025\n"
+            "SMTP_FROM_ADDR=noreply@localhost\n"
+            "SMTP_USE_TLS=false\n"
+            "SMTP_USE_SSL=false\n"
         )
 
     return "".join(blocks)

@@ -142,5 +142,14 @@ class TestEnvBlockFor:
 
     def test_email_block_when_email(self) -> None:
         out = env_block_for("email")
-        assert "EMAIL_HOST=localhost" in out
-        assert "EMAIL_PORT=1025" in out
+        # Must use the SMTP_* names EmailSettings actually reads — the old
+        # EMAIL_* names were silently ignored, leaving SMTP_USE_TLS at its
+        # True default and crashing STARTTLS against plain MailHog.
+        assert "SMTP_HOST=localhost" in out
+        assert "SMTP_PORT=1025" in out
+        assert "SMTP_FROM_ADDR=noreply@localhost" in out
+        # MailHog is plain SMTP: STARTTLS (SMTP_USE_TLS) must be off.
+        assert "SMTP_USE_TLS=false" in out
+        assert "SMTP_USE_SSL=false" in out
+        assert "EMAIL_HOST" not in out
+        assert "EMAIL_USE_STARTTLS" not in out

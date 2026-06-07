@@ -12,8 +12,10 @@ Passo a passo curtos no estilo "quero conectar X". Cada página começa com **qu
 | **[Banco de dados »](database.md)** | `BaseRepository`, `BaseModel`, `AuditMixin` / `SoftDeleteMixin`, paginação por cursor, helper de Alembic |
 | **[Camada HTTP »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware`, `make_health_router`, dependências de JWT / role / permissão, verificador de assinatura de webhook, headers Link de paginação, router de tool-spec |
 | **[Cache »](cache.md)** | `AsyncRedisManager`, decorator `@cached` |
-| **[Tempo real »](realtime.md)** | Server-Sent Events (`EventStream`), Web Push (`WebPushDispatcher`) |
+| **[Tempo real »](realtime.md)** | Server-Sent Events (`EventStream`, `sse_response`) |
 | **[Fila e Tarefas »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, outbox transacional |
+| **[Email transacional »](email.md)** | `EmailUtils` — SMTP, corpo texto/HTML, anexos, templates Jinja2 |
+| **[Web Push »](webpush.md)** | `WebPushDispatcher`, schemas VAPID, broadcast com poda |
 | **[Logging »](logging.md)** | `LogUtils`, logging JSON estruturado, propagação de request-ID |
 | **[Métricas »](metrics.md)** | `MetricsUtils` — snapshots de CPU / RAM / disco / GPU |
 | **[Painel admin »](admin.md)** | `AdminSite`, `AdminModel`, `make_admin_router`, `BaseUserModel` |

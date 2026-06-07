@@ -91,6 +91,8 @@ plugins:
             Tempo real: Real-time
             WebSocket router: WebSocket router
             Fila e Tarefas: Queue & Tasks
+            Email transacional: Transactional email
+            Web Push: Web Push
             Logging: Logging
             Storage (MinIO/S3): Storage (MinIO/S3)
             Uploads (backends): Uploads (backends)
@@ -199,6 +201,8 @@ nav:
       - Tempo real: recipes/realtime.md
       - WebSocket router: recipes/websocket.md
       - Fila e Tarefas: recipes/queue-tasks.md
+      - Email transacional: recipes/email.md
+      - Web Push: recipes/webpush.md
       - Logging: recipes/logging.md
       - Storage (MinIO/S3): recipes/storage.md
       - Uploads (backends): recipes/uploads.md

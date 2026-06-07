@@ -1,6 +1,6 @@
 # Real-time
 
-Push data to clients without the client polling. SSE for server→browser broadcasts, Web Push for notifications even when the page is closed.
+Push data to clients without the client polling. SSE for server→browser broadcasts while the page is open; for notifications that arrive even when the page is closed, see the dedicated [Web Push](webpush.md) recipe.
 
 ## Server-Sent Events (SSE)
 
@@ -62,48 +62,6 @@ es.addEventListener("counter", (e) => console.log("got", JSON.parse(e.data)));
 
 ## Web Push notifications
 
-
-`WebPushDispatcher` wraps the synchronous `pywebpush` library in `asyncio.to_thread` and surfaces the two errors the application cares about: `WebPushGoneError` (HTTP 404/410 — delete the subscription) and `WebPushError` (everything else). Install with `[webpush]`.
-
-```python
-# src/services/notifications.py
-from tempest_fastapi_sdk import (
-    WebPushDispatcher,
-    WebPushGoneError,
-    WebPushPayloadSchema,
-    WebPushSubscriptionSchema,
-)
-
-
-dispatcher = WebPushDispatcher(
-    settings.VAPID_PRIVATE_KEY,
-    vapid_subject="mailto:ops@example.com",
-    ttl_seconds=60,
-)
-
-
-async def notify_order_paid(
-    subscription: WebPushSubscriptionSchema,
-    order_id: str,
-) -> None:
-    payload = WebPushPayloadSchema(
-        title="Pagamento confirmado",
-        body=f"Pedido {order_id} aprovado.",
-        icon="/static/icons/order.png",
-        data={"orderId": order_id, "url": f"/orders/{order_id}"},
-    )
-    try:
-        await dispatcher.send(subscription, payload)
-    except WebPushGoneError:
-        # Prune the subscription from your store.
-        await subscriptions_repo.delete_by_endpoint(subscription.endpoint)
-
-
-async def broadcast(subs: list[WebPushSubscriptionSchema], payload: WebPushPayloadSchema) -> None:
-    gone = await dispatcher.send_many(subs, payload)
-    if gone:
-        await subscriptions_repo.delete_by_endpoints(gone)
-```
-
-`WebPushSubscriptionSchema` round-trips the exact JSON `PushSubscription.toJSON()` emits in the browser (it aliases `expiration_time` ↔ `expirationTime`), so you can store inbound subscriptions verbatim and replay them on dispatch.
+Web Push (notifications that arrive even when the page is closed) has its
+own recipe — see **[Web Push »](webpush.md)**.
 

@@ -1,6 +1,6 @@
 # Tempo real
 
-Empurre dados para os clientes sem que o cliente fique fazendo polling. SSE para broadcasts servidor→navegador, Web Push para notificações mesmo com a página fechada.
+Empurre dados para os clientes sem que o cliente fique fazendo polling. SSE para broadcasts servidor→navegador com a página aberta; para notificações que chegam mesmo com a página fechada, veja a receita dedicada de [Web Push](webpush.md).
 
 ## Server-Sent Events (SSE)
 
@@ -62,47 +62,5 @@ es.addEventListener("counter", (e) => console.log("got", JSON.parse(e.data)));
 
 ## Notificações Web Push
 
-
-`WebPushDispatcher` embrulha a biblioteca síncrona `pywebpush` em `asyncio.to_thread` e expõe os dois erros que importam para a aplicação: `WebPushGoneError` (HTTP 404/410 — apague a inscrição) e `WebPushError` (todo o resto). Instale com `[webpush]`.
-
-```python
-# src/services/notifications.py
-from tempest_fastapi_sdk import (
-    WebPushDispatcher,
-    WebPushGoneError,
-    WebPushPayloadSchema,
-    WebPushSubscriptionSchema,
-)
-
-
-dispatcher = WebPushDispatcher(
-    settings.VAPID_PRIVATE_KEY,
-    vapid_subject="mailto:ops@example.com",
-    ttl_seconds=60,
-)
-
-
-async def notify_order_paid(
-    subscription: WebPushSubscriptionSchema,
-    order_id: str,
-) -> None:
-    payload = WebPushPayloadSchema(
-        title="Pagamento confirmado",
-        body=f"Pedido {order_id} aprovado.",
-        icon="/static/icons/order.png",
-        data={"orderId": order_id, "url": f"/orders/{order_id}"},
-    )
-    try:
-        await dispatcher.send(subscription, payload)
-    except WebPushGoneError:
-        # Prune the subscription from your store.
-        await subscriptions_repo.delete_by_endpoint(subscription.endpoint)
-
-
-async def broadcast(subs: list[WebPushSubscriptionSchema], payload: WebPushPayloadSchema) -> None:
-    gone = await dispatcher.send_many(subs, payload)
-    if gone:
-        await subscriptions_repo.delete_by_endpoints(gone)
-```
-
-`WebPushSubscriptionSchema` faz round-trip exato do JSON que `PushSubscription.toJSON()` emite no navegador (ele faz o alias `expiration_time` ↔ `expirationTime`), então você pode armazenar inscrições recebidas literalmente e reproduzi-las no envio.
+Web Push (notificações que chegam mesmo com a página fechada) tem
+receita própria — veja **[Web Push »](webpush.md)**.

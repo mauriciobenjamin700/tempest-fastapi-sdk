@@ -5,6 +5,40 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.38.0] — 2026-06-07
+
+### Fixed
+
+- **Email config from a generated `.env` silently did nothing, then
+  crashed against MailHog.** The `[email]` block that `tempest new` /
+  `tempest generate --docker` wrote to `.env.example` used `EMAIL_*`
+  names (`EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`,
+  `EMAIL_USE_STARTTLS`), but `EmailSettings` reads `SMTP_*`. The values
+  were ignored, leaving `SMTP_USE_TLS` at its `True` default, so STARTTLS
+  was forced and aiosmtplib raised `SMTPException: SMTP STARTTLS extension
+  not supported by server.` against plain MailHog. The block now emits the
+  correct `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM_ADDR` plus
+  `SMTP_USE_TLS=false` + `SMTP_USE_SSL=false` for MailHog.
+
+### Added
+
+- **`EmailSettings.email_kwargs()`** — maps the `SMTP_*` settings onto the
+  `EmailUtils` constructor (`SMTP_USE_TLS`→`use_starttls`,
+  `SMTP_USE_SSL`→`use_tls`), so the long-documented
+  `EmailUtils(**settings.email_kwargs())` recipe actually works. The
+  method was referenced in the docstring but never existed.
+- **Recipes for transactional email and Web Push** on the docs site
+  (`recipes/email.md` + `recipes/webpush.md`, bilingual). Web Push moved
+  out of the buried "Real-time" section into its own discoverable page.
+
+### Changed
+
+- **Every `*Settings` docstring now lists its fields.** All 16 settings
+  classes in `settings/mixins.py` gained a Google-style `Attributes:`
+  section enumerating each field — i.e. the exact environment-variable
+  name, its type, purpose, and default — so users no longer have to read
+  the source to find which env var to set.
+
 ## [0.37.0] — 2026-06-07
 
 ### Added

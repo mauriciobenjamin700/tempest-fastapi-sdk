@@ -20,12 +20,24 @@ box.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
 class ServerSettings(BaseSettings):
-    """HTTP server bind configuration."""
+    """HTTP server bind configuration.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        SERVER_HOST (str): Interface to bind to. Default: ``"127.0.0.1"``.
+        SERVER_PORT (int): TCP port the application listens on. Default: ``8000``.
+        SERVER_RELOAD (bool): Hot-reload on file changes (dev only). Default: ``False``.
+        SERVER_DEBUG (bool): Generic application debug flag. Default: ``False``.
+    """
 
     SERVER_HOST: str = Field(
         default="127.0.0.1",
@@ -65,7 +77,18 @@ class ServerSettings(BaseSettings):
 
 
 class LogSettings(BaseSettings):
-    """Structured logging configuration."""
+    """Structured logging configuration.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        LOG_LEVEL (str): Default logger level for ``configure_logging``.
+            Default: ``"INFO"``.
+        LOG_JSON (bool): Emit stdout logs as JSON. Default: ``True``.
+        LOG_DIR (str): Directory for per-level + ``500.log`` files; empty
+            disables file logging. Default: ``"logs"``.
+    """
 
     LOG_LEVEL: str = Field(
         default="INFO",
@@ -94,7 +117,23 @@ class LogSettings(BaseSettings):
 
 
 class DatabaseSettings(BaseSettings):
-    """SQLAlchemy database connection configuration."""
+    """SQLAlchemy database connection configuration.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        DATABASE_URL (str): Async SQLAlchemy connection URL.
+            Default: ``"sqlite+aiosqlite:///./app.db"``.
+        DATABASE_ECHO (bool): Print every SQL statement to the logger
+            (dev only). Default: ``False``.
+        DATABASE_POOL_SIZE (int): Number of persistent pool connections.
+            Default: ``10``.
+        DATABASE_MAX_OVERFLOW (int): Max extra connections opened past the
+            pool size under load. Default: ``20``.
+        DATABASE_POOL_RECYCLE (int): Seconds before a pooled connection is
+            recycled. Default: ``3600``.
+    """
 
     DATABASE_URL: str = Field(
         default="sqlite+aiosqlite:///./app.db",
@@ -141,7 +180,17 @@ class DatabaseSettings(BaseSettings):
 
 
 class RedisSettings(BaseSettings):
-    """Redis connection configuration."""
+    """Redis connection configuration.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        REDIS_URL (str): ``redis://[user:pass@]host:port/db`` connection URL.
+            Default: ``"redis://localhost:6379/0"``.
+        REDIS_DECODE_RESPONSES (bool): Decode bytes to ``str`` automatically.
+            Default: ``True``.
+    """
 
     REDIS_URL: str = Field(
         default="redis://localhost:6379/0",
@@ -164,7 +213,17 @@ class RedisSettings(BaseSettings):
 
 
 class RabbitMQSettings(BaseSettings):
-    """RabbitMQ / FastStream broker configuration."""
+    """RabbitMQ / FastStream broker configuration.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        RABBITMQ_URL (str): ``amqp://user:pass@host:port/vhost`` connection
+            URL. Default: ``"amqp://guest:guest@localhost:5672/"``.
+        RABBITMQ_PREFETCH_COUNT (int): Number of unacked messages a consumer
+            can hold. Default: ``10``.
+    """
 
     RABBITMQ_URL: str = Field(
         default="amqp://guest:guest@localhost:5672/",
@@ -188,7 +247,23 @@ class RabbitMQSettings(BaseSettings):
 
 
 class JWTSettings(BaseSettings):
-    """JWT signing and verification configuration."""
+    """JWT signing and verification configuration.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        JWT_SECRET (str): Shared secret used to sign JWTs (>= 32 bytes for
+            HS256). Default: ``"change-me-change-me-change-me-32"``.
+        JWT_ALGORITHM (str): JOSE algorithm used to sign and verify tokens.
+            Default: ``"HS256"``.
+        JWT_ACCESS_TTL_SECONDS (int): Lifetime of issued access tokens.
+            Default: ``3600``.
+        JWT_REFRESH_TTL_SECONDS (int): Lifetime of issued refresh tokens.
+            Default: ``604800``.
+        JWT_ISSUER (str | None): Value of the ``iss`` claim; ``None`` omits
+            it. Default: ``None``.
+    """
 
     JWT_SECRET: str = Field(
         default="change-me-change-me-change-me-32",
@@ -239,6 +314,23 @@ class CORSSettings(BaseSettings):
         explicit list of trusted frontend origins. ``"*"`` is also
         incompatible with ``CORS_ALLOW_CREDENTIALS=True`` (browsers
         ignore credentialed requests sent to a wildcard origin).
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        CORS_ORIGINS (list[str]): Allowed origins; override in production.
+            Default: ``["*"]``.
+        CORS_ALLOW_CREDENTIALS (bool): Allow cookies / auth headers
+            cross-origin. Default: ``False``.
+        CORS_ALLOW_METHODS (list[str]): HTTP verbs accepted by the preflight
+            check. Default: ``["*"]``.
+        CORS_ALLOW_HEADERS (list[str]): Request headers accepted by the
+            preflight check. Default: ``["*"]``.
+        CORS_EXPOSE_HEADERS (list[str]): Headers exposed to browser
+            JavaScript. Default: ``["X-Request-ID"]``.
+        CORS_MAX_AGE (int): How long the browser may cache the preflight
+            response (seconds). Default: ``600``.
     """
 
     CORS_ORIGINS: list[str] = Field(
@@ -299,6 +391,25 @@ class EmailSettings(BaseSettings):
     Mirrors the constructor arguments of
     :class:`tempest_fastapi_sdk.EmailUtils` so a service can wire it up
     with ``EmailUtils(**settings.email_kwargs())``.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        SMTP_HOST (str): Hostname of the SMTP server. Default: ``"localhost"``.
+        SMTP_PORT (int): TCP port for the SMTP connection. Default: ``587``.
+        SMTP_USERNAME (str | None): Auth username; ``None`` disables SMTP
+            auth. Default: ``None``.
+        SMTP_PASSWORD (str | None): Auth password, paired with the username.
+            Default: ``None``.
+        SMTP_FROM_ADDR (str): Default ``From`` address when the caller omits
+            one. Default: ``"noreply@example.com"``.
+        SMTP_USE_TLS (bool): Negotiate STARTTLS after connect (port 587).
+            Default: ``True``.
+        SMTP_USE_SSL (bool): Wrap the connection in TLS from the start
+            (SMTPS, port 465). Default: ``False``.
+        SMTP_TIMEOUT_SECONDS (float): Network timeout for SMTP operations.
+            Default: ``30.0``.
     """
 
     SMTP_HOST: str = Field(
@@ -368,12 +479,57 @@ class EmailSettings(BaseSettings):
         examples=[5.0, 30.0, 60.0],
     )
 
+    def email_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto :class:`EmailUtils` constructor kwargs.
+
+        The setting names follow SMTP conventions while
+        :class:`tempest_fastapi_sdk.EmailUtils` uses transport-oriented
+        names, so this method bridges the two:
+
+        * ``SMTP_USE_TLS`` (STARTTLS after connect, port 587) maps to
+          ``use_starttls``.
+        * ``SMTP_USE_SSL`` (implicit TLS from connect, port 465) maps to
+          ``use_tls``.
+
+        Returns:
+            dict[str, Any]: Keyword arguments ready to splat into
+            ``EmailUtils(**settings.email_kwargs())``.
+
+        Example:
+
+            >>> from tempest_fastapi_sdk import EmailUtils
+            >>> mailer = EmailUtils(**settings.email_kwargs())
+        """
+        return {
+            "host": self.SMTP_HOST,
+            "port": self.SMTP_PORT,
+            "from_addr": self.SMTP_FROM_ADDR,
+            "username": self.SMTP_USERNAME,
+            "password": self.SMTP_PASSWORD,
+            "use_tls": self.SMTP_USE_SSL,
+            "use_starttls": self.SMTP_USE_TLS,
+            "timeout": self.SMTP_TIMEOUT_SECONDS,
+        }
+
 
 class UploadSettings(BaseSettings):
     """File upload constraints.
 
     Mirrors the constructor arguments of
     :class:`tempest_fastapi_sdk.UploadUtils`.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        UPLOAD_DIR (str): Root directory where uploaded files are persisted.
+            Default: ``"./var/uploads"``.
+        UPLOAD_MAX_SIZE_BYTES (int): Hard limit per file; ``0`` disables the
+            check. Default: ``10485760``.
+        UPLOAD_ALLOWED_EXTENSIONS (set[str]): Allowed lowercase extensions;
+            empty means any. Default: ``set()``.
+        UPLOAD_ALLOWED_MIMETYPES (set[str]): Allowed MIME types; empty means
+            any. Default: ``set()``.
     """
 
     UPLOAD_DIR: str = Field(
@@ -415,6 +571,13 @@ class TokenSettings(BaseSettings):
     Used by :func:`tempest_fastapi_sdk.make_token_dependency` for
     internal service-to-service authentication. Validation is performed
     with :func:`hmac.compare_digest`.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        TOKEN_SECRET (str): Expected ``X-Token`` header value; empty
+            disables the check. Default: ``""``.
     """
 
     TOKEN_SECRET: str = Field(
@@ -433,6 +596,19 @@ class WebPushSettings(BaseSettings):
 
     Mirrors the constructor arguments of
     :class:`tempest_fastapi_sdk.WebPushDispatcher`.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        VAPID_PUBLIC_KEY (str): URL-safe base64 VAPID public key.
+            Default: ``""``.
+        VAPID_PRIVATE_KEY (str): URL-safe base64 VAPID private key.
+            Default: ``""``.
+        VAPID_SUBJECT (str): ``mailto:`` / ``https://`` contact in the VAPID
+            JWT. Default: ``"mailto:admin@example.com"``.
+        WEBPUSH_DEFAULT_TTL_SECONDS (int): Default TTL for outgoing
+            notifications. Default: ``86400``.
     """
 
     VAPID_PUBLIC_KEY: str = Field(
@@ -473,6 +649,15 @@ class TaskIQSettings(BaseSettings):
     Use this when the TaskIQ broker is **not** the same RabbitMQ /
     Redis instance covered by :class:`RabbitMQSettings` /
     :class:`RedisSettings`.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        TASKIQ_BROKER_URL (str): URL of the TaskIQ broker (AMQP, Redis,
+            in-memory). Default: ``"amqp://guest:guest@localhost:5672/"``.
+        TASKIQ_RESULT_BACKEND_URL (str | None): Optional result backend URL;
+            ``None`` keeps results in-memory. Default: ``None``.
     """
 
     TASKIQ_BROKER_URL: str = Field(
@@ -503,6 +688,57 @@ class AuthSettings(BaseSettings):
     and :func:`tempest_fastapi_sdk.make_auth_router`. Each flag
     has a sensible production default; flip ``AUTH_AUTO_ACTIVATE``
     or ``AUTH_RETURN_TOKEN_IN_RESPONSE`` only in dev / CI.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        AUTH_AUTO_ACTIVATE (bool): Mark users active on signup, skipping the
+            activation email. Default: ``False``.
+        AUTH_RETURN_TOKEN_IN_RESPONSE (bool): Include the activation / reset
+            link in the JSON response. Default: ``False``.
+        AUTH_ACTIVATION_TTL_SECONDS (int): How long an activation token stays
+            valid. Default: ``604800``.
+        AUTH_PASSWORD_RESET_TTL_SECONDS (int): How long a password-reset
+            token stays valid. Default: ``3600``.
+        AUTH_ACTIVATION_URL_TEMPLATE (str): Front-end activation URL;
+            ``{token}`` is substituted.
+            Default: ``"http://localhost:3000/activate?token={token}"``.
+        AUTH_PASSWORD_RESET_URL_TEMPLATE (str): Front-end reset URL;
+            ``{token}`` is substituted.
+            Default: ``"http://localhost:3000/reset-password?token={token}"``.
+        AUTH_ACTIVATION_TEMPLATE (str): Jinja2 activation email template
+            filename. Default: ``"activation.html"``.
+        AUTH_PASSWORD_RESET_TEMPLATE (str): Jinja2 password-reset email
+            template filename. Default: ``"password_reset.html"``.
+        AUTH_PASSWORD_MIN_LENGTH (int): Minimum accepted password length.
+            Default: ``12``.
+        AUTH_PASSWORD_REQUIRE_COMPLEXITY (bool): Require character-class
+            complexity (and >= 8 length). Default: ``False``.
+        AUTH_BACKEND_LINKS (bool): Mount backend-rendered activation/reset
+            HTML pages. Default: ``False``.
+        AUTH_LOGIN_URL (str | None): Login URL shown on backend success
+            pages; ``None`` hides the button. Default: ``None``.
+        AUTH_ACTIVATION_SUCCESS_TEMPLATE (str): Backend activation success
+            page template. Default: ``"activation_success.html"``.
+        AUTH_ACTIVATION_ERROR_TEMPLATE (str): Backend activation error page
+            template. Default: ``"activation_error.html"``.
+        AUTH_PASSWORD_RESET_FORM_TEMPLATE (str): Backend reset form page
+            template. Default: ``"password_reset_form.html"``.
+        AUTH_PASSWORD_RESET_SUCCESS_TEMPLATE (str): Backend reset success
+            page template. Default: ``"password_reset_success.html"``.
+        AUTH_PASSWORD_RESET_ERROR_TEMPLATE (str): Backend reset error page
+            template. Default: ``"password_reset_error.html"``.
+        AUTH_MFA_ENABLED (bool): Kill-switch enabling the MFA endpoints and
+            TOTP login flow. Default: ``False``.
+        AUTH_MFA_ISSUER (str): Issuer label shown in the Authenticator app.
+            Default: ``"Tempest"``.
+        AUTH_MFA_RECOVERY_CODES_COUNT (int): Number of single-use recovery
+            codes generated at enrollment. Default: ``10``.
+        AUTH_MFA_TOKEN_TTL_SECONDS (int): Lifetime of the intermediate MFA
+            login token. Default: ``300``.
+        AUTH_MFA_VERIFY_WINDOW (int): TOTP clock-drift tolerance in 30s
+            steps. Default: ``1``.
     """
 
     AUTH_AUTO_ACTIVATE: bool = Field(
@@ -778,6 +1014,20 @@ class MinIOSettings(BaseSettings):
     Consumed by :class:`tempest_fastapi_sdk.AsyncMinIOClient`. The
     same shape works for any S3-compatible target (AWS S3, MinIO,
     Backblaze B2, Cloudflare R2, Wasabi, DigitalOcean Spaces).
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        MINIO_ENDPOINT (str): ``host[:port]`` without scheme.
+            Default: ``"localhost:9000"``.
+        MINIO_ACCESS_KEY (str): S3 access key / IAM user.
+            Default: ``"minioadmin"``.
+        MINIO_SECRET_KEY (str): S3 secret key. Default: ``"minioadmin"``.
+        MINIO_SECURE (bool): Use HTTPS when ``True``. Default: ``False``.
+        MINIO_REGION (str): S3 region. Default: ``"us-east-1"``.
+        MINIO_DEFAULT_BUCKET (str): Bucket ensured and used as the implicit
+            target. Default: ``"uploads"``.
     """
 
     MINIO_ENDPOINT: str = Field(
@@ -840,6 +1090,28 @@ class SessionSettings(BaseSettings):
     HTTPS in production (``SESSION_COOKIE_SECURE=True``) and a
     same-site SaaS topology (``SESSION_COOKIE_SAMESITE="lax"``) —
     relax both only for local HTTP development.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        SESSION_TTL_SECONDS (int): Lifetime of a server-side session.
+            Default: ``86400``.
+        SESSION_SLIDING (bool): Refresh ``expires_at`` on every request.
+            Default: ``True``.
+        SESSION_COOKIE_NAME (str): Name of the session cookie.
+            Default: ``"tempest_session"``.
+        SESSION_COOKIE_DOMAIN (str | None): Cookie ``Domain`` attribute;
+            ``None`` scopes to the issuing host. Default: ``None``.
+        SESSION_COOKIE_PATH (str): Cookie ``Path`` attribute. Default: ``"/"``.
+        SESSION_COOKIE_SECURE (bool): Send the cookie only over HTTPS.
+            Default: ``True``.
+        SESSION_COOKIE_HTTPONLY (bool): Hide the cookie from page JavaScript.
+            Default: ``True``.
+        SESSION_COOKIE_SAMESITE (str): Cookie ``SameSite`` policy
+            (``lax``/``strict``/``none``). Default: ``"lax"``.
+        SESSION_ROTATE_ON_LOGIN (bool): Issue a new session id on login.
+            Default: ``True``.
     """
 
     SESSION_TTL_SECONDS: int = Field(
@@ -946,6 +1218,19 @@ class WebSocketSettings(BaseSettings):
     typical browser ↔ FastAPI deployments — heartbeats every 30s,
     drop after 60s without pong, five concurrent connections per
     user.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        WS_HEARTBEAT_SECONDS (int): How often the server sends a ping frame.
+            Default: ``30``.
+        WS_HEARTBEAT_TIMEOUT_SECONDS (int): Max ping-to-pong delay before
+            force-close. Default: ``60``.
+        WS_MAX_CONNECTIONS_PER_USER (int): Cap on concurrent connections per
+            user. Default: ``5``.
+        WS_MAX_MESSAGE_BYTES (int): Reject inbound frames larger than this.
+            Default: ``65536``.
     """
 
     WS_HEARTBEAT_SECONDS: int = Field(

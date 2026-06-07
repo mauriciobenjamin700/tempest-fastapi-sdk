@@ -71,7 +71,7 @@ tempest new my_service --extras auth,cache,minio,email
 Generates:
 
 - `postgres`, `redis`, `minio` (+ `minio-bootstrap` creating the `uploads` bucket), `mailhog`
-- `.env.example` with `REDIS_URL`, `MINIO_*`, `EMAIL_HOST=localhost`, `EMAIL_PORT=1025`
+- `.env.example` with `REDIS_URL`, `MINIO_*`, `SMTP_HOST=localhost`, `SMTP_PORT=1025`, `SMTP_USE_TLS=false` (MailHog is plain — no STARTTLS)
 
 !!! info "Credentials come from `.env`, not hardcoded in the compose"
     As of v0.37.0, no credential is written straight into

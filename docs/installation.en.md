@@ -49,14 +49,14 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 === "uv add"
 
     ```bash
-    uv add "tempest-fastapi-sdk[auth,upload,postgres]>=0.37.0"
+    uv add "tempest-fastapi-sdk[auth,upload,postgres]>=0.38.0"
     ```
 
 === "pyproject.toml"
 
     ```toml
     dependencies = [
-        "tempest-fastapi-sdk[auth,upload,postgres]>=0.37.0",
+        "tempest-fastapi-sdk[auth,upload,postgres]>=0.38.0",
     ]
     ```
 
