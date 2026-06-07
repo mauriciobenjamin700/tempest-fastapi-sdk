@@ -5,6 +5,62 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.41.0] — 2026-06-07
+
+### Changed (breaking)
+
+- **`UploadUtils` and `DownloadUtils` now take the backend at construction**
+  — a local folder **or** an `AsyncMinIOClient` — so callers stop passing it
+  on every call and the same code works for disk or object storage:
+  `UploadUtils("var/uploads")` / `UploadUtils(minio)`,
+  `DownloadUtils("var/uploads")` / `DownloadUtils(minio)`.
+    - `UploadUtils.save(...)` **dropped the per-call `storage=` argument**;
+      it now returns the storage **key** (relative `Path`), not an absolute
+      local path. `UploadUtils.delete(key)` is now **async**. The first
+      constructor parameter was renamed `upload_dir` → `source`
+      (`UploadSettings.upload_kwargs()` updated to match).
+    - Migration: `UploadUtils(tmp) + save(file, storage=MinIOUploadStorage(c))`
+      → `UploadUtils(c) + save(file)`; `path = save(...)` consumers that read
+      the file back should store the key and use `DownloadUtils.download(key)`.
+
+### Added
+
+- **Download objects from MinIO/S3 through the app.**
+  `AsyncMinIOClient.download_response(key, ...)` stats + streams an object
+  into a ready `StreamingResponse` (Content-Disposition / type / length) —
+  no disk, no full-memory load. `DownloadUtils(minio).download(key)` wraps
+  it so local and MinIO downloads share one call (`download()`), while
+  `file_response`/`resolve` stay local-only.
+
+### Changed
+
+- **Scaffold: infra singletons moved to `src/api/dependencies/resources.py`.**
+  `tempest new` now builds the database manager once in `resources.py`
+  (`db = AsyncDatabaseManager(**settings.database_kwargs())`) and exposes
+  `get_db` / `get_session` providers; `app.py` imports `db` instead of
+  constructing it inline, keeping the factory thin. Storage/mail follow the
+  same shape (commented, opt-in with `[minio]`/`[email]`). The generated
+  admin now enables the logs page (`show_logs=True`). Docs (architecture,
+  tutorial, admin recipe) teach the same pattern.
+
+### Fixed
+
+- **Admin "+ New" button was white-on-white** (invisible): the
+  `.tempest-admin-list__actions a` rule outweighed `.tempest-admin-list__new`,
+  so the accent background was lost while the text stayed white. Scoped the
+  button rule to win specificity.
+- **Admin desktop sidebar didn't span the full height** when page content
+  was short. The layout is now a sticky-footer flex column so the sidebar
+  always reaches the footer.
+
+### Added
+
+- **Docs: three previously-missing util recipes** (bilingual) — `Downloads`
+  (`DownloadUtils` + `build_content_disposition`), `HTTP client (outbound)`
+  (`HTTPClient` + `RetryPolicy` + circuit-breaker, which had zero recipe
+  coverage), and `Utilities` (`utcnow`/`to_utc`, `modify_dict`,
+  `get_client_ip`, opaque tokens). Added to the nav and the recipes index.
+
 ## [0.39.0] — 2026-06-07
 
 ### Added

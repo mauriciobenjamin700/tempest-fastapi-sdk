@@ -119,7 +119,7 @@ def test_upload_utils_raises_clear_error_without_extra(
     _drop_module("tempest_fastapi_sdk")
     pkg = importlib.import_module("tempest_fastapi_sdk")
     with pytest.raises(ImportError, match=r"\[upload\] extra"):
-        pkg.UploadUtils(upload_dir=tmp_path)
+        pkg.UploadUtils(tmp_path)
 
 
 def test_metrics_utils_raises_clear_error_without_extra(hide_module: Any) -> None:

@@ -22,6 +22,11 @@ body {
   font-size: 14px;
   color: var(--tempest-fg);
   background: #f8fafc;
+  /* Sticky-footer column so the layout (and its sidebar) fills the
+     viewport even when the page content is short. */
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 a {
@@ -115,6 +120,7 @@ textarea {
 .tempest-admin-layout {
   display: flex;
   align-items: stretch;
+  flex: 1;            /* fill the viewport so the sidebar is full-height */
 }
 
 .tempest-admin-sidebar {
@@ -533,14 +539,19 @@ textarea {
   background: #991b1b;
 }
 
-.tempest-admin-list__new {
+/* Scoped under __actions so it beats `.tempest-admin-list__actions a`
+   (otherwise the white action-link background won + white text = invisible). */
+.tempest-admin-list__actions a.tempest-admin-list__new,
+a.tempest-admin-list__new {
   background: var(--tempest-accent);
-  color: #fff !important;
+  color: #fff;
   border-color: var(--tempest-accent);
 }
 
-.tempest-admin-list__new:hover {
+.tempest-admin-list__actions a.tempest-admin-list__new:hover,
+a.tempest-admin-list__new:hover {
   background: var(--tempest-accent-hover);
+  color: #fff;
 }
 
 /* Create / edit form. */

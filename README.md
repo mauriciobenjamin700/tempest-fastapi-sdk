@@ -89,7 +89,7 @@ Via `pyproject.toml`:
 
 ```toml
 dependencies = [
-    "tempest-fastapi-sdk>=0.39.0",
+    "tempest-fastapi-sdk>=0.41.0",
 ]
 ```
 
@@ -1081,7 +1081,7 @@ from src.core.settings import settings
 
 
 avatar_storage = UploadUtils(
-    upload_dir=f"{settings.UPLOAD_DIR}/avatars",
+    f"{settings.UPLOAD_DIR}/avatars",          # local folder, or pass an AsyncMinIOClient
     max_size_bytes=5 * 1024 * 1024,            # 5 MiB
     allowed_extensions={"png", "jpg", "jpeg", "webp"},
     allowed_mimetypes={"image/png", "image/jpeg", "image/webp"},
@@ -1120,9 +1120,9 @@ Add `set_avatar` to both the service and the controller (the controller stays a 
 class UserService:
     async def set_avatar(self, user_id: UUID, path: str) -> UserResponseSchema:
         user = await self.repo.get_by_id(user_id)
-        # Delete previous file when replacing.
+        # Delete previous file when replacing (delete() is async).
         if user.avatar_path and user.avatar_path != path:
-            avatar_storage.delete(user.avatar_path)
+            await avatar_storage.delete(user.avatar_path)
         user.avatar_path = path
         user = await self.repo.update(user)
         return self.repo.map_to_response(user)
@@ -1178,7 +1178,7 @@ from tempest_fastapi_sdk import DownloadUtils
 from src.core.settings import settings
 
 
-invoice_files = DownloadUtils(base_dir=f"{settings.UPLOAD_DIR}/invoices")
+invoice_files = DownloadUtils(f"{settings.UPLOAD_DIR}/invoices")  # local folder, or an AsyncMinIOClient
 ```
 
 ```python

@@ -11,14 +11,22 @@ Depends only on Starlette responses, which ship with FastAPI — no optional
 extra is required.
 """
 
+from __future__ import annotations
+
 import mimetypes
 from collections.abc import AsyncIterable, Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 from fastapi.responses import FileResponse, StreamingResponse
 
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
+
+if TYPE_CHECKING:
+    from starlette.responses import Response
+
+    from tempest_fastapi_sdk.storage.minio_client import AsyncMinIOClient
 
 _DEFAULT_MEDIA_TYPE: str = "application/octet-stream"
 
@@ -52,28 +60,95 @@ def build_content_disposition(filename: str, *, as_attachment: bool = True) -> s
 
 
 class DownloadUtils:
-    """Serve files from a base directory as inline or attachment responses.
+    """Serve files for download — from a local directory **or** MinIO.
 
-    All disk reads are confined to ``base_dir``: a relative path that
+    Pick the backend **once at construction**:
+
+    * pass a directory (``DownloadUtils("var/uploads")``) to serve files
+      from local disk, or
+    * pass an :class:`~tempest_fastapi_sdk.AsyncMinIOClient`
+      (``DownloadUtils(minio_client)``) to stream objects straight from a
+      bucket.
+
+    Then call :meth:`download` with the file's path/key for either backend.
+    For local disk, all reads are confined to ``base_dir``: a path that
     resolves outside it (``../`` traversal, absolute paths, symlink
     escapes) raises :class:`NotFoundException` rather than leaking
-    arbitrary files. The same 404 is raised when the target does not
-    exist or is not a regular file, so callers never have to special-case
-    the difference between "missing" and "forbidden".
+    arbitrary files — the same 404 as a missing file.
 
     Attributes:
-        base_dir (Path): Resolved root every served file must live under.
+        base_dir (Path | None): Resolved local root, or ``None`` in MinIO
+            mode.
     """
 
-    def __init__(self, base_dir: Path | str) -> None:
-        """Initialize.
+    def __init__(self, source: str | Path | AsyncMinIOClient) -> None:
+        """Initialize with a local directory or a MinIO client.
 
         Args:
-            base_dir (Path | str): Root directory files are served from.
-                Resolved to an absolute path on construction; the
-                directory is not required to exist yet.
+            source (str | Path | AsyncMinIOClient): A directory path to
+                serve files from local disk, or an ``AsyncMinIOClient`` to
+                stream objects from a bucket. The local directory is
+                resolved to an absolute path; it need not exist yet.
         """
-        self.base_dir: Path = Path(base_dir).resolve()
+        if isinstance(source, (str, Path)):
+            self.base_dir: Path | None = Path(source).resolve()
+            self._minio: AsyncMinIOClient | None = None
+        else:
+            self.base_dir = None
+            self._minio = source
+
+    async def download(
+        self,
+        key: str,
+        *,
+        subdir: str = "",
+        filename: str | None = None,
+        media_type: str | None = None,
+        as_attachment: bool = True,
+        headers: dict[str, str] | None = None,
+    ) -> Response:
+        """Build a download response for ``key`` from the configured backend.
+
+        Works the same for both backends: local disk returns a streamed
+        ``FileResponse`` (range-aware), MinIO returns a ``StreamingResponse``
+        proxied from the bucket.
+
+        Args:
+            key (str): File path (local, relative to ``base_dir``) or object
+                key (MinIO).
+            subdir (str): Optional sub-directory / key prefix.
+            filename (str | None): Name presented to the client. Defaults to
+                the basename of ``key``.
+            media_type (str | None): MIME type. Guessed/derived when omitted.
+            as_attachment (bool): ``True`` forces a download; ``False`` inline.
+            headers (dict[str, str] | None): Extra response headers.
+
+        Returns:
+            Response: A ``FileResponse`` (local) or ``StreamingResponse``
+            (MinIO) ready to return from a router.
+
+        Raises:
+            NotFoundException: Local mode, when the path escapes ``base_dir``
+                or the file is missing.
+            S3Error: MinIO mode, when the object is missing.
+        """
+        if self._minio is not None:
+            object_key = f"{subdir.rstrip('/')}/{key}" if subdir else key
+            return await self._minio.download_response(
+                object_key,
+                filename=filename,
+                media_type=media_type,
+                as_attachment=as_attachment,
+                headers=headers,
+            )
+        return self.file_response(
+            key,
+            subdir=subdir,
+            filename=filename,
+            media_type=media_type,
+            as_attachment=as_attachment,
+            headers=headers,
+        )
 
     def resolve(self, relative_path: Path | str, *, subdir: str = "") -> Path:
         """Resolve a client-supplied path safely under ``base_dir``.
@@ -91,7 +166,14 @@ class DownloadUtils:
         Raises:
             NotFoundException: If the path escapes ``base_dir``, does not
                 exist, or is not a regular file.
+            RuntimeError: When this ``DownloadUtils`` was built with a MinIO
+                client (no local ``base_dir``) — use :meth:`download`.
         """
+        if self.base_dir is None:
+            raise RuntimeError(
+                "resolve()/file_response() need a local DownloadUtils; "
+                "this one is MinIO-backed — call download(key) instead."
+            )
         root: Path = (self.base_dir / subdir).resolve() if subdir else self.base_dir
         target: Path = (root / relative_path).resolve()
 

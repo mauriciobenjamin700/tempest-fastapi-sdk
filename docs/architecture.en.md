@@ -50,9 +50,9 @@ The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.B
     ├── __init__.py                  # re-exports run from src.server
     ├── server.py                    # programmatic uvicorn.run() + module-level FastAPI app
     ├── api/
-    │   ├── app.py                   # create_app() factory + middleware + exception handlers
+    │   ├── app.py                   # create_app() factory — middleware + handlers + wiring (thin)
     │   ├── routers/                 # HTTP endpoints, no business logic
-    │   ├── dependencies/            # PACKAGE (auth.py + controllers.py / services.py)
+    │   ├── dependencies/            # PACKAGE (auth.py + resources.py + controllers.py / services.py)
     │   └── docs/                    # OpenAPI customization
     ├── controllers/                 # Orchestrate between services
     ├── services/                    # Business logic layer
@@ -71,7 +71,8 @@ The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.B
     - `main.py` at the service root is a **one-liner** that imports `run` from `src.server`. Never `subprocess.run(["uvicorn", ...])`.
     - `src/server.py` exposes both a `run()` function and the importable `app` instance.
     - `api/dependencies/` is **always a package**, never a flat file. Auth lives in `auth.py`; factory providers live in `controllers.py` (or `services.py` when there is no controller layer yet).
-    - Routers receive controllers via `Depends`, never constructed inline.
+    - **Infra singletons (db / storage / mail) live in `dependencies/resources.py`**, built once (`db = AsyncDatabaseManager(**settings.database_kwargs())`) and reached through `get_db` / `get_session` / `get_storage` / `get_mailer` providers. `app.py` **imports** those resources for the lifespan and router wiring — it never builds them inline. This keeps `app.py` thin and gives a single owner of resource lifecycle.
+    - Routers receive controllers (and sessions/resources) via `Depends`, never constructed inline.
     - Meta endpoints (`/health`, `/tool-spec`) live at the **root prefix**; business endpoints live under `/api/<domain>`.
 
 ## Request lifecycle

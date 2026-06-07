@@ -93,17 +93,13 @@ Toda referência a campo também aceita uma string simples (`list_display=["emai
 # src/api/app.py
 from fastapi import FastAPI
 
-from tempest_fastapi_sdk import (
-    AsyncDatabaseManager,
-    UserModelAuthBackend,
-    make_admin_router,
-)
+from tempest_fastapi_sdk import UserModelAuthBackend, make_admin_router
 
 from src.admin.site import site
+from src.api.dependencies import db   # singleton de src/api/dependencies/resources.py
 from src.core.settings import settings
 from src.db.models import UserModel
 
-db = AsyncDatabaseManager(settings.DATABASE_URL)
 app = FastAPI()
 app.include_router(
     make_admin_router(

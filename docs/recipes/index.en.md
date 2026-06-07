@@ -11,6 +11,7 @@ Bite-sized "I want to wire X" walkthroughs. Each page starts with **what problem
 | --- | --- |
 | **[Database »](database.md)** | `BaseRepository`, `BaseModel`, `AuditMixin` / `SoftDeleteMixin`, cursor pagination, Alembic helper |
 | **[HTTP layer »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware`, `make_health_router`, JWT / role / permission dependencies, webhook signature verifier, pagination Link headers, tool-spec router |
+| **[HTTP client (outbound) »](http-client.md)** | `HTTPClient` — typed httpx with retry/backoff, circuit-breaker, X-Request-ID; `RetryPolicy`, `CircuitOpenError` |
 | **[Cache »](cache.md)** | `AsyncRedisManager`, `@cached` decorator |
 | **[Real-time »](realtime.md)** | Server-Sent Events (`EventStream`, `sse_response`) |
 | **[Queue & Tasks »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, transactional outbox |
@@ -19,6 +20,8 @@ Bite-sized "I want to wire X" walkthroughs. Each page starts with **what problem
 | **[Logging »](logging.md)** | `LogUtils`, structured JSON logging, request-ID propagation |
 | **[Metrics »](metrics.md)** | `MetricsUtils` — CPU / RAM / disk / GPU snapshots |
 | **[Admin site »](admin.md)** | `AdminSite`, `AdminModel`, `make_admin_router`, `BaseUserModel` |
+| **[Downloads »](downloads.md)** | `DownloadUtils` — `file_response`, `stream`, `build_content_disposition`, path-traversal safe |
+| **[Utilities »](utilities.md)** | `utcnow`/`to_utc`, `modify_dict`, `get_client_ip`, opaque tokens (`generate_opaque_token`) |
 | **[Testing »](testing.md)** | `test_session`, `test_database`, in-memory SQLite, pytest fixtures |
 | **[CLI »](cli.md)** | `tempest new` / `lint` / `fix` / `format` / `type` / `test` / `check` |
 | **[Security »](security.md)** | `AttemptThrottle`, opaque-token helpers, `HardenedStaticFiles`, security headers |

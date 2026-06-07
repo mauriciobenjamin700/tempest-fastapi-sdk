@@ -10,7 +10,6 @@ from fastapi import FastAPI
 from tempest_fastapi_sdk import (
     AdminModel,
     AdminSite,
-    AsyncDatabaseManager,
     RequestIDMiddleware,
     UserModelAuthBackend,
     apply_cors,
@@ -21,6 +20,7 @@ from tempest_fastapi_sdk import (
     register_exception_handlers,
 )
 
+from src.api.dependencies import db
 from src.core.settings import settings
 from src.db.models import UserModel
 
@@ -28,14 +28,6 @@ configure_logging(
     level=settings.LOG_LEVEL,
     json_output=settings.LOG_JSON,
     log_dir=settings.LOG_DIR,
-)
-
-db = AsyncDatabaseManager(
-    settings.DATABASE_URL,
-    echo=settings.DATABASE_ECHO,
-    pool_size=settings.DATABASE_POOL_SIZE,
-    max_overflow=settings.DATABASE_MAX_OVERFLOW,
-    pool_recycle=settings.DATABASE_POOL_RECYCLE,
 )
 
 
@@ -89,6 +81,8 @@ def create_app() -> FastAPI:
             auth_backend=UserModelAuthBackend(user_model=UserModel),
             secret_key=settings.JWT_SECRET,
             cookie_secure=not settings.SERVER_DEBUG,
+            show_logs=True,
+            log_dir=settings.LOG_DIR,
         ),
     )
 

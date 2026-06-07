@@ -334,3 +334,56 @@ class TestPresigned:
         url = await client.presigned_put_url("k", expires=timedelta(minutes=5))
         assert "op=PUT" in url
         assert "exp=300" in url
+
+
+class TestDownloadResponse:
+    async def test_streams_object_with_headers(self, client: AsyncMinIOClient) -> None:
+        await client.ensure_bucket()
+        await client.put_object(
+            "docs/report.txt", b"hello world", content_type="text/plain"
+        )
+        response = await client.download_response("docs/report.txt")
+
+        chunks: list[bytes] = []
+        async for chunk in response.body_iterator:
+            chunks.append(chunk if isinstance(chunk, bytes) else chunk.encode())
+        assert b"".join(chunks) == b"hello world"
+
+        assert response.media_type == "text/plain"
+        disposition = response.headers["content-disposition"]
+        assert "attachment" in disposition
+        assert "report.txt" in disposition
+        assert response.headers["content-length"] == "11"
+
+    async def test_inline_with_custom_filename(self, client: AsyncMinIOClient) -> None:
+        await client.ensure_bucket()
+        await client.put_object("k", b"x", content_type="application/pdf")
+        response = await client.download_response(
+            "k", filename="invoice.pdf", as_attachment=False
+        )
+        disposition = response.headers["content-disposition"]
+        assert "inline" in disposition
+        assert "invoice.pdf" in disposition
+
+
+class TestDownloadUtilsWithMinio:
+    async def test_download_delegates_to_minio(self, client: AsyncMinIOClient) -> None:
+        from tempest_fastapi_sdk import DownloadUtils
+
+        await client.ensure_bucket()
+        await client.put_object("a/b.txt", b"payload", content_type="text/plain")
+        downloads = DownloadUtils(client)
+        response = await downloads.download("b.txt", subdir="a")
+
+        chunks: list[bytes] = []
+        async for chunk in response.body_iterator:
+            chunks.append(chunk if isinstance(chunk, bytes) else chunk.encode())
+        assert b"".join(chunks) == b"payload"
+        assert "b.txt" in response.headers["content-disposition"]
+
+    def test_resolve_raises_in_minio_mode(self, client: AsyncMinIOClient) -> None:
+        from tempest_fastapi_sdk import DownloadUtils
+
+        downloads = DownloadUtils(client)
+        with pytest.raises(RuntimeError, match="MinIO-backed"):
+            downloads.resolve("anything")

@@ -1,1 +1,12 @@
-"""FastAPI ``Depends`` providers (auth, controllers, services factories)."""
+"""FastAPI ``Depends`` providers (auth + shared resources).
+
+Import providers from this package, not the submodules:
+``from src.api.dependencies import get_db, get_session, require_token``.
+"""
+
+from src.api.dependencies.auth import require_token as require_token
+from src.api.dependencies.resources import db as db
+from src.api.dependencies.resources import get_db as get_db
+from src.api.dependencies.resources import get_session as get_session
+
+__all__: list[str] = ["db", "get_db", "get_session", "require_token"]

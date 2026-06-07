@@ -93,17 +93,13 @@ Every field reference also accepts a plain string (`list_display=["email", ...]`
 # src/api/app.py
 from fastapi import FastAPI
 
-from tempest_fastapi_sdk import (
-    AsyncDatabaseManager,
-    UserModelAuthBackend,
-    make_admin_router,
-)
+from tempest_fastapi_sdk import UserModelAuthBackend, make_admin_router
 
 from src.admin.site import site
+from src.api.dependencies import db   # singleton from src/api/dependencies/resources.py
 from src.core.settings import settings
 from src.db.models import UserModel
 
-db = AsyncDatabaseManager(settings.DATABASE_URL)
 app = FastAPI()
 app.include_router(
     make_admin_router(

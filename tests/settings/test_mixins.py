@@ -157,7 +157,7 @@ class TestMixinDefaults:
 
         kwargs = UploadSettings().upload_kwargs()
         assert set(kwargs) == {
-            "upload_dir",
+            "source",
             "max_size_bytes",
             "allowed_extensions",
             "allowed_mimetypes",

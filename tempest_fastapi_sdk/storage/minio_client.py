@@ -21,6 +21,7 @@ use object storage are not forced to install the extra.
 from __future__ import annotations
 
 import asyncio
+import mimetypes
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -32,6 +33,7 @@ from typing import TYPE_CHECKING, BinaryIO
 if TYPE_CHECKING:
     from minio import Minio
     from minio.datatypes import Object as _MinioObject
+    from starlette.responses import StreamingResponse
 
 
 @dataclass(frozen=True, slots=True)
@@ -450,6 +452,70 @@ class AsyncMinIOClient:
                 await asyncio.to_thread(response.release_conn)
 
         return _iter()
+
+    async def download_response(
+        self,
+        key: str,
+        *,
+        bucket: str | None = None,
+        filename: str | None = None,
+        media_type: str | None = None,
+        as_attachment: bool = True,
+        chunk_size: int = 64 * 1024,
+        headers: dict[str, str] | None = None,
+    ) -> StreamingResponse:
+        """Stream an object straight to the client as a download response.
+
+        Reads the object's metadata (for the content type + length) and
+        streams its bytes **through the app** — the file never lands on the
+        app's disk nor loads fully into memory. Reach for this when the
+        download must be auth-gated or the MinIO endpoint is not publicly
+        reachable; prefer :meth:`presigned_get_url` to offload the transfer
+        to MinIO directly when the client can hit it.
+
+        Args:
+            key (str): Object key.
+            bucket (str | None): Override source bucket.
+            filename (str | None): Name presented to the client. Defaults
+                to the object key's basename.
+            media_type (str | None): Content type. Defaults to the object's
+                stored content type, then a guess from ``filename``, then
+                ``application/octet-stream``.
+            as_attachment (bool): ``True`` forces a download; ``False``
+                serves inline (e.g. view a PDF in-browser). Default ``True``.
+            chunk_size (int): Bytes per streamed chunk. Default 64 KiB.
+            headers (dict[str, str] | None): Extra response headers.
+
+        Returns:
+            StreamingResponse: Response ready to return from a router.
+
+        Raises:
+            S3Error: When the object is missing or the request fails.
+        """
+        from starlette.responses import StreamingResponse
+
+        from tempest_fastapi_sdk.utils.download import build_content_disposition
+
+        stat = await self.stat_object(key, bucket=bucket)
+        download_name = filename or key.rsplit("/", 1)[-1]
+        resolved_media_type = (
+            media_type
+            or stat.content_type
+            or mimetypes.guess_type(download_name)[0]
+            or "application/octet-stream"
+        )
+        response_headers: dict[str, str] = dict(headers or {})
+        response_headers["content-disposition"] = build_content_disposition(
+            download_name, as_attachment=as_attachment
+        )
+        if stat.size:
+            response_headers["content-length"] = str(stat.size)
+        body = await self.stream_object(key, bucket=bucket, chunk_size=chunk_size)
+        return StreamingResponse(
+            content=body,
+            media_type=resolved_media_type,
+            headers=response_headers,
+        )
 
     async def stat_object(
         self,

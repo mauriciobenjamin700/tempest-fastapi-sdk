@@ -1,0 +1,57 @@
+"""Shared infrastructure singletons + their FastAPI ``Depends`` providers.
+
+Resources (database, and — opt-in — object storage and the mailer) are
+built **once** here and reached everywhere through ``get_*`` dependencies.
+This keeps ``app.py`` thin (middleware + handlers + router wiring only)
+and gives the service a single place that owns resource construction and
+lifecycle.
+"""
+
+from __future__ import annotations
+
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+from src.core.settings import settings
+
+# One manager per process. ``settings.database_kwargs()`` maps the
+# ``DATABASE_*`` settings onto the ``AsyncDatabaseManager`` constructor.
+db = AsyncDatabaseManager(**settings.database_kwargs())
+
+# Async-session dependency for routers/services:
+#   async def handler(session: AsyncSession = Depends(get_session)) -> ...
+get_session = db.session_dependency
+
+
+def get_db() -> AsyncDatabaseManager:
+    """Return the process-wide database manager.
+
+    Returns:
+        AsyncDatabaseManager: The shared manager (connected during the
+        app lifespan).
+    """
+    return db
+
+
+# --- Object storage (uncomment with the [minio] extra) -----------------
+# from tempest_fastapi_sdk import AsyncMinIOClient
+#
+# storage = AsyncMinIOClient(**settings.minio_kwargs())
+#
+#
+# def get_storage() -> AsyncMinIOClient:
+#     """Return the shared MinIO / S3 client."""
+#     return storage
+
+
+# --- Mailer (uncomment with the [email] extra) -------------------------
+# from tempest_fastapi_sdk import EmailUtils
+#
+# mailer = EmailUtils(**settings.email_kwargs())
+#
+#
+# def get_mailer() -> EmailUtils:
+#     """Return the shared transactional-email helper."""
+#     return mailer
+
+
+__all__: list[str] = ["db", "get_db", "get_session"]

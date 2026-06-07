@@ -1,154 +1,103 @@
 # Uploads — local disk + S3 / MinIO
 
-Since v0.24.0 `UploadUtils` accepts a **pluggable storage backend**: keep the same upload code and switch between local disk and MinIO/S3 via a settings flag.
+`UploadUtils` picks the backend **once at construction**: pass a **folder**
+to store on local disk, or an **`AsyncMinIOClient`** to store in an S3/MinIO
+bucket. The rest of the upload code is identical either way. Requires the
+`[upload]` extra (and `[minio]` when using MinIO).
+
+!!! warning "Change in v0.41.0 (breaking)"
+    The backend now comes from the constructor — the old per-call
+    `save(file, storage=...)` was **removed**. `save()` returns the storage
+    **key** (relative), and `delete()` is now **async**. See the migration
+    at the end.
 
 !!! tip "Validation stays in `UploadUtils`"
-    Size, extension, MIME, magic bytes and `content_validator` are still validated by `UploadUtils` before any byte hits the backend — backends only see validated data.
+    Size, extension, MIME, magic bytes, and `content_validator` are checked
+    in `UploadUtils` before any byte reaches the backend — the storage only
+    ever receives validated data.
 
-## Available backends
-
-| Backend | When to use | Required extra |
-|---------|-------------|----------------|
-| `LocalUploadStorage` | Dev / single-replica / local FS | `[upload]` |
-| `MinIOUploadStorage` | Multi-replica, S3/MinIO/R2/B2/Spaces | `[upload]` + `[minio]` |
-
-Both implement the `UploadStorage` protocol (`write_stream`, `delete`, `exists`, `presigned_url`).
-
-## Default: local disk (backwards-compat)
-
-No change required — `UploadUtils(upload_dir)` keeps writing to disk:
+## Local disk
 
 ```python
-from pathlib import Path
-
 from fastapi import APIRouter, UploadFile
+
 from tempest_fastapi_sdk import UploadUtils
 
 router = APIRouter()
-utils = UploadUtils(Path("./uploads"), max_size_bytes=10 * 1024 * 1024)
+uploads = UploadUtils("var/uploads", max_size_bytes=10 * 1024 * 1024)
 
 
 @router.post("/files")
 async def upload(file: UploadFile) -> dict[str, str]:
-    """Persist the file to disk and return the absolute path."""
-    path = await utils.save(file)
-    return {"path": str(path)}
+    """Validate and write to disk; return the key (relative to base dir)."""
+    key = await uploads.save(file)
+    return {"key": str(key)}
 ```
 
-## Switching to MinIO/S3
+## MinIO / S3
 
-Reuse the same `AsyncMinIOClient` the app already owns:
+Pass the `AsyncMinIOClient` directly — nothing else changes:
 
 ```python
-from fastapi import APIRouter, UploadFile
-from tempest_fastapi_sdk import (
-    AsyncMinIOClient,
-    MinIOUploadStorage,
-    UploadUtils,
-)
+from tempest_fastapi_sdk import AsyncMinIOClient, UploadUtils
 
 from src.core.settings import settings
 
+minio = AsyncMinIOClient(**settings.minio_kwargs())
+uploads = UploadUtils(minio, max_size_bytes=10 * 1024 * 1024)
 
-client = AsyncMinIOClient(
-    endpoint=settings.MINIO_ENDPOINT,
-    access_key=settings.MINIO_ACCESS_KEY,
-    secret_key=settings.MINIO_SECRET_KEY,
-    default_bucket=settings.MINIO_DEFAULT_BUCKET,
-)
-remote = MinIOUploadStorage(client)
-utils = UploadUtils(
-    "./tmp",  # still required but unused when storage= is passed
-    max_size_bytes=10 * 1024 * 1024,
-)
-
-router = APIRouter()
-
-
-@router.post("/files")
-async def upload(file: UploadFile) -> dict[str, str]:
-    """Validate then push straight to MinIO."""
-    # `file.filename` is `str | None` — fall back to a stable name when the
-    # client omits the Content-Disposition header.
-    safe_name = file.filename or "upload.bin"
-    key = await utils.save(file, storage=remote, filename=safe_name)
-    return {"key": key.as_posix()}
+# identical to the local case:
+key = await uploads.save(file, filename="logo.png")   # writes to the bucket
 ```
 
-## Flag-driven backend selection
+!!! tip "Centralize in `resources.py`"
+    Build `uploads` (and `minio`) once in
+    [`src/api/dependencies/resources.py`](../architecture.md) and inject via
+    `Depends(get_uploads)`, instead of instantiating per request.
 
-Add an `UPLOAD_BACKEND` field to your `Settings` (the SDK's `UploadSettings` only carries `UPLOAD_DIR` / `UPLOAD_MAX_SIZE_BYTES` / `UPLOAD_ALLOWED_EXTENSIONS` / `UPLOAD_ALLOWED_MIMETYPES`; the backend selector flag belongs to the consuming project).
+## Switching via settings
 
-```python
-# src/core/settings.py
-from typing import Literal
-
-from pydantic import Field
-from tempest_fastapi_sdk import BaseAppSettings, MinIOSettings, UploadSettings
-
-
-class Settings(MinIOSettings, UploadSettings, BaseAppSettings):
-    UPLOAD_BACKEND: Literal["local", "minio"] = Field(
-        default="local",
-        title="Upload backend",
-        description="Selects which UploadStorage wires the upload pipeline.",
-        examples=["local", "minio"],
-    )
-
-
-settings = Settings()
-```
+Choose the constructor argument from a flag on your `Settings` — no manual
+pluggable backend needed:
 
 ```python
-# src/api/storage.py
-from tempest_fastapi_sdk import (
-    AsyncMinIOClient,
-    LocalUploadStorage,
-    MinIOUploadStorage,
-    UploadStorage,
-    UploadUtils,
-)
+# src/api/dependencies/resources.py
+from tempest_fastapi_sdk import AsyncMinIOClient, UploadUtils
 
 from src.core.settings import settings
 
-
-def make_storage() -> UploadStorage:
-    """Pick the backend based on environment configuration."""
-    if settings.UPLOAD_BACKEND == "minio":
-        client = AsyncMinIOClient(
-            settings.MINIO_ENDPOINT,
-            access_key=settings.MINIO_ACCESS_KEY,
-            secret_key=settings.MINIO_SECRET_KEY,
-            default_bucket=settings.MINIO_DEFAULT_BUCKET,
-        )
-        return MinIOUploadStorage(client)
-    return LocalUploadStorage(settings.UPLOAD_DIR)
-
-
-storage: UploadStorage = make_storage()
-# `UploadUtils.__init__` always mkdirs UPLOAD_DIR — even when the active
-# backend is MinIO, the directory is created. Set UPLOAD_DIR to a path
-# the process can write to, even if you never read from it.
-utils = UploadUtils(**settings.upload_kwargs())   # dir + limits + allowed types
+if settings.UPLOAD_BACKEND == "minio":
+    uploads = UploadUtils(AsyncMinIOClient(**settings.minio_kwargs()))
+else:
+    uploads = UploadUtils(settings.UPLOAD_DIR)
 ```
+
+(`UPLOAD_BACKEND` is a field on your `Settings`; the SDK only loads
+`UPLOAD_DIR` / `UPLOAD_MAX_SIZE_BYTES` / `UPLOAD_ALLOWED_EXTENSIONS` /
+`UPLOAD_ALLOWED_MIMETYPES` via `UploadSettings`.)
 
 ## Common operations
 
 ```python
-# Save
-await utils.save(file, storage=storage, filename="logo.png")
-
-# Delete
-await storage.delete("logo.png")
-
-# Probe
-exists = await storage.exists("logo.png")
-
-# Temporary URL (S3 returns a URL; local returns None)
-from datetime import timedelta
-url = await storage.presigned_url("logo.png", expires=timedelta(hours=1))
+key = await uploads.save(file, filename="logo.png")  # -> Path("logo.png")
+removed = await uploads.delete(key)                  # async; True/False
 ```
 
-## When to use presigned PUT directly
+To **download** what was uploaded (local or MinIO), use
+[`DownloadUtils`](downloads.md) — it takes the same backend in its
+constructor.
 
-For files > 50 MB, skip the in-memory buffer — have the client `PUT` straight to MinIO via a presigned URL. See [Storage MinIO/S3](storage.md#presigned-url-direct-browser-upload).
+## When to use a direct presigned PUT
+
+For files > 50 MB, skip the in-memory buffer — have the client `PUT`
+straight to MinIO via a presigned URL. See
+[Storage MinIO/S3](storage.md#presigned-url-direct-browser-upload).
+
+## Migrating from < v0.41.0
+
+- `UploadUtils("./dir")` is unchanged (local disk).
+- `UploadUtils("./tmp")` + `save(file, storage=MinIOUploadStorage(client))`
+  → becomes `UploadUtils(client)` + `save(file)`.
+- `save()` now returns the **key** (relative), not an absolute path — store
+  the key and use `DownloadUtils.download(key)` to serve it.
+- `utils.delete(path)` (sync) → `await utils.delete(key)` (async).

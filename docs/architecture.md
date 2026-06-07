@@ -50,9 +50,9 @@ O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[Mode
     ├── __init__.py                  # re-exporta run de src.server
     ├── server.py                    # uvicorn.run() programático + app FastAPI no nível do módulo
     ├── api/
-    │   ├── app.py                   # factory create_app() + middleware + exception handlers
+    │   ├── app.py                   # factory create_app() — middleware + handlers + wiring (magro)
     │   ├── routers/                 # endpoints HTTP, sem lógica de negócio
-    │   ├── dependencies/            # PACOTE (auth.py + controllers.py / services.py)
+    │   ├── dependencies/            # PACOTE (auth.py + resources.py + controllers.py / services.py)
     │   └── docs/                    # customização do OpenAPI
     ├── controllers/                 # orquestra entre services
     ├── services/                    # camada de lógica de negócio
@@ -71,7 +71,8 @@ O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[Mode
     - `main.py` na raiz do serviço é um **one-liner** que importa `run` de `src.server`. Nunca `subprocess.run(["uvicorn", ...])`.
     - `src/server.py` expõe tanto uma função `run()` quanto a instância `app` importável.
     - `api/dependencies/` é **sempre um pacote**, nunca um arquivo plano. A auth vive em `auth.py`; os provedores factory vivem em `controllers.py` (ou `services.py` quando ainda não há camada de controller).
-    - Routers recebem controllers via `Depends`, nunca construídos inline.
+    - **Singletons de infra (db / storage / mail) vivem em `dependencies/resources.py`**, construídos uma vez (`db = AsyncDatabaseManager(**settings.database_kwargs())`) e acessados via provedores `get_db` / `get_session` / `get_storage` / `get_mailer`. O `app.py` **importa** esses recursos para o lifespan e o wiring dos routers — não os constrói inline. Isso mantém o `app.py` magro e dá um único dono do ciclo de vida dos recursos.
+    - Routers recebem controllers (e sessões/recursos) via `Depends`, nunca construídos inline.
     - Endpoints meta (`/health`, `/tool-spec`) ficam no **prefixo raiz**; endpoints de negócio ficam sob `/api/<domínio>`.
 
 ## Ciclo de vida da requisição

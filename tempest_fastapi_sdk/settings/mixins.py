@@ -613,12 +613,16 @@ class UploadSettings(BaseSettings):
     def upload_kwargs(self) -> dict[str, Any]:
         """Map these settings onto :class:`UploadUtils` constructor kwargs.
 
+        Uses ``UPLOAD_DIR`` as the local-disk ``source``; pass an
+        ``AsyncMinIOClient`` to ``UploadUtils`` directly when storing in a
+        bucket instead.
+
         Returns:
             dict[str, Any]: Keyword arguments ready to splat into
             ``UploadUtils(**settings.upload_kwargs())``.
         """
         return {
-            "upload_dir": self.UPLOAD_DIR,
+            "source": self.UPLOAD_DIR,
             "max_size_bytes": self.UPLOAD_MAX_SIZE_BYTES,
             "allowed_extensions": self.UPLOAD_ALLOWED_EXTENSIONS,
             "allowed_mimetypes": self.UPLOAD_ALLOWED_MIMETYPES,

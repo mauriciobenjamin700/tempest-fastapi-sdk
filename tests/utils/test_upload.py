@@ -40,9 +40,10 @@ class TestSave:
     async def test_persists_to_disk(self, tmp_path: Path) -> None:
         utils = UploadUtils(tmp_path)
         upload = _make_upload(b"hello world")
-        path = await utils.save(upload)
-        assert path.exists()
-        assert path.read_bytes() == b"hello world"
+        # save() returns the storage KEY (relative); the file lives under
+        # the backend's base dir.
+        key = await utils.save(upload)
+        assert (tmp_path / key).read_bytes() == b"hello world"
 
     async def test_uuid_filename_by_default(self, tmp_path: Path) -> None:
         utils = UploadUtils(tmp_path)
@@ -81,8 +82,8 @@ class TestValidation:
     ) -> None:
         utils = UploadUtils(tmp_path, allowed_extensions={"PNG"})
         upload = _make_upload(b"x", filename="img.png")
-        path = await utils.save(upload)
-        assert path.exists()
+        key = await utils.save(upload)
+        assert (tmp_path / key).exists()
 
     async def test_rejects_disallowed_mimetype(self, tmp_path: Path) -> None:
         utils = UploadUtils(tmp_path, allowed_mimetypes={"image/png"})
@@ -111,32 +112,22 @@ class TestValidation:
 class TestDelete:
     async def test_delete_removes_file(self, tmp_path: Path) -> None:
         utils = UploadUtils(tmp_path)
-        path = await utils.save(_make_upload(b"x"))
-        assert utils.delete(path) is True
-        assert not path.exists()
+        key = await utils.save(_make_upload(b"x"))
+        assert await utils.delete(key) is True
+        assert not (tmp_path / key).exists()
 
-    def test_delete_missing_returns_false(self, tmp_path: Path) -> None:
+    async def test_delete_missing_returns_false(self, tmp_path: Path) -> None:
         utils = UploadUtils(tmp_path)
-        assert utils.delete(tmp_path / "ghost") is False
+        assert await utils.delete("ghost") is False
 
-    def test_delete_rejects_path_outside_upload_dir(self, tmp_path: Path) -> None:
+    async def test_delete_rejects_relative_traversal(self, tmp_path: Path) -> None:
         upload_dir = tmp_path / "uploads"
         upload_dir.mkdir()
         outside = tmp_path / "outside.txt"
         outside.write_text("secret", encoding="utf-8")
         utils = UploadUtils(upload_dir)
         with pytest.raises(InvalidFileTypeException):
-            utils.delete(outside)
-        assert outside.exists()
-
-    def test_delete_rejects_relative_traversal(self, tmp_path: Path) -> None:
-        upload_dir = tmp_path / "uploads"
-        upload_dir.mkdir()
-        outside = tmp_path / "outside.txt"
-        outside.write_text("secret", encoding="utf-8")
-        utils = UploadUtils(upload_dir)
-        with pytest.raises(InvalidFileTypeException):
-            utils.delete("../outside.txt")
+            await utils.delete("../outside.txt")
         assert outside.exists()
 
 
@@ -180,12 +171,12 @@ class TestFilenameOverride:
 
     async def test_filename_reduced_to_basename(self, tmp_path: Path) -> None:
         utils = UploadUtils(tmp_path)
-        path = await utils.save(
+        key = await utils.save(
             _make_upload(_PNG),
             filename="../../etc/passwd",
         )
-        assert path.name == "passwd"
-        assert path.parent == tmp_path.resolve()
+        assert key.name == "passwd"
+        assert (tmp_path / key).exists()
 
     @pytest.mark.parametrize("bad", [".", "..", "/"])
     async def test_invalid_filename_rejected(self, tmp_path: Path, bad: str) -> None:
@@ -197,11 +188,11 @@ class TestFilenameOverride:
 class TestContentValidator:
     async def test_passing_validator_saves(self, tmp_path: Path) -> None:
         utils = UploadUtils(tmp_path)
-        path = await utils.save(
+        key = await utils.save(
             _make_upload(_PNG),
             content_validator=lambda b: sniff_mime(b) == "image/png",
         )
-        assert path.exists()
+        assert (tmp_path / key).exists()
 
     async def test_failing_validator_rejects_and_cleans_up(
         self, tmp_path: Path
@@ -223,8 +214,8 @@ class TestVerifyMagicBytes:
             verify_magic_bytes=True,
         )
         upload = _make_upload(_PNG, filename="a.png", content_type="image/png")
-        path = await utils.save(upload)
-        assert path.exists()
+        key = await utils.save(upload)
+        assert (tmp_path / key).exists()
 
     async def test_polyglot_declared_as_image_rejected(self, tmp_path: Path) -> None:
         """HTML+JS payload sent as image/png must be rejected."""
@@ -261,8 +252,8 @@ class TestVerifyMagicBytes:
         """Declared image/jpg matches the sniffed image/jpeg."""
         utils = UploadUtils(tmp_path, verify_magic_bytes=True)
         upload = _make_upload(_JPEG, filename="a.jpg", content_type="image/jpg")
-        path = await utils.save(upload)
-        assert path.exists()
+        key = await utils.save(upload)
+        assert (tmp_path / key).exists()
 
     async def test_mismatch_without_allowlist_rejected(self, tmp_path: Path) -> None:
         """Without an allow-list, sniffed type must match declared."""

@@ -100,27 +100,27 @@ async def upload_file(file: UploadFile) -> dict[str, str]:
 
 ### Streaming de download
 
+!!! tip "Atalho: `download_response` (ou `DownloadUtils`)"
+    O `AsyncMinIOClient.download_response(key, ...)` já faz stat + stream +
+    Content-Disposition/Type/Length numa chamada só — e o
+    [`DownloadUtils(minio)`](downloads.md) embrulha isso. O exemplo manual
+    abaixo é só pra mostrar as peças.
+
 Use para arquivos grandes — chunk-a-chunk evita carregar tudo em memória:
 
 ```python
 from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from starlette.responses import Response
 
-from src.api.app import storage
+from src.api.dependencies.resources import storage
 
 router = APIRouter()
 
 
 @router.get("/files/{key}")
-async def download_file(key: str) -> StreamingResponse:
-    """Stream do objeto no bucket padrão."""
-    stat = await storage.stat_object(key)
-    stream = await storage.stream_object(key, chunk_size=64 * 1024)
-    return StreamingResponse(
-        stream,
-        media_type=stat.content_type or "application/octet-stream",
-        headers={"content-length": str(stat.size)},
-    )
+async def download_file(key: str) -> Response:
+    """Stream do objeto no bucket padrão (uma chamada)."""
+    return await storage.download_response(key)
 ```
 
 ### Presigned URL — upload direto do browser

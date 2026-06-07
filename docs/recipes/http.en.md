@@ -658,7 +658,7 @@ from src.core.settings import settings
 
 
 avatar_storage = UploadUtils(
-    upload_dir=f"{settings.UPLOAD_DIR}/avatars",
+    f"{settings.UPLOAD_DIR}/avatars",
     max_size_bytes=5 * 1024 * 1024,            # 5 MiB
     allowed_extensions={"png", "jpg", "jpeg", "webp"},
     allowed_mimetypes={"image/png", "image/jpeg", "image/webp"},
@@ -699,7 +699,7 @@ class UserService:
         user = await self.repo.get_by_id(user_id)
         # Delete previous file when replacing.
         if user.avatar_path and user.avatar_path != path:
-            avatar_storage.delete(user.avatar_path)
+            await avatar_storage.delete(user.avatar_path)
         user.avatar_path = path
         user = await self.repo.update(user)
         return self.repo.map_to_response(user)
@@ -755,7 +755,7 @@ from tempest_fastapi_sdk import DownloadUtils
 from src.core.settings import settings
 
 
-invoice_files = DownloadUtils(base_dir=f"{settings.UPLOAD_DIR}/invoices")
+invoice_files = DownloadUtils(f"{settings.UPLOAD_DIR}/invoices")
 ```
 
 ```python

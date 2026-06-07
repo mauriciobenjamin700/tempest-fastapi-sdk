@@ -60,6 +60,7 @@ my-service/
         └── dependencies/         # ALWAYS a package, never a flat module
             ├── __init__.py
             ├── auth.py           # X-Token / current_user / require_role dependencies
+            ├── resources.py      # infra singletons (db/storage/mail) + get_db/get_session
             └── controllers.py    # get_<X>_controller / get_<X>_service factories
 ```
 
@@ -74,7 +75,8 @@ Four files map onto four responsibilities:
 | File | Responsibility |
 | --- | --- |
 | `src/core/settings.py` | `Settings(BaseAppSettings, ...mixins)` — one source of truth for env vars. |
-| `src/api/app.py` | `create_app()` factory + middleware + CORS + exception handlers + router includes + module-level `app` instance. |
+| `src/api/dependencies/resources.py` | infra singletons (`db = AsyncDatabaseManager(**settings.database_kwargs())`, and — opt-in — storage/mail) + `get_db` / `get_session` providers. Single owner of resource lifecycle. |
+| `src/api/app.py` | thin `create_app()` factory — middleware + CORS + exception handlers + router includes + module-level `app` instance. **Imports** the resources from `dependencies`, never builds them. |
 | `src/server.py` | `run()` invoking `uvicorn.run("src.api.app:app", ...)` programmatically, plus re-exports `app` so external runners (gunicorn, uvicorn CLI) can import it. |
 | `main.py` | Process entry point — a single line under `if __name__ == "__main__":` calling `run()`. |
 
@@ -108,6 +110,26 @@ class Settings(ServerSettings, DatabaseSettings, BaseAppSettings):
 settings = Settings()
 ```
 
+Infra resources (the database now; storage / mail later) live in
+`src/api/dependencies/resources.py`, built **once** and reached through
+`get_*` providers. `app.py` only **imports** them, so it never bloats with
+resource construction:
+
+```python
+# src/api/dependencies/resources.py
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+from src.core.settings import settings
+
+db = AsyncDatabaseManager(**settings.database_kwargs())
+get_session = db.session_dependency   # Depends(get_session) -> AsyncSession
+
+
+def get_db() -> AsyncDatabaseManager:
+    """Return the process-wide database manager."""
+    return db
+```
+
 ```python
 # src/api/app.py
 from collections.abc import AsyncIterator
@@ -116,17 +138,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from tempest_fastapi_sdk import (
-    AsyncDatabaseManager,
     RequestIDMiddleware,
     make_health_router,
     register_exception_handlers,
 )
 
+from src.api.dependencies.resources import db
 from src.api.routers import users
-from src.core.settings import settings
-
-
-db = AsyncDatabaseManager(settings.DATABASE_URL)
 
 
 @asynccontextmanager
@@ -583,7 +601,7 @@ The router signature never changes — only the controller's body grows.
 
 ### 9. Dependency providers
 
-`api/dependencies/` is **always a package**. `auth.py` hosts the shared-secret / current-user dependencies; `controllers.py` (or `services.py` when there is no controller layer yet) hosts the factory providers the routers depend on. Never construct controllers or services inline inside the router file.
+`api/dependencies/` is **always a package**. `auth.py` hosts the shared-secret / current-user dependencies; `resources.py` hosts the infra singletons (`db`, and — opt-in — storage/mail) with the `get_db` / `get_session` providers; `controllers.py` (or `services.py` when there is no controller layer yet) hosts the factory providers the routers depend on. Never construct controllers, services, or infra resources inline inside the router file (or in `app.py`).
 
 ```python
 # src/api/dependencies/controllers.py
@@ -592,7 +610,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import PasswordUtils
 
-from src.api.app import db
+from src.api.dependencies.resources import get_session
 from src.controllers.user import UserController
 from src.db.repositories import UserRepository
 from src.services.user import UserService
@@ -603,7 +621,7 @@ _passwords: PasswordUtils = PasswordUtils()
 
 
 def get_user_controller(
-    session: AsyncSession = Depends(db.session_dependency),
+    session: AsyncSession = Depends(get_session),
 ) -> UserController:
     """Wire repository → service → controller for a single request."""
     repository = UserRepository(session)

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 if TYPE_CHECKING:
+    from tempest_fastapi_sdk.storage.minio_client import AsyncMinIOClient
     from tempest_fastapi_sdk.utils.storage_backends import UploadStorage
 
 try:
@@ -26,10 +27,7 @@ except ImportError:  # pragma: no cover - guarded by extras
 
 from fastapi import UploadFile
 
-from tempest_fastapi_sdk.exceptions.upload import (
-    FileTooLargeException,
-    InvalidFileTypeException,
-)
+from tempest_fastapi_sdk.exceptions.upload import InvalidFileTypeException
 
 # Magic-byte signatures, compared against the first bytes of an upload.
 # Used by :func:`sniff_mime` to detect what a file ACTUALLY is, so a
@@ -110,8 +108,8 @@ class UploadUtils:
     bounded regardless of the upload size.
 
     Attributes:
-        upload_dir (Path): Base directory where files are persisted.
-            Created on instantiation when missing.
+        upload_dir (Path | None): Local base directory when constructed
+            with a path; ``None`` in MinIO mode.
         max_size_bytes (int | None): Reject uploads larger than this.
             ``None`` disables the size check.
         allowed_extensions (set[str] | None): Whitelist of file
@@ -130,7 +128,7 @@ class UploadUtils:
 
     def __init__(
         self,
-        upload_dir: Path | str,
+        source: str | Path | AsyncMinIOClient,
         *,
         max_size_bytes: int | None = None,
         allowed_extensions: set[str] | None = None,
@@ -138,11 +136,14 @@ class UploadUtils:
         verify_magic_bytes: bool = False,
         chunk_size: int = 1024 * 1024,
     ) -> None:
-        """Initialize.
+        """Initialize with a local directory or a MinIO client.
 
         Args:
-            upload_dir (Path | str): Base directory. Created if
-                missing (parents included).
+            source (str | Path | AsyncMinIOClient): Where uploads are
+                persisted. A directory path stores files on local disk
+                (created if missing); an ``AsyncMinIOClient`` stores them
+                in its bucket. The backend is fixed here, so callers never
+                pass it per :meth:`save`.
             max_size_bytes (int | None): Reject uploads larger than
                 this. ``None`` disables the size check.
             allowed_extensions (set[str] | None): Whitelist of file
@@ -165,8 +166,17 @@ class UploadUtils:
                 "UploadUtils requires the [upload] extra. "
                 "Install with `pip install tempest-fastapi-sdk[upload]`."
             )
-        self.upload_dir: Path = Path(upload_dir)
-        self.upload_dir.mkdir(parents=True, exist_ok=True)
+        from tempest_fastapi_sdk.utils.storage_backends import (
+            LocalUploadStorage,
+            MinIOUploadStorage,
+        )
+
+        if isinstance(source, (str, Path)):
+            self.upload_dir: Path | None = Path(source)
+            self._storage: UploadStorage = LocalUploadStorage(source)
+        else:
+            self.upload_dir = None
+            self._storage = MinIOUploadStorage(source)
         self.max_size_bytes: int | None = max_size_bytes
         self.allowed_extensions: set[str] | None = (
             {ext.lower().lstrip(".") for ext in allowed_extensions}
@@ -287,21 +297,18 @@ class UploadUtils:
         filename: str | None = None,
         keep_original_name: bool = False,
         content_validator: Callable[[bytes], bool] | None = None,
-        storage: UploadStorage | None = None,
     ) -> Path:
-        """Persist ``file`` and return the final path.
+        """Validate and persist ``file`` to the configured backend.
 
-        By default writes to ``upload_dir`` on local disk. Pass
-        ``storage=MinIOUploadStorage(client)`` to send the upload to
-        MinIO/S3 — the validation pipeline (extension / MIME / size /
-        magic bytes / ``content_validator``) is identical for either
-        backend.
+        The backend (local disk or MinIO) is the one chosen at
+        construction — the validation pipeline (extension / MIME / size /
+        magic bytes / ``content_validator``) is identical for either.
 
         Args:
             file (UploadFile): The FastAPI upload.
-            subdir (str): Optional sub-directory relative to
-                ``upload_dir`` (e.g. ``"avatars"``). Created on
-                demand for local; used as a key prefix for remote.
+            subdir (str): Optional sub-directory / key prefix
+                (e.g. ``"avatars"``). Created on demand for local; used as
+                a key prefix for MinIO.
             filename (str | None): Explicit final filename (e.g.
                 ``f"{user_id}.jpg"``) for deterministic, addressable
                 names. Reduced to its basename and guarded against path
@@ -314,27 +321,21 @@ class UploadUtils:
             content_validator (Callable[[bytes], bool] | None): Optional
                 predicate run on the first chunk read from the stream.
                 Returning ``False`` aborts the save (and removes the
-                partial file) before any further bytes are written —
+                partial object) before any further bytes are written —
                 e.g. ``lambda b: sniff_mime(b) in {"image/png"}``.
-            storage (UploadStorage | None): Optional :class:`UploadStorage` backend
-                (``LocalUploadStorage`` / ``MinIOUploadStorage``).
-                When ``None`` (default), writes to ``upload_dir`` on
-                local disk preserving the historical behavior. When
-                set, the returned :class:`Path` is the storage key
-                wrapped in ``Path`` for back-compat — call
-                ``str(result)`` to get the bare key.
 
         Returns:
-            Path: Local absolute path when ``storage`` is ``None``,
-            or ``Path(storage_key)`` when a backend is used.
+            Path: ``Path(storage_key)`` — the key to read the file back
+            (``downloads.download(str(result))``). Call ``str(result)``
+            for the bare key.
 
         Raises:
             InvalidFileTypeException: If the extension/MIME violates the
                 whitelist, the ``content_validator`` rejects the bytes,
                 or ``verify_magic_bytes`` detects a content mismatch.
             FileTooLargeException: If the stream exceeds
-                ``max_size_bytes`` mid-write; the partial file is
-                deleted before raising.
+                ``max_size_bytes`` mid-write; the partial object is
+                removed before raising.
         """
         self.validate(file)
 
@@ -343,53 +344,13 @@ class UploadUtils:
             filename=filename,
             keep_original_name=keep_original_name,
         )
-
-        if storage is not None:
-            return await self._save_via_storage(
-                file,
-                storage=storage,
-                subdir=subdir,
-                resolved_name=resolved_name,
-                content_validator=content_validator,
-            )
-
-        base_dir = self.upload_dir.resolve()
-        target_dir = (base_dir / subdir).resolve() if subdir else base_dir
-        if base_dir != target_dir and base_dir not in target_dir.parents:
-            raise InvalidFileTypeException(
-                details={"subdir": subdir, "reason": "escapes upload_dir"},
-            )
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        target_path = (target_dir / resolved_name).resolve()
-        if base_dir != target_path.parent and base_dir not in target_path.parents:
-            raise InvalidFileTypeException(
-                details={
-                    "filename": resolved_name,
-                    "reason": "escapes upload_dir",
-                },
-            )
-
-        assert _aiofiles is not None, "guarded by __init__"
-        total = 0
-        first_chunk = True
-        try:
-            async with _aiofiles.open(target_path, "wb") as out:
-                while chunk := await file.read(self._chunk_size):
-                    if first_chunk:
-                        first_chunk = False
-                        self._verify_content(chunk, file, content_validator)
-                    total += len(chunk)
-                    if self.max_size_bytes is not None and total > self.max_size_bytes:
-                        raise FileTooLargeException(
-                            details={"max_size_bytes": self.max_size_bytes},
-                        )
-                    await out.write(chunk)
-        except Exception:
-            target_path.unlink(missing_ok=True)
-            raise
-
-        return target_path.resolve()
+        return await self._save_via_storage(
+            file,
+            storage=self._storage,
+            subdir=subdir,
+            resolved_name=resolved_name,
+            content_validator=content_validator,
+        )
 
     async def _save_via_storage(
         self,
@@ -484,39 +445,25 @@ class UploadUtils:
 
         return f"{uuid4().hex}{original.suffix}"
 
-    def delete(self, path: Path | str) -> bool:
-        """Delete a previously saved file, bounded to ``upload_dir``.
+    async def delete(self, key: Path | str) -> bool:
+        """Delete a previously saved object via the configured backend.
 
-        Rejects any path that resolves outside ``upload_dir`` — that
-        way callers can forward a user-supplied filename without
-        risking ``rm -rf`` semantics on the rest of the filesystem.
-        Absolute paths are accepted only when they land under
-        ``upload_dir``; everything else is treated as relative to it.
+        For the local backend the key resolves under the base directory
+        (path-traversal attempts raise ``InvalidFileTypeException``); for
+        MinIO it is the object key.
 
         Args:
-            path (Path | str): The file path to delete. Resolved
-                against ``upload_dir`` when relative.
+            key (Path | str): The storage key returned by :meth:`save`.
 
         Returns:
-            bool: ``True`` if the file existed and was deleted,
+            bool: ``True`` if the object existed and was deleted,
             ``False`` when it was already missing.
 
         Raises:
-            InvalidFileTypeException: When ``path`` resolves outside
-                ``upload_dir`` (path traversal attempt).
+            InvalidFileTypeException: Local backend, when ``key`` resolves
+                outside the base directory (path traversal attempt).
         """
-        base_dir = self.upload_dir.resolve()
-        raw = Path(path)
-        candidate = raw if raw.is_absolute() else (base_dir / raw)
-        target = candidate.resolve()
-        if target != base_dir and base_dir not in target.parents:
-            raise InvalidFileTypeException(
-                details={"path": str(path), "reason": "escapes upload_dir"},
-            )
-        if not target.exists():
-            return False
-        target.unlink()
-        return True
+        return await self._storage.delete(str(key))
 
 
 __all__: list[str] = [

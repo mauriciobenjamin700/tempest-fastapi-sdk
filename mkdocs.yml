@@ -87,6 +87,7 @@ plugins:
             Receitas: Recipes
             Banco de dados: Database
             Camada HTTP: HTTP layer
+            "HTTP client (saída)": "HTTP client (outbound)"
             Cache: Cache
             Tempo real: Real-time
             WebSocket router: WebSocket router
@@ -96,6 +97,7 @@ plugins:
             Logging: Logging
             Storage (MinIO/S3): Storage (MinIO/S3)
             Uploads (backends): Uploads (backends)
+            Downloads: Downloads
             Idempotência: Idempotency
             "Auth flow (signup/reset)": "Auth flow (signup/reset)"
             "MFA (TOTP / 2FA)": "MFA (TOTP / 2FA)"
@@ -105,6 +107,7 @@ plugins:
             Testes: Testing
             CLI: CLI
             Segurança: Security
+            Utilitários: Utilities
             Helpers brasileiros: Brazilian helpers
             Referência: Reference
             "Projetos de aprendizado": Learning projects
@@ -197,6 +200,7 @@ nav:
       - recipes/index.md
       - Banco de dados: recipes/database.md
       - Camada HTTP: recipes/http.md
+      - "HTTP client (saída)": recipes/http-client.md
       - Cache: recipes/cache.md
       - Tempo real: recipes/realtime.md
       - WebSocket router: recipes/websocket.md
@@ -206,6 +210,7 @@ nav:
       - Logging: recipes/logging.md
       - Storage (MinIO/S3): recipes/storage.md
       - Uploads (backends): recipes/uploads.md
+      - Downloads: recipes/downloads.md
       - Idempotência: recipes/idempotency.md
       - Auth flow (signup/reset): recipes/auth-flow.md
       - MFA (TOTP / 2FA): recipes/mfa.md
@@ -215,6 +220,7 @@ nav:
       - Testes: recipes/testing.md
       - CLI: recipes/cli.md
       - Segurança: recipes/security.md
+      - Utilitários: recipes/utilities.md
       - Helpers brasileiros: recipes/br-helpers.md
   - Referência: reference.md
   - Projetos de aprendizado:

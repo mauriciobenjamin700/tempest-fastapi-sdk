@@ -202,32 +202,32 @@ class TestMinIOUploadStorage:
 
 
 class TestUploadUtilsBackendIntegration:
-    async def test_save_with_minio_storage(
+    async def test_save_with_minio_client(
         self,
         tmp_path: Path,
         minio_client: AsyncMinIOClient,
     ) -> None:
-        utils = UploadUtils(tmp_path)
-        storage = MinIOUploadStorage(minio_client)
+        # Pass the MinIO client straight to the constructor — no per-call
+        # storage argument anymore.
+        utils = UploadUtils(minio_client)
         upload = UploadFile(
             file=BytesIO(b"\x89PNG\r\n\x1a\nrest"),
             filename="logo.png",
             headers=Headers({"content-type": "image/png"}),
         )
-        key = await utils.save(upload, storage=storage, filename="logo.png")
+        key = await utils.save(upload, filename="logo.png")
         assert str(key) == "logo.png"
-        # Local disk untouched.
-        assert list(tmp_path.iterdir()) == []
+        # The object landed in MinIO (no local dir), reachable via the client.
+        assert utils.upload_dir is None
+        assert (await minio_client.stat_object("logo.png")).key == "logo.png"
 
-    async def test_save_default_backend_still_writes_locally(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_save_with_local_dir(self, tmp_path: Path) -> None:
         utils = UploadUtils(tmp_path)
         upload = UploadFile(
             file=BytesIO(b"hi"),
             filename="x.txt",
             headers=Headers({"content-type": "text/plain"}),
         )
-        path = await utils.save(upload, filename="x.txt")
-        assert path.exists()
-        assert path.read_bytes() == b"hi"
+        key = await utils.save(upload, filename="x.txt")
+        assert str(key) == "x.txt"
+        assert (tmp_path / key).read_bytes() == b"hi"
