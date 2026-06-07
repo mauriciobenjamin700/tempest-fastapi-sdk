@@ -49,7 +49,9 @@ class EmailUtils:
         use_tls (bool): Whether to connect using SSL/TLS from the
             start (port 465 style).
         use_starttls (bool): Whether to upgrade to TLS via STARTTLS
-            after connect (port 587 style).
+            after connect (port 587 style). Opportunistic — the upgrade
+            happens only when the server advertises STARTTLS, so a plain
+            server (e.g. MailHog) is left as-is instead of raising.
     """
 
     def __init__(
@@ -77,7 +79,10 @@ class EmailUtils:
             use_tls (bool): Connect using SSL/TLS immediately. Set
                 this for port ``465``.
             use_starttls (bool): Upgrade to TLS via STARTTLS after
-                connect. Set this for port ``587`` (default).
+                connect. Set this for port ``587`` (default). The upgrade
+                is opportunistic — it is skipped (rather than raising)
+                when the server doesn't advertise STARTTLS, so plain dev
+                servers like MailHog work without extra config.
             timeout (float): SMTP socket timeout in seconds.
             template_dir (str | Path | None): Directory holding Jinja2
                 templates for :meth:`render_template`. Optional —
@@ -168,6 +173,16 @@ class EmailUtils:
                 )
 
         assert _aiosmtplib is not None, "guarded by __init__"
+        # STARTTLS is negotiated *opportunistically*: aiosmtplib upgrades
+        # the connection only when the server advertises STARTTLS, so a
+        # plain server (e.g. MailHog) no longer hard-fails with
+        # "SMTP STARTTLS extension not supported by server." Passing
+        # ``start_tls=True`` would force it and raise on plain servers.
+        # ``use_tls`` (implicit TLS / SMTPS) is mutually exclusive with
+        # STARTTLS, so the upgrade is disabled in that case.
+        start_tls: bool | None = (
+            None if (self.use_starttls and not self.use_tls) else False
+        )
         await _aiosmtplib.send(
             message,
             hostname=self.host,
@@ -175,7 +190,7 @@ class EmailUtils:
             username=self._username,
             password=self._password,
             use_tls=self.use_tls,
-            start_tls=self.use_starttls,
+            start_tls=start_tls,
             timeout=self._timeout,
             recipients=recipients + cc_list + bcc_list,
         )

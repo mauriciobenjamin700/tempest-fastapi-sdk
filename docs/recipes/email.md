@@ -25,14 +25,16 @@ mailer = EmailUtils(**settings.email_kwargs())
 `SMTP_USE_TLS` (STARTTLS, porta 587) → `use_starttls`; `SMTP_USE_SSL`
 (TLS desde o início, porta 465) → `use_tls`.
 
-!!! warning "STARTTLS vs SSL/TLS — não trave contra servidor plain"
+!!! tip "STARTTLS vs SSL/TLS — oportunístico por padrão"
     Porta **587** → `SMTP_USE_TLS=true` (default): conecta em texto e faz
     upgrade via STARTTLS. Porta **465** → `SMTP_USE_SSL=true`: conecta já
-    cifrado. **Servidor SMTP plain (MailHog em `:1025`, ou `:25`)** não
-    fala STARTTLS — deixe **`SMTP_USE_TLS=false`** e `SMTP_USE_SSL=false`,
-    senão o aiosmtplib levanta `SMTPException: SMTP STARTTLS extension not
-    supported by server.` O `.env.example` gerado pelo `tempest new` com o
-    extra `[email]` já vem com os dois desligados para o MailHog.
+    cifrado. O STARTTLS é **oportunístico**: o `EmailUtils` só faz o
+    upgrade quando o servidor anuncia STARTTLS, então um servidor plain
+    (**MailHog em `:1025`**, ou `:25`) funciona de cara — sem mais
+    `SMTPException: SMTP STARTTLS extension not supported by server.`
+    (desde a v0.38.1). Para forçar texto puro sem nem tentar o upgrade,
+    use `SMTP_USE_TLS=false`; o `.env.example` gerado pelo `tempest new`
+    com `[email]` já vem assim para o MailHog.
 
 ## Enviar um email
 

@@ -5,6 +5,22 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.38.1] — 2026-06-07
+
+### Fixed
+
+- **`EmailUtils` no longer hard-fails against a plain SMTP server.**
+  `send()` forced `start_tls=True`, so any server that doesn't advertise
+  STARTTLS — including the bundled MailHog dev server on `:1025` — crashed
+  with `SMTPException: SMTP STARTTLS extension not supported by server.`
+  (and the `/auth/password-reset/request` endpoint returned 500). STARTTLS
+  is now **opportunistic** (`start_tls=None`): the connection upgrades only
+  when the server advertises STARTTLS, and is left plain otherwise. This
+  fixes existing services whose `.env` predates the 0.38.0 `.env.example`
+  correction — no `SMTP_USE_TLS=false` needed for MailHog anymore. Setting
+  `SMTP_USE_TLS=false` still forces plain with no upgrade attempt; implicit
+  TLS (`SMTP_USE_SSL` / port 465) is unchanged.
+
 ## [0.38.0] — 2026-06-07
 
 ### Fixed

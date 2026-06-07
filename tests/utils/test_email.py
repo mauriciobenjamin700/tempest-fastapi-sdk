@@ -43,6 +43,44 @@ class TestSend:
         assert call["hostname"] == "smtp.example.com"
         assert call["port"] == 587
 
+    async def test_starttls_is_opportunistic_by_default(
+        self, fake_send: FakeSendCalls
+    ) -> None:
+        # use_starttls defaults True, but must map to start_tls=None
+        # (opportunistic) — NOT True (force) — so a plain server like
+        # MailHog doesn't crash with "STARTTLS extension not supported".
+        utils = EmailUtils(host="localhost", port=1025, from_addr="dev@local")
+        await utils.send("u@example.com", "Hi", "Body")
+        assert fake_send.calls[0]["start_tls"] is None
+        assert fake_send.calls[0]["use_tls"] is False
+
+    async def test_starttls_disabled_maps_to_false(
+        self, fake_send: FakeSendCalls
+    ) -> None:
+        utils = EmailUtils(
+            host="localhost",
+            port=1025,
+            from_addr="dev@local",
+            use_starttls=False,
+        )
+        await utils.send("u@example.com", "Hi", "Body")
+        assert fake_send.calls[0]["start_tls"] is False
+
+    async def test_implicit_tls_disables_starttls_upgrade(
+        self, fake_send: FakeSendCalls
+    ) -> None:
+        # SMTPS (use_tls) is mutually exclusive with STARTTLS in aiosmtplib;
+        # the default use_starttls=True must not collide with use_tls=True.
+        utils = EmailUtils(
+            host="smtp.example.com",
+            port=465,
+            from_addr="bot@example.com",
+            use_tls=True,
+        )
+        await utils.send("u@example.com", "Hi", "Body")
+        assert fake_send.calls[0]["use_tls"] is True
+        assert fake_send.calls[0]["start_tls"] is False
+
     async def test_multiple_recipients_joined(self, fake_send: FakeSendCalls) -> None:
         utils = EmailUtils(
             host="smtp.example.com",
