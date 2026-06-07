@@ -89,7 +89,7 @@ Via `pyproject.toml`:
 
 ```toml
 dependencies = [
-    "tempest-fastapi-sdk>=0.36.0",
+    "tempest-fastapi-sdk>=0.37.0",
 ]
 ```
 
@@ -114,12 +114,17 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[http]` | `httpx` | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, OAuth2 / OIDC providers |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[mfa]` | `pyotp` | `TOTPHelper` + MFA/2FA endpoints on the bundled auth flow |
+| `[sqlite]` | `aiosqlite` | SQLite async driver for `sqlite+aiosqlite://` URLs (dev default) |
+| `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[all]` | everything above | every helper |
 
 ```bash
 pip install "tempest-fastapi-sdk[auth,upload]"   # only what the service uses
-pip install "tempest-fastapi-sdk[all]"           # or pull everything
+pip install "tempest-fastapi-sdk[postgres]"       # add the async DB driver you deploy with
+pip install "tempest-fastapi-sdk[all]"            # or pull everything
 ```
+
+> **The SDK ships no database driver by default.** `sqlalchemy[asyncio]` is core, but the async DBAPI is your deploy choice — add `[sqlite]` (`aiosqlite`, dev default) or `[postgres]` (`asyncpg`, production). Without one, the engine raises `ModuleNotFoundError` for the driver on first connection. Services scaffolded with `tempest new` already pin `aiosqlite` and carry a commented `asyncpg` line in `pyproject.toml`.
 
 Since `0.7.1` every optional dependency is imported lazily at first instantiation, so `import tempest_fastapi_sdk` works with any subset of extras — instantiating a helper whose extra is missing raises `ImportError` with a clear hint pointing at the right one.
 
@@ -3318,7 +3323,7 @@ tempest user list --admin                             # admins only
 
 ### Admin site recipe
 
-Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. Phase 1 ships read-only views; create/edit/delete land in 0.14.0 and inline + bulk actions in 0.15.0.
+Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. The panel is feature-complete (Django-admin parity): a list view with search / per-field filters / sortable columns, full CRUD (create / edit / delete), bulk actions, CSV/JSON export, FK-select widgets, a dashboard with live row counts + system metrics, optional TOTP MFA at login, and an audit trail stamping `created_by` / `updated_by`. Still on the roadmap: file upload and inline/related editing.
 
 Requires the `[admin]` extra:
 
@@ -3437,10 +3442,18 @@ app.include_router(
 `make_admin_router` mounts:
 
 - `GET  /admin/login`, `POST /admin/login`, `POST /admin/logout` — auth flow.
-- `GET  /admin/` — dashboard listing every registered admin.
-- `GET  /admin/m/{slug}/` — list view with pagination + free-text search (`?q=`) + per-field filters (`?filter_<field>=value`).
-- `GET  /admin/m/{slug}/{identity}` — read-only detail view.
+- `GET/POST /admin/mfa` — TOTP challenge (second factor) between password and access, for principals with MFA enabled.
+- `GET  /admin/` — dashboard: a card per model with **row count** + Browse/New, plus a **metrics panel** (CPU/RAM/disk via `MetricsUtils`; on by default, omitted without the `[metrics]` extra, disabled with `make_admin_router(show_metrics=False)`).
+- `GET  /admin/m/{slug}/` — list view with pagination + free-text search (`?q=`) + per-field filters (`?filter_<field>=value`) + clickable **column sorting** (`?sort=<column>&dir=asc|desc`).
+- `GET  /admin/m/{slug}/export.csv` / `export.json` — **export** the current result set (honoring search/filters/sort) as CSV or JSON (row cap via `make_admin_router(export_max_rows=…)`, default 5000).
+- `POST /admin/m/{slug}/bulk` — **bulk actions** (delete / activate / deactivate) on selected rows.
+- `GET/POST /admin/m/{slug}/new` — **create** a record (when `can_create`).
+- `GET  /admin/m/{slug}/{identity}` — detail view with Edit/Delete buttons + an Audit panel.
+- `GET/POST /admin/m/{slug}/{identity}/edit` — **edit** a record (when `can_edit`).
+- `POST /admin/m/{slug}/{identity}/delete` — **delete** a record (when `can_delete`).
 - `GET  /admin/static/{path}` — bundled CSS/HTMX assets.
+
+Write operations (create/edit/delete/bulk) are gated by the `AdminModel` flags `can_create` / `can_edit` / `can_delete` (all `True` by default; a disabled view returns `404`), carry a per-session CSRF token validated server-side, derive form widgets from the column type, render an FK-select dropdown for foreign keys whose target has a registered `AdminModel`, and stamp `created_by` / `updated_by` (from `AuditMixin`) with the acting admin's id.
 
 #### 4. Session security defaults
 
@@ -3450,7 +3463,7 @@ app.include_router(
 - `Secure` flagged when `cookie_secure=True` (default; flip off in local HTTP dev).
 - `SameSite=Lax` (`"lax"`/`"strict"`/`"none"` accepted).
 - Default lifetime `8h`; expired or tampered cookies are rejected silently.
-- Per-session CSRF token is generated at login and required by every form POST (only `logout` in Phase 1).
+- Per-session CSRF token is generated at login and required by every form POST (login, logout, create, edit, delete, bulk actions).
 - `secret_key` must be at least 32 bytes — short keys raise `ValueError` at construction time.
 
 #### 5. Plug in a custom auth backend

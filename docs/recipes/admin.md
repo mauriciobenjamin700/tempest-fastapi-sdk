@@ -1,7 +1,7 @@
 # Painel admin
 
 
-UI de gerenciamento no estilo Django montada sob `/admin`. Operadores entram com uma linha de usuário do banco (sem store de senha de admin separado) e navegam por todo modelo registrado pelo navegador, então a porta do banco pode ficar fechada em redes privadas. A Fase 1 entrega views somente leitura; criar/editar/apagar chegam na 0.14.0 e ações inline + em lote na 0.15.0.
+UI de gerenciamento no estilo Django montada sob `/admin`. Operadores entram com uma linha de usuário do banco (sem store de senha de admin separado) e navegam por todo modelo registrado pelo navegador, então a porta do banco pode ficar fechada em redes privadas. O painel é completo (paridade com o Django admin): list view com busca / filtros por campo / colunas ordenáveis, CRUD completo (criar / editar / excluir), ações em massa, export CSV/JSON, widgets FK-select, dashboard com contagens de linhas + métricas de sistema, MFA TOTP opcional no login, e trilha de auditoria carimbando `created_by` / `updated_by`. Ainda no roadmap: upload de arquivo e edição inline/relacionada.
 
 Requer o extra `[admin]`:
 
@@ -155,7 +155,7 @@ app.include_router(
 - `Secure` marcado quando `cookie_secure=True` (padrão; desligue no dev HTTP local).
 - `SameSite=Lax` (`"lax"`/`"strict"`/`"none"` aceitos).
 - Tempo de vida padrão `8h`; cookies expirados ou adulterados são rejeitados silenciosamente.
-- Um token CSRF por sessão é gerado no login e exigido por todo POST de formulário (apenas `logout` na Fase 1).
+- Um token CSRF por sessão é gerado no login e exigido por todo POST de formulário (login, logout, criar, editar, excluir, ações em massa).
 - `secret_key` deve ter ao menos 32 bytes — chaves curtas levantam `ValueError` no momento da construção.
 
 #### 5. Plugue um backend de auth customizado

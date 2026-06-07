@@ -129,6 +129,23 @@ class TestNew:
         assert "SERVER_HOST=0.0.0.0" in env
         assert "SERVER_PORT=9090" in env
 
+    def test_scaffold_ships_sqlite_driver_and_commented_asyncpg(
+        self, tmp_path: Path
+    ) -> None:
+        result = runner.invoke(
+            app,
+            ["new", "demo_svc", "--path", str(tmp_path), "--extras", ""],
+        )
+        assert result.exit_code == 0
+        pyproject = (tmp_path / "demo_svc" / "pyproject.toml").read_text()
+        # aiosqlite is a runtime dependency (default DATABASE_URL is SQLite),
+        # not a dev-only one — so the service runs without --dev installs.
+        runtime_block = pyproject.split("[dependency-groups]", 1)[0]
+        assert '"aiosqlite>=0.20.0",' in runtime_block
+        # asyncpg ships commented next to the SQLite driver, ready to enable
+        # when switching DATABASE_URL to PostgreSQL.
+        assert '# "asyncpg>=0.30.0",' in pyproject
+
     def test_empty_extras_drops_bracket_block(self, tmp_path: Path) -> None:
         result = runner.invoke(
             app,

@@ -30,6 +30,8 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[http]` | `httpx` | `HTTPClient` + `RetryPolicy` + circuit-breaker |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[mfa]` | `pyotp` | `TOTPHelper` + MFA/2FA (TOTP) endpoints on the bundled auth flow |
+| `[sqlite]` | `aiosqlite` | SQLite async driver for `sqlite+aiosqlite://` URLs (dev default) |
+| `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[all]` | everything above | every helper |
 
 === "Subset (recommended)"
@@ -47,16 +49,24 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 === "uv add"
 
     ```bash
-    uv add "tempest-fastapi-sdk[auth,upload]>=0.32.0"
+    uv add "tempest-fastapi-sdk[auth,upload,postgres]>=0.37.0"
     ```
 
 === "pyproject.toml"
 
     ```toml
     dependencies = [
-        "tempest-fastapi-sdk[auth,upload]>=0.32.0",
+        "tempest-fastapi-sdk[auth,upload,postgres]>=0.37.0",
     ]
     ```
+
+!!! warning "The SDK ships no database driver by default"
+    `sqlalchemy[asyncio]` is core, but the async DBAPI is your deploy
+    choice: install `[sqlite]` (`aiosqlite`, dev default) or `[postgres]`
+    (`asyncpg`, production). Without one, the engine raises
+    `ModuleNotFoundError` for the driver on first connection. Services
+    scaffolded with `tempest new` already pin `aiosqlite` and carry a
+    commented `asyncpg` line in `pyproject.toml`.
 
 !!! info "Lazy imports"
     Since 0.7.1 every optional dependency is imported lazily at first instantiation, so `import tempest_fastapi_sdk` works even when only a subset of extras is installed. Instantiating a helper whose extra is missing raises `ImportError` with a clear hint pointing at the right extra.

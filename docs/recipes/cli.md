@@ -56,9 +56,9 @@ Desde a v0.25.0 o scaffold gera um `docker-compose.yaml` com **apenas** os servi
 
 | Extra | Container subido | Porta(s) exposta(s) |
 |-------|------------------|---------------------|
-| (sempre) | `postgres:16-alpine` | 5432 |
-| `[cache]` | `redis:7-alpine` | 6379 |
-| `[queue]` / `[tasks]` | `rabbitmq:3-management-alpine` | 5672 (AMQP) + 15672 (UI) |
+| (sempre) | `postgres:18-alpine` | 5432 |
+| `[cache]` | `redis:8-alpine` | 6379 |
+| `[queue]` / `[tasks]` | `rabbitmq:4-management-alpine` | 5672 (AMQP) + 15672 (UI) |
 | `[minio]` | `minio/minio` + bootstrap mc | 9000 (API) + 9001 (Console) |
 | `[email]` | `mailhog/mailhog` | 1025 (SMTP) + 8025 (UI) |
 
@@ -72,6 +72,18 @@ Gera:
 
 - `postgres`, `redis`, `minio` (+ `minio-bootstrap` que cria o bucket `uploads`), `mailhog`
 - `.env.example` com `REDIS_URL`, `MINIO_*`, `EMAIL_HOST=localhost`, `EMAIL_PORT=1025`
+
+!!! info "Credenciais vêm do `.env`, não estão hardcoded no compose"
+    A partir da v0.37.0, nenhuma credencial é gravada direto no
+    `docker-compose.yaml`. Cada bloco `environment:` usa a forma
+    `${VAR:-default}`, e o Docker Compose resolve `VAR` a partir do
+    `.env` ao lado do compose. O `:-default` mantém o stack subindo
+    antes de você copiar `.env.example` para `.env` — mas defina
+    segredos reais no `.env` para qualquer deploy não-descartável.
+    Variáveis lidas pelo compose: `POSTGRES_USER` / `POSTGRES_PASSWORD`
+    / `POSTGRES_DB`, `RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS`
+    / `RABBITMQ_DEFAULT_VHOST`, `MINIO_ROOT_USER` /
+    `MINIO_ROOT_PASSWORD` — todas com seus padrões já no `.env.example`.
 
 Subir tudo:
 

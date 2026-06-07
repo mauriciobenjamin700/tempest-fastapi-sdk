@@ -75,9 +75,25 @@ class TestGenerate:
 
     def test_postgres_db_name_sanitizes_hyphens(self) -> None:
         out = generate("my-cool-api", "")
-        # POSTGRES_DB must be a valid identifier (no dashes)
-        assert "POSTGRES_DB: my_cool_api" in out
-        assert "POSTGRES_DB: my-cool-api" not in out
+        # POSTGRES_DB must be a valid identifier (no dashes); it is now
+        # exposed as the :-default of a .env-driven substitution.
+        assert "POSTGRES_DB: ${POSTGRES_DB:-my_cool_api}" in out
+        assert "my-cool-api}" not in out
+
+    def test_credentials_resolve_from_env_not_hardcoded(self) -> None:
+        out = generate("svc", "queue,minio")
+        # Every credential must be a .env-driven ${VAR:-default}, never
+        # a bare literal baked into the compose file.
+        assert "POSTGRES_USER: ${POSTGRES_USER:-app}" in out
+        assert "POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}" in out
+        assert "RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}" in out
+        assert "RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}" in out
+        assert "MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}" in out
+        assert "MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}" in out
+        # No bare hardcoded credential lines remain.
+        assert "POSTGRES_USER: app" not in out
+        assert "RABBITMQ_DEFAULT_USER: guest" not in out
+        assert "MINIO_ROOT_USER: minioadmin" not in out
 
     def test_volumes_section_alphabetized(self) -> None:
         out = generate("svc", "cache,queue,minio")
@@ -108,9 +124,21 @@ class TestEnvBlockFor:
 
     def test_minio_block_when_minio(self) -> None:
         out = env_block_for("minio")
+        assert "MINIO_ROOT_USER" in out
+        assert "MINIO_ROOT_PASSWORD" in out
         assert "MINIO_ENDPOINT" in out
         assert "MINIO_ACCESS_KEY" in out
         assert "MINIO_DEFAULT_BUCKET" in out
+
+    def test_postgres_credentials_always_present(self) -> None:
+        out = env_block_for("")
+        assert "POSTGRES_USER=app" in out
+        assert "POSTGRES_PASSWORD=app" in out
+
+    def test_rabbitmq_credentials_when_queue(self) -> None:
+        out = env_block_for("queue")
+        assert "RABBITMQ_DEFAULT_USER=guest" in out
+        assert "RABBITMQ_DEFAULT_PASS=guest" in out
 
     def test_email_block_when_email(self) -> None:
         out = env_block_for("email")

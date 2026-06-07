@@ -8,6 +8,11 @@ authors = [{ name = "you", email = "you@example.com" }]
 dependencies = [
     "__SDK_DEP__",
     "uvicorn>=0.30.0",
+    # SQLite async driver — the default DATABASE_URL uses sqlite+aiosqlite.
+    "aiosqlite>=0.20.0",
+    # PostgreSQL async driver — docker-compose always ships Postgres.
+    # Uncomment when you switch DATABASE_URL to postgresql+asyncpg://...
+    # "asyncpg>=0.30.0",
 ]
 
 [dependency-groups]
@@ -18,7 +23,6 @@ dev = [
     "pytest-cov>=6.0.0",
     "ruff>=0.8.0",
     "httpx>=0.28.1",
-    "aiosqlite>=0.20.0",
 ]
 
 [build-system]

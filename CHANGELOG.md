@@ -5,6 +5,40 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.37.0] — 2026-06-07
+
+### Added
+
+- **`[sqlite]` and `[postgres]` install extras** for the async database
+  drivers. The SDK keeps `sqlalchemy[asyncio]` as a core dependency but
+  ships **no DBAPI driver by default** — the driver is a deploy choice.
+  Install `tempest-fastapi-sdk[sqlite]` (`aiosqlite`, dev default) or
+  `[postgres]` (`asyncpg`, production); both are bundled into `[all]`.
+  Without one, the engine raised `ModuleNotFoundError` on first
+  connection.
+
+### Changed
+
+- **`tempest new` scaffold now ships a working DB driver.** The generated
+  `pyproject.toml` pins `aiosqlite` as a **runtime** dependency (it was
+  previously dev-only, so the default SQLite URL failed under a no-dev
+  install) and carries a commented `asyncpg` line next to it, ready to
+  uncomment when switching `DATABASE_URL` to PostgreSQL — matching the
+  commented Postgres URL already in `.env.example`.
+
+- **`tempest new` / `tempest generate --docker`: credentials now resolve
+  from `.env`, not hardcoded in the compose.** Every `environment:` block
+  in the generated `docker-compose.yaml` now uses the `${VAR:-default}`
+  form so Docker Compose reads the value from the `.env` next to the
+  compose file, keeping secrets out of a VCS-tracked compose. The
+  `:-default` preserves zero-config dev boot before `.env.example` is
+  copied to `.env`. Affected variables: `POSTGRES_USER` /
+  `POSTGRES_PASSWORD` / `POSTGRES_DB`, `RABBITMQ_DEFAULT_USER` /
+  `RABBITMQ_DEFAULT_PASS` / `RABBITMQ_DEFAULT_VHOST`, `MINIO_ROOT_USER` /
+  `MINIO_ROOT_PASSWORD` (plus the MinIO bootstrap container's `mc alias`).
+  `env_block_for` now emits these credential keys into `.env.example` so
+  the generated `.env` carries them with their defaults.
+
 ## [0.36.0] — 2026-06-06
 
 Admin panel brought to Django-admin parity: the list view, write CRUD,

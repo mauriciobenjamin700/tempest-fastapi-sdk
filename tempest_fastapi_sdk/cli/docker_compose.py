@@ -70,9 +70,11 @@ def _postgres_block(project_name: str) -> str:
     container_name: {project_name}-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_DB: {safe}
+      # Read from .env (see .env.example); the :-default keeps the
+      # stack bootable even before you copy .env.example to .env.
+      POSTGRES_USER: ${{POSTGRES_USER:-app}}
+      POSTGRES_PASSWORD: ${{POSTGRES_PASSWORD:-app}}
+      POSTGRES_DB: ${{POSTGRES_DB:-{safe}}}
       # Postgres 14+ defaults to scram-sha-256 — leave the explicit
       # method off so the cluster picks the secure default.
     ports:
@@ -83,7 +85,7 @@ def _postgres_block(project_name: str) -> str:
       # `docker compose down -v` when upgrading from 16.
       - postgres-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d {safe}"]
+      test: ["CMD-SHELL", "pg_isready -U ${{POSTGRES_USER:-app}} -d ${{POSTGRES_DB:-{safe}}}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -130,9 +132,10 @@ def _rabbitmq_block(project_name: str) -> str:
     container_name: {project_name}-rabbitmq
     restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-      RABBITMQ_DEFAULT_VHOST: /
+      # Read from .env (see .env.example); :-default keeps dev bootable.
+      RABBITMQ_DEFAULT_USER: ${{RABBITMQ_DEFAULT_USER:-guest}}
+      RABBITMQ_DEFAULT_PASS: ${{RABBITMQ_DEFAULT_PASS:-guest}}
+      RABBITMQ_DEFAULT_VHOST: ${{RABBITMQ_DEFAULT_VHOST:-/}}
     ports:
       - "5672:5672"     # AMQP
       - "15672:15672"   # Management UI — http://localhost:15672 (guest/guest)
@@ -156,8 +159,9 @@ def _minio_blocks(project_name: str) -> str:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      # Read from .env (see .env.example); :-default keeps dev bootable.
+      MINIO_ROOT_USER: ${{MINIO_ROOT_USER:-minioadmin}}
+      MINIO_ROOT_PASSWORD: ${{MINIO_ROOT_PASSWORD:-minioadmin}}
     ports:
       - "9000:9000"   # S3 API
       - "9001:9001"   # Web console — http://localhost:9001
@@ -177,7 +181,7 @@ def _minio_blocks(project_name: str) -> str:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc alias set local http://minio:9000 ${{MINIO_ROOT_USER:-minioadmin}} ${{MINIO_ROOT_PASSWORD:-minioadmin}} &&
       mc mb -p local/uploads &&
       echo 'bucket ready'
       "
@@ -241,6 +245,12 @@ def generate(project_name: str, extras: str) -> str:
         "#\n"
         "# Only services backing the SDK extras you chose are wired\n"
         "# in here. Add others manually as the service grows.\n"
+        "#\n"
+        "# Credentials are NOT hardcoded — they resolve from the .env\n"
+        "# file next to this compose (see .env.example). The :-default\n"
+        "# in each ${VAR:-default} keeps the stack bootable before you\n"
+        "# copy .env.example to .env; set real secrets in .env for any\n"
+        "# non-throwaway deploy.\n"
         "\n"
         "services:\n"
     )
@@ -269,7 +279,15 @@ def env_block_for(extras: str) -> str:
     blocks: list[str] = []
 
     blocks.append(
-        "\n# Postgres (uncomment to switch from the default SQLite URL)\n"
+        "\n# Postgres container credentials — read by docker compose.\n"
+        "# Change these before exposing port 5432 outside the host.\n"
+        "POSTGRES_USER=app\n"
+        "POSTGRES_PASSWORD=app\n"
+        "# POSTGRES_DB defaults to the project name; uncomment to override.\n"
+        "# POSTGRES_DB=app\n"
+        "# Uncomment to switch the app from the default SQLite URL\n"
+        "# (host/port/db must match the credentials above; also uncomment\n"
+        "# the asyncpg dependency in pyproject.toml):\n"
         "# DATABASE_URL=postgresql+asyncpg://app:app@localhost:5432/app\n"
     )
 
@@ -281,14 +299,22 @@ def env_block_for(extras: str) -> str:
 
     if extras_set & {"queue", "tasks"}:
         blocks.append(
-            "\n# RabbitMQ (FastStream queue / TaskIQ broker)\n"
+            "\n# RabbitMQ container credentials — read by docker compose.\n"
+            "RABBITMQ_DEFAULT_USER=guest\n"
+            "RABBITMQ_DEFAULT_PASS=guest\n"
+            "RABBITMQ_DEFAULT_VHOST=/\n"
+            "# Connection URLs consumed by the app (must match the creds above)\n"
             "RABBITMQ_URL=amqp://guest:guest@localhost:5672/\n"
             "TASKIQ_BROKER_URL=amqp://guest:guest@localhost:5672/\n"
         )
 
     if "minio" in extras_set:
         blocks.append(
-            "\n# MinIO / S3-compatible object storage\n"
+            "\n# MinIO container credentials — read by docker compose.\n"
+            "MINIO_ROOT_USER=minioadmin\n"
+            "MINIO_ROOT_PASSWORD=minioadmin\n"
+            "# Connection settings consumed by the app (keys must match the\n"
+            "# root credentials above for the bundled single-user setup)\n"
             "MINIO_ENDPOINT=localhost:9000\n"
             "MINIO_ACCESS_KEY=minioadmin\n"
             "MINIO_SECRET_KEY=minioadmin\n"

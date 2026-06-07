@@ -151,4 +151,4 @@ url = await storage.presigned_url("logo.png", expires=timedelta(hours=1))
 
 ## When to use presigned PUT directly
 
-For files > 50 MB, skip the in-memory buffer — have the client `PUT` straight to MinIO via a presigned URL. See [Storage MinIO/S3](storage.md#presigned-url--direct-browser-upload).
+For files > 50 MB, skip the in-memory buffer — have the client `PUT` straight to MinIO via a presigned URL. See [Storage MinIO/S3](storage.md#presigned-url-direct-browser-upload).

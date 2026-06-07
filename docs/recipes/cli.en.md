@@ -56,9 +56,9 @@ Since v0.25.0 the scaffold generates a `docker-compose.yaml` carrying **only** t
 
 | Extra | Container | Exposed port(s) |
 |-------|-----------|-----------------|
-| (always) | `postgres:16-alpine` | 5432 |
-| `[cache]` | `redis:7-alpine` | 6379 |
-| `[queue]` / `[tasks]` | `rabbitmq:3-management-alpine` | 5672 (AMQP) + 15672 (UI) |
+| (always) | `postgres:18-alpine` | 5432 |
+| `[cache]` | `redis:8-alpine` | 6379 |
+| `[queue]` / `[tasks]` | `rabbitmq:4-management-alpine` | 5672 (AMQP) + 15672 (UI) |
 | `[minio]` | `minio/minio` + bootstrap mc | 9000 (API) + 9001 (Console) |
 | `[email]` | `mailhog/mailhog` | 1025 (SMTP) + 8025 (UI) |
 
@@ -72,6 +72,18 @@ Generates:
 
 - `postgres`, `redis`, `minio` (+ `minio-bootstrap` creating the `uploads` bucket), `mailhog`
 - `.env.example` with `REDIS_URL`, `MINIO_*`, `EMAIL_HOST=localhost`, `EMAIL_PORT=1025`
+
+!!! info "Credentials come from `.env`, not hardcoded in the compose"
+    As of v0.37.0, no credential is written straight into
+    `docker-compose.yaml`. Each `environment:` block uses the
+    `${VAR:-default}` form, and Docker Compose resolves `VAR` from the
+    `.env` next to the compose file. The `:-default` keeps the stack
+    bootable before you copy `.env.example` to `.env` — but set real
+    secrets in `.env` for any non-throwaway deploy. Variables read by
+    compose: `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`,
+    `RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS` /
+    `RABBITMQ_DEFAULT_VHOST`, `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`
+    — all with their defaults already in `.env.example`.
 
 Boot it all:
 

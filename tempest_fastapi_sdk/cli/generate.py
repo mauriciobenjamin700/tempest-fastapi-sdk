@@ -145,7 +145,7 @@ def regenerate_docker_compose(
             existing = env_example.read_text(encoding="utf-8")
             # Strip any previous SDK-generated block so re-runs stay
             # idempotent. The block is appended after a marker line.
-            marker = "\n# Postgres (uncomment to switch from the default SQLite URL)\n"
+            marker = "\n# Postgres container credentials — read by docker compose.\n"
             if marker in existing:
                 existing = existing.split(marker, 1)[0].rstrip() + "\n"
             env_example.write_text(existing + addendum, encoding="utf-8")

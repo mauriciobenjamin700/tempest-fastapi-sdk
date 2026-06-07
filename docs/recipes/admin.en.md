@@ -1,7 +1,7 @@
 # Admin site
 
 
-Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. Phase 1 ships read-only views; create/edit/delete land in 0.14.0 and inline + bulk actions in 0.15.0.
+Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. The panel is feature-complete (Django-admin parity): a list view with search / per-field filters / sortable columns, full CRUD (create / edit / delete), bulk actions, CSV/JSON export, FK-select widgets, a dashboard with live row counts + system metrics, optional TOTP MFA at login, and an audit trail stamping `created_by` / `updated_by`. Still on the roadmap: file upload and inline/related editing.
 
 Requires the `[admin]` extra:
 
@@ -155,7 +155,7 @@ app.include_router(
 - `Secure` flagged when `cookie_secure=True` (default; flip off in local HTTP dev).
 - `SameSite=Lax` (`"lax"`/`"strict"`/`"none"` accepted).
 - Default lifetime `8h`; expired or tampered cookies are rejected silently.
-- Per-session CSRF token is generated at login and required by every form POST (only `logout` in Phase 1).
+- Per-session CSRF token is generated at login and required by every form POST (login, logout, create, edit, delete, bulk actions).
 - `secret_key` must be at least 32 bytes — short keys raise `ValueError` at construction time.
 
 #### 5. Plug in a custom auth backend
