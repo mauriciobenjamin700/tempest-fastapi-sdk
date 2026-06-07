@@ -12,8 +12,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend, AdminAuthError
 from tempest_fastapi_sdk.admin.config import AdminModel
@@ -29,6 +30,11 @@ from tempest_fastapi_sdk.admin.session import (
     SignedCookieSessionStore,
 )
 from tempest_fastapi_sdk.admin.site import AdminSite
+from tempest_fastapi_sdk.api.routers.logs import (
+    LogSource,
+    _read_entries,
+    _resolve_files,
+)
 from tempest_fastapi_sdk.exceptions import AppException
 
 if TYPE_CHECKING:
@@ -108,6 +114,8 @@ def make_admin_router(
     cookie_secure: bool = True,
     export_max_rows: int = 5000,
     show_metrics: bool = True,
+    show_logs: bool = False,
+    log_dir: str | Path = "logs",
 ) -> APIRouter:
     """Build the FastAPI router that mounts the admin site.
 
@@ -119,6 +127,8 @@ def make_admin_router(
     * ``GET/POST {prefix}/mfa`` — TOTP challenge for MFA-enabled
       principals (between the password step and full access).
     * ``GET  {prefix}/`` — dashboard listing registered admins.
+    * ``GET  {prefix}/logs`` — structured application logs (when
+      ``show_logs=True``).
     * ``GET  {prefix}/m/{slug}/`` — list view (paginated, sortable,
       filterable).
     * ``GET  {prefix}/m/{slug}/export.{fmt}`` — CSV/JSON export of the
@@ -154,6 +164,17 @@ def make_admin_router(
             renders a CPU/RAM/disk panel via ``MetricsUtils`` — silently
             omitted when the ``[metrics]`` extra is not installed. Set
             ``False`` to skip the per-request sample entirely.
+        show_logs (bool): When ``True``, a ``GET {prefix}/logs`` page is
+            mounted and a "Logs" entry appears in the sidebar. It reads
+            the structured JSON files written by ``configure_logging``
+            (see ``log_dir``) and renders them filtered + paginated.
+            Defaults to ``False`` (opt-in — log payloads expose
+            tracebacks and request metadata).
+        log_dir (str | Path): Directory holding the structured log
+            files, matching the ``log_dir`` passed to
+            ``configure_logging``. Only consulted when ``show_logs`` is
+            ``True``. Defaults to ``"logs"``. When the directory has no
+            log files yet the page renders an empty state.
 
     Returns:
         APIRouter: A router ready to attach via ``app.include_router``.
@@ -276,6 +297,21 @@ def make_admin_router(
         context.setdefault("site", site)
         context.setdefault("messages", [])
         context.setdefault("static_url", f"{prefix}/static")
+        # Sidebar navigation, shared by every authenticated page. Built
+        # from the registry (no DB hit) so a single source drives both
+        # the dashboard cards and the persistent sidebar.
+        context.setdefault(
+            "nav_models",
+            [
+                {
+                    "label": admin.get_verbose_name_plural(),
+                    "url": f"{prefix}/m/{admin.get_slug()}/",
+                }
+                for admin in site.iter_models()
+            ],
+        )
+        context.setdefault("nav_index_url", f"{prefix}/")
+        context.setdefault("nav_logs_url", f"{prefix}/logs" if show_logs else None)
         return templates.TemplateResponse(
             request,
             template,
@@ -598,6 +634,89 @@ def make_admin_router(
                 "metrics": await _system_metrics() if show_metrics else None,
             },
         )
+
+    if show_logs:
+        _log_base = Path(log_dir)
+        _logs_page_size = 50
+
+        @router.get("/logs", name="admin_logs")
+        async def logs_view(
+            request: Request,
+            source: LogSource = Query(default="all"),
+            q: str | None = Query(default=None),
+            page: int = Query(default=1, ge=1),
+            db_session: AsyncSession = Depends(_db_session),
+            session: AdminSession = Depends(_require_session),
+        ) -> HTMLResponse:
+            """Render a filtered, paginated page of structured logs.
+
+            Args:
+                request (Request): The inbound request.
+                source (LogSource): Which log file(s) to read.
+                q (str | None): Case-insensitive message substring filter.
+                page (int): The 1-indexed page number.
+                db_session (AsyncSession): The DB session.
+                session (AdminSession): The validated session.
+
+            Returns:
+                HTMLResponse: The logs template (empty state when no log
+                files exist on disk).
+            """
+            principal = await _resolve_principal(request, db_session, session)
+
+            files = _resolve_files(_log_base, source)
+            entries = await run_in_threadpool(_read_entries, files)
+
+            needle = q.lower() if q else None
+            if needle is not None:
+                entries = [
+                    entry
+                    for entry in entries
+                    if needle in str(entry.get("message", "")).lower()
+                ]
+            entries.sort(
+                key=lambda item: str(item.get("timestamp", "")),
+                reverse=True,
+            )
+
+            total = len(entries)
+            offset = (page - 1) * _logs_page_size
+            window = entries[offset : offset + _logs_page_size]
+
+            available = _log_base.exists() and any(
+                candidate.exists() for candidate in _resolve_files(_log_base, "all")
+            )
+
+            kept_params = {"source": source, "q": q or ""}
+            pagination = _Pagination(
+                page=page,
+                size=_logs_page_size,
+                total=total,
+                query_params={k: v for k, v in kept_params.items() if v},
+            )
+            return _render(
+                request,
+                "logs.html",
+                {
+                    "user": principal,
+                    "session": session,
+                    "user_display": auth_backend.display_name(principal),
+                    "entries": window,
+                    "log_sources": [
+                        "all",
+                        "debug",
+                        "info",
+                        "warning",
+                        "error",
+                        "critical",
+                        "500",
+                    ],
+                    "current_source": source,
+                    "query": q or "",
+                    "available": available,
+                    "pagination": pagination,
+                },
+            )
 
     @router.get("/m/{slug}/", name="admin_list")
     async def list_view(

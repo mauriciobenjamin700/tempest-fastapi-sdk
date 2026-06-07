@@ -105,7 +105,85 @@ textarea {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.tempest-admin-header__left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* ---- Layout: persistent sidebar + content ---- */
+.tempest-admin-layout {
+  display: flex;
+  align-items: stretch;
+}
+
+.tempest-admin-sidebar {
+  flex: 0 0 220px;
+  width: 220px;
+  background: var(--tempest-bg-soft);
+  color: #e2e8f0;
+  padding: 1rem 0.75rem;
+}
+
+.tempest-admin-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  position: sticky;
+  top: 1rem;
+}
+
+.tempest-admin-sidebar__heading {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  margin: 1rem 0.75rem 0.35rem;
+}
+
+.tempest-admin-sidebar__link {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--tempest-radius);
+  color: #cbd5e1;
+}
+
+.tempest-admin-sidebar__link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  text-decoration: none;
+}
+
+.tempest-admin-sidebar__link--active,
+.tempest-admin-sidebar__link--active:hover {
+  background: var(--tempest-accent);
+  color: #fff;
+}
+
+/* Burger toggle (CSS-only, via the hidden checkbox) — mobile only. */
+.tempest-admin-burger {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  padding: 0.3rem;
+}
+
+.tempest-admin-burger span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: #f8fafc;
+  border-radius: 2px;
+}
+
+.tempest-admin-scrim {
+  display: none;
+}
+
 .tempest-admin-main {
+  flex: 1 1 auto;
+  min-width: 0;
   max-width: 1080px;
   margin: 2rem auto;
   padding: 0 1.5rem;
@@ -638,5 +716,99 @@ textarea {
   .tempest-admin-bulk__bar select,
   .tempest-admin-bulk__bar button {
     width: 100%;
+  }
+}
+
+/* ---- Application logs page ---- */
+.tempest-log-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.tempest-log-badge--debug {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.tempest-log-badge--info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.tempest-log-badge--warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.tempest-log-badge--error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.tempest-log-badge--critical {
+  background: #7f1d1d;
+  color: #fff;
+}
+
+.tempest-admin-logs__ts {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-logs__logger {
+  color: var(--tempest-fg-soft);
+  white-space: nowrap;
+}
+
+.tempest-admin-logs__msg {
+  word-break: break-word;
+}
+
+.tempest-admin-logs__empty {
+  color: var(--tempest-fg-soft);
+  background: #fff;
+  padding: 1.5rem;
+  border-radius: var(--tempest-radius);
+  box-shadow: var(--tempest-shadow);
+}
+
+/* ---- Sidebar off-canvas on tablet/mobile, burger reveals it ---- */
+@media (max-width: 768px) {
+  .tempest-admin-burger {
+    display: flex;
+  }
+
+  .tempest-admin-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 50;
+    width: 240px;
+    flex-basis: 240px;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    overflow-y: auto;
+    box-shadow: 0 0 24px rgba(15, 23, 42, 0.35);
+  }
+
+  .tempest-admin-navtoggle:checked ~ .tempest-admin-layout .tempest-admin-sidebar {
+    transform: translateX(0);
+  }
+
+  .tempest-admin-navtoggle:checked ~ .tempest-admin-layout .tempest-admin-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(15, 23, 42, 0.45);
   }
 }

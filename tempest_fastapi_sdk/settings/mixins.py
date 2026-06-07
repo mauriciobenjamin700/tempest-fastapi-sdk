@@ -20,6 +20,7 @@ box.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 from pydantic import Field
@@ -178,6 +179,21 @@ class DatabaseSettings(BaseSettings):
         examples=[300, 1800, 3600],
     )
 
+    def database_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto :class:`AsyncDatabaseManager` kwargs.
+
+        Returns:
+            dict[str, Any]: Keyword arguments ready to splat into
+            ``AsyncDatabaseManager(**settings.database_kwargs())``.
+        """
+        return {
+            "db_url": self.DATABASE_URL,
+            "echo": self.DATABASE_ECHO,
+            "pool_size": self.DATABASE_POOL_SIZE,
+            "max_overflow": self.DATABASE_MAX_OVERFLOW,
+            "pool_recycle": self.DATABASE_POOL_RECYCLE,
+        }
+
 
 class RedisSettings(BaseSettings):
     """Redis connection configuration.
@@ -210,6 +226,18 @@ class RedisSettings(BaseSettings):
         ),
         examples=[True, False],
     )
+
+    def redis_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto :class:`AsyncRedisManager` kwargs.
+
+        Returns:
+            dict[str, Any]: Keyword arguments ready to splat into
+            ``AsyncRedisManager(**settings.redis_kwargs())``.
+        """
+        return {
+            "url": self.REDIS_URL,
+            "decode_responses": self.REDIS_DECODE_RESPONSES,
+        }
 
 
 class RabbitMQSettings(BaseSettings):
@@ -302,6 +330,24 @@ class JWTSettings(BaseSettings):
         description=("Value of the ``iss`` claim. ``None`` omits the claim entirely."),
         examples=[None, "tempest-api", "https://auth.example.com"],
     )
+
+    def jwt_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto :class:`JWTUtils` constructor kwargs.
+
+        ``JWT_ACCESS_TTL_SECONDS`` becomes the ``default_ttl`` timedelta;
+        the refresh TTL is not a ``JWTUtils`` parameter (it is consumed by
+        the bundled auth flow) and is intentionally left out.
+
+        Returns:
+            dict[str, Any]: Keyword arguments ready to splat into
+            ``JWTUtils(**settings.jwt_kwargs())``.
+        """
+        return {
+            "secret": self.JWT_SECRET,
+            "algorithm": self.JWT_ALGORITHM,
+            "default_ttl": timedelta(seconds=self.JWT_ACCESS_TTL_SECONDS),
+            "issuer": self.JWT_ISSUER,
+        }
 
 
 class CORSSettings(BaseSettings):
@@ -564,6 +610,20 @@ class UploadSettings(BaseSettings):
         examples=[set(), {"image/png", "image/jpeg", "application/pdf"}],
     )
 
+    def upload_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto :class:`UploadUtils` constructor kwargs.
+
+        Returns:
+            dict[str, Any]: Keyword arguments ready to splat into
+            ``UploadUtils(**settings.upload_kwargs())``.
+        """
+        return {
+            "upload_dir": self.UPLOAD_DIR,
+            "max_size_bytes": self.UPLOAD_MAX_SIZE_BYTES,
+            "allowed_extensions": self.UPLOAD_ALLOWED_EXTENSIONS,
+            "allowed_mimetypes": self.UPLOAD_ALLOWED_MIMETYPES,
+        }
+
 
 class TokenSettings(BaseSettings):
     """Shared-secret ``X-Token`` configuration.
@@ -641,6 +701,22 @@ class WebPushSettings(BaseSettings):
         ),
         examples=[3600, 86_400, 86_400 * 7],
     )
+
+    def webpush_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto :class:`WebPushDispatcher` kwargs.
+
+        The **public** key is advertised to browser clients, not passed
+        to the dispatcher, so it is intentionally omitted here.
+
+        Returns:
+            dict[str, Any]: Keyword arguments ready to splat into
+            ``WebPushDispatcher(**settings.webpush_kwargs())``.
+        """
+        return {
+            "vapid_private_key": self.VAPID_PRIVATE_KEY,
+            "vapid_subject": self.VAPID_SUBJECT,
+            "ttl_seconds": self.WEBPUSH_DEFAULT_TTL_SECONDS,
+        }
 
 
 class TaskIQSettings(BaseSettings):
@@ -1079,6 +1155,22 @@ class MinIOSettings(BaseSettings):
         ),
         examples=["uploads", "media", "user-content"],
     )
+
+    def minio_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto :class:`AsyncMinIOClient` kwargs.
+
+        Returns:
+            dict[str, Any]: Keyword arguments ready to splat into
+            ``AsyncMinIOClient(**settings.minio_kwargs())``.
+        """
+        return {
+            "endpoint": self.MINIO_ENDPOINT,
+            "access_key": self.MINIO_ACCESS_KEY,
+            "secret_key": self.MINIO_SECRET_KEY,
+            "default_bucket": self.MINIO_DEFAULT_BUCKET,
+            "secure": self.MINIO_SECURE,
+            "region": self.MINIO_REGION,
+        }
 
 
 class SessionSettings(BaseSettings):

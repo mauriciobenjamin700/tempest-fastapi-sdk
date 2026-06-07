@@ -113,6 +113,8 @@ app.include_router(
         secret_key=settings.JWT_SECRET,          # scaffold reuses JWT_SECRET — at least 32 bytes
         prefix="/admin",
         cookie_secure=not settings.DEBUG,        # True in production HTTPS
+        show_logs=True,                          # enables the logs page + sidebar entry
+        log_dir=settings.LOG_DIR,                # same dir passed to configure_logging
     )
 )
 ```
@@ -122,6 +124,7 @@ app.include_router(
 - `GET  /admin/login`, `POST /admin/login`, `POST /admin/logout` — auth flow.
 - `GET/POST /admin/mfa` — TOTP second-factor challenge between the password step and access, for MFA-enabled principals.
 - `GET  /admin/` — dashboard: a card per model with its **live row count** + Browse/New, plus a **metrics panel** (CPU/RAM/disk via `MetricsUtils`). On by default, omitted without the `[metrics]` extra, disable with `make_admin_router(show_metrics=False)`.
+- `GET  /admin/logs` — **application logs** (when `show_logs=True`): reads the structured JSON files written by `configure_logging(log_dir=…)`, with source filter (`?source=`), free-text search (`?q=`) and pagination. Color-coded level badges. Renders an empty state when no log files exist yet.
 - `GET  /admin/m/{slug}/` — list view with pagination + free-text search (`?q=`) + per-field filters (`?filter_<field>=value`) + clickable **column sorting** (`?sort=<column>&dir=asc|desc`).
 - `GET  /admin/m/{slug}/export.csv` / `export.json` — **export** the current result set (honoring search/filters/sort) as CSV or JSON. Row cap via `make_admin_router(export_max_rows=…)` (default 5000).
 - `POST /admin/m/{slug}/bulk` — **bulk actions** (delete / activate / deactivate) on the selected rows.
@@ -143,6 +146,24 @@ app.include_router(
     **Audit trail**: create/edit through the admin stamps `created_by`/`updated_by` (from `AuditMixin`) with the acting admin's id; the detail view shows an **Audit** panel with timestamps and — when the model has the audit columns — the actor (UUID resolved to a display name via the auth backend). Models without `AuditMixin` show timestamps only.
 
     Not yet included (later roadmap phases): file upload, inline/related editing.
+
+!!! tip "Sidebar + burger navigation"
+    Every authenticated page has a persistent **sidebar**: Dashboard, one
+    link per registered model (grouped under "Models"), and — with
+    `show_logs=True` — "Logs" under "System". The current page's entry is
+    highlighted. On **desktop** the sidebar is always visible on the left;
+    on **mobile** (≤768px) it becomes off-canvas, opened by the **burger**
+    icon in the header and dismissed by tapping the scrim — pure CSS, no JS.
+
+!!! info "Logs page (`show_logs=True`)"
+    `GET /admin/logs` reads the structured JSON files that
+    `configure_logging(log_dir=…)` writes. Pass the **same** `log_dir` to
+    `make_admin_router`. The page offers a source filter
+    (`all`/`debug`/`info`/`warning`/`error`/`critical`/`500`), substring
+    search on the message, and pagination, with color-coded level badges.
+    It is **opt-in** (`show_logs=False` by default) because the payload
+    exposes tracebacks and request metadata — only enable it behind the
+    admin login. With no files in `log_dir`, the page shows an empty state.
 
 !!! tip "Responsive by default"
     The bundled templates + CSS are responsive: on narrow screens (≤600px) the header stacks, search/filters/actions go full-width, tables get horizontal scroll (never breaking the layout), and the detail grid collapses to a single column. Column headers are clickable to toggle sort order (▲/▼).

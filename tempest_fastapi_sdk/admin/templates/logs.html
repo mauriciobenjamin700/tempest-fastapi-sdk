@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Logs · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-logs">
+  <div class="tempest-admin-list__header">
+    <h1>Application logs</h1>
+  </div>
+
+  {% if not available %}
+  <p class="tempest-admin-logs__empty">
+    No log files found. File logging is written by
+    <code>configure_logging(log_dir=...)</code>; once it runs, records show up here.
+  </p>
+  {% else %}
+  <form method="get" action="{{ nav_logs_url }}" class="tempest-admin-list__filters">
+    <label>
+      <span>Source</span>
+      <select name="source">
+        {% for src in log_sources %}
+        <option value="{{ src }}"{% if src == current_source %} selected{% endif %}>{{ src }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Search message</span>
+      <input type="search" name="q" value="{{ query }}" placeholder="substring…">
+    </label>
+    <button type="submit">Filter</button>
+  </form>
+
+  {% if entries %}
+  <div class="tempest-admin-table-wrap">
+    <table class="tempest-admin-list__table tempest-admin-logs__table">
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Level</th>
+          <th>Logger</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+        <tr>
+          <td class="tempest-admin-logs__ts">{{ entry.get("timestamp", "") }}</td>
+          <td>
+            {% set level = (entry.get("level", "") or "")|lower %}
+            <span class="tempest-log-badge tempest-log-badge--{{ level }}">{{ entry.get("level", "—") }}</span>
+          </td>
+          <td class="tempest-admin-logs__logger">{{ entry.get("logger", entry.get("name", "—")) }}</td>
+          <td class="tempest-admin-logs__msg">{{ entry.get("message", "") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tempest-admin-list__pagination">
+    {% if pagination.page > 1 %}
+    <a href="?{{ pagination.query_for(pagination.page - 1) }}">&laquo; Prev</a>
+    {% endif %}
+    <span>Page {{ pagination.page }} of {{ pagination.pages }} ({{ pagination.total }} records)</span>
+    {% if pagination.page < pagination.pages %}
+    <a href="?{{ pagination.query_for(pagination.page + 1) }}">Next &raquo;</a>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="tempest-admin-logs__empty">No records match the current filter.</p>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

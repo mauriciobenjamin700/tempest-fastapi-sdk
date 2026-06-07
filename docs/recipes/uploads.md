@@ -129,7 +129,7 @@ storage: UploadStorage = make_storage()
 # `UploadUtils.__init__` always mkdirs UPLOAD_DIR — even when the active
 # backend is MinIO, the directory is created. Set UPLOAD_DIR to a path
 # the process can write to, even if you never read from it.
-utils = UploadUtils(settings.UPLOAD_DIR, max_size_bytes=settings.UPLOAD_MAX_SIZE_BYTES)
+utils = UploadUtils(**settings.upload_kwargs())   # dir + limites + tipos permitidos
 ```
 
 ## Operações comuns

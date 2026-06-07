@@ -121,6 +121,70 @@ class TestMixinDefaults:
         assert mailer.host == "localhost"
         assert mailer.use_starttls is True  # mirrors SMTP_USE_TLS default
 
+    def test_database_kwargs_splats_into_manager(self) -> None:
+        from tempest_fastapi_sdk import AsyncDatabaseManager
+
+        kwargs = DatabaseSettings().database_kwargs()
+        assert set(kwargs) == {
+            "db_url",
+            "echo",
+            "pool_size",
+            "max_overflow",
+            "pool_recycle",
+        }
+        manager = AsyncDatabaseManager(**kwargs)  # no connection opened
+        assert manager is not None
+
+    def test_redis_kwargs_splats_into_manager(self) -> None:
+        from tempest_fastapi_sdk.cache import AsyncRedisManager
+
+        kwargs = RedisSettings().redis_kwargs()
+        assert kwargs == {"url": "redis://localhost:6379/0", "decode_responses": True}
+        assert AsyncRedisManager(**kwargs) is not None
+
+    def test_jwt_kwargs_splats_into_jwtutils(self) -> None:
+        from datetime import timedelta
+
+        from tempest_fastapi_sdk import JWTUtils
+
+        kwargs = JWTSettings().jwt_kwargs()
+        assert kwargs["default_ttl"] == timedelta(seconds=3600)
+        assert set(kwargs) == {"secret", "algorithm", "default_ttl", "issuer"}
+        assert JWTUtils(**kwargs) is not None
+
+    def test_upload_kwargs_splats_into_uploadutils(self) -> None:
+        from tempest_fastapi_sdk import UploadUtils
+
+        kwargs = UploadSettings().upload_kwargs()
+        assert set(kwargs) == {
+            "upload_dir",
+            "max_size_bytes",
+            "allowed_extensions",
+            "allowed_mimetypes",
+        }
+        assert UploadUtils(**kwargs) is not None
+
+    def test_webpush_kwargs_splats_into_dispatcher(self) -> None:
+        from tempest_fastapi_sdk import WebPushDispatcher
+
+        kwargs = WebPushSettings().webpush_kwargs()
+        assert set(kwargs) == {"vapid_private_key", "vapid_subject", "ttl_seconds"}
+        assert WebPushDispatcher(**kwargs) is not None
+
+    def test_minio_kwargs_splats_into_client(self) -> None:
+        from tempest_fastapi_sdk import AsyncMinIOClient, MinIOSettings
+
+        kwargs = MinIOSettings().minio_kwargs()
+        assert set(kwargs) == {
+            "endpoint",
+            "access_key",
+            "secret_key",
+            "default_bucket",
+            "secure",
+            "region",
+        }
+        assert AsyncMinIOClient(**kwargs) is not None
+
     def test_upload_settings_defaults(self) -> None:
         settings = UploadSettings()
         assert settings.UPLOAD_DIR == "./var/uploads"

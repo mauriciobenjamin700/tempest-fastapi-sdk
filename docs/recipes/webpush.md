@@ -21,11 +21,8 @@ from tempest_fastapi_sdk import WebPushDispatcher
 from src.core.settings import settings
 
 
-dispatcher = WebPushDispatcher(
-    settings.VAPID_PRIVATE_KEY,
-    vapid_subject=settings.VAPID_SUBJECT,   # ex.: "mailto:ops@example.com"
-    ttl_seconds=60,
-)
+# settings.webpush_kwargs() -> vapid_private_key + vapid_subject + ttl_seconds
+dispatcher = WebPushDispatcher(**settings.webpush_kwargs())
 ```
 
 ## Guardar a inscrição

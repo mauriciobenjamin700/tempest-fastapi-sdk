@@ -113,6 +113,8 @@ app.include_router(
         secret_key=settings.JWT_SECRET,          # scaffold reuses JWT_SECRET — pelo menos 32 bytes
         prefix="/admin",
         cookie_secure=not settings.DEBUG,        # True in production HTTPS
+        show_logs=True,                          # liga a página de logs + item na sidebar
+        log_dir=settings.LOG_DIR,                # mesmo dir passado pro configure_logging
     )
 )
 ```
@@ -122,6 +124,7 @@ app.include_router(
 - `GET  /admin/login`, `POST /admin/login`, `POST /admin/logout` — fluxo de auth.
 - `GET/POST /admin/mfa` — desafio TOTP (segundo fator) entre a senha e o acesso, para principais com MFA habilitado.
 - `GET  /admin/` — dashboard: card por modelo com **contagem de linhas** + Browse/New, e um **painel de métricas** (CPU/RAM/disco via `MetricsUtils`). Painel ligado por default, omitido sem o extra `[metrics]`, desligável com `make_admin_router(show_metrics=False)`.
+- `GET  /admin/logs` — **logs da aplicação** (quando `show_logs=True`): lê os arquivos JSON estruturados escritos pelo `configure_logging(log_dir=…)`, com filtro por fonte (`?source=`), busca em texto (`?q=`) e paginação. Badges coloridos por nível. Quando ainda não há arquivos de log, mostra um estado vazio.
 - `GET  /admin/m/{slug}/` — list view com paginação + busca em texto livre (`?q=`) + filtros por campo (`?filter_<field>=value`) + **ordenação por coluna** clicável (`?sort=<coluna>&dir=asc|desc`).
 - `GET  /admin/m/{slug}/export.csv` / `export.json` — **exporta** o resultado atual (respeitando busca/filtros/ordenação) como CSV ou JSON. Limite de linhas via `make_admin_router(export_max_rows=…)` (default 5000).
 - `POST /admin/m/{slug}/bulk` — **ações em massa** (delete / activate / deactivate) nas linhas selecionadas.
@@ -143,6 +146,24 @@ app.include_router(
     **Audit trail**: create/edit pelo admin carimba `created_by`/`updated_by` (do `AuditMixin`) com o id do admin atuante; o detail mostra um painel **Audit** com timestamps e — quando o modelo tem as colunas de auditoria — o ator (UUID resolvido para nome via o auth backend). Modelos sem `AuditMixin` mostram só os timestamps.
 
     Ainda **não** incluídos (fases futuras do roadmap): upload de arquivo, inline/related editing.
+
+!!! tip "Navegação por sidebar + burger"
+    Toda página autenticada tem uma **sidebar** persistente: Dashboard, um
+    link por modelo registrado (agrupados em "Models") e, com
+    `show_logs=True`, "Logs" em "System". O item da página atual fica
+    destacado. No **desktop** a sidebar fica sempre visível à esquerda; no
+    **mobile** (≤768px) ela vira off-canvas, aberta pelo ícone **burger**
+    no header e fechada tocando no scrim — tudo CSS puro, sem JS.
+
+!!! info "Página de logs (`show_logs=True`)"
+    `GET /admin/logs` lê os arquivos JSON estruturados que o
+    `configure_logging(log_dir=…)` grava. Passe o **mesmo** `log_dir` para
+    `make_admin_router`. A página oferece filtro por fonte
+    (`all`/`debug`/`info`/`warning`/`error`/`critical`/`500`), busca por
+    substring na mensagem e paginação, com badges coloridos por nível.
+    É **opt-in** (`show_logs=False` por default) porque o payload expõe
+    tracebacks e metadados de request — só habilite atrás do login do
+    admin. Sem arquivos no `log_dir`, a página mostra um estado vazio.
 
 !!! tip "Responsivo por padrão"
     Os templates + CSS embutidos são responsivos: em telas estreitas (≤600px) o header empilha, busca/filtros/ações viram full-width, as tabelas ganham scroll horizontal (nunca quebram o layout) e o grid do detail colapsa para uma coluna. Headers de coluna são clicáveis para alternar a ordenação (▲/▼).

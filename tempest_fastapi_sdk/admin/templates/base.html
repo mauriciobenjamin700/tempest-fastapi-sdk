@@ -8,9 +8,19 @@
   <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
 </head>
 <body>
+  {% if user %}
+  <input type="checkbox" id="tempest-nav-toggle" class="tempest-admin-navtoggle" hidden>
+  {% endif %}
   <header class="tempest-admin-header">
-    <div class="tempest-admin-header__brand">
-      <a href="{{ url_for('admin_index') }}">{{ site.title }}</a>
+    <div class="tempest-admin-header__left">
+      {% if user %}
+      <label for="tempest-nav-toggle" class="tempest-admin-burger" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </label>
+      {% endif %}
+      <div class="tempest-admin-header__brand">
+        <a href="{{ url_for('admin_index') }}">{{ site.title }}</a>
+      </div>
     </div>
     {% if user %}
     <nav class="tempest-admin-header__nav">
@@ -23,18 +33,48 @@
     </nav>
     {% endif %}
   </header>
-  <main class="tempest-admin-main">
-    {% if messages %}
-    <ul class="tempest-admin-messages">
-      {% for message in messages %}
-      <li class="tempest-admin-messages__item tempest-admin-messages__item--{{ message.level }}">
-        {{ message.text }}
-      </li>
-      {% endfor %}
-    </ul>
+  <div class="tempest-admin-layout">
+    {% if user %}
+    {% set path = request.url.path %}
+    <label for="tempest-nav-toggle" class="tempest-admin-scrim" aria-hidden="true"></label>
+    <aside class="tempest-admin-sidebar">
+      <nav class="tempest-admin-sidebar__nav" aria-label="Admin navigation">
+        <a href="{{ nav_index_url }}"
+           class="tempest-admin-sidebar__link{% if path == nav_index_url %} tempest-admin-sidebar__link--active{% endif %}">
+          Dashboard
+        </a>
+        {% if nav_models %}
+        <span class="tempest-admin-sidebar__heading">Models</span>
+        {% for entry in nav_models %}
+        <a href="{{ entry.url }}"
+           class="tempest-admin-sidebar__link{% if path.startswith(entry.url) %} tempest-admin-sidebar__link--active{% endif %}">
+          {{ entry.label }}
+        </a>
+        {% endfor %}
+        {% endif %}
+        {% if nav_logs_url %}
+        <span class="tempest-admin-sidebar__heading">System</span>
+        <a href="{{ nav_logs_url }}"
+           class="tempest-admin-sidebar__link{% if path == nav_logs_url %} tempest-admin-sidebar__link--active{% endif %}">
+          Logs
+        </a>
+        {% endif %}
+      </nav>
+    </aside>
     {% endif %}
-    {% block content %}{% endblock %}
-  </main>
+    <main class="tempest-admin-main">
+      {% if messages %}
+      <ul class="tempest-admin-messages">
+        {% for message in messages %}
+        <li class="tempest-admin-messages__item tempest-admin-messages__item--{{ message.level }}">
+          {{ message.text }}
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
   <footer class="tempest-admin-footer">
     <small>Powered by tempest-fastapi-sdk</small>
   </footer>

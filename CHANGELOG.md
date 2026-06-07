@@ -5,6 +5,35 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.39.0] — 2026-06-07
+
+### Added
+
+- **Admin: application logs page.** `make_admin_router(show_logs=True,
+  log_dir=...)` mounts `GET {prefix}/logs`, reading the structured JSON
+  files written by `configure_logging` and rendering them filtered (by
+  source + message substring), paginated, with color-coded level badges.
+  Opt-in (default `False`) since the payload exposes tracebacks; it adds a
+  "Logs" entry to the sidebar and shows an empty state when no files
+  exist.
+- **Admin: sidebar navigation + mobile burger.** Every authenticated page
+  now has a persistent left sidebar (Dashboard, one link per registered
+  model, and Logs when enabled), with the current page highlighted. On
+  desktop it is always visible; on mobile (≤768px) it becomes an
+  off-canvas drawer toggled by a burger button and dismissed via a scrim —
+  pure CSS, no JavaScript.
+- **`*_kwargs()` helpers on settings mixins** that mirror an SDK
+  constructor, so wiring is a one-liner instead of repeating field names:
+  `DatabaseSettings.database_kwargs()` → `AsyncDatabaseManager`,
+  `RedisSettings.redis_kwargs()` → `AsyncRedisManager`,
+  `JWTSettings.jwt_kwargs()` → `JWTUtils`,
+  `UploadSettings.upload_kwargs()` → `UploadUtils`,
+  `WebPushSettings.webpush_kwargs()` → `WebPushDispatcher`,
+  `MinIOSettings.minio_kwargs()` → `AsyncMinIOClient` (joining the
+  existing `EmailSettings.email_kwargs()`). Each is splat-tested against
+  the real constructor. Settings consumed by helpers that already accept a
+  `settings=` object (`run_server`, `apply_cors`) keep that path.
+
 ## [0.38.1] — 2026-06-07
 
 ### Fixed
