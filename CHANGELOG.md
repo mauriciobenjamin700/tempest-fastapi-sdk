@@ -5,6 +5,37 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.43.0] — 2026-06-11
+
+### Added
+
+- **Distributed tracing with OpenTelemetry.** `setup_tracing(app,
+  service_name=..., otlp_endpoint=...)` installs an OTLP/gRPC span
+  exporter and auto-instruments FastAPI (incoming requests),
+  SQLAlchemy (queries, via `sqlalchemy_engine=db.engine`) and httpx
+  (outbound calls) so one trace follows a request across services.
+  `otlp_endpoint=None` falls back to a console exporter for local
+  debugging; `sample_ratio` controls head-based sampling;
+  `resource_attributes` merges extra span attributes. Behind the new
+  `[otel]` extra — importing the SDK without it costs nothing and
+  never crashes. Complements `RequestIDMiddleware` (which correlates
+  logs).
+- **`SlowQueryLogger`** — attaches `before/after_cursor_execute`
+  listeners to a SQLAlchemy engine (sync or async) and logs every
+  statement slower than `threshold_ms`. Bind parameters are omitted
+  by default (PII); `log_parameters=True` and `explain=True` (runs
+  `EXPLAIN`) are opt-in for development. No extra required. Exposed
+  at the top level and from `tempest_fastapi_sdk.db`.
+- **`AsyncDatabaseManager.engine`** — public property returning the
+  live `AsyncEngine`, so instrumentation (`SlowQueryLogger`, the OTel
+  SQLAlchemy instrumentor) can attach to it directly.
+
+### Docs
+
+- New bilingual recipe **Observabilidade / Observability** covering
+  `setup_tracing` and `SlowQueryLogger`, added to the nav, the
+  recipes index, and the API reference.
+
 ## [0.42.0] — 2026-06-11
 
 ### Added

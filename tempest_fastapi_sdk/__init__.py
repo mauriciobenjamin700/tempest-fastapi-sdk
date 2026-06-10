@@ -61,6 +61,7 @@ from tempest_fastapi_sdk.api import (
     require_x_token,
     run_server,
     set_cookie,
+    setup_tracing,
 )
 from tempest_fastapi_sdk.auth import (
     ActivationResponseSchema,
@@ -103,6 +104,7 @@ from tempest_fastapi_sdk.db import (
     BaseUserRecoveryCodeModel,
     BaseUserTokenModel,
     MFAMixin,
+    SlowQueryLogger,
     SoftDeleteMixin,
     UserTokenPurpose,
     compose_hooks,
@@ -242,7 +244,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.42.0"
+__version__: str = "0.43.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -374,6 +376,7 @@ __all__: list[str] = [
     "SessionSummarySchema",
     "SignupResponseSchema",
     "SignupSchema",
+    "SlowQueryLogger",
     "SoftDeleteMixin",
     "SystemMetrics",
     "TOTPHelper",
@@ -461,6 +464,7 @@ __all__: list[str] = [
     "run_server",
     "set_cookie",
     "set_request_id",
+    "setup_tracing",
     "sniff_mime",
     "sse_response",
     "to_utc",
