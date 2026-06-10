@@ -3309,6 +3309,21 @@ tempest db upgrade <rev>                         # upgrade to a specific revisio
 tempest db downgrade                             # roll back one step
 tempest db current                               # print the applied revision
 tempest db history -v                            # revisions newest → oldest, verbose
+tempest db seed                                  # run src.db.seeds:seed in one session
+tempest db seed --seed src.db.fixtures:demo      # custom seed callable
+```
+
+`tempest db seed` runs a project seed callable (default `src.db.seeds:seed`, sync or async, taking one `AsyncSession`) inside a managed session — commit on success, rollback on error.
+
+#### Secrets — `tempest secrets`
+
+Generates and rotates application secrets (`JWT_SECRET` / `TOKEN_SECRET` by default), rewriting the matching `.env` lines in place after a `.env.bak` backup; `--print` writes nothing and emits the values to stdout.
+
+```bash
+tempest secrets rotate                                # rotate JWT_SECRET + TOKEN_SECRET in .env
+tempest secrets rotate --print                        # just print, write nothing
+tempest secrets rotate --keys JWT_SECRET,SESSION_SECRET --env .env.prod
+tempest secrets rotate --length 64 --no-backup
 ```
 
 #### Users — `tempest user`

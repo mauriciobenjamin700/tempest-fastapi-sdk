@@ -140,7 +140,28 @@ tempest db downgrade <rev>                       # roll back to a specific revis
 tempest db current                               # print the applied revision
 tempest db history                               # revisions newest → oldest
 tempest db history -v                            # with full message body
+tempest db seed                                  # runs src.db.seeds:seed
+tempest db seed --seed src.db.fixtures:demo      # custom callable
 ```
+
+#### Seed the database — `tempest db seed`
+
+Runs a project seed callable inside a managed session (commit on success, rollback on error). The callable takes a positional `AsyncSession` and may be sync or async; what it inserts is up to you — the SDK only wires the session lifecycle. Defaults to importing `src.db.seeds:seed`.
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.db.models import CategoryModel
+
+
+async def seed(session: AsyncSession) -> int:
+    """Seed initial categories. Return the count (optional)."""
+    session.add_all([CategoryModel(name="Books"), CategoryModel(name="Games")])
+    await session.flush()
+    return 2
+```
+
+When the callable returns an `int`, the CLI prints the count: `Seeded via src.db.seeds:seed (2 rows).`
 
 ### Users — `tempest user`
 
@@ -179,6 +200,27 @@ tempest user list --admin                        # admins only
 `tempest user promote` / `tempest user revoke` find the user by email (case-insensitive) and only flip `is_admin`. When no user matches the email they exit with code 1 and a `no user found` message.
 
 ``DATABASE_URL`` resolves the same way as ``tempest db`` (env var > settings > alembic.ini).
+
+### Secrets — `tempest secrets`
+
+Generate and rotate application secrets (`JWT_SECRET` / `TOKEN_SECRET` by default), rewriting the matching `.env` lines **in place** — backing up the old file first — and leaving every other line untouched.
+
+```bash
+# Rotate JWT_SECRET and TOKEN_SECRET in .env (writes .env.bak)
+tempest secrets rotate
+
+# Just print the new values (writes nothing) — pipe into a secret manager
+tempest secrets rotate --print
+
+# Custom keys and file
+tempest secrets rotate --keys JWT_SECRET,SESSION_SECRET --env .env.prod
+
+# More entropy, no backup
+tempest secrets rotate --length 64 --no-backup
+```
+
+!!! warning
+    Rotating `JWT_SECRET` invalidates every token signed with the old value: users are logged out and pending reset/activation links stop working. Rotate during a maintenance window and restart the service to load the new values.
 
 ### Regenerating `docker-compose.yaml` in an existing project
 

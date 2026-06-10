@@ -27,7 +27,7 @@ Passo a passo curtos no estilo "quero conectar X". Cada página começa com **qu
 | **[Utilitários »](utilities.md)** | `utcnow`/`to_utc`, `modify_dict`, `get_client_ip`, tokens opacos (`generate_opaque_token`) |
 | **[Testes »](testing.md)** | `test_session`, `test_database`, SQLite em memória, fixtures pytest |
 | **[Deploy seguro »](deploy-safety.md)** | `AlembicHelper.safe_upgrade` (barra DROPs), `GracefulShutdownMiddleware` |
-| **[CLI »](cli.md)** | `tempest new` / `lint` / `fix` / `format` / `type` / `test` / `check` |
+| **[CLI »](cli.md)** | `tempest new` / `db` (+ `seed`) / `user` / `secrets rotate` / `lint` / `fix` / `format` / `type` / `test` / `check` |
 | **[Segurança »](security.md)** | `AttemptThrottle`, helpers de token opaco, `HardenedStaticFiles`, headers de segurança |
 | **[Helpers brasileiros »](br-helpers.md)** | validação + normalização de CPF / CNPJ / CEP / telefone |
 

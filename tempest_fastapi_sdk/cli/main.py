@@ -14,6 +14,7 @@ from tempest_fastapi_sdk.cli import generate as generate_module
 from tempest_fastapi_sdk.cli import lint as lint_module
 from tempest_fastapi_sdk.cli import new as new_module
 from tempest_fastapi_sdk.cli.db import db_app
+from tempest_fastapi_sdk.cli.secrets import secrets_app
 from tempest_fastapi_sdk.cli.user import user_app
 
 # Typer >= 0.13 vendors its own copy of Click under ``typer._click``, so a
@@ -136,6 +137,7 @@ app: typer.Typer = typer.Typer(
 )
 app.add_typer(db_app, name="db")
 app.add_typer(user_app, name="user")
+app.add_typer(secrets_app, name="secrets")
 
 
 def _print_version(value: bool) -> None:

@@ -5,6 +5,29 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.47.0] — 2026-06-11
+
+### Added
+
+- **`tempest db seed`** — runs a project seed callable
+  (default `src.db.seeds:seed`, dotted `module:callable`, sync or async,
+  taking one `AsyncSession`) inside a managed session: commit on
+  success, rollback on error. The SDK only wires the session lifecycle;
+  the callable owns what gets inserted. Prints the row count when the
+  callable returns an `int`.
+- **`tempest secrets rotate`** — generates fresh URL-safe secrets for
+  the keys a service signs/authenticates with (`JWT_SECRET` /
+  `TOKEN_SECRET` by default; override with `--keys`) and rewrites the
+  matching `.env` lines **in place** (existing keys replaced, missing
+  keys appended) after a `.env.bak` backup. `--print` writes nothing and
+  emits the values to stdout; `--length` sets the entropy; `--no-backup`
+  skips the backup.
+
+### Docs
+
+- CLI recipe (bilingual) gains **`db seed`** and **`secrets rotate`**
+  sections; README CLI section and recipes index updated.
+
 ## [0.46.0] — 2026-06-11
 
 ### Added

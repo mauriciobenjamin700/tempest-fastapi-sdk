@@ -20,11 +20,20 @@ stripped automatically before Alembic runs.
 
 from __future__ import annotations
 
+import asyncio
+import importlib
+import inspect
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 
 import typer
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _resolve_database_url(explicit: str | None) -> str | None:
@@ -93,6 +102,70 @@ def _helper(
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
     return AlembicHelper(str(ini), db_url=database_url)
+
+
+def _load_seed_callable(spec: str) -> Callable[[AsyncSession], Any]:
+    """Import a ``module.path:callable`` seed entry point.
+
+    Args:
+        spec (str): Dotted spec ``"module.path:callable"``.
+
+    Returns:
+        Callable[[AsyncSession], Any]: The seed callable (sync or async).
+
+    Raises:
+        typer.Exit: When the spec is malformed, the import fails, or the
+            attribute is not callable.
+    """
+    module_path, _, attr = spec.partition(":")
+    if not module_path or not attr:
+        typer.echo(
+            f"error: --seed must be 'module.path:callable', got {spec!r}",
+            err=True,
+        )
+        raise typer.Exit(2)
+    cwd = str(Path.cwd())
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
+    try:
+        module = importlib.import_module(module_path)
+    except ImportError as exc:
+        typer.echo(f"error: cannot import {module_path!r}: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    seed: object = getattr(module, attr, None)
+    if not callable(seed):
+        typer.echo(
+            f"error: {spec} is not callable (got {type(seed).__name__}).",
+            err=True,
+        )
+        raise typer.Exit(2)
+    return cast("Callable[[AsyncSession], Any]", seed)
+
+
+async def _run_seed(database_url: str, seed: Callable[[AsyncSession], Any]) -> Any:
+    """Open one managed session and run the seed callable in it.
+
+    Args:
+        database_url (str): The resolved database URL.
+        seed (Callable[[AsyncSession], Any]): The seed callable; awaited
+            when it returns a coroutine.
+
+    Returns:
+        Any: Whatever the seed callable returns (e.g. a row count), or
+        ``None``.
+    """
+    from tempest_fastapi_sdk import AsyncDatabaseManager
+
+    manager = AsyncDatabaseManager(database_url)
+    await manager.connect()
+    try:
+        async with manager.get_session_context() as session:
+            result = seed(session)
+            if inspect.isawaitable(result):
+                result = await result
+            return result
+    finally:
+        await manager.disconnect()
 
 
 db_app: typer.Typer = typer.Typer(
@@ -240,6 +313,46 @@ def db_current(
     helper = _helper(ini, _resolve_database_url(database_url))
     current = helper.current()  # type: ignore[attr-defined]
     typer.echo(current or "(no revision applied)")
+
+
+@db_app.command("seed")
+def db_seed(
+    seed_spec: str = typer.Option(
+        "src.db.seeds:seed",
+        "--seed",
+        "-s",
+        help=(
+            "Dotted 'module.path:callable' to run. The callable receives "
+            "one positional AsyncSession and may be sync or async. Defaults "
+            "to the scaffolded 'src.db.seeds:seed'."
+        ),
+    ),
+    database_url: str | None = typer.Option(
+        None,
+        "--database-url",
+        help="Override DATABASE_URL for this run.",
+    ),
+) -> None:
+    """Run a project seed callable inside one managed session.
+
+    Builds an :class:`AsyncDatabaseManager` from the resolved URL, opens
+    a session (committed on success, rolled back on error), and invokes
+    the dotted callable with it. The callable owns what gets inserted —
+    the SDK only wires the session lifecycle so seeding looks the same
+    across every service.
+    """
+    url = _resolve_database_url(database_url)
+    if url is None:
+        typer.echo(
+            "error: no database URL. Pass --database-url, set DATABASE_URL, "
+            "or run inside a project with src/core/settings.py.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    seed_callable = _load_seed_callable(seed_spec)
+    result = asyncio.run(_run_seed(url, seed_callable))
+    suffix = f" ({result} rows)" if isinstance(result, int) else ""
+    typer.echo(f"Seeded via {seed_spec}{suffix}.")
 
 
 @db_app.command("history")

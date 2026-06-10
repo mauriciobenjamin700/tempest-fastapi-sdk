@@ -188,7 +188,28 @@ tempest db downgrade <rev>                       # rollback até rev específico
 tempest db current                               # imprime revision aplicado
 tempest db history                               # histórico de revisions
 tempest db history -v                            # com message body completo
+tempest db seed                                  # roda src.db.seeds:seed
+tempest db seed --seed src.db.fixtures:demo      # callable customizado
 ```
+
+#### Popular o banco — `tempest db seed`
+
+Roda um callable de seed do projeto dentro de uma sessão gerenciada (commit no sucesso, rollback no erro). O callable recebe uma `AsyncSession` posicional e pode ser sync ou async; o que ele insere é decisão sua — o SDK só cuida do ciclo de vida da sessão. Por padrão importa `src.db.seeds:seed`.
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.db.models import CategoryModel
+
+
+async def seed(session: AsyncSession) -> int:
+    """Popula categorias iniciais. Retorna a contagem (opcional)."""
+    session.add_all([CategoryModel(name="Livros"), CategoryModel(name="Games")])
+    await session.flush()
+    return 2
+```
+
+Quando o callable devolve um `int`, a CLI mostra a contagem: `Seeded via src.db.seeds:seed (2 rows).`
 
 ### Usuários — `tempest user`
 
@@ -227,6 +248,27 @@ tempest user list --admin                        # só admins
 `tempest user promote` / `tempest user revoke` localizam o usuário por email (case-insensitive) e só alternam `is_admin`. Quando nenhum usuário casa com o email, saem com código 1 e a mensagem `no user found`.
 
 Resolução do `DATABASE_URL` igual ao `tempest db` (env var > settings > alembic.ini).
+
+### Segredos — `tempest secrets`
+
+Gera e rotaciona os segredos da aplicação (`JWT_SECRET` / `TOKEN_SECRET` por padrão), reescrevendo as linhas correspondentes no `.env` **no lugar** — fazendo backup do arquivo antigo antes — e deixando as outras linhas intactas.
+
+```bash
+# Rotaciona JWT_SECRET e TOKEN_SECRET no .env (gera .env.bak)
+tempest secrets rotate
+
+# Só imprime os novos valores (não escreve nada) — pra pipar num secret manager
+tempest secrets rotate --print
+
+# Chaves e arquivo customizados
+tempest secrets rotate --keys JWT_SECRET,SESSION_SECRET --env .env.prod
+
+# Mais entropia, sem backup
+tempest secrets rotate --length 64 --no-backup
+```
+
+!!! warning
+    Rotacionar `JWT_SECRET` invalida todo token assinado com o valor antigo: usuários são deslogados e links de reset/ativação pendentes param de funcionar. Rotacione numa janela de manutenção e reinicie o serviço pra carregar os novos valores.
 
 #### Gates de qualidade
 
