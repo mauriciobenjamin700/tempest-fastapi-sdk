@@ -26,6 +26,9 @@ from tempest_fastapi_sdk.db.outbox import OutboxRelay as OutboxRelay
 from tempest_fastapi_sdk.db.outbox import OutboxStatus as OutboxStatus
 from tempest_fastapi_sdk.db.repository import BaseRepository as BaseRepository
 from tempest_fastapi_sdk.db.slow_query import SlowQueryLogger as SlowQueryLogger
+from tempest_fastapi_sdk.db.tenant import (
+    TenantScopedRepository as TenantScopedRepository,
+)
 from tempest_fastapi_sdk.db.user_model import BaseUserModel as BaseUserModel
 from tempest_fastapi_sdk.db.user_recovery_code_model import (
     BaseUserRecoveryCodeModel as BaseUserRecoveryCodeModel,
@@ -58,6 +61,7 @@ __all__: list[str] = [
     "OutboxStatus",
     "SlowQueryLogger",
     "SoftDeleteMixin",
+    "TenantScopedRepository",
     "UserTokenPurpose",
     "compose_hooks",
     "make_user_recovery_code_model",

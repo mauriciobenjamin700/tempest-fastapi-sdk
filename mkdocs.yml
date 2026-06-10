@@ -86,6 +86,7 @@ plugins:
             Tutorial: Tutorial
             Receitas: Recipes
             Banco de dados: Database
+            Multi-tenant: Multi-tenant
             Camada HTTP: HTTP layer
             "HTTP client (saída)": "HTTP client (outbound)"
             Cache: Cache
@@ -200,6 +201,7 @@ nav:
   - Receitas:
       - recipes/index.md
       - Banco de dados: recipes/database.md
+      - Multi-tenant: recipes/multi-tenant.md
       - Camada HTTP: recipes/http.md
       - "HTTP client (saída)": recipes/http-client.md
       - Cache: recipes/cache.md

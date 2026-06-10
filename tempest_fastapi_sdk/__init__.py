@@ -109,6 +109,7 @@ from tempest_fastapi_sdk.db import (
     OutboxStatus,
     SlowQueryLogger,
     SoftDeleteMixin,
+    TenantScopedRepository,
     UserTokenPurpose,
     compose_hooks,
     make_user_recovery_code_model,
@@ -247,7 +248,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.44.0"
+__version__: str = "0.45.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -387,6 +388,7 @@ __all__: list[str] = [
     "SystemMetrics",
     "TOTPHelper",
     "TaskIQSettings",
+    "TenantScopedRepository",
     "ThrottleBackend",
     "ThrottleStatus",
     "TokenSettings",

@@ -5,6 +5,28 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.45.0] — 2026-06-11
+
+### Added
+
+- **`TenantScopedRepository[ModelType]`** — a `BaseRepository` locked
+  to a single tenant for shared-schema multi-tenancy. Bind a
+  `tenant_id` (and optional `tenant_field`, default `"tenant_id"`) at
+  construction; it injects `WHERE tenant_id = ?` into **every** read
+  (`get`/`get_or_none`/`get_by_id`/`exists`/`first`/`list`/`count`/
+  `paginate`/`cursor_paginate`/`delete_many`) and stamps the tenant id
+  onto **every** write (`add`/`add_all`). `delete` / `delete_batch` add
+  the tenant predicate to the `DELETE` so a guessed id from another
+  tenant matches nothing — cross-tenant access (even probing existence
+  by id) is impossible through the repository. The constructor raises
+  `AttributeError` at boot if the model lacks the tenant column.
+  `tenant_column` property exposes the mapped column for custom queries.
+
+### Docs
+
+- New bilingual recipe **Multi-tenant**, added to the nav (under
+  Database), the recipes index, and the API reference.
+
 ## [0.44.0] — 2026-06-11
 
 ### Added

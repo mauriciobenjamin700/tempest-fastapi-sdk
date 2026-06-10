@@ -31,6 +31,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.user_recovery_code_model.BaseUserRecoveryCodeModel
 ::: tempest_fastapi_sdk.db.user_recovery_code_model.make_user_recovery_code_model
 ::: tempest_fastapi_sdk.db.repository.BaseRepository
+::: tempest_fastapi_sdk.db.tenant.TenantScopedRepository
 ::: tempest_fastapi_sdk.db.mixins.SoftDeleteMixin
 ::: tempest_fastapi_sdk.db.mixins.AuditMixin
 ::: tempest_fastapi_sdk.db.mixins.MFAMixin

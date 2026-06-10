@@ -10,6 +10,7 @@ Bite-sized "I want to wire X" walkthroughs. Each page starts with **what problem
 | Theme | Covers |
 | --- | --- |
 | **[Database »](database.md)** | `BaseRepository`, `BaseModel`, `AuditMixin` / `SoftDeleteMixin`, cursor pagination, Alembic helper |
+| **[Multi-tenant »](multi-tenant.md)** | `TenantScopedRepository` — `tenant_id` isolation on every query |
 | **[HTTP layer »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware`, `make_health_router`, JWT / role / permission dependencies, webhook signature verifier, pagination Link headers, tool-spec router |
 | **[HTTP client (outbound) »](http-client.md)** | `HTTPClient` — typed httpx with retry/backoff, circuit-breaker, X-Request-ID; `RetryPolicy`, `CircuitOpenError` |
 | **[Cache »](cache.md)** | `AsyncRedisManager`, `@cached` decorator |
