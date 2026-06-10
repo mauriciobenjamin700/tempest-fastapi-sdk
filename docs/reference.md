@@ -37,6 +37,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.connection.AsyncDatabaseManager
 ::: tempest_fastapi_sdk.db.migrations.AlembicHelper
 ::: tempest_fastapi_sdk.db.slow_query.SlowQueryLogger
+::: tempest_fastapi_sdk.db.outbox.BaseOutboxModel
+::: tempest_fastapi_sdk.db.outbox.OutboxRelay
+::: tempest_fastapi_sdk.db.outbox.OutboxStatus
 
 ---
 

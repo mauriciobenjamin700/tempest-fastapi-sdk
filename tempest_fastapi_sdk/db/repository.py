@@ -575,6 +575,53 @@ class BaseRepository(Generic[ModelType]):
             await self.session.rollback()
             raise
 
+    async def save_with_outbox(
+        self,
+        model: ModelType,
+        event: BaseModel,
+    ) -> ModelType:
+        """Insert ``model`` and an outbox ``event`` in one transaction.
+
+        This is the write half of the transactional outbox pattern: the
+        business row and the event row commit together, so an event can
+        never reference a row that was rolled back (and a committed row
+        always has its event durably queued). A separate
+        :class:`~tempest_fastapi_sdk.db.outbox.OutboxRelay` later
+        publishes the event and marks it sent.
+
+        Args:
+            model (ModelType): The business instance to insert.
+            event (BaseModel): The outbox row to insert alongside it —
+                typically ``OutboxModel.new_event(topic, payload)``.
+
+        Returns:
+            ModelType: The ``model`` instance after ``refresh`` so its
+            ``id`` and timestamp columns are populated.
+
+        Raises:
+            ConflictException: On integrity violations (the whole
+                transaction — model and event — is rolled back).
+        """
+        try:
+            self.session.add(model)
+            self.session.add(event)
+            await self.session.commit()
+            await self.session.refresh(model)
+            return model
+        except IntegrityError as exc:
+            await self.session.rollback()
+            logger.warning(
+                "IntegrityError on %s.save_with_outbox: %s",
+                self.model.__name__,
+                exc.orig,
+            )
+            raise ConflictException(
+                message=self._create_conflict_message,
+            ) from exc
+        except Exception:
+            await self.session.rollback()
+            raise
+
     async def update(self, model: ModelType) -> ModelType:
         """Persist mutations made on an attached ``model``.
 

@@ -5,6 +5,36 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.0] — 2026-06-11
+
+### Added
+
+- **Transactional outbox.** New `BaseOutboxModel` (abstract — the
+  project subclasses it and picks `__tablename__`) carrying `topic`,
+  `payload` (JSON), `status`, `attempts` / `max_attempts`,
+  `available_at`, `sent_at` and `last_error`. `OutboxModel.new_event(
+  topic, payload)` builds a pending row.
+- **`BaseRepository.save_with_outbox(model, event)`** inserts the
+  business row and the outbox event in the **same transaction**, so an
+  event can never reference a rolled-back row (and a committed row
+  always has its event durably queued) — the fix for the dual-write
+  problem.
+- **`OutboxRelay`** drains pending rows and publishes them through a
+  caller-supplied async `publish` callable (no hard broker dependency
+  — works with `AsyncBrokerManager`, a webhook, a test spy). Marks each
+  row `sent`; on failure increments `attempts`, records `last_error`,
+  reschedules with exponential backoff, and marks `failed` once the
+  attempt budget is spent. Locks the batch with `FOR UPDATE SKIP
+  LOCKED` on PostgreSQL/MySQL (multi-worker safe), falling back to a
+  plain select on SQLite. `drain_once()` for one batch (tests/cron),
+  `run(poll_interval=...)` for the loop.
+- **`OutboxStatus`** enum (`pending` / `sent` / `failed`).
+
+### Docs
+
+- New bilingual recipe **Outbox transacional / Transactional outbox**,
+  added to the nav, the recipes index, and the API reference.
+
 ## [0.43.0] — 2026-06-11
 
 ### Added

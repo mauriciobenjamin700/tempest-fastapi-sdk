@@ -15,6 +15,7 @@ Bite-sized "I want to wire X" walkthroughs. Each page starts with **what problem
 | **[Cache »](cache.md)** | `AsyncRedisManager`, `@cached` decorator |
 | **[Real-time »](realtime.md)** | Server-Sent Events (`EventStream`, `sse_response`) |
 | **[Queue & Tasks »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, transactional outbox |
+| **[Transactional outbox »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — reliable events |
 | **[Transactional email »](email.md)** | `EmailUtils` — SMTP, text/HTML body, attachments, Jinja2 templates |
 | **[Web Push »](webpush.md)** | `WebPushDispatcher`, VAPID schemas, broadcast with pruning |
 | **[Logging »](logging.md)** | `LogUtils`, structured JSON logging, request-ID propagation |
