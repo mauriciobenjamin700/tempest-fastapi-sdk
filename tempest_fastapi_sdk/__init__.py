@@ -21,6 +21,7 @@ from tempest_fastapi_sdk.api import (
     CSRFMiddleware,
     GitHubOAuthClient,
     GoogleOAuthClient,
+    GracefulShutdownMiddleware,
     HardenedStaticFiles,
     HealthCheck,
     IdempotencyMiddleware,
@@ -104,6 +105,7 @@ from tempest_fastapi_sdk.db import (
     BaseUserModel,
     BaseUserRecoveryCodeModel,
     BaseUserTokenModel,
+    DestructiveMigrationError,
     MFAMixin,
     OutboxRelay,
     OutboxStatus,
@@ -248,7 +250,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.45.0"
+__version__: str = "0.46.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -306,6 +308,7 @@ __all__: list[str] = [
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
     "DatabaseSettings",
+    "DestructiveMigrationError",
     "DiskMetrics",
     "DownloadUtils",
     "EmailSettings",
@@ -318,6 +321,7 @@ __all__: list[str] = [
     "GPUMetrics",
     "GitHubOAuthClient",
     "GoogleOAuthClient",
+    "GracefulShutdownMiddleware",
     "HTTPClient",
     "HardenedStaticFiles",
     "HealthCheck",

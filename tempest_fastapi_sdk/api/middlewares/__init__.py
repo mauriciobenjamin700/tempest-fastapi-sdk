@@ -9,6 +9,7 @@ from tempest_fastapi_sdk.api.middlewares.csrf import (
     generate_csrf_token,
     make_csrf_token_dependency,
 )
+from tempest_fastapi_sdk.api.middlewares.graceful import GracefulShutdownMiddleware
 from tempest_fastapi_sdk.api.middlewares.idempotency import (
     IDEMPOTENCY_HEADER,
     CachedResponse,
@@ -27,6 +28,7 @@ __all__: list[str] = [
     "BodySizeLimitMiddleware",
     "CSRFMiddleware",
     "CachedResponse",
+    "GracefulShutdownMiddleware",
     "IdempotencyMiddleware",
     "IdempotencyStore",
     "MemoryIdempotencyStore",

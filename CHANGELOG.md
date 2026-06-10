@@ -5,6 +5,34 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.46.0] — 2026-06-11
+
+### Added
+
+- **`AlembicHelper.safe_upgrade(revision="head", *, force=False)`** —
+  runs the upgrade only after scanning each pending migration's
+  `upgrade()` for data-destroying calls (`op.drop_table` /
+  `op.drop_column` / `op.drop_constraint` and `batch_op` variants). When
+  any are found it raises **`DestructiveMigrationError`** (carrying the
+  offending `(revision, operation)` pairs) and leaves the database
+  untouched; `force=True` logs and proceeds. Source-based scanning is
+  dialect-agnostic (no false positives on SQLite batch rebuilds) and
+  ignores drops in `downgrade()`. `pending_destructive_ops()` exposes the
+  scan without running anything (CI-friendly).
+- **`GracefulShutdownMiddleware`** — tracks in-flight requests and, once
+  draining, replies `503` + `Retry-After` to new requests so a load
+  balancer deregisters the instance. `begin_drain()` / `wait_drained()`
+  (bounded by `drain_timeout`) are driven from the lifespan shutdown
+  (uvicorn owns `SIGTERM`); an opt-in `install_signal_handlers()` chains
+  the previous handler for servers that manage signals themselves. Wired
+  via `app.add_middleware(BaseHTTPMiddleware, dispatch=shutdown.dispatch)`.
+
+### Docs
+
+- New bilingual recipe **Deploy seguro / Safe deploys** covering
+  `safe_upgrade` and `GracefulShutdownMiddleware`, added to the nav, the
+  recipes index, and the API reference.
+
 ## [0.45.0] — 2026-06-11
 
 ### Added

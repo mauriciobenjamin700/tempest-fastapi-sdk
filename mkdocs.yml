@@ -107,6 +107,7 @@ plugins:
             Métricas: Metrics
             Painel admin: Admin site
             Testes: Testing
+            "Deploy seguro (migrations + shutdown)": "Safe deploys (migrations + shutdown)"
             CLI: CLI
             Segurança: Security
             Utilitários: Utilities
@@ -223,6 +224,7 @@ nav:
       - Métricas: recipes/metrics.md
       - Painel admin: recipes/admin.md
       - Testes: recipes/testing.md
+      - "Deploy seguro (migrations + shutdown)": recipes/deploy-safety.md
       - CLI: recipes/cli.md
       - Segurança: recipes/security.md
       - Utilitários: recipes/utilities.md

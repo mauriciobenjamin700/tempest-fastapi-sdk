@@ -15,6 +15,64 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 
+# Alembic operation calls that destroy data. Matched against the source
+# of each pending migration's ``upgrade()`` so :meth:`AlembicHelper.safe_upgrade`
+# can refuse them without ``force=True``.
+_DESTRUCTIVE_OPS: tuple[str, ...] = (
+    "op.drop_table(",
+    "op.drop_column(",
+    "batch_op.drop_column(",
+    "op.drop_constraint(",
+)
+
+
+class DestructiveMigrationError(RuntimeError):
+    """Raised when a pending migration would drop a table/column/constraint.
+
+    :meth:`AlembicHelper.safe_upgrade` raises this instead of running the
+    migration, unless the caller passes ``force=True``. Carries the list
+    of offending ``(revision, operation)`` pairs so the caller can log
+    exactly what was blocked.
+
+    Attributes:
+        offences (list[tuple[str, str]]): ``(revision_id, operation)``
+            pairs that tripped the guard.
+    """
+
+    def __init__(self, offences: list[tuple[str, str]]) -> None:
+        """Initialize.
+
+        Args:
+            offences (list[tuple[str, str]]): The blocked operations as
+                ``(revision_id, operation)`` pairs.
+        """
+        self.offences: list[tuple[str, str]] = offences
+        detail = ", ".join(f"{rev}: {op}" for rev, op in offences)
+        super().__init__(
+            f"refusing to run destructive migration(s) without force=True: {detail}"
+        )
+
+
+def _upgrade_section(source: str) -> str:
+    """Return the ``def upgrade()`` body slice of a migration's source.
+
+    Slices from ``def upgrade`` up to the next ``def downgrade`` so a
+    ``drop_*`` call in the (expected) downgrade path never counts as a
+    destructive upgrade.
+
+    Args:
+        source (str): The full migration module source.
+
+    Returns:
+        str: The upgrade-function slice, or the whole source when the
+        markers are not found.
+    """
+    start = source.find("def upgrade")
+    if start == -1:
+        return source
+    end = source.find("def downgrade", start)
+    return source[start:] if end == -1 else source[start:end]
+
 
 def _resolve_runtime_database_url() -> str | None:
     """Read ``DATABASE_URL`` from env / scaffolded settings.
@@ -272,6 +330,63 @@ class AlembicHelper:
         """
         command.upgrade(self.config, revision)
 
+    def pending_destructive_ops(self, revision: str = "head") -> list[tuple[str, str]]:
+        """Scan migrations pending up to ``revision`` for destructive ops.
+
+        Walks the revisions between the database's current revision and
+        ``revision`` and inspects each migration module's source for
+        data-destroying Alembic calls (``op.drop_table`` /
+        ``op.drop_column`` / ``op.drop_constraint`` and their
+        ``batch_op`` variants). Source scanning is dialect-agnostic, so
+        it never trips on SQLite's batch table-rebuild SQL the way
+        offline-SQL scanning would.
+
+        Args:
+            revision (str): The target revision (default ``"head"``).
+
+        Returns:
+            list[tuple[str, str]]: ``(revision_id, operation)`` pairs for
+            every destructive call found. Empty when the pending range is
+            clean.
+        """
+        script = ScriptDirectory.from_config(self.config)
+        current = self.current()
+        offences: list[tuple[str, str]] = []
+        for revobj in script.iterate_revisions(revision, current):
+            try:
+                source = Path(revobj.path).read_text(encoding="utf-8")
+            except OSError:  # pragma: no cover - unreadable revision file
+                continue
+            upgrade_src = _upgrade_section(source)
+            for op in _DESTRUCTIVE_OPS:
+                if op in upgrade_src:
+                    offences.append((revobj.revision, op.rstrip("(")))
+        return offences
+
+    def safe_upgrade(self, revision: str = "head", *, force: bool = False) -> None:
+        """Upgrade, but refuse destructive migrations unless forced.
+
+        Runs :meth:`pending_destructive_ops` first. If any pending
+        migration would drop a table, column or constraint, raises
+        :class:`DestructiveMigrationError` and does **not** touch the
+        database — unless ``force=True``, which logs the offences and
+        proceeds. Use this in automated deploy pipelines so an
+        accidental ``DROP COLUMN`` can't silently delete production data.
+
+        Args:
+            revision (str): The target revision (default ``"head"``).
+            force (bool): When ``True``, run even if destructive ops are
+                present (after logging them). Defaults to ``False``.
+
+        Raises:
+            DestructiveMigrationError: When destructive ops are pending
+                and ``force`` is ``False``.
+        """
+        offences = self.pending_destructive_ops(revision)
+        if offences and not force:
+            raise DestructiveMigrationError(offences)
+        self.upgrade(revision)
+
     def downgrade(self, revision: str = "-1") -> None:
         """Revert migrations down to ``revision`` (default: one step back).
 
@@ -413,4 +528,5 @@ class AlembicHelper:
 
 __all__: list[str] = [
     "AlembicHelper",
+    "DestructiveMigrationError",
 ]

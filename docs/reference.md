@@ -41,6 +41,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.outbox.BaseOutboxModel
 ::: tempest_fastapi_sdk.db.outbox.OutboxRelay
 ::: tempest_fastapi_sdk.db.outbox.OutboxStatus
+::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
 
 ---
 
@@ -96,6 +97,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.MemoryIdempotencyStore
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.RedisIdempotencyStore
 ::: tempest_fastapi_sdk.api.middlewares.body_size.BodySizeLimitMiddleware
+::: tempest_fastapi_sdk.api.middlewares.graceful.GracefulShutdownMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.csrf.CSRFMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.csrf.make_csrf_token_dependency
 ::: tempest_fastapi_sdk.api.middlewares.csrf.generate_csrf_token

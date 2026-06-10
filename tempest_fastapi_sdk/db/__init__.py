@@ -16,6 +16,9 @@ from tempest_fastapi_sdk.db.connection import (
     AsyncDatabaseManager as AsyncDatabaseManager,
 )
 from tempest_fastapi_sdk.db.migrations import AlembicHelper as AlembicHelper
+from tempest_fastapi_sdk.db.migrations import (
+    DestructiveMigrationError as DestructiveMigrationError,
+)
 from tempest_fastapi_sdk.db.mixins import AuditMixin as AuditMixin
 from tempest_fastapi_sdk.db.mixins import MFAMixin as MFAMixin
 from tempest_fastapi_sdk.db.mixins import SoftDeleteMixin as SoftDeleteMixin
@@ -56,6 +59,7 @@ __all__: list[str] = [
     "BaseUserModel",
     "BaseUserRecoveryCodeModel",
     "BaseUserTokenModel",
+    "DestructiveMigrationError",
     "MFAMixin",
     "OutboxRelay",
     "OutboxStatus",
