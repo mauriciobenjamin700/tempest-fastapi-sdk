@@ -99,6 +99,28 @@ class AsyncDatabaseManager:
         return url.render_as_string(hide_password=True)
 
     @property
+    def engine(self) -> AsyncEngine:
+        """Return the live async engine.
+
+        Useful for instrumentation that attaches to the engine
+        directly — e.g.
+        :class:`~tempest_fastapi_sdk.db.slow_query.SlowQueryLogger`
+        or OpenTelemetry's SQLAlchemy instrumentor.
+
+        Returns:
+            AsyncEngine: The initialized engine.
+
+        Raises:
+            RuntimeError: If :meth:`connect` has not run yet.
+        """
+        if self._engine is None:
+            raise RuntimeError(
+                "AsyncDatabaseManager is not connected. "
+                "Call await manager.connect() before accessing the engine."
+            )
+        return self._engine
+
+    @property
     def is_connected(self) -> bool:
         """Whether the engine is currently initialized.
 
