@@ -99,11 +99,14 @@ from tempest_fastapi_sdk.db import (
     AsyncDatabaseManager,
     AuditMixin,
     BaseModel,
+    BaseOutboxModel,
     BaseRepository,
     BaseUserModel,
     BaseUserRecoveryCodeModel,
     BaseUserTokenModel,
     MFAMixin,
+    OutboxRelay,
+    OutboxStatus,
     SlowQueryLogger,
     SoftDeleteMixin,
     UserTokenPurpose,
@@ -244,7 +247,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.43.0"
+__version__: str = "0.44.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -280,6 +283,7 @@ __all__: list[str] = [
     "BaseController",
     "BaseIntEnum",
     "BaseModel",
+    "BaseOutboxModel",
     "BasePaginationFilterSchema",
     "BasePaginationSchema",
     "BaseRepository",
@@ -348,6 +352,8 @@ __all__: list[str] = [
     "OIDCProvider",
     "ObjectStat",
     "OrderRef",
+    "OutboxRelay",
+    "OutboxStatus",
     "PasswordResetConfirmSchema",
     "PasswordResetRequestSchema",
     "PasswordResetResponseSchema",

@@ -92,6 +92,7 @@ plugins:
             Tempo real: Real-time
             WebSocket router: WebSocket router
             Fila e Tarefas: Queue & Tasks
+            Outbox transacional: Transactional outbox
             Email transacional: Transactional email
             Web Push: Web Push
             Logging: Logging
@@ -205,6 +206,7 @@ nav:
       - Tempo real: recipes/realtime.md
       - WebSocket router: recipes/websocket.md
       - Fila e Tarefas: recipes/queue-tasks.md
+      - Outbox transacional: recipes/outbox.md
       - Email transacional: recipes/email.md
       - Web Push: recipes/webpush.md
       - Logging: recipes/logging.md

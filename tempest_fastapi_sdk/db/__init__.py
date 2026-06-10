@@ -21,6 +21,9 @@ from tempest_fastapi_sdk.db.mixins import MFAMixin as MFAMixin
 from tempest_fastapi_sdk.db.mixins import SoftDeleteMixin as SoftDeleteMixin
 from tempest_fastapi_sdk.db.model import NAMING_CONVENTION as NAMING_CONVENTION
 from tempest_fastapi_sdk.db.model import BaseModel as BaseModel
+from tempest_fastapi_sdk.db.outbox import BaseOutboxModel as BaseOutboxModel
+from tempest_fastapi_sdk.db.outbox import OutboxRelay as OutboxRelay
+from tempest_fastapi_sdk.db.outbox import OutboxStatus as OutboxStatus
 from tempest_fastapi_sdk.db.repository import BaseRepository as BaseRepository
 from tempest_fastapi_sdk.db.slow_query import SlowQueryLogger as SlowQueryLogger
 from tempest_fastapi_sdk.db.user_model import BaseUserModel as BaseUserModel
@@ -45,11 +48,14 @@ __all__: list[str] = [
     "AsyncDatabaseManager",
     "AuditMixin",
     "BaseModel",
+    "BaseOutboxModel",
     "BaseRepository",
     "BaseUserModel",
     "BaseUserRecoveryCodeModel",
     "BaseUserTokenModel",
     "MFAMixin",
+    "OutboxRelay",
+    "OutboxStatus",
     "SlowQueryLogger",
     "SoftDeleteMixin",
     "UserTokenPurpose",

@@ -15,6 +15,7 @@ Passo a passo curtos no estilo "quero conectar X". Cada página começa com **qu
 | **[Cache »](cache.md)** | `AsyncRedisManager`, decorator `@cached` |
 | **[Tempo real »](realtime.md)** | Server-Sent Events (`EventStream`, `sse_response`) |
 | **[Fila e Tarefas »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, outbox transacional |
+| **[Outbox transacional »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — eventos confiáveis |
 | **[Email transacional »](email.md)** | `EmailUtils` — SMTP, corpo texto/HTML, anexos, templates Jinja2 |
 | **[Web Push »](webpush.md)** | `WebPushDispatcher`, schemas VAPID, broadcast com poda |
 | **[Logging »](logging.md)** | `LogUtils`, logging JSON estruturado, propagação de request-ID |
