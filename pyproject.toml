@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.42.0"
+version = "0.43.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -93,6 +93,13 @@ sqlite = [
 postgres = [
     "asyncpg>=0.30.0",
 ]
+otel = [
+    "opentelemetry-sdk>=1.27.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.27.0",
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
+    "opentelemetry-instrumentation-httpx>=0.48b0",
+]
 all = [
     "bcrypt>=5.0.0",
     "pyjwt>=2.12.1",
@@ -116,6 +123,11 @@ all = [
     "email-validator>=2.0.0",
     "aiosqlite>=0.20.0",
     "asyncpg>=0.30.0",
+    "opentelemetry-sdk>=1.27.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.27.0",
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
+    "opentelemetry-instrumentation-httpx>=0.48b0",
 ]
 
 [project.urls]
@@ -173,6 +185,11 @@ dev = [
     "prometheus-client>=0.20.0",
     "pyotp>=2.9.0",
     "email-validator>=2.0.0",
+    "opentelemetry-sdk>=1.27.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.27.0",
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
+    "opentelemetry-instrumentation-httpx>=0.48b0",
 ]
 docs = [
     "mkdocs>=1.6.0",

@@ -22,6 +22,7 @@ from tempest_fastapi_sdk.db.mixins import SoftDeleteMixin as SoftDeleteMixin
 from tempest_fastapi_sdk.db.model import NAMING_CONVENTION as NAMING_CONVENTION
 from tempest_fastapi_sdk.db.model import BaseModel as BaseModel
 from tempest_fastapi_sdk.db.repository import BaseRepository as BaseRepository
+from tempest_fastapi_sdk.db.slow_query import SlowQueryLogger as SlowQueryLogger
 from tempest_fastapi_sdk.db.user_model import BaseUserModel as BaseUserModel
 from tempest_fastapi_sdk.db.user_recovery_code_model import (
     BaseUserRecoveryCodeModel as BaseUserRecoveryCodeModel,
@@ -49,6 +50,7 @@ __all__: list[str] = [
     "BaseUserRecoveryCodeModel",
     "BaseUserTokenModel",
     "MFAMixin",
+    "SlowQueryLogger",
     "SoftDeleteMixin",
     "UserTokenPurpose",
     "compose_hooks",

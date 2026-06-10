@@ -208,6 +208,7 @@ nav:
       - Email transacional: recipes/email.md
       - Web Push: recipes/webpush.md
       - Logging: recipes/logging.md
+      - "Observabilidade (tracing)": recipes/observability.md
       - Storage (MinIO/S3): recipes/storage.md
       - Uploads (backends): recipes/uploads.md
       - Downloads: recipes/downloads.md

@@ -62,6 +62,7 @@ from tempest_fastapi_sdk.api.static import (
     DEFAULT_STATIC_SECURITY_HEADERS,
     HardenedStaticFiles,
 )
+from tempest_fastapi_sdk.api.tracing import setup_tracing
 from tempest_fastapi_sdk.api.webhooks import (
     RSAWebhookSignatureVerifier,
     WebhookSignatureVerifier,
@@ -118,4 +119,5 @@ __all__: list[str] = [
     "require_x_token",
     "run_server",
     "set_cookie",
+    "setup_tracing",
 ]
