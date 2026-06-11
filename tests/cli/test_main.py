@@ -36,13 +36,14 @@ class TestRoot:
             assert cmd in result.stdout
 
 
-class TestFullHelpOnError:
-    # Force a wide terminal so Rich never wraps/truncates the option
-    # names the assertions look for (CI runs at a narrow default width).
-    _WIDE: dict[str, str] = {"COLUMNS": "200"}
+# Force a wide terminal so Rich never wraps/truncates the option names
+# the assertions look for (CI runs at a narrow default width).
+_WIDE_TERM: dict[str, str] = {"COLUMNS": "200"}
 
+
+class TestFullHelpOnError:
     def test_unknown_command_prints_full_help(self) -> None:
-        result = runner.invoke(app, ["frobnicate"], env=self._WIDE)
+        result = runner.invoke(app, ["frobnicate"], env=_WIDE_TERM)
         out = result.stdout + (result.stderr or "")
         assert result.exit_code == 2
         # Full command listing (the group help) is shown, not just a hint.
@@ -52,7 +53,7 @@ class TestFullHelpOnError:
         assert "No such command" in out
 
     def test_unknown_option_prints_full_help(self) -> None:
-        result = runner.invoke(app, ["new", "demo", "--nope"], env=self._WIDE)
+        result = runner.invoke(app, ["new", "demo", "--nope"], env=_WIDE_TERM)
         out = result.stdout + (result.stderr or "")
         assert result.exit_code == 2
         # The offending command's own options are listed.
@@ -61,7 +62,7 @@ class TestFullHelpOnError:
         assert "Error:" in out
 
     def test_missing_required_option_prints_full_help(self) -> None:
-        result = runner.invoke(app, ["user", "create"], env=self._WIDE)
+        result = runner.invoke(app, ["user", "create"], env=_WIDE_TERM)
         out = result.stdout + (result.stderr or "")
         assert result.exit_code == 2
         assert "--email" in out
@@ -69,7 +70,7 @@ class TestFullHelpOnError:
         assert "Error:" in out
 
     def test_unknown_subcommand_prints_subgroup_help(self) -> None:
-        result = runner.invoke(app, ["user", "frobnicate"], env=self._WIDE)
+        result = runner.invoke(app, ["user", "frobnicate"], env=_WIDE_TERM)
         out = result.stdout + (result.stderr or "")
         assert result.exit_code == 2
         # The ``user`` group help (its subcommands) is rendered.
