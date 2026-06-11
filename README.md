@@ -3222,6 +3222,8 @@ tempest --help                                  # list every command
 tempest --version                               # show the SDK version
 ```
 
+On any usage error — unknown command, invalid option, missing required argument — the CLI prints that command's **full** `--help` (every parameter, default and description) right before the error line, instead of Click's terse `Try '... --help'` hint. The fix is on screen immediately.
+
 #### Scaffold a new service
 
 ```bash
@@ -3313,13 +3315,28 @@ tempest db history -v                            # revisions newest → oldest, 
 Seeds or lists users via the project's concrete `UserModel` (default `src.db.models:UserModel`). Bootstraps the first admin row so `/admin` login works without manual SQL.
 
 ```bash
-tempest user create --email ana@example.com --password strong-pass-12
+tempest user create --email ana@example.com --password strong-pass-12 --no-admin
 tempest user create --email admin@local --password admin-pass-12 --admin
 tempest user create --email admin@local --admin       # prompt for password
 tempest user create --email x@y --password p --model myapp.models.user:User
+tempest user promote --email ana@example.com          # grant /admin access (is_admin=True)
+tempest user revoke  --email ana@example.com          # revoke it (is_admin=False)
 tempest user list                                     # everyone
 tempest user list --admin                             # admins only
 ```
+
+When `tempest user create` runs in an interactive terminal **without** `--admin`/`--no-admin`, it asks `Should this user be an administrator? [y/N]`. Non-interactive runs (CI, pipes) skip the prompt and create a regular user. `promote` / `revoke` look the user up by email (case-insensitive) and exit `1` with `no user found` when nothing matches.
+
+#### Generate artifacts in an existing project — `tempest generate`
+
+```bash
+tempest generate --docker                             # regen docker-compose.yaml + .env.example from pinned extras
+tempest generate --src                                # add the src layers triggered by pinned extras
+tempest generate --docker --src                       # both at once
+tempest generate --src --force                        # overwrite existing layer files
+```
+
+`--src` reads the SDK extras pinned in `pyproject.toml` and writes only the layers that match — `[queue]` → `src/queue/` (FastStream broker + handlers), `[tasks]` → `src/tasks/` (TaskIQ broker + jobs). The source root (`src` or `app`) is auto-detected. It is idempotent: existing files are kept unless `--force` is passed. `tempest new --extras auth,queue` already scaffolds those layers — `generate --src` is for extras added after the project exists.
 
 ### Admin site recipe
 

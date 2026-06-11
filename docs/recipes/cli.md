@@ -8,6 +8,19 @@ tempest --help                                  # lista todos os comandos
 tempest --version                               # mostra a versão do SDK
 ```
 
+!!! tip "Erro de uso? O help completo aparece junto"
+    Quando você digita um comando inexistente, uma opção inválida ou
+    esquece um argumento obrigatório, o `tempest` imprime o `--help`
+    **completo** daquele comando (todos os parâmetros, defaults e
+    descrições) **antes** da linha de erro — em vez do `Try '... --help'`
+    enxuto do Click. Você corrige na hora, sem reexecutar com `--help`.
+
+    ```bash
+    tempest user create            # esqueceu --email
+    # ... help completo do `user create` (todas as opções) ...
+    # Error: Missing option '--email' / '-e'.
+    ```
+
 #### Gerar um novo serviço
 
 ```bash
@@ -118,6 +131,31 @@ tempest generate --docker --force                # sobrescreve compose existente
 
 O comando lê o `[project] name` + extras do `pyproject.toml` do diretório atual (use `--path` pra outro). Recusa overwrite sem `--force` pra não pisar em edits manuais. O `.env.example` é atualizado de forma idempotente — re-rodar não duplica blocos.
 
+### Gerar as camadas `src` dos extras — `tempest generate --src`
+
+As camadas sempre presentes (`api`, `controllers`, `services`, `schemas`, `db`, `core`, `utils`) já vêm no scaffold. As camadas que só fazem sentido com um extra específico — `[queue]` (FastStream) e `[tasks]` (TaskIQ) — **não** entram no esqueleto base: deixar pacotes placeholder vazios em todo serviço contraria as regras de layout. Quando você adiciona um desses extras a um projeto existente (`uv add "tempest-fastapi-sdk[queue]"`), gere a camada correspondente com:
+
+```bash
+tempest generate --src                           # lê extras do pyproject.toml local
+tempest generate --src --extras tasks            # força extras explícitos
+tempest generate --src --force                   # sobrescreve arquivos existentes
+tempest generate --docker --src                  # compose + camadas numa tacada
+```
+
+Mapeamento extra → camada gerada:
+
+| Extra | Arquivos criados (sob `src/` ou `app/`) |
+|-------|------------------------------------------|
+| `[queue]` | `queue/__init__.py` (broker + `AsyncBrokerManager` + `get_broker`), `queue/handlers.py` (subscriber de exemplo) |
+| `[tasks]` | `tasks/__init__.py` (broker + `AsyncTaskBrokerManager` + `get_task_manager`), `tasks/jobs.py` (task de exemplo) |
+
+A raiz (`src` ou `app`) é detectada automaticamente, e os imports gerados (`from src.queue import broker`) já apontam pra ela. A operação é **idempotente**: arquivos existentes são **mantidos** a menos que você passe `--force`, então um handler editado à mão nunca é sobrescrito silenciosamente — o arquivo irmão que ainda não existe é criado normalmente. Extras sem camada associada (ex.: só `[cache]`) não geram nada e o comando avisa.
+
+!!! note "`tempest new` já gera as camadas dos extras escolhidos"
+    Um `tempest new my_service --extras auth,queue` já entrega
+    `src/queue/` pronto — o `generate --src` é pra quando você adiciona
+    o extra **depois** de criar o projeto.
+
 Depois de gerar:
 
 ```bash
@@ -158,7 +196,7 @@ Insere/lista usuários direto no banco usando o `UserModel` concreto do projeto 
 
 ```bash
 # Cria usuário comum
-tempest user create --email ana@example.com --password senha-forte-12
+tempest user create --email ana@example.com --password senha-forte-12 --no-admin
 
 # Cria admin (pode logar no /admin)
 tempest user create --email admin@local --password admin-pass-12 --admin
@@ -169,10 +207,24 @@ tempest user create --email admin@local --admin
 # Modelo customizado fora do layout scaffoldado — DEVE ser subclasse de BaseUserModel
 tempest user create --email x@y --password pass-12-chars --model myapp.models.user:UserModel
 
+# Promove/rebaixa um usuário existente (liga/desliga is_admin)
+tempest user promote --email ana@example.com    # vira admin
+tempest user revoke  --email ana@example.com    # volta a ser comum
+
 # Lista
 tempest user list                                # todos
 tempest user list --admin                        # só admins
 ```
+
+!!! tip "Sem `--admin`/`--no-admin`, o create pergunta"
+    Quando você **não** passa nem `--admin` nem `--no-admin` num
+    terminal interativo, o `tempest user create` pergunta
+    `Should this user be an administrator? [y/N]`. Em execuções
+    não-interativas (CI, pipes, scripts) o prompt é pulado e o usuário
+    nasce comum (`is_admin=False`) — passe `--admin` explicitamente pra
+    criar admin sem TTY.
+
+`tempest user promote` / `tempest user revoke` localizam o usuário por email (case-insensitive) e só alternam `is_admin`. Quando nenhum usuário casa com o email, saem com código 1 e a mensagem `no user found`.
 
 Resolução do `DATABASE_URL` igual ao `tempest db` (env var > settings > alembic.ini).
 

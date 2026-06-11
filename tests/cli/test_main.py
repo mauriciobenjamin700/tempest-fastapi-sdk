@@ -36,6 +36,50 @@ class TestRoot:
             assert cmd in result.stdout
 
 
+class TestFullHelpOnError:
+    def test_unknown_command_prints_full_help(self) -> None:
+        result = runner.invoke(app, ["frobnicate"])
+        out = result.stdout + (result.stderr or "")
+        assert result.exit_code == 2
+        # Full command listing (the group help) is shown, not just a hint.
+        assert "Usage" in out
+        assert "new" in out and "generate" in out
+        assert "Error:" in out
+        assert "No such command" in out
+
+    def test_unknown_option_prints_full_help(self) -> None:
+        result = runner.invoke(app, ["new", "demo", "--nope"])
+        out = result.stdout + (result.stderr or "")
+        assert result.exit_code == 2
+        # The offending command's own options are listed.
+        assert "--extras" in out
+        assert "--bind-host" in out
+        assert "Error:" in out
+
+    def test_missing_required_option_prints_full_help(self) -> None:
+        result = runner.invoke(app, ["user", "create"])
+        out = result.stdout + (result.stderr or "")
+        assert result.exit_code == 2
+        assert "--email" in out
+        assert "--password" in out
+        assert "Error:" in out
+
+    def test_unknown_subcommand_prints_subgroup_help(self) -> None:
+        result = runner.invoke(app, ["user", "frobnicate"])
+        out = result.stdout + (result.stderr or "")
+        assert result.exit_code == 2
+        # The ``user`` group help (its subcommands) is rendered.
+        assert "create" in out
+        assert "promote" in out
+        assert "Error:" in out
+
+    def test_quality_gate_exit_code_still_propagates(self) -> None:
+        with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
+            fake.run_ruff_check.return_value = 7
+            result = runner.invoke(app, ["lint"])
+        assert result.exit_code == 7
+
+
 class TestNew:
     def test_rejects_invalid_slug(self, tmp_path: Path) -> None:
         result = runner.invoke(app, ["new", "Bad-Name", "--path", str(tmp_path)])
@@ -163,6 +207,25 @@ class TestNew:
         pyproject = (tmp_path / "demo_svc" / "pyproject.toml").read_text()
         assert "tempest-fastapi-sdk>=" in pyproject
         assert "tempest-fastapi-sdk[" not in pyproject
+
+    def test_scaffolds_queue_layer_for_queue_extra(self, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app,
+            ["new", "demo_svc", "--path", str(tmp_path), "--extras", "auth,queue"],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        target = tmp_path / "demo_svc"
+        assert (target / "src" / "queue" / "__init__.py").is_file()
+        assert (target / "src" / "queue" / "handlers.py").is_file()
+        # tasks layer must NOT appear without the [tasks] extra.
+        assert not (target / "src" / "tasks").exists()
+
+    def test_no_optional_layers_by_default(self, tmp_path: Path) -> None:
+        result = runner.invoke(app, ["new", "demo_svc", "--path", str(tmp_path)])
+        assert result.exit_code == 0
+        target = tmp_path / "demo_svc"
+        assert not (target / "src" / "queue").exists()
+        assert not (target / "src" / "tasks").exists()
 
     def test_existing_target_requires_force(self, tmp_path: Path) -> None:
         (tmp_path / "demo_svc").mkdir()

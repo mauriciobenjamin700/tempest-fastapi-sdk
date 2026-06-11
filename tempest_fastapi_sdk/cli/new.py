@@ -283,6 +283,14 @@ def scaffold(
                 encoding="utf-8",
             )
 
+    from tempest_fastapi_sdk.cli.docker_compose import _parse_extras
+    from tempest_fastapi_sdk.cli.src_layers import add_src_layers
+
+    # Scaffold the optional source layers (queue / tasks) triggered by the
+    # chosen extras so a fresh `--extras queue` project ships src/queue/.
+    layer_written, _ = add_src_layers(target, _parse_extras(extras), force=True)
+    written.extend(layer_written)
+
     cwd = Path.cwd()
     display = target.relative_to(cwd) if target.is_relative_to(cwd) else target
     typer.echo(f"Scaffolded {len(written)} files in {target}", err=False)

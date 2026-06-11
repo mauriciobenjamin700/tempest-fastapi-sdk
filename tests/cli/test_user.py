@@ -153,6 +153,162 @@ class TestUserCreate:
         assert "BaseUserModel subclass" in (result.stdout + result.stderr)
 
 
+class TestUserCreateAdminPrompt:
+    def _create_no_flag(self, with_input: str | None) -> object:
+        return runner.invoke(
+            app,
+            [
+                "user",
+                "create",
+                "--email",
+                "ana@example.com",
+                "--password",
+                "secret-pass-12",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+            input=with_input,
+        )
+
+    def test_non_interactive_defaults_to_regular(self, project_db: str) -> None:
+        # CliRunner stdin is not a tty -> no prompt, defaults to non-admin.
+        result = self._create_no_flag(None)
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "Created user: ana@example.com" in result.stdout
+
+    def test_prompts_when_interactive(
+        self,
+        project_db: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import tempest_fastapi_sdk.cli.user as user_mod
+
+        monkeypatch.setattr(user_mod, "_stdin_is_interactive", lambda: True)
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "create",
+                "--email",
+                "boss@example.com",
+                "--password",
+                "secret-pass-12",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+            input="y\n",
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "administrator" in result.stdout
+        assert "Created admin: boss@example.com" in result.stdout
+
+    def test_no_admin_flag_skips_prompt(self, project_db: str) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "create",
+                "--email",
+                "ana@example.com",
+                "--password",
+                "secret-pass-12",
+                "--no-admin",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Created user: ana@example.com" in result.stdout
+
+
+class TestUserPromoteRevoke:
+    def _create(self, email: str, *, admin: bool) -> None:
+        args = [
+            "user",
+            "create",
+            "--email",
+            email,
+            "--password",
+            "secret-pass-12",
+            "--model",
+            "cli_user_model:_CLIUserModel",
+        ]
+        args.append("--admin" if admin else "--no-admin")
+        runner.invoke(app, args)
+
+    def test_promote_existing_user(self, project_db: str) -> None:
+        self._create("ana@example.com", admin=False)
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "promote",
+                "--email",
+                "ana@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert "Promoted ana@example.com" in result.stdout
+        listed = runner.invoke(
+            app,
+            ["user", "list", "--admin", "--model", "cli_user_model:_CLIUserModel"],
+        )
+        assert "ana@example.com" in listed.stdout
+
+    def test_revoke_existing_admin(self, project_db: str) -> None:
+        self._create("admin@example.com", admin=True)
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "revoke",
+                "--email",
+                "admin@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Revoked admin from admin@example.com" in result.stdout
+        listed = runner.invoke(
+            app,
+            ["user", "list", "--admin", "--model", "cli_user_model:_CLIUserModel"],
+        )
+        assert "admin@example.com" not in listed.stdout
+
+    def test_promote_unknown_email_exits_1(self, project_db: str) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "promote",
+                "--email",
+                "ghost@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "no user found" in (result.stdout + result.stderr)
+
+    def test_promote_is_case_insensitive(self, project_db: str) -> None:
+        self._create("mixed@example.com", admin=False)
+        result = runner.invoke(
+            app,
+            [
+                "user",
+                "promote",
+                "--email",
+                "MIXED@example.com",
+                "--model",
+                "cli_user_model:_CLIUserModel",
+            ],
+        )
+        assert result.exit_code == 0
+
+
 class TestUserList:
     def test_list_empty(self, project_db: str) -> None:
         result = runner.invoke(

@@ -5,6 +5,41 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.0] — 2026-06-11
+
+### Added
+
+- **`tempest user promote` / `tempest user revoke`** — flip `is_admin`
+  for an existing user, found by email (case-insensitive), without
+  hand-written SQL. `promote` grants `/admin` access (`is_admin=True`),
+  `revoke` removes it. Both exit `1` with `no user found` when no user
+  matches the email.
+- **`tempest generate --src`** — add the optional source layers
+  triggered by the project's pinned SDK extras to an existing project:
+  `[queue]` → `<root>/queue/` (FastStream broker + handlers stub),
+  `[tasks]` → `<root>/tasks/` (TaskIQ broker + jobs stub). The source
+  root (`src` or `app`) is auto-detected and generated imports point at
+  it. Idempotent — existing files are kept unless `--force` is passed.
+  `--docker` and `--src` can be combined in one invocation.
+- **`tempest new` now scaffolds the chosen extras' source layers.**
+  `tempest new svc --extras auth,queue` ships `src/queue/` out of the
+  box (and `src/tasks/` with `[tasks]`); projects without those extras
+  get no placeholder packages.
+
+### Changed
+
+- **Usage errors now print the offending command's full `--help`.**
+  An unknown command, an invalid option, or a missing required argument
+  renders the complete help (every parameter, default and description)
+  before the error line, instead of Click's terse `Try '... --help'`
+  hint. Quality-gate exit codes still propagate unchanged.
+- **`tempest user create` prompts for the admin flag interactively.**
+  When neither `--admin` nor `--no-admin` is passed in an interactive
+  terminal, it asks `Should this user be an administrator? [y/N]`.
+  Non-interactive runs (CI, pipes, scripts) skip the prompt and default
+  to a regular user — pass `--admin` explicitly to create an admin
+  without a TTY. The flag is now `--admin/--no-admin` (tri-state).
+
 ## [0.41.0] — 2026-06-07
 
 ### Changed (breaking)

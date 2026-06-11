@@ -22,6 +22,18 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk import BaseUserModel
 
 
+def _stdin_is_interactive() -> bool:
+    """Return whether stdin is attached to an interactive terminal.
+
+    Isolated as a one-liner so the interactive admin prompt can be
+    exercised in tests without faking the global ``sys.stdin``.
+
+    Returns:
+        bool: True when stdin is a TTY, False under pipes / CI / tests.
+    """
+    return sys.stdin.isatty()
+
+
 def _resolve_database_url() -> str:
     """Pull the active DB URL from env / settings / fail loudly.
 
@@ -140,6 +152,47 @@ async def _create_user(
         await db.disconnect()
 
 
+async def _set_user_admin(
+    database_url: str,
+    user_model: type[BaseUserModel],
+    *,
+    email: str,
+    is_admin: bool,
+) -> str | None:
+    """Flip ``is_admin`` for one user, found by email.
+
+    Args:
+        database_url (str): The resolved database URL.
+        user_model (type[BaseUserModel]): The concrete user model.
+        email (str): Email of the user to update (normalized to lower).
+        is_admin (bool): The new ``is_admin`` value.
+
+    Returns:
+        str | None: The user's id as a string, or ``None`` when no user
+        matches the email.
+    """
+    from sqlalchemy import select
+
+    from tempest_fastapi_sdk import AsyncDatabaseManager
+
+    db = AsyncDatabaseManager(database_url)
+    await db.connect()
+    try:
+        async with db.get_session_context() as session:
+            result = await session.execute(
+                select(user_model).where(user_model.email == email.lower()),
+            )
+            user = result.scalar_one_or_none()
+            if user is None:
+                return None
+            user.is_admin = is_admin
+            await session.commit()
+            await session.refresh(user)
+            return str(user.id)
+    finally:
+        await db.disconnect()
+
+
 async def _list_users(
     database_url: str,
     user_model: type[BaseUserModel],
@@ -191,10 +244,14 @@ def user_create(
             "secret in shell history)."
         ),
     ),
-    is_admin: bool = typer.Option(
-        False,
-        "--admin",
-        help="Set ``is_admin=True`` so the user can log in to ``/admin``.",
+    is_admin: bool | None = typer.Option(
+        None,
+        "--admin/--no-admin",
+        help=(
+            "Set ``is_admin=True`` so the user can log in to ``/admin``. "
+            "Omit both flags in an interactive terminal to be prompted; "
+            "non-interactive runs default to a regular (non-admin) user."
+        ),
     ),
     model: str = typer.Option(
         "src.db.models:UserModel",
@@ -215,6 +272,18 @@ def user_create(
     if len(password) < 8:
         typer.echo("error: password must be at least 8 characters.", err=True)
         raise typer.Exit(2)
+
+    if is_admin is None:
+        # Neither --admin nor --no-admin was passed: ask interactively
+        # when attached to a terminal, otherwise stay non-admin so CI /
+        # scripted runs never block on a prompt.
+        if _stdin_is_interactive():
+            is_admin = typer.confirm(
+                "Should this user be an administrator?",
+                default=False,
+            )
+        else:
+            is_admin = False
 
     database_url = _resolve_database_url()
     user_model = _load_user_model(model)
@@ -257,6 +326,71 @@ def user_list(
         flags = "+admin" if admin else "      "
         status = "active" if active else "inactive"
         typer.echo(f"{uid}  {email}  {flags}  {status}")
+
+
+def _run_set_admin(email: str, model: str, *, is_admin: bool) -> None:
+    """Resolve resources, flip ``is_admin`` and report the outcome.
+
+    Args:
+        email (str): Email of the user to update.
+        model (str): Dotted spec for the concrete UserModel.
+        is_admin (bool): The new ``is_admin`` value (True promotes,
+            False revokes).
+
+    Raises:
+        typer.Exit: With code 1 when no user matches the email.
+    """
+    database_url = _resolve_database_url()
+    user_model = _load_user_model(model)
+    user_id = asyncio.run(
+        _set_user_admin(
+            database_url,
+            user_model,
+            email=email,
+            is_admin=is_admin,
+        )
+    )
+    if user_id is None:
+        typer.echo(f"error: no user found with email {email!r}.", err=True)
+        raise typer.Exit(1)
+    verb = "Promoted" if is_admin else "Revoked admin from"
+    typer.echo(f"{verb} {email.lower()} (id={user_id})")
+
+
+@user_app.command("promote")
+def user_promote(
+    email: str = typer.Option(
+        ...,
+        "--email",
+        "-e",
+        help="Email of the existing user to promote to administrator.",
+    ),
+    model: str = typer.Option(
+        "src.db.models:UserModel",
+        "--model",
+        help="Dotted spec for the concrete UserModel.",
+    ),
+) -> None:
+    """Set ``is_admin=True`` for an existing user (grant ``/admin`` access)."""
+    _run_set_admin(email, model, is_admin=True)
+
+
+@user_app.command("revoke")
+def user_revoke(
+    email: str = typer.Option(
+        ...,
+        "--email",
+        "-e",
+        help="Email of the existing user to demote to a regular account.",
+    ),
+    model: str = typer.Option(
+        "src.db.models:UserModel",
+        "--model",
+        help="Dotted spec for the concrete UserModel.",
+    ),
+) -> None:
+    """Set ``is_admin=False`` for an existing user (revoke ``/admin`` access)."""
+    _run_set_admin(email, model, is_admin=False)
 
 
 __all__: list[str] = [

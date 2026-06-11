@@ -154,3 +154,98 @@ class TestGenerateDocker:
         second = (tmp_path / ".env.example").read_text()
         assert second.count("REDIS_URL") == 1
         assert first == second
+
+
+class TestGenerateSrc:
+    def test_generates_queue_and_tasks_layers(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="auth,queue,tasks")
+        (tmp_path / "src").mkdir()
+        result = runner.invoke(app, ["generate", "--src", "--path", str(tmp_path)])
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert (tmp_path / "src" / "queue" / "__init__.py").is_file()
+        assert (tmp_path / "src" / "queue" / "handlers.py").is_file()
+        assert (tmp_path / "src" / "tasks" / "__init__.py").is_file()
+        assert (tmp_path / "src" / "tasks" / "jobs.py").is_file()
+        handlers = (tmp_path / "src" / "queue" / "handlers.py").read_text()
+        assert "from src.queue import broker" in handlers
+
+    def test_only_generates_layers_for_pinned_extras(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="auth,queue")
+        (tmp_path / "src").mkdir()
+        result = runner.invoke(app, ["generate", "--src", "--path", str(tmp_path)])
+        assert result.exit_code == 0
+        assert (tmp_path / "src" / "queue" / "__init__.py").is_file()
+        assert not (tmp_path / "src" / "tasks").exists()
+
+    def test_no_layers_when_no_matching_extras(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="auth,cache")
+        (tmp_path / "src").mkdir()
+        result = runner.invoke(app, ["generate", "--src", "--path", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "No src layers" in (result.stdout + result.stderr)
+        assert not (tmp_path / "src" / "queue").exists()
+
+    def test_skips_existing_without_force(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="queue")
+        (tmp_path / "src" / "queue").mkdir(parents=True)
+        (tmp_path / "src" / "queue" / "__init__.py").write_text(
+            "# hand-edited",
+            encoding="utf-8",
+        )
+        result = runner.invoke(app, ["generate", "--src", "--path", str(tmp_path)])
+        assert result.exit_code == 0
+        init = tmp_path / "src" / "queue" / "__init__.py"
+        assert init.read_text() == "# hand-edited"
+        # The non-existing sibling is still written.
+        assert (tmp_path / "src" / "queue" / "handlers.py").is_file()
+
+    def test_force_overwrites_existing(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="queue")
+        (tmp_path / "src" / "queue").mkdir(parents=True)
+        (tmp_path / "src" / "queue" / "__init__.py").write_text(
+            "# hand-edited",
+            encoding="utf-8",
+        )
+        result = runner.invoke(
+            app,
+            ["generate", "--src", "--path", str(tmp_path), "--force"],
+        )
+        assert result.exit_code == 0
+        content = (tmp_path / "src" / "queue" / "__init__.py").read_text()
+        assert "# hand-edited" not in content
+        assert "AsyncBrokerManager" in content
+
+    def test_detects_app_root(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="tasks")
+        (tmp_path / "app").mkdir()
+        result = runner.invoke(app, ["generate", "--src", "--path", str(tmp_path)])
+        assert result.exit_code == 0
+        jobs = (tmp_path / "app" / "tasks" / "jobs.py").read_text()
+        assert "from app.tasks import broker" in jobs
+
+    def test_extras_override(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="auth")
+        (tmp_path / "src").mkdir()
+        result = runner.invoke(
+            app,
+            ["generate", "--src", "--path", str(tmp_path), "--extras", "tasks"],
+        )
+        assert result.exit_code == 0
+        assert (tmp_path / "src" / "tasks" / "__init__.py").is_file()
+
+    def test_docker_and_src_together(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="queue")
+        (tmp_path / "src").mkdir()
+        result = runner.invoke(
+            app,
+            ["generate", "--docker", "--src", "--path", str(tmp_path)],
+        )
+        assert result.exit_code == 0
+        assert (tmp_path / "docker-compose.yaml").is_file()
+        assert (tmp_path / "src" / "queue" / "__init__.py").is_file()
+
+    def test_missing_both_flags_errors(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="queue")
+        result = runner.invoke(app, ["generate", "--path", str(tmp_path)])
+        assert result.exit_code == 2
+        assert "--docker and/or --src" in (result.stdout + result.stderr)

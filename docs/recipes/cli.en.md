@@ -8,6 +8,19 @@ tempest --help                                  # list every command
 tempest --version                               # show the SDK version
 ```
 
+!!! tip "Usage error? The full help shows up with it"
+    When you type an unknown command, an invalid option, or forget a
+    required argument, `tempest` prints that command's **complete**
+    `--help` (every parameter, default and description) **before** the
+    error line — instead of Click's terse `Try '... --help'`. You fix
+    it on the spot, without re-running with `--help`.
+
+    ```bash
+    tempest user create            # forgot --email
+    # ... full `user create` help (every option) ...
+    # Error: Missing option '--email' / '-e'.
+    ```
+
 #### Scaffold a new service
 
 ```bash
@@ -135,7 +148,7 @@ Seed and list users using the project's concrete ``UserModel`` (default ``src.db
 
 ```bash
 # Create a regular user
-tempest user create --email ana@example.com --password strong-pass-12
+tempest user create --email ana@example.com --password strong-pass-12 --no-admin
 
 # Create an admin (can log into /admin)
 tempest user create --email admin@local --password admin-pass-12 --admin
@@ -146,10 +159,24 @@ tempest user create --email admin@local --admin
 # Custom model outside the scaffolded layout — MUST be a BaseUserModel subclass
 tempest user create --email x@y --password pass-12-chars --model myapp.models.user:UserModel
 
+# Promote / demote an existing user (toggles is_admin)
+tempest user promote --email ana@example.com    # becomes admin
+tempest user revoke  --email ana@example.com    # back to a regular account
+
 # List
 tempest user list                                # everyone
 tempest user list --admin                        # admins only
 ```
+
+!!! tip "Without `--admin`/`--no-admin`, create asks"
+    When you pass **neither** `--admin` nor `--no-admin` in an
+    interactive terminal, `tempest user create` prompts
+    `Should this user be an administrator? [y/N]`. Non-interactive runs
+    (CI, pipes, scripts) skip the prompt and create a regular user
+    (`is_admin=False`) — pass `--admin` explicitly to create an admin
+    without a TTY.
+
+`tempest user promote` / `tempest user revoke` find the user by email (case-insensitive) and only flip `is_admin`. When no user matches the email they exit with code 1 and a `no user found` message.
 
 ``DATABASE_URL`` resolves the same way as ``tempest db`` (env var > settings > alembic.ini).
 
@@ -165,6 +192,31 @@ tempest generate --docker --force                # overwrite an existing compose
 ```
 
 The command reads ``[project] name`` + extras from the current directory's `pyproject.toml` (pass `--path` for another). It refuses to overwrite without `--force` so hand edits don't get clobbered. The `.env.example` addendum is idempotent — re-running does not duplicate service blocks.
+
+### Generating the `src` layers from extras — `tempest generate --src`
+
+The always-present layers (`api`, `controllers`, `services`, `schemas`, `db`, `core`, `utils`) ship in the scaffold. The layers that only make sense with a specific extra — `[queue]` (FastStream) and `[tasks]` (TaskIQ) — are **not** part of the base skeleton: dropping empty placeholder packages in every service contradicts the layout rules. When you add one of those extras to an existing project (`uv add "tempest-fastapi-sdk[queue]"`), generate the matching layer with:
+
+```bash
+tempest generate --src                           # read extras from local pyproject.toml
+tempest generate --src --extras tasks            # force explicit extras
+tempest generate --src --force                   # overwrite existing files
+tempest generate --docker --src                  # compose + layers in one shot
+```
+
+Extra → generated layer mapping:
+
+| Extra | Files created (under `src/` or `app/`) |
+|-------|------------------------------------------|
+| `[queue]` | `queue/__init__.py` (broker + `AsyncBrokerManager` + `get_broker`), `queue/handlers.py` (example subscriber) |
+| `[tasks]` | `tasks/__init__.py` (broker + `AsyncTaskBrokerManager` + `get_task_manager`), `tasks/jobs.py` (example task) |
+
+The source root (`src` or `app`) is auto-detected, and generated imports (`from src.queue import broker`) already point at it. The operation is **idempotent**: existing files are **kept** unless you pass `--force`, so a hand-edited handler is never clobbered silently — a sibling file that doesn't exist yet is still written. Extras with no associated layer (e.g. just `[cache]`) generate nothing and the command says so.
+
+!!! note "`tempest new` already generates the chosen extras' layers"
+    A `tempest new my_service --extras auth,queue` already ships
+    `src/queue/` — `generate --src` is for when you add the extra
+    **after** creating the project.
 
 After scaffolding:
 

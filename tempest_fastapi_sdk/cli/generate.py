@@ -13,7 +13,12 @@ from pathlib import Path
 
 import typer
 
-from tempest_fastapi_sdk.cli.docker_compose import env_block_for, generate
+from tempest_fastapi_sdk.cli.docker_compose import (
+    _parse_extras,
+    env_block_for,
+    generate,
+)
+from tempest_fastapi_sdk.cli.src_layers import add_src_layers, layers_for_extras
 
 _SDK_NAME_RE = re.compile(
     r'^\s*"tempest-fastapi-sdk(?:\[([^\]]+)\])?[><=!~].*?",?\s*$',
@@ -161,6 +166,54 @@ def regenerate_docker_compose(
     )
 
 
+def regenerate_src(
+    target: Path,
+    *,
+    extras: str | None,
+    force: bool,
+) -> None:
+    """Add the optional ``src`` layers triggered by the project's extras.
+
+    Reads the SDK extras pinned in the project's ``pyproject.toml``
+    (unless ``extras`` overrides them) and writes only the layers that
+    match — ``[queue]`` -> ``<root>/queue/``, ``[tasks]`` ->
+    ``<root>/tasks/``. Files that already exist are left untouched
+    unless ``force`` is passed, so a hand-edited handler is never
+    clobbered silently.
+
+    Args:
+        target (Path): Project root directory.
+        extras (str | None): Override for the discovered extras.
+            ``None`` reads them from ``pyproject.toml``.
+        force (bool): Overwrite layer files that already exist.
+
+    Raises:
+        typer.Exit: When ``pyproject.toml`` is missing (exit 2).
+    """
+    pyproject_text = _read_pyproject(target)
+    resolved_extras = extras if extras is not None else _discover_extras(pyproject_text)
+    extras_set = _parse_extras(resolved_extras)
+
+    triggered = layers_for_extras(extras_set)
+    if not triggered:
+        typer.echo(
+            "No src layers to generate — none of the pinned extras "
+            "(queue, tasks) contribute a source layer.",
+        )
+        return
+
+    written, skipped = add_src_layers(target, extras_set, force=force)
+    for path in written:
+        typer.echo(f"  + {path}")
+    for path in skipped:
+        typer.echo(f"  = {path} (exists — pass --force to overwrite)")
+    typer.echo(
+        f"Generated {len(written)} file(s) for layers: {', '.join(triggered)}"
+        + (f" ({len(skipped)} skipped)" if skipped else ""),
+    )
+
+
 __all__: list[str] = [
     "regenerate_docker_compose",
+    "regenerate_src",
 ]
