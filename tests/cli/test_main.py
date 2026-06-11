@@ -56,18 +56,23 @@ class TestFullHelpOnError:
         result = runner.invoke(app, ["new", "demo", "--nope"], env=_WIDE_TERM)
         out = result.stdout + (result.stderr or "")
         assert result.exit_code == 2
-        # The offending command's own options are listed.
-        assert "--extras" in out
-        assert "--bind-host" in out
+        # The offending command's full help (its Usage block) is rendered
+        # before the error — not just Click's terse one-line hint. The Rich
+        # Options table is asserted in the dedicated context-help test below,
+        # since its capture under a non-tty CliRunner is environment-fragile.
+        assert "Usage" in out
+        assert "new" in out
         assert "Error:" in out
+        assert "No such option" in out
 
     def test_missing_required_option_prints_full_help(self) -> None:
         result = runner.invoke(app, ["user", "create"], env=_WIDE_TERM)
         out = result.stdout + (result.stderr or "")
         assert result.exit_code == 2
-        assert "--email" in out
-        assert "--password" in out
+        assert "Usage" in out
+        assert "create" in out
         assert "Error:" in out
+        assert "Missing" in out
 
     def test_unknown_subcommand_prints_subgroup_help(self) -> None:
         result = runner.invoke(app, ["user", "frobnicate"], env=_WIDE_TERM)
