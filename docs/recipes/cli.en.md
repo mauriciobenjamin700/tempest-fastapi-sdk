@@ -39,7 +39,7 @@ The skeleton matches the layered architecture documented in this README:
 my_service/
 ├── main.py                  # one-liner → src.server.run()
 ├── pyproject.toml           # pins tempest-fastapi-sdk + ruff/mypy/pytest
-├── .env.example             # HOST/PORT/DATABASE_URL/JWT_SECRET/CORS_ORIGINS
+├── .env.example             # TITLE/VERSION/HOST/PORT/DATABASE_URL/JWT_SECRET/CORS_ORIGINS
 ├── docker-compose.yaml      # services keyed to the chosen extras
 ├── .gitignore
 ├── README.md
@@ -62,6 +62,21 @@ my_service/
 ```
 
 The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[auth,admin]>=<version>` by default — change with `--extras`). The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
+
+!!! tip "API title / version come from `.env`"
+    Since v0.48.0 the scaffolded `Settings` carries `TITLE`, `VERSION`
+    and `DESCRIPTION`, and `src/api/app.py` consumes them
+    (`FastAPI(title=settings.TITLE, version=settings.VERSION,
+    description=settings.DESCRIPTION)`, `make_health_router(version=
+    settings.VERSION)` and `AdminSite(title=f"{settings.TITLE} admin")`).
+    Tune the title shown in Swagger/ReDoc and the `/admin` header from
+    `.env`, no code edits:
+
+    ```bash
+    TITLE=My API
+    VERSION=1.2.0
+    DESCRIPTION=Payments API for product X.
+    ```
 
 ### Extras-driven `docker-compose.yaml`
 

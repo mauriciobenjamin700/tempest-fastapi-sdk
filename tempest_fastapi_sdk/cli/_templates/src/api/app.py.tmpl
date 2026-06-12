@@ -48,8 +48,9 @@ def create_app() -> FastAPI:
         FastAPI: A fully wired application ready for uvicorn.
     """
     app = FastAPI(
-        title="__PROJECT_NAME__",
-        version="0.1.0",
+        title=settings.TITLE,
+        description=settings.DESCRIPTION,
+        version=settings.VERSION,
         lifespan=lifespan,
     )
 
@@ -58,7 +59,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(
-        make_health_router(db=db, version="0.1.0"),
+        make_health_router(db=db, version=settings.VERSION),
     )
     app.include_router(
         make_logs_router(
@@ -72,7 +73,7 @@ def create_app() -> FastAPI:
     # Alembic migration:
     #   uv run alembic upgrade head
     #   uv run python -c "..."  # set hashed_password + is_admin=True
-    admin_site = AdminSite(title="__PROJECT_NAME__ admin")
+    admin_site = AdminSite(title=f"{settings.TITLE} admin")
     admin_site.register(AdminModel(model=UserModel))
     app.include_router(
         make_admin_router(

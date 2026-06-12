@@ -3243,7 +3243,7 @@ The skeleton matches the layered architecture documented in this README:
 my_service/
 ├── main.py                  # one-liner → src.server.run()
 ├── pyproject.toml           # pins tempest-fastapi-sdk + ruff/mypy/pytest
-├── .env.example             # HOST/PORT/DATABASE_URL/JWT_SECRET/CORS_ORIGINS
+├── .env.example             # TITLE/VERSION/HOST/PORT/DATABASE_URL/JWT_SECRET/CORS_ORIGINS
 ├── .gitignore
 ├── README.md
 ├── src/
@@ -3264,7 +3264,7 @@ my_service/
     └── test_smoke.py        # asserts /api/ and /health/liveness boot
 ```
 
-The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[auth]>=<version>` by default — change with `--extras`). The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
+The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[auth]>=<version>` by default — change with `--extras`). The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. The API `title`, `version` and `description` shown in the OpenAPI docs (and the `/admin` header) come from the `TITLE` / `VERSION` / `DESCRIPTION` settings — set them in `.env`, no code edits. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
 
 After scaffolding:
 

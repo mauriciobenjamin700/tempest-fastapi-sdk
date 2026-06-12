@@ -5,6 +5,22 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.48.0] — 2026-06-11
+
+### Changed
+
+- **Scaffolded services read their API `title` / `version` /
+  `description` from `.env`.** `tempest new` previously hardcoded
+  `FastAPI(title="<project>", version="0.1.0")` and the health-router
+  version in `src/api/app.py`. The scaffolded `Settings` now carries
+  `TITLE`, `DESCRIPTION` and `VERSION` fields (each with `title` /
+  `description` / `examples`), `app.py` reads them
+  (`FastAPI(title=settings.TITLE, version=settings.VERSION, ...)`,
+  `make_health_router(version=settings.VERSION)`,
+  `AdminSite(title=f"{settings.TITLE} admin")`), and `.env.example`
+  ships a documented `TITLE` / `VERSION` / `DESCRIPTION` block — so the
+  OpenAPI docs and admin header are configurable without editing code.
+
 ## [0.47.0] — 2026-06-11
 
 ### Added

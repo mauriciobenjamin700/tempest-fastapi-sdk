@@ -27,10 +27,32 @@ class Settings(
     """Service-wide settings backed by the ``.env`` file.
 
     Attributes:
-        VERSION (str): Version surfaced on the health router.
+        TITLE (str): API title shown in the OpenAPI docs and the admin
+            panel header. Override via the ``TITLE`` env var.
+        DESCRIPTION (str): Optional API description shown in the OpenAPI
+            docs. Override via the ``DESCRIPTION`` env var.
+        VERSION (str): Version surfaced in the OpenAPI docs and on the
+            health router. Override via the ``VERSION`` env var.
     """
 
-    VERSION: str = Field(default="0.1.0")
+    TITLE: str = Field(
+        default="__PROJECT_NAME__",
+        title="API title",
+        description="Shown in the OpenAPI docs and the admin panel header.",
+        examples=["__PROJECT_NAME__"],
+    )
+    DESCRIPTION: str = Field(
+        default="",
+        title="API description",
+        description="Optional summary shown in the OpenAPI docs.",
+        examples=["Backend API for __PROJECT_NAME__."],
+    )
+    VERSION: str = Field(
+        default="0.1.0",
+        title="API version",
+        description="Surfaced in the OpenAPI docs and the health router.",
+        examples=["0.1.0"],
+    )
 
 
 settings = Settings()
