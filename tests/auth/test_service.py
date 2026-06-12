@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
     BaseModel,
     BaseUserModel,
     UserAuthService,
@@ -1249,3 +1250,149 @@ class TestServiceEdgeCases:
         # link delivered by email instead.
         assert token is None
         assert len(fake.sent) == 2  # activation + reset
+
+
+async def _db_service() -> tuple[AsyncDatabaseManager, UserAuthService]:
+    """Build a db-backed service sharing an in-memory SQLite schema."""
+    db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+    await db.connect()
+    await db.create_tables()
+    auth = AuthSettings(AUTH_RETURN_TOKEN_IN_RESPONSE=True)
+    jwt = JWTSettings(JWT_SECRET="x" * 32)
+    service = UserAuthService(
+        db=db,
+        user_model=_TestUser,
+        token_model=_TestUserToken,  # type: ignore[arg-type]
+        auth_settings=auth,
+        jwt_settings=jwt,
+    )
+    return db, service
+
+
+class TestCurrentUserResolution:
+    async def test_get_user_returns_persisted_user(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()
+        user, _ = await service.signup(
+            session,
+            email="who@a.com",
+            password="strong-pass-12-chars",
+        )
+        await session.commit()
+        resolved = await service.get_user(str(user.id), session)
+        assert resolved.id == user.id
+        assert resolved.email == "who@a.com"
+
+    async def test_get_user_accepts_uuid_subject(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()
+        user, _ = await service.signup(
+            session,
+            email="uuid@a.com",
+            password="strong-pass-12-chars",
+        )
+        await session.commit()
+        resolved = await service.get_user(user.id, session)
+        assert resolved.id == user.id
+
+    async def test_get_user_unknown_id_raises(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()
+        with pytest.raises(NotFoundException):
+            await service.get_user(
+                "00000000-0000-0000-0000-000000000000",
+                session,
+            )
+
+    async def test_get_user_malformed_subject_raises(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()
+        with pytest.raises(NotFoundException):
+            await service.get_user("not-a-uuid", session)
+
+    async def test_load_user_without_db_raises(self) -> None:
+        service = _service()  # built without db=
+        with pytest.raises(RuntimeError):
+            await service.load_user("00000000-0000-0000-0000-000000000000")
+
+    async def test_load_user_opens_own_session(self) -> None:
+        db, service = await _db_service()
+        try:
+            async with db.get_session_context() as s:
+                user, _ = await service.signup(
+                    s,
+                    email="self@a.com",
+                    password="strong-pass-12-chars",
+                )
+                await s.commit()
+                user_id = str(user.id)
+            resolved = await service.load_user(user_id)
+            assert resolved.email == "self@a.com"
+        finally:
+            await db.disconnect()
+
+    async def test_current_user_dependency_end_to_end(self) -> None:
+        db, service = await _db_service()
+        try:
+            async with db.get_session_context() as s:
+                user, _ = await service.signup(
+                    s,
+                    email="bearer@a.com",
+                    password="strong-pass-12-chars",
+                )
+                user.is_active = True
+                await s.commit()
+                await s.refresh(user)
+            access, _ = service.issue_jwt_pair(user)
+
+            get_current_user = service.current_user_dependency()
+
+            app = FastAPI()
+
+            @app.get("/me")
+            async def me(current: Any = Depends(get_current_user)) -> dict[str, str]:
+                return {"email": current.email}
+
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://t"
+            ) as client:
+                ok = await client.get(
+                    "/me", headers={"Authorization": f"Bearer {access}"}
+                )
+                assert ok.status_code == 200
+                assert ok.json() == {"email": "bearer@a.com"}
+
+                missing = await client.get("/me")
+                assert missing.status_code == 401
+        finally:
+            await db.disconnect()
+
+    async def test_current_user_dependency_soft_returns_none(self) -> None:
+        db, service = await _db_service()
+        try:
+            get_current_user_or_none = service.current_user_dependency(soft=True)
+
+            app = FastAPI()
+
+            @app.get("/maybe")
+            async def maybe(
+                current: Any = Depends(get_current_user_or_none),
+            ) -> dict[str, bool]:
+                return {"anonymous": current is None}
+
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://t"
+            ) as client:
+                resp = await client.get("/maybe")
+                assert resp.status_code == 200
+                assert resp.json() == {"anonymous": True}
+        finally:
+            await db.disconnect()

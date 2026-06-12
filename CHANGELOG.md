@@ -5,6 +5,25 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.49.0] — 2026-06-12
+
+### Added
+
+- **`UserAuthService.current_user_dependency()` — built-in
+  authenticated-user dependency.** Projects no longer hand-write a
+  `load_user` callable plus a second `JWTUtils` to read the
+  `current_user` from a bearer token. The service now exposes
+  `get_user(subject, session)` (session-explicit), `load_user(subject)`
+  (opens its own session from the `db=` handle), and
+  `current_user_dependency(*, soft=False)` which wraps
+  `make_jwt_user_dependency` with the service's **own** `JWTUtils` and
+  `load_user` — so the token is verified with the same secret it was
+  signed with, eliminating the divergent-secret footgun. Wiring
+  collapses to `get_current_user = auth_service.current_user_dependency()`
+  / `auth_service.current_user_dependency(soft=True)`. Requires the
+  service to be built with `db=` (already an accepted constructor arg).
+  The auth-flow and HTTP recipes now teach this path.
+
 ## [0.48.0] — 2026-06-11
 
 ### Changed

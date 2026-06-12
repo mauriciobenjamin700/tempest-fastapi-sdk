@@ -50,6 +50,9 @@ from tempest_fastapi_sdk.utils.opaque_token import (
 from tempest_fastapi_sdk.utils.password import PasswordUtils
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
+    from typing import Any
+
     from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
     from tempest_fastapi_sdk.db.user_model import BaseUserModel
     from tempest_fastapi_sdk.db.user_recovery_code_model import (
@@ -75,9 +78,11 @@ class UserAuthService:
         >>> async with db.get_session_context() as s:
         ...     result = await service.signup(s, payload)
 
-    Every method takes the active ``AsyncSession`` explicitly so
-    callers control the transaction boundary — the service never
-    opens its own session.
+    The core flow methods take the active ``AsyncSession`` explicitly
+    so callers control the transaction boundary. The only exception is
+    :meth:`load_user` (and the :meth:`current_user_dependency` it backs),
+    which opens its own short-lived session from the ``db=`` handle so
+    it can serve as a one-argument FastAPI dependency loader.
     """
 
     def __init__(
@@ -399,6 +404,109 @@ class UserAuthService:
             ttl=timedelta(seconds=self.jwt_settings.JWT_REFRESH_TTL_SECONDS),
         )
         return access, refresh
+
+    # ------------------------------------------------------------------
+    # Current-user resolution
+    # ------------------------------------------------------------------
+
+    async def get_user(
+        self,
+        subject: str | UUID,
+        session: AsyncSession,
+    ) -> BaseUserModel:
+        """Resolve a JWT subject (the user id) to the persisted user.
+
+        Session-explicit twin of :meth:`load_user` — use it when the
+        caller already owns a session (matches the rest of the
+        service's API, where every method takes the ``AsyncSession``).
+
+        Args:
+            subject (str | UUID): The JWT ``sub`` claim — the user id.
+            session (AsyncSession): Active SQLAlchemy session.
+
+        Returns:
+            BaseUserModel: The loaded user.
+
+        Raises:
+            NotFoundException: When the subject is malformed or no user
+                with that id exists.
+        """
+        try:
+            user_id = subject if isinstance(subject, UUID) else UUID(str(subject))
+        except (ValueError, AttributeError) as exc:
+            raise NotFoundException(message="User not found") from exc
+        user: BaseUserModel | None = await session.get(self.user_model, user_id)
+        if user is None:
+            raise NotFoundException(message="User not found")
+        return user
+
+    async def load_user(self, subject: str) -> BaseUserModel:
+        """Resolve a JWT subject to a user, opening the service's own session.
+
+        This is the single-argument async callable that
+        :func:`tempest_fastapi_sdk.make_jwt_user_dependency` expects, so
+        a project can wire the authenticated-user dependency without
+        hand-writing a loader:
+
+            >>> get_current_user = auth_service.current_user_dependency()
+
+        Requires the service to have been built with ``db=`` so it can
+        open a session on its own.
+
+        Args:
+            subject (str): The JWT ``sub`` claim — the user id.
+
+        Returns:
+            BaseUserModel: The loaded user.
+
+        Raises:
+            RuntimeError: When the service was created without ``db=``.
+            NotFoundException: When no user with that id exists.
+        """
+        if self.db is None:
+            raise RuntimeError(
+                "UserAuthService was created without `db=`; pass an "
+                "AsyncDatabaseManager to use load_user / "
+                "current_user_dependency."
+            )
+        async with self.db.get_session_context() as session:
+            return await self.get_user(subject, session)
+
+    def current_user_dependency(
+        self,
+        *,
+        soft: bool = False,
+    ) -> Callable[..., Coroutine[Any, Any, Any]]:
+        """Build a FastAPI dependency that returns the authenticated user.
+
+        Wraps :func:`tempest_fastapi_sdk.make_jwt_user_dependency` with
+        this service's own :class:`JWTUtils` and :meth:`load_user`, so
+        the bearer token is verified with the **same** secret the
+        service signs with — there is no second ``JWTUtils`` to keep in
+        sync. Mount it on any of your routes:
+
+            >>> get_current_user = auth_service.current_user_dependency()
+            >>> get_current_user_or_none = auth_service.current_user_dependency(
+            ...     soft=True
+            ... )
+
+        Requires the service to have been built with ``db=`` (consumed
+        lazily by :meth:`load_user` on the first authenticated request).
+
+        Args:
+            soft (bool): When ``True``, the dependency returns ``None``
+                instead of raising on a missing / invalid token — for
+                endpoints that work both authenticated and anonymous.
+
+        Returns:
+            Callable[..., Coroutine[Any, Any, Any]]: An async FastAPI
+            dependency yielding the user (or ``None`` in soft mode).
+        """
+        from tempest_fastapi_sdk.api.dependencies.auth import (
+            make_jwt_user_dependency,
+        )
+
+        return make_jwt_user_dependency(self.jwt, self.load_user, soft=soft)
 
     # ------------------------------------------------------------------
     # Internals

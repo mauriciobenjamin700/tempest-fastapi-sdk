@@ -114,6 +114,9 @@ Four dependency factories live in `tempest_fastapi_sdk.api.dependencies.auth` �
 | `make_jwt_user_dependency(tokens, user_loader, soft=False, subject_claim="sub")` | Decode the bearer JWT, await `user_loader(subject)`, return the loaded user. |
 | `make_role_dependency(tokens, ["admin"], require_all=False, roles_claim="roles")` / `make_permission_dependency(tokens, ["users:write"], require_all=True, permissions_claim="permissions")` | Decode the bearer JWT and gate the route on roles / permissions. |
 
+!!! tip "Using the bundled flow? Skip `load_user`"
+    If you wire auth with `UserAuthService` + `make_auth_router`, you don't write `load_user` or instantiate a `JWTUtils` here — call `auth_service.current_user_dependency()` (and `.current_user_dependency(soft=True)`), which reuses the service's internal `JWTUtils`. See the [auth recipe »](auth-flow.en.md#getting-the-current_user-from-the-request). The example below is the manual wiring, for when you're **not** using the service.
+
 ```python
 # src/api/dependencies/auth.py
 from uuid import UUID

@@ -7,7 +7,7 @@ Desde v0.31.0 o SDK fornece o ciclo completo de conta local — signup com email
 1. **[Setup mínimo](#setup-minimo)** — instalação dos extras + wiring de quatro objetos (`AsyncDatabaseManager`, `EmailUtils`, `UserAuthService`, `make_auth_router`).
 2. **[UserTokenModel concreto](#usertokenmodel-concreto)** — `BaseUserTokenModel` é abstrato, projeto cria a tabela final.
 3. **[Endpoints](#endpoints)** — tabela dos 5 endpoints + payload + comportamento.
-4. **[Settings (`AuthSettings`)](#settings-authsettings)** — `.env` flag a flag.
+4. **[Settings — variáveis de ambiente](#settings-variaveis-de-ambiente)** — env vars em **seis grupos** (JWT, política de senha, fluxo de e-mail, TTL, URLs/templates, páginas backend) — cada uma em tabela tipada, não num blob.
 5. **[Anatomia de um e-mail: como link, template e URL se encaixam](#anatomia-de-um-e-mail)** — desambigua os três conceitos que mais confundem.
 6. **[Cinco modos de operação](#cinco-modos-de-operacao)** — produção, dev com SMTP local (Mailhog / smtp4dev), dev sem SMTP, CI sem ativação e **backend-only** (links e páginas servidas direto pelo backend).
 7. **[Mailhog vs smtp4dev — qual escolher pra dev local](#mailhog-vs-smtp4dev)** — comparativo + receitas docker-compose copy-paste.
@@ -53,6 +53,7 @@ emails = EmailUtils(
 )
 
 auth_service = UserAuthService(
+    db=db,                    # necessário pra current_user_dependency (ver seção final)
     user_model=UserModel,
     token_model=UserTokenModel,
     auth_settings=settings,   # mistura AuthSettings (ver seção 4)
@@ -131,9 +132,9 @@ uv run tempest db upgrade
 
 ---
 
-## Settings (`AuthSettings`)
+## Settings — variáveis de ambiente
 
-Mixe `AuthSettings` na sua classe `Settings`:
+Toda a config do flow vem de mixins de settings. Mixe-as na sua classe `Settings`:
 
 ```python
 # src/core/settings.py
@@ -158,30 +159,99 @@ class Settings(
     pass
 
 
-settings = Settings()
+settings: Settings = Settings()
 ```
 
-Variáveis (com defaults seguros pra produção):
+!!! info "Nome do atributo **é** o nome da env var"
+    Cada atributo das tabelas abaixo é lido de uma variável de ambiente de **mesmo nome**, case-sensitive, **sem prefixo**. `AUTH_PASSWORD_MIN_LENGTH` no `.env` → `settings.AUTH_PASSWORD_MIN_LENGTH`. Todos têm default — você só seta o que quer mudar.
 
-```bash
-# .env — fluxo de e-mail
-AUTH_AUTO_ACTIVATE=false                # true = pula activation, devolve JWT direto
-AUTH_RETURN_TOKEN_IN_RESPONSE=false     # true = link no body em vez de e-mail
-AUTH_PASSWORD_MIN_LENGTH=12              # totalmente configurável (1+, ex.: 4); fonte única da verdade
-AUTH_PASSWORD_REQUIRE_COMPLEXITY=false  # true = exige minúscula + maiúscula + dígito + especial E força piso de 8
+As variáveis se dividem em **dois mixins** e **seis grupos de concern**. Elas estão separadas de propósito: senha não é a mesma coisa que e-mail, e autenticação (JWT) não é a mesma coisa que ativação de conta.
 
-# .env — TTL dos tokens
-AUTH_ACTIVATION_TTL_SECONDS=604800      # 7 dias
-AUTH_PASSWORD_RESET_TTL_SECONDS=3600    # 1 hora
+### Grupo 1 — Autenticação / JWT (`JWTSettings`)
 
-# .env — URLs apontando para SEU FRONTEND (NÃO o backend)
-AUTH_ACTIVATION_URL_TEMPLATE=https://app.example.com/activate?token={token}
-AUTH_PASSWORD_RESET_URL_TEMPLATE=https://app.example.com/reset?token={token}
+Controla a assinatura e validade dos tokens que o login devolve. **É o mesmo `JWT_SECRET` que a dependency `get_current_user` usa pra validar** (veja [Pegando o `current_user`](#pegando-o-current_user-da-requisicao)).
 
-# .env — nomes dos arquivos Jinja2 dentro do template_dir do EmailUtils
-AUTH_ACTIVATION_TEMPLATE=activation.html
-AUTH_PASSWORD_RESET_TEMPLATE=password_reset.html
-```
+| Env var | Tipo | Default | O que faz |
+|---------|------|---------|-----------|
+| `JWT_SECRET` | `str` (≥32 bytes) | `change-me-…-32` | Segredo HMAC que assina o JWT. **Obrigatório trocar em produção.** |
+| `JWT_ALGORITHM` | `str` | `HS256` | Algoritmo JOSE. `HS256`/`HS512` (segredo simétrico) ou `RS256` (par de chaves). |
+| `JWT_ACCESS_TTL_SECONDS` | `int` (≥1) | `3600` | Validade do **access token** (1 h). Curto por design — renove via refresh. |
+| `JWT_REFRESH_TTL_SECONDS` | `int` (≥1) | `604800` | Validade do **refresh token** (7 dias). |
+| `JWT_ISSUER` | `str \| None` | `None` | Claim `iss`. `None` omite o claim. |
+
+!!! danger "`JWT_SECRET` default vaza tokens"
+    O default `change-me-change-me-change-me-32` existe só pra subir local. Em produção, **qualquer um** com o default consegue forjar um JWT válido. Gere um segredo forte (`openssl rand -base64 48`) e injete por secret manager — nunca commite.
+
+### Grupo 2 — Política de senha (`AuthSettings`)
+
+| Env var | Tipo | Default | O que faz |
+|---------|------|---------|-----------|
+| `AUTH_PASSWORD_MIN_LENGTH` | `int` (≥1) | `12` | Comprimento mínimo aceito no signup **e** no reset. |
+| `AUTH_PASSWORD_REQUIRE_COMPLEXITY` | `bool` | `false` | `true` = exige 1 minúscula + 1 maiúscula + 1 dígito + 1 caractere especial. |
+
+Os dois interagem — **é aqui que costuma confundir**. A regra exata:
+
+- **`complexity=false` (default):** só o comprimento importa. Qualquer senha com `≥ AUTH_PASSWORD_MIN_LENGTH` caracteres passa, sem exigência de composição.
+- **`complexity=true`:** além das 4 classes de caracteres, o piso de comprimento **efetivo** vira `max(AUTH_PASSWORD_MIN_LENGTH, 8)`. Ou seja, um `AUTH_PASSWORD_MIN_LENGTH` abaixo de 8 é **ignorado** enquanto a complexidade está ligada.
+
+Tabela de decisão:
+
+| `MIN_LENGTH` | `REQUIRE_COMPLEXITY` | Senha aceita quando |
+|--------------|---------------------|---------------------|
+| `12` | `false` | `≥ 12` chars, qualquer composição |
+| `4` | `false` | `≥ 4` chars, qualquer composição (piso baixo, dev-only) |
+| `4` | `true` | `≥ 8` chars (piso 8 **sobrescreve** o 4) **+** as 4 classes |
+| `16` | `true` | `≥ 16` chars **+** as 4 classes |
+
+!!! warning "O piso é fonte única da verdade"
+    Os schemas de request (`SignupSchema`, `PasswordResetConfirmSchema`) **não** impõem limite próprio de comprimento — eles delegam pra essas duas vars. Baixar `AUTH_PASSWORD_MIN_LENGTH` pra `4` realmente afrouxa a validação na rota também. Não há um segundo limite escondido no schema "te protegendo".
+
+### Grupo 3 — Controle do fluxo de e-mail (`AuthSettings`)
+
+Decidem **se** e **como** o link chega ao usuário. Mapeiam direto nos [cinco modos de operação](#cinco-modos-de-operacao).
+
+| Env var | Tipo | Default | O que faz |
+|---------|------|---------|-----------|
+| `AUTH_AUTO_ACTIVATE` | `bool` | `false` | `true` = user nasce ativo, pula activation, signup devolve JWT pair direto (Modo D). **Nunca em produção.** |
+| `AUTH_RETURN_TOKEN_IN_RESPONSE` | `bool` | `false` | `true` = link de ativação/reset vai no corpo JSON em vez do e-mail (Modo C). |
+
+### Grupo 4 — TTL dos tokens de conta (`AuthSettings`)
+
+Validade dos tokens **de uso único** (ativação / reset) — distintos dos JWT do grupo 1.
+
+| Env var | Tipo | Default | O que faz |
+|---------|------|---------|-----------|
+| `AUTH_ACTIVATION_TTL_SECONDS` | `int` (≥60) | `604800` | Validade do token de ativação (7 dias). |
+| `AUTH_PASSWORD_RESET_TTL_SECONDS` | `int` (≥60) | `3600` | Validade do token de reset (1 h). Curto é mais seguro. |
+
+### Grupo 5 — URLs e templates de e-mail (`AuthSettings`)
+
+| Env var | Tipo | Default | O que faz |
+|---------|------|---------|-----------|
+| `AUTH_ACTIVATION_URL_TEMPLATE` | `str` | `http://localhost:3000/activate?token={token}` | URL que vai no e-mail; `{token}` é substituído. **Aponta pro frontend** (exceto no Modo E). |
+| `AUTH_PASSWORD_RESET_URL_TEMPLATE` | `str` | `http://localhost:3000/reset-password?token={token}` | Idem, para reset. |
+| `AUTH_ACTIVATION_TEMPLATE` | `str` | `activation.html` | Nome do arquivo Jinja2 do **HTML do e-mail** de ativação, resolvido no `template_dir` do `EmailUtils`. |
+| `AUTH_PASSWORD_RESET_TEMPLATE` | `str` | `password_reset.html` | Idem, para reset. |
+
+!!! warning "URL template ≠ Jinja2 template"
+    `*_URL_TEMPLATE` é uma string `.format()` com `{token}` — é o **link**. `*_TEMPLATE` é o nome de um arquivo `.html` — é o **e-mail que embrulha o link**. Confundir os dois é o erro nº 1. Detalhe completo em [Anatomia de um e-mail](#anatomia-de-um-e-mail).
+
+### Grupo 6 — Páginas renderizadas pelo backend (Modo E, `AuthSettings`)
+
+Só relevantes quando `AUTH_BACKEND_LINKS=true`. Veja o [Modo E](#cinco-modos-de-operacao) para o fluxo completo.
+
+| Env var | Tipo | Default | O que faz |
+|---------|------|---------|-----------|
+| `AUTH_BACKEND_LINKS` | `bool` | `false` | `true` = monta 3 endpoints HTML extras; o link do e-mail aponta pro **backend**, não pro frontend. |
+| `AUTH_LOGIN_URL` | `str \| None` | `None` | URL de login no botão "Ir pro login" das páginas de sucesso. `None` esconde o botão. |
+| `AUTH_ACTIVATION_SUCCESS_TEMPLATE` | `str` | `activation_success.html` | Página HTML de ativação OK. |
+| `AUTH_ACTIVATION_ERROR_TEMPLATE` | `str` | `activation_error.html` | Página HTML de ativação com erro. |
+| `AUTH_PASSWORD_RESET_FORM_TEMPLATE` | `str` | `password_reset_form.html` | Form HTML de nova senha. |
+| `AUTH_PASSWORD_RESET_SUCCESS_TEMPLATE` | `str` | `password_reset_success.html` | Página HTML de reset OK. |
+| `AUTH_PASSWORD_RESET_ERROR_TEMPLATE` | `str` | `password_reset_error.html` | Página HTML de reset com erro. |
+
+!!! note "MFA / TOTP tem suas próprias vars"
+    Quando `AUTH_MFA_ENABLED=true`, o `AuthSettings` ainda expõe `AUTH_MFA_ISSUER`, `AUTH_MFA_RECOVERY_CODES_COUNT`, `AUTH_MFA_TOKEN_TTL_SECONDS` e `AUTH_MFA_VERIFY_WINDOW`. Ficam fora do escopo desta receita (signup/activate/login/reset) — são cobertos na receita de MFA.
 
 ---
 
@@ -512,6 +582,104 @@ emails/                            # ← template_dir="emails"
 - **TTL-bounded.** `expires_at` calculado a partir de `AUTH_ACTIVATION_TTL_SECONDS` / `AUTH_PASSWORD_RESET_TTL_SECONDS`. Tokens expirados rejeitados.
 - **Anti-enumeração.** `POST /auth/password-reset/request` retorna sempre HTTP 202 + corpo genérico, independente de o e-mail existir ou não. `POST /auth/login` levanta a mesma `UnauthorizedException` para email-errado vs senha-errada.
 - **Password floor aplicado duas vezes.** `SignupSchema` valida no input; `UserAuthService` revalida antes do hash — defesa em profundidade caso alguém bypasse o schema.
+
+---
+
+## Pegando o `current_user` da requisição
+
+`make_auth_router` **emite** o JWT pair (login/activate devolvem `access_token` + `refresh_token`). Mas e depois? Quando o frontend manda `Authorization: Bearer <access_token>` nas **suas próprias** rotas, você precisa de uma dependency que decodifica o token e resolve o usuário.
+
+Desde a v0.49.0, o próprio `UserAuthService` constrói essa dependency — `current_user_dependency()`. Ela:
+
+1. Lê `Authorization: Bearer <jwt>` via `HTTPBearer`.
+2. Decodifica e verifica o JWT com **o mesmo `JWTUtils` que o service usou pra assinar** — sem segundo segredo pra manter sincronizado.
+3. Pega o `sub` (id do usuário) do payload, abre uma sessão a partir do `db=` e devolve o `UserModel` persistido.
+
+### 1. Declare a dependency uma vez
+
+O service já tem `user_model`, `JWTUtils` e a sessão — então não precisa escrever `load_user` à mão. Junte as duas variantes no `src/api/dependencies/auth.py`:
+
+```python
+# src/api/dependencies/auth.py
+from src.api.app import auth_service
+
+get_current_user = auth_service.current_user_dependency()
+get_current_user_or_none = auth_service.current_user_dependency(soft=True)
+```
+
+!!! info "Requer `db=` no `UserAuthService`"
+    `current_user_dependency` resolve o usuário abrindo a própria sessão, então o service precisa ter sido criado com `db=` (o `AsyncDatabaseManager` do [Setup mínimo](#setup-minimo)). Como reusa o `self.jwt` interno, o token é validado com o **mesmo** segredo que assinou — o footgun de `JWT_SECRET` divergente some.
+
+??? note "Sem `UserAuthService`? Monte a dependency na mão"
+    Se o seu serviço não usa o flow bundled, a primitiva `make_jwt_user_dependency` aceita qualquer `JWTUtils` + um `user_loader` async de um argumento:
+
+    ```python
+    from uuid import UUID
+
+    from tempest_fastapi_sdk import JWTUtils, make_jwt_user_dependency
+
+    from src.api.app import db
+    from src.core.settings import settings
+    from src.db.models import UserModel
+    from src.db.repositories import UserRepository
+
+    tokens: JWTUtils = JWTUtils(
+        secret=settings.JWT_SECRET,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+
+    async def load_user(subject: str) -> UserModel:
+        """Resolve o subject do JWT (uma string UUID) para o usuário persistido."""
+        async with db.get_session_context() as session:
+            repo: UserRepository = UserRepository(session)
+            return await repo.get_by_id(UUID(subject))
+
+
+    get_current_user = make_jwt_user_dependency(tokens, load_user)
+    get_current_user_or_none = make_jwt_user_dependency(tokens, load_user, soft=True)
+    ```
+
+    Atenção: aqui o `tokens` **precisa** usar o mesmo `JWT_SECRET` / `JWT_ALGORITHM` do login, senão todo token válido é rejeitado.
+
+### 2. Injete na rota com `Depends`
+
+```python
+# src/api/routers/users.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.auth import get_current_user
+from src.db.models import UserModel
+from src.schemas import UserResponseSchema
+
+router: APIRouter = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/me")
+async def me(current: UserModel = Depends(get_current_user)) -> UserResponseSchema:
+    """Devolve o usuário dono do bearer token da requisição."""
+    return UserResponseSchema.model_validate(current)
+```
+
+`current` **é** o `UserModel` que o service resolveu — tipado, persistido, pronto pra uso. Token ausente ou inválido → `401 UnauthorizedException` antes do corpo da rota rodar.
+
+### 3. Auth opcional — `soft=True`
+
+Para rotas que funcionam logado **e** anônimo (ex.: feed público que personaliza se houver login), use a variante `soft` — ela devolve `None` em vez de levantar:
+
+```python
+@router.get("/feed")
+async def feed(
+    current: UserModel | None = Depends(get_current_user_or_none),
+) -> list[PostResponseSchema]:
+    """Feed público; personaliza o ranking quando há usuário logado."""
+    if current is None:
+        return await feed_service.public()
+    return await feed_service.personalized(current.id)
+```
+
+!!! tip "Role e permission são o próximo passo"
+    Quando a rota precisa de **papel** (`admin`) ou **permissão** (`users:write`) e não só "estar logado", troque por `make_role_dependency` / `make_permission_dependency`. Veja a [receita HTTP »](http.md) — mesma `JWTUtils`, mesmo padrão de `Depends`.
 
 ---
 

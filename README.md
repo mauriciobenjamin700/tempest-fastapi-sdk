@@ -1054,6 +1054,16 @@ async def me(current: UserModel = Depends(get_current_user)) -> UserResponseSche
     return UserResponseSchema.model_validate(current)
 ```
 
+> **Using the bundled flow?** If you wire auth with `UserAuthService`
+> (built with `db=`), skip the hand-written `load_user` and the extra
+> `JWTUtils` — the service builds the dependency for you and verifies
+> the token with the same secret it signs with:
+>
+> ```python
+> get_current_user = auth_service.current_user_dependency()
+> get_current_user_or_none = auth_service.current_user_dependency(soft=True)
+> ```
+
 #### Soft auth (optional user)
 
 `get_current_user_or_none` above already uses `soft=True` — it returns `None` instead of raising on a missing or invalid token, so endpoints can work both authenticated and anonymous:
