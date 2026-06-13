@@ -55,6 +55,67 @@ key = await uploads.save(file, filename="logo.png")   # writes to the bucket
     [`src/api/dependencies/resources.py`](../architecture.md) and inject via
     `Depends(get_uploads)`, instead of instantiating per request.
 
+## Restrict extensions (allowlist)
+
+Pass `allowed_extensions` to the constructor with the set of extensions you
+accept. Anything outside the list is rejected with **HTTP 415**
+(`InvalidFileTypeException`) **before a single byte is read** — so a
+malicious `.zip` never reaches the backend nor uses memory:
+
+```python
+from tempest_fastapi_sdk import UploadUtils
+
+# ONNX models only — any other extension is blocked.
+uploads = UploadUtils(
+    "var/models",
+    allowed_extensions={".onnx", ".ort"},
+    max_size_bytes=200 * 1024 * 1024,
+)
+```
+
+```python
+@router.post("/models")
+async def upload_model(file: UploadFile) -> dict[str, str]:
+    """Accepts only .onnx / .ort; a .zip raises 415 here inside save()."""
+    key = await uploads.save(file)   # file.zip -> InvalidFileTypeException (415)
+    return {"key": str(key)}
+```
+
+!!! info "Dot and case are normalized"
+    `{".onnx", ".ort"}`, `{"onnx", "ort"}` and `{".ONNX"}` are equivalent —
+    `UploadUtils` strips the leading dot and lowercases. The extension comes
+    from `Path(file.filename).suffix`, so `model.ONNX` passes and
+    `package.zip` does not.
+
+!!! warning "Extension is not the content"
+    Checking the extension stops the honest mistake and the obvious `.zip`,
+    but the filename is client-controlled. For formats with a known signature
+    (images, PDF) turn on `verify_magic_bytes=True` + `allowed_mimetypes={...}`
+    to match the **real bytes** against the allowlist. Binary formats with no
+    signature in `sniff_mime` (like `.onnx` / `.ort`) **must** keep
+    `verify_magic_bytes=False` (the default) — otherwise the sniff fails to
+    recognize the signature and rejects everything. For those, validate the
+    content with a `content_validator=...` on `save()`.
+
+### Via settings (`.env`)
+
+To configure per environment, `UploadSettings` already exposes
+`UPLOAD_ALLOWED_EXTENSIONS` (and `UPLOAD_ALLOWED_MIMETYPES`):
+
+```bash
+# .env
+UPLOAD_ALLOWED_EXTENSIONS=[".onnx", ".ort"]
+UPLOAD_MAX_SIZE_BYTES=209715200
+```
+
+```python
+uploads = UploadUtils(
+    settings.UPLOAD_DIR,
+    allowed_extensions=settings.UPLOAD_ALLOWED_EXTENSIONS,
+    max_size_bytes=settings.UPLOAD_MAX_SIZE_BYTES,
+)
+```
+
 ## Switching via settings
 
 Choose the constructor argument from a flag on your `Settings` — no manual
