@@ -5,6 +5,25 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.50.0] — 2026-06-12
+
+### Added
+
+- **Imperative authorization guards — `require_authenticated`,
+  `require_active`, `require_admin`.** Projects no longer hand-write
+  `if user is None: raise ...` / `if not user.is_admin: raise ...`
+  helpers. The new guards (in `tempest_fastapi_sdk.auth.guards`,
+  re-exported at the top level) take the `UserT | None` a `soft=True`
+  authenticated-user dependency yields, raise the canonical
+  `UnauthorizedException` (401) / `ForbiddenException` (403) on failure,
+  and **return the user narrowed to non-`None` and to its concrete
+  subclass** so the caller drops the `| None` for the rest of the
+  function: `user = require_admin(current)`. Generic over
+  `BaseUserModel` via a bound `TypeVar`. Also mirrored as static methods
+  on `UserAuthService` (`auth_service.require_admin(user)`) so a service
+  already in scope guards without an extra import. The auth-flow recipe
+  documents the path.
+
 ## [0.49.0] — 2026-06-12
 
 ### Added

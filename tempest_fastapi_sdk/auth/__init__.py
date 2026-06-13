@@ -14,6 +14,11 @@ re-export form combined with ``__all__`` so every type-checker
 a "private import usage" / "is not exported" diagnostic.
 """
 
+from tempest_fastapi_sdk.auth.guards import require_active as require_active
+from tempest_fastapi_sdk.auth.guards import require_admin as require_admin
+from tempest_fastapi_sdk.auth.guards import (
+    require_authenticated as require_authenticated,
+)
 from tempest_fastapi_sdk.auth.router import make_auth_router as make_auth_router
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationResponseSchema as ActivationResponseSchema,
@@ -62,4 +67,7 @@ __all__: list[str] = [
     "SignupSchema",
     "UserAuthService",
     "make_auth_router",
+    "require_active",
+    "require_admin",
+    "require_authenticated",
 ]

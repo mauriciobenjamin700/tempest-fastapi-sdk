@@ -26,6 +26,12 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tempest_fastapi_sdk.auth.guards import (
+    UserT,
+    require_active,
+    require_admin,
+    require_authenticated,
+)
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationToken,
     PasswordResetToken,
@@ -507,6 +513,63 @@ class UserAuthService:
         )
 
         return make_jwt_user_dependency(self.jwt, self.load_user, soft=soft)
+
+    # ------------------------------------------------------------------
+    # Authorization guards (imperative, on an already-loaded user)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def require_authenticated(user: UserT | None) -> UserT:
+        """Assert the user is authenticated; return it narrowed to non-``None``.
+
+        Thin static mirror of
+        :func:`tempest_fastapi_sdk.require_authenticated` so a service
+        already in scope can guard without an extra import:
+
+            >>> user = auth_service.require_authenticated(current)
+
+        Args:
+            user (UserT | None): The resolved request user.
+
+        Returns:
+            UserT: The same user, narrowed to non-``None``.
+
+        Raises:
+            UnauthorizedException: When ``user`` is ``None`` (HTTP 401).
+        """
+        return require_authenticated(user)
+
+    @staticmethod
+    def require_active(user: UserT | None) -> UserT:
+        """Assert the user is authenticated and active. See :func:`require_active`.
+
+        Args:
+            user (UserT | None): The resolved request user.
+
+        Returns:
+            UserT: The authenticated, active user.
+
+        Raises:
+            UnauthorizedException: When ``user`` is ``None`` (HTTP 401).
+            ForbiddenException: When ``user.is_active`` is falsy (HTTP 403).
+        """
+        return require_active(user)
+
+    @staticmethod
+    def require_admin(user: UserT | None) -> UserT:
+        """Assert the user is authenticated and an admin. See :func:`require_admin`.
+
+        Args:
+            user (UserT | None): The resolved request user.
+
+        Returns:
+            UserT: The authenticated admin user.
+
+        Raises:
+            UnauthorizedException: When ``user`` is ``None`` (HTTP 401).
+            ForbiddenException: When ``user.is_admin`` is falsy (HTTP 403).
+        """
+        return require_admin(user)
 
     # ------------------------------------------------------------------
     # Internals

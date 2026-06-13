@@ -681,6 +681,39 @@ async def feed(
 !!! tip "Role e permission são o próximo passo"
     Quando a rota precisa de **papel** (`admin`) ou **permissão** (`users:write`) e não só "estar logado", troque por `make_role_dependency` / `make_permission_dependency`. Veja a [receita HTTP »](http.md) — mesma `JWTUtils`, mesmo padrão de `Depends`.
 
+### 4. Guards imperativos — checagem dentro do service / controller
+
+As deps acima gateiam a **rota** (antes do handler rodar). Mas e quando você já tem o user em mãos, mais fundo na pilha (service, controller), e quer só **assertar** uma condição antes de continuar? Desde a v0.50.0 o SDK traz três guards prontos — sem reescrever `if user is None: raise ...` em todo serviço:
+
+```python
+from tempest_fastapi_sdk import (
+    require_active,
+    require_admin,
+    require_authenticated,
+)
+```
+
+| Guard | Levanta se | Status HTTP |
+|-------|------------|-------------|
+| `require_authenticated(user)` | `user is None` | 401 `UnauthorizedException` |
+| `require_active(user)` | `None`, ou `not user.is_active` | 401 / 403 `ForbiddenException` |
+| `require_admin(user)` | `None`, ou `not user.is_admin` | 401 / 403 `ForbiddenException` |
+
+O detalhe que importa: cada um **devolve o user já estreitado** — sem `None` e com o tipo concreto preservado — então o resto da função para de ver `| None`:
+
+```python
+class ReportService:
+    async def delete_all(self, current: UserModel | None) -> None:
+        """Só admin apaga relatórios."""
+        admin: UserModel = require_admin(current)  # 401/403, ou devolve tipado
+        await self.repository.purge(by=admin.id)   # `admin` não é mais `| None`
+```
+
+Combina direto com o `current_user_dependency(soft=True)`: a rota passa `UserModel | None`, e o guard decide no service.
+
+!!! tip "Já tem o `auth_service`? Use os mirrors estáticos"
+    Os mesmos guards existem como staticmethods em `UserAuthService` — `auth_service.require_admin(current)` — pra quando você já injeta o service e não quer um import extra. Mesma semântica, mesma exceção.
+
 ---
 
 ## Próximos passos

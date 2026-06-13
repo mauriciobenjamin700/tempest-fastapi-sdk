@@ -681,6 +681,39 @@ async def feed(
 !!! tip "Role and permission are the next step"
     When the route needs a **role** (`admin`) or **permission** (`users:write`) and not just "logged in", swap for `make_role_dependency` / `make_permission_dependency`. See the [HTTP recipe »](http.en.md) — same `JWTUtils`, same `Depends` pattern.
 
+### 4. Imperative guards — checks inside the service / controller
+
+The dependencies above gate the **route** (before the handler runs). But what about when you already hold the user deeper in the stack (service, controller) and just want to **assert** a condition before continuing? Since v0.50.0 the SDK ships three ready-made guards — no rewriting `if user is None: raise ...` in every service:
+
+```python
+from tempest_fastapi_sdk import (
+    require_active,
+    require_admin,
+    require_authenticated,
+)
+```
+
+| Guard | Raises when | HTTP status |
+|-------|-------------|-------------|
+| `require_authenticated(user)` | `user is None` | 401 `UnauthorizedException` |
+| `require_active(user)` | `None`, or `not user.is_active` | 401 / 403 `ForbiddenException` |
+| `require_admin(user)` | `None`, or `not user.is_admin` | 401 / 403 `ForbiddenException` |
+
+The detail that matters: each one **returns the user already narrowed** — non-`None`, with the concrete type preserved — so the rest of the function stops seeing `| None`:
+
+```python
+class ReportService:
+    async def delete_all(self, current: UserModel | None) -> None:
+        """Only an admin may purge reports."""
+        admin: UserModel = require_admin(current)  # 401/403, or returns typed
+        await self.repository.purge(by=admin.id)   # `admin` is no longer `| None`
+```
+
+It pairs directly with `current_user_dependency(soft=True)`: the route passes `UserModel | None`, and the guard decides in the service.
+
+!!! tip "Already have `auth_service`? Use the static mirrors"
+    The same guards exist as static methods on `UserAuthService` — `auth_service.require_admin(current)` — for when you already inject the service and don't want an extra import. Same semantics, same exception.
+
 ---
 
 ## Next steps

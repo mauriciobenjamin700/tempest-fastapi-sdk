@@ -81,6 +81,9 @@ from tempest_fastapi_sdk.auth import (
     SignupSchema,
     UserAuthService,
     make_auth_router,
+    require_active,
+    require_admin,
+    require_authenticated,
 )
 from tempest_fastapi_sdk.controllers import BaseController
 from tempest_fastapi_sdk.core import (
@@ -250,7 +253,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.49.0"
+__version__: str = "0.50.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -472,6 +475,9 @@ __all__: list[str] = [
     "register_exception_handlers",
     "reorder_base_columns_first",
     "request_id_ctx",
+    "require_active",
+    "require_admin",
+    "require_authenticated",
     "require_x_token",
     "run_server",
     "set_cookie",
