@@ -5,6 +5,29 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.51.0] — 2026-06-12
+
+### Changed
+
+- **Refreshed the dependency lock to latest compatible.** Notably
+  `fastapi` 0.136.1 → 0.136.3, `starlette` 1.0.0 → 1.3.1,
+  `sqlalchemy` 2.0.49 → 2.0.50, `typer` 0.26.4 → 0.26.7, `uvicorn`
+  0.47 → 0.49, `cryptography` 48 → 49, `redis` 7.4 → 8.0,
+  `faststream` 0.6.7 → 0.7.1. Project `>=` floors are unchanged except
+  `faststream` (see below).
+- **`faststream[rabbit]` floor raised to `>=0.7.1`** (was `>=0.5.30`).
+  faststream 0.7 renamed `Broker.close()` to `Broker.stop()`;
+  `AsyncBrokerManager.disconnect()` now calls `broker.stop()`, which
+  does not exist on faststream < 0.7. Services pinning the `[queue]`
+  extra must allow `faststream >= 0.7.1`.
+
+### Fixed
+
+- **redis 8.0 type stubs.** `@cached`'s `deserializer` parameter is now
+  typed `Callable[[str | bytes], Any]` (redis returns `bytes` unless the
+  client sets `decode_responses=True`; `json.loads` accepts both), and a
+  stale `# type: ignore` on `RedisCacheManager.ping()` was removed.
+
 ## [0.50.0] — 2026-06-12
 
 ### Added

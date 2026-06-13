@@ -66,7 +66,7 @@ def cached(
     key_prefix: str = "",
     key_builder: Callable[[str, tuple[Any, ...], dict[str, Any]], str] | None = None,
     serializer: Callable[[Any], str] = json.dumps,
-    deserializer: Callable[[str], Any] = json.loads,
+    deserializer: Callable[[str | bytes], Any] = json.loads,
     skip_cache: Callable[[tuple[Any, ...], dict[str, Any]], bool] | None = None,
 ) -> Callable[[F[T]], F[T]]:
     """Cache the result of an async function in Redis.
@@ -88,8 +88,10 @@ def cached(
             cache key builder. Defaults to a SHA-256 of args/kwargs.
         serializer (Callable[[Any], str]): How to encode the result
             before storing. Defaults to :func:`json.dumps`.
-        deserializer (Callable[[str], Any]): How to decode the cached
-            payload. Defaults to :func:`json.loads`.
+        deserializer (Callable[[str | bytes], Any]): How to decode the
+            cached payload (Redis returns ``bytes`` unless the client
+            sets ``decode_responses=True``). Defaults to
+            :func:`json.loads`, which accepts both.
         skip_cache (Callable[[tuple, dict], bool] | None): Optional
             predicate. When it returns ``True``, the decorator bypasses
             cache for that call (read **and** write).

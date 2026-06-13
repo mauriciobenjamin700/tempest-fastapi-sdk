@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.50.0"
+version = "0.51.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -65,7 +65,7 @@ metrics = [
     "nvidia-ml-py>=12.560.30",
 ]
 queue = [
-    "faststream[rabbit]>=0.5.30",
+    "faststream[rabbit]>=0.7.1",
 ]
 tasks = [
     "taskiq>=0.11.0",
@@ -111,7 +111,7 @@ all = [
     "cryptography>=42.0.0",
     "psutil>=6.0.0",
     "nvidia-ml-py>=12.560.30",
-    "faststream[rabbit]>=0.5.30",
+    "faststream[rabbit]>=0.7.1",
     "taskiq>=0.11.0",
     "taskiq-aio-pika>=0.4.0",
     "jinja2>=3.1.0",
@@ -175,7 +175,7 @@ dev = [
     "nvidia-ml-py>=12.560.30",
     "redis>=5.0.0",
     "ruff>=0.8.0",
-    "faststream[rabbit]>=0.5.30",
+    "faststream[rabbit]>=0.7.1",
     "taskiq>=0.11.0",
     "taskiq-aio-pika>=0.4.0",
     "uvicorn>=0.30.0",

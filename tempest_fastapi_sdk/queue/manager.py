@@ -91,7 +91,7 @@ class AsyncBrokerManager:
         """Stop the broker and release its connections."""
         if not self._started:
             return
-        await self.broker.close()
+        await self.broker.stop()
         self._started = False
 
     async def publish(

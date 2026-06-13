@@ -141,7 +141,7 @@ class AsyncRedisManager:
             bool: ``True`` when the server responded with ``PONG``.
         """
         try:
-            result: Any = await self.client.ping()  # type: ignore[misc]
+            result: Any = await self.client.ping()
         except Exception as exc:
             logger.warning("Redis health check failed: %s", exc)
             return False
