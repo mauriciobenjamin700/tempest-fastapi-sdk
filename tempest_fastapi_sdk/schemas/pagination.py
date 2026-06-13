@@ -2,6 +2,7 @@
 
 import base64
 import json
+from datetime import datetime
 from typing import Any, Generic, TypeVar
 
 from pydantic import Field
@@ -247,6 +248,118 @@ class CursorPaginationSchema(BaseSchema, Generic[T]):
     )
 
 
+class SyncFilterSchema(BaseSchema):
+    """Request filter for delta-sync (offline-first) pull endpoints.
+
+    Mirrors the keyword arguments of
+    :meth:`tempest_fastapi_sdk.db.repository.BaseRepository.changes_since`
+    so the schema passes straight through. An offline client persists
+    the ``server_time`` from the previous :class:`SyncPaginationSchema`
+    response and sends it back here as ``since`` on the next pull.
+
+    Attributes:
+        since (datetime | None): High-water mark. Only rows changed
+            strictly after this instant are returned. ``None`` requests
+            a full sync (every row).
+        cursor (str | None): Opaque cursor from the previous page;
+            ``None`` requests the first page.
+        limit (int): Maximum number of items to return.
+        include_deleted (bool): Whether soft-deleted rows are returned
+            as tombstones. Defaults to ``True`` so deletions propagate
+            to the client.
+    """
+
+    since: datetime | None = Field(
+        title="Since",
+        description=(
+            "High-water mark; only rows changed strictly after this "
+            "instant are returned. None requests a full sync."
+        ),
+        examples=[None, "2026-06-12T18:30:00Z"],
+        default=None,
+    )
+    cursor: str | None = Field(
+        title="Cursor",
+        description=(
+            "Opaque pagination cursor from the previous page; "
+            "None requests the first page."
+        ),
+        examples=[None, "eyJpZCI6IjEyMyIsInZhbHVlIjoxNzM3In0"],
+        default=None,
+    )
+    limit: int = Field(
+        title="Limit",
+        description="Maximum number of items to return.",
+        examples=[25, 50, 100],
+        default=50,
+        ge=1,
+        le=500,
+    )
+    include_deleted: bool = Field(
+        title="Include Deleted",
+        description=(
+            "Whether soft-deleted rows are returned as tombstones so "
+            "the client can mirror deletions. Defaults to True."
+        ),
+        examples=[True, False],
+        default=True,
+    )
+
+
+class SyncPaginationSchema(BaseSchema, Generic[T]):
+    """Generic envelope returned by delta-sync pull endpoints.
+
+    Extends the cursor-pagination envelope with ``server_time`` — the
+    instant the server started the query, which the client persists as
+    the next :class:`SyncFilterSchema.since`. Using the server clock
+    (not the client's, nor the max ``updated_at`` of the items) is what
+    keeps the watermark immune to device clock skew.
+
+    Attributes:
+        items (list[T]): The changed rows in this page (oldest change
+            first), including soft-deleted tombstones when requested.
+        next_cursor (str | None): Cursor to request the next page, or
+            ``None`` when this page drained the changes.
+        has_more (bool): Whether another page is available.
+        limit (int): The page size used to produce this payload.
+        server_time (datetime): The server instant to persist as the
+            next ``since``.
+    """
+
+    items: list[T] = Field(
+        title="Items",
+        description="The changed rows on the current page.",
+        examples=[[], [{"id": 1}, {"id": 2}]],
+        default_factory=list,
+    )
+    next_cursor: str | None = Field(
+        title="Next Cursor",
+        description="Cursor for the next page, or None when exhausted.",
+        examples=[None, "eyJpZCI6IjEyMyJ9"],
+        default=None,
+    )
+    has_more: bool = Field(
+        title="Has More",
+        description="Whether another page is available.",
+        examples=[True, False],
+        default=False,
+    )
+    limit: int = Field(
+        title="Limit",
+        description="The page size used.",
+        examples=[25, 50, 100],
+        ge=1,
+    )
+    server_time: datetime = Field(
+        title="Server Time",
+        description=(
+            "The server instant the query started; persist it as the "
+            "next 'since' watermark."
+        ),
+        examples=["2026-06-12T18:30:00Z"],
+    )
+
+
 def encode_cursor(payload: dict[str, Any]) -> str:
     """Serialize a cursor payload to an opaque base64-url-safe string.
 
@@ -290,6 +403,8 @@ __all__: list[str] = [
     "BasePaginationSchema",
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
+    "SyncFilterSchema",
+    "SyncPaginationSchema",
     "decode_cursor",
     "encode_cursor",
 ]

@@ -243,14 +243,22 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         limit: int = 20,
         order_by: str = "created_at",
         ascending: bool = False,
+        query: Any | None = None,
     ) -> dict[str, Any]:
-        """See :meth:`BaseRepository.cursor_paginate` — scoped to the tenant."""
+        """See :meth:`BaseRepository.cursor_paginate` — scoped to the tenant.
+
+        The tenant predicate is always appended via ``filters``, so it
+        applies even when a pre-built ``query`` is passed. As with
+        :meth:`paginate`, joins/predicates inside that ``query`` are
+        the caller's responsibility.
+        """
         return await super().cursor_paginate(
             self._with_tenant(filters),
             cursor=cursor,
             limit=limit,
             order_by=order_by,
             ascending=ascending,
+            query=query,
         )
 
     async def delete_many(self, filters: dict[str, Any]) -> int:

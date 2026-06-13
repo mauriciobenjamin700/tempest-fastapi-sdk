@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+import operator
+from collections.abc import Callable
+from datetime import date, datetime
 from typing import Any, Generic, List, TypeVar, cast
 from uuid import UUID
 
@@ -15,10 +17,24 @@ from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
+from tempest_fastapi_sdk.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
 
 ModelType = TypeVar("ModelType", bound=BaseModel)
+
+#: Suffix-to-operator map for comparison filters. A filter key of the
+#: form ``"<column>__<op>"`` (e.g. ``"updated_at__gt"``) applies the
+#: corresponding SQL comparison instead of the default equality. This
+#: is the building block delta-sync queries need (``updated_at`` past a
+#: high-water mark) without dropping to raw SQLAlchemy.
+_COMPARISON_OPS: dict[str, Callable[[Any, Any], Any]] = {
+    "gt": operator.gt,
+    "gte": operator.ge,
+    "lt": operator.lt,
+    "lte": operator.le,
+    "ne": operator.ne,
+}
 
 
 def _escape_like(value: str) -> str:
@@ -55,6 +71,12 @@ class BaseRepository(Generic[ModelType]):
     * ``start_in`` / ``end_in`` (date) → range filter against the
       model's ``date`` column when present, falling back to
       ``created_at``.
+    * ``<column>__<op>`` suffix → comparison filter, where ``<op>`` is
+      one of ``gt`` / ``gte`` / ``lt`` / ``lte`` / ``ne`` (e.g.
+      ``{"updated_at__gt": watermark}`` → ``updated_at > watermark``).
+      Timestamp-precise, unlike ``start_in`` / ``end_in`` (whole-day);
+      this is what delta-sync queries filter on. A ``None`` value
+      skips the condition, like every other filter.
 
     All error messages can be customized per repository instance via
     the constructor kwargs (``not_found_message``,
@@ -178,6 +200,15 @@ class BaseRepository(Generic[ModelType]):
                 if column is not None:
                     query = query.where(func.date(column) <= value)
                 continue
+
+            if "__" in field:
+                base, _, op = field.rpartition("__")
+                op_func = _COMPARISON_OPS.get(op)
+                if op_func is not None:
+                    op_column = getattr(self.model, base, None)
+                    if op_column is not None:
+                        query = query.where(op_func(op_column, value))
+                    continue
 
             column = getattr(self.model, field, None)
             if column is None:
@@ -425,6 +456,7 @@ class BaseRepository(Generic[ModelType]):
         limit: int = 20,
         order_by: str = "created_at",
         ascending: bool = False,
+        query: Select[Any] | None = None,
     ) -> dict[str, Any]:
         """Return a single cursor-paginated page of records.
 
@@ -442,6 +474,13 @@ class BaseRepository(Generic[ModelType]):
             order_by (str): Column to sort by. Must exist on the model.
             ascending (bool): Whether to sort ascending. Defaults to
                 ``False``.
+            query (Select[Any] | None): A pre-built ``Select`` to
+                paginate; if ``None``, defaults to
+                ``select(self.model)``. Mirrors :meth:`paginate` so a
+                hand-built query (joins, ``IS NULL`` predicates the
+                filter dict can't express, etc.) can still be
+                cursor-paginated. ``filters`` and the cursor/order
+                clauses are applied on top of it.
 
         Returns:
             dict[str, Any]: Mapping with ``items``, ``next_cursor``,
@@ -462,7 +501,8 @@ class BaseRepository(Generic[ModelType]):
                 f"{self.model.__name__!r} has no column {order_by!r}",
             )
 
-        query = select(self.model)
+        if query is None:
+            query = select(self.model)
         if filters:
             query = self._apply_filters(query, filters)
 
@@ -512,6 +552,95 @@ class BaseRepository(Generic[ModelType]):
             "has_more": has_more,
             "limit": limit,
         }
+
+    async def changes_since(
+        self,
+        since: datetime | None,
+        *,
+        filters: dict[str, Any] | None = None,
+        cursor: str | None = None,
+        limit: int = 50,
+        order_by: str = "updated_at",
+        include_deleted: bool = True,
+    ) -> dict[str, Any]:
+        """Return the rows that changed since a high-water mark.
+
+        The backbone of offline-first / delta sync: an offline client
+        (mobile app, PWA) replays only what changed since its last
+        successful pull instead of refetching the whole table. Rows are
+        ordered ascending by ``order_by`` (oldest change first) and
+        tie-broken by ``id``, so the client can advance its watermark
+        monotonically and resume mid-stream with the returned cursor.
+
+        Recommended watermark protocol:
+
+        1. First sync: call with ``since=None`` (returns everything,
+           cursor-paginated). Drain every page via ``next_cursor``.
+        2. Persist the returned ``server_time`` (NOT the max
+           ``updated_at`` of the items) as the next ``since``.
+        3. Next sync: call with that ``since``. The filter is
+           ``updated_at > since`` (strict), and because ``server_time``
+           is captured *before* the query runs it is a safe high-water
+           mark — anything committed afterwards has a later
+           ``updated_at`` and surfaces on the following pull.
+
+        When the model mixes in
+        :class:`tempest_fastapi_sdk.SoftDeleteMixin`, keep
+        ``include_deleted=True`` (the default) so soft-deleted rows are
+        returned as tombstones (``deleted_at`` set) and the client can
+        mirror the deletion locally. A pull that filtered them out would
+        leave deleted rows stranded on the device forever.
+
+        Args:
+            since (datetime | None): Only rows whose ``order_by`` column
+                is strictly greater than this are returned. ``None``
+                returns every row (initial full sync).
+            filters (dict[str, Any] | None): Extra equality/operator
+                filters applied on top — typically the tenant/owner
+                scope, e.g. ``{"user_id": user_id}``. Do NOT pass an
+                owner-less filter set: this method never scopes by
+                itself.
+            cursor (str | None): Opaque cursor from the previous page;
+                ``None`` requests the first page.
+            limit (int): Maximum items per page. Defaults to ``50``.
+            order_by (str): Timestamp column the watermark applies to.
+                Defaults to ``"updated_at"``. Must exist on the model.
+            include_deleted (bool): Whether to include soft-deleted
+                rows (tombstones). Defaults to ``True``. Ignored when
+                the model has no ``deleted_at`` column.
+
+        Returns:
+            dict[str, Any]: The :meth:`cursor_paginate` mapping
+            (``items`` / ``next_cursor`` / ``has_more`` / ``limit``)
+            plus ``server_time`` (:class:`datetime`) — the instant the
+            query started, to be persisted as the next ``since``.
+
+        Raises:
+            ValueError: When ``order_by`` is not a column on the model,
+                or when ``cursor`` is malformed.
+        """
+        server_time = utcnow()
+
+        combined: dict[str, Any] = dict(filters or {})
+        if since is not None:
+            combined[f"{order_by}__gt"] = since
+
+        base_query: Select[Any] | None = None
+        if not include_deleted and hasattr(self.model, "deleted_at"):
+            base_query = select(self.model).where(
+                self.model.deleted_at.is_(None),  # type: ignore[attr-defined]
+            )
+
+        page = await self.cursor_paginate(
+            filters=combined,
+            cursor=cursor,
+            limit=limit,
+            order_by=order_by,
+            ascending=True,
+            query=base_query,
+        )
+        page["server_time"] = server_time
+        return page
 
     async def add(self, model: ModelType) -> ModelType:
         """Insert ``model`` into the database.

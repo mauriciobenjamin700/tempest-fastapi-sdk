@@ -55,6 +55,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.schemas.pagination.BasePaginationSchema
 ::: tempest_fastapi_sdk.schemas.pagination.CursorPaginationFilterSchema
 ::: tempest_fastapi_sdk.schemas.pagination.CursorPaginationSchema
+::: tempest_fastapi_sdk.schemas.pagination.SyncFilterSchema
+::: tempest_fastapi_sdk.schemas.pagination.SyncPaginationSchema
 ::: tempest_fastapi_sdk.schemas.logs.LogEntrySchema
 
 ---

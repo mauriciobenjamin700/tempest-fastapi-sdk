@@ -218,6 +218,7 @@ nav:
       - Uploads (backends): recipes/uploads.md
       - Downloads: recipes/downloads.md
       - Idempotência: recipes/idempotency.md
+      - Sync offline-first (delta): recipes/offline-sync.md
       - Auth flow (signup/reset): recipes/auth-flow.md
       - MFA (TOTP / 2FA): recipes/mfa.md
       - Sessões server-side: recipes/sessions.md

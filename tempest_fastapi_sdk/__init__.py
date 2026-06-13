@@ -142,6 +142,8 @@ from tempest_fastapi_sdk.schemas import (
     CursorPaginationFilterSchema,
     CursorPaginationSchema,
     LogEntrySchema,
+    SyncFilterSchema,
+    SyncPaginationSchema,
     build_pagination_link_header,
     decode_cursor,
     encode_cursor,
@@ -253,7 +255,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.51.0"
+__version__: str = "0.52.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -392,6 +394,8 @@ __all__: list[str] = [
     "SignupSchema",
     "SlowQueryLogger",
     "SoftDeleteMixin",
+    "SyncFilterSchema",
+    "SyncPaginationSchema",
     "SystemMetrics",
     "TOTPHelper",
     "TaskIQSettings",

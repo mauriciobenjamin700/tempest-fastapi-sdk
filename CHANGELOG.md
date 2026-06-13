@@ -5,6 +5,38 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.52.0] — 2026-06-12
+
+### Added
+
+- **Delta-sync primitives on `BaseRepository`** — the backbone of
+  offline-first / mobile / PWA backends, so projects stop copy-pasting
+  cursor logic per service.
+    - **Comparison filter operators.** Filter keys now accept a
+      `<column>__<op>` suffix where `<op>` is `gt` / `gte` / `lt` /
+      `lte` / `ne` (e.g. `{"updated_at__gt": watermark}` →
+      `updated_at > watermark`). Timestamp-precise, unlike the
+      whole-day `start_in` / `end_in`. A `None` value skips the
+      condition, like every other filter. Works in every method that
+      takes `filters` (`list`, `paginate`, `cursor_paginate`, `count`,
+      `changes_since`, …).
+    - **`BaseRepository.cursor_paginate(..., query=...)`.** New
+      optional `query: Select | None` parameter mirroring `paginate`,
+      so a hand-built `Select` (joins, `IS NULL` predicates the filter
+      dict can't express) can still be cursor-paginated.
+    - **`BaseRepository.changes_since(since, *, filters=None,
+      cursor=None, limit=50, order_by="updated_at",
+      include_deleted=True)`.** Returns rows changed strictly after a
+      high-water mark, ascending by `updated_at` and tie-broken by
+      `id`, cursor-paginated. Includes soft-deleted tombstones by
+      default (so deletions propagate to the client) and returns a
+      `server_time` the client persists as the next `since` —
+      clock-skew-proof because it is captured server-side before the
+      query runs.
+- **`SyncFilterSchema` / `SyncPaginationSchema`** — request/response
+  DTOs mirroring `changes_since` (the response carries `server_time`).
+  Exported at the package top level.
+
 ## [0.51.0] — 2026-06-12
 
 ### Changed

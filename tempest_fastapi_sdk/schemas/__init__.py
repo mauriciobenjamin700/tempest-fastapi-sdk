@@ -8,6 +8,8 @@ from tempest_fastapi_sdk.schemas.pagination import (
     BasePaginationSchema,
     CursorPaginationFilterSchema,
     CursorPaginationSchema,
+    SyncFilterSchema,
+    SyncPaginationSchema,
     decode_cursor,
     encode_cursor,
 )
@@ -21,6 +23,8 @@ __all__: list[str] = [
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
     "LogEntrySchema",
+    "SyncFilterSchema",
+    "SyncPaginationSchema",
     "build_pagination_link_header",
     "decode_cursor",
     "encode_cursor",
