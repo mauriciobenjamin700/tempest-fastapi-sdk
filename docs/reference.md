@@ -202,6 +202,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ## Cache
 
 ::: tempest_fastapi_sdk.cache.redis_manager.AsyncRedisManager
+::: tempest_fastapi_sdk.cache.decorator.cached
+::: tempest_fastapi_sdk.cache.invalidation.CacheInvalidator
 
 ---
 

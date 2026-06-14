@@ -5,6 +5,30 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.56.0] — 2026-06-14
+
+### Added
+
+- **Tag / namespace invalidation for `@cached`** — cache entries can be
+  dropped on mutation instead of only expiring by TTL.
+    - **`@cached(..., namespace=..., tags=...)`** — `namespace` is one
+      coarse bucket per decorator; `tags` are fine-grained labels, given
+      as a static sequence or a per-call builder
+      `(args, kwargs) -> Sequence[str]` (e.g. `f"user:{id}"`). On each
+      write the entry key is added to a Redis set per label, and those
+      registry sets inherit the entry TTL so they self-prune.
+    - **`CacheInvalidator(redis, key_prefix=...)`** — drops every entry
+      under a label via `invalidate_namespace(ns)`,
+      `invalidate_tag(tag)`, `invalidate_tags(*tags)` (deduped) and
+      `invalidate_keys(*keys)` (raw keys); each returns the number of
+      entries deleted. Bind it with the same `key_prefix` the matching
+      decorators use.
+    - **`namespace_registry_key`** / **`tag_registry_key`** helpers
+      expose the registry set naming.
+    - Fully backward compatible: without `namespace` / `tags` no
+      registry sets are written and behavior is unchanged. New symbols
+      are exported from `tempest_fastapi_sdk.cache`.
+
 ## [0.55.0] — 2026-06-14
 
 ### Added
