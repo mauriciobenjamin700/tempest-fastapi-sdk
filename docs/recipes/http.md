@@ -193,7 +193,7 @@ async def update_perms(user_id: UUID) -> None:
 ## Middleware de rate limit
 
 
-`RateLimitMiddleware` é um limitador leve de janela deslizante em processo — cada chave única (IP do cliente por padrão) é permitida no máximo `max_requests` requisições dentro de cada janela `window_seconds`. Requisições que excedem ganham um `429 Too Many Requests` com um header `Retry-After`.
+`RateLimitMiddleware` é um limitador de janela deslizante — cada chave única (IP do cliente por padrão) é permitida no máximo `max_requests` requisições dentro de cada janela `window_seconds`. Requisições que excedem ganham um `429 Too Many Requests` com um header `Retry-After`. Dois eixos são plugáveis: o **store** (memória ou Redis) e a **chave** (IP, usuário, tenant, API key) — veja abaixo.
 
 ```python
 # src/api/app.py
@@ -211,21 +211,27 @@ def create_app() -> FastAPI:
     ...
 ```
 
-Passe `key_func=` para particionar o estado por header de tenant, usuário autenticado ou qualquer atributo da requisição. A factory completa do app então fica:
+### Limite por usuário / tenant / API key
+
+Por padrão a chave é o IP do cliente. Para limitar **por principal** (usuário autenticado, tenant, API key), passe um `key_func`. O SDK traz factories prontas:
+
+| Factory | Chave gerada | Uso |
+| --- | --- | --- |
+| `key_by_ip(trusted_header=...)` | `ip:<addr>` | Por IP (default). |
+| `key_by_jwt_subject(jwt)` | `user:<sub>` | Por usuário autenticado (claim `sub`). |
+| `key_by_jwt_claim(jwt, "tenant_id", scope="tenant")` | `tenant:<id>` | Por claim arbitrária do token. |
+| `key_by_header("x-api-key", scope="apikey")` | `apikey:<valor>` | Por valor de header. |
+
+!!! warning "O middleware roda antes das dependencies"
+    O `RateLimitMiddleware` executa **antes** das `Depends` do FastAPI resolverem — então o usuário autenticado pela sua dependency de auth ainda não existe quando a chave é calculada. Por isso as factories `key_by_jwt_*` decodificam o bearer **do request cru** (via `JWTUtils.decode_or_none`, sem levantar exceção). Tráfego anônimo cai de volta no IP, então continua limitado.
 
 ```python
 # src/api/app.py
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 
-from tempest_fastapi_sdk import RateLimitMiddleware
+from tempest_fastapi_sdk import RateLimitMiddleware, key_by_jwt_subject
 
-
-def by_tenant(request: Request) -> str:
-    """Bucket every request under its tenant header, falling back to IP."""
-    return request.headers.get(
-        "X-Tenant",
-        request.client.host if request.client else "anon",
-    )
+from src.api.dependencies.resources import get_jwt_utils
 
 
 def create_app() -> FastAPI:
@@ -234,15 +240,44 @@ def create_app() -> FastAPI:
         RateLimitMiddleware,
         max_requests=600,
         window_seconds=60.0,
-        key_func=by_tenant,                                  # ← swap the default IP key
+        key_func=key_by_jwt_subject(get_jwt_utils()),        # ← limite por usuário
         exempt_paths=("/health/liveness", "/health/readiness"),
     )
     return app
 ```
 
-As duas peças destacadas — o helper `by_tenant` e a conexão `key_func=by_tenant` — são o único diff em relação ao snippet padrão acima.
+### Estado distribuído com Redis
 
-O estado é mantido **em processo** — para deploys multi-worker, ou rode um único worker uvicorn atrás de um único nó de reverse-proxy, ou empurre o rate limiting para a borda (nginx / Cloudflare / AWS WAF). O middleware é intencionalmente simples; um limitador de janela deslizante apoiado em Redis está a uma issue de distância se surgir como necessidade real.
+O store padrão (`MemoryRateLimitStore`) conta **em processo** — correto para um único worker. Para deploys multi-réplica, passe `store=RedisRateLimitStore(redis)`: cada chave vira um sorted set e um único script Lua poda os expirados, conta e adiciona o novo hit **atomicamente** (sem corrida entre contar e adicionar). Em erro do Redis, `fail_open=True` (default) libera a requisição em vez de derrubar todo mundo.
+
+```python
+# src/api/app.py
+from redis.asyncio import Redis
+
+from tempest_fastapi_sdk import (
+    RateLimitMiddleware,
+    RedisRateLimitStore,
+    key_by_jwt_subject,
+)
+
+from src.api.dependencies.resources import get_jwt_utils
+
+
+def create_app() -> FastAPI:
+    redis: Redis = Redis.from_url("redis://localhost:6379/0")
+    app = FastAPI(...)
+    app.add_middleware(
+        RateLimitMiddleware,
+        max_requests=600,
+        window_seconds=60.0,
+        key_func=key_by_jwt_subject(get_jwt_utils()),
+        store=RedisRateLimitStore(redis),                    # ← compartilhado entre réplicas
+        exempt_paths=("/health/liveness", "/health/readiness"),
+    )
+    return app
+```
+
+A semântica de janela deslizante é idêntica nos dois stores; só muda onde os contadores vivem. Ainda dá para empurrar o rate limiting para a borda (nginx / Cloudflare / AWS WAF) quando preferir.
 
 
 ## Verificação de assinatura de webhook

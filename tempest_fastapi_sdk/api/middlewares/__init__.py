@@ -18,7 +18,17 @@ from tempest_fastapi_sdk.api.middlewares.idempotency import (
     MemoryIdempotencyStore,
     RedisIdempotencyStore,
 )
-from tempest_fastapi_sdk.api.middlewares.rate_limit import RateLimitMiddleware
+from tempest_fastapi_sdk.api.middlewares.rate_limit import (
+    MemoryRateLimitStore,
+    RateLimitMiddleware,
+    RateLimitResult,
+    RateLimitStore,
+    RedisRateLimitStore,
+    key_by_header,
+    key_by_ip,
+    key_by_jwt_claim,
+    key_by_jwt_subject,
+)
 from tempest_fastapi_sdk.api.middlewares.request_id import RequestIDMiddleware
 
 __all__: list[str] = [
@@ -32,10 +42,18 @@ __all__: list[str] = [
     "IdempotencyMiddleware",
     "IdempotencyStore",
     "MemoryIdempotencyStore",
+    "MemoryRateLimitStore",
     "RateLimitMiddleware",
+    "RateLimitResult",
+    "RateLimitStore",
     "RedisIdempotencyStore",
+    "RedisRateLimitStore",
     "RequestIDMiddleware",
     "apply_cors",
     "generate_csrf_token",
+    "key_by_header",
+    "key_by_ip",
+    "key_by_jwt_claim",
+    "key_by_jwt_subject",
     "make_csrf_token_dependency",
 ]

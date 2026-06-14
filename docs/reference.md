@@ -103,6 +103,15 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.middlewares.csrf.CSRFMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.csrf.make_csrf_token_dependency
 ::: tempest_fastapi_sdk.api.middlewares.csrf.generate_csrf_token
+::: tempest_fastapi_sdk.api.middlewares.rate_limit.RateLimitMiddleware
+::: tempest_fastapi_sdk.api.middlewares.rate_limit.RateLimitStore
+::: tempest_fastapi_sdk.api.middlewares.rate_limit.RateLimitResult
+::: tempest_fastapi_sdk.api.middlewares.rate_limit.MemoryRateLimitStore
+::: tempest_fastapi_sdk.api.middlewares.rate_limit.RedisRateLimitStore
+::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_ip
+::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_jwt_subject
+::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_jwt_claim
+::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_header
 ::: tempest_fastapi_sdk.utils.storage_backends.LocalUploadStorage
 ::: tempest_fastapi_sdk.utils.storage_backends.MinIOUploadStorage
 ::: tempest_fastapi_sdk.utils.http_client.HTTPClient

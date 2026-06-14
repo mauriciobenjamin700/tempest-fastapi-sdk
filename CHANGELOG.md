@@ -5,6 +5,31 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.54.0] — 2026-06-14
+
+### Added
+
+- **Per-principal & distributed rate limiting** — `RateLimitMiddleware`
+  gains a pluggable store and ready-made key extractors, so limits can
+  be per user / tenant / API key and shared across replicas.
+    - **Pluggable store** — `RateLimitStore` protocol with
+      `MemoryRateLimitStore` (default, in-process) and
+      `RedisRateLimitStore` (distributed). The Redis store uses an
+      atomic Lua sliding-window log over a sorted set — no race between
+      count and add — and `fail_open=True` (default) allows the request
+      on a transient Redis error. `RateLimitResult` carries the
+      `allowed` / `remaining` / `retry_after` decision.
+    - **Key extractors** — `key_by_ip`, `key_by_jwt_subject`
+      (per-user via the `sub` claim), `key_by_jwt_claim` (per arbitrary
+      claim, e.g. `tenant_id`) and `key_by_header` (e.g. an API key).
+      Because the middleware runs before FastAPI dependencies, the
+      `key_by_jwt_*` factories decode the bearer from the raw request
+      (`decode_or_none`) and fall back to the client IP for anonymous
+      traffic.
+    - Fully backward compatible: the default behavior (in-process,
+      per-IP) is unchanged; `store=` and the `key_by_*` factories are
+      opt-in. All new symbols are exported at the package top level.
+
 ## [0.53.0] — 2026-06-13
 
 ### Added

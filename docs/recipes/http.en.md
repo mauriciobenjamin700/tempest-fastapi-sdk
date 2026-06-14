@@ -193,7 +193,7 @@ async def update_perms(user_id: UUID) -> None:
 ## Rate limit middleware
 
 
-`RateLimitMiddleware` is a lightweight in-process sliding-window limiter — each unique key (client IP by default) is allowed at most `max_requests` requests inside every `window_seconds` window. Exceeded requests get a `429 Too Many Requests` with a `Retry-After` header.
+`RateLimitMiddleware` is a sliding-window limiter — each unique key (client IP by default) is allowed at most `max_requests` requests inside every `window_seconds` window. Exceeded requests get a `429 Too Many Requests` with a `Retry-After` header. Two axes are pluggable: the **store** (memory or Redis) and the **key** (IP, user, tenant, API key) — see below.
 
 ```python
 # src/api/app.py
@@ -211,21 +211,27 @@ def create_app() -> FastAPI:
     ...
 ```
 
-Pass `key_func=` to partition state by tenant header, authenticated user, or any request attribute. The full app factory then looks like:
+### Limit per user / tenant / API key
+
+By default the key is the client IP. To limit **per principal** (authenticated user, tenant, API key), pass a `key_func`. The SDK ships ready-made factories:
+
+| Factory | Key produced | Use |
+| --- | --- | --- |
+| `key_by_ip(trusted_header=...)` | `ip:<addr>` | Per IP (default). |
+| `key_by_jwt_subject(jwt)` | `user:<sub>` | Per authenticated user (`sub` claim). |
+| `key_by_jwt_claim(jwt, "tenant_id", scope="tenant")` | `tenant:<id>` | Per arbitrary token claim. |
+| `key_by_header("x-api-key", scope="apikey")` | `apikey:<value>` | Per header value. |
+
+!!! warning "The middleware runs before dependencies"
+    `RateLimitMiddleware` runs **before** FastAPI `Depends` resolve — so the user authenticated by your auth dependency does not exist yet when the key is computed. That is why the `key_by_jwt_*` factories decode the bearer **from the raw request** (via `JWTUtils.decode_or_none`, no exception raised). Anonymous traffic falls back to the IP, so it stays limited.
 
 ```python
 # src/api/app.py
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 
-from tempest_fastapi_sdk import RateLimitMiddleware
+from tempest_fastapi_sdk import RateLimitMiddleware, key_by_jwt_subject
 
-
-def by_tenant(request: Request) -> str:
-    """Bucket every request under its tenant header, falling back to IP."""
-    return request.headers.get(
-        "X-Tenant",
-        request.client.host if request.client else "anon",
-    )
+from src.api.dependencies.resources import get_jwt_utils
 
 
 def create_app() -> FastAPI:
@@ -234,15 +240,44 @@ def create_app() -> FastAPI:
         RateLimitMiddleware,
         max_requests=600,
         window_seconds=60.0,
-        key_func=by_tenant,                                  # ← swap the default IP key
+        key_func=key_by_jwt_subject(get_jwt_utils()),        # ← limit per user
         exempt_paths=("/health/liveness", "/health/readiness"),
     )
     return app
 ```
 
-The two highlighted pieces — the `by_tenant` helper and the `key_func=by_tenant` wiring — are the only diff against the default snippet above.
+### Distributed state with Redis
 
-The state is held **in-process** — for multi-worker deployments either run a single uvicorn worker behind a single reverse-proxy node, or push rate limiting to the edge (nginx / Cloudflare / AWS WAF). The middleware is intentionally simple; a Redis-backed sliding-window limiter is one issue away if it shows up as a real need.
+The default store (`MemoryRateLimitStore`) counts **in-process** — correct for a single worker. For multi-replica deployments, pass `store=RedisRateLimitStore(redis)`: each key becomes a sorted set and a single Lua script prunes expired members, counts, and adds the new hit **atomically** (no race between count and add). On a Redis error, `fail_open=True` (default) allows the request rather than locking everyone out.
+
+```python
+# src/api/app.py
+from redis.asyncio import Redis
+
+from tempest_fastapi_sdk import (
+    RateLimitMiddleware,
+    RedisRateLimitStore,
+    key_by_jwt_subject,
+)
+
+from src.api.dependencies.resources import get_jwt_utils
+
+
+def create_app() -> FastAPI:
+    redis: Redis = Redis.from_url("redis://localhost:6379/0")
+    app = FastAPI(...)
+    app.add_middleware(
+        RateLimitMiddleware,
+        max_requests=600,
+        window_seconds=60.0,
+        key_func=key_by_jwt_subject(get_jwt_utils()),
+        store=RedisRateLimitStore(redis),                    # ← shared across replicas
+        exempt_paths=("/health/liveness", "/health/readiness"),
+    )
+    return app
+```
+
+The sliding-window semantics are identical across both stores; only where the counters live changes. You can still push rate limiting to the edge (nginx / Cloudflare / AWS WAF) when you prefer.
 
 
 ## Webhook signature verification

@@ -139,7 +139,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `BaseUserRecoveryCodeModel`, `make_user_recovery_code_model`, `UserTokenPurpose`, `BaseRepository[ModelType]`, `TenantScopedRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper` (+ `safe_upgrade`), `DestructiveMigrationError`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin`, `MFAMixin`, `BASE_COLUMN_ORDER`, `reorder_base_columns_first`, `compose_hooks`, `SlowQueryLogger`, `BaseOutboxModel`, `OutboxRelay`, `OutboxStatus`, `BaseRepository.save_with_outbox` |
 | `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `FileTooLargeException`, `InvalidFileTypeException`, `TooManyRequestsException` |
 | `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings`, `MinIOSettings`, `AuthSettings` |
-| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_logs_router`, `make_prometheus_router`, `make_prometheus_registry`, `PrometheusMiddleware`, `LogSource`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware`, `IdempotencyMiddleware`, `MemoryIdempotencyStore`, `RedisIdempotencyStore`, `BodySizeLimitMiddleware`, `CSRFMiddleware`, `make_csrf_token_dependency`, `GracefulShutdownMiddleware`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, OAuth2 (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`), `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck`, `setup_tracing` *(extra: `[otel]`)* |
+| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_logs_router`, `make_prometheus_router`, `make_prometheus_registry`, `PrometheusMiddleware`, `LogSource`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware` (+ `RateLimitStore`/`MemoryRateLimitStore`/`RedisRateLimitStore`/`RateLimitResult` and `key_by_ip`/`key_by_jwt_subject`/`key_by_jwt_claim`/`key_by_header`), `IdempotencyMiddleware`, `MemoryIdempotencyStore`, `RedisIdempotencyStore`, `BodySizeLimitMiddleware`, `CSRFMiddleware`, `make_csrf_token_dependency`, `GracefulShutdownMiddleware`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, OAuth2 (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`), `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck`, `setup_tracing` *(extra: `[otel]`)* |
 | `tempest_fastapi_sdk.auth` *(extra: `[auth]`, opcional `[email]`, `[mfa]`)* | `UserAuthService`, `make_auth_router`, `SignupSchema` / `LoginSchema` / `PasswordResetRequestSchema` / `PasswordResetConfirmSchema` + responses, `ActivationToken`, `PasswordResetToken`, MFA schemas (`MFAEnrollResponseSchema` / `MFAConfirmSchema` / `MFAVerifySchema` / `MFADisableSchema`) — signup/activate/login/reset + TOTP 2FA out of the box |
 | `tempest_fastapi_sdk.controllers` | `BaseController` |
 | `tempest_fastapi_sdk.services` | `BaseService` |
@@ -2892,7 +2892,7 @@ Tweak `page_param=` / `size_param=` when your service uses non-standard query pa
 
 ### Rate limit middleware recipe
 
-`RateLimitMiddleware` is a lightweight in-process sliding-window limiter — each unique key (client IP by default) is allowed at most `max_requests` requests inside every `window_seconds` window. Exceeded requests get a `429 Too Many Requests` with a `Retry-After` header.
+`RateLimitMiddleware` is a sliding-window limiter — each unique key (client IP by default) is allowed at most `max_requests` requests inside every `window_seconds` window. Exceeded requests get a `429 Too Many Requests` with a `Retry-After` header. Two axes are pluggable: the **store** (memory or Redis) and the **key** (IP, user, tenant, API key).
 
 ```python
 # src/api/app.py
@@ -2910,35 +2910,53 @@ def create_app() -> FastAPI:
     ...
 ```
 
-Pass `key_func=` to partition state by tenant header, authenticated user, or any request attribute. The full app factory then looks like:
+**Limit per principal.** By default the key is the client IP. The
+`key_by_*` factories key on the authenticated user, an arbitrary token
+claim or a header instead. Because the middleware runs *before* FastAPI
+dependencies resolve, the `key_by_jwt_*` factories decode the bearer
+from the raw request (`decode_or_none`) and fall back to the IP for
+anonymous traffic:
+
+| Factory | Key produced | Use |
+| --- | --- | --- |
+| `key_by_ip(trusted_header=...)` | `ip:<addr>` | Per IP (default). |
+| `key_by_jwt_subject(jwt)` | `user:<sub>` | Per authenticated user. |
+| `key_by_jwt_claim(jwt, "tenant_id", scope="tenant")` | `tenant:<id>` | Per token claim. |
+| `key_by_header("x-api-key", scope="apikey")` | `apikey:<value>` | Per header value. |
+
+**Share state across replicas.** The default `MemoryRateLimitStore`
+counts in-process (single worker). Pass `RedisRateLimitStore(redis)` for
+multi-replica deploys — an atomic Lua sliding-window log over a sorted
+set, `fail_open=True` by default:
 
 ```python
 # src/api/app.py
-from fastapi import FastAPI, Request
+from redis.asyncio import Redis
 
-from tempest_fastapi_sdk import RateLimitMiddleware
+from tempest_fastapi_sdk import (
+    RateLimitMiddleware,
+    RedisRateLimitStore,
+    key_by_jwt_subject,
+)
 
-
-def by_tenant(request: Request) -> str:
-    """Bucket every request under its tenant header, falling back to IP."""
-    return request.headers.get("X-Tenant", request.client.host or "anon")
+from src.api.dependencies.resources import get_jwt_utils
 
 
 def create_app() -> FastAPI:
+    redis: Redis = Redis.from_url("redis://localhost:6379/0")
     app = FastAPI(...)
     app.add_middleware(
         RateLimitMiddleware,
         max_requests=600,
         window_seconds=60.0,
-        key_func=by_tenant,                                  # ← swap the default IP key
+        key_func=key_by_jwt_subject(get_jwt_utils()),        # ← per-user buckets
+        store=RedisRateLimitStore(redis),                    # ← shared across replicas
         exempt_paths=("/health/liveness", "/health/readiness"),
     )
     return app
 ```
 
-The two highlighted pieces — the `by_tenant` helper and the `key_func=by_tenant` wiring — are the only diff against the default snippet above.
-
-The state is held **in-process** — for multi-worker deployments either run a single uvicorn worker behind a single reverse-proxy node, or push rate limiting to the edge (nginx / Cloudflare / AWS WAF). The middleware is intentionally simple; a Redis-backed sliding-window limiter is one issue away if it shows up as a real need.
+The sliding-window semantics are identical across both stores; only where the counters live changes. You can still push rate limiting to the edge (nginx / Cloudflare / AWS WAF) when you prefer.
 
 ### Outbox dispatcher pattern recipe
 
