@@ -5,6 +5,30 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.58.0] — 2026-06-14
+
+### Added
+
+- **Per-entity audit trail** — an append-only log of who changed what,
+  with a before/after diff, beyond the timestamp-only `AuditMixin`.
+    - **`BaseAuditLogModel`** — abstract `audit_log` table (subclass and
+      pick `__tablename__`, like `BaseOutboxModel`): `entity`,
+      `entity_id`, `action`, `actor`, `changes` (JSON diff) and optional
+      `context`. Ships `new_entry` / `for_create` / `for_update` /
+      `for_delete` constructors and the `AuditAction` enum.
+    - **`snapshot_model(instance)`** / **`diff_snapshots(before, after)`**
+      — capture a model's columns as a JSON-able dict and diff two
+      snapshots into `{field: {"before", "after"}}`.
+    - **`BaseRepository` opt-in hook** — pass `audit_model=...` and use
+      `add_audited(model, *, actor, context)`,
+      `update_audited(model, before, *, ...)` (pair with `snapshot()`
+      taken before mutating) and `delete_audited(model, *, ...)`. The
+      business row and the audit row commit in the **same transaction**,
+      so the trail can never reference a rolled-back change.
+    - All symbols exported from `tempest_fastapi_sdk.db` and the package
+      top level. Fully backward compatible: repositories without
+      `audit_model` are unchanged.
+
 ## [0.57.0] — 2026-06-14
 
 ### Added

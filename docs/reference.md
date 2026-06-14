@@ -41,6 +41,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.outbox.BaseOutboxModel
 ::: tempest_fastapi_sdk.db.outbox.OutboxRelay
 ::: tempest_fastapi_sdk.db.outbox.OutboxStatus
+::: tempest_fastapi_sdk.db.audit.BaseAuditLogModel
+::: tempest_fastapi_sdk.db.audit.AuditAction
+::: tempest_fastapi_sdk.db.audit.snapshot_model
+::: tempest_fastapi_sdk.db.audit.diff_snapshots
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
 
 ---

@@ -12,6 +12,10 @@ from tempest_fastapi_sdk.db.alembic_hooks import compose_hooks as compose_hooks
 from tempest_fastapi_sdk.db.alembic_hooks import (
     reorder_base_columns_first as reorder_base_columns_first,
 )
+from tempest_fastapi_sdk.db.audit import AuditAction as AuditAction
+from tempest_fastapi_sdk.db.audit import BaseAuditLogModel as BaseAuditLogModel
+from tempest_fastapi_sdk.db.audit import diff_snapshots as diff_snapshots
+from tempest_fastapi_sdk.db.audit import snapshot_model as snapshot_model
 from tempest_fastapi_sdk.db.connection import (
     AsyncDatabaseManager as AsyncDatabaseManager,
 )
@@ -52,7 +56,9 @@ __all__: list[str] = [
     "NAMING_CONVENTION",
     "AlembicHelper",
     "AsyncDatabaseManager",
+    "AuditAction",
     "AuditMixin",
+    "BaseAuditLogModel",
     "BaseModel",
     "BaseOutboxModel",
     "BaseRepository",
@@ -68,7 +74,9 @@ __all__: list[str] = [
     "TenantScopedRepository",
     "UserTokenPurpose",
     "compose_hooks",
+    "diff_snapshots",
     "make_user_recovery_code_model",
     "make_user_token_model",
     "reorder_base_columns_first",
+    "snapshot_model",
 ]

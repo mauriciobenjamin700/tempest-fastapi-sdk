@@ -87,6 +87,7 @@ plugins:
             Receitas: Recipes
             Banco de dados: Database
             Multi-tenant: Multi-tenant
+            Audit trail: Audit trail
             Camada HTTP: HTTP layer
             "HTTP client (saída)": "HTTP client (outbound)"
             Cache: Cache
@@ -204,6 +205,7 @@ nav:
       - recipes/index.md
       - Banco de dados: recipes/database.md
       - Multi-tenant: recipes/multi-tenant.md
+      - Audit trail: recipes/audit-trail.md
       - Camada HTTP: recipes/http.md
       - "HTTP client (saída)": recipes/http-client.md
       - Cache: recipes/cache.md

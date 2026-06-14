@@ -13,6 +13,7 @@ from sqlalchemy import CursorResult, Select, delete, func, insert, select, updat
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tempest_fastapi_sdk.db.audit import BaseAuditLogModel, snapshot_model
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
@@ -105,6 +106,7 @@ class BaseRepository(Generic[ModelType]):
         update_conflict_message: str | None = None,
         bulk_create_conflict_message: str | None = None,
         bulk_update_conflict_message: str | None = None,
+        audit_model: type[BaseAuditLogModel] | None = None,
     ) -> None:
         """Initialize the repository.
 
@@ -159,6 +161,24 @@ class BaseRepository(Generic[ModelType]):
         self._bulk_update_conflict_message: str = (
             bulk_update_conflict_message or f"Conflict updating {name} batch"
         )
+        self._audit_model: type[BaseAuditLogModel] | None = audit_model
+
+    def _require_audit_model(self) -> type[BaseAuditLogModel]:
+        """Return the configured audit model or raise.
+
+        Returns:
+            type[BaseAuditLogModel]: The repository's audit model.
+
+        Raises:
+            RuntimeError: When the repository was built without an
+                ``audit_model``.
+        """
+        if self._audit_model is None:
+            raise RuntimeError(
+                f"{type(self).__name__} was created without an audit_model; "
+                "pass audit_model=... to record an audit trail.",
+            )
+        return self._audit_model
 
     def _apply_filters(
         self,
@@ -747,6 +767,155 @@ class BaseRepository(Generic[ModelType]):
             raise ConflictException(
                 message=self._create_conflict_message,
             ) from exc
+        except Exception:
+            await self.session.rollback()
+            raise
+
+    @staticmethod
+    def snapshot(model: ModelType) -> dict[str, Any]:
+        """Capture a model's column values for a later audit diff.
+
+        Take this **before** mutating an instance, then pass it to
+        :meth:`update_audited` so the audit entry can diff before/after.
+
+        Args:
+            model (ModelType): The instance to snapshot.
+
+        Returns:
+            dict[str, Any]: A JSON-able ``{column: value}`` snapshot.
+        """
+        return snapshot_model(model)
+
+    async def add_audited(
+        self,
+        model: ModelType,
+        *,
+        actor: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> ModelType:
+        """Insert ``model`` and a ``create`` audit row in one transaction.
+
+        Requires the repository to be built with ``audit_model=...``. The
+        business row and the audit row commit together, so the trail can
+        never reference a row that was rolled back.
+
+        Args:
+            model (ModelType): The instance to insert.
+            actor (str | None): Who performed the create (user id,
+                e-mail, ``"system"``, ...).
+            context (dict[str, Any] | None): Extra metadata (request id,
+                ip, reason, ...).
+
+        Returns:
+            ModelType: The instance after ``refresh``.
+
+        Raises:
+            RuntimeError: When no ``audit_model`` was configured.
+            ConflictException: On integrity violations (the whole
+                transaction is rolled back).
+        """
+        audit_model = self._require_audit_model()
+        try:
+            self.session.add(model)
+            await self.session.flush()
+            entry = audit_model.for_create(model, actor=actor, context=context)
+            self.session.add(entry)
+            await self.session.commit()
+            await self.session.refresh(model)
+            return model
+        except IntegrityError as exc:
+            await self.session.rollback()
+            logger.warning(
+                "IntegrityError on %s.add_audited: %s",
+                self.model.__name__,
+                exc.orig,
+            )
+            raise ConflictException(
+                message=self._create_conflict_message,
+            ) from exc
+        except Exception:
+            await self.session.rollback()
+            raise
+
+    async def update_audited(
+        self,
+        model: ModelType,
+        before: dict[str, Any],
+        *,
+        actor: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> ModelType:
+        """Persist mutations on ``model`` and an ``update`` audit row.
+
+        ``before`` is a snapshot taken with :meth:`snapshot` *before* the
+        instance was mutated; the audit row stores the changed-field
+        diff. The business update and the audit row commit together.
+
+        Args:
+            model (ModelType): The mutated, session-attached instance.
+            before (dict[str, Any]): The pre-mutation snapshot.
+            actor (str | None): Who performed the update.
+            context (dict[str, Any] | None): Extra metadata.
+
+        Returns:
+            ModelType: The instance after ``refresh``.
+
+        Raises:
+            RuntimeError: When no ``audit_model`` was configured.
+            ConflictException: On integrity violations.
+        """
+        audit_model = self._require_audit_model()
+        try:
+            entry = audit_model.for_update(
+                model,
+                before,
+                actor=actor,
+                context=context,
+            )
+            self.session.add(entry)
+            await self.session.commit()
+            await self.session.refresh(model)
+            return model
+        except IntegrityError as exc:
+            await self.session.rollback()
+            logger.warning(
+                "IntegrityError on %s.update_audited: %s",
+                self.model.__name__,
+                exc.orig,
+            )
+            raise ConflictException(
+                message=self._update_conflict_message,
+            ) from exc
+        except Exception:
+            await self.session.rollback()
+            raise
+
+    async def delete_audited(
+        self,
+        model: ModelType,
+        *,
+        actor: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        """Delete ``model`` and write a ``delete`` audit row in one tx.
+
+        Snapshots the row before deleting it, so the trail keeps the
+        final state of what was removed.
+
+        Args:
+            model (ModelType): The session-attached instance to delete.
+            actor (str | None): Who performed the delete.
+            context (dict[str, Any] | None): Extra metadata.
+
+        Raises:
+            RuntimeError: When no ``audit_model`` was configured.
+        """
+        audit_model = self._require_audit_model()
+        try:
+            entry = audit_model.for_delete(model, actor=actor, context=context)
+            await self.session.delete(model)
+            self.session.add(entry)
+            await self.session.commit()
         except Exception:
             await self.session.rollback()
             raise

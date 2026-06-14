@@ -109,7 +109,9 @@ from tempest_fastapi_sdk.db import (
     NAMING_CONVENTION,
     AlembicHelper,
     AsyncDatabaseManager,
+    AuditAction,
     AuditMixin,
+    BaseAuditLogModel,
     BaseModel,
     BaseOutboxModel,
     BaseRepository,
@@ -125,9 +127,11 @@ from tempest_fastapi_sdk.db import (
     TenantScopedRepository,
     UserTokenPurpose,
     compose_hooks,
+    diff_snapshots,
     make_user_recovery_code_model,
     make_user_token_model,
     reorder_base_columns_first,
+    snapshot_model,
 )
 from tempest_fastapi_sdk.exceptions import (
     DEFAULT_LOCALE,
@@ -291,7 +295,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.57.0"
+__version__: str = "0.58.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -323,9 +327,11 @@ __all__: list[str] = [
     "AsyncDatabaseManager",
     "AsyncMinIOClient",
     "AttemptThrottle",
+    "AuditAction",
     "AuditMixin",
     "AuthSettings",
     "BaseAppSettings",
+    "BaseAuditLogModel",
     "BaseController",
     "BaseIntEnum",
     "BaseModel",
@@ -492,6 +498,7 @@ __all__: list[str] = [
     "configure_logging",
     "decode_cursor",
     "default_message_catalog",
+    "diff_snapshots",
     "encode_cursor",
     "generate_csrf_token",
     "generate_oauth_state",
@@ -556,6 +563,7 @@ __all__: list[str] = [
     "set_cookie",
     "set_request_id",
     "setup_tracing",
+    "snapshot_model",
     "sniff_mime",
     "sse_response",
     "states_by_region",
