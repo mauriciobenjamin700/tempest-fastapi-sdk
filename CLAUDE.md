@@ -99,63 +99,62 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Cache** — Redis manager + `@cached`.
 - **Queue / tasks** — FastStream + TaskIQ wrappers.
 - **BR validators** — CPF/CNPJ/CEP/phone.
+- **BR localities** — `UF` (StrEnum, 27 siglas) + `Region`
+  (5 macro-regiões IBGE), `StateBR`/`CityBR` schemas, offline
+  dataset of 27 states + 5606 municipalities (IBGE-derived,
+  DF as 36 administrative regions), `list_states`/`get_state`/
+  `cities_by_uf`/`states_by_region`, `is_valid_uf`/`normalize_uf`,
+  `is_valid_city`/`normalize_city` (accent/case-insensitive),
+  `UFField`/`CityNameField`.
 - **Admin panel** — Jinja + HTMX (`AdminSite`, `AdminModel`,
   `make_admin_router`).
 - **CLI** — `tempest new` (scaffolds layered service +
   docker-compose), `tempest generate --docker` (regen compose),
-  `tempest db init/revision/upgrade/downgrade/current/history`,
-  `tempest user create [--admin] / list`, plus quality gates
-  (`lint`, `fix`, `format`, `fmt-check`, `type`, `test`,
-  `check`).
+  `tempest db init/revision/upgrade/downgrade/current/history/seed`,
+  `tempest user create [--admin] / list`, `tempest secrets rotate`,
+  plus quality gates (`lint`, `fix`, `format`, `fmt-check`, `type`,
+  `test`, `check`).
 
-The list below is the deliberate next-version plan. Each tier is
-ordered by impact for a typical production FastAPI service.
+The whole Tier S / Tier A / Tier B backlog that used to live here is
+**shipped** — idempotency, cloud uploads, OTel tracing, `HTTPClient`,
+the outbox pattern, `EmailUtils.render_template`, OAuth2/OIDC, CSRF +
+body-size middleware, bulk repo ops, the Prometheus endpoint, TOTP/MFA,
+`TenantScopedRepository`, `SlowQueryLogger`, `AlembicHelper.safe_upgrade`,
+graceful shutdown, `make_websocket_router`, and the `db seed` /
+`secrets rotate` CLI commands all exist today. The covers list above is
+the source of truth; don't re-plan finished work.
 
-### Tier S — every serious API needs these
+### Next-version plan
 
-| Feature | Why it matters |
-|---------|----------------|
-| **`IdempotencyMiddleware`** + `idempotency_keys` table | Required header for POST on payment/webhook/retry paths. Without it, retried requests duplicate rows. Stripe/AWS pattern. |
-| **`UploadUtils` pluggable backends** (`LocalBackend`, `S3Backend(bucket, region)`, `GCSBackend`) | Today only writes to local disk — unusable in any multi-replica deploy. |
-| **OpenTelemetry tracing** — `setup_tracing(app, otlp_endpoint=…)` | `RequestIDMiddleware` correlates logs but doesn't give cross-service spans. Needs auto-instrumentation for FastAPI/SQLAlchemy/httpx. |
-| **`HTTPClient` (typed httpx wrapper)** | Retry + backoff, `X-Request-ID` propagation, circuit breaker, default timeouts. Today every service rolls raw httpx. |
-| **Outbox pattern** — `BaseRepository.save_with_outbox(model, event)` | Persists event in the same tx as the INSERT; `AsyncBrokerManager` drains it. Without this, events are lost when the broker fails after commit. |
+Ordered by the priority the user set. Each item is the next minor
+bump (`feat: vX.Y+1.0`) when picked up. Keep this honest — move an
+item up to the covers list the moment it ships, and only add a new
+entry when business pressure actually selects it.
 
-### Tier A — common in SaaS backends
-
-| Feature | Why it matters |
-|---------|----------------|
-| **`EmailUtils.render_template(path, ctx)`** with Jinja2 | Welcome / reset / verify emails — today SMTP only accepts raw strings. |
-| **OAuth2 / OIDC providers** — `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider(discovery_url)` | `JWTUtils` only signs our own tokens; we have no social-login glue. |
-| **`CSRFMiddleware` + `BodySizeLimitMiddleware`** | Admin module currently has no CSRF token; no body limit means DoS via giant upload before `UploadUtils.max_size_bytes` is checked. |
-| **`BaseRepository.bulk_create / bulk_update / bulk_upsert`** | Row-by-row inserts are the #1 N+1 bottleneck. SQLAlchemy 2.0 has `insert().values([...])` + `on_conflict_do_update`. |
-| **Prometheus `/metrics` endpoint** | `MetricsUtils` already collects the data — needs the Prometheus exposition format for oncall scrape. |
-| **Admin CSRF token + `make_csrf_token_dependency`** | Admin accepts POST without a token today. |
-
-### Tier B — when the service grows
-
-- **2FA / TOTP** (`pyotp` wrapper + optional `AdminModel.totp_secret`)
-- **Multi-tenant scope** — `TenantScopedRepository(tenant_id)` auto-injects `WHERE tenant_id = …` on every query
-- **`SlowQueryLogger`** — SQLAlchemy event logging queries > N ms with EXPLAIN
-- **`AlembicHelper.safe_upgrade()`** — block destructive migrations (DROP COLUMN/TABLE) without `--force`
-- **Graceful shutdown** — drain in-flight requests on SIGTERM before uvicorn dies
-- **`make_websocket_router`** — bearer auth, heartbeat, broadcast (today SSE only)
-- **CLI:** `tempest db seed`, `tempest user create-admin`, `tempest secrets rotate`
-
-### Planned release cadence
-
-- **v0.23.0 — observability + retries** (high return, low cost)
-    - `setup_tracing(app, otlp_endpoint=…)` with OTel auto-instrumentation
-    - `HTTPClient` (typed httpx wrapper)
-    - Prometheus `/metrics` endpoint
-- **v0.24.0 — cloud uploads + idempotency** (unblocks multi-replica deploys)
-    - `UploadUtils` with pluggable backends + `S3Backend`
-    - `IdempotencyMiddleware` + `idempotency_keys` table on `BaseModel`
-    - `EmailUtils.render_template`
-
-Anything beyond v0.24.0 is bumped from the roadmap when business
-pressure picks the next item — keep the roadmap honest, not
-aspirational.
+1. **Rate-limit per user / scope** — `RateLimitMiddleware` keys on
+   client IP today. Add a pluggable key extractor (authenticated
+   user id, API key, tenant, or a custom callable) so limits can be
+   per-principal instead of per-IP, with the same memory + Redis
+   backends. Shared NAT / proxy clients stop sharing one bucket.
+2. **i18n / localized `AppException` messages** — error envelopes are
+   English-only. Let each `AppException` carry a message key + params
+   resolved against per-locale catalogs (PT-BR default + EN), picked
+   from `Accept-Language` or an explicit override, so `register_
+   exception_handlers` emits the localized `message` without callers
+   hand-translating.
+3. **`@cached` tag / namespace invalidation** — the cache decorator
+   only expires by TTL. Add tag/namespace tagging on write plus an
+   `invalidate(tag|namespace)` call so a mutation can drop every
+   dependent entry at once instead of waiting out the TTL.
+4. **Feature flags** — `FeatureFlag` with env + Redis backends
+   (Redis for runtime toggles, env for static), a dependency/guard to
+   gate routes and a helper to branch in services, so rollouts and
+   kill-switches don't require a redeploy.
+5. **Audit trail** — beyond `AuditMixin` (timestamps), a per-entity
+   mutation log capturing actor, action, before/after diff on
+   create/update/delete, written in the same transaction as the
+   change (reuse the outbox machinery), with a `BaseRepository` hook
+   so services opt in per model.
 
 ## Conventions specific to this repo
 
