@@ -5,6 +5,21 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.58.1] — 2026-06-14
+
+### Fixed
+
+- **CLI no longer crashes with `ModuleNotFoundError: No module named
+  'click'`.** `tempest_fastapi_sdk.cli.main` imports the public `click`
+  package (for `click.echo` / `click.secho` / `click.UsageError` /
+  `click.exceptions.Abort` in the full-help group), but `click` was only
+  ever present transitively through Typer. Newer Typer releases vendor
+  their own Click copy under `typer._click` and no longer pull the public
+  `click` package, so installs that resolved such a Typer broke at CLI
+  startup (`tempest new`, every `tempest …` command). `click>=8.0.0` is
+  now a direct dependency, guaranteeing the public package is always
+  importable regardless of how Typer ships Click.
+
 ## [0.58.0] — 2026-06-14
 
 ### Added

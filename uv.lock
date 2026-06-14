@@ -2822,10 +2822,11 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.58.0"
+version = "0.58.1"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "click" },
     { name = "fastapi" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -2982,6 +2983,7 @@ requires-dist = [
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.30.0" },
     { name = "bcrypt", marker = "extra == 'all'", specifier = ">=5.0.0" },
     { name = "bcrypt", marker = "extra == 'auth'", specifier = ">=5.0.0" },
+    { name = "click", specifier = ">=8.0.0" },
     { name = "cryptography", marker = "extra == 'all'", specifier = ">=42.0.0" },
     { name = "cryptography", marker = "extra == 'webpush'", specifier = ">=42.0.0" },
     { name = "email-validator", marker = "extra == 'all'", specifier = ">=2.0.0" },

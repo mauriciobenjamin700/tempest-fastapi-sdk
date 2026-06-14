@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.58.0"
+version = "0.58.1"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -32,6 +32,7 @@ classifiers = [
 ]
 dependencies = [
     "alembic>=1.18.4",
+    "click>=8.0.0",
     "fastapi>=0.118.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.6.0",
