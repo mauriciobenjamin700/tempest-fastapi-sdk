@@ -103,6 +103,98 @@ class AddressCreateSchema(BaseSchema):
 Variantes imperativas: `is_valid_cep(value)`, `normalize_cep(value)`, mais `CEP_PATTERN` para uso de regex cru. Use-os dentro de services / handlers de fila onde você não quer um round-trip Pydantic.
 
 
+## Estados e municípios
+
+Toda aplicação brasileira acaba precisando de um `<select>` de estado e cidade, ou de validar que a UF e o município que chegaram no payload existem de verdade. O SDK embute essa tabela — **27 estados e 5606 municípios** — então você não precisa chamar a API do IBGE nem versionar um JSON por serviço.
+
+!!! info "Offline e sem dependências"
+    Os dados moram em `tempest_fastapi_sdk/utils/data/br_locations.json` e são carregados sob demanda na primeira chamada, depois ficam em cache pelo processo todo. Zero rede, zero extra a instalar.
+
+A UF é uma `StrEnum` e cada estado conhece sua macro-região oficial do IBGE:
+
+```python
+from tempest_fastapi_sdk import UF, Region, list_states, get_state, states_by_region
+
+
+# Todos os 27 estados, ordenados pela sigla.
+states = list_states()
+print(len(states))  # 27
+
+# Um estado específico (sigla em qualquer caixa, ou um membro de UF).
+sp = get_state("sp")
+print(sp.uf, sp.name, sp.region)        # UF.SP São Paulo Region.SOUTHEAST
+print(len(sp.cities), sp.cities[:2])    # 645 ['Adamantina', 'Adolfo']
+
+# Agrupando por região.
+sudeste = states_by_region(Region.SOUTHEAST)
+print([state.uf.value for state in sudeste])  # ['ES', 'MG', 'RJ', 'SP']
+```
+
+Cada item é um `StateBR` (`uf: UF`, `name: str`, `region: Region`, `cities: list[str]`), pronto pra retornar direto de um endpoint.
+
+### Validando UF e cidade em um schema
+
+`UFField` aceita a sigla em qualquer caixa (`"sp"`, `" RJ "`) e devolve um membro de `UF`. `CityNameField` só apara espaços — a validação cruzada "esta cidade existe nesta UF" é regra de negócio, então roda no service com `is_valid_city` / `normalize_city`:
+
+```python
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import UFField, CityNameField
+
+
+class AddressCreateSchema(BaseSchema):
+    uf: UFField
+    city: CityNameField
+    street: str
+    number: str
+```
+
+```python
+from tempest_fastapi_sdk import UF, is_valid_city, normalize_city
+from tempest_fastapi_sdk.exceptions import ValidationException
+
+
+def validate_address(uf: UF, city: str) -> str:
+    """Garante que a cidade pertence à UF e devolve o nome canônico.
+
+    Args:
+        uf (UF): A unidade federativa do endereço.
+        city (str): O nome da cidade vindo do payload.
+
+    Returns:
+        str: O nome do município em caixa canônica (ex.: "São Paulo").
+
+    Raises:
+        ValidationException: Se a cidade não existe na UF informada.
+    """
+    if not is_valid_city(uf, city):
+        raise ValidationException(f"city {city!r} not found in {uf.value}")
+    return normalize_city(uf, city)
+```
+
+!!! tip "A busca de cidade ignora acentos e caixa"
+    `is_valid_city("SP", "sao paulo")` e `normalize_city("rj", "RIO DE JANEIRO")` funcionam — a comparação derruba acentos, caixa e espaços nas pontas. `normalize_city` sempre devolve o nome canônico em caixa correta (`"São Paulo"`, `"Rio de Janeiro"`).
+
+### Variantes imperativas
+
+| Função | O que faz |
+| --- | --- |
+| `is_valid_uf(value)` | `True` se a sigla existe (qualquer caixa/espaço). |
+| `normalize_uf(value)` | Devolve o `UF`; levanta `ValueError` se inválido. |
+| `cities_by_uf(uf)` | Lista de municípios da UF, ordenada. |
+| `is_valid_city(uf, city)` | `True` se a cidade pertence à UF (ignora acentos/caixa). |
+| `normalize_city(uf, city)` | Nome canônico do município; levanta `ValueError` se não existe. |
+
+!!! note "Endpoint de estados/cidades para o frontend"
+    Para popular `<select>` de estado e cidade, devolva `list_states()` direto (cada `StateBR` já traz `cities`), ou um endpoint enxuto `GET /estados/{uf}/cidades` que retorna `cities_by_uf(uf)`. Como é dado em memória, não precisa tocar o banco.
+
+#### Recapitulando
+
+- `UF` (StrEnum, 27 siglas) + `Region` (5 macro-regiões do IBGE).
+- `StateBR` / `CityBR` para respostas tipadas.
+- `list_states`, `get_state`, `cities_by_uf`, `states_by_region` para consultar a tabela embutida.
+- `UFField` / `CityNameField` para campos de schema; `is_valid_*` / `normalize_*` para validação imperativa no service.
+
+
 ## Helpers utilitários (utcnow, to_utc, modify_dict)
 
 
@@ -176,3 +268,4 @@ Todo helper tem sua própria receita — esta seção é o mapa rápido:
 | `LogUtils` + `configure_logging` | [Receita de logging estruturado & request IDs](logging.md) |
 | `MetricsUtils` (CPU/memória/disco/GPU) | [Receita de métricas do sistema](metrics.md) |
 | `CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `is_valid_*`, `normalize_*`, `only_digits` | [CPF / CNPJ / telefone](#cpf-cnpj-telefone) |
+| `UF`, `Region`, `StateBR`, `CityBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `is_valid_uf`, `normalize_uf`, `is_valid_city`, `normalize_city` | [Estados e municípios](#estados-e-municipios) |

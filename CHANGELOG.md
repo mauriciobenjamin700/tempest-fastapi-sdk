@@ -5,6 +5,39 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.53.0] — 2026-06-13
+
+### Added
+
+- **Brazilian states & municipalities dataset** — an offline,
+  dependency-free table of every federative unit and its cities, plus
+  Pydantic building blocks. No network calls, no external API.
+    - **`UF`** — a `StrEnum` with the 27 federative unit acronyms
+      (`UF.SP`, `UF.RJ`, …).
+    - **`Region`** — the five official IBGE macro-regions
+      (`Norte`, `Nordeste`, `Centro-Oeste`, `Sudeste`, `Sul`).
+      Every UF is statically mapped to its region.
+    - **`StateBR`** / **`CityBR`** — schemas for a state (acronym +
+      full name + region + alphabetically sorted municipalities) and a
+      single city (name + UF).
+    - **Query helpers** — `list_states()`, `get_state(uf)`,
+      `cities_by_uf(uf)`, `states_by_region(region)`. The single-UF
+      lookups accept any-case acronyms or a `UF` member.
+    - **Validators/normalizers** — `is_valid_uf` / `normalize_uf`
+      (case- and whitespace-insensitive), `is_valid_city` /
+      `normalize_city` (also accent-insensitive, returning the
+      canonical proper-case name).
+    - **Annotated types** — `UFField` (coerces any-case acronyms to a
+      `UF`) and `CityNameField` (trims a city name) ready to drop into
+      schema fields.
+    - Dataset bundled as `utils/data/br_locations.json` (27 states,
+      5606 entries) and loaded lazily on first access. Municipality
+      names come from the official IBGE list (current spellings,
+      including post-2005 municipalities); the Distrito Federal is
+      represented by its 36 administrative regions rather than a single
+      Brasília row, for address-form use. All symbols are exported at
+      the package top level.
+
 ## [0.52.0] — 2026-06-12
 
 ### Added

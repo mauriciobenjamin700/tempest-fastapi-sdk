@@ -236,3 +236,15 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.utils.metrics.MetricsUtils
 ::: tempest_fastapi_sdk.utils.log.LogUtils
 ::: tempest_fastapi_sdk.utils.throttle.AttemptThrottle
+::: tempest_fastapi_sdk.utils.locations.UF
+::: tempest_fastapi_sdk.utils.locations.Region
+::: tempest_fastapi_sdk.utils.locations.StateBR
+::: tempest_fastapi_sdk.utils.locations.CityBR
+::: tempest_fastapi_sdk.utils.locations.list_states
+::: tempest_fastapi_sdk.utils.locations.get_state
+::: tempest_fastapi_sdk.utils.locations.cities_by_uf
+::: tempest_fastapi_sdk.utils.locations.states_by_region
+::: tempest_fastapi_sdk.utils.locations.is_valid_uf
+::: tempest_fastapi_sdk.utils.locations.normalize_uf
+::: tempest_fastapi_sdk.utils.locations.is_valid_city
+::: tempest_fastapi_sdk.utils.locations.normalize_city
