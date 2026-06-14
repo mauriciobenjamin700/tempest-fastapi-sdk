@@ -5,6 +5,28 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.57.0] — 2026-06-14
+
+### Added
+
+- **Feature flags** — toggle features without a redeploy (rollouts,
+  kill-switches, beta gating). New `tempest_fastapi_sdk.flags` module,
+  all exported at the package top level.
+    - **`FeatureFlags(backend, default=False)`** service —
+      `is_enabled(name, default=...)`, `enable` / `disable` / `set`,
+      and `all()`.
+    - **Pluggable backends** — `MemoryFeatureFlagBackend` (dev/tests),
+      `EnvFeatureFlagBackend` (static, read-only, `FEATURE_<NAME>`),
+      `RedisFeatureFlagBackend` (runtime toggles in a Redis hash,
+      shared across replicas) and `CompositeFeatureFlagBackend`
+      (layered — a Redis override beats an env default). The
+      `FeatureFlagBackend` protocol + `coerce_flag` helper are public.
+    - **`make_flag_dependency(flags, name, *, enabled=True,
+      status_code=404, ...)`** — a FastAPI dependency that gates a
+      route on a flag, raising the SDK envelope (404 by default, so a
+      disabled feature looks absent; `enabled=False` inverts it into a
+      kill-switch).
+
 ## [0.56.0] — 2026-06-14
 
 ### Added

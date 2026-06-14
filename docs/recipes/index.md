@@ -13,7 +13,8 @@ Passo a passo curtos no estilo "quero conectar X". Cada página começa com **qu
 | **[Multi-tenant »](multi-tenant.md)** | `TenantScopedRepository` — isolamento por `tenant_id` em toda query |
 | **[Camada HTTP »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware`, `make_health_router`, dependências de JWT / role / permissão, verificador de assinatura de webhook, headers Link de paginação, router de tool-spec |
 | **[HTTP client (saída) »](http-client.md)** | `HTTPClient` — httpx tipado com retry/backoff, circuit-breaker, X-Request-ID; `RetryPolicy`, `CircuitOpenError` |
-| **[Cache »](cache.md)** | `AsyncRedisManager`, decorator `@cached` |
+| **[Cache »](cache.md)** | `AsyncRedisManager`, decorator `@cached`, `CacheInvalidator` (tag/namespace) |
+| **[Feature flags »](feature-flags.md)** | `FeatureFlags`, backends env/Redis/composto, `make_flag_dependency` |
 | **[Tempo real »](realtime.md)** | Server-Sent Events (`EventStream`, `sse_response`) |
 | **[Fila e Tarefas »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, outbox transacional |
 | **[Outbox transacional »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — eventos confiáveis |

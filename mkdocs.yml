@@ -90,6 +90,7 @@ plugins:
             Camada HTTP: HTTP layer
             "HTTP client (saída)": "HTTP client (outbound)"
             Cache: Cache
+            Feature flags: Feature flags
             Tempo real: Real-time
             WebSocket router: WebSocket router
             Fila e Tarefas: Queue & Tasks
@@ -206,6 +207,7 @@ nav:
       - Camada HTTP: recipes/http.md
       - "HTTP client (saída)": recipes/http-client.md
       - Cache: recipes/cache.md
+      - Feature flags: recipes/feature-flags.md
       - Tempo real: recipes/realtime.md
       - WebSocket router: recipes/websocket.md
       - Fila e Tarefas: recipes/queue-tasks.md

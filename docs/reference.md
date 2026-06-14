@@ -207,6 +207,18 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## Feature flags
+
+::: tempest_fastapi_sdk.flags.service.FeatureFlags
+::: tempest_fastapi_sdk.flags.backends.FeatureFlagBackend
+::: tempest_fastapi_sdk.flags.backends.MemoryFeatureFlagBackend
+::: tempest_fastapi_sdk.flags.backends.EnvFeatureFlagBackend
+::: tempest_fastapi_sdk.flags.backends.RedisFeatureFlagBackend
+::: tempest_fastapi_sdk.flags.backends.CompositeFeatureFlagBackend
+::: tempest_fastapi_sdk.flags.dependencies.make_flag_dependency
+
+---
+
 ## Server-Sent Events
 
 ### `tempest_fastapi_sdk.sse`

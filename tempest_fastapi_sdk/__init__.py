@@ -146,6 +146,16 @@ from tempest_fastapi_sdk.exceptions import (
     default_message_catalog,
     parse_accept_language,
 )
+from tempest_fastapi_sdk.flags import (
+    CompositeFeatureFlagBackend,
+    EnvFeatureFlagBackend,
+    FeatureFlagBackend,
+    FeatureFlags,
+    MemoryFeatureFlagBackend,
+    RedisFeatureFlagBackend,
+    coerce_flag,
+    make_flag_dependency,
+)
 from tempest_fastapi_sdk.schemas import (
     BasePaginationFilterSchema,
     BasePaginationSchema,
@@ -281,7 +291,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.56.0"
+__version__: str = "0.57.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -339,6 +349,7 @@ __all__: list[str] = [
     "CircuitOpenError",
     "CityBR",
     "CityNameField",
+    "CompositeFeatureFlagBackend",
     "ConflictException",
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
@@ -348,8 +359,11 @@ __all__: list[str] = [
     "DownloadUtils",
     "EmailSettings",
     "EmailUtils",
+    "EnvFeatureFlagBackend",
     "EventStream",
     "ExpiredTokenException",
+    "FeatureFlagBackend",
+    "FeatureFlags",
     "FieldRef",
     "FileTooLargeException",
     "ForbiddenException",
@@ -379,6 +393,7 @@ __all__: list[str] = [
     "MFAEnrollResponseSchema",
     "MFAMixin",
     "MFAVerifySchema",
+    "MemoryFeatureFlagBackend",
     "MemoryIdempotencyStore",
     "MemoryMetrics",
     "MemoryRateLimitStore",
@@ -408,6 +423,7 @@ __all__: list[str] = [
     "RateLimitMiddleware",
     "RateLimitResult",
     "RateLimitStore",
+    "RedisFeatureFlagBackend",
     "RedisIdempotencyStore",
     "RedisRateLimitStore",
     "RedisSessionStore",
@@ -471,6 +487,7 @@ __all__: list[str] = [
     "cities_by_uf",
     "clear_cookie",
     "clear_request_id",
+    "coerce_flag",
     "compose_hooks",
     "configure_logging",
     "decode_cursor",
@@ -501,6 +518,7 @@ __all__: list[str] = [
     "make_auth_router",
     "make_bearer_token_dependency",
     "make_csrf_token_dependency",
+    "make_flag_dependency",
     "make_health_router",
     "make_http_exception_handler",
     "make_jwt_user_dependency",

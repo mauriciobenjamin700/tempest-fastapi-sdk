@@ -147,6 +147,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.admin` *(extra: `[admin]`)* | `AdminSite`, `AdminModel`, `make_admin_router`, `AdminAuthBackend`, `UserModelAuthBackend`, `AdminAuthError` |
 | `tempest_fastapi_sdk.sse` | `EventStream`, `ServerSentEvent`, `sse_response` |
 | `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager`, `cached` (with `namespace` / `tags`), `CacheInvalidator`, `namespace_registry_key`, `tag_registry_key` |
+| `tempest_fastapi_sdk.flags` | `FeatureFlags`, `FeatureFlagBackend`, `MemoryFeatureFlagBackend`, `EnvFeatureFlagBackend`, `RedisFeatureFlagBackend`, `CompositeFeatureFlagBackend`, `make_flag_dependency`, `coerce_flag` |
 | `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
 | `tempest_fastapi_sdk.queue` *(extra: `[queue]`)* | `AsyncBrokerManager` (FastStream lifecycle wrapper) |
 | `tempest_fastapi_sdk.storage` *(extra: `[minio]`)* | `AsyncMinIOClient`, `ObjectStat` — async MinIO/S3 facade |

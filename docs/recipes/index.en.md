@@ -13,7 +13,8 @@ Bite-sized "I want to wire X" walkthroughs. Each page starts with **what problem
 | **[Multi-tenant »](multi-tenant.md)** | `TenantScopedRepository` — `tenant_id` isolation on every query |
 | **[HTTP layer »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware`, `make_health_router`, JWT / role / permission dependencies, webhook signature verifier, pagination Link headers, tool-spec router |
 | **[HTTP client (outbound) »](http-client.md)** | `HTTPClient` — typed httpx with retry/backoff, circuit-breaker, X-Request-ID; `RetryPolicy`, `CircuitOpenError` |
-| **[Cache »](cache.md)** | `AsyncRedisManager`, `@cached` decorator |
+| **[Cache »](cache.md)** | `AsyncRedisManager`, `@cached` decorator, `CacheInvalidator` (tag/namespace) |
+| **[Feature flags »](feature-flags.md)** | `FeatureFlags`, env/Redis/composite backends, `make_flag_dependency` |
 | **[Real-time »](realtime.md)** | Server-Sent Events (`EventStream`, `sse_response`) |
 | **[Queue & Tasks »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, transactional outbox |
 | **[Transactional outbox »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — reliable events |
