@@ -130,6 +130,7 @@ from tempest_fastapi_sdk.db import (
     reorder_base_columns_first,
 )
 from tempest_fastapi_sdk.exceptions import (
+    DEFAULT_LOCALE,
     AppException,
     ConflictException,
     ExpiredTokenException,
@@ -137,10 +138,13 @@ from tempest_fastapi_sdk.exceptions import (
     ForbiddenException,
     InvalidFileTypeException,
     InvalidTokenException,
+    MessageCatalog,
     NotFoundException,
     TooManyRequestsException,
     UnauthorizedException,
     ValidationException,
+    default_message_catalog,
+    parse_accept_language,
 )
 from tempest_fastapi_sdk.schemas import (
     BasePaginationFilterSchema,
@@ -277,7 +281,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.54.0"
+__version__: str = "0.55.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -291,6 +295,7 @@ __all__: list[str] = [
     "CSRF_COOKIE_NAME",
     "CSRF_HEADER_NAME",
     "DEFAULT_LATENCY_BUCKETS",
+    "DEFAULT_LOCALE",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "IDEMPOTENCY_HEADER",
     "NAMING_CONVENTION",
@@ -378,6 +383,7 @@ __all__: list[str] = [
     "MemoryMetrics",
     "MemoryRateLimitStore",
     "MemorySessionStore",
+    "MessageCatalog",
     "MetricsUtils",
     "MinIOSettings",
     "MinIOUploadStorage",
@@ -468,6 +474,7 @@ __all__: list[str] = [
     "compose_hooks",
     "configure_logging",
     "decode_cursor",
+    "default_message_catalog",
     "encode_cursor",
     "generate_csrf_token",
     "generate_oauth_state",
@@ -519,6 +526,7 @@ __all__: list[str] = [
     "normalize_phone_br",
     "normalize_uf",
     "only_digits",
+    "parse_accept_language",
     "register_exception_handlers",
     "reorder_base_columns_first",
     "request_id_ctx",

@@ -5,6 +5,37 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.55.0] — 2026-06-14
+
+### Added
+
+- **Localized error envelopes (i18n) for `AppException`** — the error
+  `detail` can now be resolved per request locale instead of being
+  English-only, without callers hand-translating each `raise`.
+    - **`MessageCatalog`** — maps `(locale, key) -> template`, with
+      case-insensitive locale matching and primary-subtag fallback
+      (a catalog holding `pt-BR` answers `pt`, and vice versa).
+      `resolve()` interpolates `message_params` via `str.format`
+      (a missing param returns the template instead of raising);
+      `negotiate()` picks the best locale from an `Accept-Language`
+      header; `merge()` overlays domain codes / new locales onto a
+      base catalog without mutating it.
+    - **`default_message_catalog()`** — PT-BR (default) + EN-US strings
+      for every built-in exception code (`NOT_FOUND`, `CONFLICT`,
+      `UNAUTHORIZED`, `FORBIDDEN`, `VALIDATION_ERROR`,
+      `TOO_MANY_REQUESTS`, `INVALID_TOKEN`, `TOKEN_EXPIRED`,
+      `FILE_TOO_LARGE`, `INVALID_FILE_TYPE`, `INTERNAL_SERVER_ERROR`).
+    - **`parse_accept_language()`** + **`DEFAULT_LOCALE`** (`"pt-BR"`).
+    - **`AppException` gains `message_key` / `message_params`** — the
+      catalog key (defaults to the exception `code`) and template
+      values. **`register_exception_handlers(app, catalog=...,
+      default_locale=...)`** and `make_app_exception_handler` accept the
+      catalog and localize `detail` from the negotiated locale.
+    - Fully backward compatible: with no `catalog` the literal
+      `message` is used exactly as before; a missing translation falls
+      back to the exception's own `detail`. All new symbols are
+      exported at the package top level.
+
 ## [0.54.0] — 2026-06-14
 
 ### Added

@@ -102,6 +102,73 @@ Key points:
 - `make_token_dependency(secret)` returns an async dependency that validates `X-Token` via `hmac.compare_digest`; pass an empty string to disable in dev. The dependency lives next to the rest of the auth glue in `src/api/dependencies/auth.py` once it grows beyond the one-liner above.
 
 
+### Localized error messages (i18n)
+
+By default the envelope `detail` is the exception's literal message (English for the built-ins). To return the message **in the client's language** without translating at each `raise`, pass a `MessageCatalog` to `register_exception_handlers`:
+
+```python
+# src/api/app.py
+from tempest_fastapi_sdk import default_message_catalog, register_exception_handlers
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(...)
+    register_exception_handlers(
+        app,
+        catalog=default_message_catalog(),                   # ← bundled PT-BR + EN-US
+        default_locale="pt-BR",
+    )
+    ...
+```
+
+The handler negotiates the locale from the `Accept-Language` header (ordered by `q`), falls back to `default_locale` when nothing matches, and resolves the exception **key** — `message_key` if set, else the `code` — against the catalog. With no catalog, or when the key is unknown, the literal `detail` is kept (zero breakage).
+
+```python
+# Same NotFoundException, language decided by the client's Accept-Language:
+#   Accept-Language: pt-BR  →  {"detail": "Recurso não encontrado", "code": "NOT_FOUND"}
+#   Accept-Language: en-US  →  {"detail": "Resource not found",     "code": "NOT_FOUND"}
+```
+
+For domain codes (and messages with parameters), extend the catalog with `merge` and pass `message_params` at the `raise`:
+
+```python
+# src/core/i18n.py
+from tempest_fastapi_sdk import MessageCatalog, default_message_catalog
+
+CATALOG: MessageCatalog = default_message_catalog().merge(
+    {
+        "pt-BR": {"USER_NOT_FOUND": "Usuário {email} não encontrado"},
+        "en-US": {"USER_NOT_FOUND": "User {email} not found"},
+    }
+)
+```
+
+```python
+# src/services/user.py
+from tempest_fastapi_sdk import NotFoundException
+
+
+def require_user(email: str) -> None:
+    """Raise a localized 404 carrying the offending e-mail.
+
+    Args:
+        email (str): The e-mail that was not found.
+
+    Raises:
+        NotFoundException: Always — keyed to ``USER_NOT_FOUND`` so the
+            handler localizes it from the request locale.
+    """
+    raise NotFoundException(
+        "User not found",                                    # literal fallback
+        code="USER_NOT_FOUND",
+        message_params={"email": email},
+    )
+```
+
+!!! tip "The key defaults to the `code`"
+    You rarely pass `message_key` — it falls back to the exception's `code`. Set `message_key` only to decouple the translated string from the error code. A template referencing a missing param is returned uninterpolated rather than raising.
+
+
 ## JWT bearer / current-user / role dependencies
 
 

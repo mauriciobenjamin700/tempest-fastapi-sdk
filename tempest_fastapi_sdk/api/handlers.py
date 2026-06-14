@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from tempest_fastapi_sdk.core.context import get_request_id
 from tempest_fastapi_sdk.core.logging import HTTP_500_MARKER
 from tempest_fastapi_sdk.exceptions.base import AppException
+from tempest_fastapi_sdk.exceptions.i18n import DEFAULT_LOCALE, MessageCatalog
 
 logger = logging.getLogger("tempest_fastapi_sdk.api.handlers")
 
@@ -33,6 +34,8 @@ UnhandledExceptionHandler = Callable[[Request, Exception], Awaitable[JSONRespons
 def make_app_exception_handler(
     *,
     log_level: int = logging.INFO,
+    catalog: MessageCatalog | None = None,
+    default_locale: str = DEFAULT_LOCALE,
 ) -> AppExceptionHandler:
     """Build the handler for :class:`AppException` subclasses.
 
@@ -42,6 +45,13 @@ def make_app_exception_handler(
     ``log_level`` with a traceback and the
     :data:`HTTP_500_MARKER` flag so ``500.log`` captures them.
 
+    When a ``catalog`` is supplied, the ``detail`` field is localized:
+    the locale is negotiated from the request's ``Accept-Language``
+    header (falling back to ``default_locale``) and the exception's
+    ``message_key`` (or its ``code``) is resolved against the catalog.
+    A missing translation falls back to the exception's literal
+    ``detail``, so partial catalogs never blank out a message.
+
     Args:
         log_level (int): Level used **only** for 5xx ``AppException``
             records (the 4xx path always logs at ``INFO`` regardless,
@@ -50,6 +60,10 @@ def make_app_exception_handler(
             (or pass ``log_level=logging.ERROR`` through
             :func:`register_exception_handlers`) when 5xx
             ``AppException`` subclasses should trigger paging.
+        catalog (MessageCatalog | None): Message catalog used to
+            localize ``detail``. ``None`` keeps the literal message.
+        default_locale (str): Locale used when ``Accept-Language`` is
+            absent or matches nothing in the catalog.
 
     Returns:
         AppExceptionHandler: An async ``(request, exc) -> JSONResponse``
@@ -85,10 +99,23 @@ def make_app_exception_handler(
             exc_info=exc if is_server_error else None,
             extra=extra,
         )
+        detail = exc.detail
+        if catalog is not None:
+            locale = catalog.negotiate(
+                request.headers.get("accept-language"),
+                default_locale=default_locale,
+            )
+            localized = catalog.resolve(
+                exc.message_key or exc.code,
+                locale,
+                exc.message_params,
+            )
+            if localized is not None:
+                detail = localized
         return JSONResponse(
             status_code=exc.status_code,
             content={
-                "detail": exc.detail,
+                "detail": detail,
                 "code": exc.code,
                 "details": exc.details,
             },
@@ -311,6 +338,8 @@ def register_exception_handlers(
     log_traceback: bool = True,
     include_traceback: bool = False,
     log_level: int = logging.ERROR,
+    catalog: MessageCatalog | None = None,
+    default_locale: str = DEFAULT_LOCALE,
 ) -> None:
     """Register the SDK's exception handlers on a FastAPI app.
 
@@ -342,6 +371,14 @@ def register_exception_handlers(
             ``details.traceback``. Use only in development.
         log_level (int): Logging level used by the 5xx handlers.
             Defaults to :data:`logging.ERROR`.
+        catalog (MessageCatalog | None): When set, the
+            :class:`AppException` handler localizes ``detail`` against
+            this catalog (see :func:`make_app_exception_handler`). Use
+            :func:`tempest_fastapi_sdk.default_message_catalog` for the
+            built-in PT-BR + EN strings, optionally
+            :meth:`MessageCatalog.merge`-d with domain codes.
+        default_locale (str): Locale used when ``Accept-Language`` is
+            absent or unmatched. Defaults to ``"pt-BR"``.
     """
     # Starlette's ``add_exception_handler`` is typed to accept only
     # callables keyed by the broad ``Exception`` — our typed
@@ -350,7 +387,11 @@ def register_exception_handlers(
     # is safe at the boundary.
     app.add_exception_handler(
         AppException,
-        make_app_exception_handler(log_level=log_level),  # type: ignore[arg-type]
+        make_app_exception_handler(  # type: ignore[arg-type]
+            log_level=log_level,
+            catalog=catalog,
+            default_locale=default_locale,
+        ),
     )
     app.add_exception_handler(
         StarletteHTTPException,

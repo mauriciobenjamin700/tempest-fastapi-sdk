@@ -83,6 +83,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.jwt.ExpiredTokenException
 ::: tempest_fastapi_sdk.exceptions.upload.FileTooLargeException
 ::: tempest_fastapi_sdk.exceptions.upload.InvalidFileTypeException
+::: tempest_fastapi_sdk.exceptions.i18n.MessageCatalog
+::: tempest_fastapi_sdk.exceptions.i18n.default_message_catalog
+::: tempest_fastapi_sdk.exceptions.i18n.parse_accept_language
 
 ---
 
