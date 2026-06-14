@@ -106,6 +106,24 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `cities_by_uf`/`states_by_region`, `is_valid_uf`/`normalize_uf`,
   `is_valid_city`/`normalize_city` (accent/case-insensitive),
   `UFField`/`CityNameField`.
+- **Rate limit** — `RateLimitMiddleware` (sliding window) with
+  pluggable store (`MemoryRateLimitStore` / `RedisRateLimitStore`,
+  atomic Lua) and per-principal key extractors (`key_by_ip`,
+  `key_by_jwt_subject`, `key_by_jwt_claim`, `key_by_header`).
+- **i18n error envelopes** — `MessageCatalog` +
+  `default_message_catalog` (PT-BR + EN), `parse_accept_language`,
+  `AppException.message_key` / `message_params`,
+  `register_exception_handlers(..., catalog=..., default_locale=...)`.
+- **Cache invalidation** — `@cached(namespace=..., tags=...)` +
+  `CacheInvalidator` (`invalidate_namespace` / `invalidate_tag` /
+  `invalidate_tags` / `invalidate_keys`).
+- **Feature flags** — `tempest_fastapi_sdk.flags`: `FeatureFlags`
+  over `Memory` / `Env` / `Redis` / `Composite` backends +
+  `make_flag_dependency` route guard.
+- **Audit trail** — `BaseAuditLogModel` + `AuditAction`,
+  `snapshot_model` / `diff_snapshots`, `BaseRepository` opt-in
+  (`audit_model=...` + `add_audited` / `update_audited` /
+  `delete_audited`, same-tx).
 - **Admin panel** — Jinja + HTMX (`AdminSite`, `AdminModel`,
   `make_admin_router`).
 - **CLI** — `tempest new` (scaffolds layered service +
@@ -116,45 +134,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `test`, `check`).
 
 The whole Tier S / Tier A / Tier B backlog that used to live here is
-**shipped** — idempotency, cloud uploads, OTel tracing, `HTTPClient`,
-the outbox pattern, `EmailUtils.render_template`, OAuth2/OIDC, CSRF +
-body-size middleware, bulk repo ops, the Prometheus endpoint, TOTP/MFA,
-`TenantScopedRepository`, `SlowQueryLogger`, `AlembicHelper.safe_upgrade`,
-graceful shutdown, `make_websocket_router`, and the `db seed` /
-`secrets rotate` CLI commands all exist today. The covers list above is
-the source of truth; don't re-plan finished work.
+**shipped**, and so is the five-item next-version plan that followed it
+(rate-limit per principal, i18n error envelopes, `@cached`
+tag/namespace invalidation, feature flags, audit trail — all landed in
+v0.54.0–v0.58.0). The covers list above is the source of truth; don't
+re-plan finished work.
 
 ### Next-version plan
 
-Ordered by the priority the user set. Each item is the next minor
-bump (`feat: vX.Y+1.0`) when picked up. Keep this honest — move an
-item up to the covers list the moment it ships, and only add a new
-entry when business pressure actually selects it.
-
-1. **Rate-limit per user / scope** — `RateLimitMiddleware` keys on
-   client IP today. Add a pluggable key extractor (authenticated
-   user id, API key, tenant, or a custom callable) so limits can be
-   per-principal instead of per-IP, with the same memory + Redis
-   backends. Shared NAT / proxy clients stop sharing one bucket.
-2. **i18n / localized `AppException` messages** — error envelopes are
-   English-only. Let each `AppException` carry a message key + params
-   resolved against per-locale catalogs (PT-BR default + EN), picked
-   from `Accept-Language` or an explicit override, so `register_
-   exception_handlers` emits the localized `message` without callers
-   hand-translating.
-3. **`@cached` tag / namespace invalidation** — the cache decorator
-   only expires by TTL. Add tag/namespace tagging on write plus an
-   `invalidate(tag|namespace)` call so a mutation can drop every
-   dependent entry at once instead of waiting out the TTL.
-4. **Feature flags** — `FeatureFlag` with env + Redis backends
-   (Redis for runtime toggles, env for static), a dependency/guard to
-   gate routes and a helper to branch in services, so rollouts and
-   kill-switches don't require a redeploy.
-5. **Audit trail** — beyond `AuditMixin` (timestamps), a per-entity
-   mutation log capturing actor, action, before/after diff on
-   create/update/delete, written in the same transaction as the
-   change (reuse the outbox machinery), with a `BaseRepository` hook
-   so services opt in per model.
+**Empty.** The roadmap is fully shipped. Do **not** invent the next
+feature — the next item comes from real business pressure (like the BR
+localities dataset in v0.53.0, which was never on the list). When the
+user picks one, add it here, build it, then move it up to the covers
+list the moment it ships. Keep this honest, not aspirational.
 
 ## Conventions specific to this repo
 
