@@ -5,6 +5,28 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.60.0] — 2026-06-15
+
+### Added
+
+- **`BaseRepository.resolve(id_or_instance)`** — accepts either a
+  primary-key `UUID` or an already-loaded model instance and always
+  returns the instance (`get_by_id` when a `UUID`, pass-through
+  otherwise). Removes the `if isinstance(x, UUID): ...` boilerplate every
+  service reimplements for methods that take `UUID | Model`.
+- **`BaseRepository.exists_excluding(filters, *, exclude_id)`** — "is this
+  value already used by *another* row?" The uniqueness check needed when
+  updating a unique field (email / phone / username): plain `exists`
+  would match the row itself; this excludes `exclude_id`. Pass
+  `exclude_id=None` (the create case) to behave like `exists`.
+- **`UploadUtils.replace(old_key, file, ...)`** — save a new object and
+  delete the one it replaces, in one call. The new file is persisted
+  **first** (so a validation/write failure leaves the old object intact),
+  then `old_key` is deleted through the **same** configured backend —
+  avoiding the save-through-one-backend, delete-through-another mistake.
+  `old_key=None` skips the delete, so the same call serves first uploads
+  and replacements.
+
 ## [0.59.1] — 2026-06-14
 
 ### Changed

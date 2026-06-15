@@ -331,6 +331,14 @@ users = await repository.list({"is_active": True})
 exists = await repository.exists({"email": "a@b.com"})
 total = await repository.count({"is_active": True})
 
+# "Esse valor já é de OUTRO registro?" — validação de unicidade no update
+taken = await repository.exists_excluding(
+    {"email": "a@b.com"}, exclude_id=user.id
+)
+
+# id-ou-instância → instância (sem if isinstance espalhado nas services)
+user = await repository.resolve(user_or_id)
+
 # Escrita
 created = await repository.add(
     UserModel(name="Ana", email="ana@x.com", password_hash="...")
@@ -352,6 +360,33 @@ await repository.restore(user_id)               # is_active = True
     `repository.update(instance)`. Não construa um modelo solto e mande
     para o `update` — ele persiste mutações de algo já carregado na
     sessão.
+
+!!! tip "`resolve` e `exists_excluding` — dois ajudantes que você vai usar sempre"
+    **`resolve(id_ou_instância)`** resolve o velho dilema: seu método
+    recebe `UUID | UserModel` e você não quer escrever
+    `if isinstance(x, UUID): ... else: ...` em toda service. O
+    `resolve` faz isso por você — passa um `UUID`, ele busca (404 se não
+    existir); passa uma instância, ele devolve a mesma. Uma linha:
+
+    ```python
+    user_model = await self.repository.resolve(user)  # user é UUID OU UserModel
+    ```
+
+    **`exists_excluding(filtros, exclude_id=...)`** responde a pergunta
+    "esse e-mail/telefone/username já é de **outra** pessoa?" — exatamente
+    o que você precisa ao **atualizar** um campo único. O `exists` normal
+    diria `True` até para o próprio registro; o `exists_excluding` ignora
+    o id que você passar:
+
+    ```python
+    if await self.repository.exists_excluding(
+        {"phone": new_phone}, exclude_id=user.id
+    ):
+        raise UserWithPhoneExistsException(phone=new_phone)
+    ```
+
+    Passe `exclude_id=None` no cadastro (quando ainda não há registro a
+    excluir) — aí ele se comporta igual ao `exists`.
 
 **Recap:** instancie direto para CRUD puro, subclassifique para queries +
 mappers. 404 só em lookup único; coleção devolve `[]`. `soft_delete`

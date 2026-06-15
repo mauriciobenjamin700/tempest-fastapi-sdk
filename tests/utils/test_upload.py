@@ -131,6 +131,36 @@ class TestDelete:
         assert outside.exists()
 
 
+class TestReplace:
+    async def test_saves_new_and_deletes_old(self, tmp_path: Path) -> None:
+        utils = UploadUtils(tmp_path)
+        old_key = await utils.save(_make_upload(b"old"))
+        assert (tmp_path / old_key).exists()
+
+        new_key = await utils.replace(old_key, _make_upload(b"new"))
+        assert (tmp_path / new_key).read_bytes() == b"new"
+        # The old object is gone.
+        assert not (tmp_path / old_key).exists()
+        assert new_key != old_key
+
+    async def test_none_old_key_just_saves(self, tmp_path: Path) -> None:
+        utils = UploadUtils(tmp_path)
+        new_key = await utils.replace(None, _make_upload(b"first"))
+        assert (tmp_path / new_key).read_bytes() == b"first"
+
+    async def test_old_object_kept_when_new_file_invalid(self, tmp_path: Path) -> None:
+        utils = UploadUtils(tmp_path, allowed_extensions={"png"})
+        old_key = await utils.save(_make_upload(b"old"))
+        # New file has a disallowed extension → save fails before delete.
+        with pytest.raises(InvalidFileTypeException):
+            await utils.replace(
+                old_key,
+                _make_upload(b"new", filename="evil.exe", content_type="image/png"),
+            )
+        # The old object must survive a rejected replacement.
+        assert (tmp_path / old_key).exists()
+
+
 class TestSniffMime:
     def test_recognizes_jpeg(self) -> None:
         assert sniff_mime(_JPEG) == "image/jpeg"

@@ -188,6 +188,54 @@ class TestExists:
         assert await repo.exists({"name": "ghost"}) is False
 
 
+class TestExistsExcluding:
+    async def test_true_when_other_row_matches(self, repo: ProductRepository) -> None:
+        await repo.add(Product(name="apple", category="fruit"))
+        pear = await repo.add(Product(name="pear", category="fruit"))
+        # "category=fruit" is used by another row (apple), excluding pear.
+        assert (
+            await repo.exists_excluding({"category": "fruit"}, exclude_id=pear.id)
+            is True
+        )
+
+    async def test_false_when_only_excluded_row_matches(
+        self, repo: ProductRepository
+    ) -> None:
+        apple = await repo.add(Product(name="apple", category="fruit"))
+        # "name=apple" is unique to apple itself → excluding it leaves none.
+        assert (
+            await repo.exists_excluding({"name": "apple"}, exclude_id=apple.id) is False
+        )
+
+    async def test_none_exclude_behaves_like_exists(
+        self, repo: ProductRepository
+    ) -> None:
+        apple = await repo.add(Product(name="apple", category="fruit"))
+        assert await repo.exists_excluding({"name": "apple"}, exclude_id=None) is True
+        assert (
+            await repo.exists_excluding({"name": "ghost"}, exclude_id=apple.id) is False
+        )
+
+
+class TestResolve:
+    async def test_returns_instance_unchanged(self, repo: ProductRepository) -> None:
+        product = await repo.add(Product(name="apple", category="fruit"))
+        resolved = await repo.resolve(product)
+        assert resolved is product
+
+    async def test_loads_by_uuid(self, repo: ProductRepository) -> None:
+        product = await repo.add(Product(name="apple", category="fruit"))
+        resolved = await repo.resolve(product.id)
+        assert resolved.id == product.id
+        assert resolved.name == "apple"
+
+    async def test_raises_for_unknown_uuid(self, repo: ProductRepository) -> None:
+        from uuid import uuid4
+
+        with pytest.raises(ProductNotFoundError):
+            await repo.resolve(uuid4())
+
+
 class TestGetOrNone:
     async def test_returns_none_when_absent(self, repo: ProductRepository) -> None:
         assert await repo.get_or_none({"name": "ghost"}) is None

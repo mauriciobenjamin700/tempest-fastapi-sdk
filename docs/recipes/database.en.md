@@ -331,6 +331,14 @@ users = await repository.list({"is_active": True})
 exists = await repository.exists({"email": "a@b.com"})
 total = await repository.count({"is_active": True})
 
+# "Is this value already used by ANOTHER row?" — uniqueness check on update
+taken = await repository.exists_excluding(
+    {"email": "a@b.com"}, exclude_id=user.id
+)
+
+# id-or-instance → instance (no scattered if isinstance in services)
+user = await repository.resolve(user_or_id)
+
 # Write
 created = await repository.add(
     UserModel(name="Ana", email="ana@x.com", password_hash="...")
@@ -352,6 +360,32 @@ await repository.restore(user_id)               # is_active = True
     `repository.update(instance)`. Don't build a detached model and pass
     it to `update` — it persists mutations on something already loaded in
     the session.
+
+!!! tip "`resolve` and `exists_excluding` — two helpers you'll reach for constantly"
+    **`resolve(id_or_instance)`** settles the old dilemma: your method
+    takes `UUID | UserModel` and you don't want to write
+    `if isinstance(x, UUID): ... else: ...` in every service. `resolve`
+    does it for you — pass a `UUID` and it fetches (404 if missing); pass
+    an instance and it returns the same one. One line:
+
+    ```python
+    user_model = await self.repository.resolve(user)  # user is UUID OR UserModel
+    ```
+
+    **`exists_excluding(filters, exclude_id=...)`** answers "is this
+    email/phone/username already someone **else's**?" — exactly what you
+    need when **updating** a unique field. Plain `exists` would say `True`
+    even for the row itself; `exists_excluding` ignores the id you pass:
+
+    ```python
+    if await self.repository.exists_excluding(
+        {"phone": new_phone}, exclude_id=user.id
+    ):
+        raise UserWithPhoneExistsException(phone=new_phone)
+    ```
+
+    Pass `exclude_id=None` on create (when there's no row to exclude yet)
+    — then it behaves just like `exists`.
 
 **Recap:** instantiate directly for plain CRUD, subclass for queries +
 mappers. 404 only on single lookups; collections return `[]`.

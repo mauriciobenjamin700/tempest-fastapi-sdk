@@ -325,6 +325,35 @@ class BaseRepository(Generic[ModelType]):
         """
         return await self.get({"id": id}, for_update=for_update)
 
+    async def resolve(
+        self,
+        ref: UUID | ModelType,
+        for_update: bool = False,
+    ) -> ModelType:
+        """Resolve an ``id``-or-instance reference to a model instance.
+
+        Accepts either a primary-key ``UUID`` or an already-loaded model
+        instance and always returns the instance. This removes the
+        ``if isinstance(x, UUID): ... else: ...`` boilerplate services
+        reimplement whenever a method takes ``UUID | Model``.
+
+        Args:
+            ref (UUID | ModelType): The primary key to look up, or an
+                already-loaded instance to return as-is.
+            for_update (bool): Whether to acquire a row-level lock when
+                ``ref`` is a ``UUID`` (ignored when an instance is given).
+
+        Returns:
+            ModelType: The resolved instance.
+
+        Raises:
+            AppException: ``self.not_found_exception`` when ``ref`` is a
+                ``UUID`` with no matching row.
+        """
+        if isinstance(ref, UUID):
+            return await self.get_by_id(ref, for_update=for_update)
+        return ref
+
     async def exists(self, filters: dict[str, Any]) -> bool:
         """Return whether at least one row matches ``filters``.
 
@@ -342,6 +371,33 @@ class BaseRepository(Generic[ModelType]):
         query = query.limit(1)
         result = await self.session.execute(query)
         return result.scalar() is not None
+
+    async def exists_excluding(
+        self,
+        filters: dict[str, Any],
+        *,
+        exclude_id: UUID | None,
+    ) -> bool:
+        """Return whether another row matches ``filters``, excluding one id.
+
+        The "is this value already taken by someone *else*?" check that
+        unique-field validation needs on update — e.g. confirming a new
+        email / phone / username isn't used by a different record before
+        saving. When ``exclude_id`` is ``None`` (the create case, no row
+        to exclude yet) it behaves exactly like :meth:`exists`.
+
+        Args:
+            filters (dict[str, Any]): The column-value pairs to match
+                (e.g. ``{"phone": "+5511..."}``).
+            exclude_id (UUID | None): The primary key to exclude from the
+                match (typically the row being updated). ``None`` excludes
+                nothing.
+
+        Returns:
+            bool: ``True`` if a row other than ``exclude_id`` matches.
+        """
+        effective = filters if exclude_id is None else {**filters, "id__ne": exclude_id}
+        return await self.exists(effective)
 
     async def first(
         self,

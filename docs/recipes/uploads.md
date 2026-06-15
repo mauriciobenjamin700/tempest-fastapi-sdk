@@ -143,6 +143,28 @@ key = await uploads.save(file, filename="logo.png")  # -> Path("logo.png")
 removed = await uploads.delete(key)                  # async; True/False
 ```
 
+### Trocar um arquivo (avatar, anexo) — `replace`
+
+O caso clássico: o usuário manda uma foto de perfil nova e você quer
+**gravar a nova e apagar a antiga**. Em vez de fazer `save` + `delete` na
+mão (e arriscar apagar pelo backend errado), use `replace`:
+
+```python
+# old_key é o que está salvo hoje no model (pode ser None no 1º upload)
+new_key = await uploads.replace(
+    user.profile_picture, file, filename=f"{user.id}.jpg"
+)
+user.profile_picture = str(new_key)
+```
+
+!!! tip "A ordem importa — e o `replace` acerta pra você"
+    O `replace` **grava a nova primeiro** e só então apaga a antiga. Se a
+    validação reprovar o arquivo novo (extensão/MIME/tamanho), a antiga
+    fica **intacta** — você nunca fica sem imagem nenhuma. Passe
+    `old_key=None` no primeiro upload (não há nada pra apagar) e o método
+    só salva. Tudo passa pelo **mesmo backend** configurado (local ou
+    MinIO), evitando o erro de salvar num e apagar no outro.
+
 Para **baixar** o que foi enviado (local ou MinIO), use o
 [`DownloadUtils`](downloads.md) — ele aceita o mesmo backend no construtor.
 

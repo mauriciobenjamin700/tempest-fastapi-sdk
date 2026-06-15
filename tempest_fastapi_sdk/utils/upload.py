@@ -465,6 +465,58 @@ class UploadUtils:
         """
         return await self._storage.delete(str(key))
 
+    async def replace(
+        self,
+        old_key: Path | str | None,
+        file: UploadFile,
+        *,
+        subdir: str = "",
+        filename: str | None = None,
+        keep_original_name: bool = False,
+        content_validator: Callable[[bytes], bool] | None = None,
+    ) -> Path:
+        """Save a new object and delete the one it replaces.
+
+        The common "swap the user's avatar / attachment" flow in one call:
+        the new file is persisted **first** (so a validation error or a
+        write failure leaves the old object untouched), then ``old_key``
+        is deleted through the same configured backend — avoiding the
+        mistake of saving through one backend and deleting through another.
+
+        Args:
+            old_key (Path | str | None): Storage key of the object being
+                replaced (typically the value currently stored on the
+                model). ``None`` or empty skips the delete, so the same
+                call works for the first upload and for replacements.
+            file (UploadFile): The new FastAPI upload.
+            subdir (str): Optional sub-directory / key prefix.
+            filename (str | None): Explicit final filename. Same rules as
+                :meth:`save`.
+            keep_original_name (bool): Preserve the upload's original
+                filename when ``filename`` is not given.
+            content_validator (Callable[[bytes], bool] | None): Optional
+                predicate run on the first chunk; see :meth:`save`.
+
+        Returns:
+            Path: ``Path(storage_key)`` of the newly saved object.
+
+        Raises:
+            InvalidFileTypeException: If validation rejects the new file
+                (the old object is left intact).
+            FileTooLargeException: If the new stream exceeds
+                ``max_size_bytes`` (the old object is left intact).
+        """
+        new_key = await self.save(
+            file,
+            subdir=subdir,
+            filename=filename,
+            keep_original_name=keep_original_name,
+            content_validator=content_validator,
+        )
+        if old_key and str(old_key) != str(new_key):
+            await self.delete(old_key)
+        return new_key
+
 
 __all__: list[str] = [
     "UploadUtils",
