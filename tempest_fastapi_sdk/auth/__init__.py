@@ -19,6 +19,13 @@ from tempest_fastapi_sdk.auth.guards import require_admin as require_admin
 from tempest_fastapi_sdk.auth.guards import (
     require_authenticated as require_authenticated,
 )
+from tempest_fastapi_sdk.auth.locale import (
+    DEFAULT_AUTH_LOCALE as DEFAULT_AUTH_LOCALE,
+)
+from tempest_fastapi_sdk.auth.locale import SUPPORTED_LOCALES as SUPPORTED_LOCALES
+from tempest_fastapi_sdk.auth.locale import format_expires_at as format_expires_at
+from tempest_fastapi_sdk.auth.locale import negotiate_locale as negotiate_locale
+from tempest_fastapi_sdk.auth.locale import normalize_locale as normalize_locale
 from tempest_fastapi_sdk.auth.router import make_auth_router as make_auth_router
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationResponseSchema as ActivationResponseSchema,
@@ -51,6 +58,8 @@ from tempest_fastapi_sdk.auth.schemas import SignupSchema as SignupSchema
 from tempest_fastapi_sdk.auth.service import UserAuthService as UserAuthService
 
 __all__: list[str] = [
+    "DEFAULT_AUTH_LOCALE",
+    "SUPPORTED_LOCALES",
     "ActivationResponseSchema",
     "ActivationToken",
     "LoginResponseSchema",
@@ -66,7 +75,10 @@ __all__: list[str] = [
     "SignupResponseSchema",
     "SignupSchema",
     "UserAuthService",
+    "format_expires_at",
     "make_auth_router",
+    "negotiate_locale",
+    "normalize_locale",
     "require_active",
     "require_admin",
     "require_authenticated",

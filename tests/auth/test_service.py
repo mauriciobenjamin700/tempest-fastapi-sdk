@@ -66,9 +66,18 @@ class _FakeEmail:
 
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []
+        self.renders: list[tuple[str, str | None]] = []
+        self.bodies: list[str] = []
 
-    def render_template(self, template: str, context: dict[str, Any]) -> str:
+    def render_template(
+        self,
+        template: str,
+        context: dict[str, Any],
+        *,
+        locale: str | None = None,
+    ) -> str:
         """Return deterministic HTML so the send path can be asserted."""
+        self.renders.append((template, locale))
         return f"<html>{template}</html>"
 
     async def send(
@@ -81,6 +90,7 @@ class _FakeEmail:
     ) -> None:
         """Record the recipient + subject instead of hitting SMTP."""
         self.sent.append((to, subject))
+        self.bodies.append(body)
 
 
 @pytest.fixture
@@ -774,6 +784,10 @@ def _backend_service(
         AUTH_RETURN_TOKEN_IN_RESPONSE=return_token,
         AUTH_BACKEND_LINKS=True,
         AUTH_LOGIN_URL=login_url,
+        # Pin the page language so the English assertions below stay
+        # valid now that the default locale is pt-BR (see test_locale.py
+        # for the pt-BR + Accept-Language negotiation coverage).
+        AUTH_DEFAULT_LOCALE="en-US",
     )
     jwt = JWTSettings(JWT_SECRET="x" * 32)
     return UserAuthService(
@@ -1230,7 +1244,8 @@ class TestServiceEdgeCases:
             email="mailme@a.com",
             password="strong-pass-12-chars",
         )
-        assert ("mailme@a.com", "Activate your account") in fake.sent
+        # Default locale is pt-BR, so the subject is localized.
+        assert ("mailme@a.com", "Ative sua conta") in fake.sent
 
     async def test_request_reset_sends_email_and_returns_none(
         self,

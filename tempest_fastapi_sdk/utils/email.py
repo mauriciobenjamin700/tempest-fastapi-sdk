@@ -109,7 +109,9 @@ class EmailUtils:
         self._template_dir: Path | None = (
             Path(template_dir) if template_dir is not None else None
         )
-        self._jinja_env: jinja2.Environment | None = None
+        # One Jinja environment per resolved locale (plus the ``None`` key
+        # for locale-less renders), built lazily and memoized.
+        self._jinja_envs: dict[str | None, jinja2.Environment] = {}
 
     async def send(
         self,
@@ -195,21 +197,41 @@ class EmailUtils:
             recipients=recipients + cc_list + bcc_list,
         )
 
-    def render_template(self, template_name: str, context: dict[str, Any]) -> str:
+    def render_template(
+        self,
+        template_name: str,
+        context: dict[str, Any],
+        *,
+        locale: str | None = None,
+    ) -> str:
         """Render a Jinja2 template from ``template_dir`` with ``context``.
 
         The Jinja environment is built lazily on first call and
-        memoized — subsequent renders reuse the same loader. HTML
-        autoescaping is enabled for ``.html`` / ``.htm`` / ``.xml``
-        templates so caller-supplied values cannot break out into
-        markup.
+        memoized per ``locale`` — subsequent renders for the same locale
+        reuse the same loader. HTML autoescaping is enabled for
+        ``.html`` / ``.htm`` / ``.xml`` templates so caller-supplied
+        values cannot break out into markup.
+
+        Template lookup order (first hit wins):
+
+        1. ``template_dir/<locale>/<name>`` — project override, this locale.
+        2. ``template_dir/<name>`` — project override, legacy flat layout.
+        3. ``<sdk>/auth/templates/<locale>/<name>`` — SDK bundled, this
+           locale (e.g. the localized activation / password-reset emails).
+
+        When ``locale`` is ``None`` the locale subdirectories are skipped
+        and only the flat ``template_dir`` and the SDK bundled root are
+        searched — this preserves the pre-0.59 behavior for generic
+        callers that ship their own ``template_dir``.
 
         Args:
-            template_name (str): Template filename relative to
-                ``template_dir`` (e.g. ``"welcome.html"``,
+            template_name (str): Template filename (e.g. ``"welcome.html"``,
                 ``"password_reset.txt"``).
             context (dict[str, Any]): Variables exposed inside the
                 template.
+            locale (str | None): Canonical locale (e.g. ``"pt-BR"`` /
+                ``"en-US"``) selecting the per-locale template
+                subdirectory. ``None`` uses the flat layout.
 
         Returns:
             str: Rendered template body — pass this directly to
@@ -230,11 +252,12 @@ class EmailUtils:
             >>> html = emails.render_template(
             ...     "welcome.html",
             ...     {"user_name": "Ana", "app_url": "https://app/"},
+            ...     locale="pt-BR",
             ... )
             >>> await emails.send(
             ...     "ana@example.com",
-            ...     subject="Welcome!",
-            ...     body="Welcome, Ana!",
+            ...     subject="Bem-vinda!",
+            ...     body="Bem-vinda, Ana!",
             ...     html=html,
             ... )
         """
@@ -243,7 +266,8 @@ class EmailUtils:
                 "EmailUtils.render_template requires Jinja2. "
                 "Install with `pip install tempest-fastapi-sdk[email]`."
             )
-        if self._jinja_env is None:
+        env = self._jinja_envs.get(locale)
+        if env is None:
             # ChoiceLoader: project templates first, SDK bundled
             # templates (auth/activation, auth/password_reset) as
             # fallback. Lets the bundled auth flow render its
@@ -252,11 +276,21 @@ class EmailUtils:
             from jinja2 import ChoiceLoader
 
             search_paths: list[Path] = []
-            if self._template_dir is not None:
-                search_paths.append(self._template_dir)
             sdk_auth_templates = Path(__file__).resolve().parent.parent / (
                 "auth/templates"
             )
+            # The SDK bundled templates live under per-locale subdirs
+            # (``pt-BR`` / ``en-US``). A locale-less render still needs to
+            # reach them, so fall back to the default locale subdir.
+            from tempest_fastapi_sdk.auth.locale import DEFAULT_AUTH_LOCALE
+
+            bundled_locale = locale or DEFAULT_AUTH_LOCALE
+            if self._template_dir is not None:
+                if locale is not None:
+                    search_paths.append(self._template_dir / locale)
+                search_paths.append(self._template_dir)
+            if (sdk_auth_templates / bundled_locale).is_dir():
+                search_paths.append(sdk_auth_templates / bundled_locale)
             if sdk_auth_templates.is_dir():
                 search_paths.append(sdk_auth_templates)
             if not search_paths:
@@ -264,12 +298,13 @@ class EmailUtils:
                     "EmailUtils.render_template needs either ``template_dir`` "
                     "set or the SDK auth templates to be reachable."
                 )
-            self._jinja_env = Environment(
+            env = Environment(
                 loader=ChoiceLoader([FileSystemLoader(str(p)) for p in search_paths]),
                 autoescape=select_autoescape(["html", "htm", "xml"]),
                 enable_async=False,
             )
-        template = self._jinja_env.get_template(template_name)
+            self._jinja_envs[locale] = env
+        template = env.get_template(template_name)
         rendered: str = template.render(**context)
         return rendered
 

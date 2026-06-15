@@ -235,7 +235,9 @@ class TestRenderTemplate:
     def test_without_template_dir_falls_back_to_sdk_bundled(self) -> None:
         # Since v0.31.0 the env falls back to the SDK's bundled
         # auth templates so the default activation / reset flows
-        # work without the caller wiring template_dir.
+        # work without the caller wiring template_dir. Since v0.59.0
+        # the bundled templates are per-locale; a locale-less render
+        # falls back to the default locale (pt-BR).
         utils = EmailUtils(
             host="smtp.example.com",
             port=587,
@@ -249,7 +251,31 @@ class TestRenderTemplate:
                 "user": type("U", (), {"name": "Ana", "email": "ana@x"})(),
                 "activation_url": "https://app/activate?token=abc",
                 "expires_at": datetime(2026, 6, 4),
+                "expires_at_str": "04/06/2026 00:00 (UTC)",
             },
         )
-        assert "Activate account" in rendered
+        # Default locale is pt-BR.
+        assert "Ativar conta" in rendered
         assert "abc" in rendered
+
+    def test_explicit_locale_selects_bundled_language(self) -> None:
+        # Passing locale picks the matching bundled template language.
+        utils = EmailUtils(
+            host="smtp.example.com",
+            port=587,
+            from_addr="bot@example.com",
+        )
+        from datetime import datetime
+
+        ctx: dict[str, Any] = {
+            "user": type("U", (), {"name": "Ana", "email": "ana@x"})(),
+            "activation_url": "https://app/activate?token=abc",
+            "expires_at": datetime(2026, 6, 4),
+            "expires_at_str": "2026-06-04 00:00 (UTC)",
+        }
+        assert "Activate account" in utils.render_template(
+            "activation.html", ctx, locale="en-US"
+        )
+        assert "Ativar conta" in utils.render_template(
+            "activation.html", ctx, locale="pt-BR"
+        )

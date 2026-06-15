@@ -250,6 +250,15 @@ Only relevant when `AUTH_BACKEND_LINKS=true`. See [Mode E](#five-operating-modes
 | `AUTH_PASSWORD_RESET_SUCCESS_TEMPLATE` | `str` | `password_reset_success.html` | Reset OK HTML page. |
 | `AUTH_PASSWORD_RESET_ERROR_TEMPLATE` | `str` | `password_reset_error.html` | Reset error HTML page. |
 
+### Group 7 — Language of emails and pages (`AuthSettings`)
+
+| Env var | Type | Default | What it does |
+|---------|------|---------|--------------|
+| `AUTH_DEFAULT_LOCALE` | `str` | `pt-BR` | Language of the bundled **emails** and **HTML pages**. Accepts `pt-BR` and `en-US` (normalized: `PT-BR`, `pt_br`, `ptbr` → `pt-BR`). |
+
+There's a whole section dedicated to this, explained step by step:
+[Email and page language (i18n)](#email-and-page-language-i18n).
+
 !!! note "MFA / TOTP has its own vars"
     When `AUTH_MFA_ENABLED=true`, `AuthSettings` also exposes `AUTH_MFA_ISSUER`, `AUTH_MFA_RECOVERY_CODES_COUNT`, `AUTH_MFA_TOKEN_TTL_SECONDS` and `AUTH_MFA_VERIFY_WINDOW`. They're out of scope for this recipe (signup/activate/login/reset) — covered in the MFA recipe.
 
@@ -262,7 +271,7 @@ Three different concepts that look the same. Here's what each one does, exactly 
 ```text
 1. SDK generates a random opaque token (64-char string).
 2. AUTH_ACTIVATION_URL_TEMPLATE.format(token=…)  →  link with the token embedded.
-3. Renders AUTH_ACTIVATION_TEMPLATE (Jinja2 HTML) passing { user, activation_url, expires_at }.
+3. Renders AUTH_ACTIVATION_TEMPLATE (Jinja2 HTML) passing { user, activation_url, expires_at, expires_at_str }.
 4. EmailUtils.send(to=user.email, subject=..., html=<rendered HTML>).
 ```
 
@@ -270,7 +279,7 @@ In prose:
 
 - **Opaque token** — random string the SDK generates, hashes (SHA-256), and stores in the `user_tokens` table. The plaintext leaves over email **only once**; the database keeps just the hash.
 - **URL template** (`AUTH_ACTIVATION_URL_TEMPLATE`) — literal format string used to build the URL the user will click. **It points at the frontend, not the backend.** The frontend reads `?token=…` from the query string and calls `POST /auth/activate/{token}` on the backend.
-- **Jinja2 template** (`AUTH_ACTIVATION_TEMPLATE`) — filename of the HTML template inside `EmailUtils.template_dir`. It's **the HTML body of the email**, not the URL. It receives the `{ user, activation_url, expires_at }` context and renders the final markup.
+- **Jinja2 template** (`AUTH_ACTIVATION_TEMPLATE`) — filename of the HTML template inside `EmailUtils.template_dir`. It's **the HTML body of the email**, not the URL. It receives the `{ user, activation_url, expires_at, expires_at_str }` context and renders the final markup. Use `{{ expires_at_str }}` in the template — it's the expiry already formatted short (e.g. `2026-06-21 23:25 (UTC)`, no seconds); `expires_at` is still available as the raw `datetime` if you want to format it yourself.
 
 !!! warning "URL template ≠ Jinja2 template"
     `AUTH_ACTIVATION_URL_TEMPLATE` is a Python `.format()`-style string with just the `{token}` placeholder. **Don't confuse it** with the `.html` file Jinja2 renders. The formatted URL **is injected as a variable** into the Jinja2 context under the name `activation_url`, and the HTML template wraps it in a button.
@@ -301,6 +310,105 @@ sequenceDiagram
     API->>DB: hash(token) match? expired? already used?
     API->>F: 200 + JWT pair
 ```
+
+---
+
+## Email and page language (i18n)
+
+Since **v0.59.0**, the emails and HTML pages the SDK ships out of the box
+speak **two languages**: 🇧🇷 **Brazilian Portuguese (`pt-BR`)** — which is
+the **default** — and 🇺🇸 **US English (`en-US`)**. You don't need to
+create any template for this to work. 🚀
+
+### The golden rule (memorize just this)
+
+There are **two different things** that pick the language, and they work
+differently. Pay attention:
+
+| What | How the language is chosen |
+|------|----------------------------|
+| **Emails** (activation, reset) | **Always** use `AUTH_DEFAULT_LOCALE`. Full stop. |
+| **HTML pages** (Mode E, backend) | Use the **browser's** `Accept-Language`; if the browser says nothing, fall back to `AUTH_DEFAULT_LOCALE`. |
+
+!!! info "Why doesn't the email negotiate the language?"
+    When the SDK **builds** the email there's no browser asking for
+    anything — it's a server process sending a message. There's nothing
+    to "guess" the language from. That's why the email is always fixed to
+    `AUTH_DEFAULT_LOCALE`. An **HTML page**, on the other hand, is opened
+    by a real browser, which sends the `Accept-Language` header saying "I
+    prefer Portuguese" — so the person's preference can be honored.
+
+### Step 1 — choose the default language
+
+Just one environment variable. That's it:
+
+```env
+# .env
+AUTH_DEFAULT_LOCALE=pt-BR   # default — you can even omit it
+```
+
+Want everything in English? Switch to:
+
+```env
+AUTH_DEFAULT_LOCALE=en-US
+```
+
+!!! tip "You don't need the exact case/format"
+    The value is normalized for you. All of these become `pt-BR`:
+    `pt-BR`, `PT-BR`, `pt_br`, `ptbr`, `pt`. And all of these become
+    `en-US`: `en-US`, `EN_us`, `enus`, `en`. If you type something the
+    SDK doesn't know (like `klingon`), it falls back to the `pt-BR`
+    default instead of crashing.
+
+### Step 2 — (optional) let the HTML page follow the browser
+
+This is **already on for free** in Mode E (`AUTH_BACKEND_LINKS=true`).
+You do nothing. When the user clicks the email link and their browser is
+in Portuguese, they see the page in Portuguese; if it's in English, they
+see English. If the browser sends no `Accept-Language`, the page uses
+`AUTH_DEFAULT_LOCALE`.
+
+```text
+Browser in pt-BR   →  Accept-Language: pt-BR  →  page in Portuguese
+Browser in en-US   →  Accept-Language: en-US  →  page in English
+Browser w/o header →  falls back to AUTH_DEFAULT_LOCALE
+```
+
+### Step 3 — (optional) translate/customize it yourself
+
+The bundled templates live in per-language subfolders (`pt-BR/`,
+`en-US/`). To change the text/look of **just** one language, drop a file
+with the same name into the right subfolder of your `template_dir`
+(e.g. `template_dir/en-US/activation_success.html`). The full lookup
+order is in the "Override per language" tip further down, under
+**Mode E**.
+
+### Bonus — short, readable expiry timestamp
+
+The email used to show the raw, ugly expiry like this:
+
+```text
+This link expires at 2026-06-21 23:25:49.742054+00:00
+```
+
+Now the SDK injects an `expires_at_str` variable into the template,
+already formatted and **without seconds**, in the language's format:
+
+| Language | How it looks |
+|----------|--------------|
+| `pt-BR` | `21/06/2026 23:25 (UTC)` |
+| `en-US` | `2026-06-21 23:25 (UTC)` |
+
+In your custom templates, use `{{ expires_at_str }}` (short and pretty).
+If you want to format it yourself, the raw `datetime` is still available
+in `{{ expires_at }}`.
+
+!!! check "Recap"
+    - **One variable** drives the email language: `AUTH_DEFAULT_LOCALE`.
+    - **HTML pages** follow the browser (Accept-Language) and fall back
+      to `AUTH_DEFAULT_LOCALE` when there's no header.
+    - **The default is `pt-BR`.** Set `en-US` if you want English.
+    - Use `{{ expires_at_str }}` to show the expiry without seconds.
 
 ---
 
@@ -460,6 +568,21 @@ app.include_router(
 )
 ```
 
+!!! tip "Override per language (since v0.59.0)"
+    The bundled templates now live in **per-language subfolders**
+    (`pt-BR/` and `en-US/`). You have two ways to override, and the SDK
+    searches in this order (the first that exists wins):
+
+    1. `template_dir/<locale>/activation_success.html` — override **just
+       that language** (e.g. `src/templates/auth/pt-BR/...`).
+    2. `template_dir/activation_success.html` — **flat** override, applies
+       to every language (backward compatible with pre-0.59.0; keeps
+       working with no changes).
+
+    In short: if you already had flat templates, **you don't need to
+    change anything**. If you want a different look per language, create
+    the subfolder.
+
 **Mode E trade-offs:**
 
 - ✅ **Zero frontend dependency** — the backend is the single source of truth for the auth flow.
@@ -544,7 +667,14 @@ emails/                            # ← template_dir="emails"
 | `user` | `UserModel` instance | both | `{{ user.email }}`, `{{ user.name }}` (when your model exposes the column) |
 | `activation_url` | `str` | `activation.html` | `https://app.example.com/activate?token=aBcD...xYz` |
 | `reset_url` | `str` | `password_reset.html` | `https://app.example.com/reset?token=aBcD...xYz` |
-| `expires_at` | `datetime` (UTC, timezone-aware) | both | use `{{ expires_at.strftime("%Y-%m-%d %H:%M UTC") }}` |
+| `expires_at` | `datetime` (UTC, timezone-aware) | both | the raw value, if you want to format it yourself |
+| `expires_at_str` | `str` | both | **recommended** — already formatted short, no seconds: `2026-06-21 23:25 (UTC)` |
+
+!!! tip "Prefer `expires_at_str`"
+    Use `{{ expires_at_str }}` instead of `{{ expires_at }}` — the
+    bundled templates do. It's localized (per `AUTH_DEFAULT_LOCALE`) and
+    drops the noisy seconds/microseconds. The raw `expires_at` is still
+    there if you need a custom format.
 
 ### Example: lean `emails/activation.html`
 
@@ -563,7 +693,7 @@ emails/                            # ← template_dir="emails"
       </a>
     </p>
     <p style="color: #6b7280; font-size: 12px;">
-      Link valid until {{ expires_at.strftime("%Y-%m-%d %H:%M UTC") }}.
+      Link valid until {{ expires_at_str }}.
       If you didn't create this account, ignore this email.
     </p>
   </body>

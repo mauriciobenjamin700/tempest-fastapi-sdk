@@ -5,6 +5,60 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.59.0] — 2026-06-14
+
+### Added
+
+- **Bilingual auth emails and backend pages (`AUTH_DEFAULT_LOCALE`).**
+  The bundled activation / password-reset **emails** and the
+  backend-only **HTML pages** now ship in two languages out of the box —
+  Brazilian Portuguese (`pt-BR`, the new default) and US English
+  (`en-US`) — so a service gets fully localized account flows with zero
+  custom templates.
+    - **`AUTH_DEFAULT_LOCALE`** setting (default `"pt-BR"`) — language of
+      the bundled emails and pages. Normalized case-insensitively, so
+      `PT-BR`, `pt_br` and `ptbr` all resolve to `pt-BR`; `EN`, `en_US`
+      and `enus` to `en-US`.
+    - **Emails** always render in `AUTH_DEFAULT_LOCALE` (subject, plain
+      body and HTML), since they have no request context.
+    - **Backend HTML pages** (`AUTH_BACKEND_LINKS=True`) prefer the
+      browser's `Accept-Language` header and fall back to
+      `AUTH_DEFAULT_LOCALE`, so the same backend serves a Portuguese or
+      English page per visitor.
+    - New public helpers under `tempest_fastapi_sdk.auth`:
+      `normalize_locale`, `negotiate_locale`, `format_expires_at`,
+      `SUPPORTED_LOCALES` and `DEFAULT_AUTH_LOCALE`.
+    - `EmailUtils.render_template(...)` and `render_auth_page(...)` gained
+      an optional `locale=` argument selecting a per-locale template
+      subdirectory.
+- **Token-expiry timestamps in emails are now short and readable.** The
+  activation / reset emails render the expiry as `21/06/2026 23:25 (UTC)`
+  (pt-BR) or `2026-06-21 23:25 (UTC)` (en-US) — no seconds, no
+  microseconds — instead of the raw
+  `2026-06-21 23:25:49.742054+00:00`.
+
+### Changed
+
+- **`make_auth_router` endpoints now carry rich OpenAPI summaries and
+  descriptions.** Every signup / activation / login / password-reset /
+  MFA route (and the backend HTML pages) documents its request, response,
+  status codes, side effects and related settings directly in `/docs`.
+- **Bundled auth templates moved to per-locale subdirectories**
+  (`auth/templates/<locale>/<name>.html`). Projects overriding templates
+  via `template_dir` keep working unchanged (the flat layout is still
+  searched); to override a single language, place the file under
+  `template_dir/<locale>/`.
+
+### Migration
+
+- **No action required** for projects that keep the defaults — they now
+  send Portuguese emails/pages instead of English. Set
+  `AUTH_DEFAULT_LOCALE=en-US` to restore English as the default.
+- **`EmailUtils.render_template("activation.html")` with no `template_dir`
+  and no `locale`** now resolves the bundled template from the default
+  locale (`pt-BR`) instead of English. Pass `locale="en-US"` to render
+  the English bundled template.
+
 ## [0.58.1] — 2026-06-14
 
 ### Fixed

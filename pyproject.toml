@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.58.1"
+version = "0.59.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -148,13 +148,21 @@ packages = ["tempest_fastapi_sdk"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "tempest_fastapi_sdk/db/_alembic_templates/env.py.template" = "tempest_fastapi_sdk/db/_alembic_templates/env.py.template"
-"tempest_fastapi_sdk/auth/templates/activation.html" = "tempest_fastapi_sdk/auth/templates/activation.html"
-"tempest_fastapi_sdk/auth/templates/password_reset.html" = "tempest_fastapi_sdk/auth/templates/password_reset.html"
-"tempest_fastapi_sdk/auth/templates/activation_success.html" = "tempest_fastapi_sdk/auth/templates/activation_success.html"
-"tempest_fastapi_sdk/auth/templates/activation_error.html" = "tempest_fastapi_sdk/auth/templates/activation_error.html"
-"tempest_fastapi_sdk/auth/templates/password_reset_form.html" = "tempest_fastapi_sdk/auth/templates/password_reset_form.html"
-"tempest_fastapi_sdk/auth/templates/password_reset_success.html" = "tempest_fastapi_sdk/auth/templates/password_reset_success.html"
-"tempest_fastapi_sdk/auth/templates/password_reset_error.html" = "tempest_fastapi_sdk/auth/templates/password_reset_error.html"
+# Bundled auth templates ship under per-locale subdirs (pt-BR/, en-US/).
+"tempest_fastapi_sdk/auth/templates/pt-BR/activation.html" = "tempest_fastapi_sdk/auth/templates/pt-BR/activation.html"
+"tempest_fastapi_sdk/auth/templates/pt-BR/password_reset.html" = "tempest_fastapi_sdk/auth/templates/pt-BR/password_reset.html"
+"tempest_fastapi_sdk/auth/templates/pt-BR/activation_success.html" = "tempest_fastapi_sdk/auth/templates/pt-BR/activation_success.html"
+"tempest_fastapi_sdk/auth/templates/pt-BR/activation_error.html" = "tempest_fastapi_sdk/auth/templates/pt-BR/activation_error.html"
+"tempest_fastapi_sdk/auth/templates/pt-BR/password_reset_form.html" = "tempest_fastapi_sdk/auth/templates/pt-BR/password_reset_form.html"
+"tempest_fastapi_sdk/auth/templates/pt-BR/password_reset_success.html" = "tempest_fastapi_sdk/auth/templates/pt-BR/password_reset_success.html"
+"tempest_fastapi_sdk/auth/templates/pt-BR/password_reset_error.html" = "tempest_fastapi_sdk/auth/templates/pt-BR/password_reset_error.html"
+"tempest_fastapi_sdk/auth/templates/en-US/activation.html" = "tempest_fastapi_sdk/auth/templates/en-US/activation.html"
+"tempest_fastapi_sdk/auth/templates/en-US/password_reset.html" = "tempest_fastapi_sdk/auth/templates/en-US/password_reset.html"
+"tempest_fastapi_sdk/auth/templates/en-US/activation_success.html" = "tempest_fastapi_sdk/auth/templates/en-US/activation_success.html"
+"tempest_fastapi_sdk/auth/templates/en-US/activation_error.html" = "tempest_fastapi_sdk/auth/templates/en-US/activation_error.html"
+"tempest_fastapi_sdk/auth/templates/en-US/password_reset_form.html" = "tempest_fastapi_sdk/auth/templates/en-US/password_reset_form.html"
+"tempest_fastapi_sdk/auth/templates/en-US/password_reset_success.html" = "tempest_fastapi_sdk/auth/templates/en-US/password_reset_success.html"
+"tempest_fastapi_sdk/auth/templates/en-US/password_reset_error.html" = "tempest_fastapi_sdk/auth/templates/en-US/password_reset_error.html"
 "tempest_fastapi_sdk/utils/data/br_locations.json" = "tempest_fastapi_sdk/utils/data/br_locations.json"
 
 [dependency-groups]

@@ -32,6 +32,10 @@ from tempest_fastapi_sdk.auth.guards import (
     require_admin,
     require_authenticated,
 )
+from tempest_fastapi_sdk.auth.locale import (
+    auth_email_message,
+    format_expires_at,
+)
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationToken,
     PasswordResetToken,
@@ -737,18 +741,21 @@ class UserAuthService:
         if self.email is None or self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE:
             return
         _plain, url, expires_at = token_bundle
+        locale = self.auth_settings.AUTH_DEFAULT_LOCALE
         html = self.email.render_template(
             self.auth_settings.AUTH_ACTIVATION_TEMPLATE,
             {
                 "user": user,
                 "activation_url": url,
                 "expires_at": expires_at,
+                "expires_at_str": format_expires_at(expires_at, locale),
             },
+            locale=locale,
         )
         await self.email.send(
             user.email,
-            subject="Activate your account",
-            body=f"Open this link to activate your account: {url}",
+            subject=auth_email_message(locale, "activation_subject"),
+            body=auth_email_message(locale, "activation_body").format(url=url),
             html=html,
         )
 
@@ -761,18 +768,21 @@ class UserAuthService:
         if self.email is None or self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE:
             return
         _plain, url, expires_at = token_bundle
+        locale = self.auth_settings.AUTH_DEFAULT_LOCALE
         html = self.email.render_template(
             self.auth_settings.AUTH_PASSWORD_RESET_TEMPLATE,
             {
                 "user": user,
                 "reset_url": url,
                 "expires_at": expires_at,
+                "expires_at_str": format_expires_at(expires_at, locale),
             },
+            locale=locale,
         )
         await self.email.send(
             user.email,
-            subject="Reset your password",
-            body=f"Open this link to reset your password: {url}",
+            subject=auth_email_message(locale, "password_reset_subject"),
+            body=auth_email_message(locale, "password_reset_body").format(url=url),
             html=html,
         )
 

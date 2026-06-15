@@ -23,7 +23,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -974,6 +974,37 @@ class AuthSettings(BaseSettings):
         ),
         examples=[None, "https://app.example.com/login"],
     )
+    AUTH_DEFAULT_LOCALE: str = Field(
+        default="pt-BR",
+        title="Default language for bundled auth emails and pages",
+        description=(
+            "Language of the SDK-bundled activation / password-reset "
+            "**emails** and the backend HTML **pages** when no other "
+            "signal is available. Supported values: ``pt-BR`` (default) "
+            "and ``en-US``. The value is normalized case-insensitively, "
+            "so ``PT-BR``, ``pt_br`` and ``ptbr`` all resolve to "
+            "``pt-BR``. Emails always use this locale (they have no "
+            "request context); the backend HTML pages prefer the "
+            "browser's ``Accept-Language`` header and fall back to this."
+        ),
+        examples=["pt-BR", "en-US"],
+    )
+
+    @field_validator("AUTH_DEFAULT_LOCALE")
+    @classmethod
+    def _normalize_default_locale(cls, value: str) -> str:
+        """Coerce ``AUTH_DEFAULT_LOCALE`` into a canonical supported tag.
+
+        Args:
+            value (str): The raw configured value.
+
+        Returns:
+            str: One of the supported locales (``"pt-BR"`` / ``"en-US"``).
+        """
+        from tempest_fastapi_sdk.auth.locale import normalize_locale
+
+        return normalize_locale(value)
+
     AUTH_ACTIVATION_SUCCESS_TEMPLATE: str = Field(
         default="activation_success.html",
         title="Backend activation success page template",

@@ -73,6 +73,8 @@ from tempest_fastapi_sdk.api import (
     setup_tracing,
 )
 from tempest_fastapi_sdk.auth import (
+    DEFAULT_AUTH_LOCALE,
+    SUPPORTED_LOCALES,
     ActivationResponseSchema,
     ActivationToken,
     LoginResponseSchema,
@@ -88,7 +90,10 @@ from tempest_fastapi_sdk.auth import (
     SignupResponseSchema,
     SignupSchema,
     UserAuthService,
+    format_expires_at,
     make_auth_router,
+    negotiate_locale,
+    normalize_locale,
     require_active,
     require_admin,
     require_authenticated,
@@ -295,7 +300,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.58.1"
+__version__: str = "0.59.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -308,6 +313,7 @@ __all__: list[str] = [
     "CPF_PATTERN",
     "CSRF_COOKIE_NAME",
     "CSRF_HEADER_NAME",
+    "DEFAULT_AUTH_LOCALE",
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_LOCALE",
     "DEFAULT_STATIC_SECURITY_HEADERS",
@@ -315,6 +321,7 @@ __all__: list[str] = [
     "NAMING_CONVENTION",
     "PHONE_BR_PATTERN",
     "REQUEST_ID_HEADER",
+    "SUPPORTED_LOCALES",
     "UF",
     "ActivationResponseSchema",
     "ActivationToken",
@@ -500,6 +507,7 @@ __all__: list[str] = [
     "default_message_catalog",
     "diff_snapshots",
     "encode_cursor",
+    "format_expires_at",
     "generate_csrf_token",
     "generate_oauth_state",
     "generate_opaque_token",
@@ -543,11 +551,13 @@ __all__: list[str] = [
     "make_user_token_model",
     "make_websocket_router",
     "modify_dict",
+    "negotiate_locale",
     "normalize_cep",
     "normalize_city",
     "normalize_cnpj",
     "normalize_cpf",
     "normalize_cpf_cnpj",
+    "normalize_locale",
     "normalize_phone_br",
     "normalize_uf",
     "only_digits",

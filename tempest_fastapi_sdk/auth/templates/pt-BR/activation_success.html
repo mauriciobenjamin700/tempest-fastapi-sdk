@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Conta ativada</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #1f2937; max-width: 480px; margin: 0 auto; padding: 24px;">
+  <div style="text-align: center; padding: 40px 0;">
+    <div style="font-size: 64px; line-height: 1;">&#9989;</div>
+    <h1 style="color: #111827; margin-top: 16px;">Conta ativada</h1>
+    <p style="color: #4b5563;">
+      {% if user and user.name %}Bem-vindo(a), {{ user.name }}!{% else %}Bem-vindo(a)!{% endif %}
+      Seu e-mail <strong>{{ user.email if user else "" }}</strong> agora está confirmado.
+    </p>
+    {% if login_url %}
+      <p style="margin-top: 32px;">
+        <a href="{{ login_url }}"
+           style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px;">
+          Ir para o login
+        </a>
+      </p>
+    {% else %}
+      <p style="color: #6b7280; margin-top: 24px;">Agora você pode entrar com seu e-mail e senha.</p>
+    {% endif %}
+  </div>
+</body>
+</html>
