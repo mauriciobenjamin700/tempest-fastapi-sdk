@@ -561,6 +561,123 @@ class TestPasswordReset:
         )
 
 
+class TestChangePassword:
+    async def test_rotates_when_current_password_correct(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service(auto_activate=True)
+        user, _ = await service.signup(
+            session,
+            email="chg@b.com",
+            password="strong-pass-12-chars",
+        )
+        await service.change_password(
+            session,
+            user=user,
+            current_password="strong-pass-12-chars",
+            new_password="brand-new-pass-12",
+        )
+        # Old password no longer works; the new one does.
+        with pytest.raises(UnauthorizedException):
+            await service.login(
+                session, email="chg@b.com", password="strong-pass-12-chars"
+            )
+        await service.login(session, email="chg@b.com", password="brand-new-pass-12")
+
+    async def test_rejects_wrong_current_password(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service(auto_activate=True)
+        user, _ = await service.signup(
+            session,
+            email="chg2@b.com",
+            password="strong-pass-12-chars",
+        )
+        with pytest.raises(UnauthorizedException):
+            await service.change_password(
+                session,
+                user=user,
+                current_password="wrong-password",
+                new_password="brand-new-pass-12",
+            )
+
+    async def test_rejects_weak_new_password(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service(auto_activate=True)
+        user, _ = await service.signup(
+            session,
+            email="chg3@b.com",
+            password="strong-pass-12-chars",
+        )
+        with pytest.raises(ValidationException):
+            await service.change_password(
+                session,
+                user=user,
+                current_password="strong-pass-12-chars",
+                new_password="short",
+            )
+
+    async def test_endpoint_changes_password_with_bearer_token(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service(auto_activate=True)
+        user, _ = await service.signup(
+            session,
+            email="chgep@b.com",
+            password="strong-pass-12-chars",
+        )
+        await session.commit()
+        access, _ = service.issue_jwt_pair(user)
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app = FastAPI()
+        app.include_router(make_auth_router(service, session_factory=_factory))
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r = await c.post(
+                "/auth/password-change",
+                json={
+                    "current_password": "strong-pass-12-chars",
+                    "new_password": "brand-new-pass-12",
+                },
+                headers={"Authorization": f"Bearer {access}"},
+            )
+        assert r.status_code == 204, r.text
+        # The new password now authenticates.
+        await service.login(session, email="chgep@b.com", password="brand-new-pass-12")
+
+    async def test_endpoint_requires_authentication(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service(auto_activate=True)
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app = FastAPI()
+        app.include_router(make_auth_router(service, session_factory=_factory))
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r = await c.post(
+                "/auth/password-change",
+                json={
+                    "current_password": "x",
+                    "new_password": "brand-new-pass-12",
+                },
+            )
+        assert r.status_code in (401, 403), r.text
+
+
 class TestRouter:
     async def test_signup_endpoint_returns_activation_url(
         self,

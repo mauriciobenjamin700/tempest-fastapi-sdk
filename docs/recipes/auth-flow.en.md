@@ -129,6 +129,20 @@ uv run tempest db upgrade
 | POST | `/auth/login` | `LoginSchema` → `LoginResponseSchema` | Email + password → JWT pair. Generic errors (no account enumeration). |
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Always HTTP 202 + generic body. Link via email (A/B) or body (C). |
 | POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consumes token + writes new password + issues JWT pair. |
+| POST | `/auth/password-change` | `PasswordChangeSchema` → `204` | **Authenticated** (bearer token). Change your own password: confirm the current password + write the new one. No email token. |
+
+!!! tip "`password-reset/confirm` vs `password-change` — which is which?"
+    These are **different** flows, don't mix them up:
+
+    - **`/auth/password-reset/confirm`** — the user **forgot** their
+      password. They're not logged in; they prove identity with the
+      **token** emailed to them. (See `/auth/password-reset/request`
+      first.)
+    - **`/auth/password-change`** — the user **remembers** their password
+      and is **logged in**. They send the `access_token` in the
+      `Authorization: Bearer …` header and re-confirm their
+      `current_password`. No email or reset token involved. Returns
+      **204** and the current tokens stay valid.
 
 ---
 

@@ -42,6 +42,9 @@ from tempest_fastapi_sdk.auth.schemas import (
 )
 from tempest_fastapi_sdk.auth.schemas import MFAVerifySchema as MFAVerifySchema
 from tempest_fastapi_sdk.auth.schemas import (
+    PasswordChangeSchema as PasswordChangeSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
     PasswordResetConfirmSchema as PasswordResetConfirmSchema,
 )
 from tempest_fastapi_sdk.auth.schemas import (
@@ -68,6 +71,7 @@ __all__: list[str] = [
     "MFADisableSchema",
     "MFAEnrollResponseSchema",
     "MFAVerifySchema",
+    "PasswordChangeSchema",
     "PasswordResetConfirmSchema",
     "PasswordResetRequestSchema",
     "PasswordResetResponseSchema",

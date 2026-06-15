@@ -386,6 +386,44 @@ class PasswordResetConfirmSchema(BaseSchema):
     )
 
 
+class PasswordChangeSchema(BaseSchema):
+    """Request body for ``POST /auth/password-change``.
+
+    Used by an **already-authenticated** user to rotate their own
+    password. Unlike the reset flow there is no token — the bearer
+    ``access_token`` identifies the user and ``current_password``
+    re-confirms ownership before the new password is accepted.
+
+    Attributes:
+        current_password (str): The user's current plaintext password,
+            re-entered for confirmation. A mismatch is rejected with
+            ``401``.
+        new_password (str): Plaintext replacement password. The schema
+            only rejects empty strings; the effective minimum length
+            and complexity come from ``AUTH_PASSWORD_MIN_LENGTH`` /
+            ``AUTH_PASSWORD_REQUIRE_COMPLEXITY`` and are applied by the
+            service.
+    """
+
+    current_password: str = Field(
+        min_length=1,
+        title="Current password",
+        description="The user's current plaintext password, for confirmation.",
+        examples=["my-old-password"],
+    )
+    new_password: str = Field(
+        min_length=1,
+        title="New password",
+        description=(
+            "Plaintext replacement password. The schema only rejects "
+            "empty strings; the effective minimum length and complexity "
+            "come from ``AUTH_PASSWORD_MIN_LENGTH`` / "
+            "``AUTH_PASSWORD_REQUIRE_COMPLEXITY``, applied server-side."
+        ),
+        examples=["new-correct-horse-battery"],
+    )
+
+
 class ActivationToken(BaseSchema):
     """Service-level result of issuing an account-activation token.
 
@@ -603,6 +641,7 @@ __all__: list[str] = [
     "MFADisableSchema",
     "MFAEnrollResponseSchema",
     "MFAVerifySchema",
+    "PasswordChangeSchema",
     "PasswordResetConfirmSchema",
     "PasswordResetRequestSchema",
     "PasswordResetResponseSchema",

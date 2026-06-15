@@ -392,6 +392,48 @@ class UserAuthService:
         await session.refresh(user)
         return user
 
+    async def change_password(
+        self,
+        session: AsyncSession,
+        *,
+        user: BaseUserModel,
+        current_password: str,
+        new_password: str,
+    ) -> BaseUserModel:
+        """Replace an authenticated user's password after re-auth.
+
+        The "change my own password while logged in" flow: the caller is
+        already authenticated (the router resolves ``user`` from the
+        bearer token), and must prove ownership by supplying their
+        ``current_password`` before the new one is accepted. No token is
+        involved — this is distinct from the email-driven reset flow
+        (:meth:`request_password_reset` / :meth:`confirm_password_reset`).
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            user (BaseUserModel): The authenticated user (already loaded
+                from the JWT subject).
+            current_password (str): The user's current plaintext password,
+                re-entered for confirmation.
+            new_password (str): The plaintext replacement password.
+
+        Returns:
+            BaseUserModel: The user whose password was rotated.
+
+        Raises:
+            UnauthorizedException: When ``current_password`` does not match
+                the stored hash.
+            ValidationException: When ``new_password`` violates the
+                configured password policy.
+        """
+        if not self.passwords.verify(current_password, user.hashed_password):
+            raise UnauthorizedException(message="current password is incorrect")
+        self._enforce_password_policy(new_password)
+        user.hashed_password = self.passwords.hash(new_password)
+        await session.flush()
+        await session.refresh(user)
+        return user
+
     # ------------------------------------------------------------------
     # Token helpers
     # ------------------------------------------------------------------

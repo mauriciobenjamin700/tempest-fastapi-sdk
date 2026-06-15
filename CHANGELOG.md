@@ -5,6 +5,22 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.61.0] — 2026-06-15
+
+### Added
+
+- **`POST /auth/password-change`** — a `make_auth_router` endpoint for an
+  **authenticated** user to change their own password while logged in.
+  Requires a valid bearer `access_token`; the user re-enters their
+  `current_password` (mismatch → **401**) and the `new_password` is
+  validated against the configured password policy (violations → **422**).
+  Returns **204**; existing tokens stay valid (no session revocation).
+  Distinct from the email-token reset flow.
+    - **`UserAuthService.change_password(session, *, user,
+      current_password, new_password)`** — the backing service method.
+    - **`PasswordChangeSchema`** — request body
+      (`current_password` + `new_password`), exported at the package root.
+
 ## [0.60.0] — 2026-06-15
 
 ### Added

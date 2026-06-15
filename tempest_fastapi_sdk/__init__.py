@@ -83,6 +83,7 @@ from tempest_fastapi_sdk.auth import (
     MFADisableSchema,
     MFAEnrollResponseSchema,
     MFAVerifySchema,
+    PasswordChangeSchema,
     PasswordResetConfirmSchema,
     PasswordResetRequestSchema,
     PasswordResetResponseSchema,
@@ -300,7 +301,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.60.0"
+__version__: str = "0.61.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -424,6 +425,7 @@ __all__: list[str] = [
     "OrderRef",
     "OutboxRelay",
     "OutboxStatus",
+    "PasswordChangeSchema",
     "PasswordResetConfirmSchema",
     "PasswordResetRequestSchema",
     "PasswordResetResponseSchema",

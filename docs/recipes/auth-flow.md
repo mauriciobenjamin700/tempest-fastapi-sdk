@@ -129,6 +129,19 @@ uv run tempest db upgrade
 | POST | `/auth/login` | `LoginSchema` → `LoginResponseSchema` | Email + senha → JWT pair. Erros genéricos (não enumera contas). |
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Sempre HTTP 202 + corpo genérico. Link via e-mail (A/B) ou no body (C). |
 | POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consome token + grava nova senha + emite JWT pair. |
+| POST | `/auth/password-change` | `PasswordChangeSchema` → `204` | **Autenticado** (bearer token). Troca a própria senha: confirma a senha atual + grava a nova. Sem token de e-mail. |
+
+!!! tip "`password-reset/confirm` vs `password-change` — qual é qual?"
+    São fluxos **diferentes**, não confunda:
+
+    - **`/auth/password-reset/confirm`** — o usuário **esqueceu** a senha.
+      Ele não está logado; prova identidade com o **token** que recebeu
+      por e-mail. (Veja `/auth/password-reset/request` antes.)
+    - **`/auth/password-change`** — o usuário **lembra** a senha e está
+      **logado**. Manda o `access_token` no header `Authorization:
+      Bearer …` e reconfirma a `current_password`. Não envolve e-mail
+      nem token de reset. Retorna **204** e os tokens atuais continuam
+      válidos.
 
 ---
 

@@ -52,6 +52,7 @@ from tempest_fastapi_sdk.auth.schemas import (
     MFADisableSchema,
     MFAEnrollResponseSchema,
     MFAVerifySchema,
+    PasswordChangeSchema,
     PasswordResetConfirmSchema,
     PasswordResetRequestSchema,
     PasswordResetResponseSchema,
@@ -156,6 +157,13 @@ def make_auth_router(
             locale=locale,
         )
         return HTMLResponse(content=html, status_code=400)
+
+    # Authenticated-user dependency, shared by the password-change route
+    # and (when enabled) the MFA routes.
+    current_user_dep = make_jwt_user_dependency(
+        service.jwt,
+        user_loader=_make_user_loader(service, session_factory),
+    )
 
     # ------------------------------------------------------------------
     # JSON / SPA endpoints — always mounted.
@@ -377,6 +385,38 @@ def make_auth_router(
             refresh_token=refresh,
         )
 
+    @router.post(
+        "/password-change",
+        status_code=status.HTTP_204_NO_CONTENT,
+        summary="Change your own password (while logged in)",
+        description=(
+            "Rotate the **currently authenticated** user's password "
+            "(requires a valid bearer ``access_token``).\n\n"
+            "Unlike the forgot-password flow there is **no token** — the "
+            "user is already logged in. They must re-enter their "
+            "``current_password`` to confirm ownership; a mismatch "
+            "returns **401**. The ``new_password`` must satisfy "
+            "``AUTH_PASSWORD_MIN_LENGTH`` (and the complexity rules when "
+            "``AUTH_PASSWORD_REQUIRE_COMPLEXITY=True``); violations return "
+            "**422**.\n\n"
+            "On success the endpoint returns **204**. The existing "
+            "``access_token`` / ``refresh_token`` stay valid — this "
+            "endpoint does not revoke sessions."
+        ),
+    )
+    async def password_change(
+        payload: PasswordChangeSchema,
+        session: AsyncSession = session_dep,
+        user: BaseUserModel = Depends(current_user_dep),
+    ) -> None:
+        await service.change_password(
+            session,
+            user=user,
+            current_password=payload.current_password,
+            new_password=payload.new_password,
+        )
+        await session.commit()
+
     # ------------------------------------------------------------------
     # Backend-only HTML endpoints — mounted only when AUTH_BACKEND_LINKS.
     # ------------------------------------------------------------------
@@ -590,11 +630,6 @@ def make_auth_router(
                 "(subclass of BaseUserRecoveryCodeModel) passed to "
                 "make_auth_router(recovery_code_model=...)."
             )
-
-        current_user_dep = make_jwt_user_dependency(
-            service.jwt,
-            user_loader=_make_user_loader(service, session_factory),
-        )
 
         @router.post(
             "/mfa/enroll",
