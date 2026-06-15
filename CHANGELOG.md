@@ -5,6 +5,36 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.59.1] — 2026-06-14
+
+### Changed
+
+- **Database recipe rewritten in the tutorial-first (tiangolo) pattern.**
+  The `docs/recipes/database.*` page was shallow — it covered only the
+  mixins, a hand-rolled cursor query, and Alembic, and skipped most of
+  the DB layer. It is now a progressive, nine-section guide with
+  complete runnable examples, admonitions and per-section recaps:
+    - **`BaseModel`** — the four canonical columns, `NAMING_CONVENTION`,
+      auto `__tablename__`, and the `to_dict` / `update_from_dict` /
+      equality helpers.
+    - **`AsyncDatabaseManager`** — engine/pool config, the per-request
+      `session_dependency`, lifespan wiring, `health_check`,
+      `db_url_safe`.
+    - **`BaseRepository`** — direct vs. subclass usage, the mappers, and
+      the full async CRUD surface (`get` / `get_or_none` / `first` /
+      `list` / `exists` / `count` / `add` / `update` / `delete*` /
+      `soft_delete` / `restore`).
+    - **Convention-based filters** — `name` ILIKE, `bool`, `list`,
+      `date`, `start_in` / `end_in`, and the `<col>__<op>` comparison
+      suffixes.
+    - **Bulk operations** — `add_all` / `update_many` vs.
+      `bulk_create_values` / `bulk_update` / `bulk_upsert`.
+    - **Pagination** — both the built-in `paginate` (offset) and
+      `cursor_paginate` (cursor), replacing the old hand-rolled cursor
+      example that reinvented logic the SDK already ships.
+    - **`SlowQueryLogger`** — new section.
+  No public API changed — documentation only.
+
 ## [0.59.0] — 2026-06-14
 
 ### Added
