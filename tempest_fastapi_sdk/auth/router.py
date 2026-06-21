@@ -10,6 +10,9 @@ consumed by a frontend that owns the activation / reset UI:
 * ``POST /auth/signup`` — create user + maybe send activation
 * ``POST /auth/activate/{token}`` — consume activation + log in
 * ``POST /auth/login`` — email + password → JWT pair
+* ``POST /auth/refresh`` — exchange a refresh token for a new pair
+* ``POST /auth/logout`` — revoke a refresh token *(mounted only
+  when a ``refresh_token_model`` is wired — DB-backed mode)*
 * ``POST /auth/password-reset/request`` — issue reset token
 * ``POST /auth/password-reset/confirm`` — consume reset token
 
@@ -48,6 +51,7 @@ from tempest_fastapi_sdk.auth.schemas import (
     ActivationResponseSchema,
     LoginResponseSchema,
     LoginSchema,
+    LogoutSchema,
     MFAConfirmSchema,
     MFADisableSchema,
     MFAEnrollResponseSchema,
@@ -209,9 +213,9 @@ def make_auth_router(
             password=payload.password,
             name=payload.name,
         )
-        await session.commit()
         if activation is None:
-            access, refresh = service.issue_jwt_pair(user)
+            access, refresh = await service.issue_token_pair(session, user)
+            await session.commit()
             return SignupResponseSchema(
                 user_id=user.id,
                 activation_required=False,
@@ -219,6 +223,7 @@ def make_auth_router(
                 access_token=access,
                 refresh_token=refresh,
             )
+        await session.commit()
         return_url = (
             activation.url
             if service.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE
@@ -260,7 +265,7 @@ def make_auth_router(
         session: AsyncSession = session_dep,
     ) -> ActivationResponseSchema:
         user = await service.activate(session, token=token)
-        access, refresh = service.issue_jwt_pair(user)
+        access, refresh = await service.issue_token_pair(session, user)
         await session.commit()
         return ActivationResponseSchema(
             user_id=user.id,
@@ -297,9 +302,9 @@ def make_auth_router(
             email=payload.email,
             password=payload.password,
         )
-        await session.commit()
         if service.is_mfa_enrolled(user):
             mfa_token = service.issue_mfa_token(user)
+            await session.commit()
             return LoginResponseSchema(
                 user_id=user.id,
                 access_token=None,
@@ -307,7 +312,8 @@ def make_auth_router(
                 mfa_required=True,
                 mfa_token=mfa_token,
             )
-        access, refresh = service.issue_jwt_pair(user)
+        access, refresh = await service.issue_token_pair(session, user)
+        await session.commit()
         return LoginResponseSchema(
             user_id=user.id,
             access_token=access,
@@ -378,7 +384,7 @@ def make_auth_router(
             token=payload.token,
             new_password=payload.new_password,
         )
-        access, refresh = service.issue_jwt_pair(user)
+        access, refresh = await service.issue_token_pair(session, user)
         await session.commit()
         return LoginResponseSchema(
             user_id=user.id,
@@ -429,17 +435,24 @@ def make_auth_router(
             "the short-lived ``access_token`` expires: replay the "
             "long-lived ``refresh_token`` here instead of forcing the "
             "user to log in again.\n\n"
-            "The submitted token must actually be a refresh token (it "
-            "carries the ``refresh`` claim) — a stolen *access* token "
-            "replayed here is rejected with **401**. An expired, "
-            "malformed, or wrongly-signed token also returns **401**, and "
-            "an inactive account returns **403**.\n\n"
+            "A stolen *access* token replayed here is rejected with "
+            "**401**. An expired, malformed, revoked, or wrongly-signed "
+            "token also returns **401**, and an inactive account returns "
+            "**403**.\n\n"
             "!!! warning\n"
             "    Both tokens **rotate**: the response carries a new "
             "    refresh token. Persist that one and discard the token "
-            "    you sent — the old pair is independent and stays valid "
-            "    until its own expiry (the SDK issues stateless JWTs and "
-            "    does not revoke the previous refresh token)."
+            "    you sent.\n\n"
+            '!!! info "Stateless vs DB-backed"\n'
+            "    When the service is wired with a ``refresh_token_model`` "
+            "    the refresh token is an **opaque, single-use** value: the "
+            "    presented token is invalidated on rotation, replaying an "
+            "    already-rotated token is treated as theft and **revokes "
+            "    the whole token family** (401), and ``POST /auth/logout`` "
+            "    can revoke a session early. Without that model the SDK "
+            "    falls back to a stateless JWT refresh token — the old "
+            "    token stays valid until its own expiry and cannot be "
+            "    revoked."
         ),
     )
     async def refresh(
@@ -450,11 +463,48 @@ def make_auth_router(
             session,
             refresh_token=payload.refresh_token,
         )
+        await session.commit()
         return LoginResponseSchema(
             user_id=user.id,
             access_token=access,
             refresh_token=refresh_token,
         )
+
+    if service.refresh_token_model is not None:
+
+        @router.post(
+            "/logout",
+            status_code=status.HTTP_204_NO_CONTENT,
+            summary="Revoke a refresh token (logout)",
+            description=(
+                "Revoke a **DB-backed refresh token** so it can no longer "
+                "be exchanged at ``POST /auth/refresh``, even before its "
+                "natural expiry.\n\n"
+                "By default only the presented token's rotation **family** "
+                "(the lineage descended from one login) is revoked — so a "
+                "descendant token a thief may hold dies too. Pass "
+                "``all_sessions=true`` to revoke **every** active refresh "
+                "token the user owns (log out everywhere).\n\n"
+                "The endpoint is **idempotent**: an unknown / already-"
+                "revoked token still returns **204** and never leaks "
+                "whether the token existed.\n\n"
+                "!!! note\n"
+                "    Mounted only when the service is wired with a "
+                "    ``refresh_token_model``. Stateless JWT refresh tokens "
+                "    cannot be revoked, so the endpoint is absent in that "
+                "    mode."
+            ),
+        )
+        async def logout(
+            payload: LogoutSchema,
+            session: AsyncSession = session_dep,
+        ) -> None:
+            await service.revoke_refresh_token(
+                session,
+                refresh_token=payload.refresh_token,
+                all_sessions=payload.all_sessions,
+            )
+            await session.commit()
 
     # ------------------------------------------------------------------
     # Backend-only HTML endpoints — mounted only when AUTH_BACKEND_LINKS.
@@ -787,7 +837,7 @@ def make_auth_router(
                 code=payload.code,
                 recovery_code_model=recovery_code_model,
             )
-            access, refresh = service.issue_jwt_pair(user)
+            access, refresh = await service.issue_token_pair(session, user)
             await session.commit()
             return LoginResponseSchema(
                 user_id=user.id,

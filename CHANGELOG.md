@@ -5,6 +5,48 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.66.0] — 2026-06-21
+
+### Added
+
+- **DB-backed (opaque) refresh tokens with rotation, reuse detection and
+  revocation** — opt-in via a new `refresh_token_model=` argument on
+  `UserAuthService`. When wired, the refresh token becomes an **opaque**
+  value whose SHA-256 hash is persisted (the access token stays a
+  stateless JWT). Every `POST /auth/refresh` marks the presented token
+  single-use and mints a new one in the same rotation **family**;
+  replaying an already-rotated token is treated as theft and **revokes
+  the whole family** (`401`). Without the model the service keeps the
+  legacy stateless JWT refresh behavior — **no breaking change**.
+- **`BaseUserRefreshTokenModel` + `make_user_refresh_token_model`** — the
+  abstract opaque-refresh-token row (`token_hash`, `family_id`,
+  `expires_at`, `used_at`, `revoked_at`) and the one-call factory to bind
+  a concrete table to the project's user table, mirroring
+  `BaseUserTokenModel` / `BaseUserRecoveryCodeModel`. Re-exported at the
+  top level.
+- **`UserAuthService.issue_token_pair(session, user, *, family_id=None)`**
+  — async issuance path used by the router at every login-equivalent
+  step; opaque+persisted when a refresh-token model is wired, stateless
+  JWT otherwise.
+- **`UserAuthService.revoke_refresh_token(session, *, refresh_token,
+  all_sessions=False)`** — logout: revoke the token's family (or every
+  active token of the user). Idempotent.
+- **`POST /auth/logout`** on the bundled router — revokes a DB-backed
+  refresh token (family, or all sessions with `all_sessions=true`).
+  Mounted **only** when a `refresh_token_model` is wired; absent in
+  stateless mode. Request body: new `LogoutSchema` (re-exported at the
+  top level).
+- **Recipe — "Refresh tokens (rotação/revogação)"** (`docs/recipes/
+  refresh-tokens.md` + `.en.md`), wired into the docs nav.
+
+### Changed
+
+- **`UserAuthService.refresh_tokens`** now branches on whether a
+  refresh-token model is wired: DB-backed rotation + reuse detection when
+  present, the previous stateless JWT decode path when absent. The
+  `POST /auth/refresh` endpoint commits the rotation and its docs cover
+  both modes.
+
 ## [0.65.0] — 2026-06-21
 
 ### Added

@@ -232,6 +232,7 @@ nav:
       - Idempotência: recipes/idempotency.md
       - Sync offline-first (delta): recipes/offline-sync.md
       - Auth flow (signup/reset): recipes/auth-flow.md
+      - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md
       - MFA (TOTP / 2FA): recipes/mfa.md
       - Sessões server-side: recipes/sessions.md
       - Métricas: recipes/metrics.md

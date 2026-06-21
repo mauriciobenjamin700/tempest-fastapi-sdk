@@ -309,6 +309,40 @@ class RefreshSchema(BaseSchema):
     )
 
 
+class LogoutSchema(BaseSchema):
+    """Request body for ``POST /auth/logout``.
+
+    Carries the refresh token to revoke so the session can be
+    killed before its natural expiry. Only meaningful when the
+    service is wired with a ``refresh_token_model`` (DB-backed
+    refresh tokens) — in stateless mode the endpoint is not
+    mounted, since a stateless JWT cannot be revoked.
+
+    Attributes:
+        refresh_token (str): The opaque refresh token to revoke.
+            Its whole rotation *family* is revoked, so the
+            descendant token a thief may hold dies too.
+        all_sessions (bool): When ``True``, revoke **every** active
+            refresh token the user owns (log out everywhere), not
+            just this token's family. Defaults to ``False``.
+    """
+
+    refresh_token: str = Field(
+        title="Refresh token",
+        description="The opaque refresh token to revoke (its family is killed).",
+        examples=["3f7c1a9e8b…"],
+    )
+    all_sessions: bool = Field(
+        default=False,
+        title="Revoke every session",
+        description=(
+            "When ``True``, revoke every active refresh token of the "
+            "user (log out everywhere), not just this family."
+        ),
+        examples=[False, True],
+    )
+
+
 class PasswordResetRequestSchema(BaseSchema):
     """Request body for ``POST /auth/password-reset/request``.
 
@@ -658,6 +692,7 @@ __all__: list[str] = [
     "ActivationToken",
     "LoginResponseSchema",
     "LoginSchema",
+    "LogoutSchema",
     "MFAConfirmSchema",
     "MFADisableSchema",
     "MFAEnrollResponseSchema",

@@ -21,9 +21,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.auth.guards import (
@@ -68,6 +68,9 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.db.user_recovery_code_model import (
         BaseUserRecoveryCodeModel,
     )
+    from tempest_fastapi_sdk.db.user_refresh_token_model import (
+        BaseUserRefreshTokenModel,
+    )
     from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
     from tempest_fastapi_sdk.utils.email import EmailUtils
 
@@ -106,6 +109,7 @@ class UserAuthService:
         passwords: PasswordUtils | None = None,
         jwt: JWTUtils | None = None,
         db: AsyncDatabaseManager | None = None,
+        refresh_token_model: type[BaseUserRefreshTokenModel] | None = None,
     ) -> None:
         """Initialize the service.
 
@@ -128,6 +132,15 @@ class UserAuthService:
             db (AsyncDatabaseManager | None): Optional handle for
                 services that open their own sessions inside
                 helpers like background tasks.
+            refresh_token_model (type[BaseUserRefreshTokenModel] | None):
+                Concrete refresh-token model — usually
+                ``src.db.models.UserRefreshTokenModel``. **Opt-in:**
+                when provided, refresh tokens become opaque,
+                DB-backed, single-use values with real rotation,
+                reuse detection and revocation. When ``None``
+                (default), the service keeps issuing the legacy
+                stateless JWT refresh token (no DB persistence, no
+                revocation).
         """
         self.user_model: type[BaseUserModel] = user_model
         self.token_model: type[BaseUserTokenModel] = token_model
@@ -140,6 +153,9 @@ class UserAuthService:
             algorithm=jwt_settings.JWT_ALGORITHM,
         )
         self.db: AsyncDatabaseManager | None = db
+        self.refresh_token_model: type[BaseUserRefreshTokenModel] | None = (
+            refresh_token_model
+        )
 
     # ------------------------------------------------------------------
     # Signup
@@ -439,21 +455,80 @@ class UserAuthService:
     # ------------------------------------------------------------------
 
     def issue_jwt_pair(self, user: BaseUserModel) -> tuple[str, str]:
-        """Return ``(access, refresh)`` JWTs for an authenticated user.
+        """Return a stateless ``(access, refresh)`` JWT pair.
+
+        Both tokens are signed JWTs with no DB persistence — this is
+        the **legacy** issuance path, kept for back-compat and used
+        whenever ``refresh_token_model`` is not wired. When a
+        refresh-token model *is* wired, prefer :meth:`issue_token_pair`,
+        which mints an opaque DB-backed refresh token instead.
 
         Args:
             user (BaseUserModel): The authenticated user.
 
         Returns:
-            tuple[str, str]: ``(access_token, refresh_token)``.
+            tuple[str, str]: ``(access_token, refresh_token)`` — both
+            stateless JWTs.
         """
-        access = self.jwt.encode(
-            {"sub": str(user.id), "email": user.email},
-            ttl=timedelta(seconds=self.jwt_settings.JWT_ACCESS_TTL_SECONDS),
-        )
+        access = self._encode_access(user)
         refresh = self.jwt.encode(
             {"sub": str(user.id), "refresh": True},
             ttl=timedelta(seconds=self.jwt_settings.JWT_REFRESH_TTL_SECONDS),
+        )
+        return access, refresh
+
+    def _encode_access(self, user: BaseUserModel) -> str:
+        """Sign a short-lived access JWT carrying ``sub`` + ``email``."""
+        return self.jwt.encode(
+            {"sub": str(user.id), "email": user.email},
+            ttl=timedelta(seconds=self.jwt_settings.JWT_ACCESS_TTL_SECONDS),
+        )
+
+    async def issue_token_pair(
+        self,
+        session: AsyncSession,
+        user: BaseUserModel,
+        *,
+        family_id: UUID | None = None,
+    ) -> tuple[str, str]:
+        """Issue an ``(access, refresh)`` pair, DB-backed when configured.
+
+        This is the issuance path the bundled router uses at every
+        login-equivalent step (login / signup-auto-activate /
+        activation / password-reset / mfa-verify). Its shape depends
+        on whether a refresh-token model is wired:
+
+        * **``refresh_token_model`` set** — the access token is a
+          stateless JWT, the refresh token is an **opaque** value
+          persisted (hashed) as a single-use row. ``family_id`` ties
+          the new token to a rotation lineage; ``None`` starts a fresh
+          family (a brand-new login).
+        * **``refresh_token_model`` is ``None``** — falls back to
+          :meth:`issue_jwt_pair`, the legacy stateless behavior.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. The new
+                refresh row is added + flushed (the caller owns the
+                commit).
+            user (BaseUserModel): The authenticated user.
+            family_id (UUID | None): Existing rotation lineage to
+                attach the new token to. ``None`` starts a new family.
+
+        Returns:
+            tuple[str, str]: ``(access_token, refresh_token)`` — the
+            ``refresh_token`` is plaintext (opaque) or a JWT depending
+            on configuration. The plaintext opaque token is surfaced
+            exactly once; only its hash is persisted.
+        """
+        access = self._encode_access(user)
+        if self.refresh_token_model is None:
+            refresh = self.jwt.encode(
+                {"sub": str(user.id), "refresh": True},
+                ttl=timedelta(seconds=self.jwt_settings.JWT_REFRESH_TTL_SECONDS),
+            )
+            return access, refresh
+        refresh = await self._issue_refresh_record(
+            session, user_id=user.id, family_id=family_id
         )
         return access, refresh
 
@@ -463,45 +538,211 @@ class UserAuthService:
         *,
         refresh_token: str,
     ) -> tuple[BaseUserModel, str, str]:
-        """Exchange a valid refresh JWT for a brand-new ``(access, refresh)`` pair.
+        """Exchange a valid refresh token for a brand-new ``(access, refresh)`` pair.
 
         The password-less counterpart to :meth:`login`: the caller
-        proves their identity with the long-lived refresh token issued
-        by :meth:`issue_jwt_pair` (returned at login / signup /
-        activation / reset / mfa-verify) instead of an email + password.
+        proves their identity with the long-lived refresh token
+        (returned at login / signup / activation / reset / mfa-verify)
+        instead of an email + password. The resolved user must be
+        **active** and a fresh pair is minted — both tokens rotate, so
+        the caller should persist the new refresh token and discard the
+        old one.
 
-        The token is decoded and must carry the ``refresh`` claim, so a
-        stolen *access* token can't be replayed here. The subject is then
-        resolved to an **active** user and a fresh JWT pair is minted —
-        both tokens rotate, so the caller should persist the new refresh
-        token and discard the old one.
+        Behavior depends on whether a refresh-token model is wired:
+
+        * **``refresh_token_model`` set (DB-backed)** — the opaque
+          token is looked up by hash. A token that is unknown, expired
+          or already revoked is rejected with ``401``. Replaying an
+          already-**rotated** token (``used_at`` set) is treated as a
+          stolen-token signal: the **entire family** is revoked and the
+          call raises ``401``. On success the presented token is marked
+          ``used_at`` and a new opaque token is minted in the same
+          family.
+        * **``refresh_token_model`` is ``None`` (stateless / legacy)** —
+          the refresh JWT is decoded and must carry the ``refresh``
+          claim, so a stolen *access* token can't be replayed here.
 
         Args:
             session (AsyncSession): Active SQLAlchemy session.
-            refresh_token (str): The long-lived refresh JWT.
+            refresh_token (str): The long-lived refresh token.
 
         Returns:
             tuple[BaseUserModel, str, str]: ``(user, access_token,
-            refresh_token)`` — the resolved user and the new JWT pair.
+            refresh_token)`` — the resolved user and the new pair.
 
         Raises:
-            ExpiredTokenException: When the refresh token is past its
-                ``exp`` claim (HTTP 401).
-            InvalidTokenException: When the token is malformed, signed
-                with the wrong key, or is not a refresh token (HTTP 401).
+            ExpiredTokenException: Stateless mode only — when the JWT is
+                past its ``exp`` claim (HTTP 401).
+            InvalidTokenException: When the token is unknown, malformed,
+                expired, revoked, reused, or not a refresh token
+                (HTTP 401).
             NotFoundException: When the subject references no user.
             ForbiddenException: When the resolved user is inactive.
         """
-        claims = self.jwt.decode(refresh_token)
-        if not claims.get("refresh"):
-            raise InvalidTokenException(message="not a refresh token")
-        subject = claims.get("sub")
-        if not subject:
-            raise InvalidTokenException(message="refresh token missing subject")
-        user = await self.get_user(subject, session)
+        if self.refresh_token_model is None:
+            claims = self.jwt.decode(refresh_token)
+            if not claims.get("refresh"):
+                raise InvalidTokenException(message="not a refresh token")
+            subject = claims.get("sub")
+            if not subject:
+                raise InvalidTokenException(message="refresh token missing subject")
+            user = await self.get_user(subject, session)
+            require_active(user)
+            access, refresh = self.issue_jwt_pair(user)
+            return user, access, refresh
+
+        record = await self._lookup_refresh_record(session, refresh_token)
+        user = await self.get_user(record.user_id, session)
         require_active(user)
-        access, refresh = self.issue_jwt_pair(user)
+        record.used_at = utcnow()
+        await session.flush()
+        access, refresh = await self.issue_token_pair(
+            session, user, family_id=record.family_id
+        )
         return user, access, refresh
+
+    async def revoke_refresh_token(
+        self,
+        session: AsyncSession,
+        *,
+        refresh_token: str,
+        all_sessions: bool = False,
+    ) -> None:
+        """Revoke a refresh token (logout). Idempotent + best-effort.
+
+        Looks the opaque token up by hash and flips ``revoked_at`` so
+        it can no longer be exchanged at ``POST /auth/refresh``, even
+        before its natural expiry. By default only the token's own
+        **family** (the rotation lineage from one login) is revoked;
+        pass ``all_sessions=True`` to kill every active refresh token
+        the user owns (log out everywhere).
+
+        No-op when ``refresh_token_model`` is not wired (stateless JWTs
+        cannot be revoked) and when the token is unknown — the call
+        never raises so logout endpoints stay idempotent and never leak
+        whether a token existed.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. The
+                update is flushed (the caller owns the commit).
+            refresh_token (str): The opaque refresh token to revoke.
+            all_sessions (bool): When ``True``, revoke every active
+                token of the user, not just this family. Defaults to
+                ``False``.
+        """
+        model = self.refresh_token_model
+        if model is None:
+            return
+        digest = hash_opaque_token(refresh_token)
+        result = await session.execute(select(model).where(model.token_hash == digest))
+        record: BaseUserRefreshTokenModel | None = result.scalar_one_or_none()
+        if record is None:
+            return
+        if all_sessions:
+            await session.execute(
+                update(model)
+                .where(model.user_id == record.user_id, model.revoked_at.is_(None))
+                .values(revoked_at=utcnow())
+            )
+            await session.flush()
+        else:
+            await self._revoke_family(session, record.family_id)
+
+    async def _issue_refresh_record(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: UUID,
+        family_id: UUID | None,
+    ) -> str:
+        """Persist a fresh opaque refresh-token row, return the plaintext.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            user_id (UUID): Owner of the token.
+            family_id (UUID | None): Rotation lineage to attach to;
+                ``None`` starts a new family.
+
+        Returns:
+            str: The plaintext opaque token — surfaced once, never
+            stored in cleartext.
+        """
+        model = self.refresh_token_model
+        assert model is not None  # guarded by callers
+        plain, digest = generate_opaque_token(48)
+        record = model(
+            user_id=user_id,
+            token_hash=digest,
+            family_id=family_id or uuid4(),
+            expires_at=utcnow()
+            + timedelta(seconds=self.jwt_settings.JWT_REFRESH_TTL_SECONDS),
+        )
+        session.add(record)
+        await session.flush()
+        return plain
+
+    async def _lookup_refresh_record(
+        self,
+        session: AsyncSession,
+        token: str,
+    ) -> BaseUserRefreshTokenModel:
+        """Find a refresh-token row + run validity + reuse-detection checks.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            token (str): Plaintext opaque token.
+
+        Returns:
+            BaseUserRefreshTokenModel: The valid, unused, unrevoked
+            token row.
+
+        Raises:
+            InvalidTokenException: When the token is unknown, revoked,
+                expired, or already rotated (reuse — the family is
+                revoked as a side effect before raising).
+        """
+        model = self.refresh_token_model
+        assert model is not None  # guarded by callers
+        digest = hash_opaque_token(token)
+        result = await session.execute(select(model).where(model.token_hash == digest))
+        record: BaseUserRefreshTokenModel | None = result.scalar_one_or_none()
+        if record is None:
+            raise InvalidTokenException(message="refresh token not recognized")
+        if record.revoked_at is not None:
+            raise InvalidTokenException(message="refresh token revoked")
+        if record.used_at is not None:
+            # Reuse of an already-rotated token is the classic stolen-token
+            # signal — kill the whole family so the attacker can't keep the
+            # session alive with the descendant token.
+            await self._revoke_family(session, record.family_id)
+            raise InvalidTokenException(message="refresh token reuse detected")
+        # SQLite stores timestamps as naive UTC; Postgres returns
+        # timezone-aware. Normalize to naive for the comparison so the
+        # same code path works against both backends.
+        now = utcnow().replace(tzinfo=None)
+        expires_at = (
+            record.expires_at.replace(tzinfo=None)
+            if record.expires_at.tzinfo is not None
+            else record.expires_at
+        )
+        if expires_at < now:
+            raise InvalidTokenException(message="refresh token expired")
+        return record
+
+    async def _revoke_family(
+        self,
+        session: AsyncSession,
+        family_id: UUID,
+    ) -> None:
+        """Flip ``revoked_at`` on every still-active token in a family."""
+        model = self.refresh_token_model
+        assert model is not None  # guarded by callers
+        await session.execute(
+            update(model)
+            .where(model.family_id == family_id, model.revoked_at.is_(None))
+            .values(revoked_at=utcnow())
+        )
+        await session.flush()
 
     # ------------------------------------------------------------------
     # Current-user resolution

@@ -43,6 +43,12 @@ from tempest_fastapi_sdk.db.user_recovery_code_model import (
 from tempest_fastapi_sdk.db.user_recovery_code_model import (
     make_user_recovery_code_model as make_user_recovery_code_model,
 )
+from tempest_fastapi_sdk.db.user_refresh_token_model import (
+    BaseUserRefreshTokenModel as BaseUserRefreshTokenModel,
+)
+from tempest_fastapi_sdk.db.user_refresh_token_model import (
+    make_user_refresh_token_model as make_user_refresh_token_model,
+)
 from tempest_fastapi_sdk.db.user_token_model import (
     BaseUserTokenModel as BaseUserTokenModel,
 )
@@ -64,6 +70,7 @@ __all__: list[str] = [
     "BaseRepository",
     "BaseUserModel",
     "BaseUserRecoveryCodeModel",
+    "BaseUserRefreshTokenModel",
     "BaseUserTokenModel",
     "DestructiveMigrationError",
     "MFAMixin",
@@ -76,6 +83,7 @@ __all__: list[str] = [
     "compose_hooks",
     "diff_snapshots",
     "make_user_recovery_code_model",
+    "make_user_refresh_token_model",
     "make_user_token_model",
     "reorder_base_columns_first",
     "snapshot_model",

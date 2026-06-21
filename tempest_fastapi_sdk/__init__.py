@@ -79,6 +79,7 @@ from tempest_fastapi_sdk.auth import (
     ActivationToken,
     LoginResponseSchema,
     LoginSchema,
+    LogoutSchema,
     MFAConfirmSchema,
     MFADisableSchema,
     MFAEnrollResponseSchema,
@@ -124,6 +125,7 @@ from tempest_fastapi_sdk.db import (
     BaseRepository,
     BaseUserModel,
     BaseUserRecoveryCodeModel,
+    BaseUserRefreshTokenModel,
     BaseUserTokenModel,
     DestructiveMigrationError,
     MFAMixin,
@@ -136,6 +138,7 @@ from tempest_fastapi_sdk.db import (
     compose_hooks,
     diff_snapshots,
     make_user_recovery_code_model,
+    make_user_refresh_token_model,
     make_user_token_model,
     reorder_base_columns_first,
     snapshot_model,
@@ -307,7 +310,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.65.0"
+__version__: str = "0.66.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -359,6 +362,7 @@ __all__: list[str] = [
     "BaseStrEnum",
     "BaseUserModel",
     "BaseUserRecoveryCodeModel",
+    "BaseUserRefreshTokenModel",
     "BaseUserTokenModel",
     "BodySizeLimitMiddleware",
     "CORSSettings",
@@ -408,6 +412,7 @@ __all__: list[str] = [
     "LogUtils",
     "LoginResponseSchema",
     "LoginSchema",
+    "LogoutSchema",
     "MFAConfirmSchema",
     "MFADisableSchema",
     "MFAEnrollResponseSchema",
@@ -560,6 +565,7 @@ __all__: list[str] = [
     "make_tool_spec_router",
     "make_unhandled_exception_handler",
     "make_user_recovery_code_model",
+    "make_user_refresh_token_model",
     "make_user_token_model",
     "make_websocket_router",
     "modify_dict",
