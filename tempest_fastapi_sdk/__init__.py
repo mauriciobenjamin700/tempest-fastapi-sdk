@@ -135,6 +135,7 @@ from tempest_fastapi_sdk.db import (
     SoftDeleteMixin,
     TenantScopedRepository,
     UserTokenPurpose,
+    backfill_non_nullable_defaults,
     compose_hooks,
     diff_snapshots,
     make_user_recovery_code_model,
@@ -310,7 +311,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.66.2"
+__version__: str = "0.67.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -512,6 +513,7 @@ __all__: list[str] = [
     "__version__",
     "app_exception_handler",
     "apply_cors",
+    "backfill_non_nullable_defaults",
     "build_content_disposition",
     "build_pagination_link_header",
     "cities_by_uf",

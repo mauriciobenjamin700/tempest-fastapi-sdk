@@ -179,6 +179,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ### Alembic hooks
 
 ::: tempest_fastapi_sdk.db.alembic_hooks.reorder_base_columns_first
+::: tempest_fastapi_sdk.db.alembic_hooks.backfill_non_nullable_defaults
 ::: tempest_fastapi_sdk.db.alembic_hooks.compose_hooks
 
 ---

@@ -897,6 +897,63 @@ print("Schema is in sync.")
     every generated migration lists `id` / `is_active` / `created_at` /
     `updated_at` ahead of your columns — consistent diffs across people.
 
+!!! check "A new `NOT NULL` column no longer explodes (v0.67.0)"
+    Adding a `NOT NULL` column to a table that **already has rows** blows
+    up on PostgreSQL with `NotNullViolationError: column "x" contains null
+    values` — because a Python-side `default=` only fires on ORM inserts,
+    never as DDL. The SDK now installs a second hook,
+    `backfill_non_nullable_defaults`: every added column that is
+    `nullable=False`, has **no** `server_default`, but **does** declare a
+    scalar Python `default` gets a `server_default` derived from that
+    default — so the generated migration backfills existing rows in the
+    same statement.
+
+    ```python
+    # In the model — just the Python default:
+    is_professional: Mapped[bool] = mapped_column(default=False)
+    ```
+
+    ```python
+    # The generated migration now reads (note server_default):
+    op.add_column(
+        "users",
+        sa.Column(
+            "is_professional",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("false"),
+        ),
+    )
+    ```
+
+    Covers `bool` / `int` / `float` / `str` / `Enum` (uses `.value`). It
+    does **not** act when the default is a callable (`uuid4`,
+    `func.now()`) or absent — those need a hand-written data migration,
+    since the SDK cannot infer a safe backfill value.
+
+    Already have an old `env.py`? Update the import + wiring to compose
+    both hooks:
+
+    ```python
+    # alembic/env.py
+    from tempest_fastapi_sdk.db.alembic_hooks import (
+        backfill_non_nullable_defaults,
+        compose_hooks,
+        reorder_base_columns_first,
+    )
+
+    _process_revision_directives = compose_hooks(
+        reorder_base_columns_first,
+        backfill_non_nullable_defaults,
+    )
+
+    # ...and pass it to context.configure(process_revision_directives=...)
+    ```
+
+    For a migration that **already** exploded, add
+    `server_default=sa.text("...")` by hand to the `op.add_column` (or
+    backfill + `alter_column` to drop the default afterwards).
+
 **Recap:** `init` once, `revision --autogenerate` per change, `upgrade` on
 startup, `check` in CI, `safe_upgrade` to protect data.
 

@@ -8,6 +8,9 @@ a "private import usage" / "is not exported" diagnostic.
 """
 
 from tempest_fastapi_sdk.db.alembic_hooks import BASE_COLUMN_ORDER as BASE_COLUMN_ORDER
+from tempest_fastapi_sdk.db.alembic_hooks import (
+    backfill_non_nullable_defaults as backfill_non_nullable_defaults,
+)
 from tempest_fastapi_sdk.db.alembic_hooks import compose_hooks as compose_hooks
 from tempest_fastapi_sdk.db.alembic_hooks import (
     reorder_base_columns_first as reorder_base_columns_first,
@@ -80,6 +83,7 @@ __all__: list[str] = [
     "SoftDeleteMixin",
     "TenantScopedRepository",
     "UserTokenPurpose",
+    "backfill_non_nullable_defaults",
     "compose_hooks",
     "diff_snapshots",
     "make_user_recovery_code_model",

@@ -238,7 +238,7 @@ sequenceDiagram
 
 ## Settings
 
-Mix `AuthSettings` into your `Settings` class (as in the [auth flow recipe](auth-flow.md#settings-authsettings)) and configure via env:
+Mix `AuthSettings` into your `Settings` class (as in the [auth flow recipe](auth-flow.md#settings-environment-variables)) and configure via env:
 
 ```bash
 # .env — MFA

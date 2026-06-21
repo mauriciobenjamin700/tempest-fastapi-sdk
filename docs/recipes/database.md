@@ -901,6 +901,63 @@ print("Schema is in sync.")
     `updated_at` antes das suas colunas — diffs consistentes entre
     pessoas.
 
+!!! check "Coluna `NOT NULL` nova não explode mais (v0.67.0)"
+    Adicionar uma coluna `NOT NULL` numa tabela que **já tem linhas**
+    estoura no Postgres com `NotNullViolationError: column "x" contains
+    null values` — porque um `default=` Python só roda no insert do ORM,
+    nunca como DDL. O SDK agora instala um segundo hook,
+    `backfill_non_nullable_defaults`: toda coluna adicionada que seja
+    `nullable=False`, **sem** `server_default`, mas **com** um `default`
+    escalar no model, recebe um `server_default` derivado desse default —
+    então a migração gerada backfilla as linhas existentes na mesma
+    instrução.
+
+    ```python
+    # No model — só o default Python:
+    is_professional: Mapped[bool] = mapped_column(default=False)
+    ```
+
+    ```python
+    # A migração gerada agora sai assim (note o server_default):
+    op.add_column(
+        "users",
+        sa.Column(
+            "is_professional",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("false"),
+        ),
+    )
+    ```
+
+    Cobre `bool` / `int` / `float` / `str` / `Enum` (usa `.value`). **Não**
+    age quando o default é callable (`uuid4`, `func.now()`) ou inexistente
+    — esses precisam de uma migração de dados escrita à mão, porque o SDK
+    não tem como inferir um valor de backfill seguro.
+
+    Já tem um `env.py` antigo? Atualize o import + wiring para os dois
+    hooks compostos:
+
+    ```python
+    # alembic/env.py
+    from tempest_fastapi_sdk.db.alembic_hooks import (
+        backfill_non_nullable_defaults,
+        compose_hooks,
+        reorder_base_columns_first,
+    )
+
+    _process_revision_directives = compose_hooks(
+        reorder_base_columns_first,
+        backfill_non_nullable_defaults,
+    )
+
+    # ...e passe-o em context.configure(process_revision_directives=...)
+    ```
+
+    Para uma migração **já gerada** que estourou, adicione o
+    `server_default=sa.text("...")` na mão no `op.add_column` (ou
+    backfille + `alter_column` para remover o default depois).
+
 **Recap:** `init` uma vez, `revision --autogenerate` por mudança, `upgrade`
 no startup, `check` no CI, `safe_upgrade` para proteger dados.
 

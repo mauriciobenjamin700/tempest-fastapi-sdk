@@ -5,6 +5,31 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.67.0] — 2026-06-21
+
+### Added
+
+- **`backfill_non_nullable_defaults` Alembic hook** — autogenerate now
+  gives every **added** `NOT NULL` column a `server_default` derived from
+  its scalar Python `default=`, so adding a non-nullable column to a table
+  that already has rows backfills them instead of raising
+  `NotNullViolationError: column "x" contains null values` on PostgreSQL.
+  Covers `bool` / `int` / `float` / `str` / `Enum` (uses `.value`); leaves
+  callable / SQL-expression defaults (`uuid4`, `func.now()`) and
+  default-less columns untouched (those need a hand-written data
+  migration). `CreateTableOp` columns are never touched. Re-exported at
+  the top level and from `tempest_fastapi_sdk.db`.
+
+### Changed
+
+- **The scaffolded `env.py` now composes both revision hooks** —
+  `compose_hooks(reorder_base_columns_first, backfill_non_nullable_defaults)`
+  — so freshly generated migrations are both column-ordered and
+  backfill-safe out of the box. **Existing projects:** update your
+  `alembic/env.py` import + `process_revision_directives` wiring to pick
+  up the new hook (see the "A new `NOT NULL` column no longer explodes"
+  admonition in the Database recipe).
+
 ## [0.66.2] — 2026-06-21
 
 ### Changed
@@ -13,9 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   DB-backed refresh tokens** instead of telling readers to roll their
   own table. The "both tokens rotate" warning now clarifies that
   stateless is just the default, and a new tip links to the
-  [Refresh tokens](recipes/refresh-tokens.md) recipe (opt-in
-  `refresh_token_model` with rotation, reuse detection and
-  `POST /auth/logout`). Docs-only.
+  `docs/recipes/refresh-tokens.md` recipe (opt-in `refresh_token_model`
+  with rotation, reuse detection and `POST /auth/logout`). Docs-only.
 
 ## [0.66.1] — 2026-06-21
 
