@@ -94,6 +94,34 @@ class BasePaginationFilterSchema(BaseSchema):
             exclude=["page", "page_size", "order_by", "ascending"],
         )
 
+    def get_pagination_conditions(self) -> dict[str, Any]:
+        """Return only the pagination and sort keyword arguments.
+
+        Complements :meth:`get_conditions`: where that method strips the
+        pagination keys to expose the domain filters, this one keeps only
+        the pagination keys (``page``, ``page_size``, ``order_by``,
+        ``ascending``). Together they let a service forward a filter
+        schema to :meth:`BaseRepository.paginate` without manually
+        unpacking the model, which would also leak domain filters such as
+        ``is_active`` into kwargs the repository does not accept:
+
+        .. code-block:: python
+
+            data = await repo.paginate(
+                filters=f.get_conditions(),
+                **f.get_pagination_conditions(),
+            )
+
+        Returns:
+            dict[str, Any]: The pagination/sort keyword arguments.
+        """
+        return {
+            "page": self.page,
+            "page_size": self.page_size,
+            "order_by": self.order_by,
+            "ascending": self.ascending,
+        }
+
 
 T = TypeVar("T", bound=BaseSchema)
 
@@ -209,6 +237,34 @@ class CursorPaginationFilterSchema(BaseSchema):
         return self.to_dict(
             exclude=["cursor", "limit", "order_by", "ascending"],
         )
+
+    def get_pagination_conditions(self) -> dict[str, Any]:
+        """Return only the cursor pagination and sort keyword arguments.
+
+        Complements :meth:`get_conditions`: where that method strips the
+        pagination keys to expose the domain filters, this one keeps only
+        the pagination keys (``cursor``, ``limit``, ``order_by``,
+        ``ascending``). Together they let a service forward a filter
+        schema to :meth:`BaseRepository.cursor_paginate` without manually
+        unpacking the model, which would also leak domain filters into
+        kwargs the repository does not accept:
+
+        .. code-block:: python
+
+            data = await repo.cursor_paginate(
+                filters=f.get_conditions(),
+                **f.get_pagination_conditions(),
+            )
+
+        Returns:
+            dict[str, Any]: The cursor pagination/sort keyword arguments.
+        """
+        return {
+            "cursor": self.cursor,
+            "limit": self.limit,
+            "order_by": self.order_by,
+            "ascending": self.ascending,
+        }
 
 
 class CursorPaginationSchema(BaseSchema, Generic[T]):

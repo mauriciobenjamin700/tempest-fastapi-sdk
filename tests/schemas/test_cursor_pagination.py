@@ -63,6 +63,20 @@ class TestCursorPaginationFilterSchema:
         )
         assert filt.get_conditions() == {}
 
+    def test_get_pagination_conditions_keeps_only_pagination_keys(self) -> None:
+        filt = CursorPaginationFilterSchema(
+            cursor="x",
+            limit=5,
+            order_by="title",
+            ascending=True,
+        )
+        assert filt.get_pagination_conditions() == {
+            "cursor": "x",
+            "limit": 5,
+            "order_by": "title",
+            "ascending": True,
+        }
+
 
 class TestCursorPaginate:
     async def test_first_page_no_cursor(self, repo: BaseRepository[Note]) -> None:

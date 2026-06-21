@@ -35,6 +35,23 @@ class TestBasePaginationFilterSchema:
         assert "ascending" not in conditions
         assert conditions["is_active"] is True
 
+    def test_get_pagination_conditions_keeps_only_pagination_keys(self) -> None:
+        result = BasePaginationFilterSchema(
+            page=2,
+            page_size=50,
+            order_by="name",
+            ascending=False,
+            is_active=True,
+        )
+        pagination = result.get_pagination_conditions()
+        assert pagination == {
+            "page": 2,
+            "page_size": 50,
+            "order_by": "name",
+            "ascending": False,
+        }
+        assert "is_active" not in pagination
+
 
 class TestBasePaginationSchema:
     def test_empty_page(self) -> None:

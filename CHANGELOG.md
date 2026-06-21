@@ -5,6 +5,29 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.62.0] — 2026-06-20
+
+### Added
+
+- **`BasePaginationFilterSchema.get_pagination_conditions()`** and
+  **`CursorPaginationFilterSchema.get_pagination_conditions()`** — the
+  counterpart to `get_conditions()`. Where `get_conditions()` strips the
+  pagination keys to expose the domain filters, this returns **only** the
+  pagination/sort keys (`page`/`page_size`/`order_by`/`ascending` for
+  offset, `cursor`/`limit`/`order_by`/`ascending` for cursor). A service
+  can now forward a filter schema to `paginate` / `cursor_paginate`
+  without manually unpacking the model:
+
+    ```python
+    data = await repo.paginate(
+        filters=f.get_conditions(),
+        **f.get_pagination_conditions(),
+    )
+    ```
+
+  This replaces the `**filter_schema` idiom, which leaked domain filters
+  (e.g. `is_active`) into keyword arguments the repository does not accept.
+
 ## [0.61.0] — 2026-06-15
 
 ### Added

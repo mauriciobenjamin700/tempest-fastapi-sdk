@@ -651,6 +651,24 @@ class UserRepository(BaseRepository[UserModel]):
 filtrada, então joins custom ainda reportam total correto. Quando
 `order_by` é `None`, ordena por `created_at desc`.
 
+!!! tip "Encaminhe o schema sem desempacotar à mão"
+    O par `get_conditions()` / `get_pagination_conditions()` cobre os dois
+    lados do filtro: o primeiro devolve só os filtros de domínio, o segundo
+    só as chaves de paginação (`page`, `page_size`, `order_by`,
+    `ascending`). Assim o service repassa o filtro direto, sem `**f` — que
+    vazaria filtros de domínio (`is_active`, etc.) como kwargs que o
+    repository não aceita:
+
+    ```python
+    data = await repo.paginate(
+        filters=f.get_conditions(),
+        **f.get_pagination_conditions(),
+    )
+    ```
+
+    `CursorPaginationFilterSchema` tem o mesmo par (com `cursor` / `limit`
+    no lugar de `page` / `page_size`).
+
 ### Cursor — quando a tabela é grande
 
 A paginação por cursor escala melhor que offset em tabelas grandes (sem
