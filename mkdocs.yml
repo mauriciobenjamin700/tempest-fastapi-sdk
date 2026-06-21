@@ -59,6 +59,13 @@ theme:
     edit: material/pencil
     view: material/eye
 
+# Emite /llms.txt + /llms-full.txt (convenção llmstxt.org) a partir do
+# markdown-fonte PT, no on_post_build. Hook próprio em vez do plugin
+# mkdocs-llmstxt porque este conflita com o mkdocs-static-i18n (reset de
+# estado por locale zera as páginas coletadas).
+hooks:
+  - mkdocs_hooks/llmstxt.py
+
 plugins:
   - search:
       separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
