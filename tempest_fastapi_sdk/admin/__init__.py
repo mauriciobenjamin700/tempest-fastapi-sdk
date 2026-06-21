@@ -18,6 +18,7 @@ from tempest_fastapi_sdk.admin.auth import (
     UserModelAuthBackend,
 )
 from tempest_fastapi_sdk.admin.config import AdminModel, FieldRef, OrderRef
+from tempest_fastapi_sdk.admin.discovery import discover_models
 from tempest_fastapi_sdk.admin.router import make_admin_router
 from tempest_fastapi_sdk.admin.session import (
     AdminSession,
@@ -37,5 +38,6 @@ __all__: list[str] = [
     "SessionStore",
     "SignedCookieSessionStore",
     "UserModelAuthBackend",
+    "discover_models",
     "make_admin_router",
 ]

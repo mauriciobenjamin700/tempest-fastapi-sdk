@@ -70,8 +70,9 @@ from src.db.models import UserModel, OrderModel
 
 site = AdminSite(
     title="MyApp Admin",
+    brand="servus-backend-admin",     # centered header text (optional; defaults to title)
     index_subtitle="Site administration",
-    site_url="https://myapp.com",   # optional outbound "View site" link
+    site_url="https://myapp.com",     # optional outbound "View site" link
 )
 
 site.register(AdminModel(
@@ -86,6 +87,60 @@ site.register(AdminModel(
 ```
 
 Every field reference also accepts a plain string (`list_display=["email", ...]`) for dynamic configuration, and `ordering` accepts a column (ascending), `desc(column)` / `asc(column)`, or a Django-style `"-created_at"` string. `register` returns the instance and raises `ValueError` on a duplicate slug. Slugs default to the model's `__tablename__` so URLs and database tables stay in sync.
+
+!!! tip "Centered, customizable brand"
+    The name shown in the center of the header comes from `brand`
+    (optional). Without it, it falls back to `title` — so existing sites
+    are unchanged. Use `brand` to show a distinct name (e.g.
+    `"servus-backend-admin"`) centered at the top of every page. The
+    sidebar is fixed and **overlays the header and footer** on desktop
+    (higher z-index) — automatic from the bundled CSS, no config.
+
+#### 2b. Shortcut — register every model at once (`automap`)
+
+Instead of one `register` per table, point `automap` at the models
+package and the SDK discovers and registers **every concrete
+`BaseModel`** automatically. Abstract bases (`BaseUserModel` and friends
+— no `__tablename__`) are skipped on their own:
+
+```python
+# src/admin/site.py
+from tempest_fastapi_sdk import AdminModel, AdminSite
+
+site = AdminSite(title="MyApp Admin", brand="servus-backend-admin")
+
+# Load EVERY table under src/db/models in one shot:
+site.automap("src.db.models")
+```
+
+Mix both styles: hand-register the models that need their own config,
+then let `automap` fill in the rest (it skips already-registered slugs
+by default):
+
+```python
+# UserModel gets a tuned config...
+site.register(AdminModel(
+    model=UserModel,
+    list_display=[UserModel.email, UserModel.is_admin],
+    search_fields=[UserModel.email],
+))
+
+# ...and automap registers the rest with defaults.
+site.automap("src.db.models")
+```
+
+`automap` accepts: `exclude=[...]` (class, class name, or table name to
+hide a model), `skip_registered=False` (raise `ValueError` on a
+collision, like `register`), and `**admin_kwargs` applied to all
+(`page_size=50`, `can_delete=False`, ...). To introspect without
+registering, call the `discover_models("src.db.models")` function
+directly.
+
+!!! warning "Uniform config"
+    `automap`'s `**admin_kwargs` apply to **every** discovered model.
+    When a model needs its own `list_display` / `search_fields`,
+    register it by hand **before** `automap` (with the default
+    `skip_registered=True`).
 
 #### 3. Mount the router
 

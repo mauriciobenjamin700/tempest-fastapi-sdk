@@ -64,6 +64,8 @@ textarea {
 }
 
 .tempest-admin-header {
+  position: relative;
+  z-index: 20;
   background: var(--tempest-bg);
   color: #f8fafc;
   padding: 0.75rem 1.5rem;
@@ -73,10 +75,21 @@ textarea {
   box-shadow: var(--tempest-shadow);
 }
 
+/* Centered brand — pinned to the middle of the header (i.e. the screen)
+   regardless of the left (burger) / right (nav) cluster widths. */
+.tempest-admin-header__brand {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+}
+
 .tempest-admin-header__brand a {
   color: #fff;
   font-weight: 600;
   font-size: 1.1rem;
+  pointer-events: auto;
 }
 
 .tempest-admin-header__nav {
@@ -329,6 +342,8 @@ textarea {
 }
 
 .tempest-admin-footer {
+  position: relative;
+  z-index: 20;
   text-align: center;
   padding: 2rem 0;
   color: var(--tempest-fg-soft);
@@ -821,5 +836,25 @@ a.tempest-admin-list__new:hover {
     inset: 0;
     z-index: 40;
     background: rgba(15, 23, 42, 0.45);
+  }
+}
+
+/* ---- Desktop: sidebar overlays the header + footer ---- */
+@media (min-width: 769px) {
+  .tempest-admin-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 100;        /* above header/footer (z-index: 20) */
+    overflow-y: auto;
+    /* Clear the header bar so the first nav link sits below it. */
+    padding-top: 3.75rem;
+  }
+
+  /* The fixed sidebar leaves the flex flow, so reserve its gutter on
+     the layout row to keep the main content from sliding underneath. */
+  .tempest-admin-layout {
+    padding-left: 220px;
   }
 }

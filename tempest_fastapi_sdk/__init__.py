@@ -8,6 +8,7 @@ from tempest_fastapi_sdk.admin import (
     FieldRef,
     OrderRef,
     UserModelAuthBackend,
+    discover_models,
     make_admin_router,
 )
 from tempest_fastapi_sdk.api import (
@@ -311,7 +312,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.67.0"
+__version__: str = "0.68.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -525,6 +526,7 @@ __all__: list[str] = [
     "decode_cursor",
     "default_message_catalog",
     "diff_snapshots",
+    "discover_models",
     "encode_cursor",
     "format_expires_at",
     "generate_csrf_token",

@@ -5,6 +5,29 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.68.0] — 2026-06-21
+
+### Added
+
+- **`AdminSite.automap(source, ...)` + `discover_models(source, ...)`** —
+  register every concrete `BaseModel` under a package in one call
+  instead of one `register` per table. Point it at a dotted module path
+  (`"src.db.models"`) or a module; abstract bases (no `__tablename__`)
+  are skipped automatically. Supports `exclude=` (class / class name /
+  table name), `skip_registered=` (default `True`, so hand-tuned admins
+  registered first are preserved), and `**admin_kwargs` applied
+  uniformly. `discover_models` is re-exported at the top level.
+- **`AdminSite(brand=...)`** — optional centered header brand text,
+  exposed to templates via the new `AdminSite.brand_text` property
+  (falls back to `title` when unset, so existing sites are unchanged).
+
+### Changed
+
+- **Admin panel layout** — the header brand is now **centered** on
+  screen, and on desktop (≥769px) the sidebar is **fixed full-height and
+  overlays the header and footer** (raised `z-index`); the mobile
+  off-canvas behavior is unchanged. Bundled-CSS only, no config.
+
 ## [0.67.0] — 2026-06-21
 
 ### Added
