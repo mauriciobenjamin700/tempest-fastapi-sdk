@@ -5,6 +5,15 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.66.1] — 2026-06-21
+
+### Changed
+
+- **Docs: the "Receitas" / "Recipes" nav is now sorted alphabetically**
+  by label (the landing `recipes/index.md` stays first), so readers can
+  scan and find a recipe predictably. Docs-only change — no public API
+  delta.
+
 ## [0.66.0] — 2026-06-21
 
 ### Added

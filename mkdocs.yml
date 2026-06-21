@@ -210,39 +210,39 @@ nav:
   - Tutorial: tutorial.md
   - Receitas:
       - recipes/index.md
-      - Banco de dados: recipes/database.md
-      - Multi-tenant: recipes/multi-tenant.md
-      - Audit trail: recipes/audit-trail.md
-      - Camada HTTP: recipes/http.md
-      - "HTTP client (saída)": recipes/http-client.md
-      - Cache: recipes/cache.md
-      - Feature flags: recipes/feature-flags.md
-      - Tempo real: recipes/realtime.md
-      - WebSocket router: recipes/websocket.md
-      - Fila e Tarefas: recipes/queue-tasks.md
-      - Outbox transacional: recipes/outbox.md
-      - Email transacional: recipes/email.md
-      - Web Push: recipes/webpush.md
-      - Logging: recipes/logging.md
-      - "Observabilidade (tracing)": recipes/observability.md
-      - Storage (MinIO/S3): recipes/storage.md
-      - Uploads (backends): recipes/uploads.md
       - "Arquivo no serviço (mixin)": recipes/stored-files.md
-      - Downloads: recipes/downloads.md
-      - Idempotência: recipes/idempotency.md
-      - Sync offline-first (delta): recipes/offline-sync.md
+      - Audit trail: recipes/audit-trail.md
       - Auth flow (signup/reset): recipes/auth-flow.md
-      - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md
-      - MFA (TOTP / 2FA): recipes/mfa.md
-      - Sessões server-side: recipes/sessions.md
-      - Métricas: recipes/metrics.md
-      - Painel admin: recipes/admin.md
-      - Testes: recipes/testing.md
-      - "Deploy seguro (migrations + shutdown)": recipes/deploy-safety.md
+      - Banco de dados: recipes/database.md
+      - Cache: recipes/cache.md
+      - Camada HTTP: recipes/http.md
       - CLI: recipes/cli.md
-      - Segurança: recipes/security.md
-      - Utilitários: recipes/utilities.md
+      - "Deploy seguro (migrations + shutdown)": recipes/deploy-safety.md
+      - Downloads: recipes/downloads.md
+      - Email transacional: recipes/email.md
+      - Feature flags: recipes/feature-flags.md
+      - Fila e Tarefas: recipes/queue-tasks.md
       - Helpers brasileiros: recipes/br-helpers.md
+      - "HTTP client (saída)": recipes/http-client.md
+      - Idempotência: recipes/idempotency.md
+      - Logging: recipes/logging.md
+      - Métricas: recipes/metrics.md
+      - MFA (TOTP / 2FA): recipes/mfa.md
+      - Multi-tenant: recipes/multi-tenant.md
+      - "Observabilidade (tracing)": recipes/observability.md
+      - Outbox transacional: recipes/outbox.md
+      - Painel admin: recipes/admin.md
+      - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md
+      - Segurança: recipes/security.md
+      - Sessões server-side: recipes/sessions.md
+      - Storage (MinIO/S3): recipes/storage.md
+      - Sync offline-first (delta): recipes/offline-sync.md
+      - Tempo real: recipes/realtime.md
+      - Testes: recipes/testing.md
+      - Uploads (backends): recipes/uploads.md
+      - Utilitários: recipes/utilities.md
+      - Web Push: recipes/webpush.md
+      - WebSocket router: recipes/websocket.md
   - Referência: reference.md
   - Projetos de aprendizado:
       - learning/index.md
