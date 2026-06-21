@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.64.1] — 2026-06-21
+
+### Fixed
+
+- **`StoredFileServiceMixin` now composes cleanly with `BaseService` under
+  strict mypy.** The mixin declared `repository: BaseRepository[ModelType]`,
+  which clashed with `BaseService`'s own generic `repository` attribute and
+  made `class X(BaseService[...], StoredFileServiceMixin[...])` fail type
+  checking (`Definition of "repository" ... is incompatible`). The mixin no
+  longer re-types the host-provided `repository`; its public methods stay
+  precisely typed via `ModelType`.
+
 ## [0.64.0] — 2026-06-21
 
 ### Added

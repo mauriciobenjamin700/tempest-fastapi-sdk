@@ -35,8 +35,6 @@ from tempest_fastapi_sdk.db.model import BaseModel
 if TYPE_CHECKING:
     from fastapi import UploadFile
 
-    from tempest_fastapi_sdk.db.repository import BaseRepository
-
 ModelType = TypeVar("ModelType", bound=BaseModel)
 
 # One hour matches AsyncMinIOClient.presigned_get_url's own default.
@@ -116,7 +114,12 @@ class StoredFileServiceMixin(Generic[ModelType]):
         storage (SupportsPresign): Supplied by the service.
     """
 
-    repository: BaseRepository[ModelType]
+    # ``repository`` is provided by the host service (typically
+    # :class:`BaseService`, which types it as its own ``RepositoryT``).
+    # Annotated ``Any`` so combining the mixin with that base does not trip
+    # mypy's multiple-inheritance check on a conflicting ``repository``
+    # declaration; the public methods stay precisely typed via ``ModelType``.
+    repository: Any
     upload_utils: SupportsUpload
     storage: SupportsPresign
 
@@ -155,7 +158,7 @@ class StoredFileServiceMixin(Generic[ModelType]):
             AppException: ``repository.not_found_exception`` when ``ref`` is
                 an id with no matching row.
         """
-        entity = await self.repository.resolve(ref)
+        entity: ModelType = await self.repository.resolve(ref)
         old_key: Any = getattr(entity, field)
         new_key = await self.upload_utils.replace(
             old_key,
@@ -165,7 +168,8 @@ class StoredFileServiceMixin(Generic[ModelType]):
             keep_original_name=keep_original_name,
         )
         setattr(entity, field, str(new_key))
-        return await self.repository.update(entity)
+        updated: ModelType = await self.repository.update(entity)
+        return updated
 
     async def clear_file(
         self,
@@ -190,13 +194,14 @@ class StoredFileServiceMixin(Generic[ModelType]):
             AppException: ``repository.not_found_exception`` when ``ref`` is
                 an id with no matching row.
         """
-        entity = await self.repository.resolve(ref)
+        entity: ModelType = await self.repository.resolve(ref)
         old_key: Any = getattr(entity, field)
         if not old_key:
             return entity
         await self.upload_utils.delete(old_key)
         setattr(entity, field, None)
-        return await self.repository.update(entity)
+        updated: ModelType = await self.repository.update(entity)
+        return updated
 
     async def file_url(
         self,
