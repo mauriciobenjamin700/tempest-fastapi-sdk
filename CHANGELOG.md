@@ -5,6 +5,33 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.64.0] — 2026-06-21
+
+### Added
+
+- **`StoredFileServiceMixin[Model]`** — a service mixin that encodes the
+  single-key stored-file flow once, parameterized by field name:
+  - `set_file(ref, file, *, field, subdir=..., filename=..., keep_original_name=...)`
+    resolves the entity (detach-safe), uploads the new file and deletes the
+    old one via `UploadUtils.replace` (new written before old deleted),
+    writes the key back and commits.
+  - `clear_file(ref, *, field)` deletes the object and nulls the field
+    (no-op, no commit, when the field is already empty).
+  - `file_url(key, *, expires=...)` returns a presigned download URL, or
+    `None` for an empty key.
+
+  Removes the ~13-line boilerplate every service reimplements for avatars,
+  banners, covers and attachments. Reads its `upload_utils` and `storage`
+  collaborators off `self`, so the owning service keeps configuration (size
+  limits, allowed types, bucket). Covers the common "one key field →
+  presigned URL" case; resize/thumbnail pipelines, multi-variant assets and
+  galleries are out of scope (compose `UploadUtils` directly). See the
+  **Arquivo no serviço (mixin)** recipe.
+- **`SupportsUpload`** and **`SupportsPresign`** — structural-typing
+  protocols describing the collaborators `StoredFileServiceMixin` needs
+  (satisfied by `UploadUtils` and `AsyncMinIOClient`), so importing the
+  mixin never pulls the optional `[upload]` / `[minio]` extras.
+
 ## [0.63.0] — 2026-06-21
 
 ### Changed

@@ -220,6 +220,7 @@ nav:
       - "Observabilidade (tracing)": recipes/observability.md
       - Storage (MinIO/S3): recipes/storage.md
       - Uploads (backends): recipes/uploads.md
+      - "Arquivo no serviço (mixin)": recipes/stored-files.md
       - Downloads: recipes/downloads.md
       - Idempotência: recipes/idempotency.md
       - Sync offline-first (delta): recipes/offline-sync.md
