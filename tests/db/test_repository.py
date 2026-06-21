@@ -3,11 +3,12 @@
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import Integer, String
+from sqlalchemy import Integer, String, inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
     BaseModel,
     BaseRepository,
     ConflictException,
@@ -234,6 +235,36 @@ class TestResolve:
 
         with pytest.raises(ProductNotFoundError):
             await repo.resolve(uuid4())
+
+    async def test_reattaches_detached_instance(self, db: AsyncDatabaseManager) -> None:
+        """A detached instance is merged into the repository's session.
+
+        Reproduces the production footgun: an instance loaded on one
+        session (then closed → detached) is handed to a repository bound
+        to a *different* session. ``resolve`` must re-attach it so a
+        subsequent ``update`` commits instead of raising
+        ``InvalidRequestError: Instance is not persistent``.
+        """
+        async with db.get_session_context() as first:
+            product = Product(name="apple", category="fruit")
+            first.add(product)
+            await first.commit()
+        # ``first`` is closed here → ``product`` is detached.
+        assert inspect(product).detached is True
+
+        async with db.get_session_context() as second:
+            repo = ProductRepository(second)
+            resolved = await repo.resolve(product)
+
+            assert inspect(resolved).detached is False
+            resolved.category = "pomes"
+            updated = await repo.update(resolved)
+            assert updated.category == "pomes"
+
+        async with db.get_session_context() as verify:
+            reloaded = await verify.get(Product, product.id)
+            assert reloaded is not None
+            assert reloaded.category == "pomes"
 
 
 class TestGetOrNone:

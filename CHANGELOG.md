@@ -5,6 +5,41 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.63.0] — 2026-06-21
+
+### Changed
+
+- **`UserAuthService.current_user_dependency()` now loads the authenticated
+  user on the request-scoped session** (`db.session_dependency` by default)
+  instead of opening its own short-lived session through `load_user`.
+  Previously the returned `UserModel` was **detached** — mutating it and
+  committing/refreshing on the request's repository session raised
+  `InvalidRequestError: Instance is not persistent within this Session`,
+  and lazy-relationship access raised `DetachedInstanceError`. The user is
+  now attached to the same session repositories use. **Breaking** only for
+  apps whose repositories do not share the auth service's session callable;
+  pass `session_dependency=` to point both at the same provider. See the
+  **Migration guide** (`docs/migration.md`). The single-argument `user_loader` path
+  of `make_jwt_user_dependency` is unchanged; the new behavior is opt-in via
+  the new `session_dependency=` parameter (which `current_user_dependency`
+  now passes by default).
+- **`BaseRepository.resolve()` re-attaches detached instances** via
+  `session.merge()` instead of returning them as-is. A detached model passed
+  to a mutating service is brought back into the active session, so the
+  subsequent `update()` commits instead of raising. `merge` issues a
+  `SELECT` only when the row is not already in the session's identity map.
+
+### Added
+
+- **`make_jwt_user_dependency(..., session_dependency=...)`** — when given a
+  request-scoped session provider, the dependency injects it and calls the
+  two-argument loader `user_loader(subject, session)`, sharing the session
+  with the request's repositories.
+- **`UserAuthService.current_user_dependency(session_dependency=...)`** —
+  override the session provider shared with repositories (defaults to
+  `self.db.session_dependency`). Now raises `RuntimeError` eagerly when the
+  service was built without `db=`.
+
 ## [0.62.0] — 2026-06-20
 
 ### Added

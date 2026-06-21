@@ -139,6 +139,7 @@ def make_jwt_user_dependency(
     bearer_scheme: HTTPBearer | None = None,
     subject_claim: str = "sub",
     error_message: str = "Authorization token is missing or invalid",
+    session_dependency: Callable[..., Any] | None = None,
 ) -> Callable[..., Coroutine[Any, Any, Any]]:
     """Build a FastAPI dependency that returns the authenticated user.
 
@@ -150,15 +151,33 @@ def make_jwt_user_dependency(
     4. Awaits ``user_loader(<id>)`` and returns whatever it yields.
 
     ``user_loader`` is the single seam where the service maps
-    ``payload[subject_claim]`` to an actual user. It's an async
-    callable (so it can open / close its own DB session) — the SDK
-    doesn't impose a session shape.
+    ``payload[subject_claim]`` to an actual user.
+
+    **Session sharing.** When ``session_dependency`` is given, the
+    returned dependency declares it as a sub-dependency and calls the
+    two-argument ``user_loader(subject, session)`` with the
+    **request-scoped** session. Because FastAPI caches a sub-dependency
+    by its callable within a single request, the authenticated user is
+    loaded on the *same* session the request's repositories use — so the
+    instance stays attached and can be mutated / refreshed without the
+    ``InvalidRequestError: Instance is not persistent within this
+    Session`` that a per-loader private session would cause. Pass the
+    **exact** callable your repositories depend on (e.g.
+    ``db.session_dependency``); a different wrapper would resolve to a
+    second, distinct session and defeat the sharing.
+
+    When ``session_dependency`` is ``None`` the loader is called with a
+    single argument (``user_loader(subject)``) and owns its own session
+    lifecycle — useful outside a request scope, but it yields a
+    **detached** instance.
 
     Args:
         tokens (JWTUtils): The JWT helper used to verify the token.
         user_loader (Callable[..., Coroutine[Any, Any, Any]]): Async
             callable that receives the subject (typically the user id
-            as a string) and returns the loaded user. Raise
+            as a string) and returns the loaded user. When
+            ``session_dependency`` is set it is called as
+            ``user_loader(subject, session)``. Raise
             :class:`UnauthorizedException` or
             :class:`NotFoundException` from inside the loader when the
             user no longer exists.
@@ -169,6 +188,10 @@ def make_jwt_user_dependency(
             Defaults to ``"sub"``.
         error_message (str): Message attached to the raised
             :class:`UnauthorizedException` when ``soft`` is ``False``.
+        session_dependency (Callable[..., Any] | None): The
+            request-scoped session provider to share with repositories.
+            When set, ``user_loader`` is called with ``(subject,
+            session)``.
 
     Returns:
         Callable[..., Coroutine[Any, Any, Any]]: An async FastAPI
@@ -181,20 +204,41 @@ def make_jwt_user_dependency(
         error_message=error_message,
     )
 
-    async def _current_user(
-        payload: dict[str, Any] | None = Depends(decode_bearer),
-    ) -> Any:
-        if payload is None:
-            return None
-        subject = payload.get(subject_claim)
-        if subject is None:
-            if soft:
-                return None
-            raise UnauthorizedException(message=error_message)
-        return await user_loader(subject)
+    if session_dependency is None:
 
-    _current_user.__doc__ = "Decode the bearer JWT and resolve the authenticated user."
-    return _current_user
+        async def _current_user_owns_session(
+            payload: dict[str, Any] | None = Depends(decode_bearer),
+        ) -> Any:
+            if payload is None:
+                return None
+            subject = payload.get(subject_claim)
+            if subject is None:
+                if soft:
+                    return None
+                raise UnauthorizedException(message=error_message)
+            return await user_loader(subject)
+
+        dependency = _current_user_owns_session
+
+    else:
+
+        async def _current_user_shared_session(
+            payload: dict[str, Any] | None = Depends(decode_bearer),
+            session: Any = Depends(session_dependency),
+        ) -> Any:
+            if payload is None:
+                return None
+            subject = payload.get(subject_claim)
+            if subject is None:
+                if soft:
+                    return None
+                raise UnauthorizedException(message=error_message)
+            return await user_loader(subject, session)
+
+        dependency = _current_user_shared_session
+
+    dependency.__doc__ = "Decode the bearer JWT and resolve the authenticated user."
+    return dependency
 
 
 def make_role_dependency(

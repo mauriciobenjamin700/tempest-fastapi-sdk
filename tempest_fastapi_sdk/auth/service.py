@@ -528,11 +528,12 @@ class UserAuthService:
         self,
         *,
         soft: bool = False,
+        session_dependency: Callable[..., Any] | None = None,
     ) -> Callable[..., Coroutine[Any, Any, Any]]:
         """Build a FastAPI dependency that returns the authenticated user.
 
         Wraps :func:`tempest_fastapi_sdk.make_jwt_user_dependency` with
-        this service's own :class:`JWTUtils` and :meth:`load_user`, so
+        this service's own :class:`JWTUtils` and :meth:`get_user`, so
         the bearer token is verified with the **same** secret the
         service signs with — there is no second ``JWTUtils`` to keep in
         sync. Mount it on any of your routes:
@@ -542,23 +543,49 @@ class UserAuthService:
             ...     soft=True
             ... )
 
-        Requires the service to have been built with ``db=`` (consumed
-        lazily by :meth:`load_user` on the first authenticated request).
+        The authenticated user is loaded on the **request-scoped**
+        session (``self.db.session_dependency`` by default), so it is
+        attached to the same session the request's repositories use and
+        can be mutated / refreshed without an
+        ``InvalidRequestError: Instance is not persistent within this
+        Session``. If your repositories depend on a different session
+        callable (e.g. a project-local ``get_session`` wrapper), pass it
+        as ``session_dependency`` so both resolve to the *same* request
+        session — FastAPI caches a sub-dependency by its callable, so a
+        distinct wrapper would open a second session and detach the user.
+
+        Requires the service to have been built with ``db=``.
 
         Args:
             soft (bool): When ``True``, the dependency returns ``None``
                 instead of raising on a missing / invalid token — for
                 endpoints that work both authenticated and anonymous.
+            session_dependency (Callable[..., Any] | None): The
+                request-scoped session provider to share with
+                repositories. Defaults to ``self.db.session_dependency``.
 
         Returns:
             Callable[..., Coroutine[Any, Any, Any]]: An async FastAPI
             dependency yielding the user (or ``None`` in soft mode).
+
+        Raises:
+            RuntimeError: When the service was created without ``db=``.
         """
+        if self.db is None:
+            raise RuntimeError(
+                "UserAuthService was created without `db=`; pass an "
+                "AsyncDatabaseManager to use current_user_dependency."
+            )
         from tempest_fastapi_sdk.api.dependencies.auth import (
             make_jwt_user_dependency,
         )
 
-        return make_jwt_user_dependency(self.jwt, self.load_user, soft=soft)
+        return make_jwt_user_dependency(
+            self.jwt,
+            self.get_user,
+            soft=soft,
+            session_dependency=session_dependency or self.db.session_dependency,
+        )
 
     # ------------------------------------------------------------------
     # Authorization guards (imperative, on an already-loaded user)

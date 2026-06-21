@@ -1064,6 +1064,15 @@ async def me(current: UserModel = Depends(get_current_user)) -> UserResponseSche
 > get_current_user = auth_service.current_user_dependency()
 > get_current_user_or_none = auth_service.current_user_dependency(soft=True)
 > ```
+>
+> The authenticated user is loaded on the **request-scoped session**
+> (`db.session_dependency`), so it is attached to the same session your
+> repositories use — you can mutate it and `commit`/`refresh` without an
+> `InvalidRequestError: Instance is not persistent within this Session`.
+> Keep one shared session callable (`get_session = db.session_dependency`)
+> for FastAPI to deduplicate them; if your repositories depend on a
+> different `get_session` wrapper, pass it as
+> `current_user_dependency(session_dependency=get_session)`.
 
 #### Soft auth (optional user)
 
