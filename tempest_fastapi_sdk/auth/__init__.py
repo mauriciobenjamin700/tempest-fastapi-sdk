@@ -54,6 +54,7 @@ from tempest_fastapi_sdk.auth.schemas import (
     PasswordResetResponseSchema as PasswordResetResponseSchema,
 )
 from tempest_fastapi_sdk.auth.schemas import PasswordResetToken as PasswordResetToken
+from tempest_fastapi_sdk.auth.schemas import RefreshSchema as RefreshSchema
 from tempest_fastapi_sdk.auth.schemas import (
     SignupResponseSchema as SignupResponseSchema,
 )
@@ -76,6 +77,7 @@ __all__: list[str] = [
     "PasswordResetRequestSchema",
     "PasswordResetResponseSchema",
     "PasswordResetToken",
+    "RefreshSchema",
     "SignupResponseSchema",
     "SignupSchema",
     "UserAuthService",

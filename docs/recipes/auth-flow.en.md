@@ -1,6 +1,6 @@
 # Bundled auth flow (signup / activate / login / reset)
 
-Since v0.31.0 the SDK ships the full local-account lifecycle — email + password signup, link-based activation, JWT-pair login, password reset — via `UserAuthService` + `make_auth_router`. **Five endpoints ready to mount**, Jinja2 templates bundled, settings flags decide whether the link is emailed or returned in the response body, and four pre-thought modes for dev / staging / production / CI.
+Since v0.31.0 the SDK ships the full local-account lifecycle — email + password signup, link-based activation, JWT-pair login, password reset — via `UserAuthService` + `make_auth_router`. **Endpoints ready to mount** (including `POST /auth/refresh` since v0.65.0), Jinja2 templates bundled, settings flags decide whether the link is emailed or returned in the response body, and four pre-thought modes for dev / staging / production / CI.
 
 ## Recipe contents
 
@@ -130,6 +130,7 @@ uv run tempest db upgrade
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Always HTTP 202 + generic body. Link via email (A/B) or body (C). |
 | POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consumes token + writes new password + issues JWT pair. |
 | POST | `/auth/password-change` | `PasswordChangeSchema` → `204` | **Authenticated** (bearer token). Change your own password: confirm the current password + write the new one. No email token. |
+| POST | `/auth/refresh` *(v0.65.0+)* | `RefreshSchema` → `LoginResponseSchema` | Exchange a valid **refresh token** for a fresh JWT pair. **No email/password.** Rejects a replayed access token (401) and inactive accounts (403). |
 
 !!! tip "`password-reset/confirm` vs `password-change` — which is which?"
     These are **different** flows, don't mix them up:
@@ -143,6 +144,49 @@ uv run tempest db upgrade
       `Authorization: Bearer …` header and re-confirm their
       `current_password`. No email or reset token involved. Returns
       **204** and the current tokens stay valid.
+
+### Renewing the session with the refresh token
+
+The `access_token` is short-lived by design (`JWT_ACCESS_TTL_SECONDS`,
+1 h default). When it expires, **don't force the user to log in again** —
+exchange the `refresh_token` (long-lived, 7 days default) for a fresh
+pair at `POST /auth/refresh`:
+
+```bash
+curl -X POST localhost:8000/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token": "eyJhbGciOi…"}'
+```
+
+```json
+{
+  "user_id": "7d8e4d5a-9f4b-4c3a-bd0a-1234567890ab",
+  "access_token": "eyJhbGciOi…(new)",
+  "refresh_token": "eyJhbGciOi…(new)",
+  "mfa_required": false,
+  "mfa_token": null
+}
+```
+
+The endpoint decodes the token, requires it to actually carry the
+`refresh` claim (a replayed **access** token is rejected with **401**),
+resolves the `sub` to an **active** user and mints a new pair.
+
+!!! warning "Both tokens rotate"
+    The response carries a **new** `refresh_token`. Persist that one and
+    discard the token you sent. Since the SDK issues **stateless** JWTs,
+    the old pair is not revoked — it stays valid until its own `exp`. If
+    you need real revocation (a logout that invalidates the refresh
+    immediately), store the issued refresh tokens in a table and check
+    them on renewal.
+
+!!! tip "When the refresh token expires too"
+    Then no renewal is possible — the **401** is final and the client
+    falls back to `POST /auth/login` with email + password.
+
+No frontend? The service method behind the endpoint is public —
+`await service.refresh_tokens(session, refresh_token=...)` returns
+`(user, access_token, refresh_token)`.
 
 ---
 

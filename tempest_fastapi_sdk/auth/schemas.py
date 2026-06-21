@@ -288,6 +288,27 @@ class LoginResponseSchema(BaseSchema):
     )
 
 
+class RefreshSchema(BaseSchema):
+    """Request body for ``POST /auth/refresh``.
+
+    Carries the long-lived refresh token so the caller can mint a fresh
+    ``access_token`` + ``refresh_token`` pair without re-entering their
+    email and password. Both tokens rotate on success — store the new
+    refresh token and discard the one sent here.
+
+    Attributes:
+        refresh_token (str): The refresh JWT issued by login / signup /
+            activation / password-reset / mfa-verify. Must still carry
+            the ``refresh`` claim and not be expired.
+    """
+
+    refresh_token: str = Field(
+        title="JWT refresh token",
+        description="The long-lived refresh token to exchange for a new pair.",
+        examples=["eyJhbGciOi…"],
+    )
+
+
 class PasswordResetRequestSchema(BaseSchema):
     """Request body for ``POST /auth/password-reset/request``.
 

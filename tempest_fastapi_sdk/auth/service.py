@@ -457,6 +457,52 @@ class UserAuthService:
         )
         return access, refresh
 
+    async def refresh_tokens(
+        self,
+        session: AsyncSession,
+        *,
+        refresh_token: str,
+    ) -> tuple[BaseUserModel, str, str]:
+        """Exchange a valid refresh JWT for a brand-new ``(access, refresh)`` pair.
+
+        The password-less counterpart to :meth:`login`: the caller
+        proves their identity with the long-lived refresh token issued
+        by :meth:`issue_jwt_pair` (returned at login / signup /
+        activation / reset / mfa-verify) instead of an email + password.
+
+        The token is decoded and must carry the ``refresh`` claim, so a
+        stolen *access* token can't be replayed here. The subject is then
+        resolved to an **active** user and a fresh JWT pair is minted —
+        both tokens rotate, so the caller should persist the new refresh
+        token and discard the old one.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            refresh_token (str): The long-lived refresh JWT.
+
+        Returns:
+            tuple[BaseUserModel, str, str]: ``(user, access_token,
+            refresh_token)`` — the resolved user and the new JWT pair.
+
+        Raises:
+            ExpiredTokenException: When the refresh token is past its
+                ``exp`` claim (HTTP 401).
+            InvalidTokenException: When the token is malformed, signed
+                with the wrong key, or is not a refresh token (HTTP 401).
+            NotFoundException: When the subject references no user.
+            ForbiddenException: When the resolved user is inactive.
+        """
+        claims = self.jwt.decode(refresh_token)
+        if not claims.get("refresh"):
+            raise InvalidTokenException(message="not a refresh token")
+        subject = claims.get("sub")
+        if not subject:
+            raise InvalidTokenException(message="refresh token missing subject")
+        user = await self.get_user(subject, session)
+        require_active(user)
+        access, refresh = self.issue_jwt_pair(user)
+        return user, access, refresh
+
     # ------------------------------------------------------------------
     # Current-user resolution
     # ------------------------------------------------------------------

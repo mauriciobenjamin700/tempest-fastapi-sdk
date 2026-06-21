@@ -5,6 +5,24 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.65.0] — 2026-06-21
+
+### Added
+
+- **`POST /auth/refresh` on the bundled auth router** — exchange a valid
+  refresh token for a brand-new `access_token` + `refresh_token` pair
+  **without** re-entering email + password. The token must carry the
+  `refresh` claim (a replayed *access* token is rejected with `401`), the
+  subject must resolve to an **active** user (inactive → `403`), and an
+  expired / malformed / wrongly-signed token returns `401`. Both tokens
+  rotate on success. Response reuses `LoginResponseSchema`.
+- **`UserAuthService.refresh_tokens(session, *, refresh_token)`** — the
+  public service method behind the endpoint, returning
+  `(user, access_token, refresh_token)` for callers that drive the flow
+  without the router.
+- **`RefreshSchema`** — request body for the new endpoint, re-exported at
+  the top level (`from tempest_fastapi_sdk import RefreshSchema`).
+
 ## [0.64.1] — 2026-06-21
 
 ### Fixed

@@ -56,6 +56,7 @@ from tempest_fastapi_sdk.auth.schemas import (
     PasswordResetConfirmSchema,
     PasswordResetRequestSchema,
     PasswordResetResponseSchema,
+    RefreshSchema,
     SignupResponseSchema,
     SignupSchema,
 )
@@ -416,6 +417,44 @@ def make_auth_router(
             new_password=payload.new_password,
         )
         await session.commit()
+
+    @router.post(
+        "/refresh",
+        response_model=LoginResponseSchema,
+        summary="Exchange a refresh token for a fresh JWT pair",
+        description=(
+            "Mint a brand-new ``access_token`` + ``refresh_token`` pair "
+            "from a valid **refresh token** — no email or password "
+            "required. This is how a client keeps a session alive once "
+            "the short-lived ``access_token`` expires: replay the "
+            "long-lived ``refresh_token`` here instead of forcing the "
+            "user to log in again.\n\n"
+            "The submitted token must actually be a refresh token (it "
+            "carries the ``refresh`` claim) — a stolen *access* token "
+            "replayed here is rejected with **401**. An expired, "
+            "malformed, or wrongly-signed token also returns **401**, and "
+            "an inactive account returns **403**.\n\n"
+            "!!! warning\n"
+            "    Both tokens **rotate**: the response carries a new "
+            "    refresh token. Persist that one and discard the token "
+            "    you sent — the old pair is independent and stays valid "
+            "    until its own expiry (the SDK issues stateless JWTs and "
+            "    does not revoke the previous refresh token)."
+        ),
+    )
+    async def refresh(
+        payload: RefreshSchema,
+        session: AsyncSession = session_dep,
+    ) -> LoginResponseSchema:
+        user, access, refresh_token = await service.refresh_tokens(
+            session,
+            refresh_token=payload.refresh_token,
+        )
+        return LoginResponseSchema(
+            user_id=user.id,
+            access_token=access,
+            refresh_token=refresh_token,
+        )
 
     # ------------------------------------------------------------------
     # Backend-only HTML endpoints — mounted only when AUTH_BACKEND_LINKS.
