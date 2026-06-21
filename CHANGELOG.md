@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.66.2] — 2026-06-21
+
+### Changed
+
+- **Docs: the auth-flow refresh section now points to the built-in
+  DB-backed refresh tokens** instead of telling readers to roll their
+  own table. The "both tokens rotate" warning now clarifies that
+  stateless is just the default, and a new tip links to the
+  [Refresh tokens](recipes/refresh-tokens.md) recipe (opt-in
+  `refresh_token_model` with rotation, reuse detection and
+  `POST /auth/logout`). Docs-only.
+
 ## [0.66.1] — 2026-06-21
 
 ### Changed

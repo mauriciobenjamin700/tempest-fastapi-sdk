@@ -173,10 +173,17 @@ resolve o `sub` pra um usuário **ativo** e emite um par novo.
 
 !!! warning "Os dois tokens rotacionam"
     A resposta traz um `refresh_token` **novo**. Persista esse e descarte
-    o que você enviou. Como o SDK emite JWTs **stateless**, o par antigo
-    não é revogado — ele continua válido até o próprio `exp`. Se você
-    precisa de revogação real (logout que invalida o refresh na hora),
-    guarde os refresh tokens emitidos numa tabela e cheque na renovação.
+    o que você enviou. No modo **stateless** (default) o SDK emite JWTs,
+    então o par antigo não é revogado — ele continua válido até o próprio
+    `exp`.
+
+!!! tip "Precisa de revogação real? O SDK já entrega"
+    Não escreva sua própria tabela de refresh tokens — desde a
+    **v0.66.0** o SDK oferece refresh tokens **DB-backed opacos** com
+    rotação single-use, **detecção de reuso** (token roubado revoga a
+    família inteira) e `POST /auth/logout`. É opt-in: passe um
+    `refresh_token_model` pro `UserAuthService`. Veja a receita
+    [Refresh tokens (rotação/revogação)](refresh-tokens.md).
 
 !!! tip "Quando o refresh token também expira"
     Aí não tem renovação possível — o **401** é definitivo e o cliente
