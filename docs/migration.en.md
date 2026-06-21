@@ -2,6 +2,36 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**.
 
+## 0.63.0 — authenticated user loaded on the request session
+
+Before 0.63.0, `UserAuthService.current_user_dependency()` loaded the authenticated user through `load_user`, which opened its **own** session (via `db.get_session_context()`) and closed it on exit. The `UserModel` handed to the route was therefore **detached**: mutating it and calling `commit`/`refresh` on the request session (the one your repositories use) raised
+`InvalidRequestError: Instance is not persistent within this Session`.
+
+From 0.63.0 the dependency loads the user on the **request session** (`db.session_dependency` by default) via `get_user(subject, session)`. The user is attached to the same session repositories use, so lazy-relationship reads and writes work without re-attaching anything.
+
+!!! warning "Compatibility"
+    The auth dependency and your repositories must share the **same** session callable for FastAPI's sub-dependency cache to deduplicate them. The recommended pattern is already covered:
+
+    ```python
+    # resources.py
+    get_session = db.session_dependency          # one object, reused
+    ```
+
+    If you wrap the session in your own provider (`async def get_session(): ...`), pass it explicitly, otherwise the dependency opens a second session and the user is detached again:
+
+    ```python
+    get_current_user = auth.current_user_dependency(session_dependency=get_session)
+    ```
+
+!!! info "Extra safety net"
+    `BaseRepository.resolve()` now re-attaches detached instances via `session.merge()`. Even if some flow still hands in a detached user, `resolve` brings it back into the active session instead of breaking — so services that worked around this (re-fetch by id before mutating) can drop the workaround.
+
+### Verify
+
+- Drop any "re-fetch by id before mutating the authenticated user" workaround — it's no longer needed.
+- A single-argument `user_loader` passed to `make_jwt_user_dependency` keeps working. To share the request session, pass `session_dependency=` and use a two-argument loader `(subject, session)`.
+
+## 0.8.0 — `ServerSettings` rename
 
 0.8.0 renames every field on `ServerSettings`, extracts log fields to a new `LogSettings` mixin, and adds eleven other primitives. The renames are the only **breaking** changes — every new primitive is opt-in.
 

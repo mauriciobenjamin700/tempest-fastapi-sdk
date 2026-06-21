@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -1506,6 +1506,68 @@ class TestCurrentUserResolution:
                 assert missing.status_code == 401
         finally:
             await db.disconnect()
+
+    async def test_current_user_attached_to_request_session(self) -> None:
+        """The authenticated user is attached to the request-scoped session.
+
+        Regression for ``InvalidRequestError: Instance is not persistent
+        within this Session``: loading the user on a private auth session
+        yielded a *detached* instance, so mutating it on the request's
+        repository session never persisted (and ``refresh`` raised). The
+        dependency now shares ``db.session_dependency`` with the route, so
+        the user is live and a mutation commits.
+        """
+        db, service = await _db_service()
+        try:
+            async with db.get_session_context() as s:
+                user, _ = await service.signup(
+                    s,
+                    email="attached@a.com",
+                    password="strong-pass-12-chars",
+                )
+                user.is_active = True
+                await s.commit()
+                await s.refresh(user)
+            user_id = user.id
+            access, _ = service.issue_jwt_pair(user)
+
+            get_current_user = service.current_user_dependency()
+            app = FastAPI()
+
+            @app.post("/deactivate")
+            async def deactivate(
+                current: Any = Depends(get_current_user),
+                session: AsyncSession = Depends(db.session_dependency),
+            ) -> dict[str, bool]:
+                # The user is attached to this very request session: its
+                # underlying sync Session is the dependency's shared one.
+                same_session = inspect(current).session is session.sync_session
+                current.is_active = False
+                await session.commit()
+                await session.refresh(current)  # would raise if detached
+                return {"same_session": same_session}
+
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://t"
+            ) as client:
+                resp = await client.post(
+                    "/deactivate", headers={"Authorization": f"Bearer {access}"}
+                )
+                assert resp.status_code == 200
+                assert resp.json() == {"same_session": True}
+
+            # The mutation actually hit the database.
+            async with db.get_session_context() as verify:
+                reloaded = await service.get_user(user_id, verify)
+                assert reloaded.is_active is False
+        finally:
+            await db.disconnect()
+
+    async def test_current_user_without_db_raises(self) -> None:
+        """``current_user_dependency`` needs ``db=`` to share its session."""
+        service = _service()  # built without db=
+        with pytest.raises(RuntimeError):
+            service.current_user_dependency()
 
     async def test_current_user_dependency_soft_returns_none(self) -> None:
         db, service = await _db_service()

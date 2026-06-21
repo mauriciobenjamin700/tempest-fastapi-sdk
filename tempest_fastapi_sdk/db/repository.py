@@ -9,7 +9,16 @@ from datetime import date, datetime
 from typing import Any, Generic, List, TypeVar, cast
 from uuid import UUID
 
-from sqlalchemy import CursorResult, Select, delete, func, insert, select, update
+from sqlalchemy import (
+    CursorResult,
+    Select,
+    delete,
+    func,
+    insert,
+    inspect,
+    select,
+    update,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -337,14 +346,23 @@ class BaseRepository(Generic[ModelType]):
         ``if isinstance(x, UUID): ... else: ...`` boilerplate services
         reimplement whenever a method takes ``UUID | Model``.
 
+        When given a **detached** instance (one whose session has been
+        closed — e.g. a user loaded by an auth dependency on its own
+        short-lived session) it is re-attached to this repository's
+        session via :meth:`AsyncSession.merge`. Returning it as-is would
+        later raise ``InvalidRequestError: Instance is not persistent
+        within this Session`` on the first ``commit`` / ``refresh``.
+        ``merge`` issues a ``SELECT`` only when the row is not already in
+        this session's identity map.
+
         Args:
             ref (UUID | ModelType): The primary key to look up, or an
-                already-loaded instance to return as-is.
+                already-loaded instance to attach and return.
             for_update (bool): Whether to acquire a row-level lock when
                 ``ref`` is a ``UUID`` (ignored when an instance is given).
 
         Returns:
-            ModelType: The resolved instance.
+            ModelType: The resolved instance, attached to this session.
 
         Raises:
             AppException: ``self.not_found_exception`` when ``ref`` is a
@@ -352,6 +370,8 @@ class BaseRepository(Generic[ModelType]):
         """
         if isinstance(ref, UUID):
             return await self.get_by_id(ref, for_update=for_update)
+        if inspect(ref).detached:
+            return await self.session.merge(ref)
         return ref
 
     async def exists(self, filters: dict[str, Any]) -> bool:

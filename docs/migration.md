@@ -2,6 +2,36 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando.
 
+## 0.63.0 — usuário autenticado carregado na sessão de request
+
+Antes da 0.63.0, `UserAuthService.current_user_dependency()` carregava o usuário autenticado chamando `load_user`, que abria a **própria** sessão (via `db.get_session_context()`) e a fechava ao terminar. O `UserModel` entregue à rota ficava **detached**: mutá-lo e dar `commit`/`refresh` na sessão de request (a dos seus repositories) levantava
+`InvalidRequestError: Instance is not persistent within this Session`.
+
+A partir da 0.63.0 a dependência carrega o usuário na **sessão de request** (`db.session_dependency` por padrão), via `get_user(subject, session)`. O usuário fica anexado à mesma sessão que os repositories usam, então leituras de relacionamentos lazy e escritas funcionam sem reanexar nada.
+
+!!! warning "Compatibilidade"
+    A dependência de auth e seus repositories precisam compartilhar o **mesmo callable** de sessão para o cache de sub-dependências do FastAPI casar. Quem segue o padrão recomendado já está coberto:
+
+    ```python
+    # resources.py
+    get_session = db.session_dependency          # um único objeto, reutilizado
+    ```
+
+    Se você embrulha a sessão num provider próprio (`async def get_session(): ...`), passe-o explicitamente para a dependência, senão ela abre uma segunda sessão e o usuário volta a ficar detached:
+
+    ```python
+    get_current_user = auth.current_user_dependency(session_dependency=get_session)
+    ```
+
+!!! info "Defesa adicional"
+    `BaseRepository.resolve()` agora reanexa instâncias detached via `session.merge()`. Mesmo que algum fluxo ainda receba um usuário detached, o `resolve` o traz de volta à sessão ativa em vez de quebrar — então serviços que faziam workarounds manuais (re-fetch por id antes de mutar) podem removê-los.
+
+### Verifique
+
+- Remova qualquer workaround do tipo "re-fetch por id antes de mutar o usuário autenticado" — não é mais necessário.
+- Se você passava um `user_loader` de um argumento para `make_jwt_user_dependency`, ele continua funcionando. Para compartilhar a sessão de request, passe `session_dependency=` e use um loader de dois argumentos `(subject, session)`.
+
+## 0.8.0 — renomeação de `ServerSettings`
 
 A 0.8.0 renomeia todos os campos de `ServerSettings`, extrai os campos de log para um novo mixin `LogSettings` e adiciona onze outros primitivos. As renomeações são as únicas mudanças **que quebram** — todo primitivo novo é opt-in.
 
