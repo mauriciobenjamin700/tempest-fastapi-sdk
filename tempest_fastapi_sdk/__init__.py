@@ -180,7 +180,12 @@ from tempest_fastapi_sdk.schemas import (
     decode_cursor,
     encode_cursor,
 )
-from tempest_fastapi_sdk.services import BaseService
+from tempest_fastapi_sdk.services import (
+    BaseService,
+    StoredFileServiceMixin,
+    SupportsPresign,
+    SupportsUpload,
+)
 from tempest_fastapi_sdk.sessions import (
     MemorySessionStore,
     RedisSessionStore,
@@ -301,7 +306,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.63.0"
+__version__: str = "0.64.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -462,6 +467,9 @@ __all__: list[str] = [
     "SlowQueryLogger",
     "SoftDeleteMixin",
     "StateBR",
+    "StoredFileServiceMixin",
+    "SupportsPresign",
+    "SupportsUpload",
     "SyncFilterSchema",
     "SyncPaginationSchema",
     "SystemMetrics",

@@ -68,6 +68,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ## Services & Controllers
 
 ::: tempest_fastapi_sdk.services.base.BaseService
+::: tempest_fastapi_sdk.services.file_mixin.StoredFileServiceMixin
 ::: tempest_fastapi_sdk.controllers.base.BaseController
 
 ---
