@@ -45,6 +45,14 @@ RUN useradd --create-home --uid 1000 app
 WORKDIR /app
 COPY --from=builder --chown=app:app /app /app
 
+# WORKDIR created /app as root before the COPY, and `COPY --chown` only sets
+# ownership on the copied *contents* — not on the pre-existing /app directory
+# node itself. So the app user cannot create new entries (the runtime logs/
+# dir, the default SQLite app.db, etc.) inside /app and the app crashes at
+# startup with `PermissionError: [Errno 13] ... 'logs'`. Chown the directory
+# and pre-create logs/ so the SDK's file logging (LOG_DIR=logs) works.
+RUN mkdir -p /app/logs && chown -R app:app /app
+
 # Put the venv on PATH so `python` resolves to the project interpreter.
 # SERVER_HOST=0.0.0.0 binds all interfaces inside the container so the app
 # is reachable from the host (overridable via .env / `environment:`).

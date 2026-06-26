@@ -230,3 +230,46 @@ class TestFileLogging:
         )
         assert len(logger.handlers) == 1
         assert isinstance(logger.handlers[0], logging.StreamHandler)
+
+    def test_unwritable_log_dir_degrades_to_stdout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A non-writable log_dir must not crash startup — degrade to stdout."""
+
+        def _deny(*args: object, **kwargs: object) -> None:
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(Path, "mkdir", _deny)
+
+        logger = configure_logging(
+            logger_name="tempest.cfg.ro",
+            log_dir=tmp_path,
+        )
+
+        # No crash; only the stdout StreamHandler survives, no FileHandlers.
+        assert len(logger.handlers) == 1
+        assert isinstance(logger.handlers[0], logging.StreamHandler)
+        assert not any(isinstance(h, logging.FileHandler) for h in logger.handlers)
+
+    def test_unwritable_log_dir_without_stdout_warns_to_stderr(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """With stdout off too, degrade silently-to-logger but warn on stderr."""
+
+        def _deny(*args: object, **kwargs: object) -> None:
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(Path, "mkdir", _deny)
+
+        logger = configure_logging(
+            logger_name="tempest.cfg.ro_no_stdout",
+            log_dir=tmp_path,
+            stdout=False,
+        )
+
+        # No handlers attached, but the app still booted (no exception).
+        assert logger.handlers == []
+        assert "file logging disabled" in capsys.readouterr().err

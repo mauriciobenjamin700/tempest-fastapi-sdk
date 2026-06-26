@@ -66,6 +66,15 @@ configure_logging(level="INFO", stdout=False)
     `ValueError` — silencing every handler leaves the application
     blind.
 
+!!! check "File logging is best-effort — it never crashes startup"
+    If `log_dir` cannot be created or its files cannot be opened
+    (read-only filesystem, missing write permission, hardened container,
+    serverless, CI), the SDK **skips** the file handlers, emits a warning
+    (to the logger when stdout is on, otherwise straight to `stderr`) and
+    keeps running with stdout only — instead of dying at import with
+    `PermissionError: [Errno 13] ... 'logs'`. Pass `file_output=False` to
+    opt out of file logging explicitly.
+
 On disk:
 
 ```text

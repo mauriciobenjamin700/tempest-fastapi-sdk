@@ -171,29 +171,46 @@ def _build_file_handlers(log_dir: Path) -> list[logging.Handler]:
 
     Returns:
         list[logging.Handler]: The configured file handlers.
+
+    Raises:
+        OSError: If ``log_dir`` cannot be created or a log file cannot be
+            opened (e.g. a read-only or non-writable filesystem). Any
+            handlers already opened before the failure are closed before
+            the error propagates so no file descriptors leak. Callers that
+            want file logging to be best-effort should catch this — see
+            :func:`configure_logging`.
     """
     log_dir.mkdir(parents=True, exist_ok=True)
     formatter = JSONFormatter()
     handlers: list[logging.Handler] = []
 
-    for levelno, filename in LEVEL_LOG_FILES.items():
-        file_handler = logging.FileHandler(
-            log_dir / filename,
+    try:
+        for levelno, filename in LEVEL_LOG_FILES.items():
+            file_handler = logging.FileHandler(
+                log_dir / filename,
+                encoding="utf-8",
+            )
+            file_handler.setLevel(logging.DEBUG)
+            file_handler.addFilter(_ExactLevelFilter(levelno))
+            file_handler.setFormatter(formatter)
+            handlers.append(file_handler)
+
+        http_500_handler = logging.FileHandler(
+            log_dir / HTTP_500_LOG_FILE,
             encoding="utf-8",
         )
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.addFilter(_ExactLevelFilter(levelno))
-        file_handler.setFormatter(formatter)
-        handlers.append(file_handler)
-
-    http_500_handler = logging.FileHandler(
-        log_dir / HTTP_500_LOG_FILE,
-        encoding="utf-8",
-    )
-    http_500_handler.setLevel(logging.DEBUG)
-    http_500_handler.addFilter(_Http500Filter())
-    http_500_handler.setFormatter(formatter)
-    handlers.append(http_500_handler)
+        http_500_handler.setLevel(logging.DEBUG)
+        http_500_handler.addFilter(_Http500Filter())
+        http_500_handler.setFormatter(formatter)
+        handlers.append(http_500_handler)
+    except OSError:
+        # Release the FDs of any handlers opened before the failure so a
+        # partial build does not leak descriptors, then re-raise for the
+        # caller to decide whether to degrade to stdout-only.
+        for handler in handlers:
+            with contextlib.suppress(Exception):
+                handler.close()
+        raise
 
     return handlers
 
@@ -251,6 +268,13 @@ def configure_logging(
             ephemeral environments (tests, serverless) where the
             filesystem is read-only or short-lived.
 
+    File logging is **best-effort**: if ``log_dir`` cannot be created or
+    its files cannot be opened (read-only mount, missing write
+    permission, etc.), the file handlers are skipped, a warning is
+    emitted, and the application keeps running with stdout logging — it
+    does **not** crash at startup. Pass ``file_output=False`` to opt out
+    of file logging explicitly when you know the filesystem is unusable.
+
     Returns:
         logging.Logger: The configured logger instance.
 
@@ -291,8 +315,28 @@ def configure_logging(
         logger.addHandler(stream_handler)
 
     if file_output and log_dir:
-        for file_handler in _build_file_handlers(Path(log_dir)):
-            logger.addHandler(file_handler)
+        try:
+            file_handlers = _build_file_handlers(Path(log_dir))
+        except OSError as exc:
+            # File logging is best-effort: a read-only or non-writable
+            # filesystem (common in hardened containers, serverless and
+            # CI) must never crash the application at startup. Degrade to
+            # stdout-only and surface the reason once so the operator can
+            # fix the mount/permissions if files are actually wanted.
+            msg = (
+                "tempest_fastapi_sdk: file logging disabled — could not "
+                f"prepare log_dir {str(log_dir)!r}: {exc}. Continuing "
+                "with stdout logging only."
+            )
+            if stdout:
+                logger.warning(msg)
+            else:
+                # No stdout handler to carry the warning — write straight
+                # to stderr so the reason is not swallowed silently.
+                print(msg, file=sys.stderr)
+        else:
+            for file_handler in file_handlers:
+                logger.addHandler(file_handler)
 
     logger.propagate = False
     return logger

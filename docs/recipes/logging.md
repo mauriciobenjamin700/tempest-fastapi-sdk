@@ -66,6 +66,15 @@ configure_logging(level="INFO", stdout=False)
     `ValueError` — silenciar todos os handlers deixa a aplicação
     cega.
 
+!!! check "Log em arquivo é best-effort — nunca derruba o boot"
+    Se o `log_dir` não puder ser criado ou seus arquivos não puderem ser
+    abertos (FS read-only, falta de permissão de escrita, container
+    endurecido, serverless, CI), o SDK **pula** os handlers de arquivo,
+    emite um aviso (no logger quando o stdout está ligado, senão direto no
+    `stderr`) e segue rodando só com stdout — em vez de morrer no import com
+    `PermissionError: [Errno 13] ... 'logs'`. Para abrir mão do log em
+    arquivo de forma explícita, passe `file_output=False`.
+
 O resultado em disco:
 
 ```text

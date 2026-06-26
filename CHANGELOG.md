@@ -5,6 +5,30 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.71.1] — 2026-06-26
+
+### Fixed
+
+- **File logging no longer crashes the app on a non-writable filesystem.**
+  `configure_logging` now treats file logging as best-effort: if `log_dir`
+  cannot be created or its files cannot be opened (read-only mount, missing
+  write permission, hardened container, serverless, CI), the file handlers
+  are skipped, a warning is emitted (to the logger when stdout is on, else
+  straight to `stderr`), and the service keeps running with stdout logging
+  instead of dying at import time with
+  `PermissionError: [Errno 13] ... 'logs'`. `_build_file_handlers` also
+  closes any handlers it opened before a mid-build failure so no file
+  descriptors leak.
+- **Scaffold `Dockerfile` fixed so the non-root `app` user can write
+  `logs/`.** `WORKDIR /app` created `/app` as `root` before the
+  `COPY --chown=app:app`, and `--chown` only sets ownership on the copied
+  *contents* — not on the pre-existing `/app` directory node — so the `app`
+  user could not create `logs/` (or the SQLite `app.db`) inside it and the
+  container crash-looped at startup. The template now runs
+  `RUN mkdir -p /app/logs && chown -R app:app /app` after the copy. Existing
+  projects: regenerate with `tempest generate --dockerfile --force` or add
+  that line by hand.
+
 ## [0.71.0] — 2026-06-26
 
 ### Added
