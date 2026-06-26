@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import redirect_stdout
 from importlib import resources
 from io import StringIO
@@ -14,6 +15,7 @@ from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import NoSuchModuleError
 
 # Alembic operation calls that destroy data. Matched against the source
 # of each pending migration's ``upgrade()`` so :meth:`AlembicHelper.safe_upgrade`
@@ -505,13 +507,53 @@ class AlembicHelper:
         url = config.get_main_option("sqlalchemy.url")
         if url is None:
             raise RuntimeError("sqlalchemy.url is not configured in alembic.ini")
-        engine = create_engine(_strip_async_driver(url))
+        try:
+            engine = create_engine(_strip_async_driver(url))
+        except NoSuchModuleError:
+            # The stripped sync driver is unknown to SQLAlchemy.
+            return self._current_via_async(url)
         try:
             with engine.connect() as connection:
                 migration_context = MigrationContext.configure(connection)
                 return migration_context.get_current_revision()
+        except ModuleNotFoundError:
+            # No sync DBAPI installed for this backend (e.g. an
+            # asyncpg-only project has no psycopg2). Fall back to the
+            # async driver to read ``alembic_version``.
+            return self._current_via_async(url)
         finally:
             engine.dispose()
+
+    def _current_via_async(self, url: str) -> str | None:
+        """Read the current revision through the async driver.
+
+        Fallback for projects that install only an async DBAPI (e.g.
+        ``asyncpg``) and therefore have no sync driver for the stripped
+        URL. Opens a short-lived async engine and reads
+        ``alembic_version`` via ``run_sync``.
+
+        Args:
+            url (str): The (async-flavored) database URL from the config.
+
+        Returns:
+            str | None: The current revision, or ``None`` when the
+            ``alembic_version`` table is missing/empty.
+        """
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        async def _read() -> str | None:
+            engine = create_async_engine(url)
+            try:
+                async with engine.connect() as connection:
+                    return await connection.run_sync(
+                        lambda sync_conn: MigrationContext.configure(
+                            sync_conn
+                        ).get_current_revision()
+                    )
+            finally:
+                await engine.dispose()
+
+        return asyncio.run(_read())
 
     def heads(self) -> list[str]:
         """Return every head revision known to the script directory.
@@ -573,16 +615,23 @@ class AlembicHelper:
             head=head,
         )
 
-    def stamp(self, revision: str = "head") -> None:
+    def stamp(self, revision: str = "head", *, purge: bool = False) -> None:
         """Stamp the database with ``revision`` without running migrations.
 
         Useful when importing an existing schema into Alembic for the
-        first time.
+        first time, or after a manual squash where ``alembic_version``
+        still points at a revision that no longer exists in the tree.
 
         Args:
             revision (str): The revision to stamp.
+            purge (bool): When ``True``, delete the existing
+                ``alembic_version`` rows before stamping. Required when
+                the recorded revision is no longer in the script
+                directory — a plain stamp would fail with
+                ``Can't locate revision`` because Alembic cannot resolve
+                the stale pointer. Defaults to ``False``.
         """
-        command.stamp(self.config, revision)
+        command.stamp(self.config, revision, purge=purge)
 
     def check(self) -> bool:
         """Return ``True`` if no autogenerate diff would be produced.

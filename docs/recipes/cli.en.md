@@ -191,7 +191,14 @@ tempest db squash -m "init" --yes --no-backup   # delete the old files
     tempest db stamp head
     ```
 
-**Recap:** `squash` swaps an ever-growing history for one clean initial migration; `stamp` reconciles databases already at the final schema. Recoverable backup by default — Git is your second net.
+!!! tip "Manual squash (keep your data) → `stamp --purge`"
+    If you unify migrations **by hand** (delete `versions/`, write one baseline migration, keep the database with its data), `alembic_version` still points at the old revision — which no longer exists in the tree. A plain `stamp` fails with `Can't locate revision`. Use `--purge` to clear the stale pointer and record the new baseline:
+
+    ```bash
+    tempest db stamp init_schema --purge
+    ```
+
+**Recap:** `squash` swaps an ever-growing history for one clean initial migration; `stamp` reconciles databases already at the final schema (use `--purge` when the recorded revision no longer exists). Recoverable backup by default — Git is your second net.
 
 #### Backup and restore — `tempest db backup` / `tempest db restore`
 

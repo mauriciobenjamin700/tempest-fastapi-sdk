@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tempest_fastapi_sdk.db import AlembicHelper
+from tempest_fastapi_sdk.db import AlembicHelper, migrations
 from tempest_fastapi_sdk.db.migrations import _strip_async_driver
 
 
@@ -166,12 +166,81 @@ class TestCurrentAndHistory:
         assert isinstance(result, str)
 
 
+class TestCurrentAsyncFallback:
+    @staticmethod
+    def _create_engine_failing_on_connect() -> object:
+        """Return a fake ``create_engine`` whose engine errors on connect.
+
+        Mimics an asyncpg-only project where the stripped sync URL has no
+        installed DBAPI (``ModuleNotFoundError: No module named 'psycopg2'``).
+        """
+
+        class _FakeEngine:
+            def connect(self) -> object:
+                raise ModuleNotFoundError("No module named 'psycopg2'")
+
+            def dispose(self) -> None:
+                return None
+
+        return lambda url: _FakeEngine()
+
+    def test_reads_revision_via_async_when_sync_driver_missing(
+        self, alembic_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        url = f"sqlite+aiosqlite:///{alembic_project / 'test.db'}"
+        helper = AlembicHelper(
+            config_path=str(alembic_project / "alembic.ini"),
+            db_url=url,
+        )
+        helper.revision("manual", autogenerate=False)
+        helper.upgrade("head")
+        expected = helper.heads()[0]
+
+        monkeypatch.setattr(
+            migrations, "create_engine", self._create_engine_failing_on_connect()
+        )
+        assert helper.current() == expected
+
+
 class TestHeadsAndStamp:
     def test_heads_is_empty_on_fresh_project(self, alembic_project: Path) -> None:
         helper = AlembicHelper(
             config_path=str(alembic_project / "alembic.ini"),
         )
         assert helper.heads() == []
+
+    def test_stamp_purge_recovers_from_stale_pointer(
+        self, alembic_project: Path
+    ) -> None:
+        url = f"sqlite+aiosqlite:///{alembic_project / 'test.db'}"
+        helper = AlembicHelper(
+            config_path=str(alembic_project / "alembic.ini"),
+            db_url=url,
+        )
+        helper.revision("first", autogenerate=False)
+        helper.upgrade("head")
+
+        # Simulate a manual squash: drop the applied revision file, leaving
+        # alembic_version pointing at a revision no longer in the tree, then
+        # create a fresh root revision.
+        location = helper.config.get_main_option("script_location")
+        assert location is not None
+        versions = Path(location) / "versions"
+        for path in versions.glob("*.py"):
+            if path.name != "__init__.py":
+                path.unlink()
+        helper.revision("squashed", autogenerate=False)
+        new_rev = helper.heads()[0]
+
+        # A plain stamp can't resolve the stale pointer.
+        from alembic.util import CommandError
+
+        with pytest.raises(CommandError):
+            helper.stamp(new_rev)
+
+        # Purge clears the stale row and stamps cleanly.
+        helper.stamp(new_rev, purge=True)
+        assert helper.current() == new_rev
 
 
 class TestSquash:

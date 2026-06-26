@@ -381,6 +381,14 @@ def db_stamp(
         "head",
         help="Revision to stamp. Default ``head``.",
     ),
+    purge: bool = typer.Option(
+        False,
+        "--purge",
+        help=(
+            "Clear alembic_version before stamping. Needed when the recorded "
+            "revision no longer exists in the tree (e.g. after a manual squash)."
+        ),
+    ),
     ini: str = typer.Option(
         "alembic.ini",
         "--ini",
@@ -396,9 +404,11 @@ def db_stamp(
 
     Use on an already-populated database (e.g. production after a
     squash) so Alembic records it as migrated without recreating tables.
+    Pass ``--purge`` when the recorded revision is no longer in the
+    script directory, so a plain stamp would fail to resolve it.
     """
     helper = _helper(ini, _resolve_database_url(database_url))
-    helper.stamp(revision)  # type: ignore[attr-defined]
+    helper.stamp(revision, purge=purge)  # type: ignore[attr-defined]
     typer.echo(f"Stamped database at {revision}.")
 
 

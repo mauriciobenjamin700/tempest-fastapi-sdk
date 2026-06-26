@@ -5,6 +5,26 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.70.0] — 2026-06-26
+
+### Fixed
+
+- **`AlembicHelper.current()` on async-only projects** — `current()`
+  built a sync engine from the stripped URL (`postgresql://…`), which
+  defaults to the `psycopg2` driver. Projects that install only an async
+  DBAPI (e.g. `asyncpg`) crashed with `ModuleNotFoundError: No module
+  named 'psycopg2'` (and so did `tempest db current`). It now falls back
+  to reading `alembic_version` through the async driver when no sync
+  DBAPI is available.
+
+### Added
+
+- **`AlembicHelper.stamp(..., purge=True)` + `tempest db stamp --purge`**
+  — clear `alembic_version` before stamping. Required after a manual
+  squash where the recorded revision no longer exists in the script
+  directory: a plain stamp fails with `Can't locate revision`, while
+  `--purge` drops the stale pointer and stamps the new baseline cleanly.
+
 ## [0.69.0] — 2026-06-25
 
 ### Added

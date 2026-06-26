@@ -239,7 +239,14 @@ tempest db squash -m "init" --yes --no-backup   # apaga os arquivos antigos
     tempest db stamp head
     ```
 
-**Recap:** `squash` troca um histórico que cresce sem fim por uma migration inicial limpa; `stamp` reconcilia os bancos que já estão no schema final. Backup recuperável por padrão — o Git é a sua segunda rede.
+!!! tip "Squash manual (sem perder dados) → `stamp --purge`"
+    Se você unificar as migrations **à mão** (apaga `versions/`, escreve 1 migration baseline, mantém o banco com os dados), o `alembic_version` ainda aponta para a revision antiga — que não existe mais no tree. Um `stamp` normal falha com `Can't locate revision`. Use `--purge` para limpar o ponteiro órfão e gravar o novo baseline:
+
+    ```bash
+    tempest db stamp init_schema --purge
+    ```
+
+**Recap:** `squash` troca um histórico que cresce sem fim por uma migration inicial limpa; `stamp` reconcilia os bancos que já estão no schema final (use `--purge` quando a revision gravada não existir mais). Backup recuperável por padrão — o Git é a sua segunda rede.
 
 #### Backup e restore — `tempest db backup` / `tempest db restore`
 
