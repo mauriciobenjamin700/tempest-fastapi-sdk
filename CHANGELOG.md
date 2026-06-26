@@ -5,6 +5,29 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.71.0] — 2026-06-26
+
+### Added
+
+- **`Dockerfile` + `.dockerignore` in the scaffold** — `tempest new`
+  now ships a multi-stage, uv-based `Dockerfile` (builder stage installs
+  deps into `/app/.venv`; final stage copies only the venv + source and
+  runs as a non-root `app` user) plus a `.dockerignore` that keeps the
+  build context lean and never bakes `.env` / `*.db` / `logs/` into the
+  image. The final stage sets `SERVER_HOST=0.0.0.0` so the container is
+  reachable without a `.env`.
+- **`tempest generate --dockerfile`** — regenerate the `Dockerfile` +
+  `.dockerignore` in an existing project. The `EXPOSE` / `SERVER_PORT`
+  is read from the project's `.env` / `.env.example` (`SERVER_PORT`),
+  falling back to `8000`. Refuses to overwrite without `--force`, like
+  the other generators, and composes with `--docker` / `--src`.
+
+### Notes
+
+- The generated `docker-compose.yaml` stays infra-only (no `app`
+  service); the `Dockerfile` is standalone. Add an `app:` service with
+  `build: .` by hand if you want a one-command stack.
+
 ## [0.70.1] — 2026-06-26
 
 ### Fixed

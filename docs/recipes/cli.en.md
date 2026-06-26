@@ -351,6 +351,66 @@ tempest generate --docker --force                # overwrite an existing compose
 
 The command reads ``[project] name`` + extras from the current directory's `pyproject.toml` (pass `--path` for another). It refuses to overwrite without `--force` so hand edits don't get clobbered. The `.env.example` addendum is idempotent — re-running does not duplicate service blocks.
 
+### Dockerfile to containerize the app
+
+Since v0.71.0, `tempest new` also generates a ready-to-build **`Dockerfile`** + **`.dockerignore`**. The `Dockerfile` is **multi-stage** and uses [uv](https://docs.astral.sh/uv/):
+
+- **`builder` stage** — installs dependencies into `/app/.venv` (a cached layer that only re-runs when `pyproject.toml` / `uv.lock` change), then installs the project.
+- **final stage** — copies only the venv + the source, runs as a **non-root** user (`app`, uid 1000), and exposes the configured port.
+
+```dockerfile
+FROM python:3.13-slim AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+WORKDIR /app
+COPY pyproject.toml uv.lock* ./
+RUN uv sync --no-dev --no-install-project
+COPY . .
+RUN uv sync --no-dev
+
+FROM python:3.13-slim
+RUN useradd --create-home --uid 1000 app
+WORKDIR /app
+COPY --from=builder --chown=app:app /app /app
+ENV PATH="/app/.venv/bin:$PATH" SERVER_HOST=0.0.0.0 SERVER_PORT=8000
+USER app
+EXPOSE 8000
+CMD ["python", "main.py"]
+```
+
+Build and run:
+
+```bash
+docker build -t my_service .
+docker run --rm -p 8000:8000 --env-file .env my_service
+```
+
+!!! info "The image binds to `0.0.0.0` by default"
+    The final stage sets `ENV SERVER_HOST=0.0.0.0` so the app is
+    reachable from outside the container even without a `.env`. Locally
+    the scaffold keeps `SERVER_HOST=127.0.0.1` (internal service) — the
+    container overrides it to `0.0.0.0` because the bind there must
+    accept external connections. Pass `--env-file .env` to point
+    `DATABASE_URL` at the infra in `docker-compose.yaml`.
+
+!!! warning "`docker-compose.yaml` stays infra-only"
+    The generated compose brings up **only** Postgres + the services
+    your extras need (Redis, RabbitMQ, MinIO, MailHog) — it does not
+    embed an `app` service. The `Dockerfile` is standalone: use
+    `docker build` / `docker run`, or add an `app:` service with
+    `build: .` to the compose by hand if you want a one-command stack.
+
+#### Regenerating the Dockerfile — `tempest generate --dockerfile`
+
+```bash
+tempest generate --dockerfile                    # Dockerfile + .dockerignore
+tempest generate --dockerfile --name my-svc      # override the name in the comments
+tempest generate --dockerfile --force            # overwrite existing files
+tempest generate --docker --dockerfile --src     # everything in one shot
+```
+
+The `EXPOSE` / `SERVER_PORT` port is read from `SERVER_PORT` in `.env` (or `.env.example`), falling back to `8000` when absent. Like the other generators, it refuses to overwrite without `--force`.
+
 ### Generating the `src` layers from extras — `tempest generate --src`
 
 The always-present layers (`api`, `controllers`, `services`, `schemas`, `db`, `core`, `utils`) ship in the scaffold. The layers that only make sense with a specific extra — `[queue]` (FastStream) and `[tasks]` (TaskIQ) — are **not** part of the base skeleton: dropping empty placeholder packages in every service contradicts the layout rules. When you add one of those extras to an existing project (`uv add "tempest-fastapi-sdk[queue]"`), generate the matching layer with:

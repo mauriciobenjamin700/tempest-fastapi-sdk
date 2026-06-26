@@ -248,4 +248,74 @@ class TestGenerateSrc:
         _seed_project(tmp_path, name="svc", extras="queue")
         result = runner.invoke(app, ["generate", "--path", str(tmp_path)])
         assert result.exit_code == 2
-        assert "--docker and/or --src" in (result.stdout + result.stderr)
+        assert "--dockerfile" in (result.stdout + result.stderr)
+
+
+class TestGenerateDockerfile:
+    def test_generates_dockerfile_and_dockerignore(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="my_svc", extras="auth")
+        result = runner.invoke(
+            app,
+            ["generate", "--dockerfile", "--path", str(tmp_path)],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+        assert "FROM python:3.13-slim AS builder" in dockerfile
+        assert "uv sync --no-dev" in dockerfile
+        assert "USER app" in dockerfile
+        assert "my_svc" in dockerfile  # name baked into the header comment
+        assert (tmp_path / ".dockerignore").is_file()
+
+    def test_expose_port_read_from_env_example(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="auth")
+        (tmp_path / ".env.example").write_text(
+            "SERVER_HOST=127.0.0.1\nSERVER_PORT=9100\n",
+            encoding="utf-8",
+        )
+        runner.invoke(app, ["generate", "--dockerfile", "--path", str(tmp_path)])
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+        assert "EXPOSE 9100" in dockerfile
+        assert "SERVER_PORT=9100" in dockerfile
+
+    def test_expose_port_falls_back_to_8000(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="auth")
+        runner.invoke(app, ["generate", "--dockerfile", "--path", str(tmp_path)])
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+        assert "EXPOSE 8000" in dockerfile
+
+    def test_refuses_overwrite_without_force(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="auth")
+        (tmp_path / "Dockerfile").write_text("hand-edited", encoding="utf-8")
+        result = runner.invoke(
+            app,
+            ["generate", "--dockerfile", "--path", str(tmp_path)],
+        )
+        assert result.exit_code == 1
+        assert (tmp_path / "Dockerfile").read_text() == "hand-edited"
+
+    def test_force_overwrites(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="auth")
+        (tmp_path / "Dockerfile").write_text("hand-edited", encoding="utf-8")
+        result = runner.invoke(
+            app,
+            ["generate", "--dockerfile", "--path", str(tmp_path), "--force"],
+        )
+        assert result.exit_code == 0
+        assert "hand-edited" not in (tmp_path / "Dockerfile").read_text()
+
+    def test_name_override(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="my_svc", extras="auth")
+        runner.invoke(
+            app,
+            ["generate", "--dockerfile", "--path", str(tmp_path), "--name", "alt"],
+        )
+        dockerfile = (tmp_path / "Dockerfile").read_text()
+        assert "alt" in dockerfile
+
+    def test_missing_pyproject_errors(self, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app,
+            ["generate", "--dockerfile", "--path", str(tmp_path)],
+        )
+        assert result.exit_code == 2
+        assert "pyproject.toml" in (result.stdout + result.stderr)

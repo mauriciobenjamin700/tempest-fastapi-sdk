@@ -114,6 +114,22 @@ class TestNew:
         assert (target / ".gitignore").is_file()
         assert (target / ".env.example").is_file()
         assert (target / "docker-compose.yaml").is_file()
+        assert (target / "Dockerfile").is_file()
+        assert (target / ".dockerignore").is_file()
+
+    def test_dockerfile_renders_name_and_port(self, tmp_path: Path) -> None:
+        result = runner.invoke(
+            app,
+            ["new", "demo_svc", "--path", str(tmp_path), "--bind-port", "9001"],
+        )
+        assert result.exit_code == 0, result.stdout + result.stderr
+        dockerfile = (tmp_path / "demo_svc" / "Dockerfile").read_text()
+        assert "FROM python:3.13-slim AS builder" in dockerfile
+        assert "USER app" in dockerfile
+        assert "demo_svc" in dockerfile  # placeholder rendered, not literal
+        assert "__PROJECT_NAME__" not in dockerfile
+        assert "EXPOSE 9001" in dockerfile
+        assert "SERVER_HOST=0.0.0.0" in dockerfile
 
     def test_compose_only_wires_postgres_by_default(self, tmp_path: Path) -> None:
         result = runner.invoke(app, ["new", "demo_svc", "--path", str(tmp_path)])

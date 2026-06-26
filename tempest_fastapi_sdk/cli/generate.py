@@ -38,6 +38,12 @@ _PROJECT_NAME_RE = re.compile(
 )
 """Captures the project's ``[project] name = "…"`` value."""
 
+_SERVER_PORT_RE = re.compile(
+    r"^\s*SERVER_PORT\s*=\s*(\d+)\s*$",
+    re.MULTILINE,
+)
+"""Captures the ``SERVER_PORT=…`` value in a ``.env`` / ``.env.example``."""
+
 
 def _read_pyproject(target: Path) -> str:
     """Return the project's ``pyproject.toml`` contents.
@@ -166,6 +172,89 @@ def regenerate_docker_compose(
     )
 
 
+def _discover_port(target: Path, fallback: int = 8000) -> int:
+    """Read ``SERVER_PORT`` from the project's ``.env`` / ``.env.example``.
+
+    The port only feeds the Dockerfile's ``EXPOSE`` / ``SERVER_PORT`` —
+    purely informational, so a missing value falls back silently.
+
+    Args:
+        target (Path): Project root directory.
+        fallback (int): Value returned when no port can be read.
+
+    Returns:
+        int: The discovered port, or ``fallback``.
+    """
+    for filename in (".env", ".env.example"):
+        candidate = target / filename
+        if not candidate.is_file():
+            continue
+        match = _SERVER_PORT_RE.search(candidate.read_text(encoding="utf-8"))
+        if match:
+            return int(match.group(1))
+    return fallback
+
+
+def regenerate_dockerfile(
+    target: Path,
+    *,
+    project_name: str | None,
+    force: bool,
+) -> None:
+    """Regenerate the ``Dockerfile`` and ``.dockerignore``.
+
+    Renders the bundled templates with the project's name and the
+    ``SERVER_PORT`` discovered from its ``.env`` / ``.env.example`` (so
+    the ``EXPOSE`` line matches the configured port). Refuses to
+    overwrite either file without ``force`` so a hand-tuned Dockerfile
+    is never lost silently.
+
+    Args:
+        target (Path): Project root directory.
+        project_name (str | None): Override for the name baked into the
+            generated comments. Defaults to the ``[project] name`` value
+            or the directory basename.
+        force (bool): Overwrite the files if they already exist.
+
+    Raises:
+        typer.Exit: When ``pyproject.toml`` is missing (exit 2) or a
+            target file exists without ``--force`` (exit 1).
+    """
+    # Imported here to avoid a module-level dependency on the scaffolder.
+    from tempest_fastapi_sdk.cli.new import _render, _templates_root
+
+    pyproject_text = _read_pyproject(target)
+    resolved_name = project_name or _discover_project_name(
+        pyproject_text,
+        fallback=target.resolve().name,
+    )
+    context: dict[str, str] = {
+        "PROJECT_NAME": resolved_name,
+        "PORT": str(_discover_port(target)),
+    }
+
+    root = _templates_root()
+    renders: dict[Path, Path] = {
+        target / "Dockerfile": root / "Dockerfile.tmpl",
+        target / ".dockerignore": root / "dockerignore.tmpl",
+    }
+
+    for destination in renders:
+        if destination.exists() and not force:
+            typer.echo(
+                f"error: {destination} already exists. Pass --force to overwrite.",
+                err=True,
+            )
+            raise typer.Exit(1)
+
+    for destination, template in renders.items():
+        destination.write_text(
+            _render(template.read_text(encoding="utf-8"), context),
+            encoding="utf-8",
+        )
+        typer.echo(f"Regenerated {destination}", err=False)
+
+
 def regenerate_src(
     target: Path,
     *,
@@ -215,5 +304,6 @@ def regenerate_src(
 
 __all__: list[str] = [
     "regenerate_docker_compose",
+    "regenerate_dockerfile",
     "regenerate_src",
 ]

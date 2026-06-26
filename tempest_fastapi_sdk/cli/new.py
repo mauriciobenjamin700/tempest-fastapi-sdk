@@ -187,9 +187,10 @@ def _iter_templates(root: Path) -> list[Path]:
 def _target_path(template: Path, root: Path, target: Path) -> Path:
     """Translate a template path into its on-disk destination.
 
-    The ``.tmpl`` suffix is stripped and the special ``gitignore``
-    filename is renamed to ``.gitignore`` (templates can't be named
-    ``.gitignore.tmpl`` without confusing IDEs).
+    The ``.tmpl`` suffix is stripped and the special ``gitignore`` /
+    ``dockerignore`` / ``env.example`` filenames are renamed to their
+    dotted form (templates can't be named ``.gitignore.tmpl`` without
+    confusing IDEs).
 
     Args:
         template (Path): The source template path.
@@ -206,6 +207,8 @@ def _target_path(template: Path, root: Path, target: Path) -> Path:
         parts[-1] = ".gitignore"
     if parts[-1] == "env.example":
         parts[-1] = ".env.example"
+    if parts[-1] == "dockerignore":
+        parts[-1] = ".dockerignore"
     return target.joinpath(*parts)
 
 
@@ -300,6 +303,11 @@ def scaffold(
     typer.echo("  cp .env.example .env", err=False)
     typer.echo("  docker compose up -d", err=False)
     typer.echo("  uv run python main.py", err=False)
+    typer.echo(
+        f"Containerize the app:  docker build -t {resolved_name} . "
+        f"(Dockerfile + .dockerignore included)",
+        err=False,
+    )
 
 
 __all__: list[str] = [

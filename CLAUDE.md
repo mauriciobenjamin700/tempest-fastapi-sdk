@@ -131,7 +131,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Admin panel** — Jinja + HTMX (`AdminSite`, `AdminModel`,
   `make_admin_router`).
 - **CLI** — `tempest new` (scaffolds layered service +
-  docker-compose), `tempest generate --docker` (regen compose),
+  docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
+  `tempest generate --docker` (regen compose) / `--dockerfile`
+  (regen Dockerfile + .dockerignore) / `--src` (extra source layers),
   `tempest db init/revision/upgrade/downgrade/current/history/seed`,
   `tempest user create [--admin] / list`, `tempest secrets rotate`,
   plus quality gates (`lint`, `fix`, `format`, `fmt-check`, `type`,
@@ -146,11 +148,59 @@ re-plan finished work.
 
 ### Next-version plan
 
-**Empty.** The roadmap is fully shipped. Do **not** invent the next
-feature — the next item comes from real business pressure (like the BR
-localities dataset in v0.53.0, which was never on the list). When the
-user picks one, add it here, build it, then move it up to the covers
-list the moment it ships. Keep this honest, not aspirational.
+**Theme: Admin panel — close the gap vs Django Admin / Laravel Nova /
+SQLAdmin.** The current admin is a complete Phase-1 surface (list /
+detail / CRUD, ILIKE search, boolean-only filters, sort, offset
+pagination, CSV/JSON export, bulk activate/deactivate/delete, TOTP MFA,
+audit stamps, 8 fixed widgets, FK `<select>` capped at 1000 rows).
+Competitor admins go further; several of those gaps map to **engines
+the SDK already ships but the admin does not surface** — so the work is
+mostly wiring, not greenfield.
+
+Build in tiers. Ship each item, document it (same-commit docs rule),
+then move it up to the covers list.
+
+**Tier 1 — high value, reuses an existing engine (low effort):**
+
+1. **Custom actions** — `@admin_action` decorator on `AdminModel` for
+   user-defined row / bulk operations (Django `actions`, Nova actions).
+   Today only 3 are hardcoded (activate / deactivate / delete). This is
+   the foundation the rest build on.
+2. **File / image upload field** — a new form widget wired to the
+   existing `UploadUtils` (`LocalUploadStorage` / `MinIOUploadStorage`).
+   Engine is already shipped; admin just needs the widget + storage
+   binding.
+3. **Rich filters** — enum / choice / FK / date-range filters in the
+   list view (today only boolean fields auto-render a filter dropdown).
+   Quick UX win.
+4. **Audit history viewer** — a per-row change timeline wired to the
+   existing `BaseAuditLogModel` + `diff_snapshots`. Today the detail
+   view only shows `created_by` / `updated_by` stamps, not full history.
+   Engine is already shipped.
+
+**Tier 2 — high value, medium effort:**
+
+5. **Autocomplete FK fields** — HTMX search endpoint backing FK inputs,
+   removing the 1000-row `<select>` cap and the plain-UUID fallback
+   (Django `autocomplete_fields`, Nova search).
+6. **Inlines / nested relations** — edit child rows inside the parent's
+   detail / edit view (Django `StackedInline` / `TabularInline`).
+7. **Dashboard business metrics / charts** — value / trend / partition
+   cards (Nova metrics), wired to the existing metrics module. Distinct
+   from today's system CPU/RAM/disk panel.
+
+**Tier 3 — nice-to-have:**
+
+8. **RBAC granular** — per-model / per-action admin permissions beyond
+   today's `is_admin` + `can_create` / `can_edit` / `can_delete`.
+9. **CSV import** — bulk upload counterpart to the existing export.
+10. **Lenses** — saved alternate views / queries per model (Nova).
+
+Origin: competitor gap analysis (Django Admin, Laravel Nova, SQLAdmin,
+Starlette-Admin) run 2026-06-26. Do **not** treat the tiers as locked —
+business pressure can still jump a non-admin item to the front (like the
+BR localities dataset in v0.53.0, which was never on any list). Keep
+this honest, not aspirational.
 
 ## Conventions specific to this repo
 

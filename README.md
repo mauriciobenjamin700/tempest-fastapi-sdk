@@ -3284,6 +3284,9 @@ my_service/
 ├── pyproject.toml           # pins tempest-fastapi-sdk + ruff/mypy/pytest
 ├── .env.example             # TITLE/VERSION/HOST/PORT/DATABASE_URL/JWT_SECRET/CORS_ORIGINS
 ├── .gitignore
+├── Dockerfile               # multi-stage uv build, non-root, binds 0.0.0.0
+├── .dockerignore
+├── docker-compose.yaml      # Postgres + the services your extras need
 ├── README.md
 ├── src/
 │   ├── server.py            # uvicorn.run() + module-level FastAPI app
@@ -3394,12 +3397,13 @@ When `tempest user create` runs in an interactive terminal **without** `--admin`
 
 ```bash
 tempest generate --docker                             # regen docker-compose.yaml + .env.example from pinned extras
+tempest generate --dockerfile                         # regen Dockerfile + .dockerignore (EXPOSE from .env SERVER_PORT)
 tempest generate --src                                # add the src layers triggered by pinned extras
-tempest generate --docker --src                       # both at once
+tempest generate --docker --dockerfile --src          # all at once
 tempest generate --src --force                        # overwrite existing layer files
 ```
 
-`--src` reads the SDK extras pinned in `pyproject.toml` and writes only the layers that match — `[queue]` → `src/queue/` (FastStream broker + handlers), `[tasks]` → `src/tasks/` (TaskIQ broker + jobs). The source root (`src` or `app`) is auto-detected. It is idempotent: existing files are kept unless `--force` is passed. `tempest new --extras auth,queue` already scaffolds those layers — `generate --src` is for extras added after the project exists.
+`--dockerfile` re-renders the multi-stage uv `Dockerfile` + `.dockerignore`; the `EXPOSE` / `SERVER_PORT` is read from the project's `.env` / `.env.example` (falling back to `8000`). `--src` reads the SDK extras pinned in `pyproject.toml` and writes only the layers that match — `[queue]` → `src/queue/` (FastStream broker + handlers), `[tasks]` → `src/tasks/` (TaskIQ broker + jobs). The source root (`src` or `app`) is auto-detected. It is idempotent: existing files are kept unless `--force` is passed. `tempest new --extras auth,queue` already scaffolds those layers — `generate --src` is for extras added after the project exists.
 
 ### Admin site recipe
 

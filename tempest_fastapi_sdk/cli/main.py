@@ -268,6 +268,17 @@ def generate_cmd(
             ),
         ),
     ] = False,
+    dockerfile: Annotated[
+        bool,
+        typer.Option(
+            "--dockerfile",
+            help=(
+                "Regenerate the Dockerfile + .dockerignore. The EXPOSE "
+                "port is read from the project's .env / .env.example "
+                "(SERVER_PORT), falling back to 8000."
+            ),
+        ),
+    ] = False,
     src: Annotated[
         bool,
         typer.Option(
@@ -325,12 +336,14 @@ def generate_cmd(
     """Regenerate scaffolded artifacts in an existing project.
 
     Pick what to regenerate with ``--docker`` (docker-compose.yaml +
-    .env.example block) and/or ``--src`` (optional source layers from
-    the pinned extras). New generators land here as the SDK grows.
+    .env.example block), ``--dockerfile`` (Dockerfile + .dockerignore),
+    and/or ``--src`` (optional source layers from the pinned extras).
+    New generators land here as the SDK grows.
     """
-    if not docker and not src:
+    if not docker and not dockerfile and not src:
         typer.echo(
-            "error: pass --docker and/or --src to select what to regenerate.",
+            "error: pass --docker, --dockerfile and/or --src to select "
+            "what to regenerate.",
             err=True,
         )
         raise typer.Exit(2)
@@ -342,6 +355,12 @@ def generate_cmd(
             resolved_target,
             project_name=project_name,
             extras=extras,
+            force=force,
+        )
+    if dockerfile:
+        generate_module.regenerate_dockerfile(
+            resolved_target,
+            project_name=project_name,
             force=force,
         )
     if src:
