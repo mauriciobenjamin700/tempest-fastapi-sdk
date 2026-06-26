@@ -174,6 +174,24 @@ class TestHeadsAndStamp:
         assert helper.heads() == []
 
 
+class TestSquash:
+    def test_requires_force(self, alembic_project: Path) -> None:
+        helper = AlembicHelper(
+            config_path=str(alembic_project / "alembic.ini"),
+            db_url=f"sqlite+aiosqlite:///{alembic_project / 'test.db'}",
+        )
+        with pytest.raises(RuntimeError, match="force=True"):
+            helper.squash()
+
+    def test_no_revisions_raises(self, alembic_project: Path) -> None:
+        helper = AlembicHelper(
+            config_path=str(alembic_project / "alembic.ini"),
+            db_url=f"sqlite+aiosqlite:///{alembic_project / 'test.db'}",
+        )
+        with pytest.raises(RuntimeError, match="no revisions to squash"):
+            helper.squash(force=True)
+
+
 class TestShow:
     def test_show_returns_empty_for_missing_revision(
         self, alembic_project: Path

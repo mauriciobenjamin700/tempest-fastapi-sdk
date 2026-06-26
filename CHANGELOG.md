@@ -5,6 +5,37 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.69.0] — 2026-06-25
+
+### Added
+
+- **`tempest db squash` + `AlembicHelper.squash(...)`** — collapse the
+  whole migration history into a single fresh root revision. Migration
+  files accumulate without bound as a project evolves; `squash` runs
+  `downgrade base` on the configured (development) database, moves the
+  old revisions into `alembic/versions/_squashed_<oldhead>/` (a
+  subdirectory Alembic ignores — pass `--no-backup` / `backup=False` to
+  delete instead), autogenerates one root migration from
+  `BaseModel.metadata`, and re-applies it. The CLI requires `--yes`
+  because the flow drops every table in the target database. Production
+  databases are untouched — reconcile them with the new
+  `tempest db stamp head` after deploying the collapsed tree.
+- **`tempest db stamp <revision>`** — CLI surface for the existing
+  `AlembicHelper.stamp`. Marks an already-populated database (e.g.
+  production after a squash) as migrated without recreating tables.
+  Defaults to `head`.
+- **`tempest db backup` / `tempest db restore` + `DatabaseBackup`** —
+  snapshot a database to a file and back, dispatching per dialect.
+  PostgreSQL uses `pg_dump` / `pg_restore` (custom `-Fc` by default, or
+  plain `.sql` via `psql` — chosen from the file extension); SQLite
+  copies the database file. Backups default to a timestamped path under
+  `backups/`. `restore` is a clean restore by default (drops + recreates
+  so it is a faithful copy) and requires `--yes`; pass `--no-clean` to
+  apply on top of the current schema. The Postgres password is passed
+  via `PGPASSWORD` so it never appears in `ps`. `DatabaseBackup`,
+  `BackupToolMissingError` and `UnsupportedBackupBackendError` are
+  re-exported at the top level.
+
 ## [0.68.0] — 2026-06-21
 
 ### Added

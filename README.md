@@ -3348,11 +3348,19 @@ tempest db upgrade <rev>                         # upgrade to a specific revisio
 tempest db downgrade                             # roll back one step
 tempest db current                               # print the applied revision
 tempest db history -v                            # revisions newest → oldest, verbose
+tempest db stamp head                            # mark the DB without running migrations
+tempest db squash -m "init" --yes                # collapse history into 1 migration
+tempest db backup                                # dump to backups/<db>_<ts>.<ext>
+tempest db restore dump.dump --yes               # restore (clean + recreate)
 tempest db seed                                  # run src.db.seeds:seed in one session
 tempest db seed --seed src.db.fixtures:demo      # custom seed callable
 ```
 
 `tempest db seed` runs a project seed callable (default `src.db.seeds:seed`, sync or async, taking one `AsyncSession`) inside a managed session — commit on success, rollback on error.
+
+`tempest db squash` collapses an ever-growing migration history into one fresh root revision (drops the dev DB, regenerates from the models, re-applies; old revisions backed up under `versions/_squashed_<oldhead>/`). Reconcile production with `tempest db stamp head`.
+
+`tempest db backup` / `tempest db restore` snapshot a database to a file and back — PostgreSQL via `pg_dump`/`pg_restore` (custom `.dump` or plain `.sql` by extension), SQLite via file copy. **PostgreSQL needs the client tools (`pg_dump`, `pg_restore`, `psql`) installed on the system** — e.g. `apt-get install postgresql-client` (Debian/Ubuntu), `dnf install postgresql` (Fedora), `brew install libpq` (macOS), `choco install postgresql` (Windows). See the [CLI recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/) for details.
 
 #### Secrets — `tempest secrets`
 

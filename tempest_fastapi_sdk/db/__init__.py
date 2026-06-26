@@ -19,6 +19,13 @@ from tempest_fastapi_sdk.db.audit import AuditAction as AuditAction
 from tempest_fastapi_sdk.db.audit import BaseAuditLogModel as BaseAuditLogModel
 from tempest_fastapi_sdk.db.audit import diff_snapshots as diff_snapshots
 from tempest_fastapi_sdk.db.audit import snapshot_model as snapshot_model
+from tempest_fastapi_sdk.db.backup import (
+    BackupToolMissingError as BackupToolMissingError,
+)
+from tempest_fastapi_sdk.db.backup import DatabaseBackup as DatabaseBackup
+from tempest_fastapi_sdk.db.backup import (
+    UnsupportedBackupBackendError as UnsupportedBackupBackendError,
+)
 from tempest_fastapi_sdk.db.connection import (
     AsyncDatabaseManager as AsyncDatabaseManager,
 )
@@ -67,6 +74,7 @@ __all__: list[str] = [
     "AsyncDatabaseManager",
     "AuditAction",
     "AuditMixin",
+    "BackupToolMissingError",
     "BaseAuditLogModel",
     "BaseModel",
     "BaseOutboxModel",
@@ -75,6 +83,7 @@ __all__: list[str] = [
     "BaseUserRecoveryCodeModel",
     "BaseUserRefreshTokenModel",
     "BaseUserTokenModel",
+    "DatabaseBackup",
     "DestructiveMigrationError",
     "MFAMixin",
     "OutboxRelay",
@@ -82,6 +91,7 @@ __all__: list[str] = [
     "SlowQueryLogger",
     "SoftDeleteMixin",
     "TenantScopedRepository",
+    "UnsupportedBackupBackendError",
     "UserTokenPurpose",
     "backfill_non_nullable_defaults",
     "compose_hooks",

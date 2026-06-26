@@ -315,6 +315,189 @@ def db_current(
     typer.echo(current or "(no revision applied)")
 
 
+@db_app.command("squash")
+def db_squash(
+    message: str = typer.Option(
+        "squash",
+        "-m",
+        "--message",
+        help="Message/slug for the new root migration.",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Confirm: drops every table in the target DB before regenerating.",
+    ),
+    backup: bool = typer.Option(
+        True,
+        "--backup/--no-backup",
+        help=(
+            "Move old revisions to versions/_squashed_<oldhead>/ instead of "
+            "deleting them."
+        ),
+    ),
+    ini: str = typer.Option(
+        "alembic.ini",
+        "--ini",
+        help="Path to alembic.ini.",
+    ),
+    database_url: str | None = typer.Option(
+        None,
+        "--database-url",
+        help="Override DATABASE_URL for this run.",
+    ),
+) -> None:
+    """Collapse the whole migration history into one fresh root revision.
+
+    Migrations grow without bound as the project evolves. This drops the
+    configured (development) database, regenerates a single migration
+    from the current models, and re-applies it. Old revision files are
+    moved to ``versions/_squashed_<oldhead>/`` unless ``--no-backup``.
+
+    Existing production databases are untouched — after deploying the
+    squashed tree, stamp them with ``tempest db stamp head``.
+    """
+    if not yes:
+        typer.echo(
+            "error: `db squash` drops every table in the target database to "
+            "regenerate a single migration. Re-run with --yes once you have "
+            "confirmed DATABASE_URL points at a development database.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    helper = _helper(ini, _resolve_database_url(database_url))
+    new_rev = helper.squash(message=message, force=True, backup=backup)  # type: ignore[attr-defined]
+    typer.echo(f"Squashed history into new root revision {new_rev}.")
+    typer.echo(
+        "Production databases: deploy this tree, then run "
+        "`tempest db stamp head` to mark them as migrated.",
+    )
+
+
+@db_app.command("stamp")
+def db_stamp(
+    revision: str = typer.Argument(
+        "head",
+        help="Revision to stamp. Default ``head``.",
+    ),
+    ini: str = typer.Option(
+        "alembic.ini",
+        "--ini",
+        help="Path to alembic.ini.",
+    ),
+    database_url: str | None = typer.Option(
+        None,
+        "--database-url",
+        help="Override DATABASE_URL for this run.",
+    ),
+) -> None:
+    """Stamp the database at ``revision`` without running migrations.
+
+    Use on an already-populated database (e.g. production after a
+    squash) so Alembic records it as migrated without recreating tables.
+    """
+    helper = _helper(ini, _resolve_database_url(database_url))
+    helper.stamp(revision)  # type: ignore[attr-defined]
+    typer.echo(f"Stamped database at {revision}.")
+
+
+@db_app.command("backup")
+def db_backup(
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help=(
+            "Destination file. Defaults to backups/<db>_<timestamp>.<ext>. "
+            "For Postgres the format is inferred from the extension: "
+            ".dump → custom (pg_dump -Fc), .sql → plain."
+        ),
+    ),
+    plain: bool | None = typer.Option(
+        None,
+        "--plain/--custom",
+        help=(
+            "Force the Postgres dump format instead of inferring from the "
+            "extension. Ignored for SQLite."
+        ),
+    ),
+    database_url: str | None = typer.Option(
+        None,
+        "--database-url",
+        help="Override DATABASE_URL for this run.",
+    ),
+) -> None:
+    """Dump the database to a file.
+
+    PostgreSQL is dumped via ``pg_dump`` (custom ``-Fc`` by default, or
+    plain ``.sql``); SQLite is copied. The written path is printed.
+    """
+    url = _resolve_database_url(database_url)
+    if url is None:
+        typer.echo(
+            "error: no database URL. Pass --database-url, set DATABASE_URL, "
+            "or run inside a project with src/core/settings.py.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    from tempest_fastapi_sdk.db.backup import DatabaseBackup
+
+    written = DatabaseBackup(url).backup(output, plain=plain)
+    typer.echo(f"Backed up to {written}.")
+
+
+@db_app.command("restore")
+def db_restore(
+    source: Path = typer.Argument(
+        ...,
+        help="Backup file to restore from (.dump → pg_restore, .sql → psql).",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Confirm: drops existing objects in the target DB before restoring.",
+    ),
+    no_clean: bool = typer.Option(
+        False,
+        "--no-clean",
+        help="Apply the dump without dropping existing objects first.",
+    ),
+    database_url: str | None = typer.Option(
+        None,
+        "--database-url",
+        help="Override DATABASE_URL for this run.",
+    ),
+) -> None:
+    """Restore the database from a backup file.
+
+    By default this is a clean restore — existing objects are dropped
+    and recreated so the result is a faithful copy of the backup. Pass
+    ``--no-clean`` to apply the dump on top of the current schema.
+    """
+    if not yes:
+        typer.echo(
+            "error: `db restore` overwrites the target database. Re-run with "
+            "--yes once you have confirmed DATABASE_URL points at the right "
+            "database.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    url = _resolve_database_url(database_url)
+    if url is None:
+        typer.echo(
+            "error: no database URL. Pass --database-url, set DATABASE_URL, "
+            "or run inside a project with src/core/settings.py.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    from tempest_fastapi_sdk.db.backup import DatabaseBackup
+
+    DatabaseBackup(url).restore(source, clean=not no_clean)
+    typer.echo(f"Restored from {source}.")
+
+
 @db_app.command("seed")
 def db_seed(
     seed_spec: str = typer.Option(

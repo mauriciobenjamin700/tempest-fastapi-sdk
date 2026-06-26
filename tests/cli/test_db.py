@@ -86,6 +86,140 @@ class TestDbWorkflow:
         assert "alembic.ini" in (result.stdout + result.stderr)
 
 
+def _seed_model_module(target: Path) -> None:
+    """Seed a ``src/db/models.py`` with one concrete table for autogenerate."""
+    (target / "src" / "db").mkdir(parents=True, exist_ok=True)
+    (target / "src" / "__init__.py").write_text("", encoding="utf-8")
+    (target / "src" / "db" / "__init__.py").write_text("", encoding="utf-8")
+    (target / "src" / "db" / "models.py").write_text(
+        "from sqlalchemy.orm import Mapped, mapped_column\n"
+        "from tempest_fastapi_sdk import BaseModel\n\n\n"
+        "class WidgetModel(BaseModel):\n"
+        '    __tablename__ = "widget"\n'
+        "    name: Mapped[str] = mapped_column()\n",
+        encoding="utf-8",
+    )
+
+
+class TestDbStamp:
+    def test_stamp_marks_current_without_running(
+        self,
+        project_root: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _seed_model_module(project_root)
+        db_url = f"sqlite+aiosqlite:///{project_root / 'stamp_test.db'}"
+        monkeypatch.setenv("DATABASE_URL", db_url)
+        runner.invoke(app, ["db", "init", "--metadata-import", "src.db.models"])
+        runner.invoke(app, ["db", "revision", "-m", "init"])
+
+        # No upgrade — stamp jumps the DB straight to head.
+        stamp = runner.invoke(app, ["db", "stamp", "head"])
+        assert stamp.exit_code == 0, stamp.stdout + stamp.stderr
+
+        cur = runner.invoke(app, ["db", "current"])
+        assert "(no revision applied)" not in cur.stdout
+
+
+class TestDbSquash:
+    def test_requires_yes_flag(
+        self,
+        project_root: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _seed_model_module(project_root)
+        db_url = f"sqlite+aiosqlite:///{project_root / 'squash_guard.db'}"
+        monkeypatch.setenv("DATABASE_URL", db_url)
+        runner.invoke(app, ["db", "init", "--metadata-import", "src.db.models"])
+
+        result = runner.invoke(app, ["db", "squash"])
+        assert result.exit_code == 2
+        assert "--yes" in (result.stdout + result.stderr)
+
+    def test_collapses_history_into_single_root(
+        self,
+        project_root: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _seed_model_module(project_root)
+        db_url = f"sqlite+aiosqlite:///{project_root / 'squash_test.db'}"
+        monkeypatch.setenv("DATABASE_URL", db_url)
+        runner.invoke(app, ["db", "init", "--metadata-import", "src.db.models"])
+
+        # Build a multi-revision history, then apply it.
+        runner.invoke(app, ["db", "revision", "-m", "init"])
+        runner.invoke(app, ["db", "revision", "-m", "more", "--manual"])
+        runner.invoke(app, ["db", "upgrade"])
+
+        versions = project_root / "alembic" / "versions"
+        before = [p for p in versions.glob("*.py") if p.name != "__init__.py"]
+        assert len(before) == 2
+
+        squash = runner.invoke(app, ["db", "squash", "-m", "init", "--yes"])
+        assert squash.exit_code == 0, squash.stdout + squash.stderr
+
+        # Exactly one root revision file remains in versions/.
+        after = [p for p in versions.glob("*.py") if p.name != "__init__.py"]
+        assert len(after) == 1
+
+        # Old files were moved into the recoverable backup subdirectory.
+        backups = list(versions.glob("_squashed_*"))
+        assert len(backups) == 1
+        assert len(list(backups[0].glob("*.py"))) == 2
+
+        # The DB is left stamped at the new head.
+        cur = runner.invoke(app, ["db", "current"])
+        assert "(no revision applied)" not in cur.stdout
+
+
+class TestDbBackupRestore:
+    def test_backup_then_restore_roundtrip(
+        self,
+        project_root: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import sqlite3
+
+        db = project_root / "data.db"
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE t (id INTEGER)")
+        conn.executemany("INSERT INTO t VALUES (?)", [(1,), (2,)])
+        conn.commit()
+        conn.close()
+        monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db}")
+
+        out = project_root / "snap.sqlite"
+        backup = runner.invoke(app, ["db", "backup", "-o", str(out)])
+        assert backup.exit_code == 0, backup.stdout + backup.stderr
+        assert out.is_file()
+
+        # Wipe the table, then restore.
+        conn = sqlite3.connect(db)
+        conn.execute("DELETE FROM t")
+        conn.commit()
+        conn.close()
+
+        restore = runner.invoke(app, ["db", "restore", str(out), "--yes"])
+        assert restore.exit_code == 0, restore.stdout + restore.stderr
+
+        conn = sqlite3.connect(db)
+        count = conn.execute("SELECT count(*) FROM t").fetchone()[0]
+        conn.close()
+        assert count == 2
+
+    def test_restore_requires_yes(
+        self,
+        project_root: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(
+            "DATABASE_URL", f"sqlite+aiosqlite:///{project_root / 'data.db'}"
+        )
+        result = runner.invoke(app, ["db", "restore", "whatever.sqlite"])
+        assert result.exit_code == 2
+        assert "--yes" in (result.stdout + result.stderr)
+
+
 class TestResolveDatabaseUrl:
     def test_env_overrides_settings(
         self,

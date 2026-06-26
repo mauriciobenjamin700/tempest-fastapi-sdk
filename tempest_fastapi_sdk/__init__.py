@@ -120,6 +120,7 @@ from tempest_fastapi_sdk.db import (
     AsyncDatabaseManager,
     AuditAction,
     AuditMixin,
+    BackupToolMissingError,
     BaseAuditLogModel,
     BaseModel,
     BaseOutboxModel,
@@ -128,6 +129,7 @@ from tempest_fastapi_sdk.db import (
     BaseUserRecoveryCodeModel,
     BaseUserRefreshTokenModel,
     BaseUserTokenModel,
+    DatabaseBackup,
     DestructiveMigrationError,
     MFAMixin,
     OutboxRelay,
@@ -135,6 +137,7 @@ from tempest_fastapi_sdk.db import (
     SlowQueryLogger,
     SoftDeleteMixin,
     TenantScopedRepository,
+    UnsupportedBackupBackendError,
     UserTokenPurpose,
     backfill_non_nullable_defaults,
     compose_hooks,
@@ -312,7 +315,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.68.0"
+__version__: str = "0.69.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -349,6 +352,7 @@ __all__: list[str] = [
     "AuditAction",
     "AuditMixin",
     "AuthSettings",
+    "BackupToolMissingError",
     "BaseAppSettings",
     "BaseAuditLogModel",
     "BaseController",
@@ -379,6 +383,7 @@ __all__: list[str] = [
     "ConflictException",
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
+    "DatabaseBackup",
     "DatabaseSettings",
     "DestructiveMigrationError",
     "DiskMetrics",
@@ -491,6 +496,7 @@ __all__: list[str] = [
     "TooManyRequestsException",
     "UFField",
     "UnauthorizedException",
+    "UnsupportedBackupBackendError",
     "UploadResult",
     "UploadSettings",
     "UploadStorage",

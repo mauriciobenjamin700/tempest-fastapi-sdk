@@ -203,9 +203,103 @@ tempest db downgrade <rev>                       # rollback até rev específico
 tempest db current                               # imprime revision aplicado
 tempest db history                               # histórico de revisions
 tempest db history -v                            # com message body completo
+tempest db stamp head                            # marca o DB sem rodar migrations
+tempest db squash -m "init" --yes                # colapsa o histórico em 1 migration
+tempest db backup                                # dump em backups/<db>_<ts>.<ext>
+tempest db backup -o dump.sql                    # plain SQL (Postgres) por extensão
+tempest db restore dump.dump --yes               # restaura (clean + recreate)
 tempest db seed                                  # roda src.db.seeds:seed
 tempest db seed --seed src.db.fixtures:demo      # callable customizado
 ```
+
+#### Colapsar o histórico — `tempest db squash`
+
+Com o tempo o diretório `alembic/versions/` cresce sem limite — cada ajuste de schema vira mais um arquivo que o Alembic precisa percorrer em todo `upgrade`. O `squash` zera esse histórico para **uma única migration raiz** que descreve o schema **atual**, sem perder os bancos já existentes.
+
+!!! danger "Operação destrutiva — rode contra um banco de desenvolvimento"
+    O `squash` faz `downgrade base` no banco configurado (DROPa todas as tabelas) para conseguir autogerar o schema completo num arquivo só. Por isso exige `--yes`. Confirme que o `DATABASE_URL` aponta para um banco de dev antes de rodar.
+
+O fluxo é:
+
+1. Captura o `head` atual (vira o nome do diretório de backup).
+2. `downgrade base` — limpa o banco para o autogenerate enxergar o schema vazio.
+3. Move as revisions antigas para `alembic/versions/_squashed_<oldhead>/` (subdiretório que o Alembic ignora). Use `--no-backup` para apagar de vez.
+4. Autogera **uma** migration raiz a partir de `BaseModel.metadata`.
+5. `upgrade head` recria o schema e marca a nova revision.
+
+```bash
+tempest db squash -m "init" --yes               # backup recuperável (padrão)
+tempest db squash -m "init" --yes --no-backup   # apaga os arquivos antigos
+```
+
+!!! warning "Bancos de produção não são tocados"
+    O `squash` só mexe no banco configurado. Depois de fazer deploy da árvore colapsada, marque os bancos de produção como migrados **sem** recriar tabelas:
+
+    ```bash
+    tempest db stamp head
+    ```
+
+**Recap:** `squash` troca um histórico que cresce sem fim por uma migration inicial limpa; `stamp` reconcilia os bancos que já estão no schema final. Backup recuperável por padrão — o Git é a sua segunda rede.
+
+#### Backup e restore — `tempest db backup` / `tempest db restore`
+
+Snapshot do banco para um arquivo e volta. A estratégia muda por dialeto, mas a CLI é a mesma:
+
+- **PostgreSQL** — `pg_dump` / `pg_restore`. O formato vem da extensão do arquivo: `.dump` → custom (`pg_dump -Fc`, comprimido, restaura com `pg_restore`), `.sql` → plain (`psql`). Force com `--plain` / `--custom`. Exige os client tools do Postgres no `PATH`.
+- **SQLite** — cópia do arquivo do banco.
+
+!!! warning "Pré-requisito: client tools do Postgres"
+    `backup` / `restore` num banco **PostgreSQL** dependem dos binários `pg_dump`, `pg_restore` e `psql` disponíveis no `PATH`. Eles **não** vêm com o pacote Python — são instalados pelo sistema operacional. Sem eles, a CLI falha com uma mensagem clara (`'pg_dump' not found on PATH`).
+
+    **SQLite não precisa de nada** — o backup é uma cópia de arquivo feita pela stdlib.
+
+    === "Debian / Ubuntu"
+        ```bash
+        sudo apt-get update && sudo apt-get install -y postgresql-client
+        ```
+
+    === "Fedora / RHEL"
+        ```bash
+        sudo dnf install -y postgresql
+        ```
+
+    === "Arch"
+        ```bash
+        sudo pacman -S postgresql
+        ```
+
+    === "macOS (Homebrew)"
+        ```bash
+        brew install libpq && brew link --force libpq
+        ```
+
+    === "Windows"
+        ```powershell
+        choco install postgresql   # Chocolatey
+        scoop install postgresql   # ou Scoop
+        ```
+
+    !!! tip "Confira a instalação"
+        ```bash
+        pg_dump --version && pg_restore --version && psql --version
+        ```
+        Combine a versão do client com a do servidor (`pg_dump` de uma major mais nova lê servidores mais antigos, mas o contrário falha).
+
+```bash
+tempest db backup                       # backups/<db>_<YYYYMMDD-HHMMSS>.dump
+tempest db backup -o snapshot.sql       # plain SQL (Postgres) pela extensão
+tempest db backup -o snap.dump --custom # força formato custom
+tempest db restore snapshot.sql --yes   # restaura (psql)
+tempest db restore snap.dump --yes      # restaura (pg_restore --clean --if-exists)
+```
+
+!!! danger "Restore sobrescreve o banco de destino"
+    Por padrão o restore é **clean + recreate**: dropa os objetos existentes antes de recriar, então o resultado é uma cópia fiel do backup (`pg_restore --clean --if-exists`; no plain dropa/recria o schema `public`; no SQLite sobrescreve o arquivo). Por isso exige `--yes`. Use `--no-clean` para aplicar o dump por cima do schema atual.
+
+!!! info "A senha do Postgres não vaza no `ps`"
+    A URL é parseada em `-h/-p/-U/-d` e a senha vai via `PGPASSWORD` no environment do subprocesso — nunca na linha de comando.
+
+**Recap:** `backup` tira um snapshot (formato pela extensão no Postgres, cópia no SQLite); `restore --yes` traz de volta, limpando o destino por padrão.
 
 #### Popular o banco — `tempest db seed`
 

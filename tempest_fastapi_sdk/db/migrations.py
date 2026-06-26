@@ -387,6 +387,101 @@ class AlembicHelper:
             raise DestructiveMigrationError(offences)
         self.upgrade(revision)
 
+    def squash(
+        self,
+        message: str = "squash",
+        *,
+        force: bool = False,
+        backup: bool = True,
+    ) -> str:
+        """Collapse the whole migration history into one fresh root revision.
+
+        Migration files accumulate without bound as a project evolves —
+        every schema tweak adds another file under ``versions/`` that
+        Alembic must walk on every ``upgrade``. This routine resets that
+        history to a single root revision describing the *current*
+        schema, so the tree stops growing while existing databases stay
+        usable via :meth:`stamp`.
+
+        The flow is **destructive to the configured database** and is
+        meant to run against a development database:
+
+        1. Capture the current head (used to name the backup directory).
+        2. ``downgrade base`` — drop every table and clear
+           ``alembic_version`` so autogenerate sees an empty schema.
+        3. Move (``backup=True``) or delete the old revision files out
+           of ``versions/``.
+        4. Autogenerate one root revision from ``BaseModel.metadata`` —
+           the full schema as a single ``upgrade()``.
+        5. ``upgrade head`` to recreate the schema and stamp the new
+           revision.
+
+        Existing production databases are **not** touched. After
+        deploying the squashed tree, mark them as migrated without
+        recreating tables: ``tempest db stamp head``.
+
+        Args:
+            message (str): Slug/message for the new root revision.
+            force (bool): Must be ``True`` to proceed — step 2 drops
+                every table in the configured database, so this guards
+                against running against the wrong (e.g. production) URL.
+            backup (bool): When ``True`` (default), move the old revision
+                files into ``versions/_squashed_<oldhead>/`` (a
+                non-recursive subdirectory Alembic ignores) instead of
+                deleting them outright.
+
+        Returns:
+            str: The revision id of the new root migration.
+
+        Raises:
+            RuntimeError: When ``force`` is ``False``, when there are no
+                revisions to squash, or when the migration graph has
+                multiple heads (run a merge revision first).
+        """
+        if not force:
+            raise RuntimeError(
+                "squash drops every table in the configured database; pass "
+                "force=True to confirm the URL points at a development database."
+            )
+        script = ScriptDirectory.from_config(self.config)
+        heads = list(script.get_heads())
+        if not heads:
+            raise RuntimeError("no revisions to squash.")
+        if len(heads) > 1:
+            raise RuntimeError(
+                f"multiple heads {heads}; run a merge revision before squashing."
+            )
+        old_head = heads[0]
+
+        # 1. Empty the database so autogenerate captures the full schema
+        #    instead of an empty diff against the already-migrated DB.
+        self.downgrade("base")
+
+        # 2. Clear the versions directory (backup into a subdir or delete).
+        #    Alembic is non-recursive by default, so a ``_squashed_*``
+        #    subdirectory of ``versions/`` is invisible to the script graph.
+        versions_dir = Path(script.versions)
+        revision_files = [
+            path for path in versions_dir.glob("*.py") if path.name != "__init__.py"
+        ]
+        if backup:
+            backup_dir = versions_dir / f"_squashed_{old_head}"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            for path in revision_files:
+                path.rename(backup_dir / path.name)
+        else:
+            for path in revision_files:
+                path.unlink()
+
+        # 3. Autogenerate the single root revision and apply it.
+        new_script = self.revision(message=message, autogenerate=True)
+        self.upgrade("head")
+
+        new_revision = getattr(new_script, "revision", None)
+        if isinstance(new_revision, str):
+            return new_revision
+        return self.current() or ""
+
     def downgrade(self, revision: str = "-1") -> None:
         """Revert migrations down to ``revision`` (default: one step back).
 
