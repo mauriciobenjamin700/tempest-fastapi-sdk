@@ -168,21 +168,18 @@ class TestCurrentAndHistory:
 
 class TestCurrentAsyncFallback:
     @staticmethod
-    def _create_engine_failing_on_connect() -> object:
-        """Return a fake ``create_engine`` whose engine errors on connect.
+    def _create_engine_missing_dbapi() -> object:
+        """Return a ``create_engine`` that raises as if the DBAPI is absent.
 
-        Mimics an asyncpg-only project where the stripped sync URL has no
-        installed DBAPI (``ModuleNotFoundError: No module named 'psycopg2'``).
+        SQLAlchemy 2.0 eagerly imports the DBAPI inside ``create_engine``,
+        so an asyncpg-only project (no psycopg2) raises right there, not on
+        ``.connect()``.
         """
 
-        class _FakeEngine:
-            def connect(self) -> object:
-                raise ModuleNotFoundError("No module named 'psycopg2'")
+        def _raise(url: str) -> object:
+            raise ModuleNotFoundError("No module named 'psycopg2'")
 
-            def dispose(self) -> None:
-                return None
-
-        return lambda url: _FakeEngine()
+        return _raise
 
     def test_reads_revision_via_async_when_sync_driver_missing(
         self, alembic_project: Path, monkeypatch: pytest.MonkeyPatch
@@ -197,7 +194,7 @@ class TestCurrentAsyncFallback:
         expected = helper.heads()[0]
 
         monkeypatch.setattr(
-            migrations, "create_engine", self._create_engine_failing_on_connect()
+            migrations, "create_engine", self._create_engine_missing_dbapi()
         )
         assert helper.current() == expected
 

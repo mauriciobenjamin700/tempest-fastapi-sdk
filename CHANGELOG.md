@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.70.1] — 2026-06-26
+
+### Fixed
+
+- **`AlembicHelper.current()` async fallback now triggers** — the 0.70.0
+  fix only caught the missing-DBAPI error around `engine.connect()`, but
+  SQLAlchemy 2.0 imports the DBAPI eagerly inside `create_engine()`, so
+  asyncpg-only projects still crashed with `ModuleNotFoundError: No
+  module named 'psycopg2'`. The guard now also wraps `create_engine`, so
+  `current()` / `tempest db current` correctly fall back to the async
+  driver.
+
 ## [0.70.0] — 2026-06-26
 
 ### Fixed

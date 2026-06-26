@@ -509,8 +509,13 @@ class AlembicHelper:
             raise RuntimeError("sqlalchemy.url is not configured in alembic.ini")
         try:
             engine = create_engine(_strip_async_driver(url))
-        except NoSuchModuleError:
-            # The stripped sync driver is unknown to SQLAlchemy.
+        except (NoSuchModuleError, ModuleNotFoundError):
+            # No sync DBAPI for this backend: either SQLAlchemy doesn't
+            # know the driver (NoSuchModuleError) or it knows it but the
+            # package isn't installed (ModuleNotFoundError — create_engine
+            # eagerly imports the DBAPI in SQLAlchemy 2.0, e.g. an
+            # asyncpg-only project has no psycopg2). Read via the async
+            # driver instead.
             return self._current_via_async(url)
         try:
             with engine.connect() as connection:
