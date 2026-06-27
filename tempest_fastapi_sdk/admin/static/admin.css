@@ -18,10 +18,10 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--tempest-font, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
   font-size: 14px;
   color: var(--tempest-fg);
-  background: #f8fafc;
+  background: var(--tempest-page-bg, #f8fafc);
   /* Sticky-footer column so the layout (and its sidebar) fills the
      viewport even when the page content is short. */
   min-height: 100vh;
@@ -90,6 +90,16 @@ textarea {
   font-weight: 600;
   font-size: 1.1rem;
   pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Logo image (shown instead of the brand text when theme.logo_url is
+   set). Capped to the header height so any aspect ratio fits cleanly. */
+.tempest-admin-header__logo {
+  display: block;
+  max-height: 32px;
+  width: auto;
 }
 
 .tempest-admin-header__nav {

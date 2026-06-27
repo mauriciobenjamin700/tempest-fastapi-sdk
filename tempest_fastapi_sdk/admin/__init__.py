@@ -12,20 +12,21 @@ Requires the ``[admin]`` optional extra (``jinja2`` +
 ``is_admin=True`` may sign in.
 """
 
-from tempest_fastapi_sdk.admin.auth import (
-    AdminAuthBackend,
-    AdminAuthError,
-    UserModelAuthBackend,
-)
-from tempest_fastapi_sdk.admin.config import AdminModel, FieldRef, OrderRef
-from tempest_fastapi_sdk.admin.discovery import discover_models
-from tempest_fastapi_sdk.admin.router import make_admin_router
+from tempest_fastapi_sdk.admin.auth import AdminAuthBackend as AdminAuthBackend
+from tempest_fastapi_sdk.admin.auth import AdminAuthError as AdminAuthError
+from tempest_fastapi_sdk.admin.auth import UserModelAuthBackend as UserModelAuthBackend
+from tempest_fastapi_sdk.admin.config import AdminModel as AdminModel
+from tempest_fastapi_sdk.admin.config import FieldRef as FieldRef
+from tempest_fastapi_sdk.admin.config import OrderRef as OrderRef
+from tempest_fastapi_sdk.admin.discovery import discover_models as discover_models
+from tempest_fastapi_sdk.admin.router import make_admin_router as make_admin_router
+from tempest_fastapi_sdk.admin.session import AdminSession as AdminSession
+from tempest_fastapi_sdk.admin.session import SessionStore as SessionStore
 from tempest_fastapi_sdk.admin.session import (
-    AdminSession,
-    SessionStore,
-    SignedCookieSessionStore,
+    SignedCookieSessionStore as SignedCookieSessionStore,
 )
-from tempest_fastapi_sdk.admin.site import AdminSite
+from tempest_fastapi_sdk.admin.site import AdminSite as AdminSite
+from tempest_fastapi_sdk.admin.theme import AdminTheme as AdminTheme
 
 __all__: list[str] = [
     "AdminAuthBackend",
@@ -33,6 +34,7 @@ __all__: list[str] = [
     "AdminModel",
     "AdminSession",
     "AdminSite",
+    "AdminTheme",
     "FieldRef",
     "OrderRef",
     "SessionStore",

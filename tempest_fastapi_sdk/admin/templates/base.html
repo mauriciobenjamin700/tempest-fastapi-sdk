@@ -4,7 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ site.title }}{% endblock %}</title>
+  {% if site.theme.favicon_url %}
+  <link rel="icon" href="{{ site.theme.favicon_url }}">
+  {% endif %}
   <link rel="stylesheet" href="{{ static_url }}/admin.css">
+  <style>{{ site.theme.to_css() }}</style>
+  {% if site.theme.custom_css_url %}
+  <link rel="stylesheet" href="{{ site.theme.custom_css_url }}">
+  {% endif %}
   <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
 </head>
 <body>
@@ -19,7 +26,14 @@
       </label>
       {% endif %}
       <div class="tempest-admin-header__brand">
-        <a href="{{ url_for('admin_index') }}">{{ site.brand_text }}</a>
+        <a href="{{ url_for('admin_index') }}">
+          {% if site.theme.logo_url %}
+          <img src="{{ site.theme.logo_url }}" alt="{{ site.theme.logo_alt }}"
+               class="tempest-admin-header__logo">
+          {% else %}
+          {{ site.brand_text }}
+          {% endif %}
+        </a>
       </div>
     </div>
     {% if user %}
@@ -76,7 +90,7 @@
     </main>
   </div>
   <footer class="tempest-admin-footer">
-    <small>Powered by tempest-fastapi-sdk</small>
+    <small>{{ site.theme.footer_text }}</small>
   </footer>
 </body>
 </html>

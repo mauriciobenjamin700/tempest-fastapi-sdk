@@ -5,6 +5,23 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.72.0] — 2026-06-26
+
+### Added
+
+- **`AdminTheme` — typed theming for the admin panel.** A new
+  `AdminTheme` dataclass carries appearance overrides (accent /
+  accent_hover / danger colors, header & sidebar backgrounds, page
+  background, border radius, font family, logo image + alt, favicon,
+  footer text, dark mode, and a `custom_css_url` escape hatch) through
+  typed, documented parameters. Pass it via `AdminSite(theme=...)`; the
+  SDK injects a `<style>` block of `:root` overrides after `admin.css`
+  (so it wins) plus the favicon / logo / footer chrome. `AdminTheme()`
+  is a no-op that reproduces the stock look, so existing sites are
+  unchanged. String fields reject `< > { } "` at construction to keep a
+  value from breaking the injected markup. Exported from
+  `tempest_fastapi_sdk` and `tempest_fastapi_sdk.admin`.
+
 ## [0.71.1] — 2026-06-26
 
 ### Fixed

@@ -6,6 +6,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.admin.config import AdminModel
+from tempest_fastapi_sdk.admin.theme import AdminTheme
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -30,6 +31,9 @@ class AdminSite:
         index_subtitle (str): Optional subtitle for the dashboard.
         site_url (str | None): Optional "View site" link rendered in
             the admin header.
+        theme (AdminTheme): Typed appearance overrides (colors, logo,
+            favicon, font, footer, dark mode). Defaults to a stock
+            :class:`AdminTheme`, so the look is unchanged when omitted.
     """
 
     def __init__(
@@ -39,6 +43,7 @@ class AdminSite:
         brand: str | None = None,
         index_subtitle: str = "Site administration",
         site_url: str | None = None,
+        theme: AdminTheme | None = None,
     ) -> None:
         """Initialize the site.
 
@@ -53,11 +58,15 @@ class AdminSite:
             index_subtitle (str): Dashboard subtitle.
             site_url (str | None): Optional outbound link rendered
                 in the admin header.
+            theme (AdminTheme | None): Typed appearance overrides.
+                ``None`` (default) uses a stock :class:`AdminTheme`,
+                leaving the look identical to earlier versions.
         """
         self.title: str = title
         self.brand: str | None = brand
         self.index_subtitle: str = index_subtitle
         self.site_url: str | None = site_url
+        self.theme: AdminTheme = theme or AdminTheme()
         self._registry: dict[str, AdminModel[Any]] = {}
 
     @property

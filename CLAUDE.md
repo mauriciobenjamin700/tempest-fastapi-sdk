@@ -129,7 +129,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`audit_model=...` + `add_audited` / `update_audited` /
   `delete_audited`, same-tx).
 - **Admin panel** — Jinja + HTMX (`AdminSite`, `AdminModel`,
-  `make_admin_router`).
+  `make_admin_router`), typed theming via `AdminTheme` (colors /
+  logo / favicon / font / radius / footer / dark mode /
+  `custom_css_url`, injected as `:root` overrides).
 - **CLI** — `tempest new` (scaffolds layered service +
   docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
   `tempest generate --docker` (regen compose) / `--dockerfile`
@@ -160,12 +162,19 @@ mostly wiring, not greenfield.
 Build in tiers. Ship each item, document it (same-commit docs rule),
 then move it up to the covers list.
 
+**Shipped — `AdminTheme` (v0.72.0).** Typed appearance overrides
+(colors / logo / favicon / font / radius / footer / dark mode /
+`custom_css_url`) injected as `:root` CSS-variable overrides via
+`AdminSite(theme=...)`. This is the "beautiful + typed customization"
+foundation the user asked for first; the functional Tier 1 items below
+inherit the look for free. Now in the covers list.
+
 **Tier 1 — high value, reuses an existing engine (low effort):**
 
-1. **Custom actions** — `@admin_action` decorator on `AdminModel` for
-   user-defined row / bulk operations (Django `actions`, Nova actions).
-   Today only 3 are hardcoded (activate / deactivate / delete). This is
-   the foundation the rest build on.
+1. **Custom actions (NEXT)** — `@admin_action` decorator on `AdminModel`
+   for user-defined row / bulk operations (Django `actions`, Nova
+   actions). Today only 3 are hardcoded (activate / deactivate /
+   delete). This is the foundation the rest build on.
 2. **File / image upload field** — a new form widget wired to the
    existing `UploadUtils` (`LocalUploadStorage` / `MinIOUploadStorage`).
    Engine is already shipped; admin just needs the widget + storage
