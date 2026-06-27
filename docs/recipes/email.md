@@ -36,6 +36,76 @@ mailer = EmailUtils(**settings.email_kwargs())
     use `SMTP_USE_TLS=false`; o `.env.example` gerado pelo `tempest new`
     com `[email]` já vem assim para o MailHog.
 
+## Produção: SMTP real e credenciais
+
+Em produção o SMTP **não é opcional** — você manda email por um provedor
+real (Gmail/Workspace, AWS SES, SendGrid, Mailgun, ...) e isso exige
+**host, porta, usuário e senha**. A regra de ouro: essas credenciais
+**vêm sempre do ambiente** (`.env` / secret manager / variáveis do
+container), **nunca** ficam no código nem versionadas no Git.
+
+!!! danger "Credencial SMTP é segredo — trate como senha de banco"
+    - `SMTP_PASSWORD` **nunca** entra no repositório. Mantenha `.env` no
+      `.gitignore` e versione só um `.env.example` com valores fake.
+    - Para Gmail/Workspace **não use a senha da conta** — gere uma
+      **App Password** (<https://myaccount.google.com/apppasswords>) com
+      2FA ligado. A senha normal falha com `535 Authentication failed`.
+    - O `SMTP_FROM_ADDR` deve ser um endereço de um domínio que você
+      controla e autenticou (SPF/DKIM/DMARC), senão o email cai em spam
+      ou é rejeitado.
+
+Os serviços de produção já seguem esse padrão — declare os campos SMTP no
+seu `Settings` e leia tudo do ambiente:
+
+```python
+# src/core/settings.py
+from pydantic import Field
+from tempest_fastapi_sdk import BaseAppSettings, EmailSettings
+
+
+class Settings(BaseAppSettings, EmailSettings):
+    """Settings da aplicação. SMTP herdado de EmailSettings."""
+
+    FRONTEND_URL: str = Field(
+        default="http://localhost:3000",
+        description="Base URL do frontend (usada nos links dos emails).",
+    )
+
+
+settings: Settings = Settings()
+```
+
+```ini
+# .env.example  (commitado — valores fake)
+# .env real (NÃO commitado) tem as credenciais de verdade
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=seu_email@example.com
+SMTP_PASSWORD="sua_app_password"
+SMTP_FROM_ADDR=seu_email@example.com
+SMTP_USE_TLS=true        # STARTTLS na 587
+SMTP_USE_SSL=false       # use true (e PORT=465) para TLS implícito
+```
+
+Provedores comuns e a combinação de porta/TLS:
+
+| Provedor            | `SMTP_HOST`            | `SMTP_PORT` | `SMTP_USE_TLS` (STARTTLS) | `SMTP_USE_SSL` (TLS implícito) |
+| ------------------- | ---------------------- | ----------- | ------------------------- | ------------------------------ |
+| Gmail / Workspace   | `smtp.gmail.com`       | `587`       | `true`                    | `false`                        |
+| Gmail (TLS direto)  | `smtp.gmail.com`       | `465`       | `false`                   | `true`                         |
+| AWS SES             | `email-smtp.<região>.amazonaws.com` | `587` | `true`            | `false`                        |
+| SendGrid            | `smtp.sendgrid.net`    | `587`       | `true`                    | `false`                        |
+| MailHog (dev local) | `localhost`            | `1025`      | `false`                   | `false`                        |
+
+!!! note "Como alofans-api e transport-backend fazem"
+    São os dois padrões em produção: **alofans-api** usa **Gmail na porta
+    587 (STARTTLS) com App Password** — `SMTP_USE_TLS=true`. O
+    **transport-backend** usa **porta 465 (TLS implícito)** —
+    `SMTP_USE_SSL=true`, `SMTP_PORT=465`. Os dois leem `SMTP_*` do
+    ambiente e nunca embutem a senha no código. Escolha STARTTLS (587) ou
+    SSL (465) conforme o seu provedor; **não ligue os dois ao mesmo
+    tempo**.
+
 ## Enviar um email
 
 Cada `send()` abre uma conexão SMTP nova. `to` aceita uma string ou um

@@ -3113,6 +3113,25 @@ assert OrderStatus("paid") is OrderStatus.PAID    # canonical lookup
 assert Priority.NORMAL + 1 == Priority.HIGH       # int math
 ```
 
+Both bases add introspection + lookup helpers so you rarely reach for `enum` internals:
+
+```python
+OrderStatus.values()                       # ["pending", "paid", "shipped", "cancelled"]
+OrderStatus.keys()                         # ["PENDING", "PAID", "SHIPPED", "CANCELLED"]
+OrderStatus.to_dict()                      # {"PENDING": "pending", ...}
+OrderStatus.choices()                      # [("pending", "PENDING"), ...] — for <select>/forms
+
+OrderStatus.has_value("paid")              # True
+OrderStatus.has_key("PAID")                # True
+
+# from_value: build a member from a raw value OR member name (exact, then
+# case-insensitive). Raises ValueError on no match, unless a default is given.
+OrderStatus.from_value("paid")             # OrderStatus.PAID  (by value)
+OrderStatus.from_value("PAID")             # OrderStatus.PAID  (by name)
+OrderStatus.from_value("paid ")            # ValueError: 'paid ' is not a valid OrderStatus
+OrderStatus.from_value("bogus", default=None)  # None — explicit fallback
+```
+
 Because they inherit from `str` / `int`, Pydantic serializes them transparently as their underlying value and SQLAlchemy can persist them via the standard `Enum` column without an extra converter.
 
 ### Hardened static files + cookie helpers recipe

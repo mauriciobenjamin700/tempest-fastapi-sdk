@@ -5,6 +5,31 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.73.0] — 2026-06-27
+
+### Added
+
+- **`BaseStrEnum` / `BaseIntEnum` gained `choices`, `from_value`,
+  `has_value`, and `has_key`.** Alongside the existing `values` /
+  `keys` / `to_dict`, the shared `_EnumHelpers` mixin now exposes:
+  `choices()` returning `(value, name)` pairs for HTML `<select>` /
+  form widgets; `from_value(value, *, default=...)` a lenient
+  constructor that resolves a member from a raw value or member name
+  (exact, then case-insensitive), raising `ValueError` on no match or
+  returning an explicit `default` when supplied; and the `has_value` /
+  `has_key` membership predicates. Both bases inherit them, so every
+  service enum gets the helpers for free.
+
+### Changed
+
+- **Email recipe documents production SMTP and credential handling.**
+  The `email` recipe (PT-BR + EN) gained a "Production" section: read
+  every `SMTP_*` field from the environment (never hardcode or commit
+  the password), use a Gmail App Password with 2FA, a verified
+  `SMTP_FROM_ADDR` domain (SPF/DKIM/DMARC), and a provider/port/TLS
+  table (Gmail 587 STARTTLS vs 465 implicit TLS, AWS SES, SendGrid,
+  MailHog). Mirrors the two real production setups in use.
+
 ## [0.72.0] — 2026-06-26
 
 ### Added

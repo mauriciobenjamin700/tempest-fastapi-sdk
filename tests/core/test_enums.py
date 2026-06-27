@@ -29,6 +29,36 @@ class TestBaseStrEnum:
     def test_to_dict(self) -> None:
         assert Color.to_dict() == {"RED": "red", "GREEN": "green"}
 
+    def test_choices(self) -> None:
+        assert Color.choices() == [("red", "RED"), ("green", "GREEN")]
+
+    def test_has_value(self) -> None:
+        assert Color.has_value("red") is True
+        assert Color.has_value("purple") is False
+
+    def test_has_key(self) -> None:
+        assert Color.has_key("RED") is True
+        assert Color.has_key("PURPLE") is False
+
+    def test_from_value_by_value(self) -> None:
+        assert Color.from_value("red") is Color.RED
+
+    def test_from_value_by_name(self) -> None:
+        assert Color.from_value("GREEN") is Color.GREEN
+
+    def test_from_value_by_name_case_insensitive(self) -> None:
+        assert Color.from_value("green") is Color.GREEN
+
+    def test_from_value_invalid_raises(self) -> None:
+        import pytest
+
+        with pytest.raises(ValueError):
+            Color.from_value("purple")
+
+    def test_from_value_invalid_returns_default(self) -> None:
+        assert Color.from_value("purple", default=None) is None
+        assert Color.from_value("purple", default=Color.RED) is Color.RED
+
 
 class TestBaseIntEnum:
     def test_member_is_int_instance(self) -> None:
@@ -45,3 +75,19 @@ class TestBaseIntEnum:
 
     def test_to_dict(self) -> None:
         assert Priority.to_dict() == {"LOW": 1, "HIGH": 2}
+
+    def test_choices(self) -> None:
+        assert Priority.choices() == [(1, "LOW"), (2, "HIGH")]
+
+    def test_has_value(self) -> None:
+        assert Priority.has_value(1) is True
+        assert Priority.has_value(99) is False
+
+    def test_from_value_by_value(self) -> None:
+        assert Priority.from_value(2) is Priority.HIGH
+
+    def test_from_value_by_name(self) -> None:
+        assert Priority.from_value("LOW") is Priority.LOW
+
+    def test_from_value_invalid_returns_default(self) -> None:
+        assert Priority.from_value(99, default=None) is None
