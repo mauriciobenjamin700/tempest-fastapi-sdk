@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.73.0"
+version = "0.74.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -227,11 +227,19 @@ select = [
     "N",
     "SIM",
     "RUF",
+    "ANN",
 ]
 ignore = [
     "B008",
     "B006",
     "UP046",
+    # ``Any`` is a legitimate annotation. We enforce that things ARE
+    # annotated, never that they avoid ``Any`` -- so ANN401 stays off.
+    "ANN401",
+    # ``*args`` / ``**kwargs`` annotations add noise for the thin
+    # passthrough wrappers the SDK exposes.
+    "ANN002",
+    "ANN003",
 ]
 
 [tool.ruff.lint.per-file-ignores]

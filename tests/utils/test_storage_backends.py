@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
@@ -23,7 +24,7 @@ from tempest_fastapi_sdk import (
 )
 
 
-async def _stream(payload: bytes, chunk: int = 4):
+async def _stream(payload: bytes, chunk: int = 4) -> AsyncIterator[bytes]:
     for i in range(0, len(payload), chunk):
         yield payload[i : i + chunk]
 

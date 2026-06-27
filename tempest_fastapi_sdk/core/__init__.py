@@ -14,6 +14,11 @@ from tempest_fastapi_sdk.core.logging import (
     JSONFormatter,
     configure_logging,
 )
+from tempest_fastapi_sdk.core.typed import (
+    require_annotations,
+    strict_types,
+    typed,
+)
 
 __all__: list[str] = [
     "BaseIntEnum",
@@ -23,5 +28,8 @@ __all__: list[str] = [
     "configure_logging",
     "get_request_id",
     "request_id_ctx",
+    "require_annotations",
     "set_request_id",
+    "strict_types",
+    "typed",
 ]

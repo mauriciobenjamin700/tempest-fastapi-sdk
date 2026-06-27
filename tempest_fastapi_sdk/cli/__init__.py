@@ -7,8 +7,18 @@ scaffolding (``tempest new``) and the quality gates the SDK expects
 / ``check``).
 """
 
+from tempest_fastapi_sdk.cli.config import (
+    DEFAULT_TYPING_STRICTNESS,
+    TempestConfig,
+    TypingStrictness,
+    load_tempest_config,
+)
 from tempest_fastapi_sdk.cli.main import app
 
 __all__: list[str] = [
+    "DEFAULT_TYPING_STRICTNESS",
+    "TempestConfig",
+    "TypingStrictness",
     "app",
+    "load_tempest_config",
 ]

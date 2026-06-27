@@ -5,6 +5,42 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.74.0] — 2026-06-27
+
+### Added
+
+- **Runtime type-enforcement decorators (`strict_types`, `typed`,
+  `require_annotations`).** Type hints are erased at runtime; these close
+  the gap. `strict_types` validates arguments and return against the
+  annotations with no coercion (a `str` where `int` is annotated raises);
+  `typed` does the same but coerces when Pydantic safely can
+  (`"1"` -> `1`); both are built on `pydantic.validate_call` (already a
+  dependency). `require_annotations` enforces at decoration time that a
+  function *is* annotated, raising `TypeError` listing any unannotated
+  parameter / return — `self`/`cls` and `*args`/`**kwargs` are exempt and
+  `Any` counts as a valid annotation. Exported from `tempest_fastapi_sdk`
+  and `tempest_fastapi_sdk.core`.
+- **`[tool.tempest] typing_strictness` knob for the CLI gates.** A new
+  config field (`lenient` / `standard` / `strict`, default `standard`)
+  controls how strictly `tempest lint` / `fix` / `type` / `check` enforce
+  typing: it layers ruff ANN rules and mypy flags on top of the project's
+  own config without relaxing it. Override per run with
+  `--strictness/-s`. `ANN401` (which flags `Any`) is never enabled at any
+  level — the point is that things ARE annotated, not that they avoid
+  `Any`. Read via `tempest_fastapi_sdk.cli.config` (`TempestConfig`,
+  `load_tempest_config`).
+
+### Changed
+
+- **ruff `ANN` is now enabled in the SDK and in `tempest new` templates.**
+  Generated projects ship `select = [..., "ANN"]` with
+  `ignore = [..., "ANN401", "ANN002", "ANN003"]` plus the
+  `[tool.tempest] typing_strictness = "standard"` knob, so a fresh
+  service requires annotations out of the box while leaving `Any`
+  allowed. Generated templates were also fixed to pass their own
+  `tempest check` cleanly (import ordering, `known-first-party = ["src"]`,
+  sorted `__all__`).
+
 ## [0.73.0] — 2026-06-27
 
 ### Added

@@ -34,7 +34,6 @@ from __future__ import annotations
 import os
 
 from faststream.rabbit import RabbitBroker
-
 from tempest_fastapi_sdk import AsyncBrokerManager
 
 RABBITMQ_URL: str = os.environ.get(
@@ -108,7 +107,6 @@ from __future__ import annotations
 import os
 
 from taskiq_aio_pika import AioPikaBroker
-
 from tempest_fastapi_sdk import AsyncTaskBrokerManager
 
 TASKIQ_BROKER_URL: str = os.environ.get(
@@ -134,7 +132,7 @@ def get_task_manager() -> AsyncTaskBrokerManager:
     return task_manager
 
 
-__all__: list[str] = ["broker", "task_manager", "get_task_manager"]
+__all__: list[str] = ["broker", "get_task_manager", "task_manager"]
 '''
 
 

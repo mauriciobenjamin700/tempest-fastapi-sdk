@@ -239,6 +239,7 @@ nav:
       - Sync offline-first (delta): recipes/offline-sync.md
       - Tempo real: recipes/realtime.md
       - Testes: recipes/testing.md
+      - "Tipagem (estático + runtime)": recipes/typing.md
       - Uploads (backends): recipes/uploads.md
       - Utilitários: recipes/utilities.md
       - Web Push: recipes/webpush.md

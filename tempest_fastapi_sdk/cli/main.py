@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, cast, get_args
 
 import click
 import typer
@@ -13,6 +13,11 @@ from typer.core import TyperGroup
 from tempest_fastapi_sdk.cli import generate as generate_module
 from tempest_fastapi_sdk.cli import lint as lint_module
 from tempest_fastapi_sdk.cli import new as new_module
+from tempest_fastapi_sdk.cli.config import (
+    TempestConfig,
+    TypingStrictness,
+    load_tempest_config,
+)
 from tempest_fastapi_sdk.cli.db import db_app
 from tempest_fastapi_sdk.cli.secrets import secrets_app
 from tempest_fastapi_sdk.cli.user import user_app
@@ -371,15 +376,66 @@ def generate_cmd(
         )
 
 
+def _strictness_option() -> typer.models.OptionInfo:
+    """Build a fresh ``--strictness`` option.
+
+    A new :class:`typer.models.OptionInfo` per command is required --
+    sharing a single instance across commands breaks Typer's option
+    parsing.
+
+    Returns:
+        typer.models.OptionInfo: The configured option.
+    """
+    return cast(
+        "typer.models.OptionInfo",
+        typer.Option(
+            "--strictness",
+            "-s",
+            help=(
+                "Typing strictness for this run: lenient | standard | strict. "
+                "Overrides [tool.tempest] typing_strictness in pyproject.toml."
+            ),
+        ),
+    )
+
+
+def _resolve_config(target: str, strictness: str | None) -> TempestConfig:
+    """Resolve the typing config, applying a CLI ``--strictness`` override.
+
+    Args:
+        target (str): The path being linted; its directory anchors the
+            ``pyproject.toml`` lookup.
+        strictness (str | None): The ``--strictness`` flag value, or
+            ``None`` to use ``[tool.tempest]`` / the default.
+
+    Returns:
+        TempestConfig: The resolved config.
+
+    Raises:
+        typer.BadParameter: When ``strictness`` is not a valid level.
+    """
+    if strictness is None:
+        return load_tempest_config(Path(target))
+    allowed = get_args(TypingStrictness)
+    if strictness not in allowed:
+        allowed_str = ", ".join(allowed)
+        raise typer.BadParameter(
+            f"invalid strictness {strictness!r}; expected one of {allowed_str}."
+        )
+    return TempestConfig(typing_strictness=cast(TypingStrictness, strictness))
+
+
 @app.command("lint")
 def lint_cmd(
     target: Annotated[
         str,
         typer.Argument(help="Path to lint. Defaults to the current directory."),
     ] = ".",
+    strictness: Annotated[str | None, _strictness_option()] = None,
 ) -> None:
     """Run ``ruff check`` on the target."""
-    raise typer.Exit(lint_module.run_ruff_check(target))
+    config = _resolve_config(target, strictness)
+    raise typer.Exit(lint_module.run_ruff_check(target, config=config))
 
 
 @app.command("fix")
@@ -399,6 +455,7 @@ def fix_cmd(
             ),
         ),
     ] = False,
+    strictness: Annotated[str | None, _strictness_option()] = None,
 ) -> None:
     """Apply every ruff autofix + format the target in one pass.
 
@@ -407,7 +464,8 @@ def fix_cmd(
     quotes, removes trailing whitespace, normalizes indentation, line
     length and blank lines.
     """
-    raise typer.Exit(lint_module.run_ruff_fix(target, unsafe=unsafe))
+    config = _resolve_config(target, strictness)
+    raise typer.Exit(lint_module.run_ruff_fix(target, unsafe=unsafe, config=config))
 
 
 @app.command("format")
@@ -440,9 +498,11 @@ def type_cmd(
         str,
         typer.Argument(help="Package/path to type-check."),
     ] = ".",
+    strictness: Annotated[str | None, _strictness_option()] = None,
 ) -> None:
     """Run ``mypy`` against the target."""
-    raise typer.Exit(lint_module.run_mypy(target))
+    config = _resolve_config(target, strictness)
+    raise typer.Exit(lint_module.run_mypy(target, config=config))
 
 
 @app.command("test")
@@ -464,9 +524,11 @@ def check_cmd(
             help="Path to inspect. Defaults to the current directory.",
         ),
     ] = ".",
+    strictness: Annotated[str | None, _strictness_option()] = None,
 ) -> None:
     """Run the full quality gate (lint + fmt-check + type + test)."""
-    raise typer.Exit(lint_module.run_full_check(target))
+    config = _resolve_config(target, strictness)
+    raise typer.Exit(lint_module.run_full_check(target, config=config))
 
 
 if __name__ == "__main__":  # pragma: no cover - manual invocation only

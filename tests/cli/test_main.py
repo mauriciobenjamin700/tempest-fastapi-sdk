@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from typer.testing import CliRunner
 
@@ -274,7 +274,7 @@ class TestLintCommands:
         with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
             fake.run_ruff_check.return_value = 0
             result = runner.invoke(app, ["lint", "src/"])
-        fake.run_ruff_check.assert_called_once_with("src/")
+        fake.run_ruff_check.assert_called_once_with("src/", config=ANY)
         assert result.exit_code == 0
 
     def test_lint_propagates_exit_code(self) -> None:
@@ -299,7 +299,7 @@ class TestLintCommands:
         with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
             fake.run_mypy.return_value = 0
             runner.invoke(app, ["type", "src/"])
-        fake.run_mypy.assert_called_once_with("src/")
+        fake.run_mypy.assert_called_once_with("src/", config=ANY)
 
     def test_test_invokes_pytest_with_target(self) -> None:
         with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
@@ -317,7 +317,7 @@ class TestLintCommands:
         with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
             fake.run_full_check.return_value = 0
             runner.invoke(app, ["check"])
-        fake.run_full_check.assert_called_once_with(".")
+        fake.run_full_check.assert_called_once_with(".", config=ANY)
 
 
 class TestLintRunner:

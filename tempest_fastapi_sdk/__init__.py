@@ -112,7 +112,10 @@ from tempest_fastapi_sdk.core import (
     configure_logging,
     get_request_id,
     request_id_ctx,
+    require_annotations,
     set_request_id,
+    strict_types,
+    typed,
 )
 from tempest_fastapi_sdk.db import (
     BASE_COLUMN_ORDER,
@@ -316,7 +319,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.73.0"
+__version__: str = "0.74.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -597,6 +600,7 @@ __all__: list[str] = [
     "request_id_ctx",
     "require_active",
     "require_admin",
+    "require_annotations",
     "require_authenticated",
     "require_x_token",
     "run_server",
@@ -607,7 +611,9 @@ __all__: list[str] = [
     "sniff_mime",
     "sse_response",
     "states_by_region",
+    "strict_types",
     "to_utc",
+    "typed",
     "utcnow",
     "verify_opaque_token",
 ]

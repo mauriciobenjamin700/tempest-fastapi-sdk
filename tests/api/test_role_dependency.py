@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -28,7 +30,7 @@ async def _call(app: FastAPI, *, token: str | None = None) -> int:
     return response.status_code
 
 
-def _make_app(dep) -> FastAPI:
+def _make_app(dep: Callable[..., object]) -> FastAPI:
     app = FastAPI()
     register_exception_handlers(app)
 

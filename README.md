@@ -65,6 +65,7 @@ The goal is to start every new backend with the same opinionated foundation alre
   - [Rate limit middleware (`RateLimitMiddleware`)](#rate-limit-middleware-recipe)
   - [Outbox dispatcher pattern](#outbox-dispatcher-pattern-recipe)
   - [Base enums (`BaseStrEnum` / `BaseIntEnum`)](#base-enums-recipe)
+  - [Runtime typing (`strict_types` / `typed` / `require_annotations`)](#runtime-typing-recipe)
   - [Hardened static files + cookie helpers](#hardened-static-files--cookie-helpers-recipe)
   - [Brute-force throttling (`AttemptThrottle`)](#brute-force-throttling-recipe)
   - [Opaque tokens (password reset / API keys)](#opaque-tokens-recipe)
@@ -144,7 +145,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.auth` *(extra: `[auth]`, opcional `[email]`, `[mfa]`)* | `UserAuthService`, `make_auth_router`, `SignupSchema` / `LoginSchema` / `RefreshSchema` / `PasswordResetRequestSchema` / `PasswordResetConfirmSchema` + responses, `ActivationToken`, `PasswordResetToken`, MFA schemas (`MFAEnrollResponseSchema` / `MFAConfirmSchema` / `MFAVerifySchema` / `MFADisableSchema`), opt-in DB-backed refresh tokens (`BaseUserRefreshTokenModel` / `make_user_refresh_token_model` / `LogoutSchema`) with rotation + reuse detection + `POST /auth/logout`, bilingual emails + backend pages (`AUTH_DEFAULT_LOCALE`, `normalize_locale` / `negotiate_locale`) — signup/activate/login/refresh/logout/reset + TOTP 2FA out of the box |
 | `tempest_fastapi_sdk.controllers` | `BaseController` |
 | `tempest_fastapi_sdk.services` | `BaseService` |
-| `tempest_fastapi_sdk.core` | `configure_logging`, `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx`, `BaseStrEnum`, `BaseIntEnum` |
+| `tempest_fastapi_sdk.core` | `configure_logging`, `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx`, `BaseStrEnum`, `BaseIntEnum`, `strict_types`/`typed`/`require_annotations` |
 | `tempest_fastapi_sdk.admin` *(extra: `[admin]`)* | `AdminSite`, `AdminModel`, `make_admin_router`, `AdminAuthBackend`, `UserModelAuthBackend`, `AdminAuthError` |
 | `tempest_fastapi_sdk.sse` | `EventStream`, `ServerSentEvent`, `sse_response` |
 | `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager`, `cached` (with `namespace` / `tags`), `CacheInvalidator`, `namespace_registry_key`, `tag_registry_key` |
@@ -3133,6 +3134,56 @@ OrderStatus.from_value("bogus", default=None)  # None — explicit fallback
 ```
 
 Because they inherit from `str` / `int`, Pydantic serializes them transparently as their underlying value and SQLAlchemy can persist them via the standard `Enum` column without an extra converter.
+
+### Runtime typing recipe
+
+Type hints are erased at runtime — nothing stops a caller from passing the wrong type once the code ships. `strict_types` / `typed` validate arguments and return against the annotations on every call (built on `pydantic.validate_call`, already a dependency); `require_annotations` enforces at import time that a function *is* annotated. `Any` is always a valid annotation — these enforce that things ARE annotated, never that they avoid `Any`.
+
+```python
+from typing import Any
+
+from tempest_fastapi_sdk import require_annotations, strict_types, typed
+
+
+@strict_types
+def add(a: int, b: int) -> int:
+    return a + b
+
+add(1, 2)            # 3
+add("1", 2)          # pydantic.ValidationError — "1" is NOT coerced
+
+
+@typed
+def parse(a: int) -> int:
+    return a
+
+parse("1")           # 1 — coerced when Pydantic safely can
+
+
+@require_annotations
+def ok(value: Any) -> None:   # Any counts as a valid annotation
+    return None
+
+@require_annotations
+def bad(a) -> int:            # TypeError at import: missing annotation for 'a'
+    return a
+```
+
+Use the runtime decorators at trust boundaries (queue messages, external API payloads, CLI input) — not on hot internal paths, where they add redundant per-call overhead.
+
+For the **static** side, ruff's `ANN` rule and mypy force annotations to exist with zero runtime cost. The `tempest` CLI gates read a `[tool.tempest] typing_strictness` knob (`lenient` / `standard` / `strict`, default `standard`) that layers ANN rules + mypy flags onto your config:
+
+```toml
+[tool.tempest]
+typing_strictness = "standard"   # lenient | standard | strict
+```
+
+```bash
+tempest check                    # uses the configured level
+tempest check --strictness strict  # override for this run
+```
+
+`ANN401` (forbid `Any`) is never enabled at any level. Projects scaffolded by `tempest new` ship this configured. See the [Typing recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/typing/) for the full guide.
 
 ### Hardened static files + cookie helpers recipe
 

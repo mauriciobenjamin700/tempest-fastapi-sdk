@@ -8,6 +8,25 @@ import sys
 
 import typer
 
+from tempest_fastapi_sdk.cli.config import TempestConfig
+
+
+def _ruff_ann_args(config: TempestConfig | None) -> list[str]:
+    """Build the ruff ``--extend-select`` args for ``config``'s level.
+
+    Args:
+        config (TempestConfig | None): The resolved config, or ``None``
+            to use the default level.
+
+    Returns:
+        list[str]: ``["--extend-select", "ANN001,..."]`` for a level that
+        adds ANN rules, or ``[]`` for the lenient level.
+    """
+    codes = (config or TempestConfig()).ruff_ann_select()
+    if not codes:
+        return []
+    return ["--extend-select", ",".join(codes)]
+
 
 def _resolve(executable: str) -> list[str] | None:
     """Return an argv prefix invoking ``executable`` or ``None`` when absent.
@@ -57,19 +76,27 @@ def _execute(executable: str, args: list[str]) -> int:
     return subprocess.call([*argv, *args])
 
 
-def run_ruff_check(target: str) -> int:
-    """Invoke ``ruff check <target>``.
+def run_ruff_check(target: str, *, config: TempestConfig | None = None) -> int:
+    """Invoke ``ruff check <target>`` with the configured ANN rules.
 
     Args:
         target (str): The path passed verbatim to ruff.
+        config (TempestConfig | None): Resolved ``[tool.tempest]`` config
+            controlling the typing-strictness ANN rules layered on. When
+            ``None`` the default level is used.
 
     Returns:
         int: The ruff exit code.
     """
-    return _execute("ruff", ["check", target])
+    return _execute("ruff", ["check", *_ruff_ann_args(config), target])
 
 
-def run_ruff_fix(target: str, *, unsafe: bool = False) -> int:
+def run_ruff_fix(
+    target: str,
+    *,
+    unsafe: bool = False,
+    config: TempestConfig | None = None,
+) -> int:
     """Apply every automatic fix ruff can perform, then format the target.
 
     Runs in two passes so the second one sees the rewritten file:
@@ -94,13 +121,16 @@ def run_ruff_fix(target: str, *, unsafe: bool = False) -> int:
         target (str): The path passed verbatim to ruff.
         unsafe (bool): When True, pass ``--unsafe-fixes`` so ruff also
             applies the fixes it would otherwise leave alone.
+        config (TempestConfig | None): Resolved ``[tool.tempest]`` config
+            controlling the typing-strictness ANN rules layered onto the
+            fix pass. When ``None`` the default level is used.
 
     Returns:
         int: ``0`` when both passes succeed with nothing left to fix;
         otherwise the lint pass exit code (residual violations), or the
         format pass exit code when the lint pass was clean.
     """
-    check_args = ["check", "--fix"]
+    check_args = ["check", "--fix", *_ruff_ann_args(config)]
     if unsafe:
         check_args.append("--unsafe-fixes")
     check_args.append(target)
@@ -126,16 +156,21 @@ def run_ruff_format(target: str, *, check: bool) -> int:
     return _execute("ruff", args)
 
 
-def run_mypy(target: str) -> int:
-    """Invoke ``mypy <target>``.
+def run_mypy(target: str, *, config: TempestConfig | None = None) -> int:
+    """Invoke ``mypy <target>`` with the configured strictness flags.
 
     Args:
         target (str): The path passed verbatim to mypy.
+        config (TempestConfig | None): Resolved ``[tool.tempest]`` config
+            controlling the mypy strictness flags layered on top of the
+            project's ``[tool.mypy]``. When ``None`` the default level is
+            used.
 
     Returns:
         int: The mypy exit code.
     """
-    return _execute("mypy", [target])
+    flags = (config or TempestConfig()).mypy_flags()
+    return _execute("mypy", [*flags, target])
 
 
 def run_pytest(target: str | None) -> int:
@@ -152,7 +187,7 @@ def run_pytest(target: str | None) -> int:
     return _execute("pytest", args)
 
 
-def run_full_check(target: str) -> int:
+def run_full_check(target: str, *, config: TempestConfig | None = None) -> int:
     """Run the entire quality gate sequentially.
 
     Order: ``ruff check`` → ``ruff format --check`` → ``mypy`` → ``pytest``.
@@ -161,14 +196,18 @@ def run_full_check(target: str) -> int:
     Args:
         target (str): The path inspected by ruff/mypy. Pytest always runs
             against the project's configured ``testpaths``.
+        config (TempestConfig | None): Resolved ``[tool.tempest]`` config
+            controlling the ANN rules and mypy flags layered onto the
+            ruff/mypy steps. When ``None`` the default level is used.
 
     Returns:
         int: The first non-zero exit code, or ``0`` when every gate passed.
     """
+    resolved = config or TempestConfig()
     steps: list[tuple[str, list[str]]] = [
-        ("ruff", ["check", target]),
+        ("ruff", ["check", *_ruff_ann_args(resolved), target]),
         ("ruff", ["format", "--check", target]),
-        ("mypy", [target]),
+        ("mypy", [*resolved.mypy_flags(), target]),
         ("pytest", []),
     ]
     for executable, args in steps:
