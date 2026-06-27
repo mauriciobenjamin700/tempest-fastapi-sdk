@@ -7,8 +7,13 @@ from tempest_fastapi_sdk.utils import (
     CEP,
     CNPJ,
     CPF,
+    CEPField,
+    CNPJField,
+    CPFField,
     CPFOrCNPJ,
+    CPFOrCNPJField,
     PhoneBR,
+    PhoneBRField,
     is_valid_cep,
     is_valid_cnpj,
     is_valid_cpf,
@@ -165,19 +170,23 @@ class TestNormalize:
 
 
 class CPFSchema(BaseModel):
-    document: CPF
+    document: CPFField
 
 
 class CNPJSchema(BaseModel):
-    document: CNPJ
+    document: CNPJField
 
 
 class CPFOrCNPJSchema(BaseModel):
-    document: CPFOrCNPJ
+    document: CPFOrCNPJField
 
 
 class PhoneSchema(BaseModel):
-    phone: PhoneBR
+    phone: PhoneBRField
+
+
+class CEPSchema(BaseModel):
+    cep: CEPField
 
 
 class TestPydanticTypes:
@@ -200,6 +209,19 @@ class TestPydanticTypes:
     def test_cpf_or_cnpj_accepts_both(self) -> None:
         assert CPFOrCNPJSchema(document=VALID_CPF_MASKED).document == VALID_CPF
         assert CPFOrCNPJSchema(document=VALID_CNPJ_MASKED).document == VALID_CNPJ
+
+    def test_cep_type_normalizes(self) -> None:
+        assert CEPSchema(cep="01310-100").cep == "01310100"
+
+
+class TestDeprecatedAliases:
+    def test_old_names_alias_the_field_types(self) -> None:
+        """Pre-0.76 names still resolve to the same ``*Field`` types."""
+        assert CPF is CPFField
+        assert CNPJ is CNPJField
+        assert CPFOrCNPJ is CPFOrCNPJField
+        assert PhoneBR is PhoneBRField
+        assert CEP is CEPField
 
     def test_phone_type_normalizes(self) -> None:
         result = PhoneSchema(phone="(11) 98888-7777")

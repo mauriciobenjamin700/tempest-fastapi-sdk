@@ -14,7 +14,10 @@ Validadores de documentos (CPF, CNPJ, CEP) e normalizador/validador de telefone 
 | `is_valid_phone_br` | `(str) -> bool` | Formato de telefone BR: `+55` opcional, DDD opcional, nono dígito opcional. |
 | `normalize_cpf`, `normalize_cnpj`, `normalize_cpf_cnpj`, `normalize_phone_br` | `(str) -> str` | Remove a máscara deixando só dígitos; levanta `ValueError` se inválido. |
 | `only_digits` | `(str) -> str` | Remove todo caractere que não é dígito. |
-| `CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR` | `Annotated[str, AfterValidator(...)]` | Tipos de campo Pydantic plug-and-play — validam + normalizam automaticamente. |
+| `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField` | `Annotated[str, AfterValidator(...)]` | Tipos de campo Pydantic plug-and-play — validam + normalizam automaticamente. |
+
+!!! info "Sufixo `Field` (a partir da v0.76)"
+    Os tipos de campo passaram a usar o sufixo `Field` (`CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField`) pra deixar claro que são campos de schema — igual `UFField` / `CityNameField`. Os nomes antigos (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`) continuam funcionando como **alias deprecado**; prefira os novos.
 
 #### Uso em schema
 
@@ -22,7 +25,7 @@ Validadores de documentos (CPF, CNPJ, CEP) e normalizador/validador de telefone 
 from pydantic import EmailStr, Field
 
 from tempest_fastapi_sdk import BaseSchema
-from tempest_fastapi_sdk.utils import CPF, CPFOrCNPJ, PhoneBR
+from tempest_fastapi_sdk.utils import CPFOrCNPJField, PhoneBRField
 
 
 class CustomerCreateSchema(BaseSchema):
@@ -36,8 +39,8 @@ class CustomerCreateSchema(BaseSchema):
 
     name: str = Field(min_length=1, max_length=128)
     email: EmailStr
-    document: CPFOrCNPJ
-    phone: PhoneBR
+    document: CPFOrCNPJField
+    phone: PhoneBRField
 ```
 
 Entrada válida:
@@ -87,15 +90,15 @@ await repo.get({"document": normalize_cpf_cnpj(query)})
 ## CEP
 
 
-`CEP` é um tipo `Annotated[str, AfterValidator(normalize_cep)]` — coloque-o em um schema Pydantic e os valores de entrada são aceitos como `"01310-100"` ou `"01310100"`, normalizados para 8 dígitos, e rejeitados (`ValidationError` → envelope HTTP 422) quando não casam com o formato. CEPs não têm dígitos verificadores, então a validação é só de formato.
+`CEPField` é um tipo `Annotated[str, AfterValidator(normalize_cep)]` — coloque-o em um schema Pydantic e os valores de entrada são aceitos como `"01310-100"` ou `"01310100"`, normalizados para 8 dígitos, e rejeitados (`ValidationError` → envelope HTTP 422) quando não casam com o formato. CEPs não têm dígitos verificadores, então a validação é só de formato.
 
 ```python
 from tempest_fastapi_sdk import BaseSchema
-from tempest_fastapi_sdk.utils import CEP
+from tempest_fastapi_sdk.utils import CEPField
 
 
 class AddressCreateSchema(BaseSchema):
-    cep: CEP
+    cep: CEPField
     street: str
     number: str
 ```
@@ -311,5 +314,5 @@ Todo helper tem sua própria receita — esta seção é o mapa rápido:
 | `DownloadUtils`, `build_content_disposition` | [Servindo arquivos privados pela API](http.md#servindo-arquivos-privados-pela-api-downloadutils) |
 | `LogUtils` + `configure_logging` | [Receita de logging estruturado & request IDs](logging.md) |
 | `MetricsUtils` (CPU/memória/disco/GPU) | [Receita de métricas do sistema](metrics.md) |
-| `CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `is_valid_*`, `normalize_*`, `only_digits` | [CPF / CNPJ / telefone](#cpf-cnpj-telefone) |
+| `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField`, `is_valid_*`, `normalize_*`, `only_digits` | [CPF / CNPJ / telefone](#cpf-cnpj-telefone) |
 | `UF`, `Region`, `StateBR`, `CityBR`, `ChoiceBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `uf_choices`, `region_choices`, `city_choices`, `is_valid_uf`, `normalize_uf`, `is_valid_city`, `normalize_city` | [Estados e municípios](#estados-e-municipios) |

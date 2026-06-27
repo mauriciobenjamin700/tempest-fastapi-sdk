@@ -156,7 +156,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.utils.http_client` *(extra: `[http]`)* | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, `REQUEST_ID_HEADER` — typed httpx wrapper |
 | `tempest_fastapi_sdk.utils.storage_backends` *(extra: `[upload]`)* | `UploadStorage` protocol, `LocalUploadStorage`, `MinIOUploadStorage`, `UploadResult`, `ContentValidator` |
 | `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `AsyncTaskBrokerManager` (TaskIQ lifecycle wrapper), `AsyncTaskScheduler` (periodic / cron tasks) |
-| `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `AttemptThrottle`/`ThrottleBackend`/`ThrottleStatus`, `generate_opaque_token`/`hash_opaque_token`/`verify_opaque_token`, `get_client_ip`/`get_client_ip_from_scope`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `TOTPHelper` *(extra: `[mfa]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `DownloadUtils`/`build_content_disposition` *(no extra)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`, `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`), BR states/cities (`UF`, `Region`, `StateBR`, `CityBR`, `ChoiceBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `uf_choices`/`region_choices`/`city_choices`, `is_valid_uf`/`normalize_uf`, `is_valid_city`/`normalize_city`) |
+| `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `AttemptThrottle`/`ThrottleBackend`/`ThrottleStatus`, `generate_opaque_token`/`hash_opaque_token`/`verify_opaque_token`, `get_client_ip`/`get_client_ip_from_scope`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `TOTPHelper` *(extra: `[mfa]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `DownloadUtils`/`build_content_disposition` *(no extra)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, BR regex helpers (`CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField` — old names without the suffix kept as deprecated aliases — `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`), BR states/cities (`UF`, `Region`, `StateBR`, `CityBR`, `ChoiceBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `uf_choices`/`region_choices`/`city_choices`, `is_valid_uf`/`normalize_uf`, `is_valid_city`/`normalize_city`) |
 | `tempest_fastapi_sdk.cli` | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `version` / `--version` |
 
 Core primitives are re-exported from `tempest_fastapi_sdk` at the top level — `from tempest_fastapi_sdk import BaseModel, BaseRepository, AppException` always works. The extras-gated managers in `tempest_fastapi_sdk.cache`, `tempest_fastapi_sdk.queue` and `tempest_fastapi_sdk.tasks` must be imported from their own submodule (`from tempest_fastapi_sdk.queue import AsyncBrokerManager`).
@@ -1506,7 +1506,7 @@ Every helper has its own recipe — this section is the quick map:
 | `DownloadUtils`, `build_content_disposition` | [Serving private files through the API](#serving-private-files-through-the-api-downloadutils) |
 | `LogUtils` + `configure_logging` | [Structured logging & request IDs recipe](#structured-logging--request-ids-recipe) |
 | `MetricsUtils` (CPU/memory/disk/GPU) | [System metrics recipe](#system-metrics-recipe) |
-| `CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `is_valid_*`, `normalize_*`, `only_digits` | [BR document & phone validation recipe](#br-document--phone-validation-recipe) |
+| `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField`, `is_valid_*`, `normalize_*`, `only_digits` | [BR document & phone validation recipe](#br-document--phone-validation-recipe) |
 
 ### BR document & phone validation recipe
 
@@ -1519,7 +1519,7 @@ Every helper has its own recipe — this section is the quick map:
 | `is_valid_phone_br` | `(str) -> bool` | BR phone shape: optional `+55`, optional DDD, optional 9th digit. |
 | `normalize_cpf`, `normalize_cnpj`, `normalize_cpf_cnpj`, `normalize_phone_br` | `(str) -> str` | Strip mask to digits-only; raise `ValueError` if invalid. |
 | `only_digits` | `(str) -> str` | Strip every non-digit character. |
-| `CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR` | `Annotated[str, AfterValidator(...)]` | Drop-in Pydantic field types — validate + normalize automatically. |
+| `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField` | `Annotated[str, AfterValidator(...)]` | Drop-in Pydantic field types — validate + normalize automatically. The old names without the `Field` suffix (`CPF`, `CNPJ`, …) remain as deprecated aliases since v0.76. |
 
 #### Schema usage
 
@@ -1527,7 +1527,7 @@ Every helper has its own recipe — this section is the quick map:
 from pydantic import EmailStr, Field
 
 from tempest_fastapi_sdk import BaseSchema
-from tempest_fastapi_sdk.utils import CPF, CPFOrCNPJ, PhoneBR
+from tempest_fastapi_sdk.utils import CPFOrCNPJField, PhoneBRField
 
 
 class CustomerCreateSchema(BaseSchema):
@@ -1541,8 +1541,8 @@ class CustomerCreateSchema(BaseSchema):
 
     name: str = Field(min_length=1, max_length=128)
     email: EmailStr
-    document: CPFOrCNPJ
-    phone: PhoneBR
+    document: CPFOrCNPJField
+    phone: PhoneBRField
 ```
 
 Valid input:
@@ -2727,15 +2727,15 @@ async def update_perms(user_id: UUID) -> None:
 
 ### CEP (Brazilian zipcode) recipe
 
-`CEP` is an `Annotated[str, AfterValidator(normalize_cep)]` type — drop it into a Pydantic schema and inbound values are accepted as `"01310-100"` or `"01310100"`, normalized to 8 digits, and rejected (`ValidationError` → HTTP 422 envelope) when they don't match the shape. CEPs have no check digits, so validation is format-only.
+`CEPField` is an `Annotated[str, AfterValidator(normalize_cep)]` type — drop it into a Pydantic schema and inbound values are accepted as `"01310-100"` or `"01310100"`, normalized to 8 digits, and rejected (`ValidationError` → HTTP 422 envelope) when they don't match the shape. CEPs have no check digits, so validation is format-only.
 
 ```python
 from tempest_fastapi_sdk import BaseSchema
-from tempest_fastapi_sdk.utils import CEP
+from tempest_fastapi_sdk.utils import CEPField
 
 
 class AddressCreateSchema(BaseSchema):
-    cep: CEP
+    cep: CEPField
     street: str
     number: str
 ```

@@ -5,6 +5,19 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.76.0] — 2026-06-27
+
+### Changed
+
+- **BR field types now carry a `Field` suffix.** The Pydantic
+  annotated-type aliases were renamed to make their role obvious at the
+  import site, matching `UFField` / `CityNameField`: `CPF` -> `CPFField`,
+  `CNPJ` -> `CNPJField`, `CPFOrCNPJ` -> `CPFOrCNPJField`,
+  `PhoneBR` -> `PhoneBRField`, `CEP` -> `CEPField`. The old names remain
+  exported as **deprecated aliases** (identical types), so existing
+  imports keep working; prefer the `*Field` names. Slated for removal in
+  a future major.
+
 ## [0.75.0] — 2026-06-27
 
 ### Added

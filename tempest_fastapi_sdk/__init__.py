@@ -245,11 +245,15 @@ from tempest_fastapi_sdk.utils import (
     REQUEST_ID_HEADER,
     UF,
     AttemptThrottle,
+    CEPField,
     ChoiceBR,
     CircuitOpenError,
     CityBR,
     CityNameField,
+    CNPJField,
+    CPFField,
     CPFOrCNPJ,
+    CPFOrCNPJField,
     CPUMetrics,
     DiskMetrics,
     DownloadUtils,
@@ -264,6 +268,7 @@ from tempest_fastapi_sdk.utils import (
     MinIOUploadStorage,
     PasswordUtils,
     PhoneBR,
+    PhoneBRField,
     Region,
     RetryPolicy,
     StateBR,
@@ -323,7 +328,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.75.0"
+__version__: str = "0.76.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -380,8 +385,12 @@ __all__: list[str] = [
     "BaseUserRefreshTokenModel",
     "BaseUserTokenModel",
     "BodySizeLimitMiddleware",
+    "CEPField",
+    "CNPJField",
     "CORSSettings",
+    "CPFField",
     "CPFOrCNPJ",
+    "CPFOrCNPJField",
     "CPUMetrics",
     "CSRFMiddleware",
     "CachedResponse",
@@ -460,6 +469,7 @@ __all__: list[str] = [
     "PasswordResetToken",
     "PasswordUtils",
     "PhoneBR",
+    "PhoneBRField",
     "PrometheusMiddleware",
     "RSAWebhookSignatureVerifier",
     "RabbitMQSettings",

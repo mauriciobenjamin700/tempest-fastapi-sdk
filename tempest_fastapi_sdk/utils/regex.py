@@ -279,20 +279,29 @@ def normalize_phone_br(value: str) -> str:
     return only_digits(value)
 
 
-CPF = Annotated[str, AfterValidator(normalize_cpf)]
-"""Pydantic type that validates and normalizes a CPF to 11 digits."""
+CPFField = Annotated[str, AfterValidator(normalize_cpf)]
+"""Pydantic field type that validates and normalizes a CPF to 11 digits."""
 
-CNPJ = Annotated[str, AfterValidator(normalize_cnpj)]
-"""Pydantic type that validates and normalizes a CNPJ to 14 digits."""
+CNPJField = Annotated[str, AfterValidator(normalize_cnpj)]
+"""Pydantic field type that validates and normalizes a CNPJ to 14 digits."""
 
-CPFOrCNPJ = Annotated[str, AfterValidator(normalize_cpf_cnpj)]
-"""Pydantic type that accepts either a CPF or a CNPJ."""
+CPFOrCNPJField = Annotated[str, AfterValidator(normalize_cpf_cnpj)]
+"""Pydantic field type that accepts either a CPF or a CNPJ."""
 
-PhoneBR = Annotated[str, AfterValidator(normalize_phone_br)]
-"""Pydantic type that validates a BR phone and normalizes to digits."""
+PhoneBRField = Annotated[str, AfterValidator(normalize_phone_br)]
+"""Pydantic field type that validates a BR phone and normalizes to digits."""
 
-CEP = Annotated[str, AfterValidator(normalize_cep)]
-"""Pydantic type that validates a Brazilian CEP and normalizes to 8 digits."""
+CEPField = Annotated[str, AfterValidator(normalize_cep)]
+"""Pydantic field type that validates a Brazilian CEP, normalized to 8 digits."""
+
+# Deprecated aliases (pre-0.76 names without the ``Field`` suffix). Kept
+# so existing imports keep working; prefer the ``*Field`` names. Slated
+# for removal in a future major.
+CPF = CPFField
+CNPJ = CNPJField
+CPFOrCNPJ = CPFOrCNPJField
+PhoneBR = PhoneBRField
+CEP = CEPField
 
 
 __all__: list[str] = [
@@ -304,8 +313,13 @@ __all__: list[str] = [
     "CPF_CNPJ_PATTERN",
     "CPF_PATTERN",
     "PHONE_BR_PATTERN",
+    "CEPField",
+    "CNPJField",
+    "CPFField",
     "CPFOrCNPJ",
+    "CPFOrCNPJField",
     "PhoneBR",
+    "PhoneBRField",
     "is_valid_cep",
     "is_valid_cnpj",
     "is_valid_cpf",
