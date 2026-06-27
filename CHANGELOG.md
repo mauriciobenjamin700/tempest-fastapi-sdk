@@ -5,6 +5,22 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.75.0] — 2026-06-27
+
+### Added
+
+- **Frontend `<select>` choices for BR localities (`ChoiceBR`,
+  `uf_choices`, `region_choices`, `city_choices`).** The bundled
+  states/cities dataset already backed the `UFField` / `CityNameField`
+  validation fields; these helpers make the *other* role first-class —
+  feeding dropdowns. Each returns `list[ChoiceBR]`, a typed Pydantic
+  schema (`value`/`label`) that serializes as
+  `{"value": ..., "label": ...}` and shows up typed in OpenAPI:
+  `uf_choices()` pairs each acronym (the same value `UFField` validates)
+  with the full state name, `region_choices()` lists the 5 IBGE
+  macro-regions, and `city_choices(uf)` lists a state's municipalities.
+  Exported from `tempest_fastapi_sdk` and `tempest_fastapi_sdk.utils`.
+
 ## [0.74.0] — 2026-06-27
 
 ### Added

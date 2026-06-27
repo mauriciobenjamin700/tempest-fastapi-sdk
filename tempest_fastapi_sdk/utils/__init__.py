@@ -30,19 +30,23 @@ from tempest_fastapi_sdk.utils.http_client import (
 from tempest_fastapi_sdk.utils.jwt import JWTUtils
 from tempest_fastapi_sdk.utils.locations import (
     UF,
+    ChoiceBR,
     CityBR,
     CityNameField,
     Region,
     StateBR,
     UFField,
     cities_by_uf,
+    city_choices,
     get_state,
     is_valid_city,
     is_valid_uf,
     list_states,
     normalize_city,
     normalize_uf,
+    region_choices,
     states_by_region,
+    uf_choices,
 )
 from tempest_fastapi_sdk.utils.log import LogUtils
 from tempest_fastapi_sdk.utils.metrics import (
@@ -110,6 +114,7 @@ __all__: list[str] = [
     "AttemptThrottle",
     "CPFOrCNPJ",
     "CPUMetrics",
+    "ChoiceBR",
     "CircuitOpenError",
     "CityBR",
     "CityNameField",
@@ -139,6 +144,7 @@ __all__: list[str] = [
     "UploadUtils",
     "build_content_disposition",
     "cities_by_uf",
+    "city_choices",
     "generate_opaque_token",
     "get_client_ip",
     "get_client_ip_from_scope",
@@ -161,9 +167,11 @@ __all__: list[str] = [
     "normalize_phone_br",
     "normalize_uf",
     "only_digits",
+    "region_choices",
     "sniff_mime",
     "states_by_region",
     "to_utc",
+    "uf_choices",
     "utcnow",
     "verify_opaque_token",
 ]

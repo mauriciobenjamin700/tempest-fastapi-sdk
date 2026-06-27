@@ -245,6 +245,7 @@ from tempest_fastapi_sdk.utils import (
     REQUEST_ID_HEADER,
     UF,
     AttemptThrottle,
+    ChoiceBR,
     CircuitOpenError,
     CityBR,
     CityNameField,
@@ -276,6 +277,7 @@ from tempest_fastapi_sdk.utils import (
     UploadUtils,
     build_content_disposition,
     cities_by_uf,
+    city_choices,
     generate_opaque_token,
     get_client_ip,
     get_client_ip_from_scope,
@@ -298,9 +300,11 @@ from tempest_fastapi_sdk.utils import (
     normalize_phone_br,
     normalize_uf,
     only_digits,
+    region_choices,
     sniff_mime,
     states_by_region,
     to_utc,
+    uf_choices,
     utcnow,
     verify_opaque_token,
 )
@@ -319,7 +323,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.74.0"
+__version__: str = "0.75.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -381,6 +385,7 @@ __all__: list[str] = [
     "CPUMetrics",
     "CSRFMiddleware",
     "CachedResponse",
+    "ChoiceBR",
     "CircuitOpenError",
     "CityBR",
     "CityNameField",
@@ -529,6 +534,7 @@ __all__: list[str] = [
     "build_content_disposition",
     "build_pagination_link_header",
     "cities_by_uf",
+    "city_choices",
     "clear_cookie",
     "clear_request_id",
     "coerce_flag",
@@ -595,6 +601,7 @@ __all__: list[str] = [
     "normalize_uf",
     "only_digits",
     "parse_accept_language",
+    "region_choices",
     "register_exception_handlers",
     "reorder_base_columns_first",
     "request_id_ctx",
@@ -614,6 +621,7 @@ __all__: list[str] = [
     "strict_types",
     "to_utc",
     "typed",
+    "uf_choices",
     "utcnow",
     "verify_opaque_token",
 ]

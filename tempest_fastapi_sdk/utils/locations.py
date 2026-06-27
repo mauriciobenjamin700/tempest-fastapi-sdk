@@ -138,6 +138,24 @@ class StateBR(BaseModel):
     )
 
 
+class ChoiceBR(BaseModel):
+    """A ``value``/``label`` pair ready for a frontend ``<select>``.
+
+    The shape every dropdown wants: a stable ``value`` to store/submit
+    and a human ``label`` to show. Returned by :func:`uf_choices`,
+    :func:`region_choices` and :func:`city_choices`.
+
+    Attributes:
+        value (str): The value to store/submit (e.g. the UF acronym
+            ``"SP"`` or a city name).
+        label (str): The human-facing text to display (e.g. the full
+            state name ``"São Paulo"``).
+    """
+
+    value: str = Field(description="Value to store/submit.")
+    label: str = Field(description="Human-facing text to display.")
+
+
 class _RawStateEntry(TypedDict):
     """Shape of a single entry in the bundled ``br_locations.json``."""
 
@@ -289,6 +307,53 @@ def states_by_region(region: Region) -> list[StateBR]:
     return [state for state in _load_states() if state.region == region]
 
 
+def uf_choices() -> list[ChoiceBR]:
+    """Return every federative unit as a frontend ``<select>`` choice.
+
+    Each choice carries the acronym as ``value`` (what you store/submit,
+    and what :data:`UFField` validates) and the full state name as
+    ``label``. Ordered by acronym.
+
+    Returns:
+        list[ChoiceBR]: One choice per state, e.g.
+        ``ChoiceBR(value="SP", label="São Paulo")``.
+    """
+    return [
+        ChoiceBR(value=state.uf.value, label=state.name) for state in _load_states()
+    ]
+
+
+def region_choices() -> list[ChoiceBR]:
+    """Return every IBGE macro-region as a frontend ``<select>`` choice.
+
+    Both ``value`` and ``label`` carry the region name (e.g. ``"Sudeste"``)
+    since that is the stored :class:`Region` value.
+
+    Returns:
+        list[ChoiceBR]: One choice per macro-region, ordered as declared.
+    """
+    return [ChoiceBR(value=region.value, label=region.value) for region in Region]
+
+
+def city_choices(uf: str | UF) -> list[ChoiceBR]:
+    """Return the cities of a federative unit as ``<select>`` choices.
+
+    Each choice uses the canonical city name for both ``value`` and
+    ``label``. Ordered alphabetically.
+
+    Args:
+        uf (str | UF): The acronym (case-insensitive) or :class:`UF`.
+
+    Returns:
+        list[ChoiceBR]: One choice per municipality.
+
+    Raises:
+        ValueError: If ``uf`` is not a known federative unit (matching
+            :func:`cities_by_uf`).
+    """
+    return [ChoiceBR(value=city, label=city) for city in cities_by_uf(uf)]
+
+
 @lru_cache(maxsize=27)
 def _city_index(uf: UF) -> dict[str, str]:
     """Return a cached ``accentless-name -> canonical-name`` index.
@@ -357,17 +422,21 @@ CityNameField = Annotated[str, AfterValidator(lambda v: v.strip())]
 
 __all__: list[str] = [
     "UF",
+    "ChoiceBR",
     "CityBR",
     "CityNameField",
     "Region",
     "StateBR",
     "UFField",
     "cities_by_uf",
+    "city_choices",
     "get_state",
     "is_valid_city",
     "is_valid_uf",
     "list_states",
     "normalize_city",
     "normalize_uf",
+    "region_choices",
     "states_by_region",
+    "uf_choices",
 ]

@@ -174,6 +174,57 @@ def validate_address(uf: UF, city: str) -> str:
 !!! tip "City lookup ignores accents and case"
     `is_valid_city("SP", "sao paulo")` and `normalize_city("rj", "RIO DE JANEIRO")` both work — the comparison strips accents, case and surrounding whitespace. `normalize_city` always returns the canonical proper-case name (`"São Paulo"`, `"Rio de Janeiro"`).
 
+### Choices ready for a frontend `<select>`
+
+The same data serves **two roles**: validating input (the `UFField` /
+`CityNameField` fields above) **and** feeding the frontend dropdowns. For
+the latter, `uf_choices`, `region_choices` and `city_choices` return
+`list[ChoiceBR]` — each item a `value` (what you store/submit) + `label`
+(what the user sees), exactly the shape an `<option>` wants:
+
+```python
+from fastapi import APIRouter
+
+from tempest_fastapi_sdk.utils import ChoiceBR, city_choices, region_choices, uf_choices
+
+router = APIRouter(prefix="/api/locations", tags=["locations"])
+
+
+@router.get("/states")
+def list_uf_choices() -> list[ChoiceBR]:
+    """UF choices: value = acronym, label = state name."""
+    return uf_choices()
+
+
+@router.get("/regions")
+def list_region_choices() -> list[ChoiceBR]:
+    """Choices for the 5 IBGE macro-regions."""
+    return region_choices()
+
+
+@router.get("/states/{uf}/cities")
+def list_city_choices(uf: str) -> list[ChoiceBR]:
+    """City choices for a UF: value = label = municipality name."""
+    return city_choices(uf)
+```
+
+The `value` of `uf_choices()` is the acronym — the same value `UFField`
+validates on the way back, so whatever the `<select>` submits drops
+straight into your schema:
+
+```python
+uf_choices()[0]          # ChoiceBR(value="AC", label="Acre")
+region_choices()[0]      # ChoiceBR(value="Norte", label="Norte")
+city_choices("sp")[0]    # ChoiceBR(value="Adamantina", label="Adamantina")
+```
+
+!!! info "Why `ChoiceBR` instead of a tuple?"
+    `ChoiceBR` is a Pydantic schema (`value: str`, `label: str`), so it
+    serializes as `{"value": ..., "label": ...}` in JSON and shows up
+    typed in OpenAPI/Swagger — no untyped "magic field". For the classic
+    state→city case, the frontend calls `/states`, then `/states/{uf}/cities`
+    once a UF is picked.
+
 ### Imperative variants
 
 | Function | What it does |
@@ -185,13 +236,14 @@ def validate_address(uf: UF, city: str) -> str:
 | `normalize_city(uf, city)` | Canonical municipality name; raises `ValueError` when unknown. |
 
 !!! note "A states/cities endpoint for the frontend"
-    To populate state and city `<select>`s, return `list_states()` directly (each `StateBR` already carries `cities`), or a lean `GET /states/{uf}/cities` endpoint returning `cities_by_uf(uf)`. Since it's in-memory data, it never touches the database.
+    For `<select>`s, prefer `uf_choices()` / `region_choices()` / `city_choices(uf)` (value/label shape). If you need the whole state with its city list, `list_states()` returns each `StateBR` with its `cities`. Since it's all in-memory, it never touches the database.
 
 #### Recap
 
 - `UF` (StrEnum, 27 acronyms) + `Region` (5 IBGE macro-regions).
-- `StateBR` / `CityBR` for typed responses.
+- `StateBR` / `CityBR` for typed responses; `ChoiceBR` (`value`/`label`) for dropdowns.
 - `list_states`, `get_state`, `cities_by_uf`, `states_by_region` to query the bundled table.
+- `uf_choices`, `region_choices`, `city_choices` for frontend `<select>`s.
 - `UFField` / `CityNameField` for schema fields; `is_valid_*` / `normalize_*` for imperative validation in the service.
 
 
@@ -268,5 +320,5 @@ Every helper has its own recipe — this section is the quick map:
 | `LogUtils` + `configure_logging` | [Structured logging & request IDs recipe](logging.md) |
 | `MetricsUtils` (CPU/memory/disk/GPU) | [System metrics recipe](metrics.md) |
 | `CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `is_valid_*`, `normalize_*`, `only_digits` | [CPF / CNPJ / phone](#cpf-cnpj-phone) |
-| `UF`, `Region`, `StateBR`, `CityBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `is_valid_uf`, `normalize_uf`, `is_valid_city`, `normalize_city` | [States and municipalities](#states-and-municipalities) |
+| `UF`, `Region`, `StateBR`, `CityBR`, `ChoiceBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `uf_choices`, `region_choices`, `city_choices`, `is_valid_uf`, `normalize_uf`, `is_valid_city`, `normalize_city` | [States and municipalities](#states-and-municipalities) |
 

@@ -5,19 +5,23 @@ from pydantic import BaseModel, ValidationError
 
 from tempest_fastapi_sdk.utils import (
     UF,
+    ChoiceBR,
     CityBR,
     CityNameField,
     Region,
     StateBR,
     UFField,
     cities_by_uf,
+    city_choices,
     get_state,
     is_valid_city,
     is_valid_uf,
     list_states,
     normalize_city,
     normalize_uf,
+    region_choices,
     states_by_region,
+    uf_choices,
 )
 
 
@@ -168,3 +172,32 @@ def test_no_duplicate_cities_within_state() -> None:
     """Every state's municipality list is free of duplicates."""
     for state in list_states():
         assert len(state.cities) == len(set(state.cities))
+
+
+def test_uf_choices_value_is_acronym_label_is_name() -> None:
+    """``uf_choices`` pairs the acronym (value) with the full name (label)."""
+    choices = uf_choices()
+    assert len(choices) == 27
+    assert all(isinstance(c, ChoiceBR) for c in choices)
+    sp = next(c for c in choices if c.value == "SP")
+    assert sp.label == "São Paulo"
+
+
+def test_region_choices_cover_every_region() -> None:
+    """``region_choices`` yields one choice per macro-region."""
+    choices = region_choices()
+    assert {c.value for c in choices} == {r.value for r in Region}
+    assert all(c.value == c.label for c in choices)
+
+
+def test_city_choices_match_cities_by_uf() -> None:
+    """``city_choices`` mirrors ``cities_by_uf`` as value/label pairs."""
+    choices = city_choices("sp")
+    assert [c.value for c in choices] == cities_by_uf("sp")
+    assert all(c.value == c.label for c in choices)
+
+
+def test_city_choices_unknown_uf_raises() -> None:
+    """An unknown UF raises, matching ``cities_by_uf``."""
+    with pytest.raises(ValueError):
+        city_choices("ZZ")
