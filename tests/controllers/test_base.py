@@ -12,6 +12,7 @@ from tempest_fastapi_sdk import (
     BaseModel,
     BaseRepository,
     BaseResponseSchema,
+    BaseSchema,
     BaseService,
     NotFoundException,
 )
@@ -25,6 +26,10 @@ class Gadget(BaseModel):
 
 class GadgetResponse(BaseResponseSchema):
     name: str
+
+
+class GadgetUpdate(BaseSchema):
+    name: str | None = None
 
 
 class GadgetRepository(BaseRepository[Gadget]):
@@ -80,6 +85,11 @@ class TestBaseController:
     async def test_count_passes_through(self, controller: GadgetController) -> None:
         await controller.service.repository.add(Gadget(name="single"))
         assert await controller.count() == 1
+
+    async def test_update_passes_through(self, controller: GadgetController) -> None:
+        created = await controller.service.repository.add(Gadget(name="before"))
+        result = await controller.update(created.id, GadgetUpdate(name="after"))
+        assert result.name == "after"
 
     async def test_delete_passes_through(self, controller: GadgetController) -> None:
         created = await controller.service.repository.add(Gadget(name="gone"))

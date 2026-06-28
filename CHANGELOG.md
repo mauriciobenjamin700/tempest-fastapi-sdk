@@ -5,6 +5,20 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.78.0] — 2026-06-27
+
+### Added
+
+- **`BaseService.update` (and `BaseController.update`).** The service
+  skeleton now ships a generic update method: fetch by primary key, copy
+  the fields present in the payload (`data.to_dict()`, which drops unset
+  and ``None`` values) onto the instance, persist via
+  ``repository.update`` and return the mapped response. Because unset
+  fields are skipped, the same method serves full (PUT) and partial
+  (PATCH) updates. ``BaseController.update`` forwards to it, matching the
+  existing pass-through layer. Override either when an update needs
+  orchestration.
+
 ## [0.77.0] — 2026-06-27
 
 ### Added

@@ -12,6 +12,7 @@ from tempest_fastapi_sdk import (
     BaseModel,
     BaseRepository,
     BaseResponseSchema,
+    BaseSchema,
     BaseService,
     NotFoundException,
 )
@@ -21,10 +22,17 @@ class Widget(BaseModel):
     __tablename__ = "widget_for_service_test"
 
     name: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
 
 class WidgetResponse(BaseResponseSchema):
     name: str
+    description: str | None = None
+
+
+class WidgetUpdate(BaseSchema):
+    name: str | None = None
+    description: str | None = None
 
 
 class WidgetRepository(BaseRepository[Widget]):
@@ -38,6 +46,7 @@ class WidgetRepository(BaseRepository[Widget]):
             created_at=instance.created_at,
             updated_at=instance.updated_at,
             name=instance.name,
+            description=instance.description,
         )
 
 
@@ -98,6 +107,31 @@ class TestBaseService:
         assert await service.exists({"name": "here"})
         assert not await service.exists({"name": "absent"})
 
+    async def test_update_applies_fields(self, service: WidgetService) -> None:
+        created = await service.repository.add(
+            Widget(name="old", description="d0"),
+        )
+        result = await service.update(
+            created.id, WidgetUpdate(name="new", description="d1")
+        )
+        assert isinstance(result, WidgetResponse)
+        assert (result.name, result.description) == ("new", "d1")
+
+    async def test_update_is_partial(self, service: WidgetService) -> None:
+        """Unset fields are left untouched (PATCH semantics)."""
+        created = await service.repository.add(
+            Widget(name="keep", description="keep-me"),
+        )
+        result = await service.update(created.id, WidgetUpdate(name="renamed"))
+        assert result.name == "renamed"
+        assert result.description == "keep-me"
+
+    async def test_update_missing_raises_not_found(
+        self, service: WidgetService
+    ) -> None:
+        with pytest.raises(NotFoundException):
+            await service.update(uuid4(), WidgetUpdate(name="x"))
+
     async def test_delete(self, service: WidgetService) -> None:
         created = await service.repository.add(Widget(name="bye"))
         await service.delete(created.id)
@@ -116,6 +150,7 @@ class AsyncWidgetRepository(BaseRepository[Widget]):
             created_at=instance.created_at,
             updated_at=instance.updated_at,
             name=instance.name,
+            description=instance.description,
         )
 
 

@@ -611,7 +611,7 @@ The highlighted block (under the divider comment) is what you typically add per 
 
 The service is where business rules live. It calls one or more repositories and never touches HTTP or SQLAlchemy types directly.
 
-Inherit from `BaseService[RepositoryT, ResponseT]`. Doing so gives you `get_by_id`, `get_or_none`, `list`, `paginate`, `count`, `exists` and `delete` for free — every one is already wired to `repository.map_to_response` (sync or async). Override only the methods that need domain logic; add new ones for use cases the base doesn't cover (signup, password reset, etc.):
+Inherit from `BaseService[RepositoryT, ResponseT]`. Doing so gives you `get_by_id`, `get_or_none`, `list`, `paginate`, `count`, `exists`, `update` and `delete` for free — every one is already wired to `repository.map_to_response` (sync or async). Override only the methods that need domain logic; add new ones for use cases the base doesn't cover (signup, password reset, etc.):
 
 ```python
 # src/services/user.py
@@ -708,7 +708,7 @@ class UserService(BaseService[UserRepository, UserResponseSchema]):
 
 Even when there's no orchestration to do, `controllers/` exists as a **thin pass-through** so the import graph stays uniform across services. The day a use case needs to coordinate two services (or fan out to a queue), the controller is already there.
 
-Inherit from `BaseController[ServiceT, ResponseT]`. The base forwards `get_by_id`, `list`, `paginate`, `count` and `delete` to the service for you — you only declare methods that add cross-service coordination or that don't exist on the service (custom use cases like `signup`):
+Inherit from `BaseController[ServiceT, ResponseT]`. The base forwards `get_by_id`, `list`, `paginate`, `count`, `update` and `delete` to the service for you — you only declare methods that add cross-service coordination or that don't exist on the service (custom use cases like `signup`):
 
 ```python
 # src/controllers/user.py
@@ -2033,6 +2033,7 @@ What you inherit by subclassing `BaseService[RepositoryT, ResponseT]`:
 | `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` with mapped `items` + `total`/`page`/`size`/`pages`. | Offset pagination via `repository.paginate`. |
 | `count(filters=None)` | `int` | Pass-through to `repository.count`. |
 | `exists(filters)` | `bool` | Pass-through to `repository.exists`. |
+| `update(id, data)` | `ResponseT` | Fetch by id, copy the fields present in `data` (a `BaseSchema`) onto the row, persist, map. `to_dict()` drops unset/`None`, so it serves PUT and PATCH alike. |
 | `delete(id)` | `None` | Hard delete via `repository.delete`. |
 
 `map_to_response` is `await`-ed when it returns a coroutine, so async mappers work transparently — no method override needed.
@@ -2045,6 +2046,7 @@ What you inherit by subclassing `BaseController[ServiceT, ResponseT]`:
 | `list(filters, order_by, ascending)` | `service.list` | Same. |
 | `paginate(filters, order_by, page, page_size, ascending)` | `service.paginate` | Same. |
 | `count(filters)` | `service.count` | Same. |
+| `update(id, data)` | `service.update` | Same. |
 | `delete(id)` | `service.delete` | Same. |
 
 When a use case needs domain rules, override the inherited method in the service. When a use case needs to coordinate more than one service, override the inherited method (or add a new one) in the controller. The router never grows — it only depends on the controller.

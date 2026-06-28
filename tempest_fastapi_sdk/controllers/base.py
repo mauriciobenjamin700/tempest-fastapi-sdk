@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Generic, TypeVar, cast
 from uuid import UUID
 
+from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.services.base import BaseService
 
 ServiceT = TypeVar("ServiceT", bound=BaseService[Any, Any])
@@ -111,6 +112,18 @@ class BaseController(Generic[ServiceT, ResponseT]):
             int: The matching row count.
         """
         return await self.service.count(filters)
+
+    async def update(self, id: UUID, data: BaseSchema) -> ResponseT:
+        """Pass-through to :meth:`BaseService.update`.
+
+        Args:
+            id (UUID): The primary key of the record to update.
+            data (BaseSchema): The update payload (unset fields skipped).
+
+        Returns:
+            ResponseT: The mapped, updated response.
+        """
+        return cast("ResponseT", await self.service.update(id, data))
 
     async def delete(self, id: UUID) -> None:
         """Pass-through to :meth:`BaseService.delete`.

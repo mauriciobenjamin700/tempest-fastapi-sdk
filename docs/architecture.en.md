@@ -147,6 +147,7 @@ What you inherit by subclassing `BaseService[RepositoryT, ResponseT]`:
 | `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` with mapped `items` + `total`/`page`/`page_size`/`pages`. | Offset pagination via `repository.paginate`. |
 | `count(filters=None)` | `int` | Pass-through to `repository.count`. |
 | `exists(filters)` | `bool` | Pass-through to `repository.exists`. |
+| `update(id, data)` | `ResponseT` | Fetch by id, copy the fields present in `data` (a `BaseSchema`) onto the row, persist, map. `to_dict()` drops unset/`None`, so it serves PUT and PATCH. |
 | `delete(id)` | `None` | Hard delete via `repository.delete`. |
 
 `map_to_response` is `await`-ed when it returns a coroutine, so async mappers work transparently — no method override needed.
@@ -159,6 +160,7 @@ What you inherit by subclassing `BaseController[ServiceT, ResponseT]`:
 | `list(filters, order_by, ascending)` | `service.list` | Same. |
 | `paginate(filters, order_by, page, page_size, ascending)` | `service.paginate` | Same. |
 | `count(filters)` | `service.count` | Same. |
+| `update(id, data)` | `service.update` | Same. |
 | `delete(id)` | `service.delete` | Same. |
 
 When a use case needs domain rules, override the inherited method in the service. When a use case needs to coordinate more than one service, override the inherited method (or add a new one) in the controller. The router never grows — it only depends on the controller.

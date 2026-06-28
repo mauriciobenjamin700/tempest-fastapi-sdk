@@ -7,6 +7,7 @@ from typing import Any, Generic, TypeVar
 from uuid import UUID
 
 from tempest_fastapi_sdk.db.repository import BaseRepository
+from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 RepositoryT = TypeVar("RepositoryT", bound=BaseRepository[Any])
 ResponseT = TypeVar("ResponseT")
@@ -167,6 +168,39 @@ class BaseService(Generic[RepositoryT, ResponseT]):
             bool: ``True`` if at least one row matches.
         """
         return await self.repository.exists(filters)
+
+    async def update(self, id: UUID, data: BaseSchema) -> ResponseT:
+        """Apply a partial update to a record and map it to a response.
+
+        Fetches the row by primary key, copies the fields present in
+        ``data`` onto the instance, persists, and returns the mapped
+        response. Because :meth:`BaseSchema.to_dict` drops unset and
+        ``None`` fields, only the values the caller actually supplied are
+        applied — so the same method serves both full (PUT) and partial
+        (PATCH) updates.
+
+        Override this in a concrete service when an update needs
+        orchestration (cross-repository writes, domain rules, side
+        effects); leave it untouched for plain field copies.
+
+        Args:
+            id (UUID): The primary key of the record to update.
+            data (BaseSchema): The update payload. Fields left unset (or
+                ``None``) are not applied.
+
+        Returns:
+            ResponseT: The mapped, updated response.
+
+        Raises:
+            AppException: ``repository.not_found_exception`` when no
+                record with ``id`` exists.
+            ConflictException: On integrity violations while persisting.
+        """
+        instance = await self.repository.get_by_id(id)
+        for field, value in data.to_dict().items():
+            setattr(instance, field, value)
+        updated = await self.repository.update(instance)
+        return await self._map_to_response(updated)
 
     async def delete(self, id: UUID) -> None:
         """Delete a row by primary key.

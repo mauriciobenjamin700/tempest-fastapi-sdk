@@ -147,6 +147,7 @@ O que você herda ao subclassear `BaseService[RepositoryT, ResponseT]`:
 | `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` com `items` mapeados + `total`/`page`/`page_size`/`pages`. | Paginação por offset via `repository.paginate`. |
 | `count(filters=None)` | `int` | Pass-through para `repository.count`. |
 | `exists(filters)` | `bool` | Pass-through para `repository.exists`. |
+| `update(id, data)` | `ResponseT` | Busca por id, copia os campos presentes em `data` (um `BaseSchema`) na instância, persiste e mapeia. `to_dict()` descarta unset/`None`, então serve PUT e PATCH. |
 | `delete(id)` | `None` | Hard delete via `repository.delete`. |
 
 `map_to_response` é aguardado com `await` quando retorna uma coroutine, então mappers async funcionam de forma transparente — sem precisar sobrescrever o método.
@@ -159,6 +160,7 @@ O que você herda ao subclassear `BaseController[ServiceT, ResponseT]`:
 | `list(filters, order_by, ascending)` | `service.list` | Igual. |
 | `paginate(filters, order_by, page, page_size, ascending)` | `service.paginate` | Igual. |
 | `count(filters)` | `service.count` | Igual. |
+| `update(id, data)` | `service.update` | Igual. |
 | `delete(id)` | `service.delete` | Igual. |
 
 Quando um caso de uso precisa de regras de domínio, sobrescreva o método herdado no service. Quando um caso de uso precisa coordenar mais de um service, sobrescreva o método herdado (ou adicione um novo) no controller. O router nunca cresce — ele só depende do controller.
