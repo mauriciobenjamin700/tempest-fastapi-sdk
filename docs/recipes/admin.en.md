@@ -1,7 +1,7 @@
 # Admin site
 
 
-Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. The panel is feature-complete (Django-admin parity): a list view with search / per-field filters / sortable columns, full CRUD (create / edit / delete), bulk actions, CSV/JSON export, FK-select widgets, a dashboard with live row counts + system metrics, optional TOTP MFA at login, and an audit trail stamping `created_by` / `updated_by`. Still on the roadmap: file upload and inline/related editing.
+Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. The panel is feature-complete (Django-admin parity): a list view with search / per-field filters / sortable columns, full CRUD (create / edit / delete), bulk actions, CSV/JSON export, FK-select widgets, a dashboard with live row counts + system metrics, optional TOTP MFA at login, file/image upload fields, and an audit trail stamping `created_by` / `updated_by`. Still on the roadmap: inline/related editing.
 
 Requires the `[admin]` extra:
 
@@ -196,7 +196,7 @@ app.include_router(
 
     **Audit trail**: create/edit through the admin stamps `created_by`/`updated_by` (from `AuditMixin`) with the acting admin's id; the detail view shows an **Audit** panel with timestamps and — when the model has the audit columns — the actor (UUID resolved to a display name via the auth backend). Models without `AuditMixin` show timestamps only.
 
-    Not yet included (later roadmap phases): file upload, inline/related editing.
+    Not yet included (later roadmap phases): inline/related editing.
 
 ## Custom actions (`@admin_action`)
 
@@ -242,6 +242,36 @@ to flash a banner on the list view (or `None` for no banner). The
 function stays **directly callable/testable** — the decorator only
 attaches metadata. Use `name=` to pin the identifier (default: the
 function name) and `dangerous=True` to mark a destructive action.
+
+## File / image upload field
+
+A `String` column that stores a file's path/key can render as a **file
+input** on the form. List the column in `upload_fields` and pass an
+`upload_storage` (the SDK's existing backends — `LocalUploadStorage` /
+`MinIOUploadStorage`). On submit the file is saved to storage and the
+**returned key** is written to the column.
+
+```python
+from tempest_fastapi_sdk import AdminModel
+from tempest_fastapi_sdk.utils import LocalUploadStorage
+
+
+site.register(AdminModel(
+    model=DocumentModel,
+    upload_fields=[DocumentModel.attachment],   # String column holding the key
+    upload_storage=LocalUploadStorage("media/"),  # or MinIOUploadStorage(...)
+))
+```
+
+- The form becomes `multipart/form-data` automatically when `upload_fields` is set.
+- **Create**: a file is required only when the column is `NOT NULL` with no default.
+- **Edit**: no new file → keeps the current value (shows "Current: …"); a file → replaces it.
+- The column stores the storage **key** (`<slug>/<field>/<uuid>.<ext>`); use `upload_storage` (or `UploadUtils`) to serve/download it later.
+
+!!! warning "`upload_fields` requires `upload_storage`"
+    Registering `upload_fields` without `upload_storage` raises
+    `ValueError` at `AdminModel` construction — without storage there's
+    nowhere to write the file.
 
 !!! tip "Sidebar + burger navigation"
     Every authenticated page has a persistent **sidebar**: Dashboard, one

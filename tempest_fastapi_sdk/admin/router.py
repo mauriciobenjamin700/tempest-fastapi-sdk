@@ -11,9 +11,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from sqlalchemy import inspect as sa_inspect
 from starlette.concurrency import run_in_threadpool
 
 from tempest_fastapi_sdk.admin.actions import AdminActionContext
@@ -960,6 +962,7 @@ def make_admin_router(
         _check_csrf(session, csrf_token)
         form = await request.form()
         data, errors = parse_submission(admin, form)
+        errors.update(await _save_uploads(admin, form, data, creating=True))
         form_error: str | None = None
         if not errors:
             repository = admin.build_repository(db_session)
@@ -1225,6 +1228,7 @@ def make_admin_router(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
         form = await request.form()
         data, errors = parse_submission(admin, form)
+        errors.update(await _save_uploads(admin, form, data, creating=False))
         form_error: str | None = None
         if not errors:
             for key, value in data.items():
@@ -1444,6 +1448,64 @@ async def _system_metrics() -> dict[str, Any] | None:
         "mem_total_gb": round(snap.memory.total_bytes / 1e9, 2),
         "disk_percent": round(disk.percent, 1) if disk else None,
     }
+
+
+_UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+
+async def _save_uploads(
+    admin: Any,
+    form: Any,
+    data: dict[str, Any],
+    *,
+    creating: bool,
+) -> dict[str, str]:
+    """Persist uploaded files and inject their storage keys into ``data``.
+
+    For each configured upload field, a posted file is streamed to
+    ``admin.upload_storage`` and the returned key is written to
+    ``data[field]``. When no file is posted, the field is left untouched
+    (so an edit keeps its current value); on create, a missing file for a
+    non-nullable column is reported as a required-field error.
+
+    Args:
+        admin (Any): The admin configuration.
+        form (Any): The parsed multipart form (Starlette ``FormData``).
+        data (dict[str, Any]): The model kwargs being built (mutated).
+        creating (bool): Whether this is a create (vs edit) submission.
+
+    Returns:
+        dict[str, str]: Field → error message for missing required files.
+    """
+    errors: dict[str, str] = {}
+    if not admin.upload_fields:
+        return errors
+    columns = sa_inspect(admin.model).columns
+    for name in admin.upload_fields:
+        upload = form.get(name)
+        filename = getattr(upload, "filename", None)
+        if upload is not None and filename:
+
+            async def _chunks(source: Any = upload) -> Any:
+                while True:
+                    chunk = await source.read(_UPLOAD_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    yield chunk
+
+            key = f"{admin.get_slug()}/{name}/{uuid4().hex}{Path(filename).suffix}"
+            content_type = (
+                getattr(upload, "content_type", None) or "application/octet-stream"
+            )
+            result = await admin.upload_storage.write_stream(
+                key, _chunks(), content_type=content_type
+            )
+            data[name] = result.key
+        elif creating:
+            column = columns.get(name)
+            if column is not None and not column.nullable:
+                errors[name] = "This field is required."
+    return errors
 
 
 def _bulk_actions(admin: Any) -> list[tuple[str, str]]:

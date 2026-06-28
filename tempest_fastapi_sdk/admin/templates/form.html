@@ -9,7 +9,7 @@
   {% if form_error %}
   <p class="tempest-admin-form__error">{{ form_error }}</p>
   {% endif %}
-  <form method="post" action="{{ action_url }}" class="tempest-admin-form__form">
+  <form method="post" action="{{ action_url }}" class="tempest-admin-form__form"{% if admin.upload_fields %} enctype="multipart/form-data"{% endif %}>
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     {% for f in form_fields %}
     <div class="tempest-admin-form__field{% if f.error %} tempest-admin-form__field--error{% endif %}">
@@ -36,6 +36,9 @@
         <input type="datetime-local" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
         {% elif f.widget == 'date' %}
         <input type="date" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
+        {% elif f.widget == 'file' %}
+        <input type="file" name="{{ f.name }}" {% if f.required %}required{% endif %}>
+        {% if f.value %}<small class="tempest-admin-form__hint">Current: {{ f.value }} — choose a file to replace.</small>{% endif %}
         {% else %}
         <input type="text" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
         {% endif %}

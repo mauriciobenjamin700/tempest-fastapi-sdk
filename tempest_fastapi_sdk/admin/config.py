@@ -21,6 +21,8 @@ from tempest_fastapi_sdk.db.repository import BaseRepository
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from tempest_fastapi_sdk.utils.storage_backends import UploadStorage
+
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 FieldRef = InstrumentedAttribute[Any] | str
@@ -88,6 +90,13 @@ class AdminModel(Generic[ModelT]):
             :func:`~tempest_fastapi_sdk.admin.admin_action`. Each appears
             in the list view's bulk-action dropdown alongside the built-in
             activate / deactivate / delete.
+        upload_fields (Sequence[FieldRef]): String columns rendered as
+            file inputs in the create/edit form. The uploaded file is
+            saved through ``upload_storage`` and the returned storage key
+            is written to the column.
+        upload_storage (UploadStorage | None): Backend used to persist
+            uploaded files (``LocalUploadStorage`` / ``MinIOUploadStorage``).
+            Required when ``upload_fields`` is non-empty.
 
     Raises:
         TypeError: When ``model`` is not a subclass of :class:`BaseModel`,
@@ -112,6 +121,8 @@ class AdminModel(Generic[ModelT]):
         can_edit: bool = True,
         can_delete: bool = True,
         actions: Sequence[ActionHandler] = (),
+        upload_fields: Sequence[FieldRef] = (),
+        upload_storage: UploadStorage | None = None,
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -143,6 +154,13 @@ class AdminModel(Generic[ModelT]):
                     f"Duplicate admin action name {action.name!r} on {model.__name__}",
                 )
             self._actions[action.name] = action
+        self.upload_fields: list[str] = _normalize_fields(upload_fields)
+        self.upload_storage: UploadStorage | None = upload_storage
+        if self.upload_fields and self.upload_storage is None:
+            raise ValueError(
+                "AdminModel `upload_fields` requires an `upload_storage` "
+                "(e.g. LocalUploadStorage / MinIOUploadStorage).",
+            )
 
     def get_verbose_name(self) -> str:
         """Return the configured (or auto-derived) singular display name.

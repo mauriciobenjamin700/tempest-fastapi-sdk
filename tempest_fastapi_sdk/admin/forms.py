@@ -33,7 +33,7 @@ class FormField:
         name (str): Column key (form field name).
         label (str): Human-readable label.
         widget (str): One of ``text`` / ``textarea`` / ``number`` /
-            ``checkbox`` / ``datetime`` / ``date`` / ``select``.
+            ``checkbox`` / ``datetime`` / ``date`` / ``select`` / ``file``.
         value (Any): Value to pre-fill (string for most widgets).
         required (bool): Whether the field is mandatory.
         checked (bool): Checkbox state (``checkbox`` widget only).
@@ -217,11 +217,21 @@ def build_form_fields(
         if name in fk_options:
             widget = "select"
             options = list(fk_options[name])
+        is_upload = name in admin.upload_fields
+        if is_upload:
+            widget = "file"
         required = not _is_optional(column)
 
         value: Any = ""
         checked = False
-        if submitted is not None:
+        if is_upload:
+            # File inputs can't be pre-filled; surface the stored key as a
+            # read-only hint and never force a re-upload when one exists.
+            current = None if instance is None else getattr(instance, name, None)
+            value = current or ""
+            if current:
+                required = False
+        elif submitted is not None:
             if widget == "checkbox":
                 checked = _truthy(submitted.get(name))
             else:
@@ -294,6 +304,10 @@ def parse_submission(
     for name in admin.editable_field_names():
         column = columns.get(name)
         if column is None:
+            continue
+        # Upload fields hold an UploadFile, not a scalar — the router saves
+        # the file and injects the resulting key into ``data`` separately.
+        if name in admin.upload_fields:
             continue
         py = _python_type(column)
         widget, _step, _options = _widget_for(column, py)

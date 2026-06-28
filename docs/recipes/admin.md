@@ -178,7 +178,7 @@ app.include_router(
 
     **Audit trail**: create/edit pelo admin carimba `created_by`/`updated_by` (do `AuditMixin`) com o id do admin atuante; o detail mostra um painel **Audit** com timestamps e — quando o modelo tem as colunas de auditoria — o ator (UUID resolvido para nome via o auth backend). Modelos sem `AuditMixin` mostram só os timestamps.
 
-    Ainda **não** incluídos (fases futuras do roadmap): upload de arquivo, inline/related editing.
+    Ainda **não** incluídos (fases futuras do roadmap): inline/related editing.
 
 ## Ações customizadas (`@admin_action`)
 
@@ -224,6 +224,35 @@ pra exibir um banner na list view (ou `None` pra não mostrar nada). A
 função fica **diretamente chamável/testável** — o decorator só anexa
 metadados. Use `name=` pra fixar o identificador (default: nome da função)
 e `dangerous=True` pra marcar ação destrutiva.
+
+## Campo de upload de arquivo / imagem
+
+Uma coluna `String` que guarda o caminho/chave de um arquivo pode virar um
+**input de upload** no formulário. Liste a coluna em `upload_fields` e
+passe um `upload_storage` (os backends que o SDK já tem —
+`LocalUploadStorage` / `MinIOUploadStorage`). No submit, o arquivo é
+salvo no storage e a **chave retornada** é gravada na coluna.
+
+```python
+from tempest_fastapi_sdk import AdminModel
+from tempest_fastapi_sdk.utils import LocalUploadStorage
+
+
+site.register(AdminModel(
+    model=DocumentModel,
+    upload_fields=[DocumentModel.attachment],   # coluna String que guarda a chave
+    upload_storage=LocalUploadStorage("media/"),  # ou MinIOUploadStorage(...)
+))
+```
+
+- O form vira `multipart/form-data` automaticamente quando há `upload_fields`.
+- **Create**: arquivo obrigatório só se a coluna for `NOT NULL` e sem default.
+- **Edit**: sem arquivo novo → mantém o valor atual (mostra "Current: …"); com arquivo → substitui.
+- A coluna guarda a **chave** do storage (`<slug>/<campo>/<uuid>.<ext>`); use o `upload_storage` (ou `UploadUtils`) pra servir/baixar depois.
+
+!!! warning "`upload_fields` exige `upload_storage`"
+    Registrar `upload_fields` sem `upload_storage` levanta `ValueError` na
+    construção do `AdminModel` — sem storage não há onde gravar o arquivo.
 
 !!! tip "Navegação por sidebar + burger"
     Toda página autenticada tem uma **sidebar** persistente: Dashboard, um
