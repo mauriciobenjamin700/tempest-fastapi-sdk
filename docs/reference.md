@@ -271,6 +271,21 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## Computer vision
+
+### `tempest_fastapi_sdk.vision`
+
+::: tempest_fastapi_sdk.vision.schemas.DetectionSchema
+::: tempest_fastapi_sdk.vision.schemas.ClassificationSchema
+::: tempest_fastapi_sdk.vision.schemas.SegmentationSchema
+::: tempest_fastapi_sdk.vision.schemas.BoundingBoxSchema
+::: tempest_fastapi_sdk.vision.schemas.ClassProbabilitySchema
+::: tempest_fastapi_sdk.vision.mapping.to_detection_schemas
+::: tempest_fastapi_sdk.vision.mapping.to_classification_schema
+::: tempest_fastapi_sdk.vision.mapping.to_segmentation_schemas
+
+---
+
 ## Utils
 
 ### `tempest_fastapi_sdk.utils`

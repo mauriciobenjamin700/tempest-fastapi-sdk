@@ -21,6 +21,7 @@ Passo a passo curtos no estilo "quero conectar X". Cada página começa com **qu
 | **[Outbox transacional »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — eventos confiáveis |
 | **[Email transacional »](email.md)** | `EmailUtils` — SMTP, corpo texto/HTML, anexos, templates Jinja2 |
 | **[Web Push »](webpush.md)** | `WebPushDispatcher`, schemas VAPID, broadcast com poda |
+| **[Visão computacional (ONNX) »](vision.md)** | `Detector` / `Classifier` / `Segmenter` + schemas de predição |
 | **[Logging »](logging.md)** | `LogUtils`, logging JSON estruturado, propagação de request-ID |
 | **[Métricas »](metrics.md)** | `MetricsUtils` — snapshots de CPU / RAM / disco / GPU |
 | **[Observabilidade (tracing) »](observability.md)** | `setup_tracing` (OpenTelemetry), `SlowQueryLogger` |

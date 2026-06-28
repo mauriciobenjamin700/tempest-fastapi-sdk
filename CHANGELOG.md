@@ -5,6 +5,23 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.83.0] — 2026-06-28
+
+### Added
+
+- **Computer-vision integration via the `[vision]` extra
+  (`ort-vision-sdk`).** New `tempest_fastapi_sdk.vision` submodule wraps
+  the ONNX Runtime inference library with the FastAPI layer it lacks:
+  Pydantic response schemas (`DetectionSchema`, `ClassificationSchema`,
+  `SegmentationSchema`, `BoundingBoxSchema`, `ClassProbabilitySchema`)
+  and mappers (`to_detection_schemas`, `to_classification_schema`,
+  `to_segmentation_schemas`) that convert a model result into them. The
+  `Detector` / `Classifier` / `Segmenter` task classes are re-exported
+  **lazily** — accessing one without the extra raises a clear
+  `ImportError` pointing at `[vision]`; the schemas and mappers carry no
+  such dependency. Like `cache` / `queue` / `tasks`, vision is
+  submodule-only (`from tempest_fastapi_sdk.vision import Detector`).
+
 ## [0.82.1] — 2026-06-28
 
 ### Fixed

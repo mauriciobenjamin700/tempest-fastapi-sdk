@@ -243,6 +243,7 @@ nav:
       - Testes: recipes/testing.md
       - "Tipagem (estático + runtime)": recipes/typing.md
       - Uploads (backends): recipes/uploads.md
+      - "Visão computacional (ONNX)": recipes/vision.md
       - Utilitários: recipes/utilities.md
       - Web Push: recipes/webpush.md
       - WebSocket router: recipes/websocket.md

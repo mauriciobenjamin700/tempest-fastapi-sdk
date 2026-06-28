@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.82.1"
+version = "0.83.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -88,6 +88,9 @@ prometheus = [
 mfa = [
     "pyotp>=2.9.0",
 ]
+vision = [
+    "ort-vision-sdk>=0.4.0",
+]
 sqlite = [
     "aiosqlite>=0.20.0",
 ]
@@ -129,6 +132,7 @@ all = [
     "opentelemetry-instrumentation-fastapi>=0.48b0",
     "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
     "opentelemetry-instrumentation-httpx>=0.48b0",
+    "ort-vision-sdk>=0.4.0",
 ]
 
 [project.urls]
@@ -289,6 +293,8 @@ module = [
     "faststream.*",
     "pyotp",
     "pyotp.*",
+    "ort_vision_sdk",
+    "ort_vision_sdk.*",
 ]
 ignore_missing_imports = true
 
