@@ -5,6 +5,25 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.80.0] — 2026-06-28
+
+### Added
+
+- **Web Push subscription storage + service.** The webpush module gained
+  the missing persistence layer so apps no longer hand-roll it:
+  `BaseWebPushSubscriptionModel` (abstract table, one row per user device,
+  unique `endpoint`) + `make_web_push_subscription_model(user_table=...)`
+  factory, mirroring the `BaseUserTokenModel` pattern; and
+  `WebPushSubscriptionService` (generic over the concrete model) with
+  `subscribe` (idempotent upsert keyed by endpoint), `unsubscribe`,
+  `list_for_user`, `prune`, and `notify_user` — which fans a payload out
+  to every device and **auto-prunes the ones the push service reports as
+  gone (404/410)**. The wire shape matches `PushSubscription.toJSON()`,
+  so it lines up 1:1 with `tempest-react-sdk`'s `WebPushClient`
+  `onSubscribe` / `onUnsubscribe` callbacks. Exported from
+  `tempest_fastapi_sdk`, `tempest_fastapi_sdk.webpush` and
+  `tempest_fastapi_sdk.db`.
+
 ## [0.79.0] — 2026-06-27
 
 ### Changed

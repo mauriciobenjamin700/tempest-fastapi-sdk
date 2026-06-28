@@ -133,6 +133,7 @@ from tempest_fastapi_sdk.db import (
     BaseUserRecoveryCodeModel,
     BaseUserRefreshTokenModel,
     BaseUserTokenModel,
+    BaseWebPushSubscriptionModel,
     DatabaseBackup,
     DestructiveMigrationError,
     MFAMixin,
@@ -149,6 +150,7 @@ from tempest_fastapi_sdk.db import (
     make_user_recovery_code_model,
     make_user_refresh_token_model,
     make_user_token_model,
+    make_web_push_subscription_model,
     reorder_base_columns_first,
     snapshot_model,
 )
@@ -334,6 +336,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushKeysSchema,
     WebPushPayloadSchema,
     WebPushSubscriptionSchema,
+    WebPushSubscriptionService,
 )
 from tempest_fastapi_sdk.websockets import (
     WebSocketConnection,
@@ -342,7 +345,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.79.0"
+__version__: str = "0.80.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -398,6 +401,7 @@ __all__: list[str] = [
     "BaseUserRecoveryCodeModel",
     "BaseUserRefreshTokenModel",
     "BaseUserTokenModel",
+    "BaseWebPushSubscriptionModel",
     "BodySizeLimitMiddleware",
     "CEPField",
     "CNPJField",
@@ -561,6 +565,7 @@ __all__: list[str] = [
     "WebPushPayloadSchema",
     "WebPushSettings",
     "WebPushSubscriptionSchema",
+    "WebPushSubscriptionService",
     "WebSocketConnection",
     "WebSocketHub",
     "WebSocketSettings",
@@ -626,6 +631,7 @@ __all__: list[str] = [
     "make_user_recovery_code_model",
     "make_user_refresh_token_model",
     "make_user_token_model",
+    "make_web_push_subscription_model",
     "make_websocket_router",
     "modify_dict",
     "negotiate_locale",

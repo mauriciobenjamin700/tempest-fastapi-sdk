@@ -10,6 +10,7 @@ from tempest_fastapi_sdk.webpush.schemas import (
     WebPushPayloadSchema,
     WebPushSubscriptionSchema,
 )
+from tempest_fastapi_sdk.webpush.service import WebPushSubscriptionService
 
 __all__: list[str] = [
     "WebPushDispatcher",
@@ -18,4 +19,5 @@ __all__: list[str] = [
     "WebPushKeysSchema",
     "WebPushPayloadSchema",
     "WebPushSubscriptionSchema",
+    "WebPushSubscriptionService",
 ]

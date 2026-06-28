@@ -25,30 +25,109 @@ from src.core.settings import settings
 dispatcher = WebPushDispatcher(**settings.webpush_kwargs())
 ```
 
-## Guardar a inscrição
+## Tabela + serviço (recomendado)
 
-`WebPushSubscriptionSchema` faz round-trip exato do JSON que o
-`PushSubscription.toJSON()` emite no navegador (aliasa
-`expiration_time` ↔ `expirationTime`), então você guarda a inscrição que
-chega verbatim e a reusa no envio.
+Para guardar os aparelhos do usuário e entregar com poda automática, o
+SDK traz a **tabela base** `BaseWebPushSubscriptionModel` (uma linha por
+device, `endpoint` único) e o **serviço base** `WebPushSubscriptionService`
+(salva, remove e envia, podando as mortas sozinho). Igual ao padrão de
+auth, o SDK fornece a linha abstrata e o projeto cria a tabela concreta
+com a FK pro seu `UserModel`:
+
+```python
+# src/db/models/web_push_subscription.py
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column
+from uuid import UUID
+
+from tempest_fastapi_sdk import BaseWebPushSubscriptionModel
+
+
+class WebPushSubscriptionModel(BaseWebPushSubscriptionModel):
+    """Inscrição Web Push de um device do usuário."""
+
+    __tablename__ = "web_push_subscriptions"
+
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+```
+
+Monte o serviço com um `BaseRepository` da tabela + o dispatcher VAPID:
+
+```python
+# src/api/dependencies/resources.py
+from tempest_fastapi_sdk import BaseRepository, WebPushSubscriptionService
+
+from src.core.settings import settings
+from src.db.models import WebPushSubscriptionModel
+
+
+def get_push_service(session: AsyncSession) -> WebPushSubscriptionService:
+    repo = BaseRepository(session, model=WebPushSubscriptionModel)
+    dispatcher = WebPushDispatcher(**settings.webpush_kwargs())
+    return WebPushSubscriptionService(repo, dispatcher)
+```
+
+O serviço expõe:
+
+| Método | O que faz |
+| --- | --- |
+| `subscribe(user_id, subscription, *, user_agent=None)` | Salva a inscrição, **idempotente por `endpoint`** — re-subscribe atualiza, não duplica. |
+| `unsubscribe(endpoint)` | Remove a inscrição (no-op se não existe). |
+| `list_for_user(user_id)` | Lista os devices do usuário. |
+| `notify_user(user_id, payload)` | Envia pra todos os devices e **poda os mortos** (404/410) antes de retornar. Devolve quantos receberam. |
+
+## Alinhado com o tempest-react-sdk
+
+O `WebPushClient` do [`tempest-react-sdk`](https://github.com/mauriciobenjamin700/tempest-react-sdk)
+chama `onSubscribe(subscription)` e `onUnsubscribe(subscription)` com o
+`PushSubscription.toJSON()` cru. Esse JSON é exatamente o
+`WebPushSubscriptionSchema` (aliasa `expiration_time` ↔ `expirationTime`),
+então o front bate direto nos endpoints abaixo:
 
 ```python
 # src/api/routers/push.py
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, status
 
-from tempest_fastapi_sdk import WebPushSubscriptionSchema
+from tempest_fastapi_sdk import WebPushSubscriptionSchema, WebPushSubscriptionService
 
-router = APIRouter(prefix="/push", tags=["push"])
+router = APIRouter(prefix="/api/push", tags=["push"])
 
 
-@router.post("/subscribe", status_code=201)
-async def subscribe(subscription: WebPushSubscriptionSchema) -> dict[str, str]:
-    """Persiste a inscrição enviada pelo Service Worker do navegador."""
-    await subscriptions_repo.upsert_by_endpoint(subscription)
+@router.post("/subscribe", status_code=status.HTTP_201_CREATED)
+async def subscribe(
+    subscription: WebPushSubscriptionSchema,
+    user: CurrentUser,                       # sua dependency de auth
+    service: WebPushSubscriptionService = Depends(get_push_service),
+) -> dict[str, str]:
+    """Recebe o onSubscribe do WebPushClient e persiste o device."""
+    await service.subscribe(user.id, subscription)
     return {"status": "subscribed"}
+
+
+@router.post("/unsubscribe", status_code=status.HTTP_200_OK)
+async def unsubscribe(
+    subscription: WebPushSubscriptionSchema,
+    service: WebPushSubscriptionService = Depends(get_push_service),
+) -> dict[str, str]:
+    """Recebe o onUnsubscribe e remove o device."""
+    await service.unsubscribe(subscription.endpoint)
+    return {"status": "unsubscribed"}
 ```
 
-## Enviar uma notificação
+Enviar pra um usuário (todos os devices, poda automática embutida):
+
+```python
+delivered: int = await service.notify_user(
+    user.id,
+    {"title": "Pagamento confirmado", "body": "Pedido aprovado."},
+)
+```
+
+## Enviar uma notificação (dispatcher direto)
 
 O `payload` aceita `WebPushPayloadSchema`, `dict`, `str` ou `bytes`
 (models e dicts viram JSON). Trate `WebPushGoneError` para podar a
@@ -104,6 +183,6 @@ async def broadcast(
 
 - Instale `[webpush]` e configure `WebPushSettings` (chaves VAPID).
 - Chave pública → frontend; privada → assina os pushes no backend.
-- Guarde `WebPushSubscriptionSchema` verbatim; reuse no envio.
-- `send()` para um destino, `send_many()` para broadcast (retorna mortos).
-- Trate `WebPushGoneError` (404/410) podando a inscrição do store.
+- Tabela `BaseWebPushSubscriptionModel` (1 linha por device, `endpoint` único) + `WebPushSubscriptionService` (`subscribe`/`unsubscribe`/`notify_user`) — o caminho recomendado, com poda automática.
+- O JSON do `WebPushClient` (tempest-react-sdk) é o próprio `WebPushSubscriptionSchema` — `subscribe`/`unsubscribe` batem direto.
+- Caminho baixo nível: `send()` para um destino, `send_many()` para broadcast (retorna mortos); trate `WebPushGoneError` (404/410) podando o store.
