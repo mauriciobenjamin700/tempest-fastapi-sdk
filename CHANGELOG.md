@@ -5,6 +5,22 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.82.0] — 2026-06-28
+
+### Added
+
+- **`SSEBroker` — multi-worker SSE fan-out.** The SSE recipe described a
+  Redis Pub/Sub bridge for broadcasting across workers but shipped no
+  primitive; `SSEBroker` is that primitive. It keeps a per-channel
+  registry of local `EventStream`s and fans `publish(channel, ...)` out
+  to them. Pass a `[cache]` Redis client and the same broker publishes
+  via Redis `PUBLISH` while a background `run()` task `PSUBSCRIBE`-s the
+  channel prefix and relays every message to each worker's local
+  streams — so `publish` becomes cross-process with no call-site change
+  (`register` / `unregister` / `publish` are identical in both modes).
+  Exported from `tempest_fastapi_sdk` and `tempest_fastapi_sdk.sse`. The
+  SSE recipe now shows the in-memory and Redis-lifespan setups.
+
 ## [0.81.2] — 2026-06-28
 
 ### Changed

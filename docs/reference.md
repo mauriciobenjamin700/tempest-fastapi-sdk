@@ -241,6 +241,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ### `tempest_fastapi_sdk.sse`
 
 ::: tempest_fastapi_sdk.sse.event_stream.EventStream
+::: tempest_fastapi_sdk.sse.broker.SSEBroker
 ::: tempest_fastapi_sdk.sse.event_stream.ServerSentEvent
 ::: tempest_fastapi_sdk.sse.event_stream.sse_response
 

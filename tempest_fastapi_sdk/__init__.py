@@ -233,7 +233,12 @@ from tempest_fastapi_sdk.settings import (
     WebPushSettings,
     WebSocketSettings,
 )
-from tempest_fastapi_sdk.sse import EventStream, ServerSentEvent, sse_response
+from tempest_fastapi_sdk.sse import (
+    EventStream,
+    ServerSentEvent,
+    SSEBroker,
+    sse_response,
+)
 from tempest_fastapi_sdk.storage import AsyncMinIOClient, ObjectStat
 from tempest_fastapi_sdk.utils import (
     CEP,
@@ -346,7 +351,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.81.2"
+__version__: str = "0.82.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -517,6 +522,7 @@ __all__: list[str] = [
     "Region",
     "RequestIDMiddleware",
     "RetryPolicy",
+    "SSEBroker",
     "SameSite",
     "ServerSentEvent",
     "ServerSettings",

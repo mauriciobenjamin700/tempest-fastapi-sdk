@@ -93,77 +93,96 @@ stream is idle so load-balancers don't cut the connection. Comments are
 **invisible** to `EventSource` — they fire no listener, they just keep
 the socket alive. `None` disables the heartbeat.
 
-## Broadcast to many clients
+## Broadcast to many clients (`SSEBroker`)
 
-`EventStream` is one connection. To send the same event to everyone (or
-to a user's devices), keep a registry of streams and publish to all — a
-simple "hub":
+`EventStream` is **one** connection. To send the same event to every
+client of a channel (e.g. a user's devices, or a topic), the SDK ships
+`SSEBroker` — a per-channel stream registry plus fan-out. The channel is
+any string (a user id, a room slug...).
 
 ```python
-# src/services/sse_hub.py
-from uuid import UUID
+# src/api/dependencies/resources.py
+from tempest_fastapi_sdk import SSEBroker
 
-from tempest_fastapi_sdk import EventStream
-
-
-class SSEHub:
-    """In-memory registry of open SSE streams, per user."""
-
-    def __init__(self) -> None:
-        self._streams: dict[UUID, set[EventStream]] = {}
-
-    def register(self, user_id: UUID) -> EventStream:
-        """Open a stream for a client and register it."""
-        stream = EventStream(heartbeat_seconds=15.0)
-        self._streams.setdefault(user_id, set()).add(stream)
-        return stream
-
-    def unregister(self, user_id: UUID, stream: EventStream) -> None:
-        """Drop a closed stream from the registry."""
-        streams = self._streams.get(user_id)
-        if streams:
-            streams.discard(stream)
-            if not streams:
-                del self._streams[user_id]
-
-    async def publish_to_user(self, user_id: UUID, data: object, *, event: str) -> int:
-        """Publish an event to all of a user's open streams."""
-        streams = self._streams.get(user_id, set())
-        for stream in streams:
-            await stream.publish(data, event=event)
-        return len(streams)
+broker = SSEBroker()   # singleton — keep on app.state and inject via Depends
 ```
 
 ```python
 # src/api/routers/feed.py
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
+from starlette.responses import StreamingResponse
+
+from tempest_fastapi_sdk import sse_response
+
+router = APIRouter()
+
+
 @router.get("/feed")
 async def feed(
     user_id: UUID = Depends(get_current_user_id),
-    hub: SSEHub = Depends(get_sse_hub),       # singleton on app.state
+    broker: SSEBroker = Depends(get_broker),
 ) -> StreamingResponse:
-    """Subscribe the client to its user's feed."""
-    stream = hub.register(user_id)
+    """Subscribe the client to its user's channel."""
+    channel = str(user_id)
+    stream = broker.register(channel)
 
     async def lifecycle_aware() -> AsyncIterator[bytes]:
         try:
             async for chunk in stream.stream():
                 yield chunk
         finally:
-            hub.unregister(user_id, stream)
+            broker.unregister(channel, stream)   # client left
 
     return sse_response(lifecycle_aware())
 
 
 # From anywhere (queue handler, another endpoint):
-# await hub.publish_to_user(user_id, {"text": "New order"}, event="notice")
+# await broker.publish(str(user_id), {"text": "New order"}, event="notice")
 ```
 
-!!! danger "In-memory hub = single process"
-    The `SSEHub` above lives in **one** worker's memory. With multiple
-    workers (Gunicorn/Uvicorn `--workers N`), a publish only reaches the
-    clients pinned to that process. For multi-process, back the hub with a
-    Pub/Sub (Redis `PUBLISH`/`SUBSCRIBE`): each worker subscribes to the
-    channel and relays to its local streams.
+### Multi-worker: Redis bridge (ready, no extra code)
+
+An in-memory `SSEBroker` lives in **one** worker — with `--workers N` a
+`publish` only reaches the clients pinned to that process. Pass a Redis
+client and the **same `broker`** publishes via Redis `PUBLISH`; a
+background task (`run()`) `PSUBSCRIBE`-s and relays to **each** worker's
+local streams. Same call site, now horizontal:
+
+```python
+# src/api/app.py
+import asyncio
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from redis.asyncio import Redis
+
+from tempest_fastapi_sdk import SSEBroker
+
+redis = Redis.from_url("redis://localhost:6379/0", decode_responses=True)
+broker = SSEBroker(redis=redis, channel_prefix="sse")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(broker.run())   # subscribe Redis + fan out
+    try:
+        yield
+    finally:
+        await broker.aclose()
+        task.cancel()
+
+
+app = FastAPI(lifespan=lifespan)
+# broker.publish(...) on any worker -> reaches ALL workers
+```
+
+!!! tip "Start simple, scale later"
+    Without Redis, `SSEBroker()` already covers a single process. When you
+    need multiple workers/hosts, just inject a Redis client and start
+    `run()` in the lifespan — no endpoint changes. `publish` becomes
+    cross-process for free.
 
 ## Aligned with tempest-react-sdk
 
@@ -202,5 +221,5 @@ Alignment points:
 - Tie the producer to the connection lifecycle (`finally` → cancel/unregister).
 - `publish(data, event=, id=, retry=)` covers the 4 spec fields; non-string `data` becomes JSON.
 - Heartbeat is a comment (invisible to EventSource); `None` disables it.
-- Broadcast = a registry of streams (hub); multi-worker needs Pub/Sub (Redis).
+- Broadcast = `SSEBroker` (per-channel stream registry); multi-worker = pass a Redis client + start `broker.run()` in the lifespan (same call site).
 - `tempest-react-sdk` `createEventStream`/`useEventStream` consumes with reconnect; `namedEvents` ↔ `publish(event=)`.
