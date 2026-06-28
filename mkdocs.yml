@@ -219,6 +219,7 @@ nav:
       - CLI: recipes/cli.md
       - "Deploy seguro (migrations + shutdown)": recipes/deploy-safety.md
       - Downloads: recipes/downloads.md
+      - "Campos validados (tipos prontos)": recipes/fields.md
       - Email transacional: recipes/email.md
       - Feature flags: recipes/feature-flags.md
       - Fila e Tarefas: recipes/queue-tasks.md

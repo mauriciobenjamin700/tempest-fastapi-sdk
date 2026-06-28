@@ -5,6 +5,22 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.77.0] — 2026-06-27
+
+### Added
+
+- **Generic validated field types (`tempest_fastapi_sdk.utils.fields`).**
+  A base set of `Annotated` Pydantic types that bake a validation rule
+  into the type, following the `*Field` convention (so the schema reads as
+  what it is instead of repeating `Field(gt=0, ...)`): integers
+  `PositiveIntField`, `NonNegativeIntField`, `CentsField` (money in minor
+  units), `PortField`; floats `PositiveFloatField`, `NonNegativeFloatField`,
+  `PercentField` (0..100), `RatioField` (0..1), `LatitudeField`,
+  `LongitudeField`; `PriceField` (non-negative `Decimal`, 2 places); and
+  strings `NonEmptyStrField` (trim + non-empty), `SlugField`,
+  `HexColorField`. Exported from `tempest_fastapi_sdk` and
+  `tempest_fastapi_sdk.utils`.
+
 ## [0.76.0] — 2026-06-27
 
 ### Changed
