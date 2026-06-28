@@ -88,8 +88,32 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Pagination** — offset + cursor.
 - **Settings mixins** — every `*Settings` carries
   `title`/`description`/`examples` on every field.
-- **SSE** — `EventStream`, `sse_response`.
-- **Throttle** — `AttemptThrottle` (memory + Redis).
+- **SSE** — `EventStream`, `ServerSentEvent`, `sse_response`, and
+  `SSEBroker` (per-channel fan-out; in-memory single-process, or
+  multi-worker via an injected Redis pub/sub bridge — same call site).
+- **Throttle** — `AttemptThrottle` (any `ThrottleBackend`, e.g.
+  `redis.asyncio.Redis`; no in-memory backend bundled).
+- **Base CRUD layers** — `BaseService[Repo, Resp, UpdateT]` and
+  `BaseController[Service, Resp, UpdateT]` with
+  `get_by_id`/`get_or_none`/`list`/`paginate`/`count`/`exists`/`update`/
+  `delete`; `update` is partial-aware (PUT/PATCH) and `UpdateT` is an
+  optional 3rd generic (defaults to `BaseSchema`, PEP 696).
+- **Base enums** — `BaseStrEnum` / `BaseIntEnum` with
+  `values`/`keys`/`choices`/`to_dict`/`from_value`/`has_value`/`has_key`.
+- **Validated field types** — `tempest_fastapi_sdk.utils` Annotated
+  Pydantic types: `PositiveIntField`/`NonNegativeIntField`/`CentsField`/
+  `PortField`/`PositiveFloatField`/`NonNegativeFloatField`/`PercentField`/
+  `RatioField`/`LatitudeField`/`LongitudeField`/`PriceField`/
+  `NonEmptyStrField`/`SlugField`/`HexColorField`.
+- **Runtime typing** — `strict_types` / `typed` / `require_annotations`
+  decorators (over `pydantic.validate_call`); ruff `ANN` enabled in the
+  SDK and `tempest new` templates (ANN401 off — `Any` is valid); a
+  `[tool.tempest] typing_strictness` knob (`lenient`/`standard`/`strict`,
+  `--strictness` override) layered onto `tempest lint`/`fix`/`type`/`check`.
+- **Vision** (`[vision]` extra) — `tempest_fastapi_sdk.vision` wrapping
+  `ort-vision-sdk`: lazy `Detector`/`Classifier`/`Segmenter` + prediction
+  schemas + `to_detection_schemas`/`to_classification_schema`/
+  `to_segmentation_schemas` mappers.
 - **Upload** — `UploadUtils` with pluggable backends
   (`LocalUploadStorage`, `MinIOUploadStorage`), download helpers,
   presigned URLs.
@@ -99,17 +123,26 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Email** — SMTP via `EmailUtils` + Jinja2 template rendering
   with bundled defaults (`activation.html`, `password_reset.html`)
   shadowable by the project's `template_dir`.
-- **WebPush** + webhook signatures.
+- **WebPush** — `WebPushDispatcher` (`send`/`send_many`, 404/410
+  pruning), subscription storage (`BaseWebPushSubscriptionModel` +
+  `make_web_push_subscription_model`) + `WebPushSubscriptionService`
+  (`subscribe`/`unsubscribe`/`list_for_user`/`notify_user` with
+  auto-prune of gone endpoints) + `make_web_push_router` (opt-in
+  `/subscribe` + `/unsubscribe`, aligned with `tempest-react-sdk`);
+  webhook signatures.
 - **Cache** — Redis manager + `@cached`.
 - **Queue / tasks** — FastStream + TaskIQ wrappers.
-- **BR validators** — CPF/CNPJ/CEP/phone.
+- **BR validators** — CPF/CNPJ/CEP/phone, with `*Field` Pydantic types
+  (`CPFField`/`CNPJField`/`CPFOrCNPJField`/`PhoneBRField`/`CEPField`;
+  pre-0.76 unsuffixed names kept as deprecated aliases).
 - **BR localities** — `UF` (StrEnum, 27 siglas) + `Region`
   (5 macro-regiões IBGE), `StateBR`/`CityBR` schemas, offline
   dataset of 27 states + 5606 municipalities (IBGE-derived,
   DF as 36 administrative regions), `list_states`/`get_state`/
   `cities_by_uf`/`states_by_region`, `is_valid_uf`/`normalize_uf`,
   `is_valid_city`/`normalize_city` (accent/case-insensitive),
-  `UFField`/`CityNameField`.
+  `UFField`/`CityNameField`, plus `ChoiceBR` + `uf_choices`/
+  `region_choices`/`city_choices` (frontend `<select>` choices).
 - **Rate limit** — `RateLimitMiddleware` (sliding window) with
   pluggable store (`MemoryRateLimitStore` / `RedisRateLimitStore`,
   atomic Lua) and per-principal key extractors (`key_by_ip`,
@@ -131,7 +164,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Admin panel** — Jinja + HTMX (`AdminSite`, `AdminModel`,
   `make_admin_router`), typed theming via `AdminTheme` (colors /
   logo / favicon / font / radius / footer / dark mode /
-  `custom_css_url`, injected as `:root` overrides).
+  `custom_css_url`, injected as `:root` overrides), custom bulk actions
+  (`@admin_action` + `AdminModel(actions=[...])`, `AdminActionContext` /
+  `AdminActionResult`).
 - **CLI** — `tempest new` (scaffolds layered service +
   docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
   `tempest generate --docker` (regen compose) / `--dockerfile`
@@ -169,41 +204,43 @@ then move it up to the covers list.
 foundation the user asked for first; the functional Tier 1 items below
 inherit the look for free. Now in the covers list.
 
+**Shipped — custom actions (v0.84.0).** `@admin_action` decorator +
+`AdminModel(actions=[...])` + `AdminActionContext`/`AdminActionResult`;
+custom entries render in the bulk dropdown (namespaced `custom:<name>`),
+run on the checked rows, and flash a banner on the list view. Now in the
+covers list.
+
 **Tier 1 — high value, reuses an existing engine (low effort):**
 
-1. **Custom actions (NEXT)** — `@admin_action` decorator on `AdminModel`
-   for user-defined row / bulk operations (Django `actions`, Nova
-   actions). Today only 3 are hardcoded (activate / deactivate /
-   delete). This is the foundation the rest build on.
-2. **File / image upload field** — a new form widget wired to the
+1. **File / image upload field (NEXT)** — a new form widget wired to the
    existing `UploadUtils` (`LocalUploadStorage` / `MinIOUploadStorage`).
    Engine is already shipped; admin just needs the widget + storage
    binding.
-3. **Rich filters** — enum / choice / FK / date-range filters in the
+2. **Rich filters** — enum / choice / FK / date-range filters in the
    list view (today only boolean fields auto-render a filter dropdown).
    Quick UX win.
-4. **Audit history viewer** — a per-row change timeline wired to the
+3. **Audit history viewer** — a per-row change timeline wired to the
    existing `BaseAuditLogModel` + `diff_snapshots`. Today the detail
    view only shows `created_by` / `updated_by` stamps, not full history.
    Engine is already shipped.
 
 **Tier 2 — high value, medium effort:**
 
-5. **Autocomplete FK fields** — HTMX search endpoint backing FK inputs,
+4. **Autocomplete FK fields** — HTMX search endpoint backing FK inputs,
    removing the 1000-row `<select>` cap and the plain-UUID fallback
    (Django `autocomplete_fields`, Nova search).
-6. **Inlines / nested relations** — edit child rows inside the parent's
+5. **Inlines / nested relations** — edit child rows inside the parent's
    detail / edit view (Django `StackedInline` / `TabularInline`).
-7. **Dashboard business metrics / charts** — value / trend / partition
+6. **Dashboard business metrics / charts** — value / trend / partition
    cards (Nova metrics), wired to the existing metrics module. Distinct
    from today's system CPU/RAM/disk panel.
 
 **Tier 3 — nice-to-have:**
 
-8. **RBAC granular** — per-model / per-action admin permissions beyond
+7. **RBAC granular** — per-model / per-action admin permissions beyond
    today's `is_admin` + `can_create` / `can_edit` / `can_delete`.
-9. **CSV import** — bulk upload counterpart to the existing export.
-10. **Lenses** — saved alternate views / queries per model (Nova).
+8. **CSV import** — bulk upload counterpart to the existing export.
+9. **Lenses** — saved alternate views / queries per model (Nova).
 
 Origin: competitor gap analysis (Django Admin, Laravel Nova, SQLAdmin,
 Starlette-Admin) run 2026-06-26. Do **not** treat the tiers as locked —

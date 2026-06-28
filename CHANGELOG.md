@@ -5,6 +5,24 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.84.0] — 2026-06-28
+
+### Added
+
+- **Admin custom actions (`@admin_action`).** Beyond the three hardcoded
+  bulk operations (activate / deactivate / delete), the admin now takes
+  user-defined actions: decorate an async function with `@admin_action`
+  and register it via `AdminModel(actions=[...])`. Each renders in the
+  list view's bulk dropdown (namespaced `custom:<name>` so it can't
+  collide with the built-ins), runs on the checked rows, and flashes a
+  banner from its `AdminActionResult`. The handler receives an
+  `AdminActionContext` (selected ids, a request-scoped repository, the DB
+  session, the request, the admin session, and the acting principal) and
+  stays directly callable/testable — the decorator only attaches
+  metadata. Exported from `tempest_fastapi_sdk` and
+  `tempest_fastapi_sdk.admin` (`admin_action`, `AdminAction`,
+  `AdminActionContext`, `AdminActionResult`).
+
 ## [0.83.0] — 2026-06-28
 
 ### Added

@@ -868,3 +868,21 @@ a.tempest-admin-list__new:hover {
     padding-left: 220px;
   }
 }
+
+/* Flash banner shown after a custom bulk action runs. */
+.tempest-admin-flash {
+  margin: 0 0 1rem;
+  padding: 0.7rem 1rem;
+  border-radius: var(--tempest-radius);
+  border-left: 4px solid var(--tempest-accent);
+  background: var(--tempest-bg);
+  color: var(--tempest-fg);
+}
+
+.tempest-admin-flash--error {
+  border-left-color: var(--tempest-danger);
+}
+
+.tempest-admin-flash--warning {
+  border-left-color: #d97706;
+}

@@ -1,6 +1,9 @@
 """tempest-fastapi-sdk — shared FastAPI/SQLAlchemy/Pydantic primitives."""
 
 from tempest_fastapi_sdk.admin import (
+    AdminAction,
+    AdminActionContext,
+    AdminActionResult,
     AdminAuthBackend,
     AdminAuthError,
     AdminModel,
@@ -9,6 +12,7 @@ from tempest_fastapi_sdk.admin import (
     FieldRef,
     OrderRef,
     UserModelAuthBackend,
+    admin_action,
     discover_models,
     make_admin_router,
 )
@@ -351,7 +355,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.83.0"
+__version__: str = "0.84.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -376,6 +380,9 @@ __all__: list[str] = [
     "UF",
     "ActivationResponseSchema",
     "ActivationToken",
+    "AdminAction",
+    "AdminActionContext",
+    "AdminActionResult",
     "AdminAuthBackend",
     "AdminAuthError",
     "AdminModel",
@@ -578,6 +585,7 @@ __all__: list[str] = [
     "WebSocketSettings",
     "WebhookSignatureVerifier",
     "__version__",
+    "admin_action",
     "app_exception_handler",
     "apply_cors",
     "backfill_non_nullable_defaults",

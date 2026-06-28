@@ -160,7 +160,7 @@ app.include_router(
 - `GET  /admin/logs` — **logs da aplicação** (quando `show_logs=True`): lê os arquivos JSON estruturados escritos pelo `configure_logging(log_dir=…)`, com filtro por fonte (`?source=`), busca em texto (`?q=`) e paginação. Badges coloridos por nível. Quando ainda não há arquivos de log, mostra um estado vazio.
 - `GET  /admin/m/{slug}/` — list view com paginação + busca em texto livre (`?q=`) + filtros por campo (`?filter_<field>=value`) + **ordenação por coluna** clicável (`?sort=<coluna>&dir=asc|desc`).
 - `GET  /admin/m/{slug}/export.csv` / `export.json` — **exporta** o resultado atual (respeitando busca/filtros/ordenação) como CSV ou JSON. Limite de linhas via `make_admin_router(export_max_rows=…)` (default 5000).
-- `POST /admin/m/{slug}/bulk` — **ações em massa** (delete / activate / deactivate) nas linhas selecionadas.
+- `POST /admin/m/{slug}/bulk` — **ações em massa** (delete / activate / deactivate + suas **ações customizadas**) nas linhas selecionadas.
 - `GET/POST /admin/m/{slug}/new` — **criar** registro (quando `can_create`).
 - `GET  /admin/m/{slug}/{identity}` — detail view com botões Edit/Delete.
 - `GET/POST /admin/m/{slug}/{identity}/edit` — **editar** registro (quando `can_edit`).
@@ -179,6 +179,51 @@ app.include_router(
     **Audit trail**: create/edit pelo admin carimba `created_by`/`updated_by` (do `AuditMixin`) com o id do admin atuante; o detail mostra um painel **Audit** com timestamps e — quando o modelo tem as colunas de auditoria — o ator (UUID resolvido para nome via o auth backend). Modelos sem `AuditMixin` mostram só os timestamps.
 
     Ainda **não** incluídos (fases futuras do roadmap): upload de arquivo, inline/related editing.
+
+## Ações customizadas (`@admin_action`)
+
+Além das 3 fixas (activate / deactivate / delete), você registra **ações
+próprias** — uma função async decorada com `@admin_action` e passada em
+`AdminModel(actions=[...])`. Cada uma vira uma opção no dropdown de ações
+em massa, operando nas linhas marcadas.
+
+```python
+from tempest_fastapi_sdk import (
+    AdminActionContext,
+    AdminActionResult,
+    AdminModel,
+    admin_action,
+)
+
+
+@admin_action(label="Enviar boas-vindas")
+async def send_welcome(ctx: AdminActionContext) -> AdminActionResult:
+    """Roda nas linhas selecionadas; a mensagem é exibida na list view."""
+    users = await ctx.repository.list(filters={"id": ctx.ids})
+    for user in users:
+        await mailer.send_welcome(user.email)
+    return AdminActionResult(f"{len(users)} e-mails enviados.")
+
+
+site.register(AdminModel(model=UserModel, actions=[send_welcome]))
+```
+
+O handler recebe um `AdminActionContext` com:
+
+| Campo | O que é |
+| --- | --- |
+| `ids` | Identidades das linhas marcadas. |
+| `repository` | `BaseRepository` do modelo, na sessão do request. |
+| `db_session` | A sessão DB (pra trabalho além do repositório). |
+| `request` | O request inbound. |
+| `session` | A sessão do admin autenticado. |
+| `principal` | A linha do usuário admin que disparou a ação. |
+
+Retorne um `AdminActionResult(message, category="success"|"error"|"warning")`
+pra exibir um banner na list view (ou `None` pra não mostrar nada). A
+função fica **diretamente chamável/testável** — o decorator só anexa
+metadados. Use `name=` pra fixar o identificador (default: nome da função)
+e `dangerous=True` pra marcar ação destrutiva.
 
 !!! tip "Navegação por sidebar + burger"
     Toda página autenticada tem uma **sidebar** persistente: Dashboard, um

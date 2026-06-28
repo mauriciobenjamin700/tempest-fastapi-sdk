@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, sta
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
 
+from tempest_fastapi_sdk.admin.actions import AdminActionContext
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend, AdminAuthError
 from tempest_fastapi_sdk.admin.config import AdminModel
 from tempest_fastapi_sdk.admin.forms import (
@@ -726,6 +727,8 @@ def make_admin_router(
         q: str = "",
         sort: str = "",
         dir: str = "asc",
+        flash: str = "",
+        flash_cat: str = "success",
         db_session: AsyncSession = Depends(_db_session),
         session: AdminSession = Depends(_require_session),
     ) -> HTMLResponse:
@@ -806,6 +809,8 @@ def make_admin_router(
                 "session": session,
                 "user_display": auth_backend.display_name(principal),
                 "admin": admin,
+                "flash": flash,
+                "flash_cat": flash_cat,
                 "columns": columns,
                 "rows": rows,
                 "pagination": pagination,
@@ -1020,11 +1025,30 @@ def make_admin_router(
         admin = site.get(slug)
         if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
-        await _resolve_principal(request, db_session, session)
+        principal = await _resolve_principal(request, db_session, session)
         _check_csrf(session, csrf_token)
         form = await request.form()
         ids = [_identity_value(str(raw)) for raw in form.getlist("ids")]
-        if ids:
+        redirect_url = f"{prefix}/m/{slug}/"
+        if ids and action.startswith("custom:"):
+            admin_action = admin.get_action(action.removeprefix("custom:"))
+            if admin_action is None:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown action")
+            result = await admin_action.handler(
+                AdminActionContext(
+                    ids=ids,
+                    repository=admin.build_repository(db_session),
+                    db_session=db_session,
+                    request=request,
+                    session=session,
+                    principal=principal,
+                )
+            )
+            if result is not None:
+                redirect_url += "?" + urlencode(
+                    {"flash": result.message, "flash_cat": result.category}
+                )
+        elif ids:
             repository = admin.build_repository(db_session)
             if action == "delete":
                 if not admin.can_delete:
@@ -1039,7 +1063,7 @@ def make_admin_router(
             else:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown action")
         return RedirectResponse(
-            url=f"{prefix}/m/{slug}/",
+            url=redirect_url,
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -1441,6 +1465,10 @@ def _bulk_actions(admin: Any) -> list[tuple[str, str]]:
         actions.append(("deactivate", "Deactivate"))
     if admin.can_delete:
         actions.append(("delete", "Delete"))
+    # Custom actions are namespaced (``custom:<name>``) so they can never
+    # collide with the built-in values above.
+    for action in admin.custom_actions():
+        actions.append((f"custom:{action.name}", action.label))
     return actions
 
 

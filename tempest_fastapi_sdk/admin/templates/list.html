@@ -6,6 +6,9 @@
     <h1>{{ admin.get_verbose_name_plural() }}</h1>
     <p>{{ pagination.total }} record{{ pagination.total|pluralize }}.</p>
   </header>
+  {% if flash %}
+  <div class="tempest-admin-flash tempest-admin-flash--{{ flash_cat }}" role="status">{{ flash }}</div>
+  {% endif %}
   <div class="tempest-admin-list__toolbar">
     <form method="get" class="tempest-admin-list__filters">
       {% if admin.search_fields %}

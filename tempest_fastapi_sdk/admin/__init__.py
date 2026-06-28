@@ -12,6 +12,10 @@ Requires the ``[admin]`` optional extra (``jinja2`` +
 ``is_admin=True`` may sign in.
 """
 
+from tempest_fastapi_sdk.admin.actions import AdminAction as AdminAction
+from tempest_fastapi_sdk.admin.actions import AdminActionContext as AdminActionContext
+from tempest_fastapi_sdk.admin.actions import AdminActionResult as AdminActionResult
+from tempest_fastapi_sdk.admin.actions import admin_action as admin_action
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend as AdminAuthBackend
 from tempest_fastapi_sdk.admin.auth import AdminAuthError as AdminAuthError
 from tempest_fastapi_sdk.admin.auth import UserModelAuthBackend as UserModelAuthBackend
@@ -29,6 +33,9 @@ from tempest_fastapi_sdk.admin.site import AdminSite as AdminSite
 from tempest_fastapi_sdk.admin.theme import AdminTheme as AdminTheme
 
 __all__: list[str] = [
+    "AdminAction",
+    "AdminActionContext",
+    "AdminActionResult",
     "AdminAuthBackend",
     "AdminAuthError",
     "AdminModel",
@@ -40,6 +47,7 @@ __all__: list[str] = [
     "SessionStore",
     "SignedCookieSessionStore",
     "UserModelAuthBackend",
+    "admin_action",
     "discover_models",
     "make_admin_router",
 ]

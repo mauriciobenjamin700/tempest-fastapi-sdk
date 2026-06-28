@@ -10,6 +10,11 @@ from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql import operators
 from sqlalchemy.sql.elements import UnaryExpression
 
+from tempest_fastapi_sdk.admin.actions import (
+    ActionHandler,
+    AdminAction,
+    resolve_admin_action,
+)
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.db.repository import BaseRepository
 
@@ -78,6 +83,11 @@ class AdminModel(Generic[ModelT]):
             endpoint. Default ``True``.
         can_delete (bool): Whether the admin exposes the delete action.
             Default ``True``.
+        actions (Sequence[ActionHandler]): Custom bulk actions —
+            functions decorated with
+            :func:`~tempest_fastapi_sdk.admin.admin_action`. Each appears
+            in the list view's bulk-action dropdown alongside the built-in
+            activate / deactivate / delete.
 
     Raises:
         TypeError: When ``model`` is not a subclass of :class:`BaseModel`,
@@ -101,6 +111,7 @@ class AdminModel(Generic[ModelT]):
         can_create: bool = True,
         can_edit: bool = True,
         can_delete: bool = True,
+        actions: Sequence[ActionHandler] = (),
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -124,6 +135,14 @@ class AdminModel(Generic[ModelT]):
         self.can_create: bool = can_create
         self.can_edit: bool = can_edit
         self.can_delete: bool = can_delete
+        self._actions: dict[str, AdminAction] = {}
+        for func in actions:
+            action = resolve_admin_action(func)
+            if action.name in self._actions:
+                raise ValueError(
+                    f"Duplicate admin action name {action.name!r} on {model.__name__}",
+                )
+            self._actions[action.name] = action
 
     def get_verbose_name(self) -> str:
         """Return the configured (or auto-derived) singular display name.
@@ -216,6 +235,27 @@ class AdminModel(Generic[ModelT]):
             )
             return factory(session)
         return BaseRepository(session, model=self.model)
+
+    def custom_actions(self) -> list[AdminAction]:
+        """Return the registered custom actions in declaration order.
+
+        Returns:
+            list[AdminAction]: The actions passed via ``actions=`` (``[]``
+            when none were registered).
+        """
+        return list(self._actions.values())
+
+    def get_action(self, name: str) -> AdminAction | None:
+        """Return the custom action named ``name``, or ``None``.
+
+        Args:
+            name (str): The action identifier (its submitted form value).
+
+        Returns:
+            AdminAction | None: The matching action, or ``None`` when no
+            custom action with that name is registered.
+        """
+        return self._actions.get(name)
 
 
 def _field_key(ref: FieldRef) -> str:

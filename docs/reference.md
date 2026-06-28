@@ -209,6 +209,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ::: tempest_fastapi_sdk.admin.site.AdminSite
 ::: tempest_fastapi_sdk.admin.config.AdminModel
+::: tempest_fastapi_sdk.admin.actions.admin_action
+::: tempest_fastapi_sdk.admin.actions.AdminActionContext
+::: tempest_fastapi_sdk.admin.actions.AdminActionResult
 ::: tempest_fastapi_sdk.admin.auth.AdminAuthBackend
 ::: tempest_fastapi_sdk.admin.auth.UserModelAuthBackend
 ::: tempest_fastapi_sdk.admin.router.make_admin_router

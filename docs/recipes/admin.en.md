@@ -178,7 +178,7 @@ app.include_router(
 - `GET  /admin/logs` — **application logs** (when `show_logs=True`): reads the structured JSON files written by `configure_logging(log_dir=…)`, with source filter (`?source=`), free-text search (`?q=`) and pagination. Color-coded level badges. Renders an empty state when no log files exist yet.
 - `GET  /admin/m/{slug}/` — list view with pagination + free-text search (`?q=`) + per-field filters (`?filter_<field>=value`) + clickable **column sorting** (`?sort=<column>&dir=asc|desc`).
 - `GET  /admin/m/{slug}/export.csv` / `export.json` — **export** the current result set (honoring search/filters/sort) as CSV or JSON. Row cap via `make_admin_router(export_max_rows=…)` (default 5000).
-- `POST /admin/m/{slug}/bulk` — **bulk actions** (delete / activate / deactivate) on the selected rows.
+- `POST /admin/m/{slug}/bulk` — **bulk actions** (delete / activate / deactivate + your **custom actions**) on the selected rows.
 - `GET/POST /admin/m/{slug}/new` — **create** a record (when `can_create`).
 - `GET  /admin/m/{slug}/{identity}` — detail view with Edit/Delete controls.
 - `GET/POST /admin/m/{slug}/{identity}/edit` — **edit** a record (when `can_edit`).
@@ -197,6 +197,51 @@ app.include_router(
     **Audit trail**: create/edit through the admin stamps `created_by`/`updated_by` (from `AuditMixin`) with the acting admin's id; the detail view shows an **Audit** panel with timestamps and — when the model has the audit columns — the actor (UUID resolved to a display name via the auth backend). Models without `AuditMixin` show timestamps only.
 
     Not yet included (later roadmap phases): file upload, inline/related editing.
+
+## Custom actions (`@admin_action`)
+
+Beyond the 3 built-ins (activate / deactivate / delete), you register
+**your own actions** — an async function decorated with `@admin_action`
+and passed to `AdminModel(actions=[...])`. Each becomes an option in the
+bulk-action dropdown, operating on the checked rows.
+
+```python
+from tempest_fastapi_sdk import (
+    AdminActionContext,
+    AdminActionResult,
+    AdminModel,
+    admin_action,
+)
+
+
+@admin_action(label="Send welcome")
+async def send_welcome(ctx: AdminActionContext) -> AdminActionResult:
+    """Runs on the selected rows; the message is shown on the list view."""
+    users = await ctx.repository.list(filters={"id": ctx.ids})
+    for user in users:
+        await mailer.send_welcome(user.email)
+    return AdminActionResult(f"Sent {len(users)} emails.")
+
+
+site.register(AdminModel(model=UserModel, actions=[send_welcome]))
+```
+
+The handler receives an `AdminActionContext`:
+
+| Field | What it is |
+| --- | --- |
+| `ids` | Identities of the checked rows. |
+| `repository` | The model's `BaseRepository`, on the request session. |
+| `db_session` | The DB session (for work beyond the repository). |
+| `request` | The inbound request. |
+| `session` | The authenticated admin session. |
+| `principal` | The admin user row that triggered the action. |
+
+Return an `AdminActionResult(message, category="success"|"error"|"warning")`
+to flash a banner on the list view (or `None` for no banner). The
+function stays **directly callable/testable** — the decorator only
+attaches metadata. Use `name=` to pin the identifier (default: the
+function name) and `dangerous=True` to mark a destructive action.
 
 !!! tip "Sidebar + burger navigation"
     Every authenticated page has a persistent **sidebar**: Dashboard, one
