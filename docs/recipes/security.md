@@ -10,11 +10,12 @@ O construtor recebe um `backend` (qualquer objeto que case com o `Protocol` `Thr
 
 ```python
 from tempest_fastapi_sdk import (
-    AsyncRedisManager,
     AttemptThrottle,
     TooManyRequestsException,
     UnauthorizedException,
 )
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+
 from src.core.settings import settings
 
 cache = AsyncRedisManager(settings.REDIS_URL)

@@ -5,6 +5,28 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.82.1] — 2026-06-28
+
+### Fixed
+
+- **Docs: removed code that the API never offered.** A doc audit
+  (cross-checking every `tempest_fastapi_sdk` import and example against
+  the package) found and fixed drift in the README:
+  - The brute-force throttling recipe invented `MemoryThrottleBackend` /
+    `RedisThrottleBackend`, `throttle.check()` returning a `ThrottleStatus`
+    enum, `record_failure()`, and `lock_seconds=` — none exist. Rewritten
+    to the real API (`AttemptThrottle(backend, max_attempts=, window_seconds=)`
+    with `raise_if_blocked` / `hit` / `reset` / `status`).
+  - The client-IP recipe used `trusted_proxies=` / `accept_private=` — the
+    real parameter is `trusted_header=`.
+  - The cookie recipe treated `SameSite` as a `BaseStrEnum` (`SameSite.LAX`)
+    with `same_site=` / `key=` kwargs and an auto-`Secure` claim; `SameSite`
+    is a `Literal` alias and `set_cookie` takes positional `name`/`value`
+    + `samesite=`.
+  - `AsyncRedisManager` was imported from the top level in several recipes
+    (cache / sessions / security) — it lives in `tempest_fastapi_sdk.cache`
+    (submodule-only, like `queue` / `tasks`). No code changes.
+
 ## [0.82.0] — 2026-06-28
 
 ### Added

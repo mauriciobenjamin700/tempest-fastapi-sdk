@@ -41,7 +41,6 @@ from fastapi import FastAPI
 
 from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
-    AsyncRedisManager,
     RedisSessionStore,
     SessionAuth,
     SessionMiddleware,
@@ -49,6 +48,8 @@ from tempest_fastapi_sdk import (
     make_session_router,
     register_exception_handlers,
 )
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+
 from src.core.settings import settings
 from src.db.models import UserModel
 
@@ -147,7 +148,8 @@ State no dict do processo. **Não escala** — restart do uvicorn limpa tudo, um
 ### `RedisSessionStore` — produção
 
 ```python
-from tempest_fastapi_sdk import AsyncRedisManager, RedisSessionStore
+from tempest_fastapi_sdk import RedisSessionStore
+from tempest_fastapi_sdk.cache import AsyncRedisManager
 
 cache = AsyncRedisManager(settings.REDIS_URL)
 session_store = RedisSessionStore(cache.client, prefix="myapp:")

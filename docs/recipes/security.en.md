@@ -10,11 +10,12 @@ The constructor takes a `backend` (anything matching the `ThrottleBackend` Proto
 
 ```python
 from tempest_fastapi_sdk import (
-    AsyncRedisManager,
     AttemptThrottle,
     TooManyRequestsException,
     UnauthorizedException,
 )
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+
 from src.core.settings import settings
 
 cache = AsyncRedisManager(settings.REDIS_URL)

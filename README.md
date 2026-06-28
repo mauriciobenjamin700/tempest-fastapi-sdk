@@ -3211,62 +3211,66 @@ app.mount(
 )
 ```
 
-For cookie-based session flows, `set_cookie` / `clear_cookie` write headers that already include the safe combo (`HttpOnly`, `Secure`, `SameSite=Lax`) so the caller only picks the bits they want to deviate from. `SameSite` is a `BaseStrEnum` (`SameSite.LAX` / `STRICT` / `NONE`) — using `SameSite.NONE` forces `Secure=True` to honor the browser requirement.
+For cookie-based session flows, `set_cookie` / `clear_cookie` write headers that already include the safe combo (`HttpOnly`, `Secure`, `SameSite=Lax`) so the caller only picks the bits they want to deviate from. `SameSite` is a **type alias** `Literal["lax", "strict", "none"]` — pass the literal string, not an enum. The SDK does **not** auto-force `Secure` for `samesite="none"`: pass `samesite="none", secure=True` yourself in cross-site scenarios (the browser rejects `SameSite=None` without `Secure`).
 
 ```python
 from fastapi import Response
 
-from tempest_fastapi_sdk import SameSite, clear_cookie, set_cookie
+from tempest_fastapi_sdk import clear_cookie, set_cookie
 
 
 def login(response: Response, token: str) -> None:
     set_cookie(
         response,
-        key="session",
-        value=token,
+        "session",                 # name (positional)
+        token,                     # value (positional)
         max_age=3600,
-        same_site=SameSite.LAX,         # default
-        # secure=True,                  # auto-enabled for SameSite.NONE
-        # http_only=True,               # default
+        samesite="lax",            # "lax" (default), "strict" or "none"
+        # secure=True,             # default — set False only for local HTTP
+        # http_only=True,          # default
         path="/",
     )
 
 
 def logout(response: Response) -> None:
-    clear_cookie(response, key="session", path="/")
+    clear_cookie(response, "session", path="/")
 ```
 
 ### Brute-force throttling recipe
 
-`AttemptThrottle` counts failed attempts per key (typically `<endpoint>:<identifier>` — login email, password-reset target, etc.) and either yields a free attempt, locks the caller for a cooldown, or signals "back off" once the threshold is crossed. Two backends ship: `MemoryThrottleBackend` (defaults — process-local, perfect for tests and single-process services) and `RedisThrottleBackend` (multi-process / multi-host deployments).
+`AttemptThrottle` counts failed attempts per key (typically `<endpoint>:<identifier>` — login email, password-reset target, IP, etc.). The constructor takes a `backend` — any object matching the `ThrottleBackend` Protocol (`get`/`incr`/`expire`/`ttl`/`delete`), which `redis.asyncio.Redis` satisfies out of the box — plus `max_attempts` + `window_seconds`. No in-memory backend is bundled: pass the Redis client from `AsyncRedisManager` (or a [fakeredis](https://github.com/cunla/fakeredis-py) double in tests).
 
 ```python
-from tempest_fastapi_sdk import AttemptThrottle, ThrottleStatus, TooManyRequestsException
-from tempest_fastapi_sdk.utils.throttle import RedisThrottleBackend
+from tempest_fastapi_sdk import AttemptThrottle, UnauthorizedException
+from tempest_fastapi_sdk.cache import AsyncRedisManager
 
+from src.core.settings import settings
+
+cache = AsyncRedisManager(settings.REDIS_URL)
+# cache.client is redis.asyncio.Redis — matches the ThrottleBackend Protocol
 throttle = AttemptThrottle(
-    backend=RedisThrottleBackend(redis_manager=cache),
+    cache.client,
     max_attempts=5,
-    window_seconds=300,           # rolling window
-    lock_seconds=900,             # cooldown applied when threshold trips
+    window_seconds=300,         # fixed window; also the TTL on the first failure
+    namespace="login",          # key prefix so multiple throttles can coexist
+    fail_open=True,             # a Redis outage degrades to "allow", never locks everyone out
 )
 
 
 async def login(email: str, password: str) -> User:
-    status = await throttle.check(f"login:{email}")
-    if status is ThrottleStatus.LOCKED:
-        raise TooManyRequestsException(message="Too many attempts; try again later.")
+    key = f"login:{email}"
+    await throttle.raise_if_blocked(key)            # raises 429 when over budget
 
-    user = await users_repo.get_by_email(email)
-    if not password_utils.verify(password, user.password_hash):
-        await throttle.record_failure(f"login:{email}")
+    user = await users_repo.get_or_none({"email": email})
+    if user is None or not password_utils.verify(password, user.hashed_password):
+        await throttle.hit(key)                     # +1 failure, applies the TTL
         raise UnauthorizedException(message="Invalid credentials.")
 
-    await throttle.reset(f"login:{email}")
+    await throttle.reset(key)                       # success clears the counter
     return user
 ```
 
-`check()` returns a `ThrottleStatus` enum (`ALLOWED` / `LOCKED`); inspecting `.attempts_left` and `.retry_after_seconds` on the result lets you surface friendly error payloads. Pair with `TooManyRequestsException` so the SDK exception handler emits the canonical `{detail, code, details}` envelope with HTTP 429 and a `Retry-After` header.
+`throttle.status(key)` (peek without incrementing) and `throttle.hit(key)` (increment) both return a frozen `ThrottleStatus` dataclass — `attempts: int`, `blocked: bool`, `retry_after_seconds: int` — to build friendly error payloads. `raise_if_blocked` already raises `TooManyRequestsException`, which the SDK exception handler turns into the canonical `{detail, code, details}` envelope with HTTP 429 and a `Retry-After` header.
 
 ### Opaque tokens recipe
 
@@ -3305,7 +3309,7 @@ async def consume_reset_token(plain: str, user_id: UUID) -> bool:
 
 ### Client IP extraction recipe
 
-`get_client_ip(request)` and `get_client_ip_from_scope(scope)` return the real client IP behind an arbitrary chain of proxies. They inspect `Forwarded` (RFC 7239) first, fall back to `X-Forwarded-For` honoring an explicit `trusted_proxies` allowlist, and finally use the raw socket address — never naively trusting an inbound header.
+`get_client_ip(request)` and `get_client_ip_from_scope(scope)` return the real client IP behind a proxy. By design they accept **one** trusted header name (`trusted_header=`) that your edge proxy is known to set (e.g. `"x-real-ip"` on Nginx) — without it, they use the direct peer address. Anti-spoofing belongs at the proxy (which overwrites the header with the real peer), not in Python, so the SDK only reads the header you declare trusted.
 
 ```python
 from fastapi import Request
@@ -3315,15 +3319,13 @@ from tempest_fastapi_sdk import get_client_ip
 
 @router.post("/login")
 async def login(request: Request, payload: LoginIn) -> LoginOut:
-    ip = get_client_ip(
-        request,
-        trusted_proxies={"10.0.0.0/8", "192.168.0.0/16"},
-    )
-    await throttle.check(f"login:{ip}")
+    # Behind Nginx that overwrites X-Real-IP with the real peer:
+    ip = get_client_ip(request, trusted_header="x-real-ip")
+    await throttle.raise_if_blocked(f"login:{ip}")
     ...
 ```
 
-Use `get_client_ip_from_scope(scope)` from middleware or websocket handlers where only the ASGI scope is in reach. Both helpers normalize IPv6 brackets and refuse to return private addresses when `accept_private=False` is passed — handy when only public traffic should ever populate audit logs.
+Use `get_client_ip_from_scope(scope, trusted_header=...)` from middleware or websocket handlers where only the ASGI scope is in reach. If you expose the app directly to the internet, omit `trusted_header=` so the peer address is used.
 
 ### Command-line interface recipe
 

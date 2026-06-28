@@ -14,7 +14,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from tempest_fastapi_sdk import AsyncRedisManager
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+
 from src.core.settings import settings
 
 cache = AsyncRedisManager(**settings.redis_kwargs())   # url + decode_responses
