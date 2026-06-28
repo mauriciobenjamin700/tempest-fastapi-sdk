@@ -167,7 +167,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `custom_css_url`, injected as `:root` overrides), custom bulk actions
   (`@admin_action` + `AdminModel(actions=[...])`, `AdminActionContext` /
   `AdminActionResult`), file/image upload fields (`AdminModel(
-  upload_fields=[...], upload_storage=...)`).
+  upload_fields=[...], upload_storage=...)`), rich list filters
+  (bool/enum/FK select, date-range, text — auto by column type).
 - **CLI** — `tempest new` (scaffolds layered service +
   docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
   `tempest generate --docker` (regen compose) / `--dockerfile`
@@ -216,33 +217,35 @@ upload_fields=[...], upload_storage=...)` renders String columns as file
 inputs, streams the upload to `LocalUploadStorage` / `MinIOUploadStorage`,
 and stores the returned key. Now in the covers list.
 
+**Shipped — rich filters (v0.86.0).** `list_filter` fields auto-pick a
+widget by column type: bool / enum / FK → select, date/datetime →
+inclusive date-range (two inputs → `__gte`/`__lte`), other → text.
+Now in the covers list.
+
 **Tier 1 — high value, reuses an existing engine (low effort):**
 
-1. **Rich filters (NEXT)** — enum / choice / FK / date-range filters in the
-   list view (today only boolean fields auto-render a filter dropdown).
-   Quick UX win.
-2. **Audit history viewer** — a per-row change timeline wired to the
+1. **Audit history viewer (NEXT)** — a per-row change timeline wired to the
    existing `BaseAuditLogModel` + `diff_snapshots`. Today the detail
    view only shows `created_by` / `updated_by` stamps, not full history.
    Engine is already shipped.
 
 **Tier 2 — high value, medium effort:**
 
-3. **Autocomplete FK fields** — HTMX search endpoint backing FK inputs,
+2. **Autocomplete FK fields** — HTMX search endpoint backing FK inputs,
    removing the 1000-row `<select>` cap and the plain-UUID fallback
    (Django `autocomplete_fields`, Nova search).
-4. **Inlines / nested relations** — edit child rows inside the parent's
+3. **Inlines / nested relations** — edit child rows inside the parent's
    detail / edit view (Django `StackedInline` / `TabularInline`).
-5. **Dashboard business metrics / charts** — value / trend / partition
+4. **Dashboard business metrics / charts** — value / trend / partition
    cards (Nova metrics), wired to the existing metrics module. Distinct
    from today's system CPU/RAM/disk panel.
 
 **Tier 3 — nice-to-have:**
 
-6. **RBAC granular** — per-model / per-action admin permissions beyond
+5. **RBAC granular** — per-model / per-action admin permissions beyond
    today's `is_admin` + `can_create` / `can_edit` / `can_delete`.
-7. **CSV import** — bulk upload counterpart to the existing export.
-8. **Lenses** — saved alternate views / queries per model (Nova).
+6. **CSV import** — bulk upload counterpart to the existing export.
+7. **Lenses** — saved alternate views / queries per model (Nova).
 
 Origin: competitor gap analysis (Django Admin, Laravel Nova, SQLAdmin,
 Starlette-Admin) run 2026-06-26. Do **not** treat the tiers as locked —

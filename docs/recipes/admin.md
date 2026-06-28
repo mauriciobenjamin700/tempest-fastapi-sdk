@@ -1,7 +1,7 @@
 # Painel admin
 
 
-UI de gerenciamento no estilo Django montada sob `/admin`. Operadores entram com uma linha de usuário do banco (sem store de senha de admin separado) e navegam por todo modelo registrado pelo navegador, então a porta do banco pode ficar fechada em redes privadas. O painel é completo (paridade com o Django admin): list view com busca / filtros por campo / colunas ordenáveis, CRUD completo (criar / editar / excluir), ações em massa, export CSV/JSON, widgets FK-select, dashboard com contagens de linhas + métricas de sistema, MFA TOTP opcional no login, e trilha de auditoria carimbando `created_by` / `updated_by`. Ainda no roadmap: upload de arquivo e edição inline/relacionada.
+UI de gerenciamento no estilo Django montada sob `/admin`. Operadores entram com uma linha de usuário do banco (sem store de senha de admin separado) e navegam por todo modelo registrado pelo navegador, então a porta do banco pode ficar fechada em redes privadas. O painel é completo (paridade com o Django admin): list view com busca / filtros ricos por campo (enum / FK / range de data) / colunas ordenáveis, CRUD completo (criar / editar / excluir), ações em massa, export CSV/JSON, widgets FK-select, dashboard com contagens de linhas + métricas de sistema, MFA TOTP opcional no login, campos de upload de arquivo/imagem, e trilha de auditoria carimbando `created_by` / `updated_by`. Ainda no roadmap: edição inline/relacionada.
 
 Requer o extra `[admin]`:
 
@@ -87,6 +87,15 @@ site.register(AdminModel(
 ```
 
 Toda referência a campo também aceita uma string simples (`list_display=["email", ...]`) para configuração dinâmica, e `ordering` aceita uma coluna (ascendente), `desc(column)` / `asc(column)`, ou uma string no estilo Django `"-created_at"`. `register` retorna a instância e levanta `ValueError` em slug duplicado. Os slugs derivam por padrão do `__tablename__` do modelo, para que URLs e tabelas do banco fiquem em sincronia.
+
+!!! info "Filtros automáticos por tipo de coluna"
+    Cada campo em `list_filter` vira o widget certo conforme o tipo da
+    coluna: **boolean** → dropdown Sim/Não; **enum** → dropdown com os
+    membros; **FK** (cujo destino tem `AdminModel` registrado) → dropdown
+    das linhas relacionadas (label pelo `search_fields`); **date/datetime**
+    → dois inputs de data (de/até, range inclusivo); qualquer outra coluna
+    → input de texto (igualdade). Tudo preserva busca/ordenação/paginação
+    na URL.
 
 !!! tip "Marca centralizada e customizável"
     O nome exibido no centro do header vem de `brand` (opcional). Sem ele, cai no `title` — então sites existentes não mudam. Use `brand` para mostrar um nome distinto (ex.: `"servus-backend-admin"`) centralizado no topo de toda página. A sidebar é fixa e **sobrepõe header e footer** no desktop (z-index maior) — comportamento automático do CSS embutido, sem config.

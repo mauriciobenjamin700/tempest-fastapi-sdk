@@ -7,7 +7,8 @@ import io
 import json
 import secrets
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
@@ -388,6 +389,102 @@ def make_admin_router(
                 (str(row.id), fk_label(referenced, row)) for row in rows[:FK_OPTION_CAP]
             ]
         return options
+
+    async def _fk_filter_options(
+        admin: AdminModel[Any],
+        field: str,
+        db_session: AsyncSession,
+    ) -> list[tuple[str, str]]:
+        """Return ``(value, label)`` options for a FK list-filter field.
+
+        Args:
+            admin (AdminModel[Any]): The admin being rendered.
+            field (str): The foreign-key column key.
+            db_session (AsyncSession): The DB session.
+
+        Returns:
+            list[tuple[str, str]]: Related-row options (``[]`` when the
+            target table has no registered admin), capped at
+            ``FK_OPTION_CAP``.
+        """
+        column = sa_inspect(admin.model).columns.get(field)
+        if column is None or not column.foreign_keys:
+            return []
+        table = next(iter(column.foreign_keys)).column.table.name
+        referenced = site.get(table)
+        if referenced is None:
+            return []
+        rows = await referenced.build_repository(db_session).list()
+        return [
+            (str(row.id), fk_label(referenced, row)) for row in rows[:FK_OPTION_CAP]
+        ]
+
+    async def _filter_specs(
+        admin: AdminModel[Any],
+        request: Request,
+        db_session: AsyncSession,
+    ) -> list[dict[str, Any]]:
+        """Build the list-view filter widgets for each ``list_filter`` field.
+
+        Each spec is a ``select`` (bool / enum / FK), a ``daterange`` (two
+        date inputs) or a ``text`` input, with the active value(s)
+        pre-filled.
+
+        Args:
+            admin (AdminModel[Any]): The admin being rendered.
+            request (Request): The inbound request (for active values).
+            db_session (AsyncSession): The DB session (for FK options).
+
+        Returns:
+            list[dict[str, Any]]: Widget descriptors for the template.
+        """
+        specs: list[dict[str, Any]] = []
+        for field in admin.list_filter:
+            kind = _filter_kind(admin, field)
+            label = field.replace("_", " ").strip().title()
+            if kind == "date":
+                specs.append(
+                    {
+                        "field": field,
+                        "label": label,
+                        "type": "daterange",
+                        "value_from": request.query_params.get(
+                            f"filter_{field}_from", ""
+                        ),
+                        "value_to": request.query_params.get(f"filter_{field}_to", ""),
+                    }
+                )
+                continue
+            if kind in ("bool", "enum", "fk"):
+                active = request.query_params.get(f"filter_{field}", "")
+                if kind == "bool":
+                    pairs = [("true", "Yes"), ("false", "No")]
+                elif kind == "enum":
+                    enum_cls = _filter_python_type(admin, field)
+                    pairs = _enum_filter_options(enum_cls) if enum_cls else []
+                else:
+                    pairs = await _fk_filter_options(admin, field, db_session)
+                specs.append(
+                    {
+                        "field": field,
+                        "label": label,
+                        "type": "select",
+                        "options": [
+                            {"value": v, "label": lbl, "selected": active == v}
+                            for v, lbl in pairs
+                        ],
+                    }
+                )
+                continue
+            specs.append(
+                {
+                    "field": field,
+                    "label": label,
+                    "type": "text",
+                    "value": request.query_params.get(f"filter_{field}", ""),
+                }
+            )
+        return specs
 
     async def _form_fields(
         admin: AdminModel[Any],
@@ -783,11 +880,11 @@ def make_admin_router(
         ]
 
         # Params preserved on pagination links (search + filters + sort).
+        # active_filters already holds the full ``filter_*`` query keys.
         query_params: dict[str, str] = {}
         if q:
             query_params["q"] = q
-        for field, value in active_filters.items():
-            query_params[f"filter_{field}"] = value
+        query_params.update(active_filters)
         # Params preserved on sort links — same minus paging/sort.
         sort_base = dict(query_params)
         if active_sort:
@@ -825,10 +922,7 @@ def make_admin_router(
                 "new_url": f"{prefix}/m/{slug}/new",
                 "bulk_actions": _bulk_actions(admin),
                 "bulk_url": f"{prefix}/m/{slug}/bulk",
-                "filter_options": {
-                    field: _filter_options(admin, field, active_filters.get(field))
-                    for field in admin.list_filter
-                },
+                "filters": await _filter_specs(admin, request, db_session),
             },
         )
 
@@ -1359,10 +1453,26 @@ def _resolve_filters_and_order(
     filters: dict[str, Any] = {}
     active_filters: dict[str, str] = {}
     for field in admin.list_filter:
+        kind = _filter_kind(admin, field)
+        if kind == "date":
+            py = _filter_python_type(admin, field)
+            raw_from = request.query_params.get(f"filter_{field}_from")
+            raw_to = request.query_params.get(f"filter_{field}_to")
+            bound = _coerce_date_bound(raw_from, py, end=False)
+            if bound is not None:
+                filters[f"{field}__gte"] = bound
+                active_filters[f"filter_{field}_from"] = raw_from or ""
+            bound = _coerce_date_bound(raw_to, py, end=True)
+            if bound is not None:
+                filters[f"{field}__lte"] = bound
+                active_filters[f"filter_{field}_to"] = raw_to or ""
+            continue
         value = request.query_params.get(f"filter_{field}")
         if value:
-            active_filters[field] = value
-            filters[field] = _coerce_filter_value(value)
+            active_filters[f"filter_{field}"] = value
+            filters[field] = (
+                _identity_value(value) if kind == "fk" else _coerce_filter_value(value)
+            )
     if q:
         for field in admin.search_fields:
             filters[field] = q
@@ -1657,43 +1767,89 @@ def _coerce_filter_value(raw: str) -> Any:
         return raw
 
 
-def _filter_options(
-    admin: Any,
-    field: str,
-    active: str | None,
-) -> list[dict[str, Any]]:
-    """Return the static filter-options for ``field``.
-
-    The Phase 1 list view does not introspect distinct DB values; it
-    only renders True/False options for boolean columns. Future
-    phases can broaden this to enums and FK lookups.
+def _filter_python_type(admin: Any, field: str) -> type | None:
+    """Return the Python type of a mapped column, or ``None``.
 
     Args:
         admin (Any): The admin configuration.
-        field (str): The filter field name.
-        active (str | None): The currently selected value.
+        field (str): The column key.
 
     Returns:
-        list[dict[str, Any]]: Option dicts ready for the template.
+        type | None: The column's Python type, or ``None`` when the
+        column is unknown or has no resolvable type.
     """
-    column = getattr(admin.model, field, None)
+    column = sa_inspect(admin.model).columns.get(field)
     if column is None:
-        return []
-    python_type = getattr(getattr(column, "type", None), "python_type", None)
-    if python_type is bool:
-        return [
-            {
-                "value": "true",
-                "label": "Yes",
-                "selected": active == "true",
-            },
-            {
-                "value": "false",
-                "label": "No",
-                "selected": active == "false",
-            },
-        ]
-    return []
+        return None
+    try:
+        py: type = column.type.python_type
+    except (NotImplementedError, AttributeError):
+        return None
+    return py
+
+
+def _filter_kind(admin: Any, field: str) -> str:
+    """Classify a list-filter field to pick its widget + query semantics.
+
+    Args:
+        admin (Any): The admin configuration.
+        field (str): The list-filter field key.
+
+    Returns:
+        str: One of ``"fk"`` / ``"bool"`` / ``"enum"`` / ``"date"`` /
+        ``"other"``.
+    """
+    column = sa_inspect(admin.model).columns.get(field)
+    if column is None:
+        return "other"
+    if column.foreign_keys:
+        return "fk"
+    py = _filter_python_type(admin, field)
+    if py is bool:
+        return "bool"
+    if isinstance(py, type) and issubclass(py, Enum):
+        return "enum"
+    if isinstance(py, type) and issubclass(py, (datetime, date)):
+        return "date"
+    return "other"
+
+
+def _coerce_date_bound(raw: str | None, py: type | None, *, end: bool) -> Any:
+    """Parse a ``YYYY-MM-DD`` filter bound into a date/datetime.
+
+    Args:
+        raw (str | None): The submitted ``date`` input value.
+        py (type | None): The column's Python type (``date`` vs
+            ``datetime``).
+        end (bool): When the column is a ``datetime`` and this is the
+            upper bound, snap to end-of-day so the whole day is included.
+
+    Returns:
+        Any: A ``date`` / ``datetime`` bound, or ``None`` when ``raw`` is
+        empty or unparseable (the bound is then skipped).
+    """
+    if not raw:
+        return None
+    try:
+        parsed = date.fromisoformat(raw)
+    except ValueError:
+        return None
+    if isinstance(py, type) and issubclass(py, datetime):
+        clock = time(23, 59, 59) if end else time(0, 0, 0)
+        return datetime.combine(parsed, clock, tzinfo=UTC)
+    return parsed
+
+
+def _enum_filter_options(enum_cls: Any) -> list[tuple[str, str]]:
+    """Return ``(value, label)`` options for an enum column.
+
+    Args:
+        enum_cls (Any): The enum class (an ``Enum`` subclass).
+
+    Returns:
+        list[tuple[str, str]]: One pair per member (value, member name).
+    """
+    return [(str(member.value), member.name) for member in enum_cls]
 
 
 __all__: list[str] = [

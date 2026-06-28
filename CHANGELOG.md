@@ -5,6 +5,19 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.86.0] — 2026-06-28
+
+### Added
+
+- **Admin rich list filters.** `list_filter` fields now auto-pick a
+  widget by column type instead of rendering a useful dropdown only for
+  booleans: **enum** columns become a member dropdown, **foreign keys**
+  (whose target has a registered `AdminModel`) become a related-row
+  dropdown, **date/datetime** columns become an inclusive date-range
+  (two date inputs → `<field>__gte` / `<field>__lte`), and any other
+  column becomes a text input (equality). Booleans keep the Yes/No
+  dropdown. All filters preserve search / sort / pagination in the URL.
+
 ## [0.85.0] — 2026-06-28
 
 ### Added

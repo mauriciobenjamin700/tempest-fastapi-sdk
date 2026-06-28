@@ -1,7 +1,7 @@
 # Admin site
 
 
-Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. The panel is feature-complete (Django-admin parity): a list view with search / per-field filters / sortable columns, full CRUD (create / edit / delete), bulk actions, CSV/JSON export, FK-select widgets, a dashboard with live row counts + system metrics, optional TOTP MFA at login, file/image upload fields, and an audit trail stamping `created_by` / `updated_by`. Still on the roadmap: inline/related editing.
+Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. The panel is feature-complete (Django-admin parity): a list view with search / rich per-field filters (enum / FK / date-range) / sortable columns, full CRUD (create / edit / delete), bulk actions, CSV/JSON export, FK-select widgets, a dashboard with live row counts + system metrics, optional TOTP MFA at login, file/image upload fields, and an audit trail stamping `created_by` / `updated_by`. Still on the roadmap: inline/related editing.
 
 Requires the `[admin]` extra:
 
@@ -87,6 +87,14 @@ site.register(AdminModel(
 ```
 
 Every field reference also accepts a plain string (`list_display=["email", ...]`) for dynamic configuration, and `ordering` accepts a column (ascending), `desc(column)` / `asc(column)`, or a Django-style `"-created_at"` string. `register` returns the instance and raises `ValueError` on a duplicate slug. Slugs default to the model's `__tablename__` so URLs and database tables stay in sync.
+
+!!! info "Filters auto-pick a widget per column type"
+    Each `list_filter` field renders the right widget by column type:
+    **boolean** → Yes/No dropdown; **enum** → dropdown of the members;
+    **FK** (whose target has a registered `AdminModel`) → dropdown of the
+    related rows (labelled via `search_fields`); **date/datetime** → two
+    date inputs (from/to, inclusive range); any other column → a text
+    input (equality). All preserve search/sort/pagination in the URL.
 
 !!! tip "Centered, customizable brand"
     The name shown in the center of the header comes from `brand`

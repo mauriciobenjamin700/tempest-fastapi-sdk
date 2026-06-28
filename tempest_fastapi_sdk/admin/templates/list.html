@@ -14,17 +14,26 @@
       {% if admin.search_fields %}
       <input type="search" name="q" value="{{ query.q or '' }}" placeholder="Search…" aria-label="Search">
       {% endif %}
-      {% for field in admin.list_filter %}
+      {% for f in filters %}
       <label>
-        <span>{{ field }}</span>
-        <select name="filter_{{ field }}">
+        <span>{{ f.label }}</span>
+        {% if f.type == 'select' %}
+        <select name="filter_{{ f.field }}">
           <option value="">— any —</option>
-          {% for option in filter_options.get(field, []) %}
+          {% for option in f.options %}
           <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
             {{ option.label }}
           </option>
           {% endfor %}
         </select>
+        {% elif f.type == 'daterange' %}
+        <span class="tempest-admin-list__daterange">
+          <input type="date" name="filter_{{ f.field }}_from" value="{{ f.value_from }}" aria-label="{{ f.label }} from">
+          <input type="date" name="filter_{{ f.field }}_to" value="{{ f.value_to }}" aria-label="{{ f.label }} to">
+        </span>
+        {% else %}
+        <input type="text" name="filter_{{ f.field }}" value="{{ f.value }}">
+        {% endif %}
       </label>
       {% endfor %}
       {% if admin.search_fields or admin.list_filter %}
