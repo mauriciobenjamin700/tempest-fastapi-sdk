@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.81.1] — 2026-06-28
+
+### Changed
+
+- **Docs: dedicated Server-Sent Events (SSE) recipe.** Promoted SSE from
+  a section of the real-time recipe to its own bilingual page covering a
+  single endpoint, the connection-lifecycle pattern, event anatomy
+  (`event`/`id`/`retry`/heartbeat comments), a broadcast-to-many "hub"
+  (with the multi-worker Pub/Sub caveat), and alignment with
+  `tempest-react-sdk`'s `createEventStream` / `useEventStream`. The
+  real-time recipe now links to it. No code changes.
+
 ## [0.81.0] — 2026-06-28
 
 ### Added

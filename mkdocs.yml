@@ -235,6 +235,7 @@ nav:
       - Painel admin: recipes/admin.md
       - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md
       - Segurança: recipes/security.md
+      - "Server-Sent Events (SSE)": recipes/sse.md
       - Sessões server-side: recipes/sessions.md
       - Storage (MinIO/S3): recipes/storage.md
       - Sync offline-first (delta): recipes/offline-sync.md
