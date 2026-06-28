@@ -50,7 +50,7 @@ class WidgetRepository(BaseRepository[Widget]):
         )
 
 
-class WidgetService(BaseService[WidgetRepository, WidgetResponse]):
+class WidgetService(BaseService[WidgetRepository, WidgetResponse, WidgetUpdate]):
     pass
 
 

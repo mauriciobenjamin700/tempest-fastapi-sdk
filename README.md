@@ -2023,7 +2023,7 @@ Each mixin owns its own env-var prefix — pick only the ones the service needs:
 
 `BaseService[RepositoryT, ResponseT]` and `BaseController[ServiceT, ResponseT]` are generic skeletons matching the SDK layering (router → controller → service → repository). They expose pass-through CRUD methods so simple endpoints can subclass them without overriding anything; you override only methods that need orchestration.
 
-What you inherit by subclassing `BaseService[RepositoryT, ResponseT]`:
+`BaseService[RepositoryT, ResponseT]` accepts an optional third type argument — `BaseService[RepositoryT, ResponseT, UpdateT]` — that types the `update` payload (defaults to `BaseSchema`, so the two-argument form keeps working). What you inherit by subclassing it:
 
 | Method | Returns | Notes |
 | --- | --- | --- |
@@ -2033,7 +2033,7 @@ What you inherit by subclassing `BaseService[RepositoryT, ResponseT]`:
 | `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` with mapped `items` + `total`/`page`/`size`/`pages`. | Offset pagination via `repository.paginate`. |
 | `count(filters=None)` | `int` | Pass-through to `repository.count`. |
 | `exists(filters)` | `bool` | Pass-through to `repository.exists`. |
-| `update(id, data)` | `ResponseT` | Fetch by id, copy the fields present in `data` (a `BaseSchema`) onto the row, persist, map. `to_dict()` drops unset/`None`, so it serves PUT and PATCH alike. |
+| `update(id, data)` | `ResponseT` | Fetch by id, copy the fields present in `data` (typed `UpdateT`, the optional 3rd generic param — defaults to `BaseSchema`) onto the row, persist, map. `to_dict()` drops unset/`None`, so it serves PUT and PATCH alike. |
 | `delete(id)` | `None` | Hard delete via `repository.delete`. |
 
 `map_to_response` is `await`-ed when it returns a coroutine, so async mappers work transparently — no method override needed.
@@ -2046,7 +2046,7 @@ What you inherit by subclassing `BaseController[ServiceT, ResponseT]`:
 | `list(filters, order_by, ascending)` | `service.list` | Same. |
 | `paginate(filters, order_by, page, page_size, ascending)` | `service.paginate` | Same. |
 | `count(filters)` | `service.count` | Same. |
-| `update(id, data)` | `service.update` | Same. |
+| `update(id, data)` | `service.update` | `data` typed by the optional 3rd generic param `UpdateT` (defaults to `BaseSchema`). |
 | `delete(id)` | `service.delete` | Same. |
 
 When a use case needs domain rules, override the inherited method in the service. When a use case needs to coordinate more than one service, override the inherited method (or add a new one) in the controller. The router never grows — it only depends on the controller.

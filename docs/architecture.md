@@ -147,7 +147,7 @@ O que você herda ao subclassear `BaseService[RepositoryT, ResponseT]`:
 | `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` com `items` mapeados + `total`/`page`/`page_size`/`pages`. | Paginação por offset via `repository.paginate`. |
 | `count(filters=None)` | `int` | Pass-through para `repository.count`. |
 | `exists(filters)` | `bool` | Pass-through para `repository.exists`. |
-| `update(id, data)` | `ResponseT` | Busca por id, copia os campos presentes em `data` (um `BaseSchema`) na instância, persiste e mapeia. `to_dict()` descarta unset/`None`, então serve PUT e PATCH. |
+| `update(id, data)` | `ResponseT` | Busca por id, copia os campos presentes em `data` (tipado por `UpdateT`, o 3º parâmetro genérico opcional — default `BaseSchema`) na instância, persiste e mapeia. `to_dict()` descarta unset/`None`, então serve PUT e PATCH. |
 | `delete(id)` | `None` | Hard delete via `repository.delete`. |
 
 `map_to_response` é aguardado com `await` quando retorna uma coroutine, então mappers async funcionam de forma transparente — sem precisar sobrescrever o método.

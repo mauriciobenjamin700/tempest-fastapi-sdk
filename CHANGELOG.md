@@ -5,6 +5,20 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.79.0] — 2026-06-27
+
+### Changed
+
+- **`BaseService` / `BaseController` `update` payload is now generically
+  typed.** Both classes gained an optional third type parameter
+  `UpdateT` (bound to `BaseSchema`, default `BaseSchema`) so `update`
+  accepts the project's own update schema instead of the bare
+  `BaseSchema`: `BaseService[Repo, Resp, MyUpdateSchema]` /
+  `BaseController[Service, Resp, MyUpdateSchema]`. The default keeps every
+  existing two-argument subclass working unchanged. Implemented with a
+  PEP 695/696 `TypeVar` default via `typing_extensions` (already present
+  through Pydantic).
+
 ## [0.78.0] — 2026-06-27
 
 ### Added

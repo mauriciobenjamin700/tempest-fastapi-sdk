@@ -46,11 +46,11 @@ class GadgetRepository(BaseRepository[Gadget]):
         )
 
 
-class GadgetService(BaseService[GadgetRepository, GadgetResponse]):
+class GadgetService(BaseService[GadgetRepository, GadgetResponse, GadgetUpdate]):
     pass
 
 
-class GadgetController(BaseController[GadgetService, GadgetResponse]):
+class GadgetController(BaseController[GadgetService, GadgetResponse, GadgetUpdate]):
     pass
 
 

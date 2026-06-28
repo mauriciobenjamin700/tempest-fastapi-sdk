@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar, cast
+from typing import Any, Generic, cast
 from uuid import UUID
+
+from typing_extensions import TypeVar
 
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.services.base import BaseService
 
 ServiceT = TypeVar("ServiceT", bound=BaseService[Any, Any])
 ResponseT = TypeVar("ResponseT")
+UpdateT = TypeVar("UpdateT", bound=BaseSchema, default=BaseSchema)
+"""Update-payload schema for :meth:`BaseController.update`. Defaults to
+:class:`BaseSchema`, so ``BaseController[Service, Resp]`` still works;
+pass a third argument to type the payload precisely."""
 
 
-class BaseController(Generic[ServiceT, ResponseT]):
+class BaseController(Generic[ServiceT, ResponseT, UpdateT]):
     """Thin orchestration layer between routers and services.
 
     Following the SDK layering rules (router → controller → service →
@@ -25,6 +31,10 @@ class BaseController(Generic[ServiceT, ResponseT]):
     Generic parameters:
         ServiceT: The concrete service class.
         ResponseT: The response schema returned to the router.
+        UpdateT: The update-payload schema accepted by :meth:`update`.
+            Optional — defaults to :class:`BaseSchema`, so a two-argument
+            ``BaseController[Service, Resp]`` still works; supply it to
+            type the ``update`` payload precisely.
 
     Attributes:
         service (ServiceT): The service the controller delegates to.
@@ -113,12 +123,12 @@ class BaseController(Generic[ServiceT, ResponseT]):
         """
         return await self.service.count(filters)
 
-    async def update(self, id: UUID, data: BaseSchema) -> ResponseT:
+    async def update(self, id: UUID, data: UpdateT) -> ResponseT:
         """Pass-through to :meth:`BaseService.update`.
 
         Args:
             id (UUID): The primary key of the record to update.
-            data (BaseSchema): The update payload (unset fields skipped).
+            data (UpdateT): The update payload (unset fields skipped).
 
         Returns:
             ResponseT: The mapped, updated response.

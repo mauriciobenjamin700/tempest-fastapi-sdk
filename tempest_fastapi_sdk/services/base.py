@@ -3,17 +3,23 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic
 from uuid import UUID
+
+from typing_extensions import TypeVar
 
 from tempest_fastapi_sdk.db.repository import BaseRepository
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 RepositoryT = TypeVar("RepositoryT", bound=BaseRepository[Any])
 ResponseT = TypeVar("ResponseT")
+UpdateT = TypeVar("UpdateT", bound=BaseSchema, default=BaseSchema)
+"""Update-payload schema. Defaults to :class:`BaseSchema`, so a service
+declared as ``BaseService[Repo, Resp]`` keeps working; pass a third
+argument (``BaseService[Repo, Resp, MyUpdateSchema]``) to type ``update``."""
 
 
-class BaseService(Generic[RepositoryT, ResponseT]):
+class BaseService(Generic[RepositoryT, ResponseT, UpdateT]):
     """Thin business-logic layer wrapping a :class:`BaseRepository`.
 
     The default implementation exposes CRUD pass-through methods that
@@ -26,6 +32,11 @@ class BaseService(Generic[RepositoryT, ResponseT]):
     Generic parameters:
         RepositoryT: The concrete repository class.
         ResponseT: The response schema returned by the service.
+        UpdateT: The update-payload schema accepted by :meth:`update`.
+            Optional — defaults to :class:`BaseSchema`, so a two-argument
+            ``BaseService[Repo, Resp]`` still works; supply it
+            (``BaseService[Repo, Resp, MyUpdateSchema]``) to type the
+            ``update`` payload precisely.
 
     Attributes:
         repository (RepositoryT): The repository the service delegates to.
@@ -169,7 +180,7 @@ class BaseService(Generic[RepositoryT, ResponseT]):
         """
         return await self.repository.exists(filters)
 
-    async def update(self, id: UUID, data: BaseSchema) -> ResponseT:
+    async def update(self, id: UUID, data: UpdateT) -> ResponseT:
         """Apply a partial update to a record and map it to a response.
 
         Fetches the row by primary key, copies the fields present in
@@ -185,8 +196,8 @@ class BaseService(Generic[RepositoryT, ResponseT]):
 
         Args:
             id (UUID): The primary key of the record to update.
-            data (BaseSchema): The update payload. Fields left unset (or
-                ``None``) are not applied.
+            data (UpdateT): The update payload (a :class:`BaseSchema`).
+                Fields left unset (or ``None``) are not applied.
 
         Returns:
             ResponseT: The mapped, updated response.

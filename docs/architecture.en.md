@@ -147,7 +147,7 @@ What you inherit by subclassing `BaseService[RepositoryT, ResponseT]`:
 | `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` with mapped `items` + `total`/`page`/`page_size`/`pages`. | Offset pagination via `repository.paginate`. |
 | `count(filters=None)` | `int` | Pass-through to `repository.count`. |
 | `exists(filters)` | `bool` | Pass-through to `repository.exists`. |
-| `update(id, data)` | `ResponseT` | Fetch by id, copy the fields present in `data` (a `BaseSchema`) onto the row, persist, map. `to_dict()` drops unset/`None`, so it serves PUT and PATCH. |
+| `update(id, data)` | `ResponseT` | Fetch by id, copy the fields present in `data` (typed by `UpdateT`, the optional 3rd generic param — defaults to `BaseSchema`) onto the row, persist, map. `to_dict()` drops unset/`None`, so it serves PUT and PATCH. |
 | `delete(id)` | `None` | Hard delete via `repository.delete`. |
 
 `map_to_response` is `await`-ed when it returns a coroutine, so async mappers work transparently — no method override needed.
