@@ -5,6 +5,17 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.81.2] — 2026-06-28
+
+### Changed
+
+- **Docs: API reference stubs for symbols the top-surface filter skips.**
+  The auto-generated reference's top block excludes lowercase names, so
+  the session's new free functions were missing — added explicit
+  `mkdocstrings` entries for `strict_types` / `typed` /
+  `require_annotations` (new "Core" section) and `uf_choices` /
+  `region_choices` / `city_choices` (Utils). No code changes.
+
 ## [0.81.1] — 2026-06-28
 
 ### Changed

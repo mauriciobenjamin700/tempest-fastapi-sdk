@@ -20,6 +20,16 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## Core
+
+### `tempest_fastapi_sdk.core`
+
+::: tempest_fastapi_sdk.core.typed.strict_types
+::: tempest_fastapi_sdk.core.typed.typed
+::: tempest_fastapi_sdk.core.typed.require_annotations
+
+---
+
 ## Banco de dados
 
 ### `tempest_fastapi_sdk.db`
@@ -284,3 +294,6 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.utils.locations.normalize_uf
 ::: tempest_fastapi_sdk.utils.locations.is_valid_city
 ::: tempest_fastapi_sdk.utils.locations.normalize_city
+::: tempest_fastapi_sdk.utils.locations.uf_choices
+::: tempest_fastapi_sdk.utils.locations.region_choices
+::: tempest_fastapi_sdk.utils.locations.city_choices
