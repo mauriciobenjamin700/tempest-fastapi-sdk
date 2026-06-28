@@ -253,6 +253,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ::: tempest_fastapi_sdk.webpush.dispatcher.WebPushDispatcher
 ::: tempest_fastapi_sdk.webpush.service.WebPushSubscriptionService
+::: tempest_fastapi_sdk.webpush.router.make_web_push_router
 ::: tempest_fastapi_sdk.db.webpush_subscription_model.BaseWebPushSubscriptionModel
 ::: tempest_fastapi_sdk.webpush.schemas.WebPushSubscriptionSchema
 ::: tempest_fastapi_sdk.webpush.schemas.WebPushPayloadSchema

@@ -5,6 +5,21 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.81.0] — 2026-06-28
+
+### Added
+
+- **`make_web_push_router` — opt-in subscribe/unsubscribe router.**
+  Mounts ``POST {prefix}/subscribe`` and ``POST {prefix}/unsubscribe``
+  (default prefix ``/api/push``) wired straight to a
+  `WebPushSubscriptionService`, mirroring `make_auth_router`. Both accept
+  the raw ``PushSubscription.toJSON()`` body, so `tempest-react-sdk`'s
+  `WebPushClient` `onSubscribe` / `onUnsubscribe` callbacks hit them
+  directly. The caller injects `service_factory`, `session_factory` and a
+  `current_user_id` dependency; the request ``User-Agent`` is stored as
+  the device label by default. Exported from `tempest_fastapi_sdk` and
+  `tempest_fastapi_sdk.webpush`.
+
 ## [0.80.0] — 2026-06-28
 
 ### Added

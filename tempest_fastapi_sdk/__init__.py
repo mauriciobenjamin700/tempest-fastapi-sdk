@@ -337,6 +337,7 @@ from tempest_fastapi_sdk.webpush import (
     WebPushPayloadSchema,
     WebPushSubscriptionSchema,
     WebPushSubscriptionService,
+    make_web_push_router,
 )
 from tempest_fastapi_sdk.websockets import (
     WebSocketConnection,
@@ -345,7 +346,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.80.0"
+__version__: str = "0.81.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -631,6 +632,7 @@ __all__: list[str] = [
     "make_user_recovery_code_model",
     "make_user_refresh_token_model",
     "make_user_token_model",
+    "make_web_push_router",
     "make_web_push_subscription_model",
     "make_websocket_router",
     "modify_dict",

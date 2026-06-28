@@ -118,6 +118,40 @@ async def unsubscribe(
     return {"status": "unsubscribed"}
 ```
 
+### Router pronto (opt-in)
+
+Não quer escrever os dois endpoints? `make_web_push_router` monta
+`/subscribe` + `/unsubscribe` já ligados ao serviço — estilo
+`make_auth_router`. Você só injeta como o serviço e o usuário atual são
+resolvidos:
+
+```python
+# src/api/app.py
+from tempest_fastapi_sdk import BaseRepository, WebPushSubscriptionService, make_web_push_router
+
+from src.api.dependencies import get_current_user_id, get_session
+from src.core.settings import settings
+from src.db.models import WebPushSubscriptionModel
+
+
+def _service(session: AsyncSession) -> WebPushSubscriptionService:
+    repo = BaseRepository(session, model=WebPushSubscriptionModel)
+    return WebPushSubscriptionService(repo, WebPushDispatcher(**settings.webpush_kwargs()))
+
+
+app.include_router(
+    make_web_push_router(
+        service_factory=_service,
+        session_factory=get_session,
+        current_user_id=get_current_user_id,   # dependency -> UUID
+    )
+)
+# POST /api/push/subscribe   (201) e  POST /api/push/unsubscribe (200)
+```
+
+O `User-Agent` da requisição vira o rótulo do device (`store_user_agent=True`,
+default). Ambos os endpoints exigem autenticação via `current_user_id`.
+
 Enviar pra um usuário (todos os devices, poda automática embutida):
 
 ```python
@@ -185,4 +219,5 @@ async def broadcast(
 - Chave pública → frontend; privada → assina os pushes no backend.
 - Tabela `BaseWebPushSubscriptionModel` (1 linha por device, `endpoint` único) + `WebPushSubscriptionService` (`subscribe`/`unsubscribe`/`notify_user`) — o caminho recomendado, com poda automática.
 - O JSON do `WebPushClient` (tempest-react-sdk) é o próprio `WebPushSubscriptionSchema` — `subscribe`/`unsubscribe` batem direto.
+- `make_web_push_router` monta `/subscribe` + `/unsubscribe` prontos (estilo `make_auth_router`) se você não quiser escrever as rotas.
 - Caminho baixo nível: `send()` para um destino, `send_many()` para broadcast (retorna mortos); trate `WebPushGoneError` (404/410) podando o store.

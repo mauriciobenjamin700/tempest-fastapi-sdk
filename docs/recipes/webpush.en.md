@@ -119,6 +119,39 @@ async def unsubscribe(
     return {"status": "unsubscribed"}
 ```
 
+### Ready-made router (opt-in)
+
+Don't want to write the two endpoints? `make_web_push_router` wires
+`/subscribe` + `/unsubscribe` onto the service for you — `make_auth_router`
+style. You only inject how the service and current user are resolved:
+
+```python
+# src/api/app.py
+from tempest_fastapi_sdk import BaseRepository, WebPushSubscriptionService, make_web_push_router
+
+from src.api.dependencies import get_current_user_id, get_session
+from src.core.settings import settings
+from src.db.models import WebPushSubscriptionModel
+
+
+def _service(session: AsyncSession) -> WebPushSubscriptionService:
+    repo = BaseRepository(session, model=WebPushSubscriptionModel)
+    return WebPushSubscriptionService(repo, WebPushDispatcher(**settings.webpush_kwargs()))
+
+
+app.include_router(
+    make_web_push_router(
+        service_factory=_service,
+        session_factory=get_session,
+        current_user_id=get_current_user_id,   # dependency -> UUID
+    )
+)
+# POST /api/push/subscribe   (201) and  POST /api/push/unsubscribe (200)
+```
+
+The request `User-Agent` becomes the device label (`store_user_agent=True`,
+the default). Both endpoints require authentication via `current_user_id`.
+
 Notify a user (all devices, automatic pruning built in):
 
 ```python
@@ -186,4 +219,5 @@ async def broadcast(
 - Public key → frontend; private key → signs the pushes on the backend.
 - `BaseWebPushSubscriptionModel` table (one row per device, unique `endpoint`) + `WebPushSubscriptionService` (`subscribe`/`unsubscribe`/`notify_user`) — the recommended path, with automatic pruning.
 - The `WebPushClient` JSON (tempest-react-sdk) *is* the `WebPushSubscriptionSchema` — `subscribe`/`unsubscribe` map directly.
+- `make_web_push_router` mounts ready `/subscribe` + `/unsubscribe` (auth-router style) if you'd rather not write the routes.
 - Low-level path: `send()` for one target, `send_many()` for broadcast (returns the dead ones); handle `WebPushGoneError` (404/410) by pruning the store.

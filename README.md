@@ -107,7 +107,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[email]` | `aiosmtplib`, `jinja2` | `EmailUtils` + `render_template()` |
 | `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils`, `LocalUploadStorage`, `MinIOUploadStorage` (when combined with `[minio]`) |
 | `[cache]` | `redis` | `AsyncRedisManager` |
-| `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher`, `WebPushSubscriptionService`, `BaseWebPushSubscriptionModel` |
+| `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher`, `WebPushSubscriptionService`, `BaseWebPushSubscriptionModel`, `make_web_push_router` |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` (FastStream) |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager` (TaskIQ) |
@@ -150,7 +150,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.sse` | `EventStream`, `ServerSentEvent`, `sse_response` |
 | `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager`, `cached` (with `namespace` / `tags`), `CacheInvalidator`, `namespace_registry_key`, `tag_registry_key` |
 | `tempest_fastapi_sdk.flags` | `FeatureFlags`, `FeatureFlagBackend`, `MemoryFeatureFlagBackend`, `EnvFeatureFlagBackend`, `RedisFeatureFlagBackend`, `CompositeFeatureFlagBackend`, `make_flag_dependency`, `coerce_flag` |
-| `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushSubscriptionService`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
+| `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushSubscriptionService`, `make_web_push_router`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
 | `tempest_fastapi_sdk.queue` *(extra: `[queue]`)* | `AsyncBrokerManager` (FastStream lifecycle wrapper) |
 | `tempest_fastapi_sdk.storage` *(extra: `[minio]`)* | `AsyncMinIOClient`, `ObjectStat` — async MinIO/S3 facade |
 | `tempest_fastapi_sdk.utils.http_client` *(extra: `[http]`)* | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, `REQUEST_ID_HEADER` — typed httpx wrapper |

@@ -5,6 +5,7 @@ from tempest_fastapi_sdk.webpush.dispatcher import (
     WebPushError,
     WebPushGoneError,
 )
+from tempest_fastapi_sdk.webpush.router import make_web_push_router
 from tempest_fastapi_sdk.webpush.schemas import (
     WebPushKeysSchema,
     WebPushPayloadSchema,
@@ -20,4 +21,5 @@ __all__: list[str] = [
     "WebPushPayloadSchema",
     "WebPushSubscriptionSchema",
     "WebPushSubscriptionService",
+    "make_web_push_router",
 ]
