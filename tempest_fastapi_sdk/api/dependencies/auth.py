@@ -6,7 +6,7 @@ import hmac
 from collections.abc import Callable, Coroutine, Iterable
 from typing import TYPE_CHECKING, Any
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from tempest_fastapi_sdk.exceptions.forbidden import ForbiddenException
@@ -88,13 +88,20 @@ def make_bearer_token_dependency(
     *,
     soft: bool = False,
     bearer_scheme: HTTPBearer | None = None,
+    cookie_name: str | None = None,
     error_message: str = "Authorization token is missing or invalid",
 ) -> Callable[..., Coroutine[Any, Any, dict[str, Any] | None]]:
-    """Build a FastAPI dependency that decodes an ``Authorization: Bearer`` JWT.
+    """Build a FastAPI dependency that decodes a JWT from header or cookie.
 
     Returns the decoded claims dict so the caller can wire its own
     ``get_current_user`` on top, combining the decoded subject with
     the project's session / repository conventions.
+
+    The token is read from the ``Authorization: Bearer`` header first;
+    when ``cookie_name`` is set and the header is absent, it falls back
+    to that cookie. This is the seam that lets the same dependency serve
+    both bearer clients and the cookie delivery mode of
+    :func:`tempest_fastapi_sdk.make_auth_router`.
 
     Args:
         tokens (JWTUtils): The JWT helper used to verify the token.
@@ -103,6 +110,9 @@ def make_bearer_token_dependency(
             that work both authenticated and anonymous.
         bearer_scheme (HTTPBearer | None): Override the bearer scheme.
             Defaults to ``HTTPBearer(auto_error=False)``.
+        cookie_name (str | None): When set, fall back to this cookie for
+            the access token if the ``Authorization`` header is absent.
+            ``None`` (default) reads the header only.
         error_message (str): Message attached to the raised
             :class:`UnauthorizedException` when ``soft`` is ``False``.
 
@@ -115,18 +125,24 @@ def make_bearer_token_dependency(
     scheme: HTTPBearer = bearer_scheme or HTTPBearer(auto_error=False)
 
     async def _decode_bearer(
+        request: Request,
         credentials: HTTPAuthorizationCredentials | None = Depends(scheme),
     ) -> dict[str, Any] | None:
-        if credentials is None:
+        raw_token: str | None = (
+            credentials.credentials if credentials is not None else None
+        )
+        if raw_token is None and cookie_name is not None:
+            raw_token = request.cookies.get(cookie_name)
+        if raw_token is None:
             if soft:
                 return None
             raise UnauthorizedException(message=error_message)
         if soft:
-            return tokens.decode_or_none(credentials.credentials)
-        return tokens.decode(credentials.credentials)
+            return tokens.decode_or_none(raw_token)
+        return tokens.decode(raw_token)
 
     _decode_bearer.__doc__ = (
-        "Decode the Authorization: Bearer JWT and return its claims."
+        "Decode the JWT (Authorization header or cookie) and return its claims."
     )
     return _decode_bearer
 
@@ -137,6 +153,7 @@ def make_jwt_user_dependency(
     *,
     soft: bool = False,
     bearer_scheme: HTTPBearer | None = None,
+    cookie_name: str | None = None,
     subject_claim: str = "sub",
     error_message: str = "Authorization token is missing or invalid",
     session_dependency: Callable[..., Any] | None = None,
@@ -145,7 +162,8 @@ def make_jwt_user_dependency(
 
     The dependency:
 
-    1. Reads ``Authorization: Bearer <jwt>`` via :class:`HTTPBearer`.
+    1. Reads the JWT from ``Authorization: Bearer`` (or, when
+       ``cookie_name`` is set, falls back to that cookie).
     2. Decodes / verifies the JWT with ``tokens``.
     3. Pulls the user identifier from the configured ``subject_claim``.
     4. Awaits ``user_loader(<id>)`` and returns whatever it yields.
@@ -184,6 +202,8 @@ def make_jwt_user_dependency(
         soft (bool): When ``True``, return ``None`` instead of
             raising on missing/invalid tokens.
         bearer_scheme (HTTPBearer | None): Override the bearer scheme.
+        cookie_name (str | None): When set, fall back to this cookie for
+            the access token when the ``Authorization`` header is absent.
         subject_claim (str): Which JWT claim carries the user id.
             Defaults to ``"sub"``.
         error_message (str): Message attached to the raised
@@ -201,6 +221,7 @@ def make_jwt_user_dependency(
         tokens,
         soft=soft,
         bearer_scheme=bearer_scheme,
+        cookie_name=cookie_name,
         error_message=error_message,
     )
 

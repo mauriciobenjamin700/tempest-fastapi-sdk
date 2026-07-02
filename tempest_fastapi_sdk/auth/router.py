@@ -41,7 +41,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Form, Request, status
+from fastapi import APIRouter, Form, Request, Response, status
 from fastapi.responses import HTMLResponse
 
 from tempest_fastapi_sdk.api.dependencies import make_jwt_user_dependency
@@ -64,10 +64,17 @@ from tempest_fastapi_sdk.auth.schemas import (
     SignupResponseSchema,
     SignupSchema,
 )
+from tempest_fastapi_sdk.auth.token_delivery import (
+    AuthCookieConfig,
+    TokenDelivery,
+    apply_auth_cookies,
+    clear_auth_cookies,
+)
 from tempest_fastapi_sdk.db.user_token_model import UserTokenPurpose
 from tempest_fastapi_sdk.exceptions import (
     InvalidTokenException,
     NotFoundException,
+    UnauthorizedException,
     ValidationException,
 )
 
@@ -92,6 +99,8 @@ def make_auth_router(
     tags: list[str] | None = None,
     template_dir: str | None = None,
     recovery_code_model: type[BaseUserRecoveryCodeModel] | None = None,
+    token_delivery: TokenDelivery | None = None,
+    cookie_config: AuthCookieConfig | None = None,
 ) -> APIRouter:
     """Build the bundled auth router.
 
@@ -114,6 +123,16 @@ def make_auth_router(
             ``password_reset_success.html`` /
             ``password_reset_error.html``. Only consulted when
             ``AuthSettings.AUTH_BACKEND_LINKS=True``.
+        token_delivery (TokenDelivery | None): How login / refresh hand
+            back the JWT pair — ``"bearer"`` (body only), ``"cookie"``
+            (``HttpOnly`` cookies, body omits tokens) or ``"both"``
+            (bearer at ``/auth/*`` plus a parallel cookie set at
+            ``/auth/cookie/*``). ``None`` (default) reads
+            ``AuthSettings.AUTH_TOKEN_DELIVERY``.
+        cookie_config (AuthCookieConfig | None): Override the cookie
+            security attributes. ``None`` (default) builds one from the
+            ``AUTH_COOKIE_*`` settings and the JWT TTLs. Only used when
+            the delivery mode involves cookies.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -136,6 +155,28 @@ def make_auth_router(
     login_url = auth_settings.AUTH_LOGIN_URL
     min_length = auth_settings.AUTH_PASSWORD_MIN_LENGTH
     default_locale = auth_settings.AUTH_DEFAULT_LOCALE
+
+    # --- token delivery (bearer / cookie / both) ----------------------
+    delivery: TokenDelivery = token_delivery or auth_settings.AUTH_TOKEN_DELIVERY
+    mount_bearer = delivery in ("bearer", "both")
+    cookie_enabled = delivery in ("cookie", "both")
+    # In "both" mode the cookie endpoints live under a sub-prefix so they
+    # don't collide with the bearer ones; in pure "cookie" mode they take
+    # the normal /login, /refresh, /logout paths.
+    cookie_suffix = "/cookie" if delivery == "both" else ""
+    cookie_base = f"{prefix}{cookie_suffix}"
+    cookies = cookie_config or AuthCookieConfig(
+        access_name=auth_settings.AUTH_ACCESS_COOKIE_NAME,
+        refresh_name=auth_settings.AUTH_REFRESH_COOKIE_NAME,
+        access_max_age=service.jwt_settings.JWT_ACCESS_TTL_SECONDS,
+        refresh_max_age=service.jwt_settings.JWT_REFRESH_TTL_SECONDS,
+        # Scope the refresh cookie to the auth base so it reaches both the
+        # refresh and logout endpoints, but not ordinary API routes.
+        refresh_path=cookie_base or "/",
+        secure=auth_settings.AUTH_COOKIE_SECURE,
+        samesite=auth_settings.AUTH_COOKIE_SAMESITE,
+        domain=auth_settings.AUTH_COOKIE_DOMAIN,
+    )
 
     def _page_locale(request: Request) -> str:
         """Pick the HTML-page locale from ``Accept-Language``.
@@ -164,11 +205,35 @@ def make_auth_router(
         return HTMLResponse(content=html, status_code=400)
 
     # Authenticated-user dependency, shared by the password-change route
-    # and (when enabled) the MFA routes.
+    # and (when enabled) the MFA routes. When cookies are in play it also
+    # accepts the access token from the cookie (header still wins).
     current_user_dep = make_jwt_user_dependency(
         service.jwt,
         user_loader=_make_user_loader(service, session_factory),
+        cookie_name=cookies.access_name if cookie_enabled else None,
     )
+
+    def _mount_if(
+        condition: bool,
+        decorator: Callable[[Callable[..., Any]], Callable[..., Any]],
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """Apply ``decorator`` only when ``condition`` holds.
+
+        Lets a route be defined unconditionally but registered on the
+        router only in the relevant delivery mode, without reindenting
+        the handler into an ``if`` block.
+
+        Args:
+            condition (bool): Whether to register the route.
+            decorator (Callable): The ``router.post(...)`` decorator.
+
+        Returns:
+            Callable: ``decorator`` when ``condition`` is truthy,
+            otherwise an identity decorator that skips registration.
+        """
+        if condition:
+            return decorator
+        return lambda func: func
 
     # ------------------------------------------------------------------
     # JSON / SPA endpoints — always mounted.
@@ -273,24 +338,27 @@ def make_auth_router(
             refresh_token=refresh,
         )
 
-    @router.post(
-        "/login",
-        response_model=LoginResponseSchema,
-        summary="Log in with email + password → JWT pair",
-        description=(
-            "Authenticate an **active** user with their email and "
-            "password and receive a JWT ``access_token`` + "
-            "``refresh_token`` pair.\n\n"
-            "Returns **401** for wrong credentials and for accounts that "
-            "exist but were never activated — the message is "
-            "intentionally generic so callers can't tell which case it "
-            "was.\n\n"
-            "**MFA.** When the user has finished TOTP enrollment "
-            "(and ``AUTH_MFA_ENABLED=True``) this endpoint does *not* "
-            "return the JWT pair. Instead it returns "
-            "``mfa_required=true`` plus a short-lived ``mfa_token``; "
-            "exchange that token for the real JWT pair at "
-            "``/mfa/verify``."
+    @_mount_if(
+        mount_bearer,
+        router.post(
+            "/login",
+            response_model=LoginResponseSchema,
+            summary="Log in with email + password → JWT pair",
+            description=(
+                "Authenticate an **active** user with their email and "
+                "password and receive a JWT ``access_token`` + "
+                "``refresh_token`` pair.\n\n"
+                "Returns **401** for wrong credentials and for accounts that "
+                "exist but were never activated — the message is "
+                "intentionally generic so callers can't tell which case it "
+                "was.\n\n"
+                "**MFA.** When the user has finished TOTP enrollment "
+                "(and ``AUTH_MFA_ENABLED=True``) this endpoint does *not* "
+                "return the JWT pair. Instead it returns "
+                "``mfa_required=true`` plus a short-lived ``mfa_token``; "
+                "exchange that token for the real JWT pair at "
+                "``/mfa/verify``."
+            ),
         ),
     )
     async def login(
@@ -424,35 +492,38 @@ def make_auth_router(
         )
         await session.commit()
 
-    @router.post(
-        "/refresh",
-        response_model=LoginResponseSchema,
-        summary="Exchange a refresh token for a fresh JWT pair",
-        description=(
-            "Mint a brand-new ``access_token`` + ``refresh_token`` pair "
-            "from a valid **refresh token** — no email or password "
-            "required. This is how a client keeps a session alive once "
-            "the short-lived ``access_token`` expires: replay the "
-            "long-lived ``refresh_token`` here instead of forcing the "
-            "user to log in again.\n\n"
-            "A stolen *access* token replayed here is rejected with "
-            "**401**. An expired, malformed, revoked, or wrongly-signed "
-            "token also returns **401**, and an inactive account returns "
-            "**403**.\n\n"
-            "!!! warning\n"
-            "    Both tokens **rotate**: the response carries a new "
-            "    refresh token. Persist that one and discard the token "
-            "    you sent.\n\n"
-            '!!! info "Stateless vs DB-backed"\n'
-            "    When the service is wired with a ``refresh_token_model`` "
-            "    the refresh token is an **opaque, single-use** value: the "
-            "    presented token is invalidated on rotation, replaying an "
-            "    already-rotated token is treated as theft and **revokes "
-            "    the whole token family** (401), and ``POST /auth/logout`` "
-            "    can revoke a session early. Without that model the SDK "
-            "    falls back to a stateless JWT refresh token — the old "
-            "    token stays valid until its own expiry and cannot be "
-            "    revoked."
+    @_mount_if(
+        mount_bearer,
+        router.post(
+            "/refresh",
+            response_model=LoginResponseSchema,
+            summary="Exchange a refresh token for a fresh JWT pair",
+            description=(
+                "Mint a brand-new ``access_token`` + ``refresh_token`` pair "
+                "from a valid **refresh token** — no email or password "
+                "required. This is how a client keeps a session alive once "
+                "the short-lived ``access_token`` expires: replay the "
+                "long-lived ``refresh_token`` here instead of forcing the "
+                "user to log in again.\n\n"
+                "A stolen *access* token replayed here is rejected with "
+                "**401**. An expired, malformed, revoked, or wrongly-signed "
+                "token also returns **401**, and an inactive account returns "
+                "**403**.\n\n"
+                "!!! warning\n"
+                "    Both tokens **rotate**: the response carries a new "
+                "    refresh token. Persist that one and discard the token "
+                "    you sent.\n\n"
+                '!!! info "Stateless vs DB-backed"\n'
+                "    When the service is wired with a ``refresh_token_model`` "
+                "    the refresh token is an **opaque, single-use** value: the "
+                "    presented token is invalidated on rotation, replaying an "
+                "    already-rotated token is treated as theft and **revokes "
+                "    the whole token family** (401), and ``POST /auth/logout`` "
+                "    can revoke a session early. Without that model the SDK "
+                "    falls back to a stateless JWT refresh token — the old "
+                "    token stays valid until its own expiry and cannot be "
+                "    revoked."
+            ),
         ),
     )
     async def refresh(
@@ -470,7 +541,7 @@ def make_auth_router(
             refresh_token=refresh_token,
         )
 
-    if service.refresh_token_model is not None:
+    if mount_bearer and service.refresh_token_model is not None:
 
         @router.post(
             "/logout",
@@ -505,6 +576,119 @@ def make_auth_router(
                 all_sessions=payload.all_sessions,
             )
             await session.commit()
+
+    # ------------------------------------------------------------------
+    # Cookie endpoints — mounted when AUTH_TOKEN_DELIVERY is cookie/both.
+    # In "cookie" mode they take the normal /login, /refresh, /logout
+    # paths; in "both" mode they live under /cookie/* alongside bearer.
+    # ------------------------------------------------------------------
+
+    if cookie_enabled:
+
+        @router.post(
+            f"{cookie_suffix}/login",
+            response_model=LoginResponseSchema,
+            summary="Log in — set the JWT pair as HttpOnly cookies",
+            description=(
+                "Same credentials check as ``POST /auth/login``, but the "
+                "``access_token`` / ``refresh_token`` are returned as "
+                "``HttpOnly`` cookies instead of in the body — the body "
+                "keeps them ``null``. The MFA branch is unchanged: when a "
+                "second factor is required the response still carries "
+                "``mfa_required=true`` + ``mfa_token`` and sets no session "
+                "cookies."
+            ),
+        )
+        async def login_cookie(
+            payload: LoginSchema,
+            response: Response,
+            session: AsyncSession = session_dep,
+        ) -> LoginResponseSchema:
+            user = await service.login(
+                session,
+                email=payload.email,
+                password=payload.password,
+            )
+            if service.is_mfa_enrolled(user):
+                mfa_token = service.issue_mfa_token(user)
+                await session.commit()
+                return LoginResponseSchema(
+                    user_id=user.id,
+                    mfa_required=True,
+                    mfa_token=mfa_token,
+                )
+            access, refresh = await service.issue_token_pair(session, user)
+            await session.commit()
+            apply_auth_cookies(
+                response,
+                access_token=access,
+                refresh_token=refresh,
+                config=cookies,
+            )
+            return LoginResponseSchema(user_id=user.id)
+
+        @router.post(
+            f"{cookie_suffix}/refresh",
+            response_model=LoginResponseSchema,
+            summary="Rotate the JWT pair from the refresh cookie",
+            description=(
+                "Mint a fresh ``access_token`` / ``refresh_token`` pair "
+                "from the **refresh cookie** (no body required) and set "
+                "the rotated pair back as cookies. Returns **401** when "
+                "the refresh cookie is missing, expired, revoked or is "
+                "actually an access token; **403** for an inactive "
+                "account."
+            ),
+        )
+        async def refresh_cookie(
+            request: Request,
+            response: Response,
+            session: AsyncSession = session_dep,
+        ) -> LoginResponseSchema:
+            token = request.cookies.get(cookies.refresh_name)
+            if not token:
+                raise UnauthorizedException(
+                    message="Missing refresh token cookie",
+                )
+            user, access, refresh_token = await service.refresh_tokens(
+                session,
+                refresh_token=token,
+            )
+            await session.commit()
+            apply_auth_cookies(
+                response,
+                access_token=access,
+                refresh_token=refresh_token,
+                config=cookies,
+            )
+            return LoginResponseSchema(user_id=user.id)
+
+        @router.post(
+            f"{cookie_suffix}/logout",
+            status_code=status.HTTP_204_NO_CONTENT,
+            summary="Clear the auth cookies (and revoke the refresh token)",
+            description=(
+                "Delete both auth cookies. When the service is wired with "
+                "a ``refresh_token_model`` and a refresh cookie is "
+                "present, its rotation **family** is revoked too so the "
+                "session dies server-side. Always returns **204**, even "
+                "when no cookie was set (idempotent)."
+            ),
+        )
+        async def logout_cookie(
+            request: Request,
+            response: Response,
+            session: AsyncSession = session_dep,
+        ) -> None:
+            token = request.cookies.get(cookies.refresh_name)
+            if token and service.refresh_token_model is not None:
+                await service.revoke_refresh_token(
+                    session,
+                    refresh_token=token,
+                    all_sessions=False,
+                )
+                await session.commit()
+            clear_auth_cookies(response, config=cookies)
 
     # ------------------------------------------------------------------
     # Backend-only HTML endpoints — mounted only when AUTH_BACKEND_LINKS.

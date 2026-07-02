@@ -323,6 +323,17 @@ Only relevant when `AUTH_BACKEND_LINKS=true`. See [Mode E](#five-operating-modes
 There's a whole section dedicated to this, explained step by step:
 [Email and page language (i18n)](#email-and-page-language-i18n).
 
+### Group 8 — Token delivery: bearer / cookie / both (`AuthSettings`) *(v0.87.0+)*
+
+| Env var | Type | Default | What it does |
+|---------|------|---------|--------------|
+| `AUTH_TOKEN_DELIVERY` | `"bearer" \| "cookie" \| "both"` | `bearer` | How login/refresh return the JWT pair. See [Token delivery](#token-delivery). |
+| `AUTH_COOKIE_SECURE` | `bool` | `true` | Flag cookies as `Secure` (HTTPS only). **Turn off only on plain HTTP** — otherwise the browser drops the cookie. |
+| `AUTH_COOKIE_SAMESITE` | `"lax" \| "strict" \| "none"` | `lax` | A cross-site SPA needs `none` (+ `Secure=true`). |
+| `AUTH_COOKIE_DOMAIN` | `str \| None` | `None` | Cookie `Domain`. `None` = exact host. Use `.example.com` to share across subdomains. |
+| `AUTH_ACCESS_COOKIE_NAME` | `str` | `access_token` | Access-token cookie name. |
+| `AUTH_REFRESH_COOKIE_NAME` | `str` | `refresh_token` | Refresh-token cookie name (scoped to the refresh endpoint path). |
+
 !!! note "MFA / TOTP has its own vars"
     When `AUTH_MFA_ENABLED=true`, `AuthSettings` also exposes `AUTH_MFA_ISSUER`, `AUTH_MFA_RECOVERY_CODES_COUNT`, `AUTH_MFA_TOKEN_TTL_SECONDS` and `AUTH_MFA_VERIFY_WINDOW`. They're out of scope for this recipe (signup/activate/login/reset) — covered in the MFA recipe.
 
@@ -657,6 +668,85 @@ app.include_router(
 - ⚠️ **No CSRF on the reset form** — the HTML form posts traditionally without a CSRF token. The reset token is one-shot + short TTL + bound to a single user, but consider plugging in `CSRFMiddleware` if attackers can predict active URLs.
 
 The **JSON** endpoints (`POST /auth/activate/{token}`, `POST /auth/password-reset/confirm`) are still mounted — you can mix Mode E with SPA endpoints.
+
+---
+
+## Token delivery
+
+*(v0.87.0+)*
+
+By default login returns `access_token` / `refresh_token` **in the body** and the client replays them as `Authorization: Bearer <token>`. Great for mobile/API clients, but a browser SPA has to stash the token somewhere JS can reach — exposed to XSS. `AUTH_TOKEN_DELIVERY` lets you choose.
+
+| Mode | What changes | For whom |
+|------|--------------|----------|
+| `bearer` *(default)* | Tokens **in the body only**. Historical, backward-compatible behaviour. | Mobile, APIs, clients that send `Authorization`. |
+| `cookie` | Tokens set as **`HttpOnly`** cookies on the same paths (`/auth/login`, `/auth/refresh`, `/auth/logout`); the body returns the tokens as `null`. | Browser SPAs — the token is never visible to JS (XSS defense). |
+| `both` | Bearer endpoints stay at `/auth/*` **and** a parallel cookie set is mounted at `/auth/cookie/*`. | One backend serving web (cookie) **and** mobile (bearer) at once. |
+
+!!! danger "The cookie `Secure` flag requires HTTPS"
+    With `AUTH_COOKIE_SECURE=true` (default) the browser **only** sends the cookie back over HTTPS. If the backend is served over **plain HTTP**, the cookie is dropped and the session never persists (login looks like it works but nothing stays logged in). In production, put TLS in front and keep it `true`; on local HTTP dev use `AUTH_COOKIE_SECURE=false`.
+
+### Cookie mode
+
+```bash
+# .env
+AUTH_TOKEN_DELIVERY=cookie
+AUTH_COOKIE_SECURE=true          # false only on plain HTTP
+AUTH_COOKIE_SAMESITE=lax         # "none" (+Secure) if the SPA is cross-site
+```
+
+```python
+app.include_router(make_auth_router(auth_service, session_factory=db.session_dependency))
+```
+
+Frontend flow — **stores no token at all**, just calls the endpoints with `credentials: "include"`:
+
+```javascript
+// login: the browser stores the HttpOnly cookies itself
+await fetch("/auth/login", {
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email, password }),
+});
+
+// authenticated requests: the access cookie rides along automatically
+await fetch("/api/me", { credentials: "include" });
+
+// renew the session: the refresh cookie is read on the backend, no body
+await fetch("/auth/refresh", { method: "POST", credentials: "include" });
+
+// logout: clears the cookies (and revokes the refresh family if a refresh_token_model is wired)
+await fetch("/auth/logout", { method: "POST", credentials: "include" });
+```
+
+The `current_user` dependency (see [Getting the `current_user`](#getting-the-current_user-from-the-request)) now **reads the access token from the cookie** automatically whenever delivery involves cookies — the `Authorization` header still wins if present.
+
+### Both mode
+
+```bash
+AUTH_TOKEN_DELIVERY=both
+```
+
+Mounts both sets, no route collision:
+
+```text
+# bearer (body):
+POST /auth/login
+POST /auth/refresh
+POST /auth/logout
+
+# cookie (HttpOnly):
+POST /auth/cookie/login
+POST /auth/cookie/refresh
+POST /auth/cookie/logout
+```
+
+!!! info "What stays in the body"
+    Cookie delivery covers the **login / refresh / logout** lifecycle. Activation (`POST /auth/activate/{token}`), signup auto-login (`AUTH_AUTO_ACTIVATE`) and `POST /auth/mfa/verify` still return the JWT pair in the body, regardless of `AUTH_TOKEN_DELIVERY`.
+
+!!! tip "CORS with credentials"
+    For a cross-origin SPA to send/receive cookies, the backend needs `allow_credentials=True` in CORS **and** `AUTH_COOKIE_SAMESITE=none` + `AUTH_COOKIE_SECURE=true` (hence HTTPS). Same-origin (frontend served from the API's domain) works with the default `lax`.
 
 ---
 

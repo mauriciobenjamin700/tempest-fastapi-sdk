@@ -21,7 +21,7 @@ box.
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
@@ -1116,6 +1116,81 @@ class AuthSettings(BaseSettings):
             "Higher values weaken security; ``0`` is strict."
         ),
         examples=[0, 1, 2],
+    )
+    AUTH_TOKEN_DELIVERY: Literal["bearer", "cookie", "both"] = Field(
+        default="bearer",
+        title="How login/refresh return the JWT pair",
+        description=(
+            "Controls how ``make_auth_router`` delivers the "
+            "``access_token`` / ``refresh_token`` pair.\n\n"
+            "* ``bearer`` (default) — tokens returned in the JSON body "
+            "only; the client stores them and sends "
+            "``Authorization: Bearer <token>``. Backward-compatible "
+            "behaviour.\n"
+            "* ``cookie`` — tokens set as ``HttpOnly`` cookies on the "
+            "same ``/auth/login`` / ``/auth/refresh`` / ``/auth/logout`` "
+            "paths; the body omits the token values (they stay "
+            "``null``). The auth dependency reads the access token from "
+            "the cookie. Safer against XSS.\n"
+            "* ``both`` — the bearer endpoints stay at ``/auth/*`` and a "
+            "parallel set of cookie endpoints is mounted at "
+            "``/auth/cookie/*``, so a project can serve web (cookie) and "
+            "mobile/API (bearer) clients from one backend."
+        ),
+        examples=["bearer", "cookie", "both"],
+    )
+    AUTH_COOKIE_SECURE: bool = Field(
+        default=True,
+        title="Flag auth cookies as Secure",
+        description=(
+            "When ``True`` (default) the auth cookies carry the "
+            "``Secure`` flag, so browsers only send them back over "
+            "HTTPS. Set to ``False`` ONLY when the API is served over "
+            "plain HTTP (no TLS terminator in front) — otherwise the "
+            "browser drops the cookie and the session never persists. "
+            "Only relevant when ``AUTH_TOKEN_DELIVERY`` is ``cookie`` or "
+            "``both``."
+        ),
+        examples=[True, False],
+    )
+    AUTH_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = Field(
+        default="lax",
+        title="SameSite attribute for auth cookies",
+        description=(
+            "``lax`` (default) suits a frontend served from the same "
+            "site as the API. A cross-site SPA (different origin) needs "
+            "``none`` — which the browser only accepts together with "
+            "``AUTH_COOKIE_SECURE=True`` (HTTPS). ``strict`` blocks the "
+            "cookie on all cross-site navigations."
+        ),
+        examples=["lax", "strict", "none"],
+    )
+    AUTH_COOKIE_DOMAIN: str | None = Field(
+        default=None,
+        title="Domain for auth cookies",
+        description=(
+            "Explicit cookie ``Domain``. ``None`` (default) binds the "
+            "cookie to the exact host that served the response. Set it "
+            "(e.g. ``.example.com``) to share the session across "
+            "subdomains."
+        ),
+        examples=[None, ".example.com"],
+    )
+    AUTH_ACCESS_COOKIE_NAME: str = Field(
+        default="access_token",
+        title="Access-token cookie name",
+        description="Cookie name that carries the short-lived access token.",
+        examples=["access_token"],
+    )
+    AUTH_REFRESH_COOKIE_NAME: str = Field(
+        default="refresh_token",
+        title="Refresh-token cookie name",
+        description=(
+            "Cookie name that carries the long-lived refresh token. "
+            "Scoped to the refresh endpoint path so it is not sent on "
+            "ordinary requests."
+        ),
+        examples=["refresh_token"],
     )
 
 
