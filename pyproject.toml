@@ -298,6 +298,17 @@ module = [
 ]
 ignore_missing_imports = true
 
+# numpy (pulled in transitively via ort-vision-sdk) ships stubs that use
+# the 3.12+ ``type X = ...`` statement, which mypy rejects while targeting
+# python_version 3.11. We never type-check against numpy internals, so skip
+# following its stubs entirely.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+ignore_errors = true
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
