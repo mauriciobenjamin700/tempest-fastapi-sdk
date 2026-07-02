@@ -5,6 +5,21 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.87.1] — 2026-07-02
+
+### Fixed
+
+- **`UserAuthService.current_user_dependency()` now honours cookie
+  delivery.** When `AUTH_TOKEN_DELIVERY` is `"cookie"` or `"both"` it
+  auto-derives the access-token cookie name from
+  `AUTH_ACCESS_COOKIE_NAME`, so any business route guarded by the
+  dependency authenticates off the cookie the bundled login set — the
+  `Authorization` header still wins when present. Previously the
+  dependency was bearer-only, so cookie-mode clients hit
+  `401 Authorization token is missing or invalid` on protected routes
+  even with the cookies in the browser. A new `cookie_name=` argument
+  lets callers force a specific cookie (or `None` for header-only).
+
 ## [0.87.0] — 2026-07-02
 
 ### Added

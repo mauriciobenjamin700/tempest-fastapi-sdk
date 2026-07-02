@@ -17,7 +17,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
     BaseModel,
     BaseUserModel,
     TokenDelivery,
@@ -44,6 +45,17 @@ _CookieUserToken = make_user_token_model(
     user_table="cookie_test_users",
     tablename="cookie_test_user_tokens",
     class_name="_CookieUserToken",
+)
+
+
+class _DepUser(BaseUserModel):
+    __tablename__ = "cookie_dep_users"
+
+
+_DepUserToken = make_user_token_model(
+    user_table="cookie_dep_users",
+    tablename="cookie_dep_user_tokens",
+    class_name="_DepUserToken",
 )
 
 _PASSWORD = "strong-pass-12-chars"
@@ -301,3 +313,62 @@ class TestBothMode:
 
         assert r.status_code == 200, r.text
         assert r.cookies.get("access_token")
+
+
+class TestCurrentUserDependencyCookie:
+    """service.current_user_dependency() must honour cookie delivery.
+
+    A business route guarded by the dependency should authenticate off
+    the access cookie the bundled login set — with no Authorization
+    header — when AUTH_TOKEN_DELIVERY is cookie/both.
+    """
+
+    async def test_protected_route_reads_access_cookie(self) -> None:
+        db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+        await db.connect()
+        await db.create_tables()
+        try:
+            service = UserAuthService(
+                user_model=_DepUser,
+                token_model=_DepUserToken,  # type: ignore[arg-type]
+                auth_settings=AuthSettings(
+                    AUTH_AUTO_ACTIVATE=True,
+                    AUTH_TOKEN_DELIVERY="both",
+                    AUTH_COOKIE_SECURE=False,
+                ),
+                jwt_settings=JWTSettings(JWT_SECRET="x" * 32),
+                email=None,
+                db=db,
+            )
+            async with db.get_session_context() as s:
+                await service.signup(s, email="dep@a.com", password=_PASSWORD)
+                await s.commit()
+
+            app = FastAPI()
+            app.include_router(
+                make_auth_router(service, session_factory=db.session_dependency)
+            )
+            current_user = service.current_user_dependency()
+
+            @app.get("/me")
+            async def me(user: _DepUser = Depends(current_user)) -> dict[str, str]:
+                return {"email": user.email}
+
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://t") as c:
+                # No cookie yet → guarded route rejects.
+                anon = await c.get("/me")
+                assert anon.status_code == 401, anon.text
+
+                await c.post(
+                    "/auth/cookie/login",
+                    json={"email": "dep@a.com", "password": _PASSWORD},
+                )
+                # Access cookie alone (no Authorization header) authenticates.
+                ok = await c.get("/me")
+
+            assert ok.status_code == 200, ok.text
+            assert ok.json()["email"] == "dep@a.com"
+        finally:
+            await db.drop_tables()
+            await db.disconnect()
