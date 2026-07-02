@@ -313,6 +313,30 @@ site.register(AdminModel(
 - Per-session CSRF token is generated at login and required by every form POST (login, logout, create, edit, delete, bulk actions).
 - `secret_key` must be at least 32 bytes — short keys raise `ValueError` at construction time.
 
+!!! danger "Login looping? It's the cookie `Secure` flag over plain HTTP"
+    If `POST /admin/login` returns `303` (looks like success), but the following
+    `GET /admin/` redirects back to the login — forever — the session cookie is
+    **not coming back**. Almost-certain cause: `cookie_secure=True` while the
+    admin is served over **plain HTTP** (no TLS terminator in front). The browser
+    refuses to store a `Secure` cookie on a non-HTTPS connection, so no session
+    ever persists.
+
+    ```python
+    # ❌ Tied to DEBUG: in production DEBUG=false → cookie_secure=True,
+    #    but with no HTTPS in front the login loops.
+    make_admin_router(..., cookie_secure=not settings.DEBUG)
+
+    # ✅ Dedicated toggle, independent of DEBUG:
+    make_admin_router(..., cookie_secure=settings.ADMIN_COOKIE_SECURE)
+    ```
+
+    **Right fix:** put HTTPS in front (nginx/Caddy terminating TLS) and keep
+    `cookie_secure=True` — the admin session cookie must not travel in the clear.
+    **Stopgap** only when the admin genuinely runs over HTTP (intranet, MVP):
+    `cookie_secure=False`, aware the session ships without `Secure`. Don't tie
+    this flag to `DEBUG` — turning debug on in production is worse than the
+    original problem.
+
 #### 5. Plug in a custom auth backend
 
 `AdminAuthBackend` is an ABC, so swap the default for LDAP / OAuth / external IAM by subclassing:
