@@ -816,6 +816,7 @@ class UserAuthService:
         *,
         soft: bool = False,
         session_dependency: Callable[..., Any] | None = None,
+        cookie_name: str | None = None,
     ) -> Callable[..., Coroutine[Any, Any, Any]]:
         """Build a FastAPI dependency that returns the authenticated user.
 
@@ -850,6 +851,15 @@ class UserAuthService:
             session_dependency (Callable[..., Any] | None): The
                 request-scoped session provider to share with
                 repositories. Defaults to ``self.db.session_dependency``.
+            cookie_name (str | None): Cookie to read the access token
+                from when the ``Authorization`` header is absent (the
+                header still wins). ``None`` (default) auto-derives it
+                from ``AUTH_ACCESS_COOKIE_NAME`` whenever
+                ``AUTH_TOKEN_DELIVERY`` is ``"cookie"`` or ``"both"`` —
+                so a route guarded by this dependency accepts the cookie
+                the bundled login set, with no extra wiring. Pass an
+                explicit name to force it, or a bearer-only delivery
+                mode leaves it ``None`` (header only).
 
         Returns:
             Callable[..., Coroutine[Any, Any, Any]]: An async FastAPI
@@ -867,10 +877,18 @@ class UserAuthService:
             make_jwt_user_dependency,
         )
 
+        resolved_cookie_name = cookie_name
+        if resolved_cookie_name is None and self.auth_settings.AUTH_TOKEN_DELIVERY in (
+            "cookie",
+            "both",
+        ):
+            resolved_cookie_name = self.auth_settings.AUTH_ACCESS_COOKIE_NAME
+
         return make_jwt_user_dependency(
             self.jwt,
             self.get_user,
             soft=soft,
+            cookie_name=resolved_cookie_name,
             session_dependency=session_dependency or self.db.session_dependency,
         )
 
