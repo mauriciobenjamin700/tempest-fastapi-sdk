@@ -581,6 +581,32 @@ SMTP_PORT=587
 SMTP_FROM_ADDR=noreply@example.com
 ```
 
+!!! danger "Link dá 404? Alinhe o template com o prefixo onde o router está montado"
+    Os endpoints acima são **relativos ao ponto onde você monta o `make_auth_router`**.
+    Se você inclui o router com um prefixo — comum pra separar rotas de negócio:
+
+    ```python
+    app.include_router(make_auth_router(...), prefix="/api")
+    ```
+
+    então a rota real de ativação vira `GET /api/auth/activate/{token}`, **não**
+    `/auth/activate/{token}`. Mas o `AUTH_ACTIVATION_URL_TEMPLATE` é uma string
+    literal — ele **não** sabe do prefixo. Se o template apontar pra
+    `.../auth/activate/{token}` (sem `/api`), o link do e-mail bate numa rota
+    inexistente e responde **404**, mesmo com o signup retornando `201`.
+
+    ```bash
+    # ❌ router montado com prefix="/api", mas o template não tem /api → 404
+    AUTH_ACTIVATION_URL_TEMPLATE=https://api.example.com/auth/activate/{token}
+
+    # ✅ template alinhado com o prefixo real de montagem
+    AUTH_ACTIVATION_URL_TEMPLATE=https://api.example.com/api/auth/activate/{token}
+    ```
+
+    Duas checagens ao configurar o Modo E: **(1)** o host é o **domínio público**
+    do backend (nunca `localhost` — o link roda no browser do usuário, não no
+    servidor); **(2)** o path inclui **todo prefixo** com que você montou o router.
+
 Fluxo:
 
 ```mermaid
