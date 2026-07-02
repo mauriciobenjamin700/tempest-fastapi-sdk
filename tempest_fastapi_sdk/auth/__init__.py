@@ -61,12 +61,23 @@ from tempest_fastapi_sdk.auth.schemas import (
 )
 from tempest_fastapi_sdk.auth.schemas import SignupSchema as SignupSchema
 from tempest_fastapi_sdk.auth.service import UserAuthService as UserAuthService
+from tempest_fastapi_sdk.auth.token_delivery import (
+    AuthCookieConfig as AuthCookieConfig,
+)
+from tempest_fastapi_sdk.auth.token_delivery import TokenDelivery as TokenDelivery
+from tempest_fastapi_sdk.auth.token_delivery import (
+    apply_auth_cookies as apply_auth_cookies,
+)
+from tempest_fastapi_sdk.auth.token_delivery import (
+    clear_auth_cookies as clear_auth_cookies,
+)
 
 __all__: list[str] = [
     "DEFAULT_AUTH_LOCALE",
     "SUPPORTED_LOCALES",
     "ActivationResponseSchema",
     "ActivationToken",
+    "AuthCookieConfig",
     "LoginResponseSchema",
     "LoginSchema",
     "LogoutSchema",
@@ -82,7 +93,10 @@ __all__: list[str] = [
     "RefreshSchema",
     "SignupResponseSchema",
     "SignupSchema",
+    "TokenDelivery",
     "UserAuthService",
+    "apply_auth_cookies",
+    "clear_auth_cookies",
     "format_expires_at",
     "make_auth_router",
     "negotiate_locale",

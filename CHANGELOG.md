@@ -5,6 +5,40 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.87.0] — 2026-07-02
+
+### Added
+
+- **Configurable token delivery for the auth router.** `make_auth_router`
+  now supports three ways of handing back the JWT pair, selected by
+  `AUTH_TOKEN_DELIVERY` (or the `token_delivery=` argument):
+  - `"bearer"` (default) — tokens in the JSON body only. Unchanged,
+    fully backward-compatible behaviour.
+  - `"cookie"` — `access_token` / `refresh_token` set as `HttpOnly`
+    cookies on `/auth/login`, `/auth/refresh`, `/auth/logout`; the body
+    omits the token values (safer against XSS). `POST /auth/refresh`
+    reads the refresh token from the cookie and rotates the pair;
+    `POST /auth/logout` clears the cookies (and revokes the refresh
+    family when a `refresh_token_model` is wired).
+  - `"both"` — the bearer endpoints stay at `/auth/*` and a parallel
+    cookie set is mounted at `/auth/cookie/*`, so one backend can serve
+    web (cookie) and mobile/API (bearer) clients.
+- New `AUTH_COOKIE_SECURE`, `AUTH_COOKIE_SAMESITE`, `AUTH_COOKIE_DOMAIN`,
+  `AUTH_ACCESS_COOKIE_NAME` and `AUTH_REFRESH_COOKIE_NAME` settings tune
+  the cookie security attributes.
+- New public exports: `TokenDelivery`, `AuthCookieConfig`,
+  `apply_auth_cookies`, `clear_auth_cookies`.
+- `make_bearer_token_dependency` / `make_jwt_user_dependency` gained a
+  `cookie_name=` argument: when set, the access token is read from that
+  cookie if the `Authorization` header is absent (header still wins), so
+  the same guarded routes work in cookie mode.
+
+### Notes
+
+- Activation, signup auto-login and the MFA-verify step still return the
+  JWT pair in the body regardless of `AUTH_TOKEN_DELIVERY` — cookie
+  delivery covers the login / refresh / logout session lifecycle.
+
 ## [0.86.0] — 2026-06-28
 
 ### Added

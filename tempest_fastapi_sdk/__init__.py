@@ -83,6 +83,7 @@ from tempest_fastapi_sdk.auth import (
     SUPPORTED_LOCALES,
     ActivationResponseSchema,
     ActivationToken,
+    AuthCookieConfig,
     LoginResponseSchema,
     LoginSchema,
     LogoutSchema,
@@ -98,7 +99,10 @@ from tempest_fastapi_sdk.auth import (
     RefreshSchema,
     SignupResponseSchema,
     SignupSchema,
+    TokenDelivery,
     UserAuthService,
+    apply_auth_cookies,
+    clear_auth_cookies,
     format_expires_at,
     make_auth_router,
     negotiate_locale,
@@ -355,7 +359,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.86.0"
+__version__: str = "0.87.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -395,6 +399,7 @@ __all__: list[str] = [
     "AttemptThrottle",
     "AuditAction",
     "AuditMixin",
+    "AuthCookieConfig",
     "AuthSettings",
     "BackupToolMissingError",
     "BaseAppSettings",
@@ -558,6 +563,7 @@ __all__: list[str] = [
     "TenantScopedRepository",
     "ThrottleBackend",
     "ThrottleStatus",
+    "TokenDelivery",
     "TokenSettings",
     "TooManyRequestsException",
     "UFField",
@@ -587,12 +593,14 @@ __all__: list[str] = [
     "__version__",
     "admin_action",
     "app_exception_handler",
+    "apply_auth_cookies",
     "apply_cors",
     "backfill_non_nullable_defaults",
     "build_content_disposition",
     "build_pagination_link_header",
     "cities_by_uf",
     "city_choices",
+    "clear_auth_cookies",
     "clear_cookie",
     "clear_request_id",
     "coerce_flag",
