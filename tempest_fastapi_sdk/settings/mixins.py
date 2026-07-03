@@ -1214,6 +1214,11 @@ class MinIOSettings(BaseSettings):
         MINIO_REGION (str): S3 region. Default: ``"us-east-1"``.
         MINIO_DEFAULT_BUCKET (str): Bucket ensured and used as the implicit
             target. Default: ``"uploads"``.
+        MINIO_PUBLIC_ENDPOINT (str | None): Public host presigned URLs are
+            signed against, when the browser can't reach ``MINIO_ENDPOINT``
+            directly. ``None`` reuses ``MINIO_ENDPOINT``. Default: ``None``.
+        MINIO_PUBLIC_SECURE (bool | None): HTTPS for the public endpoint;
+            ``None`` falls back to ``MINIO_SECURE``. Default: ``None``.
     """
 
     MINIO_ENDPOINT: str = Field(
@@ -1265,6 +1270,34 @@ class MinIOSettings(BaseSettings):
         ),
         examples=["uploads", "media", "user-content"],
     )
+    MINIO_PUBLIC_ENDPOINT: str | None = Field(
+        default=None,
+        title="Public endpoint for presigned URLs",
+        description=(
+            "Split-endpoint mode: when set, presigned upload/download "
+            "URLs are signed against **this** host while every "
+            "server-side operation keeps using ``MINIO_ENDPOINT``. Use it "
+            "when the backend reaches MinIO over a fast private network "
+            "(e.g. ``servus-storage:9000``) but the browser must hit a "
+            "public, TLS-terminated host (e.g. "
+            "``storage.example.com``). ``None`` (default) signs presigned "
+            "URLs with ``MINIO_ENDPOINT`` — unchanged single-endpoint "
+            "behaviour."
+        ),
+        examples=[None, "storage.example.com", "https://storage.example.com"],
+    )
+    MINIO_PUBLIC_SECURE: bool | None = Field(
+        default=None,
+        title="Use HTTPS for the public endpoint",
+        description=(
+            "Whether the public endpoint uses HTTPS. ``None`` (default) "
+            "falls back to ``MINIO_SECURE``. Set explicitly when the "
+            "private endpoint is plain HTTP but the public one is HTTPS. "
+            "A ``https://`` scheme on ``MINIO_PUBLIC_ENDPOINT`` also "
+            "implies HTTPS."
+        ),
+        examples=[None, True, False],
+    )
 
     def minio_kwargs(self) -> dict[str, Any]:
         """Map these settings onto :class:`AsyncMinIOClient` kwargs.
@@ -1280,6 +1313,8 @@ class MinIOSettings(BaseSettings):
             "default_bucket": self.MINIO_DEFAULT_BUCKET,
             "secure": self.MINIO_SECURE,
             "region": self.MINIO_REGION,
+            "public_endpoint": self.MINIO_PUBLIC_ENDPOINT,
+            "public_secure": self.MINIO_PUBLIC_SECURE,
         }
 
 

@@ -387,3 +387,117 @@ class TestDownloadUtilsWithMinio:
         downloads = DownloadUtils(client)
         with pytest.raises(RuntimeError, match="MinIO-backed"):
             downloads.resolve("anything")
+
+
+class _RecordingMinio:
+    """Fake that records the endpoint/secure it was built with.
+
+    ``presigned_*`` echo the recording instance's own host so a test
+    can assert which underlying client signed the URL.
+    """
+
+    def __init__(self, endpoint: str, *_: Any, secure: bool = False, **__: Any) -> None:
+        self.endpoint: str = endpoint
+        self.secure: bool = secure
+
+    def presigned_get_object(self, bucket: str, key: str, expires: timedelta) -> str:
+        scheme = "https" if self.secure else "http"
+        return f"{scheme}://{self.endpoint}/{bucket}/{key}?op=GET"
+
+    def presigned_put_object(self, bucket: str, key: str, expires: timedelta) -> str:
+        scheme = "https" if self.secure else "http"
+        return f"{scheme}://{self.endpoint}/{bucket}/{key}?op=PUT"
+
+
+@pytest.fixture
+def recording_minio(monkeypatch: pytest.MonkeyPatch) -> list[_RecordingMinio]:
+    """Patch ``minio.Minio`` to record every constructed client."""
+    built: list[_RecordingMinio] = []
+
+    def _factory(endpoint: str, *args: Any, **kwargs: Any) -> _RecordingMinio:
+        del args
+        inst = _RecordingMinio(endpoint, secure=kwargs.get("secure", False))
+        built.append(inst)
+        return inst
+
+    monkeypatch.setattr("minio.Minio", _factory)
+    return built
+
+
+class TestSplitEndpoint:
+    async def test_presign_uses_public_endpoint(
+        self, recording_minio: list[_RecordingMinio]
+    ) -> None:
+        client = AsyncMinIOClient(
+            endpoint="internal:9000",
+            access_key="ak",
+            secret_key="sk",
+            default_bucket="uploads",
+            public_endpoint="storage.example.com",
+            public_secure=True,
+        )
+        # Two clients built: internal (ops) + public (presign).
+        assert len(recording_minio) == 2
+        assert client.public_endpoint == "storage.example.com"
+        assert client.public_secure is True
+
+        url = await client.presigned_get_url("k")
+        assert url.startswith("https://storage.example.com/uploads/k")
+
+        put = await client.presigned_put_url("k")
+        assert put.startswith("https://storage.example.com/uploads/k")
+
+    async def test_ops_still_use_internal_endpoint(
+        self, recording_minio: list[_RecordingMinio]
+    ) -> None:
+        client = AsyncMinIOClient(
+            endpoint="internal:9000",
+            access_key="ak",
+            secret_key="sk",
+            public_endpoint="storage.example.com",
+        )
+        # The ops client is the internal one; the presign client is public.
+        assert client.client.endpoint == "internal:9000"
+        assert client._presign_client.endpoint == "storage.example.com"
+
+    async def test_no_public_endpoint_signs_with_internal(
+        self, recording_minio: list[_RecordingMinio]
+    ) -> None:
+        client = AsyncMinIOClient(
+            endpoint="internal:9000",
+            access_key="ak",
+            secret_key="sk",
+            default_bucket="uploads",
+        )
+        # Single client; presign falls back to it.
+        assert len(recording_minio) == 1
+        assert client.public_endpoint is None
+        assert client._presign_client is client.client
+
+        url = await client.presigned_get_url("k")
+        assert url.startswith("http://internal:9000/uploads/k")
+
+    def test_scheme_in_public_endpoint_implies_secure(
+        self, recording_minio: list[_RecordingMinio]
+    ) -> None:
+        client = AsyncMinIOClient(
+            endpoint="internal:9000",
+            access_key="ak",
+            secret_key="sk",
+            public_endpoint="https://storage.example.com/base/",
+        )
+        # scheme stripped to bare host, https → secure, trailing path dropped.
+        assert client.public_endpoint == "storage.example.com"
+        assert client.public_secure is True
+
+    def test_explicit_public_secure_overrides_scheme(
+        self, recording_minio: list[_RecordingMinio]
+    ) -> None:
+        client = AsyncMinIOClient(
+            endpoint="internal:9000",
+            access_key="ak",
+            secret_key="sk",
+            public_endpoint="https://storage.example.com",
+            public_secure=False,
+        )
+        assert client.public_secure is False
