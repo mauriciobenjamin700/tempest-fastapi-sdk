@@ -110,6 +110,7 @@ plugins:
             Storage (MinIO/S3): Storage (MinIO/S3)
             Uploads (backends): Uploads (backends)
             Downloads: Downloads
+            "File store (unificado)": "Unified file store"
             Idempotência: Idempotency
             "Auth flow (signup/reset)": "Auth flow (signup/reset)"
             "MFA (TOTP / 2FA)": "MFA (TOTP / 2FA)"
@@ -221,6 +222,7 @@ nav:
       - CLI: recipes/cli.md
       - "Deploy seguro (migrations + shutdown)": recipes/deploy-safety.md
       - Downloads: recipes/downloads.md
+      - "File store (unificado)": recipes/file-store.md
       - "Campos validados (tipos prontos)": recipes/fields.md
       - Email transacional: recipes/email.md
       - Feature flags: recipes/feature-flags.md

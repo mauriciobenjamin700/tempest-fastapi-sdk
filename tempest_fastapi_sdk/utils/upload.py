@@ -128,22 +128,31 @@ class UploadUtils:
 
     def __init__(
         self,
-        source: str | Path | AsyncMinIOClient,
+        source: str | Path | AsyncMinIOClient | None = None,
         *,
+        backend: UploadStorage | None = None,
         max_size_bytes: int | None = None,
         allowed_extensions: set[str] | None = None,
         allowed_mimetypes: set[str] | None = None,
         verify_magic_bytes: bool = False,
         chunk_size: int = 1024 * 1024,
     ) -> None:
-        """Initialize with a local directory or a MinIO client.
+        """Initialize with a local directory, a MinIO client, or a backend.
 
         Args:
-            source (str | Path | AsyncMinIOClient): Where uploads are
-                persisted. A directory path stores files on local disk
+            source (str | Path | AsyncMinIOClient | None): Where uploads
+                are persisted. A directory path stores files on local disk
                 (created if missing); an ``AsyncMinIOClient`` stores them
                 in its bucket. The backend is fixed here, so callers never
-                pass it per :meth:`save`.
+                pass it per :meth:`save`. May be ``None`` only when a
+                ready-made ``backend`` is supplied.
+            backend (UploadStorage | None): A pre-built storage backend to
+                use directly, bypassing the ``source``-based selection.
+                Lets a facade such as
+                :class:`~tempest_fastapi_sdk.FileStoreUtils` construct one
+                backend and share it. When given, ``source`` is used only
+                to expose :attr:`upload_dir` (set from a path, ``None``
+                otherwise) and no backend is built here.
             max_size_bytes (int | None): Reject uploads larger than
                 this. ``None`` disables the size check.
             allowed_extensions (set[str] | None): Whitelist of file
@@ -159,24 +168,33 @@ class UploadUtils:
                 1 MiB; raise to trade memory for fewer syscalls.
 
         Raises:
-            ImportError: When the ``[upload]`` extra is not installed.
+            ValueError: When neither ``source`` nor ``backend`` is given.
+            ImportError: When the local backend is selected but the
+                ``[upload]`` extra is not installed.
         """
-        if _aiofiles is None:
-            raise ImportError(
-                "UploadUtils requires the [upload] extra. "
-                "Install with `pip install tempest-fastapi-sdk[upload]`."
-            )
         from tempest_fastapi_sdk.utils.storage_backends import (
             LocalUploadStorage,
             MinIOUploadStorage,
         )
 
-        if isinstance(source, (str, Path)):
-            self.upload_dir: Path | None = Path(source)
-            self._storage: UploadStorage = LocalUploadStorage(source)
-        else:
+        if backend is not None:
+            self.upload_dir: Path | None = (
+                Path(source) if isinstance(source, (str, Path)) else None
+            )
+            self._storage: UploadStorage = backend
+        elif isinstance(source, (str, Path)):
+            if _aiofiles is None:
+                raise ImportError(
+                    "UploadUtils requires the [upload] extra. "
+                    "Install with `pip install tempest-fastapi-sdk[upload]`."
+                )
+            self.upload_dir = Path(source)
+            self._storage = LocalUploadStorage(source)
+        elif source is not None:
             self.upload_dir = None
             self._storage = MinIOUploadStorage(source)
+        else:
+            raise ValueError("UploadUtils requires either `source` or `backend`.")
         self.max_size_bytes: int | None = max_size_bytes
         self.allowed_extensions: set[str] | None = (
             {ext.lower().lstrip(".") for ext in allowed_extensions}

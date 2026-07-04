@@ -5,6 +5,41 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.90.0] — 2026-07-04
+
+### Added
+
+- **Unified file store (`FileStoreUtils`).** A single facade over the
+  three pieces a service usually wires by hand — `UploadUtils`
+  (validate + persist), `DownloadUtils` (serve bytes through the API)
+  and the presigned-URL helpers of `AsyncMinIOClient` — behind one
+  object with one configuration, targeting one storage backend.
+  - The backend is picked once from `source`: a directory path for
+    local disk (`[upload]` extra), or an `AsyncMinIOClient` for
+    MinIO/S3 (`[minio]` extra).
+  - Convenience surface: `save` / `replace` / `delete` / `exists`,
+    `download` / `file_response` / `stream` / `resolve`, `validate`,
+    and `presigned_get_url` / `presigned_put_url` (the latter return
+    `None` on the local backend, keeping the call site uniform).
+  - Escape hatches for the internal pieces: `uploader`, `downloader`,
+    `backend` and `client`.
+  - A single `UploadStorage` backend is built and shared with the
+    upload half; on MinIO the same client instance is reused by the
+    download half, so the connection pool is shared, not duplicated.
+- **`UploadUtils` accepts an injected backend.** New keyword-only
+  `backend: UploadStorage | None` bypasses the `source`-based backend
+  selection, letting `FileStoreUtils` build one backend and share it.
+  `source` is now optional when `backend` is given; passing neither
+  raises `ValueError`. The `[upload]` extra is only required when the
+  local backend is actually selected (MinIO-only use no longer needs
+  `aiofiles`).
+
+### Docs
+
+- New bilingual recipe **File store (unificado) / Unified file store**
+  (`docs/recipes/file-store.md` + `.en.md`) and an API-reference stub
+  for `FileStoreUtils` (plus `DownloadUtils`).
+
 ## [0.89.0] — 2026-07-04
 
 ### Added

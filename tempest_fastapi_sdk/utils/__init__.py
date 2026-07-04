@@ -37,6 +37,7 @@ from tempest_fastapi_sdk.utils.fields import (
     RatioField,
     SlugField,
 )
+from tempest_fastapi_sdk.utils.file_store import FileStoreUtils as FileStoreUtils
 from tempest_fastapi_sdk.utils.http_client import (
     REQUEST_ID_HEADER,
     CircuitOpenError,
@@ -147,6 +148,7 @@ __all__: list[str] = [
     "DiskMetrics",
     "DownloadUtils",
     "EmailUtils",
+    "FileStoreUtils",
     "GPUMetrics",
     "HTTPClient",
     "HexColorField",

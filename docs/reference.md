@@ -298,6 +298,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.utils.totp.TOTPHelper
 ::: tempest_fastapi_sdk.utils.email.EmailUtils
 ::: tempest_fastapi_sdk.utils.upload.UploadUtils
+::: tempest_fastapi_sdk.utils.download.DownloadUtils
+::: tempest_fastapi_sdk.utils.file_store.FileStoreUtils
 ::: tempest_fastapi_sdk.utils.metrics.MetricsUtils
 ::: tempest_fastapi_sdk.utils.log.LogUtils
 ::: tempest_fastapi_sdk.utils.throttle.AttemptThrottle
