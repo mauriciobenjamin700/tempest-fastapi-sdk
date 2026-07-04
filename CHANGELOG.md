@@ -5,6 +5,33 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.89.0] — 2026-07-04
+
+### Added
+
+- **Typed server-side rendering (`tempest_fastapi_sdk.ssr`, extra
+  `[ssr]`).** A first-class SSR surface: FastAPI routes return typed
+  Python components rendered to HTML — full-stack, typed, no template
+  language.
+  - `Page` — a typed component base (`tempest_core` `Component`). Declare
+    typed fields, implement `body() -> Widget`, and optionally override
+    `shell(body)` to wrap every page in a shared header/nav/footer layout
+    inherited through normal Python inheritance. `render()` composes
+    `shell(body())` for you.
+  - `html_response(widget, *, title=None, status_code=200, htmx=False,
+    document=True, lang="pt-BR")` — renders a widget tree to a FastAPI
+    `HTMLResponse`. `document=True` emits a full HTML5 document (requires
+    `title`); `document=False` emits a bare fragment for HTMX partial
+    swaps. `htmx=True` injects a locally-served HTMX `<script>` tag
+    (never a CDN).
+  - `make_htmx_router(prefix="/_ssr")` — serves a **bundled** HTMX 2.x
+    (shipped inside the wheel) at `GET {prefix}/htmx.js` with an
+    `application/javascript` media type — CSP- and offline-friendly, no
+    external host contacted.
+  - The renderer (`tempestweb`) is imported lazily, so
+    `import tempest_fastapi_sdk` never hard-requires the extra; install
+    with `pip install "tempest-fastapi-sdk[ssr]"`.
+
 ## [0.88.0] — 2026-07-03
 
 ### Added

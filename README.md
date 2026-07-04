@@ -10,7 +10,7 @@
 
 > 💡 `uv run mkdocs serve` (ou `make docs-serve`) é só para preview local — em produção use as URLs do GitHub Pages acima. / For local preview only — in production use the GitHub Pages URLs above.
 
-Shared FastAPI/SQLAlchemy/Pydantic building blocks used across Tempest projects: base schemas, ORM model, async repository, pagination, settings, exceptions, Alembic helper, FastStream/TaskIQ broker managers, Redis cache, Server-Sent Events, Web Push, a Django-style **admin site** (`AdminSite` + `AdminModel`), and the utility classes (`PasswordUtils`, `JWTUtils`, `EmailUtils`, `UploadUtils`, `DownloadUtils`, `MetricsUtils`, `LogUtils`).
+Shared FastAPI/SQLAlchemy/Pydantic building blocks used across Tempest projects: base schemas, ORM model, async repository, pagination, settings, exceptions, Alembic helper, FastStream/TaskIQ broker managers, Redis cache, Server-Sent Events, Web Push, a Django-style **admin site** (`AdminSite` + `AdminModel`), **typed SSR pages** (`Page` + `html_response`, HTMX-ready), and the utility classes (`PasswordUtils`, `JWTUtils`, `EmailUtils`, `UploadUtils`, `DownloadUtils`, `MetricsUtils`, `LogUtils`).
 
 The goal is to start every new backend with the same opinionated foundation already in place — no copy-pasting `BaseModel`, no rewriting the same CRUD repository, no re-inventing the exception envelope.
 
@@ -117,6 +117,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[mfa]` | `pyotp` | `TOTPHelper` + MFA/2FA endpoints on the bundled auth flow |
 | `[vision]` | `ort-vision-sdk` | `Detector` / `Classifier` / `Segmenter` (ONNX) + prediction schemas |
+| `[ssr]` | `tempestweb` | `Page`, `html_response`, `make_htmx_router` — typed Python pages rendered to HTML |
 | `[otel]` | `opentelemetry-sdk` + OTLP/gRPC exporter + FastAPI/SQLAlchemy/httpx instrumentors | `setup_tracing` — distributed tracing |
 | `[sqlite]` | `aiosqlite` | SQLite async driver for `sqlite+aiosqlite://` URLs (dev default) |
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
@@ -158,10 +159,11 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.utils.storage_backends` *(extra: `[upload]`)* | `UploadStorage` protocol, `LocalUploadStorage`, `MinIOUploadStorage`, `UploadResult`, `ContentValidator` |
 | `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `AsyncTaskBrokerManager` (TaskIQ lifecycle wrapper), `AsyncTaskScheduler` (periodic / cron tasks) |
 | `tempest_fastapi_sdk.vision` *(extra: `[vision]`)* | `Detector`, `Classifier`, `Segmenter` (ONNX, lazy), `DetectionSchema`/`ClassificationSchema`/`SegmentationSchema`/`BoundingBoxSchema`/`ClassProbabilitySchema`, `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas` |
+| `tempest_fastapi_sdk.ssr` *(extra: `[ssr]`)* | `Page` (typed component base), `html_response` (widget tree → `HTMLResponse`, full document or HTMX fragment), `make_htmx_router` (serves bundled HTMX locally, no CDN) |
 | `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `AttemptThrottle`/`ThrottleBackend`/`ThrottleStatus`, `generate_opaque_token`/`hash_opaque_token`/`verify_opaque_token`, `get_client_ip`/`get_client_ip_from_scope`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `TOTPHelper` *(extra: `[mfa]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `DownloadUtils`/`build_content_disposition` *(no extra)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, validated field types (`PositiveIntField`, `NonNegativeIntField`, `CentsField`, `PortField`, `PositiveFloatField`, `NonNegativeFloatField`, `PercentField`, `RatioField`, `LatitudeField`, `LongitudeField`, `PriceField`, `NonEmptyStrField`, `SlugField`, `HexColorField`), BR regex helpers (`CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField` — old names without the suffix kept as deprecated aliases — `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`), BR states/cities (`UF`, `Region`, `StateBR`, `CityBR`, `ChoiceBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `uf_choices`/`region_choices`/`city_choices`, `is_valid_uf`/`normalize_uf`, `is_valid_city`/`normalize_city`) |
 | `tempest_fastapi_sdk.cli` | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `version` / `--version` |
 
-Core primitives are re-exported from `tempest_fastapi_sdk` at the top level — `from tempest_fastapi_sdk import BaseModel, BaseRepository, AppException` always works. The extras-gated managers in `tempest_fastapi_sdk.cache`, `tempest_fastapi_sdk.queue`, `tempest_fastapi_sdk.tasks` and `tempest_fastapi_sdk.vision` must be imported from their own submodule (`from tempest_fastapi_sdk.queue import AsyncBrokerManager`).
+Core primitives are re-exported from `tempest_fastapi_sdk` at the top level — `from tempest_fastapi_sdk import BaseModel, BaseRepository, AppException` always works. The extras-gated managers in `tempest_fastapi_sdk.cache`, `tempest_fastapi_sdk.queue`, `tempest_fastapi_sdk.tasks`, `tempest_fastapi_sdk.vision` and `tempest_fastapi_sdk.ssr` must be imported from their own submodule (`from tempest_fastapi_sdk.queue import AsyncBrokerManager`).
 
 ---
 

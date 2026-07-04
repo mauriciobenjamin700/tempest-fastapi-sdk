@@ -3109,8 +3109,20 @@ wheels = [
 ]
 
 [[package]]
+name = "tempest-core"
+version = "0.9.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/88/e4/f8e7a9b263a23718715df185335cac2bee4ca2a01b971fd64d61e399189e/tempest_core-0.9.0.tar.gz", hash = "sha256:79639151872207843dd4ccf740a2c2428d0e3a445072cce4e1a174d49c88d142", size = 278287, upload-time = "2026-07-04T14:48:50.795Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b4/bd/79bcf17af4d0e463651dc42138197ecf170714950033807be22c384698f0/tempest_core-0.9.0-py3-none-any.whl", hash = "sha256:d7c0649be759019f5d140ff38199f972b3723f6e04cdfb9f29b4805d78e1679e", size = 194213, upload-time = "2026-07-04T14:48:49.28Z" },
+]
+
+[[package]]
 name = "tempest-fastapi-sdk"
-version = "0.88.0"
+version = "0.89.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -3156,6 +3168,7 @@ all = [
     { name = "redis" },
     { name = "taskiq" },
     { name = "taskiq-aio-pika" },
+    { name = "tempestweb" },
 ]
 auth = [
     { name = "bcrypt" },
@@ -3200,6 +3213,9 @@ queue = [
 ]
 sqlite = [
     { name = "aiosqlite" },
+]
+ssr = [
+    { name = "tempestweb" },
 ]
 tasks = [
     { name = "taskiq" },
@@ -3251,6 +3267,7 @@ dev = [
     { name = "ruff" },
     { name = "taskiq" },
     { name = "taskiq-aio-pika" },
+    { name = "tempestweb" },
     { name = "uvicorn" },
 ]
 docs = [
@@ -3327,9 +3344,11 @@ requires-dist = [
     { name = "taskiq", marker = "extra == 'tasks'", specifier = ">=0.11.0" },
     { name = "taskiq-aio-pika", marker = "extra == 'all'", specifier = ">=0.4.0" },
     { name = "taskiq-aio-pika", marker = "extra == 'tasks'", specifier = ">=0.4.0" },
+    { name = "tempestweb", marker = "extra == 'all'", specifier = ">=0.9.0" },
+    { name = "tempestweb", marker = "extra == 'ssr'", specifier = ">=0.9.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "mfa", "vision", "sqlite", "postgres", "otel", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "mfa", "vision", "ssr", "sqlite", "postgres", "otel", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -3365,6 +3384,7 @@ dev = [
     { name = "ruff", specifier = ">=0.8.0" },
     { name = "taskiq", specifier = ">=0.11.0" },
     { name = "taskiq-aio-pika", specifier = ">=0.4.0" },
+    { name = "tempestweb", specifier = ">=0.9.0" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 docs = [
@@ -3374,6 +3394,18 @@ docs = [
     { name = "mkdocs-static-i18n", specifier = ">=1.2" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.27.0" },
     { name = "pymdown-extensions", specifier = ">=10.0" },
+]
+
+[[package]]
+name = "tempestweb"
+version = "0.9.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tempest-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d1/e5/b88d8c985e2c323f8adadb5f937745e97b4c5859c069620b2fdff61cc07f/tempestweb-0.9.0.tar.gz", hash = "sha256:a10a0285e02e47b8b8f5f8da0f40289468d27bfac75b6fd6b0589b9ea62d1779", size = 216865, upload-time = "2026-07-04T15:09:57.93Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/44/25e2122e31b773eb606cfb2984b3e2bee977c057348a4163f610d58cee50/tempestweb-0.9.0-py3-none-any.whl", hash = "sha256:228f5c24d03c2e3f1b954b2922f2d80b473e3aa6e9b5e5b794969d4709dc55d9", size = 241948, upload-time = "2026-07-04T15:09:56.388Z" },
 ]
 
 [[package]]

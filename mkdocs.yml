@@ -91,6 +91,7 @@ plugins:
             Instalação: Installation
             Arquitetura: Architecture
             Tutorial: Tutorial
+            "SSR (páginas tipadas)": "SSR (typed pages)"
             Receitas: Recipes
             Banco de dados: Database
             Multi-tenant: Multi-tenant
@@ -208,6 +209,7 @@ nav:
   - Instalação: installation.md
   - Arquitetura: architecture.md
   - Tutorial: tutorial.md
+  - "SSR (páginas tipadas)": ssr.md
   - Receitas:
       - recipes/index.md
       - "Arquivo no serviço (mixin)": recipes/stored-files.md

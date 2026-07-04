@@ -114,6 +114,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `ort-vision-sdk`: lazy `Detector`/`Classifier`/`Segmenter` + prediction
   schemas + `to_detection_schemas`/`to_classification_schema`/
   `to_segmentation_schemas` mappers.
+- **SSR** (`[ssr]` extra) — `tempest_fastapi_sdk.ssr`: typed Python
+  pages rendered to HTML via `tempestweb`'s `render_to_html` /
+  `render_document`. `Page` (typed `Component` base — `body()` +
+  overridable `shell()` layout), `html_response` (widget tree →
+  `HTMLResponse`, full document or bare HTMX fragment), and
+  `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
+  `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
+  needs the extra.
 - **Upload** — `UploadUtils` with pluggable backends
   (`LocalUploadStorage`, `MinIOUploadStorage`), download helpers,
   presigned URLs.

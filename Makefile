@@ -65,6 +65,8 @@ smoke: build ## Install the freshly built wheel in a clean venv and import the t
 		assert m.PasswordUtils and m.JWTUtils and m.EmailUtils and m.UploadUtils, 'utils missing'; \
 		assert m.is_valid_cpf and m.is_valid_cnpj and m.is_valid_phone_br, 'BR regex helpers missing'; \
 		print('Smoke OK · version =', m.__version__)"
+	/tmp/$(PACKAGE)-smoke/bin/python -c "from $(PACKAGE).ssr import Page, html_response, make_htmx_router; \
+		print('SSR extra OK ·', Page.__name__, html_response.__name__, make_htmx_router.__name__)"
 	@rm -rf /tmp/$(PACKAGE)-smoke
 
 version: ## Print the version recorded in pyproject.toml and __init__.py

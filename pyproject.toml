@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.88.0"
+version = "0.89.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -91,6 +91,9 @@ mfa = [
 vision = [
     "ort-vision-sdk>=0.4.0",
 ]
+ssr = [
+    "tempestweb>=0.9.0",
+]
 sqlite = [
     "aiosqlite>=0.20.0",
 ]
@@ -133,6 +136,7 @@ all = [
     "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
     "opentelemetry-instrumentation-httpx>=0.48b0",
     "ort-vision-sdk>=0.4.0",
+    "tempestweb>=0.9.0",
 ]
 
 [project.urls]
@@ -168,6 +172,8 @@ packages = ["tempest_fastapi_sdk"]
 "tempest_fastapi_sdk/auth/templates/en-US/password_reset_success.html" = "tempest_fastapi_sdk/auth/templates/en-US/password_reset_success.html"
 "tempest_fastapi_sdk/auth/templates/en-US/password_reset_error.html" = "tempest_fastapi_sdk/auth/templates/en-US/password_reset_error.html"
 "tempest_fastapi_sdk/utils/data/br_locations.json" = "tempest_fastapi_sdk/utils/data/br_locations.json"
+# Locally-bundled HTMX asset for the [ssr] extra (served without a CDN).
+"tempest_fastapi_sdk/ssr/_static/htmx.min.js" = "tempest_fastapi_sdk/ssr/_static/htmx.min.js"
 
 [dependency-groups]
 dev = [
@@ -204,6 +210,7 @@ dev = [
     "opentelemetry-instrumentation-fastapi>=0.48b0",
     "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
     "opentelemetry-instrumentation-httpx>=0.48b0",
+    "tempestweb>=0.9.0",
 ]
 docs = [
     "mkdocs>=1.6.0",
@@ -295,6 +302,10 @@ module = [
     "pyotp.*",
     "ort_vision_sdk",
     "ort_vision_sdk.*",
+    "tempestweb",
+    "tempestweb.*",
+    "tempest_core",
+    "tempest_core.*",
 ]
 ignore_missing_imports = true
 
