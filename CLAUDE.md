@@ -123,8 +123,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
 - **Upload** — `UploadUtils` with pluggable backends
-  (`LocalUploadStorage`, `MinIOUploadStorage`), download helpers,
-  presigned URLs.
+  (`LocalUploadStorage`, `MinIOUploadStorage`, opt-in injected via
+  `backend=`), download helpers, presigned URLs, plus `FileStoreUtils`
+  — a unified facade bundling upload + download + presign over one
+  shared backend (`uploader`/`downloader`/`backend`/`client` escape
+  hatches).
 - **MinIO / S3** — `AsyncMinIOClient` via `[minio]` extra
   (bucket lifecycle, object I/O, streaming download, presigned
   URLs).
