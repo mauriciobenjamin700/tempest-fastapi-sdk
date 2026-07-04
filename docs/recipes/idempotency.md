@@ -1,6 +1,9 @@
 # Idempotência
 
-`IdempotencyMiddleware` implementa o padrão `Idempotency-Key` usado por Stripe, AWS, GitHub e Plaid: o cliente envia um header único, o servidor processa **uma vez** e devolve a mesma resposta a qualquer retry, sem duplicar linha no banco / cobrar duas vezes.
+`IdempotencyMiddleware` implementa o padrão `Idempotency-Key` usado por Stripe, AWS, GitHub e Plaid: o cliente envia um header único e, **assim que a primeira requisição completa**, o servidor devolve a mesma resposta a qualquer retry — sem duplicar linha no banco / cobrar duas vezes.
+
+!!! warning "Sem lock de requisição em andamento"
+    A deduplicação só entra em ação **depois** que a primeira requisição termina e a resposta é cacheada. Retries concorrentes que chegam **enquanto a original ainda está em andamento** NÃO são deduplicados — o middleware não tem lock de in-progress (diferente do 409 "while in progress" do Stripe), então ambos rodam o handler. Mantenha os timeouts do cliente generosos em relação à latência do handler para evitar retries prematuros.
 
 ## Como funciona
 
@@ -32,6 +35,9 @@ app.add_middleware(
 ```
 
 `MemoryIdempotencyStore` guarda em dict local — funciona só pra uma réplica. Pra produção use Redis.
+
+!!! note "Estado process-local, volátil"
+    O `MemoryIdempotencyStore` vive na memória do processo: cada réplica tem o seu próprio dict e ele é zerado em todo restart / redeploy. Chaves gravadas antes de reiniciar deixam de deduplicar depois. Use apenas em dev / single-replica; para persistência entre reinícios e entre réplicas, use o `RedisIdempotencyStore`.
 
 ## Setup produção (multi-réplica via Redis)
 
@@ -124,3 +130,13 @@ class DynamoIdempotencyStore:
 # Funciona com o middleware igual aos backends nativos:
 assert isinstance(DynamoIdempotencyStore(), IdempotencyStore)
 ```
+
+## Recap
+
+- O header `Idempotency-Key` faz o servidor devolver a mesma resposta a qualquer retry **assim que a primeira requisição completa** — sem duplicar registro.
+- Só verbos mutantes (`POST` / `PUT` / `PATCH` / `DELETE`) com o header são elegíveis; o resto passa direto (opt-in por requisição).
+- Não há lock de in-progress: retries concorrentes durante a requisição original rodam o handler — mantenha timeouts do cliente generosos.
+- `MemoryIdempotencyStore` é process-local e volátil (dev / single-replica); `RedisIdempotencyStore` cobre multi-réplica e sobrevive a restart.
+- Implemente o protocolo `IdempotencyStore` para plugar qualquer backend (ex.: DynamoDB).
+
+Próximo passo: combine com o [`@cached`](cache.md) para acelerar leituras, ou com o [Outbox pattern](outbox.md) para garantir entrega confiável de side-effects disparados pelo handler.

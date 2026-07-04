@@ -1,6 +1,6 @@
 # Cache
 
-Primitivos de cache apoiados em Redis. Requer o extra `[cache]`.
+Bater no banco repetidamente para os mesmos dados caros custa latência e carga. Esta receita entrega três blocos apoiados em Redis: um cliente gerenciado (`AsyncRedisManager`) com lifespan e health-check, um decorator de memoização (`@cached`) que guarda o retorno de funções async, e a invalidação por tag/namespace (`CacheInvalidator`) para derrubar entradas antes do TTL. Os blocos aparecem nessa ordem — primeiro o cliente, depois a memoização, depois a invalidação. Requer o extra `[cache]`.
 
 ## AsyncRedisManager
 
@@ -84,6 +84,9 @@ async def list_orders(user_id: str, *, fresh: bool = False) -> list[dict]:
 
 Defaults: `ttl=300` segundos (`0` desabilita a expiração), `serializer=json.dumps` / `deserializer=json.loads`. Sobrescreva `serializer` / `deserializer` para payloads não-JSON (modelos Pydantic — passe `model_dump_json` / `MyModel.model_validate_json`, ou use `pickle.dumps` / `pickle.loads` para objetos arbitrários). Valores corrompidos no cache caem de volta para rodar a função embrulhada e emitem um warning no logger do SDK.
 
+!!! warning "`pickle.loads` executa código arbitrário"
+    `pickle.loads` desserializa qualquer payload, inclusive um que execute código no momento da carga. Só use `pickle` quando o Redis for de confiança e isolado (sem acesso de terceiros ou de outros serviços). O default seguro para modelos Pydantic é `model_dump_json` / `MyModel.model_validate_json` — mantenha o serializer em JSON sempre que possível.
+
 
 ### Invalidação por tag / namespace
 
@@ -128,3 +131,11 @@ O `CacheInvalidator` expõe `invalidate_namespace(ns)`, `invalidate_tag(tag)`, `
 
 !!! warning "Use o mesmo `key_prefix`"
     O `CacheInvalidator` precisa do **mesmo `key_prefix`** dos decorators `@cached` que ele invalida — é assim que os nomes dos SETs de registro batem. Os SETs de registro herdam o TTL da entrada, então se auto-limpam depois do membro mais novo expirar; apagar uma chave já expirada é no-op inofensivo.
+
+## Recapitulando
+
+- **`AsyncRedisManager`** — o cliente gerenciado: `connect`/`disconnect` no lifespan, `client` para uso direto, `client_dependency` como `Depends`, e `health_check` no `make_health_router`.
+- **`@cached`** — memoiza funções async no Redis com TTL, `key_prefix`, `skip_cache` e serializers customizáveis (prefira JSON; `pickle` só em Redis de confiança).
+- **`CacheInvalidator`** — derruba entradas antes do TTL por `namespace`, `tag`, `tags` ou chaves cruas, usando o **mesmo `key_prefix`** do decorator.
+
+Próximo passo: veja a receita de [banco de dados](database.md) para conectar o cache aos repositórios que ele acelera.

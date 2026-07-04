@@ -76,10 +76,13 @@ sequenceDiagram
 
 **Pontos do SDK:**
 
-- `generate_opaque_token(48)` retorna par `(plain, hash)`. Banco guarda só o hash.
+- `generate_opaque_token(48)` retorna par `(plain, hash)`.
 - `EmailUtils.render_template("invitation.html", ctx)` (v0.24+).
 - O envio é assíncrono (TaskIQ) — endpoint retorna `201` sem esperar SMTP.
 - Toda a aceitação é **uma única transação** — membership + status do convite são atomic.
+
+!!! warning "O banco guarda só o hash"
+    `generate_opaque_token(48)` devolve `(plain, hash)`: o valor `plain` só existe no email enviado ao convidado, e o banco persiste apenas `hash`. Na aceitação, o service faz `hash_opaque_token(plain)` e busca pelo hash — um vazamento da tabela `invitations` não expõe tokens utilizáveis.
 
 ## 3. Criar produto com variante + imagens
 
@@ -91,7 +94,7 @@ sequenceDiagram
     participant CT as ProductController
     participant PS as ProductService
     participant VS as VariantService
-    participant ST as MinIOUploadStorage
+    participant ST as AsyncMinIOClient
     participant DB as Postgres
 
     M->>R: POST /products {title, description, variants:[{sku, attrs, price_cents}]}
@@ -123,7 +126,7 @@ sequenceDiagram
 **Pontos do SDK:**
 
 - Criação de produto é transação única — produto + variantes + primeira linha de `PriceHistory`.
-- Imagens **não trafegam pela API** — cliente faz `PUT` direto no MinIO via URL presigned (`MinIOUploadStorage.presigned_url` ou direto `AsyncMinIOClient.presigned_put_url`).
+- Imagens **não trafegam pela API** — cliente faz `PUT` direto no MinIO via URL presigned gerada por `AsyncMinIOClient.presigned_put_url` (o `MinIOUploadStorage.presigned_url` é GET/leitura, não serve pra upload).
 - Catálogo público lê `image_keys` e gera URLs presigned de leitura (TTL 1h).
 
 ## 4. Checkout idempotente
@@ -172,10 +175,13 @@ sequenceDiagram
 
 **Pontos do SDK:**
 
-- `IdempotencyMiddleware` cobre o endpoint sem o handler precisar saber. Se o comprador retentar com a mesma `Idempotency-Key`, o middleware devolve a resposta original — handler não roda 2x, estoque não é decrementado 2x.
+- `IdempotencyMiddleware` cobre o endpoint sem o handler precisar saber.
 - Reserva de estoque é **dentro da mesma transação** do `INSERT` do pedido. Falha em qualquer item aborta tudo.
 - A `SSE` notifica o stream (cliente do comprador escutando em `/orders/{id}/events`).
 - O notify_seller vai pra fila — não bloqueia a resposta do checkout.
+
+!!! note "Idempotência evita decremento duplo de estoque"
+    Se o comprador retentar com a mesma `Idempotency-Key` (reload, timeout de rede, double-tap), o middleware devolve a resposta original — o handler **não roda 2x**, então o estoque **não é decrementado 2x** e nenhum pedido duplicado é criado.
 
 ## 5. Expedição + atualização em tempo real
 
@@ -234,7 +240,8 @@ stateDiagram-v2
     RETURNED --> [*]
 ```
 
-Transições proibidas (qualquer outra setinha) **MUST** falhar com `ConflictException("invalid state transition")`. Implementação típica num enum + `dict[from, set[to]]` no service.
+!!! warning "Transições inválidas devem falhar com ConflictException"
+    Transições proibidas (qualquer outra setinha) **MUST** falhar com `ConflictException("invalid state transition")`. Implementação típica num enum + `dict[from, set[to]]` no service.
 
 ## Máquina de estados — Invitation
 

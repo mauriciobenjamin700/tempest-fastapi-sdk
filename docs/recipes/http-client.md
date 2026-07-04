@@ -17,16 +17,21 @@ from typing import Any
 
 from tempest_fastapi_sdk import HTTPClient
 
-client = HTTPClient(base_url="https://api.example.com", timeout=10.0)
-
 
 async def fetch_user(user_id: str) -> dict[str, Any]:
     """GET /users/{id} no serviço externo."""
-    async with client:
+    async with HTTPClient(base_url="https://api.example.com", timeout=10.0) as client:
         response = await client.get(f"/users/{user_id}")
         response.raise_for_status()
         return response.json()
 ```
+
+!!! warning "Não reutilize um client já fechado"
+    Sair do bloco `async with` chama `__aexit__`, que fecha o connection pool
+    (`aclose()`). Para chamadas pontuais, construa o client dentro do `async with`
+    como acima. Para reuso entre requests, guarde um singleton e feche **uma vez**
+    no lifespan (veja o exemplo do circuit-breaker abaixo) — nunca envolva cada
+    chamada de um singleton compartilhado em `async with`.
 
 Métodos: `get` / `post` / `put` / `patch` / `delete` (e `request` genérico),
 todos repassando kwargs pro httpx (`json=`, `params=`, `headers=`, ...) e
@@ -37,6 +42,11 @@ devolvendo um `httpx.Response`.
 Passe um `RetryPolicy` e ajuste os limites do breaker na construção:
 
 ```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import CircuitOpenError, HTTPClient, RetryPolicy
 
 client = HTTPClient(
@@ -54,10 +64,18 @@ client = HTTPClient(
 )
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Fecha o connection pool compartilhado no shutdown."""
+    yield
+    await client.aclose()
+
+
 async def call() -> None:
+    # Singleton compartilhado — chame direto, sem `async with` por chamada
+    # (isso fecharia o pool). O pool é fechado uma vez no lifespan acima.
     try:
-        async with client:
-            await client.post("/charge", json={"amount": 100})
+        await client.post("/charge", json={"amount": 100})
     except CircuitOpenError:
         # O circuito está aberto — não martele o upstream caído.
         ...

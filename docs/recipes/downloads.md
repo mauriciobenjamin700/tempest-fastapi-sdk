@@ -111,8 +111,8 @@ Para montar o header manualmente (fora do `DownloadUtils`), use
 ```python
 from tempest_fastapi_sdk import build_content_disposition
 
-header: str = build_content_disposition("relatório 2026.pdf", as_attachment=True)
-# -> attachment; filename="relatorio 2026.pdf"; filename*=UTF-8''relat%C3%B3rio%202026.pdf
+header: str = build_content_disposition("relatorio 2026.pdf", as_attachment=True)
+# -> attachment; filename="relatorio 2026.pdf"; filename*=UTF-8''relatorio%202026.pdf
 ```
 
 ## Recap

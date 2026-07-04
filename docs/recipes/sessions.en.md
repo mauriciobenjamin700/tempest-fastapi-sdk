@@ -90,6 +90,16 @@ app = create_app()
 
 Done. The user calls `POST /auth/session/login` with email+password; the SDK sets the HttpOnly+Secure cookie; every subsequent request that carries the cookie has `request.state.session` populated.
 
+### What each object does
+
+1. **`SessionStore`** (`RedisSessionStore` / `MemorySessionStore`) — the persistence layer. Keeps the real session state indexed by the SHA-256 hash of the opaque id. It is the only object that talks to Redis.
+2. **`SessionAuth`** — the logic layer. Verifies credentials against the `UserModel`, mints, rotates, and revokes sessions through the `store`. Knows nothing about HTTP.
+3. **`SessionMiddleware`** — the HTTP → session bridge. On every request it reads the cookie, resolves it through `SessionAuth`/`store`, and populates `request.state.session` **before** any router runs. Without it, `request.state.session` never exists and the dependencies raise `AttributeError`.
+4. **`make_session_router`** — exposes the five bundled endpoints (`login` / `logout` / `me` / `list` / `{id}`). Takes the same `session_auth` plus a `session_factory` to open the DB session on login.
+
+!!! warning "Order matters: `add_middleware` BEFORE `include_router`"
+    `SessionMiddleware` must run on every request to populate `request.state.session`. Register it with `app.add_middleware(...)` **before** mounting the routers via `app.include_router(...)`. Reverse the order and any handler that depends on `request.state.session` (or on `make_session_dependency`) finds the attribute missing and breaks. Keep the wiring in exactly the order shown above.
+
 ---
 
 ## Endpoints
@@ -131,6 +141,9 @@ SESSION_COOKIE_SAMESITE=lax            # lax / strict / none
 SESSION_ROTATE_ON_LOGIN=true           # anti-fixation
 ```
 
+!!! danger "`SESSION_COOKIE_SECURE=false` is dev-HTTP only"
+    The default is `true`: the browser only sends the cookie over HTTPS. Setting `false` makes the session cookie travel in clear text over HTTP — any network intermediary can capture the id and hijack the session. Use `false` **exclusively** in local dev without TLS; never in staging or production. The same holds for keeping `SESSION_COOKIE_HTTPONLY=true` (default) — turning it off exposes the cookie to XSS.
+
 ---
 
 ## Stores
@@ -144,6 +157,9 @@ session_store = MemorySessionStore()
 ```
 
 State lives in the process dict. **Does not scale** — uvicorn restart wipes everything; one replica does not see another's sessions. Use in tests and local dev.
+
+!!! warning "`MemorySessionStore` does not survive a restart nor scale horizontally"
+    State lives in an in-process dict. Every uvicorn restart/redeploy logs everyone out, and with more than one replica each worker sees only its own sessions (a cookie issued by one replica hits `401` on the other). It is strictly for tests and local dev — in production always use `RedisSessionStore`.
 
 ### `RedisSessionStore` — production
 
@@ -162,7 +178,8 @@ Internal schema:
 
 Redis handles TTL automatically — no janitor process needed.
 
-**Requires the `[cache]` extra** (`redis` async client).
+!!! note "`RedisSessionStore` requires the `[cache]` extra"
+    `RedisSessionStore` and `AsyncRedisManager` depend on the async `redis` client, which only ships with the `[cache]` extra. Install with `uv add "tempest-fastapi-sdk[cache]"` (add `auth` etc. as your service needs). `MemorySessionStore` needs no extra at all.
 
 ### Custom
 

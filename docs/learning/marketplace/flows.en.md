@@ -76,10 +76,13 @@ sequenceDiagram
 
 **SDK touchpoints:**
 
-- `generate_opaque_token(48)` returns `(plain, hash)`. Database stores only the hash.
+- `generate_opaque_token(48)` returns `(plain, hash)`.
 - `EmailUtils.render_template("invitation.html", ctx)` (v0.24+).
 - Send is async (TaskIQ) — endpoint returns `201` without waiting on SMTP.
 - The acceptance is **one single transaction** — membership + invitation status are atomic.
+
+!!! warning "The database stores only the hash"
+    `generate_opaque_token(48)` returns `(plain, hash)`: the `plain` value only ever lives in the email sent to the invitee, and the database persists just `hash`. On acceptance the service calls `hash_opaque_token(plain)` and looks the row up by hash — a leak of the `invitations` table exposes no usable tokens.
 
 ## 3. Create product + variant + images
 
@@ -91,7 +94,7 @@ sequenceDiagram
     participant CT as ProductController
     participant PS as ProductService
     participant VS as VariantService
-    participant ST as MinIOUploadStorage
+    participant ST as AsyncMinIOClient
     participant DB as Postgres
 
     M->>R: POST /products {title, description, variants:[{sku, attrs, price_cents}]}
@@ -123,7 +126,7 @@ sequenceDiagram
 **SDK touchpoints:**
 
 - Product creation is a single transaction — product + variants + first `PriceHistory` row.
-- Images **never flow through the API** — the client `PUT`s directly to MinIO via a presigned URL (`MinIOUploadStorage.presigned_url` or `AsyncMinIOClient.presigned_put_url` directly).
+- Images **never flow through the API** — the client `PUT`s directly to MinIO via a presigned URL minted by `AsyncMinIOClient.presigned_put_url` (`MinIOUploadStorage.presigned_url` is GET/read-only and cannot be used for upload).
 - The public catalog reads `image_keys` and mints presigned read URLs (1h TTL).
 
 ## 4. Idempotent checkout
@@ -172,10 +175,13 @@ sequenceDiagram
 
 **SDK touchpoints:**
 
-- `IdempotencyMiddleware` covers the endpoint without the handler having to care. If the buyer retries with the same `Idempotency-Key`, the middleware replays the original response — the handler does not run twice, stock is not decremented twice.
+- `IdempotencyMiddleware` covers the endpoint without the handler having to care.
 - Stock reservation lives **inside the same transaction** as the order `INSERT`. A failure on any item rolls everything back.
 - The `SSE` notifies the stream (the buyer's client listening on `/orders/{id}/events`).
 - `notify_seller` is queued — does not block the checkout response.
+
+!!! note "Idempotency prevents double stock decrement"
+    If the buyer retries with the same `Idempotency-Key` (reload, network timeout, double-tap), the middleware replays the original response — the handler **does not run twice**, so stock is **not decremented twice** and no duplicate order is created.
 
 ## 5. Shipping + real-time updates
 
@@ -234,7 +240,8 @@ stateDiagram-v2
     RETURNED --> [*]
 ```
 
-Forbidden transitions (any other arrow) **MUST** fail with `ConflictException("invalid state transition")`. Typical implementation is an enum + `dict[from, set[to]]` in the service.
+!!! warning "Invalid transitions must fail with ConflictException"
+    Forbidden transitions (any other arrow) **MUST** fail with `ConflictException("invalid state transition")`. Typical implementation is an enum + `dict[from, set[to]]` in the service.
 
 ## State machine — Invitation
 

@@ -12,8 +12,8 @@ Esta página lista o que o SDK **ainda não oferece** + o que já foi entregue. 
 | `IdempotencyMiddleware` + tabela `idempotency_keys` | ✅ v0.24.0 | `tempest_fastapi_sdk.api.middlewares.idempotency` |
 | `UploadUtils` com backends pluggáveis (`LocalUploadStorage`, `MinIOUploadStorage`) | ✅ v0.24.0 | `tempest_fastapi_sdk.utils.storage_backends` |
 | `HTTPClient` (wrapper typed do httpx) com retry/backoff/circuit-breaker | ✅ v0.28.0 | `tempest_fastapi_sdk.utils.http_client` |
-| **OpenTelemetry tracing** — `setup_tracing(app, otlp_endpoint=…)` | ❌ pendente | — |
-| **Outbox pattern** — `BaseRepository.save_with_outbox(model, event)` | ❌ pendente | — |
+| **OpenTelemetry tracing** — `setup_tracing(app, otlp_endpoint=…)` | ✅ v0.43.0 | `tempest_fastapi_sdk.api.tracing` |
+| **Outbox pattern** — `BaseRepository.save_with_outbox(model, event)` | ✅ v0.44.0 | `BaseRepository.save_with_outbox` + `tempest_fastapi_sdk.db.outbox` |
 
 ## Tier A — comuns em backend SaaS
 
@@ -32,23 +32,23 @@ Esta página lista o que o SDK **ainda não oferece** + o que já foi entregue. 
 | 2FA / TOTP (`pyotp` wrapper + recovery codes) | ✅ v0.35.0 | `TOTPHelper` + `UserAuthService.mfa_*` + `BaseUserRecoveryCodeModel` |
 | `tempest db` + `tempest user` CLI | ✅ v0.30.0 | `tempest_fastapi_sdk.cli.db` / `cli.user` |
 | `BaseRepository.bulk_update` (filters + values) | ✅ pré-existente | `BaseRepository.bulk_update` |
-| **Escopo multi-tenant** — `TenantScopedRepository(tenant_id)` auto-injetando `WHERE tenant_id = …` em toda query do repository | ❌ pendente | — |
+| **Escopo multi-tenant** — `TenantScopedRepository(tenant_id)` auto-injetando `WHERE tenant_id = …` em toda query do repository | ✅ v0.45.0 | `tempest_fastapi_sdk.db.tenant` |
 
 ## Tier B — quando o serviço crescer
 
-| Feature | Status |
-|---------|--------|
-| `SlowQueryLogger` — evento SQLAlchemy logando query > N ms com `EXPLAIN` | ❌ pendente |
-| `AlembicHelper.safe_upgrade()` — bloqueia migrations destrutivas sem `--force` | ❌ pendente |
-| Graceful shutdown — drenar requisições in-flight no `SIGTERM` | ❌ pendente |
-| F() / Q() expressions wrappers para SQLAlchemy | ❌ pendente |
-| eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) | ❌ pendente |
-| Signals (`pre_save`/`post_save`/`pre_delete`) via SQLAlchemy events no `BaseRepository` | ❌ pendente |
-| Permissions framework granular com object-level (`user.has_perm("order.delete", obj=order)`) | ❌ pendente |
-| System checks no startup (`tempest check-config`) | ❌ pendente |
-| Management commands framework — projeto registra `tempest <cmd>` próprio | ❌ pendente |
-| `tempest db seed` — carregar fixtures JSON/Python | ❌ pendente |
-| CLI: `tempest secrets rotate` | ❌ pendente |
+| Feature | Status | Onde |
+|---------|--------|------|
+| `SlowQueryLogger` — evento SQLAlchemy logando query > N ms com `EXPLAIN` | ✅ v0.59.1 | `tempest_fastapi_sdk.db.slow_query` |
+| `AlembicHelper.safe_upgrade()` — bloqueia migrations destrutivas sem `--force` | ✅ v0.46.0 | `AlembicHelper.safe_upgrade` (`tempest_fastapi_sdk.db.migrations`) |
+| Graceful shutdown — drenar requisições in-flight no `SIGTERM` | ✅ v0.46.0 | `GracefulShutdownMiddleware` (`tempest_fastapi_sdk.api.middlewares.graceful`) |
+| `tempest db seed` — carregar fixtures JSON/Python | ✅ v0.47.0 | `tempest_fastapi_sdk.cli.db` |
+| CLI: `tempest secrets rotate` | ✅ v0.47.0 | `tempest_fastapi_sdk.cli.secrets` |
+| F() / Q() expressions wrappers para SQLAlchemy | ❌ pendente | — |
+| eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) | ❌ pendente | — |
+| Signals (`pre_save`/`post_save`/`pre_delete`) via SQLAlchemy events no `BaseRepository` | ❌ pendente | — |
+| Permissions framework granular com object-level (`user.has_perm("order.delete", obj=order)`) | ❌ pendente | — |
+| System checks no startup (`tempest check-config`) | ❌ pendente | — |
+| Management commands framework — projeto registra `tempest <cmd>` próprio | ❌ pendente | — |
 
 ## Painel admin — evolução
 
@@ -67,81 +67,17 @@ O painel admin já existe (`AdminSite` / `AdminModel` / `make_admin_router`, Jin
 
 ## Tudo que já entregamos
 
-### ✅ v0.23.0 — Storage MinIO/S3
-
-`AsyncMinIOClient` via extra `[minio]` — bucket lifecycle, object I/O, streaming download, presigned URLs.
-
-### ✅ v0.24.0 — Uploads pluggáveis + idempotência + email templates
-
-- `UploadStorage` protocol + `LocalUploadStorage` + `MinIOUploadStorage`
-- `IdempotencyMiddleware` + `MemoryIdempotencyStore` + `RedisIdempotencyStore`
-- `EmailUtils.render_template(template, ctx)` com Jinja2 + autoescape
-
-### ✅ v0.25.0 — CLI docker-compose generator
-
-`tempest new` emite `docker-compose.yaml` baseado nos extras escolhidos. Postgres sempre, `[cache]`→Redis, `[queue]`/`[tasks]`→RabbitMQ, `[minio]`→MinIO + bootstrap, `[email]`→MailHog. Tags fixadas. `.env.example` recebe addendum.
-
-### ✅ v0.26.0 — `tempest generate --docker` + image bumps
-
-Regera compose num projeto existente. Postgres 18 / Redis 8 / RabbitMQ 4. Pydantic schemas + settings com `title`/`description`/`examples`.
-
-### ✅ v0.28.0 — Observabilidade + retries
-
-- Endpoint Prometheus `/metrics` + `PrometheusMiddleware`
-- `HTTPClient` (wrapper typed do httpx) com retry/backoff/circuit-breaker/`X-Request-ID` propagation
-- `BodySizeLimitMiddleware`
-- `BaseRepository.bulk_create_values` + `bulk_upsert`
-
-### ✅ v0.29.0 — Security middlewares + OAuth providers
-
-- `CSRFMiddleware` + `make_csrf_token_dependency`
-- OAuth2/OIDC: `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`
-- Fix Postgres 18 mount path no docker-compose
-
-### ✅ v0.29.1 — Scaffold com UserModel + admin wiring
-
-`tempest new` agora gera `UserModel` concreto + monta admin out of the box. Default extras `auth,admin`.
-
-### ✅ v0.30.0 — CLI db + user
-
-- `tempest db init/revision/upgrade/downgrade/current/history`
-- `tempest user create [--admin]` + `tempest user list [--admin]`
-- Resolução `DATABASE_URL` via flag → env → settings → ini
-
-### ✅ v0.30.1 — Alembic reorder hook
-
-`reorder_base_columns_first` hook emite `id`, `is_active`, `created_at`, `updated_at` primeiro em todo `op.create_table` autogerado.
-
-### ✅ v0.30.2 — `sqlalchemy.url` vazio no `alembic.ini`
-
-Credenciais não entram mais no VCS. `env.py` resolve URL em runtime.
-
-### ✅ v0.30.3 — Post-write hooks silenciosos
-
-`ruff_format` antes de `ruff_fix` + `--quiet` em ambos — sem ruído no stdout durante `tempest db revision`.
-
-### ✅ v0.31.0 — Bundled auth flow
-
-- `UserAuthService` — signup / activate / login / request_password_reset / confirm_password_reset
-- `make_auth_router` — 5 endpoints prontos pra mount
-- `BaseUserTokenModel` + `UserTokenPurpose` (activation/password_reset/email_verification)
-- `AuthSettings` mixin — `AUTH_AUTO_ACTIVATE`, `AUTH_RETURN_TOKEN_IN_RESPONSE`, TTLs, URL templates
-- Templates Jinja2 bundled (override colocando arquivo de mesmo nome no `template_dir`)
-
-### ✅ v0.31.1 — BaseSchema em tokens + docstrings completas
-
-`ActivationToken` / `PasswordResetToken` rewritten como `BaseSchema` (não mais dataclass). Toda DTO de auth com docstring detalhada.
-
-### ✅ v0.31.2 — `session: AsyncSession` em UserAuthService
-
-`Any` removido — todas as 7 assinaturas do service tipam `AsyncSession`.
+O histórico completo de releases — cada versão com o que entrou em **Added** / **Changed** / **Fixed** — vive no [changelog](changelog.md), no formato [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Ele é a fonte da verdade; esta página só destaca o que ainda falta.
 
 ## Próximos passos
 
+Trabalho genuinamente não lançado (posterior à v0.89.0). A ordem segue impacto, não a numeração — a release atual é puxada pela pressão de negócio.
+
 | Release | Conteúdo |
 |---------|----------|
-| **v0.32.0+** | OpenTelemetry tracing (`setup_tracing(app, otlp_endpoint=…)`) com auto-instrumentação FastAPI/SQLAlchemy/httpx |
-| **v0.33.0+** | Outbox pattern (`BaseRepository.save_with_outbox(model, event)`) drenado por `AsyncBrokerManager` |
+| **v0.90.0+** | eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) + signals (`pre_save`/`post_save`/`pre_delete`) via SQLAlchemy events no `BaseRepository` |
+| **v0.90.0+** | Permissions framework granular com object-level (`user.has_perm("order.delete", obj=order)`) |
+| **futuro** | F() / Q() expressions wrappers, system checks no startup (`tempest check-config`), management commands framework (`tempest <cmd>` registrado pelo projeto) |
 
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.

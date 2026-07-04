@@ -1,7 +1,19 @@
 # Painel admin
 
 
-UI de gerenciamento no estilo Django montada sob `/admin`. Operadores entram com uma linha de usuário do banco (sem store de senha de admin separado) e navegam por todo modelo registrado pelo navegador, então a porta do banco pode ficar fechada em redes privadas. O painel é completo (paridade com o Django admin): list view com busca / filtros ricos por campo (enum / FK / range de data) / colunas ordenáveis, CRUD completo (criar / editar / excluir), ações em massa, export CSV/JSON, widgets FK-select, dashboard com contagens de linhas + métricas de sistema, MFA TOTP opcional no login, campos de upload de arquivo/imagem, e trilha de auditoria carimbando `created_by` / `updated_by`. Ainda no roadmap: edição inline/relacionada.
+UI de gerenciamento no estilo Django montada sob `/admin`. Operadores entram com uma linha de usuário do próprio banco — não há store de senha de admin separado. Cada modelo registrado passa a ser navegável pelo navegador, então a porta do banco pode ficar fechada em redes privadas.
+
+**O que você ganha** (paridade com o Django admin):
+
+- List view com busca, filtros ricos por campo (enum / FK / range de data) e colunas ordenáveis.
+- CRUD completo (criar / editar / excluir) e ações em massa.
+- Export CSV/JSON e widgets FK-select.
+- Dashboard com contagens de linhas + métricas de sistema.
+- MFA TOTP opcional no login.
+- Campos de upload de arquivo/imagem.
+- Trilha de auditoria carimbando `created_by` / `updated_by`.
+
+Ainda no roadmap: edição inline/relacionada.
 
 Requer o extra `[admin]`:
 

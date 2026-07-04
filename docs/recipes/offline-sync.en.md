@@ -190,6 +190,15 @@ async def get_changes(
     )
 ```
 
+!!! note "Glue you provide"
+    `get_analysis_repository`, `get_current_user_id` and
+    `AnalysisResponseSchema` come from your project, not the SDK: a dependency
+    that yields the `AnalysisRepository` already bound to the request session, a
+    current-user resolver (for example on top of `current_user_dependency`) that
+    returns the owner's `UUID`, and the analysis response schema (a
+    `BaseResponseSchema` with the model's fields). Wire them however you like —
+    the recipe only relies on their contract.
+
 ## The watermark protocol
 
 This is the part that usually breaks. Follow it exactly:

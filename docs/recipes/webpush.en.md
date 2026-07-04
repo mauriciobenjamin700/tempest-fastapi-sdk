@@ -14,6 +14,27 @@ surfaces the two errors the application actually handles:
 `pushManager.subscribe`); the **private** key signs each push on the
 backend. The `sub` must be a `mailto:` or `https:` URI.
 
+!!! tip "Generating a VAPID keypair"
+    You generate the pair once and reuse it across every environment.
+    With `pywebpush` (the `[webpush]` extra) installed:
+
+    ```bash
+    vapid --gen
+    ```
+
+    This writes `private_key.pem` + `public_key.pem` and prints the
+    public key as url-safe base64 (the frontend's `applicationServerKey`).
+    Without Python around, Node's `web-push` does the same:
+
+    ```bash
+    npx web-push generate-vapid-keys
+    ```
+
+    The output shows **Public Key** and **Private Key**: map
+    `Public Key` → `VAPID_PUBLIC_KEY` and `Private Key` →
+    `VAPID_PRIVATE_KEY`. Set `VAPID_SUBJECT` to a `mailto:` or `https:`
+    URI of yours.
+
 ```python
 # src/services/notifications.py
 from tempest_fastapi_sdk import WebPushDispatcher
@@ -60,7 +81,9 @@ dispatcher:
 
 ```python
 # src/api/dependencies/resources.py
-from tempest_fastapi_sdk import BaseRepository, WebPushSubscriptionService
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository, WebPushDispatcher, WebPushSubscriptionService
 
 from src.core.settings import settings
 from src.db.models import WebPushSubscriptionModel
@@ -127,7 +150,14 @@ style. You only inject how the service and current user are resolved:
 
 ```python
 # src/api/app.py
-from tempest_fastapi_sdk import BaseRepository, WebPushSubscriptionService, make_web_push_router
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import (
+    BaseRepository,
+    WebPushDispatcher,
+    WebPushSubscriptionService,
+    make_web_push_router,
+)
 
 from src.api.dependencies import get_current_user_id, get_session
 from src.core.settings import settings

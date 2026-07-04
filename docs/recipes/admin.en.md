@@ -1,7 +1,19 @@
 # Admin site
 
 
-Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. The panel is feature-complete (Django-admin parity): a list view with search / rich per-field filters (enum / FK / date-range) / sortable columns, full CRUD (create / edit / delete), bulk actions, CSV/JSON export, FK-select widgets, a dashboard with live row counts + system metrics, optional TOTP MFA at login, file/image upload fields, and an audit trail stamping `created_by` / `updated_by`. Still on the roadmap: inline/related editing.
+Django-style management UI mounted under `/admin`. Operators sign in with a user row from your own database — there is no separate admin password store. Every registered model becomes browsable from the browser, so the database port can stay closed on private networks.
+
+**What you get** (Django-admin parity):
+
+- List view with search, rich per-field filters (enum / FK / date-range) and sortable columns.
+- Full CRUD (create / edit / delete) and bulk actions.
+- CSV/JSON export and FK-select widgets.
+- Dashboard with live row counts + system metrics.
+- Optional TOTP MFA at login.
+- File/image upload fields.
+- Audit trail stamping `created_by` / `updated_by`.
+
+Still on the roadmap: inline/related editing.
 
 Requires the `[admin]` extra:
 

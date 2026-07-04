@@ -19,14 +19,26 @@ from tempest_fastapi_sdk.cache import AsyncRedisManager
 from src.core.settings import settings
 
 cache = AsyncRedisManager(settings.REDIS_URL)
-# `cache.client` is `redis.asyncio.Redis` — matches the ThrottleBackend Protocol
-throttle = AttemptThrottle(
-    cache.client,
-    max_attempts=5,
-    window_seconds=300,         # fixed window; also the TTL applied on the first failure
-    namespace="login",          # key prefix — multiple throttles can share a backend
-    fail_open=True,             # Redis outage = allow, instead of locking everyone out
-)
+throttle: AttemptThrottle
+
+
+async def on_startup() -> None:
+    """Connect Redis and build the throttle at application startup.
+
+    `cache.client` raises RuntimeError until `connect()` runs, so the
+    manager must be connected before the throttle is built. Wire this
+    to your app lifespan (`FastAPI(lifespan=...)`).
+    """
+    global throttle
+    await cache.connect()   # required — `cache.client` raises RuntimeError until connected
+    # `cache.client` is `redis.asyncio.Redis` — matches the ThrottleBackend Protocol
+    throttle = AttemptThrottle(
+        cache.client,
+        max_attempts=5,
+        window_seconds=300,     # fixed window; also the TTL applied on the first failure
+        namespace="login",      # key prefix — multiple throttles can share a backend
+        fail_open=True,         # Redis outage = allow, instead of locking everyone out
+    )
 
 
 async def login(email: str, password: str) -> User:
@@ -49,6 +61,9 @@ async def login(email: str, password: str) -> User:
 - `retry_after_seconds: int` — seconds until the window resets (`0` when not blocked).
 
 Use the fields to build friendly error payloads. `raise_if_blocked` already crafts a `TooManyRequestsException` with the `Retry-After` header — you don't need to read them by hand.
+
+!!! note "Connect the `AsyncRedisManager` at startup"
+    `cache.client` raises `RuntimeError` until `connect()` is called. Connect the manager at application startup (via `FastAPI(lifespan=...)` or `on_startup`) before accessing `cache.client` — and call `cache.disconnect()` on shutdown.
 
 !!! warning "`AttemptThrottle` ships no in-memory backend"
     For tests without Redis, use a fake/double via [fakeredis](https://github.com/cunla/fakeredis-py) (`pip install fakeredis`) — it satisfies the `ThrottleBackend` Protocol (`get`, `incr`, `expire`, `ttl`, `delete`) with a fully in-memory Redis API.

@@ -25,7 +25,7 @@ Requires:
 - `[email]` (aiosmtplib + Jinja2 + email-validator) — optional; when missing, the link lands in the response body instead of an email.
 
 ```bash
-uv add "tempest-fastapi-sdk[auth,email]>=0.31.0"
+uv add "tempest-fastapi-sdk[auth,email]>=0.89.0"
 ```
 
 ```python
@@ -824,8 +824,8 @@ services:
 
 `SMTP_PORT=2525`, open `http://localhost:5000`.
 
-!!! tip "Already on `tempest generate --docker`?"
-    In v0.32+ the docker-compose generator will accept `--with mailhog` as a shortcut. For now (v0.31.x) drop one of the blocks above into the `docker-compose.yaml` the CLI generates.
+!!! tip "`tempest generate --docker` already includes Mailhog"
+    When the project pins the `[email]` extra, `tempest generate --docker` **auto-appends** a Mailhog service to the `docker-compose.yaml` — no manual paste and no `--with mailhog` flag. The blocks above are just a reference, or for when you prefer smtp4dev.
 
 ---
 

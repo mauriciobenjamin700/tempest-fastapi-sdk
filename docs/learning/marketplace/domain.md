@@ -359,12 +359,12 @@ classDiagram
 | `Product` | `BaseModel + AuditMixin + SoftDeleteMixin` | custom (com JOINs em variant+price) | `BaseService` |
 | `ProductVariant` | `BaseModel + AuditMixin` | custom | `BaseService` |
 | `PriceHistory` | `BaseModel` (sem updated_at) | append-only | `BaseService` |
-| `StockMovement` | `BaseModel` (sem updated_at) | append-only via `bulk_create` quando lote | `BaseService` |
+| `StockMovement` | `BaseModel` (sem updated_at) | append-only via `bulk_create_values` quando lote | `BaseService` |
 | `Cart`/`CartItem` | `BaseModel + AuditMixin` | `BaseRepository[CartModel]` | `BaseService` |
 | `Order`/`OrderItem` | `BaseModel + AuditMixin` | custom | `BaseService` |
 | `Review` | `BaseModel + AuditMixin` | `BaseRepository[ReviewModel]` | `BaseService` |
 
-`PriceHistory` e `StockMovement` são append-only, então o repositório deles **não expõe `update` nem `delete`** — só `create`/`list`/`get`. Isso impede ALTER acidental no histórico.
+`PriceHistory` e `StockMovement` são append-only, então o repositório deles **não expõe `update` nem `delete`** — só `add`/`list`/`get`. Isso impede ALTER acidental no histórico.
 
 ## Próximo passo
 

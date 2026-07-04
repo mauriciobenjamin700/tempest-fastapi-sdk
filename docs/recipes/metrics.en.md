@@ -2,7 +2,7 @@
 
 The SDK offers **two complementary metrics paths**:
 
-1. **Prometheus RED/USE for HTTP** (`PrometheusMiddleware` + `make_prometheus_router`) — listens to every request, increments `http_requests_total` + a latency histogram + `http_requests_in_flight`, and exposes it all on `GET /metrics` in Prometheus text format ready to be scraped by your Prometheus / Grafana / Datadog.
+1. **Prometheus RED/USE for HTTP** (`PrometheusMiddleware` + `make_prometheus_router`) — listens to every request, increments `http_requests_total` + a latency histogram + `http_requests_in_progress`, and exposes it all on `GET /metrics` in Prometheus text format ready to be scraped by your Prometheus / Grafana / Datadog.
 2. **On-demand system snapshots** (`MetricsUtils`) — collects CPU / memory / disk / NVIDIA GPU stats for a custom endpoint (internal debug page, /oncall, etc.). No built-in Prometheus exporter — the goal is the instant snapshot.
 
 Use **#1** in production always. Add **#2** when you need to inspect the host where the app runs.
@@ -12,7 +12,7 @@ Use **#1** in production always. Add **#2** when you need to inspect the host wh
 Install with `[prometheus]` (pulls `prometheus-client`). The middleware measures every request; the router serves the scrape endpoint.
 
 ```bash
-uv add "tempest-fastapi-sdk[prometheus]>=0.32.0"
+uv add "tempest-fastapi-sdk[prometheus]>=0.89.0"
 ```
 
 ```python
@@ -48,10 +48,10 @@ http_requests_total{method="POST",path="/auth/signup",status="201"} 7.0
 # TYPE http_request_duration_seconds histogram
 http_request_duration_seconds_bucket{le="0.005",method="GET",path="/api/users"} 89.0
 ...
-http_requests_in_flight{method="GET",path="/api/users"} 2.0
+http_requests_in_progress{method="GET"} 2.0
 ```
 
-Default buckets (`DEFAULT_LATENCY_BUCKETS`) cover 5ms → 30s — fits typical APIs. Override with `PrometheusMiddleware(registry=..., buckets=(0.001, 0.005, 0.025, 0.1, 0.5, 2, 10))` when your workload is more granular.
+Default buckets (`DEFAULT_LATENCY_BUCKETS`) cover 5ms → 30s — fits typical APIs. Override with `PrometheusMiddleware(registry=..., latency_buckets=(0.001, 0.005, 0.025, 0.1, 0.5, 2, 10))` when your workload is more granular.
 
 !!! tip "Path normalization"
     The `path` label uses the route template (`/api/users/{user_id}`), not the concrete path, so cardinality doesn't explode with unique UUIDs. That comes from FastAPI/Starlette — no config needed on your end.
@@ -125,3 +125,13 @@ for gpu in snapshot.gpus:
 ```
 
 Individual collectors are also available: `MetricsUtils.cpu(interval=...)`, `MetricsUtils.memory()`, `MetricsUtils.disk(path)`, `MetricsUtils.disks(paths)`, `MetricsUtils.gpus()` — plus their `*_async` variants. Each one returns a typed dataclass (`CPUMetrics`, `MemoryMetrics`, `DiskMetrics`, `GPUMetrics`, `SystemMetrics`) with a `to_dict()` helper for JSON serialization.
+
+## Recap
+
+- **Path #1 (`[prometheus]`)** — `PrometheusMiddleware` + `make_prometheus_router` expose RED/USE series (`http_requests_total`, `http_request_duration_seconds`, `http_requests_in_progress`) on a scrape-ready `GET /metrics`. This is what you turn on in production.
+- **Path #2 (`[metrics]`)** — `MetricsUtils` gives an instant CPU / memory / disk / GPU snapshot on a custom endpoint. No Prometheus exporter — it's the on-demand photo of the host.
+
+## Next steps
+
+- [Observability](observability.en.md) — how to combine metrics with request-id, structured logging, and the typed `HTTPClient`.
+- [Logging](logging.en.md) — structured logging, per-level files, and the `/logs` endpoint.

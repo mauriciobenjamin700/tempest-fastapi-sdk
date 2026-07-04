@@ -38,9 +38,11 @@ setado pela borda (proxy/LB). Sem `trusted_header`, usa só o peer direto —
 não confie cegamente em `X-Forwarded-For` exposto ao mundo.
 
 ```python
-from fastapi import Request
+from fastapi import APIRouter, Request
 
 from tempest_fastapi_sdk import get_client_ip
+
+router = APIRouter()
 
 
 @router.get("/whoami")

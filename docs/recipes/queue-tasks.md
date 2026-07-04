@@ -98,7 +98,10 @@ As mesmas guarda de lifespan do manager de fila se aplicam: `connect()`/`disconn
 ## Scheduler de tarefas periódicas
 
 
-`AsyncTaskScheduler` embrulha `taskiq.TaskiqScheduler` + `LabelScheduleSource` para que tarefas periódicas sejam declaradas com decorators ao lado de tarefas normais e o scheduler seja dirigido pelo lifespan do FastAPI. Ele **não executa os corpos das tarefas** — ele as enfileira no mesmo broker que o `AsyncTaskBrokerManager` embrulha, então um processo worker precisa estar rodando para consumi-las. Requer o extra `[tasks]`.
+`AsyncTaskScheduler` embrulha `taskiq.TaskiqScheduler` + `LabelScheduleSource` para que tarefas periódicas sejam declaradas com decorators ao lado de tarefas normais e o scheduler seja dirigido pelo lifespan do FastAPI. Requer o extra `[tasks]`.
+
+!!! warning "O scheduler só enfileira — não executa"
+    O `AsyncTaskScheduler` **não executa os corpos das tarefas** — ele as enfileira no mesmo broker que o `AsyncTaskBrokerManager` embrulha, então um processo worker precisa estar rodando para consumi-las. Sem um worker ativo, os disparos periódicos acumulam na fila sem nunca rodar.
 
 ```python
 # src/tasks/__init__.py
@@ -163,6 +166,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await tasks.disconnect()
 ```
 
+!!! warning "Somente dev"
+    `run_in_background()` roda o scheduler dentro do processo do FastAPI — ok para desenvolvimento e serviços de processo único. Em produção com múltiplos workers, cada réplica rodaria o próprio scheduler e duplicaria os disparos; use a CLI standalone descrita abaixo em vez disso.
+
 Superfície de decorators:
 
 | Método | Quando usar |
@@ -219,6 +225,7 @@ class OutboxEventModel(BaseModel):
 ```python
 # src/db/repositories/outbox.py
 from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import BaseRepository
 
@@ -302,6 +309,17 @@ async def dispatch_outbox() -> None:
 Trade-offs para ter em mente:
 
 - **A ordem é best-effort.** Quando um lote contém um publish que falha, todo evento posterior no mesmo lote ainda roda — mas eles continuam sendo publicados em ordem de `created_at`. Se a ordem estrita importa, pare na primeira falha.
-- **Dispatcher único.** O `claim_pending` ingênuo não trava linhas; rodar múltiplos workers dispatcher vai publicar em duplicidade. Use `SELECT ... FOR UPDATE SKIP LOCKED` no PostgreSQL quando precisar escalar horizontalmente.
 - **Retenção.** Adicione um job periódico no estilo `TRUNCATE` para apagar linhas `dispatched` mais antigas que N dias, senão a tabela de outbox cresce sem limite.
 - **At-least-once.** Os consumidores devem ser idempotentes — o dispatcher pode crashar depois de publicar mas antes do `mark_dispatched`.
+
+!!! danger "Dispatcher único — rodar vários publica em duplicidade"
+    O `claim_pending` ingênuo não trava linhas: dois workers dispatcher rodando ao mesmo tempo reivindicam o mesmo lote e **publicam cada evento em duplicidade**. Mantenha exatamente um processo dispatcher, ou use `SELECT ... FOR UPDATE SKIP LOCKED` no PostgreSQL antes de escalar horizontalmente.
+
+## Recap / próximos passos
+
+Escolha a ferramenta pelo que você precisa garantir:
+
+- **Fila de mensagens (`AsyncBrokerManager`)** — fan-out event-driven entre serviços/consumidores via FastStream; entrega at-least-once, sem acoplamento com o request.
+- **Fila de tarefas (`AsyncTaskBrokerManager`)** — descarregar trabalho de um handler de request para um worker (`.kiq(...)`), mantendo a resposta HTTP rápida.
+- **Scheduler (`AsyncTaskScheduler`)** — disparos periódicos (cron/interval); lembre que ele só enfileira — um worker precisa consumir.
+- **Outbox dispatcher** — quando publicar *precisa* ser atômico com a escrita no banco (sem eventos fantasma nem perdidos em um crash). Para o modelo, o service produtor e a estratégia de retenção completos, veja a receita dedicada em [Outbox](outbox.md).

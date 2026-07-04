@@ -21,7 +21,7 @@ tempest --version                               # show the SDK version
     # Error: Missing option '--email' / '-e'.
     ```
 
-#### Scaffold a new service
+### Scaffold a new service
 
 ```bash
 tempest new my_service                          # scaffold under ./my_service
@@ -33,13 +33,13 @@ tempest new my_service \
 tempest new my_service --force                  # overwrite existing dir
 ```
 
-The skeleton matches the layered architecture documented in this README:
+The skeleton matches the layered architecture documented in [Architecture »](../architecture.md):
 
 ```text
 my_service/
 ├── main.py                  # one-liner → src.server.run()
 ├── pyproject.toml           # pins tempest-fastapi-sdk + ruff/mypy/pytest
-├── .env.example             # TITLE/VERSION/HOST/PORT/DATABASE_URL/JWT_SECRET/CORS_ORIGINS
+├── .env.example             # TITLE/VERSION/SERVER_HOST/SERVER_PORT/DATABASE_URL/JWT_SECRET/CORS_ORIGINS
 ├── docker-compose.yaml      # services keyed to the chosen extras
 ├── .gitignore
 ├── README.md
@@ -446,7 +446,7 @@ uv run python main.py                           # serves on the configured HOST:
 uv run pytest                                   # the bundled smoke test
 ```
 
-#### Quality gates
+### Quality gates
 
 The lint commands shell out to the project's tooling. They look for the executable on `PATH` first, and otherwise fall back to `uv run <tool>` so a project-local virtualenv works without manual activation.
 
@@ -479,4 +479,22 @@ tempest check                                   # lint + fmt-check + type + test
     must be shortened by hand or silenced with `# noqa: E501`.
 
 Every command returns the underlying tool's exit code, so `tempest check` is safe to wire into CI (`tempest check || exit 1`) or pre-commit hooks. When neither the executable nor `uv` is on `PATH`, the wrapper prints `error: '<tool>' is not on PATH and 'uv' is unavailable` and exits with `127` instead of failing silently.
+
+---
+
+## Next steps
+
+**Recap:** `tempest` covers the whole cycle — from scaffolding (`new`),
+through infra (`generate --docker` / `--dockerfile` / `--src`), migrations
+(`db`), users (`user`) and secrets (`secrets`), to the quality gates
+(`lint` / `fix` / `type` / `test` / `check`). Once the service is
+generated, head to the related recipes:
+
+- [Database »](database.md) — `BaseRepository`, async sessions and the
+  migration flow behind `tempest db`.
+- [Queue and tasks »](queue-tasks.md) — the layers `tempest generate
+  --src` writes for the `[queue]` (FastStream) and `[tasks]` (TaskIQ)
+  extras.
+- [Safe deploys »](deploy-safety.md) — destructive migrations and graceful
+  shutdown when containerizing with the generated `Dockerfile`.
 

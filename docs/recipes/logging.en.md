@@ -1,5 +1,6 @@
 # Logging
 
+In this recipe you set up structured JSON logs with per-request correlation, one file per severity level, and an HTTP endpoint to read them back. The goal is that every log line is parseable, traceable to the request that produced it, and inspectable without SSHing into the server.
 
 `configure_logging` installs a JSON handler on the root logger that emits one-line JSON records carrying the active request ID. `LogUtils` is a thin facade that adds level methods accepting structured `**fields`.
 
@@ -158,34 +159,4 @@ Query parameters:
     - Exact-level routing: each file holds only its own severity.
     - `500.log` isolates uncaught 500s (the `http_500` marker).
     - `make_logs_router` serves those files, paginated and authenticated.
-
-
-## Base enums
-
-
-`BaseStrEnum` / `BaseIntEnum` extend the stdlib `Enum` with helpers tuned for Pydantic + SQLAlchemy round-tripping (lookup by value, JSON-serializable `str` / `int` inheritance, `__contains__` that accepts raw values). Use them for every enum that crosses the API boundary.
-
-```python
-from tempest_fastapi_sdk import BaseIntEnum, BaseStrEnum
-
-
-class OrderStatus(BaseStrEnum):
-    PENDING = "pending"
-    PAID = "paid"
-    SHIPPED = "shipped"
-    CANCELLED = "cancelled"
-
-
-class Priority(BaseIntEnum):
-    LOW = 0
-    NORMAL = 1
-    HIGH = 2
-
-assert OrderStatus.PENDING == "pending"          # str inheritance
-assert "paid" in OrderStatus                      # raw value membership
-assert OrderStatus("paid") is OrderStatus.PAID    # canonical lookup
-assert Priority.NORMAL + 1 == Priority.HIGH       # int math
-```
-
-Because they inherit from `str` / `int`, Pydantic serializes them transparently as their underlying value and SQLAlchemy can persist them via the standard `Enum` column without an extra converter.
 

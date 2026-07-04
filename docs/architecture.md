@@ -213,7 +213,7 @@ class UserController(BaseController[UserService, UserResponse]):
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.app import db
+from src.api.dependencies.resources import db
 from src.controllers.user_controller import UserController
 from src.db.repositories import UserRepository
 from src.services.user_service import UserService
