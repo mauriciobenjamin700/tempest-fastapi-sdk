@@ -109,12 +109,13 @@ broker = SSEBroker()   # singleton — guarde em app.state e injete via Depends
 
 ```python
 # src/api/routers/feed.py
+from collections.abc import AsyncIterator
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from starlette.responses import StreamingResponse
 
-from tempest_fastapi_sdk import sse_response
+from tempest_fastapi_sdk import SSEBroker, sse_response
 
 router = APIRouter()
 

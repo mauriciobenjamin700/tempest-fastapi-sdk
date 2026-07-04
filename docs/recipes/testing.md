@@ -1,5 +1,7 @@
 # Testes
 
+Você vai montar uma bateria de testes assíncrona — pytest + pytest-asyncio + SQLite em memória + `httpx.AsyncClient` — trocando o banco de produção por um descartável em cada teste.
+
 pytest + pytest-asyncio + SQLite em memória + `httpx.AsyncClient`.
 
 !!! tip "Por que `AsyncClient` em vez de `TestClient`?"
@@ -15,7 +17,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tempest_fastapi_sdk import AsyncDatabaseManager, BaseModel
+from tempest_fastapi_sdk import AsyncDatabaseManager
 
 import src.db.models  # noqa: F401 — side-effect: registers every model on BaseModel.metadata
 from src.api.app import create_app
@@ -26,11 +28,11 @@ async def db() -> AsyncGenerator[AsyncDatabaseManager, None]:
     """Fresh in-memory DB per test."""
     manager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
     await manager.connect()
-    await manager.create_tables(BaseModel.metadata)
+    await manager.create_tables()
     try:
         yield manager
     finally:
-        await manager.drop_tables(BaseModel.metadata)
+        await manager.drop_tables()
         await manager.disconnect()
 
 
@@ -91,7 +93,7 @@ class TestUserRepository:
 ```
 
 !!! warning "Campos do `BaseUserModel`"
-    O modelo abstrato `BaseUserModel` declara as colunas **`email`**, **`hashed_password`**, **`is_active`**, **`is_admin`**, **`name`** e **`last_login_at`**. Os campos não-default (`email` + `hashed_password`) são `nullable=False`, então omitir qualquer um deles dispara `IntegrityError` no flush. Note também que a coluna se chama **`hashed_password`** — não `password_hash`.
+    O modelo abstrato `BaseUserModel` declara as colunas **`email`**, **`hashed_password`**, **`is_admin`** e **`last_login_at`**, além de herdar **`id`**, **`is_active`**, **`created_at`** e **`updated_at`** do `BaseModel`. A coluna **`name`** usada nos exemplos **não** faz parte do `BaseUserModel` — ela é adicionada pelo próprio `UserModel` do projeto. Os campos não-default (`email` + `hashed_password`) são `nullable=False`, então omitir qualquer um deles dispara `IntegrityError` no flush. Note também que a coluna se chama **`hashed_password`** — não `password_hash`.
 
 ## Teste de endpoint
 
@@ -192,3 +194,11 @@ async def test_repo_directly() -> None:
 ```
 
 Passe `metadata=` quando o projeto mistura a `BaseModel.metadata` do SDK com uma segunda metadata isolada (raro — mantenha um `BaseModel` por serviço sempre que possível).
+
+!!! check "Recapitulando"
+    - Use `httpx.AsyncClient` + `ASGITransport`, nunca o `TestClient` síncrono.
+    - A fixture `db` cria um SQLite em memória por teste com `create_tables()` / `drop_tables()` — **sem argumentos**, elas usam `BaseModel.metadata` internamente.
+    - `dependency_overrides` troca o banco de produção pelo de teste no `client`.
+    - Os helpers de `tempest_fastapi_sdk.testing` (`test_database` / `test_session`) dão fixtures prontas quando você não precisa de um `AsyncDatabaseManager` completo.
+
+**Próximo passo:** veja a [receita de banco de dados](database.md) para os padrões de `BaseRepository` e migrations que esses testes exercitam.

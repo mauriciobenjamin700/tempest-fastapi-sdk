@@ -4,7 +4,6 @@ This page is the **domain contract**. Every modeling, endpoint, or test decision
 
 !!! warning "Severity convention"
     **MUST** = domain invariant, violation is a bug.
-    **SHOULD** = default behavior, override requires justification.
     **MAY** = intentional opening, decided case by case.
 
 ## 1. Users

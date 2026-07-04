@@ -1,6 +1,6 @@
 # Cache
 
-Redis-backed caching primitives. Requires `[cache]` extra.
+Hitting the database over and over for the same expensive data costs latency and load. This recipe delivers three Redis-backed blocks: a managed client (`AsyncRedisManager`) with lifespan and health-check, a memoization decorator (`@cached`) that stores async function results, and tag/namespace invalidation (`CacheInvalidator`) to drop entries before their TTL. The blocks appear in that order — the client first, then memoization, then invalidation. Requires the `[cache]` extra.
 
 ## AsyncRedisManager
 
@@ -85,6 +85,9 @@ async def list_orders(user_id: str, *, fresh: bool = False) -> list[dict]:
 
 Defaults: `ttl=300` seconds (`0` disables expiry), `serializer=json.dumps` / `deserializer=json.loads`. Override `serializer` / `deserializer` for non-JSON payloads (Pydantic models — pass `model_dump_json` / `MyModel.model_validate_json`, or use `pickle.dumps` / `pickle.loads` for arbitrary objects). Corrupt cached values fall back to running the wrapped function and warn on the SDK logger.
 
+!!! warning "`pickle.loads` runs arbitrary code"
+    `pickle.loads` deserializes any payload, including one crafted to execute code at load time. Only use `pickle` when the Redis is trusted and isolated (no third-party or cross-service access). The safe default for Pydantic models is `model_dump_json` / `MyModel.model_validate_json` — keep the serializer on JSON whenever you can.
+
 
 ### Tag / namespace invalidation
 
@@ -129,4 +132,12 @@ async def update_profile(user_id: int, data: dict[str, Any]) -> None:
 
 !!! warning "Use the same `key_prefix`"
     `CacheInvalidator` needs the **same `key_prefix`** as the `@cached` decorators it invalidates — that is how the registry set names line up. The registry sets inherit the entry TTL, so they self-prune after their newest member expires; deleting an already-expired key is a harmless no-op.
+
+## Recap
+
+- **`AsyncRedisManager`** — the managed client: `connect`/`disconnect` in the lifespan, `client` for direct use, `client_dependency` as a `Depends`, and `health_check` on `make_health_router`.
+- **`@cached`** — memoizes async functions in Redis with TTL, `key_prefix`, `skip_cache`, and customizable serializers (prefer JSON; use `pickle` only on a trusted Redis).
+- **`CacheInvalidator`** — drops entries before their TTL by `namespace`, `tag`, `tags`, or raw keys, using the **same `key_prefix`** as the decorator.
+
+Next step: see the [database](database.md) recipe to connect the cache to the repositories it speeds up.
 

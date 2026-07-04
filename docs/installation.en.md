@@ -32,7 +32,9 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[mfa]` | `pyotp` | `TOTPHelper` + MFA/2FA (TOTP) endpoints on the bundled auth flow |
 | `[sqlite]` | `aiosqlite` | SQLite async driver for `sqlite+aiosqlite://` URLs (dev default) |
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
-| `[all]` | everything above | every helper |
+| `[vision]` | `ort-vision-sdk` | vision helpers (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
+| `[otel]` | `opentelemetry-sdk`, OTLP exporter + FastAPI/SQLAlchemy/httpx instrumentations | OpenTelemetry instrumentation via `setup_tracing` |
+| `[all]` | everything above (includes `[vision]` and `[otel]`) | every helper |
 
 === "Subset (recommended)"
 
@@ -49,14 +51,14 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 === "uv add"
 
     ```bash
-    uv add "tempest-fastapi-sdk[auth,upload,postgres]>=0.41.0"
+    uv add "tempest-fastapi-sdk[auth,upload,postgres]>=0.89.0"
     ```
 
 === "pyproject.toml"
 
     ```toml
     dependencies = [
-        "tempest-fastapi-sdk[auth,upload,postgres]>=0.41.0",
+        "tempest-fastapi-sdk[auth,upload,postgres]>=0.89.0",
     ]
     ```
 

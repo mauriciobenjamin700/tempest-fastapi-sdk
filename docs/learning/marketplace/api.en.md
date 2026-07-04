@@ -7,6 +7,7 @@ The full REST API of the marketplace in a single table, ready to paste into the 
     - **Idem**: ✅ = accepts `Idempotency-Key` (cached by `IdempotencyMiddleware`).
     - **Pagination**: cursor by default; offset where explicitly noted.
     - **Errors**: every error follows the SDK envelope `{detail, code, details}`.
+    - **`X-NN` rules**: the codes cited in the descriptions (e.g. `rule O-02`, `rule D-01`) refer to the [business rules](business-rules.en.md) page, where each rule is detailed.
 
 ## Auth
 

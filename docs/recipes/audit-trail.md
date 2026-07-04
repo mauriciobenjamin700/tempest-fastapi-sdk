@@ -58,13 +58,19 @@ product = await repo.add_audited(ProductModel(name="Widget"), actor=str(user.id)
 `update_audited` precisa do estado **anterior** para calcular o diff. Tire o snapshot com `repo.snapshot(...)` antes de alterar a instância:
 
 ```python
-async def rename_product(repo: ProductRepository, product_id: UUID, name: str) -> None:
+from uuid import UUID
+
+
+async def rename_product(
+    repo: ProductRepository, product_id: UUID, name: str, actor: str
+) -> None:
     """Renomeia um produto registrando o diff na auditoria.
 
     Args:
         repo (ProductRepository): O repository de produtos.
         product_id (UUID): O id do produto.
         name (str): O novo nome.
+        actor (str): Quem realizou a alteração.
 
     Raises:
         NotFoundException: Se o produto não existe.
@@ -72,7 +78,7 @@ async def rename_product(repo: ProductRepository, product_id: UUID, name: str) -
     product = await repo.get_by_id(product_id)
     before = repo.snapshot(product)                  # ← antes de mutar
     product.name = name
-    await repo.update_audited(product, before, actor=str(user.id))
+    await repo.update_audited(product, before, actor=actor)
     # grava uma entrada UPDATE com {"name": {"before": "...", "after": "..."}}
 ```
 

@@ -45,6 +45,9 @@ Quando o serviço subir você terá:
 - **RabbitMQ UI** em `http://localhost:15672` (`guest/guest`)
 - **MailHog UI** em `http://localhost:8025`
 
+!!! warning "Credenciais só de desenvolvimento local"
+    Os logins e senhas acima (`minioadmin/minioadmin`, `guest/guest`, o admin `admin-pass-12`) são padrões de desenvolvimento local. Nunca faça deploy com eles: rotacione ou substitua todos por segredos fortes antes de qualquer ambiente compartilhado ou de produção.
+
 ## Stack do SDK exercitada
 
 | Necessidade | Primitivo do SDK |

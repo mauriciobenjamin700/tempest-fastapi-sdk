@@ -19,7 +19,7 @@ O `make_websocket_router` resolve os 4 itens; seu handler só vê a conexão pro
 2. **[Bearer auth — query vs subprotocol](#bearer-auth)** — quando usar cada.
 3. **[Cliente JavaScript / browser](#cliente-javascript)** — `new WebSocket(...)` com heartbeat + reconnect.
 4. **[Broadcast / send_to / topics](#broadcast)** — fan-out via `WebSocketHub`.
-5. **[Heartbeat e codes de fechamento](#heartbeat)** — códigos 4401/4408/4429 e como o cliente reage.
+5. **[Heartbeat e codes de fechamento](#heartbeat)** — códigos 4401/4429 e como o cliente reage.
 6. **[Settings (`WebSocketSettings`)](#settings)** — flags + defaults.
 7. **[Trade-offs e quando NÃO usar](#trade-offs)** — single-process, fan-out multi-replica, escolha SSE vs WS.
 
@@ -69,7 +69,7 @@ async def handler(
         message = await ws.receive_json()
         envelope = WSEnvelope.model_validate(message)
         if envelope.type == "pong":
-            continue          # heartbeat — handled by the router
+            continue          # heartbeat reply — nothing to do, just skip it
         if envelope.type == "subscribe":
             await hub.subscribe(connection.connection_id, envelope.data["topic"])
             continue
@@ -114,6 +114,9 @@ O SDK aceita o token de dois lugares — em ordem de preferência:
 
 Quando ambos vêm, **subprotocol vence**.
 
+!!! warning "Token na query vaza em logs"
+    `?token=<jwt>` aparece nos access logs de proxy/Nginx, no header `Referer` e no histórico do browser — qualquer um deles pode reter o JWT em texto plano. Prefira sempre o subprotocol (`["bearer", jwt]`) quando o cliente for seu; use o query param só como fallback pra clientes que não conseguem setar subprotocol.
+
 Resolver retornando `None` → o SDK fecha o socket com código `4401` antes do handler rodar.
 
 ---
@@ -131,7 +134,7 @@ ws.addEventListener("open", () => {
 ws.addEventListener("message", (event) => {
   const envelope = JSON.parse(event.data);
 
-  // Heartbeat — responda imediato ou o servidor te derruba em 60s
+  // Heartbeat — responda ao ping do servidor (boa prática; o pong ainda não é exigido pelo servidor)
   if (envelope.type === "ping") {
     ws.send(JSON.stringify({ type: "pong", data: {} }));
     return;
@@ -197,16 +200,17 @@ A cada `WS_HEARTBEAT_SECONDS` (default 30s) o SDK envia:
 {"type": "ping", "data": {}, "request_id": null}
 ```
 
-O cliente **deve** responder com `{"type": "pong", "data": {}}` dentro de `WS_HEARTBEAT_TIMEOUT_SECONDS` (default 60s) — caso contrário, o socket é fechado com código `4408` (Request Timeout custom no espaço 4000-4999 reservado pra apps).
+O cliente **deve** responder com `{"type": "pong", "data": {}}` — o pong é tráfego cliente → servidor que reseta o idle timer de load balancers e mantém a conexão saudável.
+
+!!! warning "Deadline de pong ainda não é enforced"
+    Nesta versão o router apenas **envia** pings; ele não lê os frames de entrada pra medir o intervalo até o pong, então **não** fecha a conexão com `4408` nem enforça `WS_HEARTBEAT_TIMEOUT_SECONDS`. O mesmo vale pro limite de tamanho: `WS_MAX_MESSAGE_BYTES` está definido nos settings mas o router ainda **não** rejeita frames grandes com `1009`. Ambos ficam reservados pra quando o enforcement chegar — não confie neles como defesa hoje.
 
 Códigos de fechamento que o router emite:
 
 | Código | Quando |
 |---|---|
 | `1000` | Saída normal (handler retornou ou cliente desconectou limpo) |
-| `1009` | Frame inbound maior que `WS_MAX_MESSAGE_BYTES` |
 | `4401` | Token inválido / expirado / faltando no handshake |
-| `4408` | Heartbeat timeout — cliente não respondeu `pong` |
 | `4429` | Limite `WS_MAX_CONNECTIONS_PER_USER` excedido — conexão **mais antiga** do user é evictada |
 
 ---
@@ -227,14 +231,17 @@ class Settings(WebSocketSettings, BaseAppSettings):
 ```bash
 # .env
 WS_HEARTBEAT_SECONDS=30                # default
-WS_HEARTBEAT_TIMEOUT_SECONDS=60        # default
+WS_HEARTBEAT_TIMEOUT_SECONDS=60        # default — ainda NÃO enforced (ver Heartbeat)
 WS_MAX_CONNECTIONS_PER_USER=5          # default
-WS_MAX_MESSAGE_BYTES=65536             # 64 KiB default
+WS_MAX_MESSAGE_BYTES=65536             # 64 KiB default — ainda NÃO enforced
 ```
 
 ---
 
 ## Trade-offs
+
+!!! warning "Broadcast é single-process — dev / single-replica only"
+    `WebSocketHub` guarda o registry em memória do processo. `broadcast` / `send_to` só alcançam sockets conectados **nesta réplica** — num deploy multi-réplica cada processo tem seu próprio hub e os eventos não cruzam de um pro outro. Trate o fan-out cross-replica (sticky sessions ou pub/sub) como requisito **antes** de escalar horizontalmente.
 
 **Single-process por design.** `WebSocketHub` guarda estado em memória do processo. Em deploy multi-réplica:
 

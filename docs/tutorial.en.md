@@ -16,7 +16,7 @@ This tutorial walks through wiring the **Users** feature using every SDK convent
     This tutorial shows how to **build** signup/login with `BaseRepository` + `BaseService` + `BaseController` — the foundation for any feature. For the **complete auth flow** (signup + email activation + JWT login + password reset), the SDK ships `UserAuthService` + `make_auth_router` since v0.31.0; jump to the **[Auth flow »](recipes/auth-flow.en.md)** recipe when you want the shortcut instead of implementing it manually.
 
 !!! info "Following along"
-    Every snippet is **standalone** — paste it into the file path shown in the comment. The full project tree is the [mandatory project layout from Architecture →](architecture.md#mandatory-project-layout).
+    Full-file snippets — the ones that open with a bare file-path comment (e.g. `# src/db/models/user.py`) — are **standalone**: paste each into the path shown. Blocks marked `(continued)` or with a `# ... above ...` comment **append** to the file shown just above; they are not a new file. The full project tree is the [mandatory project layout from Architecture →](architecture.md#mandatory-project-layout).
 
 We'll build a complete `Users` feature from scratch, end to end. Every file below is something you write in your project; SDK primitives are imported.
 
@@ -741,4 +741,25 @@ Returns:
 ```
 
 ---
+
+## Recap
+
+You wired the **Users** feature end to end, one layer at a time, each backed by an SDK primitive:
+
+- **Model** — `UserModel(BaseModel)` gets `id` / `is_active` / `created_at` / `updated_at` + helpers for free.
+- **Schemas** — `UserCreateSchema` / `UserUpdateSchema` / `UserResponseSchema` / `UserFilterSchema` over `BaseSchema` / `BaseResponseSchema` / `BasePaginationFilterSchema`.
+- **Exceptions** — domain subclasses (`UserNotFoundError`, `UserEmailAlreadyTakenError`) serialized by `register_exception_handlers`.
+- **Repository** — `UserRepository(BaseRepository[UserModel])` — 20+ inherited methods + custom queries.
+- **Service** — `UserService(BaseService[...])` — business rules (email uniqueness, password hashing) over the inherited read-path.
+- **Controller** — `UserController(BaseController[...])` — orchestration (thin pass-through today, coordination tomorrow).
+- **Router** — endpoints with `UserController` injected via `Depends`, mounted under `/api/users`.
+- **Pagination** — `BasePaginationFilterSchema` → `paginate(...)` → `BasePaginationSchema[UserResponseSchema]` end to end.
+
+### Next steps
+
+- **[Auth flow »](recipes/auth-flow.en.md)** — swap the manual `signup` for `UserAuthService` + `make_auth_router` (signup + email activation + JWT login + password reset).
+- **[Database »](recipes/database.en.md)** — Alembic migrations, bulk operations, and the `BaseRepository` audit/soft-delete mixins.
+- **[Testing »](recipes/testing.en.md)** — test the feature with `pytest` + in-memory SQLite.
+- **[Server entry point »](recipes/http.en.md)** — middleware, CORS, health, tool-spec and `run_server`.
+- **[Security »](recipes/security.en.md)** — harden the service (rate limit, CSRF, idempotency, body-size limits).
 

@@ -35,7 +35,7 @@ The flow has two moments:
 Requires the `[mfa]` extra (installs `pyotp`), on top of `[auth]`:
 
 ```bash
-uv add "tempest-fastapi-sdk[auth,mfa]>=0.35.0"
+uv add "tempest-fastapi-sdk[auth,mfa]>=0.89.0"
 ```
 
 ### Columns via `MFAMixin`

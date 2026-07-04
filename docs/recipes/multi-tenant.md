@@ -18,7 +18,7 @@ errar.
 ```python
 from uuid import UUID
 
-from sqlalchemy import String, Uuid
+from sqlalchemy import Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import BaseModel

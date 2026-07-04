@@ -98,7 +98,10 @@ The same lifespan guard rails as the queue manager apply: `connect()`/`disconnec
 ## Periodic tasks scheduler
 
 
-`AsyncTaskScheduler` wraps `taskiq.TaskiqScheduler` + `LabelScheduleSource` so periodic tasks are declared with decorators alongside regular tasks and the scheduler is driven from the FastAPI lifespan. It **does not execute task bodies** — it kicks them into the same broker `AsyncTaskBrokerManager` wraps, so a worker process must be running to consume them. Requires the `[tasks]` extra.
+`AsyncTaskScheduler` wraps `taskiq.TaskiqScheduler` + `LabelScheduleSource` so periodic tasks are declared with decorators alongside regular tasks and the scheduler is driven from the FastAPI lifespan. Requires the `[tasks]` extra.
+
+!!! warning "The scheduler only enqueues — it does not execute"
+    `AsyncTaskScheduler` **does not execute task bodies** — it kicks them into the same broker `AsyncTaskBrokerManager` wraps, so a worker process must be running to consume them. With no worker active, the periodic kicks pile up in the queue and never run.
 
 ```python
 # src/tasks/__init__.py
@@ -163,6 +166,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await tasks.disconnect()
 ```
 
+!!! warning "Dev only"
+    `run_in_background()` runs the scheduler inside the FastAPI process — fine for development and single-process services. In production with multiple workers, every replica would run its own scheduler and double up the kicks; use the standalone CLI described below instead.
+
 Decorator surface:
 
 | Method | When to use |
@@ -219,6 +225,7 @@ class OutboxEventModel(BaseModel):
 ```python
 # src/db/repositories/outbox.py
 from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import BaseRepository
 
@@ -302,7 +309,18 @@ async def dispatch_outbox() -> None:
 Trade-offs to keep in mind:
 
 - **Order is best-effort.** When a batch contains one failing publish, every later event in the same batch still runs — but they're still published in `created_at` order. If strict ordering matters, break on the first failure.
-- **Single dispatcher.** The naive `claim_pending` does not lock rows; running multiple dispatcher workers will double-publish. Use `SELECT ... FOR UPDATE SKIP LOCKED` on PostgreSQL when you need to scale out.
 - **Retention.** Add a periodic `TRUNCATE`-style job to delete `dispatched` rows older than N days, otherwise the outbox table grows unbounded.
 - **At-least-once.** Consumers must be idempotent — the dispatcher can crash after publishing but before `mark_dispatched`.
+
+!!! danger "Single dispatcher — running several double-publishes"
+    The naive `claim_pending` does not lock rows: two dispatcher workers running at once claim the same batch and **publish every event twice**. Keep exactly one dispatcher process, or use `SELECT ... FOR UPDATE SKIP LOCKED` on PostgreSQL before scaling out.
+
+## Recap / next steps
+
+Pick the tool by what you need to guarantee:
+
+- **Message queue (`AsyncBrokerManager`)** — event-driven fan-out between services/consumers via FastStream; at-least-once delivery, decoupled from the request.
+- **Task queue (`AsyncTaskBrokerManager`)** — offload work from a request handler to a worker (`.kiq(...)`), keeping the HTTP response fast.
+- **Scheduler (`AsyncTaskScheduler`)** — periodic kicks (cron/interval); remember it only enqueues — a worker must consume.
+- **Outbox dispatcher** — when publishing *must* be atomic with the database write (no phantom or lost events on a crash). For the full model, producer service, and retention strategy, see the dedicated recipe in [Outbox](outbox.md).
 

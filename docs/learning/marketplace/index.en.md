@@ -45,6 +45,9 @@ When the service boots you have:
 - **RabbitMQ UI** at `http://localhost:15672` (`guest/guest`)
 - **MailHog UI** at `http://localhost:8025`
 
+!!! warning "Local-development credentials only"
+    The logins and passwords above (`minioadmin/minioadmin`, `guest/guest`, the `admin-pass-12` admin) are local-development defaults. Never deploy with them: rotate or replace every one with strong secrets before any shared or production environment.
+
 ## SDK stack exercised
 
 | Need | SDK primitive |

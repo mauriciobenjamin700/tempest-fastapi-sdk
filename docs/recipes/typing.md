@@ -160,3 +160,32 @@ def bad(a) -> int:                 # TypeError no import:
 - **(B)** para garantir o valor em runtime nas bordas: `strict_types`
   (sem coerção), `typed` (coage), `require_annotations` (exige anotação
   no import). Todos sobre `pydantic.validate_call`.
+
+## Enums base
+
+
+`BaseStrEnum` / `BaseIntEnum` estendem o `Enum` da stdlib com helpers ajustados para o round-trip Pydantic + SQLAlchemy (lookup por valor, herança serializável `str` / `int` em JSON, `__contains__` que aceita valores crus). Use-os em todo enum que cruza a fronteira da API.
+
+```python
+from tempest_fastapi_sdk import BaseIntEnum, BaseStrEnum
+
+
+class OrderStatus(BaseStrEnum):
+    PENDING = "pending"
+    PAID = "paid"
+    SHIPPED = "shipped"
+    CANCELLED = "cancelled"
+
+
+class Priority(BaseIntEnum):
+    LOW = 0
+    NORMAL = 1
+    HIGH = 2
+
+assert OrderStatus.PENDING == "pending"          # str inheritance
+assert "paid" in OrderStatus                      # raw value membership
+assert OrderStatus("paid") is OrderStatus.PAID    # canonical lookup
+assert Priority.NORMAL + 1 == Priority.HIGH       # int math
+```
+
+Por herdarem de `str` / `int`, o Pydantic os serializa de forma transparente como o valor subjacente e o SQLAlchemy consegue persisti-los pela coluna `Enum` padrão sem um conversor extra.

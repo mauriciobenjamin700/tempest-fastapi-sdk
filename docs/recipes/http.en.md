@@ -2,6 +2,23 @@
 
 Middlewares, dependencies, routers and middleware composition for the API surface.
 
+Here you assemble a service's entire HTTP surface from the primitives `tempest_fastapi_sdk` ships — without hand-writing middleware, exception handlers or bootstrap glue. Each section is independent: grab only the one you need right now. This recipe covers ~11 primitives:
+
+- **`create_app()` + `register_exception_handlers`** — the canonical bootstrap and the standardized error envelope (with optional i18n via `MessageCatalog`).
+- **`RequestIDMiddleware`** — `X-Request-ID` correlation on every log line.
+- **`apply_cors`** — CORS from `CORSSettings`.
+- **`make_health_router` / `make_token_dependency`** — liveness/readiness + the `X-Token` shared-secret guard.
+- **JWT / bearer / role / permission dependencies** — gate routes by token and by role.
+- **`RateLimitMiddleware`** — sliding window, key by IP/user/tenant, memory or Redis store.
+- **`WebhookSignatureVerifier` / `RSAWebhookSignatureVerifier`** — validate signed webhooks (HMAC or RSA).
+- **`build_pagination_link_header`** — GitHub-style RFC 8288 `Link` header.
+- **`make_tool_spec_router`** — machine-readable manifest at the root prefix.
+- **`run_server`** — programmatic uvicorn entry point.
+- **`BaseAppSettings` + `*Settings` mixins** — composable env-var configuration.
+
+!!! tip "The last three sections are full flows"
+    Authentication, uploads and transactional email appear here in condensed form; each has a dedicated, deeper recipe — see the [Recap](#recap-next-steps) at the end of the page.
+
 ## Application bootstrap
 
 
@@ -944,8 +961,14 @@ mailer = EmailUtils(
 ```python
 # src/services/password_reset.py
 from datetime import timedelta
+from uuid import UUID
 
-from tempest_fastapi_sdk import EmailUtils, JWTUtils, NotFoundException
+from tempest_fastapi_sdk import (
+    EmailUtils,
+    InvalidTokenException,
+    JWTUtils,
+    PasswordUtils,
+)
 
 from src.db.repositories import UserRepository
 
@@ -999,4 +1022,13 @@ class PasswordResetService:
 ```
 
 ---
+
+## Recap / next steps
+
+You now know the whole HTTP surface: app bootstrap, exception handlers with i18n, auth dependencies, rate limiting, webhook verification, pagination headers, tool-spec, the server entry point and settings composition. The last three sections (authentication, uploads, email) were a summary — each has a dedicated recipe that goes deeper:
+
+- [Authentication flow »](auth-flow.en.md) — the full bundled flow (`UserAuthService` + `make_auth_router`): signup, activation, login, password reset, refresh tokens and `current_user`.
+- [File uploads »](uploads.en.md) — pluggable storage backends (`LocalUploadStorage` / `MinIOUploadStorage`), presigned URLs and content validation.
+- [Transactional email »](email.en.md) — `EmailUtils` with Jinja2 templates, the bundled defaults (`activation.html`, `password_reset.html`) and how to shadow them.
+- [Private downloads »](downloads.en.md) — serving files behind auth with `DownloadUtils` (`file_response` / `stream`), without leaking public links.
 

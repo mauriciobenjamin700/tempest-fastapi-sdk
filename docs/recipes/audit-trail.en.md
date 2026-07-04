@@ -69,13 +69,19 @@ product = await repo.add_audited(ProductModel(name="Widget"), actor=str(user.id)
 the snapshot with `repo.snapshot(...)` before mutating the instance:
 
 ```python
-async def rename_product(repo: ProductRepository, product_id: UUID, name: str) -> None:
+from uuid import UUID
+
+
+async def rename_product(
+    repo: ProductRepository, product_id: UUID, name: str, actor: str
+) -> None:
     """Rename a product, recording the diff in the audit trail.
 
     Args:
         repo (ProductRepository): The product repository.
         product_id (UUID): The product id.
         name (str): The new name.
+        actor (str): Who performed the change.
 
     Raises:
         NotFoundException: If the product does not exist.
@@ -83,7 +89,7 @@ async def rename_product(repo: ProductRepository, product_id: UUID, name: str) -
     product = await repo.get_by_id(product_id)
     before = repo.snapshot(product)                  # ← before mutating
     product.name = name
-    await repo.update_audited(product, before, actor=str(user.id))
+    await repo.update_audited(product, before, actor=actor)
     # writes an UPDATE entry with {"name": {"before": "...", "after": "..."}}
 ```
 

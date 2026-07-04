@@ -32,7 +32,9 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[mfa]` | `pyotp` | `TOTPHelper` + endpoints MFA/2FA (TOTP) do fluxo bundled de auth |
 | `[sqlite]` | `aiosqlite` | driver async SQLite para URLs `sqlite+aiosqlite://` (default de dev) |
 | `[postgres]` | `asyncpg` | driver async PostgreSQL para URLs `postgresql+asyncpg://` (produção) |
-| `[all]` | tudo acima | todos os helpers |
+| `[vision]` | `ort-vision-sdk` | helpers de visão (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
+| `[otel]` | `opentelemetry-sdk`, exporter OTLP + instrumentações FastAPI/SQLAlchemy/httpx | instrumentação OpenTelemetry via `setup_tracing` |
+| `[all]` | tudo acima (inclui `[vision]` e `[otel]`) | todos os helpers |
 
 === "Subconjunto (recomendado)"
 
@@ -49,14 +51,14 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 === "uv add"
 
     ```bash
-    uv add "tempest-fastapi-sdk[auth,upload,postgres]>=0.41.0"
+    uv add "tempest-fastapi-sdk[auth,upload,postgres]>=0.89.0"
     ```
 
 === "pyproject.toml"
 
     ```toml
     dependencies = [
-        "tempest-fastapi-sdk[auth,upload,postgres]>=0.41.0",
+        "tempest-fastapi-sdk[auth,upload,postgres]>=0.89.0",
     ]
     ```
 

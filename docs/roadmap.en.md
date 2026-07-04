@@ -12,8 +12,8 @@ What the SDK **doesn't ship yet** + what already landed. Sorted by impact, not i
 | `IdempotencyMiddleware` + `idempotency_keys` | ✅ v0.24.0 | `tempest_fastapi_sdk.api.middlewares.idempotency` |
 | `UploadUtils` pluggable backends (`LocalUploadStorage`, `MinIOUploadStorage`) | ✅ v0.24.0 | `tempest_fastapi_sdk.utils.storage_backends` |
 | `HTTPClient` (typed httpx wrapper) with retry/backoff/circuit-breaker | ✅ v0.28.0 | `tempest_fastapi_sdk.utils.http_client` |
-| **OpenTelemetry tracing** — `setup_tracing(app, otlp_endpoint=…)` | ❌ pending | — |
-| **Outbox pattern** — `BaseRepository.save_with_outbox(model, event)` | ❌ pending | — |
+| **OpenTelemetry tracing** — `setup_tracing(app, otlp_endpoint=…)` | ✅ v0.43.0 | `tempest_fastapi_sdk.api.tracing` |
+| **Outbox pattern** — `BaseRepository.save_with_outbox(model, event)` | ✅ v0.44.0 | `BaseRepository.save_with_outbox` + `tempest_fastapi_sdk.db.outbox` |
 
 ## Tier A — common in SaaS backends
 
@@ -32,23 +32,23 @@ What the SDK **doesn't ship yet** + what already landed. Sorted by impact, not i
 | 2FA / TOTP (`pyotp` wrapper + recovery codes) | ✅ v0.35.0 | `TOTPHelper` + `UserAuthService.mfa_*` + `BaseUserRecoveryCodeModel` |
 | `tempest db` + `tempest user` CLI | ✅ v0.30.0 | `tempest_fastapi_sdk.cli.db` / `cli.user` |
 | `BaseRepository.bulk_update` (filters + values) | ✅ pre-existing | `BaseRepository.bulk_update` |
-| **Multi-tenant scope** — `TenantScopedRepository(tenant_id)` auto-injecting `WHERE tenant_id = …` on every repository query | ❌ pending | — |
+| **Multi-tenant scope** — `TenantScopedRepository(tenant_id)` auto-injecting `WHERE tenant_id = …` on every repository query | ✅ v0.45.0 | `tempest_fastapi_sdk.db.tenant` |
 
 ## Tier B — when the service grows
 
-| Feature | Status |
-|---------|--------|
-| `SlowQueryLogger` — SQLAlchemy event logging queries > N ms with `EXPLAIN` | ❌ pending |
-| `AlembicHelper.safe_upgrade()` — block destructive migrations without `--force` | ❌ pending |
-| Graceful shutdown — drain in-flight requests on `SIGTERM` | ❌ pending |
-| F() / Q() expression wrappers for SQLAlchemy | ❌ pending |
-| eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) | ❌ pending |
-| Signals (`pre_save`/`post_save`/`pre_delete`) via SQLAlchemy events on `BaseRepository` | ❌ pending |
-| Object-level permissions framework (`user.has_perm("order.delete", obj=order)`) | ❌ pending |
-| Startup system checks (`tempest check-config`) | ❌ pending |
-| Management commands framework — project-registered `tempest <cmd>` | ❌ pending |
-| `tempest db seed` — load JSON/Python fixtures | ❌ pending |
-| CLI: `tempest secrets rotate` | ❌ pending |
+| Feature | Status | Where |
+|---------|--------|-------|
+| `SlowQueryLogger` — SQLAlchemy event logging queries > N ms with `EXPLAIN` | ✅ v0.59.1 | `tempest_fastapi_sdk.db.slow_query` |
+| `AlembicHelper.safe_upgrade()` — block destructive migrations without `--force` | ✅ v0.46.0 | `AlembicHelper.safe_upgrade` (`tempest_fastapi_sdk.db.migrations`) |
+| Graceful shutdown — drain in-flight requests on `SIGTERM` | ✅ v0.46.0 | `GracefulShutdownMiddleware` (`tempest_fastapi_sdk.api.middlewares.graceful`) |
+| `tempest db seed` — load JSON/Python fixtures | ✅ v0.47.0 | `tempest_fastapi_sdk.cli.db` |
+| CLI: `tempest secrets rotate` | ✅ v0.47.0 | `tempest_fastapi_sdk.cli.secrets` |
+| F() / Q() expression wrappers for SQLAlchemy | ❌ pending | — |
+| eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) | ❌ pending | — |
+| Signals (`pre_save`/`post_save`/`pre_delete`) via SQLAlchemy events on `BaseRepository` | ❌ pending | — |
+| Object-level permissions framework (`user.has_perm("order.delete", obj=order)`) | ❌ pending | — |
+| Startup system checks (`tempest check-config`) | ❌ pending | — |
+| Management commands framework — project-registered `tempest <cmd>` | ❌ pending | — |
 
 ## Admin panel — evolution
 
@@ -67,81 +67,17 @@ The admin panel already exists (`AdminSite` / `AdminModel` / `make_admin_router`
 
 ## Everything shipped so far
 
-### ✅ v0.23.0 — MinIO/S3 storage
-
-`AsyncMinIOClient` via the `[minio]` extra — bucket lifecycle, object I/O, streaming download, presigned URLs.
-
-### ✅ v0.24.0 — Pluggable uploads + idempotency + email templates
-
-- `UploadStorage` protocol + `LocalUploadStorage` + `MinIOUploadStorage`
-- `IdempotencyMiddleware` + `MemoryIdempotencyStore` + `RedisIdempotencyStore`
-- `EmailUtils.render_template(template, ctx)` with Jinja2 + autoescape
-
-### ✅ v0.25.0 — CLI docker-compose generator
-
-`tempest new` emits a `docker-compose.yaml` matching the chosen extras. Postgres always, `[cache]`→Redis, `[queue]`/`[tasks]`→RabbitMQ, `[minio]`→MinIO + bootstrap, `[email]`→MailHog. Pinned tags. `.env.example` receives an addendum.
-
-### ✅ v0.26.0 — `tempest generate --docker` + image bumps
-
-Regenerates compose in an existing project. Postgres 18 / Redis 8 / RabbitMQ 4. Pydantic schemas + settings carry `title`/`description`/`examples`.
-
-### ✅ v0.28.0 — Observability + retries
-
-- Prometheus `/metrics` endpoint + `PrometheusMiddleware`
-- `HTTPClient` (typed httpx wrapper) with retry/backoff/circuit-breaker/`X-Request-ID` propagation
-- `BodySizeLimitMiddleware`
-- `BaseRepository.bulk_create_values` + `bulk_upsert`
-
-### ✅ v0.29.0 — Security middlewares + OAuth providers
-
-- `CSRFMiddleware` + `make_csrf_token_dependency`
-- OAuth2/OIDC: `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`
-- Fixed Postgres 18 mount path in docker-compose
-
-### ✅ v0.29.1 — Scaffold with UserModel + admin wiring
-
-`tempest new` now generates a concrete `UserModel` + wires the admin panel out of the box. Default extras `auth,admin`.
-
-### ✅ v0.30.0 — `tempest db` + `tempest user`
-
-- `tempest db init/revision/upgrade/downgrade/current/history`
-- `tempest user create [--admin]` + `tempest user list [--admin]`
-- `DATABASE_URL` resolution: flag → env → settings → ini
-
-### ✅ v0.30.1 — Alembic reorder hook
-
-`reorder_base_columns_first` hook emits `id`, `is_active`, `created_at`, `updated_at` at the top of every autogenerated `op.create_table`.
-
-### ✅ v0.30.2 — Empty `sqlalchemy.url` in `alembic.ini`
-
-Credentials no longer enter VCS. `env.py` resolves the URL at runtime.
-
-### ✅ v0.30.3 — Quiet post-write hooks
-
-`ruff_format` runs before `ruff_fix` + `--quiet` on both — no stdout noise during `tempest db revision`.
-
-### ✅ v0.31.0 — Bundled auth flow
-
-- `UserAuthService` — signup / activate / login / request_password_reset / confirm_password_reset
-- `make_auth_router` — 5 endpoints ready to mount
-- `BaseUserTokenModel` + `UserTokenPurpose` (activation/password_reset/email_verification)
-- `AuthSettings` mixin — `AUTH_AUTO_ACTIVATE`, `AUTH_RETURN_TOKEN_IN_RESPONSE`, TTLs, URL templates
-- Bundled Jinja2 templates (override by dropping a same-named file in `template_dir`)
-
-### ✅ v0.31.1 — BaseSchema for tokens + full docstrings
-
-`ActivationToken` / `PasswordResetToken` rewritten as `BaseSchema` (no more dataclass leak). Every auth DTO carries a thorough class docstring.
-
-### ✅ v0.31.2 — `session: AsyncSession` everywhere in UserAuthService
-
-`Any` removed — all 7 service signatures type `AsyncSession`.
+The full release history — every version with its **Added** / **Changed** / **Fixed** entries — lives in the [changelog](changelog.md), in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. It's the source of truth; this page only highlights what's still missing.
 
 ## What's next
 
+Genuinely unreleased work (after v0.89.0). Ordered by impact, not by version number — the current release is pulled by business pressure.
+
 | Release | Content |
 |---------|---------|
-| **v0.32.0+** | OpenTelemetry tracing (`setup_tracing(app, otlp_endpoint=…)`) with FastAPI/SQLAlchemy/httpx auto-instrumentation |
-| **v0.33.0+** | Outbox pattern (`BaseRepository.save_with_outbox(model, event)`) drained by `AsyncBrokerManager` |
+| **v0.90.0+** | eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) + signals (`pre_save`/`post_save`/`pre_delete`) via SQLAlchemy events on `BaseRepository` |
+| **v0.90.0+** | Object-level permissions framework (`user.has_perm("order.delete", obj=order)`) |
+| **future** | F() / Q() expression wrappers, startup system checks (`tempest check-config`), management commands framework (project-registered `tempest <cmd>`) |
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.

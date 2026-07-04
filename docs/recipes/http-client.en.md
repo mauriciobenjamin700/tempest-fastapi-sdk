@@ -18,16 +18,21 @@ from typing import Any
 
 from tempest_fastapi_sdk import HTTPClient
 
-client = HTTPClient(base_url="https://api.example.com", timeout=10.0)
-
 
 async def fetch_user(user_id: str) -> dict[str, Any]:
     """GET /users/{id} on the external service."""
-    async with client:
+    async with HTTPClient(base_url="https://api.example.com", timeout=10.0) as client:
         response = await client.get(f"/users/{user_id}")
         response.raise_for_status()
         return response.json()
 ```
+
+!!! warning "Don't reuse a client that's already closed"
+    Leaving the `async with` block calls `__aexit__`, which closes the
+    connection pool (`aclose()`). For one-off calls, build the client inside the
+    `async with` as above. To reuse it across requests, keep a singleton and
+    close it **once** on the lifespan (see the circuit-breaker example below) —
+    never wrap each call of a shared singleton in `async with`.
 
 Methods: `get` / `post` / `put` / `patch` / `delete` (plus a generic
 `request`), all forwarding kwargs to httpx (`json=`, `params=`, `headers=`,
@@ -38,6 +43,11 @@ Methods: `get` / `post` / `put` / `patch` / `delete` (plus a generic
 Pass a `RetryPolicy` and tune the breaker thresholds at construction:
 
 ```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import CircuitOpenError, HTTPClient, RetryPolicy
 
 client = HTTPClient(
@@ -55,10 +65,18 @@ client = HTTPClient(
 )
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Close the shared connection pool on shutdown."""
+    yield
+    await client.aclose()
+
+
 async def call() -> None:
+    # Shared singleton — call it directly, no per-call `async with`
+    # (that would close the pool). The pool is closed once in the lifespan above.
     try:
-        async with client:
-            await client.post("/charge", json={"amount": 100})
+        await client.post("/charge", json={"amount": 100})
     except CircuitOpenError:
         # The circuit is open — don't hammer the downed upstream.
         ...

@@ -64,16 +64,26 @@ CustomerCreateSchema(...).phone     # "5511988887777"
 #### Validação manual (services, controllers, handlers de fila)
 
 ```python
-from tempest_fastapi_sdk.utils import (
-    is_valid_cpf_cnpj,
-    normalize_cpf_cnpj,
-    only_digits,
-)
+from tempest_fastapi_sdk.exceptions import ValidationException
+from tempest_fastapi_sdk.utils import is_valid_cpf_cnpj, normalize_cpf_cnpj
 
-if not is_valid_cpf_cnpj(raw_document):
-    raise ValidationException(message="Documento inválido")
 
-document_digits = normalize_cpf_cnpj(raw_document)
+def validate_document(raw_document: str) -> str:
+    """Valida um CPF/CNPJ e devolve a forma canônica só-dígitos.
+
+    Args:
+        raw_document (str): O documento vindo do payload (com ou sem máscara).
+
+    Returns:
+        str: O documento normalizado, apenas dígitos.
+
+    Raises:
+        ValidationException: Se o documento for inválido.
+    """
+    if not is_valid_cpf_cnpj(raw_document):
+        raise ValidationException(message="Documento inválido")
+
+    return normalize_cpf_cnpj(raw_document)
 ```
 
 #### Filtrando pelos dígitos armazenados
@@ -125,7 +135,7 @@ print(len(states))  # 27
 
 # Um estado específico (sigla em qualquer caixa, ou um membro de UF).
 sp = get_state("sp")
-print(sp.uf, sp.name, sp.region)        # UF.SP São Paulo Region.SOUTHEAST
+print(sp.uf, sp.name, sp.region)        # SP São Paulo Sudeste
 print(len(sp.cities), sp.cities[:2])    # 645 ['Adamantina', 'Adolfo']
 
 # Agrupando por região.

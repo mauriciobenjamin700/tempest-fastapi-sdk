@@ -112,7 +112,7 @@ Use for large files — chunk-by-chunk avoids loading everything in memory:
 from fastapi import APIRouter
 from starlette.responses import Response
 
-from src.api.dependencies.resources import storage
+from src.api.app import storage
 
 router = APIRouter()
 

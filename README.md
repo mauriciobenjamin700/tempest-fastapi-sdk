@@ -91,7 +91,7 @@ Via `pyproject.toml`:
 
 ```toml
 dependencies = [
-    "tempest-fastapi-sdk>=0.41.0",
+    "tempest-fastapi-sdk>=0.89.0",
 ]
 ```
 
@@ -941,7 +941,7 @@ tokens = JWTUtils(
 
 #### Signup
 
-Reuse the `UserService.create` defined in the tutorial — it already hashes the password.
+Reuse the `UserService.signup` defined in the tutorial — it already hashes the password.
 
 #### Login
 
@@ -4077,9 +4077,6 @@ Short version — recently shipped and what's next:
   auth DTO carries a full docstring.
 - **v0.31.2** — `UserAuthService` methods type `session` as
   `AsyncSession` everywhere (no more `Any`).
-
-Still on the roadmap: OpenTelemetry tracing + outbox pattern
-for transactional events. Tracked on the docs page.
 
 ---
 

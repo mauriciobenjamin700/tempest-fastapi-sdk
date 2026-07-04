@@ -7,6 +7,7 @@ Toda a API REST do marketplace numa tabela só, pronta pra colar no contrato do 
     - **Idem**: ✅ = aceita `Idempotency-Key` (cacheado pelo `IdempotencyMiddleware`).
     - **Paginação**: cursor por padrão; offset onde explícito.
     - **Erros**: todo erro vem no envelope SDK `{detail, code, details}`.
+    - **Regras `X-NN`**: os códigos citados nas descrições (ex.: `regra O-02`, `regra D-01`) remetem à página de [regras de negócio](business-rules.md), onde cada regra está detalhada.
 
 ## Auth
 

@@ -4,7 +4,6 @@ Esta página é o **contrato do domínio**. Toda decisão de modelagem, endpoint
 
 !!! warning "Convenção de severidade"
     **MUST** = invariante de domínio, violação é bug.
-    **SHOULD** = comportamento padrão, override exige justificativa.
     **MAY** = abertura intencional, decidir caso a caso.
 
 ## 1. Usuários

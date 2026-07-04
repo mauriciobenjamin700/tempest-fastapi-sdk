@@ -21,7 +21,7 @@ tempest --version                               # mostra a versão do SDK
     # Error: Missing option '--email' / '-e'.
     ```
 
-#### Gerar um novo serviço
+### Gerar um novo serviço
 
 ```bash
 tempest new my_service                          # gera em ./my_service
@@ -33,13 +33,13 @@ tempest new my_service \
 tempest new my_service --force                  # sobrescreve diretório existente
 ```
 
-O esqueleto casa com a arquitetura em camadas documentada neste README:
+O esqueleto casa com a arquitetura em camadas documentada em [Arquitetura »](../architecture.md):
 
 ```text
 my_service/
 ├── main.py                  # one-liner → src.server.run()
 ├── pyproject.toml           # fixa tempest-fastapi-sdk + ruff/mypy/pytest
-├── .env.example             # TITLE/VERSION/HOST/PORT/DATABASE_URL/JWT_SECRET/CORS_ORIGINS
+├── .env.example             # TITLE/VERSION/SERVER_HOST/SERVER_PORT/DATABASE_URL/JWT_SECRET/CORS_ORIGINS
 ├── docker-compose.yaml      # serviços baseados nos extras escolhidos
 ├── .gitignore
 ├── README.md
@@ -446,7 +446,7 @@ tempest secrets rotate --length 64 --no-backup
 !!! warning
     Rotacionar `JWT_SECRET` invalida todo token assinado com o valor antigo: usuários são deslogados e links de reset/ativação pendentes param de funcionar. Rotacione numa janela de manutenção e reinicie o serviço pra carregar os novos valores.
 
-#### Gates de qualidade
+### Gates de qualidade
 
 Os comandos de lint chamam a ferramenta do projeto. Eles procuram o executável no `PATH` primeiro e, caso contrário, caem para `uv run <tool>` para que um virtualenv local do projeto funcione sem ativação manual.
 
@@ -481,3 +481,20 @@ tempest check                                   # lint + fmt-check + type + test
     `# noqa: E501`.
 
 Todo comando retorna o exit code da ferramenta subjacente, então `tempest check` é seguro para conectar ao CI (`tempest check || exit 1`) ou a hooks de pre-commit. Quando nem o executável nem o `uv` estão no `PATH`, o wrapper imprime `error: '<tool>' is not on PATH and 'uv' is unavailable` e sai com `127` em vez de falhar silenciosamente.
+
+---
+
+## Próximos passos
+
+**Recap:** o `tempest` cobre o ciclo inteiro — do scaffold (`new`),
+passando pela infra (`generate --docker` / `--dockerfile` / `--src`),
+migrações (`db`), usuários (`user`) e segredos (`secrets`), até os gates
+de qualidade (`lint` / `fix` / `type` / `test` / `check`). Depois de gerar
+o serviço, siga para as receitas relacionadas:
+
+- [Banco de dados »](database.md) — `BaseRepository`, sessões async e o
+  fluxo de migrações por trás do `tempest db`.
+- [Filas e tarefas »](queue-tasks.md) — as camadas que `tempest generate
+  --src` gera para os extras `[queue]` (FastStream) e `[tasks]` (TaskIQ).
+- [Deploy seguro »](deploy-safety.md) — migrações destrutivas e shutdown
+  gracioso ao containerizar com o `Dockerfile` gerado.
