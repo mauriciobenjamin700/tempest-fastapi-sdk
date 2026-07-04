@@ -180,6 +180,28 @@ async def get_download_url(key: str) -> dict[str, str]:
     return {"url": url}
 ```
 
+### Endpoint público separado para presigned URLs *(v0.88.0+)*
+
+Cenário comum em produção: o backend fala com o MinIO por uma **rede privada rápida** (`servus-storage:9000`, sem TLS), mas o **browser** não alcança esse host — precisa de um host **público com HTTPS**. Se você assinar a presigned URL com o endpoint interno, o link vem com `servus-storage:9000` e o navegador não abre.
+
+Solução: `MINIO_PUBLIC_ENDPOINT`. As presigned URLs (`presigned_get_url` / `presigned_put_url`) passam a ser **assinadas contra o host público**, enquanto **todas as operações servidor→MinIO continuam no endpoint interno**.
+
+```bash
+# .env
+MINIO_ENDPOINT=servus-storage:9000            # rede interna Docker (ops)
+MINIO_SECURE=false
+MINIO_PUBLIC_ENDPOINT=https://storage.example.com   # browser (presigned)
+# MINIO_PUBLIC_SECURE=true                     # opcional; https:// já implica true
+```
+
+!!! info "Por que dois clients e não um replace de host"
+    A presigned URL é assinada (SigV4) incluindo o header `Host`. Trocar o host **depois** de assinar invalida a assinatura. Por isso o SDK mantém um segundo `minio.Minio` (mesmas credenciais) só para **assinar** contra o host público — o `AsyncMinIOClient.client` interno segue fazendo put/get/stat/ensure_bucket pela rede privada.
+
+!!! tip "Sem `MINIO_PUBLIC_ENDPOINT`"
+    Comportamento inalterado: presigned URLs são assinadas com `MINIO_ENDPOINT` (modo endpoint único). O split é 100% opt-in.
+
+O proxy do host público precisa rotear para a **API S3 do MinIO (porta 9000)** com TLS e repassar o `Host` correto (a assinatura valida o host).
+
 ### Listar objetos por prefixo
 
 ```python

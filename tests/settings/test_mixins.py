@@ -182,6 +182,8 @@ class TestMixinDefaults:
             "default_bucket",
             "secure",
             "region",
+            "public_endpoint",
+            "public_secure",
         }
         assert AsyncMinIOClient(**kwargs) is not None
 

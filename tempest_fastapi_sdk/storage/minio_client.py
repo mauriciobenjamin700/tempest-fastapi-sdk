@@ -101,11 +101,14 @@ class AsyncMinIOClient:
         secure: bool = False,
         region: str = "us-east-1",
         session_token: str | None = None,
+        public_endpoint: str | None = None,
+        public_secure: bool | None = None,
     ) -> None:
         """Initialize the client.
 
         Args:
-            endpoint (str): ``host[:port]`` without scheme.
+            endpoint (str): ``host[:port]`` without scheme. Used for
+                every server-side operation.
             access_key (str): S3 access key.
             secret_key (str): S3 secret key.
             default_bucket (str): Bucket used by object operations
@@ -116,6 +119,18 @@ class AsyncMinIOClient:
                 AWS S3; any value works for MinIO.
             session_token (str | None): Optional STS session token
                 for temporary credentials.
+            public_endpoint (str | None): Split-endpoint mode. When set,
+                presigned URLs (:meth:`presigned_get_url` /
+                :meth:`presigned_put_url`) are signed against this host
+                instead of ``endpoint`` — for deployments where the
+                backend reaches MinIO over a private network but the
+                browser must hit a public, TLS-terminated host. A
+                ``scheme://`` prefix and any trailing path are stripped,
+                and ``https://`` implies ``public_secure=True``. ``None``
+                signs presigned URLs with ``endpoint`` (unchanged).
+            public_secure (bool | None): HTTPS for ``public_endpoint``.
+                ``None`` falls back to ``secure`` (unless a ``https://``
+                scheme on ``public_endpoint`` forces it).
 
         Raises:
             ImportError: When the ``minio`` package is not
@@ -142,6 +157,65 @@ class AsyncMinIOClient:
             region=region,
             session_token=session_token,
         )
+
+        # Split-endpoint: a second client, same credentials, whose only job
+        # is to sign presigned URLs against the public host. SigV4 signs the
+        # Host header, so the URL must be *signed* with the public endpoint —
+        # rewriting the host afterwards would invalidate the signature.
+        self.public_endpoint: str | None = None
+        self._presign_client: Minio = self.client
+        if public_endpoint:
+            host, resolved_secure = self._split_public_endpoint(
+                public_endpoint, default_secure=secure, override=public_secure
+            )
+            self.public_endpoint = host
+            self.public_secure: bool = resolved_secure
+            self._presign_client = Minio(
+                host,
+                access_key=access_key,
+                secret_key=secret_key,
+                secure=resolved_secure,
+                region=region,
+                session_token=session_token,
+            )
+        else:
+            self.public_secure = secure
+
+    @staticmethod
+    def _split_public_endpoint(
+        endpoint: str,
+        *,
+        default_secure: bool,
+        override: bool | None,
+    ) -> tuple[str, bool]:
+        """Parse a public endpoint into ``(host[:port], secure)``.
+
+        Accepts a bare ``host[:port]`` or a ``scheme://host[:port]/path``
+        value (``minio-py`` rejects scheme/path, so both are stripped).
+        The ``secure`` flag is resolved as: explicit ``override`` →
+        ``https`` scheme → ``default_secure``.
+
+        Args:
+            endpoint (str): The configured public endpoint.
+            default_secure (bool): Fallback when no scheme / override.
+            override (bool | None): Explicit ``public_secure`` value.
+
+        Returns:
+            tuple[str, bool]: The bare host and the resolved secure flag.
+        """
+        value = endpoint.strip()
+        scheme_secure: bool | None = None
+        if "://" in value:
+            scheme, _, value = value.partition("://")
+            scheme_secure = scheme.lower() == "https"
+        host = value.split("/", 1)[0].rstrip("/")
+        if override is not None:
+            secure = override
+        elif scheme_secure is not None:
+            secure = scheme_secure
+        else:
+            secure = default_secure
+        return host, secure
 
     async def __aenter__(self) -> AsyncMinIOClient:
         """Enter the async context — no-op, returns self.
@@ -680,7 +754,7 @@ class AsyncMinIOClient:
         """
         target = self._bucket(bucket)
         return await asyncio.to_thread(
-            self.client.presigned_get_object,
+            self._presign_client.presigned_get_object,
             target,
             key,
             expires,
@@ -710,7 +784,7 @@ class AsyncMinIOClient:
         """
         target = self._bucket(bucket)
         return await asyncio.to_thread(
-            self.client.presigned_put_object,
+            self._presign_client.presigned_put_object,
             target,
             key,
             expires,

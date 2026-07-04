@@ -5,6 +5,23 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.88.0] — 2026-07-03
+
+### Added
+
+- **Split-endpoint presigned URLs for MinIO/S3.** `AsyncMinIOClient`
+  gained `public_endpoint` / `public_secure` args, and `MinIOSettings`
+  the matching `MINIO_PUBLIC_ENDPOINT` / `MINIO_PUBLIC_SECURE`. When set,
+  `presigned_get_url` / `presigned_put_url` are signed against the public
+  host (so the browser can reach them) while every server-side operation
+  keeps using the internal `MINIO_ENDPOINT` (fast private network). A
+  second `minio.Minio` client signs the URLs — the host is part of the
+  SigV4 signature, so it must be signed against the public endpoint
+  rather than rewritten afterwards. Fully opt-in: without
+  `MINIO_PUBLIC_ENDPOINT`, presigned URLs are signed with `MINIO_ENDPOINT`
+  as before. A `https://` scheme (or trailing path) on the public
+  endpoint is tolerated and stripped; `https://` implies HTTPS.
+
 ## [0.87.1] — 2026-07-02
 
 ### Fixed
