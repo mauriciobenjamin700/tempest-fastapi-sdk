@@ -144,7 +144,7 @@ Pick what fits. None of these are required.
   `TASKIQ_*` fields out of the project's `Settings` and onto the
   matching SDK mixin ([Settings mixins composition](recipes/http.md#settings-mixins-composition)).
 - Adopt the
-  [`Outbox dispatcher pattern`](recipes/queue-tasks.md#outbox-dispatcher-pattern) if
+  [`Outbox`](recipes/outbox.md) if
   you already write side-effects from the same transaction as your
   domain rows.
 

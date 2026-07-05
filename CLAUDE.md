@@ -157,7 +157,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `/subscribe` + `/unsubscribe`, aligned with `tempest-react-sdk`);
   webhook signatures.
 - **Cache** — Redis manager + `@cached`.
-- **Queue / tasks** — FastStream + TaskIQ wrappers.
+- **Queue / tasks** — typed facades hiding FastStream + TaskIQ:
+  `MessageBroker` (`.rabbitmq`/`.redis`/`.kafka`/`.nats`, `@mq.on(channel)`
+  consumer, channel-first `publish(channel, message)`, `.broker` escape
+  hatch) and `TaskQueue` (`.rabbitmq`/`.redis`/`.memory`, `@tq.task` →
+  `Task.enqueue`/`.run`, folded `@tq.cron`/`@tq.interval` +
+  `start_scheduler`, `tq.broker`/`tq.scheduler` for the CLIs). Legacy
+  `AsyncBrokerManager`/`AsyncTaskBrokerManager`/`AsyncTaskScheduler` kept
+  as working aliases. Outbox (`BaseOutboxModel`/`OutboxRelay`/
+  `save_with_outbox`) plugs its `publish` into `MessageBroker.publish`.
 - **BR validators** — CPF/CNPJ/CEP/phone, with `*Field` Pydantic types
   (`CPFField`/`CNPJField`/`CPFOrCNPJField`/`PhoneBRField`/`CEPField`;
   pre-0.76 unsuffixed names kept as deprecated aliases).

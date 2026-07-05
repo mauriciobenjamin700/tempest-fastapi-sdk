@@ -144,7 +144,7 @@ Escolha o que se encaixa. Nenhum deles é obrigatório.
   `TASKIQ_*` do `Settings` do projeto para o mixin correspondente do
   SDK ([Composição de mixins de settings](recipes/http.md#composicao-de-mixins-de-settings)).
 - Adote o
-  [`padrão de outbox dispatcher`](recipes/queue-tasks.md#padrao-outbox-dispatcher) se
+  [`Outbox`](recipes/outbox.md) se
   você já escreve efeitos colaterais a partir da mesma transação que
   grava as linhas de domínio.
 

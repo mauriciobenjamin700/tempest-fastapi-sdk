@@ -51,8 +51,8 @@ The goal is to start every new backend with the same opinionated foundation alre
   - [Redis cache (`AsyncRedisManager`)](#redis-cache-recipe)
   - [Server-Sent Events (SSE)](#server-sent-events-recipe)
   - [Web Push notifications](#web-push-notifications-recipe)
-  - [Message queues — FastStream (`AsyncBrokerManager`)](#message-queues--faststream-recipe)
-  - [Background tasks — TaskIQ (`AsyncTaskBrokerManager`)](#background-tasks--taskiq-recipe)
+  - [Message queues — FastStream (`MessageBroker`)](#message-queues--faststream-recipe)
+  - [Background tasks — TaskIQ (`TaskQueue`)](#background-tasks--taskiq-recipe)
   - [Periodic tasks scheduler (`AsyncTaskScheduler`)](#periodic-tasks-scheduler-recipe)
   - [System metrics (`MetricsUtils`)](#system-metrics-recipe)
   - [Programmatic server entry point (`run_server`)](#programmatic-server-entry-point-recipe)
@@ -109,8 +109,8 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[cache]` | `redis` | `AsyncRedisManager` |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher`, `WebPushSubscriptionService`, `BaseWebPushSubscriptionModel`, `make_web_push_router` |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
-| `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` (FastStream) |
-| `[tasks]` | `taskiq`, `taskiq-aio-pika` | `AsyncTaskBrokerManager` (TaskIQ) |
+| `[queue]` | `faststream[rabbit]` | `MessageBroker` (typed FastStream facade) |
+| `[tasks]` | `taskiq`, `taskiq-aio-pika` | `TaskQueue` (typed TaskIQ facade) |
 | `[admin]` | `jinja2`, `itsdangerous` | `AdminSite`, `AdminModel`, `make_admin_router` |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `ObjectStat`, `MinIOSettings` |
 | `[http]` | `httpx` | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, OAuth2 / OIDC providers |
@@ -153,17 +153,17 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager`, `cached` (with `namespace` / `tags`), `CacheInvalidator`, `namespace_registry_key`, `tag_registry_key` |
 | `tempest_fastapi_sdk.flags` | `FeatureFlags`, `FeatureFlagBackend`, `MemoryFeatureFlagBackend`, `EnvFeatureFlagBackend`, `RedisFeatureFlagBackend`, `CompositeFeatureFlagBackend`, `make_flag_dependency`, `coerce_flag` |
 | `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushSubscriptionService`, `make_web_push_router`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
-| `tempest_fastapi_sdk.queue` *(extra: `[queue]`)* | `AsyncBrokerManager` (FastStream lifecycle wrapper) |
+| `tempest_fastapi_sdk.queue` *(extra: `[queue]`)* | `MessageBroker` (typed, transport-agnostic FastStream facade — `.rabbitmq`/`.redis`/`.kafka`/`.nats`, `@mq.on(channel)`, channel-first `publish`); `AsyncBrokerManager` (legacy lifecycle wrapper) |
 | `tempest_fastapi_sdk.storage` *(extra: `[minio]`)* | `AsyncMinIOClient`, `ObjectStat` — async MinIO/S3 facade |
 | `tempest_fastapi_sdk.utils.http_client` *(extra: `[http]`)* | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, `REQUEST_ID_HEADER` — typed httpx wrapper |
 | `tempest_fastapi_sdk.utils.storage_backends` *(extra: `[upload]`)* | `UploadStorage` protocol, `LocalUploadStorage`, `MinIOUploadStorage`, `UploadResult`, `ContentValidator` |
-| `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `AsyncTaskBrokerManager` (TaskIQ lifecycle wrapper), `AsyncTaskScheduler` (periodic / cron tasks) |
+| `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `TaskQueue` (typed TaskIQ facade — `.rabbitmq`/`.redis`/`.memory`, `@tq.task` → `Task.enqueue`/`.run`, `@tq.cron`/`@tq.interval`, `start_scheduler`), `Task`; `AsyncTaskBrokerManager` / `AsyncTaskScheduler` (legacy wrappers) |
 | `tempest_fastapi_sdk.vision` *(extra: `[vision]`)* | `Detector`, `Classifier`, `Segmenter` (ONNX, lazy), `DetectionSchema`/`ClassificationSchema`/`SegmentationSchema`/`BoundingBoxSchema`/`ClassProbabilitySchema`, `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas` |
 | `tempest_fastapi_sdk.ssr` *(extra: `[ssr]`)* | `Page` (typed component base), `html_response` (widget tree → `HTMLResponse`, full document or HTMX fragment), `make_htmx_router` (serves bundled HTMX locally, no CDN) |
 | `tempest_fastapi_sdk.utils` | `to_utc`, `utcnow`, `modify_dict`, `LogUtils`, `AttemptThrottle`/`ThrottleBackend`/`ThrottleStatus`, `generate_opaque_token`/`hash_opaque_token`/`verify_opaque_token`, `get_client_ip`/`get_client_ip_from_scope`, `PasswordUtils` *(extra: `[auth]`)*, `JWTUtils` *(extra: `[auth]`)*, `TOTPHelper` *(extra: `[mfa]`)*, `EmailUtils` *(extra: `[email]`)*, `UploadUtils`/`sniff_mime` *(extra: `[upload]`)*, `DownloadUtils`/`build_content_disposition` *(no extra)*, `FileStoreUtils` — unified upload+download+presign facade *(extra: `[upload]` local / `[minio]` MinIO)*, `MetricsUtils`/`CPUMetrics`/`MemoryMetrics`/`DiskMetrics`/`GPUMetrics`/`SystemMetrics` *(extra: `[metrics]`)*, validated field types (`PositiveIntField`, `NonNegativeIntField`, `CentsField`, `PortField`, `PositiveFloatField`, `NonNegativeFloatField`, `PercentField`, `RatioField`, `LatitudeField`, `LongitudeField`, `PriceField`, `NonEmptyStrField`, `SlugField`, `HexColorField`), BR regex helpers (`CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField` — old names without the suffix kept as deprecated aliases — `is_valid_*`, `normalize_*`, `only_digits`, `*_PATTERN`), BR states/cities (`UF`, `Region`, `StateBR`, `CityBR`, `ChoiceBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `uf_choices`/`region_choices`/`city_choices`, `is_valid_uf`/`normalize_uf`, `is_valid_city`/`normalize_city`) |
 | `tempest_fastapi_sdk.cli` | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `version` / `--version` |
 
-Core primitives are re-exported from `tempest_fastapi_sdk` at the top level — `from tempest_fastapi_sdk import BaseModel, BaseRepository, AppException` always works. The extras-gated managers in `tempest_fastapi_sdk.cache`, `tempest_fastapi_sdk.queue`, `tempest_fastapi_sdk.tasks`, `tempest_fastapi_sdk.vision` and `tempest_fastapi_sdk.ssr` must be imported from their own submodule (`from tempest_fastapi_sdk.queue import AsyncBrokerManager`).
+Core primitives are re-exported from `tempest_fastapi_sdk` at the top level — `from tempest_fastapi_sdk import BaseModel, BaseRepository, AppException` always works. The extras-gated managers in `tempest_fastapi_sdk.cache`, `tempest_fastapi_sdk.queue`, `tempest_fastapi_sdk.tasks`, `tempest_fastapi_sdk.vision` and `tempest_fastapi_sdk.ssr` must be imported from their own submodule (`from tempest_fastapi_sdk.queue import MessageBroker`).
 
 ---
 
@@ -2415,92 +2415,76 @@ async def broadcast(subs: list[WebPushSubscriptionSchema], payload: WebPushPaylo
 
 ### Message queues — FastStream recipe
 
-`AsyncBrokerManager` wraps any FastStream broker (RabbitMQ, Kafka, NATS, Redis Streams) with a uniform connect/disconnect/health-check surface. The broker instance is injected so the SDK doesn't pin a single transport.
+`MessageBroker` is a typed, transport-agnostic facade over FastStream — you never import `faststream` in application code. Pick the transport with a constructor and address everything by a single **channel** string.
 
-Install with `[queue]` (pulls `faststream[rabbit]`). Pick the matching FastStream extra for other transports.
+Install with `[queue]` (pulls `faststream[rabbit]`).
 
 ```python
 # src/queue/__init__.py
-from faststream.rabbit import RabbitBroker
 from pydantic import BaseModel
 
-from tempest_fastapi_sdk.queue import AsyncBrokerManager
+from tempest_fastapi_sdk.queue import MessageBroker
 
 from src.core.settings import settings
 
 
-broker = RabbitBroker(settings.RABBITMQ_URL)
-queue = AsyncBrokerManager(broker)
+mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)  # or .redis / .kafka / .nats
 
 
-class OrderMessage(BaseModel):
+class OrderPaid(BaseModel):
     order_id: str
     user_id: str
 
 
-@broker.subscriber("orders.paid")
-async def handle_order_paid(msg: OrderMessage) -> None:
-    await mark_order_paid(msg.order_id, msg.user_id)
+@mq.on("orders.paid")                       # consumer; type hint validates the message
+async def handle_order_paid(event: OrderPaid) -> None:
+    await mark_order_paid(event.order_id, event.user_id)
 
 
 # src/api/app.py lifespan
-await queue.connect()
+await mq.connect()
 ...
-await queue.disconnect()
+await mq.disconnect()
 
 
-# Publish from anywhere in the application
-await queue.publish(OrderMessage(order_id="abc", user_id="x"), queue="orders.paid")
+# Publish from anywhere — channel first, message second
+await mq.publish("orders.paid", OrderPaid(order_id="abc", user_id="x"))
 ```
 
-The manager exposes:
-
-- `connect()` / `disconnect()` — idempotent; safe to call from FastAPI lifespan.
-- `publish(message, *args, **kwargs)` — passthrough to `broker.publish` with a `RuntimeError` guard when the broker isn't started.
-- `lifespan()` — async context manager handling start/stop, handy for short scripts.
-- `broker_dependency` — FastAPI `Depends` that yields the live broker.
-- `health_check()` / `is_connected` — true while the broker is started.
-
-Wire it on the health router with `make_health_router(checks={"queue": queue.health_check})`.
+`@mq.on(channel)` declares a consumer (the handler's Pydantic type hint validates each message); `publish(channel, message)` sends it. Lifecycle is `connect()` / `disconnect()` / `lifespan()` / `health_check()` / `is_connected`; the raw broker stays at `mq.broker`. Wire it on the health router with `make_health_router(checks={"queue": mq.health_check})`. See the [Queues and Tasks recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/) for the full guide.
 
 ### Background tasks — TaskIQ recipe
 
-`AsyncTaskBrokerManager` wraps any TaskIQ broker (AioPika for RabbitMQ, Redis, in-memory for tests). Install with `[tasks]` (pulls `taskiq` + `taskiq-aio-pika`).
+`TaskQueue` is a typed facade over TaskIQ (broker + scheduler in one object) — no `taskiq` import in application code. Install with `[tasks]` (pulls `taskiq` + `taskiq-aio-pika`).
 
 ```python
 # src/tasks/__init__.py
-from taskiq_aio_pika import AioPikaBroker
-
-from tempest_fastapi_sdk.tasks import AsyncTaskBrokerManager
+from tempest_fastapi_sdk.tasks import TaskQueue
 
 from src.core.settings import settings
 
 
-tasks = AsyncTaskBrokerManager(AioPikaBroker(settings.TASKIQ_BROKER_URL))
+tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)  # or .redis / .memory (tests)
 
 
-@tasks.task
+@tq.task
 async def send_welcome_email(to: str, name: str) -> None:
-    await email_utils.send(
-        to=to,
-        subject="Bem-vindo!",
-        body=f"Olá, {name} — sua conta foi criada.",
-    )
+    await email_utils.send(to=to, subject="Welcome!", body=f"Hi, {name}.")
 
 
 # src/api/app.py lifespan
-await tasks.connect()
+await tq.connect()
 ...
-await tasks.disconnect()
+await tq.disconnect()
 
 
-# Enqueue from a request handler
-await send_welcome_email.kiq(to=user.email, name=user.name)
+# From a request handler: hand it to a worker and return immediately
+await send_welcome_email.enqueue(to=user.email, name=user.name)
+# In tests / reuse: run the body inline and get the real value back
+await send_welcome_email.run(to="a@b.com", name="Ana")
 ```
 
-`register_task(callable, task_name=..., **kwargs)` registers a function without decorator syntax — useful when wiring third-party callables that you can't decorate at definition time. For tests, swap the broker for `taskiq.InMemoryBroker()` so kicked tasks execute synchronously.
-
-The same lifespan guard rails as the queue manager apply: `connect()`/`disconnect()`/`lifespan()`/`broker_dependency`/`health_check()`/`is_connected`.
+`@tq.task` returns a typed `Task` with `enqueue()` (to a worker) and `run()` (inline, no broker). Periodic tasks live on the same object via `@tq.cron(...)` / `@tq.interval(...)`; `tq.broker` / `tq.scheduler` feed the standalone `taskiq worker` / `taskiq scheduler` CLIs. `TaskQueue.memory()` runs tasks synchronously in-process for tests.
 
 ### Periodic tasks scheduler recipe
 

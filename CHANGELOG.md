@@ -5,6 +5,45 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.93.0] — 2026-07-05
+
+### Added
+
+- **Typed facades over FastStream and TaskIQ** — application code no
+  longer imports `faststream` or `taskiq`.
+  - **`MessageBroker`** (`tempest_fastapi_sdk.queue`) — transport-agnostic
+    pub/sub over FastStream behind a single **channel** concept. Pick the
+    transport with a constructor (`MessageBroker.rabbitmq(url)` / `.redis`
+    / `.kafka` / `.nats`), declare consumers with `@mq.on("channel")`
+    (the handler's Pydantic type hint validates the message), and publish
+    channel-first with `await mq.publish("channel", model)`. `.broker`
+    stays as the escape hatch.
+  - **`TaskQueue`** (`tempest_fastapi_sdk.tasks`) — TaskIQ broker +
+    scheduler folded into one object. `TaskQueue.rabbitmq(url)` / `.redis`
+    / `.memory()`; `@tq.task` returns a typed **`Task`** with
+    `await task.enqueue(...)` (to a worker) and `await task.run(...)`
+    (inline, no broker); periodic tasks via `@tq.cron(...)` /
+    `@tq.interval(...)`; `start_scheduler()` / `stop_scheduler()` for
+    dev, with `tq.broker` / `tq.scheduler` exposed for the standalone
+    `taskiq worker` / `taskiq scheduler` CLIs.
+  - Both facades keep the SDK-standard lifecycle (`connect` / `disconnect`
+    / `lifespan` / `health_check` / `is_connected`).
+  - The `OutboxRelay` `publish` callable plugs straight into
+    `MessageBroker.publish` (channel-first).
+
+### Changed
+
+- The **Queue & Tasks** recipe was rewritten in the tiangolo didactic
+  style around the new facades, and its stale claim that the SDK ships no
+  outbox primitive was corrected (it ships `BaseOutboxModel` /
+  `OutboxRelay` / `save_with_outbox`).
+
+### Deprecated
+
+- `AsyncBrokerManager`, `AsyncTaskBrokerManager` and `AsyncTaskScheduler`
+  remain fully functional but are superseded by `MessageBroker` /
+  `TaskQueue`; new code should prefer the facades.
+
 ## [0.92.0] — 2026-07-05
 
 ### Added

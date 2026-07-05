@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.92.0"
+version = "0.93.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -298,6 +298,8 @@ module = [
     "psutil",
     "psutil.*",
     "faststream.*",
+    "taskiq_redis",
+    "taskiq_redis.*",
     "pyotp",
     "pyotp.*",
     "ort_vision_sdk",
