@@ -210,6 +210,8 @@ nav:
   - Instalação: installation.md
   - Arquitetura: architecture.md
   - Tutorial: tutorial.md
+  - "Tour do SDK (exemplos)": tour.md
+  - "Exemplo integrado (checkout Pix)": integrated.md
   - "SSR (páginas tipadas)": ssr.md
   - Receitas:
       - recipes/index.md
