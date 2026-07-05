@@ -2,12 +2,32 @@
 
 Since v0.31.0 the SDK ships the full local-account lifecycle — email + password signup, link-based activation, JWT-pair login, password reset — via `UserAuthService` + `make_auth_router`. **Endpoints ready to mount** (including `POST /auth/refresh` since v0.65.0), Jinja2 templates bundled, settings flags decide whether the link is emailed or returned in the response body, and four pre-thought modes for dev / staging / production / CI.
 
+!!! tip "Jump straight to your case"
+    The table below maps **what the user wants to do** → the section and
+    endpoints. Start at your case; come back to [setup](#minimum-setup)
+    only when you need to wire the pieces.
+
+    | I want to… | Logged in? | Section | Endpoints |
+    | --- | --- | --- | --- |
+    | Create account + activate by email | — | [Setup](#minimum-setup) | `signup` → `activate/{token}` |
+    | Log in | — | [Endpoints](#endpoints) | `login` |
+    | **I forgot my password** | ❌ no | **[Password recovery](#password-recovery)** | `password-reset/request` → `password-reset/confirm` |
+    | Change my password | ✅ yes | [Change password logged in](#change-your-password-logged-in) | `password-change` |
+    | Change my email | ✅ yes | [Change email](#change-email-logged-in) | `email-change/request` → `email-change/confirm` |
+    | Re-verify my current email | ✅ yes | [Re-verify email](#re-verify-the-current-email) | `email-verify/request` → `email-verify/confirm` |
+    | **I lost access to my email** | ❌ no | **[Email recovery](#email-recovery)** | `email-recovery/request` → `email-change/confirm` |
+    | My session expired | — | [Refresh](#renewing-the-session-with-the-refresh-token) | `refresh` |
+
+    **The two "I forgot"**: lost password → [Password recovery](#password-recovery); lost mailbox → [Email recovery](#email-recovery).
+
 ## Recipe contents
 
 1. **[Minimum setup](#minimum-setup)** — extras install + wiring four objects (`AsyncDatabaseManager`, `EmailUtils`, `UserAuthService`, `make_auth_router`).
 2. **[Concrete UserTokenModel](#concrete-usertokenmodel)** — `BaseUserTokenModel` is abstract, your project owns the concrete table.
-3. **[Endpoints](#endpoints)** — table of the 5 endpoints + payload + behavior.
-4. **[Settings — environment variables](#settings-environment-variables)** — env vars in **six groups** (JWT, password policy, email flow, TTL, URLs/templates, backend pages) — each in a typed table, not one blob.
+3. **[Endpoints](#endpoints)** — table of all endpoints + payload + behavior.
+4. **[Password recovery](#password-recovery)** — the "forgot password" flow, step by step, plus changing the password while logged in.
+5. **[Email change and recovery](#email-change-and-recovery)** — change email logged in, re-verify, and recover when the mailbox is lost.
+6. **[Settings — environment variables](#settings-environment-variables)** — env vars in **groups** (JWT, password policy, email flow, TTL, URLs/templates, backend pages) — each in a typed table, not one blob.
 5. **[Email anatomy: how link, template and URL fit together](#email-anatomy)** — disambiguates the three concepts that confuse readers the most.
 6. **[Five operating modes](#five-operating-modes)** — production, dev with local SMTP (Mailhog / smtp4dev), dev without SMTP, CI without activation, and **backend-only** (links and pages served directly by the backend).
 7. **[Mailhog vs smtp4dev — which to pick for local dev](#mailhog-vs-smtp4dev)** — comparison + copy-paste docker-compose snippets.
@@ -150,43 +170,164 @@ uv run tempest db upgrade
       `current_password`. No email or reset token involved. Returns
       **204** and the current tokens stay valid.
 
-## Email change, verification and recovery (v0.92.0+)
+## Password recovery
 
-Mirrors the password flow, but for the account **email**. Three cases:
+The classic "I forgot my password". The user is **not logged in** and
+proves identity with a **single-use token** delivered by email. Two steps.
 
-- **Change email (logged in)** — like `password-change`: the user is
-  logged in, confirms `current_password` and supplies `new_email`. A
-  confirmation link goes to the **new** address; the email only changes
-  once that link is confirmed. On confirmation a security notice is sent
-  to the **old** address (the banks/Google pattern).
-- **Re-verify the current email** — re-send a verification link to the
-  current address (useful when the activation email was lost).
-- **Recovery (lost mailbox access)** — an **unauthenticated** endpoint,
-  opt-in via `AUTH_EMAIL_RECOVERY_ENABLED`. Proves identity with the
-  password **and a valid MFA code when TOTP is enrolled**, then emails the
-  link to the new address.
+### Base case (SPA / JSON)
 
-```python
-# Change email (logged in) — token comes in the body in dev (mode C)
-resp = await client.post(
-    "/auth/email-change/request",
-    json={"new_email": "new@example.com", "current_password": "current-pass"},
-    headers={"Authorization": f"Bearer {access_token}"},
-)
-confirm_url: str | None = resp.json()["confirm_url"]  # None in prod (goes by email)
+**Step 1 — request the link.** The user types their email; the backend
+always answers **202** with the same generic message (it never leaks
+whether the email exists):
 
-# ...user opens the link; the front extracts the token and confirms:
-await client.post("/auth/email-change/confirm", json={"token": token})
+```bash
+curl -X POST localhost:8000/auth/password-reset/request \
+  -H "Content-Type: application/json" \
+  -d '{"email": "ana@example.com"}'
+```
+
+```json
+{ "message": "If the email exists, we sent a link.", "reset_url": null }
+```
+
+**Step 2 — set the new password.** The user opens the emailed link; the
+front-end reads the `token` from the URL and sends it with the new
+password. On success the password is replaced **and the user is logged
+in** (a JWT pair comes back):
+
+```bash
+curl -X POST localhost:8000/auth/password-reset/confirm \
+  -H "Content-Type: application/json" \
+  -d '{"token": "abc123…", "new_password": "new-strong-pass-12"}'
+```
+
+```json
+{
+  "user_id": "7d8e4d5a-…",
+  "access_token": "eyJhbGciOi…",
+  "refresh_token": "eyJhbGciOi…",
+  "mfa_required": false,
+  "mfa_token": null
+}
+```
+
+!!! check "Errors you'll see"
+    - Unknown / already-used / expired token → **400**.
+    - `new_password` violates `AUTH_PASSWORD_MIN_LENGTH` / complexity → **422**.
+    - `request` **never** errors on a missing email — always **202**.
+
+!!! note "Dev mode: link in the body (no SMTP)"
+    Without the `[email]` extra, or with `AUTH_RETURN_TOKEN_IN_RESPONSE=True`,
+    the `reset_url` comes back **in the `request` body** instead of by
+    email — you can drive the whole flow with no inbox. In production it
+    stays `null`.
+
+??? note "No front-end? Backend-rendered HTML pages (Mode E)"
+    With `AUTH_BACKEND_LINKS=True` the SDK mounts **GET/POST**
+    `/auth/password-reset/{token}`: the emailed link points at the
+    backend, which renders an HTML form, validates it and shows a
+    success/error page — no front-end route at all. See
+    [Five operating modes](#five-operating-modes) (Mode E).
+
+### Change your password (logged in)
+
+Different from a reset: here the user **remembers** their password and
+**is logged in**. No token, no email — they send the `access_token` in
+the header and re-confirm their `current_password`:
+
+```bash
+curl -X POST localhost:8000/auth/password-change \
+  -H "Authorization: Bearer eyJhbGciOi…" \
+  -H "Content-Type: application/json" \
+  -d '{"current_password": "current-pass", "new_password": "new-strong-pass-12"}'
+```
+
+Returns **204**; current tokens stay valid (this endpoint doesn't revoke
+sessions). Wrong `current_password` → **401**.
+
+!!! tip "Reset vs change — which is which?"
+    - **Forgot** the password, not logged in → **[Password recovery](#password-recovery)** (`password-reset/request` → `confirm`, prove with an emailed token).
+    - **Remembers** the password, logged in → **change password** (`password-change`, prove with the current password in the header).
+
+## Email change and recovery
+
+The mirror of the password flow, but for the account **email** (v0.92.0+).
+Three distinct cases — start at yours.
+
+### Change email (logged in)
+
+The base case: the user **is logged in** and wants to change their own
+email. They confirm `current_password` and supply `new_email`; a
+confirmation link goes to the **new** address. The email only changes
+once that link is confirmed.
+
+```bash
+# Step 1 — request the change (authenticated). Always 202.
+curl -X POST localhost:8000/auth/email-change/request \
+  -H "Authorization: Bearer eyJhbGciOi…" \
+  -H "Content-Type: application/json" \
+  -d '{"new_email": "new@example.com", "current_password": "current-pass"}'
+
+# Step 2 — confirm (the front reads the token from the link sent to the new email).
+curl -X POST localhost:8000/auth/email-change/confirm \
+  -H "Content-Type: application/json" \
+  -d '{"token": "abc123…"}'
+```
+
+On confirmation, if `AUTH_EMAIL_CHANGE_NOTIFY_OLD=True` (default) a
+**security notice goes to the old address** — the banks/Google pattern,
+so a hijacked account still alerts its owner.
+
+!!! check "Errors"
+    - Wrong current password → **401**.
+    - `new_email` already in use (at request **or** confirm — a race) → **409**.
+    - Invalid / expired / used token → **400**.
+
+### Re-verify the current email
+
+Re-sends a verification link to the **current address** — useful when the
+activation email was lost. Authenticated, changes nothing; confirming the
+link marks the account active.
+
+```bash
+curl -X POST localhost:8000/auth/email-verify/request \
+  -H "Authorization: Bearer eyJhbGciOi…"
+# then: POST /auth/email-verify/confirm  {"token": "…"}
+```
+
+### Email recovery
+
+The "I forgot / lost access to my email". An **unauthenticated** and
+**opt-in** endpoint — only mounted with `AUTH_EMAIL_RECOVERY_ENABLED=True`.
+The user proves identity with their **password** (and an **MFA code** when
+TOTP is enrolled) and supplies the new address; the confirmation link goes
+to the **new** email and reuses the same `email-change/confirm`.
+
+```bash
+# Only exists if AUTH_EMAIL_RECOVERY_ENABLED=True. Always 202 (anti-enumeration).
+curl -X POST localhost:8000/auth/email-recovery/request \
+  -H "Content-Type: application/json" \
+  -d '{
+        "email": "old@example.com",
+        "new_email": "new@example.com",
+        "current_password": "current-pass",
+        "mfa_code": "123456"
+      }'
+# then: POST /auth/email-change/confirm  {"token": "…"}  (link went to the new email)
 ```
 
 !!! danger "Recovery is sensitive — enable it deliberately"
-    `POST /auth/email-recovery/request` lets whoever has the password move
-    the account to another email **without** accessing the old mailbox. It
-    is only mounted with `AUTH_EMAIL_RECOVERY_ENABLED=True`. It always
-    answers a generic **202** (no account enumeration) and, when TOTP is
-    enrolled, requires a valid `mfa_code`. Keep
-    `AUTH_EMAIL_CHANGE_NOTIFY_OLD=True` so the old address is always
-    alerted.
+    This endpoint lets whoever has the **password** move the account to
+    another email **without** accessing the old mailbox — an account-takeover
+    vector if the password leaked. Rules:
+
+    - **Opt-in**: off until `AUTH_EMAIL_RECOVERY_ENABLED=True`.
+    - Always a generic **202** for every soft failure (unknown email,
+      wrong password, missing/invalid `mfa_code`) — no account enumeration.
+    - When TOTP is enrolled, a valid `mfa_code` is required.
+    - Keep `AUTH_EMAIL_CHANGE_NOTIFY_OLD=True` so the old email is always
+      alerted of the change.
 
 !!! info "Where the new email is stored"
     The pending address travels in the token's `payload` column
