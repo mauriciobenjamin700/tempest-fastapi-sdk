@@ -6,10 +6,11 @@ slices; this page covers the **first**: knowing, *before* you download
 gigabytes of weights, whether the machine can handle the model.
 
 !!! info "Module roadmap"
-    - **Now (v0.96):** `genai.hardware` — probing + `can_run` / `recommend`.
+    - **v0.96:** `genai.hardware` — probing + `can_run` / `recommend`.
+    - **v0.97:** `genai.rag` — RAG context (SearXNG web search + PDF
+      reading) to inject into LLMs (this page, [RAG context](#rag-context)).
     - **Coming:** `TextGenerator` (LLM + int4/int8 quantization),
-      `Embedder`, model/result caching, `BatchScheduler`, and RAG context
-      (web search + PDF reading) to inject into LLMs.
+      `Embedder`, model/result caching, `BatchScheduler`.
 
 The `[genai]` extra (transformers + torch + accelerate) is only needed to
 **run** models. The capacity functions **import without the extra** —
@@ -81,10 +82,83 @@ The parameter count can be passed explicitly (`num_params=`) or read from
 the Hub by `model_id` (via `huggingface_hub`, without downloading the
 weights — safetensors metadata).
 
+## RAG context
+
+A local LLM only knows what it trained on. For current, grounded answers,
+inject context: `tempest_fastapi_sdk.genai.rag` searches the web
+(self-hosted SearXNG), extracts page bodies, reads PDFs, and assembles a
+prompt-ready block — without sending data outside. Needs the `[genai-rag]`
+extra (httpx + trafilatura + pymupdf); the pieces import lazily.
+
+### Web search (SearXNG)
+
+```python
+import httpx
+from tempest_fastapi_sdk.genai.rag import SearxngBackend, WebSearch, build_context
+
+client = httpx.AsyncClient()
+search = WebSearch(SearxngBackend("http://localhost:8080", http_client=client))
+
+results = await search.search("what is PIX?", max_results=5)   # list[SearchResult]
+context = build_context("what is PIX?", results, long_text=False, max_chars=2000)
+# -> a string ready to inject into your TextGenerator prompt
+```
+
+The backend is a `Protocol` (`WebSearchBackend`) — swap SearXNG for another
+provider without touching call sites. The `httpx.AsyncClient` is injected
+(pool reuse; wire it in the FastAPI lifespan).
+
+### Extract page bodies
+
+Search snippets are thin. To give the LLM ground truth, fetch each page
+and extract the clean text (via `trafilatura`):
+
+```python
+from tempest_fastapi_sdk.genai.rag import ContentExtractor
+
+extractor = ContentExtractor(http_client=client)
+for result in results:
+    outcome = await extractor.extract(result.url)
+    result.content = outcome.text          # "" on failure; outcome.failed marks it
+context = build_context("what is PIX?", results)   # now with full bodies
+```
+
+Failures (timeout, 4xx/5xx, empty page) **never** raise — they come back
+as `ExtractionResult(text="", failed=True)`, so no source is silently
+dropped.
+
+### Read PDFs (knowledge base)
+
+`PdfReader` (PyMuPDF — detailed, reading-order extraction) turns PDF paths
+into text and prompt/embedding-ready chunks:
+
+```python
+from tempest_fastapi_sdk.genai.rag import PdfReader, build_context
+
+reader = PdfReader()
+doc = reader.read("/kb/manual.pdf")             # Document: text + pages + metadata
+chunks = reader.chunks("/kb/manual.pdf", max_chars=2000, overlap=200)
+
+context = build_context("how to refund?", chunks)   # cites "file (page N)"
+```
+
+`chunks(..., overlap=200)` shares characters between neighbors so a fact on
+a boundary isn't cut in half; `per_page=True` (default) keeps each chunk on
+a single page and records its page number.
+
+!!! tip "Mix web + PDF in one context"
+    `build_context` accepts `SearchResult` and `Chunk` in the same list —
+    it delimits each source with `---` and labels the origin (URL or `file
+    (page N)`) so the LLM can cite. Pass `long_text=False` to truncate each
+    source to `max_chars`.
+
 ## Recap
 
 - **`can_run` / `recommend`** — answer whether the host runs the model
   and what to do if not, **before** the download.
+- **RAG** — `WebSearch`/`SearxngBackend` (search), `ContentExtractor`
+  (page bodies), `PdfReader` (PDF → text/chunks) and `build_context`
+  (prompt block), all under the `[genai-rag]` extra.
 - **`probe_hardware`** — a CPU/RAM/GPU/disk snapshot; degrades without the
   extras.
 - **`estimate_model_bytes` / `bytes_per_param`** — the estimation math,

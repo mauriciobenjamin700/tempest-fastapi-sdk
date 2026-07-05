@@ -6,10 +6,11 @@ está sendo entregue em fatias; esta página cobre a **primeira**: saber,
 *antes* de baixar gigabytes de pesos, se a máquina aguenta o modelo.
 
 !!! info "Roadmap do módulo"
-    - **Agora (v0.96):** `genai.hardware` — sondagem + `can_run` / `recommend`.
+    - **v0.96:** `genai.hardware` — sondagem + `can_run` / `recommend`.
+    - **v0.97:** `genai.rag` — contexto RAG (busca web SearXNG + leitura de
+      PDF) pra injetar nas LLMs (esta página, seção [Contexto RAG](#contexto-rag)).
     - **Em breve:** `TextGenerator` (LLM + quantização int4/int8),
-      `Embedder`, cache de modelo/resultado, `BatchScheduler`, e
-      contexto RAG (busca web + leitura de PDF) pra injetar nas LLMs.
+      `Embedder`, cache de modelo/resultado, `BatchScheduler`.
 
 O extra `[genai]` (transformers + torch + accelerate) só é necessário pra
 **rodar** modelos. As funções de capacidade **importam sem o extra** — o
@@ -81,10 +82,84 @@ O número de parâmetros pode vir explícito (`num_params=`) ou ser lido do
 Hub por `model_id` (via `huggingface_hub`, sem baixar os pesos —
 metadados safetensors).
 
+## Contexto RAG
+
+Uma LLM local só sabe o que treinou. Pra respostas atuais e fundamentadas,
+injete contexto: `tempest_fastapi_sdk.genai.rag` busca na web (SearXNG
+self-hosted), extrai o corpo das páginas, lê PDFs e monta um bloco pronto
+pro prompt — tudo sem enviar dados pra fora. Requer o extra `[genai-rag]`
+(httpx + trafilatura + pymupdf); as peças importam preguiçosamente.
+
+### Busca web (SearXNG)
+
+```python
+import httpx
+from tempest_fastapi_sdk.genai.rag import SearxngBackend, WebSearch, build_context
+
+client = httpx.AsyncClient()
+search = WebSearch(SearxngBackend("http://localhost:8080", http_client=client))
+
+results = await search.search("o que é PIX?", max_results=5)   # list[SearchResult]
+context = build_context("o que é PIX?", results, long_text=False, max_chars=2000)
+# -> string pronta pra injetar no prompt do seu TextGenerator
+```
+
+O backend é um `Protocol` (`WebSearchBackend`) — troque o SearXNG por
+outro provedor sem mexer no call site. O `httpx.AsyncClient` é injetado
+(reaproveita o pool; ligue no lifespan do FastAPI).
+
+### Extrair o corpo das páginas
+
+O snippet do buscador é raso. Pra dar "verdade" pra LLM, busque cada
+página e extraia o texto limpo (via `trafilatura`):
+
+```python
+from tempest_fastapi_sdk.genai.rag import ContentExtractor
+
+extractor = ContentExtractor(http_client=client)
+for result in results:
+    outcome = await extractor.extract(result.url)
+    result.content = outcome.text          # "" quando falha; outcome.failed marca
+context = build_context("o que é PIX?", results)   # agora com corpo completo
+```
+
+Falhas (timeout, 4xx/5xx, página sem corpo) **nunca** levantam — voltam
+como `ExtractionResult(text="", failed=True)`, então nenhuma fonte some
+silenciosamente.
+
+### Ler PDFs (base de conhecimento)
+
+`PdfReader` (PyMuPDF — extração detalhada, ordem de leitura) transforma
+caminhos de PDF em texto e em chunks prontos pra prompt ou índice de
+embeddings:
+
+```python
+from tempest_fastapi_sdk.genai.rag import PdfReader, build_context
+
+reader = PdfReader()
+doc = reader.read("/base/manual.pdf")            # Document: text + pages + metadata
+chunks = reader.chunks("/base/manual.pdf", max_chars=2000, overlap=200)
+
+context = build_context("como estornar?", chunks)   # cita "arquivo (page N)"
+```
+
+`chunks(..., overlap=200)` compartilha caracteres entre pedaços vizinhos,
+pra um fato na fronteira não ser cortado ao meio; `per_page=True` (padrão)
+mantém cada chunk numa página só, carregando o número dela.
+
+!!! tip "Misture web + PDF no mesmo contexto"
+    `build_context` aceita `SearchResult` e `Chunk` na mesma lista —
+    delimita cada fonte com `---` e rotula a origem (URL ou `arquivo
+    (page N)`), pra LLM citar. Passe `long_text=False` pra truncar cada
+    fonte a `max_chars`.
+
 ## Recap
 
 - **`can_run` / `recommend`** — respondem se o host roda o modelo e o que
   fazer se não rodar, **antes** do download.
+- **RAG** — `WebSearch`/`SearxngBackend` (busca), `ContentExtractor`
+  (corpo das páginas), `PdfReader` (PDF → texto/chunks) e `build_context`
+  (bloco pro prompt), todos sob o extra `[genai-rag]`.
 - **`probe_hardware`** — snapshot de CPU/RAM/GPU/disco; degrada sem os
   extras.
 - **`estimate_model_bytes` / `bytes_per_param`** — a matemática da

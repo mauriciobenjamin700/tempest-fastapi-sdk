@@ -5,6 +5,28 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.97.0] — 2026-07-05
+
+### Added
+
+- **Self-hosted GenAI — RAG context (`tempest_fastapi_sdk.genai.rag`)**,
+  slice 2: feed a local LLM with web + PDF knowledge, without shipping
+  data to a third party.
+  - **Web search** — `WebSearchBackend` Protocol + `SearxngBackend` (the
+    leviathan pattern: SearXNG JSON API over an injected `httpx` client)
+    + `WebSearch` facade. Returns `SearchResult`s.
+  - **Content extraction** — `ContentExtractor` fetches a URL and pulls
+    the clean article body via `trafilatura`; failures surface as
+    `ExtractionResult(failed=True)`, never raised.
+  - **PDF reading** — `PdfReader` (PyMuPDF, detailed reading-order
+    extraction) → `Document` (text + per-page + metadata) and overlapping
+    `Chunk`s (`read` / `chunks`).
+  - **Context assembly** — `build_context(question, sources)` renders
+    `SearchResult`s and/or `Chunk`s into one prompt-ready, source-labeled
+    block (mix web + PDF, optional per-source truncation).
+  - New `[genai-rag]` extra (httpx + trafilatura + pymupdf); everything
+    imports lazily without it. Import from `tempest_fastapi_sdk.genai.rag`.
+
 ## [0.96.0] — 2026-07-05
 
 ### Added

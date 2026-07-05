@@ -139,9 +139,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `ModelDtype`. Capacity fns import WITHOUT the extra. **Planned slices:**
   `TextGenerator` (LLM + int4/int8 quant, lazy load + idle-unload),
   `Embedder`, model/result cache, `BatchScheduler` (coalesce concurrent
-  calls), RAG context (pluggable web search "leviathan-style" + PDF
-  reader → chunks) to inject into LLMs. Classes-only (no bundled router).
-  Submodule import like queue/tasks/vision.
+  calls). Classes-only (no bundled router). Submodule import like
+  queue/tasks/vision. **Shipped (v0.97) — RAG context**
+  (`tempest_fastapi_sdk.genai.rag`, `[genai-rag]` extra = httpx +
+  trafilatura + pymupdf): `WebSearchBackend` Protocol + `SearxngBackend`
+  (SearXNG JSON API, leviathan pattern) + `WebSearch`; `ContentExtractor`
+  (trafilatura, failures never raise); `PdfReader` (PyMuPDF detailed
+  extraction → `Document`/`Chunk`, `read`/`chunks` with overlap);
+  `build_context(question, sources)` → prompt block mixing web +
+  PDF. All import lazily.
 - **SSR** (`[ssr]` extra) — `tempest_fastapi_sdk.ssr`: typed Python
   pages rendered to HTML via `tempestweb`'s `render_to_html` /
   `render_document`. `Page` (typed `Component` base — `body()` +
