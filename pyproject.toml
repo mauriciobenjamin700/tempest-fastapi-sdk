@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.95.0"
+version = "0.96.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -90,6 +90,16 @@ mfa = [
 ]
 vision = [
     "ort-vision-sdk>=0.4.0",
+]
+genai = [
+    "transformers>=4.44.0",
+    "torch>=2.2.0",
+    "accelerate>=0.33.0",
+    "safetensors>=0.4.0",
+    "huggingface-hub>=0.24.0",
+]
+genai-quant = [
+    "bitsandbytes>=0.43.0",
 ]
 ssr = [
     "tempestweb>=0.9.0",
@@ -300,6 +310,16 @@ module = [
     "faststream.*",
     "taskiq_redis",
     "taskiq_redis.*",
+    "typer._click",
+    "typer._click.*",
+    "torch",
+    "torch.*",
+    "transformers",
+    "transformers.*",
+    "huggingface_hub",
+    "huggingface_hub.*",
+    "accelerate",
+    "accelerate.*",
     "pyotp",
     "pyotp.*",
     "ort_vision_sdk",

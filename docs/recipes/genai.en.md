@@ -1,0 +1,93 @@
+# Self-hosted generative AI
+
+Run HuggingFace models on **your own hardware** — no external API, no data
+leaving your servers. The `tempest_fastapi_sdk.genai` module ships in
+slices; this page covers the **first**: knowing, *before* you download
+gigabytes of weights, whether the machine can handle the model.
+
+!!! info "Module roadmap"
+    - **Now (v0.96):** `genai.hardware` — probing + `can_run` / `recommend`.
+    - **Coming:** `TextGenerator` (LLM + int4/int8 quantization),
+      `Embedder`, model/result caching, `BatchScheduler`, and RAG context
+      (web search + PDF reading) to inject into LLMs.
+
+The `[genai]` extra (transformers + torch + accelerate) is only needed to
+**run** models. The capacity functions **import without the extra** —
+`torch` is only used (when present) to read real GPU VRAM.
+
+## "Can the machine handle it?"
+
+Loading a too-large model ends in an OOM minutes into the download.
+`can_run` answers first:
+
+```python
+from tempest_fastapi_sdk.genai import can_run, ModelDtype
+
+report = can_run(model_id="Qwen/Qwen2.5-7B-Instruct", dtype=ModelDtype.BFLOAT16)
+
+if report.fits:
+    print(f"OK on {report.device} — {report.headroom_pct:.0f}% headroom")
+else:
+    print(report.reason)
+    print("Suggestion:", report.suggestion)   # e.g. "Quantize to int4 ..."
+```
+
+`CapacityReport` carries: `fits`, `device` (`cuda`/`mps`/`cpu`),
+`estimated_bytes` vs `available_bytes`, `headroom_pct`, `reason`, and a
+concrete `suggestion` when it doesn't fit (quantize, offload to CPU, or
+pick a smaller model).
+
+!!! tip "Let the SDK pick the precision"
+    `recommend(...)` tries `bfloat16` → `int8` → `int4` on the best
+    available device and returns the **first** config that fits:
+
+    ```python
+    from tempest_fastapi_sdk.genai import recommend
+
+    best = recommend(model_id="meta-llama/Llama-3.1-8B")
+    print(best.device, best.dtype, best.fits)   # e.g. cuda int8 True
+    ```
+
+## Probing the hardware
+
+```python
+from tempest_fastapi_sdk.genai import probe_hardware
+
+hw = probe_hardware()
+print(hw.cpu_cores, hw.ram_available_bytes)
+print(hw.has_cuda, [g.name for g in hw.gpus])   # per-GPU VRAM when CUDA is present
+```
+
+`HardwareInfo` reports CPU, total/available RAM, CUDA GPUs (name +
+total/free VRAM), MPS (Apple), and free disk space. Without `psutil` or
+`torch` installed, the matching fields fall back to safe defaults (`0` /
+`False` / empty list) — nothing breaks.
+
+## Estimate without downloading weights
+
+The math is `params × bytes-per-param × overhead`. Bytes per param come
+from the precision (`float32`=4, `float16`/`bfloat16`=2, `int8`=1,
+`int4`≈0.6); the overhead (×1.25) covers activations, KV cache and
+runtime context.
+
+```python
+from tempest_fastapi_sdk.genai import estimate_model_bytes, ModelDtype
+
+gb = estimate_model_bytes(7_000_000_000, ModelDtype.INT4) / 1e9
+print(f"~{gb:.1f} GB")   # 7B in int4
+```
+
+The parameter count can be passed explicitly (`num_params=`) or read from
+the Hub by `model_id` (via `huggingface_hub`, without downloading the
+weights — safetensors metadata).
+
+## Recap
+
+- **`can_run` / `recommend`** — answer whether the host runs the model
+  and what to do if not, **before** the download.
+- **`probe_hardware`** — a CPU/RAM/GPU/disk snapshot; degrades without the
+  extras.
+- **`estimate_model_bytes` / `bytes_per_param`** — the estimation math,
+  testable and reusable.
+- Everything imports without the `[genai]` extra; install it to actually
+  run models (upcoming module slices).

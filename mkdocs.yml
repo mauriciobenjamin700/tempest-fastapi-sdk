@@ -229,6 +229,7 @@ nav:
       - Fila e Tarefas: recipes/queue-tasks.md
       - Helpers brasileiros: recipes/br-helpers.md
       - "HTTP client (saída)": recipes/http-client.md
+      - "IA generativa self-hosted": recipes/genai.md
       - Idempotência: recipes/idempotency.md
       - Logging: recipes/logging.md
       - Métricas: recipes/metrics.md

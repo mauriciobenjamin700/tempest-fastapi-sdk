@@ -5,6 +5,33 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.0] — 2026-07-05
+
+### Added
+
+- **Self-hosted GenAI — capacity check (`tempest_fastapi_sdk.genai`)**,
+  the first slice of running HuggingFace models on your own hardware.
+  Before downloading gigabytes of weights, check whether the host can run
+  a model:
+  - `probe_hardware()` → `HardwareInfo` (CPU, total/available RAM, CUDA
+    GPUs with per-device VRAM, Apple MPS, free disk). Degrades gracefully
+    without `psutil` / `torch`.
+  - `can_run(...)` → `CapacityReport` (`fits`, chosen `device`, estimated
+    vs available bytes, `headroom_pct`, and a concrete `suggestion` when
+    it doesn't fit — quantize, offload, or pick a smaller model).
+  - `recommend(...)` picks the first precision (`bfloat16` → `int8` →
+    `int4`) that fits.
+  - `estimate_model_bytes` / `bytes_per_param` (the estimation math) and
+    `fetch_num_params` (reads a model's parameter count from the Hub via
+    `huggingface_hub`, without downloading weights). `ModelDtype` enum.
+  - New `[genai]` extra (transformers + torch + accelerate + safetensors +
+    huggingface-hub) and `[genai-quant]` (bitsandbytes). The capacity
+    functions import **without** the extra — `torch` is only used to probe
+    real GPUs. Import from `tempest_fastapi_sdk.genai`.
+  - Upcoming slices: `TextGenerator` (+ quantization), `Embedder`,
+    model/result caching, `BatchScheduler`, and RAG context (web search +
+    PDF reading).
+
 ## [0.95.0] — 2026-07-05
 
 ### Added

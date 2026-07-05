@@ -129,6 +129,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `ort-vision-sdk`: lazy `Detector`/`Classifier`/`Segmenter` + prediction
   schemas + `to_detection_schemas`/`to_classification_schema`/
   `to_segmentation_schemas` mappers.
+- **GenAI self-hosted** (`[genai]` extra: transformers+torch+accelerate;
+  `[genai-quant]` = bitsandbytes) — `tempest_fastapi_sdk.genai`, delivered
+  in slices. **Shipped (v0.96):** hardware capacity check — `probe_hardware`
+  → `HardwareInfo` (CPU/RAM/CUDA-VRAM/MPS/disk, degrades without
+  psutil/torch), `can_run`/`recommend` → `CapacityReport` (fits? device,
+  estimate vs available, suggestion to quantize/offload), `estimate_model_bytes`/
+  `bytes_per_param`/`fetch_num_params` (Hub metadata, no weight download),
+  `ModelDtype`. Capacity fns import WITHOUT the extra. **Planned slices:**
+  `TextGenerator` (LLM + int4/int8 quant, lazy load + idle-unload),
+  `Embedder`, model/result cache, `BatchScheduler` (coalesce concurrent
+  calls), RAG context (pluggable web search "leviathan-style" + PDF
+  reader → chunks) to inject into LLMs. Classes-only (no bundled router).
+  Submodule import like queue/tasks/vision.
 - **SSR** (`[ssr]` extra) — `tempest_fastapi_sdk.ssr`: typed Python
   pages rendered to HTML via `tempestweb`'s `render_to_html` /
   `render_document`. `Page` (typed `Component` base — `body()` +
