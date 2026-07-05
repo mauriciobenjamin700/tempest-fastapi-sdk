@@ -2,6 +2,36 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.92.0 — coluna `payload` no token de usuário
+
+A 0.92.0 adiciona o fluxo de **troca / re-verificação / recuperação de e-mail**. Para carregar o e-mail pendente até a confirmação, `BaseUserTokenModel` ganhou uma coluna nova:
+
+```python
+payload: Mapped[str | None] = mapped_column(String(320), nullable=True, default=None)
+```
+
+Como sua tabela `user_tokens` herda de `BaseUserTokenModel`, a coluna aparece automaticamente no modelo — mas o banco precisa de uma **migration**. É aditiva e segura (coluna anulável, sem default obrigatório):
+
+```bash
+# gere e aplique
+tempest db revision -m "add payload to user_tokens"
+tempest db upgrade
+```
+
+Ou, na mão:
+
+```sql
+ALTER TABLE user_tokens ADD COLUMN payload VARCHAR(320) NULL;
+```
+
+!!! info "Só isso"
+    Nenhuma renomeação, nenhum default backfill. Fluxos existentes (ativação, reset de senha) continuam gravando `payload = NULL`. O novo fluxo de e-mail é totalmente opt-in — a recuperação (`POST /auth/email-recovery/request`) só é montada com `AUTH_EMAIL_RECOVERY_ENABLED=True`.
+
+### Verifique
+
+- Rode a migration antes de subir a 0.92.0 (a coluna precisa existir).
+- Se você escreve `src/db/models/user_token.py` à mão em vez de usar `make_user_token_model`, a coluna vem da base abstrata — não precisa redeclarar, só migrar.
+
 ## 0.63.0 — usuário autenticado carregado na sessão de request
 
 Antes da 0.63.0, `UserAuthService.current_user_dependency()` carregava o usuário autenticado chamando `load_user`, que abria a **própria** sessão (via `db.get_session_context()`) e a fechava ao terminar. O `UserModel` entregue à rota ficava **detached**: mutá-lo e dar `commit`/`refresh` na sessão de request (a dos seus repositories) levantava

@@ -130,6 +130,11 @@ uv run tempest db upgrade
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Sempre HTTP 202 + corpo genérico. Link via e-mail (A/B) ou no body (C). |
 | POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consome token + grava nova senha + emite JWT pair. |
 | POST | `/auth/password-change` | `PasswordChangeSchema` → `204` | **Autenticado** (bearer token). Troca a própria senha: confirma a senha atual + grava a nova. Sem token de e-mail. |
+| POST | `/auth/email-change/request` *(v0.92.0+)* | `EmailChangeRequestSchema` → `EmailChangeResponseSchema` | **Autenticado.** Confirma a senha atual + envia link de confirmação pro **novo** e-mail. Sempre 202. |
+| POST | `/auth/email-change/confirm` *(v0.92.0+)* | `EmailChangeConfirmSchema` → `EmailChangeResponseSchema` | Consome o token + aplica o novo e-mail + (opcional) avisa o e-mail antigo. |
+| POST | `/auth/email-verify/request` *(v0.92.0+)* | — → `EmailChangeResponseSchema` | **Autenticado.** Reenvia link de verificação pro e-mail **atual**. |
+| POST | `/auth/email-verify/confirm` *(v0.92.0+)* | `EmailChangeConfirmSchema` → `EmailChangeResponseSchema` | Consome o token + marca a conta ativa. |
+| POST | `/auth/email-recovery/request` *(v0.92.0+, opt-in)* | `EmailRecoveryRequestSchema` → `EmailChangeResponseSchema` | **Não autenticado.** Recupera conta cujo e-mail se perdeu: senha (+ MFA se inscrito). Só montado com `AUTH_EMAIL_RECOVERY_ENABLED=True`. Sempre 202. |
 | POST | `/auth/refresh` *(v0.65.0+)* | `RefreshSchema` → `LoginResponseSchema` | Troca um **refresh token** válido por um JWT pair novo. **Sem email/senha.** Rejeita access token replayado (401) e conta inativa (403). |
 
 !!! tip "`password-reset/confirm` vs `password-change` — qual é qual?"
@@ -143,6 +148,50 @@ uv run tempest db upgrade
       Bearer …` e reconfirma a `current_password`. Não envolve e-mail
       nem token de reset. Retorna **204** e os tokens atuais continuam
       válidos.
+
+## Troca, verificação e recuperação de e-mail (v0.92.0+)
+
+Espelha o fluxo de senha, mas pro **e-mail** da conta. Três cenários:
+
+- **Trocar e-mail (logado)** — como `password-change`: o usuário está
+  logado, confirma a `current_password` e informa o `new_email`. Um link
+  de confirmação vai pro **novo** endereço; o e-mail só muda quando esse
+  link é confirmado. Ao confirmar, um aviso de segurança vai pro endereço
+  **antigo** (padrão de bancos/Google).
+- **Re-verificar o e-mail atual** — reenvia um link de verificação pro
+  endereço atual (útil quando o e-mail de ativação se perdeu).
+- **Recuperação (perdeu acesso ao e-mail)** — endpoint **não
+  autenticado**, opt-in via `AUTH_EMAIL_RECOVERY_ENABLED`. Prova
+  identidade com a senha **e um código MFA quando o TOTP está inscrito**,
+  e manda o link pro novo endereço.
+
+```python
+# Trocar e-mail (logado) — pega o token no body em dev (modo C)
+resp = await client.post(
+    "/auth/email-change/request",
+    json={"new_email": "nova@example.com", "current_password": "senha-atual"},
+    headers={"Authorization": f"Bearer {access_token}"},
+)
+confirm_url: str | None = resp.json()["confirm_url"]  # None em produção (vai por e-mail)
+
+# ...usuário abre o link; o front extrai o token e confirma:
+await client.post("/auth/email-change/confirm", json={"token": token})
+```
+
+!!! danger "Recuperação é sensível — ligue com cuidado"
+    `POST /auth/email-recovery/request` deixa quem tem a senha mover a
+    conta pra outro e-mail **sem** acessar a caixa antiga. Só é montado
+    com `AUTH_EMAIL_RECOVERY_ENABLED=True`. Sempre responde **202**
+    genérico (não enumera contas) e, se o TOTP estiver inscrito, exige um
+    `mfa_code` válido. Mantenha `AUTH_EMAIL_CHANGE_NOTIFY_OLD=True` pra o
+    endereço antigo sempre ser avisado.
+
+!!! info "Onde o novo e-mail fica guardado"
+    O endereço pendente viaja na coluna `payload` do token
+    (`EMAIL_CHANGE`), não no `UserModel`. A confirmação relê o `payload`,
+    re-checa que o endereço ainda está livre (corrida entre pedido e
+    confirmação → **409**) e só então grava. Veja a nota de migração da
+    0.92.0.
 
 ### Renovando a sessão com o refresh token
 

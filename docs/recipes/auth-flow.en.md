@@ -130,6 +130,11 @@ uv run tempest db upgrade
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Always HTTP 202 + generic body. Link via email (A/B) or body (C). |
 | POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consumes token + writes new password + issues JWT pair. |
 | POST | `/auth/password-change` | `PasswordChangeSchema` → `204` | **Authenticated** (bearer token). Change your own password: confirm the current password + write the new one. No email token. |
+| POST | `/auth/email-change/request` *(v0.92.0+)* | `EmailChangeRequestSchema` → `EmailChangeResponseSchema` | **Authenticated.** Confirm the current password + email a confirmation link to the **new** address. Always 202. |
+| POST | `/auth/email-change/confirm` *(v0.92.0+)* | `EmailChangeConfirmSchema` → `EmailChangeResponseSchema` | Consume the token + apply the new email + (optionally) notify the old address. |
+| POST | `/auth/email-verify/request` *(v0.92.0+)* | — → `EmailChangeResponseSchema` | **Authenticated.** Re-send a verification link to the **current** email. |
+| POST | `/auth/email-verify/confirm` *(v0.92.0+)* | `EmailChangeConfirmSchema` → `EmailChangeResponseSchema` | Consume the token + mark the account active. |
+| POST | `/auth/email-recovery/request` *(v0.92.0+, opt-in)* | `EmailRecoveryRequestSchema` → `EmailChangeResponseSchema` | **Unauthenticated.** Recover an account whose mailbox is lost: password (+ MFA if enrolled). Only mounted with `AUTH_EMAIL_RECOVERY_ENABLED=True`. Always 202. |
 | POST | `/auth/refresh` *(v0.65.0+)* | `RefreshSchema` → `LoginResponseSchema` | Exchange a valid **refresh token** for a fresh JWT pair. **No email/password.** Rejects a replayed access token (401) and inactive accounts (403). |
 
 !!! tip "`password-reset/confirm` vs `password-change` — which is which?"
@@ -144,6 +149,50 @@ uv run tempest db upgrade
       `Authorization: Bearer …` header and re-confirm their
       `current_password`. No email or reset token involved. Returns
       **204** and the current tokens stay valid.
+
+## Email change, verification and recovery (v0.92.0+)
+
+Mirrors the password flow, but for the account **email**. Three cases:
+
+- **Change email (logged in)** — like `password-change`: the user is
+  logged in, confirms `current_password` and supplies `new_email`. A
+  confirmation link goes to the **new** address; the email only changes
+  once that link is confirmed. On confirmation a security notice is sent
+  to the **old** address (the banks/Google pattern).
+- **Re-verify the current email** — re-send a verification link to the
+  current address (useful when the activation email was lost).
+- **Recovery (lost mailbox access)** — an **unauthenticated** endpoint,
+  opt-in via `AUTH_EMAIL_RECOVERY_ENABLED`. Proves identity with the
+  password **and a valid MFA code when TOTP is enrolled**, then emails the
+  link to the new address.
+
+```python
+# Change email (logged in) — token comes in the body in dev (mode C)
+resp = await client.post(
+    "/auth/email-change/request",
+    json={"new_email": "new@example.com", "current_password": "current-pass"},
+    headers={"Authorization": f"Bearer {access_token}"},
+)
+confirm_url: str | None = resp.json()["confirm_url"]  # None in prod (goes by email)
+
+# ...user opens the link; the front extracts the token and confirms:
+await client.post("/auth/email-change/confirm", json={"token": token})
+```
+
+!!! danger "Recovery is sensitive — enable it deliberately"
+    `POST /auth/email-recovery/request` lets whoever has the password move
+    the account to another email **without** accessing the old mailbox. It
+    is only mounted with `AUTH_EMAIL_RECOVERY_ENABLED=True`. It always
+    answers a generic **202** (no account enumeration) and, when TOTP is
+    enrolled, requires a valid `mfa_code`. Keep
+    `AUTH_EMAIL_CHANGE_NOTIFY_OLD=True` so the old address is always
+    alerted.
+
+!!! info "Where the new email is stored"
+    The pending address travels in the token's `payload` column
+    (`EMAIL_CHANGE`), not on the `UserModel`. Confirmation re-reads the
+    `payload`, re-checks the address is still free (a request→confirm race
+    → **409**) and only then writes it. See the 0.92.0 migration note.
 
 ### Renewing the session with the refresh token
 

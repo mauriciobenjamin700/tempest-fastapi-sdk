@@ -38,6 +38,8 @@ from tempest_fastapi_sdk.auth.locale import (
 )
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationToken,
+    EmailChangeToken,
+    EmailVerificationToken,
     PasswordResetToken,
 )
 from tempest_fastapi_sdk.db.user_token_model import (
@@ -449,6 +451,298 @@ class UserAuthService:
         await session.flush()
         await session.refresh(user)
         return user
+
+    # ------------------------------------------------------------------
+    # Email change / re-verification / recovery
+    # ------------------------------------------------------------------
+
+    async def request_email_change(
+        self,
+        session: AsyncSession,
+        *,
+        user: BaseUserModel,
+        current_password: str,
+        new_email: str,
+    ) -> EmailChangeToken | None:
+        """Stage a move to ``new_email`` for an authenticated user.
+
+        The "change my email while logged in" flow, mirroring
+        :meth:`change_password`: the caller is already authenticated
+        (the router resolves ``user`` from the bearer token) and proves
+        ownership with ``current_password``. A single-use ``EMAIL_CHANGE``
+        token carrying the pending address in its payload is issued, and a
+        confirmation link is emailed to the **new** address. The account
+        email is NOT touched until :meth:`confirm_email_change` consumes
+        the token.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            user (BaseUserModel): The authenticated user.
+            current_password (str): The user's current plaintext password,
+                re-entered for confirmation.
+            new_email (str): The address to move to — normalized to
+                lowercase.
+
+        Returns:
+            EmailChangeToken | None: The token bundle when the caller is
+            configured to surface the link (``AUTH_RETURN_TOKEN_IN_RESPONSE``
+            or no ``EmailUtils``), ``None`` when the link only travels by
+            email.
+
+        Raises:
+            UnauthorizedException: When ``current_password`` is wrong.
+            ValidationException: When ``new_email`` equals the current one.
+            ConflictException: When ``new_email`` is already in use.
+        """
+        if not self.passwords.verify(current_password, user.hashed_password):
+            raise UnauthorizedException(message="current password is incorrect")
+        normalized = new_email.strip().lower()
+        if normalized == user.email:
+            raise ValidationException(
+                message="new email is the same as the current one",
+            )
+        if await self._email_taken(session, normalized, exclude_user_id=user.id):
+            raise ConflictException(
+                message="email already in use",
+                details={"email": normalized},
+            )
+        bundle = await self._issue_token(
+            session,
+            user_id=user.id,
+            purpose=UserTokenPurpose.EMAIL_CHANGE,
+            ttl_seconds=self.auth_settings.AUTH_EMAIL_CHANGE_TTL_SECONDS,
+            url_template=self.auth_settings.AUTH_EMAIL_CHANGE_URL_TEMPLATE,
+            payload=normalized,
+        )
+        await self._maybe_send_email_change_email(user, normalized, bundle)
+        if self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE or self.email is None:
+            return EmailChangeToken(
+                user_id=user.id,
+                new_email=normalized,
+                token=bundle[0],
+                url=bundle[1],
+                expires_at=bundle[2],
+            )
+        return None
+
+    async def confirm_email_change(
+        self,
+        session: AsyncSession,
+        *,
+        token: str,
+    ) -> BaseUserModel:
+        """Consume an ``EMAIL_CHANGE`` token and apply the pending address.
+
+        Reads the pending new email from the token payload, re-checks it
+        is still free (an address can be taken between request and
+        confirm), flips ``user.email`` and — when
+        ``AUTH_EMAIL_CHANGE_NOTIFY_OLD`` is on — sends a security notice
+        to the previous address.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            token (str): Plaintext token from the confirmation link.
+
+        Returns:
+            BaseUserModel: The user whose email was changed.
+
+        Raises:
+            InvalidTokenException: On bad / expired / spent tokens, a
+                missing payload, or a missing user.
+            ConflictException: When the target email was taken meanwhile.
+        """
+        record = await self._consume_token(
+            session,
+            token=token,
+            purpose=UserTokenPurpose.EMAIL_CHANGE,
+        )
+        new_email = (record.payload or "").strip().lower()
+        if not new_email:
+            raise InvalidTokenException(
+                message="email-change token has no target address",
+            )
+        user: BaseUserModel | None = await session.get(self.user_model, record.user_id)
+        if user is None:
+            raise InvalidTokenException(message="token references a missing user")
+        if await self._email_taken(session, new_email, exclude_user_id=user.id):
+            raise ConflictException(
+                message="email already in use",
+                details={"email": new_email},
+            )
+        old_email = user.email
+        user.email = new_email
+        await session.flush()
+        await session.refresh(user)
+        await self._maybe_send_email_changed_notice(user, old_email, new_email)
+        return user
+
+    async def request_email_verification(
+        self,
+        session: AsyncSession,
+        *,
+        user: BaseUserModel,
+    ) -> EmailVerificationToken | None:
+        """Issue a re-verification token for the user's CURRENT email.
+
+        Resends a "confirm you own this address" link to the account's
+        existing email — no address change. Confirming it via
+        :meth:`confirm_email_verification` marks the user active.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            user (BaseUserModel): The user re-verifying.
+
+        Returns:
+            EmailVerificationToken | None: The token bundle when the
+            caller surfaces the link, ``None`` when it only travels by
+            email.
+        """
+        bundle = await self._issue_token(
+            session,
+            user_id=user.id,
+            purpose=UserTokenPurpose.EMAIL_VERIFICATION,
+            ttl_seconds=self.auth_settings.AUTH_EMAIL_VERIFICATION_TTL_SECONDS,
+            url_template=self.auth_settings.AUTH_EMAIL_VERIFICATION_URL_TEMPLATE,
+        )
+        await self._maybe_send_email_verification_email(user, bundle)
+        if self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE or self.email is None:
+            return EmailVerificationToken(
+                user_id=user.id,
+                token=bundle[0],
+                url=bundle[1],
+                expires_at=bundle[2],
+            )
+        return None
+
+    async def confirm_email_verification(
+        self,
+        session: AsyncSession,
+        *,
+        token: str,
+    ) -> BaseUserModel:
+        """Consume an ``EMAIL_VERIFICATION`` token and mark the user active.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            token (str): Plaintext token from the verification link.
+
+        Returns:
+            BaseUserModel: The verified user.
+
+        Raises:
+            InvalidTokenException: On bad / expired / spent tokens, or a
+                missing user.
+        """
+        record = await self._consume_token(
+            session,
+            token=token,
+            purpose=UserTokenPurpose.EMAIL_VERIFICATION,
+        )
+        user: BaseUserModel | None = await session.get(self.user_model, record.user_id)
+        if user is None:
+            raise InvalidTokenException(message="token references a missing user")
+        user.is_active = True
+        await session.flush()
+        await session.refresh(user)
+        return user
+
+    async def request_email_recovery(
+        self,
+        session: AsyncSession,
+        *,
+        email: str,
+        new_email: str,
+        current_password: str,
+        mfa_code: str | None = None,
+        recovery_code_model: type[BaseUserRecoveryCodeModel] | None = None,
+    ) -> EmailChangeToken | None:
+        """Start an email move for a user who lost access to their mailbox.
+
+        The **unauthenticated** recovery entry point. The account is
+        located by its current (old) ``email``; identity is proven by
+        ``current_password`` and — when the account has MFA enrolled — a
+        valid ``mfa_code``. On success an ``EMAIL_CHANGE`` token is issued
+        and the confirmation link emailed to the NEW address; confirming
+        it runs through the same :meth:`confirm_email_change` path (which
+        notifies the old address).
+
+        To avoid account enumeration this returns ``None`` (the router
+        answers a generic ``202``) for every soft failure — unknown email,
+        wrong password, or a missing/invalid MFA code. The only hard error
+        is a target address already in use, or a deployment that enabled
+        recovery without wiring ``recovery_code_model`` for an MFA user.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            email (str): The account's current (old) email.
+            new_email (str): The address to recover the account to.
+            current_password (str): The account password, for identity
+                proof.
+            mfa_code (str | None): TOTP or recovery code, required when
+                the account has MFA enrolled.
+            recovery_code_model (type[BaseUserRecoveryCodeModel] | None):
+                The project's recovery-code model, needed to verify a
+                recovery-code ``mfa_code``.
+
+        Returns:
+            EmailChangeToken | None: The token bundle when the caller
+            surfaces the link, ``None`` otherwise (including every soft
+            identity-proof failure).
+
+        Raises:
+            ValidationException: When ``recovery_code_model`` is missing
+                for an MFA-enrolled account, or ``new_email`` equals the
+                current one.
+            ConflictException: When ``new_email`` is already in use.
+        """
+        normalized_old = email.strip().lower()
+        result = await session.execute(
+            select(self.user_model).where(self.user_model.email == normalized_old),
+        )
+        user: BaseUserModel | None = result.scalar_one_or_none()
+        if user is None:
+            return None
+        if not self.passwords.verify(current_password, user.hashed_password):
+            return None
+        if self.is_mfa_enrolled(user):
+            if not mfa_code:
+                return None
+            if recovery_code_model is None:
+                raise ValidationException(
+                    message="recovery_code_model is required to verify MFA",
+                )
+            if not await self._verify_mfa_code(
+                session, user, mfa_code, recovery_code_model
+            ):
+                return None
+        normalized_new = new_email.strip().lower()
+        if normalized_new == user.email:
+            raise ValidationException(
+                message="new email is the same as the current one",
+            )
+        if await self._email_taken(session, normalized_new, exclude_user_id=user.id):
+            raise ConflictException(
+                message="email already in use",
+                details={"email": normalized_new},
+            )
+        bundle = await self._issue_token(
+            session,
+            user_id=user.id,
+            purpose=UserTokenPurpose.EMAIL_CHANGE,
+            ttl_seconds=self.auth_settings.AUTH_EMAIL_CHANGE_TTL_SECONDS,
+            url_template=self.auth_settings.AUTH_EMAIL_CHANGE_URL_TEMPLATE,
+            payload=normalized_new,
+        )
+        await self._maybe_send_email_change_email(user, normalized_new, bundle)
+        if self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE or self.email is None:
+            return EmailChangeToken(
+                user_id=user.id,
+                new_email=normalized_new,
+                token=bundle[0],
+                url=bundle[1],
+                expires_at=bundle[2],
+            )
+        return None
 
     # ------------------------------------------------------------------
     # Token helpers
@@ -1009,8 +1303,19 @@ class UserAuthService:
         purpose: UserTokenPurpose,
         ttl_seconds: int,
         url_template: str,
+        payload: str | None = None,
     ) -> tuple[str, str, datetime]:
-        """Persist a fresh token row, return ``(plain, url, expires_at)``."""
+        """Persist a fresh token row, return ``(plain, url, expires_at)``.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            user_id (UUID): The user the token authorizes.
+            purpose (UserTokenPurpose): What the token authorizes.
+            ttl_seconds (int): Token lifetime in seconds.
+            url_template (str): URL template with a ``{token}`` slot.
+            payload (str | None): Optional flow context stored on the
+                row (e.g. the pending new email for ``EMAIL_CHANGE``).
+        """
         plain, digest = generate_opaque_token(48)
         expires_at = utcnow() + timedelta(seconds=ttl_seconds)
         record = self.token_model(
@@ -1018,11 +1323,36 @@ class UserAuthService:
             token_hash=digest,
             purpose=purpose.value,
             expires_at=expires_at,
+            payload=payload,
         )
         session.add(record)
         await session.flush()
         url = url_template.replace("{token}", plain)
         return plain, url, expires_at
+
+    async def _email_taken(
+        self,
+        session: AsyncSession,
+        email: str,
+        *,
+        exclude_user_id: UUID | None = None,
+    ) -> bool:
+        """Return ``True`` when ``email`` already belongs to another user.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            email (str): Normalized email to check.
+            exclude_user_id (UUID | None): A user id to exclude from the
+                check (the user performing the change).
+
+        Returns:
+            bool: Whether a different user already holds ``email``.
+        """
+        stmt = select(self.user_model.id).where(self.user_model.email == email)
+        if exclude_user_id is not None:
+            stmt = stmt.where(self.user_model.id != exclude_user_id)
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none() is not None
 
     async def _consume_token(
         self,
@@ -1157,6 +1487,96 @@ class UserAuthService:
             user.email,
             subject=auth_email_message(locale, "password_reset_subject"),
             body=auth_email_message(locale, "password_reset_body").format(url=url),
+            html=html,
+        )
+
+    async def _maybe_send_email_change_email(
+        self,
+        user: BaseUserModel,
+        new_email: str,
+        token_bundle: tuple[str, str, datetime],
+    ) -> None:
+        """Send the confirmation email to the NEW address when wired."""
+        if self.email is None or self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE:
+            return
+        _plain, url, expires_at = token_bundle
+        locale = self.auth_settings.AUTH_DEFAULT_LOCALE
+        html = self.email.render_template(
+            self.auth_settings.AUTH_EMAIL_CHANGE_TEMPLATE,
+            {
+                "user": user,
+                "new_email": new_email,
+                "confirm_url": url,
+                "expires_at": expires_at,
+                "expires_at_str": format_expires_at(expires_at, locale),
+            },
+            locale=locale,
+        )
+        await self.email.send(
+            new_email,
+            subject=auth_email_message(locale, "email_change_subject"),
+            body=auth_email_message(locale, "email_change_body").format(url=url),
+            html=html,
+        )
+
+    async def _maybe_send_email_verification_email(
+        self,
+        user: BaseUserModel,
+        token_bundle: tuple[str, str, datetime],
+    ) -> None:
+        """Send the re-verification email to the current address when wired."""
+        if self.email is None or self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE:
+            return
+        _plain, url, expires_at = token_bundle
+        locale = self.auth_settings.AUTH_DEFAULT_LOCALE
+        html = self.email.render_template(
+            self.auth_settings.AUTH_EMAIL_VERIFICATION_TEMPLATE,
+            {
+                "user": user,
+                "verify_url": url,
+                "expires_at": expires_at,
+                "expires_at_str": format_expires_at(expires_at, locale),
+            },
+            locale=locale,
+        )
+        await self.email.send(
+            user.email,
+            subject=auth_email_message(locale, "email_verification_subject"),
+            body=auth_email_message(locale, "email_verification_body").format(url=url),
+            html=html,
+        )
+
+    async def _maybe_send_email_changed_notice(
+        self,
+        user: BaseUserModel,
+        old_email: str,
+        new_email: str,
+    ) -> None:
+        """Alert the OLD address after a confirmed change when configured.
+
+        Skipped when ``EmailUtils`` is not wired or
+        ``AUTH_EMAIL_CHANGE_NOTIFY_OLD`` is off. Unlike the token emails
+        this is not gated by ``AUTH_RETURN_TOKEN_IN_RESPONSE`` — it
+        carries no token, only a security notice.
+        """
+        if self.email is None or not self.auth_settings.AUTH_EMAIL_CHANGE_NOTIFY_OLD:
+            return
+        locale = self.auth_settings.AUTH_DEFAULT_LOCALE
+        html = self.email.render_template(
+            self.auth_settings.AUTH_EMAIL_CHANGED_NOTICE_TEMPLATE,
+            {
+                "user": user,
+                "old_email": old_email,
+                "new_email": new_email,
+            },
+            locale=locale,
+        )
+        await self.email.send(
+            old_email,
+            subject=auth_email_message(locale, "email_changed_notice_subject"),
+            body=auth_email_message(locale, "email_changed_notice_body").format(
+                new_email=new_email,
+            ),
             html=html,
         )
 
@@ -1407,6 +1827,8 @@ class UserAuthService:
 
 __all__: list[str] = [
     "ActivationToken",
+    "EmailChangeToken",
+    "EmailVerificationToken",
     "PasswordResetToken",
     "UserAuthService",
 ]

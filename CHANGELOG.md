@@ -5,6 +5,66 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.92.0] — 2026-07-05
+
+### Added
+
+- **Email change / re-verification / recovery flow** on `UserAuthService`
+  + `make_auth_router`, mirroring the password reset/change surface:
+  - **Change email (authenticated)** — `request_email_change` (verifies
+    the current password, stages the new address, emails a confirmation
+    link to the NEW address) + `confirm_email_change` (consumes the
+    token, flips the email, and — when `AUTH_EMAIL_CHANGE_NOTIFY_OLD`
+    is on — sends a security notice to the OLD address). Routes:
+    `POST /auth/email-change/request` (202) and
+    `POST /auth/email-change/confirm`.
+  - **Re-verify current email** — `request_email_verification` /
+    `confirm_email_verification` (resend a verification link to the
+    current address; confirming marks the account active). Routes:
+    `POST /auth/email-verify/request` (202) and
+    `POST /auth/email-verify/confirm`.
+  - **Recovery (lost mailbox access)** — `request_email_recovery`, an
+    **unauthenticated** entry point that proves identity with the
+    account password **plus a valid MFA code when TOTP is enrolled**,
+    then emails the confirmation link to the new address. Always returns
+    a generic `202` for soft failures (unknown email, wrong password,
+    bad/missing MFA code) so it can't enumerate accounts. Route
+    `POST /auth/email-recovery/request` is **opt-in** via
+    `AUTH_EMAIL_RECOVERY_ENABLED` (off by default).
+  - **Old-email security notice** on a confirmed change, toggled by
+    `AUTH_EMAIL_CHANGE_NOTIFY_OLD` (default `True`).
+  - **Backend HTML pages** (when `AUTH_BACKEND_LINKS=True`):
+    `GET /auth/email-change/{token}` and `GET /auth/email-verify/{token}`
+    render self-contained success/error pages — no frontend needed.
+  - New schemas exported from the package root:
+    `EmailChangeRequestSchema`, `EmailChangeConfirmSchema`,
+    `EmailRecoveryRequestSchema`, `EmailChangeResponseSchema`,
+    `EmailChangeToken`, `EmailVerificationToken`.
+  - New `UserTokenPurpose.EMAIL_CHANGE`; the existing
+    `EMAIL_VERIFICATION` purpose now backs the re-verify flow.
+  - 14 bundled bilingual templates (PT-BR + EN-US): `email_change.html`,
+    `email_verification.html`, `email_changed_notice.html`, plus
+    `email_change_success/error.html` and
+    `email_verification_success/error.html`.
+  - Localized subjects/bodies for the three new emails.
+  - New settings: `AUTH_EMAIL_CHANGE_TTL_SECONDS`,
+    `AUTH_EMAIL_VERIFICATION_TTL_SECONDS`,
+    `AUTH_EMAIL_CHANGE_URL_TEMPLATE`,
+    `AUTH_EMAIL_VERIFICATION_URL_TEMPLATE`, `AUTH_EMAIL_CHANGE_TEMPLATE`,
+    `AUTH_EMAIL_VERIFICATION_TEMPLATE`,
+    `AUTH_EMAIL_CHANGED_NOTICE_TEMPLATE`, `AUTH_EMAIL_CHANGE_NOTIFY_OLD`,
+    `AUTH_EMAIL_RECOVERY_ENABLED`, `AUTH_EMAIL_CHANGE_SUCCESS_TEMPLATE`,
+    `AUTH_EMAIL_CHANGE_ERROR_TEMPLATE`,
+    `AUTH_EMAIL_VERIFICATION_SUCCESS_TEMPLATE`,
+    `AUTH_EMAIL_VERIFICATION_ERROR_TEMPLATE`.
+
+### Changed
+
+- **`BaseUserTokenModel` gains a nullable `payload` column**
+  (`VARCHAR(320)`) carrying flow context — the pending new email for an
+  `EMAIL_CHANGE` token. **Requires a migration** in consuming projects
+  (additive nullable column, safe). See the migration guide.
+
 ## [0.91.0] — 2026-07-05
 
 ### Added

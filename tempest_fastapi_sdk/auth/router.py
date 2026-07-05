@@ -49,6 +49,10 @@ from tempest_fastapi_sdk.auth.locale import auth_page_message, negotiate_locale
 from tempest_fastapi_sdk.auth.page_renderer import render_auth_page
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationResponseSchema,
+    EmailChangeConfirmSchema,
+    EmailChangeRequestSchema,
+    EmailChangeResponseSchema,
+    EmailRecoveryRequestSchema,
     LoginResponseSchema,
     LoginSchema,
     LogoutSchema,
@@ -72,6 +76,7 @@ from tempest_fastapi_sdk.auth.token_delivery import (
 )
 from tempest_fastapi_sdk.db.user_token_model import UserTokenPurpose
 from tempest_fastapi_sdk.exceptions import (
+    ConflictException,
     InvalidTokenException,
     NotFoundException,
     UnauthorizedException,
@@ -492,6 +497,158 @@ def make_auth_router(
         )
         await session.commit()
 
+    @router.post(
+        "/email-change/request",
+        response_model=EmailChangeResponseSchema,
+        status_code=status.HTTP_202_ACCEPTED,
+        summary="Start an email change (while logged in)",
+        description=(
+            "Stage a move to a new email for the **currently "
+            "authenticated** user (requires a valid bearer "
+            "``access_token``). The user re-enters ``current_password`` "
+            "to confirm ownership; a mismatch returns **401**, an "
+            "already-taken address returns **409**.\n\n"
+            "A single-use confirmation link is sent to the **new** "
+            "address (valid for ``AUTH_EMAIL_CHANGE_TTL_SECONDS``); the "
+            "account email only changes once that link is confirmed via "
+            "``POST /auth/email-change/confirm``. When "
+            "``AUTH_RETURN_TOKEN_IN_RESPONSE=True`` or the ``[email]`` "
+            "extra is absent, the ready-to-use ``confirm_url`` is "
+            "returned in the body instead of emailed."
+        ),
+    )
+    async def email_change_request(
+        payload: EmailChangeRequestSchema,
+        session: AsyncSession = session_dep,
+        user: BaseUserModel = Depends(current_user_dep),
+    ) -> EmailChangeResponseSchema:
+        token = await service.request_email_change(
+            session,
+            user=user,
+            current_password=payload.current_password,
+            new_email=payload.new_email,
+        )
+        await session.commit()
+        message = "Check your new inbox to confirm the change."
+        if token is None:
+            return EmailChangeResponseSchema(message=message, confirm_url=None)
+        return EmailChangeResponseSchema(message=message, confirm_url=token.url)
+
+    @router.post(
+        "/email-change/confirm",
+        response_model=EmailChangeResponseSchema,
+        summary="Finish an email change (apply the new address) — JSON",
+        description=(
+            "Consume the single-use token from the confirmation link and "
+            "flip the account email to the staged address. An unknown, "
+            "already-used or expired token returns **400**; a target "
+            "address taken in the meantime returns **409**.\n\n"
+            "When ``AUTH_EMAIL_CHANGE_NOTIFY_OLD=True`` a security notice "
+            "is sent to the previous address on success.\n\n"
+            "!!! note\n"
+            "    When ``AUTH_BACKEND_LINKS=True`` the SDK also mounts "
+            "    **GET** ``/email-change/{token}`` that renders a "
+            "    self-contained HTML result page from the backend."
+        ),
+    )
+    async def email_change_confirm(
+        payload: EmailChangeConfirmSchema,
+        session: AsyncSession = session_dep,
+    ) -> EmailChangeResponseSchema:
+        await service.confirm_email_change(session, token=payload.token)
+        await session.commit()
+        return EmailChangeResponseSchema(
+            message="Your email was changed.",
+            confirm_url=None,
+        )
+
+    @router.post(
+        "/email-verify/request",
+        response_model=EmailChangeResponseSchema,
+        status_code=status.HTTP_202_ACCEPTED,
+        summary="Re-send a verification link for your current email",
+        description=(
+            "Issue a fresh verification link for the **currently "
+            "authenticated** user's existing email (requires a valid "
+            "bearer ``access_token``). No address change — confirming the "
+            "link marks the account active. Useful when the original "
+            "activation email was lost. The link is emailed, or returned "
+            "as ``confirm_url`` when ``AUTH_RETURN_TOKEN_IN_RESPONSE=True``."
+        ),
+    )
+    async def email_verify_request(
+        session: AsyncSession = session_dep,
+        user: BaseUserModel = Depends(current_user_dep),
+    ) -> EmailChangeResponseSchema:
+        token = await service.request_email_verification(session, user=user)
+        await session.commit()
+        message = "Check your inbox to verify your email."
+        if token is None:
+            return EmailChangeResponseSchema(message=message, confirm_url=None)
+        return EmailChangeResponseSchema(message=message, confirm_url=token.url)
+
+    @router.post(
+        "/email-verify/confirm",
+        response_model=EmailChangeResponseSchema,
+        summary="Confirm your current email (mark the account verified) — JSON",
+        description=(
+            "Consume the single-use token from the verification link and "
+            "mark the account active. An unknown, already-used or expired "
+            "token returns **400**."
+        ),
+    )
+    async def email_verify_confirm(
+        payload: EmailChangeConfirmSchema,
+        session: AsyncSession = session_dep,
+    ) -> EmailChangeResponseSchema:
+        await service.confirm_email_verification(session, token=payload.token)
+        await session.commit()
+        return EmailChangeResponseSchema(
+            message="Your email was verified.",
+            confirm_url=None,
+        )
+
+    @_mount_if(
+        auth_settings.AUTH_EMAIL_RECOVERY_ENABLED,
+        router.post(
+            "/email-recovery/request",
+            response_model=EmailChangeResponseSchema,
+            status_code=status.HTTP_202_ACCEPTED,
+            summary="Recover an account whose mailbox is no longer accessible",
+            description=(
+                "**Unauthenticated** entry point for a user who lost access "
+                "to their email. Mounted only when "
+                "``AUTH_EMAIL_RECOVERY_ENABLED=True``.\n\n"
+                "The account is located by its current (old) ``email``; "
+                "identity is proven by ``current_password`` and — when the "
+                "account has MFA enrolled — a valid ``mfa_code``. On success "
+                "a confirmation link is sent to the **new** address and a "
+                "security notice to the old one.\n\n"
+                "**Always returns 202** with the same generic message for "
+                "every soft failure (unknown email, wrong password, "
+                "missing/invalid MFA code) so the endpoint can't be used to "
+                "enumerate accounts."
+            ),
+        ),
+    )
+    async def email_recovery_request(
+        payload: EmailRecoveryRequestSchema,
+        session: AsyncSession = session_dep,
+    ) -> EmailChangeResponseSchema:
+        token = await service.request_email_recovery(
+            session,
+            email=payload.email,
+            new_email=payload.new_email,
+            current_password=payload.current_password,
+            mfa_code=payload.mfa_code,
+            recovery_code_model=recovery_code_model,
+        )
+        await session.commit()
+        message = "If the details match an account, a confirmation link was sent."
+        if token is None:
+            return EmailChangeResponseSchema(message=message, confirm_url=None)
+        return EmailChangeResponseSchema(message=message, confirm_url=token.url)
+
     @_mount_if(
         mount_bearer,
         router.post(
@@ -886,6 +1043,89 @@ def make_auth_router(
             await session.commit()
             html = render_auth_page(
                 auth_settings.AUTH_PASSWORD_RESET_SUCCESS_TEMPLATE,
+                {"user": user, "login_url": login_url},
+                template_dir=template_dir,
+                locale=locale,
+            )
+            return HTMLResponse(content=html)
+
+        @router.get(
+            "/email-change/{token}",
+            response_class=HTMLResponse,
+            include_in_schema=False,
+            summary="Confirm an email change from the emailed link (HTML page)",
+            description=(
+                "Backend-rendered email-change confirmation page (mounted "
+                "only when ``AUTH_BACKEND_LINKS=True``). This is the URL "
+                "the confirmation **email button points at** when you have "
+                "no frontend: the user clicks it, the backend consumes the "
+                "token and applies the new address, then renders a "
+                "localized success page "
+                "(``AUTH_EMAIL_CHANGE_SUCCESS_TEMPLATE``) — or an error "
+                "page (``AUTH_EMAIL_CHANGE_ERROR_TEMPLATE``) on a bad / "
+                "expired token or a target address taken meanwhile. The "
+                "page language is negotiated from ``Accept-Language``, "
+                "falling back to ``AUTH_DEFAULT_LOCALE``."
+            ),
+        )
+        async def email_change_html(
+            request: Request,
+            token: str,
+            session: AsyncSession = session_dep,
+        ) -> HTMLResponse:
+            locale = _page_locale(request)
+            try:
+                user = await service.confirm_email_change(session, token=token)
+            except (InvalidTokenException, ConflictException) as exc:
+                await session.rollback()
+                return _render_error(
+                    auth_settings.AUTH_EMAIL_CHANGE_ERROR_TEMPLATE,
+                    reason=exc.message,
+                    locale=locale,
+                )
+            await session.commit()
+            html = render_auth_page(
+                auth_settings.AUTH_EMAIL_CHANGE_SUCCESS_TEMPLATE,
+                {"user": user, "login_url": login_url},
+                template_dir=template_dir,
+                locale=locale,
+            )
+            return HTMLResponse(content=html)
+
+        @router.get(
+            "/email-verify/{token}",
+            response_class=HTMLResponse,
+            include_in_schema=False,
+            summary="Verify your current email from the emailed link (HTML page)",
+            description=(
+                "Backend-rendered email-verification page (mounted only "
+                "when ``AUTH_BACKEND_LINKS=True``). Consumes the token, "
+                "marks the account active, and renders a localized success "
+                "page (``AUTH_EMAIL_VERIFICATION_SUCCESS_TEMPLATE``) — or "
+                "an error page (``AUTH_EMAIL_VERIFICATION_ERROR_TEMPLATE``) "
+                "on a bad / expired token. The page language is negotiated "
+                "from ``Accept-Language``, falling back to "
+                "``AUTH_DEFAULT_LOCALE``."
+            ),
+        )
+        async def email_verify_html(
+            request: Request,
+            token: str,
+            session: AsyncSession = session_dep,
+        ) -> HTMLResponse:
+            locale = _page_locale(request)
+            try:
+                user = await service.confirm_email_verification(session, token=token)
+            except InvalidTokenException as exc:
+                await session.rollback()
+                return _render_error(
+                    auth_settings.AUTH_EMAIL_VERIFICATION_ERROR_TEMPLATE,
+                    reason=exc.message,
+                    locale=locale,
+                )
+            await session.commit()
+            html = render_auth_page(
+                auth_settings.AUTH_EMAIL_VERIFICATION_SUCCESS_TEMPLATE,
                 {"user": user, "login_url": login_url},
                 template_dir=template_dir,
                 locale=locale,

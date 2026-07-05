@@ -1054,6 +1054,144 @@ class AuthSettings(BaseSettings):
         ),
         examples=["password_reset_error.html"],
     )
+    AUTH_EMAIL_CHANGE_TTL_SECONDS: int = Field(
+        default=3_600,
+        ge=60,
+        title="Email-change token TTL (seconds)",
+        description=(
+            "How long a pending email-change confirmation token stays "
+            "valid. Defaults to 1 hour — the confirmation link is sent "
+            "to the NEW address and this bounds the window an attacker "
+            "who intercepts it could act in."
+        ),
+        examples=[900, 3_600, 7_200],
+    )
+    AUTH_EMAIL_VERIFICATION_TTL_SECONDS: int = Field(
+        default=86_400,
+        ge=60,
+        title="Email-verification token TTL (seconds)",
+        description=(
+            "How long a re-verification token for the user's CURRENT "
+            "email stays valid. Defaults to 1 day."
+        ),
+        examples=[3_600, 86_400],
+    )
+    AUTH_EMAIL_CHANGE_URL_TEMPLATE: str = Field(
+        default="http://localhost:3000/confirm-email?token={token}",
+        title="Email-change confirmation URL template",
+        description=(
+            "Front-end URL where the user confirms a pending email "
+            "change. ``{token}`` is replaced with the issued token. "
+            "Point it at the backend when ``AUTH_BACKEND_LINKS=True``."
+        ),
+        examples=[
+            "http://localhost:3000/confirm-email?token={token}",
+            "https://app.example.com/confirm-email/{token}",
+        ],
+    )
+    AUTH_EMAIL_VERIFICATION_URL_TEMPLATE: str = Field(
+        default="http://localhost:3000/verify-email?token={token}",
+        title="Email re-verification URL template",
+        description=(
+            "Front-end URL where the user confirms their current email. "
+            "``{token}`` is replaced with the issued token."
+        ),
+        examples=[
+            "http://localhost:3000/verify-email?token={token}",
+            "https://app.example.com/verify-email/{token}",
+        ],
+    )
+    AUTH_EMAIL_CHANGE_TEMPLATE: str = Field(
+        default="email_change.html",
+        title="Email-change confirmation email template name",
+        description=(
+            "Jinja2 template rendered for the confirmation email sent to "
+            "the NEW address. Same resolution rules as "
+            "``AUTH_ACTIVATION_TEMPLATE``."
+        ),
+        examples=["email_change.html"],
+    )
+    AUTH_EMAIL_VERIFICATION_TEMPLATE: str = Field(
+        default="email_verification.html",
+        title="Email re-verification email template name",
+        description=(
+            "Jinja2 template rendered for the re-verification email sent "
+            "to the user's current address."
+        ),
+        examples=["email_verification.html"],
+    )
+    AUTH_EMAIL_CHANGED_NOTICE_TEMPLATE: str = Field(
+        default="email_changed_notice.html",
+        title="Email-changed security notice template name",
+        description=(
+            "Jinja2 template rendered for the security alert sent to the "
+            "user's OLD address after an email change is confirmed. Sent "
+            "only when ``AUTH_EMAIL_CHANGE_NOTIFY_OLD=True``."
+        ),
+        examples=["email_changed_notice.html"],
+    )
+    AUTH_EMAIL_CHANGE_NOTIFY_OLD: bool = Field(
+        default=True,
+        title="Notify the old email on a confirmed change",
+        description=(
+            "When ``True`` (default), a security alert is sent to the "
+            "PREVIOUS email address once an email change is confirmed — "
+            "the pattern banks and Google use so a hijacked account "
+            "still surfaces the change to the rightful owner. Set "
+            "``False`` to skip it."
+        ),
+        examples=[True, False],
+    )
+    AUTH_EMAIL_RECOVERY_ENABLED: bool = Field(
+        default=False,
+        title="Enable the email-recovery endpoint",
+        description=(
+            "When ``True``, ``make_auth_router`` mounts "
+            "``POST /auth/email-recovery/request`` — an UNAUTHENTICATED "
+            "endpoint that lets a user who lost access to their mailbox "
+            "move to a new email by proving identity with their password "
+            "(and a valid MFA code when TOTP is enrolled). Off by default "
+            "because it is security-sensitive: enable it deliberately, and "
+            "always with ``AUTH_EMAIL_CHANGE_NOTIFY_OLD=True`` so the old "
+            "address is alerted."
+        ),
+        examples=[False, True],
+    )
+    AUTH_EMAIL_CHANGE_SUCCESS_TEMPLATE: str = Field(
+        default="email_change_success.html",
+        title="Backend email-change success page template",
+        description=(
+            "Jinja2 template rendered by ``GET /auth/email-change/{token}`` on success."
+        ),
+        examples=["email_change_success.html"],
+    )
+    AUTH_EMAIL_CHANGE_ERROR_TEMPLATE: str = Field(
+        default="email_change_error.html",
+        title="Backend email-change error page template",
+        description=(
+            "Jinja2 template rendered when the email-change token is "
+            "expired, already used, unknown, or the target email was "
+            "taken in the meantime."
+        ),
+        examples=["email_change_error.html"],
+    )
+    AUTH_EMAIL_VERIFICATION_SUCCESS_TEMPLATE: str = Field(
+        default="email_verification_success.html",
+        title="Backend email-verification success page template",
+        description=(
+            "Jinja2 template rendered by ``GET /auth/email-verify/{token}`` on success."
+        ),
+        examples=["email_verification_success.html"],
+    )
+    AUTH_EMAIL_VERIFICATION_ERROR_TEMPLATE: str = Field(
+        default="email_verification_error.html",
+        title="Backend email-verification error page template",
+        description=(
+            "Jinja2 template rendered when the verification token is "
+            "expired, already used, or unknown."
+        ),
+        examples=["email_verification_error.html"],
+    )
     AUTH_MFA_ENABLED: bool = Field(
         default=False,
         title="MFA endpoints kill-switch",

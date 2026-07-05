@@ -32,6 +32,22 @@ from tempest_fastapi_sdk.auth.schemas import (
 )
 from tempest_fastapi_sdk.auth.schemas import ActivationToken as ActivationToken
 from tempest_fastapi_sdk.auth.schemas import (
+    EmailChangeConfirmSchema as EmailChangeConfirmSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
+    EmailChangeRequestSchema as EmailChangeRequestSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
+    EmailChangeResponseSchema as EmailChangeResponseSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import EmailChangeToken as EmailChangeToken
+from tempest_fastapi_sdk.auth.schemas import (
+    EmailRecoveryRequestSchema as EmailRecoveryRequestSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
+    EmailVerificationToken as EmailVerificationToken,
+)
+from tempest_fastapi_sdk.auth.schemas import (
     LoginResponseSchema as LoginResponseSchema,
 )
 from tempest_fastapi_sdk.auth.schemas import LoginSchema as LoginSchema
@@ -78,6 +94,12 @@ __all__: list[str] = [
     "ActivationResponseSchema",
     "ActivationToken",
     "AuthCookieConfig",
+    "EmailChangeConfirmSchema",
+    "EmailChangeRequestSchema",
+    "EmailChangeResponseSchema",
+    "EmailChangeToken",
+    "EmailRecoveryRequestSchema",
+    "EmailVerificationToken",
     "LoginResponseSchema",
     "LoginSchema",
     "LogoutSchema",

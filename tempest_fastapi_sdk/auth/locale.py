@@ -142,12 +142,30 @@ AUTH_EMAIL_MESSAGES: dict[str, dict[str, str]] = {
         "activation_body": "Abra este link para ativar sua conta: {url}",
         "password_reset_subject": "Redefina sua senha",
         "password_reset_body": "Abra este link para redefinir sua senha: {url}",
+        "email_change_subject": "Confirme seu novo e-mail",
+        "email_change_body": "Abra este link para confirmar seu novo e-mail: {url}",
+        "email_verification_subject": "Verifique seu e-mail",
+        "email_verification_body": "Abra este link para verificar seu e-mail: {url}",
+        "email_changed_notice_subject": "Seu e-mail foi alterado",
+        "email_changed_notice_body": (
+            "O e-mail da sua conta foi alterado para {new_email}. "
+            "Se não foi você, fale com o suporte imediatamente."
+        ),
     },
     "en-US": {
         "activation_subject": "Activate your account",
         "activation_body": "Open this link to activate your account: {url}",
         "password_reset_subject": "Reset your password",
         "password_reset_body": "Open this link to reset your password: {url}",
+        "email_change_subject": "Confirm your new email",
+        "email_change_body": "Open this link to confirm your new email: {url}",
+        "email_verification_subject": "Verify your email",
+        "email_verification_body": "Open this link to verify your email: {url}",
+        "email_changed_notice_subject": "Your email was changed",
+        "email_changed_notice_body": (
+            "Your account email was changed to {new_email}. "
+            "If this wasn't you, contact support immediately."
+        ),
     },
 }
 
@@ -186,12 +204,14 @@ def auth_email_message(locale: str, key: str) -> str:
     Args:
         locale (str): A canonical supported locale. Unknown locales fall
             back to :data:`DEFAULT_AUTH_LOCALE`.
-        key (str): One of ``"activation_subject"``, ``"activation_body"``,
-            ``"password_reset_subject"``, ``"password_reset_body"``.
+        key (str): One of the ``*_subject`` / ``*_body`` keys —
+            ``activation``, ``password_reset``, ``email_change``,
+            ``email_verification`` and ``email_changed_notice``.
 
     Returns:
-        str: The localized string. Body strings still contain the
-        ``{url}`` placeholder for the caller to ``.format(...)``.
+        str: The localized string. ``*_body`` strings still contain a
+        placeholder (``{url}``, or ``{new_email}`` for
+        ``email_changed_notice_body``) for the caller to ``.format(...)``.
     """
     table = AUTH_EMAIL_MESSAGES.get(locale, AUTH_EMAIL_MESSAGES[DEFAULT_AUTH_LOCALE])
     return table[key]

@@ -33,13 +33,17 @@ class UserTokenPurpose(StrEnum):
       up with.
     * ``PASSWORD_RESET`` — let the user pick a new password
       without the old one.
-    * ``EMAIL_VERIFICATION`` — re-verify after the email was
-      changed.
+    * ``EMAIL_VERIFICATION`` — re-verify the user's current email
+      (resend the confirmation link).
+    * ``EMAIL_CHANGE`` — confirm a move to a **new** email address.
+      The pending new address travels in the token row's
+      :attr:`BaseUserTokenModel.payload`.
     """
 
     ACTIVATION = "activation"
     PASSWORD_RESET = "password_reset"
     EMAIL_VERIFICATION = "email_verification"
+    EMAIL_CHANGE = "email_change"
 
 
 class BaseUserTokenModel(BaseModel):
@@ -67,6 +71,12 @@ class BaseUserTokenModel(BaseModel):
         used_at (datetime | None): UTC timestamp the token was
             redeemed. Non-null means the token is spent and must
             not be accepted again.
+        payload (str | None): Optional context the flow needs at
+            redemption time — e.g. the **pending new email** for an
+            ``EMAIL_CHANGE`` token. ``None`` for flows that carry no
+            extra data (activation, password reset). Kept generic so
+            future one-shot flows can reuse it. Bounded at 320 chars,
+            the RFC-5321 maximum email length.
     """
 
     __abstract__ = True
@@ -99,6 +109,12 @@ class BaseUserTokenModel(BaseModel):
         nullable=True,
         default=None,
         doc="UTC timestamp the token was redeemed (one-shot).",
+    )
+    payload: Mapped[str | None] = mapped_column(
+        String(320),
+        nullable=True,
+        default=None,
+        doc="Optional flow context (e.g. the pending new email for EMAIL_CHANGE).",
     )
 
 

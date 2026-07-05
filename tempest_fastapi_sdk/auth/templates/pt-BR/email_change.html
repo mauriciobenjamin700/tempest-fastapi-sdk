@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8" /></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #1f2937; max-width: 480px; margin: 0 auto; padding: 24px;">
+  <h2 style="color: #111827;">Confirme seu novo e-mail</h2>
+  <p>Recebemos um pedido para alterar o e-mail da conta de {{ user.email }} para <strong>{{ new_email }}</strong>.</p>
+  <p>Clique no bot&#227;o abaixo para confirmar o novo endere&#231;o:</p>
+  <p style="margin: 24px 0;">
+    <a href="{{ confirm_url }}"
+       style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px;">
+      Confirmar novo e-mail
+    </a>
+  </p>
+  <p style="color: #6b7280; font-size: 13px;">Ou cole este link no seu navegador:<br />
+    <a href="{{ confirm_url }}" style="color: #2563eb; word-break: break-all;">{{ confirm_url }}</a>
+  </p>
+  <p style="color: #6b7280; font-size: 13px;">Este link expira em <strong>{{ expires_at_str }}</strong>.
+    Se voc&#234; n&#227;o solicitou esta altera&#231;&#227;o, ignore o e-mail &#8212; nada muda.</p>
+</body>
+</html>

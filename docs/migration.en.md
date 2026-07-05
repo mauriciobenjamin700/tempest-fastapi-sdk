@@ -2,6 +2,36 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.92.0 — `payload` column on the user token
+
+0.92.0 adds the **email change / re-verification / recovery** flow. To carry the pending email until confirmation, `BaseUserTokenModel` gained a new column:
+
+```python
+payload: Mapped[str | None] = mapped_column(String(320), nullable=True, default=None)
+```
+
+Since your `user_tokens` table inherits from `BaseUserTokenModel`, the column shows up on the model automatically — but the database needs a **migration**. It is additive and safe (nullable column, no required default):
+
+```bash
+# generate and apply
+tempest db revision -m "add payload to user_tokens"
+tempest db upgrade
+```
+
+Or by hand:
+
+```sql
+ALTER TABLE user_tokens ADD COLUMN payload VARCHAR(320) NULL;
+```
+
+!!! info "That's it"
+    No renames, no default backfill. Existing flows (activation, password reset) keep writing `payload = NULL`. The new email flow is fully opt-in — recovery (`POST /auth/email-recovery/request`) is only mounted with `AUTH_EMAIL_RECOVERY_ENABLED=True`.
+
+### Verify
+
+- Run the migration before deploying 0.92.0 (the column must exist).
+- If you hand-write `src/db/models/user_token.py` instead of using `make_user_token_model`, the column comes from the abstract base — no need to redeclare, just migrate.
+
 ## 0.63.0 — authenticated user loaded on the request session
 
 Before 0.63.0, `UserAuthService.current_user_dependency()` loaded the authenticated user through `load_user`, which opened its **own** session (via `db.get_session_context()`) and closed it on exit. The `UserModel` handed to the route was therefore **detached**: mutating it and calling `commit`/`refresh` on the request session (the one your repositories use) raised

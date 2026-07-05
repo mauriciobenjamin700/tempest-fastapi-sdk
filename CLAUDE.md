@@ -60,13 +60,21 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `query_param=`, for cookieless `EventSource`/SSE clients), full
   bundled flow (`UserAuthService` + `make_auth_router` covering
   signup/activate/login/password-reset), `BaseUserModel` +
-  `BaseUserTokenModel`, OAuth2/OIDC providers
-  (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`),
-  CSRF middleware + `make_csrf_token_dependency`, opt-in
-  DB-backed opaque refresh tokens (`BaseUserRefreshTokenModel`,
-  `make_user_refresh_token_model`, `refresh_token_model=` on
-  `UserAuthService`) with rotation, family-wide reuse detection
-  and `POST /auth/logout` (`LogoutSchema`).
+  `BaseUserTokenModel` (nullable `payload` column carrying flow
+  context), email change/re-verify/recovery
+  (`request_email_change`/`confirm_email_change`,
+  `request_email_verification`/`confirm_email_verification`,
+  `request_email_recovery` — password + MFA-if-enrolled, opt-in
+  `AUTH_EMAIL_RECOVERY_ENABLED`; old-email security notice via
+  `AUTH_EMAIL_CHANGE_NOTIFY_OLD`; `EMAIL_CHANGE` token purpose;
+  JSON + backend HTML pages + bilingual templates), OAuth2/OIDC
+  providers (`GoogleOAuthClient`, `GitHubOAuthClient`,
+  `OIDCProvider`), CSRF middleware + `make_csrf_token_dependency`,
+  opt-in DB-backed opaque refresh tokens
+  (`BaseUserRefreshTokenModel`, `make_user_refresh_token_model`,
+  `refresh_token_model=` on `UserAuthService`) with rotation,
+  family-wide reuse detection and `POST /auth/logout`
+  (`LogoutSchema`).
 - **DB** — `AsyncDatabaseManager`, `BaseRepository[T]` with
   bulk ops (`bulk_create_values`, `bulk_upsert`, `bulk_update`,
   `add_all`, etc.), `AlembicHelper`, `BaseModel`, audit /

@@ -84,6 +84,12 @@ from tempest_fastapi_sdk.auth import (
     ActivationResponseSchema,
     ActivationToken,
     AuthCookieConfig,
+    EmailChangeConfirmSchema,
+    EmailChangeRequestSchema,
+    EmailChangeResponseSchema,
+    EmailChangeToken,
+    EmailRecoveryRequestSchema,
+    EmailVerificationToken,
     LoginResponseSchema,
     LoginSchema,
     LogoutSchema,
@@ -361,7 +367,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.91.0"
+__version__: str = "0.92.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -446,8 +452,14 @@ __all__: list[str] = [
     "DestructiveMigrationError",
     "DiskMetrics",
     "DownloadUtils",
+    "EmailChangeConfirmSchema",
+    "EmailChangeRequestSchema",
+    "EmailChangeResponseSchema",
+    "EmailChangeToken",
+    "EmailRecoveryRequestSchema",
     "EmailSettings",
     "EmailUtils",
+    "EmailVerificationToken",
     "EnvFeatureFlagBackend",
     "EventStream",
     "ExpiredTokenException",

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8" /></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #1f2937; max-width: 480px; margin: 0 auto; padding: 24px;">
+  <h2 style="color: #111827;">Verifique seu e-mail</h2>
+  <p>Confirme que este endere&#231;o ({{ user.email }}) pertence a voc&#234;.</p>
+  <p>Clique no bot&#227;o abaixo para verificar:</p>
+  <p style="margin: 24px 0;">
+    <a href="{{ verify_url }}"
+       style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px;">
+      Verificar e-mail
+    </a>
+  </p>
+  <p style="color: #6b7280; font-size: 13px;">Ou cole este link no seu navegador:<br />
+    <a href="{{ verify_url }}" style="color: #2563eb; word-break: break-all;">{{ verify_url }}</a>
+  </p>
+  <p style="color: #6b7280; font-size: 13px;">Este link expira em <strong>{{ expires_at_str }}</strong>.</p>
+</body>
+</html>

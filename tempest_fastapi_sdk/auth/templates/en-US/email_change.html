@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head><meta charset="utf-8" /></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #1f2937; max-width: 480px; margin: 0 auto; padding: 24px;">
+  <h2 style="color: #111827;">Confirm your new email</h2>
+  <p>We received a request to change the account email from {{ user.email }} to <strong>{{ new_email }}</strong>.</p>
+  <p>Click the button below to confirm the new address:</p>
+  <p style="margin: 24px 0;">
+    <a href="{{ confirm_url }}"
+       style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px;">
+      Confirm new email
+    </a>
+  </p>
+  <p style="color: #6b7280; font-size: 13px;">Or paste this link into your browser:<br />
+    <a href="{{ confirm_url }}" style="color: #2563eb; word-break: break-all;">{{ confirm_url }}</a>
+  </p>
+  <p style="color: #6b7280; font-size: 13px;">This link expires on <strong>{{ expires_at_str }}</strong>.
+    If you didn't request this change, ignore this email &#8212; nothing changes.</p>
+</body>
+</html>

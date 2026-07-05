@@ -569,6 +569,223 @@ class PasswordResetToken(BaseSchema):
     )
 
 
+class EmailChangeRequestSchema(BaseSchema):
+    """Request body for ``POST /auth/email-change/request``.
+
+    Used by an **already-authenticated** user to start moving to a new
+    email address. The bearer ``access_token`` identifies the user;
+    ``current_password`` re-confirms ownership before the change is
+    staged. A confirmation link is sent to the NEW address — the change
+    only takes effect once that link is confirmed.
+
+    Attributes:
+        new_email (EmailStr): The address the user wants to move to.
+        current_password (str): The user's current plaintext password,
+            re-entered for confirmation. A mismatch returns ``401``.
+    """
+
+    new_email: EmailStr = Field(
+        title="New email",
+        description="The address the user wants to move the account to.",
+        examples=["nova@example.com"],
+    )
+    current_password: str = Field(
+        min_length=1,
+        title="Current password",
+        description="The user's current plaintext password, for confirmation.",
+        examples=["my-current-password"],
+    )
+
+
+class EmailChangeConfirmSchema(BaseSchema):
+    """Request body for ``POST /auth/email-change/confirm``.
+
+    Carries the opaque token the user copied from the confirmation
+    link sent to their new address. The service consumes the token
+    (one-shot) and flips the account email to the staged value.
+
+    Attributes:
+        token (str): Opaque token issued by ``request``. Plaintext form
+            — the SDK stores only the hash.
+    """
+
+    token: str = Field(
+        min_length=16,
+        title="Email-change token",
+        description="Opaque token from the confirmation email / response body.",
+        examples=["abc123def456…"],
+    )
+
+
+class EmailRecoveryRequestSchema(BaseSchema):
+    """Request body for ``POST /auth/email-recovery/request``.
+
+    The **unauthenticated** recovery entry point for a user who lost
+    access to their mailbox. Identity is proven by the account password
+    (and a valid MFA code when TOTP is enrolled) rather than a bearer
+    token. Always returns ``202`` with a generic message so the endpoint
+    can't be used to enumerate accounts. On success a confirmation link
+    is sent to the NEW address and a security notice to the old one.
+
+    Attributes:
+        email (EmailStr): The account's CURRENT (old) email — locates
+            the account.
+        new_email (EmailStr): The address the user wants to move to.
+        current_password (str): The account password, for identity proof.
+        mfa_code (str | None): TOTP or recovery code — required when the
+            account has MFA enrolled, ignored otherwise.
+    """
+
+    email: EmailStr = Field(
+        title="Current email",
+        description=(
+            "The account's current (old) email. The endpoint always "
+            "returns 202 — it never leaks whether the email exists."
+        ),
+        examples=["ana@example.com"],
+    )
+    new_email: EmailStr = Field(
+        title="New email",
+        description="The address the user wants to recover the account to.",
+        examples=["nova@example.com"],
+    )
+    current_password: str = Field(
+        min_length=1,
+        title="Account password",
+        description="The account's plaintext password, for identity proof.",
+        examples=["my-current-password"],
+    )
+    mfa_code: str | None = Field(
+        default=None,
+        title="MFA code",
+        description=(
+            "6-digit TOTP code or a recovery code. Required when the "
+            "account has MFA enrolled; ignored otherwise."
+        ),
+        examples=[None, "123456", "abcde-fghij"],
+    )
+
+
+class EmailChangeResponseSchema(BaseSchema):
+    """Response body for the email change / verify / recovery ``request`` endpoints.
+
+    ``message`` is a generic, constant string. ``confirm_url`` is
+    populated only when ``AUTH_RETURN_TOKEN_IN_RESPONSE=True`` or when
+    the ``[email]`` extra isn't installed — otherwise the link travels
+    only through email.
+
+    Attributes:
+        message (str): Human-readable summary of the next step.
+        confirm_url (str | None): Confirmation URL when the caller asked
+            for an inline response, ``None`` in production.
+    """
+
+    message: str = Field(
+        title="Message",
+        description="Human-readable summary of the next step.",
+        examples=["Check your new inbox to confirm the change."],
+    )
+    confirm_url: str | None = Field(
+        default=None,
+        title="Confirmation URL",
+        description=(
+            "Set only when ``AUTH_RETURN_TOKEN_IN_RESPONSE=True`` "
+            "(dev mode) or when the ``[email]`` extra is missing. "
+            "``None`` in production — the link only goes via email."
+        ),
+        examples=[None, "http://localhost:3000/confirm-email?token=…"],
+    )
+
+
+class EmailChangeToken(BaseSchema):
+    """Service-level result of issuing an email-change token.
+
+    Returned by :meth:`UserAuthService.request_email_change` /
+    :meth:`request_email_recovery` when the caller asked the service to
+    surface the link (``AUTH_RETURN_TOKEN_IN_RESPONSE=True`` or no
+    :class:`EmailUtils` wired). The plaintext token is one-shot, hashed
+    at rest, and expires after ``AUTH_EMAIL_CHANGE_TTL_SECONDS``.
+
+    Attributes:
+        user_id (UUID): UUID of the user the token authorizes.
+        new_email (str): The pending new address the token confirms.
+        token (str): Plaintext token — display once, never store.
+        url (str): Confirmation URL with the token already substituted
+            into ``AUTH_EMAIL_CHANGE_URL_TEMPLATE``.
+        expires_at (datetime): UTC timestamp the token becomes invalid.
+    """
+
+    user_id: UUID = Field(
+        title="User id",
+        description="UUID of the user this email-change token authorizes.",
+        examples=["7d8e4d5a-9f4b-4c3a-bd0a-1234567890ab"],
+    )
+    new_email: str = Field(
+        title="New email",
+        description="The pending new address the token confirms.",
+        examples=["nova@example.com"],
+    )
+    token: str = Field(
+        title="Plaintext token",
+        description="Opaque token — display once, never persist in cleartext.",
+        examples=["abc123def456…"],
+    )
+    url: str = Field(
+        title="Confirmation URL",
+        description=(
+            "Confirmation URL with the token already substituted. "
+            "Derived from ``AUTH_EMAIL_CHANGE_URL_TEMPLATE``."
+        ),
+        examples=["http://localhost:3000/confirm-email?token=abc123…"],
+    )
+    expires_at: datetime = Field(
+        title="Expires at",
+        description="UTC timestamp the token becomes invalid.",
+        examples=["2026-06-04T17:00:00Z"],
+    )
+
+
+class EmailVerificationToken(BaseSchema):
+    """Service-level result of issuing an email re-verification token.
+
+    Returned by :meth:`UserAuthService.request_email_verification` when
+    the caller asked the service to surface the link. Confirms the
+    user's CURRENT email (no address change). Expires after
+    ``AUTH_EMAIL_VERIFICATION_TTL_SECONDS``.
+
+    Attributes:
+        user_id (UUID): UUID of the user the token authorizes.
+        token (str): Plaintext token — display once, never store.
+        url (str): Verification URL with the token already substituted
+            into ``AUTH_EMAIL_VERIFICATION_URL_TEMPLATE``.
+        expires_at (datetime): UTC timestamp the token becomes invalid.
+    """
+
+    user_id: UUID = Field(
+        title="User id",
+        description="UUID of the user this verification token authorizes.",
+        examples=["7d8e4d5a-9f4b-4c3a-bd0a-1234567890ab"],
+    )
+    token: str = Field(
+        title="Plaintext token",
+        description="Opaque token — display once, never persist in cleartext.",
+        examples=["abc123def456…"],
+    )
+    url: str = Field(
+        title="Verification URL",
+        description=(
+            "Verification URL with the token already substituted. "
+            "Derived from ``AUTH_EMAIL_VERIFICATION_URL_TEMPLATE``."
+        ),
+        examples=["http://localhost:3000/verify-email?token=abc123…"],
+    )
+    expires_at: datetime = Field(
+        title="Expires at",
+        description="UTC timestamp the token becomes invalid.",
+        examples=["2026-06-04T17:00:00Z"],
+    )
+
+
 class MFAEnrollResponseSchema(BaseSchema):
     """Response body for ``POST /auth/mfa/enroll`` — shown ONCE.
 
@@ -690,6 +907,12 @@ class MFAVerifySchema(BaseSchema):
 __all__: list[str] = [
     "ActivationResponseSchema",
     "ActivationToken",
+    "EmailChangeConfirmSchema",
+    "EmailChangeRequestSchema",
+    "EmailChangeResponseSchema",
+    "EmailChangeToken",
+    "EmailRecoveryRequestSchema",
+    "EmailVerificationToken",
     "LoginResponseSchema",
     "LoginSchema",
     "LogoutSchema",
