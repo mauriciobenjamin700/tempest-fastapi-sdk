@@ -36,16 +36,28 @@ from tempest_fastapi_sdk.genai.schemas import (
 from tempest_fastapi_sdk.genai.schemas import (
     ModelDtype as ModelDtype,
 )
+from tempest_fastapi_sdk.genai.text import (
+    TextGenerator as TextGenerator,
+)
+from tempest_fastapi_sdk.genai.text import (
+    auto_dtype_name as auto_dtype_name,
+)
+from tempest_fastapi_sdk.genai.text import (
+    resolve_device as resolve_device,
+)
 
 __all__: list[str] = [
     "CapacityReport",
     "GPUInfo",
     "HardwareInfo",
     "ModelDtype",
+    "TextGenerator",
+    "auto_dtype_name",
     "bytes_per_param",
     "can_run",
     "estimate_model_bytes",
     "fetch_num_params",
     "probe_hardware",
     "recommend",
+    "resolve_device",
 ]

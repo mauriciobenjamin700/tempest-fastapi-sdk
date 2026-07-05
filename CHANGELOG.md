@@ -5,6 +5,26 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.98.0] — 2026-07-05
+
+### Added
+
+- **Self-hosted GenAI — local LLM text generation
+  (`tempest_fastapi_sdk.genai.TextGenerator`)**, slice 3. Loads a
+  HuggingFace causal LM once and generates on your own hardware:
+  - `generate(prompt, ...)`, `chat(messages, ...)` (tokenizer chat
+    template) and `stream(prompt, ...)` (token-by-token) — all async,
+    running the blocking model in `asyncio.to_thread`.
+  - Automatic device (`auto` → CUDA → MPS → CPU) and precision (`auto` →
+    bf16 on GPU, fp32 on CPU) resolution; int8/int4 `quantization` via
+    BitsAndBytesConfig (`[genai-quant]`).
+  - Lazy `load()` on first use; `unload()` frees VRAM; `unload_if_idle()`
+    + `idle_unload_seconds` reclaim memory between bursts (call it from a
+    `@tq.interval` task — no background thread).
+  - Exported helpers `resolve_device` / `auto_dtype_name`. `torch` /
+    `transformers` are imported lazily, so the module and its resolution
+    helpers import without the `[genai]` extra.
+
 ## [0.97.0] — 2026-07-05
 
 ### Added

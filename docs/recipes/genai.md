@@ -9,8 +9,9 @@ está sendo entregue em fatias; esta página cobre a **primeira**: saber,
     - **v0.96:** `genai.hardware` — sondagem + `can_run` / `recommend`.
     - **v0.97:** `genai.rag` — contexto RAG (busca web SearXNG + leitura de
       PDF) pra injetar nas LLMs (esta página, seção [Contexto RAG](#contexto-rag)).
-    - **Em breve:** `TextGenerator` (LLM + quantização int4/int8),
-      `Embedder`, cache de modelo/resultado, `BatchScheduler`.
+    - **v0.98:** `TextGenerator` — LLM local + quantização int4/int8
+      (seção [Gerar texto](#gerar-texto-com-llm-local)).
+    - **Em breve:** `Embedder`, cache de modelo/resultado, `BatchScheduler`.
 
 O extra `[genai]` (transformers + torch + accelerate) só é necessário pra
 **rodar** modelos. As funções de capacidade **importam sem o extra** — o
@@ -81,6 +82,52 @@ print(f"~{gb:.1f} GB")   # 7B em int4
 O número de parâmetros pode vir explícito (`num_params=`) ou ser lido do
 Hub por `model_id` (via `huggingface_hub`, sem baixar os pesos —
 metadados safetensors).
+
+## Gerar texto com LLM local
+
+`TextGenerator` carrega um LLM causal do HuggingFace **uma vez** e gera no
+seu hardware. Resolve device e precisão sozinho, suporta quantização
+int4/int8, carrega os pesos preguiçosamente (na 1ª chamada) e libera VRAM
+quando ocioso. Requer `[genai]` (e `[genai-quant]` pra quantizar).
+
+```python
+from tempest_fastapi_sdk.genai import TextGenerator
+
+gen = TextGenerator(
+    "Qwen/Qwen2.5-7B-Instruct",
+    quantization="int4",            # cabe em GPU modesta; None = precisão cheia
+    idle_unload_seconds=300,        # libera VRAM após 5 min ocioso
+)
+
+texto = await gen.generate("Explique PIX em uma frase.", max_new_tokens=128)
+
+# chat com template de papéis:
+resposta = await gen.chat([
+    {"role": "system", "content": "Você responde em PT-BR."},
+    {"role": "user", "content": "O que é PIX?"},
+])
+
+# streaming token a token:
+async for pedaco in gen.stream("Escreva um haiku sobre chuva."):
+    print(pedaco, end="", flush=True)
+
+gen.unload()                        # libera a memória na hora
+```
+
+A geração bloqueante roda em `asyncio.to_thread` — não trava o event loop.
+`device="auto"` escolhe CUDA → MPS → CPU; `dtype="auto"` usa bf16 em GPU e
+fp32 em CPU.
+
+!!! tip "Confira antes de carregar"
+    Combine com o [capacity check](#a-maquina-aguenta): rode `can_run` /
+    `recommend` pra escolher `quantization`/`device` que **cabem** antes
+    de instanciar o `TextGenerator`.
+
+!!! tip "Libere VRAM entre picos"
+    Com `idle_unload_seconds` setado, chame `gen.unload_if_idle()`
+    periodicamente (ex.: num `@tq.interval(60)` do [TaskQueue](queue-tasks.md))
+    — ele descarrega o modelo só quando passou do tempo ocioso, sem mágica
+    de background thread. `unload()` libera na hora.
 
 ## Contexto RAG
 

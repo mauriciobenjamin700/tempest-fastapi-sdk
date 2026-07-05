@@ -136,8 +136,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   psutil/torch), `can_run`/`recommend` → `CapacityReport` (fits? device,
   estimate vs available, suggestion to quantize/offload), `estimate_model_bytes`/
   `bytes_per_param`/`fetch_num_params` (Hub metadata, no weight download),
-  `ModelDtype`. Capacity fns import WITHOUT the extra. **Planned slices:**
-  `TextGenerator` (LLM + int4/int8 quant, lazy load + idle-unload),
+  `ModelDtype`. Capacity fns import WITHOUT the extra. **Shipped (v0.98) —
+  `TextGenerator`**: local causal LM (`generate`/`chat`/`stream` async via
+  to_thread), auto device/dtype, int8/int4 quant (BitsAndBytesConfig), lazy
+  `load` + `unload`/`unload_if_idle` (+ `idle_unload_seconds`),
+  `resolve_device`/`auto_dtype_name`; torch/transformers lazy. **Planned:**
   `Embedder`, model/result cache, `BatchScheduler` (coalesce concurrent
   calls). Classes-only (no bundled router). Submodule import like
   queue/tasks/vision. **Shipped (v0.97) — RAG context**
