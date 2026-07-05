@@ -23,10 +23,16 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
-from tempest_fastapi_sdk.sse.event_stream import EventStream, ServerSentEvent
+from tempest_fastapi_sdk.sse.event_stream import (
+    EventStream,
+    OverflowPolicy,
+    ServerSentEvent,
+    sse_response,
+)
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
+    from starlette.responses import StreamingResponse
 
 
 class SSEBroker:
@@ -46,6 +52,8 @@ class SSEBroker:
         redis: Redis | None = None,
         channel_prefix: str = "sse",
         heartbeat_seconds: float | None = 15.0,
+        max_queue: int = 1000,
+        overflow: OverflowPolicy = "drop_oldest",
     ) -> None:
         """Initialize the broker.
 
@@ -54,10 +62,17 @@ class SSEBroker:
                 extra). ``None`` runs single-process (local fan-out only).
             channel_prefix (str): Prefix for Redis channels.
             heartbeat_seconds (float | None): Idle heartbeat for streams.
+            max_queue (int): Bounded-queue size for every stream opened by
+                :meth:`register`. ``0`` disables the bound. Defaults to
+                ``1000``.
+            overflow (OverflowPolicy): Overflow policy for those streams.
+                Defaults to ``"drop_oldest"``.
         """
         self._redis: Redis | None = redis
         self.channel_prefix: str = channel_prefix
         self.heartbeat_seconds: float | None = heartbeat_seconds
+        self.max_queue: int = max_queue
+        self.overflow: OverflowPolicy = overflow
         self._channels: dict[str, set[EventStream]] = {}
         self._pubsub: Any = None
 
@@ -71,9 +86,45 @@ class SSEBroker:
             EventStream: A fresh stream to hand to
             :func:`tempest_fastapi_sdk.sse_response`.
         """
-        stream = EventStream(heartbeat_seconds=self.heartbeat_seconds)
+        stream = EventStream(
+            heartbeat_seconds=self.heartbeat_seconds,
+            max_queue=self.max_queue,
+            overflow=self.overflow,
+        )
         self._channels.setdefault(channel, set()).add(stream)
         return stream
+
+    def response(
+        self,
+        channel: str,
+        *,
+        status_code: int = 200,
+        headers: dict[str, str] | None = None,
+    ) -> StreamingResponse:
+        """Subscribe to ``channel`` and return the SSE response in one call.
+
+        Bundles the whole per-connection lifecycle: :meth:`register` opens
+        a local stream, :func:`tempest_fastapi_sdk.sse_response` wraps it,
+        and an ``on_disconnect`` hook calls :meth:`unregister` when the
+        client goes away. This removes the hand-rolled ``try/finally``
+        wrapper — forgetting which used to leak a stream per disconnect.
+
+        Args:
+            channel (str): The logical channel to subscribe the client to.
+            status_code (int): HTTP status. Defaults to ``200``.
+            headers (dict[str, str] | None): Extra headers to attach.
+
+        Returns:
+            StreamingResponse: A ready-to-return SSE response that
+            unregisters its stream on disconnect.
+        """
+        stream = self.register(channel)
+        return sse_response(
+            stream.stream(),
+            status_code=status_code,
+            headers=headers,
+            on_disconnect=lambda: self.unregister(channel, stream),
+        )
 
     def unregister(self, channel: str, stream: EventStream) -> None:
         """Drop a closed stream from ``channel``.

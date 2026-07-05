@@ -3,12 +3,26 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
-from collections.abc import AsyncIterable, AsyncIterator
+from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from starlette.responses import StreamingResponse
+
+OverflowPolicy = Literal["drop_oldest", "drop_newest", "block"]
+"""How :class:`EventStream` reacts when its bounded queue is full.
+
+* ``"drop_oldest"`` (default) — evict the oldest queued event to make
+  room for the new one. Keeps the freshest data; best for live tickers
+  / progress where stale frames are worthless.
+* ``"drop_newest"`` — discard the incoming event, keep the backlog.
+  Best when every early event matters and later ones are redundant.
+* ``"block"`` — apply backpressure: :meth:`EventStream.publish` waits
+  until the consumer drains a slot. Use only when the producer is
+  dedicated to a single connection and losing events is unacceptable.
+"""
 
 _SSE_HEADERS: dict[str, str] = {
     "Cache-Control": "no-cache",
@@ -94,20 +108,95 @@ class EventStream:
     than ``heartbeat_seconds``; this keeps load-balancers from
     closing idle TCP connections.
 
+    **Backpressure.** The internal queue is **bounded** (``max_queue``)
+    so a slow or stalled client cannot make a busy producer grow the
+    queue without limit and exhaust memory. When the queue fills, the
+    ``overflow`` policy decides what gives — evict the oldest event
+    (default), drop the incoming one, or block the producer. The
+    :meth:`close` sentinel always gets through, evicting a queued event
+    if that is the only way to fit. :attr:`dropped_events` counts every
+    event lost to overflow so you can surface it in metrics / logs.
+
     Attributes:
         heartbeat_seconds (float | None): Idle interval that triggers
             a comment heartbeat. ``None`` disables heartbeats.
+        max_queue (int): Maximum number of buffered events. ``0``
+            disables the bound (unbounded — pre-0.91 behavior).
+        overflow (OverflowPolicy): What happens when the queue is full.
     """
 
-    def __init__(self, *, heartbeat_seconds: float | None = 15.0) -> None:
+    def __init__(
+        self,
+        *,
+        heartbeat_seconds: float | None = 15.0,
+        max_queue: int = 1000,
+        overflow: OverflowPolicy = "drop_oldest",
+    ) -> None:
         """Initialize the stream.
 
         Args:
             heartbeat_seconds (float | None): Idle interval before
                 a comment heartbeat is emitted.
+            max_queue (int): Maximum buffered events before ``overflow``
+                kicks in. ``0`` disables the bound. Defaults to ``1000``.
+            overflow (OverflowPolicy): Overflow reaction. Defaults to
+                ``"drop_oldest"``.
         """
-        self._queue: asyncio.Queue[ServerSentEvent | None] = asyncio.Queue()
+        # Only "block" needs a hard-bounded queue (real backpressure). The
+        # drop policies keep an unbounded queue and enforce the bound
+        # manually on data events, so the close sentinel is never blocked
+        # or evicted — the stream can always be terminated.
+        native_maxsize: int = (
+            max_queue if (max_queue > 0 and overflow == "block") else 0
+        )
+        self._queue: asyncio.Queue[ServerSentEvent | None] = asyncio.Queue(
+            maxsize=native_maxsize,
+        )
         self.heartbeat_seconds: float | None = heartbeat_seconds
+        self.max_queue: int = max_queue
+        self.overflow: OverflowPolicy = overflow
+        self._dropped: int = 0
+
+    @property
+    def dropped_events(self) -> int:
+        """Return how many events were discarded by the overflow policy.
+
+        Returns:
+            int: Count of events lost to ``drop_oldest`` / ``drop_newest``
+            since the stream was created. Always ``0`` under ``"block"``
+            or an unbounded queue.
+        """
+        return self._dropped
+
+    async def _put(self, item: ServerSentEvent | None) -> None:
+        """Enqueue ``item`` honoring ``max_queue`` and ``overflow``.
+
+        The ``None`` close sentinel always gets in — if the queue is
+        full it evicts one queued event to make room, so a stream can
+        never be wedged open by a backlog.
+
+        Args:
+            item (ServerSentEvent | None): The event, or ``None`` to
+                signal end-of-stream.
+        """
+        # The close sentinel, "block" mode and unbounded streams put
+        # straight through — no data event is ever dropped for them.
+        if item is None or self.max_queue <= 0 or self.overflow == "block":
+            await self._queue.put(item)
+            return
+        if self._queue.qsize() < self.max_queue:
+            self._queue.put_nowait(item)
+            return
+        if self.overflow == "drop_newest":
+            self._dropped += 1
+            return
+        # drop_oldest: evict the stalest queued event to fit the new one.
+        try:
+            self._queue.get_nowait()
+            self._dropped += 1
+        except asyncio.QueueEmpty:  # pragma: no cover - race: drained meanwhile
+            pass
+        self._queue.put_nowait(item)
 
     async def publish(
         self,
@@ -125,7 +214,7 @@ class EventStream:
             id (str | None): Optional Last-Event-ID.
             retry (int | None): Optional reconnect hint in milliseconds.
         """
-        await self._queue.put(
+        await self._put(
             ServerSentEvent(data=data, event=event, id=id, retry=retry),
         )
 
@@ -135,11 +224,43 @@ class EventStream:
         Args:
             event (ServerSentEvent): The event to enqueue.
         """
-        await self._queue.put(event)
+        await self._put(event)
 
     async def close(self) -> None:
         """Signal the stream to end after draining queued events."""
-        await self._queue.put(None)
+        await self._put(None)
+
+    def response(
+        self,
+        *,
+        on_disconnect: Callable[[], Awaitable[None] | None] | None = None,
+        status_code: int = 200,
+        headers: dict[str, str] | None = None,
+    ) -> StreamingResponse:
+        """Return an SSE :class:`StreamingResponse` wired to this stream.
+
+        Convenience over ``sse_response(self.stream(), ...)`` that also
+        threads ``on_disconnect`` — run when the client goes away — so a
+        producer bound to this connection is torn down without hand-rolled
+        ``try/finally`` boilerplate at every call site.
+
+        Args:
+            on_disconnect (Callable[[], Awaitable[None] | None] | None):
+                Called (awaited if a coroutine) when the response
+                generator closes — i.e. the client disconnected or the
+                stream ended. Cancel the producer task here.
+            status_code (int): HTTP status. Defaults to ``200``.
+            headers (dict[str, str] | None): Extra headers to attach.
+
+        Returns:
+            StreamingResponse: A ready-to-return SSE response.
+        """
+        return sse_response(
+            self.stream(),
+            on_disconnect=on_disconnect,
+            status_code=status_code,
+            headers=headers,
+        )
 
     async def stream(self) -> AsyncIterator[bytes]:
         """Yield encoded SSE bytes until :meth:`close` is invoked.
@@ -165,11 +286,40 @@ class EventStream:
             yield event.encode().encode("utf-8")
 
 
+async def _guard_stream(
+    stream: AsyncIterable[bytes],
+    on_disconnect: Callable[[], Awaitable[None] | None] | None,
+) -> AsyncIterator[bytes]:
+    """Relay ``stream`` and run ``on_disconnect`` once it finishes.
+
+    Starlette closes this generator when the client disconnects (or the
+    inner stream ends), so the ``finally`` is the single place a bound
+    producer / channel registration is guaranteed to be torn down.
+
+    Args:
+        stream (AsyncIterable[bytes]): The wrapped byte stream.
+        on_disconnect (Callable[[], Awaitable[None] | None] | None):
+            Cleanup callback, awaited when it returns a coroutine.
+
+    Yields:
+        bytes: Each frame produced by ``stream``.
+    """
+    try:
+        async for chunk in stream:
+            yield chunk
+    finally:
+        if on_disconnect is not None:
+            result = on_disconnect()
+            if inspect.isawaitable(result):
+                await result
+
+
 def sse_response(
     stream: AsyncIterable[bytes],
     *,
     status_code: int = 200,
     headers: dict[str, str] | None = None,
+    on_disconnect: Callable[[], Awaitable[None] | None] | None = None,
 ) -> StreamingResponse:
     """Wrap ``stream`` in a Starlette ``text/event-stream`` response.
 
@@ -180,18 +330,30 @@ def sse_response(
     SSE defaults so the three critical headers above cannot be
     accidentally overridden — pass extra metadata, not replacements.
 
+    Pass ``on_disconnect`` to run cleanup when the client goes away —
+    the response generator's ``finally`` is the one place guaranteed to
+    fire on disconnect, so this is where you cancel a bound producer
+    task or call :meth:`SSEBroker.unregister`. It removes the
+    hand-rolled ``try/finally`` wrapper the recipe used to require.
+
     Args:
         stream (AsyncIterable[bytes]): The byte stream produced by
             :meth:`EventStream.stream` (or any compatible generator).
         status_code (int): HTTP status code. Defaults to ``200``.
         headers (dict[str, str] | None): Extra headers to attach.
+        on_disconnect (Callable[[], Awaitable[None] | None] | None):
+            Cleanup callback run (and awaited if a coroutine) when the
+            stream ends or the client disconnects. ``None`` skips it.
 
     Returns:
         StreamingResponse: A ready-to-return SSE response.
     """
     merged: dict[str, str] = {**(headers or {}), **_SSE_HEADERS}
+    body: AsyncIterable[bytes] = (
+        stream if on_disconnect is None else _guard_stream(stream, on_disconnect)
+    )
     return StreamingResponse(
-        stream,
+        body,
         media_type="text/event-stream",
         status_code=status_code,
         headers=merged,
@@ -200,6 +362,7 @@ def sse_response(
 
 __all__: list[str] = [
     "EventStream",
+    "OverflowPolicy",
     "ServerSentEvent",
     "sse_response",
 ]

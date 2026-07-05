@@ -55,7 +55,9 @@ without the docs being green.
 
 The SDK currently covers (Sep 2025+, post-v0.31.x):
 
-- **Auth** — JWT/bearer/role/permission/X-Token deps, full
+- **Auth** — JWT/bearer/role/permission/X-Token deps (JWT deps
+  read the token from header → cookie → query string via
+  `query_param=`, for cookieless `EventSource`/SSE clients), full
   bundled flow (`UserAuthService` + `make_auth_router` covering
   signup/activate/login/password-reset), `BaseUserModel` +
   `BaseUserTokenModel`, OAuth2/OIDC providers
@@ -88,9 +90,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Pagination** — offset + cursor.
 - **Settings mixins** — every `*Settings` carries
   `title`/`description`/`examples` on every field.
-- **SSE** — `EventStream`, `ServerSentEvent`, `sse_response`, and
-  `SSEBroker` (per-channel fan-out; in-memory single-process, or
-  multi-worker via an injected Redis pub/sub bridge — same call site).
+- **SSE** — `EventStream` (bounded queue + `overflow` backpressure —
+  `drop_oldest`/`drop_newest`/`block`, `dropped_events` counter,
+  `max_queue=0` to disable), `ServerSentEvent`, `sse_response`
+  (`on_disconnect=` cleanup), `EventStream.response`, and `SSEBroker`
+  (per-channel fan-out; `SSEBroker.response(channel)` bundles
+  register + response + unregister-on-disconnect; in-memory
+  single-process, or multi-worker via an injected Redis pub/sub bridge
+  — same call site).
 - **Throttle** — `AttemptThrottle` (any `ThrottleBackend`, e.g.
   `redis.asyncio.Redis`; no in-memory backend bundled).
 - **Base CRUD layers** — `BaseService[Repo, Resp, UpdateT]` and

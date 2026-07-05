@@ -5,6 +5,52 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.91.0] — 2026-07-05
+
+### Added
+
+- **SSE backpressure — bounded queue + overflow policy.**
+  `EventStream` (and `SSEBroker`-created streams) now cap the buffered
+  events at `max_queue` (default `1000`) instead of growing without
+  limit when a client stalls. When the buffer fills, `overflow` decides
+  what gives:
+  - `"drop_oldest"` (default) — evict the stalest event, keep the
+    freshest data.
+  - `"drop_newest"` — discard the incoming event, keep the backlog.
+  - `"block"` — apply real backpressure (the producer waits for a slot).
+  `EventStream.dropped_events` counts events lost to overflow for
+  metrics / logs. `max_queue=0` restores the pre-0.91 unbounded
+  behavior. The `close()` sentinel is never dropped or blocked, so a
+  stream can always terminate. `SSEBroker(max_queue=..., overflow=...)`
+  applies the same policy to every stream it opens.
+- **SSE lifecycle helpers — no more hand-rolled `try/finally`.**
+  - `sse_response(..., on_disconnect=...)` runs a cleanup callback
+    (awaited if a coroutine) when the client disconnects or the stream
+    ends — the one place guaranteed to fire — so a bound producer task
+    is cancelled or a channel unregistered without boilerplate.
+  - `EventStream.response(*, on_disconnect=..., status_code=...,
+    headers=...)` wraps `stream()` in an SSE response in one call.
+  - `SSEBroker.response(channel, ...)` bundles the whole per-connection
+    lifecycle: `register` + `sse_response` + `unregister`-on-disconnect.
+    This removes the leak-prone manual wrapper the recipe used to need.
+- **JWT via query string for cookieless clients.**
+  `make_bearer_token_dependency` and `make_jwt_user_dependency` gained a
+  `query_param` argument (e.g. `query_param="access_token"`). Token
+  lookup order becomes header → cookie → query string. This unblocks
+  browser `EventSource` (SSE), whose constructor accepts neither headers
+  nor a body. Documented with a security warning: use short-lived access
+  tokens only, over TLS, and scrub the value from access logs. Prefer a
+  session cookie (`withCredentials`) whenever the client shares the
+  API's origin.
+- **`OverflowPolicy`** is exported from `tempest_fastapi_sdk.sse` and the
+  package root.
+
+### Fixed
+
+- `tempest_fastapi_sdk/sse/__init__.py` re-exports now use the explicit
+  `X as X` alias form required by the repo's re-export convention (was a
+  structural defect flagged by strict type-checkers).
+
 ## [0.90.0] — 2026-07-04
 
 ### Added

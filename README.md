@@ -91,7 +91,7 @@ Via `pyproject.toml`:
 
 ```toml
 dependencies = [
-    "tempest-fastapi-sdk>=0.90.0",
+    "tempest-fastapi-sdk>=0.91.0",
 ]
 ```
 
@@ -149,7 +149,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.services` | `BaseService` |
 | `tempest_fastapi_sdk.core` | `configure_logging`, `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx`, `BaseStrEnum`, `BaseIntEnum`, `strict_types`/`typed`/`require_annotations` |
 | `tempest_fastapi_sdk.admin` *(extra: `[admin]`)* | `AdminSite`, `AdminModel`, `make_admin_router`, `AdminAuthBackend`, `UserModelAuthBackend`, `AdminAuthError` |
-| `tempest_fastapi_sdk.sse` | `EventStream`, `SSEBroker` (multi-worker fan-out via Redis), `ServerSentEvent`, `sse_response` |
+| `tempest_fastapi_sdk.sse` | `EventStream` (bounded queue + `overflow` backpressure), `SSEBroker` (multi-worker fan-out via Redis, `.response()` lifecycle helper), `ServerSentEvent`, `sse_response` (`on_disconnect=` cleanup) |
 | `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager`, `cached` (with `namespace` / `tags`), `CacheInvalidator`, `namespace_registry_key`, `tag_registry_key` |
 | `tempest_fastapi_sdk.flags` | `FeatureFlags`, `FeatureFlagBackend`, `MemoryFeatureFlagBackend`, `EnvFeatureFlagBackend`, `RedisFeatureFlagBackend`, `CompositeFeatureFlagBackend`, `make_flag_dependency`, `coerce_flag` |
 | `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushSubscriptionService`, `make_web_push_router`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
@@ -2336,7 +2336,7 @@ import asyncio
 
 from fastapi import APIRouter
 
-from tempest_fastapi_sdk import EventStream, sse_response
+from tempest_fastapi_sdk import EventStream
 
 router = APIRouter()
 
@@ -2351,8 +2351,9 @@ async def events() -> "StreamingResponse":  # forward-declared by Starlette
             await asyncio.sleep(1)
         await stream.close()
 
-    asyncio.create_task(producer())
-    return sse_response(stream.stream())
+    task = asyncio.create_task(producer())
+    # on_disconnect cancels the producer when the client drops — no leak.
+    return stream.response(on_disconnect=task.cancel)
 ```
 
 Browser side:
@@ -2363,6 +2364,8 @@ es.addEventListener("counter", (e) => console.log("got", JSON.parse(e.data)));
 ```
 
 `heartbeat_seconds` emits a `: keepalive` SSE comment when idle so load-balancers don't close long-lived connections. `ServerSentEvent.data` accepts strings, bytes or any JSON-serializable Python object — non-strings are JSON-encoded automatically. Pass `retry=` to hint the browser at the reconnect delay (milliseconds).
+
+The queue is **bounded** (`max_queue`, default `1000`): a slow client can't grow memory without limit. `overflow` picks the eviction policy — `"drop_oldest"` (default), `"drop_newest"`, or `"block"` (real backpressure); `EventStream.dropped_events` counts the discards. For broadcast, `SSEBroker.response(channel)` bundles `register` + `sse_response` + `unregister`-on-disconnect in one call. Authenticating an `EventSource` (which can't send an `Authorization` header): prefer a session cookie (`make_jwt_user_dependency(..., cookie_name="access_token")` + `withCredentials`); for cookieless clients pass a short-lived access token in the query string with `query_param="access_token"` (over TLS, scrubbed from logs). See the [SSE recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/sse/) for the full guide.
 
 ### Web Push notifications recipe
 

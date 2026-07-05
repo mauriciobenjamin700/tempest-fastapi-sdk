@@ -243,6 +243,7 @@ from tempest_fastapi_sdk.settings import (
 )
 from tempest_fastapi_sdk.sse import (
     EventStream,
+    OverflowPolicy,
     ServerSentEvent,
     SSEBroker,
     sse_response,
@@ -360,7 +361,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.90.0"
+__version__: str = "0.91.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -507,6 +508,7 @@ __all__: list[str] = [
     "OrderRef",
     "OutboxRelay",
     "OutboxStatus",
+    "OverflowPolicy",
     "PasswordChangeSchema",
     "PasswordResetConfirmSchema",
     "PasswordResetRequestSchema",

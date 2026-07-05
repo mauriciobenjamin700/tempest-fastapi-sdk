@@ -89,19 +89,37 @@ def make_bearer_token_dependency(
     soft: bool = False,
     bearer_scheme: HTTPBearer | None = None,
     cookie_name: str | None = None,
+    query_param: str | None = None,
     error_message: str = "Authorization token is missing or invalid",
 ) -> Callable[..., Coroutine[Any, Any, dict[str, Any] | None]]:
-    """Build a FastAPI dependency that decodes a JWT from header or cookie.
+    """Build a FastAPI dependency that decodes a JWT from header/cookie/query.
 
     Returns the decoded claims dict so the caller can wire its own
     ``get_current_user`` on top, combining the decoded subject with
     the project's session / repository conventions.
 
-    The token is read from the ``Authorization: Bearer`` header first;
-    when ``cookie_name`` is set and the header is absent, it falls back
-    to that cookie. This is the seam that lets the same dependency serve
-    both bearer clients and the cookie delivery mode of
+    Token lookup order, first hit wins:
+
+    1. ``Authorization: Bearer <jwt>`` header.
+    2. The ``cookie_name`` cookie, when set.
+    3. The ``query_param`` query-string value, when set.
+
+    The header/cookie seam is what lets the same dependency serve both
+    bearer clients and the cookie delivery mode of
     :func:`tempest_fastapi_sdk.make_auth_router`.
+
+    ``query_param`` exists for **cookieless** clients that cannot set an
+    ``Authorization`` header — chiefly the browser ``EventSource`` used
+    for SSE, whose constructor accepts neither headers nor a request
+    body. Prefer a session cookie (``withCredentials``) whenever the
+    client shares the API's origin; reach for the query string only
+    when cross-origin or a raw ``EventSource`` leaves no other channel.
+
+    .. warning::
+        A token in the query string leaks into access logs, the browser
+        history and any ``Referer`` header. Only enable ``query_param``
+        with **short-lived** access tokens (never a refresh token),
+        always over TLS, and scrub the value from your log format.
 
     Args:
         tokens (JWTUtils): The JWT helper used to verify the token.
@@ -112,7 +130,11 @@ def make_bearer_token_dependency(
             Defaults to ``HTTPBearer(auto_error=False)``.
         cookie_name (str | None): When set, fall back to this cookie for
             the access token if the ``Authorization`` header is absent.
-            ``None`` (default) reads the header only.
+            ``None`` (default) skips the cookie lookup.
+        query_param (str | None): When set, fall back to this
+            query-string parameter (e.g. ``"access_token"``) if header
+            and cookie are both absent. ``None`` (default) skips it.
+            See the security warning above before enabling.
         error_message (str): Message attached to the raised
             :class:`UnauthorizedException` when ``soft`` is ``False``.
 
@@ -133,6 +155,8 @@ def make_bearer_token_dependency(
         )
         if raw_token is None and cookie_name is not None:
             raw_token = request.cookies.get(cookie_name)
+        if raw_token is None and query_param is not None:
+            raw_token = request.query_params.get(query_param)
         if raw_token is None:
             if soft:
                 return None
@@ -142,7 +166,8 @@ def make_bearer_token_dependency(
         return tokens.decode(raw_token)
 
     _decode_bearer.__doc__ = (
-        "Decode the JWT (Authorization header or cookie) and return its claims."
+        "Decode the JWT (Authorization header, cookie or query param) "
+        "and return its claims."
     )
     return _decode_bearer
 
@@ -154,6 +179,7 @@ def make_jwt_user_dependency(
     soft: bool = False,
     bearer_scheme: HTTPBearer | None = None,
     cookie_name: str | None = None,
+    query_param: str | None = None,
     subject_claim: str = "sub",
     error_message: str = "Authorization token is missing or invalid",
     session_dependency: Callable[..., Any] | None = None,
@@ -204,6 +230,10 @@ def make_jwt_user_dependency(
         bearer_scheme (HTTPBearer | None): Override the bearer scheme.
         cookie_name (str | None): When set, fall back to this cookie for
             the access token when the ``Authorization`` header is absent.
+        query_param (str | None): When set, fall back to this
+            query-string parameter for the access token (cookieless
+            clients such as ``EventSource``). See the security warning
+            on :func:`make_bearer_token_dependency` before enabling.
         subject_claim (str): Which JWT claim carries the user id.
             Defaults to ``"sub"``.
         error_message (str): Message attached to the raised
@@ -222,6 +252,7 @@ def make_jwt_user_dependency(
         soft=soft,
         bearer_scheme=bearer_scheme,
         cookie_name=cookie_name,
+        query_param=query_param,
         error_message=error_message,
     )
 

@@ -78,6 +78,59 @@ class TestEventStream:
         assert count == 1
 
 
+class TestBackpressure:
+    async def test_drop_oldest_evicts_and_counts(self) -> None:
+        stream = EventStream(
+            heartbeat_seconds=None, max_queue=2, overflow="drop_oldest"
+        )
+        await stream.publish("a")
+        await stream.publish("b")
+        await stream.publish("c")  # evicts "a"
+        await stream.close()
+        frames = [chunk async for chunk in stream.stream()]
+        joined = b"".join(frames)
+        assert b"data: a" not in joined
+        assert b"data: b" in joined
+        assert b"data: c" in joined
+        assert stream.dropped_events == 1
+
+    async def test_drop_newest_keeps_backlog(self) -> None:
+        stream = EventStream(
+            heartbeat_seconds=None, max_queue=2, overflow="drop_newest"
+        )
+        await stream.publish("a")
+        await stream.publish("b")
+        await stream.publish("c")  # dropped
+        await stream.close()
+        frames = [chunk async for chunk in stream.stream()]
+        joined = b"".join(frames)
+        assert b"data: a" in joined
+        assert b"data: b" in joined
+        assert b"data: c" not in joined
+        assert stream.dropped_events == 1
+
+    async def test_close_sentinel_always_gets_through_when_full(self) -> None:
+        stream = EventStream(
+            heartbeat_seconds=None, max_queue=1, overflow="drop_newest"
+        )
+        await stream.publish("a")
+        await stream.publish("b")  # dropped, queue full of "a"
+        await stream.close()  # must still terminate despite full queue
+        count = 0
+        async for _ in stream.stream():
+            count += 1
+        assert count == 1  # only "a" survived, and iteration ended
+
+    async def test_unbounded_never_drops(self) -> None:
+        stream = EventStream(heartbeat_seconds=None, max_queue=0)
+        for n in range(50):
+            await stream.publish(str(n))
+        await stream.close()
+        frames = [chunk async for chunk in stream.stream()]
+        assert len(frames) == 50
+        assert stream.dropped_events == 0
+
+
 @pytest.mark.asyncio
 async def test_sse_response_end_to_end() -> None:
     app = FastAPI()
@@ -128,3 +181,48 @@ async def test_sse_response_caller_headers_cannot_override_defaults() -> None:
     assert response.headers["cache-control"] == "no-cache"
     assert response.headers["x-accel-buffering"] == "no"
     assert response.headers["x-custom"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_sse_response_runs_on_disconnect_when_stream_ends() -> None:
+    """on_disconnect fires once the response generator finishes."""
+    cleaned: list[str] = []
+    app = FastAPI()
+    stream = EventStream(heartbeat_seconds=None)
+
+    async def cleanup() -> None:
+        cleaned.append("done")
+
+    @app.get("/events")
+    async def events() -> object:
+        await stream.publish("hello")
+        await stream.close()
+        return sse_response(stream.stream(), on_disconnect=cleanup)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/events")
+    assert response.status_code == 200
+    assert b"data: hello" in response.content
+    assert cleaned == ["done"]
+
+
+@pytest.mark.asyncio
+async def test_event_stream_response_helper() -> None:
+    """EventStream.response wraps stream() with SSE headers + on_disconnect."""
+    cleaned: list[str] = []
+    app = FastAPI()
+    stream = EventStream(heartbeat_seconds=None)
+
+    @app.get("/events")
+    async def events() -> object:
+        await stream.publish("x", event="tick")
+        await stream.close()
+        return stream.response(on_disconnect=lambda: cleaned.append("bye"))
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/events")
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert b"event: tick" in response.content
+    assert cleaned == ["bye"]

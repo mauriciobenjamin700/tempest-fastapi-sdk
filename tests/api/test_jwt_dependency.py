@@ -163,6 +163,81 @@ async def test_jwt_user_dependency_rejects_missing_subject() -> None:
 
 
 @pytest.mark.asyncio
+async def test_bearer_dependency_reads_token_from_query_param() -> None:
+    """Cookieless clients (EventSource) can pass the JWT in the query."""
+    tokens = _make_tokens()
+    decode = make_bearer_token_dependency(tokens, query_param="access_token")
+
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/claims")
+    async def claims(
+        payload: dict[str, Any] | None = Depends(decode),
+    ) -> dict[str, Any]:
+        return {"payload": payload}
+
+    token = tokens.encode({"sub": "77"})
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(f"/claims?access_token={token}")
+    assert response.status_code == 200
+    assert response.json()["payload"]["sub"] == "77"
+
+
+@pytest.mark.asyncio
+async def test_bearer_dependency_header_wins_over_query_param() -> None:
+    """The Authorization header takes precedence over the query string."""
+    tokens = _make_tokens()
+    decode = make_bearer_token_dependency(tokens, query_param="access_token")
+
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/claims")
+    async def claims(
+        payload: dict[str, Any] | None = Depends(decode),
+    ) -> dict[str, Any]:
+        return {"payload": payload}
+
+    header_token = tokens.encode({"sub": "header"})
+    query_token = tokens.encode({"sub": "query"})
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            f"/claims?access_token={query_token}",
+            headers={"Authorization": f"Bearer {header_token}"},
+        )
+    assert response.status_code == 200
+    assert response.json()["payload"]["sub"] == "header"
+
+
+@pytest.mark.asyncio
+async def test_jwt_user_dependency_reads_token_from_query_param() -> None:
+    """current_user resolves from a query-string token end to end."""
+    tokens = _make_tokens()
+    current_user = make_jwt_user_dependency(
+        tokens,
+        _load_user,
+        query_param="access_token",
+    )
+
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/me")
+    async def me(user: dict[str, str] | None = Depends(current_user)) -> dict[str, Any]:
+        return {"user": user}
+
+    token = tokens.encode({"sub": "sse-1"})
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(f"/me?access_token={token}")
+    assert response.status_code == 200
+    assert response.json()["user"]["id"] == "sse-1"
+
+
+@pytest.mark.asyncio
 async def test_jwt_user_dependency_respects_custom_subject_claim() -> None:
     tokens = _make_tokens()
     current_user = make_jwt_user_dependency(

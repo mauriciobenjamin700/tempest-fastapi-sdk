@@ -45,6 +45,41 @@ class TestMemoryMode:
         assert broker.local_subscribers("room1") == 0
 
 
+class TestResponseHelper:
+    async def test_response_unregisters_on_disconnect(self) -> None:
+        """broker.response subscribes, streams, and unregisters when done."""
+        from fastapi import FastAPI
+        from httpx import ASGITransport, AsyncClient
+
+        broker = SSEBroker(heartbeat_seconds=None)
+        app = FastAPI()
+
+        @app.get("/feed")
+        async def feed() -> object:
+            response = broker.response("room1")
+            # A subscriber is registered as soon as response() returns.
+            assert broker.local_subscribers("room1") == 1
+            await broker.publish("room1", {"msg": "hi"}, event="chat")
+            # End the stream so the response completes for the test client.
+            for stream in tuple(broker._channels["room1"]):
+                await stream.close()
+            return response
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/feed")
+        assert resp.status_code == 200
+        assert b"event: chat" in resp.content
+        # on_disconnect fired -> the stream was unregistered.
+        assert broker.local_subscribers("room1") == 0
+
+    async def test_register_streams_inherit_broker_backpressure(self) -> None:
+        broker = SSEBroker(heartbeat_seconds=None, max_queue=3, overflow="drop_newest")
+        stream = broker.register("room1")
+        assert stream.max_queue == 3
+        assert stream.overflow == "drop_newest"
+
+
 class TestDispatchDecoding:
     async def test_dispatch_raw_handles_bytes(self) -> None:
         broker = SSEBroker(heartbeat_seconds=None, channel_prefix="sse")

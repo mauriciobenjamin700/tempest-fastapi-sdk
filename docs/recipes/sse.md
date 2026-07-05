@@ -19,6 +19,17 @@ uma conexão), `ServerSentEvent` (codifica um frame no formato do spec) e
 certos — `Cache-Control: no-cache`, `Connection: keep-alive`,
 `X-Accel-Buffering: no` pra desligar o buffer do nginx).
 
+!!! tip "Novidades da v0.91"
+    - **Backpressure** — a fila do `EventStream` agora é **limitada**
+      (`max_queue`, default `1000`): cliente lento não faz a memória
+      crescer sem limite. A política `overflow` decide o que cai. Veja
+      [Backpressure](#backpressure-fila-limitada).
+    - **Lifecycle sem boilerplate** — `sse_response(..., on_disconnect=)`,
+      `EventStream.response(...)` e `SSEBroker.response(channel)` fecham o
+      produtor / desregistram o canal sozinhos quando o cliente cai.
+    - **Auth por query string** pra clientes cookieless (`EventSource`).
+      Veja [Autenticação](#autenticacao-cookie-ou-query-string).
+
 ## Um endpoint SSE
 
 Crie um `EventStream` por requisição, publique de um produtor, e ligue o
@@ -28,12 +39,11 @@ produtor para.
 ```python
 # src/api/routers/events.py
 import asyncio
-from collections.abc import AsyncIterator
 
 from fastapi import APIRouter
 from starlette.responses import StreamingResponse
 
-from tempest_fastapi_sdk import EventStream, sse_response
+from tempest_fastapi_sdk import EventStream
 
 router = APIRouter()
 
@@ -53,20 +63,34 @@ async def events() -> StreamingResponse:
 
     task = asyncio.create_task(producer())
 
+    # on_disconnect roda quando o cliente cai OU o stream termina:
+    # é onde você cancela o produtor pra não vazar.
+    return stream.response(on_disconnect=task.cancel)
+```
+
+!!! warning "Sempre amarre o produtor à conexão"
+    Stream SSE é longo. Se o cliente desconecta no meio, você não quer o
+    produtor rodando pra sempre. Passe `on_disconnect=` pro
+    `EventStream.response` (ou pro `sse_response`) — ele roda no `finally`
+    do gerador da resposta, o único ponto que dispara na desconexão.
+
+??? note "Antes da v0.91: `try/finally` na mão"
+    Até a v0.90 você embrulhava o `stream()` num gerador externo só pra
+    ter o `finally`. `on_disconnect=` substitui esse boilerplate:
+
+    ```python
+    from collections.abc import AsyncIterator
+    from tempest_fastapi_sdk import sse_response
+
     async def lifecycle_aware() -> AsyncIterator[bytes]:
         try:
             async for chunk in stream.stream():
                 yield chunk
         finally:
-            task.cancel()  # cliente desconectou -> não vaza o produtor
+            task.cancel()
 
     return sse_response(lifecycle_aware())
-```
-
-!!! warning "Sempre amarre o produtor à conexão"
-    Stream SSE é longo. Se o cliente desconecta no meio, você não quer o
-    produtor rodando pra sempre. O `finally` do gerador externo roda
-    quando a resposta fecha — cancele o produtor ali.
+    ```
 
 ## Anatomia de um evento
 
@@ -93,6 +117,46 @@ stream fica ocioso, pra load-balancers não cortarem a conexão.
 Comentários são **invisíveis** ao `EventSource` — não disparam nenhum
 listener, só mantêm o socket vivo. `None` desliga o heartbeat.
 
+## Backpressure (fila limitada)
+
+Se um cliente **para de ler** (aba em segundo plano, rede ruim) mas o
+produtor continua publicando, a fila do `EventStream` cresceria pra
+sempre — vazamento de memória clássico. Por isso a fila é **limitada**:
+`max_queue` (default `1000`) e uma política `overflow` que decide o que
+fazer quando enche.
+
+```python
+from tempest_fastapi_sdk import EventStream
+
+# Ticker ao vivo: frame velho não vale nada -> descarta o mais antigo.
+stream = EventStream(max_queue=500, overflow="drop_oldest")
+```
+
+| `overflow` | Quando a fila enche | Use quando |
+| --- | --- | --- |
+| `"drop_oldest"` (default) | Evicta o evento mais **antigo** | Dados vivos: ticker, progresso, telemetria — só o estado recente importa. |
+| `"drop_newest"` | Descarta o evento que **chegou** | O começo do fluxo importa mais que o fim. |
+| `"block"` | Segura o `publish()` até abrir vaga | Produtor dedicado a **uma** conexão e perder evento é inaceitável. |
+
+!!! danger "`block` pode travar um produtor compartilhado"
+    Com `overflow="block"`, um cliente lento **segura** o `publish()`. Se
+    o mesmo produtor alimenta vários clientes (fan-out), um cliente ruim
+    trava todos. Só use `block` quando o produtor serve **uma** conexão.
+
+O sentinela de `close()` **nunca** é descartado nem bloqueado — o stream
+sempre encerra. `stream.dropped_events` conta quantos eventos caíram por
+overflow, pra você jogar em métrica/log:
+
+```python
+if stream.dropped_events:
+    logger.warning("SSE lento: %d eventos descartados", stream.dropped_events)
+```
+
+!!! tip "Voltar ao comportamento antigo"
+    `max_queue=0` desliga o limite (fila ilimitada, igual pré-0.91). Só
+    faça isso se você tiver certeza de que o produtor para junto com a
+    conexão.
+
 ## Broadcast pra vários clientes (`SSEBroker`)
 
 `EventStream` é **uma** conexão. Pra mandar o mesmo evento pra todos os
@@ -109,13 +173,12 @@ broker = SSEBroker()   # singleton — guarde em app.state e injete via Depends
 
 ```python
 # src/api/routers/feed.py
-from collections.abc import AsyncIterator
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from starlette.responses import StreamingResponse
 
-from tempest_fastapi_sdk import SSEBroker, sse_response
+from tempest_fastapi_sdk import SSEBroker
 
 router = APIRouter()
 
@@ -126,22 +189,20 @@ async def feed(
     broker: SSEBroker = Depends(get_broker),
 ) -> StreamingResponse:
     """Inscreve o cliente no canal do seu usuário."""
-    channel = str(user_id)
-    stream = broker.register(channel)
-
-    async def lifecycle_aware() -> AsyncIterator[bytes]:
-        try:
-            async for chunk in stream.stream():
-                yield chunk
-        finally:
-            broker.unregister(channel, stream)   # cliente saiu
-
-    return sse_response(lifecycle_aware())
+    # register + sse_response + unregister-na-desconexão, tudo num call.
+    return broker.response(str(user_id))
 
 
 # De qualquer lugar (handler de fila, outro endpoint):
 # await broker.publish(str(user_id), {"text": "Novo pedido"}, event="notice")
 ```
+
+!!! tip "`broker.response()` mata o vazamento de stream"
+    `broker.response(channel)` faz `register`, embrulha com `sse_response`
+    e liga um `on_disconnect` que chama `unregister` quando o cliente cai.
+    Não tem `try/finally` pra esquecer — cada desconexão limpa o registro
+    sozinha. `SSEBroker(max_queue=..., overflow=...)` aplica a mesma
+    política de backpressure a todo stream que ele abre.
 
 ### Multi-worker: bridge Redis (pronto, sem código extra)
 
@@ -185,6 +246,107 @@ app = FastAPI(lifespan=lifespan)
     lifespan — nenhum endpoint muda. O `publish` se torna cross-process de
     graça.
 
+## Autenticação (cookie ou query string)
+
+Aqui mora a pegadinha do SSE: o `EventSource` nativo do navegador **não
+deixa** você mandar header. Nada de `Authorization: Bearer` no handshake.
+Então existem dois caminhos pra autenticar o stream.
+
+### Caminho preferido: cookie de sessão
+
+Se o front está **na mesma origem** da API, use um cookie `HttpOnly`. O
+navegador o manda sozinho quando você abre com `withCredentials`:
+
+```javascript
+const es = new EventSource("/api/feed", { withCredentials: true });
+```
+
+No backend, o SDK já lê o token do cookie — é o mesmo seam do
+`make_auth_router` (modo de entrega por cookie):
+
+```python
+# src/api/dependencies/auth.py
+from tempest_fastapi_sdk import JWTUtils, make_jwt_user_dependency
+
+tokens = JWTUtils(secret=settings.JWT_SECRET)
+
+current_user = make_jwt_user_dependency(
+    tokens,
+    load_user,
+    cookie_name="access_token",   # <- EventSource + withCredentials
+)
+```
+
+!!! check "Por que cookie é melhor"
+    O token some da URL: não vaza em log de acesso, histórico do
+    navegador nem header `Referer`. `HttpOnly` ainda tira o token do
+    alcance de JavaScript (defesa contra XSS). Prefira esse caminho
+    **sempre** que a origem for compartilhada.
+
+### Alternativa cookieless: token na query string
+
+Sem cookie de sessão (front em **outra origem**, app mobile abrindo um
+`EventSource` cru, ambiente onde `withCredentials` não rola), passe o
+**access token** na query string. A partir da v0.91 o dependency aceita
+isso via `query_param`:
+
+```python
+# src/api/dependencies/auth.py
+from tempest_fastapi_sdk import JWTUtils, make_jwt_user_dependency
+
+tokens = JWTUtils(secret=settings.JWT_SECRET)
+
+# Ordem de busca: header -> cookie -> query string.
+current_user = make_jwt_user_dependency(
+    tokens,
+    load_user,
+    query_param="access_token",   # <- ?access_token=<jwt>
+)
+```
+
+```python
+# src/api/routers/feed.py
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
+from starlette.responses import StreamingResponse
+
+from tempest_fastapi_sdk import SSEBroker
+
+router = APIRouter()
+
+
+@router.get("/feed")
+async def feed(
+    user: User = Depends(current_user),      # resolve o JWT da query string
+    broker: SSEBroker = Depends(get_broker),
+) -> StreamingResponse:
+    """Stream autenticado sem cookie — token vem na URL."""
+    return broker.response(str(user.id))
+```
+
+No front:
+
+```javascript
+// O access token curto entra na URL — nunca o refresh token.
+const es = new EventSource(`/api/feed?access_token=${accessToken}`);
+```
+
+!!! danger "Query string vaza — trate o token como descartável"
+    Um token na URL aparece em **log de acesso**, **histórico** e no
+    header **`Referer`**. Regras inegociáveis:
+
+    - Só **access token de vida curta** (minutos). **Nunca** o refresh
+      token.
+    - Sempre sobre **TLS** (HTTPS).
+    - Remova o valor do formato de log do seu proxy/servidor.
+    - Renove via um endpoint normal (com header/cookie), não pela query.
+
+!!! info "`query_param` também existe no dependency de baixo nível"
+    `make_bearer_token_dependency(tokens, query_param="access_token")`
+    devolve só as claims decodificadas — use quando você monta o
+    `get_current_user` na mão. Mesma ordem header → cookie → query.
+
 ## Alinhado com o tempest-react-sdk
 
 O `createEventStream` / `useEventStream` do
@@ -219,8 +381,10 @@ Pontos de alinhamento:
 ## Recap
 
 - `EventStream` (1 por conexão) + `sse_response` — endpoint SSE com headers prontos.
-- Amarre o produtor ao ciclo de vida da conexão (`finally` → cancela/desregistra).
+- Amarre o produtor à conexão com `on_disconnect=` (em `EventStream.response`, `sse_response` ou `broker.response`) — sem `try/finally` na mão.
+- Fila **limitada** (`max_queue`, default `1000`) + `overflow` (`drop_oldest`/`drop_newest`/`block`) evita vazamento por cliente lento; `dropped_events` conta o descarte.
 - `publish(data, event=, id=, retry=)` cobre os 4 campos do spec; `data` não-string vira JSON.
 - Heartbeat é comentário (invisível ao EventSource); `None` desliga.
-- Broadcast = `SSEBroker` (registro de streams por canal); multi-worker = passe um client Redis + suba `broker.run()` no lifespan (mesmo call site).
+- Broadcast = `SSEBroker`; `broker.response(channel)` faz register + response + unregister; multi-worker = passe um client Redis + suba `broker.run()` no lifespan.
+- Auth: **cookie** (`cookie_name` + `withCredentials`) na mesma origem; **query string** (`query_param`, só access token curto sobre TLS) pra clientes cookieless.
 - `tempest-react-sdk` `createEventStream`/`useEventStream` consome com reconnect; `namedEvents` ↔ `publish(event=)`.
