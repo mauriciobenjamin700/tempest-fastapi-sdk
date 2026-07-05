@@ -11,7 +11,8 @@ está sendo entregue em fatias; esta página cobre a **primeira**: saber,
       PDF) pra injetar nas LLMs (esta página, seção [Contexto RAG](#contexto-rag)).
     - **v0.98:** `TextGenerator` — LLM local + quantização int4/int8
       (seção [Gerar texto](#gerar-texto-com-llm-local)).
-    - **Em breve:** `Embedder`, cache de modelo/resultado, `BatchScheduler`.
+    - **v0.99:** `Embedder`, `BatchScheduler`, `ModelRegistry` — embeddings
+      + escala (seção [Embeddings e escala](#embeddings-e-escala)).
 
 O extra `[genai]` (transformers + torch + accelerate) só é necessário pra
 **rodar** modelos. As funções de capacidade **importam sem o extra** — o
@@ -128,6 +129,65 @@ fp32 em CPU.
     periodicamente (ex.: num `@tq.interval(60)` do [TaskQueue](queue-tasks.md))
     — ele descarrega o modelo só quando passou do tempo ocioso, sem mágica
     de background thread. `unload()` libera na hora.
+
+## Embeddings e escala
+
+### Gerar embeddings
+
+`Embedder` transforma texto em vetores no seu hardware (busca semântica,
+RAG, clustering). Carrega o modelo uma vez, faz batch e (opcional) cacheia
+vetor por texto — cache hit nem toca no modelo.
+
+```python
+from tempest_fastapi_sdk.genai import Embedder, InMemoryEmbeddingCache
+
+emb = Embedder(
+    "sentence-transformers/all-MiniLM-L6-v2",
+    cache=InMemoryEmbeddingCache(),     # ou um wrapper Redis (get/set)
+)
+
+vetores = await emb.embed(["o que é pix?", "como estornar?"])   # list[list[float]]
+```
+
+O `cache` é qualquer objeto com `get(key)->list|None` e `set(key, val)` —
+passe um wrapper sobre o `AsyncRedisManager` pra compartilhar entre
+workers. `device`/`dtype`/`unload`/`unload_if_idle` funcionam como no
+`TextGenerator`.
+
+### Batch de inferência concorrente
+
+Numa GPU, rodar um item por vez desperdiça o device. `BatchScheduler`
+coalesce chamadas concorrentes num lote só — cada chamador ainda dá
+`await` no seu próprio resultado:
+
+```python
+from tempest_fastapi_sdk.genai import BatchScheduler
+
+sched = BatchScheduler(emb._embed_many, max_batch=32, max_wait_ms=10)
+
+# N requests concorrentes viram 1 forward pass:
+vetor = await sched.submit("texto")
+await sched.aclose()
+```
+
+Forma um lote quando junta `max_batch` itens **ou** passa `max_wait_ms`
+desde o primeiro — o que vier antes. Erro do handler propaga pra todos os
+chamadores do lote.
+
+### Compartilhar modelos carregados
+
+`ModelRegistry` mantém modelos carregados por id (LRU) — dois call sites
+pedindo o mesmo modelo reusam a instância, e o menos usado é descarregado
+(`unload()`) quando passa de `max_models`:
+
+```python
+from tempest_fastapi_sdk.genai import Embedder, ModelRegistry
+
+registry = ModelRegistry(max_models=2)
+
+def get_embedder(model_id: str) -> Embedder:
+    return registry.get(model_id, lambda: Embedder(model_id))
+```
 
 ## Contexto RAG
 

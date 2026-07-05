@@ -11,7 +11,8 @@ gigabytes of weights, whether the machine can handle the model.
       reading) to inject into LLMs (this page, [RAG context](#rag-context)).
     - **v0.98:** `TextGenerator` — local LLM + int4/int8 quantization
       (section [Generate text](#generate-text-with-a-local-llm)).
-    - **Coming:** `Embedder`, model/result caching, `BatchScheduler`.
+    - **v0.99:** `Embedder`, `BatchScheduler`, `ModelRegistry` — embeddings
+      + scale (section [Embeddings and scale](#embeddings-and-scale)).
 
 The `[genai]` extra (transformers + torch + accelerate) is only needed to
 **run** models. The capacity functions **import without the extra** —
@@ -128,6 +129,64 @@ bf16 on GPU and fp32 on CPU.
     (e.g. in a `@tq.interval(60)` [TaskQueue](queue-tasks.md) task) — it
     unloads only once past the idle threshold, no background-thread magic.
     `unload()` frees immediately.
+
+## Embeddings and scale
+
+### Generate embeddings
+
+`Embedder` turns text into vectors on your hardware (semantic search, RAG,
+clustering). It loads the model once, batches, and (optionally) caches a
+vector per text — a cache hit never touches the model.
+
+```python
+from tempest_fastapi_sdk.genai import Embedder, InMemoryEmbeddingCache
+
+emb = Embedder(
+    "sentence-transformers/all-MiniLM-L6-v2",
+    cache=InMemoryEmbeddingCache(),     # or a Redis wrapper (get/set)
+)
+
+vectors = await emb.embed(["what is pix?", "how to refund?"])   # list[list[float]]
+```
+
+`cache` is any object with `get(key)->list|None` and `set(key, val)` —
+pass a wrapper over `AsyncRedisManager` to share across workers.
+`device`/`dtype`/`unload`/`unload_if_idle` work as on `TextGenerator`.
+
+### Batch concurrent inference
+
+On a GPU, one item at a time wastes the device. `BatchScheduler` coalesces
+concurrent calls into a single batch — each caller still `await`s its own
+result:
+
+```python
+from tempest_fastapi_sdk.genai import BatchScheduler
+
+sched = BatchScheduler(emb._embed_many, max_batch=32, max_wait_ms=10)
+
+# N concurrent requests become 1 forward pass:
+vector = await sched.submit("text")
+await sched.aclose()
+```
+
+It forms a batch once `max_batch` items are queued **or** `max_wait_ms`
+has elapsed since the first — whichever comes first. A handler error
+propagates to every caller in that batch.
+
+### Share loaded models
+
+`ModelRegistry` keeps loaded models by id (LRU) — two call sites asking
+for the same model reuse the instance, and the least-recently-used one is
+unloaded (`unload()`) once over `max_models`:
+
+```python
+from tempest_fastapi_sdk.genai import Embedder, ModelRegistry
+
+registry = ModelRegistry(max_models=2)
+
+def get_embedder(model_id: str) -> Embedder:
+    return registry.get(model_id, lambda: Embedder(model_id))
+```
 
 ## RAG context
 

@@ -140,10 +140,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `TextGenerator`**: local causal LM (`generate`/`chat`/`stream` async via
   to_thread), auto device/dtype, int8/int4 quant (BitsAndBytesConfig), lazy
   `load` + `unload`/`unload_if_idle` (+ `idle_unload_seconds`),
-  `resolve_device`/`auto_dtype_name`; torch/transformers lazy. **Planned:**
-  `Embedder`, model/result cache, `BatchScheduler` (coalesce concurrent
-  calls). Classes-only (no bundled router). Submodule import like
-  queue/tasks/vision. **Shipped (v0.97) — RAG context**
+  `resolve_device`/`auto_dtype_name`; torch/transformers lazy. **Shipped
+  (v0.99) — embeddings + scale:** `Embedder` (local text→vectors, mean
+  pooling, batched, optional `EmbeddingCache`/`InMemoryEmbeddingCache`),
+  `BatchScheduler` (coalesce concurrent calls into one batch — pure
+  asyncio, no extra), `ModelRegistry` (LRU model sharing with unload).
+  Classes-only (no bundled router). Submodule import like
+  queue/tasks/vision. Planned module scope now complete. **Shipped (v0.97) — RAG context**
   (`tempest_fastapi_sdk.genai.rag`, `[genai-rag]` extra = httpx +
   trafilatura + pymupdf): `WebSearchBackend` Protocol + `SearxngBackend`
   (SearXNG JSON API, leviathan pattern) + `WebSearch`; `ContentExtractor`

@@ -5,6 +5,25 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.99.0] — 2026-07-05
+
+### Added
+
+- **Self-hosted GenAI — embeddings + scale**, slice 4 (completes the
+  planned module scope):
+  - `Embedder` — local text → vectors over transformers (mean pooling),
+    batched, with an optional per-text vector cache (`EmbeddingCache`
+    Protocol + bundled `InMemoryEmbeddingCache`; a cache hit skips loading
+    the model). Same device/precision resolution + `unload` /
+    `unload_if_idle` as `TextGenerator`.
+  - `BatchScheduler` — coalesce concurrent inference calls into one
+    batched handler call (`max_batch` / `max_wait_ms`); each caller still
+    awaits its own result. Pure asyncio, model-agnostic, imports without
+    the `[genai]` extra.
+  - `ModelRegistry` — share loaded models by id with LRU eviction
+    (`unload()` on evict), so call sites don't load the same model twice.
+  - All exported from `tempest_fastapi_sdk.genai`.
+
 ## [0.98.0] — 2026-07-05
 
 ### Added

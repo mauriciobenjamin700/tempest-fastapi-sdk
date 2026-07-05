@@ -6,6 +6,12 @@ imports without the ``[genai]`` extra; ``torch`` / ``transformers`` are
 only needed to probe real GPUs and (later) run inference.
 """
 
+from tempest_fastapi_sdk.genai.batching import BatchScheduler as BatchScheduler
+from tempest_fastapi_sdk.genai.embeddings import Embedder as Embedder
+from tempest_fastapi_sdk.genai.embeddings import EmbeddingCache as EmbeddingCache
+from tempest_fastapi_sdk.genai.embeddings import (
+    InMemoryEmbeddingCache as InMemoryEmbeddingCache,
+)
 from tempest_fastapi_sdk.genai.hardware import (
     bytes_per_param as bytes_per_param,
 )
@@ -24,6 +30,7 @@ from tempest_fastapi_sdk.genai.hardware import (
 from tempest_fastapi_sdk.genai.hardware import (
     recommend as recommend,
 )
+from tempest_fastapi_sdk.genai.registry import ModelRegistry as ModelRegistry
 from tempest_fastapi_sdk.genai.schemas import (
     CapacityReport as CapacityReport,
 )
@@ -47,10 +54,15 @@ from tempest_fastapi_sdk.genai.text import (
 )
 
 __all__: list[str] = [
+    "BatchScheduler",
     "CapacityReport",
+    "Embedder",
+    "EmbeddingCache",
     "GPUInfo",
     "HardwareInfo",
+    "InMemoryEmbeddingCache",
     "ModelDtype",
+    "ModelRegistry",
     "TextGenerator",
     "auto_dtype_name",
     "bytes_per_param",
