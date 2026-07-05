@@ -20,6 +20,8 @@ from typing import Annotated, Final
 
 from pydantic import AfterValidator
 
+from tempest_fastapi_sdk.core import BaseStrEnum
+
 CPF_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$",
 )
@@ -279,6 +281,110 @@ def normalize_phone_br(value: str) -> str:
     return only_digits(value)
 
 
+_PIX_EMAIL_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+)
+"""Loose email shape for a PIX e-mail key (BACEN checks format, not MX)."""
+
+_PIX_PHONE_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^\+55\d{10,11}$",
+)
+"""PIX phone key in E.164: ``+55`` + DDD + 8/9-digit number."""
+
+_PIX_RANDOM_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+)
+"""PIX random key (EVP): a UUID (``8-4-4-4-12`` hex)."""
+
+
+class PixKeyType(BaseStrEnum):
+    """The five kinds of PIX key defined by BACEN.
+
+    * ``CPF`` — an 11-digit CPF (individual taxpayer id).
+    * ``CNPJ`` — a 14-digit CNPJ (company taxpayer id).
+    * ``EMAIL`` — an e-mail address.
+    * ``PHONE`` — an E.164 phone (``+55`` + DDD + number).
+    * ``RANDOM`` — a random key (EVP), i.e. a UUID.
+    """
+
+    CPF = "cpf"
+    CNPJ = "cnpj"
+    EMAIL = "email"
+    PHONE = "phone"
+    RANDOM = "random"
+
+
+def detect_pix_key_type(value: str) -> PixKeyType | None:
+    """Return the :class:`PixKeyType` a PIX key belongs to, or ``None``.
+
+    Detection is by shape: ``@`` → e-mail, leading ``+`` → phone, UUID
+    shape → random, otherwise digits-only length + check digits decide
+    between CPF and CNPJ.
+
+    Args:
+        value (str): The raw PIX key (masked CPF/CNPJ accepted).
+
+    Returns:
+        PixKeyType | None: The detected type, or ``None`` when ``value``
+        is not a valid key of any type.
+    """
+    candidate = value.strip()
+    if not candidate:
+        return None
+    if "@" in candidate:
+        return PixKeyType.EMAIL if _PIX_EMAIL_PATTERN.match(candidate) else None
+    if candidate.startswith("+"):
+        return PixKeyType.PHONE if _PIX_PHONE_PATTERN.match(candidate) else None
+    if _PIX_RANDOM_PATTERN.match(candidate):
+        return PixKeyType.RANDOM
+    digits = only_digits(candidate)
+    if len(digits) == 11 and is_valid_cpf(digits):
+        return PixKeyType.CPF
+    if len(digits) == 14 and is_valid_cnpj(digits):
+        return PixKeyType.CNPJ
+    return None
+
+
+def is_valid_pix_key(value: str) -> bool:
+    """Return ``True`` when ``value`` is a valid PIX key of any type.
+
+    Args:
+        value (str): The PIX key to check.
+
+    Returns:
+        bool: Whether the value is a recognizable, valid PIX key.
+    """
+    return detect_pix_key_type(value) is not None
+
+
+def normalize_pix_key(value: str) -> str:
+    """Validate a PIX key and return it in canonical form.
+
+    Canonicalization per type: CPF/CNPJ → digits only; e-mail → trimmed +
+    lowercased; phone → the E.164 ``+55…`` string; random → lowercased
+    UUID.
+
+    Args:
+        value (str): The raw PIX key.
+
+    Returns:
+        str: The normalized key.
+
+    Raises:
+        ValueError: When ``value`` is not a valid PIX key.
+    """
+    key_type = detect_pix_key_type(value)
+    if key_type is None:
+        raise ValueError("invalid PIX key")
+    candidate = value.strip()
+    if key_type in (PixKeyType.CPF, PixKeyType.CNPJ):
+        return only_digits(candidate)
+    if key_type is PixKeyType.PHONE:
+        return candidate
+    return candidate.lower()
+
+
 CPFField = Annotated[str, AfterValidator(normalize_cpf)]
 """Pydantic field type that validates and normalizes a CPF to 11 digits."""
 
@@ -293,6 +399,14 @@ PhoneBRField = Annotated[str, AfterValidator(normalize_phone_br)]
 
 CEPField = Annotated[str, AfterValidator(normalize_cep)]
 """Pydantic field type that validates a Brazilian CEP, normalized to 8 digits."""
+
+PixKeyField = Annotated[str, AfterValidator(normalize_pix_key)]
+"""Pydantic field type that validates any PIX key and normalizes it.
+
+Accepts a CPF, CNPJ, e-mail, E.164 phone (``+55…``) or random UUID key;
+raises ``ValidationError`` (HTTP 422) on anything else. Use
+:func:`detect_pix_key_type` when you also need to know *which* type.
+"""
 
 # Deprecated aliases (pre-0.76 names without the ``Field`` suffix). Kept
 # so existing imports keep working; prefer the ``*Field`` names. Slated
@@ -320,15 +434,20 @@ __all__: list[str] = [
     "CPFOrCNPJField",
     "PhoneBR",
     "PhoneBRField",
+    "PixKeyField",
+    "PixKeyType",
+    "detect_pix_key_type",
     "is_valid_cep",
     "is_valid_cnpj",
     "is_valid_cpf",
     "is_valid_cpf_cnpj",
     "is_valid_phone_br",
+    "is_valid_pix_key",
     "normalize_cep",
     "normalize_cnpj",
     "normalize_cpf",
     "normalize_cpf_cnpj",
     "normalize_phone_br",
+    "normalize_pix_key",
     "only_digits",
 ]

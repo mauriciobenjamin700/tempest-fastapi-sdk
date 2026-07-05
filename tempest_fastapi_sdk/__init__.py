@@ -300,6 +300,8 @@ from tempest_fastapi_sdk.utils import (
     PercentField,
     PhoneBR,
     PhoneBRField,
+    PixKeyField,
+    PixKeyType,
     PortField,
     PositiveFloatField,
     PositiveIntField,
@@ -320,6 +322,7 @@ from tempest_fastapi_sdk.utils import (
     build_content_disposition,
     cities_by_uf,
     city_choices,
+    detect_pix_key_type,
     generate_opaque_token,
     get_client_ip,
     get_client_ip_from_scope,
@@ -331,6 +334,7 @@ from tempest_fastapi_sdk.utils import (
     is_valid_cpf,
     is_valid_cpf_cnpj,
     is_valid_phone_br,
+    is_valid_pix_key,
     is_valid_uf,
     list_states,
     modify_dict,
@@ -340,6 +344,7 @@ from tempest_fastapi_sdk.utils import (
     normalize_cpf,
     normalize_cpf_cnpj,
     normalize_phone_br,
+    normalize_pix_key,
     normalize_uf,
     only_digits,
     region_choices,
@@ -367,7 +372,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.94.0"
+__version__: str = "0.95.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -530,6 +535,8 @@ __all__: list[str] = [
     "PercentField",
     "PhoneBR",
     "PhoneBRField",
+    "PixKeyField",
+    "PixKeyType",
     "PortField",
     "PositiveFloatField",
     "PositiveIntField",
@@ -624,6 +631,7 @@ __all__: list[str] = [
     "configure_logging",
     "decode_cursor",
     "default_message_catalog",
+    "detect_pix_key_type",
     "diff_snapshots",
     "discover_models",
     "encode_cursor",
@@ -642,6 +650,7 @@ __all__: list[str] = [
     "is_valid_cpf",
     "is_valid_cpf_cnpj",
     "is_valid_phone_br",
+    "is_valid_pix_key",
     "is_valid_uf",
     "key_by_header",
     "key_by_ip",
@@ -682,6 +691,7 @@ __all__: list[str] = [
     "normalize_cpf_cnpj",
     "normalize_locale",
     "normalize_phone_br",
+    "normalize_pix_key",
     "normalize_uf",
     "only_digits",
     "parse_accept_language",

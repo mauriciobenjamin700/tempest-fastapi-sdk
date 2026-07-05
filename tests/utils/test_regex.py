@@ -282,3 +282,80 @@ class TestCepAnnotatedType:
     def test_rejects_invalid(self) -> None:
         with pytest.raises(ValidationError):
             self._Schema(cep="not-a-cep")
+
+
+class TestPixKey:
+    def test_detect_cpf(self) -> None:
+        from tempest_fastapi_sdk.utils import PixKeyType, detect_pix_key_type
+
+        assert detect_pix_key_type("529.982.247-25") == PixKeyType.CPF
+
+    def test_detect_cnpj(self) -> None:
+        from tempest_fastapi_sdk.utils import PixKeyType, detect_pix_key_type
+
+        assert detect_pix_key_type("11.222.333/0001-81") == PixKeyType.CNPJ
+
+    def test_detect_email(self) -> None:
+        from tempest_fastapi_sdk.utils import PixKeyType, detect_pix_key_type
+
+        assert detect_pix_key_type("ana@example.com") == PixKeyType.EMAIL
+
+    def test_detect_phone(self) -> None:
+        from tempest_fastapi_sdk.utils import PixKeyType, detect_pix_key_type
+
+        assert detect_pix_key_type("+5511999998888") == PixKeyType.PHONE
+
+    def test_detect_random(self) -> None:
+        from tempest_fastapi_sdk.utils import PixKeyType, detect_pix_key_type
+
+        assert (
+            detect_pix_key_type(
+                "123e4567-e89b-12d3-a456-426614174000",
+            )
+            == PixKeyType.RANDOM
+        )
+
+    def test_detect_invalid(self) -> None:
+        from tempest_fastapi_sdk.utils import detect_pix_key_type
+
+        assert detect_pix_key_type("garbage") is None
+        assert detect_pix_key_type("+55119") is None  # too short
+        assert detect_pix_key_type("000.000.000-00") is None  # bad CPF digits
+
+    def test_is_valid(self) -> None:
+        from tempest_fastapi_sdk.utils import is_valid_pix_key
+
+        assert is_valid_pix_key("ana@example.com") is True
+        assert is_valid_pix_key("nope") is False
+
+    def test_normalize(self) -> None:
+        from tempest_fastapi_sdk.utils import normalize_pix_key
+
+        assert normalize_pix_key("529.982.247-25") == "52998224725"
+        assert normalize_pix_key("ANA@Example.com") == "ana@example.com"
+        assert normalize_pix_key("+5511999998888") == "+5511999998888"
+
+    def test_normalize_invalid_raises(self) -> None:
+        from tempest_fastapi_sdk.utils import normalize_pix_key
+
+        with pytest.raises(ValueError, match="PIX"):
+            normalize_pix_key("garbage")
+
+
+class TestPixKeyField:
+    def _schema(self) -> type[BaseModel]:
+        from tempest_fastapi_sdk.utils import PixKeyField
+
+        class _Schema(BaseModel):
+            key: PixKeyField
+
+        return _Schema
+
+    def test_accepts_and_normalizes(self) -> None:
+        schema = self._schema()
+        assert schema(key="529.982.247-25").key == "52998224725"
+
+    def test_rejects_invalid(self) -> None:
+        schema = self._schema()
+        with pytest.raises(ValidationError):
+            schema(key="not-a-pix-key")

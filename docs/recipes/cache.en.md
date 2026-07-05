@@ -133,6 +133,85 @@ async def update_profile(user_id: int, data: dict[str, Any]) -> None:
 !!! warning "Use the same `key_prefix`"
     `CacheInvalidator` needs the **same `key_prefix`** as the `@cached` decorators it invalidates — that is how the registry set names line up. The registry sets inherit the entry TTL, so they self-prune after their newest member expires; deleting an already-expired key is a harmless no-op.
 
+## Real-world recipes
+
+### Cache-aside in a service
+
+The most common pattern: the service tries the cache; on a miss it reads
+from the repository and writes. With `@cached` you don't even write the
+try/miss — it does it for you:
+
+```python
+# src/services/catalog.py
+from tempest_fastapi_sdk.cache import cached
+
+from src.core.resources import redis      # AsyncRedisManager (singleton)
+
+
+class CatalogService:
+    def __init__(self, repo: ProductRepository) -> None:
+        self.repo = repo
+
+    @cached(redis, ttl=300, key_prefix="catalog:", namespace="products")
+    async def get_product(self, product_id: str) -> dict[str, Any]:
+        """Reads from the DB on a miss; serves from Redis for 5 min on a hit."""
+        product = await self.repo.get_by_id(product_id)
+        return product.to_dict()
+
+    async def update_product(self, product_id: str, data: dict[str, Any]) -> None:
+        """Writes and drops the whole namespace's cache."""
+        await self.repo.update(product_id, data)
+        await CacheInvalidator(redis, key_prefix="catalog:").invalidate_namespace(
+            "products",
+        )
+```
+
+!!! warning "Don't cache methods that depend on mutable `self`"
+    The `@cached` key includes the arguments — but **not** `self`'s state.
+    Only cache methods whose result depends solely on the arguments (like
+    above, where `product_id` determines everything). If the result varies
+    with instance state, cache a pure function instead.
+
+### One Redis for everything
+
+`AsyncRedisManager` hands out a `redis.asyncio.Redis` at `.client` — the
+same client feeds the SDK's other middlewares/stores, so you keep **one**
+connection:
+
+```python
+from tempest_fastapi_sdk.api import RateLimitMiddleware, RedisRateLimitStore
+from tempest_fastapi_sdk.sessions import RedisSessionStore
+from tempest_fastapi_sdk.sse import SSEBroker
+
+# after cache.connect() in the lifespan:
+rate_store = RedisRateLimitStore(cache.client)          # rate limiting
+session_store = RedisSessionStore(cache.client)         # server-side sessions
+broker = SSEBroker(redis=cache.client)                  # multi-worker SSE fan-out
+```
+
+See [Rate limit](http.md), [Sessions](sessions.md) and [SSE](sse.md) for
+each one's details.
+
+### Negative caching (cache the "not found")
+
+A lookup that always misses (a non-existent id probed in a loop) hits the
+DB every time. Cache the empty result with a short TTL:
+
+```python
+@cached(redis, ttl=30, key_prefix="lookup:")   # short TTL for the negative
+async def find_user(email: str) -> dict[str, Any] | None:
+    """Returns None on a miss — and that None is cached for 30s."""
+    user = await repo.get_by_email(email)
+    return user.to_dict() if user else None
+```
+
+!!! tip "Stampede / dogpile"
+    When a hot key expires, N concurrent requests can run the expensive
+    function at once. Mitigate with staggered TTLs (jitter the `ttl`), a
+    longer TTL for very hot keys, or a short Redis lock (`SET NX EX`)
+    around the recompute. `@cached` doesn't do this on its own — it's a
+    case-by-case call.
+
 ## Recap
 
 - **`AsyncRedisManager`** — the managed client: `connect`/`disconnect` in the lifespan, `client` for direct use, `client_dependency` as a `Depends`, and `health_check` on `make_health_router`.

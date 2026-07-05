@@ -175,7 +175,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   into `MessageBroker.publish`.
 - **BR validators** — CPF/CNPJ/CEP/phone, with `*Field` Pydantic types
   (`CPFField`/`CNPJField`/`CPFOrCNPJField`/`PhoneBRField`/`CEPField`;
-  pre-0.76 unsuffixed names kept as deprecated aliases).
+  pre-0.76 unsuffixed names kept as deprecated aliases). **PIX keys**
+  (v0.95.0): `PixKeyField` validates+normalizes any of the 5 BACEN key
+  types (CPF/CNPJ/email/E.164 phone/random UUID); `PixKeyType` +
+  `detect_pix_key_type`/`is_valid_pix_key`/`normalize_pix_key`.
 - **BR localities** — `UF` (StrEnum, 27 siglas) + `Region`
   (5 macro-regiões IBGE), `StateBR`/`CityBR` schemas, offline
   dataset of 27 states + 5606 municipalities (IBGE-derived,

@@ -5,6 +5,27 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.95.0] — 2026-07-05
+
+### Added
+
+- **PIX key field + helpers** (`tempest_fastapi_sdk.utils`). `PixKeyField`
+  is an `Annotated` schema type that validates any of the five BACEN PIX
+  key types (CPF, CNPJ, e-mail, E.164 phone, random UUID) in one field
+  and normalizes to a canonical form (CPF/CNPJ → digits, e-mail →
+  lowercase, phone → `+55…`, random → lowercase UUID). Companions:
+  `PixKeyType` (the enum), `detect_pix_key_type(value)` (returns the type
+  or `None`), `is_valid_pix_key(value)` and `normalize_pix_key(value)`.
+  Detection is by shape plus CPF/CNPJ check digits — all exported from the
+  package root.
+
+### Changed
+
+- The **validated-fields recipe** was expanded (both locales): a full
+  schema + route + 422 walkthrough, a "compose your own field" section,
+  common gotchas (`CentsField` vs `PriceField`, `PercentField` vs
+  `RatioField`), and the new PIX-key section.
+
 ## [0.94.0] — 2026-07-05
 
 ### Added
