@@ -280,6 +280,39 @@ class TaskQueue:
             return wrap(func)
         return wrap
 
+    def register(self, definition: Any) -> Any:
+        """Register a class-based :class:`~tempest_fastapi_sdk.tasks.TaskDef`.
+
+        Reads the definition's task bindings (constructor form or grouped
+        ``@task_method`` methods) and registers each with the broker.
+
+        Args:
+            definition (TaskDef): The task-definition instance.
+
+        Returns:
+            Task | dict[str, Task]: A single :class:`Task` for the
+            constructor form, or a ``dict`` keyed by method name for the
+            grouped form.
+        """
+        grouped = definition.is_grouped
+        wrapped: dict[str, Task[Any, Any]] = {}
+        for binding in definition.task_bindings():
+            # TaskIQ needs a plain function with a settable __name__; a bound
+            # method has neither. Wrap it (no functools.wraps — that would
+            # make inspect.signature follow __wrapped__ back to `self`).
+            bound = binding.func
+
+            async def _entry(*args: Any, _call: Any = bound, **kwargs: Any) -> Any:
+                return await _call(*args, **kwargs)
+
+            _entry.__name__ = binding.key
+            _entry.__qualname__ = f"{type(definition).__name__}.{binding.key}"
+            decorator = self.broker.task(task_name=binding.name, **binding.options)
+            wrapped[binding.key] = Task(decorator(_entry), bound)
+        if grouped:
+            return wrapped
+        return wrapped["run"]
+
     # ------------------------------------------------------------------
     # Scheduling (periodic tasks)
     # ------------------------------------------------------------------
@@ -318,11 +351,19 @@ class TaskQueue:
     ) -> Callable[[Callable[P, Awaitable[R]]], Task[P, R]]:
         """Register a task to run on a cron schedule.
 
+        For readable schedules without hand-writing cron syntax, pass a
+        :class:`tempest_fastapi_sdk.tasks.Cron` member or a builder result
+        (:func:`~tempest_fastapi_sdk.tasks.daily`,
+        :func:`~tempest_fastapi_sdk.tasks.weekdays`, …) as ``expr``, and a
+        :class:`~tempest_fastapi_sdk.tasks.CronOffset` member as
+        ``cron_offset``.
+
         Args:
             expr (str): A cron expression (``"*/5 * * * *"`` = every five
-                minutes).
+                minutes), a :class:`Cron` member, or a builder result.
             cron_offset (str | timedelta | None): Timezone offset applied
-                to ``expr`` (``"-03:00"`` or a :class:`~datetime.timedelta`).
+                to ``expr`` — ``"-03:00"``, a :class:`CronOffset` member,
+                or a :class:`~datetime.timedelta`.
             name (str | None): Override the task name.
             **options (Any): Extra TaskIQ labels forwarded to the task.
 
@@ -330,9 +371,16 @@ class TaskQueue:
             Callable[[Callable[P, Awaitable[R]]], Task[P, R]]: A decorator
             returning the wrapped :class:`Task`.
         """
-        schedule: list[dict[str, Any]] = [{"cron": expr}]
+        from tempest_fastapi_sdk.core import BaseStrEnum
+
+        expr_str: str = expr.value if isinstance(expr, BaseStrEnum) else expr
+        schedule: list[dict[str, Any]] = [{"cron": expr_str}]
         if cron_offset is not None:
-            schedule[0]["cron_offset"] = cron_offset
+            schedule[0]["cron_offset"] = (
+                cron_offset.value
+                if isinstance(cron_offset, BaseStrEnum)
+                else cron_offset
+            )
 
         def wrap(fn: Callable[P, Awaitable[R]]) -> Task[P, R]:
             decorator = self.broker.task(task_name=name, schedule=schedule, **options)

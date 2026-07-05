@@ -25,10 +25,39 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 if TYPE_CHECKING:
     from faststream.broker.core.usecase import BrokerUsecase
 
+    from tempest_fastapi_sdk.queue.consumer import Consumer
+
 logger = logging.getLogger("tempest_fastapi_sdk.queue")
 
 Handler = TypeVar("Handler", bound=Callable[..., Awaitable[Any]])
 """A message handler — an async callable taking the decoded message."""
+
+
+def _schema_entry(
+    handler: Callable[[Any], Awaitable[Any]],
+    schema: type,
+) -> Callable[[Any], Awaitable[None]]:
+    """Build a single-parameter subscriber that decodes into ``schema``.
+
+    FastStream reads the handler signature to decode the payload. The
+    constructor-form :class:`~tempest_fastapi_sdk.queue.Consumer` passes
+    its schema explicitly, so we wrap the user's ``handle`` in a function
+    whose one parameter is annotated with that schema — making the
+    explicit schema the decoding contract, no annotation-sniffing.
+
+    Args:
+        handler (Callable[[Any], Awaitable[Any]]): The consumer's handler.
+        schema (type): The Pydantic model to decode the payload into.
+
+    Returns:
+        Callable[[Any], Awaitable[None]]: The wrapped subscriber.
+    """
+
+    async def entry(message: Any) -> None:
+        await handler(message)
+
+    entry.__annotations__ = {"message": schema, "return": None}
+    return entry
 
 
 def _require(module: str, extra: str) -> Any:
@@ -239,6 +268,28 @@ class MessageBroker:
                 "MessageBroker.connect() must be called before publishing.",
             )
         return await self.broker.publish(message, channel, **options)
+
+    def register(self, consumer: Consumer) -> None:
+        """Wire a class-based :class:`Consumer` onto this broker.
+
+        Reads every binding the consumer declares (constructor form or
+        grouped ``@subscribe`` methods — see
+        :class:`~tempest_fastapi_sdk.queue.Consumer`) and subscribes each
+        handler to its channel. When a binding carries an explicit
+        ``schema`` (the constructor form), that model drives decoding;
+        otherwise the handler's own type hint does.
+
+        Call it at import/startup time, before :meth:`connect`.
+
+        Args:
+            consumer (Consumer): The consumer instance to register.
+        """
+        for sub in consumer.subscriptions():
+            if sub.schema is not None:
+                entry = _schema_entry(sub.handler, sub.schema)
+                self.broker.subscriber(sub.channel, **sub.options)(entry)
+            else:
+                self.broker.subscriber(sub.channel, **sub.options)(sub.handler)
 
     def publisher(self, channel: str, **options: Any) -> Any:
         """Return a reusable publisher bound to ``channel``.

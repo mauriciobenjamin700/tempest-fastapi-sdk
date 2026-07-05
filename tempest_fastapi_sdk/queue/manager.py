@@ -33,12 +33,19 @@ def _require_faststream() -> Any:
     return faststream
 
 
-class AsyncBrokerManager:
-    """Manage the lifecycle of a FastStream broker.
+class AsyncQueueManager:
+    """Manage the lifecycle of an injected FastStream broker.
 
-    Wraps any FastStream broker (RabbitBroker, KafkaBroker,
-    NatsBroker, RedisBroker, etc.) with a uniform connect / disconnect
-    / health-check surface that matches the SDK's other backends.
+    A minimal wrapper: it wraps any FastStream broker (RabbitBroker,
+    KafkaBroker, NatsBroker, RedisBroker, etc.) with a uniform connect /
+    disconnect / health-check surface matching the SDK's other backends,
+    and forwards ``publish``. Reach for it when you already build your own
+    broker and only want lifecycle management.
+
+    For the batteries-included experience — transport constructors, a
+    typed ``@on(channel)`` consumer decorator, class-based consumers and
+    channel-first ``publish`` — use
+    :class:`~tempest_fastapi_sdk.queue.MessageBroker` instead.
 
     The broker is injected so consumers stay free to choose the
     transport without forcing FastStream to import every backend.
@@ -46,10 +53,10 @@ class AsyncBrokerManager:
     Typical usage::
 
         from faststream.rabbit import RabbitBroker
-        from tempest_fastapi_sdk import AsyncBrokerManager
+        from tempest_fastapi_sdk import AsyncQueueManager
 
         broker = RabbitBroker("amqp://guest:guest@localhost:5672/")
-        queue = AsyncBrokerManager(broker)
+        queue = AsyncQueueManager(broker)
 
         @queue.broker.subscriber("orders")
         async def handle(msg: OrderMessage) -> None:
@@ -117,7 +124,7 @@ class AsyncBrokerManager:
         """
         if not self._started:
             raise RuntimeError(
-                "AsyncBrokerManager.connect() must be called before publishing.",
+                "AsyncQueueManager.connect() must be called before publishing.",
             )
         return await self.broker.publish(message, *args, **kwargs)
 
@@ -149,7 +156,7 @@ class AsyncBrokerManager:
         """
         if not self._started:
             raise RuntimeError(
-                "AsyncBrokerManager.connect() must be called before use.",
+                "AsyncQueueManager.connect() must be called before use.",
             )
         yield self.broker
 
@@ -175,6 +182,12 @@ class AsyncBrokerManager:
         return self._started
 
 
+#: Deprecated alias — the class was renamed to :class:`AsyncQueueManager`
+#: in v0.94.0. Kept working for backward compatibility.
+AsyncBrokerManager = AsyncQueueManager
+
+
 __all__: list[str] = [
     "AsyncBrokerManager",
+    "AsyncQueueManager",
 ]

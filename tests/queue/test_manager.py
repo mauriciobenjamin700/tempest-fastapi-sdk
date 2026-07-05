@@ -103,3 +103,13 @@ class TestAsyncBrokerManager:
         agen = manager.broker_dependency()
         with pytest.raises(RuntimeError):
             await agen.__anext__()
+
+
+class TestRename:
+    """AsyncBrokerManager was renamed to AsyncQueueManager (v0.94.0)."""
+
+    def test_alias_points_to_renamed_class(self) -> None:
+        from tempest_fastapi_sdk.queue import AsyncBrokerManager, AsyncQueueManager
+
+        assert AsyncBrokerManager is AsyncQueueManager
+        assert AsyncQueueManager.__name__ == "AsyncQueueManager"

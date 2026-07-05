@@ -82,6 +82,51 @@ await mq.publish("orders.paid", OrderPaid(order_id="abc", user_id="u1"))
 
 Conecte no health router: `make_health_router(checks={"queue": mq.health_check})`.
 
+### Consumidores baseados em classe
+
+Prefere agrupar handlers numa classe (setup compartilhado, herança) a
+usar funções soltas? `Consumer` oferece **duas** formas, ambas explícitas
+(nada é adivinhado do nome da classe). Registre com `mq.register(...)`.
+
+**Forma construtor** — passe o canal e o schema Pydantic no construtor;
+sobrescreva `handle`:
+
+```python
+from tempest_fastapi_sdk.queue import Consumer
+
+
+class OrderPaidConsumer(Consumer):
+    async def handle(self, event: OrderPaid) -> None:
+        await mark_order_paid(event.order_id)
+
+
+mq.register(OrderPaidConsumer(channel="orders.paid", schema=OrderPaid))
+```
+
+**Forma agrupada** — uma classe, vários canais, cada método marcado com
+`@subscribe`; o schema é a anotação do próprio método:
+
+```python
+from tempest_fastapi_sdk.queue import Consumer, subscribe
+
+
+class OrdersConsumer(Consumer):
+    @subscribe("orders.paid")
+    async def on_paid(self, event: OrderPaid) -> None: ...
+
+    @subscribe("orders.cancelled")
+    async def on_cancelled(self, event: OrderCancelled) -> None: ...
+
+
+mq.register(OrdersConsumer())
+```
+
+!!! info "Transparente, sem mágica"
+    Na forma construtor o schema vem explícito no `__init__` e é o que
+    valida o payload — sem farejar anotações. Na forma agrupada o schema
+    é a anotação visível do método. O `@mq.on(...)` (decorator em função)
+    continua disponível — escolha o estilo que preferir.
+
 ## Tarefas em background — `TaskQueue`
 
 Uma **fila de tarefas** tira trabalho lento do request e joga num worker. O TaskIQ faz isso, mas espalha a API entre broker, scheduler, schedule source e `.kiq()`. `TaskQueue` dobra tudo num objeto só, com vocabulário óbvio.
@@ -133,26 +178,106 @@ async def lifespan(_: FastAPI):
 !!! note "Testes sem broker"
     `TaskQueue.memory()` usa o broker in-memory do TaskIQ: `enqueue()` roda a tarefa **na hora, no mesmo processo**. Zero worker, zero conexão. `run()` funciona sempre, mesmo sem `connect()`.
 
+### Tarefas baseadas em classe
+
+Simétrico aos consumidores: agrupe tarefas numa classe com `TaskDef`.
+`tq.register(...)` devolve um `Task` (forma construtor) ou um dict de
+`Task` por método (forma agrupada).
+
+```python
+from tempest_fastapi_sdk.tasks import TaskDef, task_method
+
+
+# Forma construtor — uma tarefa; nome no construtor, sobrescreve run:
+class NightlyReport(TaskDef):
+    def __init__(self) -> None:
+        super().__init__(name="reports:nightly")
+
+    async def run(self, day: str) -> None:
+        ...
+
+
+nightly = tq.register(NightlyReport())        # -> Task
+await nightly.enqueue(day="2026-07-05")
+
+
+# Forma agrupada — várias tarefas, cada método marcado com @task_method:
+class ReportTasks(TaskDef):
+    @task_method(name="reports:nightly")
+    async def nightly(self, day: str) -> None: ...
+
+    @task_method()
+    async def weekly(self) -> None: ...
+
+
+tasks = tq.register(ReportTasks())            # -> {"nightly": Task, "weekly": Task}
+await tasks["nightly"].enqueue(day="2026-07-05")
+```
+
+O `@tq.task` (decorator em função) segue disponível — as duas formas
+coexistem.
+
 ## Tarefas periódicas — `cron` / `interval`
 
-Agendar é parte do mesmo `TaskQueue` — sem scheduler separado no seu código:
+Agendar é parte do mesmo `TaskQueue` — sem scheduler separado no seu código.
+
+!!! tip "Não sabe cron? Use os enums e helpers (v0.94.0)"
+    Ninguém precisa decorar `"0 9 * * MON-FRI"`. O módulo
+    `tempest_fastapi_sdk.tasks` traz **`Cron`** (expressões prontas),
+    **`CronOffset`** (fusos por lugar, não por dígitos), **`Weekday`** e
+    **funções construtoras** (`daily`, `weekdays`, `hourly`,
+    `every_n_minutes`, `weekly`, `weekends`, `monthly`). Todas viram uma
+    string cron simples que entra direto no `@tq.cron(...)`.
 
 ```python
 # src/tasks/__init__.py
-from datetime import timedelta
+from tempest_fastapi_sdk.tasks import Cron, CronOffset, Weekday, daily, weekdays
 
 
-@tq.cron("*/5 * * * *")                       # a cada 5 minutos
-async def heartbeat() -> None:
-    ...
-
-
-@tq.cron("0 9 * * MON-FRI", cron_offset="-03:00")  # 09:00 BRT, dias úteis
+# Legível, sem sintaxe cron:
+@tq.cron(Cron.EVERY_WEEKDAY_9AM, cron_offset=CronOffset.BRASILIA)
 async def daily_digest() -> None:
     ...
 
 
-@tq.interval(seconds=30)                       # a cada 30s
+@tq.cron(daily(hour=9), cron_offset=CronOffset.BRASILIA)   # 09:00 BRT
+async def other_digest() -> None:
+    ...
+
+
+@tq.cron(weekdays(hour=8, minute=30), cron_offset=CronOffset.BRASILIA)
+async def morning_sync() -> None:
+    ...
+
+
+@tq.cron(Cron.EVERY_5_MINUTES)
+async def heartbeat() -> None:
+    ...
+```
+
+| Quero rodar… | Escreva |
+| --- | --- |
+| A cada 5 min | `Cron.EVERY_5_MINUTES` ou `every_n_minutes(5)` |
+| Todo dia às 9h | `daily(hour=9)` |
+| Dias úteis às 8h30 | `weekdays(hour=8, minute=30)` |
+| Toda segunda | `weekly(Weekday.MON)` |
+| Todo dia 1º | `monthly(day=1)` |
+| No fuso de Brasília | `cron_offset=CronOffset.BRASILIA` |
+
+`CronOffset` cobre os fusos do Brasil por nome — `BRASILIA` (-03:00),
+`FERNANDO_DE_NORONHA` (-02:00), `MANAUS` (-04:00), `ACRE` (-05:00) — mais
+`UTC`. Prefere cron cru ou intervalos? Continua valendo:
+
+```python
+from datetime import timedelta
+
+
+@tq.cron("*/5 * * * *")                        # string cron crua
+async def raw_cron() -> None:
+    ...
+
+
+@tq.interval(seconds=30)                        # a cada 30s
 async def poll_remote() -> None:
     ...
 
@@ -230,5 +355,7 @@ O guia completo — modelo, service produtor com `save_with_outbox`, retenção 
 - **`MessageBroker`** — pub/sub tipado e transport-agnostic sobre FastStream: `@mq.on("channel")` + `await mq.publish("channel", modelo)`. Fan-out at-least-once entre serviços.
 - **`TaskQueue`** — tarefas sobre TaskIQ: `@tq.task` → `await task.enqueue(...)` (pro worker) ou `await task.run(...)` (inline). `.memory()` pra testes.
 - **`@tq.cron` / `@tq.interval`** — periódicos no mesmo objeto; `start_scheduler()` em dev, CLI standalone em produção.
+- **Cron sem sintaxe** — `Cron` / `CronOffset` / `Weekday` + helpers (`daily`, `weekdays`, `every_n_minutes`, …) pra agendar por nome; `CronOffset.BRASILIA` no lugar de `"-03:00"`.
+- **Estilos** — decorators (`@mq.on`, `@tq.task`, `@tq.cron`) **ou** classes (`Consumer` + `mq.register`, `TaskDef` + `tq.register`); as duas formas coexistem.
 - **Outbox** — `BaseOutboxModel` + `OutboxRelay` + `save_with_outbox`, com o `publish` do relay apontando pro `MessageBroker`. Veja [Outbox](outbox.md).
-- As classes legadas `AsyncBrokerManager` / `AsyncTaskBrokerManager` / `AsyncTaskScheduler` continuam funcionando, mas os facades acima são o caminho recomendado.
+- **Renome (v0.94.0)** — `AsyncBrokerManager` → **`AsyncQueueManager`** (wrapper fino; alias antigo mantido). Os facades `MessageBroker` / `TaskQueue` seguem recomendados; `AsyncTaskBrokerManager` / `AsyncTaskScheduler` continuam como legado funcional.

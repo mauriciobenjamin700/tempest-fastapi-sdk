@@ -162,10 +162,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   consumer, channel-first `publish(channel, message)`, `.broker` escape
   hatch) and `TaskQueue` (`.rabbitmq`/`.redis`/`.memory`, `@tq.task` →
   `Task.enqueue`/`.run`, folded `@tq.cron`/`@tq.interval` +
-  `start_scheduler`, `tq.broker`/`tq.scheduler` for the CLIs). Legacy
-  `AsyncBrokerManager`/`AsyncTaskBrokerManager`/`AsyncTaskScheduler` kept
-  as working aliases. Outbox (`BaseOutboxModel`/`OutboxRelay`/
-  `save_with_outbox`) plugs its `publish` into `MessageBroker.publish`.
+  `start_scheduler`, `tq.broker`/`tq.scheduler` for the CLIs). **Both
+  decorator and class-based styles**: `Consumer` + `@subscribe` +
+  `MessageBroker.register` (constructor form takes explicit
+  `channel`+`schema`, no magic); `TaskDef` + `@task_method` +
+  `TaskQueue.register`. **Cron without syntax**: `Cron`/`CronOffset`
+  (`BRASILIA` etc.)/`Weekday` enums + `daily`/`weekdays`/`every_n_minutes`/
+  `weekly`/`monthly`/… builders (dependency-free). `AsyncBrokerManager`
+  renamed to **`AsyncQueueManager`** (v0.94.0; old alias kept); legacy
+  `AsyncTaskBrokerManager`/`AsyncTaskScheduler` kept. Outbox
+  (`BaseOutboxModel`/`OutboxRelay`/`save_with_outbox`) plugs its `publish`
+  into `MessageBroker.publish`.
 - **BR validators** — CPF/CNPJ/CEP/phone, with `*Field` Pydantic types
   (`CPFField`/`CNPJField`/`CPFOrCNPJField`/`PhoneBRField`/`CEPField`;
   pre-0.76 unsuffixed names kept as deprecated aliases).

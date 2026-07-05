@@ -145,9 +145,16 @@ class AsyncTaskScheduler:
         Returns:
             Any: The decorated task callable.
         """
-        schedule: list[dict[str, Any]] = [{"cron": expr}]
+        from tempest_fastapi_sdk.core import BaseStrEnum
+
+        expr_str: str = expr.value if isinstance(expr, BaseStrEnum) else expr
+        schedule: list[dict[str, Any]] = [{"cron": expr_str}]
         if cron_offset is not None:
-            schedule[0]["cron_offset"] = cron_offset
+            schedule[0]["cron_offset"] = (
+                cron_offset.value
+                if isinstance(cron_offset, BaseStrEnum)
+                else cron_offset
+            )
         return self.broker.task(task_name=task_name, schedule=schedule, **labels)
 
     def interval(

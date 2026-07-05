@@ -5,6 +5,40 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.94.0] — 2026-07-05
+
+### Added
+
+- **Human-friendly cron helpers** (`tempest_fastapi_sdk.tasks`) — schedule
+  periodic tasks without writing cron syntax:
+  - `Cron` — ready-made expressions (`Cron.EVERY_WEEKDAY_9AM`,
+    `Cron.EVERY_5_MINUTES`, …).
+  - `CronOffset` — timezone offsets by place (`CronOffset.BRASILIA` =
+    `-03:00`, plus `FERNANDO_DE_NORONHA` / `MANAUS` / `ACRE` / `UTC`).
+  - `Weekday` — day-of-week tokens.
+  - Builder functions — `daily`, `weekdays`, `weekends`, `hourly`,
+    `every_minute`, `every_n_minutes`, `weekly`, `monthly` — each
+    returning a plain cron string with range validation.
+  - `@tq.cron(...)` / `AsyncTaskScheduler.cron(...)` accept these
+    directly, coercing enum members to their plain string value. The
+    module has no third-party dependency (imports without `[tasks]`).
+- **Class-based message consumers** (`tempest_fastapi_sdk.queue`) — an
+  alternative to the `@mq.on` decorator, in two explicit styles:
+  `Consumer` with a constructor `channel=` + Pydantic `schema=` (no
+  annotation-sniffing) and overridden `handle`, or grouped `@subscribe`
+  methods (one class, many channels). Wire with `MessageBroker.register`.
+- **Class-based background tasks** (`tempest_fastapi_sdk.tasks`) —
+  symmetric to consumers: `TaskDef` with an overridden `run` (name in the
+  constructor) or grouped `@task_method` methods, wired with
+  `TaskQueue.register` (returns a `Task` or a `dict[str, Task]`).
+
+### Changed
+
+- **`AsyncBrokerManager` renamed to `AsyncQueueManager`** — a clearer name
+  for the thin lifecycle wrapper around an injected broker, matching the
+  `Async*Manager` family. `AsyncBrokerManager` stays as a backward-compatible
+  alias. `MessageBroker` remains the recommended batteries-included facade.
+
 ## [0.93.0] — 2026-07-05
 
 ### Added
