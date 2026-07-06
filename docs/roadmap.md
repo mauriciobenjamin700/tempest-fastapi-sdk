@@ -3,7 +3,7 @@
 Esta página lista o que o SDK **ainda não oferece** + o que já foi entregue. Ordenado por impacto, não por ordem de implementação — a release atual é puxada pela pressão de negócio, não pela posição na lista.
 
 !!! tip "O que o SDK já cobre"
-    Auth completa (JWT/bearer/role/permission/X-Token + bundled signup/activate/login/reset via `UserAuthService` + `make_auth_router`), OAuth2/OIDC (Google/GitHub + genérico), CSRF middleware, DB (`AsyncDatabaseManager` + `BaseRepository` + bulk ops + `AlembicHelper` + `BaseModel` + `BaseUserModel` + `BaseUserTokenModel` + mixins de auditoria/soft-delete + Alembic hook que reordena colunas base), exceções padronizadas, logging estruturado + arquivos por nível + endpoint `/logs`, métricas (CPU/RAM/GPU/Disco + Prometheus `/metrics` + `PrometheusMiddleware`), rate limiting, idempotência (`IdempotencyMiddleware` + memory/Redis stores), body-size limit, paginação (offset + cursor), settings por mixin com `title`/`description`/`examples`, SSE, throttle, upload/download local + storage pluggável (`LocalUploadStorage` + `MinIOUploadStorage`), MinIO/S3 (`AsyncMinIOClient`), WebPush, assinatura de webhook, validadores BR (CPF/CNPJ/CEP/telefone), painel admin (Jinja + HTMX, paridade com Django admin — list view com busca/filtros/colunas ordenáveis, CRUD completo, ações em massa, export CSV/JSON, widgets FK-select, dashboard com contagens + métricas, MFA TOTP no login, trilha de auditoria `created_by`/`updated_by`), email (SMTP + Jinja2 templates), cache Redis, fila FastStream, tarefas TaskIQ, hardened static files, runner de servidor, health, tool-spec router, request-id middleware, CORS, HTTP client typed (`HTTPClient` httpx wrapper com retry/backoff/circuit-breaker), CLI completo (`tempest new`, `tempest generate --docker` — credenciais do compose resolvidas do `.env` via `${VAR:-default}`, não hardcoded —, `tempest db <subcommand>`, `tempest user <subcommand>`, quality gates).
+    Auth completa (JWT/bearer/role/permission/X-Token + bundled signup/activate/login/reset via `UserAuthService` + `make_auth_router`), OAuth2/OIDC (Google/GitHub + genérico), CSRF middleware, DB (`AsyncDatabaseManager` + `BaseRepository` + bulk ops + `AlembicHelper` + `BaseModel` + `BaseUserModel` + `BaseUserTokenModel` + mixins de auditoria/soft-delete + Alembic hook que reordena colunas base), exceções padronizadas, logging estruturado + arquivos por nível + endpoint `/logs`, métricas (CPU/RAM/GPU/Disco + Prometheus `/metrics` + `PrometheusMiddleware`), rate limiting, idempotência (`IdempotencyMiddleware` + memory/Redis stores), body-size limit, paginação (offset + cursor), settings por mixin com `title`/`description`/`examples`, SSE, throttle, upload/download local + storage pluggável (`LocalUploadStorage` + `MinIOUploadStorage`), MinIO/S3 (`AsyncMinIOClient`), WebPush, assinatura de webhook, validadores BR (CPF/CNPJ/CEP/telefone), painel admin (Jinja + HTMX, paridade com Django admin — list view com busca/filtros/colunas ordenáveis, CRUD completo, ações em massa, export CSV/JSON, widgets FK-select, dashboard com contagens + métricas, MFA TOTP no login, trilha de auditoria `created_by`/`updated_by`), email (SMTP + Jinja2 templates), cache Redis, fila FastStream, tarefas TaskIQ, hardened static files, runner de servidor, health, tool-spec router, request-id middleware, CORS, HTTP client typed (`HTTPClient` httpx wrapper com retry/backoff/circuit-breaker), IA generativa self-hosted (`tempest_fastapi_sdk.genai` — hardware-check, LLM local `TextGenerator` + quantização, `Embedder`, RAG web+PDF+vector store, áudio STT/TTS PT-BR/EN-US), CLI completo (`tempest new`, `tempest generate --docker` — credenciais do compose resolvidas do `.env` via `${VAR:-default}`, não hardcoded —, `tempest db <subcommand>`, `tempest user <subcommand>`, quality gates).
 
 ## Tier S — toda API séria precisa
 
@@ -81,6 +81,55 @@ Trabalho genuinamente não lançado (posterior à v0.89.0). A ordem segue impact
 
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
+
+## GenAI — próximas fatias
+
+O módulo `tempest_fastapi_sdk.genai` já cobre hardware-check, RAG (web +
+PDF + vector store), LLM local (`TextGenerator`), embeddings
+(`Embedder` + `cosine_similarity`), escala (`BatchScheduler` /
+`ModelRegistry`) e áudio (STT/TTS + presets PT-BR/EN-US). Próximos
+refinamentos, reaproveitando o que já existe:
+
+| Feature | Status | O que é |
+|---------|--------|---------|
+| **`GenerationConfig` tipado** | ❌ planejado | Schema Pydantic dos params de geração (`max_new_tokens`, `temperature`, `top_p`, `stop`, …) passado ao `TextGenerator` no lugar de `**kwargs` soltos — autodescritivo, validado, reutilizável entre chamadas. |
+| **`make_genai_router`** | ❌ planejado | Router FastAPI opt-in com endpoints prontos (`/generate`, `/embed`, `/rag`, `/transcribe`, `/tts`) fiados nos objetos `genai` — do jeito de `make_auth_router`. Streaming de tokens via SSE (`sse_response`). |
+| **`RedisEmbeddingCache`** | ❌ planejado | `EmbeddingCache` sobre `AsyncRedisManager` (hoje só `InMemoryEmbeddingCache`) — cache de vetores compartilhado entre workers. |
+
+## Módulos de aplicação planejados
+
+Módulos de domínio prontos sobre os primitivos do SDK (`BaseModel` /
+`BaseRepository` / `BaseService` / paginação / auth), no mesmo espírito de
+auth e admin: o serviço herda a tabela concreta e monta o router.
+
+### Serviço base de chat (mensagens)
+
+| Peça | Esboço |
+|------|--------|
+| `BaseConversationModel` / `BaseMessageModel` | Tabelas abstratas (o projeto herda + escolhe FK do user), com `conversation_id`, `sender_id`, `body`, `created_at`. |
+| `ChatService` | `start_conversation(participants)`, `post_message(conversation_id, sender, body)`, `list_messages(conversation_id, paginate)`, `list_conversations(user)`. Paginação cursor (histórico), soft-delete de mensagem. |
+| `make_chat_router` (opt-in) | `POST /chat/conversations`, `POST /chat/conversations/{id}/messages`, `GET .../messages` (cursor). Auth via dependency de user do SDK. |
+| Tempo real | Empurrar mensagem nova via `SSEBroker` (canal = `conversation_id`) — reaproveita o SSE existente. |
+
+Reaproveita: `BaseModel`, `BaseRepository`, paginação cursor,
+`current_user` do auth, `SSEBroker`.
+
+### Comentários + avaliações (0–5 estrelas)
+
+| Peça | Esboço |
+|------|--------|
+| `BaseCommentModel` | Comentário polimórfico (`target_type` + `target_id`), `author_id`, `body`, thread opcional (`parent_id`). |
+| `BaseRatingModel` | Nota **0–5 estrelas** por usuário por alvo (`target_type` + `target_id` + `user_id` único), com `RatingField` (`Annotated[int, 0..5]`). |
+| `ReviewService` | `add_comment(...)`, `rate(target, user, stars)` (upsert — um voto por usuário), `aggregate(target)` → média + contagem + distribuição (quantos 1★…5★). |
+| `make_reviews_router` (opt-in) | `POST /reviews/{type}/{id}/comments`, `POST /reviews/{type}/{id}/rating`, `GET /reviews/{type}/{id}` (comentários paginados + agregado de estrelas). |
+
+Reaproveita: `BaseModel`, `BaseRepository` (+ `bulk`/agregação), campos
+validados (`RatingField` novo em `utils.fields`), paginação, auth.
+
+!!! note "Ordem puxada por negócio"
+    Esses módulos entram quando a pressão pedir — o chat e o reviews são
+    candidatos fortes por serem transversais a produtos (marketplace,
+    suporte, social). GenAI refina em paralelo.
 
 ## Como pedir uma feature
 

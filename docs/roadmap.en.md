@@ -82,6 +82,56 @@ Genuinely unreleased work (after v0.89.0). Ordered by impact, not by version num
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## GenAI — upcoming slices
+
+The `tempest_fastapi_sdk.genai` module already covers hardware checks, RAG
+(web + PDF + vector store), a local LLM (`TextGenerator`), embeddings
+(`Embedder` + `cosine_similarity`), scale (`BatchScheduler` /
+`ModelRegistry`) and audio (STT/TTS + PT-BR/EN-US presets). Next
+refinements, reusing what's there:
+
+| Feature | Status | What it is |
+|---------|--------|-----------|
+| **Typed `GenerationConfig`** | ❌ planned | Pydantic schema for generation params (`max_new_tokens`, `temperature`, `top_p`, `stop`, …) passed to `TextGenerator` instead of loose `**kwargs` — self-describing, validated, reusable. |
+| **`make_genai_router`** | ❌ planned | Opt-in FastAPI router with ready endpoints (`/generate`, `/embed`, `/rag`, `/transcribe`, `/tts`) wired to the `genai` objects — like `make_auth_router`. Token streaming over SSE. |
+| **`RedisEmbeddingCache`** | ❌ planned | `EmbeddingCache` over `AsyncRedisManager` (today only `InMemoryEmbeddingCache`) — a vector cache shared across workers. |
+
+## Planned application modules
+
+Ready domain modules on top of the SDK primitives (`BaseModel` /
+`BaseRepository` / `BaseService` / pagination / auth), in the spirit of
+auth and admin: the service inherits the concrete table and mounts the
+router.
+
+### Base chat service (messages)
+
+| Piece | Sketch |
+|-------|--------|
+| `BaseConversationModel` / `BaseMessageModel` | Abstract tables (project inherits + picks the user FK): `conversation_id`, `sender_id`, `body`, `created_at`. |
+| `ChatService` | `start_conversation(participants)`, `post_message(conversation_id, sender, body)`, `list_messages(conversation_id, paginate)`, `list_conversations(user)`. Cursor pagination (history), message soft-delete. |
+| `make_chat_router` (opt-in) | `POST /chat/conversations`, `POST /chat/conversations/{id}/messages`, `GET .../messages` (cursor). Auth via the SDK user dependency. |
+| Real time | Push new messages via `SSEBroker` (channel = `conversation_id`) — reuses the existing SSE. |
+
+Reuses: `BaseModel`, `BaseRepository`, cursor pagination, `current_user`,
+`SSEBroker`.
+
+### Comments + ratings (0–5 stars)
+
+| Piece | Sketch |
+|-------|--------|
+| `BaseCommentModel` | Polymorphic comment (`target_type` + `target_id`), `author_id`, `body`, optional thread (`parent_id`). |
+| `BaseRatingModel` | **0–5 star** rating per user per target (`target_type` + `target_id` + `user_id` unique), with `RatingField` (`Annotated[int, 0..5]`). |
+| `ReviewService` | `add_comment(...)`, `rate(target, user, stars)` (upsert — one vote per user), `aggregate(target)` → average + count + distribution (how many 1★…5★). |
+| `make_reviews_router` (opt-in) | `POST /reviews/{type}/{id}/comments`, `POST /reviews/{type}/{id}/rating`, `GET /reviews/{type}/{id}` (paginated comments + star aggregate). |
+
+Reuses: `BaseModel`, `BaseRepository` (+ bulk/aggregation), validated
+fields (new `RatingField` in `utils.fields`), pagination, auth.
+
+!!! note "Business-pulled order"
+    These modules land when demand asks — chat and reviews are strong
+    candidates, cutting across products (marketplace, support, social).
+    GenAI refines in parallel.
+
 ## How to request a feature
 
 Open an issue at <https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues> describing:
