@@ -212,6 +212,7 @@ nav:
   - Tutorial: tutorial.md
   - "Tour do SDK (exemplos)": tour.md
   - "Exemplo integrado (checkout Pix)": integrated.md
+  - "Exemplos de GenAI (fluxos)": genai-examples.md
   - "SSR (páginas tipadas)": ssr.md
   - Receitas:
       - recipes/index.md
