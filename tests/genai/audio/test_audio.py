@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
 
 from tempest_fastapi_sdk.genai.audio import (
@@ -44,6 +46,10 @@ class TestSpeechToText:
         stt.unload()
         assert stt.is_loaded is False
 
+    @pytest.mark.skipif(
+        importlib.util.find_spec("faster_whisper") is not None,
+        reason="faster-whisper installed; the missing-extra path can't be exercised",
+    )
     async def test_transcribe_without_extra_raises(self) -> None:
         stt = SpeechToText(device="cpu")
         with pytest.raises(ImportError, match=r"\[genai-audio\]"):
@@ -60,6 +66,10 @@ class TestTextToSpeech:
         with pytest.raises(ValueError):
             TextToSpeech(max_concurrent=0)
 
+    @pytest.mark.skipif(
+        importlib.util.find_spec("TTS") is not None,
+        reason="coqui-tts installed; the missing-extra path can't be exercised",
+    )
     async def test_synthesize_without_extra_raises(self) -> None:
         tts = TextToSpeech(device="cpu")
         with pytest.raises(ImportError, match=r"\[genai-audio\]"):

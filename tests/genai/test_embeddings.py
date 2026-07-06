@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
 
 from tempest_fastapi_sdk.genai import Embedder, InMemoryEmbeddingCache
@@ -23,9 +25,13 @@ class TestEmbedderCache:
         assert vectors == [[1.0, 2.0], [3.0, 4.0]]
         assert emb.is_loaded is False  # never touched the model
 
+    @pytest.mark.skipif(
+        importlib.util.find_spec("transformers") is not None,
+        reason="transformers installed; the missing-extra path can't be exercised",
+    )
     async def test_miss_without_extra_raises(self) -> None:
         emb = Embedder("m", cache=InMemoryEmbeddingCache(), hardware=_cpu())
-        # not cached -> tries to load transformers (absent in CI)
+        # not cached -> tries to load transformers (absent without the extra)
         with pytest.raises(ImportError, match=r"\[genai\]"):
             await emb.embed(["uncached"])
 

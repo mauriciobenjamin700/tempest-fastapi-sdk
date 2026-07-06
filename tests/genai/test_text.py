@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
 
 from tempest_fastapi_sdk.genai import (
@@ -99,8 +101,12 @@ class TestState:
 
 
 class TestWithoutExtra:
+    @pytest.mark.skipif(
+        importlib.util.find_spec("transformers") is not None,
+        reason="transformers installed; the missing-extra path can't be exercised",
+    )
     async def test_generate_without_transformers_raises(self) -> None:
         gen = TextGenerator("m", hardware=_cpu_hw())
-        # transformers not installed in CI -> helpful ImportError
+        # transformers not installed -> helpful ImportError
         with pytest.raises(ImportError, match=r"\[genai\]"):
             await gen.generate("hi")
