@@ -5,6 +5,29 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.104.0] — 2026-07-05
+
+### Added
+
+- **Geolocation (`tempest_fastapi_sdk.geo`)** — distance and travel-time
+  estimates between two coordinates without any paid API. Two layers over
+  shared schemas:
+  - **Offline heuristic** (zero deps, zero network): `haversine_km` for the
+    great-circle distance and `estimate_travel(origin, destination, mode)`
+    for road distance (Haversine x circuity factor) and per-mode travel time
+    (car average speed x mode factor). Returns a `TravelEstimate` with
+    `source="heuristic"`.
+  - **Real routing** (`OSRMBackend`, `[geo]` extra = `httpx`): talks to any
+    OSRM server (public demo or self-hosted) for true road geometry via an
+    injected `httpx.AsyncClient`; satisfies the `RoutingBackend` Protocol and
+    returns a `TravelEstimate` with `source="osrm"`.
+  - `TravelMode` enum (`CAR` / `MOTORCYCLE` / `BUS`); motorcycle and bus
+    derive from the car by scaling the duration via
+    `DEFAULT_MODE_DURATION_FACTORS`, so both layers work against a car-only
+    profile. `Coordinate` (validated lat/long) + tunable
+    `DEFAULT_CIRCUITY_FACTOR` / `DEFAULT_CAR_SPEED_KMH`. Submodule import like
+    `vision`/`genai`; the heuristic imports without the extra.
+
 ## [0.103.0] — 2026-07-05
 
 ### Added

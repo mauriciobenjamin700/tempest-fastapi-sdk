@@ -176,6 +176,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
+- **Geolocation (v0.104, `[geo]` extra = httpx)** — `tempest_fastapi_sdk.geo`,
+  distance + travel-time between two points with no paid API. Two layers over
+  shared schemas (`Coordinate`, `TravelEstimate`, `TravelMode` CAR/MOTORCYCLE/
+  BUS): offline heuristic — `haversine_km` (great-circle) + `estimate_travel`
+  (road = Haversine x circuity factor; time = car avg speed x mode factor,
+  `source="heuristic"`, zero deps/network); real routing — `RoutingBackend`
+  Protocol + `OSRMBackend` (free OSRM demo/self-host, injected
+  `httpx.AsyncClient`, `source="osrm"`). Moto/bus derive from car via
+  `DEFAULT_MODE_DURATION_FACTORS` so both layers work on a car-only profile.
+  Submodule import like vision; heuristic imports without the extra.
 - **Upload** — `UploadUtils` with pluggable backends
   (`LocalUploadStorage`, `MinIOUploadStorage`, opt-in injected via
   `backend=`), download helpers, presigned URLs, plus `FileStoreUtils`

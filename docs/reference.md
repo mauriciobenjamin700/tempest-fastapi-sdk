@@ -289,6 +289,21 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## Geolocalização
+
+### `tempest_fastapi_sdk.geo`
+
+::: tempest_fastapi_sdk.geo.schemas.Coordinate
+::: tempest_fastapi_sdk.geo.schemas.TravelEstimate
+::: tempest_fastapi_sdk.geo.enums.TravelMode
+::: tempest_fastapi_sdk.geo.distance.haversine_km
+::: tempest_fastapi_sdk.geo.estimate.estimate_travel
+::: tempest_fastapi_sdk.geo.estimate.duration_factor
+::: tempest_fastapi_sdk.geo.routing.RoutingBackend
+::: tempest_fastapi_sdk.geo.routing.OSRMBackend
+
+---
+
 ## Utils
 
 ### `tempest_fastapi_sdk.utils`

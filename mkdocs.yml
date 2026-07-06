@@ -123,6 +123,7 @@ plugins:
             Segurança: Security
             Utilitários: Utilities
             Helpers brasileiros: Brazilian helpers
+            "Geolocalização (distância + tempo)": "Geolocation (distance + time)"
             Referência: Reference
             "Projetos de aprendizado": Learning projects
             Marketplace: Marketplace
@@ -229,6 +230,7 @@ nav:
       - "Campos validados (tipos prontos)": recipes/fields.md
       - Email transacional: recipes/email.md
       - Feature flags: recipes/feature-flags.md
+      - "Geolocalização (distância + tempo)": recipes/geo.md
       - Fila e Tarefas: recipes/queue-tasks.md
       - Helpers brasileiros: recipes/br-helpers.md
       - "HTTP client (saída)": recipes/http-client.md
