@@ -60,9 +60,7 @@ class TestEstimateTravel:
 
     def test_duration_matches_speed_and_factor(self) -> None:
         """Duration equals distance/speed scaled by the mode factor."""
-        estimate = estimate_travel(
-            SAO_PAULO, RIO, TravelMode.BUS, car_speed_kmh=60.0
-        )
+        estimate = estimate_travel(SAO_PAULO, RIO, TravelMode.BUS, car_speed_kmh=60.0)
         expected = (
             estimate.distance_km
             / 60.0
