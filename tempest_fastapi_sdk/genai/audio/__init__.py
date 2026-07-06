@@ -6,6 +6,9 @@ in worker threads. The engines live behind the ``[genai-audio]`` extra and
 import lazily, so this package imports without it.
 """
 
+from tempest_fastapi_sdk.genai.audio.language import Language as Language
+from tempest_fastapi_sdk.genai.audio.language import LanguagePreset as LanguagePreset
+from tempest_fastapi_sdk.genai.audio.language import preset_for as preset_for
 from tempest_fastapi_sdk.genai.audio.schemas import (
     Transcription as Transcription,
 )
@@ -19,9 +22,12 @@ from tempest_fastapi_sdk.genai.audio.stt import (
 from tempest_fastapi_sdk.genai.audio.tts import TextToSpeech as TextToSpeech
 
 __all__: list[str] = [
+    "Language",
+    "LanguagePreset",
     "SpeechToText",
     "TextToSpeech",
     "Transcription",
     "TranscriptionSegment",
+    "preset_for",
     "resolve_audio_device",
 ]

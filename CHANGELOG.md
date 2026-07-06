@@ -5,6 +5,24 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.103.0] — 2026-07-05
+
+### Added
+
+- **Audio language presets (PT-BR / EN-US)** in
+  `tempest_fastapi_sdk.genai.audio`. A `Language` enum (`PT_BR` / `EN_US`)
+  hides engine-specific identifiers:
+  - `SpeechToText.transcribe(..., language=Language.PT_BR)` resolves the
+    Whisper code (`"pt"` / `"en"`); still accepts a raw code or `None`
+    (auto-detect).
+  - `TextToSpeech.for_language(Language.PT_BR)` builds a voice with a
+    sensible default Coqui model for the language; `synthesize(...,
+    language=...)` accepts the enum too.
+  - `LanguagePreset` + `preset_for(language)` expose the
+    `whisper_language` / `tts_model` / `tts_language` mapping for
+    inspection or override. Dependency-free (no `[genai-audio]` needed to
+    import).
+
 ## [0.102.0] — 2026-07-05
 
 ### Added

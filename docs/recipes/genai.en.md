@@ -243,6 +243,28 @@ wav = await tts.synthesize("Hi!", language="en", speaker_wav="ref.wav")
 `synthesize` returns the WAV `bytes`; pass `out_path=` to also write it to
 disk.
 
+### Language (PT-BR / EN-US)
+
+No need to know the Whisper code or pick a TTS model: use the `Language`
+enum. It resolves the code (`pt`/`en`) for STT and a good TTS model per
+language:
+
+```python
+from tempest_fastapi_sdk.genai.audio import Language, SpeechToText, TextToSpeech
+
+# STT: force the language without memorizing the code
+await SpeechToText("base").transcribe("audio.wav", language=Language.PT_BR)
+
+# TTS: picks the language's default model automatically
+tts = TextToSpeech.for_language(Language.EN_US)     # en-US model
+wav = await tts.synthesize("Hello, world.")
+```
+
+`preset_for(Language.PT_BR)` exposes the preset (`whisper_language`,
+`tts_model`, `tts_language`) to inspect/override. `language=` on
+`transcribe`/`synthesize` also accepts a raw code (``"pt"``) or ``None``
+(auto-detect for STT).
+
 !!! tip "Full voice loop"
     Chain with the LLM: **STT** transcribes speech → `TextGenerator`/RAG
     answers → **TTS** speaks the reply. All local, nothing leaves the box.

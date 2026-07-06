@@ -119,7 +119,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[vision]` | `ort-vision-sdk` | `Detector` / `Classifier` / `Segmenter` (ONNX) + prediction schemas |
 | `[genai]` (+ `[genai-quant]`) | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` (+ `bitsandbytes`) | Self-hosted GenAI — hardware capacity check (`probe_hardware` / `can_run` / `recommend`); model runners upcoming |
 | `[genai-rag]` | `httpx`, `trafilatura`, `pymupdf`, `pgvector` | RAG context for local LLMs — SearXNG web search, page extraction, PDF reading, `build_context`, vector store + `Retriever` |
-| `[genai-audio]` | `faster-whisper`, `coqui-tts` | Self-hosted voice — `SpeechToText` (STT) + `TextToSpeech` (TTS) |
+| `[genai-audio]` | `faster-whisper`, `coqui-tts` | Self-hosted voice — `SpeechToText` (STT) + `TextToSpeech` (TTS) + `Language` presets (PT-BR/EN-US) |
 | `[ssr]` | `tempestweb` | `Page`, `html_response`, `make_htmx_router` — typed Python pages rendered to HTML |
 | `[otel]` | `opentelemetry-sdk` + OTLP/gRPC exporter + FastAPI/SQLAlchemy/httpx instrumentors | `setup_tracing` — distributed tracing |
 | `[sqlite]` | `aiosqlite` | SQLite async driver for `sqlite+aiosqlite://` URLs (dev default) |

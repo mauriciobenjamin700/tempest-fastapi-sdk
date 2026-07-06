@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from tempest_fastapi_sdk.genai.audio.language import Language, whisper_language
 from tempest_fastapi_sdk.genai.audio.schemas import Transcription, TranscriptionSegment
 
 if TYPE_CHECKING:
@@ -153,7 +154,7 @@ class SpeechToText:
         self,
         audio: str | Path | bytes,
         *,
-        language: str | None = None,
+        language: Language | str | None = None,
         with_segments: bool = True,
     ) -> Transcription:
         """Transcribe ``audio`` into text.
@@ -163,8 +164,10 @@ class SpeechToText:
 
         Args:
             audio (str | Path | bytes): Audio file path or raw bytes.
-            language (str | None): Force a language code, or ``None`` to
-                auto-detect.
+            language (Language | str | None): Force the language — a
+                :class:`~tempest_fastapi_sdk.genai.audio.Language` member
+                (``Language.PT_BR``), a raw Whisper code (``"pt"``), or
+                ``None`` to auto-detect.
             with_segments (bool): Include per-span timestamps.
 
         Returns:
@@ -174,7 +177,7 @@ class SpeechToText:
             return await asyncio.to_thread(
                 self._transcribe_sync,
                 audio,
-                language,
+                whisper_language(language),
                 with_segments,
             )
 

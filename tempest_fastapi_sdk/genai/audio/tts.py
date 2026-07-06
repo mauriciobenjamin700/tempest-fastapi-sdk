@@ -14,6 +14,11 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from tempest_fastapi_sdk.genai.audio.language import (
+    Language,
+    preset_for,
+    tts_language,
+)
 from tempest_fastapi_sdk.genai.audio.stt import resolve_audio_device
 
 if TYPE_CHECKING:
@@ -77,6 +82,34 @@ class TextToSpeech:
         self._tts: Any = None
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
+    @classmethod
+    def for_language(
+        cls,
+        language: Language,
+        *,
+        device: str = "auto",
+        max_concurrent: int = 2,
+    ) -> TextToSpeech:
+        """Build a voice with the default TTS model for ``language``.
+
+        Picks a good Coqui model per language (see
+        :func:`~tempest_fastapi_sdk.genai.audio.preset_for`) so you don't
+        hand-pick a model id.
+
+        Args:
+            language (Language): ``Language.PT_BR`` or ``Language.EN_US``.
+            device (str): ``"auto"`` / ``"cuda"`` / ``"cpu"``.
+            max_concurrent (int): Max simultaneous syntheses.
+
+        Returns:
+            TextToSpeech: A voice configured for the language.
+        """
+        return cls(
+            preset_for(language).tts_model,
+            device=device,
+            max_concurrent=max_concurrent,
+        )
+
     @property
     def is_loaded(self) -> bool:
         """Return ``True`` once the model is in memory."""
@@ -103,7 +136,7 @@ class TextToSpeech:
         *,
         out_path: str | Path | None = None,
         speaker: str | None = None,
-        language: str | None = None,
+        language: Language | str | None = None,
         speaker_wav: str | Path | None = None,
     ) -> bytes:
         """Generate speech audio (WAV) from ``text``.
@@ -116,7 +149,9 @@ class TextToSpeech:
             out_path (str | Path | None): When given, also write the WAV
                 there; the bytes are returned either way.
             speaker (str | None): Speaker name for multi-speaker models.
-            language (str | None): Language code for multilingual models.
+            language (Language | str | None): Language for multilingual
+                models — a :class:`~tempest_fastapi_sdk.genai.audio.Language`
+                member, a raw code (``"pt"``), or ``None``.
             speaker_wav (str | Path | None): Reference clip for voice
                 cloning (XTTS-style models).
 
@@ -129,7 +164,7 @@ class TextToSpeech:
                 text,
                 out_path,
                 speaker,
-                language,
+                tts_language(language),
                 speaker_wav,
             )
 
