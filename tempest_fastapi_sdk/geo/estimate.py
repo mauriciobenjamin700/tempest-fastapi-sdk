@@ -26,6 +26,10 @@ DEFAULT_MODE_DURATION_FACTORS: dict[TravelMode, float] = {
     TravelMode.CAR: 1.0,
     TravelMode.MOTORCYCLE: 0.95,
     TravelMode.BUS: 1.6,
+    # Relative to the ~50 km/h blended car speed: a bicycle averages
+    # ~15 km/h (~3.3x slower) and a pedestrian ~5 km/h (~10x slower).
+    TravelMode.BICYCLE: 3.3,
+    TravelMode.PEDESTRIAN: 10.0,
 }
 
 

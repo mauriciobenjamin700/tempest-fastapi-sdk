@@ -186,6 +186,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `httpx.AsyncClient`, `source="osrm"`). Moto/bus derive from car via
   `DEFAULT_MODE_DURATION_FACTORS` so both layers work on a car-only profile.
   Submodule import like vision; heuristic imports without the extra.
+  **Expanded (v0.106):** offline geometry (`bounding_box`, `within_radius`/
+  `nearest` with `key=`, `initial_bearing`/`destination_point`,
+  `point_in_polygon`/`polygon_area_km2`, `path_length_km`); DB radius search
+  (`GeoPointMixin` + `GeoRepositoryMixin.nearby` bbox-prefilter+haversine,
+  `PostGISRepositoryMixin.nearby` ST_DWithin, `make_geo_point_model`);
+  geocoding (`GeocodingBackend`/`NominatimBackend` + `GeocodeResult`);
+  `OSRMBackend.matrix` (table → `DistanceMatrix`) + `route(with_geometry=True)`
+  (decoded into `TravelEstimate.geometry`) + per-mode `DEFAULT_MODE_PROFILES`;
+  polyline codec (`encode_polyline`/`decode_polyline`); `TravelMode.BICYCLE`/
+  `PEDESTRIAN`; BR `uf_centroid`/`UF_CENTROIDS` (offline) + `cep_to_coordinate`.
 - **GenAI ergonomics (v0.105)** — `GenerationConfig` (typed generation
   params over `**kwargs`, `config=` on `generate`/`chat`/`stream`),
   `make_genai_router` (opt-in FastAPI router mounting only injected

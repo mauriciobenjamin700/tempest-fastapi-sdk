@@ -5,6 +5,41 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.106.0] — 2026-07-06
+
+### Added
+
+- **Geolocation expansion (`tempest_fastapi_sdk.geo`)** — a big round of
+  spatial features, all still no-paid-API:
+  - **Offline geometry** (zero deps): `bounding_box` (the coarse SQL
+    pre-filter for a radius), `within_radius` / `nearest` (in-memory
+    proximity filter + k-nearest, generic via a `key=` extractor),
+    `initial_bearing` + `destination_point` (projection along a bearing),
+    `point_in_polygon` + `polygon_area_km2` (polygon geofences), and
+    `path_length_km`.
+  - **Database radius search** — `GeoPointMixin` (indexed `latitude` /
+    `longitude` columns) + `GeoRepositoryMixin.nearby` (portable
+    bounding-box pre-filter + Haversine refine, any DB) +
+    `PostGISRepositoryMixin.nearby` (pushes the query into PostGIS
+    `ST_DWithin`, no `geoalchemy2` dep); `make_geo_point_model` factory.
+  - **Geocoding** — `GeocodingBackend` Protocol + `NominatimBackend`
+    (address <-> coordinate via OpenStreetMap Nominatim, injected
+    `httpx.AsyncClient`); `GeocodeResult` schema.
+  - **Routing** — `OSRMBackend.matrix` (many-to-many distance/duration via
+    the OSRM `table` service → `DistanceMatrix`), `OSRMBackend.route(...,
+    with_geometry=True)` decoding the route polyline into
+    `TravelEstimate.geometry`, per-mode OSRM profiles
+    (`DEFAULT_MODE_PROFILES` + `mode_profiles=`).
+  - **Polyline codec** — `encode_polyline` / `decode_polyline` (Google/OSRM
+    algorithm, precision 5 or 6), pure Python.
+  - **Travel modes** — added `TravelMode.BICYCLE` and
+    `TravelMode.PEDESTRIAN` with duration factors.
+  - **Brazil** — `uf_centroid` (offline approximate centre of each of the
+    27 federative units) + `UF_CENTROIDS`; `cep_to_coordinate` (resolve a
+    CEP via an injected geocoder).
+  - New schemas `BoundingBox`, `GeocodeResult`, `DistanceMatrix`;
+    `TravelEstimate.geometry` field.
+
 ## [0.105.0] — 2026-07-05
 
 ### Added

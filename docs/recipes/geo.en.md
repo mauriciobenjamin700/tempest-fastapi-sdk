@@ -313,45 +313,141 @@ async def estimate_route(
 A `POST /api/geo/estimate` with origin/destination/mode returns
 `{"mode": "...", "distance_km": ..., "duration_minutes": ..., "source": ...}`.
 
-## Recipe: radius filter (proximity)
+## Radius filter and neighbours (in memory)
 
-With no routing server — just `haversine_km` — you can filter "what is
-within N km of here", handy to list nearby couriers/stores:
+With no routing server, the geometry helpers filter and rank by
+proximity. `within_radius` returns what's inside the radius; `nearest`
+returns the `k` closest. Both take `key=` to extract a `Coordinate` from
+your own objects:
 
 ```python
-from tempest_fastapi_sdk.geo import Coordinate, haversine_km
+from tempest_fastapi_sdk.geo import Coordinate, nearest, within_radius
 
+center = Coordinate(latitude=-23.55, longitude=-46.63)
+stores = [store_a, store_b, store_c]  # objects with .location: Coordinate
 
-def within_radius(
-    center: Coordinate,
-    points: list[Coordinate],
-    radius_km: float,
-) -> list[Coordinate]:
-    """Filter the points within a radius from the center.
-
-    Args:
-        center: Reference point.
-        points: Candidates.
-        radius_km: Maximum radius in km.
-
-    Returns:
-        The points whose straight-line distance is <= `radius_km`,
-        sorted nearest to farthest.
-    """
-    near = [(p, haversine_km(center, p)) for p in points]
-    near = [(p, d) for p, d in near if d <= radius_km]
-    return [p for p, _ in sorted(near, key=lambda pair: pair[1])]
+near = within_radius(center, stores, 5.0, key=lambda s: s.location)
+top3 = nearest(center, stores, k=3, key=lambda s: s.location)
 ```
 
 !!! note "The radius is a cheap pre-filter"
-    Straight-line distance underestimates road distance, so use a radius a
-    bit larger than the target and refine with `estimate_travel`/OSRM only
-    on the finalists — avoids calling the router for everyone.
+    Straight-line distance underestimates road distance: use a radius a bit
+    larger than the target and refine with `estimate_travel`/OSRM only on
+    the finalists.
+
+## Radius search in the database (`GeoRepositoryMixin`)
+
+To search a radius straight from the database, mix `GeoPointMixin` into
+the model and `GeoRepositoryMixin` into the repository. `nearby` runs a
+**bounding-box pre-filter in SQL** (indexed) and refines with Haversine in
+Python:
+
+```python
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String
+
+from tempest_fastapi_sdk import BaseModel, BaseRepository
+from tempest_fastapi_sdk.geo import Coordinate, GeoPointMixin, GeoRepositoryMixin
+
+
+class StoreModel(GeoPointMixin, BaseModel):
+    __tablename__ = "stores"
+    name: Mapped[str] = mapped_column(String(120))
+
+
+class StoreRepository(GeoRepositoryMixin, BaseRepository[StoreModel]):
+    ...
+
+
+async def nearby_stores(repo: StoreRepository, center: Coordinate) -> list[StoreModel]:
+    # Active stores within 5 km, nearest first, at most 20.
+    return await repo.nearby(
+        center,
+        radius_km=5.0,
+        extra_filters={"is_active": True},
+        limit=20,
+    )
+```
+
+!!! tip "PostGIS when the volume grows"
+    On Postgres + the PostGIS extension, swap in `PostGISRepositoryMixin`:
+    `nearby` pushes the filter and distance sort into the database via
+    `ST_DWithin` / `ST_Distance` — no extra Python dependency, same
+    signature.
+
+## Geocoding (address <-> coordinate)
+
+`NominatimBackend` resolves address → coordinate (and reverse) via
+OpenStreetMap Nominatim, for free. Injected `httpx` client, like OSRM:
+
+```python
+import httpx
+from tempest_fastapi_sdk.geo import NominatimBackend
+
+async with httpx.AsyncClient() as client:
+    geocoder = NominatimBackend(http_client=client, user_agent="my-app/1.0")
+    hit = await geocoder.geocode("Av. Paulista, 1578, São Paulo")
+    if hit:
+        print(hit.coordinate, hit.display_name)
+    place = await geocoder.reverse(Coordinate(latitude=-23.561, longitude=-46.656))
+```
+
+!!! warning "Public Nominatim usage policy"
+    `nominatim.openstreetmap.org` requires a descriptive `User-Agent` and
+    caps you at ~1 req/s. Self-host for scale.
+
+## Distance matrix and route geometry
+
+OSRM does more than point-to-point: `matrix` computes N×M in one call
+(dispatching, "nearest courier") and `route(..., with_geometry=True)`
+returns the route line decoded into `TravelEstimate.geometry`:
+
+```python
+from tempest_fastapi_sdk.geo import OSRMBackend
+
+backend = OSRMBackend(http_client=client)
+
+matrix = await backend.matrix(origins, destinations)  # DistanceMatrix
+print(matrix.durations_minutes[0][2])  # time origin 0 -> destination 2
+
+route = await backend.route(a, b, with_geometry=True)
+draw_on_map(route.geometry)  # list[Coordinate]
+```
+
+`encode_polyline` / `decode_polyline` convert the line to/from the compact
+Google/OSRM format (precision 5 or 6), no dependency.
+
+## Geometry: projection, geofence, length
+
+```python
+from tempest_fastapi_sdk.geo import (
+    destination_point, initial_bearing, point_in_polygon,
+    polygon_area_km2, path_length_km,
+)
+
+target = destination_point(center, bearing_degrees=90.0, distance_km=2.0)  # 2 km east
+heading = initial_bearing(center, target)                                  # ~90.0
+inside = point_in_polygon(point, delivery_zone)                            # geofence
+area = polygon_area_km2(delivery_zone)
+travelled = path_length_km(gps_points)
+```
+
+## Brazil: UF centroid and CEP → coordinate
+
+```python
+from tempest_fastapi_sdk.geo import cep_to_coordinate, uf_centroid
+
+pin = uf_centroid("SP")  # approximate state centre, offline
+coord = await cep_to_coordinate("01310-100", geocoder=geocoder)  # via Nominatim
+```
 
 ## Recap
 
 - `haversine_km(a, b)` — great-circle distance, pure, always available.
-- `estimate_travel(a, b, mode)` — offline distance + time (`source="heuristic"`).
-- `OSRMBackend(http_client=...).route(a, b, mode=...)` — real road, free (`source="osrm"`), `[geo]` extra.
-- Motorcycle/bus derive from the car via `DEFAULT_MODE_DURATION_FACTORS` — works on both layers.
-- `Coordinate` validates lat/long; `TravelEstimate` serializes straight into a FastAPI response.
+- `bounding_box` / `within_radius` / `nearest` — offline proximity; `key=` for your own objects.
+- `GeoPointMixin` + `GeoRepositoryMixin.nearby` — radius search in the DB (PostGIS via `PostGISRepositoryMixin`).
+- `NominatimBackend` — address<->coordinate geocoding, free, injected `httpx`.
+- `OSRMBackend.matrix` / `route(with_geometry=True)` — N×M matrix and route line; `encode_polyline`/`decode_polyline`.
+- `destination_point` / `initial_bearing` / `point_in_polygon` / `polygon_area_km2` / `path_length_km` — offline geometry.
+- `uf_centroid` / `cep_to_coordinate` — Brazil shortcuts.
+- `estimate_travel` / `OSRMBackend.route` — distance + time (`heuristic`/`osrm`); car/motorcycle/bus/bicycle/pedestrian modes.

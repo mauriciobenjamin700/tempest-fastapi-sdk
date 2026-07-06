@@ -16,3 +16,10 @@ class TravelMode(BaseStrEnum):
     CAR = "car"
     MOTORCYCLE = "motorcycle"
     BUS = "bus"
+    BICYCLE = "bicycle"
+    PEDESTRIAN = "pedestrian"
+
+
+__all__: list[str] = [
+    "TravelMode",
+]
