@@ -154,6 +154,17 @@ passe um wrapper sobre o `AsyncRedisManager` pra compartilhar entre
 workers. `device`/`dtype`/`unload`/`unload_if_idle` funcionam como no
 `TextGenerator`.
 
+Pra busca semântica, use `normalize=True` (vetores unitários) + a função
+`cosine_similarity`:
+
+```python
+from tempest_fastapi_sdk.genai import cosine_similarity
+
+emb = Embedder("sentence-transformers/all-MiniLM-L6-v2", normalize=True)
+q, *docs = await emb.embed(["pergunta", "doc a", "doc b"])
+ranked = sorted(docs, key=lambda d: cosine_similarity(q, d), reverse=True)
+```
+
 ### Batch de inferência concorrente
 
 Numa GPU, rodar um item por vez desperdiça o device. `BatchScheduler`
@@ -214,6 +225,21 @@ context = build_context("o que é PIX?", results, long_text=False, max_chars=200
 O backend é um `Protocol` (`WebSearchBackend`) — troque o SearXNG por
 outro provedor sem mexer no call site. O `httpx.AsyncClient` é injetado
 (reaproveita o pool; ligue no lifespan do FastAPI).
+
+!!! tip "Da pergunta ao contexto em uma chamada"
+    `WebSearch.retrieve` faz busca → (opcional) extração dos corpos em
+    paralelo → `build_context`, tudo de uma vez:
+
+    ```python
+    from tempest_fastapi_sdk.genai.rag import ContentExtractor
+
+    extractor = ContentExtractor(http_client=client)
+    context = await search.retrieve("o que é PIX?", extractor=extractor, max_results=5)
+    resposta = await gen.generate(context)
+    ```
+
+    Sem `extractor`, usa só os snippets. `ContentExtractor.extract_many`
+    busca N páginas concorrentes (limitado por `concurrency`).
 
 ### Extrair o corpo das páginas
 

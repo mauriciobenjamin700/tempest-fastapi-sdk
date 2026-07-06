@@ -9,10 +9,13 @@ text, so no source is silently dropped.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     import httpx
 
 
@@ -103,6 +106,33 @@ class ContentExtractor:
 
         text = trafilatura.extract(response.text) or ""  # type: ignore[attr-defined]
         return ExtractionResult(text=text, failed=not text)
+
+    async def extract_many(
+        self,
+        urls: Sequence[str],
+        *,
+        concurrency: int = 5,
+    ) -> list[ExtractionResult]:
+        """Extract many URLs concurrently, capped at ``concurrency``.
+
+        Results are returned in the same order as ``urls``. Individual
+        failures are absorbed into their :class:`ExtractionResult` (never
+        raised), so one bad page can't sink the batch.
+
+        Args:
+            urls (Sequence[str]): The pages to fetch.
+            concurrency (int): Max simultaneous fetches.
+
+        Returns:
+            list[ExtractionResult]: One result per URL, in input order.
+        """
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def _one(url: str) -> ExtractionResult:
+            async with semaphore:
+                return await self.extract(url)
+
+        return await asyncio.gather(*[_one(url) for url in urls])
 
 
 __all__: list[str] = [

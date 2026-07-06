@@ -130,7 +130,7 @@ class TestPdfReader:
     def test_chunks_carry_page(self, tmp_path: Path) -> None:
         pdf = tmp_path / "k.pdf"
         self._make_pdf(str(pdf), "some content here")
-        chunks = PdfReader().chunks(str(pdf), max_chars=50)
+        chunks = PdfReader().chunks(str(pdf), max_chars=50, overlap=10)
         assert chunks
         assert chunks[0].page == 1
         assert chunks[0].source == str(pdf)

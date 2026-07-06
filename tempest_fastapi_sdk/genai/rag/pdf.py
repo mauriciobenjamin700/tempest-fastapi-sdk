@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from tempest_fastapi_sdk.genai.rag.chunking import chunk_text
 from tempest_fastapi_sdk.genai.rag.schemas import Chunk, Document, PdfPage
 
 
@@ -38,31 +39,6 @@ def _require_pymupdf() -> Any:
             "PDF reading requires the optional [genai-rag] extra. "
             "Install with: pip install tempest-fastapi-sdk[genai-rag]",
         ) from exc
-
-
-def _chunk_text(
-    text: str,
-    *,
-    source: str,
-    max_chars: int,
-    overlap: int,
-    page: int | None = None,
-    start_index: int = 0,
-) -> list[Chunk]:
-    """Split ``text`` into overlapping chunks of at most ``max_chars``."""
-    chunks: list[Chunk] = []
-    if not text.strip():
-        return chunks
-    step = max(1, max_chars - overlap)
-    index = start_index
-    for start in range(0, len(text), step):
-        piece = text[start : start + max_chars].strip()
-        if piece:
-            chunks.append(Chunk(text=piece, source=source, index=index, page=page))
-            index += 1
-        if start + max_chars >= len(text):
-            break
-    return chunks
 
 
 class PdfReader:
@@ -139,7 +115,7 @@ class PdfReader:
         """
         document = self.read(path)
         if not per_page:
-            return _chunk_text(
+            return chunk_text(
                 document.text,
                 source=path,
                 max_chars=max_chars,
@@ -148,7 +124,7 @@ class PdfReader:
         chunks: list[Chunk] = []
         for pdf_page in document.pages:
             chunks.extend(
-                _chunk_text(
+                chunk_text(
                     pdf_page.text,
                     source=path,
                     max_chars=max_chars,

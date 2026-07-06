@@ -12,6 +12,7 @@ from tempest_fastapi_sdk.genai.embeddings import EmbeddingCache as EmbeddingCach
 from tempest_fastapi_sdk.genai.embeddings import (
     InMemoryEmbeddingCache as InMemoryEmbeddingCache,
 )
+from tempest_fastapi_sdk.genai.embeddings import cosine_similarity as cosine_similarity
 from tempest_fastapi_sdk.genai.hardware import (
     bytes_per_param as bytes_per_param,
 )
@@ -67,6 +68,7 @@ __all__: list[str] = [
     "auto_dtype_name",
     "bytes_per_param",
     "can_run",
+    "cosine_similarity",
     "estimate_model_bytes",
     "fetch_num_params",
     "probe_hardware",

@@ -13,11 +13,55 @@ helper import without the ``[genai]`` extra.
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from typing import Any, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai.schemas import HardwareInfo, ModelDtype
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
+
+
+def _l2_normalize(vector: list[float]) -> list[float]:
+    """Return ``vector`` scaled to unit length (L2 norm).
+
+    Args:
+        vector (list[float]): The raw embedding.
+
+    Returns:
+        list[float]: The unit-length vector; the input unchanged when its
+        norm is zero.
+    """
+    norm = math.sqrt(sum(component * component for component in vector))
+    if norm == 0.0:
+        return vector
+    return [component / norm for component in vector]
+
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Return the cosine similarity of two vectors, in ``[-1, 1]``.
+
+    Handy for ranking embeddings (RAG retrieval, semantic search): higher
+    means more similar. When both vectors are already L2-normalized (see
+    ``Embedder(normalize=True)``) this reduces to a dot product.
+
+    Args:
+        a (list[float]): First vector.
+        b (list[float]): Second vector, same dimension as ``a``.
+
+    Returns:
+        float: The cosine similarity; ``0.0`` when either vector is zero.
+
+    Raises:
+        ValueError: When the vectors have different dimensions.
+    """
+    if len(a) != len(b):
+        raise ValueError(f"vectors differ in length: {len(a)} vs {len(b)}")
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 @runtime_checkable
@@ -77,6 +121,7 @@ class Embedder:
         device: str = "auto",
         dtype: str | ModelDtype = "auto",
         cache: EmbeddingCache | None = None,
+        normalize: bool = False,
         cache_dir: str | None = None,
         hf_token: str | None = None,
         idle_unload_seconds: float | None = None,
@@ -90,6 +135,8 @@ class Embedder:
             dtype (str | ModelDtype): Compute precision or ``"auto"``.
             cache (EmbeddingCache | None): Optional per-text vector cache;
                 a cache hit skips loading the model entirely.
+            normalize (bool): When ``True``, L2-normalize every returned
+                vector so cosine similarity is a plain dot product.
             cache_dir (str | None): Weights cache directory.
             hf_token (str | None): Hub token for gated/private models.
             idle_unload_seconds (float | None): Idle threshold for
@@ -105,6 +152,7 @@ class Embedder:
             else ModelDtype(dtype)
         )
         self.cache = cache
+        self.normalize = normalize
         self.cache_dir = cache_dir
         self.hf_token = hf_token
         self.idle_unload_seconds = idle_unload_seconds
@@ -225,7 +273,10 @@ class Embedder:
                 if self.cache is not None:
                     self.cache.set(self._cache_key(items[index]), vector)
 
-        return [vector for vector in results if vector is not None]
+        vectors = [vector for vector in results if vector is not None]
+        if self.normalize:
+            return [_l2_normalize(vector) for vector in vectors]
+        return vectors
 
     def _embed_many(  # pragma: no cover - needs torch + a real model
         self,
@@ -261,4 +312,5 @@ __all__: list[str] = [
     "Embedder",
     "EmbeddingCache",
     "InMemoryEmbeddingCache",
+    "cosine_similarity",
 ]

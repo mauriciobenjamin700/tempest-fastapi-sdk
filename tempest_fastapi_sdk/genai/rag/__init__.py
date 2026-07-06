@@ -8,6 +8,7 @@ assemble it all into a prompt-ready context block. The heavy bits
 it — you only need the extra to actually fetch and read.
 """
 
+from tempest_fastapi_sdk.genai.rag.chunking import chunk_text as chunk_text
 from tempest_fastapi_sdk.genai.rag.context import build_context as build_context
 from tempest_fastapi_sdk.genai.rag.extract import (
     ContentExtractor as ContentExtractor,
@@ -36,4 +37,5 @@ __all__: list[str] = [
     "WebSearch",
     "WebSearchBackend",
     "build_context",
+    "chunk_text",
 ]

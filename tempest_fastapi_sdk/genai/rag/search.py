@@ -18,6 +18,8 @@ from tempest_fastapi_sdk.genai.rag.schemas import SearchResult
 if TYPE_CHECKING:
     import httpx
 
+    from tempest_fastapi_sdk.genai.rag.extract import ContentExtractor
+
 logger = logging.getLogger("tempest_fastapi_sdk.genai.rag")
 
 
@@ -157,6 +159,49 @@ class WebSearch:
             list[SearchResult]: The results.
         """
         return await self.backend.search(query, max_results=max_results)
+
+    async def retrieve(
+        self,
+        query: str,
+        *,
+        max_results: int = 5,
+        extractor: ContentExtractor | None = None,
+        long_text: bool = True,
+        max_chars: int = 2000,
+    ) -> str:
+        """Search, optionally extract page bodies, and build a context block.
+
+        The one-shot RAG helper: from a question to a prompt-ready context
+        string in one call. Without ``extractor`` the block uses search
+        snippets; with one, it fetches and extracts each page body (in
+        parallel) for real ground truth.
+
+        Args:
+            query (str): The natural-language question.
+            max_results (int): How many sources to include.
+            extractor (ContentExtractor | None): When given, fetch + extract
+                each result's full text; otherwise use snippets only.
+            long_text (bool): Include full bodies (``True``) or truncate to
+                ``max_chars`` per source.
+            max_chars (int): Per-source truncation cap when
+                ``long_text=False``.
+
+        Returns:
+            str: A prompt-ready context block (see :func:`build_context`).
+        """
+        from tempest_fastapi_sdk.genai.rag.context import build_context
+
+        results = await self.search(query, max_results=max_results)
+        if extractor is not None and results:
+            outcomes = await extractor.extract_many([r.url for r in results])
+            for result, outcome in zip(results, outcomes, strict=True):
+                result.content = outcome.text
+        return build_context(
+            query,
+            results,
+            long_text=long_text,
+            max_chars=max_chars,
+        )
 
 
 __all__: list[str] = [

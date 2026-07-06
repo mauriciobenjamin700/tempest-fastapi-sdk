@@ -146,7 +146,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `BatchScheduler` (coalesce concurrent calls into one batch — pure
   asyncio, no extra), `ModelRegistry` (LRU model sharing with unload).
   Classes-only (no bundled router). Submodule import like
-  queue/tasks/vision. Planned module scope now complete. **Shipped (v0.97) — RAG context**
+  queue/tasks/vision. **Refinements (v0.100):** `WebSearch.retrieve`
+  (one-shot search→extract→context), `ContentExtractor.extract_many`
+  (bounded concurrent), generic `chunk_text` (any string), `Embedder(
+  normalize=True)` + `cosine_similarity` (semantic search). **Shipped (v0.97) — RAG context**
   (`tempest_fastapi_sdk.genai.rag`, `[genai-rag]` extra = httpx +
   trafilatura + pymupdf): `WebSearchBackend` Protocol + `SearxngBackend`
   (SearXNG JSON API, leviathan pattern) + `WebSearch`; `ContentExtractor`

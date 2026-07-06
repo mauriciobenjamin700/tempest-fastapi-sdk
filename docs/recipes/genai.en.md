@@ -153,6 +153,17 @@ vectors = await emb.embed(["what is pix?", "how to refund?"])   # list[list[floa
 pass a wrapper over `AsyncRedisManager` to share across workers.
 `device`/`dtype`/`unload`/`unload_if_idle` work as on `TextGenerator`.
 
+For semantic search, use `normalize=True` (unit vectors) + the
+`cosine_similarity` function:
+
+```python
+from tempest_fastapi_sdk.genai import cosine_similarity
+
+emb = Embedder("sentence-transformers/all-MiniLM-L6-v2", normalize=True)
+q, *docs = await emb.embed(["question", "doc a", "doc b"])
+ranked = sorted(docs, key=lambda d: cosine_similarity(q, d), reverse=True)
+```
+
 ### Batch concurrent inference
 
 On a GPU, one item at a time wastes the device. `BatchScheduler` coalesces
@@ -213,6 +224,21 @@ context = build_context("what is PIX?", results, long_text=False, max_chars=2000
 The backend is a `Protocol` (`WebSearchBackend`) — swap SearXNG for another
 provider without touching call sites. The `httpx.AsyncClient` is injected
 (pool reuse; wire it in the FastAPI lifespan).
+
+!!! tip "From question to context in one call"
+    `WebSearch.retrieve` does search → (optional) parallel body extraction
+    → `build_context`, all at once:
+
+    ```python
+    from tempest_fastapi_sdk.genai.rag import ContentExtractor
+
+    extractor = ContentExtractor(http_client=client)
+    context = await search.retrieve("what is PIX?", extractor=extractor, max_results=5)
+    answer = await gen.generate(context)
+    ```
+
+    Without `extractor` it uses snippets only. `ContentExtractor.extract_many`
+    fetches N pages concurrently (bounded by `concurrency`).
 
 ### Extract page bodies
 

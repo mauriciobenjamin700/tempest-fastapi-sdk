@@ -5,6 +5,23 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.100.0] — 2026-07-05
+
+### Added
+
+- **GenAI refinements** for RAG + semantic search:
+  - `WebSearch.retrieve(query, *, extractor=None, ...)` — one-shot RAG:
+    search → optional parallel body extraction → `build_context`, in a
+    single call.
+  - `ContentExtractor.extract_many(urls, *, concurrency=5)` — bounded
+    concurrent page extraction, order preserved, failures absorbed.
+  - `chunk_text(text, *, source, max_chars, overlap, ...)` — a generic,
+    dependency-free chunker (any string, not just PDFs); `PdfReader.chunks`
+    now uses it. Exported from `tempest_fastapi_sdk.genai.rag`.
+  - `Embedder(normalize=True)` L2-normalizes returned vectors, and
+    `cosine_similarity(a, b)` ranks them — semantic-search essentials
+    (exported from `tempest_fastapi_sdk.genai`).
+
 ## [0.99.0] — 2026-07-05
 
 ### Added
