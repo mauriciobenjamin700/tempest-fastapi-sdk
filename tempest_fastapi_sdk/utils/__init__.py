@@ -34,6 +34,7 @@ from tempest_fastapi_sdk.utils.fields import (
     PositiveFloatField,
     PositiveIntField,
     PriceField,
+    RatingField,
     RatioField,
     SlugField,
 )
@@ -178,6 +179,7 @@ __all__: list[str] = [
     "PositiveFloatField",
     "PositiveIntField",
     "PriceField",
+    "RatingField",
     "RatioField",
     "Region",
     "RetryPolicy",

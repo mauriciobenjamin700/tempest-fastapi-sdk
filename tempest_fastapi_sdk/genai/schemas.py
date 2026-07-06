@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import Field
 
 from tempest_fastapi_sdk.core import BaseStrEnum
@@ -94,9 +96,110 @@ class CapacityReport(BaseSchema):
     suggestion: str | None = None
 
 
+class GenerationConfig(BaseSchema):
+    """Typed generation parameters for the local text generator.
+
+    Passed to :class:`~tempest_fastapi_sdk.genai.TextGenerator`.
+    Replaces loose ``**kwargs`` at the call site with a validated,
+    self-describing, reusable object — build one config and pass it to
+    ``generate`` / ``chat`` / ``stream``. Only the fields you set are
+    forwarded to ``model.generate`` (unset fields fall through to the
+    generator's own defaults), so a partial config layers cleanly on top.
+
+    Example:
+
+        >>> cfg = GenerationConfig(max_new_tokens=512, temperature=0.2)
+        >>> await gen.generate("Explain PIX.", config=cfg)
+
+    Attributes:
+        max_new_tokens (int | None): Maximum tokens to generate (``> 0``).
+        temperature (float | None): Sampling temperature (``0..2``); lower
+            is more deterministic.
+        top_p (float | None): Nucleus sampling probability mass (``0..1``).
+        top_k (int | None): Top-k sampling cutoff (``>= 0``); ``0`` disables.
+        repetition_penalty (float | None): Penalty for repeated tokens
+            (``> 0``, ``1.0`` = no penalty).
+        do_sample (bool | None): Sample (``True``) or use greedy decoding
+            (``False``).
+        seed (int | None): RNG seed for reproducible sampling.
+        stop (list[str]): Stop strings that end generation early.
+    """
+
+    max_new_tokens: int | None = Field(
+        default=None,
+        gt=0,
+        title="Max new tokens",
+        description="Maximum number of tokens to generate.",
+        examples=[256, 512],
+    )
+    temperature: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=2.0,
+        title="Temperature",
+        description="Sampling temperature; lower is more deterministic.",
+        examples=[0.7, 0.2],
+    )
+    top_p: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        title="Top-p",
+        description="Nucleus sampling probability mass.",
+        examples=[0.9],
+    )
+    top_k: int | None = Field(
+        default=None,
+        ge=0,
+        title="Top-k",
+        description="Top-k sampling cutoff (0 disables).",
+        examples=[50],
+    )
+    repetition_penalty: float | None = Field(
+        default=None,
+        gt=0.0,
+        title="Repetition penalty",
+        description="Penalty for repeated tokens (1.0 = no penalty).",
+        examples=[1.1],
+    )
+    do_sample: bool | None = Field(
+        default=None,
+        title="Do sample",
+        description="Sample (True) or greedy-decode (False).",
+        examples=[True],
+    )
+    seed: int | None = Field(
+        default=None,
+        title="Seed",
+        description="RNG seed for reproducible sampling.",
+        examples=[42],
+    )
+    stop: list[str] = Field(
+        default_factory=list,
+        title="Stop strings",
+        description="Strings that end generation early.",
+    )
+
+    def to_generate_kwargs(self) -> dict[str, Any]:
+        """Return only the set fields as ``model.generate`` keyword args.
+
+        ``seed`` and ``stop`` are dropped from the mapping — they are not
+        ``transformers`` ``generate`` kwargs and are handled by the
+        generator separately (``seed``) or by the caller (``stop``).
+
+        Returns:
+            dict[str, Any]: The explicitly-set generation kwargs.
+        """
+        data = self.model_dump(exclude_none=True, exclude_unset=True)
+        data.pop("seed", None)
+        data.pop("stop", None)
+        return data
+
+
 __all__: list[str] = [
     "CapacityReport",
     "GPUInfo",
+    "GenerationConfig",
     "HardwareInfo",
     "ModelDtype",
 ]

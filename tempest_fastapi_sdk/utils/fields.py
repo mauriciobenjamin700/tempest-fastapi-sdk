@@ -43,6 +43,14 @@ prices/balances and divide by 100 only at the presentation edge.
 PortField = Annotated[int, Ge(1), Le(65535)]
 """TCP/UDP port number in the valid range ``1..65535``."""
 
+RatingField = Annotated[int, Ge(0), Le(5)]
+"""Star rating as an integer in the inclusive range ``0..5``.
+
+The canonical 0-to-5-star review score: ``0`` means "no stars", ``5`` the
+maximum. Use it for a rating column/field so the ``0..5`` bound lives in
+the type instead of a hand-written validator.
+"""
+
 # --- Floats ---------------------------------------------------------------
 
 PositiveFloatField = Annotated[float, Gt(0)]
@@ -111,6 +119,7 @@ __all__: list[str] = [
     "PositiveFloatField",
     "PositiveIntField",
     "PriceField",
+    "RatingField",
     "RatioField",
     "SlugField",
 ]

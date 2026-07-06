@@ -20,7 +20,11 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from tempest_fastapi_sdk.genai.hardware import probe_hardware
-from tempest_fastapi_sdk.genai.schemas import HardwareInfo, ModelDtype
+from tempest_fastapi_sdk.genai.schemas import (
+    GenerationConfig,
+    HardwareInfo,
+    ModelDtype,
+)
 
 _QUANTIZATIONS: frozenset[ModelDtype] = frozenset({ModelDtype.INT8, ModelDtype.INT4})
 
@@ -253,12 +257,16 @@ class TextGenerator:
     def _generate_sync(  # pragma: no cover - needs torch + a real model
         self,
         prompt: str,
-        **kwargs: Any,
+        config: GenerationConfig | None,
+        overrides: dict[str, Any],
     ) -> str:
         """Run blocking generation and return the completion text."""
         self.load()
         inputs = self._tokenizer(prompt, return_tensors="pt").to(self._model.device)
-        output = self._model.generate(**inputs, **self._gen_kwargs(kwargs))
+        output = self._model.generate(
+            **inputs,
+            **self._gen_kwargs(overrides, config),
+        )
         text = self._tokenizer.decode(
             output[0][inputs["input_ids"].shape[1] :],
             skip_special_tokens=True,
@@ -266,18 +274,43 @@ class TextGenerator:
         self._touch()
         return str(text)
 
-    def _gen_kwargs(self, overrides: dict[str, Any]) -> dict[str, Any]:
-        """Merge generation defaults with per-call overrides."""
-        defaults: dict[str, Any] = {
+    def _gen_kwargs(
+        self,
+        overrides: dict[str, Any],
+        config: GenerationConfig | None = None,
+    ) -> dict[str, Any]:
+        """Merge generation defaults with an optional config and overrides.
+
+        Precedence (lowest to highest): built-in defaults, the set fields
+        of ``config`` (a :class:`GenerationConfig`), then explicit
+        per-call ``overrides``.
+
+        Args:
+            overrides (dict[str, Any]): Explicit per-call keyword args.
+            config (GenerationConfig | None): A typed config whose set
+                fields layer over the defaults.
+
+        Returns:
+            dict[str, Any]: The merged generation kwargs.
+        """
+        merged: dict[str, Any] = {
             "max_new_tokens": 256,
             "temperature": 0.7,
             "top_p": 0.9,
             "do_sample": True,
         }
-        defaults.update(overrides)
-        return defaults
+        if config is not None:
+            merged.update(config.to_generate_kwargs())
+        merged.update(overrides)
+        return merged
 
-    async def generate(self, prompt: str, **kwargs: Any) -> str:
+    async def generate(
+        self,
+        prompt: str,
+        *,
+        config: GenerationConfig | None = None,
+        **kwargs: Any,
+    ) -> str:
         """Generate a completion for ``prompt``.
 
         Runs the blocking model in a worker thread so the event loop stays
@@ -285,16 +318,24 @@ class TextGenerator:
 
         Args:
             prompt (str): The input text.
+            config (GenerationConfig | None): Typed generation parameters;
+                its set fields layer over the defaults.
             **kwargs (Any): Generation overrides (``max_new_tokens``,
                 ``temperature``, ``top_p``, …) forwarded to
-                ``model.generate``.
+                ``model.generate``; these win over ``config``.
 
         Returns:
             str: The generated text (prompt stripped).
         """
-        return await asyncio.to_thread(self._generate_sync, prompt, **kwargs)
+        return await asyncio.to_thread(self._generate_sync, prompt, config, kwargs)
 
-    async def chat(self, messages: list[dict[str, str]], **kwargs: Any) -> str:
+    async def chat(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        config: GenerationConfig | None = None,
+        **kwargs: Any,
+    ) -> str:
         """Generate a reply for a chat ``messages`` list.
 
         Applies the tokenizer's chat template (roles ``system`` / ``user``
@@ -303,17 +344,19 @@ class TextGenerator:
         Args:
             messages (list[dict[str, str]]): Chat turns, each
                 ``{"role": ..., "content": ...}``.
-            **kwargs (Any): Generation overrides.
+            config (GenerationConfig | None): Typed generation parameters.
+            **kwargs (Any): Generation overrides (win over ``config``).
 
         Returns:
             str: The assistant reply.
         """
-        return await asyncio.to_thread(self._chat_sync, messages, **kwargs)
+        return await asyncio.to_thread(self._chat_sync, messages, config, kwargs)
 
     def _chat_sync(  # pragma: no cover - needs torch + a real model
         self,
         messages: list[dict[str, str]],
-        **kwargs: Any,
+        config: GenerationConfig | None,
+        overrides: dict[str, Any],
     ) -> str:
         """Blocking chat generation via the tokenizer chat template."""
         self.load()
@@ -322,18 +365,21 @@ class TextGenerator:
             tokenize=False,
             add_generation_prompt=True,
         )
-        return self._generate_sync(prompt, **kwargs)
+        return self._generate_sync(prompt, config, overrides)
 
     async def stream(  # pragma: no cover - needs torch + a real model
         self,
         prompt: str,
+        *,
+        config: GenerationConfig | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Stream the completion token by token.
 
         Args:
             prompt (str): The input text.
-            **kwargs (Any): Generation overrides.
+            config (GenerationConfig | None): Typed generation parameters.
+            **kwargs (Any): Generation overrides (win over ``config``).
 
         Yields:
             str: Text pieces as they are produced.
@@ -346,7 +392,11 @@ class TextGenerator:
             skip_special_tokens=True,
         )
         inputs = self._tokenizer(prompt, return_tensors="pt").to(self._model.device)
-        gen_kwargs = {**self._gen_kwargs(kwargs), **inputs, "streamer": streamer}
+        gen_kwargs = {
+            **self._gen_kwargs(kwargs, config),
+            **inputs,
+            "streamer": streamer,
+        }
 
         import threading
 

@@ -13,12 +13,17 @@ helper import without the ``[genai]`` extra.
 from __future__ import annotations
 
 import asyncio
+import inspect
+import json
 import math
 import time
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai.schemas import HardwareInfo, ModelDtype
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
 
 def _l2_normalize(vector: list[float]) -> list[float]:
@@ -66,13 +71,34 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 @runtime_checkable
 class EmbeddingCache(Protocol):
-    """A per-text vector cache (a subset of a dict / Redis wrapper)."""
+    """A synchronous per-text vector cache (e.g. a dict wrapper)."""
 
     def get(self, key: str) -> list[float] | None:
         """Return the cached vector for ``key``, or ``None`` on a miss."""
         ...
 
     def set(self, key: str, value: list[float]) -> None:
+        """Store ``value`` under ``key``."""
+        ...
+
+
+@runtime_checkable
+class AsyncEmbeddingCache(Protocol):
+    """An asynchronous per-text vector cache (e.g. a Redis wrapper).
+
+    :class:`Embedder` accepts either cache flavor — it awaits ``get`` /
+    ``set`` when they return an awaitable and calls them plainly
+    otherwise — so a single-process app can start with
+    :class:`InMemoryEmbeddingCache` and switch to
+    :class:`RedisEmbeddingCache` for multi-worker reuse with no call-site
+    change.
+    """
+
+    async def get(self, key: str) -> list[float] | None:
+        """Return the cached vector for ``key``, or ``None`` on a miss."""
+        ...
+
+    async def set(self, key: str, value: list[float]) -> None:
         """Store ``value`` under ``key``."""
         ...
 
@@ -95,6 +121,77 @@ class InMemoryEmbeddingCache:
     def set(self, key: str, value: list[float]) -> None:
         """Store ``value`` under ``key``."""
         self._store[key] = value
+
+
+class RedisEmbeddingCache:
+    """A Redis-backed embedding cache shared across workers/processes.
+
+    Vectors are stored as JSON under ``"<prefix><key>"``. Satisfies
+    :class:`AsyncEmbeddingCache`, so it drops into :class:`Embedder`
+    exactly where :class:`InMemoryEmbeddingCache` goes — the difference is
+    that every worker hits the same store, so a vector computed by one
+    request is reused by the next, on any worker.
+
+    Example:
+
+        >>> from redis.asyncio import Redis
+        >>> cache = RedisEmbeddingCache(Redis.from_url("redis://localhost"))
+        >>> emb = Embedder("sentence-transformers/all-MiniLM-L6-v2", cache=cache)
+
+    Attributes:
+        prefix (str): Key prefix applied to every stored vector.
+        ttl_seconds (int | None): Optional per-entry expiry (seconds).
+    """
+
+    def __init__(
+        self,
+        redis: Redis,
+        *,
+        prefix: str = "genai:emb:",
+        ttl_seconds: int | None = None,
+    ) -> None:
+        """Initialize the cache over an async Redis client.
+
+        Args:
+            redis (Redis): An ``redis.asyncio.Redis`` client (from the
+                ``[cache]`` extra). Injected so the caller owns its
+                lifecycle and configuration.
+            prefix (str): Key prefix for stored vectors.
+            ttl_seconds (int | None): Optional expiry per entry; ``None``
+                keeps vectors until evicted by Redis.
+        """
+        self._redis: Redis = redis
+        self.prefix: str = prefix
+        self.ttl_seconds: int | None = ttl_seconds
+
+    async def get(self, key: str) -> list[float] | None:
+        """Return the cached vector for ``key``, or ``None`` on a miss.
+
+        Args:
+            key (str): The cache key.
+
+        Returns:
+            list[float] | None: The stored vector, or ``None``.
+        """
+        raw = await self._redis.get(f"{self.prefix}{key}")
+        if raw is None:
+            return None
+        decoded = raw.decode() if isinstance(raw, bytes) else raw
+        vector: list[float] = json.loads(decoded)
+        return vector
+
+    async def set(self, key: str, value: list[float]) -> None:
+        """Store ``value`` under ``key`` (with the optional TTL).
+
+        Args:
+            key (str): The cache key.
+            value (list[float]): The vector to store.
+        """
+        await self._redis.set(
+            f"{self.prefix}{key}",
+            json.dumps(value),
+            ex=self.ttl_seconds,
+        )
 
 
 class Embedder:
@@ -120,7 +217,7 @@ class Embedder:
         *,
         device: str = "auto",
         dtype: str | ModelDtype = "auto",
-        cache: EmbeddingCache | None = None,
+        cache: EmbeddingCache | AsyncEmbeddingCache | None = None,
         normalize: bool = False,
         cache_dir: str | None = None,
         hf_token: str | None = None,
@@ -133,8 +230,11 @@ class Embedder:
             model_id (str): HuggingFace model id.
             device (str): ``"auto"`` / ``"cuda"`` / ``"mps"`` / ``"cpu"``.
             dtype (str | ModelDtype): Compute precision or ``"auto"``.
-            cache (EmbeddingCache | None): Optional per-text vector cache;
-                a cache hit skips loading the model entirely.
+            cache (EmbeddingCache | AsyncEmbeddingCache | None): Optional
+                per-text vector cache (sync like
+                :class:`InMemoryEmbeddingCache`, or async like
+                :class:`RedisEmbeddingCache`); a cache hit skips loading
+                the model entirely.
             normalize (bool): When ``True``, L2-normalize every returned
                 vector so cosine similarity is a plain dot product.
             cache_dir (str | None): Weights cache directory.
@@ -151,7 +251,7 @@ class Embedder:
             if dtype == "auto"
             else ModelDtype(dtype)
         )
-        self.cache = cache
+        self.cache: EmbeddingCache | AsyncEmbeddingCache | None = cache
         self.normalize = normalize
         self.cache_dir = cache_dir
         self.hf_token = hf_token
@@ -177,6 +277,36 @@ class Embedder:
     def _cache_key(self, text: str) -> str:
         """Return the cache key for one text under this model."""
         return f"{self.model_id}::{text}"
+
+    async def _cache_get(self, text: str) -> list[float] | None:
+        """Read one vector from the cache, awaiting an async backend.
+
+        Args:
+            text (str): The text whose vector to look up.
+
+        Returns:
+            list[float] | None: The cached vector, or ``None`` on a miss
+            (or when no cache is configured).
+        """
+        if self.cache is None:
+            return None
+        cached = self.cache.get(self._cache_key(text))
+        if inspect.isawaitable(cached):
+            return await cached
+        return cached
+
+    async def _cache_set(self, text: str, vector: list[float]) -> None:
+        """Write one vector to the cache, awaiting an async backend.
+
+        Args:
+            text (str): The text the vector belongs to.
+            vector (list[float]): The vector to store.
+        """
+        if self.cache is None:
+            return
+        result = self.cache.set(self._cache_key(text), vector)
+        if inspect.isawaitable(result):
+            await result
 
     def load(self) -> None:  # pragma: no cover - needs torch + a real model
         """Load the embedding model + tokenizer into memory (idempotent).
@@ -255,7 +385,7 @@ class Embedder:
         results: list[list[float] | None] = [None] * len(items)
         missing: list[int] = []
         for index, text in enumerate(items):
-            cached = self.cache.get(self._cache_key(text)) if self.cache else None
+            cached = await self._cache_get(text) if self.cache else None
             if cached is not None:
                 results[index] = cached
             else:
@@ -271,7 +401,7 @@ class Embedder:
             for index, vector in zip(missing, vectors, strict=True):
                 results[index] = vector
                 if self.cache is not None:
-                    self.cache.set(self._cache_key(items[index]), vector)
+                    await self._cache_set(items[index], vector)
 
         vectors = [vector for vector in results if vector is not None]
         if self.normalize:
@@ -309,8 +439,10 @@ class Embedder:
 
 
 __all__: list[str] = [
+    "AsyncEmbeddingCache",
     "Embedder",
     "EmbeddingCache",
     "InMemoryEmbeddingCache",
+    "RedisEmbeddingCache",
     "cosine_similarity",
 ]

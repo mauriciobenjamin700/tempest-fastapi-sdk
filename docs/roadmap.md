@@ -82,54 +82,18 @@ Trabalho genuinamente não lançado (posterior à v0.89.0). A ordem segue impact
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
-## GenAI — próximas fatias
+## Entregue na v0.105.0
 
-O módulo `tempest_fastapi_sdk.genai` já cobre hardware-check, RAG (web +
-PDF + vector store), LLM local (`TextGenerator`), embeddings
-(`Embedder` + `cosine_similarity`), escala (`BatchScheduler` /
-`ModelRegistry`) e áudio (STT/TTS + presets PT-BR/EN-US). Próximos
-refinamentos, reaproveitando o que já existe:
+O plano de ergonomia GenAI + os dois módulos de aplicação abaixo já
+**entraram** (antes eram "planejados" aqui):
 
-| Feature | Status | O que é |
-|---------|--------|---------|
-| **`GenerationConfig` tipado** | ❌ planejado | Schema Pydantic dos params de geração (`max_new_tokens`, `temperature`, `top_p`, `stop`, …) passado ao `TextGenerator` no lugar de `**kwargs` soltos — autodescritivo, validado, reutilizável entre chamadas. |
-| **`make_genai_router`** | ❌ planejado | Router FastAPI opt-in com endpoints prontos (`/generate`, `/embed`, `/rag`, `/transcribe`, `/tts`) fiados nos objetos `genai` — do jeito de `make_auth_router`. Streaming de tokens via SSE (`sse_response`). |
-| **`RedisEmbeddingCache`** | ❌ planejado | `EmbeddingCache` sobre `AsyncRedisManager` (hoje só `InMemoryEmbeddingCache`) — cache de vetores compartilhado entre workers. |
-
-## Módulos de aplicação planejados
-
-Módulos de domínio prontos sobre os primitivos do SDK (`BaseModel` /
-`BaseRepository` / `BaseService` / paginação / auth), no mesmo espírito de
-auth e admin: o serviço herda a tabela concreta e monta o router.
-
-### Serviço base de chat (mensagens)
-
-| Peça | Esboço |
-|------|--------|
-| `BaseConversationModel` / `BaseMessageModel` | Tabelas abstratas (o projeto herda + escolhe FK do user), com `conversation_id`, `sender_id`, `body`, `created_at`. |
-| `ChatService` | `start_conversation(participants)`, `post_message(conversation_id, sender, body)`, `list_messages(conversation_id, paginate)`, `list_conversations(user)`. Paginação cursor (histórico), soft-delete de mensagem. |
-| `make_chat_router` (opt-in) | `POST /chat/conversations`, `POST /chat/conversations/{id}/messages`, `GET .../messages` (cursor). Auth via dependency de user do SDK. |
-| Tempo real | Empurrar mensagem nova via `SSEBroker` (canal = `conversation_id`) — reaproveita o SSE existente. |
-
-Reaproveita: `BaseModel`, `BaseRepository`, paginação cursor,
-`current_user` do auth, `SSEBroker`.
-
-### Comentários + avaliações (0–5 estrelas)
-
-| Peça | Esboço |
-|------|--------|
-| `BaseCommentModel` | Comentário polimórfico (`target_type` + `target_id`), `author_id`, `body`, thread opcional (`parent_id`). |
-| `BaseRatingModel` | Nota **0–5 estrelas** por usuário por alvo (`target_type` + `target_id` + `user_id` único), com `RatingField` (`Annotated[int, 0..5]`). |
-| `ReviewService` | `add_comment(...)`, `rate(target, user, stars)` (upsert — um voto por usuário), `aggregate(target)` → média + contagem + distribuição (quantos 1★…5★). |
-| `make_reviews_router` (opt-in) | `POST /reviews/{type}/{id}/comments`, `POST /reviews/{type}/{id}/rating`, `GET /reviews/{type}/{id}` (comentários paginados + agregado de estrelas). |
-
-Reaproveita: `BaseModel`, `BaseRepository` (+ `bulk`/agregação), campos
-validados (`RatingField` novo em `utils.fields`), paginação, auth.
-
-!!! note "Ordem puxada por negócio"
-    Esses módulos entram quando a pressão pedir — o chat e o reviews são
-    candidatos fortes por serem transversais a produtos (marketplace,
-    suporte, social). GenAI refina em paralelo.
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`GenerationConfig` tipado** | ✅ v0.105 | Params de geração validados no lugar de `**kwargs`. [Receita »](recipes/genai.md) |
+| **`make_genai_router`** | ✅ v0.105 | Endpoints prontos (`/generate`+SSE, `/chat`, `/embed`, `/rag`, `/transcribe`, `/tts`), monta só o que você injeta. [Receita »](recipes/genai.md) |
+| **`RedisEmbeddingCache`** | ✅ v0.105 | Cache de vetores async compartilhado entre workers; `Embedder` aceita cache sync ou async. [Receita »](recipes/genai.md) |
+| **Chat (`tempest_fastapi_sdk.chat`)** | ✅ v0.105 | `ChatService` + tabelas base + `make_chat_router` + tempo real via `SSEBroker`. [Receita »](recipes/chat.md) |
+| **Comentários + avaliações (`reviews`)** | ✅ v0.105 | `ReviewService` (comentar, avaliar 0–5, agregar) + `make_reviews_router`; `RatingField`. [Receita »](recipes/reviews.md) |
 
 ## Como pedir uma feature
 

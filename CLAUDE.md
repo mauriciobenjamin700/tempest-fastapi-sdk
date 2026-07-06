@@ -186,6 +186,26 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `httpx.AsyncClient`, `source="osrm"`). Moto/bus derive from car via
   `DEFAULT_MODE_DURATION_FACTORS` so both layers work on a car-only profile.
   Submodule import like vision; heuristic imports without the extra.
+- **GenAI ergonomics (v0.105)** — `GenerationConfig` (typed generation
+  params over `**kwargs`, `config=` on `generate`/`chat`/`stream`),
+  `make_genai_router` (opt-in FastAPI router mounting only injected
+  objects: `/generate`+SSE, `/chat`, `/embed`, `/rag`, `/transcribe`,
+  `/tts`), `RedisEmbeddingCache` + `AsyncEmbeddingCache` (async Redis
+  vector cache; `Embedder` awaits sync-or-async caches at one call site).
+- **Chat (v0.105, `tempest_fastapi_sdk.chat`, no extra)** — threaded
+  chat over the SDK primitives: abstract `BaseConversationModel`/
+  `BaseConversationParticipantModel`/`BaseMessageModel` + `make_*`
+  factories, `ChatService` (`start_conversation`/`post_message`/
+  `list_messages`/`list_conversations`/`is_participant`), `make_chat_router`
+  (participant guard) + real-time fan-out via an injected `SSEBroker`.
+  Submodule import.
+- **Reviews (v0.105, `tempest_fastapi_sdk.reviews`, no extra)** —
+  comments + 0–5 star ratings on any polymorphic `(target_type,
+  target_id)`: `BaseCommentModel` (thread via `parent_id`) / `BaseRatingModel`
+  (unique per user) + `make_*`, `ReviewService` (`add_comment`/
+  `list_comments`/`rate` upsert/`get_user_rating`/`aggregate` → avg +
+  count + per-star distribution), `make_reviews_router`; `RatingField`
+  (`Annotated[int, 0..5]`) in `utils.fields`. Submodule import.
 - **Upload** — `UploadUtils` with pluggable backends
   (`LocalUploadStorage`, `MinIOUploadStorage`, opt-in injected via
   `backend=`), download helpers, presigned URLs, plus `FileStoreUtils`

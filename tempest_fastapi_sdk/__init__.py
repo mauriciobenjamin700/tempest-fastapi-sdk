@@ -306,6 +306,7 @@ from tempest_fastapi_sdk.utils import (
     PositiveFloatField,
     PositiveIntField,
     PriceField,
+    RatingField,
     RatioField,
     Region,
     RetryPolicy,
@@ -372,7 +373,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.104.0"
+__version__: str = "0.105.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -547,6 +548,7 @@ __all__: list[str] = [
     "RateLimitMiddleware",
     "RateLimitResult",
     "RateLimitStore",
+    "RatingField",
     "RatioField",
     "RedisFeatureFlagBackend",
     "RedisIdempotencyStore",

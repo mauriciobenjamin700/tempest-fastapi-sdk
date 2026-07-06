@@ -5,6 +5,48 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.105.0] — 2026-07-05
+
+### Added
+
+- **GenAI ergonomics** in `tempest_fastapi_sdk.genai`:
+  - **`GenerationConfig`** — a typed Pydantic schema for generation
+    parameters (`max_new_tokens` / `temperature` / `top_p` / `top_k` /
+    `repetition_penalty` / `do_sample` / `seed` / `stop`). Pass it to
+    `TextGenerator.generate` / `chat` / `stream` via `config=` instead of
+    loose `**kwargs`; only the set fields layer over the defaults, and
+    explicit `**kwargs` still win over the config.
+  - **`make_genai_router`** — an opt-in FastAPI router that mounts only the
+    endpoints backed by the GenAI objects you inject: `POST /generate`
+    (+ `/generate/stream`, token-by-token SSE) and `/chat` for a
+    `TextGenerator`, `/embed` for an `Embedder`, `/rag` for a `Retriever`,
+    `/transcribe` for a `SpeechToText`, and `/tts` (returns `audio/wav`) for
+    a `TextToSpeech`. Raises when handed nothing.
+  - **`RedisEmbeddingCache`** — an async, Redis-backed `EmbeddingCache`
+    shared across workers (JSON vectors, optional TTL). `Embedder` now
+    accepts sync **or** async caches (it awaits `get`/`set` when they return
+    an awaitable), so swapping `InMemoryEmbeddingCache` for
+    `RedisEmbeddingCache` needs no call-site change. New `AsyncEmbeddingCache`
+    Protocol documents the async shape.
+- **Chat module (`tempest_fastapi_sdk.chat`)** — a reusable threaded-chat
+  layer over the SDK primitives. Abstract tables `BaseConversationModel` /
+  `BaseConversationParticipantModel` / `BaseMessageModel` (+ `make_*`
+  factories), a `ChatService` (`start_conversation` / `post_message` /
+  `list_messages` / `list_conversations` / `is_participant`), and an opt-in
+  `make_chat_router`. When an `SSEBroker` is injected, every posted message
+  is also published to the conversation's channel for real-time delivery,
+  reusing the existing SSE fan-out.
+- **Reviews module (`tempest_fastapi_sdk.reviews`)** — comments and
+  0-to-5-star ratings on any polymorphic target (`target_type` +
+  `target_id`). Abstract tables `BaseCommentModel` (threaded via
+  `parent_id`) / `BaseRatingModel` (one vote per user, unique
+  `(target_type, target_id, user_id)`) + `make_*` factories, a
+  `ReviewService` (`add_comment` / `list_comments` / `rate` upsert /
+  `get_user_rating` / `aggregate` → average + count + per-star
+  distribution), and an opt-in `make_reviews_router`.
+- **`RatingField`** in `tempest_fastapi_sdk.utils` — `Annotated[int, 0..5]`
+  for a star score; re-exported at the package root.
+
 ## [0.104.0] — 2026-07-05
 
 ### Added

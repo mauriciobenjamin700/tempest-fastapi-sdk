@@ -29,6 +29,8 @@ Bite-sized "I want to wire X" walkthroughs. Each page starts with **what problem
 | **[Transactional outbox »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — reliable events |
 | **[Transactional email »](email.md)** | `EmailUtils` — SMTP, text/HTML body, attachments, Jinja2 templates |
 | **[Web Push »](webpush.md)** | `WebPushDispatcher`, VAPID schemas, broadcast with pruning |
+| **[Chat (conversations + messages) »](chat.md)** | `ChatService`, `make_chat_router`, base tables + real-time fan-out via `SSEBroker` |
+| **[Comments + ratings »](reviews.md)** | `ReviewService`, `make_reviews_router`, 0–5 star scores with aggregation, threaded comments |
 | **[Computer vision (ONNX) »](vision.md)** | `Detector` / `Classifier` / `Segmenter` + prediction schemas |
 | **[Logging »](logging.md)** | `LogUtils`, structured JSON logging, request-ID propagation |
 | **[Metrics »](metrics.md)** | `MetricsUtils` — CPU / RAM / disk / GPU snapshots |

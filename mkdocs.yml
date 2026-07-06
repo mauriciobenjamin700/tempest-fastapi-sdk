@@ -99,6 +99,8 @@ plugins:
             Camada HTTP: HTTP layer
             "HTTP client (saída)": "HTTP client (outbound)"
             Cache: Cache
+            "Chat (conversas + mensagens)": "Chat (conversations + messages)"
+            "Comentários + avaliações": "Comments + ratings"
             Feature flags: Feature flags
             Tempo real: Real-time
             WebSocket router: WebSocket router
@@ -222,6 +224,8 @@ nav:
       - Auth flow (signup/reset): recipes/auth-flow.md
       - Banco de dados: recipes/database.md
       - Cache: recipes/cache.md
+      - "Chat (conversas + mensagens)": recipes/chat.md
+      - "Comentários + avaliações": recipes/reviews.md
       - Camada HTTP: recipes/http.md
       - CLI: recipes/cli.md
       - "Deploy seguro (migrations + shutdown)": recipes/deploy-safety.md

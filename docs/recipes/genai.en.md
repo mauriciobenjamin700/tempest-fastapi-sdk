@@ -391,8 +391,86 @@ rag = Retriever(embedder, store)
 Implement `VectorStore` (2 methods) and inject it — `Retriever` doesn't
 change.
 
+## Ergonomics: typed config, router and Redis cache
+
+### Typed `GenerationConfig`
+
+Instead of scattering `**kwargs` (`max_new_tokens=...`, `temperature=...`)
+across every call, build a validated, reusable `GenerationConfig` and
+pass it via `config=`:
+
+```python
+from tempest_fastapi_sdk.genai import GenerationConfig, TextGenerator
+
+gen = TextGenerator("Qwen/Qwen2.5-7B-Instruct", quantization="int4")
+config = GenerationConfig(max_new_tokens=512, temperature=0.2, top_p=0.9)
+
+await gen.generate("Explain PIX in one sentence.", config=config)
+await gen.chat([{"role": "user", "content": "Hi"}], config=config)
+```
+
+Only the set fields layer over the defaults; explicit `**kwargs` still
+win over the config (`gen.generate(prompt, config=config,
+temperature=0.9)` uses `0.9`).
+
+### `make_genai_router` — ready endpoints
+
+Inject the objects you have loaded and the router mounts **only** the
+matching endpoints:
+
+```python
+from fastapi import FastAPI
+from tempest_fastapi_sdk.genai import Embedder, TextGenerator, make_genai_router
+
+app = FastAPI()
+app.include_router(
+    make_genai_router(
+        text_generator=TextGenerator("Qwen/Qwen2.5-7B-Instruct"),
+        embedder=Embedder("sentence-transformers/all-MiniLM-L6-v2"),
+    )
+)
+```
+
+| Object | Endpoints |
+| --- | --- |
+| `text_generator` | `POST /generate`, `POST /generate/stream` (token-by-token SSE), `POST /chat` |
+| `embedder` | `POST /embed` |
+| `retriever` | `POST /rag` (query → context block) |
+| `speech_to_text` | `POST /transcribe` (audio upload) |
+| `text_to_speech` | `POST /tts` (returns `audio/wav`) |
+
+!!! tip "Streaming"
+    `/generate/stream` returns `text/event-stream`: each token becomes an
+    SSE event, ending with a `done` event. It reuses the SDK's
+    `sse_response` — a client with `EventSource` receives tokens live.
+
+### `RedisEmbeddingCache` — cache shared across workers
+
+`Embedder` accepts a synchronous cache (`InMemoryEmbeddingCache`) **or**
+an async one. Swap in `RedisEmbeddingCache` to share vectors across
+processes with no call-site change:
+
+```python
+from redis.asyncio import Redis
+from tempest_fastapi_sdk.genai import Embedder, RedisEmbeddingCache
+
+cache = RedisEmbeddingCache(Redis.from_url("redis://localhost"), ttl_seconds=86400)
+embedder = Embedder("sentence-transformers/all-MiniLM-L6-v2", cache=cache)
+
+await embedder.embed(["text"])  # first call computes; other workers reuse it
+```
+
+`Embedder` awaits `get`/`set` when the cache is async and calls them
+directly when it is sync — the same code serves both.
+
 ## Recap
 
+- **`GenerationConfig`** — typed, reusable generation parameters instead
+  of `**kwargs`.
+- **`make_genai_router`** — mounts only the endpoints of the injected
+  objects; `/generate/stream` streams tokens over SSE.
+- **`RedisEmbeddingCache`** — a shared vector cache; `Embedder` accepts a
+  sync or async cache at the same call site.
 - **`can_run` / `recommend`** — answer whether the host runs the model
   and what to do if not, **before** the download.
 - **RAG over a corpus** — `Retriever` + `VectorStore` (`InMemoryVectorStore`
