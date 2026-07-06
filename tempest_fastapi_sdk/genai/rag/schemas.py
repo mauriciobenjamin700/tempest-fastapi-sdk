@@ -47,12 +47,15 @@ class Chunk(BaseSchema):
         source (str): Where it came from (a URL or a PDF path).
         index (int): 0-based position of the chunk within its source.
         page (int | None): Originating PDF page (1-based), when applicable.
+        score (float | None): Relevance score when returned by a vector
+            search (higher = closer); ``None`` otherwise.
     """
 
     text: str
     source: str
     index: int
     page: int | None = None
+    score: float | None = None
 
 
 class Document(BaseSchema):

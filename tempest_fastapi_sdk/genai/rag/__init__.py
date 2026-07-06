@@ -17,6 +17,8 @@ from tempest_fastapi_sdk.genai.rag.extract import (
     ExtractionResult as ExtractionResult,
 )
 from tempest_fastapi_sdk.genai.rag.pdf import PdfReader as PdfReader
+from tempest_fastapi_sdk.genai.rag.retriever import Retriever as Retriever
+from tempest_fastapi_sdk.genai.rag.retriever import SupportsEmbed as SupportsEmbed
 from tempest_fastapi_sdk.genai.rag.schemas import Chunk as Chunk
 from tempest_fastapi_sdk.genai.rag.schemas import Document as Document
 from tempest_fastapi_sdk.genai.rag.schemas import PdfPage as PdfPage
@@ -24,16 +26,26 @@ from tempest_fastapi_sdk.genai.rag.schemas import SearchResult as SearchResult
 from tempest_fastapi_sdk.genai.rag.search import SearxngBackend as SearxngBackend
 from tempest_fastapi_sdk.genai.rag.search import WebSearch as WebSearch
 from tempest_fastapi_sdk.genai.rag.search import WebSearchBackend as WebSearchBackend
+from tempest_fastapi_sdk.genai.rag.vectorstore import (
+    InMemoryVectorStore as InMemoryVectorStore,
+)
+from tempest_fastapi_sdk.genai.rag.vectorstore import PgVectorStore as PgVectorStore
+from tempest_fastapi_sdk.genai.rag.vectorstore import VectorStore as VectorStore
 
 __all__: list[str] = [
     "Chunk",
     "ContentExtractor",
     "Document",
     "ExtractionResult",
+    "InMemoryVectorStore",
     "PdfPage",
     "PdfReader",
+    "PgVectorStore",
+    "Retriever",
     "SearchResult",
     "SearxngBackend",
+    "SupportsEmbed",
+    "VectorStore",
     "WebSearch",
     "WebSearchBackend",
     "build_context",

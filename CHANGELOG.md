@@ -5,6 +5,26 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.101.0] — 2026-07-05
+
+### Added
+
+- **RAG over your own corpus — vector store + retriever**
+  (`tempest_fastapi_sdk.genai.rag`), closing the RAG loop (index once,
+  retrieve by similarity, don't re-embed per request):
+  - `VectorStore` Protocol — `add(chunks, vectors)` + `search(vector,
+    top_k)`.
+  - `InMemoryVectorStore` — dict-backed cosine scan for dev/tests/small
+    corpora.
+  - `PgVectorStore` — Postgres + `pgvector`, reusing the service's existing
+    database (table created on demand, cosine `<=>` search). Added
+    `pgvector` to the `[genai-rag]` extra.
+  - `Retriever` — ties an embedder + store: `index(chunks)`,
+    `search(query, top_k)` (returns `Chunk`s with a `score`), and
+    `retrieve(query)` → prompt-ready context. Works with any store via the
+    `SupportsEmbed` / `VectorStore` protocols.
+  - `Chunk` gained an optional `score` field (set by vector search).
+
 ## [0.100.0] — 2026-07-05
 
 ### Added

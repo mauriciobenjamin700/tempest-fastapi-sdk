@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.100.0"
+version = "0.101.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -105,6 +105,7 @@ genai-rag = [
     "httpx>=0.28.0",
     "trafilatura>=1.12.0",
     "pymupdf>=1.24.0",
+    "pgvector>=0.3.0",
 ]
 ssr = [
     "tempestweb>=0.9.0",

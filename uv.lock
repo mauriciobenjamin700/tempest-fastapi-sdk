@@ -2777,6 +2777,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pgvector"
+version = "0.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/25/6c/6d8b4b03b958c02fa8687ec6063c49d952a189f8c91ebbe51e877dfab8f7/pgvector-0.4.2.tar.gz", hash = "sha256:322cac0c1dc5d41c9ecf782bd9991b7966685dee3a00bc873631391ed949513a", size = 31354, upload-time = "2025-12-05T01:07:17.87Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5a/26/6cee8a1ce8c43625ec561aff19df07f9776b7525d9002c86bceb3e0ac970/pgvector-0.4.2-py3-none-any.whl", hash = "sha256:549d45f7a18593783d5eec609ea1684a724ba8405c4cb182a0b2b08aeff04e08", size = 27441, upload-time = "2025-12-05T01:07:16.536Z" },
+]
+
+[[package]]
 name = "pillow"
 version = "12.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3818,7 +3831,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.100.0"
+version = "0.101.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -3890,6 +3903,7 @@ genai-quant = [
 ]
 genai-rag = [
     { name = "httpx" },
+    { name = "pgvector" },
     { name = "pymupdf" },
     { name = "trafilatura" },
 ]
@@ -4040,6 +4054,7 @@ requires-dist = [
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.27.0" },
     { name = "ort-vision-sdk", marker = "extra == 'all'", specifier = ">=0.4.0" },
     { name = "ort-vision-sdk", marker = "extra == 'vision'", specifier = ">=0.4.0" },
+    { name = "pgvector", marker = "extra == 'genai-rag'", specifier = ">=0.3.0" },
     { name = "prometheus-client", marker = "extra == 'all'", specifier = ">=0.20.0" },
     { name = "prometheus-client", marker = "extra == 'prometheus'", specifier = ">=0.20.0" },
     { name = "psutil", marker = "extra == 'all'", specifier = ">=6.0.0" },

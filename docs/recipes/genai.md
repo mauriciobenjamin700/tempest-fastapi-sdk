@@ -286,10 +286,49 @@ mantém cada chunk numa página só, carregando o número dela.
     (page N)`), pra LLM citar. Passe `long_text=False` pra truncar cada
     fonte a `max_chars`.
 
+### RAG sobre corpus próprio (vector store)
+
+Busca web é uma fonte; a outra é o **seu conhecimento** (PDFs, docs). Em
+vez de reembeddar tudo a cada request, indexe uma vez num **vector store**
+e recupere por similaridade. `Retriever` amarra `Embedder` → store →
+`build_context`:
+
+```python
+from tempest_fastapi_sdk.genai import Embedder
+from tempest_fastapi_sdk.genai.rag import InMemoryVectorStore, PdfReader, Retriever
+
+rag = Retriever(Embedder("sentence-transformers/all-MiniLM-L6-v2", normalize=True),
+                InMemoryVectorStore())
+
+await rag.index(PdfReader().chunks("/kb/manual.pdf"))     # uma vez
+context = await rag.retrieve("como estornar?", top_k=5)   # depois, barato
+answer = await gen.generate(context)
+```
+
+- **`VectorStore`** é um `Protocol` — `InMemoryVectorStore` (dev/testes,
+  scan por cosseno) ou `PgVectorStore` (produção).
+- **`PgVectorStore`** usa **pgvector** no Postgres que o serviço já tem
+  (sem infra nova): cria a tabela sob demanda, busca com o operador de
+  distância cosseno `<=>`. Requer `[genai-rag]` + `CREATE EXTENSION vector`.
+
+```python
+from tempest_fastapi_sdk.genai.rag import PgVectorStore
+
+store = PgVectorStore(db, dim=384)          # db = AsyncDatabaseManager
+rag = Retriever(embedder, store)
+```
+
+`rag.search(query, top_k=)` devolve os `Chunk` com `score` (similaridade);
+`rag.retrieve(...)` já monta o contexto. Precisa de Qdrant/Weaviate depois?
+Implemente o `VectorStore` (2 métodos) e injete — o `Retriever` não muda.
+
 ## Recap
 
 - **`can_run` / `recommend`** — respondem se o host roda o modelo e o que
   fazer se não rodar, **antes** do download.
+- **RAG sobre corpus** — `Retriever` + `VectorStore` (`InMemoryVectorStore`
+  / `PgVectorStore` pgvector): indexe chunks uma vez, recupere top-k por
+  similaridade.
 - **RAG** — `WebSearch`/`SearxngBackend` (busca), `ContentExtractor`
   (corpo das páginas), `PdfReader` (PDF → texto/chunks) e `build_context`
   (bloco pro prompt), todos sob o extra `[genai-rag]`.
