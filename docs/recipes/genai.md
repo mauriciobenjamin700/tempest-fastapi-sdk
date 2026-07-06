@@ -13,6 +13,8 @@ está sendo entregue em fatias; esta página cobre a **primeira**: saber,
       (seção [Gerar texto](#gerar-texto-com-llm-local)).
     - **v0.99:** `Embedder`, `BatchScheduler`, `ModelRegistry` — embeddings
       + escala (seção [Embeddings e escala](#embeddings-e-escala)).
+    - **v0.102:** `SpeechToText` / `TextToSpeech` — áudio (seção
+      [Áudio (voz)](#audio-voz)).
 
 O extra `[genai]` (transformers + torch + accelerate) só é necessário pra
 **rodar** modelos. As funções de capacidade **importam sem o extra** — o
@@ -200,6 +202,52 @@ def get_embedder(model_id: str) -> Embedder:
     return registry.get(model_id, lambda: Embedder(model_id))
 ```
 
+## Áudio (voz)
+
+Interpretar e gerar voz no seu hardware — sem API externa. Requer o extra
+`[genai-audio]` (faster-whisper + Coqui TTS); as engines importam
+preguiçosamente.
+
+### Interpretar áudio (STT)
+
+`SpeechToText` transcreve com **faster-whisper** (Whisper via CTranslate2,
+rápido em CPU/GPU). Carrega uma vez, roda em worker thread, serializa
+chamadas por um semáforo.
+
+```python
+from tempest_fastapi_sdk.genai.audio import SpeechToText
+
+stt = SpeechToText("base", device="auto")     # tiny…large-v3
+result = await stt.transcribe("reuniao.wav")
+print(result.text, result.language, result.duration)
+for seg in result.segments:                    # timestamps por trecho
+    print(seg.start, seg.end, seg.text)
+```
+
+Aceita caminho ou `bytes`. `device`/`compute_type` resolvem sozinhos
+(`float16` na GPU, `int8` na CPU).
+
+### Gerar voz (TTS)
+
+`TextToSpeech` sintetiza com **Coqui TTS** (WAV). Mesma disciplina
+(lazy + thread + semáforo).
+
+```python
+from tempest_fastapi_sdk.genai.audio import TextToSpeech
+
+tts = TextToSpeech("tts_models/multilingual/multi-dataset/xtts_v2")
+wav = await tts.synthesize("Olá, mundo.", language="pt")   # -> bytes WAV
+# clonagem de voz (XTTS): passe um clipe de referência
+wav = await tts.synthesize("Oi!", language="pt", speaker_wav="ref.wav")
+```
+
+`synthesize` devolve os `bytes` do WAV; passe `out_path=` pra também
+gravar em disco.
+
+!!! tip "Loop de voz completo"
+    Encadeie com o LLM: **STT** transcreve a fala → `TextGenerator`/RAG
+    responde → **TTS** fala a resposta. Tudo local, nada sai da máquina.
+
 ## Contexto RAG
 
 Uma LLM local só sabe o que treinou. Pra respostas atuais e fundamentadas,
@@ -329,6 +377,8 @@ Implemente o `VectorStore` (2 métodos) e injete — o `Retriever` não muda.
 - **RAG sobre corpus** — `Retriever` + `VectorStore` (`InMemoryVectorStore`
   / `PgVectorStore` pgvector): indexe chunks uma vez, recupere top-k por
   similaridade.
+- **Áudio** — `SpeechToText` (faster-whisper) transcreve; `TextToSpeech`
+  (Coqui TTS) sintetiza — voz local ponta a ponta.
 - **RAG** — `WebSearch`/`SearxngBackend` (busca), `ContentExtractor`
   (corpo das páginas), `PdfReader` (PDF → texto/chunks) e `build_context`
   (bloco pro prompt), todos sob o extra `[genai-rag]`.

@@ -5,6 +5,27 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.102.0] — 2026-07-05
+
+### Added
+
+- **Self-hosted audio (`tempest_fastapi_sdk.genai.audio`)** — voice in and
+  out, on your own hardware (the leviathan pattern):
+  - `SpeechToText` — transcription via **faster-whisper** (Whisper /
+    CTranslate2). Lazy load, worker-thread inference, concurrency
+    semaphore; auto device (CUDA/CPU) + compute type (float16/int8).
+    `transcribe(audio, *, language=None, with_segments=True)` →
+    `Transcription` (text, language, duration, timestamped `segments`).
+    Accepts a path or `bytes`.
+  - `TextToSpeech` — synthesis via **Coqui TTS**. Same lazy/threaded
+    discipline. `synthesize(text, *, out_path=None, speaker=None,
+    language=None, speaker_wav=None)` → WAV `bytes` (voice cloning via
+    `speaker_wav` on XTTS models).
+  - New `[genai-audio]` extra (`faster-whisper` + `coqui-tts`); everything
+    imports lazily without it. Exported helpers `resolve_audio_device` /
+    `resolve_compute_type` and the `Transcription` / `TranscriptionSegment`
+    schemas.
+
 ## [0.101.0] — 2026-07-05
 
 ### Added

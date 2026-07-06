@@ -153,7 +153,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (v0.101):** `VectorStore` Protocol + `InMemoryVectorStore` +
   `PgVectorStore` (pgvector, reuses the service Postgres) + `Retriever`
   (`index`/`search`/`retrieve` tying `Embedder` → store → `build_context`);
-  `Chunk.score`. **Shipped (v0.97) — RAG context**
+  `Chunk.score`. **Audio (v0.102, `[genai-audio]` = faster-whisper +
+  coqui-tts):** `tempest_fastapi_sdk.genai.audio` — `SpeechToText`
+  (faster-whisper transcribe → `Transcription`) + `TextToSpeech` (Coqui TTS
+  synthesize → WAV bytes, XTTS voice cloning via `speaker_wav`), lazy +
+  to_thread + semaphore, auto device/compute. **Shipped (v0.97) — RAG context**
   (`tempest_fastapi_sdk.genai.rag`, `[genai-rag]` extra = httpx +
   trafilatura + pymupdf): `WebSearchBackend` Protocol + `SearxngBackend`
   (SearXNG JSON API, leviathan pattern) + `WebSearch`; `ContentExtractor`

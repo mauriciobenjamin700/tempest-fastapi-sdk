@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.101.0"
+version = "0.102.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -106,6 +106,10 @@ genai-rag = [
     "trafilatura>=1.12.0",
     "pymupdf>=1.24.0",
     "pgvector>=0.3.0",
+]
+genai-audio = [
+    "faster-whisper>=1.0.0",
+    "coqui-tts>=0.24.0",
 ]
 ssr = [
     "tempestweb>=0.9.0",
@@ -332,6 +336,10 @@ module = [
     "trafilatura.*",
     "pymupdf",
     "fitz",
+    "faster_whisper",
+    "faster_whisper.*",
+    "TTS",
+    "TTS.*",
     "pyotp",
     "pyotp.*",
     "ort_vision_sdk",
