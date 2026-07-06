@@ -136,6 +136,217 @@ async def estimar(origem, destino, mode, client) -> TravelEstimate:
         return estimate_travel(origem, destino, mode)
 ```
 
+## Exemplo integrado: ETA de entrega (FastAPI em camadas)
+
+Um serviço real quer expor um endpoint que recebe origem, destino e modo e
+devolve distância + tempo, tentando a rota real do OSRM e caindo na
+heurística offline se a rede falhar. Segue a arquitetura em camadas do SDK
+(schema → service → controller → router → dependency).
+
+### Schemas de entrada/saída
+
+```python
+# src/schemas/geo.py
+from tempest_fastapi_sdk.geo import Coordinate, TravelEstimate, TravelMode
+from tempest_fastapi_sdk.schemas.base import BaseSchema
+
+
+class RouteRequestSchema(BaseSchema):
+    """Pedido de estimativa de rota entre dois pontos.
+
+    Attributes:
+        origin: Coordenada de partida.
+        destination: Coordenada de chegada.
+        mode: Modo de viagem desejado.
+    """
+
+    origin: Coordinate
+    destination: Coordinate
+    mode: TravelMode = TravelMode.CAR
+
+
+# A resposta é o próprio TravelEstimate do SDK — nada a redefinir.
+RouteResponseSchema = TravelEstimate
+```
+
+### Service — regra de negócio + fallback
+
+```python
+# src/services/geo.py
+from tempest_fastapi_sdk.geo import (
+    Coordinate,
+    RoutingBackend,
+    TravelEstimate,
+    TravelMode,
+    estimate_travel,
+)
+
+
+class GeoService:
+    """Estima distância e tempo de viagem entre dois pontos.
+
+    Usa um `RoutingBackend` (OSRM) para a rota real e cai na heurística
+    offline quando o backend falha, para o endpoint nunca ficar 5xx só
+    porque o servidor de rotas oscilou.
+    """
+
+    def __init__(self, routing: RoutingBackend) -> None:
+        """Inicializa o serviço.
+
+        Args:
+            routing: Backend de roteamento (ex.: `OSRMBackend`).
+        """
+        self.routing: RoutingBackend = routing
+
+    async def estimate(
+        self,
+        origin: Coordinate,
+        destination: Coordinate,
+        mode: TravelMode = TravelMode.CAR,
+    ) -> TravelEstimate:
+        """Estima a viagem, com rota real e fallback offline.
+
+        Args:
+            origin: Coordenada de partida.
+            destination: Coordenada de chegada.
+            mode: Modo de viagem.
+
+        Returns:
+            O `TravelEstimate` — `source="osrm"` quando a rota real
+            respondeu, `source="heuristic"` no fallback.
+        """
+        try:
+            return await self.routing.route(origin, destination, mode=mode)
+        except RuntimeError:
+            return estimate_travel(origin, destination, mode)
+```
+
+### Controller — passagem fina (orquestração futura)
+
+```python
+# src/controllers/geo.py
+from src.schemas.geo import RouteRequestSchema
+from src.services.geo import GeoService
+from tempest_fastapi_sdk.geo import TravelEstimate
+
+
+class GeoController:
+    """Orquestra o `GeoService` para os routers."""
+
+    def __init__(self, service: GeoService) -> None:
+        """Inicializa o controller.
+
+        Args:
+            service: O serviço de geolocalização.
+        """
+        self.service: GeoService = service
+
+    async def estimate_route(self, payload: RouteRequestSchema) -> TravelEstimate:
+        """Estima uma rota a partir do payload validado.
+
+        Args:
+            payload: Origem, destino e modo.
+
+        Returns:
+            A estimativa de viagem.
+        """
+        return await self.service.estimate(
+            payload.origin, payload.destination, payload.mode
+        )
+```
+
+### Dependency — injeta o cliente httpx compartilhado
+
+```python
+# src/api/dependencies/services.py
+from collections.abc import AsyncIterator
+
+import httpx
+from fastapi import Depends
+
+from src.controllers.geo import GeoController
+from src.services.geo import GeoService
+from tempest_fastapi_sdk.geo import OSRMBackend
+
+
+async def get_geo_controller() -> AsyncIterator[GeoController]:
+    """Provê um `GeoController` com cliente httpx de vida curta.
+
+    Yields:
+        Um controller pronto pra uso, com o cliente fechado ao fim.
+    """
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        backend = OSRMBackend(http_client=client)
+        yield GeoController(GeoService(backend))
+```
+
+!!! tip "Reuse o cliente entre requests"
+    Abrir um `httpx.AsyncClient` por request é simples mas custa handshakes.
+    Em produção, crie um cliente único no `lifespan` da app, guarde em
+    `app.state` e injete-o no `OSRMBackend` — o SDK nunca fecha o cliente
+    que você passa, então o controle do ciclo de vida é seu.
+
+### Router — só HTTP
+
+```python
+# src/api/routers/geo.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.services import get_geo_controller
+from src.controllers.geo import GeoController
+from src.schemas.geo import RouteRequestSchema
+from tempest_fastapi_sdk.geo import TravelEstimate
+
+router = APIRouter(prefix="/api/geo", tags=["geo"])
+
+
+@router.post("/estimate")
+async def estimate_route(
+    payload: RouteRequestSchema,
+    controller: GeoController = Depends(get_geo_controller),
+) -> TravelEstimate:
+    """Estima distância e tempo entre dois pontos por modo."""
+    return await controller.estimate_route(payload)
+```
+
+Um `POST /api/geo/estimate` com origem/destino/modo devolve
+`{"mode": "...", "distance_km": ..., "duration_minutes": ..., "source": ...}`.
+
+## Receita: filtro por raio (proximidade)
+
+Sem servidor de rotas — só `haversine_km` — dá pra filtrar "o que está a até
+N km daqui", útil pra listar entregadores/lojas próximos:
+
+```python
+from tempest_fastapi_sdk.geo import Coordinate, haversine_km
+
+
+def within_radius(
+    center: Coordinate,
+    points: list[Coordinate],
+    radius_km: float,
+) -> list[Coordinate]:
+    """Filtra os pontos dentro de um raio a partir do centro.
+
+    Args:
+        center: Ponto de referência.
+        points: Candidatos.
+        radius_km: Raio máximo em km.
+
+    Returns:
+        Os pontos cuja distância em linha reta é <= `radius_km`,
+        ordenados do mais próximo ao mais distante.
+    """
+    near = [(p, haversine_km(center, p)) for p in points]
+    near = [(p, d) for p, d in near if d <= radius_km]
+    return [p for p, _ in sorted(near, key=lambda pair: pair[1])]
+```
+
+!!! note "Raio é uma pré-filtragem barata"
+    A linha reta subestima a distância rodoviária, então use um raio um
+    pouco maior que o alvo e refine com `estimate_travel`/OSRM só nos
+    finalistas — evita chamar o roteador pra todo mundo.
+
 ## Recap
 
 - `haversine_km(a, b)` — distância great-circle, pura, sempre disponível.
