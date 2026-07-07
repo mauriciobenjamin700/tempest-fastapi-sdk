@@ -5540,7 +5540,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.107.0"
+version = "0.108.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -5563,6 +5563,7 @@ all = [
     { name = "aiosqlite" },
     { name = "asyncpg" },
     { name = "bcrypt" },
+    { name = "chromadb" },
     { name = "cryptography" },
     { name = "email-validator" },
     { name = "faststream", extra = ["rabbit"] },
@@ -5610,6 +5611,9 @@ genai = [
 genai-audio = [
     { name = "coqui-tts" },
     { name = "faster-whisper" },
+]
+genai-chroma = [
+    { name = "chromadb" },
 ]
 genai-ollama = [
     { name = "httpx" },
@@ -5741,6 +5745,8 @@ requires-dist = [
     { name = "bcrypt", marker = "extra == 'all'", specifier = ">=5.0.0" },
     { name = "bcrypt", marker = "extra == 'auth'", specifier = ">=5.0.0" },
     { name = "bitsandbytes", marker = "extra == 'genai-quant'", specifier = ">=0.43.0" },
+    { name = "chromadb", marker = "extra == 'all'", specifier = ">=0.5.0" },
+    { name = "chromadb", marker = "extra == 'genai-chroma'", specifier = ">=0.5.0" },
     { name = "click", specifier = ">=8.0.0" },
     { name = "coqui-tts", marker = "extra == 'genai-audio'", specifier = ">=0.24.0" },
     { name = "cryptography", marker = "extra == 'all'", specifier = ">=42.0.0" },
@@ -5809,7 +5815,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'genai'", specifier = ">=4.44.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
 
 [package.metadata.requires-dev]
 dev = [
