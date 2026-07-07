@@ -8,6 +8,9 @@ assemble it all into a prompt-ready context block. The heavy bits
 it — you only need the extra to actually fetch and read.
 """
 
+from tempest_fastapi_sdk.genai.rag.chroma import ChatMemory as ChatMemory
+from tempest_fastapi_sdk.genai.rag.chroma import ChromaVectorStore as ChromaVectorStore
+from tempest_fastapi_sdk.genai.rag.chroma import MemoryHit as MemoryHit
 from tempest_fastapi_sdk.genai.rag.chunking import chunk_text as chunk_text
 from tempest_fastapi_sdk.genai.rag.context import build_context as build_context
 from tempest_fastapi_sdk.genai.rag.extract import (
@@ -33,11 +36,14 @@ from tempest_fastapi_sdk.genai.rag.vectorstore import PgVectorStore as PgVectorS
 from tempest_fastapi_sdk.genai.rag.vectorstore import VectorStore as VectorStore
 
 __all__: list[str] = [
+    "ChatMemory",
+    "ChromaVectorStore",
     "Chunk",
     "ContentExtractor",
     "Document",
     "ExtractionResult",
     "InMemoryVectorStore",
+    "MemoryHit",
     "PdfPage",
     "PdfReader",
     "PgVectorStore",

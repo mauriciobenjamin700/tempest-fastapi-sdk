@@ -114,6 +114,9 @@ genai-audio = [
 genai-ollama = [
     "httpx>=0.28.0",
 ]
+genai-chroma = [
+    "chromadb>=0.5.0",
+]
 geo = [
     "httpx>=0.28.0",
 ]
@@ -163,6 +166,7 @@ all = [
     "opentelemetry-instrumentation-httpx>=0.48b0",
     "ort-vision-sdk>=0.4.0",
     "tempestweb>=0.9.0",
+    "chromadb>=0.5.0",
 ]
 
 [project.urls]
@@ -239,6 +243,7 @@ dev = [
     "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
     "opentelemetry-instrumentation-httpx>=0.48b0",
     "tempestweb>=0.9.0",
+    "chromadb>=0.5.0",
 ]
 docs = [
     "mkdocs>=1.6.0",
@@ -354,6 +359,8 @@ module = [
     "tempestweb.*",
     "tempest_core",
     "tempest_core.*",
+    "chromadb",
+    "chromadb.*",
 ]
 ignore_missing_imports = true
 
