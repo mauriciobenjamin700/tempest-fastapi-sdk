@@ -27,6 +27,8 @@ class Transcription(BaseSchema):
     Attributes:
         text (str): The full transcript (all segments joined).
         language (str): Detected (or forced) language code.
+        language_probability (float): Confidence of the detected language
+            (``0..1``); ``0.0`` when the language was forced or unknown.
         duration (float): Audio duration in seconds.
         segments (list[TranscriptionSegment]): Per-span breakdown with
             timestamps (empty when segment output is disabled).
@@ -34,6 +36,7 @@ class Transcription(BaseSchema):
 
     text: str
     language: str = ""
+    language_probability: float = 0.0
     duration: float = 0.0
     segments: list[TranscriptionSegment] = Field(default_factory=list)
 

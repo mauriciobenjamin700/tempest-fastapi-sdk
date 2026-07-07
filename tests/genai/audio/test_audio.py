@@ -30,12 +30,63 @@ class TestResolvers:
         assert resolve_compute_type("int8_float16", "cuda") == "int8_float16"
 
 
+class _FakeSegment:
+    def __init__(self, start: float, end: float, text: str) -> None:
+        self.start = start
+        self.end = end
+        self.text = text
+
+
+class _FakeInfo:
+    language = "pt"
+    language_probability = 0.97
+    duration = 3.5
+
+
+class _FakeWhisperModel:
+    """Records transcribe kwargs and returns canned segments + info."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def transcribe(self, source: object, **kwargs: object) -> tuple[object, object]:
+        self.calls.append(kwargs)
+        return iter([_FakeSegment(0.0, 1.0, "olá ")]), _FakeInfo()
+
+
 class TestSpeechToText:
     def test_init_resolves(self) -> None:
         stt = SpeechToText("base", device="cpu")
         assert stt.device == "cpu"
         assert stt.compute_type == "int8"
         assert stt.is_loaded is False
+
+    def test_init_stores_beam_and_vad(self) -> None:
+        stt = SpeechToText(device="cpu", beam_size=8, vad_filter=False)
+        assert stt.beam_size == 8
+        assert stt.vad_filter is False
+
+    async def test_transcribe_forwards_knobs_and_language_probability(self) -> None:
+        stt = SpeechToText(device="cpu", beam_size=8, vad_filter=False)
+        stt._model = _FakeWhisperModel()  # pre-loaded -> load() short-circuits
+        result = await stt.transcribe("clip.wav", language="pt")
+        assert stt._model.calls[0] == {
+            "language": "pt",
+            "beam_size": 8,
+            "vad_filter": False,
+        }
+        assert result.text == "olá"
+        assert result.language == "pt"
+        assert result.language_probability == 0.97
+        assert result.duration == 3.5
+        assert len(result.segments) == 1
+
+    async def test_transcribe_per_call_overrides_win(self) -> None:
+        stt = SpeechToText(device="cpu", beam_size=5, vad_filter=True)
+        stt._model = _FakeWhisperModel()
+        await stt.transcribe("clip.wav", beam_size=1, vad_filter=False)
+        assert stt._model.calls[0]["beam_size"] == 1
+        assert stt._model.calls[0]["vad_filter"] is False
 
     def test_bad_concurrency(self) -> None:
         with pytest.raises(ValueError):

@@ -219,6 +219,7 @@ class OllamaGenerator(_OllamaClientMixin):
         prompt: str,
         *,
         config: GenerationConfig | None = None,
+        images: list[str] | None = None,
         **kwargs: Any,
     ) -> str:
         """Generate a completion for ``prompt``.
@@ -227,6 +228,10 @@ class OllamaGenerator(_OllamaClientMixin):
             prompt (str): The input text.
             config (GenerationConfig | None): Typed generation parameters;
                 its set fields are mapped to Ollama options.
+            images (list[str] | None): Base64-encoded images for a
+                multimodal model (e.g. ``llava``, ``llama3.2-vision``);
+                forwarded as the Ollama ``images`` field. ``None`` for a
+                text-only prompt.
             **kwargs (Any): Per-call generation overrides (HuggingFace-style
                 names such as ``max_new_tokens`` / ``temperature``); these
                 win over ``config``.
@@ -235,6 +240,8 @@ class OllamaGenerator(_OllamaClientMixin):
             str: The generated text.
         """
         payload = self._request_payload(prompt, config, kwargs, stream=False)
+        if images:
+            payload["images"] = images
         response = await self._http().post(
             f"{self.base_url}/api/generate",
             json=payload,
@@ -245,7 +252,7 @@ class OllamaGenerator(_OllamaClientMixin):
 
     async def chat(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         config: GenerationConfig | None = None,
         **kwargs: Any,
@@ -253,8 +260,10 @@ class OllamaGenerator(_OllamaClientMixin):
         """Generate a reply for a chat ``messages`` list.
 
         Args:
-            messages (list[dict[str, str]]): Chat turns, each
-                ``{"role": ..., "content": ...}``.
+            messages (list[dict[str, Any]]): Chat turns, each
+                ``{"role": ..., "content": ...}``. A turn may also carry an
+                ``"images": [<base64>, ...]`` key for multimodal models —
+                it is forwarded verbatim to Ollama.
             config (GenerationConfig | None): Typed generation parameters.
             **kwargs (Any): Per-call generation overrides (win over
                 ``config``).
