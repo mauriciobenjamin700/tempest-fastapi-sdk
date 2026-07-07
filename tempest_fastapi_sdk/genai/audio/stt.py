@@ -103,6 +103,8 @@ class SpeechToText:
         compute_type: str = "auto",
         max_concurrent: int = 2,
         cache_dir: str | None = None,
+        beam_size: int = 5,
+        vad_filter: bool = True,
     ) -> None:
         """Configure the transcriber (does not load weights yet).
 
@@ -112,6 +114,10 @@ class SpeechToText:
             compute_type (str): faster-whisper compute type or ``"auto"``.
             max_concurrent (int): Max simultaneous transcriptions.
             cache_dir (str | None): Where to cache downloaded weights.
+            beam_size (int): Beam width for decoding — higher is more
+                accurate but slower. Overridable per call.
+            vad_filter (bool): Drop non-speech with faster-whisper's voice
+                activity detection before decoding. Overridable per call.
 
         Raises:
             ValueError: When ``max_concurrent`` is not positive.
@@ -122,6 +128,8 @@ class SpeechToText:
         self.device = resolve_audio_device(device)
         self.compute_type = resolve_compute_type(compute_type, self.device)
         self.cache_dir = cache_dir
+        self.beam_size = beam_size
+        self.vad_filter = vad_filter
         self._model: Any = None
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
@@ -156,6 +164,8 @@ class SpeechToText:
         *,
         language: Language | str | None = None,
         with_segments: bool = True,
+        beam_size: int | None = None,
+        vad_filter: bool | None = None,
     ) -> Transcription:
         """Transcribe ``audio`` into text.
 
@@ -169,9 +179,14 @@ class SpeechToText:
                 (``Language.PT_BR``), a raw Whisper code (``"pt"``), or
                 ``None`` to auto-detect.
             with_segments (bool): Include per-span timestamps.
+            beam_size (int | None): Override the instance beam width for
+                this call; ``None`` uses the configured default.
+            vad_filter (bool | None): Override the instance VAD setting for
+                this call; ``None`` uses the configured default.
 
         Returns:
-            Transcription: The transcript, language, duration and segments.
+            Transcription: The transcript, language (+ probability),
+            duration and segments.
         """
         async with self._semaphore:
             return await asyncio.to_thread(
@@ -179,6 +194,8 @@ class SpeechToText:
                 audio,
                 whisper_language(language),
                 with_segments,
+                self.beam_size if beam_size is None else beam_size,
+                self.vad_filter if vad_filter is None else vad_filter,
             )
 
     def _transcribe_sync(  # pragma: no cover - needs faster-whisper + a model
@@ -186,13 +203,20 @@ class SpeechToText:
         audio: str | Path | bytes,
         language: str | None,
         with_segments: bool,
+        beam_size: int,
+        vad_filter: bool,
     ) -> Transcription:
         """Blocking transcription; assembles a :class:`Transcription`."""
         import io
 
         self.load()
         source: Any = io.BytesIO(audio) if isinstance(audio, bytes) else str(audio)
-        segments_iter, info = self._model.transcribe(source, language=language)
+        segments_iter, info = self._model.transcribe(
+            source,
+            language=language,
+            beam_size=beam_size,
+            vad_filter=vad_filter,
+        )
         segments: list[TranscriptionSegment] = []
         texts: list[str] = []
         for segment in segments_iter:
@@ -208,6 +232,9 @@ class SpeechToText:
         return Transcription(
             text="".join(texts).strip(),
             language=getattr(info, "language", "") or "",
+            language_probability=float(
+                getattr(info, "language_probability", 0.0) or 0.0,
+            ),
             duration=float(getattr(info, "duration", 0.0) or 0.0),
             segments=segments,
         )

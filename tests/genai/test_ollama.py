@@ -137,6 +137,38 @@ class TestOllamaGenerator:
 
         assert captured["body"]["keep_alive"] == "5m"
 
+    async def test_generate_forwards_images(self) -> None:
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(200, json={"response": "a cat", "done": True})
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator("llama3.2-vision", http_client=client)
+        await gen.generate("what is this?", images=["<b64>"])
+        await client.aclose()
+
+        assert captured["body"]["images"] == ["<b64>"]
+
+    async def test_chat_forwards_per_message_images(self) -> None:
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"message": {"content": "a cat"}, "done": True},
+            )
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator("llama3.2-vision", http_client=client)
+        messages = [{"role": "user", "content": "describe", "images": ["<b64>"]}]
+        await gen.chat(messages)
+        await client.aclose()
+
+        assert captured["body"]["messages"][0]["images"] == ["<b64>"]
+
     def test_satisfies_text_backend_protocol(self) -> None:
         assert isinstance(OllamaGenerator("llama3.2"), TextBackend)
 
