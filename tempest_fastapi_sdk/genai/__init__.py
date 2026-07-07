@@ -37,6 +37,11 @@ from tempest_fastapi_sdk.genai.hardware import (
 from tempest_fastapi_sdk.genai.hardware import (
     recommend as recommend,
 )
+from tempest_fastapi_sdk.genai.ollama import (
+    DEFAULT_OLLAMA_URL as DEFAULT_OLLAMA_URL,
+)
+from tempest_fastapi_sdk.genai.ollama import OllamaEmbedder as OllamaEmbedder
+from tempest_fastapi_sdk.genai.ollama import OllamaGenerator as OllamaGenerator
 from tempest_fastapi_sdk.genai.registry import ModelRegistry as ModelRegistry
 from tempest_fastapi_sdk.genai.router import make_genai_router as make_genai_router
 from tempest_fastapi_sdk.genai.schemas import (
@@ -55,6 +60,9 @@ from tempest_fastapi_sdk.genai.schemas import (
     ModelDtype as ModelDtype,
 )
 from tempest_fastapi_sdk.genai.text import (
+    TextBackend as TextBackend,
+)
+from tempest_fastapi_sdk.genai.text import (
     TextGenerator as TextGenerator,
 )
 from tempest_fastapi_sdk.genai.text import (
@@ -65,6 +73,7 @@ from tempest_fastapi_sdk.genai.text import (
 )
 
 __all__: list[str] = [
+    "DEFAULT_OLLAMA_URL",
     "AsyncEmbeddingCache",
     "BatchScheduler",
     "CapacityReport",
@@ -76,7 +85,10 @@ __all__: list[str] = [
     "InMemoryEmbeddingCache",
     "ModelDtype",
     "ModelRegistry",
+    "OllamaEmbedder",
+    "OllamaGenerator",
     "RedisEmbeddingCache",
+    "TextBackend",
     "TextGenerator",
     "auto_dtype_name",
     "bytes_per_param",

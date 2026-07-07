@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai.hardware import probe_hardware
 from tempest_fastapi_sdk.genai.schemas import (
@@ -27,6 +27,50 @@ from tempest_fastapi_sdk.genai.schemas import (
 )
 
 _QUANTIZATIONS: frozenset[ModelDtype] = frozenset({ModelDtype.INT8, ModelDtype.INT4})
+
+
+@runtime_checkable
+class TextBackend(Protocol):
+    """The text-generation surface consumers depend on.
+
+    Both the ``torch``/``transformers``
+    :class:`~tempest_fastapi_sdk.genai.text.TextGenerator` and the
+    :class:`~tempest_fastapi_sdk.genai.ollama.OllamaGenerator` implement
+    this protocol, so either can be handed to
+    :func:`~tempest_fastapi_sdk.genai.make_genai_router` as the text
+    backend. Implement these three methods to plug in any other engine
+    (vLLM, TGI, a hosted API, …).
+    """
+
+    async def generate(
+        self,
+        prompt: str,
+        *,
+        config: GenerationConfig | None = ...,
+        **kwargs: Any,
+    ) -> str:
+        """Return a completion for ``prompt``."""
+        ...
+
+    async def chat(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        config: GenerationConfig | None = ...,
+        **kwargs: Any,
+    ) -> str:
+        """Return a reply for a chat ``messages`` list."""
+        ...
+
+    def stream(
+        self,
+        prompt: str,
+        *,
+        config: GenerationConfig | None = ...,
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
+        """Stream a completion for ``prompt`` piece by piece."""
+        ...
 
 
 def resolve_device(device: str, hardware: HardwareInfo | None = None) -> str:
@@ -413,6 +457,7 @@ class TextGenerator:
 
 
 __all__: list[str] = [
+    "TextBackend",
     "TextGenerator",
     "auto_dtype_name",
     "resolve_device",

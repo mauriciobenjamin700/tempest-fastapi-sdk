@@ -4875,7 +4875,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.106.0"
+version = "0.107.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -4945,6 +4945,9 @@ genai = [
 genai-audio = [
     { name = "coqui-tts" },
     { name = "faster-whisper" },
+]
+genai-ollama = [
+    { name = "httpx" },
 ]
 genai-quant = [
     { name = "bitsandbytes" },
@@ -5083,6 +5086,7 @@ requires-dist = [
     { name = "faststream", extras = ["rabbit"], marker = "extra == 'all'", specifier = ">=0.7.1" },
     { name = "faststream", extras = ["rabbit"], marker = "extra == 'queue'", specifier = ">=0.7.1" },
     { name = "httpx", marker = "extra == 'all'", specifier = ">=0.28.0" },
+    { name = "httpx", marker = "extra == 'genai-ollama'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'genai-rag'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'geo'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'http'", specifier = ">=0.28.0" },
@@ -5139,7 +5143,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'genai'", specifier = ">=4.44.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
 
 [package.metadata.requires-dev]
 dev = [

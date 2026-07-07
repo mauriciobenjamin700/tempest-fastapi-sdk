@@ -5,6 +5,37 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.107.0] — 2026-07-06
+
+### Added
+
+- **Ollama backend for GenAI (`tempest_fastapi_sdk.genai.ollama`)** — run text
+  generation and embeddings against a local (or remote) [Ollama](https://ollama.com)
+  daemon over HTTP instead of loading HuggingFace weights with `torch`:
+  - `OllamaGenerator` mirrors `TextGenerator`'s `generate` / `chat` / `stream`
+    surface (talking to `/api/generate` and `/api/chat`), so it drops straight
+    into `make_genai_router` with no other changes. No `torch`, no local
+    weights, no `load()` step — Ollama owns model download and VRAM.
+  - `OllamaEmbedder` implements the `SupportsEmbed` protocol (`/api/embed`),
+    so it plugs into `Retriever` and the `/embed` endpoint in place of the
+    `torch`-backed `Embedder` (e.g. `nomic-embed-text`).
+  - `GenerationConfig` fields are mapped to Ollama `options`
+    (`max_new_tokens` → `num_predict`, `repetition_penalty` → `repeat_penalty`,
+    plus `seed`/`stop`; `do_sample=False` → greedy `temperature=0`).
+  - New `[genai-ollama]` extra (just `httpx`). Install with
+    `pip install tempest-fastapi-sdk[genai-ollama]`.
+- **`TextBackend` protocol (`tempest_fastapi_sdk.genai.text`)** — the
+  `runtime_checkable` text-generation surface (`generate` / `chat` / `stream`)
+  that both `TextGenerator` and `OllamaGenerator` satisfy. Implement it to plug
+  in any other engine (vLLM, TGI, a hosted API).
+
+### Changed
+
+- `make_genai_router` now type-hints `text_generator` as `TextBackend | None`
+  and `embedder` as `SupportsEmbed | None` (was `TextGenerator | None` /
+  `Embedder | None`). Backward compatible — the concrete classes still satisfy
+  the widened protocols; the router only ever duck-typed them.
+
 ## [0.106.0] — 2026-07-06
 
 ### Added
