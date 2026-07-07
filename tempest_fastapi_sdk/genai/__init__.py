@@ -42,6 +42,12 @@ from tempest_fastapi_sdk.genai.ollama import (
 )
 from tempest_fastapi_sdk.genai.ollama import OllamaEmbedder as OllamaEmbedder
 from tempest_fastapi_sdk.genai.ollama import OllamaGenerator as OllamaGenerator
+from tempest_fastapi_sdk.genai.pipeline import AIChatPipeline as AIChatPipeline
+from tempest_fastapi_sdk.genai.pipeline import AIChatResult as AIChatResult
+from tempest_fastapi_sdk.genai.pipeline import Tool as Tool
+from tempest_fastapi_sdk.genai.pipeline import (
+    make_ai_chat_router as make_ai_chat_router,
+)
 from tempest_fastapi_sdk.genai.registry import ModelRegistry as ModelRegistry
 from tempest_fastapi_sdk.genai.router import make_genai_router as make_genai_router
 from tempest_fastapi_sdk.genai.schemas import (
@@ -74,6 +80,8 @@ from tempest_fastapi_sdk.genai.text import (
 
 __all__: list[str] = [
     "DEFAULT_OLLAMA_URL",
+    "AIChatPipeline",
+    "AIChatResult",
     "AsyncEmbeddingCache",
     "BatchScheduler",
     "CapacityReport",
@@ -90,12 +98,14 @@ __all__: list[str] = [
     "RedisEmbeddingCache",
     "TextBackend",
     "TextGenerator",
+    "Tool",
     "auto_dtype_name",
     "bytes_per_param",
     "can_run",
     "cosine_similarity",
     "estimate_model_bytes",
     "fetch_num_params",
+    "make_ai_chat_router",
     "make_genai_router",
     "probe_hardware",
     "recommend",

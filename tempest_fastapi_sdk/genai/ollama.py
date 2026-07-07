@@ -283,6 +283,48 @@ class OllamaGenerator(_OllamaClientMixin):
         message: dict[str, Any] = data.get("message") or {}
         return str(message.get("content", ""))
 
+    async def chat_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        config: GenerationConfig | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Generate a chat reply with tool-calling enabled.
+
+        Posts to ``/api/chat`` with the same payload as :meth:`chat` plus a
+        ``tools`` field (OpenAI-style function specs) and returns the whole
+        response ``message`` dict — so the caller can inspect both its
+        ``content`` and any ``tool_calls`` the model emitted.
+
+        Args:
+            messages (list[dict[str, Any]]): Chat turns, each
+                ``{"role": ..., "content": ...}`` (a turn may carry
+                ``tool_calls`` or be a ``{"role": "tool", ...}`` result).
+            tools (list[dict[str, Any]]): Tool specifications in the Ollama /
+                OpenAI ``{"type": "function", "function": {...}}`` shape.
+            config (GenerationConfig | None): Typed generation parameters.
+            **kwargs (Any): Per-call generation overrides (win over
+                ``config``).
+
+        Returns:
+            dict[str, Any]: The full response ``message`` dict (with
+            ``content`` and an optional ``tool_calls`` list), or an empty
+            dict when the daemon returns no message.
+        """
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "tools": tools,
+        }
+        self._apply_common(payload, config, kwargs)
+        response = await self._http().post(f"{self.base_url}/api/chat", json=payload)
+        response.raise_for_status()
+        data: dict[str, Any] = response.json()
+        return data.get("message") or {}
+
     async def stream(
         self,
         prompt: str,
