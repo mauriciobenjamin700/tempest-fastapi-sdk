@@ -15,6 +15,8 @@ gigabytes of weights, whether the machine can handle the model.
       + scale (section [Embeddings and scale](#embeddings-and-scale)).
     - **v0.102:** `SpeechToText` / `TextToSpeech` — audio (section
       [Audio (voice)](#audio-voice)).
+    - **v0.107:** Ollama backend — `OllamaGenerator` / `OllamaEmbedder`,
+      a local LLM without torch (section [Ollama backend](#ollama-backend)).
 
 The `[genai]` extra (transformers + torch + accelerate) is only needed to
 **run** models. The capacity functions **import without the extra** —
@@ -131,6 +133,132 @@ bf16 on GPU and fp32 on CPU.
     (e.g. in a `@tq.interval(60)` [TaskQueue](queue-tasks.md) task) — it
     unloads only once past the idle threshold, no background-thread magic.
     `unload()` frees immediately.
+
+## Ollama backend
+
+`TextGenerator` loads HuggingFace weights with `torch` on your hardware —
+great when you have GPU/torch, but it means downloading gigabytes of weights
+and managing VRAM. If you already run a local **Ollama daemon**,
+`OllamaGenerator` uses the **same `genai` surface** (router, `Retriever`,
+`GenerationConfig`) talking HTTP to Ollama: no torch, no local weights, no
+`load()`. Ollama handles the download and VRAM for you.
+
+Needs the `[genai-ollama]` extra (just `httpx`) and the daemon running with
+the model already pulled:
+
+```bash
+pip install tempest-fastapi-sdk[genai-ollama]
+ollama pull llama3.2
+ollama pull nomic-embed-text
+```
+
+### Generate text via Ollama
+
+`OllamaGenerator` mirrors `TextGenerator` — `generate`, `chat` and
+`stream`, same signature:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OllamaGenerator
+
+gen = OllamaGenerator("llama3.2")   # default base_url = http://127.0.0.1:11434
+
+
+async def main() -> None:
+    # simple generation:
+    text = await gen.generate("Explain PIX in one sentence.")
+    print(text)
+
+    # chat with a role template:
+    reply = await gen.chat([
+        {"role": "system", "content": "You answer in English."},
+        {"role": "user", "content": "What is PIX?"},
+    ])
+    print(reply)
+
+    # token-by-token streaming:
+    async for piece in gen.stream("Write a haiku about rain."):
+        print(piece, end="", flush=True)
+
+
+asyncio.run(main())
+```
+
+No `load()` or `unload()`: the model lives in the Ollama daemon, which
+pulls it on the first call and frees VRAM on its own. `base_url` points at
+another host when Ollama isn't local (the default is `DEFAULT_OLLAMA_URL`);
+`keep_alive`, `timeout` and your own `http_client` (to reuse the pool) are
+optional.
+
+!!! info "`GenerationConfig` maps to Ollama options"
+    The same typed `GenerationConfig` works here — its fields are translated
+    to Ollama options: `max_new_tokens`→`num_predict`,
+    `repetition_penalty`→`repeat_penalty`, and `temperature`/`top_p`/`top_k`/
+    `seed`/`stop` pass through. `do_sample=False` becomes `temperature=0`
+    (greedy generation).
+
+### Embeddings via Ollama + RAG
+
+`OllamaEmbedder` satisfies the same `SupportsEmbed` protocol as `Embedder`,
+so it drops into `Retriever` and the `/embed` endpoint with nothing else to
+change — the embeddings come from Ollama instead of torch:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OllamaEmbedder, OllamaGenerator
+from tempest_fastapi_sdk.genai.rag import InMemoryVectorStore, PdfReader, Retriever
+
+gen = OllamaGenerator("llama3.2")
+rag = Retriever(OllamaEmbedder("nomic-embed-text"), InMemoryVectorStore())
+
+
+async def main() -> None:
+    await rag.index(PdfReader().chunks("/kb/manual.pdf"))     # once
+    context = await rag.retrieve("how to refund?", top_k=5)   # cheap, afterwards
+    print(await gen.generate(context))
+
+
+asyncio.run(main())
+```
+
+`embed(texts, *, batch_size=32)` returns `list[list[float]]`, just like
+`Embedder`.
+
+### Same router, torch OR Ollama
+
+`make_genai_router` type-hints `TextBackend` / `SupportsEmbed`, so the
+Ollama objects slot in where the torch ones went without touching anything
+else:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.genai import (
+    OllamaEmbedder,
+    OllamaGenerator,
+    make_genai_router,
+)
+
+app = FastAPI()
+app.include_router(
+    make_genai_router(
+        text_generator=OllamaGenerator("llama3.2"),
+        embedder=OllamaEmbedder("nomic-embed-text"),
+    )
+)
+```
+
+Swapping `TextGenerator` / `Embedder` (torch) for `OllamaGenerator` /
+`OllamaEmbedder` is the only change — the `/generate`, `/generate/stream`,
+`/chat` and `/embed` endpoints are identical.
+
+!!! tip "`TextBackend` is the seam for any engine"
+    `TextBackend` is a `runtime_checkable` `Protocol` (`generate` / `chat`
+    / `stream`). Ollama is just one implementation; to plug in vLLM, TGI or
+    a hosted API, implement the same protocol and inject it into the router
+    / `Retriever` — the call site doesn't change.
 
 ## Embeddings and scale
 
@@ -471,6 +599,10 @@ directly when it is sync — the same code serves both.
   objects; `/generate/stream` streams tokens over SSE.
 - **`RedisEmbeddingCache`** — a shared vector cache; `Embedder` accepts a
   sync or async cache at the same call site.
+- **Ollama backend** — `OllamaGenerator` / `OllamaEmbedder` use the same
+  surface (router, `Retriever`, `GenerationConfig`) via a local Ollama
+  daemon: no torch, no weights, no `load()`; `TextBackend` is the seam for
+  other engines.
 - **`can_run` / `recommend`** — answer whether the host runs the model
   and what to do if not, **before** the download.
 - **RAG over a corpus** — `Retriever` + `VectorStore` (`InMemoryVectorStore`

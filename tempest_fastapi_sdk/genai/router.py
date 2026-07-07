@@ -31,9 +31,8 @@ if TYPE_CHECKING:
     from starlette.responses import StreamingResponse
 
     from tempest_fastapi_sdk.genai.audio import SpeechToText, TextToSpeech
-    from tempest_fastapi_sdk.genai.embeddings import Embedder
-    from tempest_fastapi_sdk.genai.rag import Retriever
-    from tempest_fastapi_sdk.genai.text import TextGenerator
+    from tempest_fastapi_sdk.genai.rag import Retriever, SupportsEmbed
+    from tempest_fastapi_sdk.genai.text import TextBackend
 
 
 class ChatMessageSchema(BaseSchema):
@@ -154,8 +153,8 @@ class TTSRequestSchema(BaseSchema):
 
 def make_genai_router(
     *,
-    text_generator: TextGenerator | None = None,
-    embedder: Embedder | None = None,
+    text_generator: TextBackend | None = None,
+    embedder: SupportsEmbed | None = None,
     retriever: Retriever | None = None,
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
@@ -179,8 +178,11 @@ def make_genai_router(
     including the router under an authenticated parent or wrapping it.
 
     Args:
-        text_generator (TextGenerator | None): Backs the text endpoints.
-        embedder (Embedder | None): Backs ``/embed``.
+        text_generator (TextBackend | None): Backs the text endpoints
+            (a ``TextGenerator``, an ``OllamaGenerator``, or any object
+            implementing the ``TextBackend`` protocol).
+        embedder (SupportsEmbed | None): Backs ``/embed`` (an ``Embedder``,
+            an ``OllamaEmbedder``, or any ``SupportsEmbed``).
         retriever (Retriever | None): Backs ``/rag``.
         speech_to_text (SpeechToText | None): Backs ``/transcribe``.
         text_to_speech (TextToSpeech | None): Backs ``/tts``.
