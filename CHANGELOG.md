@@ -5,6 +5,41 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.108.0] — 2026-07-07
+
+### Added
+
+- **Self-hosted AI chat, end to end (`tempest_fastapi_sdk.genai`)** — enough to
+  run an LLM chat app in-process, so a separate inference service becomes an
+  organizational choice rather than a necessity:
+  - **`AIChatPipeline`** — composable orchestrator: memory recall → optional
+    web-search augment → build messages (system + memory + context + history +
+    user turn, images on the user turn) → generate (with a bounded
+    tool-calling loop when tools + a tool-capable backend are present, else
+    plain chat) → optional TTS → best-effort index of both turns into memory.
+    `respond()` returns an `AIChatResult` (reply, sources, memory_hits,
+    tool_calls_made, audio_base64); `stream()` yields tokens.
+  - **`Tool`** (name/description/parameters/handler + `to_spec()`) for function
+    calling, and **`make_ai_chat_router`** exposing `POST /chat` +
+    `POST /chat/stream` (SSE). The router is stateless (history comes from the
+    request).
+  - **`ChatMemory`** — recency-aware, per-user long-term chat memory over a
+    Chroma collection: `index()` embeds + upserts and evicts oldest over a
+    per-user quota; `search()` does a metadata-filtered query scoped to the
+    user (optionally excluding the current chat), applies a similarity floor,
+    then blends a recency decay (`0.5 ** (age/halflife)`) before returning
+    top-k `MemoryHit`s. Takes any `SupportsEmbed`.
+  - **`ChromaVectorStore`** — a `VectorStore` backed by ChromaDB (ephemeral,
+    persistent, or injected client) under the new `[genai-chroma]` extra.
+  - **`OllamaGenerator` vision + tools** — `generate(images=[...])` and
+    per-message `images` on `chat()` for multimodal models; `chat_with_tools()`
+    returns the full Ollama message (content + `tool_calls`).
+  - **`SpeechToText` parity** — `beam_size` / `vad_filter` (constructor
+    defaults + per-call overrides) and `language_probability` on
+    `Transcription`.
+- New `[genai-chroma]` extra (`chromadb`). Install with
+  `pip install tempest-fastapi-sdk[genai-chroma]`.
+
 ## [0.107.0] — 2026-07-06
 
 ### Added

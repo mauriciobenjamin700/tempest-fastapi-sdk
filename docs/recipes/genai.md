@@ -17,6 +17,10 @@ está sendo entregue em fatias; esta página cobre a **primeira**: saber,
       [Áudio (voz)](#audio-voz)).
     - **v0.107:** backend Ollama — `OllamaGenerator` / `OllamaEmbedder`,
       LLM local sem torch (seção [Backend Ollama](#backend-ollama)).
+    - **v0.108:** memória de longo prazo, pipeline de chat com IA e
+      visão/tools — `ChatMemory` / `AIChatPipeline` (seções
+      [Memória de longo prazo](#memoria-de-longo-prazo) e
+      [Pipeline de chat com IA](#pipeline-de-chat-com-ia)).
 
 O extra `[genai]` (transformers + torch + accelerate) só é necessário pra
 **rodar** modelos. As funções de capacidade **importam sem o extra** — o
@@ -258,6 +262,207 @@ Trocar `TextGenerator` / `Embedder` (torch) por `OllamaGenerator` /
     / `stream`). Ollama é só uma implementação; pra plugar vLLM, TGI ou uma
     API hospedada, implemente o mesmo protocolo e injete no router /
     `Retriever` — o call site não muda.
+
+## Memória de longo prazo
+
+Um chat que esquece tudo entre sessões não é assistente — é um formulário.
+`ChatMemory` dá **memória de longo prazo** à conversa: cada turno vira uma
+embedding indexada, e antes de responder você recupera os trechos mais
+relevantes do **próprio usuário** — inclusive de chats antigos. Recall com
+recência: o que é semanticamente próximo *e* recente sobe primeiro.
+
+Requer o extra `[genai-chroma]` (ChromaDB). O embedder é qualquer
+`SupportsEmbed` — aqui um `OllamaEmbedder`, sem torch:
+
+```python
+import asyncio
+from datetime import datetime, timezone
+
+from tempest_fastapi_sdk.genai import OllamaEmbedder
+from tempest_fastapi_sdk.genai.rag import ChatMemory
+
+memory = ChatMemory(
+    OllamaEmbedder("nomic-embed-text"),
+    persist_directory="./chat_memory",   # None = só em memória
+    top_k=5,
+    min_similarity=0.55,
+)
+
+
+async def main() -> None:
+    now = datetime.now(timezone.utc)
+
+    # indexa dois turnos de uma conversa antiga:
+    await memory.index(
+        user_id="u1", chat_id="c1", message_id="m1",
+        role="user", content="Prefiro respostas curtas e diretas.",
+        created_at=now,
+    )
+    await memory.index(
+        user_id="u1", chat_id="c1", message_id="m2",
+        role="user", content="Trabalho com FastAPI e Postgres.",
+        created_at=now,
+    )
+
+    # num chat NOVO, recupera o que importa daquele usuário:
+    hits = await memory.search(
+        user_id="u1",
+        query="qual stack ele usa?",
+        exclude_chat_id="c2",     # ignora o chat atual
+    )
+    for hit in hits:
+        print(f"{hit.score:.2f}  {hit.content}")
+
+
+asyncio.run(main())
+```
+
+`search` filtra pelo `user_id`, aplica o piso de similaridade
+(`min_similarity`) e então mistura o decaimento de recência — cada
+`MemoryHit` traz `content`, `role`, `chat_id`, `created_at`, `similarity`
+(cosseno cru) e `score` (o valor final, já com recência). `delete_for_chat`
+apaga tudo de um chat quando ele é removido.
+
+!!! info "Extra `[genai-chroma]` e o decaimento de recência"
+    Instale com `pip install tempest-fastapi-sdk[genai-chroma]`. O `score`
+    final combina similaridade e recência via
+    `0.5 ** (idade_em_dias / recency_halflife_days)` — com o padrão de 14
+    dias, um trecho de 14 dias atrás pesa metade de um recém-escrito.
+    Ajuste a mistura com `recency_weight` (0 = só similaridade).
+
+!!! tip "RAG genérico com o `ChromaVectorStore`"
+    Precisa só de um vector store persistente (sem a lógica de memória por
+    usuário)? `ChromaVectorStore` é um `VectorStore` como os outros —
+    `add(chunks, vectors)` / `search(vector, top_k=)` — respaldado por
+    ChromaDB. Injete no `Retriever` no lugar do `InMemoryVectorStore` /
+    `PgVectorStore` pra ter um corpus persistido em disco:
+
+    ```python
+    from tempest_fastapi_sdk.genai import OllamaEmbedder
+    from tempest_fastapi_sdk.genai.rag import ChromaVectorStore, Retriever
+
+    rag = Retriever(
+        OllamaEmbedder("nomic-embed-text"),
+        ChromaVectorStore(collection_name="kb", persist_directory="./kb"),
+    )
+    ```
+
+## Pipeline de chat com IA
+
+Aqui as fatias anteriores se encaixam. Montar um chatbot "de verdade" —
+memória, RAG por web, tool-calling, TTS opcional — normalmente significa
+escrever (e manter) um microserviço de inferência inteiro. `AIChatPipeline`
+faz isso **dentro do seu processo**: você injeta as peças que já viu
+(`OllamaGenerator`, `ChatMemory`, `WebSearch`, `Tool`s) e chama `respond`.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import (
+    AIChatPipeline,
+    OllamaEmbedder,
+    OllamaGenerator,
+    Tool,
+)
+from tempest_fastapi_sdk.genai.rag import ChatMemory, SearxngBackend, WebSearch
+
+
+async def get_weather(args: dict) -> str:
+    """Handler da tool: recebe os args validados, devolve texto pro modelo."""
+    return f"Faz 24°C em {args['city']}."
+
+
+weather_tool = Tool(
+    name="get_weather",
+    description="Consulta o clima de uma cidade.",
+    parameters={
+        "type": "object",
+        "properties": {"city": {"type": "string"}},
+        "required": ["city"],
+    },
+    handler=get_weather,
+)
+
+pipeline = AIChatPipeline(
+    OllamaGenerator("llama3.2"),
+    memory=ChatMemory(OllamaEmbedder("nomic-embed-text")),
+    web_search=WebSearch(SearxngBackend("http://localhost:8080")),
+    tools=[weather_tool],
+    base_system_prompt="Você é um assistente objetivo, responde em PT-BR.",
+)
+
+
+async def main() -> None:
+    result = await pipeline.respond(
+        user_id="u1",
+        chat_id="c1",
+        content="Como está o tempo em Recife?",
+        use_web_search=False,      # True augmenta o prompt com busca web
+        speak=False,               # True gera áudio (precisa de tts=)
+    )
+    print(result.reply)
+    print("tools chamadas:", result.tool_calls_made)
+    print("fontes:", result.sources)
+    print("memórias usadas:", len(result.memory_hits))
+
+
+asyncio.run(main())
+```
+
+`respond` faz o ciclo completo: recupera memória → (opcional) augmenta com
+busca web → monta as mensagens (system + memória + contexto + histórico +
+turno do usuário; `images` viajam no turno do usuário) → gera (com loop de
+tool-calling limitado quando há `tools` + um backend que suporta, como o
+`OllamaGenerator`; senão, `chat` puro) → (opcional) TTS → indexa os dois
+turnos na memória (best-effort). O `AIChatResult` traz `reply`, `sources`,
+`memory_hits`, `tool_calls_made` e `audio_base64`.
+
+### Endpoint pronto: `make_ai_chat_router`
+
+Um router, um backend de chat inteiro no processo:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.genai import make_ai_chat_router
+
+app = FastAPI()
+app.include_router(make_ai_chat_router(pipeline))   # prefixo /api/ai-chat
+```
+
+Ele monta `POST /api/ai-chat/chat` (devolve `AIChatResult`) e
+`POST /api/ai-chat/chat/stream` (tokens via SSE).
+
+!!! note "O router é stateless"
+    O histórico vive no corpo do request, não no servidor — cada chamada
+    manda o `history`. Isso mantém o backend sem sessão (escala horizontal
+    de graça) e a memória de longo prazo cuida do "lembrar" via
+    `ChatMemory`.
+
+### Streaming
+
+`stream` devolve os tokens conforme saem (modo prompt; resolve qualquer
+tool-call **antes** de começar a emitir):
+
+```python
+import asyncio
+
+
+async def stream_demo() -> None:
+    async for token in pipeline.stream(
+        user_id="u1", chat_id="c1", content="Explique RAG em uma frase.",
+    ):
+        print(token, end="", flush=True)
+
+
+asyncio.run(stream_demo())
+```
+
+!!! tip "O microserviço de inferência vira uma escolha, não um requisito"
+    Com o pipeline in-process, ter um serviço separado só pra LLM passa a
+    ser uma decisão de organização (isolar a GPU, escalar à parte) — não
+    uma obrigação arquitetural. O mesmo `TextBackend` deixa você trocar
+    Ollama por vLLM/TGI depois sem mudar o call site.
 
 ## Embeddings e escala
 
@@ -604,6 +809,12 @@ direto quando é síncrono — o mesmo código serve aos dois.
   superfície (router, `Retriever`, `GenerationConfig`) via daemon Ollama
   local: sem torch, sem pesos, sem `load()`; `TextBackend` é a costura pra
   outras engines.
+- **`ChatMemory` / `ChromaVectorStore`** — memória de longo prazo por
+  usuário com recall por similaridade + recência (`[genai-chroma]`);
+  `ChromaVectorStore` é um `VectorStore` persistente pra RAG genérico.
+- **`AIChatPipeline` / `make_ai_chat_router`** — chatbot completo
+  in-process (memória + RAG web + tool-calling + TTS opcional); um router
+  stateless (`/chat` + `/chat/stream` SSE) mata o microserviço de inferência.
 - **`can_run` / `recommend`** — respondem se o host roda o modelo e o que
   fazer se não rodar, **antes** do download.
 - **RAG sobre corpus** — `Retriever` + `VectorStore` (`InMemoryVectorStore`
