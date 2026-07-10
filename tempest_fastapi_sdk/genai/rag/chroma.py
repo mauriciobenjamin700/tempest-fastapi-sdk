@@ -394,9 +394,7 @@ class ChatMemory:
             "created_at": _to_iso(created_at),
         }
         collection = self._get_collection()
-        await asyncio.to_thread(
-            self._evict_over_quota, str(user_id), str(message_id)
-        )
+        await asyncio.to_thread(self._evict_over_quota, str(user_id), str(message_id))
 
         def _upsert() -> None:
             collection.upsert(
@@ -551,9 +549,8 @@ class ChatMemory:
             if self.recency_weight > 0 and self.recency_halflife_days > 0:
                 decay = _recency_decay(created_at, self.recency_halflife_days, now)
                 effective = (
-                    (1.0 - self.recency_weight) * similarity
-                    + self.recency_weight * similarity * decay
-                )
+                    1.0 - self.recency_weight
+                ) * similarity + self.recency_weight * similarity * decay
             else:
                 effective = similarity
             scored.append(
