@@ -159,9 +159,11 @@ from tempest_fastapi_sdk.db import (
     BaseWebPushSubscriptionModel,
     DatabaseBackup,
     DestructiveMigrationError,
+    F,
     MFAMixin,
     OutboxRelay,
     OutboxStatus,
+    Q,
     RepositorySignal,
     SlowQueryLogger,
     SoftDeleteMixin,
@@ -384,7 +386,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.110.0"
+__version__: str = "0.111.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -480,6 +482,7 @@ __all__: list[str] = [
     "EnvFeatureFlagBackend",
     "EventStream",
     "ExpiredTokenException",
+    "F",
     "FeatureFlagBackend",
     "FeatureFlags",
     "FieldRef",
@@ -556,6 +559,7 @@ __all__: list[str] = [
     "PositiveIntField",
     "PriceField",
     "PrometheusMiddleware",
+    "Q",
     "RSAWebhookSignatureVerifier",
     "RabbitMQSettings",
     "RateLimitMiddleware",

@@ -41,6 +41,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.user_recovery_code_model.BaseUserRecoveryCodeModel
 ::: tempest_fastapi_sdk.db.user_recovery_code_model.make_user_recovery_code_model
 ::: tempest_fastapi_sdk.db.repository.BaseRepository
+::: tempest_fastapi_sdk.db.expressions.F
+::: tempest_fastapi_sdk.db.expressions.Q
 ::: tempest_fastapi_sdk.db.signals.RepositorySignal
 ::: tempest_fastapi_sdk.db.signals.connect
 ::: tempest_fastapi_sdk.db.signals.on_signal

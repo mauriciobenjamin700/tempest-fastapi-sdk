@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-import operator
-from collections.abc import Callable
 from datetime import date, datetime
 from typing import Any, Generic, List, NoReturn, TypeVar, cast
 from uuid import UUID
@@ -24,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from tempest_fastapi_sdk.db.audit import BaseAuditLogModel, snapshot_model
+from tempest_fastapi_sdk.db.expressions import F, Q, build_filter_condition
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.db.signals import RepositorySignal, emit, has_handlers
 from tempest_fastapi_sdk.exceptions.base import AppException
@@ -34,33 +33,6 @@ from tempest_fastapi_sdk.utils.datetime import utcnow
 logger = logging.getLogger(__name__)
 
 ModelType = TypeVar("ModelType", bound=BaseModel)
-
-#: Suffix-to-operator map for comparison filters. A filter key of the
-#: form ``"<column>__<op>"`` (e.g. ``"updated_at__gt"``) applies the
-#: corresponding SQL comparison instead of the default equality. This
-#: is the building block delta-sync queries need (``updated_at`` past a
-#: high-water mark) without dropping to raw SQLAlchemy.
-_COMPARISON_OPS: dict[str, Callable[[Any, Any], Any]] = {
-    "gt": operator.gt,
-    "gte": operator.ge,
-    "lt": operator.lt,
-    "lte": operator.le,
-    "ne": operator.ne,
-}
-
-
-def _escape_like(value: str) -> str:
-    """Escape LIKE/ILIKE wildcards so user input is treated literally.
-
-    Backslash is escaped first to avoid double-escaping the others.
-
-    Args:
-        value (str): The raw user-supplied search term.
-
-    Returns:
-        str: The same string with ``\\``, ``%`` and ``_`` escaped.
-    """
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class BaseRepository(Generic[ModelType]):
@@ -198,7 +170,10 @@ class BaseRepository(Generic[ModelType]):
     ) -> Any:
         """Apply filter conditions to a select/delete/update query.
 
-        See the class docstring for the recognized conventions.
+        See the class docstring for the recognized conventions. The
+        per-field logic is shared with :class:`Q` via
+        :func:`build_filter_condition`; the ``start_in`` / ``end_in``
+        whole-day range keys are dict-only sugar handled here.
 
         Args:
             query: The SQLAlchemy ``Select``, ``Delete`` or
@@ -212,50 +187,39 @@ class BaseRepository(Generic[ModelType]):
             if value is None:
                 continue
 
-            if field == "start_in" and isinstance(value, date):
+            if field in ("start_in", "end_in") and isinstance(value, date):
                 column = getattr(
                     self.model,
                     "date",
                     getattr(self.model, "created_at", None),
                 )
                 if column is not None:
-                    query = query.where(func.date(column) >= value)
+                    if field == "start_in":
+                        query = query.where(func.date(column) >= value)
+                    else:
+                        query = query.where(func.date(column) <= value)
                 continue
 
-            if field == "end_in" and isinstance(value, date):
-                column = getattr(
-                    self.model,
-                    "date",
-                    getattr(self.model, "created_at", None),
-                )
-                if column is not None:
-                    query = query.where(func.date(column) <= value)
-                continue
+            condition = build_filter_condition(self.model, field, value)
+            if condition is not None:
+                query = query.where(condition)
+        return query
 
-            if "__" in field:
-                base, _, op = field.rpartition("__")
-                op_func = _COMPARISON_OPS.get(op)
-                if op_func is not None:
-                    op_column = getattr(self.model, base, None)
-                    if op_column is not None:
-                        query = query.where(op_func(op_column, value))
-                    continue
+    def _apply_where(self, query: Any, where: Q | None) -> Any:
+        """Apply a :class:`Q` tree to a query, if given.
 
-            column = getattr(self.model, field, None)
-            if column is None:
-                continue
+        Args:
+            query: The SQLAlchemy query to mutate.
+            where (Q | None): The condition tree, or ``None``.
 
-            if field == "name" and isinstance(value, str):
-                pattern = f"%{_escape_like(value)}%"
-                query = query.where(column.ilike(pattern, escape="\\"))
-            elif isinstance(value, bool):
-                query = query.where(column.is_(value))
-            elif isinstance(value, list):
-                query = query.where(column.in_(value))
-            elif isinstance(value, date):
-                query = query.where(func.date(column) == value)
-            else:
-                query = query.where(column == value)
+        Returns:
+            The query, with the resolved clause added when non-empty.
+        """
+        if where is None:
+            return query
+        clause = where.resolve(self.model)
+        if clause is not None:
+            query = query.where(clause)
         return query
 
     def _relationship_options(self, with_: list[str]) -> list[Any]:
@@ -325,6 +289,7 @@ class BaseRepository(Generic[ModelType]):
         filters: dict[str, Any],
         for_update: bool = False,
         with_: list[str] | None = None,
+        where: Q | None = None,
     ) -> ModelType:
         """Return the single record matching ``filters``.
 
@@ -337,6 +302,9 @@ class BaseRepository(Generic[ModelType]):
                 ``["author", "comments.replies"]``). Avoids the
                 lazy-load ``MissingGreenlet`` error when accessing
                 relationships outside the session's async context.
+            where (Q | None): A :class:`Q` condition tree ANDed with
+                ``filters`` for ``OR`` / ``NOT`` logic the dict cannot
+                express.
 
         Returns:
             ModelType: The matching row.
@@ -347,7 +315,9 @@ class BaseRepository(Generic[ModelType]):
                 matches the filters.
             ValueError: When a ``with_`` path names a non-relationship.
         """
-        instance = await self.get_or_none(filters, for_update=for_update, with_=with_)
+        instance = await self.get_or_none(
+            filters, for_update=for_update, with_=with_, where=where
+        )
         if instance is None:
             self._raise_not_found()
         return instance
@@ -357,6 +327,7 @@ class BaseRepository(Generic[ModelType]):
         filters: dict[str, Any],
         for_update: bool = False,
         with_: list[str] | None = None,
+        where: Q | None = None,
     ) -> ModelType | None:
         """Return the single record matching ``filters`` or ``None``.
 
@@ -367,6 +338,8 @@ class BaseRepository(Generic[ModelType]):
             for_update (bool): Whether to acquire a row-level lock.
             with_ (list[str] | None): Relationship paths to eager-load;
                 see :meth:`get`.
+            where (Q | None): A :class:`Q` condition tree ANDed with
+                ``filters``.
 
         Returns:
             ModelType | None: The matching row, or ``None``.
@@ -376,6 +349,7 @@ class BaseRepository(Generic[ModelType]):
         """
         query = select(self.model)
         query = self._apply_filters(query, filters)
+        query = self._apply_where(query, where)
         if with_:
             query = query.options(*self._relationship_options(with_))
         if for_update:
@@ -448,7 +422,11 @@ class BaseRepository(Generic[ModelType]):
             return await self.session.merge(ref)
         return ref
 
-    async def exists(self, filters: dict[str, Any]) -> bool:
+    async def exists(
+        self,
+        filters: dict[str, Any],
+        where: Q | None = None,
+    ) -> bool:
         """Return whether at least one row matches ``filters``.
 
         Executes a ``SELECT 1 ... LIMIT 1`` so the row is never
@@ -456,12 +434,15 @@ class BaseRepository(Generic[ModelType]):
 
         Args:
             filters (dict[str, Any]): The filter conditions.
+            where (Q | None): A :class:`Q` condition tree ANDed with
+                ``filters``.
 
         Returns:
             bool: ``True`` if at least one row matches.
         """
         query = select(self.model.id)
         query = self._apply_filters(query, filters)
+        query = self._apply_where(query, where)
         query = query.limit(1)
         result = await self.session.execute(query)
         return result.scalar() is not None
@@ -499,6 +480,7 @@ class BaseRepository(Generic[ModelType]):
         order_by: Any | None = None,
         ascending: bool = True,
         with_: list[str] | None = None,
+        where: Q | None = None,
     ) -> ModelType | None:
         """Return the first matching row or ``None``.
 
@@ -512,6 +494,8 @@ class BaseRepository(Generic[ModelType]):
             ascending (bool): Whether to order ascending.
             with_ (list[str] | None): Relationship paths to eager-load;
                 see :meth:`get`.
+            where (Q | None): A :class:`Q` condition tree ANDed with
+                ``filters``.
 
         Returns:
             ModelType | None: The first matching row, or ``None``.
@@ -522,6 +506,7 @@ class BaseRepository(Generic[ModelType]):
         query = select(self.model)
         if filters:
             query = self._apply_filters(query, filters)
+        query = self._apply_where(query, where)
         if with_:
             query = query.options(*self._relationship_options(with_))
         if order_by is not None:
@@ -537,6 +522,7 @@ class BaseRepository(Generic[ModelType]):
         order_by: Any | None = None,
         ascending: bool = True,
         with_: list[str] | None = None,
+        where: Q | None = None,
     ) -> list[ModelType]:
         """Return every record matching ``filters``.
 
@@ -552,6 +538,9 @@ class BaseRepository(Generic[ModelType]):
             with_ (list[str] | None): Relationship paths to eager-load;
                 see :meth:`get`. Uses ``selectinload``, so N related
                 rows cost one extra query, not N.
+            where (Q | None): A :class:`Q` condition tree ANDed with
+                ``filters`` for ``OR`` / ``NOT`` logic (e.g.
+                ``Q(a=1) | Q(b=2)``).
 
         Returns:
             list[ModelType]: The matching rows.
@@ -563,6 +552,8 @@ class BaseRepository(Generic[ModelType]):
 
         if filters:
             query = self._apply_filters(query, filters)
+
+        query = self._apply_where(query, where)
 
         if with_:
             query = query.options(*self._relationship_options(with_))
@@ -581,6 +572,7 @@ class BaseRepository(Generic[ModelType]):
         page_size: int = 20,
         ascending: bool = True,
         query: Select[Any] | None = None,
+        where: Q | None = None,
     ) -> dict[str, Any]:
         """Return a single page of records matching ``filters``.
 
@@ -599,6 +591,8 @@ class BaseRepository(Generic[ModelType]):
                 when ``order_by`` is ``None``.
             query (Select[Any] | None): A pre-built ``Select``; if
                 ``None``, defaults to ``select(self.model)``.
+            where (Q | None): A :class:`Q` condition tree ANDed with
+                ``filters``; applied to both the page and its count.
 
         Returns:
             dict[str, Any]: A mapping with keys ``items``, ``total``,
@@ -609,6 +603,8 @@ class BaseRepository(Generic[ModelType]):
 
         if filters:
             query = self._apply_filters(query, filters)
+
+        query = self._apply_where(query, where)
 
         if order_by is None:
             query = query.order_by(self.model.created_at.desc())
@@ -1170,12 +1166,17 @@ class BaseRepository(Generic[ModelType]):
         Bypasses the unit-of-work entirely — useful for mass mutations
         that don't need to refresh each affected row in the session.
 
+        A value may be an :class:`F` expression to compute the new value
+        from existing columns in the database — ``{"stock": F("stock") -
+        1}`` decrements atomically, with no read-modify-write race.
+
         Args:
             filters (dict[str, Any]): Filter conditions identifying
                 the rows to mutate. An empty mapping is rejected to
                 prevent accidental table-wide updates.
             values (dict[str, Any]): Column-value pairs to set on the
-                matching rows.
+                matching rows. An :class:`F` value is resolved to a SQL
+                expression against this repository's model.
 
         Returns:
             int: The number of rows affected.
@@ -1189,10 +1190,14 @@ class BaseRepository(Generic[ModelType]):
                 "bulk_update requires non-empty filters; "
                 "pass an explicit truthy condition to update every row."
             )
+        resolved_values = {
+            key: value.resolve(self.model) if isinstance(value, F) else value
+            for key, value in values.items()
+        }
         try:
             query = update(self.model)
             query = self._apply_filters(query, filters)
-            query = query.values(**values)
+            query = query.values(**resolved_values)
             result = cast(CursorResult[Any], await self.session.execute(query))
             await self.session.commit()
             return result.rowcount or 0
@@ -1385,15 +1390,22 @@ class BaseRepository(Generic[ModelType]):
             await self.session.rollback()
             raise
 
-    async def delete_many(self, filters: dict[str, Any]) -> int:
+    async def delete_many(
+        self,
+        filters: dict[str, Any],
+        where: Q | None = None,
+    ) -> int:
         """Delete every row matching ``filters``.
 
-        An empty ``filters`` dict deletes every row in the table.
-        Callers must opt in explicitly — the behavior is intentional.
+        An empty ``filters`` dict (and no ``where``) deletes every row
+        in the table. Callers must opt in explicitly — the behavior is
+        intentional.
 
         Args:
             filters (dict[str, Any]): The conditions identifying the
                 rows to delete.
+            where (Q | None): A :class:`Q` condition tree ANDed with
+                ``filters``.
 
         Returns:
             int: The number of rows deleted.
@@ -1402,6 +1414,7 @@ class BaseRepository(Generic[ModelType]):
             query = delete(self.model)
             if filters:
                 query = self._apply_filters(query, filters)
+            query = self._apply_where(query, where)
             result = cast(CursorResult[Any], await self.session.execute(query))
             await self.session.commit()
             return result.rowcount or 0
@@ -1464,11 +1477,17 @@ class BaseRepository(Generic[ModelType]):
         instance.is_active = True
         return await self.update(instance)
 
-    async def count(self, filters: dict[str, Any] | None = None) -> int:
+    async def count(
+        self,
+        filters: dict[str, Any] | None = None,
+        where: Q | None = None,
+    ) -> int:
         """Count the rows matching ``filters``.
 
         Args:
             filters (dict[str, Any] | None): The filter conditions.
+            where (Q | None): A :class:`Q` condition tree ANDed with
+                ``filters``.
 
         Returns:
             int: The matching row count.
@@ -1476,6 +1495,7 @@ class BaseRepository(Generic[ModelType]):
         query = select(func.count()).select_from(self.model)
         if filters:
             query = self._apply_filters(query, filters)
+        query = self._apply_where(query, where)
         result = await self.session.execute(query)
         return result.scalar() or 0
 

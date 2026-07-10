@@ -5,6 +5,30 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.111.0] — 2026-07-10
+
+### Added
+
+- **`F` / `Q` expression wrappers (`tempest_fastapi_sdk.db`)** — Django-style
+  ergonomics over SQLAlchemy, wired into `BaseRepository`:
+  - **`F`** references a column by name and builds arithmetic against it
+    (`F("stock") - 1`, `100 - F("stock")`, `F("price") * F("qty")`). Passed as a
+    `bulk_update` value it computes the new value in the database — an atomic
+    update with no read-modify-write race.
+  - **`Q`** captures the repository's dict-filter conventions (`name` ILIKE,
+    `field__gte` comparisons, list `IN`, …) as an object combined with `&` / `|`
+    / `~` for real `OR` / `NOT` trees. Pass it as the new `where=` argument on
+    `get` / `get_or_none` / `first` / `list` / `count` / `exists` / `paginate` /
+    `delete_many`; it is ANDed with any dict `filters`. `TenantScopedRepository`
+    threads `where=` through its scoped overrides.
+  - Both are re-exported at the package root and from `tempest_fastapi_sdk.db`.
+
+### Changed
+
+- `BaseRepository._apply_filters` now shares its per-field logic with `Q` via
+  the new `build_filter_condition` helper (single source of truth for the
+  filter conventions); behavior is unchanged.
+
 ## [0.110.0] — 2026-07-10
 
 ### Added

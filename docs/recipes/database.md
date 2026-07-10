@@ -485,6 +485,54 @@ pela MRO da instância).
     de uma fixture para um handler de um teste não vazar para o
     seguinte.
 
+### Expressões `F` e `Q`
+
+Para quem vem do Django: `F` referencia uma coluna dentro da query e `Q`
+compõe condições com `OR`/`NOT`. Os dois plugam direto no repository.
+
+**`F` — atualização atômica no banco.** Decrementar estoque com
+read-modify-write tem race: dois requests leem `10`, ambos gravam `9`.
+`F("stock") - 1` calcula no banco, numa instrução — sem lost update:
+
+```python
+from tempest_fastapi_sdk import F
+
+# stock = stock - 1, no banco
+await repository.bulk_update({"id": product_id}, {"stock": F("stock") - 1})
+
+# aritmética dos dois lados e entre colunas
+await repository.bulk_update({"id": pid}, {"stock": 100 - F("stock")})
+await repository.bulk_update({"id": pid}, {"total": F("price") * F("qty")})
+```
+
+**`Q` — `OR` / `NOT` que o dict de filtros não expressa.** O dict ANDeia
+tudo; `Q` combina com `&` / `|` / `~` e entra via `where=`:
+
+```python
+from tempest_fastapi_sdk import Q
+
+# status open OU pending
+abertos = await repository.list(where=Q(status="open") | Q(status="pending"))
+
+# ativos que NÃO são guest
+ativos = await repository.list(where=Q(is_active=True) & ~Q(role="guest"))
+
+# combina com o dict (AND): estoque >= 5 E (open OU closed)
+rows = await repository.list(
+    {"stock__gte": 5}, where=Q(status="open") | Q(status="closed")
+)
+```
+
+`Q` usa as mesmas convenções do dict de filtros (`name` ILIKE,
+`campo__gte`, lista → `IN`, …), então `Q(priority__gte=5, name="ana")` é
+o `AND` dessas condições. `where=` funciona em `list` / `first` / `get` /
+`get_or_none` / `count` / `exists` / `paginate` / `delete_many`.
+
+!!! note "SQLAlchemy puro continua ali"
+    `F`/`Q` são açúcar tipado sobre expressões que o SQLAlchemy já tem.
+    Precisou de algo que eles não cobrem? Use `select(...)` direto — o
+    repository não fica no caminho.
+
 ---
 
 ## 4. Filtros por convenção

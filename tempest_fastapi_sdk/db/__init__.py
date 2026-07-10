@@ -29,6 +29,8 @@ from tempest_fastapi_sdk.db.backup import (
 from tempest_fastapi_sdk.db.connection import (
     AsyncDatabaseManager as AsyncDatabaseManager,
 )
+from tempest_fastapi_sdk.db.expressions import F as F
+from tempest_fastapi_sdk.db.expressions import Q as Q
 from tempest_fastapi_sdk.db.migrations import AlembicHelper as AlembicHelper
 from tempest_fastapi_sdk.db.migrations import (
     DestructiveMigrationError as DestructiveMigrationError,
@@ -98,9 +100,11 @@ __all__: list[str] = [
     "BaseWebPushSubscriptionModel",
     "DatabaseBackup",
     "DestructiveMigrationError",
+    "F",
     "MFAMixin",
     "OutboxRelay",
     "OutboxStatus",
+    "Q",
     "RepositorySignal",
     "SignalHandler",
     "SlowQueryLogger",

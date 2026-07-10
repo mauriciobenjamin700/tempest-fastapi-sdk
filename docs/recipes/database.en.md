@@ -482,6 +482,56 @@ through the instance's MRO).
     (from `tempest_fastapi_sdk.db.signals`) in a fixture teardown so one
     test's handler never leaks into the next.
 
+### `F` and `Q` expressions
+
+For Django refugees: `F` references a column inside the query and `Q`
+composes conditions with `OR`/`NOT`. Both plug straight into the
+repository.
+
+**`F` — atomic in-database update.** Decrementing stock with
+read-modify-write races: two requests read `10`, both write `9`.
+`F("stock") - 1` computes in the database, in one statement — no lost
+update:
+
+```python
+from tempest_fastapi_sdk import F
+
+# stock = stock - 1, in the database
+await repository.bulk_update({"id": product_id}, {"stock": F("stock") - 1})
+
+# arithmetic from either side and between columns
+await repository.bulk_update({"id": pid}, {"stock": 100 - F("stock")})
+await repository.bulk_update({"id": pid}, {"total": F("price") * F("qty")})
+```
+
+**`Q` — the `OR` / `NOT` the filter dict can't express.** The dict ANDs
+everything; `Q` combines with `&` / `|` / `~` and enters via `where=`:
+
+```python
+from tempest_fastapi_sdk import Q
+
+# status open OR pending
+open_ = await repository.list(where=Q(status="open") | Q(status="pending"))
+
+# active and NOT guest
+active = await repository.list(where=Q(is_active=True) & ~Q(role="guest"))
+
+# combine with the dict (AND): stock >= 5 AND (open OR closed)
+rows = await repository.list(
+    {"stock__gte": 5}, where=Q(status="open") | Q(status="closed")
+)
+```
+
+`Q` uses the same conventions as the filter dict (`name` ILIKE,
+`field__gte`, list → `IN`, …), so `Q(priority__gte=5, name="ana")` is the
+`AND` of those conditions. `where=` works on `list` / `first` / `get` /
+`get_or_none` / `count` / `exists` / `paginate` / `delete_many`.
+
+!!! note "Raw SQLAlchemy is still there"
+    `F`/`Q` are typed sugar over expressions SQLAlchemy already has.
+    Need something they don't cover? Use `select(...)` directly — the
+    repository doesn't get in the way.
+
 ---
 
 ## 4. Convention-based filters

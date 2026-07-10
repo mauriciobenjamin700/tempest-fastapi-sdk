@@ -43,7 +43,7 @@ Esta página lista o que o SDK **ainda não oferece** + o que já foi entregue. 
 | Graceful shutdown — drenar requisições in-flight no `SIGTERM` | ✅ v0.46.0 | `GracefulShutdownMiddleware` (`tempest_fastapi_sdk.api.middlewares.graceful`) |
 | `tempest db seed` — carregar fixtures JSON/Python | ✅ v0.47.0 | `tempest_fastapi_sdk.cli.db` |
 | CLI: `tempest secrets rotate` | ✅ v0.47.0 | `tempest_fastapi_sdk.cli.secrets` |
-| F() / Q() expressions wrappers para SQLAlchemy | ❌ pendente | — |
+| F() / Q() expressions wrappers para SQLAlchemy | ✅ v0.111.0 | `tempest_fastapi_sdk.db` (`F` / `Q`) |
 | eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) | ✅ v0.109.0 | `with_=` em `get`/`get_or_none`/`get_by_id`/`first`/`list` |
 | Signals (`pre_save`/`post_save`/`pre_delete`/`post_delete`) no `BaseRepository` | ✅ v0.109.0 | `tempest_fastapi_sdk.db.signals` (`connect`/`on_signal`) |
 | Permissions framework granular com object-level (`user.has_perm("order.delete", obj=order)`) | ✅ v0.110.0 | `tempest_fastapi_sdk.authz` |
@@ -75,8 +75,8 @@ Trabalho genuinamente não lançado (posterior à v0.89.0). A ordem segue impact
 
 | Release | Conteúdo |
 |---------|----------|
-| **próximo** | F() / Q() expressions wrappers para SQLAlchemy |
-| **futuro** | system checks no startup (`tempest check-config`), management commands framework (`tempest <cmd>` registrado pelo projeto) |
+| **próximo** | system checks no startup (`tempest check-config`) |
+| **futuro** | management commands framework (`tempest <cmd>` registrado pelo projeto) |
 
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
@@ -93,6 +93,16 @@ O plano de ergonomia GenAI + os dois módulos de aplicação abaixo já
 | **`RedisEmbeddingCache`** | ✅ v0.105 | Cache de vetores async compartilhado entre workers; `Embedder` aceita cache sync ou async. [Receita »](recipes/genai.md) |
 | **Chat (`tempest_fastapi_sdk.chat`)** | ✅ v0.105 | `ChatService` + tabelas base + `make_chat_router` + tempo real via `SSEBroker`. [Receita »](recipes/chat.md) |
 | **Comentários + avaliações (`reviews`)** | ✅ v0.105 | `ReviewService` (comentar, avaliar 0–5, agregar) + `make_reviews_router`; `RatingField`. [Receita »](recipes/reviews.md) |
+
+## Entregue na v0.111.0
+
+Wrappers `F` / `Q` estilo Django sobre o SQLAlchemy, plugados no
+`BaseRepository`:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`F` (expressão de coluna)** | ✅ v0.111 | `F("stock") - 1` computa no banco numa instrução — update atômico sem race. Aritmética dos dois lados e entre colunas; resolvido em `bulk_update`. [Receita »](recipes/database.md) |
+| **`Q` (condições compostas)** | ✅ v0.111 | `Q(status="open") \| Q(...)`, `&`, `~` para `OR`/`NOT` que o dict de filtros não expressa; mesmas convenções (`campo__gte`, `name` ILIKE, lista → `IN`). `where=` em `list`/`first`/`get`/`get_or_none`/`count`/`exists`/`paginate`/`delete_many`. [Receita »](recipes/database.md) |
 
 ## Entregue na v0.110.0
 
