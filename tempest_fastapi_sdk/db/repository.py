@@ -6,7 +6,7 @@ import logging
 import operator
 from collections.abc import Callable
 from datetime import date, datetime
-from typing import Any, Generic, List, TypeVar, cast
+from typing import Any, Generic, List, NoReturn, TypeVar, cast
 from uuid import UUID
 
 from sqlalchemy import (
@@ -21,9 +21,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from tempest_fastapi_sdk.db.audit import BaseAuditLogModel, snapshot_model
 from tempest_fastapi_sdk.db.model import BaseModel
+from tempest_fastapi_sdk.db.signals import RepositorySignal, emit, has_handlers
 from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
@@ -256,7 +258,60 @@ class BaseRepository(Generic[ModelType]):
                 query = query.where(column == value)
         return query
 
-    def _raise_not_found(self) -> None:
+    def _relationship_options(self, with_: list[str]) -> list[Any]:
+        """Build eager-load loader options for the given relationship paths.
+
+        Each entry is a relationship name on ``self.model`` and may be
+        dotted to traverse nested relationships (e.g. ``"posts.comments"``
+        loads ``posts`` then each post's ``comments``). Every hop uses
+        ``selectinload`` (a separate ``SELECT ... IN`` per level), which
+        avoids the row multiplication of a join and works for both
+        collection and scalar relationships.
+
+        Args:
+            with_ (list[str]): Relationship paths to eager-load.
+
+        Returns:
+            list[Any]: SQLAlchemy loader options to pass to
+            ``query.options(*...)``.
+
+        Raises:
+            ValueError: When a path segment is not a relationship on the
+                model reached at that hop.
+        """
+        options: list[Any] = []
+        for path in with_:
+            current: type[Any] = self.model
+            loader: Any = None
+            for part in path.split("."):
+                mapper = inspect(current, raiseerr=False)
+                if mapper is None or part not in mapper.relationships:
+                    raise ValueError(
+                        f"{current.__name__} has no relationship {part!r} "
+                        f"(eager-load path {path!r})",
+                    )
+                attr = getattr(current, part)
+                loader = (
+                    selectinload(attr) if loader is None else loader.selectinload(attr)
+                )
+                current = mapper.relationships[part].mapper.class_
+            options.append(loader)
+        return options
+
+    async def _emit_signal(
+        self,
+        signal: RepositorySignal,
+        instance: ModelType,
+    ) -> None:
+        """Emit ``signal`` for ``instance`` to any registered handlers.
+
+        Args:
+            signal (RepositorySignal): The lifecycle moment.
+            instance (ModelType): The ORM row passed to each handler.
+        """
+        await emit(type(instance), signal, instance)
+
+    def _raise_not_found(self) -> NoReturn:
         """Raise the configured not-found exception with the resolved message.
 
         Raises:
@@ -269,6 +324,7 @@ class BaseRepository(Generic[ModelType]):
         self,
         filters: dict[str, Any],
         for_update: bool = False,
+        with_: list[str] | None = None,
     ) -> ModelType:
         """Return the single record matching ``filters``.
 
@@ -276,6 +332,11 @@ class BaseRepository(Generic[ModelType]):
             filters (dict[str, Any]): The column-value pairs.
             for_update (bool): Whether to acquire a row-level lock
                 (``SELECT ... FOR UPDATE``). Defaults to ``False``.
+            with_ (list[str] | None): Relationship paths to eager-load
+                (``selectinload``), dotted for nested relations (e.g.
+                ``["author", "comments.replies"]``). Avoids the
+                lazy-load ``MissingGreenlet`` error when accessing
+                relationships outside the session's async context.
 
         Returns:
             ModelType: The matching row.
@@ -284,16 +345,18 @@ class BaseRepository(Generic[ModelType]):
             AppException: ``self.not_found_exception`` with the
                 configured ``not_found_message`` if no record
                 matches the filters.
+            ValueError: When a ``with_`` path names a non-relationship.
         """
-        instance = await self.get_or_none(filters, for_update=for_update)
+        instance = await self.get_or_none(filters, for_update=for_update, with_=with_)
         if instance is None:
             self._raise_not_found()
-        return cast(ModelType, instance)
+        return instance
 
     async def get_or_none(
         self,
         filters: dict[str, Any],
         for_update: bool = False,
+        with_: list[str] | None = None,
     ) -> ModelType | None:
         """Return the single record matching ``filters`` or ``None``.
 
@@ -302,12 +365,19 @@ class BaseRepository(Generic[ModelType]):
         Args:
             filters (dict[str, Any]): The column-value pairs.
             for_update (bool): Whether to acquire a row-level lock.
+            with_ (list[str] | None): Relationship paths to eager-load;
+                see :meth:`get`.
 
         Returns:
             ModelType | None: The matching row, or ``None``.
+
+        Raises:
+            ValueError: When a ``with_`` path names a non-relationship.
         """
         query = select(self.model)
         query = self._apply_filters(query, filters)
+        if with_:
+            query = query.options(*self._relationship_options(with_))
         if for_update:
             query = query.with_for_update()
         result = await self.session.execute(query)
@@ -318,12 +388,15 @@ class BaseRepository(Generic[ModelType]):
         self,
         id: UUID,
         for_update: bool = False,
+        with_: list[str] | None = None,
     ) -> ModelType:
         """Return the record with the given primary key.
 
         Args:
             id (UUID): The primary key to look up.
             for_update (bool): Whether to acquire a row-level lock.
+            with_ (list[str] | None): Relationship paths to eager-load;
+                see :meth:`get`.
 
         Returns:
             ModelType: The matching row.
@@ -331,8 +404,9 @@ class BaseRepository(Generic[ModelType]):
         Raises:
             AppException: ``self.not_found_exception`` if no record
                 with ``id`` exists.
+            ValueError: When a ``with_`` path names a non-relationship.
         """
-        return await self.get({"id": id}, for_update=for_update)
+        return await self.get({"id": id}, for_update=for_update, with_=with_)
 
     async def resolve(
         self,
@@ -424,6 +498,7 @@ class BaseRepository(Generic[ModelType]):
         filters: dict[str, Any] | None = None,
         order_by: Any | None = None,
         ascending: bool = True,
+        with_: list[str] | None = None,
     ) -> ModelType | None:
         """Return the first matching row or ``None``.
 
@@ -435,13 +510,20 @@ class BaseRepository(Generic[ModelType]):
             order_by: A SQLAlchemy column expression to order by.
                 ``None`` keeps insertion order.
             ascending (bool): Whether to order ascending.
+            with_ (list[str] | None): Relationship paths to eager-load;
+                see :meth:`get`.
 
         Returns:
             ModelType | None: The first matching row, or ``None``.
+
+        Raises:
+            ValueError: When a ``with_`` path names a non-relationship.
         """
         query = select(self.model)
         if filters:
             query = self._apply_filters(query, filters)
+        if with_:
+            query = query.options(*self._relationship_options(with_))
         if order_by is not None:
             query = query.order_by(order_by if ascending else order_by.desc())
         query = query.limit(1)
@@ -454,6 +536,7 @@ class BaseRepository(Generic[ModelType]):
         filters: dict[str, Any] | None = None,
         order_by: Any | None = None,
         ascending: bool = True,
+        with_: list[str] | None = None,
     ) -> list[ModelType]:
         """Return every record matching ``filters``.
 
@@ -466,14 +549,23 @@ class BaseRepository(Generic[ModelType]):
                 ``MyModel.name``). ``None`` keeps insertion order.
             ascending (bool): Whether to order ascending. Ignored
                 when ``order_by`` is ``None``.
+            with_ (list[str] | None): Relationship paths to eager-load;
+                see :meth:`get`. Uses ``selectinload``, so N related
+                rows cost one extra query, not N.
 
         Returns:
             list[ModelType]: The matching rows.
+
+        Raises:
+            ValueError: When a ``with_`` path names a non-relationship.
         """
         query = select(self.model)
 
         if filters:
             query = self._apply_filters(query, filters)
+
+        if with_:
+            query = query.options(*self._relationship_options(with_))
 
         if order_by is not None:
             query = query.order_by(order_by if ascending else order_by.desc())
@@ -753,9 +845,11 @@ class BaseRepository(Generic[ModelType]):
                 constraint, FK error, etc.).
         """
         try:
+            await self._emit_signal(RepositorySignal.PRE_SAVE, model)
             self.session.add(model)
             await self.session.commit()
             await self.session.refresh(model)
+            await self._emit_signal(RepositorySignal.POST_SAVE, model)
             return model
         except IntegrityError as exc:
             await self.session.rollback()
@@ -783,10 +877,13 @@ class BaseRepository(Generic[ModelType]):
             ConflictException: On integrity violations.
         """
         try:
+            for model in models:
+                await self._emit_signal(RepositorySignal.PRE_SAVE, model)
             self.session.add_all(models)
             await self.session.commit()
             for model in models:
                 await self.session.refresh(model)
+                await self._emit_signal(RepositorySignal.POST_SAVE, model)
             return models
         except IntegrityError as exc:
             await self.session.rollback()
@@ -1013,8 +1110,10 @@ class BaseRepository(Generic[ModelType]):
             ConflictException: On integrity violations.
         """
         try:
+            await self._emit_signal(RepositorySignal.PRE_SAVE, model)
             await self.session.commit()
             await self.session.refresh(model)
+            await self._emit_signal(RepositorySignal.POST_SAVE, model)
             return model
         except IntegrityError as exc:
             await self.session.rollback()
@@ -1041,7 +1140,11 @@ class BaseRepository(Generic[ModelType]):
             ConflictException: On integrity violations.
         """
         try:
+            for model in models:
+                await self._emit_signal(RepositorySignal.PRE_SAVE, model)
             await self.session.commit()
+            for model in models:
+                await self._emit_signal(RepositorySignal.POST_SAVE, model)
             return models
         except IntegrityError as exc:
             await self.session.rollback()
@@ -1240,6 +1343,13 @@ class BaseRepository(Generic[ModelType]):
     async def delete(self, id: UUID) -> None:
         """Delete a single row by its primary key.
 
+        Fires ``PRE_DELETE`` before and ``POST_DELETE`` after the
+        commit **only when a handler is registered** — otherwise the
+        row is never loaded and this stays a single ``DELETE``
+        statement. When signals are active the row is loaded once,
+        passed to the handlers, and detached before commit so its
+        column values remain readable in ``POST_DELETE``.
+
         Args:
             id (UUID): The primary key.
 
@@ -1248,11 +1358,27 @@ class BaseRepository(Generic[ModelType]):
                 with ``id`` exists.
         """
         try:
+            instance: ModelType | None = None
+            wants_signals = has_handlers(
+                self.model, RepositorySignal.PRE_DELETE
+            ) or has_handlers(self.model, RepositorySignal.POST_DELETE)
+            if wants_signals:
+                instance = await self.get_or_none({"id": id})
+                if instance is None:
+                    self._raise_not_found()
+                await self._emit_signal(RepositorySignal.PRE_DELETE, instance)
+
             query = delete(self.model).where(self.model.id == id)
             result = cast(CursorResult[Any], await self.session.execute(query))
             if result.rowcount == 0:
                 self._raise_not_found()
+
+            if instance is not None:
+                self.session.expunge(instance)
             await self.session.commit()
+
+            if instance is not None:
+                await self._emit_signal(RepositorySignal.POST_DELETE, instance)
         except AppException:
             raise
         except Exception:

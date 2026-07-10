@@ -44,8 +44,8 @@ What the SDK **doesn't ship yet** + what already landed. Sorted by impact, not i
 | `tempest db seed` — load JSON/Python fixtures | ✅ v0.47.0 | `tempest_fastapi_sdk.cli.db` |
 | CLI: `tempest secrets rotate` | ✅ v0.47.0 | `tempest_fastapi_sdk.cli.secrets` |
 | F() / Q() expression wrappers for SQLAlchemy | ❌ pending | — |
-| eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) | ❌ pending | — |
-| Signals (`pre_save`/`post_save`/`pre_delete`) via SQLAlchemy events on `BaseRepository` | ❌ pending | — |
+| eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) | ✅ v0.109.0 | `with_=` on `get`/`get_or_none`/`get_by_id`/`first`/`list` |
+| Signals (`pre_save`/`post_save`/`pre_delete`/`post_delete`) on `BaseRepository` | ✅ v0.109.0 | `tempest_fastapi_sdk.db.signals` (`connect`/`on_signal`) |
 | Object-level permissions framework (`user.has_perm("order.delete", obj=order)`) | ❌ pending | — |
 | Startup system checks (`tempest check-config`) | ❌ pending | — |
 | Management commands framework — project-registered `tempest <cmd>` | ❌ pending | — |
@@ -75,8 +75,7 @@ Genuinely unreleased work (after v0.89.0). Ordered by impact, not by version num
 
 | Release | Content |
 |---------|---------|
-| **v0.90.0+** | eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) + signals (`pre_save`/`post_save`/`pre_delete`) via SQLAlchemy events on `BaseRepository` |
-| **v0.90.0+** | Object-level permissions framework (`user.has_perm("order.delete", obj=order)`) |
+| **next** | Object-level permissions framework (`user.has_perm("order.delete", obj=order)`) |
 | **future** | F() / Q() expression wrappers, startup system checks (`tempest check-config`), management commands framework (project-registered `tempest <cmd>`) |
 
 !!! note "This roadmap is honest, not aspirational"
@@ -94,6 +93,15 @@ The GenAI ergonomics plan plus the two application modules below have
 | **`RedisEmbeddingCache`** | ✅ v0.105 | Async vector cache shared across workers; `Embedder` accepts a sync or async cache. [Recipe »](recipes/genai.md) |
 | **Chat (`tempest_fastapi_sdk.chat`)** | ✅ v0.105 | `ChatService` + base tables + `make_chat_router` + real time via `SSEBroker`. [Recipe »](recipes/chat.md) |
 | **Comments + ratings (`reviews`)** | ✅ v0.105 | `ReviewService` (comment, 0–5 rating, aggregate) + `make_reviews_router`; `RatingField`. [Recipe »](recipes/reviews.md) |
+
+## Shipped in v0.109.0
+
+Two `BaseRepository` upgrades, both pulled from "What's next" above:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **Eager-load (`with_=`)** | ✅ v0.109 | `get`/`get_or_none`/`get_by_id`/`first`/`list` accept `with_=["author", "books.reviews"]` (dotted paths for nested); uses `selectinload`, so N related rows cost one extra query, not N. Kills the `MissingGreenlet` error from touching a relationship outside the async context. [Recipe »](recipes/database.md) |
+| **Lifecycle signals** | ✅ v0.109 | `tempest_fastapi_sdk.db.signals`: `connect`/`on_signal`/`disconnect` register sync or async handlers per model for `PRE_SAVE`/`POST_SAVE`/`PRE_DELETE`/`POST_DELETE`. They fire on the unit-of-work path (`add`/`update`/`delete`/…); the set-based bulk methods bypass by design. A `PRE_SAVE` handler that raises vetoes the write. [Recipe »](recipes/database.md) |
 
 ## Shipped in v0.107.0 / v0.108.0
 

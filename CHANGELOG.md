@@ -5,6 +5,38 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.109.0] — 2026-07-10
+
+### Added
+
+- **`BaseRepository` eager-loading via `with_=`** — every read method
+  (`get`, `get_or_none`, `get_by_id`, `first`, `list`) now accepts
+  `with_=["author", "orders.items"]` to eager-load relationships in the same
+  query. Dotted paths traverse nested relationships; each hop uses
+  `selectinload`, so N related rows cost one extra query per level (not N) and
+  both collection and scalar relationships work. Kills the `MissingGreenlet`
+  error from touching a relationship after the async session closed. An unknown
+  relationship name raises `ValueError` up front.
+- **`BaseRepository` lifecycle signals (`tempest_fastapi_sdk.db.signals`)** — a
+  process-global registry emitting `PRE_SAVE` / `POST_SAVE` / `PRE_DELETE` /
+  `POST_DELETE` around the unit-of-work write path. Register sync or async
+  handlers per model with `connect` / `on_signal` (decorator) / `disconnect`;
+  `RepositorySignal` enum + `SignalHandler` type + `clear_signals` (test
+  isolation) are exported. Handlers registered on a base model apply to
+  subclasses (MRO-resolved). `add` / `add_all` / `update` / `update_many` /
+  `soft_delete` / `restore` / `delete` fire signals; the set-based bulk methods
+  (`bulk_update`, `bulk_create_values`, `bulk_upsert`, `delete_many`,
+  `delete_batch`) bypass them by design. A `PRE_SAVE` handler that raises vetoes
+  the write (rollback + re-raise). `PRE_DELETE`/`POST_DELETE` only load the row
+  when a delete handler is registered — zero overhead otherwise — and the row is
+  detached before commit so its columns stay readable in `POST_DELETE`.
+  `RepositorySignal` and `on_signal` are also re-exported at the package root.
+
+### Changed
+
+- `BaseRepository._raise_not_found` is now typed `NoReturn`, so type-checkers
+  narrow correctly after a not-found guard (removed a redundant `cast`).
+
 ## [0.108.0] — 2026-07-10
 
 ### Added
