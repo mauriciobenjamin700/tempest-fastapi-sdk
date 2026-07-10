@@ -145,9 +145,7 @@ class _FakeCollection:
                 self._store.pop(entry_id, None)
             return
         for entry_id in [
-            eid
-            for eid, row in self._store.items()
-            if _match(row["metadata"], where)
+            eid for eid, row in self._store.items() if _match(row["metadata"], where)
         ]:
             self._store.pop(entry_id, None)
 
@@ -253,9 +251,7 @@ class TestChatMemory:
                 "cat": [1.0, 0.0],
             }
         )
-        memory = ChatMemory(
-            embedder, client=chroma_client, collection_name="m-rt"
-        )
+        memory = ChatMemory(embedder, client=chroma_client, collection_name="m-rt")
         assert await memory.index(
             user_id="u1",
             chat_id="c1",
@@ -281,9 +277,7 @@ class TestChatMemory:
 
     async def test_search_scopes_to_user(self, chroma_client: Any) -> None:
         embedder = _FakeEmbedder({"topic text one": [1.0, 0.0], "topic": [1.0, 0.0]})
-        memory = ChatMemory(
-            embedder, client=chroma_client, collection_name="m-scope"
-        )
+        memory = ChatMemory(embedder, client=chroma_client, collection_name="m-scope")
         await memory.index(
             user_id="owner",
             chat_id="c1",
@@ -304,12 +298,8 @@ class TestChatMemory:
         assert [h.chat_id for h in hits] == ["c1"]
 
     async def test_search_excludes_chat(self, chroma_client: Any) -> None:
-        embedder = _FakeEmbedder(
-            {"same topic here": [1.0, 0.0], "topic": [1.0, 0.0]}
-        )
-        memory = ChatMemory(
-            embedder, client=chroma_client, collection_name="m-excl"
-        )
+        embedder = _FakeEmbedder({"same topic here": [1.0, 0.0], "topic": [1.0, 0.0]})
+        memory = ChatMemory(embedder, client=chroma_client, collection_name="m-excl")
         await memory.index(
             user_id="u1",
             chat_id="active",
@@ -335,9 +325,7 @@ class TestChatMemory:
         embedder = _FakeEmbedder(
             {"weakly related text": [0.9, 0.4358898943540674], "query": [1.0, 0.0]}
         )
-        memory = ChatMemory(
-            embedder, client=chroma_client, collection_name="m-floor"
-        )
+        memory = ChatMemory(embedder, client=chroma_client, collection_name="m-floor")
         await memory.index(
             user_id="u1",
             chat_id="c1",
@@ -347,14 +335,10 @@ class TestChatMemory:
             created_at=_now(),
         )
         # Similarity is ~0.9; a 0.95 floor drops it.
-        hits = await memory.search(
-            user_id="u1", query="query", min_similarity=0.95
-        )
+        hits = await memory.search(user_id="u1", query="query", min_similarity=0.95)
         assert hits == []
         # A permissive floor keeps it.
-        kept = await memory.search(
-            user_id="u1", query="query", min_similarity=0.5
-        )
+        kept = await memory.search(user_id="u1", query="query", min_similarity=0.5)
         assert len(kept) == 1
 
     async def test_recency_reranks_over_similarity(self, chroma_client: Any) -> None:
@@ -435,12 +419,8 @@ class TestChatMemory:
         assert remaining == {"m2", "m3"}
 
     async def test_delete_for_chat(self, chroma_client: Any) -> None:
-        embedder = _FakeEmbedder(
-            {"content to delete": [1.0, 0.0], "query": [1.0, 0.0]}
-        )
-        memory = ChatMemory(
-            embedder, client=chroma_client, collection_name="m-del"
-        )
+        embedder = _FakeEmbedder({"content to delete": [1.0, 0.0], "query": [1.0, 0.0]})
+        memory = ChatMemory(embedder, client=chroma_client, collection_name="m-del")
         await memory.index(
             user_id="u1",
             chat_id="doomed",

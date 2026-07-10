@@ -38,9 +38,7 @@ class FakeGenerator:
     async def generate(self, prompt: str, *, config: Any = None) -> str:
         return f"gen:{prompt}"
 
-    async def chat(
-        self, messages: list[dict[str, Any]], *, config: Any = None
-    ) -> str:
+    async def chat(self, messages: list[dict[str, Any]], *, config: Any = None) -> str:
         self.chat_calls.append([dict(m) for m in messages])
         return self.reply
 
@@ -293,9 +291,7 @@ class TestToolLoop:
                 {
                     "role": "assistant",
                     "content": "",
-                    "tool_calls": [
-                        {"function": {"name": "ghost", "arguments": {}}}
-                    ],
+                    "tool_calls": [{"function": {"name": "ghost", "arguments": {}}}],
                 },
                 {"role": "assistant", "content": "done"},
             ],
@@ -324,9 +320,7 @@ class TestToolLoop:
         async def handler(args: dict[str, Any]) -> str:
             return "again"
 
-        spin = Tool(
-            name="spin", description="spin", parameters={}, handler=handler
-        )
+        spin = Tool(name="spin", description="spin", parameters={}, handler=handler)
         gen = FakeGenerator(tool_scripts=[loop_call, loop_call, loop_call])
         pipeline = AIChatPipeline(gen, tools=[spin], max_tool_iterations=2)
         result = await pipeline.respond(user_id="u1", chat_id="c1", content="loop")
@@ -367,9 +361,7 @@ class TestStream:
         pipeline = AIChatPipeline(gen)
         pieces = [
             piece
-            async for piece in pipeline.stream(
-                user_id="u1", chat_id="c1", content="hi"
-            )
+            async for piece in pipeline.stream(user_id="u1", chat_id="c1", content="hi")
         ]
         assert pieces == ["Hel", "lo", "!"]
         # prompt-mode: the built messages were flattened into one prompt
