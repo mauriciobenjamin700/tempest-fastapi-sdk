@@ -169,17 +169,25 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
     # -- reads that guard on ``if filters`` -------------------------------
 
     async def get(
-        self, filters: dict[str, Any], for_update: bool = False
+        self,
+        filters: dict[str, Any],
+        for_update: bool = False,
+        with_: builtins.list[str] | None = None,
     ) -> TenantModelType:
         """See :meth:`BaseRepository.get` — scoped to the tenant."""
-        return await super().get(self._with_tenant(filters), for_update=for_update)
+        return await super().get(
+            self._with_tenant(filters), for_update=for_update, with_=with_
+        )
 
     async def get_or_none(
-        self, filters: dict[str, Any], for_update: bool = False
+        self,
+        filters: dict[str, Any],
+        for_update: bool = False,
+        with_: builtins.list[str] | None = None,
     ) -> TenantModelType | None:
         """See :meth:`BaseRepository.get_or_none` — scoped to the tenant."""
         return await super().get_or_none(
-            self._with_tenant(filters), for_update=for_update
+            self._with_tenant(filters), for_update=for_update, with_=with_
         )
 
     async def exists(self, filters: dict[str, Any]) -> bool:
@@ -191,10 +199,14 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         filters: dict[str, Any] | None = None,
         order_by: Any | None = None,
         ascending: bool = True,
+        with_: builtins.list[str] | None = None,
     ) -> TenantModelType | None:
         """See :meth:`BaseRepository.first` — scoped to the tenant."""
         return await super().first(
-            self._with_tenant(filters), order_by=order_by, ascending=ascending
+            self._with_tenant(filters),
+            order_by=order_by,
+            ascending=ascending,
+            with_=with_,
         )
 
     async def list(
@@ -202,10 +214,14 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         filters: dict[str, Any] | None = None,
         order_by: Any | None = None,
         ascending: bool = True,
+        with_: builtins.list[str] | None = None,
     ) -> builtins.list[TenantModelType]:
         """See :meth:`BaseRepository.list` — scoped to the tenant."""
         return await super().list(
-            self._with_tenant(filters), order_by=order_by, ascending=ascending
+            self._with_tenant(filters),
+            order_by=order_by,
+            ascending=ascending,
+            with_=with_,
         )
 
     async def count(self, filters: dict[str, Any] | None = None) -> int:

@@ -42,6 +42,12 @@ from tempest_fastapi_sdk.db.outbox import BaseOutboxModel as BaseOutboxModel
 from tempest_fastapi_sdk.db.outbox import OutboxRelay as OutboxRelay
 from tempest_fastapi_sdk.db.outbox import OutboxStatus as OutboxStatus
 from tempest_fastapi_sdk.db.repository import BaseRepository as BaseRepository
+from tempest_fastapi_sdk.db.signals import RepositorySignal as RepositorySignal
+from tempest_fastapi_sdk.db.signals import SignalHandler as SignalHandler
+from tempest_fastapi_sdk.db.signals import clear_signals as clear_signals
+from tempest_fastapi_sdk.db.signals import connect as connect
+from tempest_fastapi_sdk.db.signals import disconnect as disconnect
+from tempest_fastapi_sdk.db.signals import on_signal as on_signal
 from tempest_fastapi_sdk.db.slow_query import SlowQueryLogger as SlowQueryLogger
 from tempest_fastapi_sdk.db.tenant import (
     TenantScopedRepository as TenantScopedRepository,
@@ -95,18 +101,24 @@ __all__: list[str] = [
     "MFAMixin",
     "OutboxRelay",
     "OutboxStatus",
+    "RepositorySignal",
+    "SignalHandler",
     "SlowQueryLogger",
     "SoftDeleteMixin",
     "TenantScopedRepository",
     "UnsupportedBackupBackendError",
     "UserTokenPurpose",
     "backfill_non_nullable_defaults",
+    "clear_signals",
     "compose_hooks",
+    "connect",
     "diff_snapshots",
+    "disconnect",
     "make_user_recovery_code_model",
     "make_user_refresh_token_model",
     "make_user_token_model",
     "make_web_push_subscription_model",
+    "on_signal",
     "reorder_base_columns_first",
     "snapshot_model",
 ]

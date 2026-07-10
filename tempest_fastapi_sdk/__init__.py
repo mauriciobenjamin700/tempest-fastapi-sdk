@@ -153,6 +153,7 @@ from tempest_fastapi_sdk.db import (
     MFAMixin,
     OutboxRelay,
     OutboxStatus,
+    RepositorySignal,
     SlowQueryLogger,
     SoftDeleteMixin,
     TenantScopedRepository,
@@ -165,6 +166,7 @@ from tempest_fastapi_sdk.db import (
     make_user_refresh_token_model,
     make_user_token_model,
     make_web_push_subscription_model,
+    on_signal,
     reorder_base_columns_first,
     snapshot_model,
 )
@@ -373,7 +375,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.108.0"
+__version__: str = "0.109.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -557,6 +559,7 @@ __all__: list[str] = [
     "RedisSettings",
     "RefreshSchema",
     "Region",
+    "RepositorySignal",
     "RequestIDMiddleware",
     "RetryPolicy",
     "SSEBroker",
@@ -695,6 +698,7 @@ __all__: list[str] = [
     "normalize_phone_br",
     "normalize_pix_key",
     "normalize_uf",
+    "on_signal",
     "only_digits",
     "parse_accept_language",
     "region_choices",

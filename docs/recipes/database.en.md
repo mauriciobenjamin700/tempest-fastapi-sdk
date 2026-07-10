@@ -392,6 +392,96 @@ mappers. 404 only on single lookups; collections return `[]`.
 `soft_delete` flips the `is_active` flag; `SoftDeleteMixin` (section 6)
 adds a `deleted_at` timestamp when you need temporal auditing.
 
+### Eager-loading relationships with `with_`
+
+Touching a relationship (`user.orders`) **after** the async session
+closed raises the dreaded `MissingGreenlet` — SQLAlchemy would attempt a
+lazy query in a context that can no longer await I/O. The fix is to load
+the relationship up front, in the same query. Every read method (`get`,
+`get_or_none`, `get_by_id`, `first`, `list`) accepts `with_=`:
+
+```python
+# Load the user and its orders in a single round trip
+user = await repository.get_by_id(user_id, with_=["orders"])
+for order in user.orders:      # no lazy load, no MissingGreenlet
+    print(order.total)
+
+# Several relationships + nested (dotted)
+user = await repository.get_by_id(
+    user_id,
+    with_=["profile", "orders.items"],   # orders → and each order's items
+)
+
+# Works on collections too
+users = await repository.list({"is_active": True}, with_=["orders"])
+```
+
+Each path uses `selectinload`: N related rows cost **one** extra query
+per level (a `SELECT ... IN (...)`), not N — no `JOIN` row
+multiplication, and it works for both collections and scalars.
+
+!!! warning "A wrong name fails loudly"
+    A `with_` segment that is not a relationship on the model reached at
+    that hop raises `ValueError` immediately — not a silent runtime
+    error. `with_=["orders.ghost"]` → `ValueError: Order has no
+    relationship 'ghost'`.
+
+### Lifecycle signals
+
+When you want to react to a write — bust a cache, enqueue an event, sync
+a search index, fire a domain event — without scattering callbacks
+across every service, register a **signal**. The repository emits four
+moments on the unit-of-work path:
+
+```python
+from tempest_fastapi_sdk import RepositorySignal, on_signal
+from tempest_fastapi_sdk.db import connect, disconnect
+
+from src.db.models import UserModel
+
+
+# Decorator form
+@on_signal(UserModel, RepositorySignal.POST_SAVE)
+async def index_user(user: UserModel) -> None:
+    """Reindex the user in search after the row commits."""
+    await search_index.upsert(user.id, user.name)
+
+
+# Imperative form (same thing)
+def bust_cache(user: UserModel) -> None:
+    cache.delete(f"user:{user.id}")
+
+connect(UserModel, RepositorySignal.POST_SAVE, bust_cache)
+disconnect(UserModel, RepositorySignal.POST_SAVE, bust_cache)  # remove
+```
+
+The four moments:
+
+| Signal | Fires when | Typical use |
+|--------|------------|-------------|
+| `PRE_SAVE` | before the `INSERT`/`UPDATE` commits | cross-cutting validation; **raising here vetoes the write** (rollback + re-raise) |
+| `POST_SAVE` | after commit + refresh | reindex, cache-bust, domain event |
+| `PRE_DELETE` | before a single-row delete | clean up external dependencies |
+| `POST_DELETE` | after the delete commits | notify that the row is gone |
+
+Handlers may be sync **or** `async` — an awaitable return value is
+awaited. Registering on a base model applies to its subclasses (resolved
+through the instance's MRO).
+
+!!! danger "Signals cover the unit-of-work path only"
+    `add` / `add_all` / `update` / `update_many` / `soft_delete` /
+    `restore` / `delete` fire signals. The set-based bulk methods
+    (`bulk_update`, `bulk_create_values`, `bulk_upsert`, `delete_many`,
+    `delete_batch`) issue a single SQL statement and **bypass** signals
+    by design — they never materialize the affected rows.
+    `soft_delete`/`restore` fire `PRE_SAVE`/`POST_SAVE` (they are an
+    `UPDATE`), not the delete signals.
+
+!!! tip "Test isolation"
+    The registry is process-global. In tests, call `clear_signals()`
+    (from `tempest_fastapi_sdk.db.signals`) in a fixture teardown so one
+    test's handler never leaks into the next.
+
 ---
 
 ## 4. Convention-based filters
