@@ -95,6 +95,21 @@ The GenAI ergonomics plan plus the two application modules below have
 | **Chat (`tempest_fastapi_sdk.chat`)** | ✅ v0.105 | `ChatService` + base tables + `make_chat_router` + real time via `SSEBroker`. [Recipe »](recipes/chat.md) |
 | **Comments + ratings (`reviews`)** | ✅ v0.105 | `ReviewService` (comment, 0–5 rating, aggregate) + `make_reviews_router`; `RatingField`. [Recipe »](recipes/reviews.md) |
 
+## Shipped in v0.107.0 / v0.108.0
+
+End-to-end self-hosted GenAI parity — an AI chat app running in-process, so a
+separate inference microservice becomes an organizational choice rather than a
+necessity:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **Ollama backend** (`OllamaGenerator` / `OllamaEmbedder`) | ✅ v0.107 | Pure HTTP (no torch), drop-in on `make_genai_router` / `Retriever`. Extra `[genai-ollama]`. [Recipe »](recipes/genai.md) |
+| **Ollama vision + tool-calling** | ✅ v0.108 | `generate(images=…)` + per-message `images` on `chat()` + `chat_with_tools()`. [Recipe »](recipes/genai.md) |
+| **STT parity** | ✅ v0.108 | `beam_size` / `vad_filter` (default + per-call override) + `language_probability` on `Transcription`. [Recipe »](recipes/genai.md) |
+| **`ChromaVectorStore`** | ✅ v0.108 | `VectorStore` over ChromaDB (ephemeral / persistent / injected client). Extra `[genai-chroma]`. [Recipe »](recipes/genai.md) |
+| **`ChatMemory`** | ✅ v0.108 | Per-user long-term memory over Chroma: embed + upsert with quota eviction, search with similarity floor + recency decay. [Recipe »](recipes/genai.md) |
+| **`AIChatPipeline`** | ✅ v0.108 | Orchestrator: memory → web-search → generate (with a tool-calling loop) → TTS → index. `Tool` + `make_ai_chat_router` (`/chat` + `/chat/stream` SSE, stateless). [Recipe »](recipes/genai.md) |
+
 ## How to request a feature
 
 Open an issue at <https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues> describing:
