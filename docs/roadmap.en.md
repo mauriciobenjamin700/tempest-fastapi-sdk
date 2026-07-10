@@ -46,7 +46,7 @@ What the SDK **doesn't ship yet** + what already landed. Sorted by impact, not i
 | F() / Q() expression wrappers for SQLAlchemy | ❌ pending | — |
 | eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) | ✅ v0.109.0 | `with_=` on `get`/`get_or_none`/`get_by_id`/`first`/`list` |
 | Signals (`pre_save`/`post_save`/`pre_delete`/`post_delete`) on `BaseRepository` | ✅ v0.109.0 | `tempest_fastapi_sdk.db.signals` (`connect`/`on_signal`) |
-| Object-level permissions framework (`user.has_perm("order.delete", obj=order)`) | ❌ pending | — |
+| Object-level permissions framework (`user.has_perm("order.delete", obj=order)`) | ✅ v0.110.0 | `tempest_fastapi_sdk.authz` |
 | Startup system checks (`tempest check-config`) | ❌ pending | — |
 | Management commands framework — project-registered `tempest <cmd>` | ❌ pending | — |
 
@@ -75,8 +75,8 @@ Genuinely unreleased work (after v0.89.0). Ordered by impact, not by version num
 
 | Release | Content |
 |---------|---------|
-| **next** | Object-level permissions framework (`user.has_perm("order.delete", obj=order)`) |
-| **future** | F() / Q() expression wrappers, startup system checks (`tempest check-config`), management commands framework (project-registered `tempest <cmd>`) |
+| **next** | F() / Q() expression wrappers for SQLAlchemy |
+| **future** | startup system checks (`tempest check-config`), management commands framework (project-registered `tempest <cmd>`) |
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
@@ -93,6 +93,15 @@ The GenAI ergonomics plan plus the two application modules below have
 | **`RedisEmbeddingCache`** | ✅ v0.105 | Async vector cache shared across workers; `Embedder` accepts a sync or async cache. [Recipe »](recipes/genai.md) |
 | **Chat (`tempest_fastapi_sdk.chat`)** | ✅ v0.105 | `ChatService` + base tables + `make_chat_router` + real time via `SSEBroker`. [Recipe »](recipes/chat.md) |
 | **Comments + ratings (`reviews`)** | ✅ v0.105 | `ReviewService` (comment, 0–5 rating, aggregate) + `make_reviews_router`; `RatingField`. [Recipe »](recipes/reviews.md) |
+
+## Shipped in v0.110.0
+
+Object-level authorization — the question the static guard can't answer:
+"may this user edit **this** object?".
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **Object-level permissions** | ✅ v0.110 | `tempest_fastapi_sdk.authz`: register a `(user, obj) -> bool` rule with `@permission("order.delete")`, check with `has_perm`/`check_permission`, guard the route with `make_permission_checker`. Superuser bypass + static fallback injectable via `PermissionRegistry`; wildcards (`order.*`/`*`); sync or async handlers; `PermissionMixin` gives `await user.has_perm(...)`. [Recipe »](recipes/authz.md) |
 
 ## Shipped in v0.109.0
 

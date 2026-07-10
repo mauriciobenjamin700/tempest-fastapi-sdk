@@ -5,6 +5,29 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.110.0] — 2026-07-10
+
+### Added
+
+- **Object-level permissions (`tempest_fastapi_sdk.authz`)** — authorization
+  that takes the row into account ("may **this** user edit **this** order?"),
+  complementing the token-only static guard. Register a `(user, obj) -> bool`
+  rule (sync or async) with `@permission("order.delete")` /
+  `PermissionRegistry.register`; ask with `has_perm(user, perm, obj=...)` or
+  enforce with `check_permission(...)` (raises `ForbiddenException`). Resolution:
+  `None` user denied → superuser bypass (`is_superuser`, default `user.is_admin`)
+  → object rules (any truthy grants) → static permission-set fallback
+  (`permission_resolver`, default `user.permissions`); rules match exact strings
+  or `order.*` / `*` wildcards. `make_permission_checker(perm, get_user=...,
+  get_object=...)` builds a FastAPI route guard (omit `get_object` for a
+  model-level check). `PermissionMixin` adds `await user.has_perm(perm,
+  obj=...)`. Superuser predicate and resolver are injectable per
+  `PermissionRegistry`; `PermissionRegistry.clear()` aids test isolation. The
+  main API (`PermissionRegistry`, `PermissionMixin`, `has_perm`,
+  `check_permission`, `permission`, `make_permission_checker`, `default_registry`)
+  is re-exported at the package root. Imports without any extra (FastAPI is a
+  core dependency).
+
 ## [0.109.0] — 2026-07-10
 
 ### Added
