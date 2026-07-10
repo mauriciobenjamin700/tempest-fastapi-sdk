@@ -117,6 +117,15 @@ from tempest_fastapi_sdk.auth import (
     require_admin,
     require_authenticated,
 )
+from tempest_fastapi_sdk.authz import (
+    PermissionMixin,
+    PermissionRegistry,
+    check_permission,
+    default_registry,
+    has_perm,
+    make_permission_checker,
+    permission,
+)
 from tempest_fastapi_sdk.controllers import BaseController
 from tempest_fastapi_sdk.core import (
     BaseIntEnum,
@@ -375,7 +384,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.109.0"
+__version__: str = "0.110.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -536,6 +545,8 @@ __all__: list[str] = [
     "PasswordResetToken",
     "PasswordUtils",
     "PercentField",
+    "PermissionMixin",
+    "PermissionRegistry",
     "PhoneBR",
     "PhoneBRField",
     "PixKeyField",
@@ -626,6 +637,7 @@ __all__: list[str] = [
     "backfill_non_nullable_defaults",
     "build_content_disposition",
     "build_pagination_link_header",
+    "check_permission",
     "cities_by_uf",
     "city_choices",
     "clear_auth_cookies",
@@ -636,6 +648,7 @@ __all__: list[str] = [
     "configure_logging",
     "decode_cursor",
     "default_message_catalog",
+    "default_registry",
     "detect_pix_key_type",
     "diff_snapshots",
     "discover_models",
@@ -648,6 +661,7 @@ __all__: list[str] = [
     "get_client_ip_from_scope",
     "get_request_id",
     "get_state",
+    "has_perm",
     "hash_opaque_token",
     "is_valid_cep",
     "is_valid_city",
@@ -672,6 +686,7 @@ __all__: list[str] = [
     "make_http_exception_handler",
     "make_jwt_user_dependency",
     "make_logs_router",
+    "make_permission_checker",
     "make_permission_dependency",
     "make_prometheus_registry",
     "make_prometheus_router",
@@ -701,6 +716,7 @@ __all__: list[str] = [
     "on_signal",
     "only_digits",
     "parse_accept_language",
+    "permission",
     "region_choices",
     "register_exception_handlers",
     "reorder_base_columns_first",

@@ -41,6 +41,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.user_recovery_code_model.BaseUserRecoveryCodeModel
 ::: tempest_fastapi_sdk.db.user_recovery_code_model.make_user_recovery_code_model
 ::: tempest_fastapi_sdk.db.repository.BaseRepository
+::: tempest_fastapi_sdk.db.signals.RepositorySignal
+::: tempest_fastapi_sdk.db.signals.connect
+::: tempest_fastapi_sdk.db.signals.on_signal
 ::: tempest_fastapi_sdk.db.tenant.TenantScopedRepository
 ::: tempest_fastapi_sdk.db.mixins.SoftDeleteMixin
 ::: tempest_fastapi_sdk.db.mixins.AuditMixin
@@ -166,6 +169,15 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.auth.schemas.MFAConfirmSchema
 ::: tempest_fastapi_sdk.auth.schemas.MFAVerifySchema
 ::: tempest_fastapi_sdk.auth.schemas.MFADisableSchema
+
+### `tempest_fastapi_sdk.authz`
+
+::: tempest_fastapi_sdk.authz.permissions.PermissionRegistry
+::: tempest_fastapi_sdk.authz.permissions.has_perm
+::: tempest_fastapi_sdk.authz.permissions.check_permission
+::: tempest_fastapi_sdk.authz.permissions.permission
+::: tempest_fastapi_sdk.authz.permissions.PermissionMixin
+::: tempest_fastapi_sdk.authz.dependencies.make_permission_checker
 
 ### `tempest_fastapi_sdk.sessions`
 
