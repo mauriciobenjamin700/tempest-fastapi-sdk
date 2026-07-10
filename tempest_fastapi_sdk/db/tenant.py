@@ -39,6 +39,7 @@ from sqlalchemy import CursorResult, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
+from tempest_fastapi_sdk.db.expressions import Q
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.db.repository import BaseRepository
 from tempest_fastapi_sdk.exceptions.base import AppException
@@ -173,10 +174,14 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         filters: dict[str, Any],
         for_update: bool = False,
         with_: builtins.list[str] | None = None,
+        where: Q | None = None,
     ) -> TenantModelType:
         """See :meth:`BaseRepository.get` — scoped to the tenant."""
         return await super().get(
-            self._with_tenant(filters), for_update=for_update, with_=with_
+            self._with_tenant(filters),
+            for_update=for_update,
+            with_=with_,
+            where=where,
         )
 
     async def get_or_none(
@@ -184,15 +189,19 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         filters: dict[str, Any],
         for_update: bool = False,
         with_: builtins.list[str] | None = None,
+        where: Q | None = None,
     ) -> TenantModelType | None:
         """See :meth:`BaseRepository.get_or_none` — scoped to the tenant."""
         return await super().get_or_none(
-            self._with_tenant(filters), for_update=for_update, with_=with_
+            self._with_tenant(filters),
+            for_update=for_update,
+            with_=with_,
+            where=where,
         )
 
-    async def exists(self, filters: dict[str, Any]) -> bool:
+    async def exists(self, filters: dict[str, Any], where: Q | None = None) -> bool:
         """See :meth:`BaseRepository.exists` — scoped to the tenant."""
-        return await super().exists(self._with_tenant(filters))
+        return await super().exists(self._with_tenant(filters), where=where)
 
     async def first(
         self,
@@ -200,6 +209,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         order_by: Any | None = None,
         ascending: bool = True,
         with_: builtins.list[str] | None = None,
+        where: Q | None = None,
     ) -> TenantModelType | None:
         """See :meth:`BaseRepository.first` — scoped to the tenant."""
         return await super().first(
@@ -207,6 +217,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
             order_by=order_by,
             ascending=ascending,
             with_=with_,
+            where=where,
         )
 
     async def list(
@@ -215,6 +226,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         order_by: Any | None = None,
         ascending: bool = True,
         with_: builtins.list[str] | None = None,
+        where: Q | None = None,
     ) -> builtins.list[TenantModelType]:
         """See :meth:`BaseRepository.list` — scoped to the tenant."""
         return await super().list(
@@ -222,11 +234,14 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
             order_by=order_by,
             ascending=ascending,
             with_=with_,
+            where=where,
         )
 
-    async def count(self, filters: dict[str, Any] | None = None) -> int:
+    async def count(
+        self, filters: dict[str, Any] | None = None, where: Q | None = None
+    ) -> int:
         """See :meth:`BaseRepository.count` — scoped to the tenant."""
-        return await super().count(self._with_tenant(filters))
+        return await super().count(self._with_tenant(filters), where=where)
 
     async def paginate(
         self,
@@ -236,6 +251,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         page_size: int = 20,
         ascending: bool = True,
         query: Any | None = None,
+        where: Q | None = None,
     ) -> dict[str, Any]:
         """See :meth:`BaseRepository.paginate` — scoped to the tenant.
 
@@ -250,6 +266,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
             page_size=page_size,
             ascending=ascending,
             query=query,
+            where=where,
         )
 
     async def cursor_paginate(
@@ -277,14 +294,14 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
             query=query,
         )
 
-    async def delete_many(self, filters: dict[str, Any]) -> int:
+    async def delete_many(self, filters: dict[str, Any], where: Q | None = None) -> int:
         """See :meth:`BaseRepository.delete_many` — scoped to the tenant.
 
         Because the tenant predicate is always added, an empty
         ``filters`` deletes only **this tenant's** rows, never the whole
         table.
         """
-        return await super().delete_many(self._with_tenant(filters))
+        return await super().delete_many(self._with_tenant(filters), where=where)
 
     # -- writes / id-based mutation --------------------------------------
 

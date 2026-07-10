@@ -43,7 +43,7 @@ What the SDK **doesn't ship yet** + what already landed. Sorted by impact, not i
 | Graceful shutdown — drain in-flight requests on `SIGTERM` | ✅ v0.46.0 | `GracefulShutdownMiddleware` (`tempest_fastapi_sdk.api.middlewares.graceful`) |
 | `tempest db seed` — load JSON/Python fixtures | ✅ v0.47.0 | `tempest_fastapi_sdk.cli.db` |
 | CLI: `tempest secrets rotate` | ✅ v0.47.0 | `tempest_fastapi_sdk.cli.secrets` |
-| F() / Q() expression wrappers for SQLAlchemy | ❌ pending | — |
+| F() / Q() expression wrappers for SQLAlchemy | ✅ v0.111.0 | `tempest_fastapi_sdk.db` (`F` / `Q`) |
 | eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) | ✅ v0.109.0 | `with_=` on `get`/`get_or_none`/`get_by_id`/`first`/`list` |
 | Signals (`pre_save`/`post_save`/`pre_delete`/`post_delete`) on `BaseRepository` | ✅ v0.109.0 | `tempest_fastapi_sdk.db.signals` (`connect`/`on_signal`) |
 | Object-level permissions framework (`user.has_perm("order.delete", obj=order)`) | ✅ v0.110.0 | `tempest_fastapi_sdk.authz` |
@@ -75,8 +75,8 @@ Genuinely unreleased work (after v0.89.0). Ordered by impact, not by version num
 
 | Release | Content |
 |---------|---------|
-| **next** | F() / Q() expression wrappers for SQLAlchemy |
-| **future** | startup system checks (`tempest check-config`), management commands framework (project-registered `tempest <cmd>`) |
+| **next** | startup system checks (`tempest check-config`) |
+| **future** | management commands framework (project-registered `tempest <cmd>`) |
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
@@ -93,6 +93,16 @@ The GenAI ergonomics plan plus the two application modules below have
 | **`RedisEmbeddingCache`** | ✅ v0.105 | Async vector cache shared across workers; `Embedder` accepts a sync or async cache. [Recipe »](recipes/genai.md) |
 | **Chat (`tempest_fastapi_sdk.chat`)** | ✅ v0.105 | `ChatService` + base tables + `make_chat_router` + real time via `SSEBroker`. [Recipe »](recipes/chat.md) |
 | **Comments + ratings (`reviews`)** | ✅ v0.105 | `ReviewService` (comment, 0–5 rating, aggregate) + `make_reviews_router`; `RatingField`. [Recipe »](recipes/reviews.md) |
+
+## Shipped in v0.111.0
+
+Django-style `F` / `Q` wrappers over SQLAlchemy, wired into
+`BaseRepository`:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **`F` (column expression)** | ✅ v0.111 | `F("stock") - 1` computes in the database in one statement — atomic update, no race. Arithmetic from either side and between columns; resolved in `bulk_update`. [Recipe »](recipes/database.md) |
+| **`Q` (composable conditions)** | ✅ v0.111 | `Q(status="open") \| Q(...)`, `&`, `~` for the `OR`/`NOT` the filter dict can't express; same conventions (`field__gte`, `name` ILIKE, list → `IN`). `where=` on `list`/`first`/`get`/`get_or_none`/`count`/`exists`/`paginate`/`delete_many`. [Recipe »](recipes/database.md) |
 
 ## Shipped in v0.110.0
 
