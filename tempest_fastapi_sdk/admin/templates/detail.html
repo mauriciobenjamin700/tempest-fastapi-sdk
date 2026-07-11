@@ -73,5 +73,35 @@
   <p class="tempest-admin-history__empty"><em>No recorded changes for this record.</em></p>
   {% endif %}
   {% endif %}
+  {% for inline in inlines %}
+  <section class="tempest-admin-inline">
+    <header class="tempest-admin-inline__header">
+      <h2>{{ inline.label }}{% if inline.total %} <span class="tempest-admin-inline__count">({{ inline.total }})</span>{% endif %}</h2>
+      {% if inline.add_url %}<a class="tempest-admin-btn" href="{{ inline.add_url }}">Add</a>{% endif %}
+    </header>
+    {% if inline.rows %}
+    <div class="tempest-admin-inline__scroll">
+      <table class="tempest-admin-inline__table">
+        <thead>
+          <tr>{% for col in inline.columns %}<th>{{ col }}</th>{% endfor %}<th></th></tr>
+        </thead>
+        <tbody>
+          {% for row in inline.rows %}
+          <tr>
+            {% for col, value in row.cells %}
+            <td>{% if value is none %}<em>—</em>{% else %}{{ value }}{% endif %}</td>
+            {% endfor %}
+            <td>{% if row.url %}<a href="{{ row.url }}">View</a>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if inline.truncated %}<p class="tempest-admin-inline__more"><em>Showing the first {{ inline.rows | length }} of {{ inline.total }}.</em></p>{% endif %}
+    {% else %}
+    <p class="tempest-admin-inline__empty"><em>No related records.</em></p>
+    {% endif %}
+  </section>
+  {% endfor %}
 </section>
 {% endblock %}

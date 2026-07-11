@@ -5,6 +5,24 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.116.0] — 2026-07-10
+
+### Added
+
+- **Admin inlines / nested relations** — `AdminModel(inlines=[Inline(Child,
+  Child.parent_id)])` lists a model's 1-N children on its detail view as a
+  compact table (Django `TabularInline` analog). Each row links to the child's
+  own admin and an "Add" button pre-fills the parent foreign key via a create
+  query param; the inline reuses the child admin's `list_display` and CRUD
+  routes (falling back to read-only rows when the child is unregistered). The
+  new `Inline` config (model + `fk_field` + optional `list_display`/`label`) is
+  exported at the package root and from `tempest_fastapi_sdk.admin`. Rows are
+  capped at 50 per inline. This closes the Tier 2 "inline / related editing"
+  item of the admin-panel evolution (in-place editing on the parent form
+  remains a follow-up).
+- The admin create form now pre-fills editable fields from query parameters,
+  which is what an inline "Add" link uses to seed the parent foreign key.
+
 ## [0.115.0] — 2026-07-10
 
 ### Added

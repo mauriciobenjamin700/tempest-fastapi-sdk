@@ -373,6 +373,38 @@ rótulo da empresa atual já vem preenchido.
     `search_fields` dele que guiam a busca). Sem `autocomplete_fields`, o
     FK continua um `<select>` (útil para tabelas pequenas).
 
+## Inlines — filhos 1-N no detail (`inlines=`)
+
+Para ver (e chegar a) os registros que apontam pra este — pedidos de um
+cliente, membros de um time — declare `inlines`. O detail do pai passa a
+listar cada relação numa tabela, com link pro admin do filho e um botão
+**Add** que já pré-preenche o FK do pai.
+
+```python
+# src/admin/site.py
+from tempest_fastapi_sdk import AdminModel, Inline
+
+site.register(
+    AdminModel(
+        model=Team,
+        inlines=[Inline(Member, Member.team_id, list_display=[Member.name])],
+    )
+)
+site.register(AdminModel(model=Member))   # o filho precisa de admin p/ os links
+```
+
+No detail de um Team aparece a tabela **Member** com seus membros; "Add"
+abre o create de Member já com `team_id` preenchido (via query param). As
+colunas saem do `list_display` do `Inline` (ou, se omitido, do admin do
+filho). Até 50 linhas por inline.
+
+!!! info "Leitura + navegação (por enquanto)"
+    Esta versão **lista e navega** os filhos (ver, editar no admin do
+    filho, adicionar já ligado ao pai). Edição in-place dos filhos na
+    mesma tela do pai fica como evolução. O modelo filho precisa ter um
+    `AdminModel` registrado para os links funcionarem; sem ele, as linhas
+    aparecem só-leitura.
+
 #### 4. Defaults de segurança de sessão
 
 `SignedCookieSessionStore` usa `itsdangerous.TimestampSigner` (HMAC-SHA256) para assinar um único cookie:
