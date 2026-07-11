@@ -91,6 +91,7 @@ plugins:
             Instalação: Installation
             Arquitetura: Architecture
             Tutorial: Tutorial
+            Exemplos: Examples
             "SSR (páginas tipadas)": "SSR (typed pages)"
             Receitas: Recipes
             Banco de dados: Database
@@ -215,11 +216,12 @@ nav:
   - Instalação: installation.md
   - Arquitetura: architecture.md
   - Tutorial: tutorial.md
-  - "Tour do SDK (exemplos)": tour.md
-  - "Exemplo integrado (checkout Pix)": integrated.md
-  - "Exemplo integrado (marketplace local)": marketplace-local.md
-  - "Exemplo integrado (admin completo)": admin-showcase.md
-  - "Exemplos de GenAI (fluxos)": genai-examples.md
+  - Exemplos:
+      - "Tour do SDK (exemplos)": tour.md
+      - "Exemplo integrado (checkout Pix)": integrated.md
+      - "Exemplo integrado (marketplace local)": marketplace-local.md
+      - "Exemplo integrado (admin completo)": admin-showcase.md
+      - "Exemplos de GenAI (fluxos)": genai-examples.md
   - "SSR (páginas tipadas)": ssr.md
   - Receitas:
       - recipes/index.md
