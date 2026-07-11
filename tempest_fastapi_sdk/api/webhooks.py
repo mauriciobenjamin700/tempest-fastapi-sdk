@@ -1,16 +1,34 @@
-"""HMAC signature verification for inbound webhooks."""
+"""Webhook signatures — inbound verification + outbound signed delivery."""
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
-from collections.abc import Callable, Coroutine
-from typing import Any
+import json
+import time
+import uuid
+from collections.abc import Callable, Coroutine, Mapping
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Header, Request
 
 from tempest_fastapi_sdk.exceptions.unauthorized import UnauthorizedException
+
+if TYPE_CHECKING:
+    import httpx
+
+# The transient exceptions worth retrying — connection resets, timeouts.
+# Guarded so importing this module never requires httpx (the sender takes
+# an injected client; a project that uses it already has httpx installed).
+try:
+    import httpx as _httpx
+
+    _TRANSIENT_ERRORS: tuple[type[Exception], ...] = (_httpx.TransportError,)
+except ImportError:  # pragma: no cover - httpx is an optional dependency
+    _TRANSIENT_ERRORS = ()
 
 
 class WebhookSignatureVerifier:
@@ -273,7 +291,215 @@ class RSAWebhookSignatureVerifier:
         return _verify
 
 
+@dataclass(frozen=True, slots=True)
+class WebhookDelivery:
+    """The outcome of one outbound webhook delivery attempt sequence.
+
+    Attributes:
+        url (str): The destination URL.
+        event (str): The event type sent.
+        delivered (bool): Whether a 2xx was received.
+        status_code (int | None): The last HTTP status, or ``None`` when
+            every attempt failed before a response (network error).
+        attempts (int): How many POSTs were made.
+        error (str | None): The last error message when not delivered.
+        delivery_id (str): The unique id sent in the id header.
+    """
+
+    url: str
+    event: str
+    delivered: bool
+    status_code: int | None
+    attempts: int
+    delivery_id: str
+    error: str | None = None
+
+
+class WebhookSender:
+    """Sign and deliver outbound webhooks with bounded retries.
+
+    The counterpart to :class:`WebhookSignatureVerifier`: it POSTs a JSON
+    event to a subscriber URL, signs the exact body with the **same**
+    verifier instance (so the receiver validates it with that verifier),
+    and retries transient failures (connection errors, 5xx, 429) with
+    exponential backoff. Client errors (other 4xx) are not retried — they
+    won't succeed on repeat.
+
+    The HTTP client is injected (an ``httpx.AsyncClient``), matching the
+    SDK's other outbound helpers — the caller owns its lifecycle, pooling
+    and base config.
+
+    Example:
+        ```python
+        verifier = WebhookSignatureVerifier(secret, prefix="sha256=")
+        sender = WebhookSender(http_client, signer=verifier)
+        result = await sender.send(
+            "https://sub.example.com/hooks",
+            event="order.paid",
+            payload={"id": str(order.id), "total": 4200},
+        )
+        if not result.delivered:
+            ...  # enqueue for later / alert
+        ```
+    """
+
+    def __init__(
+        self,
+        http_client: httpx.AsyncClient,
+        *,
+        signer: WebhookSignatureVerifier | None = None,
+        max_attempts: int = 3,
+        backoff_base: float = 0.5,
+        timeout: float = 10.0,
+        event_header: str = "X-Webhook-Event",
+        id_header: str = "X-Webhook-Id",
+        timestamp_header: str = "X-Webhook-Timestamp",
+    ) -> None:
+        """Initialize the sender.
+
+        Args:
+            http_client (httpx.AsyncClient): The injected async client
+                used for every POST.
+            signer (WebhookSignatureVerifier | None): When given, its
+                ``expected(body)`` HMAC (with its ``prefix``) is written
+                to its ``header_name`` so the receiver can verify with
+                the same instance. ``None`` sends unsigned.
+            max_attempts (int): Total POST attempts before giving up
+                (``>= 1``). Defaults to 3.
+            backoff_base (float): Base seconds for exponential backoff
+                (``backoff_base * 2**(attempt-1)``). Defaults to 0.5.
+            timeout (float): Per-request timeout in seconds.
+            event_header (str): Header carrying the event type.
+            id_header (str): Header carrying the unique delivery id.
+            timestamp_header (str): Header carrying the unix timestamp.
+        """
+        self._client: httpx.AsyncClient = http_client
+        self._signer: WebhookSignatureVerifier | None = signer
+        self._max_attempts: int = max(1, max_attempts)
+        self._backoff_base: float = backoff_base
+        self._timeout: float = timeout
+        self._event_header: str = event_header
+        self._id_header: str = id_header
+        self._timestamp_header: str = timestamp_header
+
+    def _headers(self, event: str, body: bytes, delivery_id: str) -> dict[str, str]:
+        """Build the request headers (content type, metadata, signature).
+
+        Args:
+            event (str): The event type.
+            body (bytes): The exact serialized body being signed.
+            delivery_id (str): The unique delivery id.
+
+        Returns:
+            dict[str, str]: The headers to send.
+        """
+        headers = {
+            "content-type": "application/json",
+            self._event_header: event,
+            self._id_header: delivery_id,
+            self._timestamp_header: str(int(time.time())),
+        }
+        if self._signer is not None:
+            headers[self._signer.header_name] = (
+                self._signer.prefix + self._signer.expected(body)
+            )
+        return headers
+
+    async def send(
+        self,
+        url: str,
+        *,
+        event: str,
+        payload: Any,
+        headers: Mapping[str, str] | None = None,
+    ) -> WebhookDelivery:
+        """Deliver one signed webhook, retrying transient failures.
+
+        Args:
+            url (str): The subscriber URL.
+            event (str): The event type (sent in the event header).
+            payload (Any): JSON-serializable body (``default=str`` covers
+                UUID/Decimal/datetime).
+            headers (Mapping[str, str] | None): Extra headers merged in
+                (they do not override the signature/metadata headers).
+
+        Returns:
+            WebhookDelivery: The outcome — ``delivered`` plus the last
+            status, attempt count and error.
+        """
+        body = json.dumps(payload, default=str, separators=(",", ":")).encode()
+        delivery_id = uuid.uuid4().hex
+        request_headers = {**(headers or {}), **self._headers(event, body, delivery_id)}
+
+        status_code: int | None = None
+        error: str | None = None
+        attempts = 0
+        for attempt in range(1, self._max_attempts + 1):
+            attempts = attempt
+            try:
+                response = await self._client.post(
+                    url,
+                    content=body,
+                    headers=request_headers,
+                    timeout=self._timeout,
+                )
+            except _TRANSIENT_ERRORS as exc:  # network-level failure
+                status_code = None
+                error = f"{type(exc).__name__}: {exc}"
+            else:
+                status_code = response.status_code
+                if 200 <= status_code < 300:
+                    return WebhookDelivery(
+                        url=url,
+                        event=event,
+                        delivered=True,
+                        status_code=status_code,
+                        attempts=attempt,
+                        delivery_id=delivery_id,
+                    )
+                error = f"HTTP {status_code}"
+                # Only 5xx / 429 are worth retrying; other 4xx won't recover.
+                if not (status_code >= 500 or status_code == 429):
+                    break
+            if attempt < self._max_attempts:
+                await asyncio.sleep(self._backoff_base * 2 ** (attempt - 1))
+
+        return WebhookDelivery(
+            url=url,
+            event=event,
+            delivered=False,
+            status_code=status_code,
+            attempts=attempts,
+            delivery_id=delivery_id,
+            error=error,
+        )
+
+    async def send_many(
+        self,
+        deliveries: list[tuple[str, Any]],
+        *,
+        event: str,
+    ) -> list[WebhookDelivery]:
+        """Deliver the same event to many URLs concurrently.
+
+        Args:
+            deliveries (list[tuple[str, Any]]): ``(url, payload)`` pairs.
+            event (str): The event type applied to every delivery.
+
+        Returns:
+            list[WebhookDelivery]: One result per input, in order.
+        """
+        return await asyncio.gather(
+            *(
+                self.send(url, event=event, payload=payload)
+                for url, payload in deliveries
+            )
+        )
+
+
 __all__: list[str] = [
     "RSAWebhookSignatureVerifier",
+    "WebhookDelivery",
+    "WebhookSender",
     "WebhookSignatureVerifier",
 ]

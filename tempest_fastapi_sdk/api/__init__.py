@@ -75,6 +75,8 @@ from tempest_fastapi_sdk.api.static import (
 from tempest_fastapi_sdk.api.tracing import setup_tracing
 from tempest_fastapi_sdk.api.webhooks import (
     RSAWebhookSignatureVerifier,
+    WebhookDelivery,
+    WebhookSender,
     WebhookSignatureVerifier,
 )
 
@@ -111,6 +113,8 @@ __all__: list[str] = [
     "RedisRateLimitStore",
     "RequestIDMiddleware",
     "SameSite",
+    "WebhookDelivery",
+    "WebhookSender",
     "WebhookSignatureVerifier",
     "app_exception_handler",
     "apply_cors",

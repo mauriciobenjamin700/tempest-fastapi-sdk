@@ -5,6 +5,23 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.125.0] — 2026-07-11
+
+### Added
+
+- **Outbound webhooks — `WebhookSender`** (`tempest_fastapi_sdk.api`) — the
+  counterpart to `WebhookSignatureVerifier`: POSTs a JSON event to a subscriber
+  URL, signs the exact body with the **same** verifier instance (so the receiver
+  validates with that verifier), and retries transient failures — connection
+  errors, `5xx`, `429` — with exponential backoff; other `4xx` are not retried.
+  Sends `X-Webhook-Event` / `X-Webhook-Id` (unique uuid) / `X-Webhook-Timestamp`
+  headers plus the signature. `send()` returns a `WebhookDelivery`
+  (`delivered` / `status_code` / `attempts` / `error` / `delivery_id`);
+  `send_many()` fans the same event out concurrently. The `httpx.AsyncClient` is
+  injected (caller owns the lifecycle). `WebhookSender` and `WebhookDelivery` are
+  re-exported at the package root and from `tempest_fastapi_sdk.api`. Pairs with
+  the outbox (`OutboxRelay`) for at-least-once signed delivery.
+
 ## [0.124.0] — 2026-07-11
 
 ### Added
