@@ -5,6 +5,20 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.115.0] — 2026-07-10
+
+### Added
+
+- **Admin autocomplete FK fields** — `AdminModel(autocomplete_fields=[...])`
+  renders the listed foreign-key columns as a typed HTMX search box instead of a
+  `<select>` of every related row, removing the 1000-row cap and the plain-UUID
+  fallback for large target tables. A new `GET /m/{slug}/autocomplete/{field}`
+  endpoint (session-guarded) searches the referenced admin's `search_fields`
+  (ILIKE, ORed, capped at 20 results) and returns an `<li>` option fragment; the
+  edit form pre-fills the current row's label. The target table must have its
+  own registered `AdminModel`. This closes the Tier 2 "autocomplete FK fields"
+  item of the admin-panel evolution.
+
 ## [0.114.0] — 2026-07-10
 
 ### Added

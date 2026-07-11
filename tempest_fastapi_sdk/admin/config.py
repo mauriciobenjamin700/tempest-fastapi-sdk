@@ -106,6 +106,12 @@ class AdminModel(Generic[ModelT]):
             ``add_audited`` / ``update_audited`` / ``delete_audited`` so the
             history is actually written. ``None`` (default) shows only the
             ``created_by`` / ``updated_by`` stamps.
+        autocomplete_fields (Sequence[FieldRef]): Foreign-key columns
+            rendered as a typed search box (HTMX) instead of a
+            ``<select>`` of every related row — removing the 1000-row cap
+            and the plain-UUID fallback for large target tables. The
+            target table must have its own registered ``AdminModel``
+            (its ``search_fields`` drive the search).
 
     Raises:
         TypeError: When ``model`` is not a subclass of :class:`BaseModel`,
@@ -133,6 +139,7 @@ class AdminModel(Generic[ModelT]):
         upload_fields: Sequence[FieldRef] = (),
         upload_storage: UploadStorage | None = None,
         audit_model: type[BaseAuditLogModel] | None = None,
+        autocomplete_fields: Sequence[FieldRef] = (),
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -179,6 +186,7 @@ class AdminModel(Generic[ModelT]):
                 "AdminModel `audit_model` must be a subclass of BaseAuditLogModel",
             )
         self.audit_model: type[BaseAuditLogModel] | None = audit_model
+        self.autocomplete_fields: list[str] = _normalize_fields(autocomplete_fields)
 
     def get_verbose_name(self) -> str:
         """Return the configured (or auto-derived) singular display name.

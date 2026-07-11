@@ -41,6 +41,11 @@ class FormField:
         options (list[tuple[str, str]]): ``(value, label)`` pairs for
             ``select`` widgets.
         error (str | None): Per-field validation error, if any.
+        autocomplete_url (str | None): For the ``autocomplete`` widget,
+            the HTMX search endpoint backing the input. Set by the
+            router (needs the prefix + slug).
+        display_label (str): For the ``autocomplete`` widget, the label
+            of the currently-selected row shown in the search box.
     """
 
     name: str
@@ -52,6 +57,8 @@ class FormField:
     step: str | None = None
     options: list[tuple[str, str]] = field(default_factory=list)
     error: str | None = None
+    autocomplete_url: str | None = None
+    display_label: str = ""
 
 
 def _label(name: str) -> str:
@@ -214,7 +221,13 @@ def build_form_fields(
             continue
         py = _python_type(column)
         widget, step, options = _widget_for(column, py)
-        if name in fk_options:
+        is_autocomplete = name in admin.autocomplete_fields
+        if is_autocomplete:
+            # The router fills autocomplete_url + display_label; options
+            # are fetched on demand, not pre-loaded.
+            widget = "autocomplete"
+            options = []
+        elif name in fk_options:
             widget = "select"
             options = list(fk_options[name])
         is_upload = name in admin.upload_fields

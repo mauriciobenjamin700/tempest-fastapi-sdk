@@ -58,7 +58,7 @@ The admin panel already exists (`AdminSite` / `AdminModel` / `make_admin_router`
 |---------|----------------|--------|
 | **Per-column filter / search / sort** on the list view | Large lists are unusable without it — the first thing every operator asks for. | `BaseRepository` (filters + pagination) |
 | **Bulk actions** (mass delete / activate) | Row-by-row actions don't scale; select N rows + one action is the standard admin flow. | `BaseRepository.bulk_update` / soft-delete |
-| **Field widgets** (FK select, date picker, file upload) | The form is generic today; FK as `<select>`, dates with a picker, and upload via `UploadUtils` remove manual typing and error. | `UploadUtils` + storage backends |
+| **Field widgets** (FK select ✅, date picker, file upload) + **FK autocomplete** ✅ v0.115.0 | FK as `<select>`, dates with a picker, upload via `UploadUtils`; large FKs become an HTMX search box (`autocomplete_fields`). | `UploadUtils` + storage backends |
 | **Inline / related editing** | Edit children (1-N) on the parent's screen — the Django-admin pattern that's missing. | `BaseRepository` + relationships |
 | **CSV / JSON export** | Operator exports the filtered result without opening the database. | list view + filters |
 | **Audit log visible in the admin** ✅ v0.114.0 | Who changed what and when, straight in the UI — a per-row timeline in the detail view. | `BaseAuditLogModel` + `diff_snapshots` (`AdminModel(audit_model=...)`) |
@@ -76,11 +76,19 @@ the last item (management commands) shipped in v0.113.0. Upcoming
 releases are again pulled by business pressure.
 
 Natural candidates when demand shows up (admin panel evolution, already
-on the radar): autocomplete FK fields, inline editing of 1-N relations,
-and business-metric cards on the dashboard.
+on the radar): inline editing of 1-N relations and business-metric
+cards on the dashboard.
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
+
+## Shipped in v0.115.0
+
+Admin panel — autocomplete FK fields (Tier 2 of the admin evolution):
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **Autocomplete FK** | ✅ v0.115 | `AdminModel(autocomplete_fields=[...])` swaps the all-rows `<select>` for an HTMX search box — no 1000-row cap, no raw-UUID fallback. The `/m/{slug}/autocomplete/{field}` endpoint searches the target admin's `search_fields` (ILIKE, OR), capped at 20; edit pre-fills the current label. [Recipe »](recipes/admin.md) |
 
 ## Shipped in v0.114.0
 

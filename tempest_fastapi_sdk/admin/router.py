@@ -17,7 +17,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from sqlalchemy import inspect as sa_inspect
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from starlette.concurrency import run_in_threadpool
 
 from tempest_fastapi_sdk.admin.actions import AdminActionContext
@@ -40,6 +40,7 @@ from tempest_fastapi_sdk.api.routers.logs import (
     _read_entries,
     _resolve_files,
 )
+from tempest_fastapi_sdk.db.expressions import escape_like
 from tempest_fastapi_sdk.exceptions import AppException
 
 if TYPE_CHECKING:
@@ -382,6 +383,9 @@ def make_admin_router(
         """
         options: dict[str, list[tuple[str, str]]] = {}
         for field_name, table in fk_fields(admin).items():
+            # Autocomplete FKs are searched on demand — never pre-loaded.
+            if field_name in admin.autocomplete_fields:
+                continue
             referenced = site.get(table)
             if referenced is None:
                 continue
@@ -508,13 +512,47 @@ def make_admin_router(
             Any: The list of form-field descriptors.
         """
         fk_options = await _resolve_fk_options(admin, db_session)
-        return build_form_fields(
+        fields = build_form_fields(
             admin,
             instance=instance,
             submitted=submitted,
             errors=errors,
             fk_options=fk_options,
         )
+        if admin.autocomplete_fields:
+            await _decorate_autocomplete_fields(admin, fields, db_session)
+        return fields
+
+    async def _decorate_autocomplete_fields(
+        admin: AdminModel[Any],
+        fields: list[Any],
+        db_session: AsyncSession,
+    ) -> None:
+        """Fill in the search URL + current label for autocomplete fields.
+
+        Args:
+            admin (AdminModel[Any]): The admin being rendered.
+            fields (list[Any]): The form fields to mutate in place.
+            db_session (AsyncSession): The DB session, used to resolve the
+                label of the currently-selected row (one lookup per field).
+        """
+        tables = fk_fields(admin)
+        slug = admin.get_slug()
+        for form_field in fields:
+            if form_field.widget != "autocomplete":
+                continue
+            form_field.autocomplete_url = (
+                f"{prefix}/m/{slug}/autocomplete/{form_field.name}"
+            )
+            table = tables.get(form_field.name)
+            referenced = site.get(table) if table else None
+            if referenced is None or not form_field.value:
+                continue
+            current = await referenced.build_repository(db_session).get_or_none(
+                {referenced.identity_field: _identity_value(str(form_field.value))}
+            )
+            if current is not None:
+                form_field.display_label = fk_label(referenced, current)
 
     @router.get("/login", name="admin_login_form")
     async def login_form(
@@ -1264,6 +1302,66 @@ def make_admin_router(
             },
         )
 
+    @router.get("/m/{slug}/autocomplete/{field}", name="admin_autocomplete")
+    async def autocomplete(
+        request: Request,
+        slug: str,
+        field: str,
+        q: str = Query(default=""),
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> HTMLResponse:
+        """Return matching related rows for an autocomplete FK field.
+
+        Backs the HTMX search box: given a query ``q``, searches the
+        referenced admin's ``search_fields`` (ILIKE, ORed) and returns an
+        ``<li>`` fragment of up to ``_AUTOCOMPLETE_LIMIT`` ``(id, label)``
+        options.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug being edited.
+            field (str): The autocomplete FK column key.
+            q (str): The search term.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            HTMLResponse: The options fragment (``autocomplete.html``).
+        """
+        admin = site.get(slug)
+        if admin is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
+        if field not in admin.autocomplete_fields:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, "field is not an autocomplete field"
+            )
+        table = fk_fields(admin).get(field)
+        referenced = site.get(table) if table else None
+        results: list[tuple[str, str]] = []
+        if referenced is not None:
+            ref_model = referenced.model
+            stmt = select(ref_model)
+            term = q.strip()
+            if term:
+                conditions = []
+                for search_field in referenced.search_fields:
+                    column = getattr(ref_model, search_field, None)
+                    if column is not None:
+                        conditions.append(
+                            column.ilike(f"%{escape_like(term)}%", escape="\\")
+                        )
+                if conditions:
+                    stmt = stmt.where(or_(*conditions))
+            stmt = stmt.limit(_AUTOCOMPLETE_LIMIT)
+            rows = (await db_session.execute(stmt)).scalars().all()
+            results = [(str(row.id), fk_label(referenced, row)) for row in rows]
+        return templates.TemplateResponse(
+            request,
+            "autocomplete.html",
+            {"results": results},
+        )
+
     @router.get("/m/{slug}/{identity}/edit", name="admin_edit")
     async def edit_form(
         request: Request,
@@ -1673,6 +1771,9 @@ _AUDIT_FIELDS = ("created_at", "updated_at", "created_by", "updated_by")
 
 #: Cap on audit-history rows rendered in the detail view.
 _AUDIT_HISTORY_LIMIT = 50
+
+#: Cap on options returned by an autocomplete FK search.
+_AUTOCOMPLETE_LIMIT = 20
 
 
 def _format_audit_changes(action: str, changes: dict[str, Any]) -> list[dict[str, Any]]:

@@ -347,6 +347,32 @@ nova para a mais antiga.
     `audit_model`, o detail continua igual (só os carimbos
     `created_by`/`updated_by`).
 
+## FK com autocomplete (`autocomplete_fields=`)
+
+Por padrão um campo FK cujo alvo tem admin registrado vira um `<select>`
+com **todas** as linhas (capado em 1000). Numa tabela grande isso é
+inutilizável. Passe `autocomplete_fields` e o campo vira uma **caixa de
+busca** (HTMX) que consulta o alvo sob demanda:
+
+```python
+# src/admin/site.py
+site.register(AdminModel(model=Company, search_fields=[Company.name]))
+site.register(
+    AdminModel(model=Employee, autocomplete_fields=[Employee.company_id])
+)
+```
+
+No form de Employee, `company_id` deixa de listar todas as empresas:
+você digita, o endpoint `/admin/m/employee/autocomplete/company_id?q=…`
+busca nos `search_fields` do admin de `Company` (ILIKE, OR, até 20
+resultados) e mostra as opções; clicar fixa o id no campo. No edit, o
+rótulo da empresa atual já vem preenchido.
+
+!!! info "Requisitos"
+    O alvo do FK precisa ter um `AdminModel` registrado (são os
+    `search_fields` dele que guiam a busca). Sem `autocomplete_fields`, o
+    FK continua um `<select>` (útil para tabelas pequenas).
+
 #### 4. Defaults de segurança de sessão
 
 `SignedCookieSessionStore` usa `itsdangerous.TimestampSigner` (HMAC-SHA256) para assinar um único cookie:
