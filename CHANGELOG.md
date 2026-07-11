@@ -5,6 +5,26 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.122.0] — 2026-07-11
+
+### Fixed
+
+- **Admin CSS**: the components added this cycle (audit history timeline, inline
+  tables, dashboard cards, lens tabs, autocomplete dropdown, CSV-import report)
+  referenced an undefined `--tempest-border` variable — borders fell back to the
+  text color. Defined `--tempest-border`, `--tempest-surface` and
+  `--tempest-accent-soft` in `:root`, and repointed the dashboard cards and the
+  autocomplete dropdown off the dark **sidebar** background vars
+  (`--tempest-bg-soft` / `--tempest-bg`) onto the light `--tempest-surface`, so
+  they no longer render as dark boxes on the light content area.
+
+### Changed
+
+- **Admin detail layout**: related-record inlines now render immediately after
+  the record's own fields (before the Audit / History metadata), and `JSON`
+  columns are pretty-printed in a monospaced block — matching the JSON edit
+  widget — instead of showing a raw `dict` repr.
+
 ## [0.121.0] — 2026-07-11
 
 ### Added
