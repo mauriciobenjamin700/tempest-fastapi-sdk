@@ -75,13 +75,21 @@ A fila "Próximos passos" que restava do backlog Tier S/A/B está
 **zerada** — o último item (management commands) entrou na v0.113.0. As
 próximas releases voltam a ser puxadas por pressão de negócio.
 
-Os Tiers 1 e 2 da evolução do painel admin estão **entregues**, e do
-Tier 3 já saíram import CSV (v0.118) e RBAC granular (v0.119). O que
-sobra é refino sob demanda: edição inline in-place das relações 1-N
-(hoje listadas + navegáveis) e lenses/visões salvas.
+A evolução do painel admin está **essencialmente completa**: Tiers 1 e 2
+inteiros, e o Tier 3 com import CSV (v0.118), RBAC granular (v0.119) e
+lenses (v0.120). O único item que sobra é polimento sob demanda: edição
+inline **in-place** das relações 1-N (hoje listadas + navegáveis).
 
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
+
+## Entregue na v0.120.0
+
+Painel admin — lenses / visões salvas (Tier 3), fechando a evolução do admin:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Lenses** | ✅ v0.120 | `AdminModel(lenses=[Lens("Abertos", filters={"status": "open"}, order_by="-created_at")])` → abas acima da lista; clicar aplica os filtros (ANDeados com busca/filtros do usuário) + ordenação via `?lens=<slug>`. Aba "All" volta ao padrão. [Receita »](recipes/admin.md) |
 
 ## Entregue na v0.119.0
 

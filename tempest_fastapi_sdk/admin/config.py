@@ -101,6 +101,67 @@ class Inline:
         return self.label or f"{self.model.__name__}"
 
 
+class Lens:
+    """A named, saved list-view preset (Nova-style lens).
+
+    A lens bundles a set of filters and an optional ordering under a
+    label. On the list view lenses render as tabs; clicking one applies
+    its filters (ANDed with the user's search/filters) and ordering. A
+    "support triage" lens might pin ``{"status": "open", "priority__gte": 3}``
+    sorted by oldest-first, so an operator reaches the working set in one
+    click instead of re-entering filters.
+
+    Attributes:
+        name (str): The lens identifier; its slug (lowercased,
+            spaces→hyphens) is the ``?lens=`` value.
+        filters (dict[str, Any]): Filter conditions merged into the
+            query — same conventions as a repository filter dict
+            (``field__gte`` etc.).
+        order_by (str | None): Column to order by; ``-col`` for
+            descending. Applied unless the user clicked a column sort.
+        label (str | None): Tab label; defaults to ``name``.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        filters: dict[str, Any] | None = None,
+        order_by: str | None = None,
+        label: str | None = None,
+    ) -> None:
+        """Build a lens. See class docstring.
+
+        Args:
+            name (str): The lens identifier.
+            filters (dict[str, Any] | None): Filter conditions.
+            order_by (str | None): Ordering column (``-col`` = desc).
+            label (str | None): Tab label.
+        """
+        self.name: str = name
+        self.filters: dict[str, Any] = dict(filters or {})
+        self.order_by: str | None = order_by
+        self.label: str | None = label
+
+    def slug(self) -> str:
+        """Return the URL slug (``?lens=`` value) for this lens.
+
+        Returns:
+            str: Lowercased name with non-alphanumeric runs hyphenated.
+        """
+        return "-".join(
+            "".join(c if c.isalnum() else " " for c in self.name).split()
+        ).lower()
+
+    def get_label(self) -> str:
+        """Return the tab label.
+
+        Returns:
+            str: The configured label, or the name.
+        """
+        return self.label or self.name
+
+
 class AdminModel(Generic[ModelT]):
     """Declarative admin configuration for one SQLAlchemy model.
 
@@ -185,6 +246,9 @@ class AdminModel(Generic[ModelT]):
             :class:`Inline` shows the child rows pointing back via its
             ``fk_field`` plus links to the child admin and an "Add" link
             that pre-fills the parent foreign key.
+        lenses (Sequence[Lens]): Named saved list-view presets (Nova-style
+            lenses) rendered as tabs above the list; each applies its
+            filters + ordering via ``?lens=<slug>``.
 
     Raises:
         TypeError: When ``model`` is not a subclass of :class:`BaseModel`,
@@ -215,6 +279,7 @@ class AdminModel(Generic[ModelT]):
         audit_model: type[BaseAuditLogModel] | None = None,
         autocomplete_fields: Sequence[FieldRef] = (),
         inlines: Sequence[Inline] = (),
+        lenses: Sequence[Lens] = (),
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -264,6 +329,21 @@ class AdminModel(Generic[ModelT]):
         self.audit_model: type[BaseAuditLogModel] | None = audit_model
         self.autocomplete_fields: list[str] = _normalize_fields(autocomplete_fields)
         self.inlines: list[Inline] = list(inlines)
+        self.lenses: list[Lens] = list(lenses)
+
+    def get_lens(self, slug: str) -> Lens | None:
+        """Return the registered lens whose slug matches, or ``None``.
+
+        Args:
+            slug (str): The ``?lens=`` value.
+
+        Returns:
+            Lens | None: The matching lens.
+        """
+        for lens in self.lenses:
+            if lens.slug() == slug:
+                return lens
+        return None
 
     def get_verbose_name(self) -> str:
         """Return the configured (or auto-derived) singular display name.
@@ -468,5 +548,6 @@ __all__: list[str] = [
     "AdminModel",
     "FieldRef",
     "Inline",
+    "Lens",
     "OrderRef",
 ]

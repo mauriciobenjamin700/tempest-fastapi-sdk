@@ -5,6 +5,21 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.120.0] — 2026-07-11
+
+### Added
+
+- **Admin lenses (saved list-view presets)** — `AdminModel(lenses=[Lens(...)])`
+  renders named presets as tabs above the list view. A `Lens(name, filters=...,
+  order_by=..., label=...)` bundles filter conditions (same dict conventions as
+  the repository) and an optional ordering; selecting it (`?lens=<slug>`) ANDs
+  its filters under the user's own search/filters and applies its ordering
+  unless the user clicked a column sort. An "All" tab clears the lens; the
+  active lens is preserved across pagination, sort and export links. `Lens` is
+  exported at the package root and from `tempest_fastapi_sdk.admin`. This closes
+  the Tier 3 "lenses" item — the admin-panel evolution is now essentially
+  complete (only in-place inline editing remains).
+
 ## [0.119.0] — 2026-07-11
 
 ### Added

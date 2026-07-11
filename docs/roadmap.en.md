@@ -76,13 +76,21 @@ the last item (management commands) shipped in v0.113.0. Upcoming
 releases are again pulled by business pressure.
 
 Natural candidates when demand shows up (admin panel evolution, already
-Tiers 1 and 2 of the admin-panel evolution are **shipped**, and Tier 3
-has landed CSV import (v0.118) and granular RBAC (v0.119). What's left is
-on-demand polish: in-place inline editing of 1-N relations (today listed
-+ navigable) and saved lenses/views.
+The admin-panel evolution is **essentially complete**: all of Tiers 1
+and 2, and Tier 3 with CSV import (v0.118), granular RBAC (v0.119) and
+lenses (v0.120). The only item left is on-demand polish: **in-place**
+inline editing of 1-N relations (today listed + navigable).
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
+
+## Shipped in v0.120.0
+
+Admin panel — lenses / saved views (Tier 3), closing the admin evolution:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **Lenses** | ✅ v0.120 | `AdminModel(lenses=[Lens("Open", filters={"status": "open"}, order_by="-created_at")])` → tabs above the list; clicking one applies its filters (ANDed with the user's search/filters) + ordering via `?lens=<slug>`. An "All" tab returns to the default. [Recipe »](recipes/admin.md) |
 
 ## Shipped in v0.119.0
 

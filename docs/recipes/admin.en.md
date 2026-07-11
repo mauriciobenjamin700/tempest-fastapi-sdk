@@ -530,6 +530,41 @@ across list, detail, create, edit, delete, bulk (delete → `DELETE`, rest
     Without `access_policy`, nothing changes (every logged-in admin does
     everything). Sync or `async`.
 
+## Lenses — saved views (`lenses=`)
+
+A lens is a named preset of filters + ordering, shown as a tab above the
+list. Instead of the operator re-entering "status=open, priority>=3,
+oldest first" every time, they click the tab:
+
+```python
+from tempest_fastapi_sdk import AdminModel, Lens
+
+site.register(
+    AdminModel(
+        model=Ticket,
+        lenses=[
+            Lens("Open", filters={"status": "open"}),
+            Lens(
+                "Urgent",
+                filters={"status": "open", "priority__gte": 3},
+                order_by="-created_at",
+            ),
+        ],
+    )
+)
+```
+
+The list gains **All / Open / Urgent** tabs. Clicking one applies the
+lens's filters (ANDed with whatever search/filters the user already
+set) and its ordering (`order_by`, `-col` = desc, unless the user
+clicked a header). The active lens is preserved across pagination, sort
+and export; "All" clears it.
+
+!!! info "Same filter conventions"
+    `filters` uses the same dict as the repository (`field__gte`, `name`
+    ILIKE, list → `IN`, …). The tab slug (`?lens=`) is derived from the
+    name (lowercased, hyphenated).
+
 #### 4. Session security defaults
 
 `SignedCookieSessionStore` uses `itsdangerous.TimestampSigner` (HMAC-SHA256) to sign a single cookie:

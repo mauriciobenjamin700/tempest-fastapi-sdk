@@ -643,6 +643,34 @@ textarea {
   margin: 1rem 0 0.5rem;
 }
 
+.tempest-admin-lenses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0 1rem;
+  border-bottom: 1px solid var(--tempest-border);
+  padding-bottom: 0.5rem;
+}
+
+.tempest-admin-lens {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--tempest-border);
+  color: var(--tempest-fg-soft);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+.tempest-admin-lens:hover {
+  color: inherit;
+}
+
+.tempest-admin-lens--active {
+  background: var(--tempest-accent, #2563eb);
+  border-color: var(--tempest-accent, #2563eb);
+  color: #fff;
+}
+
 .tempest-admin-footer {
   position: relative;
   z-index: 20;

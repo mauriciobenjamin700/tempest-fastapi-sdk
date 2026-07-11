@@ -13,6 +13,7 @@ from tempest_fastapi_sdk.admin import (
     AdminTheme,
     FieldRef,
     Inline,
+    Lens,
     MetricCard,
     MetricPartition,
     MetricTrend,
@@ -402,7 +403,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.119.0"
+__version__: str = "0.120.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -527,6 +528,7 @@ __all__: list[str] = [
     "JWTSettings",
     "JWTUtils",
     "LatitudeField",
+    "Lens",
     "LocalUploadStorage",
     "LogEntrySchema",
     "LogSettings",
