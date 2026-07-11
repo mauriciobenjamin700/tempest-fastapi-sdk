@@ -62,7 +62,7 @@ The admin panel already exists (`AdminSite` / `AdminModel` / `make_admin_router`
 | **Inline / related editing** ✅ v0.116.0 (read + navigate) | Children (1-N) listed on the parent's detail, with a link to the child admin and "Add" pre-filling the FK (`inlines=[Inline(...)]`). In-place editing on the same screen is a follow-up. | `BaseRepository` + relationships |
 | **CSV / JSON export** | Operator exports the filtered result without opening the database. | list view + filters |
 | **Audit log visible in the admin** ✅ v0.114.0 | Who changed what and when, straight in the UI — a per-row timeline in the detail view. | `BaseAuditLogModel` + `diff_snapshots` (`AdminModel(audit_model=...)`) |
-| **Metrics dashboard** | A landing screen with CPU/RAM/counters instead of an empty page. | `MetricsUtils` |
+| **Metrics dashboard** (system ✅) + **business cards** ✅ v0.117.0 | CPU/RAM/counters + value/trend/partition cards computed from your data (`AdminSite(dashboard_cards=[...])`). | `MetricsUtils` + `MetricCard` |
 | **MFA on admin login** | Second factor on the most sensitive access in the system; a natural fit now that TOTP exists. | `TOTPHelper` + `MFAMixin` + recovery codes |
 
 ## Everything shipped so far
@@ -76,11 +76,22 @@ the last item (management commands) shipped in v0.113.0. Upcoming
 releases are again pulled by business pressure.
 
 Natural candidates when demand shows up (admin panel evolution, already
-on the radar): business-metric cards on the dashboard, and in-place
-inline editing of 1-N relations (today they are listed + navigable).
+Tiers 1 and 2 of the admin-panel evolution are **shipped**. What's left
+is on-demand polish: in-place inline editing of 1-N relations (today
+listed + navigable), and the Tier 3 items (granular per-model/per-action
+RBAC, CSV import, saved lenses/views).
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
+
+## Shipped in v0.117.0
+
+Admin panel — business-metric cards on the dashboard (closes Tier 2 of
+the admin evolution):
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **Dashboard business metrics** | ✅ v0.117 | `AdminSite(dashboard_cards=[MetricCard(label, compute)])` renders cards at the top of the dashboard, computed from your data: `MetricValue` (a number), `MetricTrend` (vs previous period, with delta/%/direction) and `MetricPartition` (breakdown with bars). Distinct from the CPU/RAM panel. A card whose compute raises is skipped (never blanks the page). [Recipe »](recipes/admin.md) |
 
 ## Shipped in v0.116.0
 

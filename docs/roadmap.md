@@ -62,7 +62,7 @@ O painel admin já existe (`AdminSite` / `AdminModel` / `make_admin_router`, Jin
 | **Inline / related editing** ✅ v0.116.0 (leitura + navegar) | Filhos (1-N) listados no detail do pai, com link pro admin do filho e "Add" pré-preenchendo o FK (`inlines=[Inline(...)]`). Edição in-place na mesma tela fica como evolução. | `BaseRepository` + relationships |
 | **Export CSV / JSON** | Operador exporta o resultado filtrado sem abrir o banco. | listagem + filtros |
 | **Audit log visível no admin** ✅ v0.114.0 | Quem mudou o quê e quando, direto na UI — timeline por registro no detail. | `BaseAuditLogModel` + `diff_snapshots` (`AdminModel(audit_model=...)`) |
-| **Dashboard com métricas** | Tela inicial com CPU/RAM/contadores em vez de página vazia. | `MetricsUtils` |
+| **Dashboard com métricas** (sistema ✅) + **cards de negócio** ✅ v0.117.0 | CPU/RAM/contadores + cards value/trend/partition computados dos seus dados (`AdminSite(dashboard_cards=[...])`). | `MetricsUtils` + `MetricCard` |
 | **MFA no login do admin** | Segundo fator no acesso mais sensível do sistema; encaixe natural agora que o TOTP existe. | `TOTPHelper` + `MFAMixin` + recovery codes |
 
 ## Tudo que já entregamos
@@ -75,12 +75,22 @@ A fila "Próximos passos" que restava do backlog Tier S/A/B está
 **zerada** — o último item (management commands) entrou na v0.113.0. As
 próximas releases voltam a ser puxadas por pressão de negócio.
 
-Candidatos naturais quando a demanda aparecer (evolução do painel admin,
-já no radar): cards de métricas de negócio no dashboard, e edição inline
-in-place das relações 1-N (hoje elas são listadas + navegáveis).
+Os Tiers 1 e 2 da evolução do painel admin estão **entregues**. O que
+sobra é refino sob demanda: edição inline in-place das relações 1-N
+(hoje listadas + navegáveis), e os itens Tier 3 (RBAC granular por
+modelo/ação, import CSV, lenses/visões salvas).
 
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
+
+## Entregue na v0.117.0
+
+Painel admin — cards de métricas de negócio no dashboard (fecha o Tier 2
+da evolução do admin):
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Dashboard business metrics** | ✅ v0.117 | `AdminSite(dashboard_cards=[MetricCard(label, compute)])` renderiza cards no topo do dashboard, computados dos seus dados: `MetricValue` (número), `MetricTrend` (vs período anterior, com delta/%/direção) e `MetricPartition` (breakdown com barras). Distinto do painel CPU/RAM. Card que falha é pulado (não quebra a página). [Receita »](recipes/admin.md) |
 
 ## Entregue na v0.116.0
 

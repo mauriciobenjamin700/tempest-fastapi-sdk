@@ -405,6 +405,55 @@ filho). Até 50 linhas por inline.
     `AdminModel` registrado para os links funcionarem; sem ele, as linhas
     aparecem só-leitura.
 
+## Dashboard: cards de métricas de negócio (`dashboard_cards=`)
+
+O dashboard já mostra CPU/RAM/contadores. Para métricas do **seu
+negócio** — pedidos hoje, receita vs semana passada, usuários por plano
+— passe `dashboard_cards`. Cada card é um `MetricCard(label, compute)`
+onde `compute` é uma função async que recebe a sessão e devolve um de
+três tipos:
+
+```python
+from tempest_fastapi_sdk import (
+    AdminSite, MetricCard, MetricValue, MetricTrend, MetricPartition,
+)
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+async def orders_today(session: AsyncSession) -> MetricValue:
+    total = await OrderRepository(session).count(filters={"start_in": today()})
+    return MetricValue(total, unit="pedidos")
+
+
+async def revenue_trend(session: AsyncSession) -> MetricTrend:
+    return MetricTrend(value=await this_week(session), previous=await last_week(session), unit="BRL")
+
+
+async def users_by_plan(session: AsyncSession) -> MetricPartition:
+    return MetricPartition(segments=[("free", 120), ("pro", 30), ("enterprise", 4)])
+
+
+site = AdminSite(
+    title="Shop",
+    dashboard_cards=[
+        MetricCard("Pedidos hoje", orders_today, help_text="últimas 24h"),
+        MetricCard("Receita", revenue_trend),
+        MetricCard("Usuários por plano", users_by_plan),
+    ],
+)
+```
+
+- **`MetricValue(value, unit=None)`** — um número grande.
+- **`MetricTrend(value, previous, unit=None)`** — número + seta ▲/▼ e a
+  variação percentual vs o período anterior (`delta` / `pct` /
+  `direction` calculados pra você).
+- **`MetricPartition(segments=[(label, value), ...])`** — breakdown com
+  barras proporcionais; `total` somado automaticamente.
+
+Os cards renderizam no topo do dashboard, computados a cada load. Um
+card cujo `compute` levanta é **pulado** — uma métrica quebrada nunca
+zera a página.
+
 #### 4. Defaults de segurança de sessão
 
 `SignedCookieSessionStore` usa `itsdangerous.TimestampSigner` (HMAC-SHA256) para assinar um único cookie:

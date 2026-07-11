@@ -223,6 +223,11 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ::: tempest_fastapi_sdk.admin.site.AdminSite
 ::: tempest_fastapi_sdk.admin.config.AdminModel
+::: tempest_fastapi_sdk.admin.config.Inline
+::: tempest_fastapi_sdk.admin.dashboard.MetricCard
+::: tempest_fastapi_sdk.admin.dashboard.MetricValue
+::: tempest_fastapi_sdk.admin.dashboard.MetricTrend
+::: tempest_fastapi_sdk.admin.dashboard.MetricPartition
 ::: tempest_fastapi_sdk.admin.actions.admin_action
 ::: tempest_fastapi_sdk.admin.actions.AdminActionContext
 ::: tempest_fastapi_sdk.admin.actions.AdminActionResult
