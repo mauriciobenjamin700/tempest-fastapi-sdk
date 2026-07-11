@@ -80,11 +80,19 @@ The admin-panel evolution is **essentially complete**: all of Tiers 1
 and 2, and Tier 3 with CSV import (v0.118), granular RBAC (v0.119) and
 lenses (v0.120). A refinement pass followed: JSON+time widgets (v0.121),
 UX polish (v0.122) and an [integrated example](admin-showcase.md) that
-wires it all into a shop admin. The only item left is on-demand polish:
-**in-place** inline editing of 1-N relations (today listed + navigable).
+wires it all into a shop admin. With **in-place inline editing** (v0.127)
+the admin-panel evolution is fully done; further work is business-pulled.
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
+
+## Shipped in v0.127.0
+
+Admin — in-place inline editing:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **`Inline(editable=True, can_delete=True)`** | ✅ v0.127 | The parent's detail view renders the 1-N children as an editable formset (one input row per child + a blank add row) that posts back to `/inlines/<child>` — edit, add and delete without leaving the page. The parent foreign key is implied (forced to the parent, never an input), rows are scoped to the parent, upload/autocomplete columns stay on the child's own form, and validation errors re-render in place. Requires the child's registered admin + its `can_edit`/`can_delete`. [Recipe »](recipes/admin.md) |
 
 ## Shipped in v0.126.0
 
@@ -173,7 +181,7 @@ Admin panel — inlines / nested relations (Tier 2 of the admin evolution):
 
 | Feature | Status | Where |
 |---------|--------|-------|
-| **Inlines (read + navigate)** | ✅ v0.116 | `AdminModel(inlines=[Inline(Child, Child.parent_id)])` lists the 1-N children on the parent's detail view as a table, with a link to the child admin and "Add" pre-filling the FK (via a create query param). Reuses the child admin's `list_display`/CRUD. In-place editing on the same screen is a follow-up. [Recipe »](recipes/admin.md) |
+| **Inlines (read + navigate)** | ✅ v0.116 | `AdminModel(inlines=[Inline(Child, Child.parent_id)])` lists the 1-N children on the parent's detail view as a table, with a link to the child admin and "Add" pre-filling the FK (via a create query param). Reuses the child admin's `list_display`/CRUD. In-place editing on the same screen: `editable=True` (v0.127). [Recipe »](recipes/admin.md) |
 
 ## Shipped in v0.115.0
 

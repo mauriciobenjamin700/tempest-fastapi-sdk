@@ -13,7 +13,7 @@ Django-style management UI mounted under `/admin`. Operators sign in with a user
 - File/image upload fields.
 - Audit trail stamping `created_by` / `updated_by`.
 
-Still on the roadmap: inline/related editing.
+Also covers in-place inline editing of 1-N children (`Inline(editable=True)`).
 
 Requires the `[admin]` extra:
 
@@ -216,7 +216,7 @@ app.include_router(
 
     **Audit trail**: create/edit through the admin stamps `created_by`/`updated_by` (from `AuditMixin`) with the acting admin's id; the detail view shows an **Audit** panel with timestamps and — when the model has the audit columns — the actor (UUID resolved to a display name via the auth backend). Models without `AuditMixin` show timestamps only.
 
-    Not yet included (later roadmap phases): inline/related editing.
+    In-place inline editing of children: see `Inline(editable=True)` below.
 
 ## Custom actions (`@admin_action`)
 
@@ -416,12 +416,48 @@ opens the Member create form with `team_id` pre-filled (via a query
 param). Columns come from the `Inline`'s `list_display` (or, if omitted,
 the child admin's). Up to 50 rows per inline.
 
-!!! info "Read + navigate (for now)"
-    This version **lists and navigates** children (view, edit in the
-    child admin, add pre-linked to the parent). In-place editing of the
-    children on the parent's own screen is a follow-up. The child model
-    must have a registered `AdminModel` for the links to work; without
-    one, the rows render read-only.
+The child model must have a registered `AdminModel` for the links to
+work; without one, the rows render read-only.
+
+### In-place editing (`editable=True`)
+
+To edit the children **without leaving the parent's detail view**, pass
+`editable=True` (and `can_delete=True` to allow removal). The table
+becomes a formset: one input row per existing child plus a blank row to
+add another.
+
+```python
+site.register(
+    AdminModel(
+        model=Team,
+        inlines=[
+            Inline(
+                Member,
+                Member.team_id,
+                editable=True,
+                can_delete=True,
+            )
+        ],
+    )
+)
+site.register(AdminModel(model=Member))   # can_edit / can_delete apply here
+```
+
+On save (`POST /admin/m/<parent>/<id>/inlines/<child>`) everything happens
+in one transaction: existing rows are updated, a blank row with any value
+becomes a new child, and a checked delete box removes the row.
+
+!!! tip "Transparent, no magic"
+    - The **parent foreign key is implied** — forced to the parent, never
+      an input; the user can't pick (or re-point to) the wrong parent.
+    - Each row is **scoped to the parent**: a child whose foreign key
+      doesn't match is ignored, never cross-edited.
+    - **Upload/autocomplete** columns stay on the child's own form (they
+      don't enter the compact formset).
+    - Validation errors **re-render the formset in place**, with a
+      per-field message and nothing inserted.
+    - Needs the child's `AdminModel` + `can_edit` (and `can_delete` to
+      delete). Up to 50 rows per inline.
 
 ## Dashboard: business-metric cards (`dashboard_cards=`)
 

@@ -32,15 +32,17 @@ from starlette.concurrency import run_in_threadpool
 
 from tempest_fastapi_sdk.admin.actions import AdminActionContext
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend, AdminAuthError
-from tempest_fastapi_sdk.admin.config import AdminModel
+from tempest_fastapi_sdk.admin.config import AdminModel, Inline
 from tempest_fastapi_sdk.admin.dashboard import (
     MetricPartition,
     MetricTrend,
 )
 from tempest_fastapi_sdk.admin.forms import (
+    FormField,
     build_form_fields,
     fk_fields,
     fk_label,
+    inline_editable_names,
     parse_submission,
 )
 from tempest_fastapi_sdk.admin.permissions import AdminAccessPolicy, AdminPermission
@@ -1554,6 +1556,48 @@ def make_admin_router(
         if instance is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
 
+        return await _detail_response(
+            request, admin, slug, identity, instance, principal, session, db_session
+        )
+
+    async def _detail_response(
+        request: Request,
+        admin: AdminModel[Any],
+        slug: str,
+        identity: str,
+        instance: Any,
+        principal: Any,
+        session: AdminSession,
+        db_session: AsyncSession,
+        *,
+        inline_overrides: dict[str, list[tuple[str, dict[str, str], dict[str, str]]]]
+        | None = None,
+        inline_error: str | None = None,
+        status_code: int = status.HTTP_200_OK,
+    ) -> HTMLResponse:
+        """Render the detail view for ``instance``.
+
+        Shared by the read-only GET and the inline-formset POST error
+        path (which passes ``inline_overrides`` so the formset re-renders
+        the submitted values + per-field errors).
+
+        Args:
+            request (Request): The inbound request.
+            admin (AdminModel[Any]): The parent admin.
+            slug (str): The parent admin slug.
+            identity (str): The parent identity value.
+            instance (Any): The parent row.
+            principal (Any): The signed-in principal.
+            session (AdminSession): The validated session.
+            db_session (AsyncSession): The DB session.
+            inline_overrides (dict | None): Submitted inline rows to
+                re-render on error, keyed by child slug.
+            inline_error (str | None): A banner message for the inline.
+            status_code (int): HTTP status (``400`` on inline errors).
+
+        Returns:
+            HTMLResponse: The rendered detail template.
+        """
         columns = admin.column_names()
         readonly = set(admin.readonly_fields)
         model_columns = sa_inspect(admin.model).columns
@@ -1610,7 +1654,15 @@ def make_admin_router(
                     }
                 )
 
-        inlines = await _build_inlines(admin, instance, db_session)
+        inlines = await _build_inlines(
+            admin,
+            instance,
+            db_session,
+            principal,
+            slug,
+            identity,
+            overrides=inline_overrides,
+        )
 
         return _render(
             request,
@@ -1627,6 +1679,7 @@ def make_admin_router(
                 "audit": audit,
                 "history": history,
                 "inlines": inlines,
+                "inline_error": inline_error,
                 "nav_models": await _visible_nav(principal),
                 "can_edit": admin.can_edit
                 and await _allows(principal, admin, AdminPermission.EDIT),
@@ -1635,33 +1688,53 @@ def make_admin_router(
                 "edit_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "delete_url": f"{prefix}/m/{slug}/{identity}/delete",
             },
+            status_code=status_code,
         )
 
     async def _build_inlines(
         admin: AdminModel[Any],
         instance: Any,
         db_session: AsyncSession,
+        principal: Any,
+        parent_slug: str,
+        parent_identity: str,
+        *,
+        overrides: dict[str, list[tuple[str, dict[str, str], dict[str, str]]]]
+        | None = None,
     ) -> list[dict[str, Any]]:
-        """Build the related-child tables for a parent's detail view.
+        """Build the related-child blocks for a parent's detail view.
 
         For each configured :class:`Inline`, queries the child rows that
-        reference ``instance`` via the inline's ``fk_field`` and packages
-        them with the columns to show plus links to the child admin (when
-        the child model is registered).
+        reference ``instance`` via the inline's ``fk_field``. A read-only
+        inline packages the rows as a table with links to the child admin
+        (when registered); an ``editable`` inline whose child admin allows
+        editing packages them as an in-place formset (one input row per
+        child plus a blank add row).
 
         Args:
             admin (AdminModel[Any]): The parent admin.
             instance (Any): The parent row.
             db_session (AsyncSession): The DB session.
+            principal (Any): The signed-in admin principal (for the
+                per-child EDIT permission check).
+            parent_slug (str): The parent's admin slug (for the formset
+                POST action URL).
+            parent_identity (str): The parent's identity value.
+            overrides (dict[str, list[...]] | None): For an error
+                re-render, maps a child slug to the submitted rows
+                ``(rowkey, values, errors)`` so the formset shows what the
+                user typed plus per-field errors instead of DB values.
 
         Returns:
             list[dict[str, Any]]: One entry per inline, ready for the
             template.
         """
         parent_id = getattr(instance, "id", None)
+        overrides = overrides or {}
         blocks: list[dict[str, Any]] = []
         for inline in admin.inlines:
-            child_admin = site.get(inline.get_slug())
+            child_slug = inline.get_slug()
+            child_admin = site.get(child_slug)
             repository = (
                 child_admin.build_repository(db_session)
                 if child_admin is not None
@@ -1674,7 +1747,26 @@ def make_admin_router(
                 display = child_admin.resolved_list_display()
             else:
                 display = list(sa_inspect(inline.model).columns.keys())
-            child_slug = inline.get_slug()
+
+            editable = (
+                inline.editable
+                and child_admin is not None
+                and child_admin.can_edit
+                and await _allows(principal, child_admin, AdminPermission.EDIT)
+            )
+            if editable and child_admin is not None:
+                blocks.append(
+                    _build_editable_inline(
+                        inline,
+                        child_admin,
+                        children,
+                        f"{prefix}/m/{parent_slug}/{parent_identity}"
+                        f"/inlines/{child_slug}",
+                        overrides.get(child_slug),
+                    )
+                )
+                continue
+
             rows = [
                 {
                     "id": str(getattr(child, "id", "")),
@@ -1696,6 +1788,7 @@ def make_admin_router(
             blocks.append(
                 {
                     "label": inline.get_label(),
+                    "editable": False,
                     "columns": display,
                     "rows": rows,
                     "add_url": add_url,
@@ -1885,6 +1978,154 @@ def make_admin_router(
                 "form_error": form_error,
             },
             status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    @router.post(
+        "/m/{slug}/{identity}/inlines/{child_slug}", name="admin_inline_submit"
+    )
+    async def inline_submit(
+        request: Request,
+        slug: str,
+        identity: str,
+        child_slug: str,
+        csrf_token: str = Form(...),
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> Response:
+        """Persist an editable inline formset in one transaction.
+
+        Parses the ``row.<key>.<field>`` inputs posted from the parent's
+        detail view: existing rows (key = child id) are updated, a blank
+        row with any value becomes a new child (foreign key forced to the
+        parent), and a checked ``__delete`` box removes an existing row
+        (when the inline and child admin allow it). All child rows are
+        scoped to this parent — a row whose foreign key doesn't match is
+        ignored, never cross-edited.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The parent admin slug.
+            identity (str): The parent identity value.
+            child_slug (str): The child admin slug (the inline target).
+            csrf_token (str): CSRF token from the form.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            Response: Redirect to the parent detail on success; the
+            re-rendered detail (``400``) with per-field errors otherwise.
+        """
+        parent_admin = _require_admin(slug, lambda a: a.can_edit)
+        principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, parent_admin, AdminPermission.VIEW)
+        _check_csrf(session, csrf_token)
+
+        inline = next(
+            (
+                i
+                for i in parent_admin.inlines
+                if i.get_slug() == child_slug and i.editable
+            ),
+            None,
+        )
+        child_admin = site.get(child_slug)
+        if inline is None or child_admin is None or not child_admin.can_edit:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "editable inline not found")
+        await _require_access(principal, child_admin, AdminPermission.EDIT)
+
+        parent_repo = parent_admin.build_repository(db_session)
+        parent = await parent_repo.get_or_none(
+            {parent_admin.identity_field: _identity_value(identity)}
+        )
+        if parent is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "record not found")
+        parent_id = getattr(parent, "id", None)
+
+        form = await request.form()
+        # The parent foreign key is implied — forced below, never parsed.
+        names = set(inline_editable_names(child_admin)) - {inline.fk_field}
+        child_repo = child_admin.build_repository(db_session)
+        actor_id = auth_backend.principal_id(principal)
+
+        # Group posted inputs by row key: ``row.<key>.<field>``.
+        grouped: dict[str, dict[str, str]] = {}
+        to_delete: set[str] = set()
+        for full_key in form:
+            if not full_key.startswith("row."):
+                continue
+            parts = full_key.split(".", 2)
+            if len(parts) != 3:
+                continue
+            _, key, field_name = parts
+            if field_name == "__delete":
+                raw = str(form.get(full_key) or "").lower()
+                if raw not in ("", "false", "off", "0", "no"):
+                    to_delete.add(key)
+                continue
+            grouped.setdefault(key, {})[field_name] = str(form.get(full_key) or "")
+
+        can_delete = inline.can_delete and child_admin.can_delete
+        error_rows: list[tuple[str, dict[str, str], dict[str, str]]] = []
+        form_error: str | None = None
+
+        async def _owned(key: str) -> Any:
+            """Return the child row for ``key`` if it belongs to the parent."""
+            existing = await child_repo.get_or_none({"id": _identity_value(key)})
+            if existing is None:
+                return None
+            if getattr(existing, inline.fk_field, None) != parent_id:
+                return None
+            return existing
+
+        for key, values in grouped.items():
+            is_new = key.startswith("new")
+            if not is_new and can_delete and key in to_delete:
+                existing = await _owned(key)
+                if existing is not None:
+                    await child_repo.delete(existing.id)
+                continue
+            if is_new and not any(v.strip() for v in values.values()):
+                # A blank add row the user left untouched — skip it.
+                continue
+            data, errs = parse_submission(child_admin, values, only=names)
+            if errs:
+                error_rows.append((key, values, errs))
+                continue
+            data[inline.fk_field] = parent_id
+            try:
+                if is_new:
+                    child = child_admin.model(**data)
+                    _stamp_audit(child, actor_id, creating=True)
+                    await child_repo.add(child)
+                else:
+                    existing = await _owned(key)
+                    if existing is None:
+                        continue
+                    for field_name, value in data.items():
+                        setattr(existing, field_name, value)
+                    _stamp_audit(existing, actor_id, creating=False)
+                    await child_repo.update(existing)
+            except AppException as exc:
+                form_error = exc.message
+                error_rows.append((key, values, {}))
+
+        if error_rows or form_error:
+            return await _detail_response(
+                request,
+                parent_admin,
+                slug,
+                identity,
+                parent,
+                principal,
+                session,
+                db_session,
+                inline_overrides={child_slug: error_rows},
+                inline_error=form_error or "Some inline rows could not be saved.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        return RedirectResponse(
+            url=f"{prefix}/m/{slug}/{identity}",
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
     @router.post("/m/{slug}/{identity}/delete", name="admin_delete")
@@ -2185,6 +2426,90 @@ _AUTOCOMPLETE_LIMIT = 20
 
 #: Cap on child rows rendered per inline on the detail view.
 _INLINE_ROW_LIMIT = 50
+
+
+def _prefix_row_fields(key: str, fields: list[FormField]) -> list[FormField]:
+    """Namespace each form field's name for one formset row.
+
+    Args:
+        key (str): The row key (child id, or ``newN`` for a blank row).
+        fields (list[FormField]): The child's form fields.
+
+    Returns:
+        list[FormField]: The same fields with ``name`` rewritten to
+        ``row.<key>.<field>`` so rows don't collide in the POST body.
+    """
+    for form_field in fields:
+        form_field.name = f"row.{key}.{form_field.name}"
+    return fields
+
+
+def _build_editable_inline(
+    inline: Inline,
+    child_admin: AdminModel[Any],
+    children: list[Any],
+    form_action: str,
+    submitted_rows: list[tuple[str, dict[str, str], dict[str, str]]] | None,
+) -> dict[str, Any]:
+    """Package one editable inline as an in-place formset block.
+
+    Args:
+        inline (Inline): The inline config.
+        child_admin (AdminModel[Any]): The child's registered admin.
+        children (list[Any]): The child rows referencing the parent.
+        form_action (str): The POST URL the formset submits to.
+        submitted_rows (list[...] | None): On an error re-render, the
+            submitted ``(rowkey, values, errors)`` per row, so inputs show
+            what the user typed with per-field errors.
+
+    Returns:
+        dict[str, Any]: The template-ready editable inline block.
+    """
+    # The parent foreign key is implied by the row — never a formset input.
+    names = [n for n in inline_editable_names(child_admin) if n != inline.fk_field]
+    headers = [
+        form_field.label for form_field in build_form_fields(child_admin, only=names)
+    ]
+    submitted_map = {key: (values, errs) for key, values, errs in submitted_rows or []}
+    rows: list[dict[str, Any]] = []
+    for child in children[:_INLINE_ROW_LIMIT]:
+        key = str(getattr(child, "id", ""))
+        if key in submitted_map:
+            values, errs = submitted_map[key]
+            fields = build_form_fields(
+                child_admin, submitted=values, errors=errs, only=names
+            )
+        else:
+            fields = build_form_fields(child_admin, instance=child, only=names)
+        rows.append(
+            {"key": key, "fields": _prefix_row_fields(key, fields), "is_new": False}
+        )
+    new_count = 0
+    for key, (values, errs) in submitted_map.items():
+        if key.startswith("new"):
+            fields = build_form_fields(
+                child_admin, submitted=values, errors=errs, only=names
+            )
+            rows.append(
+                {"key": key, "fields": _prefix_row_fields(key, fields), "is_new": True}
+            )
+            new_count += 1
+    blank_key = f"new{new_count}"
+    blank_fields = build_form_fields(child_admin, only=names)
+    return {
+        "label": inline.get_label(),
+        "editable": True,
+        "columns": headers,
+        "rows": rows,
+        "new_row": {
+            "key": blank_key,
+            "fields": _prefix_row_fields(blank_key, blank_fields),
+        },
+        "can_delete": inline.can_delete and child_admin.can_delete,
+        "form_action": form_action,
+        "total": len(children),
+        "truncated": len(children) > _INLINE_ROW_LIMIT,
+    }
 
 
 def _format_audit_changes(action: str, changes: dict[str, Any]) -> list[dict[str, Any]]:
