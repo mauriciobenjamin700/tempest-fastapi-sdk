@@ -61,7 +61,7 @@ The admin panel already exists (`AdminSite` / `AdminModel` / `make_admin_router`
 | **Field widgets** (FK select, date picker, file upload) | The form is generic today; FK as `<select>`, dates with a picker, and upload via `UploadUtils` remove manual typing and error. | `UploadUtils` + storage backends |
 | **Inline / related editing** | Edit children (1-N) on the parent's screen — the Django-admin pattern that's missing. | `BaseRepository` + relationships |
 | **CSV / JSON export** | Operator exports the filtered result without opening the database. | list view + filters |
-| **Audit log visible in the admin** | Who changed what and when, straight in the UI. | `AuditMixin` (`created_by` / `updated_by`) |
+| **Audit log visible in the admin** ✅ v0.114.0 | Who changed what and when, straight in the UI — a per-row timeline in the detail view. | `BaseAuditLogModel` + `diff_snapshots` (`AdminModel(audit_model=...)`) |
 | **Metrics dashboard** | A landing screen with CPU/RAM/counters instead of an empty page. | `MetricsUtils` |
 | **MFA on admin login** | Second factor on the most sensitive access in the system; a natural fit now that TOTP exists. | `TOTPHelper` + `MFAMixin` + recovery codes |
 
@@ -76,12 +76,20 @@ the last item (management commands) shipped in v0.113.0. Upcoming
 releases are again pulled by business pressure.
 
 Natural candidates when demand shows up (admin panel evolution, already
-on the radar): a per-row audit-history viewer, autocomplete FK fields,
-inline editing of 1-N relations, and business-metric cards on the
-dashboard.
+on the radar): autocomplete FK fields, inline editing of 1-N relations,
+and business-metric cards on the dashboard.
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
+
+## Shipped in v0.114.0
+
+Admin panel — per-row audit-history viewer (the first Tier 1 item of the
+admin evolution):
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **Audit history viewer** | ✅ v0.114 | `AdminModel(audit_model=...)` renders a per-row change timeline in the detail view, read from the `BaseAuditLogModel` (matched on `entity` + `entity_id`), with a field-by-field before/after diff and actor/date per entry. Pair it with `BaseRepository(audit_model=...)` + `add_audited`/`update_audited`/`delete_audited`. [Recipe »](recipes/admin.md) |
 
 ## Shipped in v0.113.0
 

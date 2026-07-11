@@ -15,6 +15,7 @@ from tempest_fastapi_sdk.admin.actions import (
     AdminAction,
     resolve_admin_action,
 )
+from tempest_fastapi_sdk.db.audit import BaseAuditLogModel
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.db.repository import BaseRepository
 
@@ -97,6 +98,14 @@ class AdminModel(Generic[ModelT]):
         upload_storage (UploadStorage | None): Backend used to persist
             uploaded files (``LocalUploadStorage`` / ``MinIOUploadStorage``).
             Required when ``upload_fields`` is non-empty.
+        audit_model (type[BaseAuditLogModel] | None): When set, the detail
+            view renders a per-row change timeline read from this audit
+            table (matched on ``entity`` = the model name and
+            ``entity_id`` = the row id). Pair it with
+            ``BaseRepository(audit_model=...)`` +
+            ``add_audited`` / ``update_audited`` / ``delete_audited`` so the
+            history is actually written. ``None`` (default) shows only the
+            ``created_by`` / ``updated_by`` stamps.
 
     Raises:
         TypeError: When ``model`` is not a subclass of :class:`BaseModel`,
@@ -123,6 +132,7 @@ class AdminModel(Generic[ModelT]):
         actions: Sequence[ActionHandler] = (),
         upload_fields: Sequence[FieldRef] = (),
         upload_storage: UploadStorage | None = None,
+        audit_model: type[BaseAuditLogModel] | None = None,
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -161,6 +171,14 @@ class AdminModel(Generic[ModelT]):
                 "AdminModel `upload_fields` requires an `upload_storage` "
                 "(e.g. LocalUploadStorage / MinIOUploadStorage).",
             )
+        if audit_model is not None and (
+            not isinstance(audit_model, type)
+            or not issubclass(audit_model, BaseAuditLogModel)
+        ):
+            raise TypeError(
+                "AdminModel `audit_model` must be a subclass of BaseAuditLogModel",
+            )
+        self.audit_model: type[BaseAuditLogModel] | None = audit_model
 
     def get_verbose_name(self) -> str:
         """Return the configured (or auto-derived) singular display name.

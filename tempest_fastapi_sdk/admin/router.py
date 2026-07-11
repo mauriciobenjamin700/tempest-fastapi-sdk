@@ -17,6 +17,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 
 from tempest_fastapi_sdk.admin.actions import AdminActionContext
@@ -1220,6 +1221,29 @@ def make_admin_router(
             "updated_by": await _actor(getattr(instance, "updated_by", None)),
             "has_actors": "created_by" in columns or "updated_by" in columns,
         }
+
+        history: list[dict[str, Any]] = []
+        if admin.audit_model is not None:
+            audit_model = admin.audit_model
+            entity_id = str(getattr(instance, "id", identity))
+            result = await db_session.execute(
+                select(audit_model)
+                .where(audit_model.entity == admin.model.__name__)
+                .where(audit_model.entity_id == entity_id)
+                .order_by(audit_model.created_at.desc())
+                .limit(_AUDIT_HISTORY_LIMIT)
+            )
+            for entry in result.scalars().all():
+                history.append(
+                    {
+                        "action": entry.action,
+                        "at": entry.created_at,
+                        "actor": await _actor(entry.actor) or entry.actor,
+                        "changes": _format_audit_changes(entry.action, entry.changes),
+                        "context": entry.context,
+                    }
+                )
+
         return _render(
             request,
             "detail.html",
@@ -1232,6 +1256,7 @@ def make_admin_router(
                 "fields": fields,
                 "readonly": readonly,
                 "audit": audit,
+                "history": history,
                 "can_edit": admin.can_edit,
                 "can_delete": admin.can_delete,
                 "edit_url": f"{prefix}/m/{slug}/{identity}/edit",
@@ -1645,6 +1670,46 @@ def _bulk_actions(admin: Any) -> list[tuple[str, str]]:
 
 
 _AUDIT_FIELDS = ("created_at", "updated_at", "created_by", "updated_by")
+
+#: Cap on audit-history rows rendered in the detail view.
+_AUDIT_HISTORY_LIMIT = 50
+
+
+def _format_audit_changes(action: str, changes: dict[str, Any]) -> list[dict[str, Any]]:
+    """Normalize a stored audit ``changes`` blob into uniform rows.
+
+    ``BaseAuditLogModel`` stores ``{"after": {...}}`` for create,
+    ``{"before": {...}}`` for delete, and ``{field: {"before", "after"}}``
+    for update. This flattens all three into
+    ``[{"field", "before", "after"}, ...]`` so the template renders one
+    table regardless of action.
+
+    Args:
+        action (str): The audit action value (``create`` / ``update`` /
+            ``delete``).
+        changes (dict[str, Any]): The stored diff blob.
+
+    Returns:
+        list[dict[str, Any]]: One row per changed field, sorted by name.
+    """
+    rows: list[dict[str, Any]] = []
+    if action == "create":
+        after = changes.get("after", {})
+        rows = [{"field": k, "before": None, "after": v} for k, v in after.items()]
+    elif action == "delete":
+        before = changes.get("before", {})
+        rows = [{"field": k, "before": v, "after": None} for k, v in before.items()]
+    else:
+        for field, delta in changes.items():
+            if isinstance(delta, dict):
+                rows.append(
+                    {
+                        "field": field,
+                        "before": delta.get("before"),
+                        "after": delta.get("after"),
+                    }
+                )
+    return sorted(rows, key=lambda row: str(row["field"]))
 
 
 def _stamp_audit(instance: Any, actor_id: str, *, creating: bool) -> None:

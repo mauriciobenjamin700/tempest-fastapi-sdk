@@ -5,6 +5,21 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.114.0] — 2026-07-10
+
+### Added
+
+- **Admin audit-history viewer** — `AdminModel(audit_model=...)` renders a
+  per-row change timeline in the admin detail view, read from a
+  `BaseAuditLogModel` table (matched on `entity` = the model name and
+  `entity_id` = the row id, newest first, capped at 50 entries). Each entry
+  shows the action (create/update/delete, color-coded), the actor and
+  timestamp, and a field-by-field before/after diff. Pair it with
+  `BaseRepository(audit_model=...)` + `add_audited` / `update_audited` /
+  `delete_audited` so the trail is written. Without `audit_model` the detail
+  view is unchanged (only the `created_by` / `updated_by` stamps). This closes
+  the Tier 1 "audit history viewer" item of the admin-panel evolution.
+
 ## [0.113.0] — 2026-07-10
 
 ### Added

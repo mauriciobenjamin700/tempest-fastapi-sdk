@@ -314,6 +314,57 @@ site.register(AdminModel(
 !!! tip "Responsive by default"
     The bundled templates + CSS are responsive: on narrow screens (≤600px) the header stacks, search/filters/actions go full-width, tables get horizontal scroll (never breaking the layout), and the detail grid collapses to a single column. Column headers are clickable to toggle sort order (▲/▼).
 
+## Audit history in the detail (`audit_model=`)
+
+The panel already stamps `created_by` / `updated_by`. To see **what**
+changed (not just who/when), pass an `audit_model` — the same
+`BaseAuditLogModel` table the `BaseRepository` already writes — and the
+detail view gains a per-row **timeline**.
+
+First, the audit table and a repository that feeds it:
+
+```python
+# src/db/models/audit.py
+from tempest_fastapi_sdk import BaseAuditLogModel
+
+
+class AuditLog(BaseAuditLogModel):
+    __tablename__ = "audit_log"
+```
+
+```python
+# write the trail on writes (create/update/delete)
+from tempest_fastapi_sdk import BaseRepository
+from tempest_fastapi_sdk.db.audit import snapshot_model
+
+repo = BaseRepository(session, model=OrderModel, audit_model=AuditLog)
+
+order = await repo.add_audited(OrderModel(...), actor=str(current_user.id))
+
+before = snapshot_model(order)
+order.status = "shipped"
+await repo.update_audited(order, before, actor=str(current_user.id))
+```
+
+Then wire the same `audit_model` into the admin:
+
+```python
+# src/admin/site.py
+site.register(AdminModel(model=OrderModel, audit_model=AuditLog))
+```
+
+Each order's detail now shows a **History** block: one entry per change
+(`create` / `update` / `delete`, color-coded), actor and date, and a
+field-by-field diff (before → after). The 50 most recent entries, newest
+first.
+
+!!! info "How the match works"
+    The viewer looks up audit rows where `entity` == the model name
+    (e.g. `"OrderModel"`) and `entity_id` == the record id — exactly what
+    `add_audited` / `update_audited` / `delete_audited` write. Without
+    `audit_model`, the detail view is unchanged (only the
+    `created_by`/`updated_by` stamps).
+
 #### 4. Session security defaults
 
 `SignedCookieSessionStore` uses `itsdangerous.TimestampSigner` (HMAC-SHA256) to sign a single cookie:
