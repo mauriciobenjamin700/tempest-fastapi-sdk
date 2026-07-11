@@ -177,6 +177,165 @@ class ReportsPage(BasePage):
     `Page.render()` returns `self.shell(self.body())`. The renderer expands
     components recursively, so a page is just another widget in the tree.
 
+## Widget catalog
+
+Widgets come from `tempest_core`. For SSR you use a handful of them as
+building blocks; **all** accept `tag=`, `attrs=`, `style=` and `key=`.
+
+| Widget | Renders | Use |
+|--------|---------|-----|
+| `Text(content=...)` | `<span>` (or the `tag`) with **escaped** text | Any text: heading, paragraph, `<option>`, `<label>` |
+| `Column(children=[...])` | `<div>` with `display:flex; flex-direction:column` | Stack vertically |
+| `Row(children=[...])` | `<div>` with `display:flex` (row) | Align horizontally |
+| `Container(child=...)` | **plain** `<div>` (no flex), one child | Semantic wrapper (`tag="section"`, `tag="article"`) |
+| `Button(label=...)` | styled `<button>` | Actions (via HTMX `attrs` — see below) |
+| `Spacer()` | flexible space | Push items apart in a `Row`/`Column` |
+
+```python
+from tempest_core import Column, Container, Row, Spacer, Text
+
+Container(
+    tag="section",
+    child=Row(
+        children=[
+            Text(content="Title", tag="h2"),
+            Spacer(),
+            Text(content="v1.0", tag="small"),
+        ],
+    ),
+)
+# <section><div style="display: flex"><h2>Title</h2>…<small>v1.0</small></div></section>
+```
+
+!!! warning "`Button.on_click` is ignored in SSR"
+    `on_click` is a runtime handler (WASM/server); it does **not** run in
+    static HTML. For SSR interactivity, use `attrs` with HTMX (`hx-post`,
+    `hx-get`, …) — see [HTMX](#htmx-served-locally-no-cdn).
+
+!!! tip "`tag` + `attrs` are the universal escape hatch"
+    There is no dedicated widget for every HTML tag — and there needn't be.
+    Any element comes out of a container widget with `tag=` and `attrs=`:
+    `Text(content="", tag="input", attrs={"name": "email", "type": "email"})`
+    renders `<input name="email" type="email" />`.
+
+## Typed styling with `Style`
+
+Instead of loose CSS, each widget accepts a typed `Style` the renderer turns
+into inline CSS. Spacing uses `Edge`.
+
+```python
+from tempest_core import Column, Style, Text
+from tempest_core.style import Edge
+
+Column(
+    style=Style(gap=12.0, padding=Edge.all(16)),
+    children=[Text(content="Card", tag="h3")],
+)
+# <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 16px 16px">…
+```
+
+- `Edge.all(16)` / `Edge.symmetric(vertical=8, horizontal=16)` /
+  `Edge.only(top=4)` — typed margins and paddings.
+- `gap`, `padding`, `margin`, colors and typography land in the inline
+  `style=""`.
+- The `Style → CSS` conversion is **byte-identical** between the Python
+  renderer (SSR) and the JS client (WASM/server) — the same screen on both
+  sides.
+
+!!! info "Prefer classes/`attrs` for external stylesheets"
+    For real CSS (external sheets, media queries), add
+    `attrs={"class": "card"}` and serve your `.css` as static. Inline
+    `Style` is great for local layout and self-contained components.
+
+## Reusable components
+
+`Page` is a `Component`. You can extract **any** subtree into a typed
+`Component` and reuse it — the page stays declarative and testable in pieces.
+
+```python
+from tempest_core import Column, Text, Widget
+from tempest_core.widgets import Component
+
+from tempest_fastapi_sdk.ssr import Page, html_response
+
+
+class Card(Component):
+    """A reusable card with a heading + body."""
+
+    heading: str
+    body_text: str
+
+    def render(self) -> Widget:
+        return Column(
+            tag="section",
+            attrs={"class": "card"},
+            children=[
+                Text(content=self.heading, tag="h3"),
+                Text(content=self.body_text, tag="p"),
+            ],
+        )
+
+
+class HomePage(Page):
+    def body(self) -> Widget:
+        return Column(
+            tag="main",
+            children=[
+                Card(heading="Sales", body_text="$12,400 today"),
+                Card(heading="Users", body_text="312 active"),
+            ],
+        )
+```
+
+In a `Component` you override **`render()`** (not `body()`/`shell()` — those
+belong to `Page`). The renderer expands each `Component` through its
+`render()`, recursively.
+
+## Forms and inputs
+
+There is no dedicated form widget — you compose it with `tag`/`attrs` and
+receive the POST with FastAPI's `Form`, like any route.
+
+```python
+from tempest_core import Button, Column, Text, Widget
+from fastapi import FastAPI, Form
+
+from tempest_fastapi_sdk.ssr import Page, html_response
+
+app: FastAPI = FastAPI()
+
+
+class SignupPage(Page):
+    def body(self) -> Widget:
+        return Column(
+            tag="form",
+            attrs={"method": "post", "action": "/signup"},
+            children=[
+                Text(content="", tag="input",
+                     attrs={"name": "email", "type": "email", "required": "required"}),
+                Text(content="", tag="input",
+                     attrs={"name": "password", "type": "password", "required": "required"}),
+                Button(label="Create account", attrs={"type": "submit"}),
+            ],
+        )
+
+
+@app.get("/signup")
+def signup_form() -> object:
+    return html_response(SignupPage(title="Sign up"), title="Sign up")
+
+
+@app.post("/signup")
+def signup(email: str = Form(...), password: str = Form(...)) -> object:
+    # ... create the user via an SDK Service/Repository ...
+    return html_response(
+        Text(content=f"Account created for {email}", tag="p"), document=False
+    )
+```
+
+A `<select>` comes out the same way: a `Column(tag="select", ...)` with
+`Text(tag="option", attrs={"value": ...})` as children.
+
 ## HTMX served locally (no CDN)
 
 For server-driven interactivity without writing JavaScript, the SDK bundles
@@ -269,7 +428,82 @@ How it works:
 
 !!! check "Safe by default"
     All text is escaped on render. A `Text(content="<script>")` becomes
-    `&lt;script&gt;` in the final HTML — no accidental injection.
+    `&lt;script&gt;` in the final HTML — no accidental injection. This
+    applies to `content` and to the values in `attrs` — never build HTML by
+    string concatenation; let the widgets escape.
+
+### HTMX patterns you'll reuse
+
+HTMX reads `hx-*` attributes from the HTML and does the AJAX for you. The
+ones that show up most in SSR pages:
+
+| Attribute | What it does |
+|-----------|--------------|
+| `hx-get` / `hx-post` / `hx-put` / `hx-delete` | Fires the request with that method |
+| `hx-target` | CSS selector of the element receiving the response (`#id`, `closest li`) |
+| `hx-swap` | How to apply it: `outerHTML`, `innerHTML`, `beforeend` (append), `delete` |
+| `hx-trigger` | What triggers it: `click` (default), `submit`, `keyup changed delay:300ms` |
+| `hx-confirm` | Shows a `confirm()` before sending |
+| `hx-indicator` | Selector of a spinner shown during the request |
+| `hx-on::after-request` | Inline JS on an HTMX event (e.g. `this.reset()` after submit) |
+
+The golden rule: the route returns **a fragment** (`document=False`) and
+HTMX slots it in via `hx-target` + `hx-swap`. An empty fragment
+(`Text(content="", tag="span")`) with `hx-swap="outerHTML"` **removes** the
+element — that's how "delete" works.
+
+!!! tip "Appending to a list"
+    `hx-target="#list"` + `hx-swap="beforeend"` on a `<form>` makes each
+    submit **append** the returned `<li>`, without reloading the rest.
+
+## Testing SSR pages
+
+An SSR page is just a route that returns HTML — test it with `TestClient`
+and assert the pieces that matter. Fast, no browser:
+
+```python
+from fastapi.testclient import TestClient
+
+from main import app
+
+
+def test_home_renders() -> None:
+    with TestClient(app) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert "<!doctype html>" in response.text.lower()
+    assert "<title>Home</title>" in response.text
+    assert "Hello, Ana!" in response.text
+
+
+def test_increment_returns_fragment() -> None:
+    with TestClient(app) as client:
+        fragment = client.post("/increment")
+    # Fragment: no <!doctype>, just the swapped piece.
+    assert "<!doctype" not in fragment.text.lower()
+    assert 'id="counter"' in fragment.text
+```
+
+!!! tip "Render without HTTP"
+    For a pure unit test, call the renderer directly:
+    `from tempestweb.html import render_to_html; html = render_to_html(MyPage(title="x").render())`.
+
+## Which approach to use
+
+The SDK covers the whole spectrum from "HTML on the server" to "SPA in the
+browser". Pick by scenario:
+
+| You want… | Use | Cost |
+|-----------|-----|------|
+| Server-rendered page, SEO, little interaction | **SSR** (`Page` + `html_response`) | No build; HTML per request |
+| Interaction without an SPA or hand-written JS | **SSR + HTMX** (`make_htmx_router`) | No build; partial swaps |
+| A rich app that runs offline in the browser | **WASM SPA** (`make_web_app_router`) | `tempestweb build --mode wasm` |
+| Server-driven reactive UI, instant boot | **Server-mode** (`build_web_app`) | `tempestweb build --mode server` |
+
+The last three are complete, runnable projects in
+[Fullstack web](fullstack-web.md). For the **frontend calling the SDK
+backend** (typed HTTP, idempotency, retry), see the recipe
+[tempestweb frontend + SDK backend](recipes/tempestweb-frontend.md).
 
 ## Serve a compiled tempestweb build
 
