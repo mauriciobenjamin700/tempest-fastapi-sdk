@@ -75,13 +75,21 @@ A fila "Próximos passos" que restava do backlog Tier S/A/B está
 **zerada** — o último item (management commands) entrou na v0.113.0. As
 próximas releases voltam a ser puxadas por pressão de negócio.
 
-Os Tiers 1 e 2 da evolução do painel admin estão **entregues**, e o
-import CSV do Tier 3 também. O que sobra é refino sob demanda: edição
-inline in-place das relações 1-N (hoje listadas + navegáveis), e o resto
-do Tier 3 (RBAC granular por modelo/ação, lenses/visões salvas).
+Os Tiers 1 e 2 da evolução do painel admin estão **entregues**, e do
+Tier 3 já saíram import CSV (v0.118) e RBAC granular (v0.119). O que
+sobra é refino sob demanda: edição inline in-place das relações 1-N
+(hoje listadas + navegáveis) e lenses/visões salvas.
 
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
+
+## Entregue na v0.119.0
+
+Painel admin — RBAC granular (Tier 3):
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **RBAC granular** | ✅ v0.119 | `make_admin_router(access_policy=...)` — hook `(principal, admin, AdminPermission)` → bool consultado em toda ação (VIEW/CREATE/EDIT/DELETE). Nega → `403`, e some do dashboard/nav no VIEW. Compõe com os flags `can_*` (ambos precisam liberar). Restringe um admin não-super a subconjuntos de modelo/ação. [Receita »](recipes/admin.md) |
 
 ## Entregue na v0.118.0
 
