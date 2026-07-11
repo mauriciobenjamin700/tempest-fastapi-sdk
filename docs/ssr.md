@@ -273,6 +273,82 @@ Como funciona:
     Todo texto é escapado na renderização. Um `Text(content="<script>")`
     vira `&lt;script&gt;` no HTML final — sem injeção acidental.
 
+## Servir um build compilado do tempestweb
+
+As seções acima renderizam páginas **a cada request**. Se em vez disso
+você compilou um frontend com o `tempestweb build`, o SDK hospeda o
+artefato pronto — só serve o `dist/`, não builda (isso fica no CLI/CI do
+tempestweb). São dois artefatos, cada um com a forma que combina:
+
+| Artefato | O que é | Como servir |
+|----------|---------|-------------|
+| `dist/wasm` | SPA **estática** (Pyodide roda no browser: `index.html` + `bootstrap.js` + wasm + service worker) | `make_web_app_router` → `APIRouter` |
+| `dist/server` | App **vivo** sobre WebSocket/SSE (engine server do tempestweb) | `build_web_app` → `FastAPI` (sub-app pra montar) |
+
+`detect_build_mode(dir)` diz qual é (`"wasm"` ou `"server"`).
+
+### SPA estática (`make_web_app_router`)
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.ssr import make_web_app_router
+
+app = FastAPI()
+
+# ... inclua PRIMEIRO os seus routers de API ...
+# app.include_router(api_router)
+
+# ... e o do frontend POR ÚLTIMO, pra as rotas específicas vencerem:
+app.include_router(make_web_app_router("dist/wasm"))
+```
+
+O router serve cada arquivo do build e, pra qualquer caminho não
+encontrado, cai no `index.html` (history fallback do SPA — refresh no
+meio de uma rota client-side funciona).
+
+!!! warning "Inclua por último e na raiz"
+    A rota é um catch-all (`/{resource:path}`). O FastAPI casa na ordem de
+    registro, então inclua o router do frontend **depois** dos seus
+    routers de API — assim `/api/...` vence o fallback. O artefato wasm
+    referencia `/sw.js` na raiz do site, então monte na raiz da app.
+
+!!! tip "Transparente, sem mágica"
+    - `index.html` e `sw.js` saem sempre com `Cache-Control: no-cache`
+      (um redeploy é visto na hora); os demais assets usam
+      `asset_cache_control` (padrão `public, max-age=3600`).
+    - MIME correto pros arquivos que o `mimetypes` não conhece
+      (`.wasm` → `application/wasm`, `.mjs`/`.js` → `text/javascript`,
+      `.webmanifest`).
+    - `sw.js` ganha `Service-Worker-Allowed: /` pra reivindicar o escopo
+      da origem inteira.
+    - **Nenhum CSP é imposto** — é código first-party e o Pyodide precisa
+      de `wasm-unsafe-eval`; passe `security_headers=` pra adicionar o seu.
+    - Traversal de caminho (`../`) é bloqueado.
+
+### App server-mode (`build_web_app`)
+
+O artefato server é um app **vivo** (rotas `/ws` + `/sse`), então é um
+sub-app que você monta, não um router:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.ssr import build_web_app
+
+app = FastAPI()
+# ... seus routers de API ...
+
+# monta o app do tempestweb (WebSocket/SSE + shell + /static) na raiz:
+app.mount("/", build_web_app("dist/server"))
+```
+
+`build_web_app` carrega o `app.py` do artefato (contrato `make_state` +
+`view`), monta o engine server do tempestweb via
+`tempestweb.server.create_app`, serve o cliente em `/static` e o shell em
+`/` — a mesma fiação que o `server.py` gerado faz, in-process. Dá pra
+rodar direto com uvicorn também.
+
 ## Recap
 
 - **`Page`** — componente tipado; declare campos, implemente `body()`,
@@ -283,5 +359,9 @@ Como funciona:
   `document=False` devolve um fragmento para trocas HTMX.
 - **`make_htmx_router(prefix="/_ssr")`** — serve o HTMX embutido
   localmente em `GET /_ssr/htmx.js`; combine com `htmx=True`.
+- **`make_web_app_router(dir)`** — serve um build **wasm** (SPA estática)
+  com history fallback; inclua por último. **`build_web_app(dir)`** —
+  hospeda um build **server** (WebSocket/SSE) como sub-app pra montar.
+  **`detect_build_mode(dir)`** distingue os dois.
 - Tudo mora no extra `[ssr]` (`pip install "tempest-fastapi-sdk[ssr]"`),
   carregado sob demanda — `import tempest_fastapi_sdk` nunca exige o extra.

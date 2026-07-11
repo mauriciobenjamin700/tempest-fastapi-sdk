@@ -5,6 +5,28 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.128.0] — 2026-07-11
+
+### Added
+
+- **Serve a compiled `tempestweb` build from FastAPI** (`tempest_fastapi_sdk.ssr`)
+  — host a `tempestweb build` artifact directly from an SDK service. Two entry
+  points, each with the shape that fits the artifact:
+  - `make_web_app_router(directory)` → an `APIRouter` that serves a **static**
+    (wasm) SPA build with a single-page history fallback (unmatched paths →
+    `index.html`), correct MIME for `.wasm`/`.mjs`/`.webmanifest`, `no-cache` on
+    the shell + service worker (`Service-Worker-Allowed: /`), `asset_cache_control`
+    for other assets, and path-traversal protection. No CSP is imposed (first-party
+    code + Pyodide `wasm-unsafe-eval`); pass `security_headers=` to add one.
+    Include it **last** so API routes win over the catch-all.
+  - `build_web_app(directory)` → a `FastAPI` sub-app hosting a **server** build
+    (WebSocket/SSE via `tempestweb.server.create_app`, `/static` client + shell at
+    `/`) — the same wiring the artifact's generated `server.py` does, in-process.
+  - `detect_build_mode(directory)` returns `"wasm"` or `"server"`.
+
+  The SDK only *serves* an already-built `dist/` — building stays in the tempestweb
+  CLI/CI flow. `tempestweb` is imported lazily (only the server path needs it).
+
 ## [0.127.0] — 2026-07-11
 
 ### Added

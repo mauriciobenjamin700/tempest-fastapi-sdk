@@ -85,6 +85,14 @@ painel admin está concluída; o que vier é puxado por pressão de negócio.
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
+## Entregue na v0.128.0
+
+SSR — servir um build compilado do tempestweb:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`make_web_app_router` + `build_web_app` + `detect_build_mode`** | ✅ v0.128 | Hospeda um artefato `tempestweb build` direto no FastAPI: `make_web_app_router(dir)` serve o build **wasm** (SPA estática) como `APIRouter` com history fallback, MIME certo, cache do shell/SW, sem CSP imposto (Pyodide); `build_web_app(dir)` hospeda o build **server** (WebSocket/SSE) como sub-app. Só serve o `dist/` pronto — build fica no CLI do tempestweb. `[ssr]`. [Receita »](ssr.md) |
+
 ## Entregue na v0.127.0
 
 Admin — edição inline in-place:

@@ -86,6 +86,14 @@ the admin-panel evolution is fully done; further work is business-pulled.
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## Shipped in v0.128.0
+
+SSR — serve a compiled tempestweb build:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **`make_web_app_router` + `build_web_app` + `detect_build_mode`** | ✅ v0.128 | Host a `tempestweb build` artifact straight from FastAPI: `make_web_app_router(dir)` serves the **wasm** (static SPA) build as an `APIRouter` with a history fallback, correct MIME, shell/SW cache rules, no imposed CSP (Pyodide); `build_web_app(dir)` hosts the **server** (WebSocket/SSE) build as a sub-app. Only serves a prebuilt `dist/` — building stays in the tempestweb CLI. `[ssr]`. [Recipe »](ssr.md) |
+
 ## Shipped in v0.127.0
 
 Admin — in-place inline editing:
