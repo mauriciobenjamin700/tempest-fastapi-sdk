@@ -61,6 +61,37 @@ def escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _suffix_condition(column: Any, op: str, value: Any) -> Any:
+    """Build the clause for a ``<column>__<op>`` suffix (non-``isnull``).
+
+    Kept explicit — a plain ``if`` per operator, no operator-name magic —
+    so the supported set is greppable and typed.
+
+    Args:
+        column (Any): The resolved model column.
+        op (str): The suffix operator (``gt``/``in``/``contains``/…).
+        value (Any): The comparison value.
+
+    Returns:
+        Any: The SQLAlchemy clause, or ``None`` for an unknown operator.
+    """
+    op_func = COMPARISON_OPS.get(op)
+    if op_func is not None:
+        return op_func(column, value)
+    members = value if isinstance(value, (list, tuple, set)) else [value]
+    if op == "in":
+        return column.in_(members)
+    if op == "notin":
+        return column.notin_(members)
+    if op in ("contains", "icontains"):
+        return column.ilike(f"%{escape_like(str(value))}%", escape="\\")
+    if op == "startswith":
+        return column.ilike(f"{escape_like(str(value))}%", escape="\\")
+    if op == "endswith":
+        return column.ilike(f"%{escape_like(str(value))}", escape="\\")
+    return None
+
+
 def build_filter_condition(
     model: type[Any],
     field: str,
@@ -71,15 +102,21 @@ def build_filter_condition(
     Implements the shared filter conventions used by both
     ``BaseRepository`` dict filters and :class:`Q`:
 
-    * ``<column>__<op>`` (``gt``/``gte``/``lt``/``lte``/``ne``) → comparison.
+    * ``<column>__<op>`` suffix operator, one of:
+      ``gt`` / ``gte`` / ``lt`` / ``lte`` / ``ne`` (comparison),
+      ``in`` / ``notin`` (membership; value is a list),
+      ``isnull`` (``IS NULL`` when truthy, ``IS NOT NULL`` when falsy),
+      ``contains`` / ``icontains`` / ``startswith`` / ``endswith``
+      (case-insensitive ``ILIKE`` substring / prefix / suffix).
     * ``name`` (string) → case-insensitive ``ILIKE %value%``.
     * ``bool`` → ``.is_(value)``.
     * ``list`` → ``.in_(value)``.
     * ``date`` → ``func.date(column) == value`` whole-day match.
     * otherwise → equality.
 
-    A ``None`` value, an unknown column, or an unknown operator yields
-    ``None`` (the caller skips the condition).
+    A ``None`` value (except ``isnull``, whose value is a bool), an
+    unknown column, or an unknown operator yields ``None`` (the caller
+    skips the condition).
 
     Args:
         model (type[Any]): The model class the field belongs to.
@@ -89,19 +126,30 @@ def build_filter_condition(
     Returns:
         ColumnElement[bool] | None: The condition, or ``None`` to skip.
     """
+    # ``isnull`` carries a bool (possibly False), so it must be handled
+    # before the "None value skips" rule.
+    if "__" in field and field.rpartition("__")[2] == "isnull":
+        base = field.rpartition("__")[0]
+        column = getattr(model, base, None)
+        if column is None:
+            return None
+        return cast(
+            "ColumnElement[bool]",
+            column.is_(None) if value else column.isnot(None),
+        )
+
     if value is None:
         return None
 
     condition: Any
     if "__" in field:
         base, _, op = field.rpartition("__")
-        op_func = COMPARISON_OPS.get(op)
-        if op_func is None:
-            return None
         op_column = getattr(model, base, None)
         if op_column is None:
             return None
-        condition = op_func(op_column, value)
+        condition = _suffix_condition(op_column, op, value)
+        if condition is None:
+            return None
     else:
         column = getattr(model, field, None)
         if column is None:
