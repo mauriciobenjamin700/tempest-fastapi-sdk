@@ -255,6 +255,7 @@ nav:
       - "Server-Sent Events (SSE)": recipes/sse.md
       - Sessões server-side: recipes/sessions.md
       - Storage (MinIO/S3): recipes/storage.md
+      - "System checks (check-config)": recipes/system-checks.md
       - Sync offline-first (delta): recipes/offline-sync.md
       - Tempo real: recipes/realtime.md
       - Testes: recipes/testing.md

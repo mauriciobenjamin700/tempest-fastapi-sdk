@@ -47,7 +47,7 @@ Esta página lista o que o SDK **ainda não oferece** + o que já foi entregue. 
 | eager-load helper (`BaseRepository.get_by_id(id, with_=...)`) | ✅ v0.109.0 | `with_=` em `get`/`get_or_none`/`get_by_id`/`first`/`list` |
 | Signals (`pre_save`/`post_save`/`pre_delete`/`post_delete`) no `BaseRepository` | ✅ v0.109.0 | `tempest_fastapi_sdk.db.signals` (`connect`/`on_signal`) |
 | Permissions framework granular com object-level (`user.has_perm("order.delete", obj=order)`) | ✅ v0.110.0 | `tempest_fastapi_sdk.authz` |
-| System checks no startup (`tempest check-config`) | ❌ pendente | — |
+| System checks no startup (`tempest check-config`) | ✅ v0.112.0 | `tempest_fastapi_sdk.checks` |
 | Management commands framework — projeto registra `tempest <cmd>` próprio | ❌ pendente | — |
 
 ## Painel admin — evolução
@@ -75,8 +75,7 @@ Trabalho genuinamente não lançado (posterior à v0.89.0). A ordem segue impact
 
 | Release | Conteúdo |
 |---------|----------|
-| **próximo** | system checks no startup (`tempest check-config`) |
-| **futuro** | management commands framework (`tempest <cmd>` registrado pelo projeto) |
+| **próximo** | management commands framework (`tempest <cmd>` registrado pelo projeto) |
 
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
@@ -93,6 +92,14 @@ O plano de ergonomia GenAI + os dois módulos de aplicação abaixo já
 | **`RedisEmbeddingCache`** | ✅ v0.105 | Cache de vetores async compartilhado entre workers; `Embedder` aceita cache sync ou async. [Receita »](recipes/genai.md) |
 | **Chat (`tempest_fastapi_sdk.chat`)** | ✅ v0.105 | `ChatService` + tabelas base + `make_chat_router` + tempo real via `SSEBroker`. [Receita »](recipes/chat.md) |
 | **Comentários + avaliações (`reviews`)** | ✅ v0.105 | `ReviewService` (comentar, avaliar 0–5, agregar) + `make_reviews_router`; `RatingField`. [Receita »](recipes/reviews.md) |
+
+## Entregue na v0.112.0
+
+Framework de system checks estilo Django + a CLI `tempest check-config`:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **System checks** | ✅ v0.112 | `tempest_fastapi_sdk.checks`: `@check` registra um validador `(settings) -> [CheckMessage]`; embutidos p/ segredo vazio/fraco, CORS `*`+credenciais, SQLite-em-prod, DEBUG, bind `0.0.0.0`. `tempest check-config` roda tudo (auto-detecta as settings, `--tag`/`--fail-level`, sai ≠ 0 em ERROR); `run_system_checks(settings)` aborta boot mal-configurado no lifespan. [Receita »](recipes/system-checks.md) |
 
 ## Entregue na v0.111.0
 

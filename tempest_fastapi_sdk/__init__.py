@@ -126,6 +126,15 @@ from tempest_fastapi_sdk.authz import (
     make_permission_checker,
     permission,
 )
+from tempest_fastapi_sdk.checks import (
+    CheckLevel,
+    CheckMessage,
+    CheckRegistry,
+    SystemCheckError,
+    register_check,
+    run_checks,
+    run_system_checks,
+)
 from tempest_fastapi_sdk.controllers import BaseController
 from tempest_fastapi_sdk.core import (
     BaseIntEnum,
@@ -386,7 +395,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.111.0"
+__version__: str = "0.112.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -458,6 +467,9 @@ __all__: list[str] = [
     "CSRFMiddleware",
     "CachedResponse",
     "CentsField",
+    "CheckLevel",
+    "CheckMessage",
+    "CheckRegistry",
     "ChoiceBR",
     "CircuitOpenError",
     "CityBR",
@@ -600,6 +612,7 @@ __all__: list[str] = [
     "SupportsUpload",
     "SyncFilterSchema",
     "SyncPaginationSchema",
+    "SystemCheckError",
     "SystemMetrics",
     "TOTPHelper",
     "TaskIQSettings",
@@ -722,6 +735,7 @@ __all__: list[str] = [
     "parse_accept_language",
     "permission",
     "region_choices",
+    "register_check",
     "register_exception_handlers",
     "reorder_base_columns_first",
     "request_id_ctx",
@@ -730,7 +744,9 @@ __all__: list[str] = [
     "require_annotations",
     "require_authenticated",
     "require_x_token",
+    "run_checks",
     "run_server",
+    "run_system_checks",
     "set_cookie",
     "set_request_id",
     "setup_tracing",

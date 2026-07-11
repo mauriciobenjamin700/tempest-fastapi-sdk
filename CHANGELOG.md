@@ -5,6 +5,32 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.112.0] — 2026-07-10
+
+### Added
+
+- **System checks (`tempest_fastapi_sdk.checks`) + `tempest check-config`** — a
+  Django-style framework to validate configuration before serving traffic. A
+  check is a `(context) -> Iterable[CheckMessage]` function registered with
+  `@check(*tags)` / `register_check`; `CheckMessage` carries a `CheckLevel`
+  (DEBUG/INFO/WARNING/ERROR/CRITICAL), message, hint and id, built via the
+  `debug` / `info` / `warning` / `error` / `critical` helpers. `run_checks`
+  collects messages; `run_system_checks` raises `SystemCheckError` when any
+  reaches `fail_level` (default ERROR) — call it from a FastAPI lifespan to fail
+  fast on a misconfigured deploy. `CheckRegistry` backs isolated sets;
+  `default_registry` is the process-wide one.
+  - **Built-in checks** flag common misconfigurations off any `*Settings` shape
+    (best-effort via `getattr`): empty/weak signing secret (`JWT_SECRET` /
+    `SECRET_KEY` / `TOKEN_SECRET`, < 32 chars), CORS `*` with credentials,
+    SQLite `DATABASE_URL` while `DEBUG` is off, `DEBUG` enabled, `0.0.0.0` bind.
+  - **`tempest check-config`** runs the checks against the project's settings
+    (auto-detected from conventional locations, or `--settings module:attr`),
+    with `--tag` filtering, `--import` for extra check modules, and
+    `--fail-level`; exits non-zero when a message reaches the threshold.
+  - The framework API (`CheckLevel`, `CheckMessage`, `CheckRegistry`,
+    `SystemCheckError`, `check`, `register_check`, `run_checks`,
+    `run_system_checks`) is re-exported at the package root.
+
 ## [0.111.0] — 2026-07-10
 
 ### Added
