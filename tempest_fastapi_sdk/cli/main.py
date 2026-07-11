@@ -13,6 +13,7 @@ from typer.core import TyperGroup
 from tempest_fastapi_sdk.cli import generate as generate_module
 from tempest_fastapi_sdk.cli import lint as lint_module
 from tempest_fastapi_sdk.cli import new as new_module
+from tempest_fastapi_sdk.cli.commands import mount_project_commands
 from tempest_fastapi_sdk.cli.config import (
     TempestConfig,
     TypingStrictness,
@@ -672,5 +673,25 @@ def check_config_cmd(
     raise typer.Exit(1 if serious else 0)
 
 
-if __name__ == "__main__":  # pragma: no cover - manual invocation only
+def main() -> None:
+    """Console-script entry point.
+
+    Mounts the project's management commands (``[tool.tempest] commands``
+    or the conventional ``src.commands`` / ``app.commands`` / ``commands``
+    modules) onto the root app, then runs the CLI. Discovery failures are
+    reported but never block the built-in commands.
+    """
+    try:
+        config = load_tempest_config()
+        mount_project_commands(app, modules=config.commands)
+    except Exception as exc:  # never let discovery brick the CLI
+        typer.secho(
+            f"tempest: could not load project commands: {exc}",
+            err=True,
+            fg="yellow",
+        )
     app()
+
+
+if __name__ == "__main__":  # pragma: no cover - manual invocation only
+    main()

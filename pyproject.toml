@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.112.0"
+version = "0.113.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -175,7 +175,7 @@ Repository = "https://github.com/mauriciobenjamin700/tempest-fastapi-sdk"
 Issues = "https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues"
 
 [project.scripts]
-tempest = "tempest_fastapi_sdk.cli.main:app"
+tempest = "tempest_fastapi_sdk.cli.main:main"
 
 [build-system]
 requires = ["hatchling"]

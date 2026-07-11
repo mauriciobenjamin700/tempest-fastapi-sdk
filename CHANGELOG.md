@@ -5,6 +5,30 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.113.0] — 2026-07-10
+
+### Added
+
+- **Management commands — project-registered `tempest <cmd>`** — a service can
+  now plug its own commands into the `tempest` CLI, like Django's
+  `manage.py <command>`. Expose a `typer.Typer` named `commands` (or `app`) in a
+  discovered module — `src/commands.py`, `app/commands.py` or `commands.py`,
+  auto-detected — and its commands appear as first-class `tempest <cmd>` entries
+  sharing the SDK's help rendering. Override the location with
+  `[tool.tempest] commands = "src.management"` (string or list) in
+  `pyproject.toml`. A project command whose name collides with a built-in is
+  skipped (with a stderr warning) so the SDK's commands always win; discovery is
+  best-effort and never blocks the built-in commands. Nested Typer groups work
+  (`tempest ops resync`). `mount_project_commands` in
+  `tempest_fastapi_sdk.cli.commands` implements the discovery.
+
+### Changed
+
+- The `tempest` console script now points at `tempest_fastapi_sdk.cli.main:main`
+  (a thin wrapper that mounts project commands before running) instead of the
+  `app` object directly. The `app` Typer instance is unchanged for programmatic
+  use.
+
 ## [0.112.0] — 2026-07-10
 
 ### Added
