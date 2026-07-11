@@ -5,6 +5,17 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.121.0] — 2026-07-11
+
+### Added
+
+- **Admin JSON + time field widgets** — the create/edit form now renders `JSON`
+  columns as a monospaced JSON editor (pretty-printed on load, parsed +
+  validated on submit — invalid JSON is a field error, not a stored string) and
+  `Time` columns as an `<input type="time">`. Previously a JSON column fell
+  through to a plain text input (storing the raw string) and a time column had
+  no dedicated widget. Part of the admin refinement pass.
+
 ## [0.120.0] — 2026-07-11
 
 ### Added

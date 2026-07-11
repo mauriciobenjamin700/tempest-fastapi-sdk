@@ -84,6 +84,14 @@ inline editing of 1-N relations (today listed + navigable).
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## Shipped in v0.121.0
+
+Admin refinement — new field widgets:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **JSON + time widgets** | ✅ v0.121 | `JSON` columns render as a monospaced JSON editor (pretty-printed on load, parsed + validated on submit); `Time` columns render as `<input type=time>`. [Recipe »](recipes/admin.md) |
+
 ## Shipped in v0.120.0
 
 Admin panel — lenses / saved views (Tier 3), closing the admin evolution:

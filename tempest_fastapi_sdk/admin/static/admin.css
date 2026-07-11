@@ -933,6 +933,14 @@ a.tempest-admin-list__new:hover {
   width: 100%;
 }
 
+.tempest-admin-form__json {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+
 .tempest-admin-form__check {
   flex-direction: row !important;
   align-items: center;

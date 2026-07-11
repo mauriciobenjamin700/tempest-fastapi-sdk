@@ -530,6 +530,17 @@ across list, detail, create, edit, delete, bulk (delete → `DELETE`, rest
     Without `access_policy`, nothing changes (every logged-in admin does
     everything). Sync or `async`.
 
+## Field widgets by column type
+
+The create/edit form picks the widget from the column type, no config:
+`bool` → checkbox, `Enum` → select, `int`/`float`/`Decimal` → number,
+`datetime`/`date`/**`time`** → native inputs, long string → textarea,
+**`JSON` column** → a monospaced JSON editor (pretty-printed on open,
+`json.loads` + validation on submit — invalid JSON becomes a field
+error, not a string stored in its place). A FK becomes a `<select>` (or
+autocomplete, via `autocomplete_fields`), and `upload_fields` become file
+inputs.
+
 ## Lenses — saved views (`lenses=`)
 
 A lens is a named preset of filters + ordering, shown as a tab above the

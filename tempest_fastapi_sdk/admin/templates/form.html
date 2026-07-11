@@ -23,6 +23,11 @@
         <span>{{ f.label }}{% if f.required %} *{% endif %}</span>
         {% if f.widget == 'textarea' %}
         <textarea name="{{ f.name }}" rows="4" {% if f.required %}required{% endif %}>{{ f.value }}</textarea>
+        {% elif f.widget == 'json' %}
+        <textarea name="{{ f.name }}" rows="6" class="tempest-admin-form__json" spellcheck="false" {% if f.required %}required{% endif %}>{{ f.value }}</textarea>
+        <small class="tempest-admin-form__hint">JSON — must parse (e.g. <code>{}</code>, <code>[]</code>, <code>"text"</code>).</small>
+        {% elif f.widget == 'time' %}
+        <input type="time" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
         {% elif f.widget == 'select' %}
         <select name="{{ f.name }}" {% if f.required %}required{% endif %}>
           {% if not f.required %}<option value="">— none —</option>{% endif %}

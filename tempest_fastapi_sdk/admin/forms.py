@@ -9,12 +9,14 @@ unit-testable in isolation.
 from __future__ import annotations
 
 import datetime as _dt
+import json as _json
 import uuid as _uuid
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import JSON
 from sqlalchemy import inspect as sa_inspect
 
 if TYPE_CHECKING:
@@ -101,6 +103,10 @@ def _widget_for(
         tuple[str, str | None, list[tuple[str, str]]]: Widget name, the
         ``number`` step (or ``None``), and ``select`` options.
     """
+    # JSON columns first — their ``python_type`` is undefined, so they
+    # would otherwise fall through to a plain text input.
+    if isinstance(column.type, JSON):
+        return ("json", None, [])
     if py is bool:
         return ("checkbox", None, [])
     if isinstance(py, type) and issubclass(py, Enum):
@@ -118,6 +124,8 @@ def _widget_for(
         return ("datetime", None, [])
     if py is _dt.date:
         return ("date", None, [])
+    if py is _dt.time:
+        return ("time", None, [])
     if py is str:
         length = getattr(column.type, "length", None)
         if length is None or length > 255:
@@ -259,6 +267,10 @@ def build_form_fields(
                 value = current.isoformat()[:16]
             elif widget == "date" and isinstance(current, _dt.date):
                 value = current.isoformat()[:10]
+            elif widget == "time" and isinstance(current, _dt.time):
+                value = current.isoformat()[:5]
+            elif widget == "json":
+                value = _json.dumps(current, indent=2, default=str, sort_keys=True)
             elif isinstance(current, Enum):
                 value = str(current.value)
             else:
@@ -340,6 +352,12 @@ def parse_submission(
             else:
                 errors[name] = "This field is required."
             continue
+        if widget == "json":
+            try:
+                data[name] = _json.loads(str(raw))
+            except (ValueError, TypeError):
+                errors[name] = f"Invalid JSON for {_label(name)}."
+            continue
         try:
             data[name] = _coerce_scalar(py, str(raw))
         except (ValueError, TypeError, KeyError):
@@ -376,6 +394,8 @@ def _coerce_scalar(py: type, raw: str) -> Any:
         return _dt.datetime.fromisoformat(raw)
     if py is _dt.date:
         return _dt.date.fromisoformat(raw)
+    if py is _dt.time:
+        return _dt.time.fromisoformat(raw)
     if py is _uuid.UUID:
         return _uuid.UUID(raw)
     return raw
