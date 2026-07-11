@@ -11,6 +11,10 @@ from tempest_fastapi_sdk.admin import (
     AdminTheme,
     FieldRef,
     Inline,
+    MetricCard,
+    MetricPartition,
+    MetricTrend,
+    MetricValue,
     OrderRef,
     UserModelAuthBackend,
     admin_action,
@@ -396,7 +400,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.116.0"
+__version__: str = "0.117.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -539,6 +543,10 @@ __all__: list[str] = [
     "MemoryRateLimitStore",
     "MemorySessionStore",
     "MessageCatalog",
+    "MetricCard",
+    "MetricPartition",
+    "MetricTrend",
+    "MetricValue",
     "MetricsUtils",
     "MinIOSettings",
     "MinIOUploadStorage",

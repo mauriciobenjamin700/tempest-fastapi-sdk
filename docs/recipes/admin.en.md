@@ -423,6 +423,55 @@ the child admin's). Up to 50 rows per inline.
     must have a registered `AdminModel` for the links to work; without
     one, the rows render read-only.
 
+## Dashboard: business-metric cards (`dashboard_cards=`)
+
+The dashboard already shows CPU/RAM/counters. For **your business**
+metrics — orders today, revenue vs last week, users by plan — pass
+`dashboard_cards`. Each card is a `MetricCard(label, compute)` where
+`compute` is an async function that takes the session and returns one of
+three types:
+
+```python
+from tempest_fastapi_sdk import (
+    AdminSite, MetricCard, MetricValue, MetricTrend, MetricPartition,
+)
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+async def orders_today(session: AsyncSession) -> MetricValue:
+    total = await OrderRepository(session).count(filters={"start_in": today()})
+    return MetricValue(total, unit="orders")
+
+
+async def revenue_trend(session: AsyncSession) -> MetricTrend:
+    return MetricTrend(value=await this_week(session), previous=await last_week(session), unit="BRL")
+
+
+async def users_by_plan(session: AsyncSession) -> MetricPartition:
+    return MetricPartition(segments=[("free", 120), ("pro", 30), ("enterprise", 4)])
+
+
+site = AdminSite(
+    title="Shop",
+    dashboard_cards=[
+        MetricCard("Orders today", orders_today, help_text="last 24h"),
+        MetricCard("Revenue", revenue_trend),
+        MetricCard("Users by plan", users_by_plan),
+    ],
+)
+```
+
+- **`MetricValue(value, unit=None)`** — a big number.
+- **`MetricTrend(value, previous, unit=None)`** — a number + a ▲/▼ arrow
+  and the percentage change vs the previous period (`delta` / `pct` /
+  `direction` computed for you).
+- **`MetricPartition(segments=[(label, value), ...])`** — a breakdown
+  with proportional bars; `total` summed automatically.
+
+The cards render at the top of the dashboard, computed on each load. A
+card whose `compute` raises is **skipped** — a broken metric never
+blanks the page.
+
 #### 4. Session security defaults
 
 `SignedCookieSessionStore` uses `itsdangerous.TimestampSigner` (HMAC-SHA256) to sign a single cookie:

@@ -23,6 +23,10 @@ from tempest_fastapi_sdk.admin.config import AdminModel as AdminModel
 from tempest_fastapi_sdk.admin.config import FieldRef as FieldRef
 from tempest_fastapi_sdk.admin.config import Inline as Inline
 from tempest_fastapi_sdk.admin.config import OrderRef as OrderRef
+from tempest_fastapi_sdk.admin.dashboard import MetricCard as MetricCard
+from tempest_fastapi_sdk.admin.dashboard import MetricPartition as MetricPartition
+from tempest_fastapi_sdk.admin.dashboard import MetricTrend as MetricTrend
+from tempest_fastapi_sdk.admin.dashboard import MetricValue as MetricValue
 from tempest_fastapi_sdk.admin.discovery import discover_models as discover_models
 from tempest_fastapi_sdk.admin.router import make_admin_router as make_admin_router
 from tempest_fastapi_sdk.admin.session import AdminSession as AdminSession
@@ -45,6 +49,10 @@ __all__: list[str] = [
     "AdminTheme",
     "FieldRef",
     "Inline",
+    "MetricCard",
+    "MetricPartition",
+    "MetricTrend",
+    "MetricValue",
     "OrderRef",
     "SessionStore",
     "SignedCookieSessionStore",

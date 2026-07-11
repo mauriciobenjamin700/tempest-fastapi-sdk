@@ -24,6 +24,37 @@
   </div>
   {% endif %}
 
+  {% if cards %}
+  <div class="tempest-admin-cards" aria-label="Business metrics">
+    {% for card in cards %}
+    <article class="tempest-admin-card tempest-admin-card--{{ card.kind }}">
+      <span class="tempest-admin-card__label">{{ card.label }}</span>
+      {% if card.kind == 'value' %}
+      <span class="tempest-admin-card__value">{{ card.value }}{% if card.unit %} <small>{{ card.unit }}</small>{% endif %}</span>
+      {% elif card.kind == 'trend' %}
+      <span class="tempest-admin-card__value">{{ card.value }}{% if card.unit %} <small>{{ card.unit }}</small>{% endif %}</span>
+      <span class="tempest-admin-card__trend tempest-admin-card__trend--{{ card.direction }}">
+        {% if card.direction == 'up' %}▲{% elif card.direction == 'down' %}▼{% else %}▬{% endif %}
+        {% if card.pct is not none %}{{ '%+.1f' | format(card.pct) }}%{% else %}—{% endif %}
+        <small>vs prev {{ card.previous if card.previous is defined else '' }}</small>
+      </span>
+      {% else %}
+      <ul class="tempest-admin-card__parts">
+        {% for seg in card.segments %}
+        <li>
+          <span class="tempest-admin-card__part-label">{{ seg.label }}</span>
+          <span class="tempest-admin-card__part-bar"><span style="width: {{ '%.0f' | format(seg.pct) }}%"></span></span>
+          <span class="tempest-admin-card__part-value">{{ seg.value }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if card.help %}<span class="tempest-admin-card__help">{{ card.help }}</span>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% if models_view %}
   <div class="tempest-admin-models">
     {% for entry in models_view %}

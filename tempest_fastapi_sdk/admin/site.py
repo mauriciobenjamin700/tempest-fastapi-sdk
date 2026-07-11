@@ -6,6 +6,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.admin.config import AdminModel
+from tempest_fastapi_sdk.admin.dashboard import MetricCard
 from tempest_fastapi_sdk.admin.theme import AdminTheme
 
 if TYPE_CHECKING:
@@ -34,6 +35,10 @@ class AdminSite:
         theme (AdminTheme): Typed appearance overrides (colors, logo,
             favicon, font, footer, dark mode). Defaults to a stock
             :class:`AdminTheme`, so the look is unchanged when omitted.
+        dashboard_cards (list[MetricCard]): Business-metric cards
+            (value / trend / partition) rendered at the top of the
+            dashboard, each computed from the DB on load. Distinct from
+            the system CPU/RAM/disk panel.
     """
 
     def __init__(
@@ -44,6 +49,7 @@ class AdminSite:
         index_subtitle: str = "Site administration",
         site_url: str | None = None,
         theme: AdminTheme | None = None,
+        dashboard_cards: Sequence[MetricCard] = (),
     ) -> None:
         """Initialize the site.
 
@@ -67,6 +73,7 @@ class AdminSite:
         self.index_subtitle: str = index_subtitle
         self.site_url: str | None = site_url
         self.theme: AdminTheme = theme or AdminTheme()
+        self.dashboard_cards: list[MetricCard] = list(dashboard_cards)
         self._registry: dict[str, AdminModel[Any]] = {}
 
     @property

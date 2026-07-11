@@ -23,6 +23,10 @@ from starlette.concurrency import run_in_threadpool
 from tempest_fastapi_sdk.admin.actions import AdminActionContext
 from tempest_fastapi_sdk.admin.auth import AdminAuthBackend, AdminAuthError
 from tempest_fastapi_sdk.admin.config import AdminModel
+from tempest_fastapi_sdk.admin.dashboard import (
+    MetricPartition,
+    MetricTrend,
+)
 from tempest_fastapi_sdk.admin.forms import (
     build_form_fields,
     fk_fields,
@@ -762,6 +766,7 @@ def make_admin_router(
                     else None,
                 }
             )
+        cards = await _build_dashboard_cards(db_session)
         return _render(
             request,
             "dashboard.html",
@@ -771,9 +776,60 @@ def make_admin_router(
                 "user_display": auth_backend.display_name(principal),
                 "admins": site.iter_models(),
                 "models_view": models_view,
+                "cards": cards,
                 "metrics": await _system_metrics() if show_metrics else None,
             },
         )
+
+    async def _build_dashboard_cards(
+        db_session: AsyncSession,
+    ) -> list[dict[str, Any]]:
+        """Compute the site's business-metric cards for the dashboard.
+
+        A card whose ``compute`` raises is skipped, so one broken metric
+        never blanks the whole dashboard.
+
+        Args:
+            db_session (AsyncSession): The DB session passed to each card.
+
+        Returns:
+            list[dict[str, Any]]: Template-ready card descriptors.
+        """
+        cards: list[dict[str, Any]] = []
+        for card in site.dashboard_cards:
+            try:
+                data = await card.compute(db_session)
+            except Exception:  # a broken metric must not blank the page
+                continue
+            entry: dict[str, Any] = {"label": card.label, "help": card.help_text}
+            if isinstance(data, MetricTrend):
+                entry.update(
+                    kind="trend",
+                    value=data.value,
+                    previous=data.previous,
+                    unit=data.unit,
+                    delta=data.delta,
+                    pct=data.pct,
+                    direction=data.direction,
+                )
+            elif isinstance(data, MetricPartition):
+                total = data.total
+                entry.update(
+                    kind="partition",
+                    total=total,
+                    segments=[
+                        {
+                            "label": label,
+                            "value": value,
+                            "pct": (value / total * 100.0) if total else 0.0,
+                        }
+                        for label, value in data.segments
+                    ],
+                )
+            else:
+                entry.update(kind="value", value=data.value, unit=data.unit)
+            cards.append(entry)
+        return cards
 
     if show_logs:
         _log_base = Path(log_dir)

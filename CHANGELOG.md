@@ -5,6 +5,22 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.117.0] — 2026-07-11
+
+### Added
+
+- **Admin dashboard business-metric cards** — `AdminSite(dashboard_cards=[...])`
+  renders value / trend / partition cards at the top of the dashboard, each
+  computed from the application's own data (distinct from the system CPU/RAM/disk
+  panel). A `MetricCard(label, compute, help_text=...)` pairs a heading with an
+  async `compute(session)` returning `MetricValue` (a number + optional unit),
+  `MetricTrend` (current vs previous, exposing `delta` / `pct` / `direction`) or
+  `MetricPartition` (labeled segments with a `total` + rendered bars). A card
+  whose compute raises is skipped so one broken metric never blanks the page.
+  `MetricCard` / `MetricValue` / `MetricTrend` / `MetricPartition` are exported
+  at the package root and from `tempest_fastapi_sdk.admin`. This closes the
+  Tier 2 "dashboard metrics" item of the admin-panel evolution.
+
 ## [0.116.0] — 2026-07-10
 
 ### Added

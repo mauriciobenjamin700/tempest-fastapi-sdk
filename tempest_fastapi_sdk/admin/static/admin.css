@@ -517,6 +517,99 @@ textarea {
   color: var(--tempest-fg-soft);
 }
 
+.tempest-admin-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1rem;
+  margin: 1rem 0 2rem;
+}
+
+.tempest-admin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius, 8px);
+  background: var(--tempest-bg-soft, rgba(0, 0, 0, 0.02));
+}
+
+.tempest-admin-card__label {
+  font-size: 0.8rem;
+  color: var(--tempest-fg-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tempest-admin-card__value {
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.tempest-admin-card__value small {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-card__trend {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.tempest-admin-card__trend small {
+  font-weight: 400;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-card__trend--up { color: #16a34a; }
+.tempest-admin-card__trend--down { color: #dc2626; }
+.tempest-admin-card__trend--flat { color: var(--tempest-fg-soft); }
+
+.tempest-admin-card__parts {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.tempest-admin-card__parts li {
+  display: grid;
+  grid-template-columns: 6rem 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.tempest-admin-card__part-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-card__part-bar {
+  display: block;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--tempest-border);
+  overflow: hidden;
+}
+
+.tempest-admin-card__part-bar span {
+  display: block;
+  height: 100%;
+  background: var(--tempest-accent, #2563eb);
+}
+
+.tempest-admin-card__help {
+  font-size: 0.8rem;
+  color: var(--tempest-fg-soft);
+}
+
 .tempest-admin-footer {
   position: relative;
   z-index: 20;
