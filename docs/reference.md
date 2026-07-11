@@ -300,6 +300,19 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## SSR / web
+
+### `tempest_fastapi_sdk.ssr`
+
+::: tempest_fastapi_sdk.ssr.page.Page
+::: tempest_fastapi_sdk.ssr.response.html_response
+::: tempest_fastapi_sdk.ssr.assets.make_htmx_router
+::: tempest_fastapi_sdk.ssr.webapp.make_web_app_router
+::: tempest_fastapi_sdk.ssr.webapp.build_web_app
+::: tempest_fastapi_sdk.ssr.webapp.detect_build_mode
+
+---
+
 ## Web Push
 
 ### `tempest_fastapi_sdk.webpush`
