@@ -150,6 +150,10 @@ class AdminModel(Generic[ModelT]):
             endpoint. Default ``True``.
         can_delete (bool): Whether the admin exposes the delete action.
             Default ``True``.
+        can_import (bool): Whether the admin exposes a CSV import page
+            (``GET/POST {prefix}/m/{slug}/import``) that bulk-creates
+            rows from an uploaded CSV. Default ``False`` (opt-in); also
+            requires ``can_create``.
         actions (Sequence[ActionHandler]): Custom bulk actions —
             functions decorated with
             :func:`~tempest_fastapi_sdk.admin.admin_action`. Each appears
@@ -204,6 +208,7 @@ class AdminModel(Generic[ModelT]):
         can_create: bool = True,
         can_edit: bool = True,
         can_delete: bool = True,
+        can_import: bool = False,
         actions: Sequence[ActionHandler] = (),
         upload_fields: Sequence[FieldRef] = (),
         upload_storage: UploadStorage | None = None,
@@ -233,6 +238,7 @@ class AdminModel(Generic[ModelT]):
         self.can_create: bool = can_create
         self.can_edit: bool = can_edit
         self.can_delete: bool = can_delete
+        self.can_import: bool = can_import
         self._actions: dict[str, AdminAction] = {}
         for func in actions:
             action = resolve_admin_action(func)

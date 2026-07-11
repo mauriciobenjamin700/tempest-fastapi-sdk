@@ -42,6 +42,7 @@
     </form>
     <div class="tempest-admin-list__actions">
       {% if can_create %}<a class="tempest-admin-list__new" href="{{ new_url }}">+ New</a>{% endif %}
+      {% if admin.can_import and admin.can_create %}<a href="{{ url_for('admin_import', slug=admin.get_slug()) }}">Import CSV</a>{% endif %}
       <a href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='csv') }}{% if export_query %}?{{ export_query }}{% endif %}">Export CSV</a>
       <a href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='json') }}{% if export_query %}?{{ export_query }}{% endif %}">Export JSON</a>
     </div>

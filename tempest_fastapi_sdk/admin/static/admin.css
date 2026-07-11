@@ -610,6 +610,39 @@ textarea {
   color: var(--tempest-fg-soft);
 }
 
+.tempest-admin-import__result {
+  margin: 1rem 0;
+}
+
+.tempest-admin-import__ok {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+.tempest-admin-import__failed {
+  color: #d97706;
+  font-weight: 600;
+}
+
+.tempest-admin-import__errors {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.tempest-admin-import__errors th,
+.tempest-admin-import__errors td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--tempest-border);
+  vertical-align: top;
+}
+
+.tempest-admin-import__form label {
+  display: block;
+  margin: 1rem 0 0.5rem;
+}
+
 .tempest-admin-footer {
   position: relative;
   z-index: 20;

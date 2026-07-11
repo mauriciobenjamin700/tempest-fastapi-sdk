@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Import {{ admin.get_verbose_name_plural() }} · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-import">
+  <header class="tempest-admin-detail__header">
+    <h1>Import {{ admin.get_verbose_name_plural() }}</h1>
+    <a href="{{ back_url }}">← Back to list</a>
+  </header>
+
+  {% if form_error %}
+  <p class="tempest-admin-form__error">{{ form_error }}</p>
+  {% endif %}
+
+  {% if result %}
+  <div class="tempest-admin-import__result">
+    <p class="tempest-admin-import__ok">Created {{ result.created }} record(s).</p>
+    {% if result.errors %}
+    <p class="tempest-admin-import__failed">{{ result.errors | length }} row(s) skipped:</p>
+    <table class="tempest-admin-import__errors">
+      <thead><tr><th>Row</th><th>Errors</th></tr></thead>
+      <tbody>
+        {% for err in result.errors %}
+        <tr>
+          <td>{{ err.row }}</td>
+          <td>
+            {% for field, message in err.errors.items() %}
+            <div>{% if field %}<strong>{{ field }}:</strong> {% endif %}{{ message }}</div>
+            {% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ action_url }}" enctype="multipart/form-data" class="tempest-admin-import__form">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <label>
+      <span>CSV file</span>
+      <input type="file" name="file" accept=".csv,text/csv" required>
+    </label>
+    <p class="tempest-admin-form__hint">
+      Expected header columns: <code>{{ columns | join(', ') }}</code>.
+      The first row must be the header; each following row becomes one record.
+    </p>
+    <div class="tempest-admin-form__actions">
+      <button type="submit">Import</button>
+      <a href="{{ back_url }}" class="tempest-admin-form__cancel">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
