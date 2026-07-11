@@ -48,7 +48,7 @@ What the SDK **doesn't ship yet** + what already landed. Sorted by impact, not i
 | Signals (`pre_save`/`post_save`/`pre_delete`/`post_delete`) on `BaseRepository` | ✅ v0.109.0 | `tempest_fastapi_sdk.db.signals` (`connect`/`on_signal`) |
 | Object-level permissions framework (`user.has_perm("order.delete", obj=order)`) | ✅ v0.110.0 | `tempest_fastapi_sdk.authz` |
 | Startup system checks (`tempest check-config`) | ✅ v0.112.0 | `tempest_fastapi_sdk.checks` |
-| Management commands framework — project-registered `tempest <cmd>` | ❌ pending | — |
+| Management commands framework — project-registered `tempest <cmd>` | ✅ v0.113.0 | `[tool.tempest] commands` + `src/commands.py` |
 
 ## Admin panel — evolution
 
@@ -71,27 +71,26 @@ The full release history — every version with its **Added** / **Changed** / **
 
 ## What's next
 
-Genuinely unreleased work (after v0.89.0). Ordered by impact, not by version number — the current release is pulled by business pressure.
+The "What's next" queue left from the Tier S/A/B backlog is **cleared** —
+the last item (management commands) shipped in v0.113.0. Upcoming
+releases are again pulled by business pressure.
 
-| Release | Content |
-|---------|---------|
-| **next** | management commands framework (project-registered `tempest <cmd>`) |
+Natural candidates when demand shows up (admin panel evolution, already
+on the radar): a per-row audit-history viewer, autocomplete FK fields,
+inline editing of 1-N relations, and business-metric cards on the
+dashboard.
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
-## Shipped in v0.105.0
+## Shipped in v0.113.0
 
-The GenAI ergonomics plan plus the two application modules below have
-**landed** (they used to be "planned" here):
+Management-commands framework — a service plugs its own commands into the
+`tempest` CLI:
 
 | Feature | Status | Where |
 |---------|--------|-------|
-| **Typed `GenerationConfig`** | ✅ v0.105 | Validated generation params instead of `**kwargs`. [Recipe »](recipes/genai.md) |
-| **`make_genai_router`** | ✅ v0.105 | Ready endpoints (`/generate`+SSE, `/chat`, `/embed`, `/rag`, `/transcribe`, `/tts`), mounts only what you inject. [Recipe »](recipes/genai.md) |
-| **`RedisEmbeddingCache`** | ✅ v0.105 | Async vector cache shared across workers; `Embedder` accepts a sync or async cache. [Recipe »](recipes/genai.md) |
-| **Chat (`tempest_fastapi_sdk.chat`)** | ✅ v0.105 | `ChatService` + base tables + `make_chat_router` + real time via `SSEBroker`. [Recipe »](recipes/chat.md) |
-| **Comments + ratings (`reviews`)** | ✅ v0.105 | `ReviewService` (comment, 0–5 rating, aggregate) + `make_reviews_router`; `RatingField`. [Recipe »](recipes/reviews.md) |
+| **Management commands** | ✅ v0.113 | Expose a `typer.Typer` named `commands` in `src/commands.py` (auto-detected; or `[tool.tempest] commands = "..."`) → it becomes `tempest <cmd>`, alongside the built-ins. Collision with a built-in → built-in wins (warning). Plain Typer (args/options/types/groups). [Recipe »](recipes/management-commands.md) |
 
 ## Shipped in v0.112.0
 
@@ -143,6 +142,19 @@ necessity:
 | **`ChromaVectorStore`** | ✅ v0.108 | `VectorStore` over ChromaDB (ephemeral / persistent / injected client). Extra `[genai-chroma]`. [Recipe »](recipes/genai.md) |
 | **`ChatMemory`** | ✅ v0.108 | Per-user long-term memory over Chroma: embed + upsert with quota eviction, search with similarity floor + recency decay. [Recipe »](recipes/genai.md) |
 | **`AIChatPipeline`** | ✅ v0.108 | Orchestrator: memory → web-search → generate (with a tool-calling loop) → TTS → index. `Tool` + `make_ai_chat_router` (`/chat` + `/chat/stream` SSE, stateless). [Recipe »](recipes/genai.md) |
+
+## Shipped in v0.105.0
+
+The GenAI ergonomics plan plus the two application modules below have
+**landed** (they used to be "planned" here):
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **Typed `GenerationConfig`** | ✅ v0.105 | Validated generation params instead of `**kwargs`. [Recipe »](recipes/genai.md) |
+| **`make_genai_router`** | ✅ v0.105 | Ready endpoints (`/generate`+SSE, `/chat`, `/embed`, `/rag`, `/transcribe`, `/tts`), mounts only what you inject. [Recipe »](recipes/genai.md) |
+| **`RedisEmbeddingCache`** | ✅ v0.105 | Async vector cache shared across workers; `Embedder` accepts a sync or async cache. [Recipe »](recipes/genai.md) |
+| **Chat (`tempest_fastapi_sdk.chat`)** | ✅ v0.105 | `ChatService` + base tables + `make_chat_router` + real time via `SSEBroker`. [Recipe »](recipes/chat.md) |
+| **Comments + ratings (`reviews`)** | ✅ v0.105 | `ReviewService` (comment, 0–5 rating, aggregate) + `make_reviews_router`; `RatingField`. [Recipe »](recipes/reviews.md) |
 
 ## How to request a feature
 

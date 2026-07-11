@@ -48,7 +48,7 @@ Esta página lista o que o SDK **ainda não oferece** + o que já foi entregue. 
 | Signals (`pre_save`/`post_save`/`pre_delete`/`post_delete`) no `BaseRepository` | ✅ v0.109.0 | `tempest_fastapi_sdk.db.signals` (`connect`/`on_signal`) |
 | Permissions framework granular com object-level (`user.has_perm("order.delete", obj=order)`) | ✅ v0.110.0 | `tempest_fastapi_sdk.authz` |
 | System checks no startup (`tempest check-config`) | ✅ v0.112.0 | `tempest_fastapi_sdk.checks` |
-| Management commands framework — projeto registra `tempest <cmd>` próprio | ❌ pendente | — |
+| Management commands framework — projeto registra `tempest <cmd>` próprio | ✅ v0.113.0 | `[tool.tempest] commands` + `src/commands.py` |
 
 ## Painel admin — evolução
 
@@ -71,27 +71,26 @@ O histórico completo de releases — cada versão com o que entrou em **Added**
 
 ## Próximos passos
 
-Trabalho genuinamente não lançado (posterior à v0.89.0). A ordem segue impacto, não a numeração — a release atual é puxada pela pressão de negócio.
+A fila "Próximos passos" que restava do backlog Tier S/A/B está
+**zerada** — o último item (management commands) entrou na v0.113.0. As
+próximas releases voltam a ser puxadas por pressão de negócio.
 
-| Release | Conteúdo |
-|---------|----------|
-| **próximo** | management commands framework (`tempest <cmd>` registrado pelo projeto) |
+Candidatos naturais quando a demanda aparecer (evolução do painel admin,
+já no radar): visualizador de histórico de auditoria por registro,
+campos FK com autocomplete, edição inline de relações 1-N, e cards de
+métricas de negócio no dashboard.
 
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
-## Entregue na v0.105.0
+## Entregue na v0.113.0
 
-O plano de ergonomia GenAI + os dois módulos de aplicação abaixo já
-**entraram** (antes eram "planejados" aqui):
+Framework de management commands — o serviço pluga comandos próprios na
+CLI `tempest`:
 
 | Feature | Status | Onde |
 |---------|--------|------|
-| **`GenerationConfig` tipado** | ✅ v0.105 | Params de geração validados no lugar de `**kwargs`. [Receita »](recipes/genai.md) |
-| **`make_genai_router`** | ✅ v0.105 | Endpoints prontos (`/generate`+SSE, `/chat`, `/embed`, `/rag`, `/transcribe`, `/tts`), monta só o que você injeta. [Receita »](recipes/genai.md) |
-| **`RedisEmbeddingCache`** | ✅ v0.105 | Cache de vetores async compartilhado entre workers; `Embedder` aceita cache sync ou async. [Receita »](recipes/genai.md) |
-| **Chat (`tempest_fastapi_sdk.chat`)** | ✅ v0.105 | `ChatService` + tabelas base + `make_chat_router` + tempo real via `SSEBroker`. [Receita »](recipes/chat.md) |
-| **Comentários + avaliações (`reviews`)** | ✅ v0.105 | `ReviewService` (comentar, avaliar 0–5, agregar) + `make_reviews_router`; `RatingField`. [Receita »](recipes/reviews.md) |
+| **Management commands** | ✅ v0.113 | Exponha um `typer.Typer` chamado `commands` em `src/commands.py` (auto-detectado; ou `[tool.tempest] commands = "..."`) → vira `tempest <cmd>`, ao lado dos embutidos. Colisão com embutido → embutido vence (aviso). Typer puro (args/options/tipos/grupos). [Receita »](recipes/management-commands.md) |
 
 ## Entregue na v0.112.0
 
@@ -144,6 +143,19 @@ necessidade:
 | **`ChromaVectorStore`** | ✅ v0.108 | `VectorStore` sobre ChromaDB (efêmero / persistente / client injetado). Extra `[genai-chroma]`. [Receita »](recipes/genai.md) |
 | **`ChatMemory`** | ✅ v0.108 | Memória long-term por usuário sobre Chroma: embed + upsert com eviction por cota, busca com filtro de similaridade + decay de recência. [Receita »](recipes/genai.md) |
 | **`AIChatPipeline`** | ✅ v0.108 | Orquestrador: memória → web-search → gera (com loop de tool-calling) → TTS → index. `Tool` + `make_ai_chat_router` (`/chat` + `/chat/stream` SSE, stateless). [Receita »](recipes/genai.md) |
+
+## Entregue na v0.105.0
+
+O plano de ergonomia GenAI + os dois módulos de aplicação abaixo já
+**entraram** (antes eram "planejados" aqui):
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`GenerationConfig` tipado** | ✅ v0.105 | Params de geração validados no lugar de `**kwargs`. [Receita »](recipes/genai.md) |
+| **`make_genai_router`** | ✅ v0.105 | Endpoints prontos (`/generate`+SSE, `/chat`, `/embed`, `/rag`, `/transcribe`, `/tts`), monta só o que você injeta. [Receita »](recipes/genai.md) |
+| **`RedisEmbeddingCache`** | ✅ v0.105 | Cache de vetores async compartilhado entre workers; `Embedder` aceita cache sync ou async. [Receita »](recipes/genai.md) |
+| **Chat (`tempest_fastapi_sdk.chat`)** | ✅ v0.105 | `ChatService` + tabelas base + `make_chat_router` + tempo real via `SSEBroker`. [Receita »](recipes/chat.md) |
+| **Comentários + avaliações (`reviews`)** | ✅ v0.105 | `ReviewService` (comentar, avaliar 0–5, agregar) + `make_reviews_router`; `RatingField`. [Receita »](recipes/reviews.md) |
 
 ## Como pedir uma feature
 

@@ -62,9 +62,15 @@ class TempestConfig:
         typing_strictness (TypingStrictness): How strictly the CLI gates
             enforce typing. One of ``"lenient"``, ``"standard"``,
             ``"strict"``.
+        commands (tuple[str, ...]): Import paths to modules exposing a
+            ``typer.Typer`` of project management commands to mount under
+            the ``tempest`` CLI. Empty means "use the conventional
+            candidates" (``src.commands`` / ``app.commands`` /
+            ``commands``).
     """
 
     typing_strictness: TypingStrictness = DEFAULT_TYPING_STRICTNESS
+    commands: tuple[str, ...] = ()
 
     def ruff_ann_select(self) -> list[str]:
         """Return the ANN rule codes to add to ruff for this level.
@@ -147,13 +153,41 @@ def load_tempest_config(start: Path | None = None) -> TempestConfig:
     with pyproject.open("rb") as handle:
         data = tomllib.load(handle)
     table = data.get("tool", {}).get("tempest", {})
-    if "typing_strictness" not in table:
-        return TempestConfig()
-    strictness = _coerce_strictness(
-        table["typing_strictness"],
-        source=str(pyproject),
+    strictness = (
+        _coerce_strictness(table["typing_strictness"], source=str(pyproject))
+        if "typing_strictness" in table
+        else DEFAULT_TYPING_STRICTNESS
     )
-    return TempestConfig(typing_strictness=strictness)
+    commands = _coerce_commands(table.get("commands"), source=str(pyproject))
+    return TempestConfig(typing_strictness=strictness, commands=commands)
+
+
+def _coerce_commands(value: object, *, source: str) -> tuple[str, ...]:
+    """Validate the ``[tool.tempest] commands`` value.
+
+    Accepts a single module path string or a list of them; ``None``
+    (absent) yields an empty tuple.
+
+    Args:
+        value (object): The raw value read from the TOML table.
+        source (str): Human-readable origin used in the error message.
+
+    Returns:
+        tuple[str, ...]: The module import paths.
+
+    Raises:
+        ValueError: When the value is not a string or list of strings.
+    """
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return tuple(value)
+    raise ValueError(
+        f"{source}: invalid commands {value!r}; expected a string or a "
+        "list of module import paths."
+    )
 
 
 __all__: list[str] = [
