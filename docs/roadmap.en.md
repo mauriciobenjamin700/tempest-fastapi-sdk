@@ -86,6 +86,14 @@ wires it all into a shop admin. The only item left is on-demand polish:
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## Shipped in v0.123.0
+
+More `field__op` filter operators (in `Q` and the repository dict):
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **`in`/`notin`/`isnull`/`contains`/`startswith`/`endswith` operators** | ✅ v0.123 | Join `gt`/`gte`/`lt`/`lte`/`ne`; `build_filter_condition` (backs `Q` + dict). [Recipe »](recipes/database.md) |
+
 ## Shipped in v0.122.0
 
 Admin refinement — consistency / UX polish:

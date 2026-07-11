@@ -112,3 +112,41 @@ class TestQ:
         deleted = await repo.delete_many({}, where=Q(status="closed"))
         assert deleted == 1
         assert await repo.count() == 2
+
+
+class TestSuffixOperators:
+    async def test_in(self, repo: BaseRepository[Item]) -> None:
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__in=["open", "closed"]))
+        assert {r.name for r in rows} == {"a", "c"}
+
+    async def test_notin(self, repo: BaseRepository[Item]) -> None:
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__notin=["open"]))
+        assert {r.name for r in rows} == {"b", "c"}
+
+    async def test_contains(self, repo: BaseRepository[Item]) -> None:
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__contains="end"))  # pending
+        assert {r.name for r in rows} == {"b"}
+
+    async def test_startswith_endswith(self, repo: BaseRepository[Item]) -> None:
+        await _seed(repo)
+        starts = await repo.list(where=Q(status__startswith="op"))
+        ends = await repo.list(where=Q(status__endswith="sed"))  # closed
+        assert {r.name for r in starts} == {"a"}
+        assert {r.name for r in ends} == {"c"}
+
+    async def test_isnull(self, repo: BaseRepository[Item]) -> None:
+        await _seed(repo)
+        # stock is non-nullable, so IS NULL matches nothing and IS NOT
+        # NULL matches all — exercises both branches of the clause.
+        assert await repo.count(where=Q(stock__isnull=True)) == 0
+        assert await repo.count(where=Q(stock__isnull=False)) == 3
+
+    async def test_operators_via_filter_dict(self, repo: BaseRepository[Item]) -> None:
+        # The same operators work through the plain dict-filter path.
+        await _seed(repo)
+        rows = await repo.list({"status__in": ["open", "pending"]})
+        assert {r.name for r in rows} == {"a", "b"}
+        assert await repo.count({"status__startswith": "clo"}) == 1

@@ -85,6 +85,14 @@ inline **in-place** das relações 1-N (hoje listadas + navegáveis).
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
+## Entregue na v0.123.0
+
+Mais operadores de filtro `campo__op` (no `Q` e no dict do repository):
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Operadores `in`/`notin`/`isnull`/`contains`/`startswith`/`endswith`** | ✅ v0.123 | Somam-se a `gt`/`gte`/`lt`/`lte`/`ne`; `build_filter_condition` (base do `Q` + dict). [Receita »](recipes/database.md) |
+
 ## Entregue na v0.122.0
 
 Refino do admin — polish de consistência/UX:

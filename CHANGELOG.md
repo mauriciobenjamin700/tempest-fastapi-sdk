@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.123.0] — 2026-07-11
+
+### Added
+
+- **More `field__op` filter operators** (shared by `Q` and the `BaseRepository`
+  dict filters): `in` / `notin` (`IN` / `NOT IN`), `isnull` (`IS NULL` when
+  truthy, `IS NOT NULL` when falsy — note `isnull` is exempt from the
+  "`None` value skips" rule since its value is a bool), and case-insensitive
+  `contains` / `icontains` / `startswith` / `endswith` (`ILIKE`). These join the
+  existing `gt` / `gte` / `lt` / `lte` / `ne`. Kept explicit (one branch per
+  operator, no operator-name magic) so the supported set is greppable and typed.
+
 ## [0.122.0] — 2026-07-11
 
 ### Fixed

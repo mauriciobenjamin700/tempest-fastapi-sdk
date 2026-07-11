@@ -528,6 +528,16 @@ rows = await repository.list(
 o `AND` dessas condições. `where=` funciona em `list` / `first` / `get` /
 `get_or_none` / `count` / `exists` / `paginate` / `delete_many`.
 
+Operadores de sufixo `campo__op` disponíveis (no `Q` **e** no dict):
+
+| Sufixo | SQL | Exemplo |
+|--------|-----|---------|
+| `gt` `gte` `lt` `lte` `ne` | comparação | `Q(priority__gte=5)` |
+| `in` `notin` | `IN` / `NOT IN` (valor = lista) | `Q(status__in=["open", "paid"])` |
+| `isnull` | `IS NULL` (True) / `IS NOT NULL` (False) | `Q(closed_at__isnull=True)` |
+| `contains` `icontains` | `ILIKE %v%` | `Q(name__contains="ana")` |
+| `startswith` `endswith` | `ILIKE v%` / `%v` | `Q(sku__startswith="SKU-")` |
+
 !!! note "SQLAlchemy puro continua ali"
     `F`/`Q` são açúcar tipado sobre expressões que o SQLAlchemy já tem.
     Precisou de algo que eles não cobrem? Use `select(...)` direto — o
