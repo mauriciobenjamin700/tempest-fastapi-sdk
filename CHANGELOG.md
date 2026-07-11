@@ -5,6 +5,22 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.129.0] — 2026-07-11
+
+### Added
+
+- **Typed SSR attribute builders** (`tempest_fastapi_sdk.ssr`) — `htmx()`,
+  `aria()` and `data()` assemble a widget's open `attrs: dict[str, str]` from
+  typed keyword arguments, moving `hx-*` / `aria-*` / `data-*` call sites from
+  stringly-typed dicts to autocompleted, statically-checked code. Each returns
+  exactly the plain `dict[str, str]` you'd write by hand (mergeable via
+  `{**htmx(...), **aria(...), "id": "x"}`), so nothing is hidden. `htmx()`
+  renders booleans as `"true"`/`"false"`, JSON-encodes a mapping passed to
+  `vals`/`headers`, and turns `on={":after-request": "…"}` into
+  `hx-on::after-request`; `data()` maps `user_id` → `data-user-id`. Pure
+  functions, no extra dependency — the base `attrs` type stays `dict[str, str]`
+  because the HTML attribute space is open.
+
 ## [0.128.0] — 2026-07-11
 
 ### Added
