@@ -92,6 +92,7 @@ plugins:
             Arquitetura: Architecture
             Tutorial: Tutorial
             Exemplos: Examples
+            "Fullstack web (SSR, WASM, server)": "Fullstack web (SSR, WASM, server)"
             "SSR (páginas tipadas)": "SSR (typed pages)"
             Receitas: Recipes
             Banco de dados: Database
@@ -221,6 +222,7 @@ nav:
       - "Exemplo integrado (checkout Pix)": integrated.md
       - "Exemplo integrado (marketplace local)": marketplace-local.md
       - "Exemplo integrado (admin completo)": admin-showcase.md
+      - "Fullstack web (SSR, WASM, server)": fullstack-web.md
       - "Exemplos de GenAI (fluxos)": genai-examples.md
   - "SSR (páginas tipadas)": ssr.md
   - Receitas:
