@@ -37,6 +37,70 @@ direction-wrapped column (``desc(Model.created_at)``), or a Django-style
 string (``"created_at"`` / ``"-created_at"``)."""
 
 
+class Inline:
+    """A related child model surfaced on the parent's detail view.
+
+    Django's ``TabularInline`` analog: the detail view of the parent
+    lists the child rows that point back at it (via ``fk_field``) as a
+    compact table, with a link to each child's own admin and an "Add"
+    link that pre-fills the parent foreign key. The child model must
+    have its own registered :class:`AdminModel` for the links to work
+    (the inline reuses the child admin's ``list_display`` and CRUD
+    routes); without it, the rows still render read-only.
+
+    Attributes:
+        model (type[BaseModel]): The child model class.
+        fk_field (str): The child column that references the parent.
+        list_display (list[str] | None): Columns to show; falls back to
+            the child admin's ``list_display`` (or every column).
+        label (str | None): Section heading; defaults to the model name.
+    """
+
+    def __init__(
+        self,
+        model: type[BaseModel],
+        fk_field: FieldRef,
+        *,
+        list_display: Sequence[FieldRef] | None = None,
+        label: str | None = None,
+    ) -> None:
+        """Build the inline config. See class docstring.
+
+        Args:
+            model (type[BaseModel]): The child model class.
+            fk_field (FieldRef): The child column referencing the parent.
+            list_display (Sequence[FieldRef] | None): Columns to show.
+            label (str | None): Section heading.
+
+        Raises:
+            TypeError: When ``model`` is not a ``BaseModel`` subclass.
+        """
+        if not isinstance(model, type) or not issubclass(model, BaseModel):
+            raise TypeError("Inline `model` must be a subclass of BaseModel")
+        self.model: type[BaseModel] = model
+        self.fk_field: str = _field_key(fk_field)
+        self.list_display: list[str] | None = (
+            None if list_display is None else _normalize_fields(list_display)
+        )
+        self.label: str | None = label
+
+    def get_slug(self) -> str:
+        """Return the child model's admin slug (its table name).
+
+        Returns:
+            str: The ``__tablename__`` used to look the child admin up.
+        """
+        return str(self.model.__tablename__)
+
+    def get_label(self) -> str:
+        """Return the section heading for this inline.
+
+        Returns:
+            str: The configured label, or a name derived from the model.
+        """
+        return self.label or f"{self.model.__name__}"
+
+
 class AdminModel(Generic[ModelT]):
     """Declarative admin configuration for one SQLAlchemy model.
 
@@ -112,6 +176,11 @@ class AdminModel(Generic[ModelT]):
             and the plain-UUID fallback for large target tables. The
             target table must have its own registered ``AdminModel``
             (its ``search_fields`` drive the search).
+        inlines (Sequence[Inline]): Related child models listed on this
+            model's detail view (Django ``TabularInline`` analog). Each
+            :class:`Inline` shows the child rows pointing back via its
+            ``fk_field`` plus links to the child admin and an "Add" link
+            that pre-fills the parent foreign key.
 
     Raises:
         TypeError: When ``model`` is not a subclass of :class:`BaseModel`,
@@ -140,6 +209,7 @@ class AdminModel(Generic[ModelT]):
         upload_storage: UploadStorage | None = None,
         audit_model: type[BaseAuditLogModel] | None = None,
         autocomplete_fields: Sequence[FieldRef] = (),
+        inlines: Sequence[Inline] = (),
     ) -> None:
         """Build and validate the configuration. See class docstring."""
         if not isinstance(model, type) or not issubclass(model, BaseModel):
@@ -187,6 +257,7 @@ class AdminModel(Generic[ModelT]):
             )
         self.audit_model: type[BaseAuditLogModel] | None = audit_model
         self.autocomplete_fields: list[str] = _normalize_fields(autocomplete_fields)
+        self.inlines: list[Inline] = list(inlines)
 
     def get_verbose_name(self) -> str:
         """Return the configured (or auto-derived) singular display name.
@@ -390,5 +461,6 @@ def _humanize(value: str) -> str:
 __all__: list[str] = [
     "AdminModel",
     "FieldRef",
+    "Inline",
     "OrderRef",
 ]

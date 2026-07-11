@@ -41,6 +41,7 @@ from tempest_fastapi_sdk.api.routers.logs import (
     _resolve_files,
 )
 from tempest_fastapi_sdk.db.expressions import escape_like
+from tempest_fastapi_sdk.db.repository import BaseRepository
 from tempest_fastapi_sdk.exceptions import AppException
 
 if TYPE_CHECKING:
@@ -1053,6 +1054,12 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_create)
         principal = await _resolve_principal(request, db_session, session)
+        # Pre-fill editable fields from query params — this is what an
+        # inline "Add" link uses to seed the parent foreign key.
+        editable = set(admin.editable_field_names())
+        prefill = {
+            key: value for key, value in request.query_params.items() if key in editable
+        }
         return _render(
             request,
             "form.html",
@@ -1062,7 +1069,9 @@ def make_admin_router(
                 "user_display": auth_backend.display_name(principal),
                 "admin": admin,
                 "mode": "create",
-                "form_fields": await _form_fields(admin, db_session),
+                "form_fields": await _form_fields(
+                    admin, db_session, submitted=prefill or None
+                ),
                 "action_url": f"{prefix}/m/{slug}/new",
                 "back_url": f"{prefix}/m/{slug}/",
                 "form_error": None,
@@ -1282,6 +1291,8 @@ def make_admin_router(
                     }
                 )
 
+        inlines = await _build_inlines(admin, instance, db_session)
+
         return _render(
             request,
             "detail.html",
@@ -1295,12 +1306,81 @@ def make_admin_router(
                 "readonly": readonly,
                 "audit": audit,
                 "history": history,
+                "inlines": inlines,
                 "can_edit": admin.can_edit,
                 "can_delete": admin.can_delete,
                 "edit_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "delete_url": f"{prefix}/m/{slug}/{identity}/delete",
             },
         )
+
+    async def _build_inlines(
+        admin: AdminModel[Any],
+        instance: Any,
+        db_session: AsyncSession,
+    ) -> list[dict[str, Any]]:
+        """Build the related-child tables for a parent's detail view.
+
+        For each configured :class:`Inline`, queries the child rows that
+        reference ``instance`` via the inline's ``fk_field`` and packages
+        them with the columns to show plus links to the child admin (when
+        the child model is registered).
+
+        Args:
+            admin (AdminModel[Any]): The parent admin.
+            instance (Any): The parent row.
+            db_session (AsyncSession): The DB session.
+
+        Returns:
+            list[dict[str, Any]]: One entry per inline, ready for the
+            template.
+        """
+        parent_id = getattr(instance, "id", None)
+        blocks: list[dict[str, Any]] = []
+        for inline in admin.inlines:
+            child_admin = site.get(inline.get_slug())
+            repository = (
+                child_admin.build_repository(db_session)
+                if child_admin is not None
+                else BaseRepository(db_session, model=inline.model)
+            )
+            children = await repository.list({inline.fk_field: parent_id})
+            if inline.list_display is not None:
+                display = inline.list_display
+            elif child_admin is not None:
+                display = child_admin.resolved_list_display()
+            else:
+                display = list(sa_inspect(inline.model).columns.keys())
+            child_slug = inline.get_slug()
+            rows = [
+                {
+                    "id": str(getattr(child, "id", "")),
+                    "cells": [(col, getattr(child, col, None)) for col in display],
+                    "url": (
+                        f"{prefix}/m/{child_slug}/{getattr(child, 'id', '')}"
+                        if child_admin is not None
+                        else None
+                    ),
+                }
+                for child in children[:_INLINE_ROW_LIMIT]
+            ]
+            can_add = child_admin is not None and child_admin.can_create
+            add_url = (
+                f"{prefix}/m/{child_slug}/new?{inline.fk_field}={parent_id}"
+                if can_add
+                else None
+            )
+            blocks.append(
+                {
+                    "label": inline.get_label(),
+                    "columns": display,
+                    "rows": rows,
+                    "add_url": add_url,
+                    "total": len(children),
+                    "truncated": len(children) > _INLINE_ROW_LIMIT,
+                }
+            )
+        return blocks
 
     @router.get("/m/{slug}/autocomplete/{field}", name="admin_autocomplete")
     async def autocomplete(
@@ -1774,6 +1854,9 @@ _AUDIT_HISTORY_LIMIT = 50
 
 #: Cap on options returned by an autocomplete FK search.
 _AUTOCOMPLETE_LIMIT = 20
+
+#: Cap on child rows rendered per inline on the detail view.
+_INLINE_ROW_LIMIT = 50
 
 
 def _format_audit_changes(action: str, changes: dict[str, Any]) -> list[dict[str, Any]]:

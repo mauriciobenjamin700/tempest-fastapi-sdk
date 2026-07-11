@@ -59,7 +59,7 @@ The admin panel already exists (`AdminSite` / `AdminModel` / `make_admin_router`
 | **Per-column filter / search / sort** on the list view | Large lists are unusable without it — the first thing every operator asks for. | `BaseRepository` (filters + pagination) |
 | **Bulk actions** (mass delete / activate) | Row-by-row actions don't scale; select N rows + one action is the standard admin flow. | `BaseRepository.bulk_update` / soft-delete |
 | **Field widgets** (FK select ✅, date picker, file upload) + **FK autocomplete** ✅ v0.115.0 | FK as `<select>`, dates with a picker, upload via `UploadUtils`; large FKs become an HTMX search box (`autocomplete_fields`). | `UploadUtils` + storage backends |
-| **Inline / related editing** | Edit children (1-N) on the parent's screen — the Django-admin pattern that's missing. | `BaseRepository` + relationships |
+| **Inline / related editing** ✅ v0.116.0 (read + navigate) | Children (1-N) listed on the parent's detail, with a link to the child admin and "Add" pre-filling the FK (`inlines=[Inline(...)]`). In-place editing on the same screen is a follow-up. | `BaseRepository` + relationships |
 | **CSV / JSON export** | Operator exports the filtered result without opening the database. | list view + filters |
 | **Audit log visible in the admin** ✅ v0.114.0 | Who changed what and when, straight in the UI — a per-row timeline in the detail view. | `BaseAuditLogModel` + `diff_snapshots` (`AdminModel(audit_model=...)`) |
 | **Metrics dashboard** | A landing screen with CPU/RAM/counters instead of an empty page. | `MetricsUtils` |
@@ -76,11 +76,19 @@ the last item (management commands) shipped in v0.113.0. Upcoming
 releases are again pulled by business pressure.
 
 Natural candidates when demand shows up (admin panel evolution, already
-on the radar): inline editing of 1-N relations and business-metric
-cards on the dashboard.
+on the radar): business-metric cards on the dashboard, and in-place
+inline editing of 1-N relations (today they are listed + navigable).
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
+
+## Shipped in v0.116.0
+
+Admin panel — inlines / nested relations (Tier 2 of the admin evolution):
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **Inlines (read + navigate)** | ✅ v0.116 | `AdminModel(inlines=[Inline(Child, Child.parent_id)])` lists the 1-N children on the parent's detail view as a table, with a link to the child admin and "Add" pre-filling the FK (via a create query param). Reuses the child admin's `list_display`/CRUD. In-place editing on the same screen is a follow-up. [Recipe »](recipes/admin.md) |
 
 ## Shipped in v0.115.0
 

@@ -467,6 +467,56 @@ textarea {
   color: var(--tempest-fg-soft);
 }
 
+.tempest-admin-inline {
+  margin-top: 2rem;
+}
+
+.tempest-admin-inline__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.tempest-admin-inline__header h2 {
+  font-size: 1rem;
+  margin: 0;
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-inline__count {
+  font-weight: 400;
+}
+
+.tempest-admin-inline__scroll {
+  overflow-x: auto;
+}
+
+.tempest-admin-inline__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.tempest-admin-inline__table th,
+.tempest-admin-inline__table td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--tempest-border);
+  white-space: nowrap;
+}
+
+.tempest-admin-inline__table th {
+  color: var(--tempest-fg-soft);
+  font-weight: 600;
+}
+
+.tempest-admin-inline__empty,
+.tempest-admin-inline__more {
+  color: var(--tempest-fg-soft);
+}
+
 .tempest-admin-footer {
   position: relative;
   z-index: 20;

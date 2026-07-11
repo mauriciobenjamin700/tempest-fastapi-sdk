@@ -156,7 +156,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.controllers` | `BaseController` |
 | `tempest_fastapi_sdk.services` | `BaseService` |
 | `tempest_fastapi_sdk.core` | `configure_logging`, `JSONFormatter`, `get_request_id`/`set_request_id`/`clear_request_id`, `request_id_ctx`, `BaseStrEnum`, `BaseIntEnum`, `strict_types`/`typed`/`require_annotations` |
-| `tempest_fastapi_sdk.admin` *(extra: `[admin]`)* | `AdminSite`, `AdminModel` (incl. `audit_model=...` for a per-row audit-history timeline, `autocomplete_fields=[...]` for HTMX-searched FK inputs), `make_admin_router`, `AdminAuthBackend`, `UserModelAuthBackend`, `AdminAuthError` |
+| `tempest_fastapi_sdk.admin` *(extra: `[admin]`)* | `AdminSite`, `AdminModel` (incl. `audit_model=...` for a per-row audit-history timeline, `autocomplete_fields=[...]` for HTMX-searched FK inputs, `inlines=[Inline(...)]` for 1-N children on the detail view), `Inline`, `make_admin_router`, `AdminAuthBackend`, `UserModelAuthBackend`, `AdminAuthError` |
 | `tempest_fastapi_sdk.sse` | `EventStream` (bounded queue + `overflow` backpressure), `SSEBroker` (multi-worker fan-out via Redis, `.response()` lifecycle helper), `ServerSentEvent`, `sse_response` (`on_disconnect=` cleanup) |
 | `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager`, `cached` (with `namespace` / `tags`), `CacheInvalidator`, `namespace_registry_key`, `tag_registry_key` |
 | `tempest_fastapi_sdk.flags` | `FeatureFlags`, `FeatureFlagBackend`, `MemoryFeatureFlagBackend`, `EnvFeatureFlagBackend`, `RedisFeatureFlagBackend`, `CompositeFeatureFlagBackend`, `make_flag_dependency`, `coerce_flag` |

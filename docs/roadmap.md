@@ -59,7 +59,7 @@ O painel admin já existe (`AdminSite` / `AdminModel` / `make_admin_router`, Jin
 | **Filtros / busca / ordenação por coluna** na listagem | Listas grandes ficam inutilizáveis sem isso; é o primeiro pedido de todo operador. | `BaseRepository` (filtros + paginação) |
 | **Bulk actions** (deletar / ativar em massa) | Ações linha-a-linha não escalam; selecionar N linhas + uma ação é o fluxo padrão de admin. | `BaseRepository.bulk_update` / soft-delete |
 | **Widgets de campo** (FK select ✅, date picker, file upload) + **FK autocomplete** ✅ v0.115.0 | FK como `<select>`, data com picker, upload via `UploadUtils`; FKs grandes viram caixa de busca HTMX (`autocomplete_fields`). | `UploadUtils` + storage backends |
-| **Inline / related editing** | Editar filhos (1-N) na mesma tela do pai — padrão Django admin que falta. | `BaseRepository` + relationships |
+| **Inline / related editing** ✅ v0.116.0 (leitura + navegar) | Filhos (1-N) listados no detail do pai, com link pro admin do filho e "Add" pré-preenchendo o FK (`inlines=[Inline(...)]`). Edição in-place na mesma tela fica como evolução. | `BaseRepository` + relationships |
 | **Export CSV / JSON** | Operador exporta o resultado filtrado sem abrir o banco. | listagem + filtros |
 | **Audit log visível no admin** ✅ v0.114.0 | Quem mudou o quê e quando, direto na UI — timeline por registro no detail. | `BaseAuditLogModel` + `diff_snapshots` (`AdminModel(audit_model=...)`) |
 | **Dashboard com métricas** | Tela inicial com CPU/RAM/contadores em vez de página vazia. | `MetricsUtils` |
@@ -76,11 +76,19 @@ A fila "Próximos passos" que restava do backlog Tier S/A/B está
 próximas releases voltam a ser puxadas por pressão de negócio.
 
 Candidatos naturais quando a demanda aparecer (evolução do painel admin,
-já no radar): edição inline de relações 1-N e cards de métricas de
-negócio no dashboard.
+já no radar): cards de métricas de negócio no dashboard, e edição inline
+in-place das relações 1-N (hoje elas são listadas + navegáveis).
 
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
+
+## Entregue na v0.116.0
+
+Painel admin — inlines / relações aninhadas (Tier 2 da evolução do admin):
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Inlines (leitura + navegar)** | ✅ v0.116 | `AdminModel(inlines=[Inline(Child, Child.parent_id)])` lista os filhos 1-N no detail do pai como tabela, com link pro admin do filho e "Add" pré-preenchendo o FK (via query param no create). Reaproveita o `list_display`/CRUD do admin filho. Edição in-place na mesma tela fica como evolução. [Receita »](recipes/admin.md) |
 
 ## Entregue na v0.115.0
 

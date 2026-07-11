@@ -10,6 +10,7 @@ from tempest_fastapi_sdk.admin import (
     AdminSite,
     AdminTheme,
     FieldRef,
+    Inline,
     OrderRef,
     UserModelAuthBackend,
     admin_action,
@@ -395,7 +396,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.115.0"
+__version__: str = "0.116.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -511,6 +512,7 @@ __all__: list[str] = [
     "HexColorField",
     "IdempotencyMiddleware",
     "IdempotencyStore",
+    "Inline",
     "InvalidFileTypeException",
     "InvalidTokenException",
     "JSONFormatter",

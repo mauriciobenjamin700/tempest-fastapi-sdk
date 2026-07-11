@@ -21,6 +21,7 @@ from tempest_fastapi_sdk.admin.auth import AdminAuthError as AdminAuthError
 from tempest_fastapi_sdk.admin.auth import UserModelAuthBackend as UserModelAuthBackend
 from tempest_fastapi_sdk.admin.config import AdminModel as AdminModel
 from tempest_fastapi_sdk.admin.config import FieldRef as FieldRef
+from tempest_fastapi_sdk.admin.config import Inline as Inline
 from tempest_fastapi_sdk.admin.config import OrderRef as OrderRef
 from tempest_fastapi_sdk.admin.discovery import discover_models as discover_models
 from tempest_fastapi_sdk.admin.router import make_admin_router as make_admin_router
@@ -43,6 +44,7 @@ __all__: list[str] = [
     "AdminSite",
     "AdminTheme",
     "FieldRef",
+    "Inline",
     "OrderRef",
     "SessionStore",
     "SignedCookieSessionStore",
