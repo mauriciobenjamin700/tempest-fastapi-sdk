@@ -77,7 +77,9 @@ próximas releases voltam a ser puxadas por pressão de negócio.
 
 A evolução do painel admin está **essencialmente completa**: Tiers 1 e 2
 inteiros, e o Tier 3 com import CSV (v0.118), RBAC granular (v0.119) e
-lenses (v0.120). O único item que sobra é polimento sob demanda: edição
+lenses (v0.120). Seguiu um refino: widgets JSON+time (v0.121), polish de
+UX (v0.122) e um [exemplo integrado](admin-showcase.md) que fia tudo num
+admin de loja. O único item que sobra é polimento sob demanda: edição
 inline **in-place** das relações 1-N (hoje listadas + navegáveis).
 
 !!! note "O roadmap é honesto, não aspiracional"
