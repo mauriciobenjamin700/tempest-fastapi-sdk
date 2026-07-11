@@ -85,6 +85,14 @@ inline **in-place** das relações 1-N (hoje listadas + navegáveis).
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
+## Entregue na v0.124.0
+
+Observabilidade — métricas de negócio custom no `/metrics`:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`BusinessMetrics`** | ✅ v0.124 | Fábrica tipada de `counter`/`gauge`/`histogram` no registry compartilhado (namespace opcional, dedup por nome); saem no mesmo `GET /metrics`. Objetos são os do `prometheus_client` — sem mágica. [Receita »](recipes/metrics.md) |
+
 ## Entregue na v0.123.0
 
 Mais operadores de filtro `campo__op` (no `Q` e no dict do repository):

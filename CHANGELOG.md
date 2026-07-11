@@ -5,6 +5,21 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.124.0] — 2026-07-11
+
+### Added
+
+- **`BusinessMetrics`** (`tempest_fastapi_sdk.api`, `[prometheus]` extra) — a
+  typed factory for application metrics bound to the shared Prometheus
+  registry, so a service declares its own `counter` / `gauge` / `histogram`
+  (orders placed, queue depth, job duration) without repeating the `registry=`
+  wiring or touching the global default registry. Optional `namespace=` prefix;
+  creation is de-duplicated by name (calling a factory twice with the same name
+  returns the same metric instead of raising `Duplicated timeseries`). The
+  returned objects are the real `prometheus_client` metrics — no wrapping, no
+  magic — and land on the same `/metrics` endpoint as the built-in HTTP
+  collectors. Re-exported at the package root and from `tempest_fastapi_sdk.api`.
+
 ## [0.123.0] — 2026-07-11
 
 ### Added
