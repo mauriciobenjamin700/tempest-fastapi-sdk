@@ -1,12 +1,14 @@
 """tempest-fastapi-sdk — shared FastAPI/SQLAlchemy/Pydantic primitives."""
 
 from tempest_fastapi_sdk.admin import (
+    AdminAccessPolicy,
     AdminAction,
     AdminActionContext,
     AdminActionResult,
     AdminAuthBackend,
     AdminAuthError,
     AdminModel,
+    AdminPermission,
     AdminSite,
     AdminTheme,
     FieldRef,
@@ -400,7 +402,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.118.0"
+__version__: str = "0.119.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -425,12 +427,14 @@ __all__: list[str] = [
     "UF",
     "ActivationResponseSchema",
     "ActivationToken",
+    "AdminAccessPolicy",
     "AdminAction",
     "AdminActionContext",
     "AdminActionResult",
     "AdminAuthBackend",
     "AdminAuthError",
     "AdminModel",
+    "AdminPermission",
     "AdminSite",
     "AdminTheme",
     "AlembicHelper",

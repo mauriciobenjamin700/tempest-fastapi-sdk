@@ -28,6 +28,10 @@ from tempest_fastapi_sdk.admin.dashboard import MetricPartition as MetricPartiti
 from tempest_fastapi_sdk.admin.dashboard import MetricTrend as MetricTrend
 from tempest_fastapi_sdk.admin.dashboard import MetricValue as MetricValue
 from tempest_fastapi_sdk.admin.discovery import discover_models as discover_models
+from tempest_fastapi_sdk.admin.permissions import (
+    AdminAccessPolicy as AdminAccessPolicy,
+)
+from tempest_fastapi_sdk.admin.permissions import AdminPermission as AdminPermission
 from tempest_fastapi_sdk.admin.router import make_admin_router as make_admin_router
 from tempest_fastapi_sdk.admin.session import AdminSession as AdminSession
 from tempest_fastapi_sdk.admin.session import SessionStore as SessionStore
@@ -38,12 +42,14 @@ from tempest_fastapi_sdk.admin.site import AdminSite as AdminSite
 from tempest_fastapi_sdk.admin.theme import AdminTheme as AdminTheme
 
 __all__: list[str] = [
+    "AdminAccessPolicy",
     "AdminAction",
     "AdminActionContext",
     "AdminActionResult",
     "AdminAuthBackend",
     "AdminAuthError",
     "AdminModel",
+    "AdminPermission",
     "AdminSession",
     "AdminSite",
     "AdminTheme",

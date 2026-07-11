@@ -76,13 +76,21 @@ the last item (management commands) shipped in v0.113.0. Upcoming
 releases are again pulled by business pressure.
 
 Natural candidates when demand shows up (admin panel evolution, already
-Tiers 1 and 2 of the admin-panel evolution are **shipped**, and so is
-Tier 3's CSV import. What's left is on-demand polish: in-place inline
-editing of 1-N relations (today listed + navigable), and the rest of
-Tier 3 (granular per-model/per-action RBAC, saved lenses/views).
+Tiers 1 and 2 of the admin-panel evolution are **shipped**, and Tier 3
+has landed CSV import (v0.118) and granular RBAC (v0.119). What's left is
+on-demand polish: in-place inline editing of 1-N relations (today listed
++ navigable) and saved lenses/views.
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
+
+## Shipped in v0.119.0
+
+Admin panel — granular RBAC (Tier 3):
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **Granular RBAC** | ✅ v0.119 | `make_admin_router(access_policy=...)` — a `(principal, admin, AdminPermission)` → bool hook consulted for every action (VIEW/CREATE/EDIT/DELETE). Deny → `403`, and the model drops off the dashboard/nav for VIEW. Composes with the `can_*` flags (both must allow). Restricts a non-super admin to subsets of model/action. [Recipe »](recipes/admin.md) |
 
 ## Shipped in v0.118.0
 

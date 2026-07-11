@@ -5,6 +5,24 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.119.0] — 2026-07-11
+
+### Added
+
+- **Admin granular RBAC** — `make_admin_router(access_policy=...)` takes an
+  optional `(principal, admin, AdminPermission)` → bool hook (sync or async)
+  consulted for every model action. A denied `VIEW` / `CREATE` / `EDIT` /
+  `DELETE` yields `403`; denied `VIEW` also hides the model from the dashboard
+  and the sidebar nav, and denied `CREATE` / `EDIT` / `DELETE` hide the
+  corresponding buttons/links. Enforced across list, detail, create, edit,
+  delete, bulk (delete → `DELETE`, others → `EDIT`), export, import and FK
+  autocomplete. The policy composes with — does not replace — the
+  `AdminModel.can_create` / `can_edit` / `can_delete` flags (both must allow).
+  With no policy the behavior is unchanged. `AdminPermission` (enum) and
+  `AdminAccessPolicy` (type) are exported at the package root and from
+  `tempest_fastapi_sdk.admin`. This closes the Tier 3 "granular RBAC" item of
+  the admin-panel evolution.
+
 ## [0.118.0] — 2026-07-11
 
 ### Added

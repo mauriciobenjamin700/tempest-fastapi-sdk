@@ -43,6 +43,7 @@ from tempest_fastapi_sdk.admin.forms import (
     fk_label,
     parse_submission,
 )
+from tempest_fastapi_sdk.admin.permissions import AdminAccessPolicy, AdminPermission
 from tempest_fastapi_sdk.admin.session import (
     AdminSession,
     SessionStore,
@@ -137,6 +138,7 @@ def make_admin_router(
     show_metrics: bool = True,
     show_logs: bool = False,
     log_dir: str | Path = "logs",
+    access_policy: AdminAccessPolicy | None = None,
 ) -> APIRouter:
     """Build the FastAPI router that mounts the admin site.
 
@@ -196,6 +198,13 @@ def make_admin_router(
             ``configure_logging``. Only consulted when ``show_logs`` is
             ``True``. Defaults to ``"logs"``. When the directory has no
             log files yet the page renders an empty state.
+        access_policy (AdminAccessPolicy | None): Optional granular RBAC
+            hook asked ``(principal, admin, AdminPermission)`` for every
+            model action. ``None`` (default) allows everything (subject
+            to the ``AdminModel.can_*`` flags). A policy that denies an
+            action yields ``403`` and hides the model from the dashboard
+            + nav for ``VIEW``. Composes with the ``can_*`` flags — both
+            must allow.
 
     Returns:
         APIRouter: A router ready to attach via ``app.include_router``.
@@ -363,6 +372,69 @@ def make_admin_router(
         if admin is None or not allowed(admin):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
         return admin
+
+    async def _allows(
+        principal: Any,
+        admin: AdminModel[Any],
+        action: AdminPermission,
+    ) -> bool:
+        """Return whether ``principal`` may perform ``action`` on ``admin``.
+
+        With no ``access_policy`` configured, everything is allowed (the
+        historical behavior). Otherwise the policy decides.
+
+        Args:
+            principal (Any): The current admin principal.
+            admin (AdminModel[Any]): The target admin.
+            action (AdminPermission): The action being attempted.
+
+        Returns:
+            bool: ``True`` when permitted.
+        """
+        if access_policy is None:
+            return True
+        result = access_policy(principal, admin, action)
+        if isinstance(result, bool):
+            return result
+        return bool(await result)
+
+    async def _require_access(
+        principal: Any,
+        admin: AdminModel[Any],
+        action: AdminPermission,
+    ) -> None:
+        """Raise ``403`` unless ``principal`` may perform ``action``.
+
+        Args:
+            principal (Any): The current admin principal.
+            admin (AdminModel[Any]): The target admin.
+            action (AdminPermission): The action being attempted.
+
+        Raises:
+            HTTPException: ``403`` when the policy denies the action.
+        """
+        if not await _allows(principal, admin, action):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden")
+
+    async def _visible_nav(principal: Any) -> list[dict[str, str]]:
+        """Return the sidebar nav entries the principal may VIEW.
+
+        Args:
+            principal (Any): The current admin principal.
+
+        Returns:
+            list[dict[str, str]]: ``{label, url}`` for each allowed model.
+        """
+        entries: list[dict[str, str]] = []
+        for admin in site.iter_models():
+            if await _allows(principal, admin, AdminPermission.VIEW):
+                entries.append(
+                    {
+                        "label": admin.get_verbose_name_plural(),
+                        "url": f"{prefix}/m/{admin.get_slug()}/",
+                    }
+                )
+        return entries
 
     def _check_csrf(session: AdminSession, token: str) -> None:
         """Reject the request when the submitted CSRF token mismatches.
@@ -762,6 +834,8 @@ def make_admin_router(
         principal = await _resolve_principal(request, db_session, session)
         models_view: list[dict[str, Any]] = []
         for admin in site.iter_models():
+            if not await _allows(principal, admin, AdminPermission.VIEW):
+                continue
             try:
                 count = await admin.build_repository(db_session).count()
             except Exception:
@@ -773,6 +847,7 @@ def make_admin_router(
                     "url": f"{prefix}/m/{admin.get_slug()}/",
                     "new_url": f"{prefix}/m/{admin.get_slug()}/new"
                     if admin.can_create
+                    and await _allows(principal, admin, AdminPermission.CREATE)
                     else None,
                 }
             )
@@ -784,8 +859,8 @@ def make_admin_router(
                 "user": principal,
                 "session": session,
                 "user_display": auth_backend.display_name(principal),
-                "admins": site.iter_models(),
                 "models_view": models_view,
+                "nav_models": await _visible_nav(principal),
                 "cards": cards,
                 "metrics": await _system_metrics() if show_metrics else None,
             },
@@ -957,6 +1032,7 @@ def make_admin_router(
         if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermission.VIEW)
 
         repository = admin.build_repository(db_session)
 
@@ -1024,11 +1100,13 @@ def make_admin_router(
                     admin, active_sort, active_ascending, sort_base
                 ),
                 "export_query": export_query,
-                "can_create": admin.can_create,
+                "can_create": admin.can_create
+                and await _allows(principal, admin, AdminPermission.CREATE),
                 "new_url": f"{prefix}/m/{slug}/new",
                 "bulk_actions": _bulk_actions(admin),
                 "bulk_url": f"{prefix}/m/{slug}/bulk",
                 "filters": await _filter_specs(admin, request, db_session),
+                "nav_models": await _visible_nav(principal),
             },
         )
 
@@ -1067,7 +1145,8 @@ def make_admin_router(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         if fmt not in {"csv", "json"}:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unsupported format")
-        await _resolve_principal(request, db_session, session)
+        principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermission.VIEW)
 
         repository = admin.build_repository(db_session)
         filters, _active, order_key, ascending, _sort, _asc = (
@@ -1120,6 +1199,7 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_create)
         principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermission.CREATE)
         # Pre-fill editable fields from query params — this is what an
         # inline "Add" link uses to seed the parent foreign key.
         editable = set(admin.editable_field_names())
@@ -1168,6 +1248,7 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_import and a.can_create)
         principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermission.CREATE)
         return _render(
             request,
             "import.html",
@@ -1217,6 +1298,7 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_import and a.can_create)
         principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermission.CREATE)
         _check_csrf(session, csrf_token)
 
         form_error: str | None = None
@@ -1288,6 +1370,7 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_create)
         principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermission.CREATE)
         _check_csrf(session, csrf_token)
         form = await request.form()
         data, errors = parse_submission(admin, form)
@@ -1358,6 +1441,10 @@ def make_admin_router(
         if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         principal = await _resolve_principal(request, db_session, session)
+        # "delete" removes rows → DELETE; activate/deactivate/custom mutate
+        # rows → EDIT.
+        needed = AdminPermission.DELETE if action == "delete" else AdminPermission.EDIT
+        await _require_access(principal, admin, needed)
         _check_csrf(session, csrf_token)
         form = await request.form()
         ids = [_identity_value(str(raw)) for raw in form.getlist("ids")]
@@ -1423,6 +1510,7 @@ def make_admin_router(
         if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermission.VIEW)
         repository = admin.build_repository(db_session)
 
         instance = await repository.get_or_none(
@@ -1494,8 +1582,11 @@ def make_admin_router(
                 "audit": audit,
                 "history": history,
                 "inlines": inlines,
-                "can_edit": admin.can_edit,
-                "can_delete": admin.can_delete,
+                "nav_models": await _visible_nav(principal),
+                "can_edit": admin.can_edit
+                and await _allows(principal, admin, AdminPermission.EDIT),
+                "can_delete": admin.can_delete
+                and await _allows(principal, admin, AdminPermission.DELETE),
                 "edit_url": f"{prefix}/m/{slug}/{identity}/edit",
                 "delete_url": f"{prefix}/m/{slug}/{identity}/delete",
             },
@@ -1599,6 +1690,8 @@ def make_admin_router(
         admin = site.get(slug)
         if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
+        principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermission.VIEW)
         if field not in admin.autocomplete_fields:
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND, "field is not an autocomplete field"
@@ -1655,6 +1748,7 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_edit)
         principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermission.EDIT)
         repository = admin.build_repository(db_session)
         instance = await repository.get_or_none(
             {admin.identity_field: _identity_value(identity)}
@@ -1703,6 +1797,7 @@ def make_admin_router(
         """
         admin = _require_admin(slug, lambda a: a.can_edit)
         principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermission.EDIT)
         _check_csrf(session, csrf_token)
         repository = admin.build_repository(db_session)
         instance = await repository.get_or_none(
@@ -1774,7 +1869,8 @@ def make_admin_router(
                 or a missing row.
         """
         admin = _require_admin(slug, lambda a: a.can_delete)
-        await _resolve_principal(request, db_session, session)
+        principal = await _resolve_principal(request, db_session, session)
+        await _require_access(principal, admin, AdminPermission.DELETE)
         _check_csrf(session, csrf_token)
         repository = admin.build_repository(db_session)
         instance = await repository.get_or_none(

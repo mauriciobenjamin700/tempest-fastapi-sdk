@@ -476,6 +476,41 @@ aborta as outras.
     `can_import` é `False` por padrão e exige `can_create` (importar é
     criar em massa). Colunas de upload de arquivo não entram pelo CSV.
 
+## RBAC granular (`access_policy=`)
+
+Por padrão, quem loga no admin (`is_admin`) faz tudo o que os flags
+`can_*` de cada `AdminModel` permitem. Para dar a um admin acesso só a
+**alguns** modelos/ações — um "suporte" que vê pedidos mas não apaga,
+um "editor" que só mexe em conteúdo — passe um `access_policy` no
+`make_admin_router`:
+
+```python
+from tempest_fastapi_sdk import AdminPermission, make_admin_router
+
+
+def policy(user: UserModel, admin: AdminModel, action: AdminPermission) -> bool:
+    if user.role == "superadmin":
+        return True
+    if user.role == "support":
+        return action is AdminPermission.VIEW      # só leitura
+    return admin.model is not AuditLog             # editor: tudo menos AuditLog
+
+
+app.include_router(make_admin_router(site, ..., access_policy=policy))
+```
+
+A política é consultada `(principal, admin, action)` em **toda** ação —
+`VIEW` / `CREATE` / `EDIT` / `DELETE`. Negar dá `403`; negar `VIEW`
+também **esconde** o modelo do dashboard e da barra lateral, e negar
+create/edit/delete some com os botões correspondentes. Vale em list,
+detail, create, edit, delete, bulk (delete → `DELETE`, resto → `EDIT`),
+export, import e autocomplete de FK.
+
+!!! info "Compõe com os flags `can_*`"
+    A policy **soma** aos flags `can_create`/`can_edit`/`can_delete` do
+    `AdminModel` — os dois precisam liberar. Sem `access_policy`, nada
+    muda (todo admin logado faz tudo). Pode ser sync ou `async`.
+
 #### 4. Defaults de segurança de sessão
 
 `SignedCookieSessionStore` usa `itsdangerous.TimestampSigner` (HMAC-SHA256) para assinar um único cookie:
