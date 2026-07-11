@@ -22,6 +22,7 @@ from tempest_fastapi_sdk.admin.auth import UserModelAuthBackend as UserModelAuth
 from tempest_fastapi_sdk.admin.config import AdminModel as AdminModel
 from tempest_fastapi_sdk.admin.config import FieldRef as FieldRef
 from tempest_fastapi_sdk.admin.config import Inline as Inline
+from tempest_fastapi_sdk.admin.config import Lens as Lens
 from tempest_fastapi_sdk.admin.config import OrderRef as OrderRef
 from tempest_fastapi_sdk.admin.dashboard import MetricCard as MetricCard
 from tempest_fastapi_sdk.admin.dashboard import MetricPartition as MetricPartition
@@ -55,6 +56,7 @@ __all__: list[str] = [
     "AdminTheme",
     "FieldRef",
     "Inline",
+    "Lens",
     "MetricCard",
     "MetricPartition",
     "MetricTrend",

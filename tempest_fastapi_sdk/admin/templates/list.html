@@ -47,6 +47,13 @@
       <a href="{{ url_for('admin_export', slug=admin.get_slug(), fmt='json') }}{% if export_query %}?{{ export_query }}{% endif %}">Export JSON</a>
     </div>
   </div>
+  {% if lens_tabs %}
+  <nav class="tempest-admin-lenses" aria-label="Lenses">
+    {% for tab in lens_tabs %}
+    <a class="tempest-admin-lens{% if tab.active %} tempest-admin-lens--active{% endif %}" href="{{ tab.url }}">{{ tab.label }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
   {% set ncols = columns|length + 1 + (1 if bulk_actions else 0) %}
   {% if bulk_actions %}
   <form method="post" action="{{ bulk_url }}" class="tempest-admin-bulk" onsubmit="return confirm('Apply the selected action to the checked rows?');">

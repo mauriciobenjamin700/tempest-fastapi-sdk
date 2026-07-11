@@ -511,6 +511,41 @@ export, import e autocomplete de FK.
     `AdminModel` — os dois precisam liberar. Sem `access_policy`, nada
     muda (todo admin logado faz tudo). Pode ser sync ou `async`.
 
+## Lenses — visões salvas (`lenses=`)
+
+Uma lens é um preset nomeado de filtros + ordenação, mostrado como aba
+acima da listagem. Em vez de o operador reentrar "status=aberto,
+prioridade>=3, mais antigos primeiro" toda vez, ele clica na aba:
+
+```python
+from tempest_fastapi_sdk import AdminModel, Lens
+
+site.register(
+    AdminModel(
+        model=Ticket,
+        lenses=[
+            Lens("Abertos", filters={"status": "open"}),
+            Lens(
+                "Urgentes",
+                filters={"status": "open", "priority__gte": 3},
+                order_by="-created_at",
+            ),
+        ],
+    )
+)
+```
+
+A lista ganha as abas **All / Abertos / Urgentes**. Clicar aplica os
+filtros da lens (ANDeados com a busca/filtros que o usuário já usar) e a
+ordenação (`order_by`, `-col` = desc, a menos que o usuário clique num
+cabeçalho). A lens ativa é preservada em paginação, sort e export; "All"
+volta ao padrão.
+
+!!! info "Mesmas convenções de filtro"
+    `filters` usa o mesmo dict do repository (`campo__gte`, `name` ILIKE,
+    lista → `IN`, …). O slug da aba (`?lens=`) sai do nome
+    (minúsculo, hífens).
+
 #### 4. Defaults de segurança de sessão
 
 `SignedCookieSessionStore` usa `itsdangerous.TimestampSigner` (HMAC-SHA256) para assinar um único cookie:

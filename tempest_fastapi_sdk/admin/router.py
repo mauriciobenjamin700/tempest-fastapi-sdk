@@ -1007,6 +1007,7 @@ def make_admin_router(
         q: str = "",
         sort: str = "",
         dir: str = "asc",
+        lens: str = "",
         flash: str = "",
         flash_cat: str = "success",
         db_session: AsyncSession = Depends(_db_session),
@@ -1045,6 +1046,18 @@ def make_admin_router(
             active_ascending,
         ) = _resolve_filters_and_order(admin, request, q, sort, dir)
 
+        # A lens is a saved preset: its filters are ANDed under the
+        # user's (user keys win on conflict) and its ordering applies
+        # unless the user clicked a column sort.
+        active_lens = admin.get_lens(lens) if lens else None
+        if active_lens is not None:
+            filters = {**active_lens.filters, **filters}
+            if active_lens.order_by and not sort:
+                if active_lens.order_by.startswith("-"):
+                    order_key, ascending = active_lens.order_by[1:], False
+                else:
+                    order_key, ascending = active_lens.order_by, True
+
         page = max(1, page)
         size = max(1, admin.page_size)
         result = await repository.paginate(
@@ -1066,6 +1079,8 @@ def make_admin_router(
         query_params: dict[str, str] = {}
         if q:
             query_params["q"] = q
+        if active_lens is not None:
+            query_params["lens"] = lens
         query_params.update(active_filters)
         # Params preserved on sort links — same minus paging/sort.
         sort_base = dict(query_params)
@@ -1082,6 +1097,25 @@ def make_admin_router(
 
         export_query = urlencode(query_params)
 
+        lens_tabs: list[dict[str, Any]] = []
+        if admin.lenses:
+            lens_tabs.append(
+                {
+                    "label": "All",
+                    "url": f"{prefix}/m/{slug}/",
+                    "active": active_lens is None,
+                }
+            )
+            for defined in admin.lenses:
+                lens_tabs.append(
+                    {
+                        "label": defined.get_label(),
+                        "url": f"{prefix}/m/{slug}/?lens={defined.slug()}",
+                        "active": active_lens is not None
+                        and active_lens.slug() == defined.slug(),
+                    }
+                )
+
         return _render(
             request,
             "list.html",
@@ -1094,6 +1128,7 @@ def make_admin_router(
                 "flash_cat": flash_cat,
                 "columns": columns,
                 "rows": rows,
+                "lens_tabs": lens_tabs,
                 "pagination": pagination,
                 "query": {"q": q},
                 "sort_state": _sort_state(
