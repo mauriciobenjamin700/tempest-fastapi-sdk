@@ -253,6 +253,21 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## System checks
+
+### `tempest_fastapi_sdk.checks`
+
+::: tempest_fastapi_sdk.checks.messages.CheckLevel
+::: tempest_fastapi_sdk.checks.messages.CheckMessage
+::: tempest_fastapi_sdk.checks.registry.CheckRegistry
+::: tempest_fastapi_sdk.checks.registry.check
+::: tempest_fastapi_sdk.checks.registry.register_check
+::: tempest_fastapi_sdk.checks.registry.run_checks
+::: tempest_fastapi_sdk.checks.registry.run_system_checks
+::: tempest_fastapi_sdk.checks.registry.SystemCheckError
+
+---
+
 ## Server-Sent Events
 
 ### `tempest_fastapi_sdk.sse`

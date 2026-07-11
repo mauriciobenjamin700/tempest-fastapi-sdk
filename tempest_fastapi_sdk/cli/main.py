@@ -531,5 +531,146 @@ def check_cmd(
     raise typer.Exit(lint_module.run_full_check(target, config=config))
 
 
+_SETTINGS_CANDIDATES: tuple[str, ...] = (
+    "src.core.settings:settings",
+    "app.core.settings:settings",
+    "src.settings:settings",
+    "app.settings:settings",
+    "core.settings:settings",
+)
+
+
+def _load_object(path: str) -> Any:
+    """Import and return the object named by a ``module:attr`` path.
+
+    Args:
+        path (str): An import path such as ``"src.core.settings:settings"``.
+
+    Returns:
+        Any: The resolved attribute.
+
+    Raises:
+        typer.BadParameter: When the path is malformed.
+        ImportError | AttributeError: When the module or attribute is
+            missing (propagated for the caller to handle).
+    """
+    module_name, _, attr = path.partition(":")
+    if not module_name or not attr:
+        raise typer.BadParameter(
+            f"Expected an import path like 'module:attr', got {path!r}."
+        )
+    import importlib
+
+    module = importlib.import_module(module_name)
+    return getattr(module, attr)
+
+
+def _autodetect_settings() -> Any | None:
+    """Return the first importable settings object from the candidates.
+
+    Returns:
+        Any | None: The resolved settings object, or ``None`` when none
+        of the conventional locations import cleanly.
+    """
+    for candidate in _SETTINGS_CANDIDATES:
+        try:
+            return _load_object(candidate)
+        except (ImportError, AttributeError):
+            continue
+    return None
+
+
+@app.command("check-config")
+def check_config_cmd(
+    settings: Annotated[
+        str | None,
+        typer.Option(
+            "--settings",
+            "-s",
+            help="Import path to the settings object ('module:attr'). "
+            "Auto-detected from conventional locations when omitted.",
+        ),
+    ] = None,
+    imports: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--import",
+            "-i",
+            help="Extra module(s) to import so their @check registrations load.",
+        ),
+    ] = None,
+    tags: Annotated[
+        list[str] | None,
+        typer.Option("--tag", "-t", help="Only run checks carrying one of these tags."),
+    ] = None,
+    fail_level: Annotated[
+        str,
+        typer.Option(
+            "--fail-level",
+            help="Level that makes the command exit non-zero "
+            "(debug/info/warning/error/critical).",
+        ),
+    ] = "error",
+) -> None:
+    """Run system checks against the project's settings.
+
+    Exits non-zero when any message reaches ``--fail-level`` (default
+    ``error``), so it doubles as a CI gate and a pre-deploy sanity check.
+    """
+    from tempest_fastapi_sdk.checks import CheckLevel, run_checks
+
+    # Make the project importable when invoked from its root.
+    if "" not in sys.path and str(Path.cwd()) not in sys.path:
+        sys.path.insert(0, str(Path.cwd()))
+
+    try:
+        threshold = CheckLevel[fail_level.upper()]
+    except KeyError as exc:
+        raise typer.BadParameter(
+            f"Unknown --fail-level {fail_level!r}; expected one of "
+            "debug/info/warning/error/critical."
+        ) from exc
+
+    for module_name in imports or []:
+        import importlib
+
+        importlib.import_module(module_name)
+
+    context: Any | None
+    if settings is not None:
+        context = _load_object(settings)
+    else:
+        context = _autodetect_settings()
+        if context is None:
+            typer.secho(
+                "Could not auto-detect a settings object. Pass --settings module:attr.",
+                fg="yellow",
+                err=True,
+            )
+
+    messages = run_checks(context, tags=tags)
+
+    colors = {
+        CheckLevel.DEBUG: "bright_black",
+        CheckLevel.INFO: "blue",
+        CheckLevel.WARNING: "yellow",
+        CheckLevel.ERROR: "red",
+        CheckLevel.CRITICAL: "bright_red",
+    }
+    for message in messages:
+        typer.secho(str(message), fg=colors.get(message.level))
+
+    serious = [m for m in messages if m.is_serious(threshold)]
+    if not messages:
+        typer.secho("System check identified no issues.", fg="green")
+    else:
+        summary = (
+            f"{len(messages)} message(s), {len(serious)} at/above {threshold.name}."
+        )
+        typer.secho(summary, fg="red" if serious else "green")
+
+    raise typer.Exit(1 if serious else 0)
+
+
 if __name__ == "__main__":  # pragma: no cover - manual invocation only
     app()
