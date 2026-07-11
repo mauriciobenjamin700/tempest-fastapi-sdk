@@ -5,6 +5,24 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.127.0] — 2026-07-11
+
+### Added
+
+- **Admin in-place inline editing** — `Inline(editable=True, can_delete=True)`
+  turns a read-only child table on the parent's detail view into an editable
+  formset: one input row per existing child plus a blank row to add another,
+  posting to `POST /admin/m/<parent>/<id>/inlines/<child>`. Existing rows are
+  updated, a blank row with any value becomes a new child, and a checked delete
+  box removes a row — all in one transaction. The parent foreign key is implied
+  (forced to the parent, never rendered as an input), every child row is scoped
+  to the parent (a mismatched foreign key is ignored, never cross-edited),
+  upload/autocomplete columns stay on the child's own form, and validation
+  errors re-render the formset in place with per-field messages. Requires the
+  child model's own registered `AdminModel` and its `can_edit` (and `can_delete`
+  for deletion). `build_form_fields`/`parse_submission` gained an `only=` filter
+  and a new `inline_editable_names` helper backs the field selection.
+
 ## [0.126.0] — 2026-07-11
 
 ### Added

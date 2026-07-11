@@ -23,13 +23,64 @@
     </dd>
     {% endfor %}
   </dl>
+  {% macro inline_cell(f) %}
+    {% if f.widget == 'checkbox' %}
+    <input type="checkbox" name="{{ f.name }}" value="true" {% if f.checked %}checked{% endif %}>
+    {% elif f.widget == 'textarea' or f.widget == 'json' %}
+    <textarea name="{{ f.name }}" rows="2" {% if f.required %}required{% endif %}>{{ f.value }}</textarea>
+    {% elif f.widget == 'select' %}
+    <select name="{{ f.name }}" {% if f.required %}required{% endif %}>
+      {% if not f.required %}<option value="">— none —</option>{% endif %}
+      {% for val, lbl in f.options %}<option value="{{ val }}" {% if (f.value | string) == val %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+    </select>
+    {% elif f.widget == 'number' %}
+    <input type="number" name="{{ f.name }}" value="{{ f.value }}" {% if f.step %}step="{{ f.step }}"{% endif %} {% if f.required %}required{% endif %}>
+    {% elif f.widget == 'datetime' %}
+    <input type="datetime-local" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
+    {% elif f.widget == 'date' %}
+    <input type="date" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
+    {% elif f.widget == 'time' %}
+    <input type="time" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
+    {% else %}
+    <input type="text" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
+    {% endif %}
+    {% if f.error %}<small class="tempest-admin-form__field-error">{{ f.error }}</small>{% endif %}
+  {% endmacro %}
   {% for inline in inlines %}
   <section class="tempest-admin-inline">
     <header class="tempest-admin-inline__header">
       <h2>{{ inline.label }}{% if inline.total %} <span class="tempest-admin-inline__count">({{ inline.total }})</span>{% endif %}</h2>
       {% if inline.add_url %}<a class="tempest-admin-btn" href="{{ inline.add_url }}">Add</a>{% endif %}
     </header>
-    {% if inline.rows %}
+    {% if inline.editable %}
+    {% if inline_error %}<p class="tempest-admin-form__error">{{ inline_error }}</p>{% endif %}
+    <form method="post" action="{{ inline.form_action }}" class="tempest-admin-inline__form">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <div class="tempest-admin-inline__scroll">
+        <table class="tempest-admin-inline__table">
+          <thead>
+            <tr>{% for col in inline.columns %}<th>{{ col }}</th>{% endfor %}{% if inline.can_delete %}<th>Delete</th>{% endif %}</tr>
+          </thead>
+          <tbody>
+            {% for row in inline.rows %}
+            <tr>
+              {% for f in row.fields %}<td>{{ inline_cell(f) }}</td>{% endfor %}
+              {% if inline.can_delete %}<td class="tempest-admin-inline__del"><input type="checkbox" name="row.{{ row.key }}.__delete" value="true"></td>{% endif %}
+            </tr>
+            {% endfor %}
+            <tr class="tempest-admin-inline__new">
+              {% for f in inline.new_row.fields %}<td>{{ inline_cell(f) }}</td>{% endfor %}
+              {% if inline.can_delete %}<td></td>{% endif %}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tempest-admin-form__actions">
+        <button type="submit">Save {{ inline.label }}</button>
+      </div>
+    </form>
+    {% if inline.truncated %}<p class="tempest-admin-inline__more"><em>Editing the first {{ inline.rows | length }} of {{ inline.total }}.</em></p>{% endif %}
+    {% elif inline.rows %}
     <div class="tempest-admin-inline__scroll">
       <table class="tempest-admin-inline__table">
         <thead>

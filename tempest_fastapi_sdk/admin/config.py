@@ -48,12 +48,23 @@ class Inline:
     (the inline reuses the child admin's ``list_display`` and CRUD
     routes); without it, the rows still render read-only.
 
+    When ``editable`` is set, the same rows render as an in-place
+    formset (one row of inputs per child, plus one blank row to add
+    another) posting back to the parent's detail view — no navigation to
+    the child admin. Editing an inline requires the child model to have
+    its own registered :class:`AdminModel` (the formset reuses its
+    editable fields, minus upload/autocomplete columns, which stay on the
+    child's own form) and that admin's ``can_edit``; ``can_delete`` adds a
+    per-row delete checkbox (gated on the child admin's ``can_delete``).
+
     Attributes:
         model (type[BaseModel]): The child model class.
         fk_field (str): The child column that references the parent.
         list_display (list[str] | None): Columns to show; falls back to
             the child admin's ``list_display`` (or every column).
         label (str | None): Section heading; defaults to the model name.
+        editable (bool): Render the rows as an editable in-place formset.
+        can_delete (bool): Show a per-row delete checkbox (editable only).
     """
 
     def __init__(
@@ -63,6 +74,8 @@ class Inline:
         *,
         list_display: Sequence[FieldRef] | None = None,
         label: str | None = None,
+        editable: bool = False,
+        can_delete: bool = False,
     ) -> None:
         """Build the inline config. See class docstring.
 
@@ -71,6 +84,10 @@ class Inline:
             fk_field (FieldRef): The child column referencing the parent.
             list_display (Sequence[FieldRef] | None): Columns to show.
             label (str | None): Section heading.
+            editable (bool): Render an in-place editable formset instead of
+                a read-only table.
+            can_delete (bool): Add a per-row delete checkbox (only when
+                ``editable`` and the child admin allows deletion).
 
         Raises:
             TypeError: When ``model`` is not a ``BaseModel`` subclass.
@@ -83,6 +100,8 @@ class Inline:
             None if list_display is None else _normalize_fields(list_display)
         )
         self.label: str | None = label
+        self.editable: bool = editable
+        self.can_delete: bool = can_delete
 
     def get_slug(self) -> str:
         """Return the child model's admin slug (its table name).

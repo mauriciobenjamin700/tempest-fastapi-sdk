@@ -20,7 +20,7 @@ from sqlalchemy import JSON
 from sqlalchemy import inspect as sa_inspect
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Collection, Mapping
 
     from sqlalchemy import Column
 
@@ -194,6 +194,23 @@ def fk_label(admin: AdminModel[Any], instance: Any) -> str:
     return str(getattr(instance, "id", instance))
 
 
+def inline_editable_names(admin: AdminModel[Any]) -> list[str]:
+    """Return the editable fields safe to render in an inline formset.
+
+    Drops upload and autocomplete fields — those need a file input or an
+    HTMX search box that don't belong in a compact inline row, so they
+    stay on the child's own full form.
+
+    Args:
+        admin (AdminModel[Any]): The child admin configuration.
+
+    Returns:
+        list[str]: The editable field names minus upload/autocomplete.
+    """
+    skip = set(admin.upload_fields) | set(admin.autocomplete_fields)
+    return [name for name in admin.editable_field_names() if name not in skip]
+
+
 def build_form_fields(
     admin: AdminModel[Any],
     *,
@@ -201,6 +218,7 @@ def build_form_fields(
     submitted: Mapping[str, Any] | None = None,
     errors: Mapping[str, str] | None = None,
     fk_options: Mapping[str, list[tuple[str, str]]] | None = None,
+    only: Collection[str] | None = None,
 ) -> list[FormField]:
     """Build the ordered list of form fields for create/edit.
 
@@ -215,6 +233,9 @@ def build_form_fields(
             foreign-key fields whose target is a registered admin, the
             ``(value, label)`` option pairs — turns the field into a
             select. Resolved by the router (needs a DB query).
+        only (Collection[str] | None): Restrict to this subset of field
+            names (used by inline formsets); ``None`` keeps all editable
+            fields.
 
     Returns:
         list[FormField]: Descriptors ready for the template.
@@ -224,6 +245,8 @@ def build_form_fields(
     fk_options = fk_options or {}
     fields: list[FormField] = []
     for name in admin.editable_field_names():
+        if only is not None and name not in only:
+            continue
         column = columns.get(name)
         if column is None:
             continue
@@ -309,12 +332,17 @@ def _truthy(raw: Any) -> bool:
 def parse_submission(
     admin: AdminModel[Any],
     form: Mapping[str, Any],
+    *,
+    only: Collection[str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     """Coerce a posted form into model kwargs + collect field errors.
 
     Args:
         admin (AdminModel[Any]): The admin configuration.
         form (Mapping[str, Any]): The posted form data.
+        only (Collection[str] | None): Restrict parsing to this subset of
+            field names (used by inline formsets); ``None`` parses all
+            editable fields.
 
     Returns:
         tuple[dict[str, Any], dict[str, str]]: ``(data, errors)`` where
@@ -327,6 +355,8 @@ def parse_submission(
     data: dict[str, Any] = {}
     errors: dict[str, str] = {}
     for name in admin.editable_field_names():
+        if only is not None and name not in only:
+            continue
         column = columns.get(name)
         if column is None:
             continue
@@ -406,5 +436,6 @@ __all__: list[str] = [
     "build_form_fields",
     "fk_fields",
     "fk_label",
+    "inline_editable_names",
     "parse_submission",
 ]

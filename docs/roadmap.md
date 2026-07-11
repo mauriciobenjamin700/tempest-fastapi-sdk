@@ -79,11 +79,19 @@ A evolução do painel admin está **essencialmente completa**: Tiers 1 e 2
 inteiros, e o Tier 3 com import CSV (v0.118), RBAC granular (v0.119) e
 lenses (v0.120). Seguiu um refino: widgets JSON+time (v0.121), polish de
 UX (v0.122) e um [exemplo integrado](admin-showcase.md) que fia tudo num
-admin de loja. O único item que sobra é polimento sob demanda: edição
-inline **in-place** das relações 1-N (hoje listadas + navegáveis).
+admin de loja. Com a **edição inline in-place** (v0.127) a evolução do
+painel admin está concluída; o que vier é puxado por pressão de negócio.
 
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
+
+## Entregue na v0.127.0
+
+Admin — edição inline in-place:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`Inline(editable=True, can_delete=True)`** | ✅ v0.127 | O detail do pai renderiza os filhos 1-N como um formset editável (uma linha de inputs por filho + uma linha em branco pra adicionar) que dá POST em `/inlines/<filho>` — editar, adicionar e excluir sem sair da tela. O FK do pai é implícito (forçado ao pai, nunca um input), as linhas são escopadas ao pai, colunas de upload/autocomplete ficam no form próprio do filho, e erros de validação re-renderizam in-place. Requer o admin registrado do filho + `can_edit`/`can_delete`. [Receita »](recipes/admin.md) |
 
 ## Entregue na v0.126.0
 
@@ -172,7 +180,7 @@ Painel admin — inlines / relações aninhadas (Tier 2 da evolução do admin):
 
 | Feature | Status | Onde |
 |---------|--------|------|
-| **Inlines (leitura + navegar)** | ✅ v0.116 | `AdminModel(inlines=[Inline(Child, Child.parent_id)])` lista os filhos 1-N no detail do pai como tabela, com link pro admin do filho e "Add" pré-preenchendo o FK (via query param no create). Reaproveita o `list_display`/CRUD do admin filho. Edição in-place na mesma tela fica como evolução. [Receita »](recipes/admin.md) |
+| **Inlines (leitura + navegar)** | ✅ v0.116 | `AdminModel(inlines=[Inline(Child, Child.parent_id)])` lista os filhos 1-N no detail do pai como tabela, com link pro admin do filho e "Add" pré-preenchendo o FK (via query param no create). Reaproveita o `list_display`/CRUD do admin filho. Edição in-place na mesma tela: `editable=True` (v0.127). [Receita »](recipes/admin.md) |
 
 ## Entregue na v0.115.0
 

@@ -13,7 +13,7 @@ UI de gerenciamento no estilo Django montada sob `/admin`. Operadores entram com
 - Campos de upload de arquivo/imagem.
 - Trilha de auditoria carimbando `created_by` / `updated_by`.
 
-Ainda no roadmap: edição inline/relacionada.
+Cobre também edição inline in-place dos filhos 1-N (`Inline(editable=True)`).
 
 Requer o extra `[admin]`:
 
@@ -199,7 +199,7 @@ app.include_router(
 
     **Audit trail**: create/edit pelo admin carimba `created_by`/`updated_by` (do `AuditMixin`) com o id do admin atuante; o detail mostra um painel **Audit** com timestamps e — quando o modelo tem as colunas de auditoria — o ator (UUID resolvido para nome via o auth backend). Modelos sem `AuditMixin` mostram só os timestamps.
 
-    Ainda **não** incluídos (fases futuras do roadmap): inline/related editing.
+    Edição inline in-place dos filhos: veja `Inline(editable=True)` mais abaixo.
 
 ## Ações customizadas (`@admin_action`)
 
@@ -398,12 +398,49 @@ abre o create de Member já com `team_id` preenchido (via query param). As
 colunas saem do `list_display` do `Inline` (ou, se omitido, do admin do
 filho). Até 50 linhas por inline.
 
-!!! info "Leitura + navegação (por enquanto)"
-    Esta versão **lista e navega** os filhos (ver, editar no admin do
-    filho, adicionar já ligado ao pai). Edição in-place dos filhos na
-    mesma tela do pai fica como evolução. O modelo filho precisa ter um
-    `AdminModel` registrado para os links funcionarem; sem ele, as linhas
-    aparecem só-leitura.
+O modelo filho precisa ter um `AdminModel` registrado para os links
+funcionarem; sem ele, as linhas aparecem só-leitura.
+
+### Edição in-place (`editable=True`)
+
+Para editar os filhos **sem sair do detail do pai**, passe
+`editable=True` (e `can_delete=True` pra permitir remoção). A tabela vira
+um formset: uma linha de inputs por filho existente + uma linha em branco
+pra adicionar mais uma.
+
+```python
+site.register(
+    AdminModel(
+        model=Team,
+        inlines=[
+            Inline(
+                Member,
+                Member.team_id,
+                editable=True,
+                can_delete=True,
+            )
+        ],
+    )
+)
+site.register(AdminModel(model=Member))   # can_edit / can_delete valem aqui
+```
+
+Ao salvar (`POST /admin/m/<pai>/<id>/inlines/<filho>`), tudo acontece numa
+transação: linhas existentes são atualizadas, uma linha em branco com
+qualquer valor vira um filho novo, e uma caixa de exclusão marcada remove
+a linha.
+
+!!! tip "Transparente, sem mágica"
+    - O **FK do pai é implícito** — forçado ao pai, nunca é um input; o
+      usuário não escolhe (nem consegue reapontar) o pai errado.
+    - Cada linha é **escopada ao pai**: um filho cujo FK não bate é
+      ignorado, nunca editado por tabela.
+    - Colunas de **upload/autocomplete** ficam no form próprio do filho
+      (não entram no formset compacto).
+    - Erros de validação **re-renderizam o formset in-place**, com
+      mensagem por campo e sem inserir nada.
+    - Precisa do `AdminModel` do filho + `can_edit` (e `can_delete` pra
+      excluir). Até 50 linhas por inline.
 
 ## Dashboard: cards de métricas de negócio (`dashboard_cards=`)
 
