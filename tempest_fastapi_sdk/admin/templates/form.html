@@ -36,6 +36,19 @@
         <input type="datetime-local" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
         {% elif f.widget == 'date' %}
         <input type="date" name="{{ f.name }}" value="{{ f.value }}" {% if f.required %}required{% endif %}>
+        {% elif f.widget == 'autocomplete' %}
+        <div class="tempest-admin-ac" data-field="{{ f.name }}">
+          <input type="text" class="tempest-admin-ac__search" name="q"
+                 value="{{ f.display_label }}" placeholder="Search…"
+                 autocomplete="off"
+                 hx-get="{{ f.autocomplete_url }}"
+                 hx-trigger="keyup changed delay:250ms, focus"
+                 hx-target="#ac-results-{{ f.name }}"
+                 hx-swap="innerHTML">
+          <input type="hidden" name="{{ f.name }}" value="{{ f.value }}"
+                 class="tempest-admin-ac__value" {% if f.required %}required{% endif %}>
+          <ul id="ac-results-{{ f.name }}" class="tempest-admin-ac__results"></ul>
+        </div>
         {% elif f.widget == 'file' %}
         <input type="file" name="{{ f.name }}" {% if f.required %}required{% endif %}>
         {% if f.value %}<small class="tempest-admin-form__hint">Current: {{ f.value }} — choose a file to replace.</small>{% endif %}

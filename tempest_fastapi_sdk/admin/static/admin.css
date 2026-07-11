@@ -422,6 +422,51 @@ textarea {
   color: var(--tempest-fg-soft);
 }
 
+.tempest-admin-ac {
+  position: relative;
+}
+
+.tempest-admin-ac__search {
+  width: 100%;
+}
+
+.tempest-admin-ac__results {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  border: 1px solid var(--tempest-border);
+  border-radius: var(--tempest-radius, 6px);
+  max-height: 12rem;
+  overflow-y: auto;
+  background: var(--tempest-bg, #fff);
+}
+
+.tempest-admin-ac__results:empty {
+  display: none;
+}
+
+.tempest-admin-ac__option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.tempest-admin-ac__option:hover,
+.tempest-admin-ac__option:focus {
+  background: var(--tempest-accent-soft, rgba(0, 0, 0, 0.06));
+}
+
+.tempest-admin-ac__empty {
+  padding: 0.4rem 0.6rem;
+  color: var(--tempest-fg-soft);
+}
+
 .tempest-admin-footer {
   position: relative;
   z-index: 20;

@@ -58,7 +58,7 @@ O painel admin já existe (`AdminSite` / `AdminModel` / `make_admin_router`, Jin
 |---------|-----------------|-------------|
 | **Filtros / busca / ordenação por coluna** na listagem | Listas grandes ficam inutilizáveis sem isso; é o primeiro pedido de todo operador. | `BaseRepository` (filtros + paginação) |
 | **Bulk actions** (deletar / ativar em massa) | Ações linha-a-linha não escalam; selecionar N linhas + uma ação é o fluxo padrão de admin. | `BaseRepository.bulk_update` / soft-delete |
-| **Widgets de campo** (FK select, date picker, file upload) | Hoje o form é genérico; FK como `<select>`, data com picker e upload via `UploadUtils` removem digitação manual e erro. | `UploadUtils` + storage backends |
+| **Widgets de campo** (FK select ✅, date picker, file upload) + **FK autocomplete** ✅ v0.115.0 | FK como `<select>`, data com picker, upload via `UploadUtils`; FKs grandes viram caixa de busca HTMX (`autocomplete_fields`). | `UploadUtils` + storage backends |
 | **Inline / related editing** | Editar filhos (1-N) na mesma tela do pai — padrão Django admin que falta. | `BaseRepository` + relationships |
 | **Export CSV / JSON** | Operador exporta o resultado filtrado sem abrir o banco. | listagem + filtros |
 | **Audit log visível no admin** ✅ v0.114.0 | Quem mudou o quê e quando, direto na UI — timeline por registro no detail. | `BaseAuditLogModel` + `diff_snapshots` (`AdminModel(audit_model=...)`) |
@@ -76,11 +76,19 @@ A fila "Próximos passos" que restava do backlog Tier S/A/B está
 próximas releases voltam a ser puxadas por pressão de negócio.
 
 Candidatos naturais quando a demanda aparecer (evolução do painel admin,
-já no radar): campos FK com autocomplete, edição inline de relações
-1-N, e cards de métricas de negócio no dashboard.
+já no radar): edição inline de relações 1-N e cards de métricas de
+negócio no dashboard.
 
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
+
+## Entregue na v0.115.0
+
+Painel admin — campos FK com autocomplete (Tier 2 da evolução do admin):
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Autocomplete FK** | ✅ v0.115 | `AdminModel(autocomplete_fields=[...])` troca o `<select>` de todas as linhas por uma caixa de busca HTMX — sem o cap de 1000 linhas nem o fallback de UUID cru. O endpoint `/m/{slug}/autocomplete/{field}` busca nos `search_fields` do admin alvo (ILIKE, OR), limita a 20; o edit pré-preenche o rótulo atual. [Receita »](recipes/admin.md) |
 
 ## Entregue na v0.114.0
 

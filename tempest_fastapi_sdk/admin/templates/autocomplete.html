@@ -1,0 +1,10 @@
+{% for value, label in results %}
+<li>
+  <button type="button" class="tempest-admin-ac__option"
+    onclick="var c=this.closest('.tempest-admin-ac'); c.querySelector('.tempest-admin-ac__value').value={{ value | tojson }}; c.querySelector('.tempest-admin-ac__search').value={{ label | tojson }}; c.querySelector('.tempest-admin-ac__results').innerHTML='';">
+    {{ label }}
+  </button>
+</li>
+{% else %}
+<li class="tempest-admin-ac__empty">No matches</li>
+{% endfor %}
