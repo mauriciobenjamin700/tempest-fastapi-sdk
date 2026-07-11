@@ -26,8 +26,8 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from sqlalchemy import JSON, or_, select
 from sqlalchemy import inspect as sa_inspect
-from sqlalchemy import or_, select
 from starlette.concurrency import run_in_threadpool
 
 from tempest_fastapi_sdk.admin.actions import AdminActionContext
@@ -1556,6 +1556,8 @@ def make_admin_router(
 
         columns = admin.column_names()
         readonly = set(admin.readonly_fields)
+        model_columns = sa_inspect(admin.model).columns
+        json_columns: set[str] = set()
         fields: list[tuple[str, Any]] = []
         for column in columns:
             # The hashed password is never shown; audit/timestamp columns
@@ -1563,6 +1565,13 @@ def make_admin_router(
             if column == "hashed_password" or column in _AUDIT_FIELDS:
                 continue
             raw_value = getattr(instance, column, None)
+            col = model_columns.get(column)
+            if col is not None and isinstance(col.type, JSON) and raw_value is not None:
+                # Pretty-print JSON, mirroring the edit-form JSON widget.
+                raw_value = json.dumps(
+                    raw_value, indent=2, ensure_ascii=False, sort_keys=True
+                )
+                json_columns.add(column)
             fields.append((column, raw_value))
 
         async def _actor(uid: Any) -> str | None:
@@ -1613,6 +1622,7 @@ def make_admin_router(
                 "admin": admin,
                 "identity": identity,
                 "fields": fields,
+                "json_columns": json_columns,
                 "readonly": readonly,
                 "audit": audit,
                 "history": history,

@@ -83,6 +83,14 @@ inline **in-place** das relações 1-N (hoje listadas + navegáveis).
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
+## Entregue na v0.122.0
+
+Refino do admin — polish de consistência/UX:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Polish do admin** | ✅ v0.122 | Corrigido `--tempest-border` (não definido → bordas na cor do texto) + cards/autocomplete que usavam o bg escuro da sidebar; detail reordenado (inlines logo após os campos, audit/history por último) e colunas `JSON` pretty-print no detail. |
+
 ## Entregue na v0.121.0
 
 Refino do admin — novos widgets de campo:

@@ -84,6 +84,14 @@ inline editing of 1-N relations (today listed + navigable).
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## Shipped in v0.122.0
+
+Admin refinement — consistency / UX polish:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **Admin polish** | ✅ v0.122 | Fixed the undefined `--tempest-border` (borders fell back to text color) + cards/autocomplete that used the dark sidebar bg; detail reordered (inlines right after the fields, audit/history last) and `JSON` columns pretty-printed on the detail. |
+
 ## Shipped in v0.121.0
 
 Admin refinement — new field widgets:

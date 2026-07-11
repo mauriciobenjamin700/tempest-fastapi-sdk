@@ -169,3 +169,24 @@ async def test_edit_prefills_pretty_json_and_time(
     # HTML-escaped by the template (`"` → `&#34;`).
     assert "&#34;a&#34;: 1" in body
     assert 'value="14:05"' in body
+
+
+@pytest.mark.asyncio
+async def test_detail_pretty_prints_json(
+    app_widgets: tuple[FastAPI, AsyncDatabaseManager],
+) -> None:
+    app, db = app_widgets
+    async with db.get_session_context() as session:
+        repo: BaseRepository[Event] = BaseRepository(session, model=Event)
+        row = await repo.add(Event(name="e", payload={"z": 9}))
+        row_id = str(row.id)
+
+    async with _client(app) as client:
+        await client.post(
+            "/admin/login", data={"identifier": "root@x.com", "password": "pw"}
+        )
+        page = await client.get(f"/admin/m/{_SLUG}/{row_id}")
+    body = page.text
+    # Detail renders JSON in a monospaced <pre>, pretty-printed.
+    assert "tempest-admin-detail__json" in body
+    assert "&#34;z&#34;: 9" in body
