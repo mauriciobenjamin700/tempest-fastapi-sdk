@@ -179,6 +179,164 @@ class ReportsPage(BasePage):
     expande componentes recursivamente, então uma página é só mais um
     widget na árvore.
 
+## Catálogo de widgets
+
+Os widgets vêm do `tempest_core`. Para SSR você usa um punhado deles como
+blocos de montagem; **todos** aceitam `tag=`, `attrs=`, `style=` e `key=`.
+
+| Widget | Renderiza | Uso |
+|--------|-----------|-----|
+| `Text(content=...)` | `<span>` (ou a `tag`) com o texto **escapado** | Qualquer texto: título, parágrafo, `<option>`, `<label>` |
+| `Column(children=[...])` | `<div>` com `display:flex; flex-direction:column` | Empilhar verticalmente |
+| `Row(children=[...])` | `<div>` com `display:flex` (linha) | Alinhar horizontalmente |
+| `Container(child=...)` | `<div>` **neutro** (sem flex), um filho | Wrapper semântico (`tag="section"`, `tag="article"`) |
+| `Button(label=...)` | `<button>` estilizado | Ações (via `attrs` HTMX — veja abaixo) |
+| `Spacer()` | espaço flexível | Empurrar itens numa `Row`/`Column` |
+
+```python
+from tempest_core import Column, Container, Row, Spacer, Text
+
+Container(
+    tag="section",
+    child=Row(
+        children=[
+            Text(content="Título", tag="h2"),
+            Spacer(),
+            Text(content="v1.0", tag="small"),
+        ],
+    ),
+)
+# <section><div style="display: flex"><h2>Título</h2>…<small>v1.0</small></div></section>
+```
+
+!!! warning "`Button.on_click` é ignorado no SSR"
+    `on_click` é um handler de runtime (WASM/server), **não** roda em HTML
+    estático. Para interatividade no SSR, use `attrs` com HTMX
+    (`hx-post`, `hx-get`, …) — veja [HTMX](#htmx-servido-localmente-sem-cdn).
+
+!!! tip "`tag` + `attrs` são o escape hatch universal"
+    Não existe widget dedicado para cada tag HTML — e nem precisa. Qualquer
+    elemento sai de um widget de container com `tag=` e `attrs=`:
+    `Text(content="", tag="input", attrs={"name": "email", "type": "email"})`
+    vira `<input name="email" type="email" />`.
+
+## Estilização tipada com `Style`
+
+Em vez de CSS solto, cada widget aceita um `Style` tipado que o
+renderizador converte em CSS inline. Espaçamentos usam `Edge`.
+
+```python
+from tempest_core import Column, Style, Text
+from tempest_core.style import Edge
+
+Column(
+    style=Style(gap=12.0, padding=Edge.all(16)),
+    children=[Text(content="Card", tag="h3")],
+)
+# <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 16px 16px">…
+```
+
+- `Edge.all(16)` / `Edge.symmetric(vertical=8, horizontal=16)` /
+  `Edge.only(top=4)` — margens e paddings tipados.
+- `gap`, `padding`, `margin`, cores e tipografia saem no `style=""` inline.
+- A conversão `Style → CSS` é **byte-idêntica** entre o renderizador
+  Python (SSR) e o cliente JS (WASM/server) — a mesma tela nos dois lados.
+
+!!! info "Prefira classes/`attrs` para folhas de estilo externas"
+    Para CSS de verdade (folhas externas, media queries), adicione
+    `attrs={"class": "card"}` e sirva seu `.css` como estático. O `Style`
+    inline é ótimo para layout local e componentes autocontidos.
+
+## Componentes reutilizáveis
+
+`Page` é um `Component`. Você pode extrair **qualquer** subárvore num
+`Component` tipado e reusar — a página fica declarativa e testável em
+pedaços.
+
+```python
+from tempest_core import Column, Text, Widget
+from tempest_core.widgets import Component
+
+from tempest_fastapi_sdk.ssr import Page, html_response
+
+
+class Card(Component):
+    """Um cartão reutilizável com título + corpo."""
+
+    heading: str
+    body_text: str
+
+    def render(self) -> Widget:
+        return Column(
+            tag="section",
+            attrs={"class": "card"},
+            children=[
+                Text(content=self.heading, tag="h3"),
+                Text(content=self.body_text, tag="p"),
+            ],
+        )
+
+
+class HomePage(Page):
+    def body(self) -> Widget:
+        return Column(
+            tag="main",
+            children=[
+                Card(heading="Vendas", body_text="R$ 12.400 hoje"),
+                Card(heading="Usuários", body_text="312 ativos"),
+            ],
+        )
+```
+
+Num `Component` você sobrescreve **`render()`** (não `body()`/`shell()` —
+esses são só do `Page`). O renderizador expande cada `Component` pela sua
+`render()`, recursivamente.
+
+## Formulários e inputs
+
+Não há widget de formulário dedicado — você compõe com `tag`/`attrs` e
+recebe o POST com o `Form` do FastAPI, como em qualquer rota.
+
+```python
+from tempest_core import Button, Column, Text, Widget
+from fastapi import FastAPI, Form
+
+from tempest_fastapi_sdk.ssr import Page, html_response
+
+app: FastAPI = FastAPI()
+
+
+class SignupPage(Page):
+    def body(self) -> Widget:
+        return Column(
+            tag="form",
+            attrs={"method": "post", "action": "/signup"},
+            children=[
+                Text(content="", tag="input",
+                     attrs={"name": "email", "type": "email", "required": "required"}),
+                Text(content="", tag="input",
+                     attrs={"name": "password", "type": "password", "required": "required"}),
+                Button(label="Criar conta", attrs={"type": "submit"}),
+            ],
+        )
+
+
+@app.get("/signup")
+def signup_form() -> object:
+    return html_response(SignupPage(title="Cadastro"), title="Cadastro")
+
+
+@app.post("/signup")
+def signup(email: str = Form(...), password: str = Form(...)) -> object:
+    # ... crie o usuário via um Service/Repository do SDK ...
+    return html_response(
+        Text(content=f"Conta criada para {email}", tag="p"), document=False
+    )
+```
+
+Um `<select>` sai da mesma forma: uma `Column(tag="select", ...)` com
+`Text(tag="option", attrs={"value": ...})` como filhos.
+
 ## HTMX servido localmente (sem CDN)
 
 Para interatividade server-driven sem escrever JavaScript, o SDK embute
@@ -271,7 +429,82 @@ Como funciona:
 
 !!! check "Segurança por padrão"
     Todo texto é escapado na renderização. Um `Text(content="<script>")`
-    vira `&lt;script&gt;` no HTML final — sem injeção acidental.
+    vira `&lt;script&gt;` no HTML final — sem injeção acidental. Isso vale
+    para `content` e para os valores em `attrs` — nunca monte HTML por
+    concatenação de string; deixe os widgets escaparem.
+
+### Padrões de HTMX que você vai repetir
+
+O HTMX lê atributos `hx-*` do HTML e faz o AJAX pra você. Os que mais
+aparecem em páginas SSR:
+
+| Atributo | O que faz |
+|----------|-----------|
+| `hx-get` / `hx-post` / `hx-put` / `hx-delete` | Dispara a request no método indicado |
+| `hx-target` | Seletor CSS do elemento que recebe a resposta (`#id`, `closest li`) |
+| `hx-swap` | Como aplicar: `outerHTML`, `innerHTML`, `beforeend` (append), `delete` |
+| `hx-trigger` | O que dispara: `click` (padrão), `submit`, `keyup changed delay:300ms` |
+| `hx-confirm` | Mostra um `confirm()` antes de enviar |
+| `hx-indicator` | Seletor de um spinner mostrado durante a request |
+| `hx-on::after-request` | JS inline num evento HTMX (ex.: `this.reset()` após enviar) |
+
+A regra de ouro: a rota devolve **um fragmento** (`document=False`) e o
+HTMX o encaixa via `hx-target` + `hx-swap`. Um fragmento vazio
+(`Text(content="", tag="span")`) com `hx-swap="outerHTML"` **remove** o
+elemento — é assim que "excluir" funciona.
+
+!!! tip "Append numa lista"
+    `hx-target="#lista"` + `hx-swap="beforeend"` num `<form>` faz cada
+    submit **acrescentar** o novo `<li>` devolvido, sem recarregar o resto.
+
+## Testando páginas SSR
+
+Uma página SSR é só uma rota que devolve HTML — teste com o `TestClient`
+e verifique os pedaços que importam. Rápido e sem browser:
+
+```python
+from fastapi.testclient import TestClient
+
+from main import app
+
+
+def test_home_renders() -> None:
+    with TestClient(app) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert "<!doctype html>" in response.text.lower()
+    assert "<title>Início</title>" in response.text
+    assert "Olá, Ana!" in response.text
+
+
+def test_increment_returns_fragment() -> None:
+    with TestClient(app) as client:
+        fragment = client.post("/increment")
+    # Fragmento: sem <!doctype>, só o pedaço trocado.
+    assert "<!doctype" not in fragment.text.lower()
+    assert 'id="counter"' in fragment.text
+```
+
+!!! tip "Renderizar sem HTTP"
+    Para um teste de unidade puro, chame o renderizador diretamente:
+    `from tempestweb.html import render_to_html; html = render_to_html(MyPage(title="x").render())`.
+
+## Qual abordagem usar
+
+O SDK cobre o espectro inteiro de "HTML no servidor" até "SPA no browser".
+Escolha pelo cenário:
+
+| Você quer… | Use | Custo |
+|------------|-----|-------|
+| Página server-rendered, SEO, pouca interação | **SSR** (`Page` + `html_response`) | Nenhum build; HTML a cada request |
+| Interação sem SPA nem JavaScript escrito | **SSR + HTMX** (`make_htmx_router`) | Nenhum build; trocas parciais |
+| App rico que roda offline no browser | **SPA WASM** (`make_web_app_router`) | `tempestweb build --mode wasm` |
+| UI reativa dirigida pelo servidor, boot instantâneo | **Server-mode** (`build_web_app`) | `tempestweb build --mode server` |
+
+Os três últimos são projetos completos e rodáveis em
+[Fullstack web](fullstack-web.md). Para o **frontend chamando o backend
+do SDK** (HTTP tipado, idempotência, retry), veja a receita
+[Frontend tempestweb + backend SDK](recipes/tempestweb-frontend.md).
 
 ## Servir um build compilado do tempestweb
 

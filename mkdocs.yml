@@ -107,6 +107,7 @@ plugins:
             "Exemplo integrado (admin completo)": "Integrated example (complete admin)"
             Feature flags: Feature flags
             Tempo real: Real-time
+            "Frontend tempestweb + SDK": "tempestweb frontend + SDK"
             WebSocket router: WebSocket router
             Fila e Tarefas: Queue & Tasks
             Outbox transacional: Transactional outbox
@@ -265,6 +266,7 @@ nav:
       - "System checks (check-config)": recipes/system-checks.md
       - Sync offline-first (delta): recipes/offline-sync.md
       - Tempo real: recipes/realtime.md
+      - "Frontend tempestweb + SDK": recipes/tempestweb-frontend.md
       - Testes: recipes/testing.md
       - "Tipagem (estático + runtime)": recipes/typing.md
       - Uploads (backends): recipes/uploads.md
