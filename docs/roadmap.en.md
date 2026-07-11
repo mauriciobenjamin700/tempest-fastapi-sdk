@@ -78,8 +78,10 @@ releases are again pulled by business pressure.
 Natural candidates when demand shows up (admin panel evolution, already
 The admin-panel evolution is **essentially complete**: all of Tiers 1
 and 2, and Tier 3 with CSV import (v0.118), granular RBAC (v0.119) and
-lenses (v0.120). The only item left is on-demand polish: **in-place**
-inline editing of 1-N relations (today listed + navigable).
+lenses (v0.120). A refinement pass followed: JSON+time widgets (v0.121),
+UX polish (v0.122) and an [integrated example](admin-showcase.md) that
+wires it all into a shop admin. The only item left is on-demand polish:
+**in-place** inline editing of 1-N relations (today listed + navigable).
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.

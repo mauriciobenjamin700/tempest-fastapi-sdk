@@ -102,6 +102,7 @@ plugins:
             "Chat (conversas + mensagens)": "Chat (conversations + messages)"
             "Comentários + avaliações": "Comments + ratings"
             "Exemplo integrado (marketplace local)": "Integrated example (local marketplace)"
+            "Exemplo integrado (admin completo)": "Integrated example (complete admin)"
             Feature flags: Feature flags
             Tempo real: Real-time
             WebSocket router: WebSocket router
@@ -217,6 +218,7 @@ nav:
   - "Tour do SDK (exemplos)": tour.md
   - "Exemplo integrado (checkout Pix)": integrated.md
   - "Exemplo integrado (marketplace local)": marketplace-local.md
+  - "Exemplo integrado (admin completo)": admin-showcase.md
   - "Exemplos de GenAI (fluxos)": genai-examples.md
   - "SSR (páginas tipadas)": ssr.md
   - Receitas:
