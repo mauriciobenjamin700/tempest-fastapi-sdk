@@ -83,6 +83,14 @@ inline **in-place** das relações 1-N (hoje listadas + navegáveis).
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
+## Entregue na v0.121.0
+
+Refino do admin — novos widgets de campo:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **Widgets JSON + time** | ✅ v0.121 | Colunas `JSON` viram um editor JSON monoespaçado (pretty-print ao carregar, parse+validação no submit); colunas `Time` viram `<input type=time>`. [Receita »](recipes/admin.md) |
+
 ## Entregue na v0.120.0
 
 Painel admin — lenses / visões salvas (Tier 3), fechando a evolução do admin:

@@ -511,6 +511,17 @@ export, import e autocomplete de FK.
     `AdminModel` — os dois precisam liberar. Sem `access_policy`, nada
     muda (todo admin logado faz tudo). Pode ser sync ou `async`.
 
+## Widgets de campo por tipo de coluna
+
+O form de create/edit escolhe o widget pelo tipo da coluna, sem
+configuração: `bool` → checkbox, `Enum` → select, `int`/`float`/`Decimal`
+→ number, `datetime`/`date`/**`time`** → inputs nativos, string longa →
+textarea, **coluna `JSON`** → editor JSON monoespaçado (pretty-print ao
+abrir, `json.loads` + validação no submit — JSON inválido vira erro de
+campo, não uma string salva no lugar). FK vira `<select>` (ou
+autocomplete, via `autocomplete_fields`), e `upload_fields` vira input de
+arquivo.
+
 ## Lenses — visões salvas (`lenses=`)
 
 Uma lens é um preset nomeado de filtros + ordenação, mostrado como aba
