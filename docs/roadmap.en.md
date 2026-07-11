@@ -86,6 +86,14 @@ the admin-panel evolution is fully done; further work is business-pulled.
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## Shipped in v0.129.0
+
+SSR — typed attribute builders:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **`htmx()` / `aria()` / `data()`** | ✅ v0.129 | Assemble a widget's open `attrs: dict[str, str]` from typed arguments — `hx-*`/`aria-*`/`data-*` move from stringly-typed dicts to autocompleted, statically-checked call sites. Return exactly the dict you'd write (mergeable). No magic, no new dependency. [Reference »](ssr.md#typed-attributes-htmx-aria-data) |
+
 ## Shipped in v0.128.0
 
 SSR — serve a compiled tempestweb build:

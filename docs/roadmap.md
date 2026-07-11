@@ -85,6 +85,14 @@ painel admin está concluída; o que vier é puxado por pressão de negócio.
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
+## Entregue na v0.129.0
+
+SSR — builders tipados de atributos:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`htmx()` / `aria()` / `data()`** | ✅ v0.129 | Montam o `attrs: dict[str, str]` aberto do widget a partir de args tipados — `hx-*`/`aria-*`/`data-*` deixam de ser dict stringly-typed e viram call-site com autocomplete + checagem estática. Retornam exatamente o dict que você escreveria (mescláveis). Sem mágica, sem dep nova. [Referência »](ssr.md#atributos-tipados-htmx-aria-data) |
+
 ## Entregue na v0.128.0
 
 SSR — servir um build compilado do tempestweb:

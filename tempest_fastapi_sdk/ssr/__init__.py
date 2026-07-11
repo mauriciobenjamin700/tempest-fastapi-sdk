@@ -6,6 +6,12 @@ language. Declare pages as :class:`Page` subclasses (typed
 route to render them to HTML on the server. Serve HTMX locally with
 :func:`make_htmx_router` for progressive, server-driven interactivity.
 
+Build the open ``attrs`` map of a widget from typed keyword arguments
+with :func:`htmx`, :func:`aria` and :func:`data` — they turn
+``hx-*`` / ``aria-*`` / ``data-*`` call sites from stringly-typed dicts
+into autocompleted, statically-checked code, returning exactly the plain
+``dict[str, str]`` you would have written.
+
 To ship a **compiled** tempestweb build instead of rendering per
 request, point the SDK at a ``tempestweb build`` output directory:
 :func:`make_web_app_router` serves a static (wasm) SPA build with a
@@ -19,6 +25,9 @@ dependency is touched only when a page is actually rendered.
 """
 
 from tempest_fastapi_sdk.ssr.assets import make_htmx_router as make_htmx_router
+from tempest_fastapi_sdk.ssr.attributes import aria as aria
+from tempest_fastapi_sdk.ssr.attributes import data as data
+from tempest_fastapi_sdk.ssr.attributes import htmx as htmx
 from tempest_fastapi_sdk.ssr.page import Page as Page
 from tempest_fastapi_sdk.ssr.response import html_response as html_response
 from tempest_fastapi_sdk.ssr.webapp import BuildMode as BuildMode
@@ -29,9 +38,12 @@ from tempest_fastapi_sdk.ssr.webapp import make_web_app_router as make_web_app_r
 __all__: list[str] = [
     "BuildMode",
     "Page",
+    "aria",
     "build_web_app",
+    "data",
     "detect_build_mode",
     "html_response",
+    "htmx",
     "make_htmx_router",
     "make_web_app_router",
 ]

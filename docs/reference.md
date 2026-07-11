@@ -307,6 +307,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.ssr.page.Page
 ::: tempest_fastapi_sdk.ssr.response.html_response
 ::: tempest_fastapi_sdk.ssr.assets.make_htmx_router
+::: tempest_fastapi_sdk.ssr.attributes.htmx
+::: tempest_fastapi_sdk.ssr.attributes.aria
+::: tempest_fastapi_sdk.ssr.attributes.data
 ::: tempest_fastapi_sdk.ssr.webapp.make_web_app_router
 ::: tempest_fastapi_sdk.ssr.webapp.build_web_app
 ::: tempest_fastapi_sdk.ssr.webapp.detect_build_mode

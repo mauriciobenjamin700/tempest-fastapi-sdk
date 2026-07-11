@@ -216,7 +216,8 @@ Container(
     There is no dedicated widget for every HTML tag — and there needn't be.
     Any element comes out of a container widget with `tag=` and `attrs=`:
     `Text(content="", tag="input", attrs={"name": "email", "type": "email"})`
-    renders `<input name="email" type="email" />`.
+    renders `<input name="email" type="email" />`. For `hx-*`/`aria-*`/`data-*`
+    there are typed builders — see [Typed attributes](#typed-attributes-htmx-aria-data).
 
 ## Typed styling with `Style`
 
@@ -455,6 +456,64 @@ element — that's how "delete" works.
 !!! tip "Appending to a list"
     `hx-target="#list"` + `hx-swap="beforeend"` on a `<form>` makes each
     submit **append** the returned `<li>`, without reloading the rest.
+
+## Typed attributes: `htmx()`, `aria()`, `data()`
+
+`attrs` is `dict[str, str]` because the HTML attribute space is open — but
+typing `{"hx-post": ..., "hx-target": ..., "hx-swap": ...}` by hand is
+typo-prone and has no autocomplete. The SDK ships **typed builders** that
+assemble that dict from keyword arguments. No magic: the return value is
+**exactly** the dict you'd write by hand — inspectable and mergeable.
+
+```python
+from tempest_fastapi_sdk.ssr import aria, data, htmx
+
+htmx(post="/tasks", target="#tasks", swap="beforeend")
+# {"hx-post": "/tasks", "hx-target": "#tasks", "hx-swap": "beforeend"}
+
+aria(label="Close", role="button", expanded=False)
+# {"aria-label": "Close", "role": "button", "aria-expanded": "false"}
+
+data(user_id="42", active=True)
+# {"data-user-id": "42", "data-active": "true"}
+```
+
+Before (stringly-typed) and after (clear and typed):
+
+```python
+# before
+Button(label="Save", attrs={"hx-post": "/save", "hx-swap": "outerHTML"})
+
+# after
+from tempest_fastapi_sdk.ssr import htmx
+Button(label="Save", attrs=htmx(post="/save", swap="outerHTML"))
+```
+
+Each builder returns a `dict[str, str]`, so you merge freely with other
+builders and raw keys:
+
+```python
+Row(
+    tag="li",
+    attrs={**htmx(delete="/tasks/1", swap="outerHTML"), **aria(label="Delete"), "id": "task-1"},
+)
+```
+
+- **`htmx(...)`** — `get`/`post`/`put`/`patch`/`delete` (URLs), `target`,
+  `swap`, `trigger`, `confirm`, `indicator`, `push_url`, `boost`, … Booleans
+  render as `"true"`/`"false"`; `vals`/`headers` accept a dict and are
+  **JSON-encoded** for you; `on={":after-request": "this.reset()"}` becomes
+  `hx-on::after-request`.
+- **`aria(...)`** — `label`/`role`/`hidden`/`expanded`/`live`/… → `aria-*`
+  (and the bare `role`). Accessibility without memorizing the names.
+- **`data(...)`** — kwargs → `data-*` (underscore becomes hyphen: `user_id`
+  → `data-user-id`).
+
+!!! check "From 'magic' to clarity"
+    The base type stays `dict[str, str]` (the HTML boundary is open by
+    nature), but the **call site becomes typed**: autocomplete, static
+    checking, no silent typo in `hx-post`. You write typed code that still
+    flows into `attrs` — nothing is hidden, nothing becomes magic.
 
 ## Testing SSR pages
 

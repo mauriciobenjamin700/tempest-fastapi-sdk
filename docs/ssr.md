@@ -218,7 +218,8 @@ Container(
     Não existe widget dedicado para cada tag HTML — e nem precisa. Qualquer
     elemento sai de um widget de container com `tag=` e `attrs=`:
     `Text(content="", tag="input", attrs={"name": "email", "type": "email"})`
-    vira `<input name="email" type="email" />`.
+    vira `<input name="email" type="email" />`. Para `hx-*`/`aria-*`/`data-*`
+    há builders tipados — veja [Atributos tipados](#atributos-tipados-htmx-aria-data).
 
 ## Estilização tipada com `Style`
 
@@ -456,6 +457,64 @@ elemento — é assim que "excluir" funciona.
 !!! tip "Append numa lista"
     `hx-target="#lista"` + `hx-swap="beforeend"` num `<form>` faz cada
     submit **acrescentar** o novo `<li>` devolvido, sem recarregar o resto.
+
+## Atributos tipados: `htmx()`, `aria()`, `data()`
+
+`attrs` é `dict[str, str]` porque o espaço de atributos HTML é aberto — mas
+digitar `{"hx-post": ..., "hx-target": ..., "hx-swap": ...}` na mão é
+propenso a typo e não tem autocomplete. O SDK oferece **builders tipados**
+que montam esse dict a partir de argumentos nomeados. Sem mágica: o retorno
+é **exatamente** o dict que você escreveria — inspecionável e mesclável.
+
+```python
+from tempest_fastapi_sdk.ssr import aria, data, htmx
+
+htmx(post="/tasks", target="#tasks", swap="beforeend")
+# {"hx-post": "/tasks", "hx-target": "#tasks", "hx-swap": "beforeend"}
+
+aria(label="Fechar", role="button", expanded=False)
+# {"aria-label": "Fechar", "role": "button", "aria-expanded": "false"}
+
+data(user_id="42", active=True)
+# {"data-user-id": "42", "data-active": "true"}
+```
+
+Antes (stringly-typed) e depois (claro e tipado):
+
+```python
+# antes
+Button(label="Salvar", attrs={"hx-post": "/save", "hx-swap": "outerHTML"})
+
+# depois
+from tempest_fastapi_sdk.ssr import htmx
+Button(label="Salvar", attrs=htmx(post="/save", swap="outerHTML"))
+```
+
+Cada builder devolve um `dict[str, str]`, então você mescla livremente com
+outros builders e chaves cruas:
+
+```python
+Row(
+    tag="li",
+    attrs={**htmx(delete="/tasks/1", swap="outerHTML"), **aria(label="Excluir"), "id": "task-1"},
+)
+```
+
+- **`htmx(...)`** — `get`/`post`/`put`/`patch`/`delete` (URLs), `target`,
+  `swap`, `trigger`, `confirm`, `indicator`, `push_url`, `boost`, … Os
+  booleanos viram `"true"`/`"false"`; `vals`/`headers` aceitam um dict e são
+  **JSON-encodados** por você; `on={":after-request": "this.reset()"}` vira
+  `hx-on::after-request`.
+- **`aria(...)`** — `label`/`role`/`hidden`/`expanded`/`live`/… → `aria-*`
+  (e o `role` puro). Acessibilidade sem decorar os nomes.
+- **`data(...)`** — kwargs → `data-*` (underscore vira hífen: `user_id` →
+  `data-user-id`).
+
+!!! check "Da 'mágica' pra clareza"
+    O tipo base continua `dict[str, str]` (a fronteira HTML é aberta por
+    natureza), mas o **call-site fica tipado**: autocomplete, checagem
+    estática, sem typo silencioso em `hx-post`. Você escreve tipado e ainda
+    desagua no `attrs` — nada some, nada vira mágica.
 
 ## Testando páginas SSR
 
