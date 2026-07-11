@@ -151,6 +151,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.routers.metrics.PrometheusMiddleware
 ::: tempest_fastapi_sdk.api.routers.metrics.make_prometheus_router
 ::: tempest_fastapi_sdk.api.routers.metrics.make_prometheus_registry
+::: tempest_fastapi_sdk.api.routers.metrics.BusinessMetrics
 ::: tempest_fastapi_sdk.api.tracing.setup_tracing
 
 ### `tempest_fastapi_sdk.auth`

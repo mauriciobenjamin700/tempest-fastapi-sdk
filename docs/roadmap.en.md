@@ -86,6 +86,14 @@ wires it all into a shop admin. The only item left is on-demand polish:
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## Shipped in v0.124.0
+
+Observability — custom business metrics on `/metrics`:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **`BusinessMetrics`** | ✅ v0.124 | Typed `counter`/`gauge`/`histogram` factory on the shared registry (optional namespace, name-dedup); lands on the same `GET /metrics`. Returned objects are the real `prometheus_client` metrics — no magic. [Recipe »](recipes/metrics.md) |
+
 ## Shipped in v0.123.0
 
 More `field__op` filter operators (in `Q` and the repository dict):

@@ -57,6 +57,7 @@ from tempest_fastapi_sdk.api.oauth import (
 )
 from tempest_fastapi_sdk.api.routers import (
     DEFAULT_LATENCY_BUCKETS,
+    BusinessMetrics,
     HealthCheck,
     LogSource,
     PrometheusMiddleware,
@@ -84,6 +85,7 @@ __all__: list[str] = [
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "IDEMPOTENCY_HEADER",
     "BodySizeLimitMiddleware",
+    "BusinessMetrics",
     "CSRFMiddleware",
     "CachedResponse",
     "GitHubOAuthClient",

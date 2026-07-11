@@ -82,6 +82,38 @@ services:
     ports: ["9090:9090"]
 ```
 
+### Métricas de negócio — `BusinessMetrics`
+
+O middleware cobre HTTP (RED). Pras métricas do **seu domínio** — pedidos,
+profundidade de fila, duração de job — use `BusinessMetrics`: uma fábrica
+tipada de `Counter` / `Gauge` / `Histogram` ligada ao **mesmo** registry,
+então tudo sai no mesmo `GET /metrics`.
+
+```python
+from tempest_fastapi_sdk import BusinessMetrics, make_prometheus_registry
+
+registry = make_prometheus_registry()
+metrics = BusinessMetrics(registry, namespace="shop")
+
+orders = metrics.counter("orders_total", "Pedidos criados", labelnames=["status"])
+queue = metrics.gauge("queue_depth", "Itens na fila")
+job = metrics.histogram("job_seconds", "Duração do job", buckets=[0.1, 1, 10])
+
+orders.labels(status="paid").inc()
+queue.set(await repo.count({"status": "pending"}))
+job.observe(elapsed)
+```
+
+Sai no `/metrics` como `shop_orders_total{status="paid"}`, `shop_queue_depth`,
+`shop_job_seconds_bucket`. Criar duas vezes com o mesmo nome devolve a
+**mesma** métrica (sem `Duplicated timeseries` em reload/testes).
+
+!!! note "Sem mágica"
+    Os objetos retornados são os `Counter`/`Gauge`/`Histogram` de verdade do
+    `prometheus_client` — `.inc()` / `.set()` / `.observe()` / `.labels(...)`
+    funcionam como na doc oficial. O `BusinessMetrics` só amarra ao registry
+    e ao namespace, sem esconder nada.
+
 ## #2 Snapshot de sistema — extra `[metrics]`
 
 `MetricsUtils` coleta uso de CPU, memória, disco e GPU NVIDIA via `psutil` + `pynvml`. Todo método tem variante sync e async (o wrapper async roda o mesmo código via `asyncio.to_thread`). A amostragem de GPU degrada graciosamente para `[]` quando `pynvml` ou os drivers da NVIDIA estão ausentes.

@@ -16,8 +16,8 @@ Requires the ``[prometheus]`` extra.
 from __future__ import annotations
 
 import time
-from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any
+from collections.abc import Awaitable, Callable, Sequence
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Depends, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -220,8 +220,177 @@ def make_prometheus_router(
     return router
 
 
+class BusinessMetrics:
+    """A typed factory for application metrics on the shared registry.
+
+    Wraps ``prometheus_client``'s ``Counter`` / ``Gauge`` / ``Histogram``
+    so a service declares its own business metrics — orders placed,
+    queue depth, job duration — without repeating the ``registry=`` wiring
+    or reaching for the global default registry. Metrics land on the same
+    ``/metrics`` endpoint as the built-in request collectors.
+
+    Creation is de-duplicated by name, so calling a factory twice with
+    the same name (module re-import, tests, hot reload) returns the same
+    metric instead of raising ``Duplicated timeseries``.
+
+    No magic: the returned objects are the real ``prometheus_client``
+    metrics — ``.inc()`` / ``.set()`` / ``.observe()`` / ``.labels(...)``
+    behave exactly as upstream documents.
+
+    Example:
+        ```python
+        registry = make_prometheus_registry()
+        metrics = BusinessMetrics(registry, namespace="shop")
+        orders = metrics.counter("orders_total", "Orders placed", labelnames=["status"])
+        orders.labels(status="paid").inc()
+        ```
+
+    Attributes:
+        namespace (str): Optional prefix applied to every metric name
+            (``"shop"`` → ``shop_orders_total``).
+    """
+
+    def __init__(
+        self,
+        registry: CollectorRegistry,
+        *,
+        namespace: str = "",
+    ) -> None:
+        """Bind the factory to a registry.
+
+        Args:
+            registry (CollectorRegistry): The shared registry (from
+                :func:`make_prometheus_registry`) so the metrics show up
+                on the same ``/metrics`` endpoint.
+            namespace (str): Optional name prefix for every metric.
+
+        Raises:
+            ImportError: When the ``[prometheus]`` extra is missing.
+        """
+        _require_prometheus()
+        self._registry: CollectorRegistry = registry
+        self.namespace: str = namespace
+        self._metrics: dict[str, Any] = {}
+
+    def _full_name(self, name: str) -> str:
+        """Return ``name`` prefixed with the namespace, if any.
+
+        Args:
+            name (str): The bare metric name.
+
+        Returns:
+            str: ``"{namespace}_{name}"`` or ``name`` when no namespace.
+        """
+        return f"{self.namespace}_{name}" if self.namespace else name
+
+    def _get_or_create(
+        self,
+        factory: Any,
+        name: str,
+        documentation: str,
+        labelnames: Sequence[str],
+        **kwargs: Any,
+    ) -> Any:
+        """Create a metric (or return the cached one with the same name).
+
+        Args:
+            factory (Any): The ``prometheus_client`` metric class.
+            name (str): The bare metric name.
+            documentation (str): The HELP text.
+            labelnames (Sequence[str]): Label names for the metric.
+            **kwargs (Any): Extra metric kwargs (e.g. ``buckets``).
+
+        Returns:
+            Any: The registered metric instance.
+        """
+        full = self._full_name(name)
+        cached = self._metrics.get(full)
+        if cached is not None:
+            return cached
+        metric = factory(
+            full,
+            documentation,
+            labelnames=list(labelnames),
+            registry=self._registry,
+            **kwargs,
+        )
+        self._metrics[full] = metric
+        return metric
+
+    def counter(
+        self,
+        name: str,
+        documentation: str,
+        *,
+        labelnames: Sequence[str] = (),
+    ) -> Counter:
+        """Register (or fetch) a monotonically increasing counter.
+
+        Args:
+            name (str): The metric name.
+            documentation (str): The HELP text.
+            labelnames (Sequence[str]): Optional label names.
+
+        Returns:
+            Counter: The ``prometheus_client`` counter.
+        """
+        return cast(
+            "Counter", self._get_or_create(Counter, name, documentation, labelnames)
+        )
+
+    def gauge(
+        self,
+        name: str,
+        documentation: str,
+        *,
+        labelnames: Sequence[str] = (),
+    ) -> Gauge:
+        """Register (or fetch) a gauge (up/down value).
+
+        Args:
+            name (str): The metric name.
+            documentation (str): The HELP text.
+            labelnames (Sequence[str]): Optional label names.
+
+        Returns:
+            Gauge: The ``prometheus_client`` gauge.
+        """
+        return cast(
+            "Gauge", self._get_or_create(Gauge, name, documentation, labelnames)
+        )
+
+    def histogram(
+        self,
+        name: str,
+        documentation: str,
+        *,
+        labelnames: Sequence[str] = (),
+        buckets: Sequence[float] | None = None,
+    ) -> Histogram:
+        """Register (or fetch) a histogram (value distribution).
+
+        Args:
+            name (str): The metric name.
+            documentation (str): The HELP text.
+            labelnames (Sequence[str]): Optional label names.
+            buckets (Sequence[float] | None): Bucket upper bounds;
+                defaults to ``prometheus_client``'s default buckets.
+
+        Returns:
+            Histogram: The ``prometheus_client`` histogram.
+        """
+        extra: dict[str, Any] = {}
+        if buckets is not None:
+            extra["buckets"] = tuple(buckets)
+        return cast(
+            "Histogram",
+            self._get_or_create(Histogram, name, documentation, labelnames, **extra),
+        )
+
+
 __all__: list[str] = [
     "DEFAULT_LATENCY_BUCKETS",
+    "BusinessMetrics",
     "PrometheusMiddleware",
     "make_prometheus_registry",
     "make_prometheus_router",

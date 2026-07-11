@@ -10,6 +10,7 @@ from tempest_fastapi_sdk.api.routers.logs import (
 )
 from tempest_fastapi_sdk.api.routers.metrics import (
     DEFAULT_LATENCY_BUCKETS,
+    BusinessMetrics,
     PrometheusMiddleware,
     make_prometheus_registry,
     make_prometheus_router,
@@ -18,6 +19,7 @@ from tempest_fastapi_sdk.api.routers.tool_spec import make_tool_spec_router
 
 __all__: list[str] = [
     "DEFAULT_LATENCY_BUCKETS",
+    "BusinessMetrics",
     "HealthCheck",
     "LogSource",
     "PrometheusMiddleware",

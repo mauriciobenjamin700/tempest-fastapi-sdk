@@ -31,6 +31,7 @@ from tempest_fastapi_sdk.api import (
     DEFAULT_STATIC_SECURITY_HEADERS,
     IDEMPOTENCY_HEADER,
     BodySizeLimitMiddleware,
+    BusinessMetrics,
     CachedResponse,
     CSRFMiddleware,
     GitHubOAuthClient,
@@ -403,7 +404,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.123.0"
+__version__: str = "0.124.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -467,6 +468,7 @@ __all__: list[str] = [
     "BaseUserTokenModel",
     "BaseWebPushSubscriptionModel",
     "BodySizeLimitMiddleware",
+    "BusinessMetrics",
     "CEPField",
     "CNPJField",
     "CORSSettings",
