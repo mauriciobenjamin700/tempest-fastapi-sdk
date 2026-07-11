@@ -193,6 +193,37 @@ async def test_repo_directly() -> None:
         assert await repo.count() == 1
 ```
 
+## Model factories — `ModelFactory` + `seq`
+
+Constructing instances with every required field in each test is
+repetitive. `ModelFactory` binds the model + default values to the
+session; `build()` returns a loose instance, `create()` persists it
+(add + flush + refresh) and `create_many(n)` makes several. Per-call
+overrides win over the defaults.
+
+```python
+from tempest_fastapi_sdk.testing import ModelFactory, seq
+
+users = ModelFactory(
+    session,
+    UserModel,
+    email=seq("user{n}@example.com"),   # unique per row
+    hashed_password="x",
+    is_admin=False,
+)
+
+alice = await users.create(is_admin=True)     # one row, one field changed
+team = await users.create_many(5)             # five rows, unique emails
+draft = users.build(email="temp@x.com")        # unsaved instance
+```
+
+**No magic**: the factory never guesses a required field's value — you
+declare the defaults. A **callable** default (or override) receives the
+row index (an incrementing int) and becomes a per-row generator; `seq(...)`
+is the shortcut for the `"{n}"` case. It uses `flush` (not `commit`), so
+rows are visible within the test's transaction and rollback stays with
+the fixture.
+
 Pass `metadata=` when your project mixes the SDK's `BaseModel.metadata` with a second isolated metadata (rare — keep one `BaseModel` per service whenever possible).
 
 !!! check "Recap"

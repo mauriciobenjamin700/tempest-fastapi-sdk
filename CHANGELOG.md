@@ -5,6 +5,20 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.126.0] — 2026-07-11
+
+### Added
+
+- **Model factories for tests** (`tempest_fastapi_sdk.testing`) — `ModelFactory`
+  binds a `BaseModel` + default column values to a session so tests build rows
+  tersely: `build()` (unsaved), `create(**overrides)` (add + flush + refresh) and
+  `create_many(count)`. A default (or override) that is **callable** receives the
+  row's incrementing index — how unique fields are generated — and `seq("u{n}@x")`
+  is a helper for the common case. No magic: the factory never guesses required
+  values, you declare the defaults; `flush` (not `commit`) keeps rows in the
+  test's transaction. Framework-agnostic (no `pytest` import). `ModelFactory` and
+  `seq` are exported from `tempest_fastapi_sdk.testing`.
+
 ## [0.125.0] — 2026-07-11
 
 ### Added

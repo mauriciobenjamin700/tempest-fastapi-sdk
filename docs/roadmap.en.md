@@ -86,6 +86,14 @@ wires it all into a shop admin. The only item left is on-demand polish:
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## Shipped in v0.126.0
+
+Testing utilities — model factories:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **`ModelFactory` + `seq`** | ✅ v0.126 | Binds a model + defaults to the session: `build` (unsaved), `create`/`create_many` (add+flush+refresh). A **callable** default/override receives the row index → unique fields; `seq("u{n}@x")` is the shortcut. No magic: you declare the defaults. `from tempest_fastapi_sdk.testing import ModelFactory, seq`. [Recipe »](recipes/testing.md) |
+
 ## Shipped in v0.125.0
 
 Outbound webhooks — sign + deliver with retry:
