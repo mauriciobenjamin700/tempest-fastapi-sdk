@@ -76,13 +76,21 @@ the last item (management commands) shipped in v0.113.0. Upcoming
 releases are again pulled by business pressure.
 
 Natural candidates when demand shows up (admin panel evolution, already
-Tiers 1 and 2 of the admin-panel evolution are **shipped**. What's left
-is on-demand polish: in-place inline editing of 1-N relations (today
-listed + navigable), and the Tier 3 items (granular per-model/per-action
-RBAC, CSV import, saved lenses/views).
+Tiers 1 and 2 of the admin-panel evolution are **shipped**, and so is
+Tier 3's CSV import. What's left is on-demand polish: in-place inline
+editing of 1-N relations (today listed + navigable), and the rest of
+Tier 3 (granular per-model/per-action RBAC, saved lenses/views).
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
+
+## Shipped in v0.118.0
+
+Admin panel — CSV import (Tier 3), the counterpart to export:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **CSV import** | ✅ v0.118 | `AdminModel(can_import=True)` exposes `GET/POST /m/{slug}/import`: upload a CSV and each row is validated/coerced like the create form and becomes a record. Report with the created count + per-row errors (best-effort: one bad row never aborts the others). "Import CSV" link on the list view. [Recipe »](recipes/admin.md) |
 
 ## Shipped in v0.117.0
 

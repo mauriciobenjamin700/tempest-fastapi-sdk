@@ -5,6 +5,19 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.118.0] — 2026-07-11
+
+### Added
+
+- **Admin CSV import** — `AdminModel(can_import=True)` exposes a CSV import page
+  (`GET`/`POST {prefix}/m/{slug}/import`) that bulk-creates rows from an uploaded
+  file. Each CSV row is validated and coerced with the same rules as the create
+  form; valid rows are inserted best-effort (one bad row never aborts the rest)
+  and the page reports the created count plus a per-row error table. A
+  "Import CSV" link appears on the list view when enabled. Opt-in (default
+  `False`) and also gated on `can_create`. This is the counterpart to the
+  existing CSV/JSON export (Tier 3 of the admin-panel evolution).
+
 ## [0.117.0] — 2026-07-11
 
 ### Added

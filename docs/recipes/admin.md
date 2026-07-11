@@ -454,6 +454,28 @@ Os cards renderizam no topo do dashboard, computados a cada load. Um
 card cujo `compute` levanta é **pulado** — uma métrica quebrada nunca
 zera a página.
 
+## Import CSV (`can_import=True`)
+
+O admin já exporta a listagem (CSV/JSON). A contraparte: subir um CSV
+para **criar** registros em massa. Habilite com `can_import=True`:
+
+```python
+site.register(AdminModel(model=Product, can_import=True))
+```
+
+Aparece um link **Import CSV** na list view → página com upload. O CSV
+precisa de uma linha de cabeçalho com os nomes das colunas editáveis; a
+página mostra quais são. Cada linha seguinte é validada e coagida com as
+**mesmas regras do create** (tipos, obrigatórios) e vira um registro.
+
+O resultado é best-effort: linhas válidas são criadas, e um relatório
+lista as linhas puladas com o erro de cada campo — uma linha ruim nunca
+aborta as outras.
+
+!!! info "Opt-in + requer create"
+    `can_import` é `False` por padrão e exige `can_create` (importar é
+    criar em massa). Colunas de upload de arquivo não entram pelo CSV.
+
 #### 4. Defaults de segurança de sessão
 
 `SignedCookieSessionStore` usa `itsdangerous.TimestampSigner` (HMAC-SHA256) para assinar um único cookie:

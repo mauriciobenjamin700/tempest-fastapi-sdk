@@ -472,6 +472,28 @@ The cards render at the top of the dashboard, computed on each load. A
 card whose `compute` raises is **skipped** — a broken metric never
 blanks the page.
 
+## CSV import (`can_import=True`)
+
+The admin already exports the list (CSV/JSON). The counterpart: upload a
+CSV to bulk-**create** records. Enable it with `can_import=True`:
+
+```python
+site.register(AdminModel(model=Product, can_import=True))
+```
+
+An **Import CSV** link appears on the list view → an upload page. The CSV
+needs a header row with the editable column names (the page lists them);
+each following row is validated and coerced with the **same rules as the
+create form** (types, required fields) and becomes a record.
+
+The result is best-effort: valid rows are created, and a report lists
+the skipped rows with each field's error — one bad row never aborts the
+others.
+
+!!! info "Opt-in + requires create"
+    `can_import` defaults to `False` and requires `can_create` (importing
+    is bulk creation). File-upload columns are not imported from CSV.
+
 #### 4. Session security defaults
 
 `SignedCookieSessionStore` uses `itsdangerous.TimestampSigner` (HMAC-SHA256) to sign a single cookie:

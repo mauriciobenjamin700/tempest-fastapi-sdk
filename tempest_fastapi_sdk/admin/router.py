@@ -14,7 +14,17 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import or_, select
@@ -1132,6 +1142,127 @@ def make_admin_router(
                 "back_url": f"{prefix}/m/{slug}/",
                 "form_error": None,
             },
+        )
+
+    @router.get("/m/{slug}/import", name="admin_import")
+    async def import_form(
+        request: Request,
+        slug: str,
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> HTMLResponse:
+        """Render the CSV import page for an admin.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            HTMLResponse: The import template.
+
+        Raises:
+            HTTPException: ``404`` when the admin is unknown or import is
+                disabled.
+        """
+        admin = _require_admin(slug, lambda a: a.can_import and a.can_create)
+        principal = await _resolve_principal(request, db_session, session)
+        return _render(
+            request,
+            "import.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "admin": admin,
+                "columns": admin.editable_field_names(),
+                "action_url": f"{prefix}/m/{slug}/import",
+                "back_url": f"{prefix}/m/{slug}/",
+                "result": None,
+                "form_error": None,
+            },
+        )
+
+    @router.post("/m/{slug}/import", name="admin_import_submit")
+    async def import_submit(
+        request: Request,
+        slug: str,
+        csrf_token: str = Form(...),
+        file: UploadFile = File(...),
+        db_session: AsyncSession = Depends(_db_session),
+        session: AdminSession = Depends(_require_session),
+    ) -> HTMLResponse:
+        """Bulk-create rows from an uploaded CSV.
+
+        Each CSV row is validated + coerced with the same rules as the
+        create form; valid rows are inserted (best-effort, one row's
+        failure never aborts the others) and a per-row error report is
+        rendered alongside the created count.
+
+        Args:
+            request (Request): The inbound request.
+            slug (str): The admin slug.
+            csrf_token (str): CSRF token from the form.
+            file (UploadFile): The uploaded CSV file.
+            db_session (AsyncSession): The DB session.
+            session (AdminSession): The validated session.
+
+        Returns:
+            HTMLResponse: The import template with the result report.
+
+        Raises:
+            HTTPException: ``404`` when import is disabled; ``403`` on
+                CSRF mismatch.
+        """
+        admin = _require_admin(slug, lambda a: a.can_import and a.can_create)
+        principal = await _resolve_principal(request, db_session, session)
+        _check_csrf(session, csrf_token)
+
+        form_error: str | None = None
+        result: dict[str, Any] | None = None
+        try:
+            raw = await file.read()
+            text = raw.decode("utf-8-sig")
+            reader = csv.DictReader(io.StringIO(text))
+        except (UnicodeDecodeError, csv.Error):
+            form_error = "Could not read the file as UTF-8 CSV."
+        else:
+            repository = admin.build_repository(db_session)
+            actor_id = auth_backend.principal_id(principal)
+            created = 0
+            row_errors: list[dict[str, Any]] = []
+            for line_no, row in enumerate(reader, start=2):  # row 1 is the header
+                data, errors = parse_submission(admin, row)
+                if errors:
+                    row_errors.append({"row": line_no, "errors": errors})
+                    continue
+                instance = admin.model(**data)
+                _stamp_audit(instance, actor_id, creating=True)
+                try:
+                    await repository.add(instance)
+                except AppException as exc:
+                    row_errors.append({"row": line_no, "errors": {"": exc.message}})
+                    continue
+                created += 1
+            result = {"created": created, "errors": row_errors}
+
+        status_code = status.HTTP_400_BAD_REQUEST if form_error else status.HTTP_200_OK
+        return _render(
+            request,
+            "import.html",
+            {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "admin": admin,
+                "columns": admin.editable_field_names(),
+                "action_url": f"{prefix}/m/{slug}/import",
+                "back_url": f"{prefix}/m/{slug}/",
+                "result": result,
+                "form_error": form_error,
+            },
+            status_code=status_code,
         )
 
     @router.post("/m/{slug}/new", name="admin_create_submit")
