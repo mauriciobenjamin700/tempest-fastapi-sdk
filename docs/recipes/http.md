@@ -422,6 +422,50 @@ apple = RSAWebhookSignatureVerifier(
 ok: bool = apple.verify(raw_body_bytes, base64_signature_header_value)
 ```
 
+### Entrega de webhooks de saída — `WebhookSender`
+
+A contraparte: **enviar** eventos assinados pros seus assinantes.
+`WebhookSender` faz POST do evento em JSON, assina o corpo com o
+**mesmo** `WebhookSignatureVerifier` (então o receptor valida com aquele
+verifier) e re-tenta falhas transitórias (erro de conexão, 5xx, 429) com
+backoff exponencial. Outros 4xx **não** são re-tentados. O cliente httpx
+é injetado (você é dono do ciclo de vida).
+
+```python
+import httpx
+
+from tempest_fastapi_sdk import WebhookSender, WebhookSignatureVerifier
+
+verifier = WebhookSignatureVerifier(settings.WEBHOOK_SECRET, prefix="sha256=")
+
+async with httpx.AsyncClient() as client:
+    sender = WebhookSender(client, signer=verifier, max_attempts=4)
+    result = await sender.send(
+        "https://assinante.example.com/hooks",
+        event="order.paid",
+        payload={"id": str(order.id), "total": 4200},
+    )
+    if not result.delivered:
+        # result.status_code / result.attempts / result.error
+        ...  # enfileira pra reprocessar, alerta, etc.
+
+# Mesmo evento pra vários assinantes, concorrente:
+results = await sender.send_many(
+    [(sub.url, {"id": str(order.id)}) for sub in subscribers],
+    event="order.paid",
+)
+```
+
+Cada entrega envia os headers `X-Webhook-Event`, `X-Webhook-Id` (uuid
+único) e `X-Webhook-Timestamp`, mais a assinatura HMAC no header do
+`signer`. Devolve um `WebhookDelivery` (`delivered`, `status_code`,
+`attempts`, `error`, `delivery_id`).
+
+!!! tip "Casa com o outbox"
+    Pareie com `BaseOutboxModel` + `OutboxRelay`: grave o evento na mesma
+    transação do negócio e deixe o relay chamar o `WebhookSender` —
+    entrega ao menos uma vez, com a assinatura que o assinante verifica.
+
 
 ## Headers Link de paginação
 

@@ -86,6 +86,14 @@ wires it all into a shop admin. The only item left is on-demand polish:
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## Shipped in v0.125.0
+
+Outbound webhooks — sign + deliver with retry:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **`WebhookSender`** | ✅ v0.125 | POSTs the JSON event signed with the same `WebhookSignatureVerifier`; retries transient failures (5xx/429/connection) with backoff, not 4xx. `send`/`send_many` → `WebhookDelivery`. Injected httpx; pairs with the outbox. [Recipe »](recipes/http.md) |
+
 ## Shipped in v0.124.0
 
 Observability — custom business metrics on `/metrics`:

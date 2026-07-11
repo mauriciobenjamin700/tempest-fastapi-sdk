@@ -85,6 +85,14 @@ inline **in-place** das relações 1-N (hoje listadas + navegáveis).
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
+## Entregue na v0.125.0
+
+Webhooks de saída — assinar + entregar com retry:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`WebhookSender`** | ✅ v0.125 | POST do evento JSON assinado com o mesmo `WebhookSignatureVerifier`; re-tenta transitórios (5xx/429/conexão) com backoff, 4xx não. `send`/`send_many` → `WebhookDelivery`. httpx injetado; casa com o outbox. [Receita »](recipes/http.md) |
+
 ## Entregue na v0.124.0
 
 Observabilidade — métricas de negócio custom no `/metrics`:
