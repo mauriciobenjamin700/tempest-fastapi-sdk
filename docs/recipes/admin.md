@@ -296,6 +296,57 @@ site.register(AdminModel(
 !!! tip "Responsivo por padrão"
     Os templates + CSS embutidos são responsivos: em telas estreitas (≤600px) o header empilha, busca/filtros/ações viram full-width, as tabelas ganham scroll horizontal (nunca quebram o layout) e o grid do detail colapsa para uma coluna. Headers de coluna são clicáveis para alternar a ordenação (▲/▼).
 
+## Histórico de auditoria no detail (`audit_model=`)
+
+O painel já carimba `created_by` / `updated_by`. Para ver **o quê** mudou
+(não só quem/quando), passe um `audit_model` — a mesma tabela
+`BaseAuditLogModel` que o `BaseRepository` já escreve — e o detail ganha
+uma **timeline** por registro.
+
+Primeiro, a tabela de auditoria e um repository que a alimenta:
+
+```python
+# src/db/models/audit.py
+from tempest_fastapi_sdk import BaseAuditLogModel
+
+
+class AuditLog(BaseAuditLogModel):
+    __tablename__ = "audit_log"
+```
+
+```python
+# grave a trilha nas escritas (create/update/delete)
+from tempest_fastapi_sdk import BaseRepository
+from tempest_fastapi_sdk.db.audit import snapshot_model
+
+repo = BaseRepository(session, model=OrderModel, audit_model=AuditLog)
+
+order = await repo.add_audited(OrderModel(...), actor=str(current_user.id))
+
+before = snapshot_model(order)
+order.status = "shipped"
+await repo.update_audited(order, before, actor=str(current_user.id))
+```
+
+Então plugue o mesmo `audit_model` no admin:
+
+```python
+# src/admin/site.py
+site.register(AdminModel(model=OrderModel, audit_model=AuditLog))
+```
+
+No detail de cada pedido aparece um bloco **History**: uma entrada por
+mudança (`create` / `update` / `delete`, com cor), ator e data, e um diff
+campo-a-campo (antes → depois). As 50 entradas mais recentes, da mais
+nova para a mais antiga.
+
+!!! info "Como o match é feito"
+    A viewer busca as linhas de auditoria onde `entity` == nome do modelo
+    (ex.: `"OrderModel"`) e `entity_id` == id do registro — exatamente o
+    que `add_audited` / `update_audited` / `delete_audited` gravam. Sem
+    `audit_model`, o detail continua igual (só os carimbos
+    `created_by`/`updated_by`).
+
 #### 4. Defaults de segurança de sessão
 
 `SignedCookieSessionStore` usa `itsdangerous.TimestampSigner` (HMAC-SHA256) para assinar um único cookie:

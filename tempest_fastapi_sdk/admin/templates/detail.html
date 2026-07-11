@@ -40,5 +40,38 @@
     {% endif %}
   </dl>
   {% endif %}
+  {% if admin.audit_model is not none %}
+  <h2 class="tempest-admin-detail__audit-title">History</h2>
+  {% if history %}
+  <ol class="tempest-admin-history">
+    {% for entry in history %}
+    <li class="tempest-admin-history__item tempest-admin-history__item--{{ entry.action }}">
+      <div class="tempest-admin-history__head">
+        <span class="tempest-admin-history__action">{{ entry.action }}</span>
+        <span class="tempest-admin-history__meta">
+          {{ entry.at }}{% if entry.actor %} · {{ entry.actor }}{% endif %}
+        </span>
+      </div>
+      {% if entry.changes %}
+      <table class="tempest-admin-history__changes">
+        <thead><tr><th>field</th><th>before</th><th>after</th></tr></thead>
+        <tbody>
+          {% for change in entry.changes %}
+          <tr>
+            <td>{{ change.field }}</td>
+            <td>{% if change.before is none %}<em>—</em>{% else %}{{ change.before }}{% endif %}</td>
+            <td>{% if change.after is none %}<em>—</em>{% else %}{{ change.after }}{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="tempest-admin-history__empty"><em>No recorded changes for this record.</em></p>
+  {% endif %}
+  {% endif %}
 </section>
 {% endblock %}
