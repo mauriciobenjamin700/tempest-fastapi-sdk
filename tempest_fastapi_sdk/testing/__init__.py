@@ -15,12 +15,18 @@ from tempest_fastapi_sdk.testing.database import (
     test_database,
     test_session,
 )
+from tempest_fastapi_sdk.testing.factories import (
+    ModelFactory,
+    seq,
+)
 
 __all__: list[str] = [
+    "ModelFactory",
     "create_test_engine",
     "create_test_session_factory",
     "drop_test_metadata",
     "init_test_metadata",
+    "seq",
     "test_database",
     "test_session",
 ]

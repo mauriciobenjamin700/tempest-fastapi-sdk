@@ -85,6 +85,14 @@ inline **in-place** das relações 1-N (hoje listadas + navegáveis).
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
+## Entregue na v0.126.0
+
+Utilitários de teste — factories de modelo:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`ModelFactory` + `seq`** | ✅ v0.126 | Amarra modelo + defaults à sessão: `build` (solta), `create`/`create_many` (add+flush+refresh). Default/override **callable** recebe o índice da linha → campos únicos; `seq("u{n}@x")` é o atalho. Sem mágica: você declara os defaults. `from tempest_fastapi_sdk.testing import ModelFactory, seq`. [Receita »](recipes/testing.md) |
+
 ## Entregue na v0.125.0
 
 Webhooks de saída — assinar + entregar com retry:

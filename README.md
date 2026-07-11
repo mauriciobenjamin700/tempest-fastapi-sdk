@@ -1732,6 +1732,8 @@ class TestUsersAPI:
 | `drop_test_metadata(engine, metadata=None)` | Drop every table. |
 | `test_database(url="sqlite+aiosqlite:///:memory:", metadata=None)` | Async context manager — yields an engine with metadata pre-created, drops everything and disposes on exit. |
 | `test_session(url="sqlite+aiosqlite:///:memory:", metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `test_database`. |
+| `ModelFactory(session, Model, **defaults)` | Bind a model + defaults to a session; `build()` (unsaved), `create()`/`create_many(n)` (add + flush + refresh). Callable defaults/overrides get the row index. |
+| `seq(template, *, start=0)` | Index generator formatting `template` with `{n}` — `seq("user{n}@x.com")` yields unique values one per row. |
 
 ```python
 # tests/conftest.py
@@ -1774,6 +1776,25 @@ async def test_repo_directly() -> None:
 ```
 
 Pass `metadata=` when the project mixes the SDK `BaseModel.metadata` with a second, isolated metadata (rare — keep one `BaseModel` per service whenever possible).
+
+Build rows tersely with `ModelFactory` — declare the required-field defaults once, then override per test. A callable default (or `seq(...)`) receives the row index, so unique columns stay unique across `create_many`:
+
+```python
+from tempest_fastapi_sdk.testing import ModelFactory, seq
+
+
+async def test_factory(session: AsyncSession) -> None:
+    users = ModelFactory(
+        session,
+        UserModel,
+        email=seq("user{n}@example.com"),
+        password_hash="x",
+        is_admin=False,
+    )
+    admin = await users.create(is_admin=True)   # one row, one field changed
+    team = await users.create_many(5)           # five rows, unique emails
+    assert admin.is_admin and len(team) == 5
+```
 
 ### Application bootstrap recipe
 
