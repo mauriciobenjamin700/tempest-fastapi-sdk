@@ -95,6 +95,7 @@ plugins:
             "Fullstack web (SSR, WASM, server)": "Fullstack web (SSR, WASM, server)"
             "SSR (páginas tipadas)": "SSR (typed pages)"
             Receitas: Recipes
+            "Artefatos versionados (modelos)": "Versioned artifacts (models)"
             Banco de dados: Database
             Multi-tenant: Multi-tenant
             Audit trail: Audit trail
@@ -229,6 +230,7 @@ nav:
   - Receitas:
       - recipes/index.md
       - "Arquivo no serviço (mixin)": recipes/stored-files.md
+      - "Artefatos versionados (modelos)": recipes/artifact-registry.md
       - Audit trail: recipes/audit-trail.md
       - Auth flow (signup/reset): recipes/auth-flow.md
       - "Auth por introspecção (resource server)": recipes/introspection-auth.md

@@ -5,6 +5,30 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.131.0] — 2026-07-15
+
+### Added
+
+- **Versioned artifact registry** (`tempest_fastapi_sdk.artifacts`) — the generic
+  core of a "DB-backed, activatable binary artifact" registry, for serving any
+  versioned blob (ML models, rule bundles, config packs) from object storage:
+  - `ArtifactVersionMixin` — SQLAlchemy 2.0 declarative mixin (`name`,
+    `version`, `file_key`, `is_current`) to mix into a concrete `BaseModel`.
+  - `ArtifactRegistry[TModel]` — `current(name)`, `list_current()` and
+    `activate(version_id)` (sets `is_current` on one row and clears the
+    same-`name` siblings in a single transaction).
+  - `build_manifest_entries(registry, digest_source=...)` → `ArtifactManifestEntry`
+    (`name`/`version`/`file_key`/`sha256`/`size`), serialization-agnostic so the
+    app owns the wire shape and URL scheme.
+  - `file_digest(path)` / `object_digest(client, bucket, key)` — streamed
+    (1 MiB chunks) sha256 + size, memoized by immutable identity.
+  - `make_activate_artifact_action(label=...)` — an admin-action factory
+    (register via `actions=[action.handler]`) reusing the SDK admin context.
+
+  Object serving/`object_digest` need the `[minio]` extra; the mixin, registry,
+  `file_digest` and the admin action run on core deps. See the new
+  *Artifact registry* recipe.
+
 ## [0.130.0] — 2026-07-15
 
 ### Added

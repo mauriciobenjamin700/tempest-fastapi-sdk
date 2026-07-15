@@ -89,6 +89,15 @@ from tempest_fastapi_sdk.api import (
     set_cookie,
     setup_tracing,
 )
+from tempest_fastapi_sdk.artifacts import (
+    ArtifactManifestEntry,
+    ArtifactRegistry,
+    ArtifactVersionMixin,
+    build_manifest_entries,
+    file_digest,
+    make_activate_artifact_action,
+    object_digest,
+)
 from tempest_fastapi_sdk.auth import (
     DEFAULT_AUTH_LOCALE,
     SUPPORTED_LOCALES,
@@ -407,7 +416,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.130.0"
+__version__: str = "0.131.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -444,6 +453,9 @@ __all__: list[str] = [
     "AdminTheme",
     "AlembicHelper",
     "AppException",
+    "ArtifactManifestEntry",
+    "ArtifactRegistry",
+    "ArtifactVersionMixin",
     "AsyncDatabaseManager",
     "AsyncMinIOClient",
     "AttemptThrottle",
@@ -677,6 +689,7 @@ __all__: list[str] = [
     "apply_cors",
     "backfill_non_nullable_defaults",
     "build_content_disposition",
+    "build_manifest_entries",
     "build_pagination_link_header",
     "check_permission",
     "cities_by_uf",
@@ -694,6 +707,7 @@ __all__: list[str] = [
     "diff_snapshots",
     "discover_models",
     "encode_cursor",
+    "file_digest",
     "format_expires_at",
     "generate_csrf_token",
     "generate_oauth_state",
@@ -717,6 +731,7 @@ __all__: list[str] = [
     "key_by_jwt_claim",
     "key_by_jwt_subject",
     "list_states",
+    "make_activate_artifact_action",
     "make_admin_router",
     "make_app_exception_handler",
     "make_auth_router",
@@ -754,6 +769,7 @@ __all__: list[str] = [
     "normalize_phone_br",
     "normalize_pix_key",
     "normalize_uf",
+    "object_digest",
     "on_signal",
     "only_digits",
     "parse_accept_language",
