@@ -13,6 +13,7 @@ def apply_cors(
     settings: CORSSettings | None = None,
     *,
     origins: list[str] | None = None,
+    origin_regex: str | None = None,
     allow_credentials: bool | None = None,
     allow_methods: list[str] | None = None,
     allow_headers: list[str] | None = None,
@@ -32,6 +33,10 @@ def apply_cors(
             ``None``, a fresh :class:`CORSSettings` instance is built.
         origins (list[str] | None): Override for
             :attr:`CORSSettings.CORS_ORIGINS`.
+        origin_regex (str | None): Override for
+            :attr:`CORSSettings.CORS_ORIGIN_REGEX`. Matched against the
+            request ``Origin`` for session-varying origins (dev tunnels,
+            preview deploys). An empty string disables it.
         allow_credentials (bool | None): Override.
         allow_methods (list[str] | None): Override.
         allow_headers (list[str] | None): Override.
@@ -39,9 +44,11 @@ def apply_cors(
         max_age (int | None): Override.
     """
     cfg = settings or CORSSettings()
+    resolved_regex = origin_regex if origin_regex is not None else cfg.CORS_ORIGIN_REGEX
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins if origins is not None else cfg.CORS_ORIGINS,
+        allow_origin_regex=resolved_regex or None,
         allow_credentials=(
             allow_credentials
             if allow_credentials is not None

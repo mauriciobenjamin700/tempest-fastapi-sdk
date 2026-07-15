@@ -19,6 +19,9 @@ from tempest_fastapi_sdk.auth.guards import require_admin as require_admin
 from tempest_fastapi_sdk.auth.guards import (
     require_authenticated as require_authenticated,
 )
+from tempest_fastapi_sdk.auth.introspection import (
+    IntrospectionAuth as IntrospectionAuth,
+)
 from tempest_fastapi_sdk.auth.locale import (
     DEFAULT_AUTH_LOCALE as DEFAULT_AUTH_LOCALE,
 )
@@ -100,6 +103,7 @@ __all__: list[str] = [
     "EmailChangeToken",
     "EmailRecoveryRequestSchema",
     "EmailVerificationToken",
+    "IntrospectionAuth",
     "LoginResponseSchema",
     "LoginSchema",
     "LogoutSchema",

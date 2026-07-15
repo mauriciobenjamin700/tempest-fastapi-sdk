@@ -367,6 +367,9 @@ class CORSSettings(BaseSettings):
     Attributes:
         CORS_ORIGINS (list[str]): Allowed origins; override in production.
             Default: ``["*"]``.
+        CORS_ORIGIN_REGEX (str): Regex matched against the request
+            ``Origin`` for session-varying origins (dev tunnels, preview
+            deploys). Empty disables it. Default: ``""``.
         CORS_ALLOW_CREDENTIALS (bool): Allow cookies / auth headers
             cross-origin. Default: ``False``.
         CORS_ALLOW_METHODS (list[str]): HTTP verbs accepted by the preflight
@@ -390,6 +393,18 @@ class CORSSettings(BaseSettings):
             ["*"],
             ["https://app.example.com", "https://admin.example.com"],
         ],
+    )
+    CORS_ORIGIN_REGEX: str = Field(
+        default="",
+        title="Allowed CORS origin regex",
+        description=(
+            "Regex matched against the request ``Origin`` for origins that "
+            "vary per session (e.g. ngrok / Cloudflare dev tunnels, preview "
+            "deployments). Empty disables it. Works alongside "
+            '``CORS_ORIGINS`` and, unlike ``["*"]``, is compatible with '
+            "``CORS_ALLOW_CREDENTIALS=True``."
+        ),
+        examples=["", r"https://.*\.ngrok-free\.app", r"https://.*\.vercel\.app"],
     )
     CORS_ALLOW_CREDENTIALS: bool = Field(
         default=False,

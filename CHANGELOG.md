@@ -5,6 +5,32 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.130.0] — 2026-07-15
+
+### Added
+
+- **Introspection-based bearer auth** (`tempest_fastapi_sdk.auth.IntrospectionAuth`)
+  — a reusable dependency for services that do **not** issue their own tokens
+  but validate an opaque bearer against an upstream userinfo/introspection
+  endpoint (OAuth2 resource-server pattern). Validates a token by calling
+  `userinfo_url` (a string or a lazily-resolved callable), caches successful
+  lookups in-process for `cache_ttl_seconds` (evicting on 401/403), optionally
+  gates access on an app-membership claim (`required_app` / `app_claim`), and
+  extracts the user id from `subject_claim`. Expose `Depends(auth.get_claims)`
+  and `Depends(auth.get_user_id)` on any route. See the new
+  *Introspection auth* recipe.
+
+### Changed
+
+- **`WebPushSubscriptionService.notify_user(..., exclude_endpoints=...)`** — skip
+  specific devices when fanning a payload out, the common case being a
+  multi-device sync notification where the device that made the change must not
+  notify itself. Excluded devices are never contacted and never pruned.
+- **`CORSSettings.CORS_ORIGIN_REGEX` + `apply_cors(origin_regex=...)`** — allow a
+  regex matched against the request `Origin` for session-varying origins (ngrok
+  / Cloudflare dev tunnels, preview deploys). Empty disables it; unlike
+  `["*"]`, it is compatible with `CORS_ALLOW_CREDENTIALS=True`.
+
 ## [0.129.0] — 2026-07-11
 
 ### Added

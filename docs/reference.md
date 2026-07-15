@@ -159,6 +159,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ### `tempest_fastapi_sdk.auth`
 
 ::: tempest_fastapi_sdk.auth.service.UserAuthService
+::: tempest_fastapi_sdk.auth.introspection.IntrospectionAuth
 ::: tempest_fastapi_sdk.auth.router.make_auth_router
 ::: tempest_fastapi_sdk.auth.schemas.SignupSchema
 ::: tempest_fastapi_sdk.auth.schemas.SignupResponseSchema

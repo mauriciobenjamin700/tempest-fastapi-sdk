@@ -231,6 +231,7 @@ nav:
       - "Arquivo no serviço (mixin)": recipes/stored-files.md
       - Audit trail: recipes/audit-trail.md
       - Auth flow (signup/reset): recipes/auth-flow.md
+      - "Auth por introspecção (resource server)": recipes/introspection-auth.md
       - "Permissões object-level": recipes/authz.md
       - Banco de dados: recipes/database.md
       - Cache: recipes/cache.md

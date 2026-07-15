@@ -133,3 +133,22 @@ class TestNotifyUser:
     async def test_no_devices_returns_zero(self, session: AsyncSession) -> None:
         service = _service(session)
         assert await service.notify_user(uuid4(), {"title": "hi"}) == 0
+
+    async def test_excludes_given_endpoints(self, session: AsyncSession) -> None:
+        dispatcher = _FakeDispatcher()
+        service = _service(session, dispatcher)
+        user_id = uuid4()
+        await service.subscribe(user_id, _sub("https://push.example/self"))
+        await service.subscribe(user_id, _sub("https://push.example/other"))
+        delivered = await service.notify_user(
+            user_id,
+            {"title": "hi"},
+            exclude_endpoints=["https://push.example/self"],
+        )
+        assert delivered == 1
+        assert dispatcher.sent == ["https://push.example/other"]
+        remaining = {r.endpoint for r in await service.list_for_user(user_id)}
+        assert remaining == {
+            "https://push.example/self",
+            "https://push.example/other",
+        }

@@ -166,6 +166,7 @@ class WebPushSubscriptionService(Generic[SubscriptionModelT]):
         payload: WebPushPayloadSchema | dict[str, Any] | str | bytes,
         *,
         ttl_seconds: int | None = None,
+        exclude_endpoints: list[str] | None = None,
     ) -> int:
         """Send ``payload`` to every device a user subscribed, pruning dead ones.
 
@@ -173,18 +174,28 @@ class WebPushSubscriptionService(Generic[SubscriptionModelT]):
         deleted from the store before returning, so stale devices never
         accumulate.
 
+        Pass ``exclude_endpoints`` to skip specific devices — the common
+        case being a multi-device sync notification where the device that
+        made the change must not notify itself. Excluded devices are never
+        contacted and never pruned.
+
         Args:
             user_id (UUID): The recipient user.
             payload (WebPushPayloadSchema | dict | str | bytes): The
                 notification body (same shapes as
                 :meth:`WebPushDispatcher.send`).
             ttl_seconds (int | None): Optional TTL override.
+            exclude_endpoints (list[str] | None): Push endpoints to skip
+                (e.g. the originating device). ``None`` sends to all.
 
         Returns:
-            int: How many devices the payload was delivered to (total
+            int: How many devices the payload was delivered to (targeted
             devices minus the pruned, gone ones).
         """
         rows = await self.list_for_user(user_id)
+        if exclude_endpoints:
+            excluded = set(exclude_endpoints)
+            rows = [row for row in rows if row.endpoint not in excluded]
         if not rows:
             return 0
         subscriptions = [self._to_schema(row) for row in rows]
