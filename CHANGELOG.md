@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.132.0] — 2026-07-15
+
+### Added
+
+- **`WebPushSettings.enabled`** — a property returning `bool(VAPID_PRIVATE_KEY)`,
+  so services can gate dispatch on "is Web Push configured" without hand-rolling
+  the check next to `webpush_kwargs()`.
+- **`make_web_push_router(vapid_public_key=...)`** — optional; when set (a string
+  or a zero-arg callable), mounts a public `GET {prefix}/vapid-public-key`
+  returning `{"public_key": ...}` so the browser can subscribe without baking the
+  key into the frontend build. Omitted by default.
+
 ## [0.131.0] — 2026-07-15
 
 ### Added

@@ -30,6 +30,7 @@ def make_web_push_router(
     prefix: str = "/api/push",
     tags: list[str] | None = None,
     store_user_agent: bool = True,
+    vapid_public_key: str | Callable[[], str] | None = None,
 ) -> APIRouter:
     """Build a router with ``POST /subscribe`` and ``POST /unsubscribe``.
 
@@ -59,11 +60,33 @@ def make_web_push_router(
         tags (list[str] | None): OpenAPI tags. Defaults to ``["push"]``.
         store_user_agent (bool): When ``True`` (default), persist the
             request ``User-Agent`` header as the device label.
+        vapid_public_key (str | Callable[[], str] | None): When set, mount a
+            public ``GET {prefix}/vapid-public-key`` returning
+            ``{"public_key": ...}`` so the browser can subscribe without the
+            key being baked into the frontend build. Accepts a string or a
+            zero-arg callable (resolved per request). ``None`` (default)
+            omits the route.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
     """
     router = APIRouter(prefix=prefix, tags=list(tags or ["push"]))
+
+    if vapid_public_key is not None:
+
+        @router.get("/vapid-public-key", status_code=status.HTTP_200_OK)
+        async def get_vapid_public_key() -> dict[str, str]:
+            """Return the VAPID public key the browser subscribes with.
+
+            Public + unauthenticated. Returns ``""`` when the key is unset
+            (Web Push not configured), which lets the frontend hide the
+            opt-in.
+
+            Returns:
+                dict[str, str]: ``{"public_key": <url-safe base64 or "">}``.
+            """
+            key = vapid_public_key() if callable(vapid_public_key) else vapid_public_key
+            return {"public_key": key or ""}
 
     async def _session() -> AsyncIterator[AsyncSession]:
         async for session in session_factory():

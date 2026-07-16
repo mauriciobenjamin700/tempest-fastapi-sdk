@@ -737,6 +737,19 @@ class WebPushSettings(BaseSettings):
             "ttl_seconds": self.WEBPUSH_DEFAULT_TTL_SECONDS,
         }
 
+    @property
+    def enabled(self) -> bool:
+        """Whether Web Push dispatch is configured.
+
+        Dispatch needs a signing key; with an empty ``VAPID_PRIVATE_KEY``
+        (the dev default) subscribe/unsubscribe still work but sending is
+        skipped. Use this to gate notify calls.
+
+        Returns:
+            bool: ``True`` when a VAPID private key is set.
+        """
+        return bool(self.VAPID_PRIVATE_KEY)
+
 
 class TaskIQSettings(BaseSettings):
     """TaskIQ broker / result backend configuration.

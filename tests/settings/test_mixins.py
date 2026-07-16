@@ -171,6 +171,10 @@ class TestMixinDefaults:
         assert set(kwargs) == {"vapid_private_key", "vapid_subject", "ttl_seconds"}
         assert WebPushDispatcher(**kwargs) is not None
 
+    def test_enabled_reflects_private_key(self) -> None:
+        assert WebPushSettings().enabled is False
+        assert WebPushSettings(VAPID_PRIVATE_KEY="k").enabled is True
+
     def test_minio_kwargs_splats_into_client(self) -> None:
         from tempest_fastapi_sdk import AsyncMinIOClient, MinIOSettings
 
