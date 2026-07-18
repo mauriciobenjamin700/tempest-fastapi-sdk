@@ -88,6 +88,15 @@ put_url = await store.presigned_put_url(key, expires=timedelta(minutes=15))
     `presigned_put_url` return `None` — the same call site works for both
     backends, no `if backend == ...`.
 
+!!! tip "Many keys at once *(v0.133.0+)*"
+    `presigned_get_url` signs **one** key. For a whole page (one key per row),
+    reach for the underlying MinIO client —
+    `store.client.presigned_get_urls([...])` (see
+    [Batch operations](storage.md#batch-operations-presign-upload-download-v01330)) —
+    which fans the signings out concurrently and returns a `dict` key→URL. In a
+    **service**, the shortcut is `StoredFileServiceMixin`'s
+    [`file_urls`](stored-files.md#a-whole-page-file_urls-v01330).
+
 ## Validation
 
 Validation (size, extension, MIME, magic bytes, `content_validator`) is

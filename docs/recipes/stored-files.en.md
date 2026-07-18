@@ -58,6 +58,46 @@ class UserService(
 Base order matters: `BaseService` brings the `repository`; the mixin only
 adds the file methods on top.
 
+### How the inheritance works
+
+The service inherits from **two** generic bases at once — this is composition
+by multiple inheritance, and each piece has a role:
+
+```python
+class UserService(
+    BaseService[UserRepository, UserResponseSchema],  # (1) state + CRUD
+    StoredFileServiceMixin[UserModel],                # (2) file methods
+):
+    ...
+```
+
+1. **`BaseService[Repo, Response]`** comes **first** in the MRO (method
+   resolution order). It defines `__init__(repository)` and holds
+   `self.repository` — which is why your `super().__init__(repository)` lands on
+   it. Its two generic parameters pin the **repository type** and the
+   **response schema**.
+2. **`StoredFileServiceMixin[Model]`** comes **after**. It has **no `__init__`
+   and no state of its own** — it only stacks `set_file` / `file_url` /
+   `file_urls` / `clear_file` on top. Its single generic (`Model`) keeps the
+   return type of `set_file`/`clear_file` precise (`UserModel`, not a loose
+   `Any`).
+
+!!! info "Why the mixin builds nothing"
+    A mixin that created `storage`/`upload_utils` would steal configuration
+    (bucket, max size, allowed types) from the service. Instead it **reads the
+    collaborators off `self`** via *structural typing* (the `SupportsUpload`
+    and `SupportsPresign` Protocols): any object with the right methods works.
+    Practical upshot: **importing the mixin does not pull the** `[upload]` /
+    `[minio]` **extras** — they only kick in once you actually instantiate an
+    `UploadUtils` / `AsyncMinIOClient`.
+
+!!! note "`repository: Any` on the mixin — and mypy"
+    The mixin declares `repository: Any` as an annotation only. Without it, mypy
+    would flag a **conflicting `repository` field** across the two bases
+    (`BaseService` types it as `RepositoryT`). With `Any` on the mixin, the
+    concrete base wins and the public methods stay precise via `Model` — no
+    `# type: ignore` in your service.
+
 ## Swap the file — `set_file`
 
 ```python
@@ -98,6 +138,40 @@ a response-schema field without an `if`:
 response.profile_picture_url = await self.file_url(updated.profile_picture)
 ```
 
+## A whole page — `file_urls` *(v0.133.0+)*
+
+A **list** endpoint has to resolve **one key per row** — a page of candidates,
+each with its picture. Doing that in a `for` loop with
+`await self.file_url(...)` **serializes** the thread hops (each `minio` presign
+runs in `asyncio.to_thread`). `file_urls` is the batch counterpart of
+`file_url`: it fans the work out at once and returns a `dict` keyed by object
+key.
+
+```python
+async def _load_profile_picture_from_users(
+    self, candidates: list[CandidateResponseSchema]
+) -> None:
+    """Fill each candidate's ``profile_picture_url`` in one shot."""
+    users = [c.user for c in candidates if c.user is not None]
+    urls = await self.file_urls([user.profile_picture for user in users])
+    for user in users:
+        user.profile_picture_url = urls.get(user.profile_picture)
+```
+
+`None`/empty keys are **dropped** and duplicates are **collapsed**, so the
+`dict` holds one entry per distinct non-empty key. Look each row up with
+`urls.get(row.key)` — a row whose key was empty yields `None`, no `if` needed.
+
+!!! info "Concurrency ceiling (`max_concurrency`, default 16)"
+    Each presign is dispatched to a default-executor thread. `file_urls` bounds
+    how many run at once with an `asyncio.Semaphore`, preserving order — a large
+    page cannot saturate the pool. Tune it via
+    `file_urls(keys, max_concurrency=32)`.
+
+!!! note "Fail-fast"
+    If a presign fails, the whole batch aborts and propagates (default
+    `asyncio.gather`) — the same behavior as signing them one by one.
+
 ## Remove the file — `clear_file`
 
 ```python
@@ -119,11 +193,16 @@ await self.set_file(event, banner, field="banner_image", subdir="events/banners"
 
 ## Recap
 
-- Mix `StoredFileServiceMixin[Model]` into the service and expose
-  `upload_utils` + `storage`.
+- Mix `StoredFileServiceMixin[Model]` into the service (**after**
+  `BaseService[Repo, Response]` in the MRO) and expose `upload_utils` +
+  `storage`. The mixin holds no state of its own: it reads the collaborators off
+  `self` via Protocol, so importing it does not pull the `[upload]`/`[minio]`
+  extras.
 - `set_file(ref, file, *, field, subdir=...)` → upload, swap old, persist.
   Detach-safe.
 - `file_url(key, *, expires=...)` → presigned URL or `None`.
+- `file_urls(keys, *, expires=..., max_concurrency=16)` → `dict` key→URL for a
+  whole page; drops empty keys, dedups, fail-fast.
 - `clear_file(ref, *, field)` → delete + null (no-op when already empty).
 - Common case (one key + presigned). For resize/variants/gallery, use
   [`UploadUtils`](uploads.md) directly.

@@ -85,6 +85,14 @@ put_url = await store.presigned_put_url(key, expires=timedelta(minutes=15))
     `presigned_put_url` retornam `None` — o mesmo call site funciona pros dois
     backends, sem `if backend == ...`.
 
+!!! tip "Muitas chaves de uma vez *(v0.133.0+)*"
+    `presigned_get_url` assina **uma** chave. Para uma página inteira (uma chave
+    por linha), use o cliente MinIO por baixo — `store.client.presigned_get_urls([...])`
+    (ver [Operações em lote](storage.md#operacoes-em-lote-presign-upload-download-v01330))
+    — que dispara o fan-out concorrente e devolve um `dict` chave→URL. Num
+    **serviço**, o atalho é o [`file_urls`](stored-files.md#uma-pagina-inteira-file_urls-v01330)
+    do `StoredFileServiceMixin`.
+
 ## Validação
 
 A validação (tamanho, extensão, MIME, magic bytes, `content_validator`) é a do
