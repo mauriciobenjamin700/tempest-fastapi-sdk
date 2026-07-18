@@ -25,6 +25,7 @@ importing it never pulls the optional ``[upload]`` / ``[minio]`` extras.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar
@@ -77,6 +78,16 @@ class SupportsPresign(Protocol):
         expires: timedelta = ...,
     ) -> str:
         """Return a temporary download URL for ``key``."""
+        ...
+
+    async def presigned_get_urls(
+        self,
+        keys: Iterable[str],
+        *,
+        expires: timedelta = ...,
+        max_concurrency: int = ...,
+    ) -> dict[str, str]:
+        """Return presigned download URLs for many keys, keyed by key."""
         ...
 
 
@@ -224,3 +235,40 @@ class StoredFileServiceMixin(Generic[ModelType]):
         if not key:
             return None
         return await self.storage.presigned_get_url(key, expires=expires)
+
+    async def file_urls(
+        self,
+        keys: Iterable[str | None],
+        *,
+        expires: timedelta = _DEFAULT_URL_TTL,
+        max_concurrency: int = 16,
+    ) -> dict[str, str]:
+        """Return presigned download URLs for many keys at once.
+
+        The batch counterpart of :meth:`file_url` for list endpoints that
+        must resolve one stored key per row (e.g. a page of profiles).
+        Presigning is dispatched concurrently by the storage client, so a
+        page of N rows costs one bounded fan-out instead of N sequential
+        round-trips. Empty / ``None`` keys are dropped and duplicates are
+        collapsed, so the result holds one entry per distinct non-empty
+        key — look each row's URL up with ``result.get(row.key)``, which
+        yields ``None`` for a row whose key was empty.
+
+        Args:
+            keys (Iterable[str | None]): The stored object keys, typically
+                one field value per row. ``None`` / empty entries are
+                skipped.
+            expires (timedelta): URL lifetime for every key. Defaults to
+                one hour.
+            max_concurrency (int): Maximum signings awaited at once.
+
+        Returns:
+            dict[str, str]: Mapping of each distinct non-empty key to its
+            presigned download URL.
+        """
+        valid = [key for key in keys if key]
+        if not valid:
+            return {}
+        return await self.storage.presigned_get_urls(
+            valid, expires=expires, max_concurrency=max_concurrency
+        )

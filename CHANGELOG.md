@@ -5,6 +5,31 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.133.0] — 2026-07-18
+
+### Added
+
+- **Batch object storage on `AsyncMinIOClient`** — three concurrent, order-aware
+  helpers for the common "resolve one key per row on a list endpoint" pattern,
+  replacing serial `await` loops over the single-key methods:
+  - `presigned_get_urls(keys)` → `dict[str, str]` — signs many download URLs at
+    once, deduplicating keys.
+  - `put_objects(items)` → `dict[str, str]` — uploads many objects, each described
+    by the new **`PutObjectItem`** dataclass (mirrors `put_object`'s per-object
+    arguments: `content_type`, `metadata`, `length`, `part_size`).
+  - `get_objects_bytes(keys)` → `dict[str, bytes]` — downloads many small objects,
+    deduplicating keys.
+
+  All three are **fail-fast** (the first failure aborts the batch and propagates)
+  and bound their in-flight work with a semaphore via `max_concurrency` (default
+  16; `0`/negative raises `ValueError`), so a large page cannot saturate the
+  thread executor.
+- **`StoredFileServiceMixin.file_urls(keys)`** — the batch counterpart of
+  `file_url`. Drops `None`/empty keys, collapses duplicates and returns a
+  `dict[str, str]` keyed by object key, so a page of rows resolves its presigned
+  URLs in one bounded fan-out (`urls.get(row.key)` yields `None` for an empty
+  key). `PutObjectItem` is now exported from the package root.
+
 ## [0.132.0] — 2026-07-15
 
 ### Added

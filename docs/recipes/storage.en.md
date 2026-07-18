@@ -202,6 +202,62 @@ MINIO_PUBLIC_ENDPOINT=https://storage.example.com   # browser (presigned)
 
 The public host's proxy must route to the **MinIO S3 API (port 9000)** over TLS and forward the correct `Host` (the signature validates it).
 
+### Batch operations — presign / upload / download *(v0.133.0+)*
+
+**List** endpoints usually resolve **one key per row** — a page of profiles, each with its picture. Doing that in a `for` loop with `await presigned_get_url(...)` **serializes** the N thread hops (every `minio` call runs in `asyncio.to_thread`). The three batch methods fan the work out at once, under a concurrency ceiling:
+
+- `presigned_get_urls(keys)` → `dict[str, str]` (key → URL)
+- `put_objects(items)` → `dict[str, str]` (key → ETag)
+- `get_objects_bytes(keys)` → `dict[str, bytes]` (key → payload)
+
+```python
+from fastapi import APIRouter
+
+from src.api.app import storage
+
+router = APIRouter()
+
+
+@router.post("/files/urls")
+async def sign_many(keys: list[str]) -> dict[str, str]:
+    """Sign a page of keys in one call instead of one per request."""
+    return await storage.presigned_get_urls(keys)
+```
+
+Duplicate keys are **collapsed** (each object is signed/fetched once), and the result is a `dict` — look each row up with `result.get(row.key)`.
+
+!!! tip "In the service: `file_urls` for pages"
+    If your service uses `StoredFileServiceMixin`, prefer `file_urls([...])` — the batch counterpart of `file_url`. It **drops `None`/empty keys** and returns a `dict`, ideal for building a page of responses:
+
+    ```python
+    users = [...]  # rows on the page
+    urls = await user_service.file_urls([u.profile_picture for u in users])
+    for user in users:
+        user.profile_picture_url = urls.get(user.profile_picture)  # None if empty
+    ```
+
+!!! note "Fail-fast semantics"
+    All three methods are **fail-fast**: the first failure aborts the batch and propagates (default `asyncio.gather`) — the same behavior as running the operations one by one. Need to tolerate partial failure? Run the items individually and handle each exception.
+
+!!! info "Concurrency ceiling (`max_concurrency`, default 16)"
+    Each operation is dispatched to a default-executor thread. Scheduling thousands at once saturates the pool and spikes memory. An `asyncio.Semaphore` bounds how many run at the same time while preserving order. Tune it via `max_concurrency=` (minimum 1; `0` or negative raises `ValueError`).
+
+Batch upload uses `PutObjectItem`, which mirrors the per-object arguments of `put_object` (content type, metadata, length for streams):
+
+```python
+from tempest_fastapi_sdk import PutObjectItem
+
+etags = await storage.put_objects(
+    [
+        PutObjectItem(key="thumbs/a.jpg", data=thumb_a, content_type="image/jpeg"),
+        PutObjectItem(key="thumbs/b.jpg", data=thumb_b, content_type="image/jpeg"),
+    ]
+)
+```
+
+!!! warning "`get_objects_bytes` loads everything in memory"
+    Like `get_object_bytes`, the batch is for **small** objects — each payload becomes `bytes` in RAM. For large files, stream them individually with `stream_object`.
+
 ### List objects by prefix
 
 ```python
