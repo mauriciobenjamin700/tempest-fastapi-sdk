@@ -112,7 +112,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[queue]` | `faststream[rabbit]` | `MessageBroker` (typed FastStream facade) |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `TaskQueue` (typed TaskIQ facade) |
 | `[admin]` | `jinja2`, `itsdangerous` | `AdminSite`, `AdminModel`, `make_admin_router` |
-| `[minio]` | `minio` | `AsyncMinIOClient`, `ObjectStat`, `MinIOSettings` |
+| `[minio]` | `minio` | `AsyncMinIOClient`, `ObjectStat`, `PutObjectItem`, `MinIOSettings` |
 | `[http]` | `httpx` | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, OAuth2 / OIDC providers |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry`, `BusinessMetrics` |
 | `[mfa]` | `pyotp` | `TOTPHelper` + MFA/2FA endpoints on the bundled auth flow |
@@ -162,7 +162,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.flags` | `FeatureFlags`, `FeatureFlagBackend`, `MemoryFeatureFlagBackend`, `EnvFeatureFlagBackend`, `RedisFeatureFlagBackend`, `CompositeFeatureFlagBackend`, `make_flag_dependency`, `coerce_flag` |
 | `tempest_fastapi_sdk.webpush` *(extra: `[webpush]`)* | `WebPushDispatcher`, `WebPushSubscriptionService`, `make_web_push_router`, `WebPushError`, `WebPushGoneError`, `WebPushSubscriptionSchema`, `WebPushKeysSchema`, `WebPushPayloadSchema` |
 | `tempest_fastapi_sdk.queue` *(extra: `[queue]`)* | `MessageBroker` (typed, transport-agnostic FastStream facade — `.rabbitmq`/`.redis`/`.kafka`/`.nats`, `@mq.on(channel)`, channel-first `publish`); class-based consumers (`Consumer` + `@subscribe` + `MessageBroker.register`); `AsyncQueueManager` (thin lifecycle wrapper, formerly `AsyncBrokerManager`) |
-| `tempest_fastapi_sdk.storage` *(extra: `[minio]`)* | `AsyncMinIOClient`, `ObjectStat` — async MinIO/S3 facade |
+| `tempest_fastapi_sdk.storage` *(extra: `[minio]`)* | `AsyncMinIOClient` (+ batch `presigned_get_urls` / `put_objects` / `get_objects_bytes`), `ObjectStat`, `PutObjectItem` — async MinIO/S3 facade |
 | `tempest_fastapi_sdk.utils.http_client` *(extra: `[http]`)* | `HTTPClient`, `RetryPolicy`, `CircuitOpenError`, `REQUEST_ID_HEADER` — typed httpx wrapper |
 | `tempest_fastapi_sdk.utils.storage_backends` *(extra: `[upload]`)* | `UploadStorage` protocol, `LocalUploadStorage`, `MinIOUploadStorage`, `UploadResult`, `ContentValidator` |
 | `tempest_fastapi_sdk.tasks` *(extra: `[tasks]`)* | `TaskQueue` (typed TaskIQ facade — `.rabbitmq`/`.redis`/`.memory`, `@tq.task` → `Task.enqueue`/`.run`, `@tq.cron`/`@tq.interval`, `start_scheduler`), `Task`; class-based tasks (`TaskDef` + `@task_method` + `TaskQueue.register`); cron helpers (`Cron` / `CronOffset` / `Weekday` + `daily`/`weekdays`/`every_n_minutes`/… builders); `AsyncTaskBrokerManager` / `AsyncTaskScheduler` (legacy wrappers) |

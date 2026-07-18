@@ -9,9 +9,11 @@ conventions without forking the wire protocol. Install with the
 from tempest_fastapi_sdk.storage.minio_client import (
     AsyncMinIOClient,
     ObjectStat,
+    PutObjectItem,
 )
 
 __all__: list[str] = [
     "AsyncMinIOClient",
     "ObjectStat",
+    "PutObjectItem",
 ]

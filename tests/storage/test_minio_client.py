@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from tempest_fastapi_sdk import AsyncMinIOClient
+from tempest_fastapi_sdk import AsyncMinIOClient, PutObjectItem
 
 
 class _FakeObject:
@@ -334,6 +334,54 @@ class TestPresigned:
         url = await client.presigned_put_url("k", expires=timedelta(minutes=5))
         assert "op=PUT" in url
         assert "exp=300" in url
+
+
+class TestBatch:
+    async def test_presigned_get_urls_maps_each_key(
+        self, client: AsyncMinIOClient
+    ) -> None:
+        urls = await client.presigned_get_urls(
+            ["a.txt", "b.txt"], expires=timedelta(hours=2)
+        )
+        assert set(urls) == {"a.txt", "b.txt"}
+        assert "op=GET" in urls["a.txt"]
+        assert "exp=7200" in urls["b.txt"]
+
+    async def test_presigned_get_urls_collapses_duplicates(
+        self, client: AsyncMinIOClient
+    ) -> None:
+        urls = await client.presigned_get_urls(["dup", "dup", "other"])
+        assert set(urls) == {"dup", "other"}
+
+    async def test_presigned_get_urls_empty(self, client: AsyncMinIOClient) -> None:
+        assert await client.presigned_get_urls([]) == {}
+
+    async def test_put_objects_uploads_all(self, client: AsyncMinIOClient) -> None:
+        await client.ensure_bucket()
+        etags = await client.put_objects(
+            [
+                PutObjectItem(key="one.txt", data=b"1"),
+                PutObjectItem(key="two.txt", data=b"22", content_type="text/plain"),
+            ]
+        )
+        assert etags == {"one.txt": "etag-one.txt", "two.txt": "etag-two.txt"}
+        assert await client.get_object_bytes("one.txt") == b"1"
+        assert await client.get_object_bytes("two.txt") == b"22"
+
+    async def test_get_objects_bytes_maps_each_key(
+        self, client: AsyncMinIOClient
+    ) -> None:
+        await client.ensure_bucket()
+        await client.put_object("x.txt", b"xx")
+        await client.put_object("y.txt", b"yy")
+        blobs = await client.get_objects_bytes(["x.txt", "y.txt", "x.txt"])
+        assert blobs == {"x.txt": b"xx", "y.txt": b"yy"}
+
+    async def test_batch_rejects_non_positive_concurrency(
+        self, client: AsyncMinIOClient
+    ) -> None:
+        with pytest.raises(ValueError, match="max_concurrency must be at least 1"):
+            await client.presigned_get_urls(["a"], max_concurrency=0)
 
 
 class TestDownloadResponse:

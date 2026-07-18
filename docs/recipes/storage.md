@@ -202,6 +202,62 @@ MINIO_PUBLIC_ENDPOINT=https://storage.example.com   # browser (presigned)
 
 O proxy do host público precisa rotear para a **API S3 do MinIO (porta 9000)** com TLS e repassar o `Host` correto (a assinatura valida o host).
 
+### Operações em lote — presign / upload / download *(v0.133.0+)*
+
+Endpoints de **listagem** normalmente precisam resolver **uma chave por linha** — uma página de perfis, cada um com sua foto. Fazer isso num `for` com `await presigned_get_url(...)` **serializa** os N hops de thread (cada chamada do `minio` roda em `asyncio.to_thread`). Os três métodos batch disparam o fan-out de uma vez, com um teto de concorrência:
+
+- `presigned_get_urls(keys)` → `dict[str, str]` (chave → URL)
+- `put_objects(items)` → `dict[str, str]` (chave → ETag)
+- `get_objects_bytes(keys)` → `dict[str, bytes]` (chave → payload)
+
+```python
+from fastapi import APIRouter
+
+from src.api.app import storage
+
+router = APIRouter()
+
+
+@router.post("/files/urls")
+async def sign_many(keys: list[str]) -> dict[str, str]:
+    """Assina uma página de chaves de uma vez, em vez de uma por request."""
+    return await storage.presigned_get_urls(keys)
+```
+
+Chaves **duplicadas são deduplicadas** (cada objeto é assinado/baixado uma vez), e o retorno é um `dict` — faça o lookup por chave com `result.get(row.key)`.
+
+!!! tip "No serviço: `file_urls` para páginas"
+    Se o serviço usa `StoredFileServiceMixin`, prefira `file_urls([...])` — o par em lote de `file_url`. Ele **descarta chaves `None`/vazias** e devolve `dict`, ideal pra montar uma página de respostas:
+
+    ```python
+    users = [...]  # linhas da página
+    urls = await user_service.file_urls([u.profile_picture for u in users])
+    for user in users:
+        user.profile_picture_url = urls.get(user.profile_picture)  # None se vazia
+    ```
+
+!!! note "Semântica fail-fast"
+    Os três métodos são **fail-fast**: a primeira falha aborta o lote e propaga (`asyncio.gather` padrão) — mesmo comportamento de rodar as operações uma a uma. Precisa tolerar falha parcial? Rode os itens individualmente e trate cada exceção.
+
+!!! info "Teto de concorrência (`max_concurrency`, padrão 16)"
+    Cada operação vai pra um thread do executor default. Agendar milhares de uma vez satura o pool e estoura memória. Um `asyncio.Semaphore` limita quantas rodam ao mesmo tempo, preservando a ordem. Ajuste via `max_concurrency=` (mínimo 1; `0` ou negativo levanta `ValueError`).
+
+Upload em lote usa `PutObjectItem`, que espelha os argumentos por-objeto de `put_object` (content-type, metadata, length para streams):
+
+```python
+from tempest_fastapi_sdk import PutObjectItem
+
+etags = await storage.put_objects(
+    [
+        PutObjectItem(key="thumbs/a.jpg", data=thumb_a, content_type="image/jpeg"),
+        PutObjectItem(key="thumbs/b.jpg", data=thumb_b, content_type="image/jpeg"),
+    ]
+)
+```
+
+!!! warning "`get_objects_bytes` carrega tudo em memória"
+    Como `get_object_bytes`, o lote é para objetos **pequenos** — cada payload vira `bytes` na RAM. Para arquivos grandes, faça streaming individual com `stream_object`.
+
 ### Listar objetos por prefixo
 
 ```python

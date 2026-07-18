@@ -297,7 +297,7 @@ from tempest_fastapi_sdk.sse import (
     SSEBroker,
     sse_response,
 )
-from tempest_fastapi_sdk.storage import AsyncMinIOClient, ObjectStat
+from tempest_fastapi_sdk.storage import AsyncMinIOClient, ObjectStat, PutObjectItem
 from tempest_fastapi_sdk.utils import (
     CEP,
     CEP_PATTERN,
@@ -416,7 +416,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.132.0"
+__version__: str = "0.133.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -605,6 +605,7 @@ __all__: list[str] = [
     "PositiveIntField",
     "PriceField",
     "PrometheusMiddleware",
+    "PutObjectItem",
     "Q",
     "RSAWebhookSignatureVerifier",
     "RabbitMQSettings",

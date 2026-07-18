@@ -22,18 +22,20 @@ from __future__ import annotations
 
 import asyncio
 import mimetypes
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, BinaryIO
+from typing import TYPE_CHECKING, BinaryIO, TypeVar
 
 if TYPE_CHECKING:
     from minio import Minio
     from minio.datatypes import Object as _MinioObject
     from starlette.responses import StreamingResponse
+
+_T = TypeVar("_T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +68,38 @@ class ObjectStat:
     last_modified: datetime | None
     metadata: dict[str, str]
     raw: _MinioObject
+
+
+@dataclass(frozen=True, slots=True)
+class PutObjectItem:
+    """One object to upload in an :meth:`AsyncMinIOClient.put_objects` batch.
+
+    Mirrors the per-object arguments of :meth:`AsyncMinIOClient.put_object`
+    so a single batch can carry heterogeneous payloads — different content
+    types, metadata, or unknown-length streams.
+
+    Attributes:
+        key (str): Destination object key.
+        data (bytes | BinaryIO): Payload. ``bytes`` is wrapped in a
+            ``BytesIO``; file-like objects are forwarded as-is and require
+            ``length``.
+        content_type (str): MIME type. ``"application/octet-stream"`` by
+            default.
+        metadata (dict[str, str] | None): User metadata stored under the
+            ``x-amz-meta-`` namespace by ``minio``; pass plain names.
+        length (int | None): Payload size in bytes. Required for file-like
+            data; pass ``-1`` for unknown-length streams to trigger
+            multipart upload. Computed automatically for ``bytes``.
+        part_size (int): Multipart chunk size in bytes. At least 5 MiB.
+            Default 10 MiB.
+    """
+
+    key: str
+    data: bytes | BinaryIO
+    content_type: str = "application/octet-stream"
+    metadata: dict[str, str] | None = None
+    length: int | None = None
+    part_size: int = 10 * 1024 * 1024
 
 
 class AsyncMinIOClient:
@@ -790,8 +824,161 @@ class AsyncMinIOClient:
             expires,
         )
 
+    async def _gather_bounded(
+        self,
+        awaitables: Sequence[Awaitable[_T]],
+        max_concurrency: int,
+    ) -> list[_T]:
+        """Await ``awaitables`` concurrently under an in-flight ceiling.
+
+        Every object operation is dispatched to a worker thread; scheduling
+        thousands at once would saturate the default executor and spike
+        memory. A semaphore bounds how many run at the same time while
+        preserving result order. Semantics are fail-fast — the first
+        exception cancels the gather and propagates, matching the behaviour
+        of awaiting the operations one by one.
+
+        Args:
+            awaitables (Sequence[Awaitable[_T]]): The operations to run.
+            max_concurrency (int): Maximum awaited at once; at least 1.
+
+        Returns:
+            list[_T]: Results in the same order as ``awaitables``.
+
+        Raises:
+            ValueError: If ``max_concurrency`` is less than 1.
+        """
+        if max_concurrency < 1:
+            raise ValueError("max_concurrency must be at least 1")
+        semaphore = asyncio.Semaphore(max_concurrency)
+
+        async def _run(awaitable: Awaitable[_T]) -> _T:
+            async with semaphore:
+                return await awaitable
+
+        return await asyncio.gather(*(_run(a) for a in awaitables))
+
+    async def presigned_get_urls(
+        self,
+        keys: Iterable[str],
+        *,
+        bucket: str | None = None,
+        expires: timedelta = timedelta(hours=1),
+        max_concurrency: int = 16,
+    ) -> dict[str, str]:
+        """Generate presigned download URLs for many keys concurrently.
+
+        Duplicate keys are collapsed, so each object is signed once and
+        appears a single time in the result. Signing is fail-fast: the
+        first failure aborts the batch and propagates.
+
+        Args:
+            keys (Iterable[str]): Object keys to sign.
+            bucket (str | None): Override source bucket for every key.
+            expires (timedelta): URL lifetime for every key. Maximum is
+                7 days (S3 hard limit).
+            max_concurrency (int): Maximum signings awaited at once.
+
+        Returns:
+            dict[str, str]: Mapping of each unique key to its presigned
+            GET URL.
+
+        Raises:
+            ValueError: If ``max_concurrency`` is less than 1.
+            S3Error: When signing a key fails.
+        """
+        unique = list(dict.fromkeys(keys))
+        urls = await self._gather_bounded(
+            [
+                self.presigned_get_url(key, bucket=bucket, expires=expires)
+                for key in unique
+            ],
+            max_concurrency,
+        )
+        return dict(zip(unique, urls, strict=True))
+
+    async def put_objects(
+        self,
+        items: Iterable[PutObjectItem],
+        *,
+        bucket: str | None = None,
+        max_concurrency: int = 16,
+    ) -> dict[str, str]:
+        """Upload many objects concurrently.
+
+        Uploads are fail-fast: the first failure aborts the batch and
+        propagates. When two items share a key the later one wins in the
+        returned mapping, matching last-write-wins on the store.
+
+        Args:
+            items (Iterable[PutObjectItem]): The objects to upload, each
+                carrying its key, payload and per-object options.
+            bucket (str | None): Override target bucket for every item.
+            max_concurrency (int): Maximum uploads awaited at once.
+
+        Returns:
+            dict[str, str]: Mapping of each item's key to the uploaded
+            object's ETag (quotes stripped).
+
+        Raises:
+            ValueError: If ``max_concurrency`` is less than 1, or an item
+                with file-like data omits ``length``.
+            S3Error: When an upload fails.
+        """
+        batch = list(items)
+        etags = await self._gather_bounded(
+            [
+                self.put_object(
+                    item.key,
+                    item.data,
+                    bucket=bucket,
+                    content_type=item.content_type,
+                    metadata=item.metadata,
+                    length=item.length,
+                    part_size=item.part_size,
+                )
+                for item in batch
+            ],
+            max_concurrency,
+        )
+        return dict(zip((item.key for item in batch), etags, strict=True))
+
+    async def get_objects_bytes(
+        self,
+        keys: Iterable[str],
+        *,
+        bucket: str | None = None,
+        max_concurrency: int = 16,
+    ) -> dict[str, bytes]:
+        """Download many objects as bytes concurrently.
+
+        Duplicate keys are collapsed, so each object is fetched once.
+        Downloads are fail-fast: the first failure aborts the batch and
+        propagates. Suitable for small objects — stream large payloads
+        individually via :meth:`stream_object`.
+
+        Args:
+            keys (Iterable[str]): Object keys to download.
+            bucket (str | None): Override source bucket for every key.
+            max_concurrency (int): Maximum downloads awaited at once.
+
+        Returns:
+            dict[str, bytes]: Mapping of each unique key to its payload.
+
+        Raises:
+            ValueError: If ``max_concurrency`` is less than 1.
+            S3Error: When a download fails.
+        """
+        unique = list(dict.fromkeys(keys))
+        blobs = await self._gather_bounded(
+            [self.get_object_bytes(key, bucket=bucket) for key in unique],
+            max_concurrency,
+        )
+        return dict(zip(unique, blobs, strict=True))
+
 
 __all__: list[str] = [
     "AsyncMinIOClient",
     "ObjectStat",
+    "PutObjectItem",
 ]
