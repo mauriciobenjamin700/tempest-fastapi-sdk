@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.133.0"
+version = "0.133.1"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -121,7 +121,7 @@ geo = [
     "httpx>=0.28.0",
 ]
 ssr = [
-    "tempestweb>=0.9.0",
+    "tempestweb>=0.60.0",
 ]
 sqlite = [
     "aiosqlite>=0.20.0",
@@ -165,7 +165,7 @@ all = [
     "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
     "opentelemetry-instrumentation-httpx>=0.48b0",
     "ort-vision-sdk>=0.4.0",
-    "tempestweb>=0.9.0",
+    "tempestweb>=0.60.0",
     "chromadb>=0.5.0",
 ]
 
@@ -242,7 +242,7 @@ dev = [
     "opentelemetry-instrumentation-fastapi>=0.48b0",
     "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
     "opentelemetry-instrumentation-httpx>=0.48b0",
-    "tempestweb>=0.9.0",
+    "tempestweb>=0.60.0",
     "chromadb>=0.5.0",
 ]
 docs = [

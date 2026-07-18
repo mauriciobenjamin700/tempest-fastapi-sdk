@@ -5,6 +5,17 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.133.1] — 2026-07-18
+
+### Changed
+
+- **Bump the `tempestweb` floor to `>=0.60.0`** in the `[ssr]` and `[all]` extras
+  (previously `>=0.9.0`). The `tempest_fastapi_sdk.ssr` bridge
+  (`Page`, `html_response`, `make_htmx_router`, `make_web_app_router`,
+  `build_web_app`, `detect_build_mode`) is developed against the current
+  `tempestweb` line; pinning the floor to the latest release keeps a fresh
+  install from resolving a years-stale backend that predates those APIs.
+
 ## [0.133.0] — 2026-07-18
 
 ### Added
