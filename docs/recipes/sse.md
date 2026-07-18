@@ -17,7 +17,10 @@ O SDK traz três peças: `EventStream` (fila async em memória que alimenta
 uma conexão), `ServerSentEvent` (codifica um frame no formato do spec) e
 `sse_response` (embrulha o stream num `StreamingResponse` com os headers
 certos — `Cache-Control: no-cache`, `Connection: keep-alive`,
-`X-Accel-Buffering: no` pra desligar o buffer do nginx).
+`X-Accel-Buffering: no` pra desligar o buffer do nginx). No dia a dia você
+chama os atalhos `EventStream.response(...)` / `SSEBroker.response(channel)`,
+que já embrulham com o `sse_response` por baixo; use o `sse_response` cru só
+quando quiser controlar o gerador na mão.
 
 !!! tip "Novidades da v0.91"
     - **Backpressure** — a fila do `EventStream` agora é **limitada**
@@ -73,6 +76,32 @@ async def events() -> StreamingResponse:
     produtor rodando pra sempre. Passe `on_disconnect=` pro
     `EventStream.response` (ou pro `sse_response`) — ele roda no `finally`
     do gerador da resposta, o único ponto que dispara na desconexão.
+
+Suba a API e veja os frames crus no terminal — `curl -N` desliga o buffer
+e imprime cada frame assim que chega:
+
+```bash
+curl -N http://127.0.0.1:8000/events
+```
+
+```text
+event: counter
+id: 1
+data: {"n": 1}
+
+event: counter
+id: 2
+data: {"n": 2}
+
+event: counter
+id: 3
+data: {"n": 3}
+```
+
+Repare no formato do spec: cada frame é um bloco de linhas `campo: valor`
+(`event`, `id`, depois `data`), e a **linha em branco** (`\n\n`) separa um
+frame do próximo. Como você passou um dict, o `data` saiu JSON-serializado
+sozinho.
 
 ??? note "Antes da v0.91: `try/finally` na mão"
     Até a v0.90 você embrulhava o `stream()` num gerador externo só pra
@@ -166,9 +195,21 @@ uma string qualquer (id de usuário, slug de sala...).
 
 ```python
 # src/api/dependencies/resources.py
+from fastapi import FastAPI, Request
+
 from tempest_fastapi_sdk import SSEBroker
 
-broker = SSEBroker()   # singleton — guarde em app.state e injete via Depends
+broker = SSEBroker()   # singleton do processo
+
+
+def register_broker(app: FastAPI) -> None:
+    """Guarda o broker em app.state (chame no create_app/lifespan)."""
+    app.state.broker = broker
+
+
+def get_broker(request: Request) -> SSEBroker:
+    """Injeta o broker do app.state nos endpoints via Depends."""
+    return request.app.state.broker
 ```
 
 ```python
@@ -237,6 +278,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.state.broker = broker   # mesmo get_broker do exemplo de cima resolve isso
 # broker.publish(...) em qualquer worker -> chega em TODOS os workers
 ```
 
@@ -380,7 +422,7 @@ Pontos de alinhamento:
 
 ## Recap
 
-- `EventStream` (1 por conexão) + `sse_response` — endpoint SSE com headers prontos.
+- `EventStream` (1 por conexão) + `.response()` — endpoint SSE com headers prontos (`sse_response` é a versão low-level por baixo).
 - Amarre o produtor à conexão com `on_disconnect=` (em `EventStream.response`, `sse_response` ou `broker.response`) — sem `try/finally` na mão.
 - Fila **limitada** (`max_queue`, default `1000`) + `overflow` (`drop_oldest`/`drop_newest`/`block`) evita vazamento por cliente lento; `dropped_events` conta o descarte.
 - `publish(data, event=, id=, retry=)` cobre os 4 campos do spec; `data` não-string vira JSON.
