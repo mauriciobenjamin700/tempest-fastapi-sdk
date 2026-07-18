@@ -17,7 +17,9 @@ feeding one connection), `ServerSentEvent` (encodes a frame in the spec
 wire format) and `sse_response` (wraps the stream in a
 `StreamingResponse` with the right headers — `Cache-Control: no-cache`,
 `Connection: keep-alive`, `X-Accel-Buffering: no` to disable nginx
-buffering).
+buffering). Day to day you call the shortcuts `EventStream.response(...)` /
+`SSEBroker.response(channel)`, which wrap `sse_response` under the hood; reach
+for raw `sse_response` only when you want to drive the generator by hand.
 
 !!! tip "New in v0.91"
     - **Backpressure** — the `EventStream` queue is now **bounded**
@@ -74,6 +76,32 @@ async def events() -> StreamingResponse:
     don't want the producer running forever. Pass `on_disconnect=` to
     `EventStream.response` (or `sse_response`) — it runs in the response
     generator's `finally`, the one place that fires on disconnect.
+
+Start the API and watch the raw frames in your terminal — `curl -N`
+disables buffering and prints each frame as it arrives:
+
+```bash
+curl -N http://127.0.0.1:8000/events
+```
+
+```text
+event: counter
+id: 1
+data: {"n": 1}
+
+event: counter
+id: 2
+data: {"n": 2}
+
+event: counter
+id: 3
+data: {"n": 3}
+```
+
+Note the spec wire format: each frame is a block of `field: value` lines
+(`event`, `id`, then `data`), and the **blank line** (`\n\n`) separates one
+frame from the next. Because you passed a dict, `data` was JSON-serialized
+for you.
 
 ??? note "Before v0.91: hand-rolled `try/finally`"
     Up to v0.90 you wrapped `stream()` in an outer generator just to get
@@ -165,9 +193,21 @@ any string (a user id, a room slug...).
 
 ```python
 # src/api/dependencies/resources.py
+from fastapi import FastAPI, Request
+
 from tempest_fastapi_sdk import SSEBroker
 
-broker = SSEBroker()   # singleton — keep on app.state and inject via Depends
+broker = SSEBroker()   # process-wide singleton
+
+
+def register_broker(app: FastAPI) -> None:
+    """Store the broker on app.state (call it in create_app/lifespan)."""
+    app.state.broker = broker
+
+
+def get_broker(request: Request) -> SSEBroker:
+    """Inject the app.state broker into endpoints via Depends."""
+    return request.app.state.broker
 ```
 
 ```python
@@ -236,6 +276,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.state.broker = broker   # the same get_broker from above resolves this
 # broker.publish(...) on any worker -> reaches ALL workers
 ```
 
@@ -380,7 +421,7 @@ Alignment points:
 
 ## Recap
 
-- `EventStream` (one per connection) + `sse_response` — an SSE endpoint with headers set.
+- `EventStream` (one per connection) + `.response()` — an SSE endpoint with headers set (`sse_response` is the low-level primitive underneath).
 - Tie the producer to the connection with `on_disconnect=` (on `EventStream.response`, `sse_response` or `broker.response`) — no hand-rolled `try/finally`.
 - Queue is **bounded** (`max_queue`, default `1000`) + `overflow` (`drop_oldest`/`drop_newest`/`block`) prevents leaks from slow clients; `dropped_events` counts the discards.
 - `publish(data, event=, id=, retry=)` covers the 4 spec fields; non-string `data` becomes JSON.
