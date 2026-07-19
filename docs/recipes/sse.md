@@ -245,6 +245,117 @@ async def feed(
     sozinha. `SSEBroker(max_queue=..., overflow=...)` aplica a mesma
     política de backpressure a todo stream que ele abre.
 
+### Disparando do domínio (controller)
+
+O `broker.response(...)` acima é o lado da **inscrição**. O outro lado é a
+**publicação**: quando um evento de negócio acontece — pedido criado, pagamento
+confirmado, mensagem nova — a lógica chama `broker.publish(canal, ...)` e todo
+stream inscrito naquele canal recebe. Isso mora no **controller**, que orquestra
+o service (regra de negócio) e o broker (notificação ao vivo). O canal é o id do
+usuário que deve ser avisado.
+
+```python
+# src/controllers/order.py
+from tempest_fastapi_sdk import SSEBroker
+
+from src.schemas import OrderCreateSchema, OrderResponseSchema
+from src.services import OrderService
+
+
+class OrderController:
+    """Orchestrates order creation and the live seller notification."""
+
+    def __init__(self, order_service: OrderService, broker: SSEBroker) -> None:
+        """Wire the order service and the SSE broker.
+
+        Args:
+            order_service (OrderService): Order business logic.
+            broker (SSEBroker): Fan-out broker for live notifications.
+        """
+        self.order_service = order_service
+        self.broker = broker
+
+    async def create_order(self, data: OrderCreateSchema) -> OrderResponseSchema:
+        """Create an order and notify the seller in real time.
+
+        Args:
+            data (OrderCreateSchema): The order creation payload.
+
+        Returns:
+            The created order.
+        """
+        order = await self.order_service.create(data)
+        await self.broker.publish(
+            str(order.seller_id),   # canal = id de quem recebe a notificação
+            {"order_id": str(order.id), "total": str(order.total)},
+            event="order_created",
+            id=str(order.id),
+        )
+        return order
+```
+
+O provider monta o controller com o service e o broker injetados — o mesmo
+`get_broker` do bloco de cima:
+
+```python
+# src/api/dependencies/controllers.py
+from fastapi import Depends
+
+from tempest_fastapi_sdk import SSEBroker
+
+from src.api.dependencies.resources import get_broker
+from src.api.dependencies.services import get_order_service
+from src.controllers import OrderController
+from src.services import OrderService
+
+
+def get_order_controller(
+    order_service: OrderService = Depends(get_order_service),
+    broker: SSEBroker = Depends(get_broker),
+) -> OrderController:
+    """Build an OrderController with its service and the SSE broker."""
+    return OrderController(order_service, broker)
+```
+
+O router só recebe o controller por `Depends` e delega — nada de regra de
+negócio nem `publish` solto na rota:
+
+```python
+# src/api/routers/orders.py
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.controllers import get_order_controller
+from src.controllers import OrderController
+from src.schemas import OrderCreateSchema, OrderResponseSchema
+
+router = APIRouter()
+
+
+@router.post("/orders")
+async def create_order(
+    data: OrderCreateSchema,
+    controller: OrderController = Depends(get_order_controller),
+) -> OrderResponseSchema:
+    """Create an order; the seller gets a live SSE notification."""
+    return await controller.create_order(data)
+```
+
+O comprador que estiver com o `GET /feed` aberto recebe na hora:
+
+```text
+event: order_created
+id: 9f3a...
+data: {"order_id": "9f3a...", "total": "149.90"}
+```
+
+!!! tip "Publicar de fora do request (fila, task, webhook)"
+    `broker.publish` é só uma coroutine — chame de qualquer lugar que tenha o
+    broker: um consumer FastStream, uma task TaskIQ, um webhook. Ele só alcança
+    quem está **conectado no momento** (o registro do canal some na desconexão);
+    pra notificação **durável**, persista no banco e trate o SSE como a camada
+    ao vivo por cima. Em multi-worker (Redis), o `publish` chega ao worker onde
+    o cliente está preso — veja abaixo.
+
 ### Multi-worker: bridge Redis (pronto, sem código extra)
 
 O `SSEBroker` em memória vive em **um** worker — com `--workers N`, um
@@ -427,6 +538,6 @@ Pontos de alinhamento:
 - Fila **limitada** (`max_queue`, default `1000`) + `overflow` (`drop_oldest`/`drop_newest`/`block`) evita vazamento por cliente lento; `dropped_events` conta o descarte.
 - `publish(data, event=, id=, retry=)` cobre os 4 campos do spec; `data` não-string vira JSON.
 - Heartbeat é comentário (invisível ao EventSource); `None` desliga.
-- Broadcast = `SSEBroker`; `broker.response(channel)` faz register + response + unregister; multi-worker = passe um client Redis + suba `broker.run()` no lifespan.
+- Broadcast = `SSEBroker`; `broker.response(channel)` faz register + response + unregister; publique de controllers/tasks/filas com `broker.publish(channel, ...)`; multi-worker = passe um client Redis + suba `broker.run()` no lifespan.
 - Auth: **cookie** (`cookie_name` + `withCredentials`) na mesma origem; **query string** (`query_param`, só access token curto sobre TLS) pra clientes cookieless.
 - `tempest-react-sdk` `createEventStream`/`useEventStream` consome com reconnect; `namedEvents` ↔ `publish(event=)`.
