@@ -39,6 +39,8 @@ Four objects compose the flow. Mount once in `app.py`:
 # src/api/app.py
 from fastapi import FastAPI
 
+from redis.asyncio import Redis
+
 from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
     RedisSessionStore,
@@ -48,16 +50,17 @@ from tempest_fastapi_sdk import (
     make_session_router,
     register_exception_handlers,
 )
-from tempest_fastapi_sdk.cache import AsyncRedisManager
 
 from src.core.settings import settings
 from src.db.models import UserModel
 
 db = AsyncDatabaseManager(settings.DATABASE_URL)
-cache = AsyncRedisManager(settings.REDIS_URL)
 session_settings = SessionSettings()
 
-session_store = RedisSessionStore(cache.client, prefix=f"{settings.APP_NAME}:")
+session_store = RedisSessionStore(
+    Redis.from_url(settings.REDIS_URL, decode_responses=True),
+    prefix=f"{settings.APP_NAME}:",
+)
 session_auth = SessionAuth(
     user_model=UserModel,
     store=session_store,
@@ -87,6 +90,14 @@ def create_app() -> FastAPI:
 
 app = create_app()
 ```
+
+!!! note "Why `Redis.from_url` here, not `AsyncRedisManager`?"
+    This client feeds a **middleware** (`SessionMiddleware`), built in
+    `create_app` (sync), before any async lifespan runs. `Redis.from_url()` is
+    **lazy** — it constructs without opening a connection, so it fits here.
+    `AsyncRedisManager` needs `await connect()` and fits where there's an async
+    context: a client via `Depends(cache.client_dependency)`, or the `SSEBroker`
+    built in the lifespan. Both need the `[cache]` extra (the `redis` package).
 
 Done. The user calls `POST /auth/session/login` with email+password; the SDK sets the HttpOnly+Secure cookie; every subsequent request that carries the cookie has `request.state.session` populated.
 
@@ -164,11 +175,14 @@ State lives in the process dict. **Does not scale** — uvicorn restart wipes ev
 ### `RedisSessionStore` — production
 
 ```python
-from tempest_fastapi_sdk import RedisSessionStore
-from tempest_fastapi_sdk.cache import AsyncRedisManager
+from redis.asyncio import Redis
 
-cache = AsyncRedisManager(settings.REDIS_URL)
-session_store = RedisSessionStore(cache.client, prefix="myapp:")
+from tempest_fastapi_sdk import RedisSessionStore
+
+session_store = RedisSessionStore(
+    Redis.from_url(settings.REDIS_URL, decode_responses=True),
+    prefix="myapp:",
+)
 ```
 
 Internal schema:
@@ -179,7 +193,7 @@ Internal schema:
 Redis handles TTL automatically — no janitor process needed.
 
 !!! note "`RedisSessionStore` requires the `[cache]` extra"
-    `RedisSessionStore` and `AsyncRedisManager` depend on the async `redis` client, which only ships with the `[cache]` extra. Install with `uv add "tempest-fastapi-sdk[cache]"` (add `auth` etc. as your service needs). `MemorySessionStore` needs no extra at all.
+    `RedisSessionStore` depends on the async `redis` client, which only ships with the `[cache]` extra. Since it feeds a middleware, hand it a `Redis.from_url(...)` (lazy) rather than `AsyncRedisManager` — both come from the same `redis` package. Install with `uv add "tempest-fastapi-sdk[cache]"` (add `auth` etc. as your service needs). `MemorySessionStore` needs no extra at all.
 
 ### Custom
 
@@ -240,4 +254,4 @@ Possible. A web SPA uses the session cookie; mobile on the same backend uses `Us
 
 - **[Auth flow »](auth-flow.en.md)** — bundled JWT flow (signup / activate / reset). Sessions only cover login/logout.
 - **[Security »](security.en.md)** — `CSRFMiddleware` to harden POSTs against cross-site attacks even with `SameSite=lax`.
-- **[Cache »](cache.en.md)** — `AsyncRedisManager`, which backs `RedisSessionStore`.
+- **[Cache »](cache.en.md)** — `AsyncRedisManager` for async contexts; `RedisSessionStore` takes a lazy `Redis.from_url` because it feeds a middleware.

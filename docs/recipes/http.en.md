@@ -345,10 +345,11 @@ from tempest_fastapi_sdk import (
 )
 
 from src.api.dependencies.resources import get_jwt_utils
+from src.core.settings import settings
 
 
 def create_app() -> FastAPI:
-    redis: Redis = Redis.from_url("redis://localhost:6379/0")
+    redis: Redis = Redis.from_url(settings.REDIS_URL)
     app = FastAPI(...)
     app.add_middleware(
         RateLimitMiddleware,
@@ -362,6 +363,14 @@ def create_app() -> FastAPI:
 ```
 
 The sliding-window semantics are identical across both stores; only where the counters live changes. You can still push rate limiting to the edge (nginx / Cloudflare / AWS WAF) when you prefer.
+
+!!! note "Why `Redis.from_url` here, not `AsyncRedisManager`?"
+    This client feeds a **middleware**, built in `create_app` (sync), before any
+    async lifespan runs. `Redis.from_url()` is **lazy** — it constructs without
+    opening a connection, so it fits here. `AsyncRedisManager` needs `await
+    connect()` and fits where there's an async context: a client via
+    `Depends(cache.client_dependency)`, or the `SSEBroker` built in the lifespan.
+    Both need the `[cache]` extra (the `redis` package).
 
 
 ## Webhook signature verification
