@@ -134,6 +134,15 @@ classDiagram
         +datetime created_at
     }
 
+    class PushSubscription {
+        +UUID id
+        +UUID user_id
+        +str endpoint
+        +str p256dh
+        +str auth
+        +datetime created_at
+    }
+
     User "1" --o "0..2" Organization : owns
     User "1" --o "0..5" Membership : has
     Organization "1" --o "1..10" Membership : has
@@ -148,7 +157,10 @@ classDiagram
     Order "1" --* "1..*" OrderItem : itemized as
     User "1" --o "*" Review : writes
     ProductVariant "1" --o "*" Review : reviewed by
+    User "1" --o "*" PushSubscription : registers
 ```
+
+`PushSubscription` guarda um dispositivo/navegador inscrito no Web Push do usuário (`endpoint` + chaves `p256dh`/`auth` que o browser gera). Um usuário tem N inscrições (desktop, celular, cada aba/perfil). É o alvo do canal **background** da mensageria — o canal **foreground** (SSE) não precisa de estado persistido, é só uma conexão viva por `user_id`.
 
 ## Diagrama ER (modelo físico)
 
@@ -171,6 +183,7 @@ erDiagram
     ORDER_ITEMS }o--|| PRODUCT_VARIANTS : "refs"
     USERS ||--o{ REVIEWS : "writes"
     PRODUCT_VARIANTS ||--o{ REVIEWS : "rated"
+    USERS ||--o{ PUSH_SUBSCRIPTIONS : "registers"
 
     USERS {
         UUID id PK
@@ -284,6 +297,14 @@ erDiagram
         string comment
         datetime created_at
     }
+    PUSH_SUBSCRIPTIONS {
+        UUID id PK
+        UUID user_id FK
+        string endpoint UK
+        string p256dh
+        string auth
+        datetime created_at
+    }
 ```
 
 ## Enums
@@ -363,6 +384,9 @@ classDiagram
 | `Cart`/`CartItem` | `BaseModel + AuditMixin` | `BaseRepository[CartModel]` | `BaseService` |
 | `Order`/`OrderItem` | `BaseModel + AuditMixin` | custom | `BaseService` |
 | `Review` | `BaseModel + AuditMixin` | `BaseRepository[ReviewModel]` | `BaseService` |
+| `PushSubscription` | modelo base de subscription do SDK (Web Push) | `BaseRepository[PushSubscriptionModel]` | `WebPushSubscriptionService` |
+
+O `PushSubscriptionModel` **não é escrito à mão** — concretiza o modelo base de subscription que o SDK expõe (só declara `__tablename__` e a FK pro `user_id`), exatamente como na **[Receita Web Push »](../../recipes/webpush.md)**. O `WebPushSubscriptionService` recebe esse `BaseRepository[PushSubscriptionModel]` + um `WebPushDispatcher` e cuida do CRUD e do envio (podando dispositivos mortos 404/410). Não há entidade `Notification` persistida: cada notificação é efêmera — vive só como frame SSE (foreground) e/ou payload Web Push (background), ambos derivados do mesmo evento de domínio.
 
 `PriceHistory` e `StockMovement` são append-only, então o repositório deles **não expõe `update` nem `delete`** — só `add`/`list`/`get`. Isso impede ALTER acidental no histórico.
 

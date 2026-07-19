@@ -3,13 +3,13 @@
 The [Tour](tour.md) shows each piece in isolation. Here they work
 **together** in a real flow: an authenticated customer pays an order via
 Pix, and the system prices it with a cache, writes the order + event in the
-**same transaction** (outbox), fires a background email, and pushes the
-status over SSE — all with SDK blocks.
+**same transaction** (outbox), fires a background email, and notifies the
+customer in real time over **SSE + Web Push** — all with SDK blocks.
 
 Components exercised at once: **settings + db**, **auth (JWT)**,
 **validated fields + PixKeyField**, **cache (`@cached`)**, **repository +
-service**, **transactional outbox**, **MessageBroker**, **TaskQueue** and
-**SSE**.
+service**, **transactional outbox**, **MessageBroker**, **TaskQueue**, **SSE**
+and **Web Push**.
 
 ## 1. Resources (one place)
 
@@ -173,7 +173,88 @@ async def on_order_paid(event: OrderPaid) -> None:
                          event="order_update")                                 # SSE
 ```
 
-## 8. Frontend gets the status in real time
+## 8. Live payment notification (SSE + Web Push)
+
+Section 7 pushed the status with a raw `events.publish` — perfect with the tab
+**open**. But the Pix confirmation is a domain event that deserves **both**
+channels: SSE for whoever is online and **Web Push (VAPID)** for whoever closed
+the app. A `NotificationService` fans the **same payload** out to both.
+
+```python
+# src/services/notification.py
+from uuid import UUID
+
+from tempest_fastapi_sdk import (
+    SSEBroker,
+    WebPushPayloadSchema,
+    WebPushSubscriptionService,
+)
+
+
+class NotificationService:
+    """Fan one domain event out to SSE (foreground) and Web Push (background)."""
+
+    def __init__(self, broker: SSEBroker, push: WebPushSubscriptionService) -> None:
+        self.broker = broker
+        self.push = push
+
+    async def notify(
+        self, user_id: UUID, event: str, title: str, body: str, data: dict
+    ) -> None:
+        """Deliver the same event over SSE (live) and Web Push (closed app)."""
+        await self.broker.publish(str(user_id), data, event=event)
+        await self.push.notify_user(
+            user_id,
+            WebPushPayloadSchema(title=title, body=body, tag=event, data=data),
+        )
+```
+
+Wire `notifications` with the global `events` (section 1) and a
+`WebPushSubscriptionService(BaseRepository(session, PushSubscriptionModel), dispatcher)`
+— the `dispatcher` comes from `WebPushDispatcher(**settings.webpush_kwargs())`.
+On confirmation, section 7's handler swaps the raw `events.publish` for a single
+`notify`:
+
+```python
+# src/queue/consumers.py
+@mq.on("orders.paid")
+async def on_order_paid(event: OrderPaid) -> None:
+    await send_receipt.enqueue(to=event.user_email, order_id=event.order_id)   # background
+    await notifications.notify(                                                # SSE + Web Push
+        event.user_id,
+        event="payment_confirmed",
+        title="Payment approved",
+        body=f"Order {event.order_id} confirmed.",
+        data={"order_id": event.order_id},
+    )
+```
+
+Whoever has the app open subscribes to the channel over SSE; `broker.response`
+handles register/stream/unregister:
+
+```python
+# src/api/routers/notifications.py
+@router.get("/notifications/stream")
+async def stream(user: UserModel = Depends(current_user)) -> StreamingResponse:
+    return notifications.broker.response(str(user.id))
+```
+
+The register/unregister of Web Push (VAPID) subscriptions is mounted via
+`make_web_push_router(...)` — the concrete model (`PushSubscriptionModel`) and
+the router live in the [Web Push](recipes/webpush.md) recipe. An SSE frame
+delivered on this channel:
+
+```text
+event: payment_confirmed
+id: 42
+data: {"order_id": "ord_123"}
+```
+
+SSE is **core** (no extra); Web Push needs the extra:
+`uv add "tempest-fastapi-sdk[webpush]"`. Each channel's primitives live in
+[SSE](recipes/sse.md) and [Web Push](recipes/webpush.md) — here we only compose them.
+
+## 9. Frontend gets the status in real time
 
 ```python
 # src/api/routers/feed.py
@@ -195,8 +276,10 @@ async def feed(user: UserModel = Depends(current_user)) -> StreamingResponse:
 1. `POST /api/checkout` — JWT authenticates, the schema validates (quantity > 0, Pix ok).
 2. The service prices with the **cache**, writes **order + outbox event** in one transaction.
 3. The **relay** publishes `orders.paid` to the **broker** once the commit landed.
-4. The consumer enqueues the email (**TaskQueue**) and publishes to the **SSEBroker**.
-5. The browser, on `GET /api/feed`, receives `order_update` immediately.
+4. The consumer enqueues the email (**TaskQueue**) and fans the confirmation out
+   with the **NotificationService**: **SSE** for the open tab, **Web Push** for the closed one.
+5. The browser gets the update immediately on `GET /api/feed` / `GET /notifications/stream`;
+   whoever is away receives the **Web Push**.
 
 Each capability has its own recipe (see the [Tour](tour.md)); the point
 here is how they compose with no manual glue: exceptions become the right

@@ -120,6 +120,19 @@ The full REST API of the marketplace in a single table, ready to paste into the 
 | GET  | `/variants/{id}/reviews` | public | — | 200 | Public reviews. |
 | DELETE | `/reviews/{id}` | user (author) | — | 204 | Delete own review. |
 
+## Notifications (real-time messaging)
+
+A domain event (order paid/shipped, invite, new review) is delivered on two channels with the same payload — **SSE** for the app open (foreground) and **Web Push** for the app closed (background). Details in the "Notifications: SSE + Web Push" flow on [Critical flows](flows.en.md).
+
+| Method | Path | Auth | Idem | Status | Description |
+|--------|------|------|------|--------|-------------|
+| GET  | `/notifications/stream` | user | — | 200 | **SSE** — per-user channel (`SSEBroker`, channel = `str(user.id)`); returns `broker.response(...)`. Receives all the user's events live. |
+| POST | `/push/subscriptions` | user | ✅ | 201 | Register a device for Web Push (`endpoint` + `p256dh`/`auth` keys). `make_web_push_router`. |
+| DELETE | `/push/subscriptions` | user | — | 204 | Remove the current device's subscription (by `endpoint`). `make_web_push_router`. |
+
+!!! info "Required extras"
+    SSE (`/notifications/stream`) is **core** — no extra needed. The `/push/subscriptions` routes come from `make_web_push_router` and need the `[webpush]` extra (`uv add "tempest-fastapi-sdk[webpush]"`). Multi-worker SSE (Redis fan-out) needs `[cache]`.
+
 ## Technical endpoints (SDK)
 
 | Method | Path | Auth | Description |

@@ -1,6 +1,6 @@
 # 🛒 Marketplace de produtos
 
-Plataforma multi-tenant de vendas estilo **Mercado Livre / Shopee**, sem integrações externas. O foco é exercitar o `tempest-fastapi-sdk` num cenário realista — auth, multi-tenant, RBAC, idempotência, estoque auditável, pedidos com máquina de estados, SSE pra status em tempo real, uploads via MinIO, email transacional.
+Plataforma multi-tenant de vendas estilo **Mercado Livre / Shopee**, sem integrações externas. O foco é exercitar o `tempest-fastapi-sdk` num cenário realista — auth, multi-tenant, RBAC, idempotência, estoque auditável, pedidos com máquina de estados, mensageria em tempo real (SSE + Web Push) pra status e notificações, uploads via MinIO, email transacional.
 
 ## Páginas do projeto
 
@@ -15,7 +15,7 @@ Plataforma multi-tenant de vendas estilo **Mercado Livre / Shopee**, sem integra
 
 ```bash
 # 1. Scaffold via SDK
-tempest new marketplace --extras auth,admin,upload,cache,email,minio,queue,tasks,metrics,prometheus,http
+tempest new marketplace --extras auth,admin,upload,cache,email,minio,queue,tasks,metrics,prometheus,http,webpush
 
 # 2. Sobe infra
 cd marketplace
@@ -61,7 +61,9 @@ Quando o serviço subir você terá:
 | Checkout sem duplicar | `IdempotencyMiddleware` + `RedisIdempotencyStore` |
 | Limite de tamanho do body do upload | `BodySizeLimitMiddleware` (v0.28+) |
 | Imagens de produto | `UploadUtils` + `MinIOUploadStorage` + presigned URLs |
-| Status do pedido em tempo real | `EventStream`, `sse_response` |
+| Status do pedido em tempo real (app aberto) | `SSEBroker` — canal por usuário (`str(user.id)`); `broker.response(channel)` monta a `StreamingResponse` |
+| Notificação com app fechado (background) | `WebPushDispatcher` + `WebPushSubscriptionService` + `make_web_push_router` (extra `[webpush]`) |
+| Um evento de domínio em dois canais (foreground + background) | `NotificationService` custom fazendo fan-out SSE + Web Push com o mesmo payload |
 | Notificações async | `AsyncTaskBrokerManager` (TaskIQ) + `AsyncBrokerManager` (FastStream) |
 | Cache catálogo público | `AsyncRedisManager`, `@cached` |
 | Métricas oncall | `PrometheusMiddleware` + `make_prometheus_router` (v0.28+) e `MetricsUtils` |
@@ -91,16 +93,19 @@ marketplace/
     │   │   ├── stock.py           # entrada / saída / ajuste
     │   │   ├── cart.py            # carrinho do comprador
     │   │   ├── orders.py          # checkout + status
-    │   │   └── reviews.py         # avaliação pós-entrega
+    │   │   ├── reviews.py         # avaliação pós-entrega
+    │   │   ├── notifications.py   # GET /notifications/stream (SSE)
+    │   │   └── push.py            # make_web_push_router (subscriptions)
     │   └── dependencies/
     │       ├── auth.py            # current_user, require_org_role
     │       └── controllers.py
     ├── controllers/               # orquestração entre services
     ├── services/                  # lógica de domínio
+    │   └── notification.py        # NotificationService (fan-out SSE + Web Push)
     ├── schemas/                   # DTOs Pydantic
     ├── core/                      # settings + exceptions + constants
     ├── db/
-    │   ├── models/                # ORM
+    │   ├── models/                # ORM (inclui push_subscription.py)
     │   └── repositories/          # queries
     ├── queue/                     # consumers FastStream
     ├── tasks/                     # tarefas TaskIQ
@@ -115,7 +120,7 @@ marketplace/
 4. **Catálogo + produtos** — `Product` + `ProductVariant` + `PriceHistory`. (Cobre: relacionamentos 1-N, soft-delete.)
 5. **Estoque** — `StockMovement` (append-only) + saldo derivado via view ou query agregada. (Cobre: auditoria, transações.)
 6. **Carrinho + checkout** — `Cart` + `Order` + `OrderItem` com idempotência. (Cobre: state machine, idempotência.)
-7. **Status em tempo real via SSE** — stream de eventos de mudança de status pro comprador. (Cobre: SSE.)
+7. **Mensageria em tempo real (SSE + Web Push)** — um `NotificationService` faz fan-out de cada evento de domínio (pedido pago/expedido, convite, novo review) em dois canais com o mesmo payload: `SSEBroker` pro comprador com o app aberto e Web Push (VAPID) pros dispositivos com o app fechado. (Cobre: SSE, Web Push.) SSE é core; Web Push precisa de `uv add "tempest-fastapi-sdk[webpush]"`; SSE multi-worker precisa de `[cache]`. Veja **[Receita SSE »](../../recipes/sse.md)** e **[Receita Web Push »](../../recipes/webpush.md)**.
 8. **Imagens de produto** — upload via `UploadUtils` + `MinIOUploadStorage` + listagem com presigned URL. (Cobre: storage.)
 9. **Notificações async** — TaskIQ enviando emails + RabbitMQ publicando eventos pra projeções/relatórios. (Cobre: filas, tarefas.)
 10. **Métricas + admin** — endpoint Prometheus + `/admin` listando entidades. (Cobre: observabilidade, admin SDK.)

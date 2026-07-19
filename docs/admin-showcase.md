@@ -12,7 +12,9 @@ Exercitados de uma vez: **audit history** (`audit_model=`),
 JSON** (automático em colunas `JSON`).
 
 !!! info "O que você precisa"
-    Núcleo do SDK + o extra `[admin]`. Nada além.
+    Núcleo do SDK + o extra `[admin]`. A seção de **notificações
+    operacionais** (§5) soma o extra `[webpush]`; o canal SSE é núcleo e
+    não pede nada.
 
 ## 1. Modelos
 
@@ -225,7 +227,312 @@ def create_app() -> FastAPI:
     return app
 ```
 
-## 5. O que você vê
+## 5. Notificações operacionais (SSE + Web Push)
+
+A trilha de auditoria (§1, §4) é o **registro durável** do que aconteceu —
+uma linha por escrita, pra consultar depois. Mas ela é passiva: ninguém
+fica com o `audit_log` aberto esperando. Quando um evento de negócio
+interessa ao time **agora** — um pedido novo entrou, um cadastro caiu, uma
+denúncia de moderação subiu — você quer um **sinal ao vivo**, não uma linha
+pra auditar depois. É a outra metade do par: auditoria = durável, passivo;
+notificação = efêmero, ao vivo.
+
+O mesmo evento vai por **dois canais, com o mesmo payload**:
+
+- **SSE** pro painel **aberto** — um canal compartilhado `"staff"` que todo
+  admin logado assina; chega como toast/badge na hora.
+- **Web Push** pro painel **fechado** — o navegador entrega em segundo
+  plano via Service Worker, mesmo sem aba aberta.
+
+Um `NotificationService.notify_staff(...)` faz o fan-out pros dois.
+
+!!! info "Instalação"
+    SSE é núcleo — já vem no SDK. O Web Push pede o extra:
+    `uv add "tempest-fastapi-sdk[webpush]"` (traz `pywebpush` +
+    `cryptography`). Primitivas em [SSE](recipes/sse.md) e
+    [Web Push](recipes/webpush.md).
+
+### A tabela de inscrições Web Push
+
+Um device por linha, `endpoint` único, FK pro usuário — a linha concreta
+sobre a base do SDK (igual ao padrão de auth):
+
+```python
+# src/db/models.py  (junto dos modelos da §1)
+from tempest_fastapi_sdk import BaseWebPushSubscriptionModel
+
+
+class WebPushSubscription(BaseWebPushSubscriptionModel):
+    __tablename__ = "web_push_subscriptions"
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+```
+
+### O serviço de notificação
+
+Uma peça só, que orquestra os dois canais. O broker é o mesmo singleton de
+processo do [recipe de SSE](recipes/sse.md#broadcast-pra-varios-clientes-ssebroker);
+o `WebPushSubscriptionService` sai do [recipe de Web Push](recipes/webpush.md#tabela-servico-recomendado).
+
+```python
+# src/services/notification.py
+from tempest_fastapi_sdk import (
+    BaseRepository,
+    SSEBroker,
+    WebPushPayloadSchema,
+    WebPushSubscriptionService,
+)
+
+from src.db.models import User
+
+STAFF_CHANNEL = "staff"
+
+
+class NotificationService:
+    """Fan one staff-relevant domain event out to SSE and Web Push.
+
+    The audit log is the durable record of what happened; this is the live
+    signal that pokes whoever is on shift. The same payload goes on two
+    channels: a shared SSE channel every open admin panel subscribes to,
+    and Web Push for the panels that are closed.
+    """
+
+    def __init__(
+        self,
+        broker: SSEBroker,
+        push: WebPushSubscriptionService,
+        users: BaseRepository,
+    ) -> None:
+        """Wire the SSE broker, the Web Push service and the user repository.
+
+        Args:
+            broker (SSEBroker): Fan-out broker for the shared staff channel.
+            push (WebPushSubscriptionService): Per-device Web Push delivery.
+            users (BaseRepository): Repository used to resolve staff members.
+        """
+        self.broker = broker
+        self.push = push
+        self.users = users
+
+    async def notify_staff(
+        self, event: str, title: str, body: str, data: dict
+    ) -> None:
+        """Broadcast a domain event to the whole staff, on both channels.
+
+        Publishes once to the shared SSE channel (every open panel), then
+        pushes each staff member's registered devices for the closed ones.
+
+        Args:
+            event (str): SSE event name and Web Push tag (e.g. "new_order").
+            title (str): Web Push notification title.
+            body (str): Web Push notification body.
+            data (dict): Payload carried identically on both channels.
+        """
+        await self.broker.publish(STAFF_CHANNEL, data, event=event)
+        payload = WebPushPayloadSchema(title=title, body=body, tag=event, data=data)
+        admins = await self.users.list()
+        for user in admins:
+            if user.role in {"staff", "superadmin"}:
+                await self.push.notify_user(user.id, payload)
+```
+
+### Disparando no evento de domínio
+
+O pedido entra pela loja (não pelo admin). O controller que cria o pedido
+delega pros dois services depois de persistir — auditoria e notificação são
+camadas distintas: uma grava, a outra avisa. Sem acesso a banco na rota nem
+no controller: quem consulta staff é o `NotificationService`.
+
+```python
+# src/controllers/order.py  (lado da loja — onde o pedido é feito)
+from src.schemas import OrderCreateSchema, OrderResponseSchema
+from src.services import NotificationService, OrderService
+
+
+class OrderController:
+    """Create an order and alert staff in real time."""
+
+    def __init__(
+        self, orders: OrderService, notifications: NotificationService
+    ) -> None:
+        """Wire the order service and the notification fan-out.
+
+        Args:
+            orders (OrderService): Order business logic.
+            notifications (NotificationService): Live staff notifier.
+        """
+        self.orders = orders
+        self.notifications = notifications
+
+    async def place_order(self, data: OrderCreateSchema) -> OrderResponseSchema:
+        """Persist an order and push a live alert to every staff member.
+
+        Args:
+            data (OrderCreateSchema): The order creation payload.
+
+        Returns:
+            The created order.
+        """
+        order = await self.orders.create(data)
+        await self.notifications.notify_staff(
+            event="new_order",
+            title="Novo pedido",
+            body=f"{order.customer_email} — R$ {order.total}",
+            data={"order_id": str(order.id), "url": f"/admin/orders/{order.id}"},
+        )
+        return order
+```
+
+### O endpoint de inscrição SSE
+
+O painel aberto assina o canal `"staff"`. Como o `EventSource` nativo não
+manda header, a rota reusa **o mesmo cookie de sessão** que o
+`make_admin_router` emitiu no login — o `SignedCookieSessionStore` com o
+mesmo `secret_key` e o `UserModelAuthBackend` da §4:
+
+```python
+# src/api/dependencies/admin_stream.py
+from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk.admin import SignedCookieSessionStore, UserModelAuthBackend
+
+from src.core.settings import settings
+from src.db.connection import db
+from src.db.models import User
+
+_store = SignedCookieSessionStore(secret_key=settings.SECRET_KEY)
+_backend = UserModelAuthBackend(User, mfa_issuer="Loja")
+
+
+async def require_admin(
+    request: Request,
+    session: AsyncSession = Depends(db.session_dependency),
+) -> User:
+    """Resolve the logged-in admin from the panel's own session cookie.
+
+    EventSource cannot send an Authorization header, so the stream leans on
+    the signed session cookie make_admin_router already issued at login —
+    no second auth mechanism to keep in sync.
+
+    Args:
+        request (Request): The inbound SSE request.
+        session (AsyncSession): A live DB session.
+
+    Returns:
+        The authenticated admin user.
+
+    Raises:
+        HTTPException: 401 when there is no valid, fully-authenticated
+            admin session (missing, tampered, or still MFA-pending).
+    """
+    admin_session = _store.load(request)
+    if admin_session is None or admin_session.mfa_pending:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+    user = await _backend.load_principal(session, admin_session.principal_id)
+    if user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+    return user
+```
+
+```python
+# src/api/routers/admin_stream.py
+from fastapi import APIRouter, Depends
+from starlette.responses import StreamingResponse
+
+from tempest_fastapi_sdk import SSEBroker
+
+from src.api.dependencies.admin_stream import require_admin
+from src.api.dependencies.resources import get_broker
+from src.db.models import User
+
+router = APIRouter(prefix="/admin/notifications")
+
+
+@router.get("/stream")
+async def stream(
+    _: User = Depends(require_admin),
+    broker: SSEBroker = Depends(get_broker),
+) -> StreamingResponse:
+    """Subscribe the open admin panel to the shared "staff" channel."""
+    return broker.response(STAFF_CHANNEL)
+```
+
+`broker.response(STAFF_CHANNEL)` faz register + `sse_response` +
+unregister-na-desconexão num call só — sem `try/finally` pra esquecer.
+
+### Montando: inscrição de device + stream
+
+O Web Push precisa que cada device se inscreva; o `make_web_push_router`
+entrega `/subscribe` + `/unsubscribe` prontos (estilo `make_auth_router`).
+Ligue-os no `create_app` da §4, ao lado do router do admin e do stream:
+
+```python
+# src/api/app.py  (somando à §4)
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import (
+    BaseRepository,
+    SSEBroker,
+    WebPushDispatcher,
+    WebPushSubscriptionService,
+    make_web_push_router,
+)
+
+from src.api.dependencies import get_current_user_id, get_session
+from src.api.routers.admin_stream import router as admin_stream_router
+from src.db.models import WebPushSubscription
+
+broker = SSEBroker()   # mesmo singleton que o get_broker resolve
+
+
+def _push_service(session: AsyncSession) -> WebPushSubscriptionService:
+    repo = BaseRepository(session, model=WebPushSubscription)
+    return WebPushSubscriptionService(repo, WebPushDispatcher(**settings.webpush_kwargs()))
+
+
+app.state.broker = broker
+app.include_router(admin_stream_router)
+app.include_router(
+    make_web_push_router(
+        service_factory=_push_service,
+        session_factory=get_session,
+        current_user_id=get_current_user_id,
+    )
+)
+# GET  /admin/notifications/stream         (SSE, cookie de admin)
+# POST /api/push/subscribe | /unsubscribe  (registro de device)
+```
+
+No front do painel, o `EventSource` assina o canal e cada `new_order` vira
+um toast (o cookie de admin vai sozinho com `withCredentials`):
+
+```javascript
+const es = new EventSource("/admin/notifications/stream", { withCredentials: true });
+es.addEventListener("new_order", (e) => toast(JSON.parse(e.data)));
+```
+
+Quando um pedido entra, todo painel aberto recebe o frame na hora:
+
+```text
+event: new_order
+data: {"order_id": "9f3a...", "url": "/admin/orders/9f3a..."}
+```
+
+E quem estiver com o painel fechado recebe o **mesmo** evento como
+notificação Web Push do sistema (`title`/`body`), com o Service Worker
+abrindo `data.url` no clique.
+
+!!! check "Durável vs ao vivo — os dois, não um ou outro"
+    A auditoria (`audit_model=`) responde *"o que aconteceu e quem fez"*
+    semanas depois; a notificação responde *"o que preciso ver agora"*. O
+    SSE só alcança quem está **conectado no momento** e o push depende de
+    permissão do browser — nenhum dos dois é registro confiável. Persista o
+    fato (auditoria/banco) **e** dispare o sinal (notificação); nunca troque
+    um pelo outro.
+
+## 6. O que você vê
 
 - **Dashboard** — três cards de negócio (número, tendência, partição) no
   topo, ao lado do painel de sistema (CPU/RAM). Só os modelos que o
@@ -235,11 +542,19 @@ def create_app() -> FastAPI:
   timeline de auditoria no detail de cada produto.
 - **Pedidos** — abas **All / Pendentes / Pagos** (lenses); os itens do
   pedido numa tabela no detail, com "Add" já ligado ao pedido.
+- **Notificações** — com o painel aberto, cada pedido novo pinga um toast
+  ao vivo (SSE no canal `"staff"`); com ele fechado, chega como Web Push do
+  sistema — o mesmo evento que a auditoria registra em paralelo.
 - **RBAC** — um `staff` navega e lê tudo o que pode, mas todo botão de
   criar/editar/apagar some e as rotas respondem `403`.
 
 !!! check "Recap"
     Um `AdminSite` + alguns `AdminModel` bem anotados entregam um admin de
     produção: auditoria, autocomplete, inlines, métricas, import, RBAC e
-    lenses — cada um um argumento, todos tipados, sem metaclasse. Detalhe
-    de cada um nas receitas do [Painel admin](recipes/admin.md).
+    lenses — cada um um argumento, todos tipados, sem metaclasse. Por cima,
+    um `NotificationService` reusa o `SSEBroker` (canal `"staff"`) e o
+    `WebPushSubscriptionService` pra transformar eventos de domínio em
+    sinais ao vivo — o par da auditoria: uma grava durável, o outro avisa
+    na hora. Detalhe de cada um nas receitas do
+    [Painel admin](recipes/admin.md), [SSE](recipes/sse.md) e
+    [Web Push](recipes/webpush.md).

@@ -1,6 +1,6 @@
 # Fluxos críticos
 
-Diagramas de sequência para os 5 fluxos que **mais erram na primeira implementação**, junto com as máquinas de estado de `Order` e `Invitation`. Cada fluxo aponta os primitivos do SDK envolvidos.
+Diagramas de sequência para os fluxos que **mais erram na primeira implementação** — incluindo a mensageria em tempo real (SSE + Web Push) — junto com as máquinas de estado de `Order` e `Invitation`. Cada fluxo aponta os primitivos do SDK envolvidos.
 
 ## 1. Signup público + login
 
@@ -220,9 +220,92 @@ sequenceDiagram
 
 **Pontos do SDK:**
 
-- `EventStream` mantém um broadcaster por `order_id` — cada cliente do comprador conectado recebe via SSE.
+- `SSEBroker` mantém um canal por usuário — cada cliente conectado do comprador recebe o frame (ver fluxo 6 pro fan-out completo).
 - Transição **MUST** validar o estado origem (state machine no service).
 - Estoque vira `OUT` definitivo só na entrega — se cancelar antes, o `RESERVATION` vira `RELEASE`.
+
+## 6. Notificações: SSE + Web Push (um evento, dois canais)
+
+Todo evento de domínio relevante pro usuário — pedido pago, pedido expedido, convite recebido, novo review — é entregue em **dois canais que carregam o mesmo payload**: **SSE** (`SSEBroker`, canal = id do usuário) pros clientes com o app **aberto** (foreground, ao vivo) e **Web Push** (VAPID) pros dispositivos com o app/aba **fechado** (background). É "notificação como mensageria": um único `NotificationService.notify(...)` faz o fan-out pros dois.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor A as Admin (vendedor)
+    participant OS as OrderService
+    participant N as NotificationService
+    participant SB as SSEBroker
+    participant WP as WebPushSubscriptionService
+    actor FG as App aberto (foreground)
+    actor BG as Dispositivo fechado (background)
+
+    Note over A: evento de domínio: pedido expedido
+    A->>OS: POST /orders/{id}/ship {tracking}
+    OS->>OS: transition(order_id, SHIPPED)
+    OS->>N: notify(buyer_id, "order_shipped", title, body, data)
+    par canal foreground
+        N->>SB: publish(str(user_id), data, event="order_shipped")
+        SB-->>FG: frame SSE (event: order_shipped)
+    and canal background
+        N->>WP: notify_user(user_id, WebPushPayloadSchema(...))
+        WP-->>BG: Web Push (VAPID) → service worker exibe a notificação
+    end
+    Note over WP: dispositivos mortos (404/410) são podados automaticamente
+```
+
+O produtor (um controller/service) dispara o evento logo após a transição de domínio:
+
+```python
+await self.notifications.notify(
+    order.buyer_id,
+    event="order_shipped",
+    title="Pedido a caminho",
+    body=f"Pedido {order.code} saiu para entrega.",
+    data={"order_id": str(order.id), "status": order.status},
+)
+```
+
+O `NotificationService` é o único ponto que conhece os dois canais:
+
+```python
+# src/services/notification.py
+from uuid import UUID
+
+from tempest_fastapi_sdk import SSEBroker, WebPushPayloadSchema, WebPushSubscriptionService
+
+
+class NotificationService:
+    """Fan one domain event out to SSE (foreground) and Web Push (background)."""
+
+    def __init__(self, broker: SSEBroker, push: WebPushSubscriptionService) -> None:
+        self.broker = broker
+        self.push = push
+
+    async def notify(
+        self, user_id: UUID, event: str, title: str, body: str, data: dict
+    ) -> None:
+        """Deliver one event on both channels with the same payload."""
+        await self.broker.publish(str(user_id), data, event=event)
+        await self.push.notify_user(
+            user_id, WebPushPayloadSchema(title=title, body=body, tag=event, data=data)
+        )
+```
+
+O cliente com o app aberto assina `GET /notifications/stream`, que devolve `broker.response(str(user.id))`. Um frame SSE que chega nele:
+
+```text
+event: order_shipped
+id: 01J8Z9F2K7Q3M5R8T0W1X2Y3Z4
+data: {"order_id": "9f8e7d6c-5b4a-3210-fedc-ba9876543210", "status": "SHIPPED"}
+
+```
+
+**Pontos do SDK:**
+
+- **SSE é core** (sem extra): `SSEBroker()`, `await broker.publish(channel, data, event=..., id=..., retry=...)`, `broker.response(channel)` já monta a `StreamingResponse` que assina o canal e desregistra ao desconectar. SSE **multi-worker** precisa de `SSEBroker(redis=...)` + `broker.run()` no lifespan → extra `[cache]`.
+- **Web Push precisa do extra `[webpush]`** (`uv add "tempest-fastapi-sdk[webpush]"`): monte `WebPushDispatcher(**settings.webpush_kwargs())`, passe-o pro `WebPushSubscriptionService(repository, dispatcher)`; `await service.notify_user(user_id, payload, *, ttl_seconds=None, exclude_endpoints=None)` envia pra todos os dispositivos do usuário e poda os mortos (404/410).
+- O mesmo `data` viaja nos dois canais — o frontend trata SSE e Web Push com o mesmo handler.
+- Detalhes dos primitivos: **[Receita SSE »](../../recipes/sse.md)** e **[Receita Web Push »](../../recipes/webpush.md)**.
 
 ## Máquina de estados — Order
 
