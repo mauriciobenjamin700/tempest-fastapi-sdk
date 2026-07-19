@@ -22,6 +22,14 @@ chama os atalhos `EventStream.response(...)` / `SSEBroker.response(channel)`,
 que já embrulham com o `sse_response` por baixo; use o `sse_response` cru só
 quando quiser controlar o gerador na mão.
 
+!!! info "Precisa instalar algo? SSE é nativo"
+    `EventStream`, `ServerSentEvent`, `sse_response` e o `SSEBroker` em memória
+    fazem parte do **core** — não têm extra próprio, já vêm com
+    `tempest-fastapi-sdk` (dependem só de `starlette`, que o FastAPI já traz).
+    Não existe extra `[sse]`. Só o **bridge Redis** (multi-worker) pede o extra
+    `[cache]` — `uv add "tempest-fastapi-sdk[cache]"`, que traz o `redis`. A
+    auth por cookie/query usa `JWTUtils`, do extra `[auth]`.
+
 !!! tip "Novidades da v0.91"
     - **Backpressure** — a fila do `EventStream` agora é **limitada**
       (`max_queue`, default `1000`): cliente lento não faz a memória
@@ -397,7 +405,8 @@ app.state.broker = broker   # mesmo get_broker do exemplo de cima resolve isso
     Sem Redis, `SSEBroker()` já resolve um processo. Quando precisar de
     múltiplos workers/hosts, só injete o client Redis e suba o `run()` no
     lifespan — nenhum endpoint muda. O `publish` se torna cross-process de
-    graça.
+    graça. O `redis` vem do extra `[cache]`
+    (`uv add "tempest-fastapi-sdk[cache]"`).
 
 ## Autenticação (cookie ou query string)
 
