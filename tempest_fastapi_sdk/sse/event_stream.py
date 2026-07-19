@@ -5,9 +5,16 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable
+from collections.abc import (
+    AsyncIterable,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Mapping,
+    Sequence,
+)
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 from starlette.responses import StreamingResponse
 
@@ -22,6 +29,21 @@ OverflowPolicy = Literal["drop_oldest", "drop_newest", "block"]
 * ``"block"`` — apply backpressure: :meth:`EventStream.publish` waits
   until the consumer drains a slot. Use only when the producer is
   dedicated to a single connection and losing events is unacceptable.
+"""
+
+SSEData: TypeAlias = (
+    str | bytes | Mapping[str, Any] | Sequence[Any] | int | float | bool | None
+)
+"""Payload accepted by the SSE publishers (:meth:`EventStream.publish`,
+:meth:`SSEBroker.publish`, and the :class:`ServerSentEvent` ``data`` field).
+
+``str`` and ``bytes`` are written to the wire as-is; every other value is
+JSON-encoded (``json.dumps(..., default=str)``) before transmission. The
+union spells out the JSON value shapes — objects (``Mapping``), arrays
+(``Sequence``) and the scalars ``str`` / ``int`` / ``float`` / ``bool`` /
+``None``. To send an arbitrary object that only serializes via
+``default=str`` (e.g. a bare ``UUID``), wrap it in ``str(...)`` or a dict
+first.
 """
 
 _SSE_HEADERS: dict[str, str] = {
@@ -47,7 +69,7 @@ class ServerSentEvent:
     object — non-string payloads are JSON-encoded before transmission.
 
     Attributes:
-        data (Any): The event payload.
+        data (SSEData): The event payload.
         event (str | None): Optional event name; the browser routes
             ``EventSource.addEventListener(name, ...)`` by this.
         id (str | None): Optional ``Last-Event-ID`` value used by
@@ -58,7 +80,7 @@ class ServerSentEvent:
             frame (renders as ``: comment``); useful for heartbeats.
     """
 
-    data: Any = ""
+    data: SSEData = ""
     event: str | None = None
     id: str | None = None
     retry: int | None = None
@@ -200,7 +222,7 @@ class EventStream:
 
     async def publish(
         self,
-        data: Any = "",
+        data: SSEData = "",
         *,
         event: str | None = None,
         id: str | None = None,
@@ -209,7 +231,7 @@ class EventStream:
         """Enqueue a new event for delivery.
 
         Args:
-            data (Any): The payload (string, bytes or JSON-serializable).
+            data (SSEData): The payload (string, bytes or JSON-serializable).
             event (str | None): Optional event name.
             id (str | None): Optional Last-Event-ID.
             retry (int | None): Optional reconnect hint in milliseconds.
@@ -363,6 +385,7 @@ def sse_response(
 __all__: list[str] = [
     "EventStream",
     "OverflowPolicy",
+    "SSEData",
     "ServerSentEvent",
     "sse_response",
 ]

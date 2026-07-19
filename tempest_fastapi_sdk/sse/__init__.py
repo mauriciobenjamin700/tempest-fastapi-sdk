@@ -11,6 +11,9 @@ from tempest_fastapi_sdk.sse.event_stream import (
     ServerSentEvent as ServerSentEvent,
 )
 from tempest_fastapi_sdk.sse.event_stream import (
+    SSEData as SSEData,
+)
+from tempest_fastapi_sdk.sse.event_stream import (
     sse_response as sse_response,
 )
 
@@ -18,6 +21,7 @@ __all__: list[str] = [
     "EventStream",
     "OverflowPolicy",
     "SSEBroker",
+    "SSEData",
     "ServerSentEvent",
     "sse_response",
 ]

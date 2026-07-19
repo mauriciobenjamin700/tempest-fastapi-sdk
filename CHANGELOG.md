@@ -5,6 +5,24 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.134.0] — 2026-07-19
+
+### Added
+
+- **`SSEData` type alias** (exported from the top level and `tempest_fastapi_sdk.sse`):
+  `str | bytes | Mapping[str, Any] | Sequence[Any] | int | float | bool | None` —
+  the payload contract for SSE publishers.
+
+### Changed
+
+- **Type the SSE `data` parameter with `SSEData`** instead of `Any` on
+  `ServerSentEvent.data`, `EventStream.publish` and `SSEBroker.publish`. Runtime
+  behavior is unchanged (`str`/`bytes` sent as-is, everything else JSON-encoded
+  via `json.dumps(..., default=str)`); this only tightens the static type.
+  Passing a bare object that relies solely on `default=str` serialization (e.g.
+  a top-level `UUID`) now needs an explicit `str(...)`/dict wrap to satisfy the
+  type checker.
+
 ## [0.133.1] — 2026-07-18
 
 ### Changed

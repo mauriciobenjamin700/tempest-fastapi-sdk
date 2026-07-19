@@ -149,6 +149,11 @@ await stream.publish(
 | `id` | Vira `Last-Event-ID`; o navegador reenvia no reconnect pra você retomar. |
 | `retry` | Atraso de reconexão sugerido (ms). |
 
+O tipo do `data` é o alias exportado **`SSEData`**
+(`str | bytes | Mapping | Sequence | int | float | bool | None`) — as formas de
+valor JSON, mais `str`/`bytes` crus. Pra mandar um objeto que só serializa via
+`str()` (ex.: um `UUID` solto), embrulhe em `str(...)` ou num dict antes.
+
 `heartbeat_seconds` emite um **comentário** SSE (`: keepalive`) quando o
 stream fica ocioso, pra load-balancers não cortarem a conexão.
 Comentários são **invisíveis** ao `EventSource` — não disparam nenhum
