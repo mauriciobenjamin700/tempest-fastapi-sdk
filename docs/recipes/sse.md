@@ -498,34 +498,85 @@ O que cada parte faz:
     cross-process de graça. O `AsyncRedisManager` vem do extra `[cache]`
     (`uv add "tempest-fastapi-sdk[cache]"`).
 
-??? note "Multi-worker sem Redis: bridge via RabbitMQ"
-    O `run()` do `SSEBroker` é **Redis-only** (`redis.pubsub()` por baixo) — o
-    param `redis=` não aceita outro transporte. Se você **já roda RabbitMQ** e
-    não quer Redis só pra isso, dá pra fiar o bridge à mão com o `MessageBroker`
-    (extra `[queue]`): cada worker mantém um `SSEBroker()` **em memória** (sem
-    `redis=`), o domínio publica o evento no broker de fila (não no SSE direto),
-    e o handler de cada worker chama o `broker.publish` **local**.
+### Multi-worker sem Redis: bridge via RabbitMQ
 
-    ```python
-    from tempest_fastapi_sdk import SSEBroker
-    from tempest_fastapi_sdk.queue import MessageBroker
+O bridge embutido (`SSEBroker.run()`) é **Redis-only** — o param `redis=` não
+aceita outro transporte. Se você **já roda RabbitMQ** e não quer Redis só pra
+isso, dá pra montar o fan-out entre workers à mão: cada worker mantém um
+`SSEBroker()` **em memória** (sem `redis=`), e um subscriber RabbitMQ em cada
+worker repassa o evento pro `broker.publish` **local**.
 
-    broker = SSEBroker()                       # em memória, um por worker
-    mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)
+A peça que faz o broadcast funcionar é o **exchange fanout**: toda mensagem
+publicada nele é copiada pra **todas** as filas ligadas. Cada worker declara uma
+fila **exclusiva** (some quando o worker cai), então todos recebem cada evento —
+diferente do default do RabbitMQ (work-queue), em que só **um** consumidor
+pegaria a mensagem.
 
-    @mq.on("sse.fanout")                        # cada worker recebe e repassa local
-    async def _fan(evt: dict) -> None:
-        await broker.publish(evt["channel"], evt["data"], event=evt["event"])
+```python
+# src/api/app.py
+from contextlib import asynccontextmanager
 
-    # o domínio publica aqui, em vez de chamar broker.publish direto:
-    # await mq.publish("sse.fanout", {"channel": str(user_id), "event": "order_created", "data": {...}})
-    ```
+from fastapi import FastAPI
+from faststream.rabbit import ExchangeType, RabbitExchange, RabbitQueue
 
-    **Pegadinha:** por padrão o RabbitMQ entrega cada mensagem a **um** consumidor
-    (work-queue). Pra o broadcast alcançar **todos** os workers, cada um precisa
-    de uma fila **exclusiva** ligada a um **exchange fanout** — configure via
-    `mq.broker` (o escape hatch pro `RabbitBroker` do FastStream). É esse ajuste
-    a mais que o Redis pub/sub te poupa, e por isso ele é o caminho padrão aqui.
+from tempest_fastapi_sdk import SSEBroker
+from tempest_fastapi_sdk.queue import MessageBroker
+
+from src.core.settings import settings
+
+broker = SSEBroker()                                 # em memória, um por worker
+mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)   # extra [queue]
+
+sse_exchange = RabbitExchange("sse.fanout", type=ExchangeType.FANOUT)
+worker_queue = RabbitQueue("", exclusive=True, auto_delete=True)
+
+
+@mq.broker.subscriber(worker_queue, sse_exchange)    # mq.broker = RabbitBroker do FastStream
+async def _fan(evt: dict) -> None:
+    """Relay one fanned-out event to this worker's local SSE streams."""
+    await broker.publish(evt["channel"], evt.get("data", ""), event=evt.get("event"))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await mq.connect()          # abre a conexão e sobe o subscriber
+    app.state.broker = broker   # o mesmo get_broker dos endpoints resolve isso
+    try:
+        yield
+    finally:
+        await mq.disconnect()
+
+
+app = FastAPI(lifespan=lifespan)
+```
+
+O que cada parte faz:
+
+- `SSEBroker()` sem `redis=` — fan-out **local** ao worker (só os streams presos nele).
+- `RabbitExchange(..., type=FANOUT)` + `RabbitQueue("", exclusive=True, auto_delete=True)`
+  — o exchange copia pra toda fila ligada; cada worker declara a sua, então
+  todos recebem cada evento.
+- `@mq.broker.subscriber(worker_queue, sse_exchange)` — o `mq.broker` é o
+  `RabbitBroker` do FastStream (escape hatch). A fachada `MessageBroker.on(...)`
+  não expõe fanout, por isso descemos pro broker cru aqui.
+- `await mq.connect()` no lifespan sobe o consumidor; `mq.disconnect()` fecha.
+
+O domínio publica **no exchange** (não no `broker.publish` direto) — aí chega em
+todos os workers:
+
+```python
+# de qualquer worker/handler:
+await mq.broker.publish(
+    {"channel": str(user_id), "event": "order_created", "data": {"order_id": str(order.id)}},
+    exchange=sse_exchange,
+)
+```
+
+!!! tip "Redis continua o caminho mais simples"
+    O RabbitMQ precisa desse exchange fanout + fila exclusiva por worker pra
+    replicar o que o Redis pub/sub (`SSEBroker.run()`) faz numa linha. Prefira
+    RabbitMQ quando ele **já é** sua infra; senão, o Redis (`[cache]`) é menos
+    peça móvel.
 
 ## Autenticação (cookie ou query string)
 
