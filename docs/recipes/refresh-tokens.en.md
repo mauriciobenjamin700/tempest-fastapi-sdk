@@ -4,6 +4,9 @@ Since **v0.66.0** the bundled auth flow can swap the *stateless* JWT refresh tok
 
 It is all **opt-in**: you pass a `refresh_token_model` to the service. Without it, the SDK keeps the stateless behavior it always had — zero breaking change.
 
+!!! info "Installation"
+    The refresh-token models (`BaseUserRefreshTokenModel`) ship with `tempest-fastapi-sdk`. `UserAuthService` and `make_auth_router` need the `[auth]` extra — `uv add "tempest-fastapi-sdk[auth]"` (pulls in `bcrypt` + `PyJWT`).
+
 ## What's in this recipe
 
 1. **[Stateless vs DB-backed in 30 seconds](#stateless-vs-db-backed)** — what changes and why.

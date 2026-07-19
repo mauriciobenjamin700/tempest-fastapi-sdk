@@ -4,6 +4,9 @@ Desde **v0.66.0** o fluxo de auth bundled pode trocar o refresh token JWT *state
 
 Tudo é **opt-in**: você passa um `refresh_token_model` pro serviço. Sem ele, o SDK mantém o comportamento stateless de sempre — zero breaking change.
 
+!!! info "Instalação"
+    Os models de refresh token (`BaseUserRefreshTokenModel`) já vêm com `tempest-fastapi-sdk`. O `UserAuthService` e o `make_auth_router` dependem do extra `[auth]` — `uv add "tempest-fastapi-sdk[auth]"` (traz `bcrypt` + `PyJWT`).
+
 ## Conteúdo da receita
 
 1. **[Stateless vs DB-backed em 30 segundos](#stateless-vs-db-backed)** — o que muda e por quê.

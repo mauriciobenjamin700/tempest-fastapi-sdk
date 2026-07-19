@@ -26,6 +26,7 @@ gen = TextGenerator(
     idle_unload_seconds=300,             # libera VRAM entre picos
 )
 answer = await gen.generate("Explique PIX em uma frase.")
+print(answer)
 ```
 
 ## 2. RAG sobre uma base de PDFs

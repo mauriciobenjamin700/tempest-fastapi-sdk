@@ -9,7 +9,7 @@ what you need.
     Start with the [Tutorial](tutorial.md) (builds the *Users* feature step
     by step). This tour shows how **each** extra piece slots into that
     skeleton. Install only the extras you use:
-    `uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.99.0"`.
+    `uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.133.1"`.
 
 ## Foundation
 
@@ -221,6 +221,9 @@ Recipes: [Feature flags](recipes/feature-flags.md), [Audit trail](recipes/audit-
 
 Hardware check, local LLM, embeddings, RAG (web + PDF) — all on your own
 hardware.
+
+!!! info "Installation"
+    The core ships with `tempest-fastapi-sdk`. Self-hosted generative AI needs the `[genai]` extra — `uv add "tempest-fastapi-sdk[genai]"` (pulls in `torch`, `transformers`, `accelerate`, `safetensors` and `huggingface-hub`).
 
 ```python
 from tempest_fastapi_sdk.genai import can_run, TextGenerator

@@ -28,6 +28,11 @@ client.
 
 ## The backend (SDK)
 
+!!! info "Installation"
+    The API and the HTTP primitives ship with `tempest-fastapi-sdk`. Serving
+    the frontend build with `make_web_app_router` needs the `[ssr]` extra —
+    `uv add "tempest-fastapi-sdk[ssr]"` (pulls in `tempestweb`).
+
 A task API with `BaseRepository`, `IdempotencyMiddleware` to deduplicate
 POSTs, and the frontend build served by `make_web_app_router` (included
 **last**):

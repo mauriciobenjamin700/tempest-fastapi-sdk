@@ -17,7 +17,7 @@ simples) e suba conforme a necessidade.
     Tudo aqui mora no extra `[ssr]`:
 
     ```bash
-    pip install "tempest-fastapi-sdk[ssr]"
+    uv add "tempest-fastapi-sdk[ssr]"
     ```
 
     O `tempestweb` é carregado sob demanda — `import tempest_fastapi_sdk`

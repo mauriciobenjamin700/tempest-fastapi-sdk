@@ -15,7 +15,7 @@ Multi-tenant sales platform **Mercado Livre / Shopee** style, no external integr
 
 ```bash
 # 1. Scaffold via SDK
-tempest new marketplace --extras auth,admin,upload,cache,email,minio,queue,tasks,metrics
+tempest new marketplace --extras auth,admin,upload,cache,email,minio,queue,tasks,metrics,prometheus,http
 
 # 2. Boot the infra
 cd marketplace

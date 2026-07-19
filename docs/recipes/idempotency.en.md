@@ -41,6 +41,11 @@ app.add_middleware(
 
 ## Production setup (multi-replica via Redis)
 
+!!! info "Installation"
+    In-memory idempotency ships with `tempest-fastapi-sdk` — the minimum
+    setup needs no extra. `RedisIdempotencyStore` needs the `[cache]`
+    extra — `uv add "tempest-fastapi-sdk[cache]"` (pulls in `redis`).
+
 ```python
 from fastapi import FastAPI
 from redis.asyncio import Redis

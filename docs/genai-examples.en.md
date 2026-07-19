@@ -26,6 +26,7 @@ gen = TextGenerator(
     idle_unload_seconds=300,             # free VRAM between bursts
 )
 answer = await gen.generate("Explain PIX in one sentence.")
+print(answer)
 ```
 
 ## 2. RAG over a PDF knowledge base

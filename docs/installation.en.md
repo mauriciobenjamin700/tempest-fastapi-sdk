@@ -34,7 +34,15 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[vision]` | `ort-vision-sdk` | vision helpers (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[otel]` | `opentelemetry-sdk`, OTLP exporter + FastAPI/SQLAlchemy/httpx instrumentations | OpenTelemetry instrumentation via `setup_tracing` |
-| `[all]` | everything above (includes `[vision]` and `[otel]`) | every helper |
+| `[geo]` | `httpx` | geospatial helpers: `haversine_km`, `estimate_travel`, `NominatimBackend`/`OSRMBackend` (geocoding + routing), `GeoPointMixin` |
+| `[ssr]` | `tempestweb` | HTMX-based SSR: `build_web_app`, `make_htmx_router`, `Page`, the `htmx` helper |
+| `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | local (heavy) GenAI: `TextGenerator`, `Embedder`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
+| `[genai-quant]` | `bitsandbytes` | 4/8-bit quantization for the local `[genai]` models |
+| `[genai-rag]` | `trafilatura`, `pymupdf`, `pgvector`, `httpx` | RAG ingestion: web scraping, PDF extraction, and pgvector embeddings |
+| `[genai-audio]` | `faster-whisper`, `coqui-tts` | STT (Whisper) + TTS (Coqui) |
+| `[genai-ollama]` | `httpx` | Ollama backend: `OllamaGenerator`, `OllamaEmbedder` |
+| `[genai-chroma]` | `chromadb` | Chroma vector store for RAG |
+| `[all]` | everything above **except** the heavy GenAI stacks (`[genai]`, `[genai-quant]`, `[genai-rag]`, `[genai-audio]`) | every helper except the heavy GenAI ones — install `[genai]`/`[genai-rag]`/etc. separately |
 
 === "Subset (recommended)"
 
@@ -51,14 +59,14 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 === "uv add"
 
     ```bash
-    uv add "tempest-fastapi-sdk[auth,upload,postgres]>=0.89.0"
+    uv add "tempest-fastapi-sdk[auth,upload,postgres]>=0.133.1"
     ```
 
 === "pyproject.toml"
 
     ```toml
     dependencies = [
-        "tempest-fastapi-sdk[auth,upload,postgres]>=0.89.0",
+        "tempest-fastapi-sdk[auth,upload,postgres]>=0.133.1",
     ]
     ```
 

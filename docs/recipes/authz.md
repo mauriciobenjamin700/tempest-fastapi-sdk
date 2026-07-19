@@ -71,6 +71,8 @@ from uuid import UUID
 
 from fastapi import Depends
 
+from tempest_fastapi_sdk.authz import make_permission_checker
+
 from src.api.dependencies import get_current_user, get_order_or_404
 
 require_delete = make_permission_checker(

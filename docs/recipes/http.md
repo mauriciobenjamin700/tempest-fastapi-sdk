@@ -431,6 +431,11 @@ verifier) e re-tenta falhas transitórias (erro de conexão, 5xx, 429) com
 backoff exponencial. Outros 4xx **não** são re-tentados. O cliente httpx
 é injetado (você é dono do ciclo de vida).
 
+!!! info "Instalação"
+    O resto da camada HTTP já vem com `tempest-fastapi-sdk`. O
+    `WebhookSender` depende do extra `[http]` —
+    `uv add "tempest-fastapi-sdk[http]"` (traz `httpx`).
+
 ```python
 import httpx
 

@@ -17,7 +17,7 @@ common layers of a Tempest service: FastAPI (incoming requests), SQLAlchemy
 (queries), and httpx (outbound calls). Requires the `[otel]` extra:
 
 ```bash
-pip install "tempest-fastapi-sdk[otel]"
+uv add "tempest-fastapi-sdk[otel]"
 ```
 
 Call it once at startup, after the app exists and (when you want to trace

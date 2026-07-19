@@ -6,6 +6,11 @@ async**. Ela existe para que você nunca reescreva a mesma engine,
 a mesma sessão por request, o mesmo CRUD e a mesma paginação em cada
 projeto.
 
+!!! info "Instalação"
+    O núcleo de banco já vem com `tempest-fastapi-sdk`. Os drivers async
+    entram por extra — `uv add "tempest-fastapi-sdk[postgres]"` (PostgreSQL,
+    traz `asyncpg`) ou `[sqlite]` (SQLite em dev, traz `aiosqlite`).
+
 São quatro peças, e você vai conhecê-las uma de cada vez:
 
 | Peça | Símbolo | Para quê |
@@ -456,6 +461,11 @@ def bust_cache(user: UserModel) -> None:
 connect(UserModel, RepositorySignal.POST_SAVE, bust_cache)
 disconnect(UserModel, RepositorySignal.POST_SAVE, bust_cache)  # remove
 ```
+
+!!! note "`search_index` e `cache` são objetos ilustrativos"
+    `search_index.upsert(...)` e `cache.delete(...)` são placeholders do
+    seu projeto (um cliente de busca, um cliente de cache) — não fazem
+    parte do SDK. Troque pelos objetos reais do seu domínio.
 
 Os quatro momentos:
 

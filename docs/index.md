@@ -21,13 +21,13 @@
 | `tempest_fastapi_sdk.core` | `JSONFormatter`, `configure_logging`, contexto de request-ID, `BaseStrEnum` / `BaseIntEnum` |
 | `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `UserTokenPurpose`, `BaseRepository` (com `bulk_*`), `AsyncDatabaseManager`, `AlembicHelper`, `AuditMixin`, `SoftDeleteMixin`, `reorder_base_columns_first`, `compose_hooks` |
 | `tempest_fastapi_sdk.exceptions` | hierarquia `AppException` (404 / 409 / 401 / 403 / 422 / 429 / arquivo grande demais / tipo de arquivo inválido / JWT) |
-| `tempest_fastapi_sdk.queue` | `AsyncBrokerManager` (FastStream / RabbitMQ) |
+| `tempest_fastapi_sdk.queue` | `MessageBroker` (fachada tipada recomendada), `AsyncQueueManager` / `AsyncBrokerManager` (wrappers de ciclo de vida FastStream / RabbitMQ) |
 | `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema`, paginação por cursor |
 | `tempest_fastapi_sdk.services` | `BaseService` |
 | `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `AuthSettings`, `CORSSettings`, `EmailSettings`, `LogSettings`, `TokenSettings`, `UploadSettings`, `WebPushSettings`, `TaskIQSettings` |
-| `tempest_fastapi_sdk.sse` | `EventStream`, `ServerSentEvent`, `sse_response` |
+| `tempest_fastapi_sdk.sse` | `EventStream`, `ServerSentEvent`, `sse_response`, `SSEBroker` |
 | `tempest_fastapi_sdk.storage` | `AsyncMinIOClient`, `ObjectStat` |
-| `tempest_fastapi_sdk.tasks` | `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
+| `tempest_fastapi_sdk.tasks` | `TaskQueue` (fachada tipada recomendada), `AsyncTaskBrokerManager`, `AsyncTaskScheduler` |
 | `tempest_fastapi_sdk.testing` | `test_session`, `test_database`, helpers de SQLite em memória |
 | `tempest_fastapi_sdk.utils` | `PasswordUtils`, `JWTUtils`, `EmailUtils` (com `render_template`), `UploadUtils`, `LocalUploadStorage`, `MinIOUploadStorage`, `HTTPClient`, `RetryPolicy`, `MetricsUtils`, `LogUtils`, `AttemptThrottle`, `DownloadUtils`, helpers BR, helpers de token opaco |
 | `tempest_fastapi_sdk.webpush` | `WebPushDispatcher`, `WebPushPayloadSchema`, `WebPushSubscriptionSchema` |
@@ -45,6 +45,9 @@ tempest new .
 uv sync
 uv run pytest
 ```
+
+!!! note "Sobre o `[all]`"
+    O extra `[all]` traz todos os helpers **exceto** os stacks pesados de GenAI (`[genai]`, `[genai-quant]`, `[genai-rag]`, `[genai-audio]`) — instale esses à parte quando precisar. Veja **[Instalação »](installation.md)** para a tabela completa de extras.
 
 !!! example "O que o `tempest new` produz"
     ```text

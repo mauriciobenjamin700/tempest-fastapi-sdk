@@ -27,6 +27,11 @@ nos dois casos ele chama a API com o cliente HTTP **tipado** do tempestweb.
 
 ## O backend (SDK)
 
+!!! info "Instalação"
+    A API e os primitivos HTTP já vêm com `tempest-fastapi-sdk`. Servir o
+    build do frontend com `make_web_app_router` depende do extra `[ssr]` —
+    `uv add "tempest-fastapi-sdk[ssr]"` (traz `tempestweb`).
+
 Uma API de tarefas com `BaseRepository`, `IdempotencyMiddleware` para
 deduplicar POSTs, e o build do frontend servido por `make_web_app_router`
 (incluído **por último**):

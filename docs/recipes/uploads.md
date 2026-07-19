@@ -52,7 +52,21 @@ key = await uploads.save(file, filename="logo.png")   # grava no bucket
 !!! tip "Centralize em `resources.py`"
     Construa o `uploads` (e o `minio`) uma vez em
     [`src/api/dependencies/resources.py`](../architecture.md) e injete via
-    `Depends(get_uploads)`, em vez de instanciar por request.
+    `Depends(get_uploads)`, em vez de instanciar por request. O `get_uploads`
+    é glue do seu projeto (não vem do SDK) — um provider que devolve a
+    instância única:
+
+    ```python
+    # src/api/dependencies/resources.py
+    from tempest_fastapi_sdk import UploadUtils
+
+    uploads = UploadUtils("var/uploads", max_size_bytes=10 * 1024 * 1024)
+
+
+    def get_uploads() -> UploadUtils:
+        """Return the shared UploadUtils instance."""
+        return uploads
+    ```
 
 ## Restringir extensões (allowlist)
 

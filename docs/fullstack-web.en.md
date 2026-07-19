@@ -17,7 +17,7 @@ and move up as you need to.
     Everything here lives in the `[ssr]` extra:
 
     ```bash
-    pip install "tempest-fastapi-sdk[ssr]"
+    uv add "tempest-fastapi-sdk[ssr]"
     ```
 
     `tempestweb` is loaded on demand — `import tempest_fastapi_sdk` never

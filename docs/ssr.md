@@ -14,7 +14,7 @@ sua interface.
     (e, transitivamente, o `tempest-core` com os widgets tipados).
 
     ```bash
-    pip install "tempest-fastapi-sdk[ssr]"
+    uv add "tempest-fastapi-sdk[ssr]"
     ```
 
 ## Por que isso existe
@@ -655,5 +655,5 @@ rodar direto com uvicorn também.
   com history fallback; inclua por último. **`build_web_app(dir)`** —
   hospeda um build **server** (WebSocket/SSE) como sub-app pra montar.
   **`detect_build_mode(dir)`** distingue os dois.
-- Tudo mora no extra `[ssr]` (`pip install "tempest-fastapi-sdk[ssr]"`),
+- Tudo mora no extra `[ssr]` (`uv add "tempest-fastapi-sdk[ssr]"`),
   carregado sob demanda — `import tempest_fastapi_sdk` nunca exige o extra.

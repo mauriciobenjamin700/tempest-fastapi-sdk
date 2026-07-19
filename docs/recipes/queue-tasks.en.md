@@ -36,6 +36,11 @@ class OrderPaid(BaseModel):
     user_id: str
 
 
+class OrderCancelled(BaseModel):
+    order_id: str
+    reason: str
+
+
 @mq.on("orders.paid")
 async def handle_order_paid(event: OrderPaid) -> None:
     """Receives every event published to the 'orders.paid' channel."""
@@ -109,6 +114,8 @@ mq.register(OrderPaidConsumer(channel="orders.paid", schema=OrderPaid))
 ```python
 from tempest_fastapi_sdk.queue import Consumer, subscribe
 
+# OrderPaid / OrderCancelled defined in the `src/queue/__init__.py` block above.
+
 
 class OrdersConsumer(Consumer):
     @subscribe("orders.paid")
@@ -149,6 +156,11 @@ async def send_welcome(to: str, name: str) -> None:
     """Runs on a worker, off the request path."""
     await email.send(to, "Welcome!", f"Hi, {name}.")
 ```
+
+!!! note "`email` is your mailer"
+    `email` here is your e-mail sender — an `EmailUtils` instance (the
+    `[email]` extra) wired up at module level. See the
+    [email recipe](email.md); swap it for your own send dependency.
 
 `@tq.task` returns a typed `Task` object with **two** clear actions:
 

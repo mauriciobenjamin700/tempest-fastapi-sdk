@@ -17,6 +17,9 @@ response.
   (`access_apps` by default), and
 - it extracts the user id from the subject claim (`sub` by default).
 
+!!! info "Installation"
+    `IntrospectionAuth` needs the `[http]` extra — `uv add "tempest-fastapi-sdk[http]"` (pulls in `httpx`, used to call the upstream `userinfo`).
+
 !!! info "When to use this"
     Use it when **another service** (IAGRO, a Keycloak, an Auth0, your
     own identity service) mints the tokens and your service only needs to
@@ -68,6 +71,10 @@ async def list_animals(
     """List the user's animals — id already resolved from the token."""
     return await service.list_for(user_id)
 ```
+
+!!! note "`service` is your application's glue"
+    `service.list_for(...)` stands in for your own service/repository layer —
+    it is not part of the SDK. Swap it for your project's real call.
 
 That's it. A request without `Authorization` gets **401**; a token the
 upstream rejects gets **401**; a user without `famacha` in `access_apps`
