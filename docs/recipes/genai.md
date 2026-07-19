@@ -152,7 +152,7 @@ Requer o extra `[genai-ollama]` (só `httpx`) e o daemon rodando com o
 modelo já baixado:
 
 ```bash
-pip install tempest-fastapi-sdk[genai-ollama]
+uv add "tempest-fastapi-sdk[genai-ollama]"
 ollama pull llama3.2
 ollama pull nomic-embed-text
 ```
@@ -324,7 +324,7 @@ asyncio.run(main())
 apaga tudo de um chat quando ele é removido.
 
 !!! info "Extra `[genai-chroma]` e o decaimento de recência"
-    Instale com `pip install tempest-fastapi-sdk[genai-chroma]`. O `score`
+    Instale com `uv add "tempest-fastapi-sdk[genai-chroma]"`. O `score`
     final combina similaridade e recência via
     `0.5 ** (idade_em_dias / recency_halflife_days)` — com o padrão de 14
     dias, um trecho de 14 dias atrás pesa metade de um recém-escrito.
@@ -785,10 +785,15 @@ assíncrono. Troque por `RedisEmbeddingCache` para compartilhar vetores
 entre processos sem mudar o call site:
 
 ```python
-from redis.asyncio import Redis
+from tempest_fastapi_sdk.cache import AsyncRedisManager
 from tempest_fastapi_sdk.genai import Embedder, RedisEmbeddingCache
 
-cache = RedisEmbeddingCache(Redis.from_url("redis://localhost"), ttl_seconds=86400)
+from src.core.settings import settings
+
+redis = AsyncRedisManager(**settings.redis_kwargs())
+# no lifespan: await redis.connect()  (antes de acessar .client)
+
+cache = RedisEmbeddingCache(redis.client, ttl_seconds=86400)
 embedder = Embedder("sentence-transformers/all-MiniLM-L6-v2", cache=cache)
 
 await embedder.embed(["texto"])  # 1ª vez calcula; próximos workers reaproveitam
@@ -796,6 +801,13 @@ await embedder.embed(["texto"])  # 1ª vez calcula; próximos workers reaproveit
 
 O `Embedder` aguarda `get`/`set` quando o cache é assíncrono e chama
 direto quando é síncrono — o mesmo código serve aos dois.
+
+!!! note "Client Redis: `AsyncRedisManager`"
+    O `RedisEmbeddingCache` recebe um `redis.asyncio.Redis` cru. Como o embedder
+    roda em contexto async (serviço/RAG, não middleware), use o
+    `AsyncRedisManager` (client gerenciado do SDK) e passe o `.client` **depois**
+    do `await redis.connect()` no lifespan — antes disso, `.client` levanta
+    `RuntimeError`. Precisa do extra `[cache]` (o pacote `redis`) além do `[genai]`.
 
 ## Recap
 
