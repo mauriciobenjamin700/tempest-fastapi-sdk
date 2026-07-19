@@ -7,7 +7,7 @@ Este tutorial passa pela conexão da feature **Users** usando todas as convenç�
 - Um repository, service e controller herdando das bases do SDK
 - Routers com controllers injetados via `Depends`
 - Subclasses de exceção de domínio serializadas pelo exception handler do SDK
-- Um `GET /users` paginado e um `POST /users` protegido por JWT
+- Um `GET /users` paginado e um `POST /users` de signup (com hashing de senha via `PasswordUtils`)
 
 !!! tip "Para os impacientes"
     Se você só quer copiar o layout, gere-o: `tempest new my-service`. A CLI entrega o mesmo esqueleto que este tutorial percorre.
@@ -261,6 +261,9 @@ __all__: list[str] = ["BaseModel", "UserModel"]
 > **Dica:** Sempre importe os modelos em `src/db/__init__.py`. O SQLAlchemy precisa "ver" todo modelo antes de `BaseModel.metadata` ficar completa, para que o autogenerate do Alembic e o `create_tables()` funcionem corretamente.
 
 ### 4. Schemas
+
+!!! info "Instalação"
+    Os schemas abaixo usam `EmailStr`, que precisa do validador `email-validator` — traga-o com o extra `[email]` (`uv add "tempest-fastapi-sdk[email]"`) ou via `pydantic[email]`. Mais adiante o service usa `PasswordUtils` (hashing bcrypt), que depende do extra `[auth]` — `uv add "tempest-fastapi-sdk[auth]"`.
 
 O padrão de nomenclatura recomendado: um schema `*Create`, `*Update`, `*Response` e `*Filter` por recurso.
 

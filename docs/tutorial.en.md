@@ -7,7 +7,7 @@ This tutorial walks through wiring the **Users** feature using every SDK convent
 - A repository, service and controller subclassing the SDK bases
 - Routers with `Depends`-injected controllers
 - Domain exception subclasses serialized by the SDK's exception handler
-- A paginated `GET /users` and a JWT-protected `POST /users`
+- A paginated `GET /users` and a signup `POST /users` (with password hashing via `PasswordUtils`)
 
 !!! tip "Tom for the impatient"
     If you only want to copy the layout, scaffold it: `tempest new my-service`. The CLI ships the same skeleton this tutorial walks through.
@@ -261,6 +261,9 @@ __all__: list[str] = ["BaseModel", "UserModel"]
 > **Tip:** Always import models in `src/db/__init__.py`. SQLAlchemy needs to "see" every model before `BaseModel.metadata` is complete, so Alembic autogenerate and `create_tables()` work correctly.
 
 ### 4. Schemas
+
+!!! info "Installation"
+    The schemas below use `EmailStr`, which needs the `email-validator` package — pull it in with the `[email]` extra (`uv add "tempest-fastapi-sdk[email]"`) or via `pydantic[email]`. Further down the service uses `PasswordUtils` (bcrypt hashing), which needs the `[auth]` extra — `uv add "tempest-fastapi-sdk[auth]"`.
 
 The recommended naming pattern: one `*Create`, `*Update`, `*Response` and `*Filter` schema per resource.
 

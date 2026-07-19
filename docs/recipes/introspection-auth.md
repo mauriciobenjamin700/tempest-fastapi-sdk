@@ -17,6 +17,9 @@ introspecção e confia na resposta.
   (`access_apps` por padrão), e
 - extrai o id do usuário da claim de subject (`sub` por padrão).
 
+!!! info "Instalação"
+    O `IntrospectionAuth` depende do extra `[http]` — `uv add "tempest-fastapi-sdk[http]"` (traz `httpx`, usado pra chamar o `userinfo` upstream).
+
 !!! info "Quando usar isto"
     Use quando **outro serviço** (o IAGRO, um Keycloak, um Auth0, o seu
     próprio serviço de identidade) emite os tokens e o seu serviço só
@@ -68,6 +71,10 @@ async def list_animals(
     """Lista os animais do usuário — id já resolvido do token."""
     return await service.list_for(user_id)
 ```
+
+!!! note "`service` é glue da sua aplicação"
+    `service.list_for(...)` representa a sua camada de serviço/repositório —
+    não faz parte do SDK. Troque pela chamada real do seu projeto.
 
 Pronto. Uma requisição sem `Authorization` recebe **401**; um token que
 o upstream rejeita recebe **401**; um usuário sem `famacha` no

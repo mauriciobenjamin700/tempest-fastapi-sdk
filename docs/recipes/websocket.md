@@ -2,6 +2,14 @@
 
 Desde v0.33.0 o SDK fornece `make_websocket_router` + `WebSocketHub` — abstração equivalente a SSE mas **bidirecional**, com bearer auth no handshake, heartbeat ping/pong automático e registro centralizado pra broadcast / per-user / por tópico.
 
+!!! info "Precisa instalar algo? WebSocket é nativo"
+    `make_websocket_router`, `WebSocketHub`, `WebSocketConnection` e
+    `WSEnvelope` fazem parte do **core** — não têm extra próprio, já vêm com
+    `tempest-fastapi-sdk` (dependem só de `starlette` / `fastapi`, que você
+    já tem). Não existe extra `[websocket]`. Só o exemplo de **bearer auth**
+    com `JWTUtils` pede o extra `[auth]` —
+    `uv add "tempest-fastapi-sdk[auth]"`.
+
 ## O que o router resolve
 
 WebSocket bare do FastAPI te dá `await ws.receive_json()` / `await ws.send_json()` — só isso. Tudo o que vem depois é boilerplate que **todo** projeto reimplementa:

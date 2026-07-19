@@ -118,6 +118,14 @@ async def demo(session: AsyncSession, alice: UUID, bob: UUID) -> None:
     minhas = await service.list_conversations(alice)  # [] quando não há nenhuma
 ```
 
+Rodando o `demo`, os dois `print` emitem cada mensagem em ordem (mais
+antiga primeiro), com o UUID do remetente e o corpo:
+
+```text
+2b1e9a4c-1f0d-4c3a-9c21-8e7f0a1b2c3d Bora começar?
+7d3c5f8a-6b2e-4a19-b0d4-1c2e3f4a5b6c Bora!
+```
+
 `list_messages` devolve o dicionário de paginação offset padrão do SDK
 (`items` já mapeados para `MessageResponseSchema`, `total`, `page`,
 `size`, `pages`), ordenado do mais antigo para o mais novo.
@@ -194,7 +202,15 @@ def build_chat_service(session: AsyncSession) -> ChatService:
 
 O cliente assina com um `EventSource` apontando para
 `/api/chat/conversations/{id}/stream` e recebe eventos `message` cujo
-`data` é o JSON de `MessageResponseSchema`. Veja a receita de
+`data` é o JSON de `MessageResponseSchema`:
+
+```text
+event: message
+id: 7d3c5f8a-6b2e-4a19-b0d4-1c2e3f4a5b6c
+data: {"id": "7d3c5f8a-...", "conversation_id": "1a2b3c4d-...", "sender_id": "7d3c5f8a-...", "body": "Bora!", "created_at": "2026-07-18T14:32:07Z"}
+```
+
+Veja a receita de
 **[Server-Sent Events »](sse.md)** para o lado do cliente e a ponte
 Redis multi-worker.
 

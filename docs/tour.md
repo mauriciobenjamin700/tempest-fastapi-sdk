@@ -9,7 +9,7 @@ pro que precisa.
     Comece pelo [Tutorial](tutorial.md) (constrói a feature *Users* passo
     a passo). Este tour mostra como **cada** peça extra se encaixa nesse
     esqueleto. Instale só os extras que usar:
-    `uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.99.0"`.
+    `uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.133.1"`.
 
 ## Fundação
 
@@ -220,6 +220,9 @@ Receitas: [Feature flags](recipes/feature-flags.md), [Audit trail](recipes/audit
 
 Checagem de hardware, LLM local, embeddings, RAG (web + PDF) — tudo no
 seu hardware.
+
+!!! info "Instalação"
+    O SDK já vem com `tempest-fastapi-sdk`. A IA generativa self-hosted depende do extra `[genai]` — `uv add "tempest-fastapi-sdk[genai]"` (traz `torch`, `transformers`, `accelerate`, `safetensors` e `huggingface-hub`).
 
 ```python
 from tempest_fastapi_sdk.genai import can_run, TextGenerator

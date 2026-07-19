@@ -38,8 +38,10 @@ await cache.client.set("user:123:name", "Ana", ex=300)
 name = await cache.client.get("user:123:name")
 
 # FastAPI dependency — yields the live client.
-from fastapi import Depends
+from fastapi import APIRouter, Depends
 from redis.asyncio import Redis
+
+router = APIRouter()
 
 
 @router.get("/cached")
@@ -48,6 +50,9 @@ async def cached_endpoint(
 ) -> dict[str, str]:
     value = await redis.get("greeting") or "hello"
     return {"value": value}
+
+
+app.include_router(router)
 ```
 
 Wire the health check on the canonical router with `make_health_router(checks={"redis": cache.health_check})` so readiness probes fail when Redis is down.

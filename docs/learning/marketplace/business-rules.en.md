@@ -114,7 +114,7 @@ This page is the **domain contract**. Every modeling, endpoint, or test decision
 
 | ID | Rule |
 |----|------|
-| **R-01** | Review (`POST /products/{id}/reviews`) **MUST** require the user to have a `DELIVERED` order containing the variant. |
+| **R-01** | Review (`POST /variants/{id}/reviews`) **MUST** require the user to have a `DELIVERED` order containing the variant. |
 | **R-02** | A user **MAY** review each variant once (`UNIQUE(user_id, variant_id)`). |
 | **R-03** | Score **MUST** be between 1 and 5. |
 

@@ -17,7 +17,7 @@ camadas mais comuns de um serviço Tempest: FastAPI (requests de entrada),
 SQLAlchemy (queries) e httpx (chamadas de saída). Requer o extra `[otel]`:
 
 ```bash
-pip install "tempest-fastapi-sdk[otel]"
+uv add "tempest-fastapi-sdk[otel]"
 ```
 
 Chame uma vez no startup, depois que a app existe e (quando quiser tracear

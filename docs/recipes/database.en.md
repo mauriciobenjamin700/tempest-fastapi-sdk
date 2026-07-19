@@ -5,6 +5,11 @@ This is the layer every Tempest service uses to talk to PostgreSQL
 It exists so you never rewrite the same engine, the same per-request
 session, the same CRUD and the same pagination in every project.
 
+!!! info "Installation"
+    The database core ships with `tempest-fastapi-sdk`. The async drivers
+    come via extras — `uv add "tempest-fastapi-sdk[postgres]"` (PostgreSQL,
+    pulls in `asyncpg`) or `[sqlite]` (SQLite in dev, pulls in `aiosqlite`).
+
 There are four pieces, and you'll meet them one at a time:
 
 | Piece | Symbol | What for |
@@ -454,6 +459,11 @@ def bust_cache(user: UserModel) -> None:
 connect(UserModel, RepositorySignal.POST_SAVE, bust_cache)
 disconnect(UserModel, RepositorySignal.POST_SAVE, bust_cache)  # remove
 ```
+
+!!! note "`search_index` and `cache` are illustrative objects"
+    `search_index.upsert(...)` and `cache.delete(...)` are placeholders
+    from your project (a search client, a cache client) — they are not
+    part of the SDK. Swap in your domain's real objects.
 
 The four moments:
 

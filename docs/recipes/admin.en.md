@@ -18,7 +18,7 @@ Also covers in-place inline editing of 1-N children (`Inline(editable=True)`).
 Requires the `[admin]` extra:
 
 ```bash
-pip install "tempest-fastapi-sdk[admin]"
+uv add "tempest-fastapi-sdk[admin]"
 ```
 
 #### 1. User model
@@ -282,6 +282,12 @@ site.register(AdminModel(
     upload_storage=LocalUploadStorage("media/"),  # or MinIOUploadStorage(...)
 ))
 ```
+
+!!! info "Installation"
+    The upload backends do not ship with `[admin]`. `LocalUploadStorage`
+    needs the `[upload]` extra — `uv add "tempest-fastapi-sdk[upload]"`
+    (pulls in `aiofiles`); `MinIOUploadStorage` needs `[minio]` —
+    `uv add "tempest-fastapi-sdk[minio]"` (pulls in `minio`).
 
 - The form becomes `multipart/form-data` automatically when `upload_fields` is set.
 - **Create**: a file is required only when the column is `NOT NULL` with no default.

@@ -37,8 +37,10 @@ await cache.client.set("user:123:name", "Ana", ex=300)
 name = await cache.client.get("user:123:name")
 
 # Dependência FastAPI — entrega o client ativo.
-from fastapi import Depends
+from fastapi import APIRouter, Depends
 from redis.asyncio import Redis
+
+router = APIRouter()
 
 
 @router.get("/cached")
@@ -47,6 +49,9 @@ async def cached_endpoint(
 ) -> dict[str, str]:
     value = await redis.get("greeting") or "hello"
     return {"value": value}
+
+
+app.include_router(router)
 ```
 
 Conecte o health check no router canônico com `make_health_router(checks={"redis": cache.health_check})` para que as readiness probes falhem quando o Redis cair.

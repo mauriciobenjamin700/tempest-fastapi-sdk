@@ -13,7 +13,7 @@ your schemas and services now covers your UI too.
     transitively, `tempest-core` with the typed widgets).
 
     ```bash
-    pip install "tempest-fastapi-sdk[ssr]"
+    uv add "tempest-fastapi-sdk[ssr]"
     ```
 
 ## Why this exists
@@ -656,5 +656,5 @@ You can also run it directly with uvicorn.
   hosts a **server** (WebSocket/SSE) build as a mountable sub-app.
   **`detect_build_mode(dir)`** tells them apart.
 - Everything lives in the `[ssr]` extra
-  (`pip install "tempest-fastapi-sdk[ssr]"`), loaded on demand —
+  (`uv add "tempest-fastapi-sdk[ssr]"`), loaded on demand —
   `import tempest_fastapi_sdk` never requires the extra.

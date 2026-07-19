@@ -114,7 +114,7 @@ Esta página é o **contrato do domínio**. Toda decisão de modelagem, endpoint
 
 | ID | Regra |
 |----|-------|
-| **R-01** | Review (`POST /products/{id}/reviews`) **MUST** exigir que o user tenha um pedido `DELIVERED` desse produto. |
+| **R-01** | Review (`POST /variants/{id}/reviews`) **MUST** exigir que o user tenha um pedido `DELIVERED` dessa variante. |
 | **R-02** | Um user **MAY** revisar cada variante uma única vez (constraint `UNIQUE(user_id, variant_id)`). |
 | **R-03** | Score **MUST** estar entre 1 e 5. |
 
