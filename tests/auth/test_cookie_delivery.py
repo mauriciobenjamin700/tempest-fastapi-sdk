@@ -407,9 +407,7 @@ class TestCurrentUserDependencyQueryParam:
             app.include_router(
                 make_auth_router(service, session_factory=db.session_dependency)
             )
-            current_user = service.current_user_dependency(
-                query_param="access_token"
-            )
+            current_user = service.current_user_dependency(query_param="access_token")
 
             @app.get("/feed")
             async def feed(user: _DepUser = Depends(current_user)) -> dict[str, str]:
