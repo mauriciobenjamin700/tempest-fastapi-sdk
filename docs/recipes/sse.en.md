@@ -200,24 +200,50 @@ client of a channel (e.g. a user's devices, or a topic), the SDK ships
 `SSEBroker` — a per-channel stream registry plus fan-out. The channel is
 any string (a user id, a room slug...).
 
+It takes **three steps**: create the broker once, keep that instance on the
+app (so everyone uses the same one), and inject it into endpoints.
+
+#### Step 1 — create the broker and the wiring
+
+`SSEBroker()` is a **process-wide singleton**: every open channel and stream
+lives inside it. So it must be **one** instance shared across the whole app —
+if each request made its own, a `publish` on one broker would never reach the
+streams pinned to another.
+
 ```python
 # src/api/dependencies/resources.py
 from fastapi import FastAPI, Request
 
 from tempest_fastapi_sdk import SSEBroker
 
-broker = SSEBroker()   # process-wide singleton
+broker = SSEBroker()
 
 
 def register_broker(app: FastAPI) -> None:
-    """Store the broker on app.state (call it in create_app/lifespan)."""
+    """Store the singleton broker on app.state (call it in create_app)."""
     app.state.broker = broker
 
 
 def get_broker(request: Request) -> SSEBroker:
-    """Inject the app.state broker into endpoints via Depends."""
+    """Return the shared broker from app.state for use in Depends()."""
     return request.app.state.broker
 ```
+
+What each part does:
+
+- `broker = SSEBroker()` — creates the broker at module **import**. Since the
+  module is imported once, this is the same object for everyone who uses it.
+- `register_broker(app)` — pins the broker on `app.state.broker`. You call it
+  **once** when building the app (inside `create_app` or the lifespan):
+  `register_broker(app)`.
+- `get_broker(request)` — returns `request.app.state.broker`. This is what
+  endpoints receive via `Depends(get_broker)`, guaranteeing they all talk to
+  the **same** instance.
+
+#### Step 2 — the subscribe endpoint
+
+The client opens `GET /feed`; the endpoint subscribes it to its own user
+channel and returns the stream. One line does it all: `broker.response(channel)`.
 
 ```python
 # src/api/routers/feed.py
@@ -228,6 +254,9 @@ from starlette.responses import StreamingResponse
 
 from tempest_fastapi_sdk import SSEBroker
 
+from src.api.dependencies.auth import get_current_user_id
+from src.api.dependencies.resources import get_broker
+
 router = APIRouter()
 
 
@@ -236,30 +265,47 @@ async def feed(
     user_id: UUID = Depends(get_current_user_id),
     broker: SSEBroker = Depends(get_broker),
 ) -> StreamingResponse:
-    """Subscribe the client to its user's channel."""
-    # register + sse_response + unregister-on-disconnect, all in one call.
+    """Subscribe the caller to their own user channel and stream it."""
     return broker.response(str(user_id))
-
-
-# From anywhere (queue handler, another endpoint):
-# await broker.publish(str(user_id), {"text": "New order"}, event="notice")
 ```
 
-!!! tip "`broker.response()` kills the stream leak"
-    `broker.response(channel)` does `register`, wraps it in `sse_response`
-    and wires an `on_disconnect` that calls `unregister` when the client
-    drops. No `try/finally` to forget — every disconnect cleans up its own
-    registration. `SSEBroker(max_queue=..., overflow=...)` applies the same
-    backpressure policy to every stream it opens.
+Step by step, on each `GET /feed`:
+
+1. `Depends(get_current_user_id)` resolves **who** the client is. Their id
+   becomes the channel name — each user gets their own, isolated from others.
+2. `Depends(get_broker)` hands over the shared broker (the one from Step 1).
+3. `broker.response(str(user_id))` does **three things in a single call**:
+     - **register** — creates a fresh `EventStream` and subscribes it to the
+       `user_id` channel;
+     - **stream** — returns a `StreamingResponse` with the SSE headers already
+       set (the client starts receiving);
+     - **unregister** — wires an `on_disconnect` that removes this stream from
+       the channel when the client drops.
+
+!!! tip "Why `broker.response()` doesn't leak streams"
+    The three steps (register → stream → unregister) are tied together in one
+    call. The `unregister` runs in the response generator's `finally` — the one
+    point that fires on disconnect — so there's no `try/finally` for you to
+    forget: every client that leaves cleans up its own registration. And
+    `SSEBroker(max_queue=..., overflow=...)` applies the same backpressure
+    policy (see above) to every stream the broker opens.
 
 ### Firing from the domain (controller)
 
-`broker.response(...)` above is the **subscribe** side. The other side is
-**publishing**: when a business event happens — order created, payment
-confirmed, new message — your logic calls `broker.publish(channel, ...)` and
-every stream subscribed to that channel receives it. This lives in the
-**controller**, which orchestrates the service (business rule) and the broker
-(live notification). The channel is the id of the user to notify.
+Step 2 showed the **subscribe** side (the client joins a channel). What's left
+is the **publish** side — the *broadcast* itself.
+
+**What "broadcast" means here:** the broker keeps, per channel, the list of
+subscribed streams. When you call `broker.publish("<channel>", ...)`, it walks
+**every** stream on that channel and delivers the same event to each. One
+`publish` → N clients. If the channel is a user's id and they have two tabs
+open, both receive it; if nobody is subscribed, the `publish` is a no-op (no
+error).
+
+The **controller** is what fires the `publish`, when a business event happens
+(order created, payment confirmed, new message). It orchestrates the service
+(business rule) and the broker (live notification), using the id of the user to
+notify as the channel.
 
 ```python
 # src/controllers/order.py
@@ -301,8 +347,25 @@ class OrderController:
         return order
 ```
 
+The heart of it is the `broker.publish(...)` call, argument by argument:
+
+- **1st argument (`str(order.seller_id)`)** — the **channel**. Sends the event
+  to every stream subscribed to that id (here, the seller's devices). This is
+  why the subscribe endpoint uses the user's id as the channel: both sides must
+  agree on the same string.
+- **2nd argument (the dict)** — the **payload** (SSE `data`). A non-string
+  object becomes JSON automatically (see [Anatomy](#anatomy-of-an-event)).
+- **`event="order_created"`** — the event **name**; the front listens with
+  `addEventListener("order_created", ...)`.
+- **`id=str(order.id)`** — becomes `Last-Event-ID`, so the client can resume
+  from the right spot if it reconnects.
+
+Notice the controller **never** touches `EventStream` or an HTTP response: it
+just hands the event to the broker, which handles the fan-out. Publishing is
+fire-and-forget.
+
 The provider builds the controller with its service and the broker injected —
-the same `get_broker` from the block above:
+the same `get_broker` from Step 1:
 
 ```python
 # src/api/dependencies/controllers.py

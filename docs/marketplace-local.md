@@ -306,13 +306,27 @@ def create_app() -> FastAPI:
 Um evento de domínio — **pedido novo** para o vendedor, **mensagem nova**
 para o destinatário — precisa chegar dos dois jeitos: **ao vivo** com o app
 aberto (SSE) e **em segundo plano** com o app fechado (Web Push). Um
-`NotificationService` recebe o evento uma vez e faz o fan-out para os dois
-canais com o **mesmo payload**.
+`NotificationService` recebe o evento **uma vez** e faz o *fan-out* para os
+dois canais.
 
-O SSE reaproveita o **mesmo `SSEBroker` do chat**, agora num canal por
-usuário (`str(user_id)`). O Web Push precisa de uma tabela de inscrições por
-device — o SDK traz a linha base e você cria a concreta com a FK pro seu
-`UserModel` (igual à [receita »](recipes/webpush.md)):
+**O que "fan-out" quer dizer aqui:** você chama `notify(...)` uma só vez, e por
+baixo o mesmo evento sai por **dois** caminhos independentes — um frame SSE (pro
+app que está aberto na hora) e uma notificação Web Push (pro app que está
+fechado, entregue pelo Service Worker). Os dois carregam o **mesmo payload**
+(`data`), então o cliente trata a notificação igual, tenha ela chegado por SSE
+ou por push. Um `notify` → duas entregas.
+
+Este passo tem três partes: **(1)** a tabela de inscrições do Web Push, **(2)**
+o serviço que faz o fan-out e **(3)** a fiação no app (endpoint de inscrição SSE
++ router de push). Vamos uma de cada vez.
+
+#### Parte 1 — a tabela de inscrições do Web Push
+
+O SSE reaproveita o **mesmo `SSEBroker` do chat** (seção 3), agora num canal por
+usuário (`str(user_id)`) em vez do canal da conversa — nenhuma peça nova. O Web
+Push, por outro lado, precisa de uma tabela de inscrições por device: o SDK traz
+a linha base `BaseWebPushSubscriptionModel` e você cria a concreta com a FK pro
+seu `UserModel` (igual à [receita »](recipes/webpush.md)):
 
 ```python
 # src/db/models.py (junto com os modelos da seção 1)
@@ -328,8 +342,11 @@ class WebPushSubscriptionModel(BaseWebPushSubscriptionModel):
     )
 ```
 
-O serviço de fan-out é minúsculo: publica no broker e chama `notify_user`
-(que entrega a todos os devices e poda os mortos sozinho).
+#### Parte 2 — o serviço de fan-out
+
+O `NotificationService` é minúsculo: ele guarda as duas peças (o broker e o
+serviço de push) e expõe um único método `notify(...)`. É esse método que faz o
+fan-out de verdade.
 
 ```python
 # src/services/notification.py
@@ -381,9 +398,27 @@ class NotificationService:
         )
 ```
 
-Cada **evento de negócio** chama `notify` uma vez com o id de quem recebe. O
-pedido novo avisa o **vendedor**; a mensagem nova de chat avisa o
-**destinatário**:
+O corpo do `notify` são **duas linhas**, uma por canal:
+
+- **`await self.broker.publish(str(user_id), data, event=event)`** — a entrega
+  **ao vivo (SSE)**. Publica no `SSEBroker` usando o **id do usuário como
+  canal**; todo stream inscrito nesse canal (o app aberto do destinatário)
+  recebe o frame na hora. É fire-and-forget: se ninguém está conectado, não faz
+  nada e não dá erro.
+- **`await self.push.notify_user(user_id, WebPushPayloadSchema(...))`** — a
+  entrega **em segundo plano (Web Push)**. O `notify_user` busca todas as
+  inscrições daquele usuário, dispara o push pra cada device e **poda sozinho**
+  as inscrições mortas (expiradas ou canceladas). O `WebPushPayloadSchema`
+  embrulha o `title`/`body` (o texto que aparece na notificação do sistema),
+  usa o `event` como `tag` e carrega o mesmo `data` do SSE.
+
+Repare que as duas linhas recebem o **mesmo `user_id`** como destino e o **mesmo
+`data`** como payload — é isso que garante que app aberto (SSE) e app fechado
+(push) veem exatamente a mesma coisa.
+
+Feito o serviço, cada **evento de negócio** chama `notify` **uma vez**, passando
+o id de **quem deve ser avisado**. O pedido novo avisa o **vendedor**; a
+mensagem nova de chat avisa o **destinatário**:
 
 ```python
 # Pedido novo -> avisa o vendedor (após persistir o pedido):
@@ -404,6 +439,22 @@ await notifications.notify(
     data={"room_id": str(conversation_id)},
 )
 ```
+
+Por que o `user_id` de cada chamada é diferente:
+
+- **Pedido novo → `seller_id`.** Quem precisa saber do pedido é o **vendedor**,
+  então o canal (e o alvo do push) é o id dele. O comprador que criou o pedido
+  não recebe nada — ele já sabe que comprou.
+- **Mensagem nova → `recipient_id`.** Quem precisa ser avisado é **quem vai
+  receber** a mensagem, não quem enviou. O canal é o id do destinatário; o
+  remetente vê a própria mensagem pelo retorno normal do chat.
+
+Em ambos os casos, o id passado pro `notify` é **o mesmo** que o destinatário
+usa pra se inscrever no SSE (`GET /notifications/stream`, abaixo): os dois lados
+precisam combinar na mesma string de canal, senão o frame é publicado num canal
+que ninguém está ouvindo.
+
+#### Parte 3 — a fiação no app
 
 No app, o cliente assina o próprio canal com `GET /notifications/stream` e o
 Web Push entra com o `make_web_push_router` pronto (`/api/push/subscribe` +
@@ -449,8 +500,25 @@ app.include_router(
 )
 ```
 
+Passo a passo do que acontece a cada `GET /notifications/stream`:
+
+1. `Depends(get_current_user_id)` resolve **quem** é o cliente a partir do
+   token. O id dele vira o nome do canal — cada usuário tem o seu, isolado dos
+   outros.
+2. `broker.response(str(user_id))` faz **três coisas numa chamada só** (é o
+   mesmo atalho que o endpoint de chat usa, agora num canal por usuário):
+     - **register** — cria um `EventStream` novo e o inscreve no canal `user_id`;
+     - **stream** — devolve um `StreamingResponse` com os headers de SSE já
+       prontos, e o cliente começa a receber;
+     - **unregister** — liga um `on_disconnect` que tira esse stream do canal
+       quando o cliente cai, sem `try/finally` na mão.
+
+É **o mesmo `broker` do chat** (importado de `src.services.chat`): um único
+`SSEBroker` no processo atende os dois usos, só mudando a string de canal —
+`conversation_id` no chat, `user_id` aqui.
+
 Com o app aberto, quem estiver no `GET /notifications/stream` recebe o frame
-na hora — a mesma `data` que iria no push:
+na hora — o mesmo `data` que iria no push:
 
 ```text
 event: chat_message

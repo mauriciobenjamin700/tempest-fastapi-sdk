@@ -336,6 +336,41 @@ class NotificationService:
                 await self.push.notify_user(user.id, payload)
 ```
 
+`notify_staff` is the **fan-out**: one domain event goes out on two channels at
+the same instant — SSE for the **open** panel, Web Push for the **closed** one —
+carrying the **same `data`**. Step by step through the method body:
+
+1. **SSE broadcast** — `await self.broker.publish(STAFF_CHANNEL, data, event=event)`
+   publishes **once** to the shared `"staff"` channel. The broker walks every
+   stream subscribed to that channel (one per open admin panel) and delivers the
+   same event to each: one `publish` → N panels. Whoever has the panel closed has
+   no stream here — that's what step 3 covers.
+2. **Build the system payload** — `WebPushPayloadSchema(title=..., body=...,
+   tag=event, data=data)` wraps the **same `data`** in the Web Push format,
+   adding what only the system notification shows (`title`/`body`) and the `tag`
+   that collapses duplicates in the tray.
+3. **Web Push fan-out** — `self.users.list()` resolves the team and, for each
+   `staff`/`superadmin`, `push.notify_user(user.id, payload)` pushes to **all of
+   that user's registered devices** (the table from the previous subsection). This
+   is the channel that lands with the panel **closed**.
+
+The two key calls, argument by argument:
+
+- `broker.publish(STAFF_CHANNEL, data, event=event)` — 1st argument is the
+  **channel** (`"staff"`, the same string the subscribe endpoint uses); 2nd is
+  the **payload** (`data`, which becomes JSON in the SSE frame); `event=` is the
+  **name** the frontend listens for with `addEventListener`.
+- `push.notify_user(user.id, payload)` — 1st argument is **who** receives it (the
+  user id; the service resolves their devices under the hood); 2nd is the
+  `WebPushPayloadSchema` delivered to each device.
+
+!!! note "Why both channels, not one"
+    The SSE `publish` only reaches whoever is **connected right now**; Web Push
+    depends on browser permission. Neither is a reliable record — the thing that
+    durably keeps *"what happened"* is the audit trail (§1, §4). Here the goal is
+    the opposite: **alert in the moment**. Auditing records, the notification
+    pokes — `notify_staff` only handles that second half of the pair.
+
 ### Firing on the domain event
 
 Orders come in from the storefront (not the admin). The controller that
@@ -436,6 +471,20 @@ async def require_admin(
     return user
 ```
 
+Step by step, what `require_admin` does on every stream request:
+
+1. `_store.load(request)` — reads the session cookie `make_admin_router` issued
+   at login and **verifies its signature**. A missing or tampered cookie comes
+   back as `None`.
+2. `admin_session is None or admin_session.mfa_pending` — rejects both the
+   missing/invalid session and the one that passed the password but has **not**
+   completed MFA yet. Either case → `401`.
+3. `_backend.load_principal(session, admin_session.principal_id)` — loads the
+   real `User` from the DB by the id stored in the session. If the user is gone
+   (deleted after login) → `401`.
+4. Returns the authenticated `User`. The endpoint doesn't use the object beyond
+   requiring it to exist — which is why the route parameter is `_`.
+
 ```python
 # src/api/routers/admin_stream.py
 from fastapi import APIRouter, Depends
@@ -459,8 +508,34 @@ async def stream(
     return broker.response(STAFF_CHANNEL)
 ```
 
-`broker.response(STAFF_CHANNEL)` does register + `sse_response` +
-unregister-on-disconnect in one call — no `try/finally` to forget.
+The endpoint itself is one line. Step by step, on every
+`GET /admin/notifications/stream`:
+
+1. `Depends(require_admin)` runs the guard above. Without a valid admin session
+   the request dies with `401` and **never** reaches the broker — the stream is
+   private to staff.
+2. `Depends(get_broker)` injects the shared broker — the same process-wide
+   singleton from the [SSE recipe](recipes/sse.md#broadcast-pra-varios-clientes-ssebroker),
+   held on `app.state`.
+3. `broker.response(STAFF_CHANNEL)` does **three things in one call**:
+     - **register** — creates a fresh `EventStream` and subscribes it to the
+       `"staff"` channel;
+     - **stream** — returns the `StreamingResponse` with the SSE headers already
+       set (the panel starts receiving right away);
+     - **unregister** — wires an `on_disconnect` that removes this stream from
+       the channel when the panel closes. It runs in the response generator's
+       `finally` — the one spot that fires on disconnect — so there's no
+       `try/finally` for you to forget.
+
+!!! info "Shared channel — every admin on the same `\"staff\"`"
+    In the [SSE recipe](recipes/sse.md#broadcast-pra-varios-clientes-ssebroker)
+    the channel was **each user's id**: everyone on their own, isolated from the
+    rest. Here it's the opposite — **every** logged-in admin subscribes to the
+    **same** `"staff"` channel. That's why a single `broker.publish("staff", ...)`
+    (step 1 of `notify_staff`) reaches **all** open panels at once, without the
+    service having to know who's connected. Both sides only have to agree on the
+    same constant string `STAFF_CHANNEL` — subscription on one side, publish on
+    the other.
 
 ### Mounting: device subscription + stream
 

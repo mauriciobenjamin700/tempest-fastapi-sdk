@@ -201,24 +201,50 @@ clientes de um canal (ex.: os devices de um usuário, ou um tópico), o SDK
 traz o `SSEBroker` — registro de streams por canal + fan-out. O canal é
 uma string qualquer (id de usuário, slug de sala...).
 
+São **três passos**: criar o broker uma vez, guardar essa instância no app
+(pra todo mundo usar a mesma), e injetar nos endpoints.
+
+#### Passo 1 — criar o broker e a fiação
+
+O `SSEBroker()` é um **singleton do processo**: todos os canais e streams
+abertos vivem dentro dele. Por isso precisa ser **um só**, compartilhado pela
+app inteira — se cada requisição criasse o seu, um `publish` num broker não
+alcançaria os streams presos em outro.
+
 ```python
 # src/api/dependencies/resources.py
 from fastapi import FastAPI, Request
 
 from tempest_fastapi_sdk import SSEBroker
 
-broker = SSEBroker()   # singleton do processo
+broker = SSEBroker()
 
 
 def register_broker(app: FastAPI) -> None:
-    """Guarda o broker em app.state (chame no create_app/lifespan)."""
+    """Store the singleton broker on app.state (call it in create_app)."""
     app.state.broker = broker
 
 
 def get_broker(request: Request) -> SSEBroker:
-    """Injeta o broker do app.state nos endpoints via Depends."""
+    """Return the shared broker from app.state for use in Depends()."""
     return request.app.state.broker
 ```
+
+O que cada parte faz:
+
+- `broker = SSEBroker()` — cria o broker no **import** do módulo. Como o módulo
+  é importado uma vez, esse é o mesmo objeto pra qualquer um que o use.
+- `register_broker(app)` — pendura o broker em `app.state.broker`. Você chama
+  isso **uma vez** ao montar a app (dentro do `create_app` ou do lifespan):
+  `register_broker(app)`.
+- `get_broker(request)` — devolve `request.app.state.broker`. É o que os
+  endpoints recebem via `Depends(get_broker)`, garantindo que todos falam com
+  a **mesma** instância.
+
+#### Passo 2 — o endpoint de inscrição
+
+O cliente abre `GET /feed`; o endpoint o inscreve no canal do próprio usuário
+e devolve o stream. Uma linha resolve tudo: `broker.response(canal)`.
 
 ```python
 # src/api/routers/feed.py
@@ -229,6 +255,9 @@ from starlette.responses import StreamingResponse
 
 from tempest_fastapi_sdk import SSEBroker
 
+from src.api.dependencies.auth import get_current_user_id
+from src.api.dependencies.resources import get_broker
+
 router = APIRouter()
 
 
@@ -237,30 +266,46 @@ async def feed(
     user_id: UUID = Depends(get_current_user_id),
     broker: SSEBroker = Depends(get_broker),
 ) -> StreamingResponse:
-    """Inscreve o cliente no canal do seu usuário."""
-    # register + sse_response + unregister-na-desconexão, tudo num call.
+    """Subscribe the caller to their own user channel and stream it."""
     return broker.response(str(user_id))
-
-
-# De qualquer lugar (handler de fila, outro endpoint):
-# await broker.publish(str(user_id), {"text": "Novo pedido"}, event="notice")
 ```
 
-!!! tip "`broker.response()` mata o vazamento de stream"
-    `broker.response(channel)` faz `register`, embrulha com `sse_response`
-    e liga um `on_disconnect` que chama `unregister` quando o cliente cai.
-    Não tem `try/finally` pra esquecer — cada desconexão limpa o registro
-    sozinha. `SSEBroker(max_queue=..., overflow=...)` aplica a mesma
-    política de backpressure a todo stream que ele abre.
+Passo a passo do que acontece a cada `GET /feed`:
+
+1. `Depends(get_current_user_id)` resolve **quem** é o cliente. O id dele vira o
+   nome do canal — cada usuário tem o seu, isolado dos outros.
+2. `Depends(get_broker)` entrega o broker compartilhado (o do Passo 1).
+3. `broker.response(str(user_id))` faz **três coisas numa chamada só**:
+     - **register** — cria um `EventStream` novo e o inscreve no canal `user_id`;
+     - **stream** — devolve um `StreamingResponse` com os headers de SSE já
+       prontos (o cliente começa a receber);
+     - **unregister** — liga um `on_disconnect` que remove esse stream do canal
+       quando o cliente cai.
+
+!!! tip "Por que `broker.response()` não vaza stream"
+    Os três passos (register → stream → unregister) ficam amarrados numa
+    chamada. O `unregister` roda no `finally` do gerador da resposta — o único
+    ponto que dispara na desconexão — então não tem `try/finally` pra você
+    esquecer: cada cliente que sai limpa o próprio registro. E
+    `SSEBroker(max_queue=..., overflow=...)` aplica a mesma política de
+    backpressure (veja acima) a todo stream que o broker abre.
 
 ### Disparando do domínio (controller)
 
-O `broker.response(...)` acima é o lado da **inscrição**. O outro lado é a
-**publicação**: quando um evento de negócio acontece — pedido criado, pagamento
-confirmado, mensagem nova — a lógica chama `broker.publish(canal, ...)` e todo
-stream inscrito naquele canal recebe. Isso mora no **controller**, que orquestra
-o service (regra de negócio) e o broker (notificação ao vivo). O canal é o id do
-usuário que deve ser avisado.
+O Passo 2 mostrou o lado da **inscrição** (o cliente entra num canal). Falta o
+lado da **publicação** — o *broadcast* propriamente dito.
+
+**O que "broadcast" quer dizer aqui:** o broker guarda, por canal, a lista de
+streams inscritos. Quando você chama `broker.publish("<canal>", ...)`, ele
+percorre **todos** os streams daquele canal e entrega o mesmo evento a cada um.
+Um `publish` → N clientes. Se o canal é o id de um usuário e ele está com duas
+abas abertas, as duas recebem; se não há ninguém inscrito, o `publish` não faz
+nada (não dá erro).
+
+Quem dispara o `publish` é o **controller**, quando um evento de negócio
+acontece (pedido criado, pagamento confirmado, mensagem nova). Ele orquestra o
+service (regra de negócio) e o broker (notificação ao vivo), e usa como canal o
+id do usuário que deve ser avisado.
 
 ```python
 # src/controllers/order.py
@@ -302,8 +347,24 @@ class OrderController:
         return order
 ```
 
+O coração é a chamada `broker.publish(...)`, campo por campo:
+
+- **1º argumento (`str(order.seller_id)`)** — o **canal**. Manda o evento pra
+  todos os streams inscritos nesse id (aqui, os devices do vendedor). É por isso
+  que o endpoint de inscrição usa o id do usuário como canal: os dois lados
+  precisam combinar na mesma string.
+- **2º argumento (o dict)** — o **payload** (`data` do SSE). Objeto não-string
+  vira JSON automático (viu em [Anatomia](#anatomia-de-um-evento)).
+- **`event="order_created"`** — o **nome** do evento; o front escuta com
+  `addEventListener("order_created", ...)`.
+- **`id=str(order.id)`** — vira `Last-Event-ID`, pro cliente retomar do ponto
+  certo se reconectar.
+
+Repare que o controller **não** toca em `EventStream` nem em resposta HTTP: ele
+só entrega o evento ao broker, que cuida do fan-out. Publicar é fire-and-forget.
+
 O provider monta o controller com o service e o broker injetados — o mesmo
-`get_broker` do bloco de cima:
+`get_broker` do Passo 1:
 
 ```python
 # src/api/dependencies/controllers.py
