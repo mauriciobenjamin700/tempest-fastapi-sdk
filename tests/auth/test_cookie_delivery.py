@@ -372,3 +372,67 @@ class TestCurrentUserDependencyCookie:
         finally:
             await db.drop_tables()
             await db.disconnect()
+
+
+class TestCurrentUserDependencyQueryParam:
+    """service.current_user_dependency(query_param=...) authenticates off the URL.
+
+    Cookieless clients such as the browser EventSource (SSE) cannot send
+    an Authorization header, so the dependency must accept the access
+    token from a query-string parameter when explicitly opted in.
+    """
+
+    async def test_protected_route_reads_query_param_token(self) -> None:
+        db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+        await db.connect()
+        await db.create_tables()
+        try:
+            service = UserAuthService(
+                user_model=_DepUser,
+                token_model=_DepUserToken,  # type: ignore[arg-type]
+                auth_settings=AuthSettings(
+                    AUTH_AUTO_ACTIVATE=True,
+                    AUTH_TOKEN_DELIVERY="both",
+                    AUTH_COOKIE_SECURE=False,
+                ),
+                jwt_settings=JWTSettings(JWT_SECRET="x" * 32),
+                email=None,
+                db=db,
+            )
+            async with db.get_session_context() as s:
+                await service.signup(s, email="q@a.com", password=_PASSWORD)
+                await s.commit()
+
+            app = FastAPI()
+            app.include_router(
+                make_auth_router(service, session_factory=db.session_dependency)
+            )
+            current_user = service.current_user_dependency(
+                query_param="access_token"
+            )
+
+            @app.get("/feed")
+            async def feed(user: _DepUser = Depends(current_user)) -> dict[str, str]:
+                return {"email": user.email}
+
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://t") as c:
+                await c.post(
+                    "/auth/cookie/login",
+                    json={"email": "q@a.com", "password": _PASSWORD},
+                )
+                token = c.cookies.get("access_token")
+            assert token
+
+            async with AsyncClient(transport=transport, base_url="http://t") as c2:
+                # No cookie / header here → only the query token authenticates.
+                anon = await c2.get("/feed")
+                assert anon.status_code == 401, anon.text
+
+                ok = await c2.get(f"/feed?access_token={token}")
+
+            assert ok.status_code == 200, ok.text
+            assert ok.json()["email"] == "q@a.com"
+        finally:
+            await db.drop_tables()
+            await db.disconnect()

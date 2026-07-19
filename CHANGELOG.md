@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.135.0] — 2026-07-19
+
+### Added
+
+- **`query_param` on `UserAuthService.current_user_dependency`.** The service
+  wrapper now forwards a `query_param` to `make_jwt_user_dependency`, so a
+  cookieless client (e.g. the browser `EventSource`/SSE, which can't send an
+  `Authorization` header) can authenticate off `?access_token=<jwt>` without
+  dropping to the low-level factory. Unlike `cookie_name` it is never
+  auto-derived — it's an opt-in escape hatch; enable it only over TLS with
+  short-lived access tokens.
+
 ## [0.134.0] — 2026-07-19
 
 ### Added
