@@ -295,6 +295,7 @@ from tempest_fastapi_sdk.sse import (
     OverflowPolicy,
     ServerSentEvent,
     SSEBroker,
+    SSEData,
     sse_response,
 )
 from tempest_fastapi_sdk.storage import AsyncMinIOClient, ObjectStat, PutObjectItem
@@ -625,6 +626,7 @@ __all__: list[str] = [
     "RequestIDMiddleware",
     "RetryPolicy",
     "SSEBroker",
+    "SSEData",
     "SameSite",
     "ServerSentEvent",
     "ServerSettings",

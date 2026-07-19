@@ -27,6 +27,7 @@ from tempest_fastapi_sdk.sse.event_stream import (
     EventStream,
     OverflowPolicy,
     ServerSentEvent,
+    SSEData,
     sse_response,
 )
 
@@ -156,7 +157,7 @@ class SSEBroker:
     async def publish(
         self,
         channel: str,
-        data: Any = "",
+        data: SSEData = "",
         *,
         event: str | None = None,
         id: str | None = None,
@@ -170,7 +171,7 @@ class SSEBroker:
 
         Args:
             channel (str): Target channel.
-            data (Any): Payload (string, bytes or JSON-serializable).
+            data (SSEData): Payload (string, bytes or JSON-serializable).
             event (str | None): Optional SSE event name.
             id (str | None): Optional ``Last-Event-ID``.
             retry (int | None): Optional reconnect hint (ms).
