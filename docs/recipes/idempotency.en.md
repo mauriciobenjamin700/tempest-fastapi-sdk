@@ -66,6 +66,14 @@ app.add_middleware(
 )
 ```
 
+!!! note "Why `Redis.from_url` here, not `AsyncRedisManager`?"
+    This client feeds a **middleware**, built in `create_app` (sync), before any
+    async lifespan runs. `Redis.from_url()` is **lazy** — it constructs without
+    opening a connection, so it fits here. `AsyncRedisManager` needs `await
+    connect()` and fits where there's an async context: a client via
+    `Depends(cache.client_dependency)`, or the `SSEBroker` built in the lifespan.
+    Both need the `[cache]` extra (the `redis` package).
+
 Stripe defaults to 24h — coherent with client-side exponential retry.
 
 ## Client
