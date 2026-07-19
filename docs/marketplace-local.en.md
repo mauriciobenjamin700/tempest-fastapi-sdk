@@ -305,13 +305,28 @@ def create_app() -> FastAPI:
 A domain event — a **new order** for the seller, a **new message** for the
 recipient — has to arrive both ways: **live** with the app open (SSE) and
 **in the background** with the app closed (Web Push). A
-`NotificationService` takes the event once and fans it out to both channels
-with the **same payload**.
+`NotificationService` takes the event **once** and *fans it out* to both
+channels.
 
-The SSE side reuses the **same `SSEBroker` as chat**, now on a per-user
-channel (`str(user_id)`). Web Push needs a per-device subscription table —
-the SDK ships the base row and you create the concrete one with the FK to
-your `UserModel` (just like the [recipe »](recipes/webpush.md)):
+**What "fan-out" means here:** you call `notify(...)` a single time, and under
+the hood the same event leaves through **two** independent paths — an SSE frame
+(for the app that's open right now) and a Web Push notification (for the app
+that's closed, delivered by the Service Worker). Both carry the **same payload**
+(`data`), so the client handles the notification the same way whether it arrived
+over SSE or push. One `notify` → two deliveries.
+
+This step has three parts: **(1)** the Web Push subscription table, **(2)** the
+service that does the fan-out, and **(3)** wiring it into the app (the SSE
+subscribe endpoint + the push router). One at a time.
+
+#### Part 1 — the Web Push subscription table
+
+The SSE side reuses the **same `SSEBroker` as chat** (section 3), now on a
+per-user channel (`str(user_id)`) instead of the conversation channel — no new
+moving part. Web Push, on the other hand, needs a per-device subscription table:
+the SDK ships the base row `BaseWebPushSubscriptionModel` and you create the
+concrete one with the FK to your `UserModel` (just like the
+[recipe »](recipes/webpush.md)):
 
 ```python
 # src/db/models.py (alongside the section 1 models)
@@ -327,8 +342,11 @@ class WebPushSubscriptionModel(BaseWebPushSubscriptionModel):
     )
 ```
 
-The fan-out service is tiny: publish on the broker and call `notify_user`
-(which delivers to every device and prunes dead ones on its own).
+#### Part 2 — the fan-out service
+
+The `NotificationService` is tiny: it holds the two pieces (the broker and the
+push service) and exposes a single `notify(...)` method. That method is what
+actually does the fan-out.
 
 ```python
 # src/services/notification.py
@@ -380,9 +398,27 @@ class NotificationService:
         )
 ```
 
-Each **business event** calls `notify` once with the id of whoever should
-hear about it. The new order notifies the **seller**; the new chat message
-notifies the **recipient**:
+The body of `notify` is **two lines**, one per channel:
+
+- **`await self.broker.publish(str(user_id), data, event=event)`** — the
+  **live (SSE)** delivery. Publishes on the `SSEBroker` using the **user id as
+  the channel**; every stream subscribed to that channel (the recipient's open
+  app) gets the frame instantly. It's fire-and-forget: if nobody is connected,
+  it does nothing and raises nothing.
+- **`await self.push.notify_user(user_id, WebPushPayloadSchema(...))`** — the
+  **background (Web Push)** delivery. `notify_user` looks up every subscription
+  for that user, fires the push to each device and **prunes dead ones on its
+  own** (expired or unsubscribed). The `WebPushPayloadSchema` wraps the
+  `title`/`body` (the text the system notification shows), uses `event` as the
+  `tag`, and carries the same `data` as the SSE frame.
+
+Notice both lines get the **same `user_id`** as the target and the **same
+`data`** as the payload — that's what guarantees the open app (SSE) and the
+closed app (push) see exactly the same thing.
+
+With the service in place, each **business event** calls `notify` **once**,
+passing the id of **whoever should hear about it**. The new order notifies the
+**seller**; the new chat message notifies the **recipient**:
 
 ```python
 # New order -> notify the seller (after persisting the order):
@@ -403,6 +439,23 @@ await notifications.notify(
     data={"room_id": str(conversation_id)},
 )
 ```
+
+Why each call's `user_id` is different:
+
+- **New order → `seller_id`.** The one who needs to know about the order is the
+  **seller**, so the channel (and the push target) is their id. The buyer who
+  placed the order gets nothing — they already know they bought.
+- **New message → `recipient_id`.** The one who needs to be told is **whoever
+  will receive** the message, not whoever sent it. The channel is the
+  recipient's id; the sender sees their own message through the chat's normal
+  response.
+
+In both cases, the id passed to `notify` is **the same** the recipient uses to
+subscribe over SSE (`GET /notifications/stream`, below): both sides must agree
+on the same channel string, otherwise the frame is published on a channel nobody
+is listening to.
+
+#### Part 3 — wiring it into the app
 
 In the app, the client subscribes to its own channel with
 `GET /notifications/stream`, and Web Push plugs in via the ready-made
@@ -447,6 +500,24 @@ app.include_router(
     )
 )
 ```
+
+Step by step, what happens on each `GET /notifications/stream`:
+
+1. `Depends(get_current_user_id)` resolves **who** the client is from the token.
+   Their id becomes the channel name — each user has their own, isolated from
+   the others.
+2. `broker.response(str(user_id))` does **three things in one call** (the same
+   shortcut the chat endpoint uses, now on a per-user channel):
+     - **register** — creates a fresh `EventStream` and subscribes it to the
+       `user_id` channel;
+     - **stream** — returns a `StreamingResponse` with the SSE headers already
+       set, and the client starts receiving;
+     - **unregister** — wires an `on_disconnect` that removes this stream from
+       the channel when the client drops, no hand-rolled `try/finally`.
+
+It's **the same `broker` as chat** (imported from `src.services.chat`): a single
+`SSEBroker` in the process serves both uses, only the channel string changes —
+`conversation_id` in chat, `user_id` here.
 
 With the app open, whoever holds the `GET /notifications/stream` gets the
 frame instantly — the same `data` the push would carry:

@@ -178,7 +178,15 @@ async def on_order_paid(event: OrderPaid) -> None:
 Section 7 pushed the status with a raw `events.publish` — perfect with the tab
 **open**. But the Pix confirmation is a domain event that deserves **both**
 channels: SSE for whoever is online and **Web Push (VAPID)** for whoever closed
-the app. A `NotificationService` fans the **same payload** out to both.
+the app.
+
+**What "fan-out" means here:** the same business event goes out over two
+different transports in the same call. The **same payload** (`data`) goes to SSE
+(arrives instantly if the app is open) **and** to Web Push (arrives even with the
+app closed, via a Service Worker). A `NotificationService` wraps that fan-out in
+a single `notify` function — the caller never has to know there are two channels.
+
+### The notification service
 
 ```python
 # src/services/notification.py
@@ -209,9 +217,26 @@ class NotificationService:
         )
 ```
 
-Wire `notifications` with the global `events` (section 1) and a
+The body of `notify` is **two lines**, one per channel:
+
+- **`self.broker.publish(str(user_id), data, event=event)`** — the **live**
+  channel (SSE). The 1st argument is the **channel** (the user id as a string);
+  the 2nd is the **payload** (`data`, serialized to JSON); `event=` is the
+  **name** of the event the front listens for with `addEventListener`. Reaches
+  only whoever is **connected right now**.
+- **`self.push.notify_user(user_id, WebPushPayloadSchema(...))`** — the
+  **background** channel (Web Push). `notify_user` looks up that user's VAPID
+  subscriptions and sends the push to each device; `WebPushPayloadSchema` carries
+  the `title`/`body` the Service Worker shows as a system notification, plus the
+  same `data` (and `tag=event` to group/replace notifications of the same kind).
+
+Note both get the **same `data`** — that's what keeps the channels in sync. Wire
+`notifications` with the global `events` (section 1) and a
 `WebPushSubscriptionService(BaseRepository(session, PushSubscriptionModel), dispatcher)`
 — the `dispatcher` comes from `WebPushDispatcher(**settings.webpush_kwargs())`.
+
+### Triggering from the handler
+
 On confirmation, section 7's handler swaps the raw `events.publish` for a single
 `notify`:
 
@@ -229,8 +254,15 @@ async def on_order_paid(event: OrderPaid) -> None:
     )
 ```
 
-Whoever has the app open subscribes to the channel over SSE; `broker.response`
-handles register/stream/unregister:
+The handler **just calls `notify`** — it never touches `EventStream`, an HTTP
+response, or a Web Push subscription. The whole "which channels this goes out on"
+decision lives inside `NotificationService`; the handler only describes **what**
+to notify (title, body, `data`), not **how** to deliver it.
+
+### The subscribe endpoint (SSE)
+
+Whoever has the app open subscribes to the channel over SSE. One line does it
+all: `broker.response(channel)`.
 
 ```python
 # src/api/routers/notifications.py
@@ -239,16 +271,35 @@ async def stream(user: UserModel = Depends(current_user)) -> StreamingResponse:
     return notifications.broker.response(str(user.id))
 ```
 
-The register/unregister of Web Push (VAPID) subscriptions is mounted via
-`make_web_push_router(...)` — the concrete model (`PushSubscriptionModel`) and
-the router live in the [Web Push](recipes/webpush.md) recipe. An SSE frame
-delivered on this channel:
+Step by step, what happens on each `GET /notifications/stream`:
+
+1. `Depends(current_user)` resolves **who** the client is from the JWT. Their id
+   becomes the channel name — the **same** id `notify` uses in
+   `broker.publish(str(user_id), ...)`, so both sides agree on the same string.
+2. `broker.response(str(user.id))` does **three things in one call**:
+     - **register** — creates a fresh `EventStream` and subscribes it to the
+       user's channel;
+     - **stream** — returns a `StreamingResponse` with the SSE headers already
+       set (the client starts receiving);
+     - **unregister** — wires an `on_disconnect` that removes this stream from the
+       channel when the client drops, with no hand-written `try/finally`.
+
+When `notify` runs `broker.publish` on that channel, the frame lands on the open
+stream:
 
 ```text
 event: payment_confirmed
 id: 42
 data: {"order_id": "ord_123"}
 ```
+
+### The Web Push subscriptions
+
+The register/unregister of Web Push (VAPID) subscriptions — enrolling each device
+to receive push with the app closed — is mounted via `make_web_push_router(...)`.
+The concrete model (`PushSubscriptionModel`) and the router live in the
+[Web Push](recipes/webpush.md) recipe; that's where `notify_user` reads the
+subscriptions from at fan-out time.
 
 SSE is **core** (no extra); Web Push needs the extra:
 `uv add "tempest-fastapi-sdk[webpush]"`. Each channel's primitives live in

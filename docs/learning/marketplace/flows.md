@@ -253,7 +253,18 @@ sequenceDiagram
     Note over WP: dispositivos mortos (404/410) são podados automaticamente
 ```
 
-O produtor (um controller/service) dispara o evento logo após a transição de domínio:
+**O que "fan-out" quer dizer aqui:** o mesmo evento de domínio sai por
+**dois canais diferentes carregando o payload idêntico** — SSE pro app aberto
+(entrega ao vivo, agora) e Web Push pro dispositivo fechado (o service worker
+acorda e mostra a notificação). Quem chama `notify(...)` **não escolhe** o canal:
+os dois disparam sempre, com o mesmo `data`. Assim o app aberto e o app fechado
+recebem exatamente a mesma informação — só muda como ela aparece.
+
+### Passo 1 — o produtor dispara um único evento
+
+O produtor é um controller/service. Logo depois da transição de domínio (aqui,
+o pedido virou `SHIPPED`), ele faz **uma só chamada** — não sabe nem se importa
+que existem dois canais por baixo:
 
 ```python
 await self.notifications.notify(
@@ -265,7 +276,26 @@ await self.notifications.notify(
 )
 ```
 
-O `NotificationService` é o único ponto que conhece os dois canais:
+O que cada argumento faz:
+
+- **`order.buyer_id`** — **quem** recebe a notificação. Esse id vira o **canal**
+  SSE e o **alvo** do Web Push. É o `buyer_id` (o comprador), **não** o vendedor
+  que acabou de expedir: quem precisa saber que o pedido saiu é o comprador. É o
+  mesmo id que o comprador usa pra assinar o stream (Passo 3) — os dois lados
+  **precisam** combinar na mesma string de canal.
+- **`event="order_shipped"`** — o **nome** do evento. No SSE vira o `event:` do
+  frame (o front escuta com `addEventListener("order_shipped", ...)`); no Web
+  Push vira a `tag` do payload.
+- **`title` / `body`** — o **texto visível** da notificação Web Push, que o
+  service worker mostra com o app fechado. O SSE ao vivo ignora esses campos (o
+  app aberto renderiza a UI dele a partir do `data`).
+- **`data`** — o **payload de máquina**, igual nos dois canais. É o que o
+  frontend lê pra saber qual pedido mudou e pra qual estado.
+
+### Passo 2 — o `NotificationService` faz o fan-out
+
+O `NotificationService` é o **único** ponto que conhece os dois canais. Ele
+recebe aquela chamada única e a desdobra em dois envios:
 
 ```python
 # src/services/notification.py
@@ -291,7 +321,68 @@ class NotificationService:
         )
 ```
 
-O cliente com o app aberto assina `GET /notifications/stream`, que devolve `broker.response(str(user.id))`. Um frame SSE que chega nele:
+As duas linhas de `notify()`, uma de cada vez:
+
+- **`await self.broker.publish(str(user_id), data, event=event)`** — o canal
+  **foreground (ao vivo)**. Manda `data` pra **todos** os streams SSE inscritos no
+  canal `str(user_id)` — ou seja, cada aba/app que o usuário tem aberto naquele
+  instante. É fire-and-forget: se ninguém está conectado, o `publish` não faz
+  nada (não dá erro). Repare que o canal é a versão string do mesmo `user_id`.
+- **`await self.push.notify_user(user_id, WebPushPayloadSchema(...))`** — o canal
+  **background**. Envia um Web Push (VAPID) pra **todos** os dispositivos que o
+  usuário registrou; o service worker de cada um exibe a notificação mesmo com o
+  app/aba **fechado**. Dispositivos mortos (respondem 404/410) são **podados**
+  automaticamente do banco. O `WebPushPayloadSchema` embrulha `title`/`body`
+  (texto visível), `tag=event` (agrupa notificações do mesmo tipo) e o **mesmo**
+  `data` que foi pro SSE.
+
+O ponto-chave: o `data` é **o mesmo objeto** nos dois envios. O app aberto o
+recebe via SSE e o app fechado via Web Push, mas o conteúdo é idêntico — por isso
+o frontend consegue tratar os dois com um handler só.
+
+### Passo 3 — o cliente assina o stream (`GET /notifications/stream`)
+
+Do outro lado, o cliente com o app aberto assina o canal dele para receber a
+metade SSE. O endpoint é uma linha: `broker.response(str(user.id))`.
+
+```python
+# src/api/routers/notifications.py
+from fastapi import APIRouter, Depends
+from starlette.responses import StreamingResponse
+
+from tempest_fastapi_sdk import SSEBroker
+
+from src.api.dependencies.auth import get_current_user
+from src.api.dependencies.resources import get_broker
+
+router = APIRouter()
+
+
+@router.get("/notifications/stream")
+async def notifications_stream(
+    user: User = Depends(get_current_user),
+    broker: SSEBroker = Depends(get_broker),
+) -> StreamingResponse:
+    """Subscribe the caller to their own notification channel and stream it."""
+    return broker.response(str(user.id))
+```
+
+O que acontece a cada `GET /notifications/stream`:
+
+1. `Depends(get_current_user)` resolve **quem** está pedindo o stream. O id dele é
+   a chave de tudo — é o mesmo id que o produtor usou como canal no Passo 1.
+2. `Depends(get_broker)` entrega o **mesmo** `SSEBroker` singleton que o
+   `NotificationService` usa pra publicar (sem isso, o `publish` e o `response`
+   falariam com brokers diferentes e nada chegaria).
+3. `broker.response(str(user.id))` faz **três coisas numa chamada só**:
+     - **register** — cria um `EventStream` novo e o inscreve no canal `user.id`;
+     - **stream** — devolve uma `StreamingResponse` com os headers de SSE já
+       prontos, e o cliente começa a receber os frames;
+     - **unregister** — amarra um `on_disconnect` que remove esse stream do canal
+       quando o cliente cai, então não sobra registro vazando.
+
+A partir daí, todo `broker.publish(str(user.id), ...)` do Passo 2 pinga neste
+stream. Um frame SSE que chega nele:
 
 ```text
 event: order_shipped
