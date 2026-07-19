@@ -1111,6 +1111,7 @@ class UserAuthService:
         soft: bool = False,
         session_dependency: Callable[..., Any] | None = None,
         cookie_name: str | None = None,
+        query_param: str | None = None,
     ) -> Callable[..., Coroutine[Any, Any, Any]]:
         """Build a FastAPI dependency that returns the authenticated user.
 
@@ -1154,6 +1155,16 @@ class UserAuthService:
                 the bundled login set, with no extra wiring. Pass an
                 explicit name to force it, or a bearer-only delivery
                 mode leaves it ``None`` (header only).
+            query_param (str | None): Query-string parameter to read the
+                access token from when both the ``Authorization`` header
+                and the cookie are absent (lookup order: header → cookie →
+                query). ``None`` (default) disables it. Unlike
+                ``cookie_name`` it is **never** auto-derived — it is an
+                opt-in escape hatch for cookieless clients such as the
+                browser ``EventSource`` (SSE), which cannot send a header.
+                A token in the URL leaks into access logs, history and the
+                ``Referer`` header, so enable it only over TLS with
+                short-lived access tokens (never a refresh token).
 
         Returns:
             Callable[..., Coroutine[Any, Any, Any]]: An async FastAPI
@@ -1183,6 +1194,7 @@ class UserAuthService:
             self.get_user,
             soft=soft,
             cookie_name=resolved_cookie_name,
+            query_param=query_param,
             session_dependency=session_dependency or self.db.session_dependency,
         )
 

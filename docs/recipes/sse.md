@@ -593,20 +593,17 @@ navegador o manda sozinho quando você abre com `withCredentials`:
 const es = new EventSource("/api/feed", { withCredentials: true });
 ```
 
-No backend, o SDK já lê o token do cookie — é o mesmo seam do
-`make_auth_router` (modo de entrega por cookie):
+No backend, guarde o stream com o `current_user_dependency()` do seu
+`UserAuthService` — o mesmo service que o `make_auth_router` usa (veja o
+[recipe de Auth flow](auth-flow.md)). Com `AUTH_TOKEN_DELIVERY` em
+`"cookie"`/`"both"`, ele **auto-deriva** o `cookie_name` do login (o header
+ainda vence quando presente), então não precisa fiar nada:
 
 ```python
 # src/api/dependencies/auth.py
-from tempest_fastapi_sdk import JWTUtils, make_jwt_user_dependency
+from src.services import auth_service   # sua instância de UserAuthService
 
-tokens = JWTUtils(secret=settings.JWT_SECRET)
-
-current_user = make_jwt_user_dependency(
-    tokens,
-    load_user,
-    cookie_name="access_token",   # <- EventSource + withCredentials
-)
+current_user = auth_service.current_user_dependency()
 ```
 
 !!! check "Por que cookie é melhor"
@@ -619,21 +616,15 @@ current_user = make_jwt_user_dependency(
 
 Sem cookie de sessão (front em **outra origem**, app mobile abrindo um
 `EventSource` cru, ambiente onde `withCredentials` não rola), passe o
-**access token** na query string. A partir da v0.91 o dependency aceita
-isso via `query_param`:
+**access token** na query string. A partir da v0.135 o
+`current_user_dependency` aceita isso via `query_param`:
 
 ```python
 # src/api/dependencies/auth.py
-from tempest_fastapi_sdk import JWTUtils, make_jwt_user_dependency
-
-tokens = JWTUtils(secret=settings.JWT_SECRET)
+from src.services import auth_service   # sua instância de UserAuthService
 
 # Ordem de busca: header -> cookie -> query string.
-current_user = make_jwt_user_dependency(
-    tokens,
-    load_user,
-    query_param="access_token",   # <- ?access_token=<jwt>
-)
+current_user = auth_service.current_user_dependency(query_param="access_token")
 ```
 
 ```python
@@ -674,10 +665,12 @@ const es = new EventSource(`/api/feed?access_token=${accessToken}`);
     - Remova o valor do formato de log do seu proxy/servidor.
     - Renove via um endpoint normal (com header/cookie), não pela query.
 
-!!! info "`query_param` também existe no dependency de baixo nível"
-    `make_bearer_token_dependency(tokens, query_param="access_token")`
-    devolve só as claims decodificadas — use quando você monta o
-    `get_current_user` na mão. Mesma ordem header → cookie → query.
+!!! info "Sob o capô: `make_jwt_user_dependency` / `make_bearer_token_dependency`"
+    O `current_user_dependency` embrulha o `make_jwt_user_dependency` (repassando
+    `cookie_name`/`query_param`). Se você **não** tem um `UserAuthService`, chame
+    o factory direto — `make_jwt_user_dependency(jwt, load_user, query_param="access_token")` —
+    ou o `make_bearer_token_dependency(jwt, query_param="access_token")` quando só
+    quer as claims decodificadas. Mesma ordem header → cookie → query.
 
 ## Alinhado com o tempest-react-sdk
 
