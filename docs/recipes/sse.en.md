@@ -429,10 +429,14 @@ data: {"order_id": "9f3a...", "total": "149.90"}
 ### Multi-worker: Redis bridge (ready, no extra code)
 
 An in-memory `SSEBroker` lives in **one** worker — with `--workers N` a
-`publish` only reaches the clients pinned to that process. Pass a Redis
-client and the **same `broker`** publishes via Redis `PUBLISH`; a
-background task (`run()`) `PSUBSCRIBE`-s and relays to **each** worker's
-local streams. Same call site, now horizontal:
+`publish` only reaches the clients pinned to that process. Give the broker a
+Redis client and the **same `broker`** publishes via Redis `PUBLISH`; a
+background task (`run()`) `PSUBSCRIBE`-s and relays to **each** worker's local
+streams. Same call site, now horizontal.
+
+Use the SDK's **`AsyncRedisManager`** (`[cache]` extra) to open the connection —
+it's the same managed client (connect/disconnect/health-check) that cache,
+sessions and feature flags use; no raw `redis.asyncio`:
 
 ```python
 # src/api/app.py
@@ -440,35 +444,86 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from redis.asyncio import Redis
 
 from tempest_fastapi_sdk import SSEBroker
+from tempest_fastapi_sdk.cache import AsyncRedisManager
 
-redis = Redis.from_url("redis://localhost:6379/0", decode_responses=True)
-broker = SSEBroker(redis=redis, channel_prefix="sse")
+from src.core.settings import settings
+
+cache = AsyncRedisManager(**settings.redis_kwargs())
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(broker.run())   # subscribe Redis + fan out
+    """Connect Redis, wire the cross-worker broker, run its fan-out loop."""
+    await cache.connect()
+    broker = SSEBroker(redis=cache.client, channel_prefix="sse")
+    app.state.broker = broker
+    task = asyncio.create_task(broker.run())
     try:
         yield
     finally:
-        await broker.aclose()
         task.cancel()
+        await broker.aclose()
+        await cache.disconnect()
 
 
 app = FastAPI(lifespan=lifespan)
-app.state.broker = broker   # the same get_broker from above resolves this
 # broker.publish(...) on any worker -> reaches ALL workers
 ```
 
+What each part does:
+
+- `AsyncRedisManager(**settings.redis_kwargs())` — the SDK's managed Redis
+  client. `redis_kwargs()` comes from the `RedisSettings` mixin (URL +
+  `decode_responses`).
+- `await cache.connect()` **first** — before that, `cache.client` raises
+  `RuntimeError`. That's why the broker is built **inside the lifespan**, not at
+  module import.
+- `SSEBroker(redis=cache.client, ...)` — `cache.client` is the underlying raw
+  `redis.asyncio.Redis`; the broker uses it for `PUBLISH`/`PSUBSCRIBE`.
+- `app.state.broker = broker` — the same wiring as **Step 1**, so the endpoints'
+  `get_broker` stays identical.
+- `asyncio.create_task(broker.run())` — background task that subscribes to Redis
+  and relays each event to the worker's local streams. On teardown: cancel the
+  task, close the broker, disconnect Redis.
+
 !!! tip "Start simple, scale later"
-    Without Redis, `SSEBroker()` already covers a single process. When you
-    need multiple workers/hosts, just inject a Redis client and start
-    `run()` in the lifespan — no endpoint changes. `publish` becomes
-    cross-process for free. `redis` comes from the `[cache]` extra
+    Without Redis, `SSEBroker()` already covers a single process. When you need
+    multiple workers/hosts, just pass the `AsyncRedisManager`'s `cache.client`
+    and start `run()` in the lifespan — no endpoint changes, `publish` becomes
+    cross-process for free. `AsyncRedisManager` comes from the `[cache]` extra
     (`uv add "tempest-fastapi-sdk[cache]"`).
+
+??? note "Multi-worker without Redis: bridge over RabbitMQ"
+    `SSEBroker.run()` is **Redis-only** (`redis.pubsub()` underneath) — the
+    `redis=` param takes no other transport. If you **already run RabbitMQ** and
+    don't want Redis just for this, you can wire the bridge by hand with
+    `MessageBroker` (`[queue]` extra): each worker keeps an in-memory
+    `SSEBroker()` (no `redis=`), the domain publishes the event to the message
+    broker (not to SSE directly), and each worker's handler calls the **local**
+    `broker.publish`.
+
+    ```python
+    from tempest_fastapi_sdk import SSEBroker
+    from tempest_fastapi_sdk.queue import MessageBroker
+
+    broker = SSEBroker()                       # in-memory, one per worker
+    mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)
+
+    @mq.on("sse.fanout")                        # each worker receives and relays locally
+    async def _fan(evt: dict) -> None:
+        await broker.publish(evt["channel"], evt["data"], event=evt["event"])
+
+    # the domain publishes here instead of calling broker.publish directly:
+    # await mq.publish("sse.fanout", {"channel": str(user_id), "event": "order_created", "data": {...}})
+    ```
+
+    **Gotcha:** by default RabbitMQ delivers each message to **one** consumer
+    (work-queue). For the broadcast to reach **every** worker, each needs an
+    **exclusive** queue bound to a **fanout exchange** — configure it via
+    `mq.broker` (the escape hatch to FastStream's `RabbitBroker`). That's the
+    extra wiring Redis pub/sub spares you, which is why it's the default here.
 
 ## Authentication (cookie or query string)
 
