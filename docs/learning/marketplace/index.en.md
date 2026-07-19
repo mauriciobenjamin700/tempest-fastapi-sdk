@@ -1,6 +1,6 @@
 # 🛒 Product marketplace
 
-Multi-tenant sales platform **Mercado Livre / Shopee** style, no external integrations. The point is to exercise `tempest-fastapi-sdk` in a realistic scenario — auth, multi-tenant, RBAC, idempotency, auditable stock, orders with a state machine, real-time SSE status, MinIO uploads, transactional email.
+Multi-tenant sales platform **Mercado Livre / Shopee** style, no external integrations. The point is to exercise `tempest-fastapi-sdk` in a realistic scenario — auth, multi-tenant, RBAC, idempotency, auditable stock, orders with a state machine, real-time messaging (SSE + Web Push) for status and notifications, MinIO uploads, transactional email.
 
 ## Project pages
 
@@ -15,7 +15,7 @@ Multi-tenant sales platform **Mercado Livre / Shopee** style, no external integr
 
 ```bash
 # 1. Scaffold via SDK
-tempest new marketplace --extras auth,admin,upload,cache,email,minio,queue,tasks,metrics,prometheus,http
+tempest new marketplace --extras auth,admin,upload,cache,email,minio,queue,tasks,metrics,prometheus,http,webpush
 
 # 2. Boot the infra
 cd marketplace
@@ -61,7 +61,9 @@ When the service boots you have:
 | Non-duplicating checkout | `IdempotencyMiddleware` + `RedisIdempotencyStore` |
 | Upload body-size limit | `BodySizeLimitMiddleware` (v0.28+) |
 | Product images | `UploadUtils` + `MinIOUploadStorage` + presigned URLs |
-| Real-time order status | `EventStream`, `sse_response` |
+| Real-time order status (app open) | `SSEBroker` — per-user channel (`str(user.id)`); `broker.response(channel)` builds the `StreamingResponse` |
+| Notification with app closed (background) | `WebPushDispatcher` + `WebPushSubscriptionService` + `make_web_push_router` (`[webpush]` extra) |
+| One domain event on two channels (foreground + background) | Custom `NotificationService` fanning out SSE + Web Push with the same payload |
 | Async notifications | `AsyncTaskBrokerManager` (TaskIQ) + `AsyncBrokerManager` (FastStream) |
 | Public catalog cache | `AsyncRedisManager`, `@cached` |
 | Oncall metrics | `PrometheusMiddleware` + `make_prometheus_router` (v0.28+) and `MetricsUtils` |
@@ -91,16 +93,19 @@ marketplace/
     │   │   ├── stock.py           # in / out / adjust
     │   │   ├── cart.py            # buyer cart
     │   │   ├── orders.py          # checkout + status
-    │   │   └── reviews.py         # post-delivery reviews
+    │   │   ├── reviews.py         # post-delivery reviews
+    │   │   ├── notifications.py   # GET /notifications/stream (SSE)
+    │   │   └── push.py            # make_web_push_router (subscriptions)
     │   └── dependencies/
     │       ├── auth.py            # current_user, require_org_role
     │       └── controllers.py
     ├── controllers/               # cross-service orchestration
     ├── services/                  # domain logic
+    │   └── notification.py        # NotificationService (fan-out SSE + Web Push)
     ├── schemas/                   # Pydantic DTOs
     ├── core/                      # settings + exceptions + constants
     ├── db/
-    │   ├── models/                # ORM
+    │   ├── models/                # ORM (includes push_subscription.py)
     │   └── repositories/          # queries
     ├── queue/                     # FastStream consumers
     ├── tasks/                     # TaskIQ tasks
@@ -115,7 +120,7 @@ marketplace/
 4. **Catalog + products** — `Product` + `ProductVariant` + `PriceHistory`. (Covers: 1-N relationships, soft-delete.)
 5. **Stock** — `StockMovement` (append-only) + balance derived via view or aggregate query. (Covers: auditing, transactions.)
 6. **Cart + checkout** — `Cart` + `Order` + `OrderItem` with idempotency. (Covers: state machine, idempotency.)
-7. **Real-time status via SSE** — event stream for status changes. (Covers: SSE.)
+7. **Real-time messaging (SSE + Web Push)** — a `NotificationService` fans each domain event (order paid/shipped, invite, new review) out across two channels with the same payload: `SSEBroker` for the buyer with the app open, and Web Push (VAPID) for devices with the app closed. (Covers: SSE, Web Push.) SSE is core; Web Push needs `uv add "tempest-fastapi-sdk[webpush]"`; multi-worker SSE needs `[cache]`. See **[SSE recipe »](../../recipes/sse.en.md)** and **[Web Push recipe »](../../recipes/webpush.en.md)**.
 8. **Product images** — upload via `UploadUtils` + `MinIOUploadStorage` + listing with presigned URL. (Covers: storage.)
 9. **Async notifications** — TaskIQ sending emails + RabbitMQ publishing events to projections / reports. (Covers: queues, tasks.)
 10. **Metrics + admin** — Prometheus endpoint + `/admin` listing entities. (Covers: observability, SDK admin.)

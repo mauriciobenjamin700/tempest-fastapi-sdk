@@ -107,7 +107,7 @@ This page is the **domain contract**. Every modeling, endpoint, or test decision
 | **D-05** | Order creation **MUST** emit a stock `RESERVATION` (atomic with the order `INSERT`). |
 | **D-06** | Confirmed payment **MUST** convert `RESERVATION` into `OUT`. |
 | **D-07** | Cancellation **MUST** emit `RELEASE` (returns stock). |
-| **D-08** | State change **MUST** publish an SSE event to the buyer's `orders/{id}/events` stream. |
+| **D-08** | State change **MUST** notify the buyer via `NotificationService.notify(...)` — SSE (foreground) + Web Push (background), with the same payload (see section 10). |
 | **D-09** | Payment in this project is **mock** — an admin endpoint marks the order as paid. No external integration. |
 
 ## 9. Reviews
@@ -118,7 +118,20 @@ This page is the **domain contract**. Every modeling, endpoint, or test decision
 | **R-02** | A user **MAY** review each variant once (`UNIQUE(user_id, variant_id)`). |
 | **R-03** | Score **MUST** be between 1 and 5. |
 
-## 10. Global limits and quotas
+## 10. Notifications (SSE + Web Push)
+
+| ID | Rule |
+|----|------|
+| **N-01** | Every relevant domain event **MUST** notify the right user: order `PAID`/`SHIPPED`/`DELIVERED`/`CANCELLED` → the **buyer**; invite received → the **invitee**; new review → OWNER/ADMIN of the **selling org**. |
+| **N-02** | The same event **MUST** be delivered on **two channels with the same payload**: **SSE** (foreground, app open) and **Web Push** (background, app closed). A single `NotificationService.notify(...)` does the fan-out. |
+| **N-03** | SSE uses `SSEBroker` with **channel = `str(user.id)`**; the client subscribes to `GET /notifications/stream` (returns `broker.response(...)`). SSE is core; multi-worker requires `SSEBroker(redis=...)` + `broker.run()` in the lifespan (`[cache]` extra). |
+| **N-04** | Web Push uses `WebPushSubscriptionService.notify_user(user_id, payload)` — sends to **all** the user's registered devices. Needs the `[webpush]` extra. |
+| **N-05** | Dead devices (`404`/`410` from the push service) **MUST** be pruned automatically by `WebPushSubscriptionService` — no zombie subscriptions piling up. |
+| **N-06** | When the action came from the user themselves, the notification **MUST NOT** echo back to the originating device — pass `exclude_endpoints` to `notify_user`. |
+| **N-07** | A notification is **ephemeral**: there is no persisted `Notification` entity nor history. Each notification lives only as an SSE frame and/or Web Push payload derived from the event. |
+| **N-08** | Notifications for the same event **MAY** coalesce on the device via `WebPushPayloadSchema.tag` (use `tag=event`) — an update replaces the previous one instead of stacking. |
+
+## 11. Global limits and quotas
 
 | ID | Rule |
 |----|------|

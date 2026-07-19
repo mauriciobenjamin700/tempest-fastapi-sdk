@@ -3,19 +3,21 @@
 The [Pix checkout](integrated.md) wires the payment blocks together. Here
 we combine the SDK's newest modules into a **local-commerce** flow: an
 authenticated buyer finds **nearby** sellers, sees the **distance and
-time** to each, chats over **real-time chat**, and finally **rates** the
-seller with stars.
+time** to each, chats over **real-time chat**, gets **live notifications**
+(new order, new message), and finally **rates** the seller with stars.
 
 Components exercised at once: **geo** (`GeoPointMixin` +
 `GeoRepositoryMixin`, `NominatimBackend`, `estimate_travel`), **chat**
-(`ChatService` + `make_chat_router` + `SSEBroker`), **reviews**
-(`ReviewService` + `make_reviews_router`) and the SDK **auth** for the
-current user.
+(`ChatService` + `make_chat_router` + `SSEBroker`), **notifications**
+(`SSEBroker` + `WebPushSubscriptionService`, one event on two channels),
+**reviews** (`ReviewService` + `make_reviews_router`) and the SDK **auth**
+for the current user.
 
 !!! info "What you need"
-    The SDK core + the `[geo]` extra (for the geocoder/OSRM `httpx`). Chat
-    and reviews need no extra. Redis is optional (multi-worker SSE
-    fan-out).
+    The SDK core + the `[geo]` extra (for the geocoder/OSRM `httpx`). Chat,
+    reviews and the notification SSE are core (no extra); Web Push needs the
+    `[webpush]` extra — `uv add "tempest-fastapi-sdk[webpush]"`. Redis is
+    optional (multi-worker SSE fan-out).
 
 ## 1. Models
 
@@ -298,6 +300,170 @@ def create_app() -> FastAPI:
     return app
 ```
 
+## 6. Live notifications (SSE + Web Push)
+
+A domain event — a **new order** for the seller, a **new message** for the
+recipient — has to arrive both ways: **live** with the app open (SSE) and
+**in the background** with the app closed (Web Push). A
+`NotificationService` takes the event once and fans it out to both channels
+with the **same payload**.
+
+The SSE side reuses the **same `SSEBroker` as chat**, now on a per-user
+channel (`str(user_id)`). Web Push needs a per-device subscription table —
+the SDK ships the base row and you create the concrete one with the FK to
+your `UserModel` (just like the [recipe »](recipes/webpush.md)):
+
+```python
+# src/db/models.py (alongside the section 1 models)
+from tempest_fastapi_sdk import BaseWebPushSubscriptionModel
+
+
+class WebPushSubscriptionModel(BaseWebPushSubscriptionModel):
+    """A user's Web Push subscription (one row per device)."""
+
+    __tablename__ = "web_push_subscriptions"
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+```
+
+The fan-out service is tiny: publish on the broker and call `notify_user`
+(which delivers to every device and prunes dead ones on its own).
+
+```python
+# src/services/notification.py
+from uuid import UUID
+
+from tempest_fastapi_sdk import (
+    SSEBroker,
+    WebPushPayloadSchema,
+    WebPushSubscriptionService,
+)
+
+
+class NotificationService:
+    """Fan one domain event out to SSE (foreground) and Web Push (background)."""
+
+    def __init__(self, broker: SSEBroker, push: WebPushSubscriptionService) -> None:
+        """Wire the SSE broker and the Web Push subscription service.
+
+        Args:
+            broker (SSEBroker): Per-user fan-out for live (app-open) delivery.
+            push (WebPushSubscriptionService): Delivers to a user's devices
+                when the app is closed, pruning dead subscriptions.
+        """
+        self.broker = broker
+        self.push = push
+
+    async def notify(
+        self,
+        user_id: UUID,
+        *,
+        event: str,
+        title: str,
+        body: str,
+        data: dict[str, object],
+    ) -> None:
+        """Deliver the same event on both channels.
+
+        Args:
+            user_id (UUID): The recipient — SSE channel and Web Push target.
+            event (str): Event name (SSE `event:` field and push `tag`).
+            title (str): Notification title (Web Push).
+            body (str): Notification body / preview (Web Push).
+            data (dict[str, object]): Shared payload carried by both channels.
+        """
+        await self.broker.publish(str(user_id), data, event=event)
+        await self.push.notify_user(
+            user_id,
+            WebPushPayloadSchema(title=title, body=body, tag=event, data=data),
+        )
+```
+
+Each **business event** calls `notify` once with the id of whoever should
+hear about it. The new order notifies the **seller**; the new chat message
+notifies the **recipient**:
+
+```python
+# New order -> notify the seller (after persisting the order):
+await notifications.notify(
+    seller_id,
+    event="order_created",
+    title="New order",
+    body=f"Order for R$ {order.total}",
+    data={"order_id": str(order.id), "total": str(order.total)},
+)
+
+# New chat message -> notify the recipient (after persisting the message):
+await notifications.notify(
+    recipient_id,
+    event="chat_message",
+    title=sender_name,
+    body=preview,
+    data={"room_id": str(conversation_id)},
+)
+```
+
+In the app, the client subscribes to its own channel with
+`GET /notifications/stream`, and Web Push plugs in via the ready-made
+`make_web_push_router` (`/api/push/subscribe` + `/unsubscribe`):
+
+```python
+# src/api/app.py (additions to create_app)
+from starlette.responses import StreamingResponse
+
+from tempest_fastapi_sdk import (
+    BaseRepository,
+    WebPushDispatcher,
+    WebPushSubscriptionService,
+    make_web_push_router,
+)
+
+from src.core.resources import settings
+from src.services.chat import broker  # the same SSEBroker as chat
+from src.db.models import WebPushSubscriptionModel
+
+
+def build_push_service(session: AsyncSession) -> WebPushSubscriptionService:
+    return WebPushSubscriptionService(
+        BaseRepository(session, model=WebPushSubscriptionModel),
+        WebPushDispatcher(**settings.webpush_kwargs()),
+    )
+
+
+@app.get("/notifications/stream")
+async def notifications_stream(
+    user_id: UUID = Depends(get_current_user_id),
+) -> StreamingResponse:
+    """Subscribe the caller to their live notification channel."""
+    return broker.response(str(user_id))
+
+
+app.include_router(
+    make_web_push_router(
+        service_factory=build_push_service,
+        session_factory=get_session,
+        current_user_id=get_current_user_id,
+    )
+)
+```
+
+With the app open, whoever holds the `GET /notifications/stream` gets the
+frame instantly — the same `data` the push would carry:
+
+```text
+event: chat_message
+data: {"room_id": "8c2f..."}
+```
+
+!!! tip "SSE can't send headers — authenticate via cookie or query"
+    The native `EventSource` can't send `Authorization`. Use a session
+    cookie on the same origin, or a short-lived `access token` in the query
+    string. Both seams and the primitives (`broker.response`, backpressure,
+    Redis bridge) live in the **[SSE recipe »](recipes/sse.md)**; VAPID, the
+    subscription table and dead-device pruning in the
+    **[Web Push recipe »](recipes/webpush.md)**.
+
 ## Recap
 
 A whole local-commerce flow, from SDK blocks only:
@@ -307,10 +473,15 @@ A whole local-commerce flow, from SDK blocks only:
   gives the ETA. No paid API.
 - **Chat** — `ChatService` + `make_chat_router` with `SSEBroker` for live
   messages.
+- **Notifications** — `NotificationService.notify` sends one domain event
+  (new order, new message) on both channels with the same payload: SSE
+  (`broker.publish`, app open) and Web Push (`notify_user`, app closed).
 - **Rating** — `ReviewService` upserts one vote per user and `aggregate`
   yields the storefront numbers.
-- All three routers follow the same shape (service + session + current-user
+- The SDK routers follow the same shape (service + session + current-user
   factories), so swapping auth or database never touches the module.
 
 See the individual recipes: **[Geolocation »](recipes/geo.md)**,
-**[Chat »](recipes/chat.md)** and **[Comments + ratings »](recipes/reviews.md)**.
+**[Chat »](recipes/chat.md)**, **[SSE »](recipes/sse.md)**,
+**[Web Push »](recipes/webpush.md)** and
+**[Comments + ratings »](recipes/reviews.md)**.

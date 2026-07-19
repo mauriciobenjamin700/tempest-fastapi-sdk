@@ -107,7 +107,7 @@ Esta página é o **contrato do domínio**. Toda decisão de modelagem, endpoint
 | **D-05** | Criação de pedido **MUST** gerar `RESERVATION` no estoque (atômico com o `INSERT` do pedido). |
 | **D-06** | Pagamento confirmado **MUST** converter `RESERVATION` em `OUT`. |
 | **D-07** | Cancelamento **MUST** gerar `RELEASE` (devolve estoque). |
-| **D-08** | Mudança de estado **MUST** publicar evento SSE pro stream `orders/{id}/events` do comprador. |
+| **D-08** | Mudança de estado **MUST** notificar o comprador via `NotificationService.notify(...)` — SSE (foreground) + Web Push (background), com o mesmo payload (ver seção 10). |
 | **D-09** | Pagamento neste projeto é **mock** — endpoint admin marca como pago. Sem integração externa. |
 
 ## 9. Reviews
@@ -118,7 +118,20 @@ Esta página é o **contrato do domínio**. Toda decisão de modelagem, endpoint
 | **R-02** | Um user **MAY** revisar cada variante uma única vez (constraint `UNIQUE(user_id, variant_id)`). |
 | **R-03** | Score **MUST** estar entre 1 e 5. |
 
-## 10. Limites e quotas globais
+## 10. Notificações (SSE + Web Push)
+
+| ID | Regra |
+|----|-------|
+| **N-01** | Cada evento de domínio relevante **MUST** notificar o usuário certo: pedido `PAID`/`SHIPPED`/`DELIVERED`/`CANCELLED` → o **comprador**; convite recebido → o **convidado**; novo review → OWNER/ADMIN da **org vendedora**. |
+| **N-02** | O mesmo evento **MUST** ser entregue em **dois canais com o mesmo payload**: **SSE** (foreground, app aberto) e **Web Push** (background, app fechado). Um único `NotificationService.notify(...)` faz o fan-out. |
+| **N-03** | SSE usa `SSEBroker` com **canal = `str(user.id)`**; o cliente assina `GET /notifications/stream` (devolve `broker.response(...)`). SSE é core; multi-worker exige `SSEBroker(redis=...)` + `broker.run()` no lifespan (extra `[cache]`). |
+| **N-04** | Web Push usa `WebPushSubscriptionService.notify_user(user_id, payload)` — envia a **todos os dispositivos** inscritos do usuário. Precisa do extra `[webpush]`. |
+| **N-05** | Dispositivos mortos (resposta `404`/`410` do push service) **MUST** ser podados automaticamente pelo `WebPushSubscriptionService` — sem inscrição zumbi acumulando. |
+| **N-06** | Quando a ação partiu do próprio usuário, a notificação **MUST NOT** ecoar de volta pro dispositivo originador — passar `exclude_endpoints` no `notify_user`. |
+| **N-07** | Notificação é **efêmera**: não há entidade `Notification` persistida nem histórico. Cada notificação vive só como frame SSE e/ou payload Web Push derivados do evento. |
+| **N-08** | Notificações do mesmo evento **MAY** coalescer no dispositivo via `WebPushPayloadSchema.tag` (usar `tag=event`) — uma atualização substitui a anterior em vez de empilhar. |
+
+## 11. Limites e quotas globais
 
 | ID | Regra |
 |----|-------|
