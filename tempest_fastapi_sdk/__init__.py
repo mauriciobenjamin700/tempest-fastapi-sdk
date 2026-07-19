@@ -417,7 +417,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.133.1"
+__version__: str = "0.134.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
