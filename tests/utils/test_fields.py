@@ -7,10 +7,12 @@ from decimal import Decimal
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from tempest_fastapi_sdk import Locale
 from tempest_fastapi_sdk.utils import (
     CentsField,
     HexColorField,
     LatitudeField,
+    LocaleField,
     LongitudeField,
     NonEmptyStrField,
     NonNegativeFloatField,
@@ -45,6 +47,10 @@ class StrModel(BaseModel):
     name: NonEmptyStrField = "x"
     slug: SlugField = "ok"
     color: HexColorField = "#fff"
+
+
+class LocaleModel(BaseModel):
+    locale: LocaleField | None = None
 
 
 class TestIntegerFields:
@@ -138,3 +144,30 @@ class TestStringFields:
     def test_hex_color_rejects_invalid(self, value: str) -> None:
         with pytest.raises(ValidationError):
             StrModel(color=value)
+
+
+class TestLocaleField:
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("pt-BR", Locale.PT_BR),
+            ("pt_BR", Locale.PT_BR),
+            ("PT-BR", Locale.PT_BR),
+            ("pt", Locale.PT_BR),
+            ("en", Locale.EN_US),
+            (Locale.EN_US, Locale.EN_US),
+        ],
+    )
+    def test_normalizes_loose_input(self, value: object, expected: Locale) -> None:
+        assert LocaleModel(locale=value).locale is expected
+
+    def test_yields_locale_member(self) -> None:
+        assert isinstance(LocaleModel(locale="pt-BR").locale, Locale)
+
+    def test_none_is_allowed(self) -> None:
+        assert LocaleModel(locale=None).locale is None
+
+    @pytest.mark.parametrize("value", ["xx-YY", "klingon", ""])
+    def test_rejects_unknown(self, value: str) -> None:
+        with pytest.raises(ValidationError):
+            LocaleModel(locale=value)

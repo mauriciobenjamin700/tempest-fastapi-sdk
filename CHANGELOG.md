@@ -5,6 +5,26 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.138.0] — 2026-07-20
+
+### Added
+
+- **`LocaleField`** (`tempest_fastapi_sdk.LocaleField`) — the schema-ready
+  counterpart of the `Locale` enum, mirroring how `UFField` pairs with `UF`.
+  It is `Annotated[Locale, BeforeValidator(normalize_locale_tag)]`, so a
+  request field normalizes loose input (`"pt_BR"`, `"PT-BR"`, the bare
+  primary subtag `"pt"`) into a `Locale` member and rejects unsupported tags
+  with a `422`. Use the `Locale` enum for canonical values you already hold,
+  and `LocaleField` on request schemas where the input is client-supplied.
+- **`normalize_locale_tag`** (`tempest_fastapi_sdk.normalize_locale_tag`) — the
+  loose-string → `Locale` normalizer behind `LocaleField` (also usable
+  standalone), analogous to `normalize_uf`.
+
+### Docs
+
+- The fields recipe (PT-BR + EN) documents `LocaleField` with an Enum-vs-Field
+  note cross-linked to `LocaleColumnMixin`.
+
 ## [0.137.0] — 2026-07-20
 
 ### Added

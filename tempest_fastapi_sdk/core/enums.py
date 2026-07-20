@@ -222,8 +222,42 @@ class Locale(BaseStrEnum):
     MS_MY = "ms-MY"
 
 
+def normalize_locale_tag(value: str | Locale) -> Locale:
+    """Coerce a loose locale string into a :class:`Locale` member.
+
+    Accepts any case and either separator — ``"pt_BR"``, ``"PT-BR"``,
+    ``"pt-br"`` all resolve to :attr:`Locale.PT_BR` — and the bare primary
+    subtag (``"pt"`` -> ``PT_BR``, ``"en"`` -> ``EN_US``; the first member
+    declared for that subtag wins). This is the normalizer behind
+    :data:`tempest_fastapi_sdk.LocaleField`, mirroring ``normalize_uf`` for
+    ``UFField``.
+
+    Args:
+        value (str | Locale): The raw locale value; a :class:`Locale` is
+            returned unchanged.
+
+    Returns:
+        Locale: The matching member.
+
+    Raises:
+        ValueError: If ``value`` matches no supported locale.
+    """
+    if isinstance(value, Locale):
+        return value
+    key = str(value).strip().replace("_", "-").lower()
+    for locale in Locale:
+        if locale.value.lower() == key:
+            return locale
+    primary = key.split("-", 1)[0]
+    for locale in Locale:
+        if locale.value.split("-", 1)[0].lower() == primary:
+            return locale
+    raise ValueError(f"invalid locale {value!r}")
+
+
 __all__: list[str] = [
     "BaseIntEnum",
     "BaseStrEnum",
     "Locale",
+    "normalize_locale_tag",
 ]

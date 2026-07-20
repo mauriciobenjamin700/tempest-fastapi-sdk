@@ -10,6 +10,7 @@ from tempest_fastapi_sdk.core.enums import (
     BaseIntEnum,
     BaseStrEnum,
     Locale,
+    normalize_locale_tag,
 )
 from tempest_fastapi_sdk.core.logging import (
     JSONFormatter,
@@ -29,6 +30,7 @@ __all__: list[str] = [
     "clear_request_id",
     "configure_logging",
     "get_request_id",
+    "normalize_locale_tag",
     "request_id_ctx",
     "require_annotations",
     "set_request_id",

@@ -165,6 +165,7 @@ from tempest_fastapi_sdk.core import (
     clear_request_id,
     configure_logging,
     get_request_id,
+    normalize_locale_tag,
     request_id_ctx,
     require_annotations,
     set_request_id,
@@ -333,6 +334,7 @@ from tempest_fastapi_sdk.utils import (
     HTTPClient,
     JWTUtils,
     LatitudeField,
+    LocaleField,
     LocalUploadStorage,
     LogUtils,
     LongitudeField,
@@ -419,7 +421,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.137.0"
+__version__: str = "0.138.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -553,6 +555,7 @@ __all__: list[str] = [
     "LocalUploadStorage",
     "Locale",
     "LocaleColumnMixin",
+    "LocaleField",
     "LogEntrySchema",
     "LogSettings",
     "LogSource",
@@ -773,6 +776,7 @@ __all__: list[str] = [
     "normalize_cpf",
     "normalize_cpf_cnpj",
     "normalize_locale",
+    "normalize_locale_tag",
     "normalize_phone_br",
     "normalize_pix_key",
     "normalize_uf",

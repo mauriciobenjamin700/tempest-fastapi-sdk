@@ -76,6 +76,30 @@ class CategorySchema(BaseSchema):
     color: HexColorField
 ```
 
+## Locale
+
+`LocaleField` is the language counterpart of `UFField`: an
+`Annotated[Locale, ...]` that **normalizes the input** and yields a
+[`Locale`](../reference.md) enum member. It accepts case/separator variants
+(`"pt_BR"`, `"PT-BR"`) and the bare primary subtag (`"pt"` → `Locale.PT_BR`);
+a tag outside the enum becomes a `422`.
+
+```python
+from tempest_fastapi_sdk import BaseSchema, Locale
+from tempest_fastapi_sdk.utils import LocaleField
+
+
+class ProfileUpdateSchema(BaseSchema):
+    locale: LocaleField | None = None   # "pt_BR" -> Locale.PT_BR; "xx-YY" -> 422
+```
+
+!!! tip "Enum vs. Field"
+    Use the **`Locale` enum** when you already hold the canonical tag
+    (constants, internal logic). Use **`LocaleField`** on a request schema,
+    where the input is client-supplied and worth normalizing — the same
+    relationship `UF` has to `UFField`. To store the language on a table, see
+    [`LocaleColumnMixin`](database.md#locale-the-users-preferred-language).
+
 ## Pix key
 
 `PixKeyField` validates the **five** BACEN Pix key types in a single

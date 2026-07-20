@@ -23,7 +23,9 @@ from decimal import Decimal
 from typing import Annotated
 
 from annotated_types import Ge, Gt, Le
-from pydantic import Field, StringConstraints
+from pydantic import BeforeValidator, Field, StringConstraints
+
+from tempest_fastapi_sdk.core.enums import Locale, normalize_locale_tag
 
 # --- Integers -------------------------------------------------------------
 
@@ -105,11 +107,25 @@ HexColorField = Annotated[
 ]
 """CSS hex color, 3 or 6 hex digits with a leading ``#`` (``#fff`` / ``#abc123``)."""
 
+# --- Enums ----------------------------------------------------------------
+
+LocaleField = Annotated[Locale, BeforeValidator(normalize_locale_tag)]
+"""Pydantic type that accepts a loose locale string and yields a :class:`Locale`.
+
+The :class:`~pydantic.BeforeValidator` runs ahead of the enum coercion, so
+case and separator variants (``"pt_BR"``, ``"PT-BR"``) and the bare primary
+subtag (``"pt"`` -> ``PT_BR``) are accepted; an unsupported tag raises a
+clear ``invalid locale`` error (HTTP 422). Use it on a request schema the
+way :data:`UFField` is used for state — the stored/response value can stay a
+plain ``str``.
+"""
+
 
 __all__: list[str] = [
     "CentsField",
     "HexColorField",
     "LatitudeField",
+    "LocaleField",
     "LongitudeField",
     "NonEmptyStrField",
     "NonNegativeFloatField",
