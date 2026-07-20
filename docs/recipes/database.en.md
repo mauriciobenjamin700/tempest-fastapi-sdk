@@ -533,7 +533,7 @@ rows = await repository.list(
 ```
 
 `Q` uses the same conventions as the filter dict (`name` ILIKE,
-`field__gte`, list → `IN`, …), so `Q(priority__gte=5, name="ana")` is the
+`field__gte`, iterable → `IN`, …), so `Q(priority__gte=5, name="ana")` is the
 `AND` of those conditions. `where=` works on `list` / `first` / `get` /
 `get_or_none` / `count` / `exists` / `paginate` / `delete_many`.
 
@@ -542,10 +542,18 @@ Available `field__op` suffix operators (in `Q` **and** the dict):
 | Suffix | SQL | Example |
 |--------|-----|---------|
 | `gt` `gte` `lt` `lte` `ne` | comparison | `Q(priority__gte=5)` |
-| `in` `notin` | `IN` / `NOT IN` (value is a list) | `Q(status__in=["open", "paid"])` |
+| `in` `notin` `not_in` | `IN` / `NOT IN` (value is any non-string iterable: `list`/`set`/`tuple`/generator; `not_in` aliases `notin`) | `Q(status__in={"open", "paid"})` |
+| `between` | `col BETWEEN lo AND hi` (value is an ordered pair `(lo, hi)` as a `list`/`tuple`) | `Q(price__between=(10, 20))` |
+| `iexact` | case-insensitive equality (`lower(col) == lower(v)`) | `Q(email__iexact="Ana@X.com")` |
+| `like` `ilike` | raw `LIKE` / `ILIKE` with the caller's own `%`/`_` wildcards, **not** escaped | `Q(sku__ilike="ab_-%")` |
 | `isnull` | `IS NULL` (True) / `IS NOT NULL` (False) | `Q(closed_at__isnull=True)` |
-| `contains` `icontains` | `ILIKE %v%` | `Q(name__contains="ana")` |
-| `startswith` `endswith` | `ILIKE v%` / `%v` | `Q(sku__startswith="SKU-")` |
+| `contains` `icontains` | `ILIKE %v%` (value escaped) | `Q(name__contains="ana")` |
+| `startswith` `endswith` | `ILIKE v%` / `%v` (value escaped) | `Q(sku__startswith="SKU-")` |
+
+!!! warning "`like` case-sensitivity is backend-defined"
+    `ilike` is always case-insensitive. Plain `like` follows the database's
+    `LIKE` semantics: SQLite folds ASCII case, PostgreSQL does not. For
+    **portable** case handling, reach for `ilike` or `iexact`.
 
 !!! note "Raw SQLAlchemy is still there"
     `F`/`Q` are typed sugar over expressions SQLAlchemy already has.
@@ -564,7 +572,7 @@ engine. A `None` value **always skips** the condition (a missing filter ≠
 | --- | --- | --- |
 | `name` (str) | case-insensitive `ILIKE %value%` | `{"name": "ana"}` |
 | `bool` | `col.is_(value)` | `{"is_active": True}` |
-| `list` | `col.in_(values)` | `{"id": [id1, id2]}` |
+| non-string iterable (`list`/`set`/`tuple`/`frozenset`/`range`/generator/`dict` view) | `col.in_(values)` — the iterable is materialized once, so passing a `set` needs no manual conversion to a `list` | `{"id": {id1, id2}}` |
 | `date` | `func.date(col) == value` (whole day) | `{"created_at": today}` |
 | `start_in` / `end_in` (date) | range on `date`/`created_at` | `{"start_in": d1, "end_in": d2}` |
 | `<col>__<op>` | comparison `gt`/`gte`/`lt`/`lte`/`ne` | `{"updated_at__gt": mark}` |
@@ -596,9 +604,45 @@ hits = await repository.list({"name": "silva", "id": selected_ids})
     `.get_conditions()`, which returns the dict already stripped of
     `None`. The router receives the filter via `Depends()`.
 
+### Every paginated listing inherits the operators
+
+Because `get_conditions()` only strips the pagination keys (`page`,
+`page_size`, `order_by`, `ascending`) and forwards **everything else** to
+the same engine, any `BasePaginationFilterSchema` subclass gets the
+operators for free: just declare a field named `<column>__<op>`. No extra
+inheritance, no mixin — the field name *is* the operator.
+
+```python
+from tempest_fastapi_sdk import BasePaginationFilterSchema
+from pydantic import Field
+
+
+class ProductFilter(BasePaginationFilterSchema):
+    """Product listing filter — each field becomes one condition."""
+
+    name: str | None = Field(default=None)                 # ILIKE %name%
+    category_id__in: set[int] | None = Field(default=None)  # IN (a set!)
+    price__between: tuple[float, float] | None = Field(default=None)  # BETWEEN
+    sku__ilike: str | None = Field(default=None)            # raw ILIKE
+    created_at__gte: str | None = Field(default=None)       # >=
+```
+
+```python
+# In the service/repo the whole schema becomes filters + pagination:
+data = await repo.paginate(
+    filters=f.get_conditions(),          # name/category_id__in/price__between/…
+    **f.get_pagination_conditions(),     # page/page_size/order_by/ascending
+)
+```
+
+The frontend calls `?category_id__in=1&category_id__in=2&price__between=10&price__between=20`
+and FastAPI builds the schema via `Depends()`. A `None` drops out (absent
+filter), so the client sends only the fields it wants.
+
 **Recap:** one dict, predictable conventions, `None` skips. Strings on
 `name` become ILIKE searches; `__op` suffixes give precise comparisons;
-`None` never becomes `IS NULL`.
+`None` never becomes `IS NULL`. Every paginated listing inherits these
+operators just by declaring the field.
 
 ---
 

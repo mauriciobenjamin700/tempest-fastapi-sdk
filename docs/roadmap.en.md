@@ -241,7 +241,7 @@ Django-style `F` / `Q` wrappers over SQLAlchemy, wired into
 | Feature | Status | Where |
 |---------|--------|-------|
 | **`F` (column expression)** | ✅ v0.111 | `F("stock") - 1` computes in the database in one statement — atomic update, no race. Arithmetic from either side and between columns; resolved in `bulk_update`. [Recipe »](recipes/database.md) |
-| **`Q` (composable conditions)** | ✅ v0.111 | `Q(status="open") \| Q(...)`, `&`, `~` for the `OR`/`NOT` the filter dict can't express; same conventions (`field__gte`, `name` ILIKE, list → `IN`). `where=` on `list`/`first`/`get`/`get_or_none`/`count`/`exists`/`paginate`/`delete_many`. [Recipe »](recipes/database.md) |
+| **`Q` (composable conditions)** | ✅ v0.111 | `Q(status="open") \| Q(...)`, `&`, `~` for the `OR`/`NOT` the filter dict can't express; same conventions (`field__gte`, `name` ILIKE, iterable → `IN`). `where=` on `list`/`first`/`get`/`get_or_none`/`count`/`exists`/`paginate`/`delete_many`. [Recipe »](recipes/database.md) |
 
 ## Shipped in v0.110.0
 

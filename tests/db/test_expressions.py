@@ -150,3 +150,114 @@ class TestSuffixOperators:
         rows = await repo.list({"status__in": ["open", "pending"]})
         assert {r.name for r in rows} == {"a", "b"}
         assert await repo.count({"status__startswith": "clo"}) == 1
+
+
+class TestMembershipCollections:
+    """``in`` / ``notin`` and bare membership accept any non-string iterable."""
+
+    async def test_suffix_in_accepts_set(self, repo: BaseRepository[Item]) -> None:
+        """A ``set`` passed to ``__in`` matches by membership, no list cast."""
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__in={"open", "closed"}))
+        assert {r.name for r in rows} == {"a", "c"}
+
+    async def test_suffix_in_accepts_tuple(self, repo: BaseRepository[Item]) -> None:
+        """A ``tuple`` passed to ``__in`` matches by membership."""
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__in=("open", "pending")))
+        assert {r.name for r in rows} == {"a", "b"}
+
+    async def test_suffix_in_accepts_generator(
+        self, repo: BaseRepository[Item]
+    ) -> None:
+        """A one-shot generator is materialized once and still matches."""
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__in=(s for s in ("open", "closed"))))
+        assert {r.name for r in rows} == {"a", "c"}
+
+    async def test_suffix_notin_accepts_frozenset(
+        self, repo: BaseRepository[Item]
+    ) -> None:
+        """A ``frozenset`` passed to ``__notin`` excludes its members."""
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__notin=frozenset({"open"})))
+        assert {r.name for r in rows} == {"b", "c"}
+
+    async def test_bare_filter_set_is_membership(
+        self, repo: BaseRepository[Item]
+    ) -> None:
+        """A ``set`` value on a plain (non-suffix) filter becomes an ``IN``."""
+        await _seed(repo)
+        rows = await repo.list({"status": {"open", "closed"}})
+        assert {r.name for r in rows} == {"a", "c"}
+
+    async def test_bare_filter_generator_is_membership(
+        self, repo: BaseRepository[Item]
+    ) -> None:
+        """A generator value on a plain filter is materialized into an ``IN``."""
+        await _seed(repo)
+        rows = await repo.list({"status": (s for s in ["open", "pending"])})
+        assert {r.name for r in rows} == {"a", "b"}
+
+    async def test_bare_string_filter_stays_equality(
+        self, repo: BaseRepository[Item]
+    ) -> None:
+        """A plain ``str`` value is equality, never a character-wise ``IN``."""
+        await _seed(repo)
+        rows = await repo.list({"status": "open"})
+        assert {r.name for r in rows} == {"a"}
+
+
+class TestExtendedOperators:
+    """``not_in`` / ``between`` / ``iexact`` / ``like`` / ``ilike`` suffixes."""
+
+    async def test_not_in_alias(self, repo: BaseRepository[Item]) -> None:
+        """``__not_in`` behaves exactly like ``__notin``."""
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__not_in={"open"}))
+        assert {r.name for r in rows} == {"b", "c"}
+
+    async def test_between_inclusive(self, repo: BaseRepository[Item]) -> None:
+        """``__between`` matches the inclusive ``[lo, hi]`` range."""
+        await _seed(repo)
+        rows = await repo.list(where=Q(stock__between=(0, 5)))
+        assert {r.name for r in rows} == {"b", "c"}
+
+    async def test_between_via_filter_dict(self, repo: BaseRepository[Item]) -> None:
+        """``__between`` also works through the plain dict-filter path."""
+        await _seed(repo)
+        rows = await repo.list({"priority__between": [2, 5]})
+        assert {r.name for r in rows} == {"c"}
+
+    async def test_between_ill_formed_is_skipped(
+        self, repo: BaseRepository[Item]
+    ) -> None:
+        """A ``between`` value that is not a two-item pair is ignored."""
+        await _seed(repo)
+        rows = await repo.list(where=Q(stock__between=[1]))
+        assert len(rows) == 3
+
+    async def test_iexact_is_case_insensitive(self, repo: BaseRepository[Item]) -> None:
+        """``__iexact`` matches ignoring case, unlike plain equality."""
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__iexact="OPEN"))
+        assert {r.name for r in rows} == {"a"}
+
+    async def test_like_uses_raw_wildcards(self, repo: BaseRepository[Item]) -> None:
+        """``__like`` matches with the caller's own wildcards, un-escaped.
+
+        Case-sensitivity of ``LIKE`` is backend-defined (SQLite is
+        case-insensitive for ASCII, PostgreSQL is case-sensitive), so this
+        asserts only the raw-wildcard behaviour, which is portable.
+        """
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__like="%pen"))
+        assert {r.name for r in rows} == {"a"}
+
+    async def test_ilike_is_case_insensitive_raw(
+        self, repo: BaseRepository[Item]
+    ) -> None:
+        """``__ilike`` uses raw wildcards but ignores case."""
+        await _seed(repo)
+        rows = await repo.list(where=Q(status__ilike="OP%"))
+        assert {r.name for r in rows} == {"a"}

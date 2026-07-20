@@ -5,6 +5,35 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.136.0] — 2026-07-20
+
+### Added
+
+- **New `<column>__<op>` filter operators**, available everywhere the
+  convention filters are (dict filters, `Q`, and therefore every
+  `BasePaginationFilterSchema` subclass via `get_conditions`):
+  - `between` → `col BETWEEN lo AND hi`; value is an ordered two-item
+    `(lo, hi)` list/tuple (a malformed value is skipped, not raised).
+  - `iexact` → case-insensitive equality (`lower(col) == lower(value)`).
+  - `like` / `ilike` → raw `LIKE` / `ILIKE` with the caller's own `%` / `_`
+    wildcards, **not** escaped (use `contains` / `startswith` / `endswith`
+    for escaped user input). `ilike` is always case-insensitive; plain `like`
+    case-sensitivity is backend-defined — prefer `ilike` / `iexact` for
+    portable case handling.
+  - `not_in` → readability alias for the existing `notin`.
+
+### Changed
+
+- **Convention filters accept any non-string iterable for membership, not
+  just `list`.** `build_filter_condition` — shared by `BaseRepository` dict
+  filters and `Q` — now treats a `set`, `tuple`, `frozenset`, `range`, `dict`
+  view or one-shot generator the same as a `list`, emitting `col.in_(values)`.
+  A bare filter (`{"id": some_set}`) and the `__in` / `__notin` suffixes both
+  benefit, so callers no longer wrap a `set` in `list(...)` just to hand it to
+  a filter. The iterable is materialized once (so generators survive the
+  count/page double-use), and `str` / `bytes` / `Mapping` stay scalars — a
+  plain string value is still equality, never a character-wise `IN`.
+
 ## [0.135.0] — 2026-07-19
 
 ### Added

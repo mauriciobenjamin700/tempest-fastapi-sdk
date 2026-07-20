@@ -534,7 +534,7 @@ rows = await repository.list(
 ```
 
 `Q` usa as mesmas convenções do dict de filtros (`name` ILIKE,
-`campo__gte`, lista → `IN`, …), então `Q(priority__gte=5, name="ana")` é
+`campo__gte`, iterável → `IN`, …), então `Q(priority__gte=5, name="ana")` é
 o `AND` dessas condições. `where=` funciona em `list` / `first` / `get` /
 `get_or_none` / `count` / `exists` / `paginate` / `delete_many`.
 
@@ -543,10 +543,19 @@ Operadores de sufixo `campo__op` disponíveis (no `Q` **e** no dict):
 | Sufixo | SQL | Exemplo |
 |--------|-----|---------|
 | `gt` `gte` `lt` `lte` `ne` | comparação | `Q(priority__gte=5)` |
-| `in` `notin` | `IN` / `NOT IN` (valor = lista) | `Q(status__in=["open", "paid"])` |
+| `in` `notin` `not_in` | `IN` / `NOT IN` (valor = qualquer iterável não-string: `list`/`set`/`tuple`/gerador; `not_in` é alias de `notin`) | `Q(status__in={"open", "paid"})` |
+| `between` | `col BETWEEN lo AND hi` (valor = par ordenado `(lo, hi)` em `list`/`tuple`) | `Q(price__between=(10, 20))` |
+| `iexact` | igualdade case-insensitive (`lower(col) == lower(v)`) | `Q(email__iexact="Ana@X.com")` |
+| `like` `ilike` | `LIKE` / `ILIKE` cru, com os wildcards do chamador (`%`/`_`) **sem escape** | `Q(sku__ilike="ab_-%")` |
 | `isnull` | `IS NULL` (True) / `IS NOT NULL` (False) | `Q(closed_at__isnull=True)` |
-| `contains` `icontains` | `ILIKE %v%` | `Q(name__contains="ana")` |
-| `startswith` `endswith` | `ILIKE v%` / `%v` | `Q(sku__startswith="SKU-")` |
+| `contains` `icontains` | `ILIKE %v%` (valor escapado) | `Q(name__contains="ana")` |
+| `startswith` `endswith` | `ILIKE v%` / `%v` (valor escapado) | `Q(sku__startswith="SKU-")` |
+
+!!! warning "Case-sensitivity do `like` depende do backend"
+    `ilike` é sempre case-insensitive. Já o `like` puro segue a semântica de
+    `LIKE` do banco: o SQLite ignora maiúsculas/minúsculas para ASCII, o
+    PostgreSQL não. Para comparação de caixa **portável**, use `ilike` ou
+    `iexact`.
 
 !!! note "SQLAlchemy puro continua ali"
     `F`/`Q` são açúcar tipado sobre expressões que o SQLAlchemy já tem.
@@ -565,7 +574,7 @@ motor. Um valor `None` **sempre pula** a condição (filtro ausente ≠
 | --- | --- | --- |
 | `name` (str) | `ILIKE %value%` case-insensitive | `{"name": "ana"}` |
 | `bool` | `col.is_(value)` | `{"is_active": True}` |
-| `list` | `col.in_(values)` | `{"id": [id1, id2]}` |
+| iterável não-string (`list`/`set`/`tuple`/`frozenset`/`range`/gerador/`dict` view) | `col.in_(values)` — o iterável é materializado uma vez, então passar um `set` não precisa de conversão manual pra `list` | `{"id": {id1, id2}}` |
 | `date` | `func.date(col) == value` (dia inteiro) | `{"created_at": hoje}` |
 | `start_in` / `end_in` (date) | range no `date`/`created_at` | `{"start_in": d1, "end_in": d2}` |
 | `<col>__<op>` | comparação `gt`/`gte`/`lt`/`lte`/`ne` | `{"updated_at__gt": marca}` |
@@ -596,9 +605,44 @@ hits = await repository.list({"name": "silva", "id": selected_ids})
     (e suas subclasses) expõem `.get_conditions()`, que devolve o dict já
     limpo de `None`. O router recebe o filtro via `Depends()`.
 
+### Toda paginação herda os operadores
+
+Como `get_conditions()` só remove as chaves de paginação (`page`,
+`page_size`, `order_by`, `ascending`) e repassa **todo o resto** ao mesmo
+motor, qualquer subclasse de `BasePaginationFilterSchema` ganha os
+operadores de graça: basta declarar um campo com o nome `<coluna>__<op>`.
+Sem herança extra, sem mixin — o nome do campo é o operador.
+
+```python
+from tempest_fastapi_sdk import BasePaginationFilterSchema
+from pydantic import Field
+
+
+class ProductFilter(BasePaginationFilterSchema):
+    """Filtro de listagem de produtos — cada campo vira uma condição."""
+
+    name: str | None = Field(default=None)                 # ILIKE %name%
+    category_id__in: set[int] | None = Field(default=None)  # IN (set!)
+    price__between: tuple[float, float] | None = Field(default=None)  # BETWEEN
+    sku__ilike: str | None = Field(default=None)            # ILIKE cru
+    created_at__gte: str | None = Field(default=None)       # >=
+```
+
+```python
+# No service/repo, o schema inteiro vira filtros + paginação:
+data = await repo.paginate(
+    filters=f.get_conditions(),          # name/category_id__in/price__between/…
+    **f.get_pagination_conditions(),     # page/page_size/order_by/ascending
+)
+```
+
+O front chama `?category_id__in=1&category_id__in=2&price__between=10&price__between=20`
+e o FastAPI monta o schema via `Depends()`. Um `None` some (filtro ausente),
+então o cliente manda só os campos que quer.
+
 **Recap:** um dict, convenções previsíveis, `None` pula. Strings em `name`
 viram busca ILIKE; sufixos `__op` dão comparações precisas; `None` nunca
-vira `IS NULL`.
+vira `IS NULL`. Toda paginação herda esses operadores só declarando o campo.
 
 ---
 

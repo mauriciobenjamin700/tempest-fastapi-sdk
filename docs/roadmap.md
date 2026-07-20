@@ -240,7 +240,7 @@ Wrappers `F` / `Q` estilo Django sobre o SQLAlchemy, plugados no
 | Feature | Status | Onde |
 |---------|--------|------|
 | **`F` (expressão de coluna)** | ✅ v0.111 | `F("stock") - 1` computa no banco numa instrução — update atômico sem race. Aritmética dos dois lados e entre colunas; resolvido em `bulk_update`. [Receita »](recipes/database.md) |
-| **`Q` (condições compostas)** | ✅ v0.111 | `Q(status="open") \| Q(...)`, `&`, `~` para `OR`/`NOT` que o dict de filtros não expressa; mesmas convenções (`campo__gte`, `name` ILIKE, lista → `IN`). `where=` em `list`/`first`/`get`/`get_or_none`/`count`/`exists`/`paginate`/`delete_many`. [Receita »](recipes/database.md) |
+| **`Q` (condições compostas)** | ✅ v0.111 | `Q(status="open") \| Q(...)`, `&`, `~` para `OR`/`NOT` que o dict de filtros não expressa; mesmas convenções (`campo__gte`, `name` ILIKE, iterável → `IN`). `where=` em `list`/`first`/`get`/`get_or_none`/`count`/`exists`/`paginate`/`delete_many`. [Receita »](recipes/database.md) |
 
 ## Entregue na v0.110.0
 

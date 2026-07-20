@@ -14,7 +14,7 @@ Django users reach for, and plug straight into
   ```
 
 * **``Q``** captures the repository's dict-filter conventions (``name``
-  ILIKE, ``field__gte`` comparisons, list ``IN``, …) as an object you
+  ILIKE, ``field__gte`` comparisons, iterable ``IN``, …) as an object you
   combine with ``&`` / ``|`` / ``~`` for real ``OR`` / ``NOT`` trees:
 
   ```python
@@ -30,7 +30,7 @@ works for any model the repository is bound to.
 from __future__ import annotations
 
 import operator
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 from typing import Any, cast
 
@@ -61,28 +61,84 @@ def escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _as_membership(value: Any) -> list[Any] | None:
+    """Materialize a membership collection to a list, or ``None`` for a scalar.
+
+    A membership collection is any iterable that is not a string, bytes-like
+    object or mapping — ``list``, ``tuple``, ``set``, ``frozenset``, ``range``,
+    ``dict`` views and one-shot generators all qualify. Materializing to a list
+    consumes a one-shot iterator exactly once and hands SQLAlchemy's ``in_`` a
+    concrete, re-iterable sequence (a bare generator would be exhausted by the
+    count/page double-use). ``str`` / ``bytes`` / ``Mapping`` are treated as
+    scalars, so a plain string value never degrades into a character ``IN``.
+
+    Args:
+        value (Any): The candidate filter value.
+
+    Returns:
+        list[Any] | None: The materialized members, or ``None`` when ``value``
+            is a scalar to be matched by equality.
+    """
+    if isinstance(value, (str, bytes, bytearray, Mapping)):
+        return None
+    if isinstance(value, Iterable):
+        return list(value)
+    return None
+
+
 def _suffix_condition(column: Any, op: str, value: Any) -> Any:
     """Build the clause for a ``<column>__<op>`` suffix (non-``isnull``).
 
     Kept explicit — a plain ``if`` per operator, no operator-name magic —
-    so the supported set is greppable and typed.
+    so the supported set is greppable and typed. The recognized operators:
+
+    * ``gt`` / ``gte`` / ``lt`` / ``lte`` / ``ne`` — comparisons (from
+      :data:`COMPARISON_OPS`).
+    * ``in`` / ``notin`` / ``not_in`` — membership. ``not_in`` is a
+      readability alias for ``notin``. The value is any non-string iterable
+      (materialized once) or a bare scalar wrapped into a single-item list.
+    * ``between`` — ``col BETWEEN lo AND hi``. The value must be an ordered
+      two-item ``list`` / ``tuple`` ``(lo, hi)``; anything else is skipped
+      (returns ``None``). A ``set`` is rejected because its order is undefined.
+    * ``iexact`` — case-insensitive equality, ``lower(col) == lower(value)``.
+    * ``like`` / ``ilike`` — raw ``LIKE`` / ``ILIKE`` with the caller's own
+      ``%`` / ``_`` wildcards, **not** escaped. Use these when you want to
+      control the pattern yourself; prefer ``contains`` / ``startswith`` /
+      ``endswith`` for escaped user input. ``ilike`` is always
+      case-insensitive; plain ``like`` case-sensitivity is backend-defined
+      (SQLite folds ASCII case, PostgreSQL does not) — reach for ``ilike``
+      or ``iexact`` when you need portable case handling.
+    * ``contains`` / ``icontains`` / ``startswith`` / ``endswith`` —
+      case-insensitive ``ILIKE`` with the value escaped as a literal substring
+      / prefix / suffix.
 
     Args:
         column (Any): The resolved model column.
-        op (str): The suffix operator (``gt``/``in``/``contains``/…).
+        op (str): The suffix operator (``gt``/``in``/``between``/…).
         value (Any): The comparison value.
 
     Returns:
-        Any: The SQLAlchemy clause, or ``None`` for an unknown operator.
+        Any: The SQLAlchemy clause, or ``None`` for an unknown operator or an
+            ill-formed ``between`` value.
     """
     op_func = COMPARISON_OPS.get(op)
     if op_func is not None:
         return op_func(column, value)
-    members = value if isinstance(value, (list, tuple, set)) else [value]
-    if op == "in":
-        return column.in_(members)
-    if op == "notin":
-        return column.notin_(members)
+    if op in ("in", "notin", "not_in"):
+        members = _as_membership(value)
+        if members is None:
+            members = [value]
+        return column.in_(members) if op == "in" else column.notin_(members)
+    if op == "between":
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            return column.between(value[0], value[1])
+        return None
+    if op == "iexact":
+        return func.lower(column) == func.lower(value)
+    if op == "like":
+        return column.like(value)
+    if op == "ilike":
+        return column.ilike(value)
     if op in ("contains", "icontains"):
         return column.ilike(f"%{escape_like(str(value))}%", escape="\\")
     if op == "startswith":
@@ -104,14 +160,21 @@ def build_filter_condition(
 
     * ``<column>__<op>`` suffix operator, one of:
       ``gt`` / ``gte`` / ``lt`` / ``lte`` / ``ne`` (comparison),
-      ``in`` / ``notin`` (membership; value is a list),
+      ``in`` / ``notin`` / ``not_in`` (membership; value is any non-string
+      iterable — ``list`` / ``set`` / ``tuple`` / generator — or a bare
+      scalar; ``not_in`` is an alias of ``notin``),
+      ``between`` (``col BETWEEN lo AND hi``; value is an ordered two-item
+      ``(lo, hi)`` ``list`` / ``tuple``),
+      ``iexact`` (case-insensitive equality),
+      ``like`` / ``ilike`` (raw, un-escaped ``LIKE`` with caller wildcards),
       ``isnull`` (``IS NULL`` when truthy, ``IS NOT NULL`` when falsy),
       ``contains`` / ``icontains`` / ``startswith`` / ``endswith``
-      (case-insensitive ``ILIKE`` substring / prefix / suffix).
+      (case-insensitive ``ILIKE`` substring / prefix / suffix, escaped).
     * ``name`` (string) → case-insensitive ``ILIKE %value%``.
     * ``bool`` → ``.is_(value)``.
-    * ``list`` → ``.in_(value)``.
     * ``date`` → ``func.date(column) == value`` whole-day match.
+    * non-string iterable (``list`` / ``set`` / ``tuple`` / ``frozenset`` /
+      ``range`` / generator / ``dict`` view) → ``.in_(value)``.
     * otherwise → equality.
 
     A ``None`` value (except ``isnull``, whose value is a bool), an
@@ -158,12 +221,11 @@ def build_filter_condition(
             condition = column.ilike(f"%{escape_like(value)}%", escape="\\")
         elif isinstance(value, bool):
             condition = column.is_(value)
-        elif isinstance(value, list):
-            condition = column.in_(value)
         elif isinstance(value, date):
             condition = func.date(column) == value
         else:
-            condition = column == value
+            members = _as_membership(value)
+            condition = column.in_(members) if members is not None else column == value
     return cast("ColumnElement[bool]", condition)
 
 

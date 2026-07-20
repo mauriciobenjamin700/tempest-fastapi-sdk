@@ -50,17 +50,27 @@ class BaseRepository(Generic[ModelType]):
 
     * ``name`` (string) → case-insensitive ``ILIKE %value%`` search.
     * ``bool`` values → ``.is_(value)`` (correct SQL boolean check).
-    * ``list`` values → ``.in_(values)`` membership.
+    * non-string iterable values (``list`` / ``set`` / ``tuple`` /
+      ``frozenset`` / ``range`` / generator / ``dict`` view) →
+      ``.in_(values)`` membership; the iterable is materialized once, so
+      passing a ``set`` needs no manual conversion to a ``list``.
     * ``date`` values → ``func.date(column) == value`` whole-day match.
     * ``start_in`` / ``end_in`` (date) → range filter against the
       model's ``date`` column when present, falling back to
       ``created_at``.
-    * ``<column>__<op>`` suffix → comparison filter, where ``<op>`` is
-      one of ``gt`` / ``gte`` / ``lt`` / ``lte`` / ``ne`` (e.g.
-      ``{"updated_at__gt": watermark}`` → ``updated_at > watermark``).
-      Timestamp-precise, unlike ``start_in`` / ``end_in`` (whole-day);
-      this is what delta-sync queries filter on. A ``None`` value
-      skips the condition, like every other filter.
+    * ``<column>__<op>`` suffix → operator filter, where ``<op>`` is one of:
+      ``gt`` / ``gte`` / ``lt`` / ``lte`` / ``ne`` (comparison, e.g.
+      ``{"updated_at__gt": watermark}`` → ``updated_at > watermark``),
+      ``in`` / ``notin`` / ``not_in`` (membership; ``not_in`` aliases
+      ``notin``), ``between`` (``{"price__between": (10, 20)}`` →
+      ``price BETWEEN 10 AND 20``; value is an ordered two-item list/tuple),
+      ``iexact`` (case-insensitive equality), ``like`` / ``ilike`` (raw
+      un-escaped ``LIKE`` with your own wildcards), ``isnull``, and
+      ``contains`` / ``icontains`` / ``startswith`` / ``endswith`` (escaped
+      ``ILIKE``). Comparison suffixes are timestamp-precise, unlike
+      ``start_in`` / ``end_in`` (whole-day); this is what delta-sync queries
+      filter on. A ``None`` value skips the condition, like every other
+      filter.
 
     All error messages can be customized per repository instance via
     the constructor kwargs (``not_found_message``,
