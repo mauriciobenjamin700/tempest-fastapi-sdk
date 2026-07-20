@@ -597,7 +597,7 @@ volta ao padrão.
 
 !!! info "Mesmas convenções de filtro"
     `filters` usa o mesmo dict do repository (`campo__gte`, `name` ILIKE,
-    lista → `IN`, …). O slug da aba (`?lens=`) sai do nome
+    iterável → `IN`, …). O slug da aba (`?lens=`) sai do nome
     (minúsculo, hífens).
 
 #### 4. Defaults de segurança de sessão

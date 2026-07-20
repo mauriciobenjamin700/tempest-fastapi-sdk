@@ -615,7 +615,7 @@ and export; "All" clears it.
 
 !!! info "Same filter conventions"
     `filters` uses the same dict as the repository (`field__gte`, `name`
-    ILIKE, list → `IN`, …). The tab slug (`?lens=`) is derived from the
+    ILIKE, iterable → `IN`, …). The tab slug (`?lens=`) is derived from the
     name (lowercased, hyphenated).
 
 #### 4. Session security defaults
