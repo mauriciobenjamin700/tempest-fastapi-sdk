@@ -51,6 +51,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.mixins.SoftDeleteMixin
 ::: tempest_fastapi_sdk.db.mixins.AuditMixin
 ::: tempest_fastapi_sdk.db.mixins.MFAMixin
+::: tempest_fastapi_sdk.db.mixins.LocaleColumnMixin
 ::: tempest_fastapi_sdk.db.connection.AsyncDatabaseManager
 ::: tempest_fastapi_sdk.db.migrations.AlembicHelper
 ::: tempest_fastapi_sdk.db.slow_query.SlowQueryLogger

@@ -36,6 +36,7 @@ from tempest_fastapi_sdk.db.migrations import (
     DestructiveMigrationError as DestructiveMigrationError,
 )
 from tempest_fastapi_sdk.db.mixins import AuditMixin as AuditMixin
+from tempest_fastapi_sdk.db.mixins import LocaleColumnMixin as LocaleColumnMixin
 from tempest_fastapi_sdk.db.mixins import MFAMixin as MFAMixin
 from tempest_fastapi_sdk.db.mixins import SoftDeleteMixin as SoftDeleteMixin
 from tempest_fastapi_sdk.db.model import NAMING_CONVENTION as NAMING_CONVENTION
@@ -101,6 +102,7 @@ __all__: list[str] = [
     "DatabaseBackup",
     "DestructiveMigrationError",
     "F",
+    "LocaleColumnMixin",
     "MFAMixin",
     "OutboxRelay",
     "OutboxStatus",

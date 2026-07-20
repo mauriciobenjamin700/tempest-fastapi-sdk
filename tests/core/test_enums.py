@@ -1,6 +1,8 @@
 """Tests for tempest_fastapi_sdk.core enum bases."""
 
-from tempest_fastapi_sdk import BaseIntEnum, BaseStrEnum
+import re
+
+from tempest_fastapi_sdk import BaseIntEnum, BaseStrEnum, Locale
 
 
 class Color(BaseStrEnum):
@@ -91,3 +93,27 @@ class TestBaseIntEnum:
 
     def test_from_value_invalid_returns_default(self) -> None:
         assert Priority.from_value(99, default=None) is None
+
+
+class TestLocale:
+    """The general-purpose BCP-47 locale enum."""
+
+    def test_member_is_str_and_equals_tag(self) -> None:
+        assert isinstance(Locale.PT_BR, str)
+        assert Locale.PT_BR == "pt-BR"
+        assert Locale.EN_US == "en-US"
+
+    def test_all_values_are_bcp47_tags(self) -> None:
+        pattern = re.compile(r"^[a-z]{2}-[A-Z]{2}$")
+        assert all(pattern.match(value) for value in Locale.values())
+
+    def test_values_are_unique(self) -> None:
+        values = Locale.values()
+        assert len(values) == len(set(values))
+
+    def test_from_value_resolves_tag(self) -> None:
+        assert Locale.from_value("pt-BR") is Locale.PT_BR
+
+    def test_has_value(self) -> None:
+        assert Locale.has_value("en-US") is True
+        assert Locale.has_value("xx-YY") is False

@@ -166,7 +166,64 @@ class BaseIntEnum(_EnumHelpers, int, Enum):
     """
 
 
+class Locale(BaseStrEnum):
+    """BCP-47 locale tags (``language-REGION``) as a string enum.
+
+    A canonical, dependency-free list of the locales apps commonly target,
+    so a service never hard-codes a bare ``"pt-BR"`` string again. Each
+    member's value is the BCP-47 tag itself, so members compare equal to and
+    bind to a ``String`` column as that tag (e.g. ``Locale.PT_BR == "pt-BR"``).
+
+    Pair it with :class:`tempest_fastapi_sdk.LocaleColumnMixin` to add a
+    ``locale`` column to a model, and with
+    :class:`tempest_fastapi_sdk.MessageCatalog` to resolve localized text.
+
+    Note:
+        This is a pragmatic, extensible set of widely used locales — not an
+        exhaustive registry of every BCP-47 tag. A project needing a tag not
+        listed here can store the raw string (the column is a plain ``str``);
+        add the member upstream when it becomes common.
+    """
+
+    PT_BR = "pt-BR"
+    PT_PT = "pt-PT"
+    EN_US = "en-US"
+    EN_GB = "en-GB"
+    ES_ES = "es-ES"
+    ES_MX = "es-MX"
+    ES_AR = "es-AR"
+    FR_FR = "fr-FR"
+    FR_CA = "fr-CA"
+    DE_DE = "de-DE"
+    IT_IT = "it-IT"
+    NL_NL = "nl-NL"
+    RU_RU = "ru-RU"
+    UK_UA = "uk-UA"
+    PL_PL = "pl-PL"
+    CS_CZ = "cs-CZ"
+    RO_RO = "ro-RO"
+    EL_GR = "el-GR"
+    SV_SE = "sv-SE"
+    NB_NO = "nb-NO"
+    DA_DK = "da-DK"
+    FI_FI = "fi-FI"
+    HU_HU = "hu-HU"
+    TR_TR = "tr-TR"
+    AR_SA = "ar-SA"
+    HE_IL = "he-IL"
+    HI_IN = "hi-IN"
+    ZH_CN = "zh-CN"
+    ZH_TW = "zh-TW"
+    JA_JP = "ja-JP"
+    KO_KR = "ko-KR"
+    TH_TH = "th-TH"
+    VI_VN = "vi-VN"
+    ID_ID = "id-ID"
+    MS_MY = "ms-MY"
+
+
 __all__: list[str] = [
     "BaseIntEnum",
     "BaseStrEnum",
+    "Locale",
 ]

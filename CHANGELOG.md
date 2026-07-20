@@ -5,6 +5,27 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.137.0] — 2026-07-20
+
+### Added
+
+- **`Locale` enum** (`tempest_fastapi_sdk.Locale`) — a curated, dependency-free
+  `BaseStrEnum` of common BCP-47 locale tags (`Locale.PT_BR == "pt-BR"`,
+  `Locale.EN_US`, plus ~30 more). Each member is the tag itself, so it compares
+  to and binds to a `String` column as that value.
+- **`LocaleColumnMixin`** (`tempest_fastapi_sdk.LocaleColumnMixin`) — an opt-in
+  SQLAlchemy mixin that adds a nullable `locale` column (BCP-47, `VARCHAR(35)`)
+  to a model, so a user row can carry the language its notifications and
+  localized text should render in without every project re-declaring the
+  column. `NULL` means "no preference" — resolve to the app default (e.g. via
+  `MessageCatalog`). Pairs with the `Locale` enum and the Web Push recipe.
+
+### Docs
+
+- The **database recipe** (PT-BR + EN) gains a "Locale" section documenting
+  `LocaleColumnMixin` + `Locale` block-by-block, cross-linked from the Web Push
+  recipe; the API reference lists the new mixin.
+
 ## [0.136.1] — 2026-07-20
 
 ### Docs

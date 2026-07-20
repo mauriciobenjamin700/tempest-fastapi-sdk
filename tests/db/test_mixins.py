@@ -6,13 +6,25 @@ from sqlalchemy import String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
-from tempest_fastapi_sdk import AuditMixin, BaseModel, SoftDeleteMixin
+from tempest_fastapi_sdk import (
+    AuditMixin,
+    BaseModel,
+    Locale,
+    LocaleColumnMixin,
+    SoftDeleteMixin,
+)
 
 
 class Article(SoftDeleteMixin, AuditMixin, BaseModel):
     __tablename__ = "article_for_mixins_test"
 
     title: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class Profile(LocaleColumnMixin, BaseModel):
+    __tablename__ = "profile_for_locale_mixin_test"
+
+    handle: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
 class TestSoftDeleteMixin:
@@ -62,3 +74,26 @@ class TestAuditMixin:
         article.stamp_updated_by(editor)
         assert article.created_by == creator
         assert article.updated_by == editor
+
+
+class TestLocaleColumnMixin:
+    async def test_defaults_to_null(self, session: AsyncSession) -> None:
+        profile = Profile(handle="no-pref")
+        session.add(profile)
+        await session.commit()
+        await session.refresh(profile)
+        assert profile.locale is None
+
+    async def test_persists_locale_enum_value(self, session: AsyncSession) -> None:
+        profile = Profile(handle="brazilian", locale=Locale.PT_BR)
+        session.add(profile)
+        await session.commit()
+        await session.refresh(profile)
+        assert profile.locale == "pt-BR"
+
+    async def test_persists_raw_tag(self, session: AsyncSession) -> None:
+        profile = Profile(handle="raw", locale="en-US")
+        session.add(profile)
+        await session.commit()
+        await session.refresh(profile)
+        assert profile.locale == "en-US"

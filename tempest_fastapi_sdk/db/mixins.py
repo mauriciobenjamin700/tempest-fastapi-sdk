@@ -172,8 +172,39 @@ class MFAMixin:
         return self.totp_enabled_at is not None
 
 
+class LocaleColumnMixin:
+    """Add a nullable ``locale`` column for the row's preferred language.
+
+    Injects a BCP-47 locale tag column (e.g. ``"pt-BR"``, ``"en-US"``) so a
+    model — typically a user — can carry the language its notifications and
+    localized text should render in, without every project re-declaring the
+    same column. Store a :class:`tempest_fastapi_sdk.Locale` member (it binds
+    as its string value) or any raw tag.
+
+    ``NULL`` means "no preference": resolve it to your app's default locale
+    (e.g. via :class:`tempest_fastapi_sdk.MessageCatalog`) rather than
+    treating it as an error.
+
+    Attributes:
+        locale (str | None): The row's preferred BCP-47 locale tag, or
+            ``None`` when unset.
+    """
+
+    locale: Mapped[str | None] = mapped_column(
+        String(35),
+        nullable=True,
+        default=None,
+        doc=(
+            "Preferred BCP-47 locale tag (e.g. 'pt-BR', 'en-US') for "
+            "localizing this row's notifications and text. NULL means no "
+            "preference — fall back to the application default."
+        ),
+    )
+
+
 __all__: list[str] = [
     "AuditMixin",
+    "LocaleColumnMixin",
     "MFAMixin",
     "SoftDeleteMixin",
 ]

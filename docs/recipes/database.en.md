@@ -791,9 +791,55 @@ class UserService(BaseService[UserRepository, UserResponse]):
     when the project turns on the bundled MFA flow. Details in
     [MFA (TOTP / 2FA) »](mfa.md).
 
+### Locale — the user's preferred language
+
+`LocaleColumnMixin` adds a `locale` column (BCP-47, e.g. `"pt-BR"`,
+`"en-US"`, nullable) so a model can carry the language its notifications and
+localized text should render in — without every project re-declaring the
+same column. Mix it in like any other mixin:
+
+```python
+# src/db/models/user.py
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel, LocaleColumnMixin
+
+
+class UserModel(BaseModel, LocaleColumnMixin):
+    """Users — carry a notification locale."""
+
+    name: Mapped[str] = mapped_column()
+    email: Mapped[str] = mapped_column(unique=True)
+```
+
+To write the value, use the `Locale` enum (a curated list of BCP-47 tags)
+instead of typing the string by hand — each member **is** the tag itself, so
+it compares and stores as that tag:
+
+```python
+from tempest_fastapi_sdk import Locale
+
+user.locale = Locale.PT_BR          # stores "pt-BR"
+user.locale = "en-US"               # a raw string works too
+assert Locale.PT_BR == "pt-BR"      # a member is a str
+```
+
+A `NULL` `locale` means "no preference": resolve it to your app's default
+when rendering (typically via [`MessageCatalog`](../reference.md)), **not**
+as an error. This is exactly the pair the [Web Push recipe »](webpush.md)
+uses to localize each notification's `title`/`body` by the recipient's
+`locale`.
+
+!!! note "`Locale` is curated, not exhaustive"
+    The enum covers the most widely used locales (pt/en/es/fr/de/… plus
+    regional variants). Need a tag outside the list? The column is a `str`,
+    so store the raw string and propose the new member upstream once it
+    becomes common.
+
 **Recap:** mixins enter only when the domain needs them; soft-delete
 filtering is yours (`deleted_at IS NULL` via a raw query); the audit stamp
-lives in the service.
+lives in the service; the user's `locale` comes from `LocaleColumnMixin` +
+the `Locale` enum.
 
 ---
 

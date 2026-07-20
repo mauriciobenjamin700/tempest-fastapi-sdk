@@ -792,9 +792,55 @@ class UserService(BaseService[UserRepository, UserResponse]):
     usuário quando o projeto liga o fluxo MFA bundled. Detalhes em
     [MFA (TOTP / 2FA) »](mfa.md).
 
+### Locale — idioma preferido do usuário
+
+`LocaleColumnMixin` adiciona uma coluna `locale` (BCP-47, ex. `"pt-BR"`,
+`"en-US"`, nullable) pra o modelo carregar o idioma em que as notificações
+e textos localizados dele devem sair — sem cada projeto redeclarar a mesma
+coluna. Misture-o como qualquer outro mixin:
+
+```python
+# src/db/models/user.py
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel, LocaleColumnMixin
+
+
+class UserModel(BaseModel, LocaleColumnMixin):
+    """Users — carregam o locale de notificação."""
+
+    name: Mapped[str] = mapped_column()
+    email: Mapped[str] = mapped_column(unique=True)
+```
+
+Pra escrever o valor, use o enum `Locale` (lista curada de tags BCP-47) em
+vez de digitar a string na mão — cada membro **é** a própria tag, então
+compara e grava como ela:
+
+```python
+from tempest_fastapi_sdk import Locale
+
+user.locale = Locale.PT_BR          # grava "pt-BR"
+user.locale = "en-US"               # a string crua também vale
+assert Locale.PT_BR == "pt-BR"      # membro é str
+```
+
+`locale` `NULL` significa "sem preferência": resolva pro default da sua app
+na hora de renderizar (tipicamente via
+[`MessageCatalog`](../reference.md)), **não** trate como erro. Esse é
+exatamente o par que o [recipe de Web Push »](webpush.md) usa pra localizar
+o `title`/`body` de cada notificação pelo `locale` do destinatário.
+
+!!! note "`Locale` é curado, não exaustivo"
+    O enum cobre os locales mais usados (pt/en/es/fr/de/… + variantes de
+    região). Precisa de uma tag fora da lista? A coluna é `str`, então
+    guarde a string crua e proponha o novo membro upstream quando virar
+    comum.
+
 **Recap:** mixins entram só quando o domínio precisa; a filtragem de
 soft-delete é sua (`deleted_at IS NULL` via query crua); o carimbo de
-auditoria mora no service.
+auditoria mora no service; o `locale` do usuário vem do `LocaleColumnMixin`
++ enum `Locale`.
 
 ---
 

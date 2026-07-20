@@ -161,6 +161,7 @@ from tempest_fastapi_sdk.core import (
     BaseIntEnum,
     BaseStrEnum,
     JSONFormatter,
+    Locale,
     clear_request_id,
     configure_logging,
     get_request_id,
@@ -190,6 +191,7 @@ from tempest_fastapi_sdk.db import (
     DatabaseBackup,
     DestructiveMigrationError,
     F,
+    LocaleColumnMixin,
     MFAMixin,
     OutboxRelay,
     OutboxStatus,
@@ -417,7 +419,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.136.1"
+__version__: str = "0.137.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -549,6 +551,8 @@ __all__: list[str] = [
     "LatitudeField",
     "Lens",
     "LocalUploadStorage",
+    "Locale",
+    "LocaleColumnMixin",
     "LogEntrySchema",
     "LogSettings",
     "LogSource",
