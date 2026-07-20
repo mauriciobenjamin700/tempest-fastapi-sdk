@@ -272,7 +272,7 @@ class WebPushSubscription(BaseWebPushSubscriptionModel):
 
 One piece, orchestrating both channels. The broker is the same
 process-wide singleton from the [SSE recipe](recipes/sse.md#broadcast-pra-varios-clientes-ssebroker);
-the `WebPushSubscriptionService` comes from the [Web Push recipe](recipes/webpush.md#tabela-servico-recomendado).
+the `WebPushSubscriptionService` comes from the [Web Push recipe](recipes/webpush.md#table-repository-service-and-controller-recommended).
 
 ```python
 # src/services/notification.py
