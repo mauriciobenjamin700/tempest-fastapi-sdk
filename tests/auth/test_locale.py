@@ -3,6 +3,7 @@ and backend HTML pages (``AUTH_DEFAULT_LOCALE`` + ``Accept-Language``)."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
@@ -333,7 +334,7 @@ class TestServiceLocalizedEmail:
         assert email.locale == "pt-BR"
         # The HTML carries the short, no-seconds expiry string.
         assert email.html is not None and "(UTC)" in email.html
-        assert ":49" not in email.html
+        assert re.search(r"\d{2}:\d{2}:\d{2}", email.html) is None
 
     async def test_enus_activation_email(self, session: AsyncSession) -> None:
         email = _RecordingEmail()
@@ -356,7 +357,7 @@ class TestServiceLocalizedEmail:
         assert email.subject == "Redefina sua senha"
         # The formatted expiry (no seconds) must be in the rendered HTML.
         assert email.html is not None and "(UTC)" in email.html
-        assert ":49" not in email.html
+        assert re.search(r"\d{2}:\d{2}:\d{2}", email.html) is None
 
 
 # ---------------------------------------------------------------------------
