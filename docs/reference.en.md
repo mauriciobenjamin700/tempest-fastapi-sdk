@@ -5,7 +5,7 @@ The full API reference is auto-generated from the SDK's English docstrings via
 UI language. To avoid duplicate symbol anchors, the rendered reference is
 published a single time on the default-language page:
 
-[**Open the API Reference »**](../reference/)
+[**Open the API Reference »**](../../reference/)
 
 !!! tip "Searching"
     Every public symbol exported by `tempest_fastapi_sdk` is documented there

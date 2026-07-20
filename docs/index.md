@@ -35,19 +35,22 @@
 ## Início rápido em cinco minutos
 
 ```bash
-# 1. Instale o SDK com todos os extras
-pip install "tempest-fastapi-sdk[all]"
+# 1. Instale o CLI `tempest` (com todos os extras) via uv
+uv tool install "tempest-fastapi-sdk[all]"
 
 # 2. Gere um novo serviço no diretório atual
 tempest new .
 
-# 3. Sincronize as deps + rode o smoke test
+# 3. Sincronize as deps do projeto gerado + rode o smoke test
 uv sync
 uv run pytest
 ```
 
+!!! note "Do CLI ao projeto"
+    O passo 1 instala o **CLI** `tempest` num ambiente próprio (via `uv tool`). O `tempest new` gera um projeto com o **seu próprio `pyproject.toml`**; do passo 3 em diante é o `uv` desse projeto que resolve e roda tudo (`uv sync` cria o `.venv` local a partir das deps geradas). Prefira `uv` de ponta a ponta — misturar `pip install` global com o `uv sync` do projeto resolve dois ambientes diferentes.
+
 !!! note "Sobre o `[all]`"
-    O extra `[all]` traz todos os helpers **exceto** os stacks pesados de GenAI (`[genai]`, `[genai-quant]`, `[genai-rag]`, `[genai-audio]`) — instale esses à parte quando precisar. Veja **[Instalação »](installation.md)** para a tabela completa de extras.
+    O extra `[all]` traz todos os helpers **exceto** os stacks pesados de **modelos locais** de GenAI (`[genai]`, `[genai-quant]`, `[genai-rag]`, `[genai-audio]`) — instale esses à parte quando precisar. Os clients leves de GenAI (Ollama, Chroma) já vêm no `[all]`. Veja **[Instalação »](installation.md)** para a tabela completa de extras.
 
 !!! example "O que o `tempest new` produz"
     ```text

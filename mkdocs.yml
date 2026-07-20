@@ -143,6 +143,20 @@ plugins:
             Guia de migração: Migration guide
             Contribuindo: Contributing
             Changelog: Changelog
+            "Tour do SDK (exemplos)": "SDK tour (examples)"
+            "Exemplo integrado (checkout Pix)": "Integrated example (Pix checkout)"
+            "Exemplos de GenAI (fluxos)": "GenAI examples (flows)"
+            "Arquivo no serviço (mixin)": "File in the service (mixin)"
+            "Auth por introspecção (resource server)": "Introspection auth (resource server)"
+            "Permissões object-level": "Object-level permissions"
+            "Campos validados (tipos prontos)": "Validated fields (ready-made types)"
+            "Management commands (tempest <cmd>)": "Management commands (tempest <cmd>)"
+            "IA generativa self-hosted": "Self-hosted generative AI"
+            "Observabilidade (tracing)": "Observability (tracing)"
+            "Refresh tokens (rotação/revogação)": "Refresh tokens (rotation/revocation)"
+            "System checks (check-config)": "System checks (check-config)"
+            "Sync offline-first (delta)": "Offline-first sync (delta)"
+            "Visão computacional (ONNX)": "Computer vision (ONNX)"
   - include-markdown
   - mkdocstrings:
       default_handler: python

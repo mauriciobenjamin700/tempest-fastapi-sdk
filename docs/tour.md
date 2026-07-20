@@ -9,7 +9,7 @@ pro que precisa.
     Comece pelo [Tutorial](tutorial.md) (constrói a feature *Users* passo
     a passo). Este tour mostra como **cada** peça extra se encaixa nesse
     esqueleto. Instale só os extras que usar:
-    `uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.133.1"`.
+    `uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.137.0"`.
 
 ## Fundação
 
