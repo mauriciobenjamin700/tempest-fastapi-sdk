@@ -5,6 +5,27 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.136.1] — 2026-07-20
+
+### Docs
+
+- **Rewrote the Web Push recipe (PT-BR + EN) to the layered
+  `router → controller → service → repository` pattern.** Each code block
+  now carries its file path and a block-by-block explanation, and the wiring
+  matches the conventions used across Tempest services:
+  - `WebPushDispatcher` is an infrastructure singleton built lazily in
+    `resources.py` (never fails at import without VAPID keys).
+  - Concrete `WebPushSubscriptionRepository` subclass instead of a bare
+    `BaseRepository`; the SDK `WebPushSubscriptionService` is used as-is (no
+    pass-through wrapper); a thin `WebPushController` holds the auth gate.
+  - Per-layer DI providers with `session` resolved via `Depends(get_session)`
+    (the previous `get_push_service(session)` example could not be used as a
+    `Depends()` target).
+  - Router uses a bare `/webpush` prefix mounted under `/api`, avoiding the
+    `/api/api/...` double-prefix; `make_web_push_router` is framed as an
+    opt-in shortcut that bypasses the controller layer.
+- No public API changes — documentation only.
+
 ## [0.136.0] — 2026-07-20
 
 ### Added
