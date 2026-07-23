@@ -163,6 +163,91 @@ class TestSeedStopWithModel:
         assert isinstance(out, str)
 
 
+class TestParseToolCalls:
+    def test_qwen_hermes_single_block(self) -> None:
+        from tempest_fastapi_sdk.genai.text import _parse_tool_calls
+
+        text = (
+            '<tool_call>{"name": "get_weather", '
+            '"arguments": {"city": "SP"}}</tool_call>'
+        )
+        content, calls = _parse_tool_calls(text)
+        assert content == ""
+        assert len(calls) == 1
+        assert calls[0]["function"]["name"] == "get_weather"
+        assert calls[0]["function"]["arguments"] == {"city": "SP"}
+
+    def test_multiple_blocks_and_surrounding_text(self) -> None:
+        from tempest_fastapi_sdk.genai.text import _parse_tool_calls
+
+        text = (
+            "Sure.\n"
+            '<tool_call>{"name": "a", "arguments": {}}</tool_call>\n'
+            '<tool_call>{"name": "b", "arguments": {"x": 1}}</tool_call>'
+        )
+        content, calls = _parse_tool_calls(text)
+        assert content == "Sure."
+        assert [c["function"]["name"] for c in calls] == ["a", "b"]
+
+    def test_llama_bare_json_with_parameters(self) -> None:
+        from tempest_fastapi_sdk.genai.text import _parse_tool_calls
+
+        text = '{"name": "search", "parameters": {"q": "pix"}}'
+        content, calls = _parse_tool_calls(text)
+        assert content == ""
+        assert calls[0]["function"]["name"] == "search"
+        assert calls[0]["function"]["arguments"] == {"q": "pix"}
+
+    def test_arguments_as_json_string(self) -> None:
+        from tempest_fastapi_sdk.genai.text import _parse_tool_calls
+
+        text = '<tool_call>{"name": "f", "arguments": "{\\"a\\": 2}"}</tool_call>'
+        _content, calls = _parse_tool_calls(text)
+        assert calls[0]["function"]["arguments"] == {"a": 2}
+
+    def test_plain_text_has_no_calls(self) -> None:
+        from tempest_fastapi_sdk.genai.text import _parse_tool_calls
+
+        content, calls = _parse_tool_calls("Just a normal answer.")
+        assert content == "Just a normal answer."
+        assert calls == []
+
+    def test_malformed_json_ignored(self) -> None:
+        from tempest_fastapi_sdk.genai.text import _parse_tool_calls
+
+        _content, calls = _parse_tool_calls("<tool_call>{not json}</tool_call>")
+        assert calls == []
+
+
+@pytest.mark.model
+class TestToolCallingWithModel:
+    async def test_chat_with_tools_returns_pipeline_shape(
+        self, tiny_instruct_lm: object
+    ) -> None:
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get the weather for a city.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"city": {"type": "string"}},
+                        "required": ["city"],
+                    },
+                },
+            }
+        ]
+        messages = [{"role": "user", "content": "What is the weather in Sao Paulo?"}]
+        result = await tiny_instruct_lm.chat_with_tools(  # type: ignore[attr-defined]
+            messages, tools, config=GenerationConfig(max_new_tokens=64)
+        )
+        assert isinstance(result["content"], str)
+        assert isinstance(result["tool_calls"], list)
+        for call in result["tool_calls"]:
+            assert isinstance(call["function"]["name"], str)
+
+
 class TestWithoutExtra:
     @pytest.mark.skipif(
         importlib.util.find_spec("transformers") is not None,

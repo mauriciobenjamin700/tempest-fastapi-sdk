@@ -413,10 +413,19 @@ asyncio.run(main())
 `respond` runs the whole cycle: recall memory → (optional) augment with web
 search → build the messages (system + memory + context + history + user
 turn; `images` ride on the user turn) → generate (with a bounded
-tool-calling loop when `tools` + a capable backend like `OllamaGenerator`
-are set; otherwise plain `chat`) → (optional) TTS → best-effort index of
-both turns. `AIChatResult` carries `reply`, `sources`, `memory_hits`,
+tool-calling loop when `tools` + a capable backend are set —
+`OllamaGenerator` **or** the local `TextGenerator` (transformers);
+otherwise plain `chat`) → (optional) TTS → best-effort index of both
+turns. `AIChatResult` carries `reply`, `sources`, `memory_hits`,
 `tool_calls_made` and `audio_base64`.
+
+!!! tip "Tools on the local backend (transformers)"
+    `TextGenerator.chat_with_tools` renders the chat template with
+    `tools=` (transformers >= 4.44) and parses the tool calls the model
+    emits (`<tool_call>{...}</tool_call>` for Qwen/Hermes, or Llama JSON),
+    returning the same shape as `OllamaGenerator` — so the same
+    `AIChatPipeline` runs on local weights, no daemon required. Use a
+    tool-capable instruct model (e.g. `Qwen/Qwen2.5-7B-Instruct`).
 
 ### Ready endpoint: `make_ai_chat_router`
 

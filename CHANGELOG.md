@@ -5,6 +5,19 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.141.0] — 2026-07-23
+
+### Added
+
+- **`TextGenerator.chat_with_tools`** — tool calling on the local transformers
+  backend. Renders the tokenizer chat template with `tools=`
+  (transformers >= 4.44), generates, and parses the emitted tool calls
+  (`<tool_call>{...}</tool_call>` for Qwen/Hermes, or a bare Llama-style JSON
+  object) into the same `{"content", "tool_calls"}` shape `OllamaGenerator`
+  returns. This closes the gap where `AIChatPipeline`'s bounded tool loop only
+  worked with Ollama — the same pipeline now runs tools on local weights with
+  no daemon. Use a tool-capable instruct model (e.g. `Qwen/Qwen2.5-*-Instruct`).
+
 ## [0.140.0] — 2026-07-23
 
 ### Added
