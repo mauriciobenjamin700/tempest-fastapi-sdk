@@ -254,8 +254,10 @@ class TestEnvFilePriority:
 
     Each mixin inherits :class:`BaseAppSettings`, so the canonical
     ``model_config`` (``env_file=".env"``, ``extra="ignore"``,
-    ``case_sensitive=True``) survives on the composed class no matter
-    where the mixins sit relative to ``BaseAppSettings`` in the bases.
+    ``case_sensitive=True``) survives on the composed class for any
+    valid base ordering. ``BaseAppSettings`` itself must be the last
+    base — since the mixins subclass it, C3 linearization rejects it
+    appearing earlier (see ``test_base_before_mixin_raises_mro_error``).
 
     Before the fix the mixins inherited raw
     ``pydantic_settings.BaseSettings``; pydantic materialized a complete
@@ -290,3 +292,15 @@ class TestEnvFilePriority:
         assert (
             Settings().DATABASE_URL == "postgresql+asyncpg://app:app@localhost:5432/app"
         )
+
+    def test_base_before_mixin_raises_mro_error(self) -> None:
+        """``BaseAppSettings`` ahead of a mixin is an invalid MRO.
+
+        Since the mixins subclass ``BaseAppSettings``, C3 linearization
+        forbids the base from preceding its subclass. Listing it before
+        a mixin must fail at class-creation time, not silently compose.
+        """
+        with pytest.raises(TypeError, match="method resolution order"):
+
+            class Settings(BaseAppSettings, DatabaseSettings):
+                """Base before the mixin — the ordering the docs forbid."""

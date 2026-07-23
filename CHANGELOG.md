@@ -5,6 +5,31 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.138.2] — 2026-07-23
+
+### Changed
+
+- **`BaseAppSettings` must now be the last base of a composed `Settings`.**
+  This documents a constraint introduced by 0.138.1: because every mixin
+  now inherits `BaseAppSettings`, Python's C3 linearization forbids
+  listing `BaseAppSettings` **before** any mixin — a base cannot precede
+  its own subclass. A `Settings` that listed `BaseAppSettings` in the
+  middle of its bases (valid before 0.138.1, when mixins inherited raw
+  `BaseSettings`) now raises `TypeError: Cannot create a consistent
+  method resolution order (MRO)` at import. The fix is a one-line
+  reorder — move `BaseAppSettings` to the end of the bases, which was
+  already the documented convention. The value of `.env` loading is
+  still order-independent; only the base *ordering* is now enforced by
+  the interpreter.
+
+### Docs
+
+- The settings-composition recipe (`recipes/http`, PT-BR + EN) and the
+  `settings/mixins` module docstring now state that `BaseAppSettings`
+  **must** be the last base (not merely "by convention"), and explain
+  the `TypeError` raised otherwise. Corrects the 0.138.1 note that
+  implied any base ordering was safe.
+
 ## [0.138.1] — 2026-07-23
 
 ### Fixed
