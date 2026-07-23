@@ -594,7 +594,10 @@ A ordem de resolução de cada kwarg é `argumento explícito → settings.SERVE
 ## Composição de mixins de settings
 
 
-`BaseAppSettings` é a base `pydantic-settings` configurada. O SDK também expõe mixins componíveis para as dependências mais comuns; escolha os que o serviço precisa e ponha `BaseAppSettings` no **final** da MRO para que seu `model_config` vença.
+`BaseAppSettings` é a base `pydantic-settings` configurada (`env_file=".env"`, `extra="ignore"`, `case_sensitive=True`). O SDK também expõe mixins componíveis para as dependências mais comuns; escolha os que o serviço precisa e componha na sua classe `Settings`.
+
+!!! note "A ordem da MRO não importa mais"
+    Cada mixin herda `BaseAppSettings`, então todos carregam o mesmo `model_config` — inclusive `env_file=".env"`. Você pode listar os mixins em qualquer ordem: o `.env` é sempre lido. Por convenção, mantenha `BaseAppSettings` no **final** das bases para deixar a intenção explícita.
 
 ```python
 # src/core/settings.py
