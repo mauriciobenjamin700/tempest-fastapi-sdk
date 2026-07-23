@@ -10,13 +10,20 @@ own concrete ``Settings`` class:
 Every mixin inherits :class:`BaseAppSettings` (not raw
 ``pydantic_settings.BaseSettings``), so each one carries the canonical
 ``model_config`` — ``env_file=".env"``, ``extra="ignore"``,
-``case_sensitive=True`` — materialized on its own class. This makes
-``.env`` loading independent of MRO ordering: pydantic materializes a
-*complete* ``model_config`` onto every settings class, so a mixin
-listed before ``BaseAppSettings`` would otherwise overwrite the whole
-config (resetting ``env_file`` to ``None``) even though it never
-declared that key. Inheriting ``BaseAppSettings`` keeps ``.env`` in the
-materialized config regardless of where the mixin sits in the bases.
+``case_sensitive=True`` — materialized on its own class. This makes the
+*value* of ``.env`` loading independent of mixin ordering: pydantic
+materializes a *complete* ``model_config`` onto every settings class,
+so a mixin listed before ``BaseAppSettings`` would otherwise overwrite
+the whole config (resetting ``env_file`` to ``None``) even though it
+never declared that key. Inheriting ``BaseAppSettings`` keeps ``.env``
+in the materialized config no matter where the mixin sits.
+
+Because the mixins now subclass ``BaseAppSettings``, ``BaseAppSettings``
+**must be the last base** of the composed ``Settings``. Listing it
+before any mixin violates Python's C3 linearization (a base cannot
+precede its own subclass) and raises ``TypeError: Cannot create a
+consistent method resolution order (MRO)`` at import — so keep
+``BaseAppSettings`` at the end of the bases, as shown above.
 
 Every field carries ``title``, ``description`` and ``examples`` so
 JSON-Schema consumers (FastAPI ``/docs``, ``/redoc``, IDE tooling,

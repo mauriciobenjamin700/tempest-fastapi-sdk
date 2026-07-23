@@ -596,8 +596,8 @@ A ordem de resolução de cada kwarg é `argumento explícito → settings.SERVE
 
 `BaseAppSettings` é a base `pydantic-settings` configurada (`env_file=".env"`, `extra="ignore"`, `case_sensitive=True`). O SDK também expõe mixins componíveis para as dependências mais comuns; escolha os que o serviço precisa e componha na sua classe `Settings`.
 
-!!! note "A ordem da MRO não importa mais"
-    Cada mixin herda `BaseAppSettings`, então todos carregam o mesmo `model_config` — inclusive `env_file=".env"`. Você pode listar os mixins em qualquer ordem: o `.env` é sempre lido. Por convenção, mantenha `BaseAppSettings` no **final** das bases para deixar a intenção explícita.
+!!! warning "`BaseAppSettings` deve ser a última base"
+    Cada mixin herda `BaseAppSettings`, então todos carregam o mesmo `model_config` — inclusive `env_file=".env"` — e o `.env` é lido independente da ordem em que os mixins aparecem. Mas `BaseAppSettings` **deve** ser a **última** base: como os mixins são subclasses dela, listá-la antes de qualquer mixin viola a linearização C3 do Python e quebra o import com `TypeError: Cannot create a consistent method resolution order (MRO)`. Ponha sempre `BaseAppSettings` no fim das bases.
 
 ```python
 # src/core/settings.py
