@@ -5,6 +5,20 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.139.0] — 2026-07-23
+
+### Fixed
+
+- **`GenerationConfig.seed` / `.stop` now take effect on the local
+  transformers path.** `TextGenerator` previously dropped both fields
+  (`to_generate_kwargs` strips them and nothing reapplied them), so a
+  configured `seed` never made sampling reproducible and `stop` strings were
+  ignored. The generator now reapplies `seed` via `transformers.set_seed`
+  before generating and wires `stop` into `model.generate`'s `stop_strings`
+  argument (transformers >= 4.44) — for both `generate`/`chat` and `stream`,
+  with per-call overrides winning over the config. `OllamaGenerator` already
+  honored both. No API change.
+
 ## [0.138.2] — 2026-07-23
 
 ### Changed
