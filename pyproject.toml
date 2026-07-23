@@ -387,6 +387,12 @@ addopts = [
     "--strict-config",
     "--cov=tempest_fastapi_sdk",
     "--cov-report=term-missing",
+    "-m",
+    "not model and not gpu",
+]
+markers = [
+    "model: needs real model weights; opt-in, downloads on first run (make test-model)",
+    "gpu: needs CUDA; skipped without a GPU (make test-gpu)",
 ]
 
 [tool.coverage.run]
