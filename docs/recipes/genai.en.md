@@ -745,6 +745,14 @@ Only the set fields layer over the defaults; explicit `**kwargs` still
 win over the config (`gen.generate(prompt, config=config,
 temperature=0.9)` uses `0.9`).
 
+!!! tip "`seed` and `stop` apply on the local path too"
+    `seed` and `stop` are honored by both `OllamaGenerator` and
+    `TextGenerator` (transformers): `seed` is reapplied via
+    `transformers.set_seed` before generating (same seed + `do_sample=True`
+    reproduces the output) and `stop` becomes `model.generate`'s
+    `stop_strings` argument (requires transformers >= 4.44). Either may come
+    from the `GenerationConfig` or per call — the per-call override wins.
+
 ### `make_genai_router` — ready endpoints
 
 Inject the objects you have loaded and the router mounts **only** the

@@ -298,6 +298,64 @@ class TextGenerator:
         self.unload()
         return True
 
+    def _resolve_control(
+        self,
+        overrides: dict[str, Any],
+        config: GenerationConfig | None,
+    ) -> tuple[int | None, list[str]]:
+        """Extract ``seed`` + ``stop`` strings, popping them out of ``overrides``.
+
+        ``seed`` and ``stop`` are not ``model.generate`` keyword arguments, so
+        they are removed from ``overrides`` here — before :meth:`_gen_kwargs`
+        merges the rest — and returned for the caller to apply via
+        ``transformers.set_seed`` and the ``stop_strings`` generation argument.
+        Per-call overrides win over ``config``.
+
+        Args:
+            overrides (dict[str, Any]): Per-call keyword args; ``seed`` and
+                ``stop`` are popped out in place when present.
+            config (GenerationConfig | None): Typed config supplying the
+                fallback ``seed`` / ``stop`` when the overrides omit them.
+
+        Returns:
+            tuple[int | None, list[str]]: The resolved ``(seed, stop)``.
+        """
+        seed: int | None = overrides.pop("seed", None)
+        stop: list[str] | None = overrides.pop("stop", None)
+        if config is not None:
+            if seed is None:
+                seed = config.seed
+            if not stop:
+                stop = list(config.stop)
+        return seed, list(stop) if stop else []
+
+    def _assemble_kwargs(
+        self,
+        overrides: dict[str, Any],
+        config: GenerationConfig | None,
+        stop: list[str],
+        tokenizer: Any,
+    ) -> dict[str, Any]:
+        """Build the final ``model.generate`` kwargs, wiring stop strings.
+
+        Args:
+            overrides (dict[str, Any]): Per-call overrides (seed/stop already
+                popped by :meth:`_resolve_control`).
+            config (GenerationConfig | None): Typed config layered over defaults.
+            stop (list[str]): Resolved stop strings; when non-empty, adds the
+                ``stop_strings`` + ``tokenizer`` arguments (transformers >= 4.44
+                ``StopStringCriteria``).
+            tokenizer (Any): The tokenizer required alongside ``stop_strings``.
+
+        Returns:
+            dict[str, Any]: The merged generation kwargs.
+        """
+        gen = self._gen_kwargs(overrides, config)
+        if stop:
+            gen["stop_strings"] = stop
+            gen["tokenizer"] = tokenizer
+        return gen
+
     def _generate_sync(  # pragma: no cover - needs torch + a real model
         self,
         prompt: str,
@@ -306,10 +364,14 @@ class TextGenerator:
     ) -> str:
         """Run blocking generation and return the completion text."""
         self.load()
+        _torch, transformers = _require_transformers()
+        seed, stop = self._resolve_control(overrides, config)
+        if seed is not None:
+            transformers.set_seed(seed)
         inputs = self._tokenizer(prompt, return_tensors="pt").to(self._model.device)
         output = self._model.generate(
             **inputs,
-            **self._gen_kwargs(overrides, config),
+            **self._assemble_kwargs(overrides, config, stop, self._tokenizer),
         )
         text = self._tokenizer.decode(
             output[0][inputs["input_ids"].shape[1] :],
@@ -430,6 +492,9 @@ class TextGenerator:
         """
         self.load()
         _torch, transformers = _require_transformers()
+        seed, stop = self._resolve_control(kwargs, config)
+        if seed is not None:
+            transformers.set_seed(seed)
         streamer = transformers.TextIteratorStreamer(
             self._tokenizer,
             skip_prompt=True,
@@ -437,7 +502,7 @@ class TextGenerator:
         )
         inputs = self._tokenizer(prompt, return_tensors="pt").to(self._model.device)
         gen_kwargs = {
-            **self._gen_kwargs(kwargs, config),
+            **self._assemble_kwargs(kwargs, config, stop, self._tokenizer),
             **inputs,
             "streamer": streamer,
         }

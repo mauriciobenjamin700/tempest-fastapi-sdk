@@ -7,6 +7,7 @@ import importlib.util
 import pytest
 
 from tempest_fastapi_sdk.genai import (
+    GenerationConfig,
     HardwareInfo,
     ModelDtype,
     TextGenerator,
@@ -98,6 +99,68 @@ class TestState:
         gen = TextGenerator("m", hardware=_cpu_hw())
         gen._last_used = time.monotonic() - 5
         assert gen.seconds_idle >= 5
+
+
+class TestResolveControl:
+    def test_reads_from_config(self) -> None:
+        gen = TextGenerator("m", hardware=_cpu_hw())
+        cfg = GenerationConfig(seed=7, stop=["END"])
+        seed, stop = gen._resolve_control({}, cfg)
+        assert seed == 7
+        assert stop == ["END"]
+
+    def test_overrides_win_over_config(self) -> None:
+        gen = TextGenerator("m", hardware=_cpu_hw())
+        cfg = GenerationConfig(seed=7, stop=["END"])
+        overrides: dict[str, object] = {"seed": 99, "stop": ["STOP"]}
+        seed, stop = gen._resolve_control(overrides, cfg)
+        assert seed == 99
+        assert stop == ["STOP"]
+
+    def test_pops_seed_and_stop_from_overrides(self) -> None:
+        gen = TextGenerator("m", hardware=_cpu_hw())
+        overrides: dict[str, object] = {"seed": 1, "stop": ["x"], "temperature": 0.5}
+        gen._resolve_control(overrides, None)
+        assert "seed" not in overrides
+        assert "stop" not in overrides
+        assert overrides == {"temperature": 0.5}
+
+    def test_absent_yields_none_and_empty(self) -> None:
+        gen = TextGenerator("m", hardware=_cpu_hw())
+        seed, stop = gen._resolve_control({}, None)
+        assert seed is None
+        assert stop == []
+
+
+class TestAssembleKwargs:
+    def test_wires_stop_strings_and_tokenizer(self) -> None:
+        gen = TextGenerator("m", hardware=_cpu_hw())
+        sentinel = object()
+        kwargs = gen._assemble_kwargs({}, None, ["END"], sentinel)
+        assert kwargs["stop_strings"] == ["END"]
+        assert kwargs["tokenizer"] is sentinel
+
+    def test_no_stop_leaves_kwargs_clean(self) -> None:
+        gen = TextGenerator("m", hardware=_cpu_hw())
+        kwargs = gen._assemble_kwargs({}, None, [], object())
+        assert "stop_strings" not in kwargs
+        assert "tokenizer" not in kwargs
+
+
+@pytest.mark.model
+class TestSeedStopWithModel:
+    async def test_seed_makes_sampling_reproducible(
+        self, tiny_causal_lm: object
+    ) -> None:
+        cfg = GenerationConfig(seed=123, max_new_tokens=8, do_sample=True)
+        first = await tiny_causal_lm.generate("hello", config=cfg)  # type: ignore[attr-defined]
+        second = await tiny_causal_lm.generate("hello", config=cfg)  # type: ignore[attr-defined]
+        assert first == second
+
+    async def test_stop_path_runs_on_real_model(self, tiny_causal_lm: object) -> None:
+        cfg = GenerationConfig(max_new_tokens=16, stop=["a"], do_sample=False)
+        out = await tiny_causal_lm.generate("hello", config=cfg)  # type: ignore[attr-defined]
+        assert isinstance(out, str)
 
 
 class TestWithoutExtra:
