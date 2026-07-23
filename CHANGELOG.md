@@ -5,6 +5,26 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.138.1] — 2026-07-23
+
+### Fixed
+
+- **Settings mixins now always honor `.env`.** Every settings mixin
+  (`ServerSettings`, `DatabaseSettings`, `RedisSettings`, … — all 16)
+  now inherits `BaseAppSettings` instead of raw
+  `pydantic_settings.BaseSettings`. Pydantic materializes a *complete*
+  `model_config` onto every settings class, so a mixin that inherited
+  raw `BaseSettings` carried `env_file=None`; when it was listed before
+  `BaseAppSettings` in the bases (the documented order), that full
+  config overwrote the canonical one and **`.env` was silently
+  ignored** — every field fell back to its default (most visibly
+  `DATABASE_URL` → the SQLite default) unless the variable was already
+  exported into the process environment. Because the app reads real env
+  vars in containers, the bug only surfaced locally (CLI, `.env`-driven
+  runs). Inheriting `BaseAppSettings` keeps `env_file=".env"`,
+  `extra="ignore"` and `case_sensitive=True` on the composed `Settings`
+  regardless of base ordering. No consumer code change is required.
+
 ## [0.138.0] — 2026-07-20
 
 ### Added

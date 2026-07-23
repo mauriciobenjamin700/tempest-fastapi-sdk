@@ -7,10 +7,16 @@ own concrete ``Settings`` class:
     class Settings(DatabaseSettings, RedisSettings, BaseAppSettings):
         ...
 
-The mixins MUST be placed before :class:`BaseAppSettings` in the MRO
-so the latter's ``model_config`` wins. None of the mixins reads
-environment variables on their own — they rely on the consumer's
-``BaseAppSettings`` configuration.
+Every mixin inherits :class:`BaseAppSettings` (not raw
+``pydantic_settings.BaseSettings``), so each one carries the canonical
+``model_config`` — ``env_file=".env"``, ``extra="ignore"``,
+``case_sensitive=True`` — materialized on its own class. This makes
+``.env`` loading independent of MRO ordering: pydantic materializes a
+*complete* ``model_config`` onto every settings class, so a mixin
+listed before ``BaseAppSettings`` would otherwise overwrite the whole
+config (resetting ``env_file`` to ``None``) even though it never
+declared that key. Inheriting ``BaseAppSettings`` keeps ``.env`` in the
+materialized config regardless of where the mixin sits in the bases.
 
 Every field carries ``title``, ``description`` and ``examples`` so
 JSON-Schema consumers (FastAPI ``/docs``, ``/redoc``, IDE tooling,
@@ -24,10 +30,11 @@ from datetime import timedelta
 from typing import Any, Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+
+from tempest_fastapi_sdk.settings.base import BaseAppSettings
 
 
-class ServerSettings(BaseSettings):
+class ServerSettings(BaseAppSettings):
     """HTTP server bind configuration.
 
     Each attribute below is also the name of the environment variable
@@ -77,7 +84,7 @@ class ServerSettings(BaseSettings):
     )
 
 
-class LogSettings(BaseSettings):
+class LogSettings(BaseAppSettings):
     """Structured logging configuration.
 
     Each attribute below is also the name of the environment variable
@@ -117,7 +124,7 @@ class LogSettings(BaseSettings):
     )
 
 
-class DatabaseSettings(BaseSettings):
+class DatabaseSettings(BaseAppSettings):
     """SQLAlchemy database connection configuration.
 
     Each attribute below is also the name of the environment variable
@@ -195,7 +202,7 @@ class DatabaseSettings(BaseSettings):
         }
 
 
-class RedisSettings(BaseSettings):
+class RedisSettings(BaseAppSettings):
     """Redis connection configuration.
 
     Each attribute below is also the name of the environment variable
@@ -240,7 +247,7 @@ class RedisSettings(BaseSettings):
         }
 
 
-class RabbitMQSettings(BaseSettings):
+class RabbitMQSettings(BaseAppSettings):
     """RabbitMQ / FastStream broker configuration.
 
     Each attribute below is also the name of the environment variable
@@ -274,7 +281,7 @@ class RabbitMQSettings(BaseSettings):
     )
 
 
-class JWTSettings(BaseSettings):
+class JWTSettings(BaseAppSettings):
     """JWT signing and verification configuration.
 
     Each attribute below is also the name of the environment variable
@@ -350,7 +357,7 @@ class JWTSettings(BaseSettings):
         }
 
 
-class CORSSettings(BaseSettings):
+class CORSSettings(BaseAppSettings):
     """CORS middleware configuration.
 
     .. warning::
@@ -446,7 +453,7 @@ class CORSSettings(BaseSettings):
     )
 
 
-class EmailSettings(BaseSettings):
+class EmailSettings(BaseAppSettings):
     """SMTP / transactional email configuration.
 
     Mirrors the constructor arguments of
@@ -573,7 +580,7 @@ class EmailSettings(BaseSettings):
         }
 
 
-class UploadSettings(BaseSettings):
+class UploadSettings(BaseAppSettings):
     """File upload constraints.
 
     Mirrors the constructor arguments of
@@ -644,7 +651,7 @@ class UploadSettings(BaseSettings):
         }
 
 
-class TokenSettings(BaseSettings):
+class TokenSettings(BaseAppSettings):
     """Shared-secret ``X-Token`` configuration.
 
     Used by :func:`tempest_fastapi_sdk.make_token_dependency` for
@@ -670,7 +677,7 @@ class TokenSettings(BaseSettings):
     )
 
 
-class WebPushSettings(BaseSettings):
+class WebPushSettings(BaseAppSettings):
     """Web Push / VAPID configuration.
 
     Mirrors the constructor arguments of
@@ -751,7 +758,7 @@ class WebPushSettings(BaseSettings):
         return bool(self.VAPID_PRIVATE_KEY)
 
 
-class TaskIQSettings(BaseSettings):
+class TaskIQSettings(BaseAppSettings):
     """TaskIQ broker / result backend configuration.
 
     Use this when the TaskIQ broker is **not** the same RabbitMQ /
@@ -789,7 +796,7 @@ class TaskIQSettings(BaseSettings):
     )
 
 
-class AuthSettings(BaseSettings):
+class AuthSettings(BaseAppSettings):
     """Configuration for the bundled signup / activation / reset flows.
 
     Consumed by :class:`tempest_fastapi_sdk.auth.UserAuthService`
@@ -1360,7 +1367,7 @@ class AuthSettings(BaseSettings):
     )
 
 
-class MinIOSettings(BaseSettings):
+class MinIOSettings(BaseAppSettings):
     """MinIO / S3-compatible object storage configuration.
 
     Consumed by :class:`tempest_fastapi_sdk.AsyncMinIOClient`. The
@@ -1484,7 +1491,7 @@ class MinIOSettings(BaseSettings):
         }
 
 
-class SessionSettings(BaseSettings):
+class SessionSettings(BaseAppSettings):
     """Server-side session cookie + storage configuration.
 
     Consumed by :class:`tempest_fastapi_sdk.SessionAuth`,
@@ -1613,7 +1620,7 @@ class SessionSettings(BaseSettings):
     )
 
 
-class WebSocketSettings(BaseSettings):
+class WebSocketSettings(BaseAppSettings):
     """WebSocket router configuration.
 
     Consumed by :func:`tempest_fastapi_sdk.make_websocket_router` and

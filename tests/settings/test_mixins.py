@@ -1,7 +1,9 @@
 """Tests for tempest_fastapi_sdk.settings.mixins."""
 
 import os
+from pathlib import Path
 
+import pytest
 from pydantic_settings import SettingsConfigDict
 
 from tempest_fastapi_sdk import (
@@ -245,3 +247,46 @@ class TestComposition:
         finally:
             for key in ("SERVER_HOST", "DATABASE_URL", "SMTP_HOST", "TOKEN_SECRET"):
                 os.environ.pop(key, None)
+
+
+class TestEnvFilePriority:
+    """Regression: composing mixins must keep ``env_file=".env"``.
+
+    Each mixin inherits :class:`BaseAppSettings`, so the canonical
+    ``model_config`` (``env_file=".env"``, ``extra="ignore"``,
+    ``case_sensitive=True``) survives on the composed class no matter
+    where the mixins sit relative to ``BaseAppSettings`` in the bases.
+
+    Before the fix the mixins inherited raw
+    ``pydantic_settings.BaseSettings``; pydantic materialized a complete
+    ``model_config`` (``env_file=None``) onto each of them, and a mixin
+    listed before ``BaseAppSettings`` overwrote the whole config — so
+    ``.env`` was silently ignored and ``DATABASE_URL`` fell back to the
+    SQLite default.
+    """
+
+    def test_env_file_survives_mixins_before_base(self) -> None:
+        """``model_config`` keeps the ``.env`` defaults with no re-declaration."""
+
+        class Settings(ServerSettings, DatabaseSettings, BaseAppSettings):
+            """Mixins ahead of ``BaseAppSettings`` — the historical trap order."""
+
+        assert Settings.model_config.get("env_file") == ".env"
+        assert Settings.model_config.get("extra") == "ignore"
+        assert Settings.model_config.get("case_sensitive") is True
+
+    def test_dotenv_loaded_when_mixins_precede_base(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A value set only in ``.env`` reaches a composed ``Settings``."""
+
+        env = tmp_path / ".env"
+        env.write_text("DATABASE_URL=postgresql+asyncpg://app:app@localhost:5432/app\n")
+        monkeypatch.chdir(tmp_path)
+
+        class Settings(ServerSettings, DatabaseSettings, BaseAppSettings):
+            """Composed exactly as a real service would, ``.env`` present."""
+
+        assert (
+            Settings().DATABASE_URL == "postgresql+asyncpg://app:app@localhost:5432/app"
+        )
