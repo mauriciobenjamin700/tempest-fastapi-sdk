@@ -34,6 +34,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.genai.schemas import GenerationConfig
+from tempest_fastapi_sdk.genai.structured import StructuredT, parse_structured
 from tempest_fastapi_sdk.utils.http_client import HTTPClient, RetryPolicy
 
 if TYPE_CHECKING:
@@ -300,6 +301,44 @@ class OllamaGenerator(_OllamaClientMixin):
         data: dict[str, Any] = response.json()
         message: dict[str, Any] = data.get("message") or {}
         return str(message.get("content", ""))
+
+    async def generate_structured(
+        self,
+        prompt: str,
+        schema: type[StructuredT],
+        *,
+        config: GenerationConfig | None = None,
+        **kwargs: Any,
+    ) -> StructuredT:
+        """Generate a completion constrained to a Pydantic ``schema``.
+
+        Passes the schema as the Ollama ``format`` field (the daemon enforces
+        JSON-schema-valid output natively) and parses the reply into an
+        instance of ``schema``. No ``[genai-structured]`` extra needed — the
+        constraint lives in the daemon.
+
+        Args:
+            prompt (str): The input text (instruct the model to answer as JSON).
+            schema (type[StructuredT]): The Pydantic model to produce.
+            config (GenerationConfig | None): Typed generation parameters.
+            **kwargs (Any): Per-call generation overrides (win over ``config``).
+
+        Returns:
+            StructuredT: The validated instance.
+
+        Raises:
+            ValueError: When the output carries no JSON object.
+            pydantic.ValidationError: When the JSON fails ``schema`` validation.
+        """
+        payload = self._request_payload(prompt, config, kwargs, stream=False)
+        payload["format"] = schema.model_json_schema()
+        response = await self._http().post(
+            f"{self.base_url}/api/generate",
+            json=payload,
+        )
+        response.raise_for_status()
+        data: dict[str, Any] = response.json()
+        return parse_structured(str(data.get("response", "")), schema)
 
     async def chat_with_tools(
         self,

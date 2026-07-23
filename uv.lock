@@ -2038,6 +2038,15 @@ wheels = [
 ]
 
 [[package]]
+name = "interegular"
+version = "0.3.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/9d/8b6dde58a028a3962ce17e84d5fe73758df61378e00ef8ac3d85da34b0ff/interegular-0.3.3.tar.gz", hash = "sha256:d9b697b21b34884711399ba0f0376914b81899ce670032486d0d048344a76600", size = 24705, upload-time = "2024-01-06T23:01:22.372Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c4/01/72d6472f80651673716d1deda2a5bbb633e563ecf94f4479da5519d69d25/interegular-0.3.3-py37-none-any.whl", hash = "sha256:b0c07007d48c89d6d19f7204972d369b2a77222722e126b6aa63aa721dc3b19c", size = 23635, upload-time = "2024-01-06T23:01:20.829Z" },
+]
+
+[[package]]
 name = "itsdangerous"
 version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2380,6 +2389,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/27/98/a29133b4728671a175f7d616fab8b1c6e1d8c269d1523581d3160697bfb1/llvmlite-0.48.0-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:1d9f952dff6c350c529997423d4fa43abae9722a884ac7ffafc37a3af676e7db", size = 59890119, upload-time = "2026-07-01T18:42:33.88Z" },
     { url = "https://files.pythonhosted.org/packages/1a/cf/7aac11a1f1c7ec54b60c7f6814e87561fb6b55b2f290455d7941eb113420/llvmlite-0.48.0-cp314-cp314t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:054aa7d46595935565f276cf0c1659b4f10929c996dd4a606875fae26fba2a23", size = 58343460, upload-time = "2026-07-01T18:42:29.545Z" },
     { url = "https://files.pythonhosted.org/packages/db/41/b96f440c7df5ebba07872cad4e30fbc3560387755b1ea0b629adb76d5ca8/llvmlite-0.48.0-cp314-cp314t-win_amd64.whl", hash = "sha256:d0b3c61aac83b42fb48cc96bffbf57c81b82b2aa92276b7ed6420c814629a99a", size = 42986383, upload-time = "2026-07-01T18:42:37.544Z" },
+]
+
+[[package]]
+name = "lm-format-enforcer"
+version = "0.11.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "interegular" },
+    { name = "packaging" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/84/d5/41cd417ba7dfdbbcfe46cebf81fb3dfd7c591b89897560ad05bb410a465d/lm_format_enforcer-0.11.3.tar.gz", hash = "sha256:e68081c108719cce284a9bcc889709b26ffb085a1945b5eba3a12cfa96d528da", size = 40258, upload-time = "2025-08-24T19:37:47.527Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a0/ef/11292bb0b85cf4c93447cab5a29f64576ed14d3ab4280e35ddd23486594a/lm_format_enforcer-0.11.3-py3-none-any.whl", hash = "sha256:cf586350875def1ae7a8fba84fcbbfc8371424b6c9d05c1fcba70aa233fbf06f", size = 45418, upload-time = "2025-08-24T19:37:46.325Z" },
 ]
 
 [[package]]
@@ -5540,7 +5564,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.141.0"
+version = "0.142.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -5626,6 +5650,9 @@ genai-rag = [
     { name = "pgvector" },
     { name = "pymupdf" },
     { name = "trafilatura" },
+]
+genai-structured = [
+    { name = "lm-format-enforcer" },
 ]
 geo = [
     { name = "httpx" },
@@ -5768,6 +5795,7 @@ requires-dist = [
     { name = "jinja2", marker = "extra == 'admin'", specifier = ">=3.1.0" },
     { name = "jinja2", marker = "extra == 'all'", specifier = ">=3.1.0" },
     { name = "jinja2", marker = "extra == 'email'", specifier = ">=3.1.0" },
+    { name = "lm-format-enforcer", marker = "extra == 'genai-structured'", specifier = ">=0.10.0" },
     { name = "minio", marker = "extra == 'all'", specifier = ">=7.2.0" },
     { name = "minio", marker = "extra == 'minio'", specifier = ">=7.2.0" },
     { name = "nvidia-ml-py", marker = "extra == 'all'", specifier = ">=12.560.30" },
@@ -5815,7 +5843,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'genai'", specifier = ">=4.44.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "genai-structured", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
 
 [package.metadata.requires-dev]
 dev = [

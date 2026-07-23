@@ -27,6 +27,11 @@ from tempest_fastapi_sdk.genai.schemas import (
     HardwareInfo,
     ModelDtype,
 )
+from tempest_fastapi_sdk.genai.structured import (
+    StructuredT,
+    build_prefix_allowed_tokens_fn,
+    parse_structured,
+)
 
 _QUANTIZATIONS: frozenset[ModelDtype] = frozenset({ModelDtype.INT8, ModelDtype.INT4})
 
@@ -599,6 +604,69 @@ class TextGenerator:
         text = self._generate_sync(prompt, config, overrides)
         content, tool_calls = _parse_tool_calls(text)
         return {"content": content, "tool_calls": tool_calls}
+
+    async def generate_structured(
+        self,
+        prompt: str,
+        schema: type[StructuredT],
+        *,
+        config: GenerationConfig | None = None,
+        constrained: bool = True,
+        **kwargs: Any,
+    ) -> StructuredT:
+        """Generate a completion constrained to a Pydantic ``schema``.
+
+        When ``constrained`` is ``True`` (default) the generation is bound by a
+        ``lm-format-enforcer`` token filter (``[genai-structured]`` extra) so
+        the model can only emit schema-valid JSON; the result is then parsed
+        into an instance of ``schema``. Set ``constrained=False`` for
+        best-effort parsing without the extra (the model may still stray, in
+        which case parsing raises).
+
+        Args:
+            prompt (str): The input text (instruct the model to answer as JSON).
+            schema (type[StructuredT]): The Pydantic model to produce.
+            config (GenerationConfig | None): Typed generation parameters.
+            constrained (bool): Enforce the schema during decoding (needs the
+                ``[genai-structured]`` extra) or only parse afterwards.
+            **kwargs (Any): Generation overrides (win over ``config``).
+
+        Returns:
+            StructuredT: The validated instance.
+
+        Raises:
+            ImportError: When ``constrained`` is ``True`` and the
+                ``[genai-structured]`` extra is missing.
+            ValueError: When the output carries no JSON object.
+            pydantic.ValidationError: When the JSON fails ``schema`` validation.
+        """
+        return await asyncio.to_thread(
+            self._generate_structured_sync,
+            prompt,
+            schema,
+            config,
+            kwargs,
+            constrained,
+        )
+
+    def _generate_structured_sync(  # pragma: no cover - needs torch + a real model
+        self,
+        prompt: str,
+        schema: type[StructuredT],
+        config: GenerationConfig | None,
+        overrides: dict[str, Any],
+        constrained: bool,
+    ) -> StructuredT:
+        """Blocking schema-constrained generation."""
+        self.load()
+        call_overrides = dict(overrides)
+        if constrained:
+            call_overrides["prefix_allowed_tokens_fn"] = build_prefix_allowed_tokens_fn(
+                self._tokenizer,
+                schema,
+            )
+        text = self._generate_sync(prompt, config, call_overrides)
+        return parse_structured(text, schema)
 
     async def stream(  # pragma: no cover - needs torch + a real model
         self,
