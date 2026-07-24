@@ -367,36 +367,30 @@ widget by column type: bool / enum / FK → select, date/datetime →
 inclusive date-range (two inputs → `__gte`/`__lte`), other → text.
 Now in the covers list.
 
-**Tier 1 — high value, reuses an existing engine (low effort):**
+**Shipped — the whole Tier 1/2/3 backlog is done** (verified 2026-07-24):
 
-1. **Audit history viewer (NEXT)** — a per-row change timeline wired to the
-   existing `BaseAuditLogModel` + `diff_snapshots`. Today the detail
-   view only shows `created_by` / `updated_by` stamps, not full history.
-   Engine is already shipped.
+1. **Audit history viewer** — per-row change timeline in the detail view
+   wired to `AdminModel(audit_model=...)` + `_format_audit_changes`
+   (`BaseAuditLogModel`); template renders the `history` timeline.
+2. **Autocomplete FK fields** — HTMX-backed FK inputs (`FieldRef`), past
+   the plain-`<select>` cap.
+3. **Inlines / nested relations** — `Inline` (edit child rows in the
+   parent's detail/edit view).
+4. **Dashboard business metrics / charts** — `MetricCard` +
+   `MetricValue` / `MetricTrend` / `MetricPartition`
+   (`AdminSite(dashboard_cards=[...])`), distinct from the system panel.
+5. **RBAC granular** — `AdminPermission` + `AdminAccessPolicy` (per-model /
+   per-action), beyond `is_admin` + `can_create`/`can_edit`/`can_delete`.
+6. **CSV import** — `AdminModel(can_import=True)` + the CSV import page /
+   bulk-create endpoint (counterpart to the export).
+7. **Lenses** — `Lens` (saved alternate views / queries per model).
 
-**Tier 2 — high value, medium effort:**
+All the above are in the covers list / admin recipe. Origin: competitor gap
+analysis (Django Admin, Laravel Nova, SQLAdmin, Starlette-Admin) run
+2026-06-26.
 
-2. **Autocomplete FK fields** — HTMX search endpoint backing FK inputs,
-   removing the 1000-row `<select>` cap and the plain-UUID fallback
-   (Django `autocomplete_fields`, Nova search).
-3. **Inlines / nested relations** — edit child rows inside the parent's
-   detail / edit view (Django `StackedInline` / `TabularInline`).
-4. **Dashboard business metrics / charts** — value / trend / partition
-   cards (Nova metrics), wired to the existing metrics module. Distinct
-   from today's system CPU/RAM/disk panel.
-
-**Tier 3 — nice-to-have:**
-
-5. **RBAC granular** — per-model / per-action admin permissions beyond
-   today's `is_admin` + `can_create` / `can_edit` / `can_delete`.
-6. **CSV import** — bulk upload counterpart to the existing export.
-7. **Lenses** — saved alternate views / queries per model (Nova).
-
-Origin: competitor gap analysis (Django Admin, Laravel Nova, SQLAdmin,
-Starlette-Admin) run 2026-06-26. Do **not** treat the tiers as locked —
-business pressure can still jump a non-admin item to the front (like the
-BR localities dataset in v0.53.0, which was never on any list). Keep
-this honest, not aspirational.
+**Admin backlog: empty.** No queued admin work — pick the next theme from
+business need, not from a stale list. Keep this honest, not aspirational.
 
 ## Conventions specific to this repo
 
