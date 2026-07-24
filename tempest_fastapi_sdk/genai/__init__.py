@@ -105,6 +105,14 @@ from tempest_fastapi_sdk.genai.text import (
 from tempest_fastapi_sdk.genai.text import (
     resolve_device as resolve_device,
 )
+from tempest_fastapi_sdk.genai.tokens import (
+    count_message_tokens as count_message_tokens,
+)
+from tempest_fastapi_sdk.genai.tokens import (
+    count_tokens as count_tokens,
+)
+from tempest_fastapi_sdk.genai.tokens import (
+    truncate_messages as truncate_messages,
 from tempest_fastapi_sdk.genai.vision_text import (
     VisionTextGenerator as VisionTextGenerator,
 )
@@ -142,6 +150,8 @@ __all__: list[str] = [
     "cached_generate",
     "can_run",
     "cosine_similarity",
+    "count_message_tokens",
+    "count_tokens",
     "estimate_model_bytes",
     "fetch_num_params",
     "is_deterministic",
@@ -152,4 +162,5 @@ __all__: list[str] = [
     "probe_hardware",
     "recommend",
     "resolve_device",
+    "truncate_messages",
 ]
