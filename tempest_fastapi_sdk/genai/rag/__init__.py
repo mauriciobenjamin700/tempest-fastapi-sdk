@@ -20,6 +20,8 @@ from tempest_fastapi_sdk.genai.rag.extract import (
     ExtractionResult as ExtractionResult,
 )
 from tempest_fastapi_sdk.genai.rag.pdf import PdfReader as PdfReader
+from tempest_fastapi_sdk.genai.rag.rerank import Reranker as Reranker
+from tempest_fastapi_sdk.genai.rag.rerank import SupportsRerank as SupportsRerank
 from tempest_fastapi_sdk.genai.rag.retriever import Retriever as Retriever
 from tempest_fastapi_sdk.genai.rag.retriever import SupportsEmbed as SupportsEmbed
 from tempest_fastapi_sdk.genai.rag.schemas import Chunk as Chunk
@@ -47,10 +49,12 @@ __all__: list[str] = [
     "PdfPage",
     "PdfReader",
     "PgVectorStore",
+    "Reranker",
     "Retriever",
     "SearchResult",
     "SearxngBackend",
     "SupportsEmbed",
+    "SupportsRerank",
     "VectorStore",
     "WebSearch",
     "WebSearchBackend",

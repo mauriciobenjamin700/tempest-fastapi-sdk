@@ -5,6 +5,19 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.144.0] — 2026-07-24
+
+### Added
+
+- **`Reranker`** (`tempest_fastapi_sdk.genai.rag.Reranker`) — a cross-encoder
+  second stage for RAG. Scores each `(query, chunk)` pair jointly with an
+  `AutoModelForSequenceClassification` model (e.g.
+  `cross-encoder/ms-marco-MiniLM-L-6-v2`), far more precise than dense cosine.
+  `Retriever(embedder, store, reranker=...)` over-fetches candidates
+  (`search(..., rerank_candidates=20)`) and the reranker narrows them to
+  `top_k`; without a reranker the retriever stays dense-only. Lazy load,
+  `unload`/`unload_if_idle`, auto device/dtype (the `[genai]` extra). Adds the
+  `SupportsRerank` protocol.
 ## [0.143.0] — 2026-07-24
 
 ### Added
