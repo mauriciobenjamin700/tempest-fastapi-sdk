@@ -5,6 +5,31 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.157.0] — 2026-07-24
+
+### Added
+
+- **TaskQueue reliability + observability** (`tempest_fastapi_sdk.tasks`):
+  opt-in retry, dead-letter, and per-task metrics, wired onto TaskIQ so
+  application code never touches the broker middleware API.
+  - **Retry** — `RetryPolicy(max_retries=, on_error=)` carried as task labels
+    (`@tq.task(retry=RetryPolicy(...))`); `TaskQueue.enable_retries(...)`
+    installs TaskIQ's `SimpleRetryMiddleware` that honours them.
+  - **Dead-letter** — `DeadLetter` + `DeadLetterSink` protocol +
+    `TaskQueue.dead_letter(sink, default_max_retries=)`: a task that fails with
+    no retry configured, or after retries are exhausted, is handed to your sink
+    exactly once (a `MessageBroker` channel, a DB row, an alert — the target is
+    yours; the SDK assumes no backend). A failing sink is logged, never crashes
+    the worker. `make_dead_letter_middleware` for manual wiring.
+  - **Metrics** — `TaskMetrics(namespace=, registry=)` records
+    `tasks_runs_total{task,status}` + `tasks_duration_seconds{task}` from a
+    middleware into the shared Prometheus registry (`[prometheus]` extra);
+    `TaskQueue.enable_metrics(...)`.
+
+  Everything imports without the `[tasks]` extra (TaskIQ is only touched at
+  wiring time). Second slice of the *queue observability + genai tracing*
+  roadmap theme (after the genai spans in v0.156.0).
+
 ## [0.156.0] — 2026-07-24
 
 ### Added

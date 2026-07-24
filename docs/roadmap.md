@@ -96,8 +96,11 @@ Tema entregue em fatias, uma release por fatia:
   entregue na **v0.156.0**. `genai_span` ambiente reusa o `TracerProvider` do
   `setup_tracing` (convenções semânticas GenAI); no-op sem o extra `[otel]`.
   Ver a receita genai (*Tracing distribuído*).
-- ⏳ `TaskQueue`: **dead-letter** + política de retry + métricas por task
-  (próxima fatia).
+- ✅ **`TaskQueue`: retry + dead-letter + métricas por task** — entregue na
+  **v0.157.0**. `RetryPolicy` + `enable_retries`, `DeadLetterSink` +
+  `dead_letter` (destino é seu, sem backend assumido), `TaskMetrics` no
+  `/metrics` compartilhado. Middleware opt-in, importa sem o extra `[tasks]`.
+  Ver a receita de filas (*Confiabilidade e observabilidade das tarefas*).
 - **Painel de filas/tasks no admin** (estilo Celery-Flower) — **deferido**: o
   TaskIQ não expõe introspecção de fila universal (o Flower é específico do
   Celery), então depender de APIs de management do RabbitMQ/Redis vazaria o

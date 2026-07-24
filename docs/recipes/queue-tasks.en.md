@@ -319,6 +319,62 @@ async def lifespan(_: FastAPI):
 !!! danger "Production: exactly one scheduler"
     `start_scheduler()` runs inside the FastAPI process — fine for dev. With multiple workers, each replica would run its own scheduler and **duplicate** every trigger. In production run one standalone scheduler and the workers separately.
 
+## Task reliability and observability
+
+A worker-only task needs three things TaskIQ has but scatters: **retry**, **dead-letter**, and **metrics**. `TaskQueue` exposes all three as opt-in middleware — call them **before `connect()`**, and nothing touches the broker's middleware API.
+
+### Typed retry
+
+`RetryPolicy` carries the retry config as labels; `enable_retries()` installs the TaskIQ middleware that reads them:
+
+```python
+from tempest_fastapi_sdk.tasks import RetryPolicy, TaskQueue
+
+tq: TaskQueue = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/")
+tq.enable_retries(default_max_retries=3)
+
+
+@tq.task(name="reports:nightly", retry=RetryPolicy(max_retries=5))
+async def nightly() -> None:
+    ...   # re-run up to 5x on error
+```
+
+### Dead-letter — where terminal failures go
+
+When a task fails **with no retry configured**, or after its retries are exhausted, the call goes to your `DeadLetterSink` exactly once. The target is yours — a `MessageBroker` channel, a DB row, an alert. The SDK assumes no backend:
+
+```python
+from tempest_fastapi_sdk.tasks import DeadLetter, TaskQueue
+
+tq: TaskQueue = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/")
+
+
+async def to_dlq(dead_letter: DeadLetter) -> None:
+    await mq.publish("tasks.dead", {
+        "task": dead_letter.task_name,
+        "args": dead_letter.args,
+        "error": str(dead_letter.exception),
+        "retries": dead_letter.retries,
+    })
+
+
+tq.dead_letter(to_dlq, default_max_retries=3)
+```
+
+!!! tip "Pair it with retry"
+    Pass the **same** `default_max_retries` to `enable_retries` and `dead_letter` so the "retries exhausted" point lines up for tasks that set no explicit `max_retries`. Install order does not matter — the dead-letter middleware decides on its own by reading the message labels.
+
+### Per-task Prometheus metrics
+
+`TaskMetrics` counts executions (by status) and a duration histogram, labelled by task, into the **same** `/metrics` the SDK already serves (pass the shared `registry`):
+
+```python
+from tempest_fastapi_sdk.tasks import TaskMetrics, TaskQueue
+
+tq: TaskQueue = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/")
+tq.enable_metrics(TaskMetrics())   # tasks_runs_total{task,status} + tasks_duration_seconds{task}
+```
+
 ## Workers in production
 
 The worker and the scheduler are separate processes pointing at the raw objects `TaskQueue` exposes:

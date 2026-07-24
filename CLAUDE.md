@@ -276,7 +276,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   renamed to **`AsyncQueueManager`** (v0.94.0; old alias kept); legacy
   `AsyncTaskBrokerManager`/`AsyncTaskScheduler` kept. Outbox
   (`BaseOutboxModel`/`OutboxRelay`/`save_with_outbox`) plugs its `publish`
-  into `MessageBroker.publish`.
+  into `MessageBroker.publish`. **Task reliability + observability (v0.157.0):**
+  `RetryPolicy` + `TaskQueue.enable_retries` (TaskIQ `SimpleRetryMiddleware`),
+  `DeadLetter`/`DeadLetterSink` + `TaskQueue.dead_letter` (terminal-failure
+  routing, backend-agnostic; `make_dead_letter_middleware`), `TaskMetrics` +
+  `TaskQueue.enable_metrics` (`tasks_runs_total`/`tasks_duration_seconds` on the
+  shared Prometheus registry). Opt-in middleware, imports without `[tasks]`.
 - **BR validators** — CPF/CNPJ/CEP/phone, with `*Field` Pydantic types
   (`CPFField`/`CNPJField`/`CPFOrCNPJField`/`PhoneBRField`/`CEPField`;
   pre-0.76 unsuffixed names kept as deprecated aliases). **PIX keys**

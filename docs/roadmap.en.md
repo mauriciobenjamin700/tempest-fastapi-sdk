@@ -96,8 +96,11 @@ Delivered in slices, one release per slice:
   in **v0.156.0**. The ambient `genai_span` reuses the `TracerProvider` from
   `setup_tracing` (GenAI semantic conventions); no-op without the `[otel]`
   extra. See the genai recipe (*Distributed tracing*).
-- ⏳ `TaskQueue`: **dead-letter** + retry policy + per-task metrics (next
-  slice).
+- ✅ **`TaskQueue`: retry + dead-letter + per-task metrics** — shipped in
+  **v0.157.0**. `RetryPolicy` + `enable_retries`, `DeadLetterSink` +
+  `dead_letter` (target is yours, no backend assumed), `TaskMetrics` into the
+  shared `/metrics`. Opt-in middleware, imports without the `[tasks]` extra.
+  See the queue recipe (*Task reliability and observability*).
 - **Queue/task panel in the admin** (Celery-Flower-like) — **deferred**:
   TaskIQ exposes no universal queue introspection (Flower is Celery-specific),
   so leaning on RabbitMQ/Redis management APIs would leak the backend.

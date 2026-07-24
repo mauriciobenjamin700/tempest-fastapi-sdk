@@ -24,11 +24,18 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Generic, ParamSpec, TypeVar
 
+from tempest_fastapi_sdk.tasks.observability import make_dead_letter_middleware
+
 if TYPE_CHECKING:
     import asyncio
 
     from taskiq import AsyncBroker
 
+    from tempest_fastapi_sdk.tasks.observability import (
+        DeadLetterSink,
+        RetryPolicy,
+        TaskMetrics,
+    )
     from tempest_fastapi_sdk.tasks.scheduler import AsyncTaskScheduler
 
 logger = logging.getLogger("tempest_fastapi_sdk.tasks")
@@ -247,6 +254,7 @@ class TaskQueue:
         func: Callable[P, Awaitable[R]] | None = None,
         *,
         name: str | None = None,
+        retry: RetryPolicy | None = None,
         **options: Any,
     ) -> Any:
         """Register an async function as a background task.
@@ -256,7 +264,7 @@ class TaskQueue:
             @tq.task
             async def a() -> None: ...
 
-            @tq.task(name="reports:nightly", retry_on_error=True)
+            @tq.task(name="reports:nightly", retry=RetryPolicy(max_retries=5))
             async def b() -> None: ...
 
         Args:
@@ -265,12 +273,17 @@ class TaskQueue:
                 arguments (``@tq.task(...)``).
             name (str | None): Override the auto-generated
                 ``module:function`` task name.
+            retry (RetryPolicy | None): Per-task retry configuration; its
+                labels are merged into ``options``. Needs
+                :meth:`enable_retries` to have installed the retry middleware.
             **options (Any): Extra TaskIQ labels / options forwarded to
                 ``broker.task``.
 
         Returns:
             Any: A :class:`Task` (bare form) or a decorator returning one.
         """
+        if retry is not None:
+            options = {**retry.as_labels(), **options}
 
         def wrap(fn: Callable[P, Awaitable[R]]) -> Task[P, R]:
             decorator = self.broker.task(task_name=name, **options)
@@ -312,6 +325,61 @@ class TaskQueue:
         if grouped:
             return wrapped
         return wrapped["run"]
+
+    # ------------------------------------------------------------------
+    # Reliability + observability (opt-in middleware)
+    # ------------------------------------------------------------------
+
+    def enable_retries(self, *, default_max_retries: int = 3) -> None:
+        """Install TaskIQ's retry middleware so failing tasks are re-run.
+
+        A task opts in with a :class:`~tempest_fastapi_sdk.tasks.RetryPolicy`
+        (``@tq.task(retry=RetryPolicy(...))``); this installs the middleware
+        that honours it. Call it **before** :meth:`connect`.
+
+        Args:
+            default_max_retries (int): Attempt cap for a retrying task that
+                sets no ``max_retries`` of its own.
+        """
+        _require_taskiq()
+        from taskiq.middlewares import SimpleRetryMiddleware
+
+        self.broker.add_middlewares(
+            SimpleRetryMiddleware(default_retry_count=default_max_retries)
+        )
+
+    def enable_metrics(self, metrics: TaskMetrics) -> None:
+        """Record Prometheus run count + duration for every task.
+
+        Call it **before** :meth:`connect`.
+
+        Args:
+            metrics (TaskMetrics): The metric bundle to record into.
+        """
+        self.broker.add_middlewares(metrics.middleware())
+
+    def dead_letter(
+        self,
+        sink: DeadLetterSink,
+        *,
+        default_max_retries: int = 3,
+    ) -> None:
+        """Route terminally-failed tasks to ``sink``.
+
+        A task that fails with no retry configured, or after its retries are
+        exhausted, is handed to ``sink`` exactly once. Call it **before**
+        :meth:`connect`.
+
+        Args:
+            sink (DeadLetterSink): Where dead letters go (a channel publisher,
+                a DB write, an alert — the target is yours).
+            default_max_retries (int): Must match the value passed to
+                :meth:`enable_retries` so the "retries exhausted" point lines
+                up for tasks that set no explicit ``max_retries``.
+        """
+        self.broker.add_middlewares(
+            make_dead_letter_middleware(sink, default_max_retries=default_max_retries)
+        )
 
     # ------------------------------------------------------------------
     # Scheduling (periodic tasks)
