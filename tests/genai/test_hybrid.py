@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from tempest_fastapi_sdk.genai.rag import Chunk, HybridRetriever, reciprocal_rank_fusion
+from tempest_fastapi_sdk.genai.rag import (
+    Chunk,
+    HybridRetriever,
+    SupportsRetrieve,
+    reciprocal_rank_fusion,
+)
 from tests.genai._eval import recall_at_k
 from tests.genai._eval.corpus import CORPUS, PROPER_NOUN_QUERIES
 
@@ -77,3 +82,11 @@ class TestHybridRetriever:
             hits += int(recall_at_k(ranked_ids, [target], k=5) > 0)
         # A blind dense stage alone would score ~0; BM25 must carry these.
         assert hits >= 4
+
+    async def test_retrieve_builds_context_and_satisfies_protocol(self) -> None:
+        rag = HybridRetriever(_DenseBlindEmbedder(), _ListStore())  # type: ignore[arg-type]
+        await rag.index(_corpus_chunks())
+        assert isinstance(rag, SupportsRetrieve)
+        context = await rag.retrieve("What is PIX?", top_k=3)
+        assert isinstance(context, str)
+        assert "PIX" in context

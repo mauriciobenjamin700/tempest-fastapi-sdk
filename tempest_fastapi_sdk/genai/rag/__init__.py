@@ -28,6 +28,7 @@ from tempest_fastapi_sdk.genai.rag.rerank import Reranker as Reranker
 from tempest_fastapi_sdk.genai.rag.rerank import SupportsRerank as SupportsRerank
 from tempest_fastapi_sdk.genai.rag.retriever import Retriever as Retriever
 from tempest_fastapi_sdk.genai.rag.retriever import SupportsEmbed as SupportsEmbed
+from tempest_fastapi_sdk.genai.rag.retriever import SupportsRetrieve as SupportsRetrieve
 from tempest_fastapi_sdk.genai.rag.schemas import Chunk as Chunk
 from tempest_fastapi_sdk.genai.rag.schemas import Document as Document
 from tempest_fastapi_sdk.genai.rag.schemas import PdfPage as PdfPage
@@ -60,6 +61,7 @@ __all__: list[str] = [
     "SearxngBackend",
     "SupportsEmbed",
     "SupportsRerank",
+    "SupportsRetrieve",
     "VectorStore",
     "WebSearch",
     "WebSearchBackend",
