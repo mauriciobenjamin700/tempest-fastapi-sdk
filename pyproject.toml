@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.142.0"
+version = "0.143.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -120,6 +120,9 @@ genai-chroma = [
 genai-structured = [
     "lm-format-enforcer>=0.10.0",
 ]
+genai-vlm = [
+    "pillow>=10.0.0",
+]
 geo = [
     "httpx>=0.28.0",
 ]
@@ -230,6 +233,7 @@ dev = [
     "ruff>=0.8.0",
     "trafilatura>=1.12.0",
     "pymupdf>=1.24.0",
+    "pillow>=10.0.0",
     "faststream[rabbit]>=0.7.1",
     "taskiq>=0.11.0",
     "taskiq-aio-pika>=0.4.0",
@@ -366,6 +370,8 @@ module = [
     "chromadb.*",
     "lmformatenforcer",
     "lmformatenforcer.*",
+    "PIL",
+    "PIL.*",
 ]
 ignore_missing_imports = true
 

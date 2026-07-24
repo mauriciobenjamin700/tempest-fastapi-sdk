@@ -5,6 +5,20 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.143.0] — 2026-07-24
+
+### Added
+
+- **`VisionTextGenerator`** — local vision-language generation over
+  transformers (`AutoModelForVision2Seq` + `AutoProcessor`), the multimodal
+  sibling of `TextGenerator`. `generate`/`chat` take optional `images` (path /
+  `bytes` / `PIL.Image` / NumPy `ndarray`, normalized by `_load_image`) and stay
+  text-compatible, giving the transformers path the multimodal reach
+  `OllamaGenerator` already had via its `images` argument. Lazy load, idle
+  unload, auto device/dtype. New `[genai-vlm]` extra (Pillow). Targets the
+  common `processor(text=, images=)` interface (LLaVA, Qwen2-VL); other
+  families may need a thin adapter.
+
 ## [0.142.0] — 2026-07-23
 
 ### Added

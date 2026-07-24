@@ -804,6 +804,34 @@ rota estruturada recomendada, sem biblioteca extra**.
     (tolera cercas markdown e texto ao redor) e valida contra o schema —
     útil pra reaproveitar em qualquer saída de modelo.
 
+### Visão (VLM multimodal local)
+
+O `VisionTextGenerator` é o irmão multimodal do `TextGenerator`: carrega
+um `AutoModelForVision2Seq` + `AutoProcessor` e gera texto condicionado a
+imagens, no seu hardware. Paridade com o `OllamaGenerator`, que já aceita
+`images`. Requer `[genai]` + `[genai-vlm]` (Pillow).
+
+```python
+from tempest_fastapi_sdk.genai import VisionTextGenerator
+
+gen = VisionTextGenerator("llava-hf/llava-1.5-7b-hf")
+descricao = await gen.generate(
+    "USER: <image>\nDescreva a imagem.\nASSISTANT:",
+    images=["foto.jpg"],
+)
+```
+
+As imagens entram como caminho, `bytes`, `PIL.Image` ou `ndarray` NumPy
+(mesma leniência do `ort-vision-sdk`). `generate`/`chat` são
+image-opcionais — chamadas só-texto continuam funcionando (é um
+`TextBackend`).
+
+!!! warning "Convenções de processor variam por família"
+    Esta classe mira a interface comum `processor(text=..., images=...)`
+    de LLaVA e Qwen2-VL. Outras famílias podem exigir um adaptador fino
+    (token de placeholder de imagem, formato do chat template). Valide o
+    modelo alvo antes de produção.
+
 ### `make_genai_router` — endpoints prontos
 
 Injete os objetos que você tem carregados e o router monta **só** os
