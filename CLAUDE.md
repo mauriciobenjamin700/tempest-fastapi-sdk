@@ -168,6 +168,28 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   extraction → `Document`/`Chunk`, `read`/`chunks` with overlap);
   `build_context(question, sources)` → prompt block mixing web +
   PDF. All import lazily.
+- **GenAI self-hosted roadmap (v0.139–0.154).** Shipped on top of the
+  above: seed/stop honored on the transformers path (v0.139); retry/
+  backoff/circuit-breaker on Ollama + SearXNG via `HTTPClient` (+ its
+  `stream()`/`transport=`) (v0.140); **tool calling** on `TextGenerator`
+  (`chat_with_tools`, chat-template `tools=`) closing the pipeline gap
+  (v0.141); **structured output** `generate_structured` + `parse_structured`
+  (Ollama `format=`, transformers `lm-format-enforcer` via
+  `[genai-structured]`) (v0.142); **`VisionTextGenerator`** local VLM
+  (`[genai-vlm]`) (v0.143); RAG **`Reranker`** cross-encoder (v0.144) +
+  **`HybridRetriever`** BM25+dense RRF (`reciprocal_rank_fusion`, `rank-bm25`
+  in `[genai-rag]`) + `SupportsRetrieve` (v0.145/0.154); **`OnnxEmbedder`**
+  torch-free embeddings (`[genai-onnx]`) (v0.146); prompt→completion
+  **generation cache** (`InMemory`/`RedisGenerationCache`, deterministic-only)
+  (v0.147); **token/context** (`count_tokens`/`truncate_messages`) (v0.148);
+  **`make_vision_router`** (v0.149); **`GenAIMetrics`** Prometheus (v0.150);
+  content **moderation** (`RuleModerator`/`ClassifierModerator`) (v0.151);
+  and integration — `AIChatPipeline` moderation + context truncation (v0.152),
+  metrics+cache on `TextGenerator`/`Embedder` (v0.153). The OpenAI-compatible
+  client was **deliberately skipped** (self-hosted-only). Test tiers
+  (unit/`@model`/`@gpu`) + plans live under `planning/genai/`. **Fix:** `httpx`
+  + `email-validator` are base deps so a minimal/`[genai]` install imports
+  (v0.151.1).
 - **SSR** (`[ssr]` extra) — `tempest_fastapi_sdk.ssr`: typed Python
   pages rendered to HTML via `tempestweb`'s `render_to_html` /
   `render_document`. `Page` (typed `Component` base — `body()` +
