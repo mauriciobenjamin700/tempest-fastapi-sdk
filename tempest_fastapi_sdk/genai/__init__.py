@@ -113,6 +113,7 @@ from tempest_fastapi_sdk.genai.tokens import (
 )
 from tempest_fastapi_sdk.genai.tokens import (
     truncate_messages as truncate_messages,
+)
 from tempest_fastapi_sdk.genai.vision_text import (
     VisionTextGenerator as VisionTextGenerator,
 )
