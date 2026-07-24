@@ -58,6 +58,7 @@ from tempest_fastapi_sdk.genai.hardware import (
 from tempest_fastapi_sdk.genai.hardware import (
     recommend as recommend,
 )
+from tempest_fastapi_sdk.genai.metrics import GenAIMetrics as GenAIMetrics
 from tempest_fastapi_sdk.genai.ollama import (
     DEFAULT_OLLAMA_URL as DEFAULT_OLLAMA_URL,
 )
@@ -129,6 +130,7 @@ __all__: list[str] = [
     "Embedder",
     "EmbeddingCache",
     "GPUInfo",
+    "GenAIMetrics",
     "GenerationCache",
     "GenerationConfig",
     "HardwareInfo",
