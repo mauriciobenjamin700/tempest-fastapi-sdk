@@ -65,6 +65,12 @@ from tempest_fastapi_sdk.genai.schemas import (
 from tempest_fastapi_sdk.genai.schemas import (
     ModelDtype as ModelDtype,
 )
+from tempest_fastapi_sdk.genai.structured import (
+    build_prefix_allowed_tokens_fn as build_prefix_allowed_tokens_fn,
+)
+from tempest_fastapi_sdk.genai.structured import (
+    parse_structured as parse_structured,
+)
 from tempest_fastapi_sdk.genai.text import (
     TextBackend as TextBackend,
 )
@@ -100,6 +106,7 @@ __all__: list[str] = [
     "TextGenerator",
     "Tool",
     "auto_dtype_name",
+    "build_prefix_allowed_tokens_fn",
     "bytes_per_param",
     "can_run",
     "cosine_similarity",
@@ -107,6 +114,7 @@ __all__: list[str] = [
     "fetch_num_params",
     "make_ai_chat_router",
     "make_genai_router",
+    "parse_structured",
     "probe_hardware",
     "recommend",
     "resolve_device",

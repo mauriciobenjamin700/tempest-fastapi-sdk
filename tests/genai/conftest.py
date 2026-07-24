@@ -101,6 +101,7 @@ def make_stub_httpx() -> Callable[
 
 
 TINY_CAUSAL_LM: str = "hf-internal-testing/tiny-random-LlamaForCausalLM"
+TINY_INSTRUCT_LM: str = "Qwen/Qwen2.5-0.5B-Instruct"
 
 
 @pytest.fixture(scope="session")
@@ -115,5 +116,22 @@ def tiny_causal_lm() -> Any:  # pragma: no cover - opt-in, needs download
     from tempest_fastapi_sdk.genai import TextGenerator
 
     generator = TextGenerator(TINY_CAUSAL_LM, device="cpu")
+    generator.load()
+    return generator
+
+
+@pytest.fixture(scope="session")
+def tiny_instruct_lm() -> Any:  # pragma: no cover - opt-in, needs download
+    """Load a small real instruct LM with a tool-capable chat template.
+
+    Returns:
+        Any: A loaded :class:`~tempest_fastapi_sdk.genai.TextGenerator` around
+        Qwen2.5-0.5B-Instruct — small enough for CPU but with a real chat
+        template and ``tools=`` support, so tool-calling / structured-output
+        mechanics can run end to end (camada 2).
+    """
+    from tempest_fastapi_sdk.genai import TextGenerator
+
+    generator = TextGenerator(TINY_INSTRUCT_LM, device="cpu")
     generator.load()
     return generator

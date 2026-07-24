@@ -15,6 +15,8 @@ never blocks the event loop.
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 import time
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, runtime_checkable
@@ -25,8 +27,80 @@ from tempest_fastapi_sdk.genai.schemas import (
     HardwareInfo,
     ModelDtype,
 )
+from tempest_fastapi_sdk.genai.structured import (
+    StructuredT,
+    build_prefix_allowed_tokens_fn,
+    parse_structured,
+)
 
 _QUANTIZATIONS: frozenset[ModelDtype] = frozenset({ModelDtype.INT8, ModelDtype.INT4})
+
+_TOOL_CALL_RE: re.Pattern[str] = re.compile(
+    r"<tool_call>\s*(\{.*?\})\s*</tool_call>",
+    re.DOTALL,
+)
+
+
+def _coerce_tool_call(raw: str) -> dict[str, Any] | None:
+    """Parse one raw JSON tool-call object into the pipeline call shape.
+
+    Accepts the two conventions instruct models emit — ``{"name", "arguments"}``
+    (Qwen / Hermes) and ``{"name", "parameters"}`` (Llama) — and normalizes
+    them to ``{"type": "function", "function": {"name", "arguments"}}`` so the
+    result matches what :class:`OllamaGenerator.chat_with_tools` returns.
+
+    Args:
+        raw (str): A single JSON object as text.
+
+    Returns:
+        dict[str, Any] | None: The normalized call, or ``None`` when ``raw`` is
+        not a JSON object carrying a ``name``.
+    """
+    try:
+        obj: Any = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(obj, dict):
+        return None
+    name = obj.get("name")
+    if not name:
+        return None
+    arguments: Any = obj.get("arguments")
+    if arguments is None:
+        arguments = obj.get("parameters") or {}
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except ValueError:
+            arguments = {}
+    return {"type": "function", "function": {"name": str(name), "arguments": arguments}}
+
+
+def _parse_tool_calls(text: str) -> tuple[str, list[dict[str, Any]]]:
+    """Split a model completion into clean content and any tool calls.
+
+    Recognizes ``<tool_call>{...}</tool_call>`` blocks (Qwen / Hermes, one or
+    more) and, failing that, a bare top-level JSON object (Llama-style). When
+    no tool call is found the text is returned unchanged with an empty list.
+
+    Args:
+        text (str): The raw generated completion.
+
+    Returns:
+        tuple[str, list[dict[str, Any]]]: ``(content, tool_calls)`` where each
+        call has the ``{"function": {"name", "arguments"}}`` shape.
+    """
+    matches = list(_TOOL_CALL_RE.finditer(text))
+    if matches:
+        content = _TOOL_CALL_RE.sub("", text).strip()
+        calls = [call for m in matches if (call := _coerce_tool_call(m.group(1)))]
+        return content, calls
+    stripped = text.strip()
+    if stripped.startswith("{"):
+        call = _coerce_tool_call(stripped)
+        if call is not None:
+            return "", [call]
+    return text, []
 
 
 @runtime_checkable
@@ -472,6 +546,127 @@ class TextGenerator:
             add_generation_prompt=True,
         )
         return self._generate_sync(prompt, config, overrides)
+
+    async def chat_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        config: GenerationConfig | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Generate a chat reply with tool-calling enabled.
+
+        Renders the tokenizer's chat template with the tool specs (transformers
+        >= 4.44 ``apply_chat_template(tools=...)``), generates, then parses any
+        tool call the model emitted out of the completion. The return shape
+        mirrors :meth:`OllamaGenerator.chat_with_tools`, so the same
+        :class:`~tempest_fastapi_sdk.genai.pipeline.AIChatPipeline` tool loop
+        drives either backend.
+
+        Args:
+            messages (list[dict[str, Any]]): Chat turns (a turn may carry
+                ``tool_calls`` or be a ``{"role": "tool", ...}`` result).
+            tools (list[dict[str, Any]]): Tool specs in the
+                ``{"type": "function", "function": {...}}`` shape (as produced
+                by :meth:`~tempest_fastapi_sdk.genai.pipeline.Tool.to_spec`).
+            config (GenerationConfig | None): Typed generation parameters.
+            **kwargs (Any): Generation overrides (win over ``config``).
+
+        Returns:
+            dict[str, Any]: ``{"content": str, "tool_calls": list}`` where each
+            call has the ``{"function": {"name", "arguments"}}`` shape;
+            ``tool_calls`` is empty when the model returned plain text.
+        """
+        return await asyncio.to_thread(
+            self._chat_with_tools_sync,
+            messages,
+            tools,
+            config,
+            kwargs,
+        )
+
+    def _chat_with_tools_sync(  # pragma: no cover - needs torch + a real model
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        config: GenerationConfig | None,
+        overrides: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Blocking tool-calling generation via the tokenizer chat template."""
+        self.load()
+        prompt = self._tokenizer.apply_chat_template(
+            messages,
+            tools=tools,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        text = self._generate_sync(prompt, config, overrides)
+        content, tool_calls = _parse_tool_calls(text)
+        return {"content": content, "tool_calls": tool_calls}
+
+    async def generate_structured(
+        self,
+        prompt: str,
+        schema: type[StructuredT],
+        *,
+        config: GenerationConfig | None = None,
+        constrained: bool = True,
+        **kwargs: Any,
+    ) -> StructuredT:
+        """Generate a completion constrained to a Pydantic ``schema``.
+
+        When ``constrained`` is ``True`` (default) the generation is bound by a
+        ``lm-format-enforcer`` token filter (``[genai-structured]`` extra) so
+        the model can only emit schema-valid JSON; the result is then parsed
+        into an instance of ``schema``. Set ``constrained=False`` for
+        best-effort parsing without the extra (the model may still stray, in
+        which case parsing raises).
+
+        Args:
+            prompt (str): The input text (instruct the model to answer as JSON).
+            schema (type[StructuredT]): The Pydantic model to produce.
+            config (GenerationConfig | None): Typed generation parameters.
+            constrained (bool): Enforce the schema during decoding (needs the
+                ``[genai-structured]`` extra) or only parse afterwards.
+            **kwargs (Any): Generation overrides (win over ``config``).
+
+        Returns:
+            StructuredT: The validated instance.
+
+        Raises:
+            ImportError: When ``constrained`` is ``True`` and the
+                ``[genai-structured]`` extra is missing.
+            ValueError: When the output carries no JSON object.
+            pydantic.ValidationError: When the JSON fails ``schema`` validation.
+        """
+        return await asyncio.to_thread(
+            self._generate_structured_sync,
+            prompt,
+            schema,
+            config,
+            kwargs,
+            constrained,
+        )
+
+    def _generate_structured_sync(  # pragma: no cover - needs torch + a real model
+        self,
+        prompt: str,
+        schema: type[StructuredT],
+        config: GenerationConfig | None,
+        overrides: dict[str, Any],
+        constrained: bool,
+    ) -> StructuredT:
+        """Blocking schema-constrained generation."""
+        self.load()
+        call_overrides = dict(overrides)
+        if constrained:
+            call_overrides["prefix_allowed_tokens_fn"] = build_prefix_allowed_tokens_fn(
+                self._tokenizer,
+                schema,
+            )
+        text = self._generate_sync(prompt, config, call_overrides)
+        return parse_structured(text, schema)
 
     async def stream(  # pragma: no cover - needs torch + a real model
         self,

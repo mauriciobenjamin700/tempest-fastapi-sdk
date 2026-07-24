@@ -5,6 +5,35 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.142.0] — 2026-07-23
+
+### Added
+
+- **Schema-constrained structured output.** `OllamaGenerator.generate_structured`
+  and `TextGenerator.generate_structured` take a Pydantic schema and return a
+  validated instance. Ollama sends the schema as the daemon `format` field
+  (native JSON-schema enforcement, no extra library) — the recommended route.
+  The transformers path constrains decoding with `lm-format-enforcer` (new
+  `[genai-structured]` extra) when `constrained=True`; on a version skew with
+  the installed transformers it raises a clear error pointing to
+  `constrained=False` (best-effort) or the Ollama backend. New
+  `parse_structured(text, schema)` extracts + validates JSON from any raw
+  completion (tolerating Markdown fences and surrounding prose), and
+  `build_prefix_allowed_tokens_fn` builds the transformers constraint.
+
+## [0.141.0] — 2026-07-23
+
+### Added
+
+- **`TextGenerator.chat_with_tools`** — tool calling on the local transformers
+  backend. Renders the tokenizer chat template with `tools=`
+  (transformers >= 4.44), generates, and parses the emitted tool calls
+  (`<tool_call>{...}</tool_call>` for Qwen/Hermes, or a bare Llama-style JSON
+  object) into the same `{"content", "tool_calls"}` shape `OllamaGenerator`
+  returns. This closes the gap where `AIChatPipeline`'s bounded tool loop only
+  worked with Ollama — the same pipeline now runs tools on local weights with
+  no daemon. Use a tool-capable instruct model (e.g. `Qwen/Qwen2.5-*-Instruct`).
+
 ## [0.140.0] — 2026-07-23
 
 ### Added

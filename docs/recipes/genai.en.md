@@ -413,10 +413,19 @@ asyncio.run(main())
 `respond` runs the whole cycle: recall memory → (optional) augment with web
 search → build the messages (system + memory + context + history + user
 turn; `images` ride on the user turn) → generate (with a bounded
-tool-calling loop when `tools` + a capable backend like `OllamaGenerator`
-are set; otherwise plain `chat`) → (optional) TTS → best-effort index of
-both turns. `AIChatResult` carries `reply`, `sources`, `memory_hits`,
+tool-calling loop when `tools` + a capable backend are set —
+`OllamaGenerator` **or** the local `TextGenerator` (transformers);
+otherwise plain `chat`) → (optional) TTS → best-effort index of both
+turns. `AIChatResult` carries `reply`, `sources`, `memory_hits`,
 `tool_calls_made` and `audio_base64`.
+
+!!! tip "Tools on the local backend (transformers)"
+    `TextGenerator.chat_with_tools` renders the chat template with
+    `tools=` (transformers >= 4.44) and parses the tool calls the model
+    emits (`<tool_call>{...}</tool_call>` for Qwen/Hermes, or Llama JSON),
+    returning the same shape as `OllamaGenerator` — so the same
+    `AIChatPipeline` runs on local weights, no daemon required. Use a
+    tool-capable instruct model (e.g. `Qwen/Qwen2.5-7B-Instruct`).
 
 ### Ready endpoint: `make_ai_chat_router`
 
@@ -754,6 +763,43 @@ temperature=0.9)` uses `0.9`).
     reproduces the output) and `stop` becomes `model.generate`'s
     `stop_strings` argument (requires transformers >= 4.44). Either may come
     from the `GenerationConfig` or per call — the per-call override wins.
+
+### Structured output (validated JSON)
+
+Force the model to return a Pydantic schema and get the validated instance
+back — instead of hoping the output happens to be parseable JSON:
+
+```python
+from pydantic import BaseModel
+from tempest_fastapi_sdk.genai import OllamaGenerator
+
+
+class Person(BaseModel):
+    name: str
+    age: int
+
+
+gen = OllamaGenerator("llama3.2")
+person: Person = await gen.generate_structured("Any person.", Person)
+# -> Person(name="...", age=...)
+```
+
+`OllamaGenerator` sends the schema in the daemon's `format` field (Ollama
+enforces JSON-schema-valid output natively) and parses the reply — **this is
+the recommended structured route, no extra library**.
+
+!!! info "On the local backend (transformers)"
+    `TextGenerator.generate_structured(prompt, schema, constrained=True)`
+    constrains decoding with `lm-format-enforcer` (the `[genai-structured]`
+    extra) so the model can only emit tokens that keep the JSON valid. If the
+    installed `lm-format-enforcer` doesn't match the installed `transformers`,
+    `constrained=True` raises a clear error — use `constrained=False`
+    (best-effort: generate then parse) or the Ollama backend instead.
+
+!!! tip "Just the parse"
+    `parse_structured(text, schema)` pulls the JSON out of a raw completion
+    (tolerating Markdown fences and surrounding prose) and validates it against
+    the schema — reusable on any model output.
 
 ### `make_genai_router` — ready endpoints
 

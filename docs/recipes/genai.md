@@ -412,10 +412,20 @@ asyncio.run(main())
 `respond` faz o ciclo completo: recupera memória → (opcional) augmenta com
 busca web → monta as mensagens (system + memória + contexto + histórico +
 turno do usuário; `images` viajam no turno do usuário) → gera (com loop de
-tool-calling limitado quando há `tools` + um backend que suporta, como o
-`OllamaGenerator`; senão, `chat` puro) → (opcional) TTS → indexa os dois
-turnos na memória (best-effort). O `AIChatResult` traz `reply`, `sources`,
-`memory_hits`, `tool_calls_made` e `audio_base64`.
+tool-calling limitado quando há `tools` + um backend que suporta —
+`OllamaGenerator` **ou** o `TextGenerator` local (transformers); senão,
+`chat` puro) → (opcional) TTS → indexa os dois turnos na memória
+(best-effort). O `AIChatResult` traz `reply`, `sources`, `memory_hits`,
+`tool_calls_made` e `audio_base64`.
+
+!!! tip "Tools no backend local (transformers)"
+    `TextGenerator.chat_with_tools` renderiza o chat template com
+    `tools=` (transformers >= 4.44) e faz o parse dos tool-calls que o
+    modelo emite (`<tool_call>{...}</tool_call>` do Qwen/Hermes ou JSON
+    Llama), devolvendo a mesma forma que o `OllamaGenerator` — então o
+    mesmo `AIChatPipeline` roda com pesos locais, sem depender do daemon.
+    Use um modelo instruct com suporte a ferramentas (ex.
+    `Qwen/Qwen2.5-7B-Instruct`).
 
 ### Endpoint pronto: `make_ai_chat_router`
 
@@ -755,6 +765,44 @@ temperature=0.9)` usa `0.9`).
     reproduz a saída) e `stop` vira o argumento `stop_strings` de
     `model.generate` (requer transformers >= 4.44). Ambos podem vir do
     `GenerationConfig` ou por chamada — o override por chamada vence.
+
+### Saída estruturada (JSON validado)
+
+Force o modelo a devolver um schema Pydantic e receba a instância já
+validada — em vez de torcer pra saída ser um JSON parseável:
+
+```python
+from pydantic import BaseModel
+from tempest_fastapi_sdk.genai import OllamaGenerator
+
+
+class Pessoa(BaseModel):
+    nome: str
+    idade: int
+
+
+gen = OllamaGenerator("llama3.2")
+pessoa: Pessoa = await gen.generate_structured("Uma pessoa qualquer.", Pessoa)
+# -> Pessoa(nome="...", idade=...)
+```
+
+O `OllamaGenerator` manda o schema no campo `format` do daemon (o Ollama
+garante JSON schema-válido nativamente) e faz o parse na saída — **é a
+rota estruturada recomendada, sem biblioteca extra**.
+
+!!! info "No backend local (transformers)"
+    `TextGenerator.generate_structured(prompt, schema, constrained=True)`
+    restringe a decodificação com o `lm-format-enforcer`
+    (extra `[genai-structured]`), então o modelo só emite tokens que
+    mantêm o JSON válido. Se a versão do `lm-format-enforcer` não casar
+    com a do `transformers` instalado, `constrained=True` levanta um erro
+    claro — nesse caso use `constrained=False` (best-effort: gera e faz o
+    parse) ou o backend Ollama.
+
+!!! tip "Só o parse"
+    `parse_structured(texto, schema)` extrai o JSON de uma saída crua
+    (tolera cercas markdown e texto ao redor) e valida contra o schema —
+    útil pra reaproveitar em qualquer saída de modelo.
 
 ### `make_genai_router` — endpoints prontos
 
