@@ -5,6 +5,17 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.153.0] — 2026-07-24
+
+### Added
+
+- **Metrics + cache on the local generators.** `TextGenerator` and `Embedder`
+  now accept `metrics=` (a `GenAIMetrics`) and record request count + latency
+  for `generate`/`chat` (op `generate`/`chat`) and `embed` (op `embed`) — the
+  metrics were previously wired only into `OllamaGenerator`. `TextGenerator.chat`
+  also honors the `generation_cache` (deterministic calls), matching
+  `generate`.
+
 ## [0.152.0] — 2026-07-24
 
 ### Added

@@ -18,7 +18,7 @@ import asyncio
 import json
 import re
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai.generation_cache import (
@@ -27,6 +27,7 @@ from tempest_fastapi_sdk.genai.generation_cache import (
     cached_generate,
 )
 from tempest_fastapi_sdk.genai.hardware import probe_hardware
+from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import (
     GenerationConfig,
     HardwareInfo,
@@ -238,6 +239,7 @@ class TextGenerator:
         idle_unload_seconds: float | None = None,
         hardware: HardwareInfo | None = None,
         generation_cache: GenerationCache | AsyncGenerationCache | None = None,
+        metrics: GenAIMetrics | None = None,
     ) -> None:
         """Configure the generator (does not load weights yet).
 
@@ -259,6 +261,9 @@ class TextGenerator:
                 Optional prompt→completion cache. Only **deterministic**
                 generations (``do_sample=False`` / ``temperature=0``) are
                 cached; sampling calls always run the model.
+            metrics (GenAIMetrics | None): Optional Prometheus metrics;
+                when set, ``generate`` / ``chat`` record request count and
+                latency (op ``"generate"`` / ``"chat"``).
 
         Raises:
             ValueError: When ``quantization`` is not int8/int4.
@@ -280,6 +285,7 @@ class TextGenerator:
         self.hf_token = hf_token
         self.idle_unload_seconds = idle_unload_seconds
         self.generation_cache = generation_cache
+        self.metrics = metrics
         self._model: Any = None
         self._tokenizer: Any = None
         self._last_used: float = time.monotonic()
@@ -530,15 +536,29 @@ class TextGenerator:
         Returns:
             str: The generated text (prompt stripped).
         """
-        return await cached_generate(
-            self.generation_cache,
-            self.model_id,
-            prompt,
-            self._key_params(config, kwargs),
-            lambda: asyncio.to_thread(
-                self._generate_sync, prompt, config, dict(kwargs)
+        return await self._tracked(
+            "generate",
+            lambda: cached_generate(
+                self.generation_cache,
+                self.model_id,
+                prompt,
+                self._key_params(config, kwargs),
+                lambda: asyncio.to_thread(
+                    self._generate_sync, prompt, config, dict(kwargs)
+                ),
             ),
         )
+
+    async def _tracked(
+        self,
+        op: str,
+        run: Callable[[], Awaitable[str]],
+    ) -> str:
+        """Run ``run``, recording request + latency when metrics are set."""
+        if self.metrics is None:
+            return await run()
+        async with self.metrics.track(self.model_id, op):
+            return await run()
 
     async def chat(
         self,
@@ -550,7 +570,8 @@ class TextGenerator:
         """Generate a reply for a chat ``messages`` list.
 
         Applies the tokenizer's chat template (roles ``system`` / ``user``
-        / ``assistant``) before generating.
+        / ``assistant``) before generating. Honors the generation cache
+        (deterministic calls) and metrics like :meth:`generate`.
 
         Args:
             messages (list[dict[str, str]]): Chat turns, each
@@ -561,7 +582,19 @@ class TextGenerator:
         Returns:
             str: The assistant reply.
         """
-        return await asyncio.to_thread(self._chat_sync, messages, config, kwargs)
+        cache_prompt = json.dumps(messages, sort_keys=True, default=str)
+        return await self._tracked(
+            "chat",
+            lambda: cached_generate(
+                self.generation_cache,
+                self.model_id,
+                cache_prompt,
+                self._key_params(config, kwargs),
+                lambda: asyncio.to_thread(
+                    self._chat_sync, messages, config, dict(kwargs)
+                ),
+            ),
+        )
 
     def _chat_sync(  # pragma: no cover - needs torch + a real model
         self,
