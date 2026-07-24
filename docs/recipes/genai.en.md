@@ -467,7 +467,17 @@ turn; `images` ride on the user turn) → generate (with a bounded
 tool-calling loop when `tools` + a capable backend are set —
 `OllamaGenerator` **or** the local `TextGenerator` (transformers);
 otherwise plain `chat`) → (optional) TTS → best-effort index of both
-turns. `AIChatResult` carries `reply`, `sources`, `memory_hits`,
+turns.
+
+!!! tip "Moderation + context window in the pipeline"
+    Optional constructor args: `moderator=` (a `ModerationBackend` —
+    `RuleModerator`/`ClassifierModerator`) screens the input before generating
+    and the reply after; a flagged turn answers `blocked_message` (a flagged
+    input never calls the model). `tokenizer=` + `max_context_tokens=` trim the
+    oldest turns (via `truncate_messages`) to fit the window before generating.
+    Both opt-in.
+
+`AIChatResult` carries `reply`, `sources`, `memory_hits`,
 `tool_calls_made` and `audio_base64`.
 
 !!! tip "Tools on the local backend (transformers)"
