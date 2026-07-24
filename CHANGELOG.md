@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.152.0] — 2026-07-24
+
+### Added
+
+- **`AIChatPipeline` moderation + context truncation.** New constructor args:
+  `moderator=` (a `ModerationBackend`) screens the user input before generating
+  and the reply after — a flagged turn is answered with `blocked_message`
+  instead (input check short-circuits the model); and `tokenizer=` +
+  `max_context_tokens=` trim the oldest turns (via `truncate_messages`) so the
+  built message list fits the model's window before generating. Both are
+  opt-in; the pipeline is unchanged when they are unset.
+
 ## [0.151.1] — 2026-07-24
 
 ### Fixed

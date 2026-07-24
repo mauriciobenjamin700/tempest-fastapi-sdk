@@ -469,6 +469,14 @@ tool-calling limitado quando há `tools` + um backend que suporta —
 (best-effort). O `AIChatResult` traz `reply`, `sources`, `memory_hits`,
 `tool_calls_made` e `audio_base64`.
 
+!!! tip "Moderação + janela de contexto no pipeline"
+    Opcionais no construtor: `moderator=` (um `ModerationBackend` —
+    `RuleModerator`/`ClassifierModerator`) filtra o input antes de gerar e
+    a resposta depois; turno flagueado responde `blocked_message` (input
+    flagueado nem chama o modelo). `tokenizer=` + `max_context_tokens=`
+    truncam os turnos mais antigos (via `truncate_messages`) pra caber na
+    janela antes de gerar. Ambos opt-in.
+
 !!! tip "Tools no backend local (transformers)"
     `TextGenerator.chat_with_tools` renderiza o chat template com
     `tools=` (transformers >= 4.44) e faz o parse dos tool-calls que o

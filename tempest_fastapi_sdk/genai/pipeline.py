@@ -44,6 +44,7 @@ from pydantic import Field
 
 from tempest_fastapi_sdk.genai.rag.chroma import MemoryHit
 from tempest_fastapi_sdk.genai.rag.schemas import SearchResult
+from tempest_fastapi_sdk.genai.tokens import truncate_messages
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.sse import ServerSentEvent, sse_response
 
@@ -51,6 +52,7 @@ if TYPE_CHECKING:
     from starlette.responses import StreamingResponse
 
     from tempest_fastapi_sdk.genai.audio import TextToSpeech
+    from tempest_fastapi_sdk.genai.moderation import ModerationBackend
     from tempest_fastapi_sdk.genai.rag import ChatMemory, WebSearch
     from tempest_fastapi_sdk.genai.text import TextBackend
 
@@ -153,6 +155,10 @@ class AIChatPipeline:
         tools: list[Tool] | None = None,
         base_system_prompt: str = "",
         max_tool_iterations: int = 5,
+        tokenizer: Any = None,
+        max_context_tokens: int | None = None,
+        moderator: ModerationBackend | None = None,
+        blocked_message: str = "Sorry, I can't help with that request.",
     ) -> None:
         """Configure the pipeline.
 
@@ -165,6 +171,17 @@ class AIChatPipeline:
             tools (list[Tool] | None): Tools the model may call, or ``None``.
             base_system_prompt (str): System prompt prepended every turn.
             max_tool_iterations (int): Max tool-loop rounds before giving up.
+            tokenizer (Any): Tokenizer (``encode``) used with
+                ``max_context_tokens`` to trim old turns before generating;
+                ``None`` disables truncation.
+            max_context_tokens (int | None): Token budget for the built
+                message list; oldest turns are dropped to fit (needs
+                ``tokenizer``).
+            moderator (ModerationBackend | None): Screens the user input
+                before generating and the reply after; a flagged turn is
+                answered with ``blocked_message`` instead. ``None`` disables.
+            blocked_message (str): The reply returned when moderation flags
+                the input or the generated output.
         """
         self.generator = generator
         self.memory = memory
@@ -173,6 +190,10 @@ class AIChatPipeline:
         self.tools: list[Tool] = list(tools or [])
         self.base_system_prompt = base_system_prompt
         self.max_tool_iterations = max_tool_iterations
+        self.tokenizer = tokenizer
+        self.max_context_tokens = max_context_tokens
+        self.moderator = moderator
+        self.blocked_message = blocked_message
 
     async def respond(
         self,
@@ -209,6 +230,9 @@ class AIChatPipeline:
             AIChatResult: The reply plus any sources, memory hits, tool
             names and audio produced.
         """
+        if self.moderator is not None and (await self.moderator.check(content)).flagged:
+            return AIChatResult(reply=self.blocked_message)
+
         messages, hits, sources = await self._prepare(
             user_id=user_id,
             chat_id=chat_id,
@@ -224,6 +248,11 @@ class AIChatPipeline:
             reply, tool_calls_made = await self._run_tool_loop(messages)
         else:
             reply = await self.generator.chat(messages)
+
+        if self.moderator is not None and (await self.moderator.check(reply)).flagged:
+            return AIChatResult(
+                reply=self.blocked_message, memory_hits=hits, sources=sources
+            )
 
         audio_base64: str | None = None
         if speak and self.tts is not None:
@@ -278,6 +307,10 @@ class AIChatPipeline:
         Yields:
             str: Text pieces of the reply as the backend produces them.
         """
+        if self.moderator is not None and (await self.moderator.check(content)).flagged:
+            yield self.blocked_message
+            return
+
         messages, _hits, _sources = await self._prepare(
             user_id=user_id,
             chat_id=chat_id,
@@ -345,6 +378,12 @@ class AIChatPipeline:
             sources = await self.web_search.search(content)
 
         messages = self._build_messages(content, turns, images, hits, context)
+        if self.tokenizer is not None and self.max_context_tokens is not None:
+            messages = truncate_messages(
+                messages,
+                self.max_context_tokens,
+                self.tokenizer,
+            )
         return messages, hits, sources
 
     def _build_messages(
