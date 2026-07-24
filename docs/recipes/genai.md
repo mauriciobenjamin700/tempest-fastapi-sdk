@@ -879,6 +879,27 @@ rota estruturada recomendada, sem biblioteca extra**.
     (tolera cercas markdown e texto ao redor) e valida contra o schema —
     útil pra reaproveitar em qualquer saída de modelo.
 
+### Moderação de conteúdo
+
+Filtre prompts do usuário e saídas do modelo com uma camada de moderação
+plugável. Dois backends satisfazem o `ModerationBackend` e devolvem um
+`ModerationResult` (`flagged`, `categories`, `score`):
+
+```python
+from tempest_fastapi_sdk.genai import RuleModerator
+
+mod = RuleModerator(["palavrão", "termo-proibido"], category="abuso")
+verdict = await mod.check(user_input)
+if verdict.flagged:
+    ...   # bloqueie ou anote, conforme a política
+```
+
+`RuleModerator` é dep-free e previsível (block-list whole-word,
+case-insensitive) — o piso determinístico. `ClassifierModerator` roda um
+classificador local (ex. `unitary/toxic-bert`) via transformers (`[genai]`),
+lazy, com `flagged_labels`/`threshold`. Qualidade PT-BR de modelos de
+toxicidade varia — trate o classificador como best-effort e mantenha o
+`RuleModerator` como base.
 ### Métricas de inferência (Prometheus)
 
 `GenAIMetrics` empacota os contadores + histograma que todo serviço de

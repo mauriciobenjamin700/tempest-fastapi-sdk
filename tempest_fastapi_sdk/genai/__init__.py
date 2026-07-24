@@ -59,6 +59,12 @@ from tempest_fastapi_sdk.genai.hardware import (
     recommend as recommend,
 )
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics as GenAIMetrics
+from tempest_fastapi_sdk.genai.moderation import (
+    ClassifierModerator as ClassifierModerator,
+)
+from tempest_fastapi_sdk.genai.moderation import ModerationBackend as ModerationBackend
+from tempest_fastapi_sdk.genai.moderation import ModerationResult as ModerationResult
+from tempest_fastapi_sdk.genai.moderation import RuleModerator as RuleModerator
 from tempest_fastapi_sdk.genai.ollama import (
     DEFAULT_OLLAMA_URL as DEFAULT_OLLAMA_URL,
 )
@@ -127,6 +133,7 @@ __all__: list[str] = [
     "AsyncGenerationCache",
     "BatchScheduler",
     "CapacityReport",
+    "ClassifierModerator",
     "Embedder",
     "EmbeddingCache",
     "GPUInfo",
@@ -138,11 +145,14 @@ __all__: list[str] = [
     "InMemoryGenerationCache",
     "ModelDtype",
     "ModelRegistry",
+    "ModerationBackend",
+    "ModerationResult",
     "OllamaEmbedder",
     "OllamaGenerator",
     "OnnxEmbedder",
     "RedisEmbeddingCache",
     "RedisGenerationCache",
+    "RuleModerator",
     "TextBackend",
     "TextGenerator",
     "Tool",
