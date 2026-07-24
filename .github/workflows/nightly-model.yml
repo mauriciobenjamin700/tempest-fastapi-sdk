@@ -1,0 +1,43 @@
+name: Nightly model tests
+
+# Runs the opt-in camada-2 `@model` genai tests — the ones that download a
+# tiny real model and exercise the transformers/tokenizers code paths end to
+# end (seed/stop, tool calling, structured output, …). Excluded from the main
+# CI (they download weights and are slower); run nightly and on demand.
+# Non-blocking: informational, does not gate merges.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  model:
+    name: "@model tests (Python ${{ matrix.python-version }})"
+    runs-on: ubuntu-latest
+    # CPU runners: tiny models only. The @gpu suite needs CUDA and is not run here.
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install project with all extras + dev dependencies
+        run: uv sync --all-extras
+
+      - name: Run @model tests (downloads tiny weights)
+        env:
+          HF_HUB_DISABLE_TELEMETRY: "1"
+        run: uv run pytest -m model -p no:cacheprovider
