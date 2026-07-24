@@ -19,6 +19,7 @@ import math
 import time
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import HardwareInfo, ModelDtype
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
 
@@ -223,6 +224,7 @@ class Embedder:
         hf_token: str | None = None,
         idle_unload_seconds: float | None = None,
         hardware: HardwareInfo | None = None,
+        metrics: GenAIMetrics | None = None,
     ) -> None:
         """Configure the embedder (does not load weights yet).
 
@@ -243,6 +245,9 @@ class Embedder:
                 :meth:`unload_if_idle`.
             hardware (HardwareInfo | None): Injected snapshot for device
                 resolution (tests); probed when ``None``.
+            metrics (GenAIMetrics | None): Optional Prometheus metrics; when
+                set, :meth:`embed` records request count + latency (op
+                ``"embed"``).
         """
         self.model_id = model_id
         self.device = resolve_device(device, hardware)
@@ -256,6 +261,7 @@ class Embedder:
         self.cache_dir = cache_dir
         self.hf_token = hf_token
         self.idle_unload_seconds = idle_unload_seconds
+        self.metrics = metrics
         self._model: Any = None
         self._tokenizer: Any = None
         self._last_used: float = time.monotonic()
@@ -363,6 +369,26 @@ class Embedder:
         return True
 
     async def embed(
+        self,
+        texts: str | list[str],
+        *,
+        batch_size: int = 32,
+    ) -> list[list[float]]:
+        """Embed one or many texts, recording metrics when configured.
+
+        Args:
+            texts (str | list[str]): A single text or a list of texts.
+            batch_size (int): Max texts per model forward pass.
+
+        Returns:
+            list[list[float]]: One vector per input text, in input order.
+        """
+        if self.metrics is None:
+            return await self._embed_impl(texts, batch_size=batch_size)
+        async with self.metrics.track(self.model_id, "embed"):
+            return await self._embed_impl(texts, batch_size=batch_size)
+
+    async def _embed_impl(
         self,
         texts: str | list[str],
         *,

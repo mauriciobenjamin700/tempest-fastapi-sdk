@@ -923,8 +923,9 @@ gen = OllamaGenerator("llama3.2", metrics=metrics)
 await gen.generate("Explain PIX.")   # records request + latency + tokens
 ```
 
-`OllamaGenerator` reads `prompt_eval_count` / `eval_count` from the daemon
-response into the token counters. For any other call, wrap it with the context
+`OllamaGenerator`, `TextGenerator` and `Embedder` accept `metrics=` and record
+request + latency (Ollama also reads `prompt_eval_count` / `eval_count` from the
+response into the token counters). For any other call, wrap it with the context
 manager and set the tokens you know:
 
 ```python
