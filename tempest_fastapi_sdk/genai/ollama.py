@@ -33,6 +33,11 @@ import json
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
+from tempest_fastapi_sdk.genai.generation_cache import (
+    AsyncGenerationCache,
+    GenerationCache,
+    cached_generate,
+)
 from tempest_fastapi_sdk.genai.schemas import GenerationConfig
 from tempest_fastapi_sdk.genai.structured import StructuredT, parse_structured
 from tempest_fastapi_sdk.utils.http_client import HTTPClient, RetryPolicy
@@ -129,6 +134,7 @@ class _OllamaClientMixin:
         http_client: HTTPClient | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         retry_policy: RetryPolicy | None = None,
+        generation_cache: GenerationCache | AsyncGenerationCache | None = None,
     ) -> None:
         """Configure the connection to the Ollama daemon.
 
@@ -153,11 +159,16 @@ class _OllamaClientMixin:
             retry_policy (RetryPolicy | None): Retry configuration for the
                 lazily-created client. ``None`` uses the ``HTTPClient``
                 defaults. Ignored when ``http_client`` is given.
+            generation_cache (GenerationCache | AsyncGenerationCache | None):
+                Optional prompt→completion cache used by
+                :meth:`OllamaGenerator.generate`; only deterministic calls
+                (``do_sample=False`` / ``temperature=0``) are cached.
         """
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.keep_alive = keep_alive
+        self.generation_cache = generation_cache
         self._client: HTTPClient | None = http_client
         self._owns_client: bool = http_client is None
         self._transport = transport
@@ -258,7 +269,39 @@ class OllamaGenerator(_OllamaClientMixin):
         Returns:
             str: The generated text.
         """
-        payload = self._request_payload(prompt, config, kwargs, stream=False)
+        params = self._key_params(config, kwargs, images)
+        return await cached_generate(
+            self.generation_cache,
+            self.model,
+            prompt,
+            params,
+            lambda: self._generate_once(prompt, config, images, dict(kwargs)),
+        )
+
+    def _key_params(
+        self,
+        config: GenerationConfig | None,
+        overrides: dict[str, Any],
+        images: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Merge config + overrides (+ images) into the cache-key parameters."""
+        params: dict[str, Any] = {}
+        if config is not None:
+            params.update(config.model_dump(exclude_none=True, exclude_unset=True))
+        params.update(overrides)
+        if images:
+            params["images"] = images
+        return params
+
+    async def _generate_once(
+        self,
+        prompt: str,
+        config: GenerationConfig | None,
+        images: list[str] | None,
+        overrides: dict[str, Any],
+    ) -> str:
+        """Run one ``/api/generate`` call and return the completion text."""
+        payload = self._request_payload(prompt, config, overrides, stream=False)
         if images:
             payload["images"] = images
         response = await self._http().post(

@@ -21,6 +21,11 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, runtime_checkable
 
+from tempest_fastapi_sdk.genai.generation_cache import (
+    AsyncGenerationCache,
+    GenerationCache,
+    cached_generate,
+)
 from tempest_fastapi_sdk.genai.hardware import probe_hardware
 from tempest_fastapi_sdk.genai.schemas import (
     GenerationConfig,
@@ -232,6 +237,7 @@ class TextGenerator:
         hf_token: str | None = None,
         idle_unload_seconds: float | None = None,
         hardware: HardwareInfo | None = None,
+        generation_cache: GenerationCache | AsyncGenerationCache | None = None,
     ) -> None:
         """Configure the generator (does not load weights yet).
 
@@ -249,6 +255,10 @@ class TextGenerator:
                 frees the model after this many idle seconds.
             hardware (HardwareInfo | None): Injected snapshot for device
                 resolution (tests); probed when ``None``.
+            generation_cache (GenerationCache | AsyncGenerationCache | None):
+                Optional prompt→completion cache. Only **deterministic**
+                generations (``do_sample=False`` / ``temperature=0``) are
+                cached; sampling calls always run the model.
 
         Raises:
             ValueError: When ``quantization`` is not int8/int4.
@@ -269,9 +279,22 @@ class TextGenerator:
         self.cache_dir = cache_dir
         self.hf_token = hf_token
         self.idle_unload_seconds = idle_unload_seconds
+        self.generation_cache = generation_cache
         self._model: Any = None
         self._tokenizer: Any = None
         self._last_used: float = time.monotonic()
+
+    def _key_params(
+        self,
+        config: GenerationConfig | None,
+        overrides: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Merge config + overrides into the parameters that key the cache."""
+        params: dict[str, Any] = {}
+        if config is not None:
+            params.update(config.model_dump(exclude_none=True, exclude_unset=True))
+        params.update(overrides)
+        return params
 
     @property
     def is_loaded(self) -> bool:
@@ -507,7 +530,15 @@ class TextGenerator:
         Returns:
             str: The generated text (prompt stripped).
         """
-        return await asyncio.to_thread(self._generate_sync, prompt, config, kwargs)
+        return await cached_generate(
+            self.generation_cache,
+            self.model_id,
+            prompt,
+            self._key_params(config, kwargs),
+            lambda: asyncio.to_thread(
+                self._generate_sync, prompt, config, dict(kwargs)
+            ),
+        )
 
     async def chat(
         self,

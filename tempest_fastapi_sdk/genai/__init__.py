@@ -19,6 +19,27 @@ from tempest_fastapi_sdk.genai.embeddings import (
     RedisEmbeddingCache as RedisEmbeddingCache,
 )
 from tempest_fastapi_sdk.genai.embeddings import cosine_similarity as cosine_similarity
+from tempest_fastapi_sdk.genai.generation_cache import (
+    AsyncGenerationCache as AsyncGenerationCache,
+)
+from tempest_fastapi_sdk.genai.generation_cache import (
+    GenerationCache as GenerationCache,
+)
+from tempest_fastapi_sdk.genai.generation_cache import (
+    InMemoryGenerationCache as InMemoryGenerationCache,
+)
+from tempest_fastapi_sdk.genai.generation_cache import (
+    RedisGenerationCache as RedisGenerationCache,
+)
+from tempest_fastapi_sdk.genai.generation_cache import (
+    cached_generate as cached_generate,
+)
+from tempest_fastapi_sdk.genai.generation_cache import (
+    is_deterministic as is_deterministic,
+)
+from tempest_fastapi_sdk.genai.generation_cache import (
+    make_generation_key as make_generation_key,
+)
 from tempest_fastapi_sdk.genai.hardware import (
     bytes_per_param as bytes_per_param,
 )
@@ -93,20 +114,24 @@ __all__: list[str] = [
     "AIChatPipeline",
     "AIChatResult",
     "AsyncEmbeddingCache",
+    "AsyncGenerationCache",
     "BatchScheduler",
     "CapacityReport",
     "Embedder",
     "EmbeddingCache",
     "GPUInfo",
+    "GenerationCache",
     "GenerationConfig",
     "HardwareInfo",
     "InMemoryEmbeddingCache",
+    "InMemoryGenerationCache",
     "ModelDtype",
     "ModelRegistry",
     "OllamaEmbedder",
     "OllamaGenerator",
     "OnnxEmbedder",
     "RedisEmbeddingCache",
+    "RedisGenerationCache",
     "TextBackend",
     "TextGenerator",
     "Tool",
@@ -114,12 +139,15 @@ __all__: list[str] = [
     "auto_dtype_name",
     "build_prefix_allowed_tokens_fn",
     "bytes_per_param",
+    "cached_generate",
     "can_run",
     "cosine_similarity",
     "estimate_model_bytes",
     "fetch_num_params",
+    "is_deterministic",
     "make_ai_chat_router",
     "make_genai_router",
+    "make_generation_key",
     "parse_structured",
     "probe_hardware",
     "recommend",
