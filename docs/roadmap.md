@@ -71,16 +71,55 @@ O histórico completo de releases — cada versão com o que entrou em **Added**
 
 ## Próximos passos
 
-A fila "Próximos passos" que restava do backlog Tier S/A/B está
-**zerada** — o último item (management commands) entrou na v0.113.0. As
-próximas releases voltam a ser puxadas por pressão de negócio.
+O backlog Tier S/A/B e a evolução do painel admin (Tiers 1–3 + refino)
+estão **concluídos**; o roadmap genai self-hosted (v0.139–0.154 — tools,
+structured output, VLM, reranker, hybrid search, ONNX embeddings, cache de
+geração, token/contexto, vision router, métricas, moderação + integração no
+pipeline) também. Os candidatos abaixo saíram da análise de visão geral de
+2026-07-24 — **fila futura, não ordenada** (puxada por pressão de negócio).
 
-A evolução do painel admin está **essencialmente completa**: Tiers 1 e 2
-inteiros, e o Tier 3 com import CSV (v0.118), RBAC granular (v0.119) e
-lenses (v0.120). Seguiu um refino: widgets JSON+time (v0.121), polish de
-UX (v0.122) e um [exemplo integrado](admin-showcase.md) que fia tudo num
-admin de loja. Com a **edição inline in-place** (v0.127) a evolução do
-painel admin está concluída; o que vier é puxado por pressão de negócio.
+### Hardening GenAI — dívida transformers 5.x
+
+- **Structured output constrained na transformers 5.x.** Hoje
+  `TextGenerator.generate_structured(constrained=True)` depende do
+  `lm-format-enforcer`, cuja **integração transformers** quebra na 5.x
+  (`PreTrainedTokenizerBase` movido pra `transformers.tokenization_utils_base`).
+  Achado da investigação: o **core do lmfe**
+  (`JsonSchemaParser` / `TokenEnforcer` / `TokenEnforcerTokenizerData`) importa
+  OK — reimplementar o adapter `prefix_allowed_tokens_fn` em
+  `genai/structured.py` sem depender de
+  `lmformatenforcer.integrations.transformers`. Remove o erro-no-skew + o
+  fallback `constrained=False`.
+- **VLM Qwen2-VL/LLaVA rodando.** O `AutoProcessor` do Qwen2-VL exige
+  torchvision e a checagem `is_torchvision_available` da tf5 falha mesmo com
+  torchvision instalado — investigar (versão / `transforms.v2`) ou usar um VLM
+  image-only. Remover o `skip` do teste `@gpu`.
+- Revalidar a suíte `@gpu` e fechar os 2 caveats do
+  `planning/genai/manual-validation.md`.
+
+### Observabilidade de filas + tracing genai
+
+- `TaskQueue`: **dead-letter** + política de retry + métricas por task.
+- **Painel de filas/tasks no admin** (estilo Celery-Flower), reusando o admin.
+- **Spans OTel** nas chamadas genai (`generate`/`chat`/`embed`/`rag`),
+  reusando `setup_tracing` + `GenAIMetrics`.
+
+### Camada de performance HTTP
+
+- **`ResponseCacheMiddleware`** — ETag / conditional-GET / `Cache-Control`,
+  reusando o cache Redis.
+- **Rate-limit avançado** — token-bucket + quotas por-plano/principal
+  (hoje só sliding-window).
+
+### Auth moderno — WebAuthn / passkeys
+
+- Registro/autenticação **WebAuthn** (`fido2`) além do TOTP — login sem senha,
+  resistente a phishing.
+- `BaseWebAuthnCredentialModel` + service, integrado a `UserAuthService` /
+  `make_auth_router`.
+
+**Fora de escopo por decisão:** cliente OpenAI-compatible (foco self-hosted),
+GraphQL/gRPC (REST por decisão).
 
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
