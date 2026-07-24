@@ -83,6 +83,9 @@ from tempest_fastapi_sdk.genai.text import (
 from tempest_fastapi_sdk.genai.text import (
     resolve_device as resolve_device,
 )
+from tempest_fastapi_sdk.genai.vision_text import (
+    VisionTextGenerator as VisionTextGenerator,
+)
 
 __all__: list[str] = [
     "DEFAULT_OLLAMA_URL",
@@ -105,6 +108,7 @@ __all__: list[str] = [
     "TextBackend",
     "TextGenerator",
     "Tool",
+    "VisionTextGenerator",
     "auto_dtype_name",
     "build_prefix_allowed_tokens_fn",
     "bytes_per_param",
