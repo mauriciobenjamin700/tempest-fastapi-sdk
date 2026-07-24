@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.151.0] — 2026-07-24
+
+### Added
+
+- **Content moderation** (`tempest_fastapi_sdk.genai`) — a pluggable layer to
+  screen prompts and completions: `RuleModerator` (dependency-free whole-word
+  block-list, the deterministic default) and `ClassifierModerator` (a local
+  toxicity/text-classification model over transformers, `[genai]`, lazy +
+  to_thread, `flagged_labels`/`threshold`). Both satisfy the
+  `ModerationBackend` protocol and return a `ModerationResult`
+  (`flagged`/`categories`/`score`), so a caller or `AIChatPipeline` can block
+  or annotate per policy.
 ## [0.150.0] — 2026-07-24
 
 ### Added

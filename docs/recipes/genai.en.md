@@ -876,6 +876,27 @@ the recommended structured route, no extra library**.
     (tolerating Markdown fences and surrounding prose) and validates it against
     the schema — reusable on any model output.
 
+### Content moderation
+
+Screen user prompts and model outputs with a pluggable moderation layer. Two
+backends satisfy `ModerationBackend` and return a `ModerationResult`
+(`flagged`, `categories`, `score`):
+
+```python
+from tempest_fastapi_sdk.genai import RuleModerator
+
+mod = RuleModerator(["slur", "banned-term"], category="abuse")
+verdict = await mod.check(user_input)
+if verdict.flagged:
+    ...   # block or annotate, per your policy
+```
+
+`RuleModerator` is dependency-free and predictable (whole-word,
+case-insensitive block-list) — the deterministic floor. `ClassifierModerator`
+runs a local classifier (e.g. `unitary/toxic-bert`) over transformers
+(`[genai]`), lazy, with `flagged_labels` / `threshold`. PT-BR toxicity-model
+quality varies — treat the classifier as best-effort and keep `RuleModerator`
+as the baseline.
 ### Inference metrics (Prometheus)
 
 `GenAIMetrics` bundles the counters + histogram every inference service ends up
