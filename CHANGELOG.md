@@ -5,6 +5,17 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.150.0] — 2026-07-24
+
+### Added
+
+- **`GenAIMetrics`** (`tempest_fastapi_sdk.genai`) — Prometheus counters +
+  histogram for inference: request count, latency, and tokens in/out, labelled
+  by model and operation (the `[prometheus]` extra; accepts an explicit
+  registry so it composes with `PrometheusMiddleware` / `/metrics`). Opt-in
+  via a `track(model, op)` async context manager or the `metrics=` argument on
+  `OllamaGenerator` (which records `prompt_eval_count` / `eval_count` from the
+  daemon response). No overhead when unset.
 ## [0.149.0] — 2026-07-24
 
 ### Added

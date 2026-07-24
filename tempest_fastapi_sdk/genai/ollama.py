@@ -38,6 +38,7 @@ from tempest_fastapi_sdk.genai.generation_cache import (
     GenerationCache,
     cached_generate,
 )
+from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import GenerationConfig
 from tempest_fastapi_sdk.genai.structured import StructuredT, parse_structured
 from tempest_fastapi_sdk.utils.http_client import HTTPClient, RetryPolicy
@@ -134,6 +135,7 @@ class _OllamaClientMixin:
         http_client: HTTPClient | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         retry_policy: RetryPolicy | None = None,
+        metrics: GenAIMetrics | None = None,
         generation_cache: GenerationCache | AsyncGenerationCache | None = None,
     ) -> None:
         """Configure the connection to the Ollama daemon.
@@ -168,6 +170,7 @@ class _OllamaClientMixin:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.keep_alive = keep_alive
+        self.metrics = metrics
         self.generation_cache = generation_cache
         self._client: HTTPClient | None = http_client
         self._owns_client: bool = http_client is None
@@ -270,12 +273,27 @@ class OllamaGenerator(_OllamaClientMixin):
             str: The generated text.
         """
         params = self._key_params(config, kwargs, images)
+
+        async def _produce() -> str:
+            if self.metrics is None:
+                return await self._generate_once(prompt, config, images, dict(kwargs))
+            async with self.metrics.track(self.model, "generate") as span:
+                text, prompt_tokens, eval_tokens = await self._generate_measured(
+                    prompt,
+                    config,
+                    images,
+                    dict(kwargs),
+                )
+                span.tokens_in = prompt_tokens
+                span.tokens_out = eval_tokens
+                return text
+
         return await cached_generate(
             self.generation_cache,
             self.model,
             prompt,
             params,
-            lambda: self._generate_once(prompt, config, images, dict(kwargs)),
+            _produce,
         )
 
     def _key_params(
@@ -301,6 +319,22 @@ class OllamaGenerator(_OllamaClientMixin):
         overrides: dict[str, Any],
     ) -> str:
         """Run one ``/api/generate`` call and return the completion text."""
+        text, _prompt_tokens, _eval_tokens = await self._generate_measured(
+            prompt,
+            config,
+            images,
+            overrides,
+        )
+        return text
+
+    async def _generate_measured(
+        self,
+        prompt: str,
+        config: GenerationConfig | None,
+        images: list[str] | None,
+        overrides: dict[str, Any],
+    ) -> tuple[str, int | None, int | None]:
+        """Run one ``/api/generate`` call, returning text + Ollama token counts."""
         payload = self._request_payload(prompt, config, overrides, stream=False)
         if images:
             payload["images"] = images
@@ -310,7 +344,11 @@ class OllamaGenerator(_OllamaClientMixin):
         )
         response.raise_for_status()
         data: dict[str, Any] = response.json()
-        return str(data.get("response", ""))
+        return (
+            str(data.get("response", "")),
+            data.get("prompt_eval_count"),
+            data.get("eval_count"),
+        )
 
     async def chat(
         self,

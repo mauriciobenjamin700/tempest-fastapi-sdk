@@ -879,6 +879,32 @@ rota estruturada recomendada, sem biblioteca extra**.
     (tolera cercas markdown e texto ao redor) e valida contra o schema —
     útil pra reaproveitar em qualquer saída de modelo.
 
+### Métricas de inferência (Prometheus)
+
+`GenAIMetrics` empacota os contadores + histograma que todo serviço de
+inferência acaba reimplementando — requests, latência e tokens in/out,
+rotulados por modelo e operação. Reusa o `prometheus-client` (extra
+`[prometheus]`) e aceita um `registry` explícito (compõe com o
+`PrometheusMiddleware`/`/metrics` do SDK). É **opt-in**:
+
+```python
+from tempest_fastapi_sdk.genai import GenAIMetrics, OllamaGenerator
+
+metrics = GenAIMetrics()
+gen = OllamaGenerator("llama3.2", metrics=metrics)
+await gen.generate("Explique PIX.")   # registra request + latência + tokens
+```
+
+O `OllamaGenerator` extrai `prompt_eval_count`/`eval_count` da resposta do
+daemon pros contadores de token. Pra qualquer outra chamada, envolva com o
+context manager e informe os tokens que souber:
+
+```python
+async with metrics.track("meu-modelo", "generate") as span:
+    span.tokens_out = 128
+    ...  # roda o modelo
+```
+
 ### Contagem de tokens e janela de contexto
 
 Pra caber um chat na janela do modelo, conte tokens com o **tokenizer do

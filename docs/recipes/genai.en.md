@@ -876,6 +876,32 @@ the recommended structured route, no extra library**.
     (tolerating Markdown fences and surrounding prose) and validates it against
     the schema — reusable on any model output.
 
+### Inference metrics (Prometheus)
+
+`GenAIMetrics` bundles the counters + histogram every inference service ends up
+reimplementing — requests, latency and tokens in/out, labelled by model and
+operation. It reuses `prometheus-client` (the `[prometheus]` extra) and takes an
+explicit `registry` (composes with the SDK's `PrometheusMiddleware` /
+`/metrics`). It is **opt-in**:
+
+```python
+from tempest_fastapi_sdk.genai import GenAIMetrics, OllamaGenerator
+
+metrics = GenAIMetrics()
+gen = OllamaGenerator("llama3.2", metrics=metrics)
+await gen.generate("Explain PIX.")   # records request + latency + tokens
+```
+
+`OllamaGenerator` reads `prompt_eval_count` / `eval_count` from the daemon
+response into the token counters. For any other call, wrap it with the context
+manager and set the tokens you know:
+
+```python
+async with metrics.track("my-model", "generate") as span:
+    span.tokens_out = 128
+    ...  # run the model
+```
+
 ### Token counting and context window
 
 To fit a chat into the model's window, count tokens with the **model's own
