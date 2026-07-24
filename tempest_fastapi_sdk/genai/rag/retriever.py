@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai.rag.context import build_context
+from tempest_fastapi_sdk.genai.tracing import genai_span
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.genai.rag.rerank import SupportsRerank
@@ -128,14 +129,16 @@ class Retriever:
         Returns:
             list[Chunk]: The nearest chunks, each with its ``score`` set.
         """
-        (vector,) = await self.embedder.embed([query])
-        if self.reranker is None:
-            return await self.store.search(vector, top_k=top_k)
-        candidates = await self.store.search(
-            vector,
-            top_k=max(top_k, rerank_candidates),
-        )
-        return await self.reranker.rerank(query, candidates, top_k=top_k)
+        model = getattr(self.embedder, "model_id", "rag")
+        async with genai_span("retrieve", model, **{"gen_ai.request.top_k": top_k}):
+            (vector,) = await self.embedder.embed([query])
+            if self.reranker is None:
+                return await self.store.search(vector, top_k=top_k)
+            candidates = await self.store.search(
+                vector,
+                top_k=max(top_k, rerank_candidates),
+            )
+            return await self.reranker.rerank(query, candidates, top_k=top_k)
 
     async def retrieve(
         self,

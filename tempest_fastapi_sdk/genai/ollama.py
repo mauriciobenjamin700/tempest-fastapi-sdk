@@ -41,6 +41,7 @@ from tempest_fastapi_sdk.genai.generation_cache import (
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import GenerationConfig
 from tempest_fastapi_sdk.genai.structured import StructuredT, parse_structured
+from tempest_fastapi_sdk.genai.tracing import genai_span
 from tempest_fastapi_sdk.utils.http_client import HTTPClient, RetryPolicy
 
 if TYPE_CHECKING:
@@ -275,17 +276,22 @@ class OllamaGenerator(_OllamaClientMixin):
         params = self._key_params(config, kwargs, images)
 
         async def _produce() -> str:
-            if self.metrics is None:
-                return await self._generate_once(prompt, config, images, dict(kwargs))
-            async with self.metrics.track(self.model, "generate") as span:
-                text, prompt_tokens, eval_tokens = await self._generate_measured(
-                    prompt,
-                    config,
-                    images,
-                    dict(kwargs),
-                )
-                span.tokens_in = prompt_tokens
-                span.tokens_out = eval_tokens
+            async with genai_span("generate", self.model) as trace_span:
+                if self.metrics is None:
+                    text, prompt_tokens, eval_tokens = await self._generate_measured(
+                        prompt, config, images, dict(kwargs)
+                    )
+                else:
+                    async with self.metrics.track(self.model, "generate") as span:
+                        text, prompt_tokens, eval_tokens = (
+                            await self._generate_measured(
+                                prompt, config, images, dict(kwargs)
+                            )
+                        )
+                        span.tokens_in = prompt_tokens
+                        span.tokens_out = eval_tokens
+                trace_span.tokens_in = prompt_tokens
+                trace_span.tokens_out = eval_tokens
                 return text
 
         return await cached_generate(
@@ -377,11 +383,14 @@ class OllamaGenerator(_OllamaClientMixin):
             "stream": False,
         }
         self._apply_common(payload, config, kwargs)
-        response = await self._http().post(f"{self.base_url}/api/chat", json=payload)
-        response.raise_for_status()
-        data: dict[str, Any] = response.json()
-        message: dict[str, Any] = data.get("message") or {}
-        return str(message.get("content", ""))
+        async with genai_span("chat", self.model):
+            response = await self._http().post(
+                f"{self.base_url}/api/chat", json=payload
+            )
+            response.raise_for_status()
+            data: dict[str, Any] = response.json()
+            message: dict[str, Any] = data.get("message") or {}
+            return str(message.get("content", ""))
 
     async def generate_structured(
         self,
@@ -578,19 +587,20 @@ class OllamaEmbedder(_OllamaClientMixin):
         if not items:
             return []
 
-        client = self._http()
-        vectors: list[list[float]] = []
-        for start in range(0, len(items), batch_size):
-            batch = items[start : start + batch_size]
-            payload: dict[str, Any] = {"model": self.model, "input": batch}
-            if self.keep_alive is not None:
-                payload["keep_alive"] = self.keep_alive
-            response = await client.post(f"{self.base_url}/api/embed", json=payload)
-            response.raise_for_status()
-            data: dict[str, Any] = response.json()
-            embeddings: list[list[float]] = data.get("embeddings") or []
-            vectors.extend([float(x) for x in vector] for vector in embeddings)
-        return vectors
+        async with genai_span("embed", self.model):
+            client = self._http()
+            vectors: list[list[float]] = []
+            for start in range(0, len(items), batch_size):
+                batch = items[start : start + batch_size]
+                payload: dict[str, Any] = {"model": self.model, "input": batch}
+                if self.keep_alive is not None:
+                    payload["keep_alive"] = self.keep_alive
+                response = await client.post(f"{self.base_url}/api/embed", json=payload)
+                response.raise_for_status()
+                data: dict[str, Any] = response.json()
+                embeddings: list[list[float]] = data.get("embeddings") or []
+                vectors.extend([float(x) for x in vector] for vector in embeddings)
+            return vectors
 
 
 __all__: list[str] = [

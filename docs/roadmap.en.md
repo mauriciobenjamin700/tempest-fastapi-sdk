@@ -90,10 +90,18 @@ processor wiring (non-blocker) — see `planning/genai/manual-validation.md`.
 
 ### Queue observability + genai tracing
 
-- `TaskQueue`: **dead-letter** + retry policy + per-task metrics.
-- **Queue/task panel in the admin** (Celery-Flower-like), reusing the admin.
-- **OTel spans** on genai calls (`generate`/`chat`/`embed`/`rag`), reusing
-  `setup_tracing` + `GenAIMetrics`.
+Delivered in slices, one release per slice:
+
+- ✅ **OTel spans on genai calls** (`generate`/`chat`/`embed`/`rag`) — shipped
+  in **v0.156.0**. The ambient `genai_span` reuses the `TracerProvider` from
+  `setup_tracing` (GenAI semantic conventions); no-op without the `[otel]`
+  extra. See the genai recipe (*Distributed tracing*).
+- ⏳ `TaskQueue`: **dead-letter** + retry policy + per-task metrics (next
+  slice).
+- **Queue/task panel in the admin** (Celery-Flower-like) — **deferred**:
+  TaskIQ exposes no universal queue introspection (Flower is Celery-specific),
+  so leaning on RabbitMQ/Redis management APIs would leak the backend.
+  Revisit when business need pulls for it.
 
 ### HTTP performance layer
 

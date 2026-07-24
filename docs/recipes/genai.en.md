@@ -938,6 +938,44 @@ async with metrics.track("my-model", "generate") as span:
     ...  # run the model
 ```
 
+### Distributed tracing (OpenTelemetry)
+
+Beyond metrics, genai calls emit **OpenTelemetry spans** — with no per-generator
+setup. Call `setup_tracing` once at startup (`[otel]` extra) and the spans start
+flowing next to the FastAPI / SQLAlchemy / httpx ones:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.api.tracing import setup_tracing
+
+app: FastAPI = FastAPI()
+setup_tracing(app, service_name="my-service", otlp_endpoint="localhost:4317")
+```
+
+From then on, `TextGenerator` / `OllamaGenerator` (`generate` / `chat`),
+`Embedder.embed`, and the RAG `Retriever.search` / `.retrieve` open a span
+automatically. Spans follow the OpenTelemetry **GenAI semantic conventions**
+(`gen_ai.system`, `gen_ai.operation.name`, `gen_ai.request.model`, plus
+`gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` on the Ollama path);
+an exception marks the span `ERROR` and records it.
+
+!!! info "Zero-config, zero-cost by default"
+    It is **ambient**: it reuses the global `TracerProvider` from
+    `setup_tracing`. Without the `[otel]` extra the helper is a no-op; with the
+    extra but no provider configured, the global tracer produces non-recording
+    spans. Nothing is injected into the generators.
+
+To instrument your own call, use the same context manager:
+
+```python
+from tempest_fastapi_sdk.genai import genai_span
+
+async with genai_span("generate", "my-model") as span:
+    span.tokens_out = 128
+    ...  # run the model
+```
+
 ### Token counting and context window
 
 To fit a chat into the model's window, count tokens with the **model's own

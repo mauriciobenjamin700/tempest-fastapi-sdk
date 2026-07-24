@@ -185,7 +185,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   **`make_vision_router`** (v0.149); **`GenAIMetrics`** Prometheus (v0.150);
   content **moderation** (`RuleModerator`/`ClassifierModerator`) (v0.151);
   and integration — `AIChatPipeline` moderation + context truncation (v0.152),
-  metrics+cache on `TextGenerator`/`Embedder` (v0.153). The OpenAI-compatible
+  metrics+cache on `TextGenerator`/`Embedder` (v0.153); **OTel spans**
+  (`genai_span`) — ambient tracing on `generate`/`chat`/`embed`/RAG reusing the
+  `setup_tracing` `TracerProvider` (GenAI semconv; no-op without `[otel]`)
+  (v0.156). The OpenAI-compatible
   client was **deliberately skipped** (self-hosted-only). Test tiers
   (unit/`@model`/`@gpu`) + plans live under `planning/genai/`. **Fix:** `httpx`
   + `email-validator` are base deps so a minimal/`[genai]` install imports
