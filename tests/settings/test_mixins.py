@@ -300,7 +300,7 @@ class TestEnvFilePriority:
         forbids the base from preceding its subclass. Listing it before
         a mixin must fail at class-creation time, not silently compose.
         """
-        with pytest.raises(TypeError, match="method resolution order"):
+        with pytest.raises(TypeError, match="method resolution"):
 
             class Settings(BaseAppSettings, DatabaseSettings):
                 """Base before the mixin — the ordering the docs forbid."""
