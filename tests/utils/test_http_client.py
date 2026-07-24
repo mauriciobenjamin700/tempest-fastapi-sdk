@@ -193,6 +193,67 @@ class TestRequestIDPropagation:
             await client.aclose()
 
 
+class TestTransportInjection:
+    async def test_transport_param_builds_client(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"ok": True})
+
+        client = HTTPClient(
+            transport=_mock_transport(handler),
+            failure_threshold=0,
+        )
+        try:
+            r = await client.get("http://api.test/ping")
+            assert r.json() == {"ok": True}
+        finally:
+            await client.aclose()
+
+
+class TestStream:
+    async def test_yields_lines(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, text="a\nb\nc")
+
+        client = HTTPClient(transport=_mock_transport(handler), failure_threshold=0)
+        try:
+            lines = [line async for line in client.stream("GET", "http://api.test/s")]
+            assert lines == ["a", "b", "c"]
+        finally:
+            await client.aclose()
+
+    async def test_retries_open_on_5xx_then_streams(self) -> None:
+        statuses = iter([503, 200])
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            code = next(statuses)
+            return (
+                httpx.Response(200, text="ok") if code == 200 else httpx.Response(code)
+            )
+
+        client = HTTPClient(
+            transport=_mock_transport(handler),
+            retry_policy=RetryPolicy(max_attempts=2, backoff_initial_seconds=0.001),
+            failure_threshold=0,
+        )
+        try:
+            lines = [line async for line in client.stream("GET", "http://api.test/s")]
+            assert lines == ["ok"]
+        finally:
+            await client.aclose()
+
+    async def test_non_retryable_status_raises(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404)
+
+        client = HTTPClient(transport=_mock_transport(handler), failure_threshold=0)
+        try:
+            with pytest.raises(httpx.HTTPStatusError):
+                async for _ in client.stream("GET", "http://api.test/s"):
+                    pass
+        finally:
+            await client.aclose()
+
+
 class TestRetryPolicy:
     def test_sleep_grows_exponentially(self) -> None:
         p = RetryPolicy(

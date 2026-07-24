@@ -14,6 +14,7 @@ from tempest_fastapi_sdk.genai import (
 )
 from tempest_fastapi_sdk.genai.ollama import _build_options
 from tempest_fastapi_sdk.genai.rag import SupportsEmbed
+from tempest_fastapi_sdk.utils.http_client import HTTPClient
 
 
 class TestBuildOptions:
@@ -66,7 +67,7 @@ class TestOllamaGenerator:
                 json={"response": "PIX is instant.", "done": True},
             )
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = HTTPClient(transport=httpx.MockTransport(handler))
         gen = OllamaGenerator("llama3.2", http_client=client)
         text = await gen.generate(
             "What is PIX?",
@@ -96,7 +97,7 @@ class TestOllamaGenerator:
                 },
             )
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = HTTPClient(transport=httpx.MockTransport(handler))
         gen = OllamaGenerator("llama3.2", http_client=client)
         messages = [{"role": "user", "content": "Oi"}]
         reply = await gen.chat(messages)
@@ -116,7 +117,7 @@ class TestOllamaGenerator:
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, text="\n".join(lines))
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = HTTPClient(transport=httpx.MockTransport(handler))
         gen = OllamaGenerator("llama3.2", http_client=client)
         pieces = [piece async for piece in gen.stream("hi")]
         await client.aclose()
@@ -130,7 +131,7 @@ class TestOllamaGenerator:
             captured["body"] = json.loads(request.content)
             return httpx.Response(200, json={"response": "ok", "done": True})
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = HTTPClient(transport=httpx.MockTransport(handler))
         gen = OllamaGenerator("llama3.2", http_client=client, keep_alive="5m")
         await gen.generate("x")
         await client.aclose()
@@ -144,7 +145,7 @@ class TestOllamaGenerator:
             captured["body"] = json.loads(request.content)
             return httpx.Response(200, json={"response": "a cat", "done": True})
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = HTTPClient(transport=httpx.MockTransport(handler))
         gen = OllamaGenerator("llama3.2-vision", http_client=client)
         await gen.generate("what is this?", images=["<b64>"])
         await client.aclose()
@@ -161,7 +162,7 @@ class TestOllamaGenerator:
                 json={"message": {"content": "a cat"}, "done": True},
             )
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = HTTPClient(transport=httpx.MockTransport(handler))
         gen = OllamaGenerator("llama3.2-vision", http_client=client)
         messages = [{"role": "user", "content": "describe", "images": ["<b64>"]}]
         await gen.chat(messages)
@@ -186,7 +187,7 @@ class TestOllamaEmbedder:
             captured["body"] = json.loads(request.content)
             return httpx.Response(200, json={"embeddings": [[0.1, 0.2], [0.3, 0.4]]})
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = HTTPClient(transport=httpx.MockTransport(handler))
         emb = OllamaEmbedder("nomic-embed-text", http_client=client)
         vectors = await emb.embed(["a", "b"])
         await client.aclose()
@@ -201,7 +202,7 @@ class TestOllamaEmbedder:
             assert body["input"] == ["solo"]
             return httpx.Response(200, json={"embeddings": [[1.0]]})
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = HTTPClient(transport=httpx.MockTransport(handler))
         emb = OllamaEmbedder("nomic-embed-text", http_client=client)
         vectors = await emb.embed("solo")
         await client.aclose()
@@ -219,7 +220,7 @@ class TestOllamaEmbedder:
                 json={"embeddings": [[0.0] for _ in body["input"]]},
             )
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = HTTPClient(transport=httpx.MockTransport(handler))
         emb = OllamaEmbedder("nomic-embed-text", http_client=client)
         vectors = await emb.embed(["a", "b", "c"], batch_size=2)
         await client.aclose()

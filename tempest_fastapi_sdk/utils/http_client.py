@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -134,6 +134,7 @@ class HTTPClient:
         default_headers: Mapping[str, str] | None = None,
         verify_tls: bool = True,
         propagate_request_id: bool = True,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         """Initialize.
 
@@ -158,6 +159,11 @@ class HTTPClient:
             propagate_request_id (bool): When ``True`` (default),
                 attach ``X-Request-ID`` from the current
                 contextvar to outbound requests.
+            transport (httpx.AsyncBaseTransport | None): Explicit
+                transport for the underlying client — pass an
+                ``httpx.MockTransport`` in tests to script responses
+                without real network. ``None`` uses the default
+                transport.
 
         Raises:
             ImportError: When the ``[http]`` extra is missing.
@@ -178,6 +184,7 @@ class HTTPClient:
             timeout=_httpx_mod.Timeout(timeout, connect=5.0),
             headers=dict(default_headers or {}),
             verify=verify_tls,
+            transport=transport,
         )
         self._breakers: dict[str, _BreakerState] = {}
         self._lock: asyncio.Lock = asyncio.Lock()
@@ -349,6 +356,96 @@ class HTTPClient:
     async def delete(self, url: str, **kwargs: Any) -> httpx.Response:
         """Shortcut for ``request("DELETE", url, ...)``."""
         return await self.request("DELETE", url, **kwargs)
+
+    # ------------------------------------------------------------------
+    # Streaming
+    # ------------------------------------------------------------------
+
+    async def stream(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        json: Any = None,
+        data: Any = None,
+        headers: Mapping[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream a response body line by line (e.g. NDJSON).
+
+        Retries and the circuit-breaker cover **only opening the stream** —
+        network errors and retryable statuses on the initial response are
+        retried with the same backoff as :meth:`request`. Once the first line
+        is yielded the connection is committed, so a mid-stream failure
+        propagates to the caller. A non-success status that is not going to be
+        retried raises ``httpx.HTTPStatusError`` before any line is yielded, so
+        the caller never has to inspect ``status_code`` on a stream.
+
+        Args:
+            method (str): HTTP verb.
+            url (str): Absolute URL or path relative to ``base_url``.
+            params (Mapping[str, Any] | None): Query-string params.
+            json (Any): JSON-serializable body.
+            data (Any): Form body.
+            headers (Mapping[str, str] | None): Per-request headers merged on
+                top of the defaults + propagated ``X-Request-ID``.
+            timeout (float | None): Override for this call.
+
+        Yields:
+            str: Decoded response lines, in order (empty lines included — the
+            caller skips them).
+
+        Raises:
+            CircuitOpenError: When the per-host breaker is open.
+            httpx.HTTPStatusError: When the (final) response status is not a
+                success and is not retried.
+            httpx.HTTPError: When every open attempt failed with a network
+                error (the last exception is re-raised).
+        """
+        assert _httpx_mod is not None, "guarded by __init__"
+        host = self._host_of(url)
+        await self._breaker_check(host)
+        merged_headers = self._build_headers(headers)
+        per_timeout = timeout if timeout is not None else self.timeout
+
+        for attempt in range(1, self.retry_policy.max_attempts + 1):
+            retry_status = False
+            try:
+                async with self._client.stream(
+                    method,
+                    url,
+                    params=params,
+                    json=json,
+                    data=data,
+                    headers=merged_headers,
+                    timeout=per_timeout,
+                ) as response:
+                    is_last = attempt == self.retry_policy.max_attempts
+                    if (
+                        response.status_code in self.retry_policy.retry_statuses
+                        and not is_last
+                    ):
+                        retry_status = True
+                    else:
+                        response.raise_for_status()
+                        await self._breaker_record(host, failed=False)
+                        async for line in response.aiter_lines():
+                            yield line
+                        return
+            except (_httpx_mod.ConnectError, _httpx_mod.ReadTimeout):
+                if attempt == self.retry_policy.max_attempts:
+                    await self._breaker_record(host, failed=True)
+                    raise
+                await asyncio.sleep(self.retry_policy.sleep_for(attempt))
+                continue
+            except _httpx_mod.HTTPStatusError:
+                await self._breaker_record(host, failed=True)
+                raise
+
+            if retry_status:
+                await asyncio.sleep(self.retry_policy.sleep_for(attempt))
+                continue
 
 
 __all__: list[str] = [

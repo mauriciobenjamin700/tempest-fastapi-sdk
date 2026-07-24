@@ -615,8 +615,9 @@ pro prompt — tudo sem enviar dados pra fora. Requer o extra `[genai-rag]`
 ```python
 import httpx
 from tempest_fastapi_sdk.genai.rag import SearxngBackend, WebSearch, build_context
+from tempest_fastapi_sdk.utils.http_client import HTTPClient
 
-client = httpx.AsyncClient()
+client = HTTPClient()
 search = WebSearch(SearxngBackend("http://localhost:8080", http_client=client))
 
 results = await search.search("o que é PIX?", max_results=5)   # list[SearchResult]
@@ -625,8 +626,9 @@ context = build_context("o que é PIX?", results, long_text=False, max_chars=200
 ```
 
 O backend é um `Protocol` (`WebSearchBackend`) — troque o SearXNG por
-outro provedor sem mexer no call site. O `httpx.AsyncClient` é injetado
-(reaproveita o pool; ligue no lifespan do FastAPI).
+outro provedor sem mexer no call site. O `HTTPClient` é injetado
+(reaproveita o pool e dá retry/backoff + circuit-breaker de graça; ligue
+no lifespan do FastAPI).
 
 !!! tip "Da pergunta ao contexto em uma chamada"
     `WebSearch.retrieve` faz busca → (opcional) extração dos corpos em
@@ -635,7 +637,7 @@ outro provedor sem mexer no call site. O `httpx.AsyncClient` é injetado
     ```python
     from tempest_fastapi_sdk.genai.rag import ContentExtractor
 
-    extractor = ContentExtractor(http_client=client)
+    extractor = ContentExtractor(http_client=httpx.AsyncClient())
     context = await search.retrieve("o que é PIX?", extractor=extractor, max_results=5)
     resposta = await gen.generate(context)
     ```
@@ -651,7 +653,7 @@ página e extraia o texto limpo (via `trafilatura`):
 ```python
 from tempest_fastapi_sdk.genai.rag import ContentExtractor
 
-extractor = ContentExtractor(http_client=client)
+extractor = ContentExtractor(http_client=httpx.AsyncClient())
 for result in results:
     outcome = await extractor.extract(result.url)
     result.content = outcome.text          # "" quando falha; outcome.failed marca
@@ -745,6 +747,14 @@ await gen.chat([{"role": "user", "content": "Oi"}], config=config)
 Só os campos definidos entram sobre os defaults; `**kwargs` explícitos
 ainda vencem o config (`gen.generate(prompt, config=config,
 temperature=0.9)` usa `0.9`).
+
+!!! tip "`seed` e `stop` valem no path local"
+    `seed` e `stop` são honrados tanto no `OllamaGenerator` quanto no
+    `TextGenerator` (transformers): `seed` é reaplicado via
+    `transformers.set_seed` antes de gerar (mesma seed + `do_sample=True`
+    reproduz a saída) e `stop` vira o argumento `stop_strings` de
+    `model.generate` (requer transformers >= 4.44). Ambos podem vir do
+    `GenerationConfig` ou por chamada — o override por chamada vence.
 
 ### `make_genai_router` — endpoints prontos
 

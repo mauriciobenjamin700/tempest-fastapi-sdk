@@ -16,6 +16,7 @@ from tempest_fastapi_sdk.genai.rag import (
     WebSearch,
     build_context,
 )
+from tempest_fastapi_sdk.utils.http_client import HTTPClient, RetryPolicy
 
 
 class TestSearxngBackend:
@@ -38,7 +39,7 @@ class TestSearxngBackend:
                 },
             )
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = HTTPClient(transport=httpx.MockTransport(handler))
         backend = SearxngBackend("http://searx:8080", http_client=client)
         results = await backend.search("pix", max_results=5)
         await client.aclose()
@@ -54,7 +55,7 @@ class TestSearxngBackend:
                 json={"results": [{"url": f"http://{i}"} for i in range(10)]},
             )
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = HTTPClient(transport=httpx.MockTransport(handler))
         backend = SearxngBackend("http://searx", http_client=client)
         results = await backend.search("q", max_results=3)
         await client.aclose()
@@ -64,7 +65,10 @@ class TestSearxngBackend:
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(500)
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = HTTPClient(
+            transport=httpx.MockTransport(handler),
+            retry_policy=RetryPolicy(max_attempts=1),
+        )
         backend = SearxngBackend("http://searx", http_client=client)
         with pytest.raises(RuntimeError, match="SearXNG"):
             await backend.search("q", max_results=5)
@@ -74,7 +78,7 @@ class TestSearxngBackend:
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"results": [{"url": "http://a"}]})
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = HTTPClient(transport=httpx.MockTransport(handler))
         search = WebSearch(SearxngBackend("http://searx", http_client=client))
         results = await search.search("q")
         await client.aclose()

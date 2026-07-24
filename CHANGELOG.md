@@ -5,6 +5,47 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.140.0] — 2026-07-23
+
+### Added
+
+- **`HTTPClient.stream`** — line-by-line streaming (e.g. NDJSON) with retry
+  and circuit-breaker covering the stream open; a non-retried error status
+  raises `httpx.HTTPStatusError` before the first line, so callers never
+  inspect `status_code` on a stream.
+- **`HTTPClient(transport=...)`** — inject an explicit
+  `httpx.AsyncBaseTransport` (e.g. `httpx.MockTransport`) for tests without
+  reaching into the private client.
+
+### Changed
+
+- **Ollama and SearXNG backends now run over `HTTPClient`.** `OllamaGenerator`,
+  `OllamaEmbedder` and `SearxngBackend` build (or accept) an
+  `HTTPClient` instead of a bare `httpx.AsyncClient`, so every daemon/search
+  call gets retry, exponential backoff, a per-host circuit-breaker and
+  `X-Request-ID` propagation. `OllamaGenerator`/`OllamaEmbedder` gain
+  `transport=` and `retry_policy=` constructor arguments for the
+  lazily-created client.
+  **Breaking:** the `http_client=` parameter of these three classes now takes
+  an `HTTPClient`, not an `httpx.AsyncClient`. Migrate by wrapping:
+  `SearxngBackend(url, http_client=HTTPClient())` (tests can pass
+  `transport=httpx.MockTransport(...)`). `ContentExtractor` is unchanged and
+  still takes an `httpx.AsyncClient`.
+
+## [0.139.0] — 2026-07-23
+
+### Fixed
+
+- **`GenerationConfig.seed` / `.stop` now take effect on the local
+  transformers path.** `TextGenerator` previously dropped both fields
+  (`to_generate_kwargs` strips them and nothing reapplied them), so a
+  configured `seed` never made sampling reproducible and `stop` strings were
+  ignored. The generator now reapplies `seed` via `transformers.set_seed`
+  before generating and wires `stop` into `model.generate`'s `stop_strings`
+  argument (transformers >= 4.44) — for both `generate`/`chat` and `stream`,
+  with per-call overrides winning over the config. `OllamaGenerator` already
+  honored both. No API change.
+
 ## [0.138.2] — 2026-07-23
 
 ### Changed
