@@ -560,6 +560,30 @@ q, *docs = await emb.embed(["pergunta", "doc a", "doc b"])
 ranked = sorted(docs, key=lambda d: cosine_similarity(q, d), reverse=True)
 ```
 
+### Embeddings ONNX (sem torch)
+
+Se você não quer a stack pesada do `torch`/`transformers` só pra embeddar,
+`OnnxEmbedder` roda um modelo de embedding exportado pra ONNX via ONNX
+Runtime — dependências leves (`onnxruntime` + `tokenizers`, extra
+`[genai-onnx]`), CPU-barato. Satisfaz o mesmo `SupportsEmbed`, então entra
+no `Retriever` / `make_genai_router` sem mudar nada.
+
+```python
+from tempest_fastapi_sdk.genai import OnnxEmbedder
+
+emb = OnnxEmbedder(
+    "all-MiniLM-L6-v2.onnx",
+    tokenizer="sentence-transformers/all-MiniLM-L6-v2",
+    normalize=True,
+)
+vectors = await emb.embed(["pergunta", "doc a"])
+```
+
+O pooling é a **média ponderada pela attention mask** dos embeddings de
+token (não uma média ingênua sobre padding), então os vetores batem com os
+do `Embedder` torch (cosseno ≈ 1.0 pro mesmo modelo). Exporte o modelo com
+`optimum` (`optimum-cli export onnx ...`) e aponte `model_path` pro `.onnx`.
+
 ### Batch de inferência concorrente
 
 Numa GPU, rodar um item por vez desperdiça o device. `BatchScheduler`

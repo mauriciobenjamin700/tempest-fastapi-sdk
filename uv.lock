@@ -5576,7 +5576,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.145.0"
+version = "0.146.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -5653,6 +5653,10 @@ genai-chroma = [
 ]
 genai-ollama = [
     { name = "httpx" },
+]
+genai-onnx = [
+    { name = "onnxruntime" },
+    { name = "tokenizers" },
 ]
 genai-quant = [
     { name = "bitsandbytes" },
@@ -5741,6 +5745,7 @@ dev = [
     { name = "minio" },
     { name = "mypy" },
     { name = "nvidia-ml-py" },
+    { name = "onnxruntime" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-httpx" },
@@ -5763,6 +5768,7 @@ dev = [
     { name = "taskiq" },
     { name = "taskiq-aio-pika" },
     { name = "tempestweb" },
+    { name = "tokenizers" },
     { name = "trafilatura" },
     { name = "uvicorn" },
 ]
@@ -5818,6 +5824,7 @@ requires-dist = [
     { name = "minio", marker = "extra == 'minio'", specifier = ">=7.2.0" },
     { name = "nvidia-ml-py", marker = "extra == 'all'", specifier = ">=12.560.30" },
     { name = "nvidia-ml-py", marker = "extra == 'metrics'", specifier = ">=12.560.30" },
+    { name = "onnxruntime", marker = "extra == 'genai-onnx'", specifier = ">=1.18.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "extra == 'all'", specifier = ">=1.27.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "extra == 'otel'", specifier = ">=1.27.0" },
     { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'all'", specifier = ">=0.48b0" },
@@ -5858,12 +5865,13 @@ requires-dist = [
     { name = "taskiq-aio-pika", marker = "extra == 'tasks'", specifier = ">=0.4.0" },
     { name = "tempestweb", marker = "extra == 'all'", specifier = ">=0.60.0" },
     { name = "tempestweb", marker = "extra == 'ssr'", specifier = ">=0.60.0" },
+    { name = "tokenizers", marker = "extra == 'genai-onnx'", specifier = ">=0.20.0" },
     { name = "torch", marker = "extra == 'genai'", specifier = ">=2.2.0" },
     { name = "trafilatura", marker = "extra == 'genai-rag'", specifier = ">=1.12.0" },
     { name = "transformers", marker = "extra == 'genai'", specifier = ">=4.44.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "genai-structured", "genai-vlm", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -5882,6 +5890,7 @@ dev = [
     { name = "minio", specifier = ">=7.2.0" },
     { name = "mypy", specifier = ">=1.13.0" },
     { name = "nvidia-ml-py", specifier = ">=12.560.30" },
+    { name = "onnxruntime", specifier = ">=1.18.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.27.0" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.48b0" },
     { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.48b0" },
@@ -5904,6 +5913,7 @@ dev = [
     { name = "taskiq", specifier = ">=0.11.0" },
     { name = "taskiq-aio-pika", specifier = ">=0.4.0" },
     { name = "tempestweb", specifier = ">=0.60.0" },
+    { name = "tokenizers", specifier = ">=0.20.0" },
     { name = "trafilatura", specifier = ">=1.12.0" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
