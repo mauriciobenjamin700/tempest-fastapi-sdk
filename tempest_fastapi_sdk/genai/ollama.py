@@ -283,10 +283,12 @@ class OllamaGenerator(_OllamaClientMixin):
                     )
                 else:
                     async with self.metrics.track(self.model, "generate") as span:
-                        text, prompt_tokens, eval_tokens = (
-                            await self._generate_measured(
-                                prompt, config, images, dict(kwargs)
-                            )
+                        (
+                            text,
+                            prompt_tokens,
+                            eval_tokens,
+                        ) = await self._generate_measured(
+                            prompt, config, images, dict(kwargs)
                         )
                         span.tokens_in = prompt_tokens
                         span.tokens_out = eval_tokens
