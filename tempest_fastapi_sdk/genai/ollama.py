@@ -34,6 +34,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.genai.schemas import GenerationConfig
+from tempest_fastapi_sdk.utils.http_client import HTTPClient, RetryPolicy
 
 if TYPE_CHECKING:
     import httpx
@@ -124,7 +125,9 @@ class _OllamaClientMixin:
         base_url: str = DEFAULT_OLLAMA_URL,
         timeout: float = 120.0,
         keep_alive: str | float | None = None,
-        http_client: httpx.AsyncClient | None = None,
+        http_client: HTTPClient | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
         """Configure the connection to the Ollama daemon.
 
@@ -137,26 +140,41 @@ class _OllamaClientMixin:
                 controlling how long the model stays resident (e.g.
                 ``"5m"``, ``0`` to unload immediately). ``None`` uses the
                 daemon default.
-            http_client (httpx.AsyncClient | None): An injected client
-                (tests / connection reuse). When ``None``, one is created
-                lazily and owned by this instance.
+            http_client (HTTPClient | None): An injected
+                :class:`~tempest_fastapi_sdk.utils.http_client.HTTPClient`
+                (connection reuse). When ``None``, one is created lazily and
+                owned by this instance, giving every daemon call retry,
+                exponential backoff, a per-host circuit-breaker and
+                ``X-Request-ID`` propagation for free.
+            transport (httpx.AsyncBaseTransport | None): Explicit transport
+                for the lazily-created client — pass an ``httpx.MockTransport``
+                in tests. Ignored when ``http_client`` is given.
+            retry_policy (RetryPolicy | None): Retry configuration for the
+                lazily-created client. ``None`` uses the ``HTTPClient``
+                defaults. Ignored when ``http_client`` is given.
         """
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.keep_alive = keep_alive
-        self._client: httpx.AsyncClient | None = http_client
+        self._client: HTTPClient | None = http_client
         self._owns_client: bool = http_client is None
+        self._transport = transport
+        self._retry_policy = retry_policy
 
-    def _http(self) -> httpx.AsyncClient:
+    def _http(self) -> HTTPClient:
         """Return the HTTP client, creating an owned one on first use.
 
         Returns:
-            httpx.AsyncClient: The client used for daemon requests.
+            HTTPClient: The resilient client used for daemon requests.
         """
         if self._client is None:
-            httpx = _require_httpx()
-            self._client = httpx.AsyncClient(timeout=self.timeout)
+            _require_httpx()
+            self._client = HTTPClient(
+                timeout=self.timeout,
+                transport=self._transport,
+                retry_policy=self._retry_policy,
+            )
         return self._client
 
     async def aclose(self) -> None:
@@ -344,21 +362,19 @@ class OllamaGenerator(_OllamaClientMixin):
             str: Text pieces as the daemon produces them.
         """
         payload = self._request_payload(prompt, config, kwargs, stream=True)
-        async with self._http().stream(
+        async for line in self._http().stream(
             "POST",
             f"{self.base_url}/api/generate",
             json=payload,
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line.strip():
-                    continue
-                chunk: dict[str, Any] = json.loads(line)
-                piece = chunk.get("response")
-                if piece:
-                    yield str(piece)
-                if chunk.get("done"):
-                    break
+        ):
+            if not line.strip():
+                continue
+            chunk: dict[str, Any] = json.loads(line)
+            piece = chunk.get("response")
+            if piece:
+                yield str(piece)
+            if chunk.get("done"):
+                break
 
     def _request_payload(
         self,

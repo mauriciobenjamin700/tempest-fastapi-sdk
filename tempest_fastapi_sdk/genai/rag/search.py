@@ -4,8 +4,9 @@ Mirrors the leviathan pattern: a thin async client over SearXNG's JSON
 API (``GET /search?format=json``), returning :class:`SearchResult`s that
 downstream code extracts and feeds to an LLM. The backend is a Protocol,
 so a project can swap SearXNG for another provider without touching call
-sites. The ``httpx.AsyncClient`` is injected so its connection pool is
-reused (typically from the FastAPI lifespan).
+sites. The :class:`~tempest_fastapi_sdk.utils.http_client.HTTPClient` is
+injected so its connection pool is reused (typically from the FastAPI
+lifespan) and every query gets retry/backoff + a circuit-breaker for free.
 """
 
 from __future__ import annotations
@@ -14,10 +15,9 @@ import logging
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai.rag.schemas import SearchResult
+from tempest_fastapi_sdk.utils.http_client import HTTPClient
 
 if TYPE_CHECKING:
-    import httpx
-
     from tempest_fastapi_sdk.genai.rag.extract import ContentExtractor
 
 logger = logging.getLogger("tempest_fastapi_sdk.genai.rag")
@@ -37,8 +37,8 @@ class SearxngBackend:
 
     Example:
 
-        >>> import httpx
-        >>> client = httpx.AsyncClient()
+        >>> from tempest_fastapi_sdk.utils.http_client import HTTPClient
+        >>> client = HTTPClient()
         >>> backend = SearxngBackend("http://localhost:8080", http_client=client)
         >>> results = await backend.search("what is PIX?", max_results=5)
 
@@ -51,7 +51,7 @@ class SearxngBackend:
         self,
         base_url: str,
         *,
-        http_client: httpx.AsyncClient,
+        http_client: HTTPClient,
         language: str = "auto",
         timeout: float = 10.0,
     ) -> None:
@@ -60,8 +60,10 @@ class SearxngBackend:
         Args:
             base_url (str): SearXNG base URL, e.g.
                 ``"http://localhost:8080"``.
-            http_client (httpx.AsyncClient): Injected async client (pool
-                reuse). The backend owns no connection state.
+            http_client (HTTPClient): Injected
+                :class:`~tempest_fastapi_sdk.utils.http_client.HTTPClient`
+                (pool reuse + retry/backoff/circuit-breaker). The backend owns
+                no connection state.
             language (str): Search language (``"auto"``, ``"pt-BR"``, …).
             timeout (float): Per-request timeout in seconds.
         """
