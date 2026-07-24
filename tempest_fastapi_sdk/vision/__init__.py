@@ -30,6 +30,7 @@ from tempest_fastapi_sdk.vision.mapping import (
     to_detection_schemas,
     to_segmentation_schemas,
 )
+from tempest_fastapi_sdk.vision.router import make_vision_router as make_vision_router
 from tempest_fastapi_sdk.vision.schemas import (
     BoundingBoxSchema,
     ClassificationSchema,
@@ -79,6 +80,7 @@ __all__: list[str] = [
     "Detector",
     "SegmentationSchema",
     "Segmenter",
+    "make_vision_router",
     "to_classification_schema",
     "to_detection_schemas",
     "to_segmentation_schemas",

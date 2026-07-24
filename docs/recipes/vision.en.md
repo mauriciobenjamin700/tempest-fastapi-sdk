@@ -119,6 +119,25 @@ goes straight in.
     `ort-vision-sdk[opencv]`. Pick the providers in the constructor
     (`Detector(..., providers=[...])`).
 
+## Ready endpoint: `make_vision_router`
+
+Instead of wiring each route by hand, inject the objects you loaded and the
+router mounts **only** the matching endpoints (mirrors `make_genai_router`):
+
+```python
+from fastapi import FastAPI
+from tempest_fastapi_sdk.vision import Detector, make_vision_router
+
+app = FastAPI()
+app.include_router(make_vision_router(detector=Detector("yolov8n.onnx", labels="coco")))
+# -> POST /api/vision/detect (UploadFile) -> list[DetectionSchema]
+```
+
+`classifier=` mounts `POST /classify`, `segmenter=` mounts `POST /segment`.
+Only what you inject shows up; with no object it raises `ValueError`. Each
+endpoint reads the `UploadFile`, calls `async_predict` and maps via
+`to_*_schemas`.
+
 ## Recap
 
 - `uv add "tempest-fastapi-sdk[vision]"`; import from `tempest_fastapi_sdk.vision` (submodule).

@@ -5,6 +5,17 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.149.0] — 2026-07-24
+
+### Added
+
+- **`make_vision_router`** (`tempest_fastapi_sdk.vision`) — an opt-in FastAPI
+  router mirroring `make_genai_router`: inject the loaded `Classifier` /
+  `Detector` / `Segmenter` you have and it mounts only the matching endpoints
+  (`POST /classify` / `/detect` / `/segment`, multipart `UploadFile`), mapping
+  results through the existing `to_*_schemas` helpers. Raises `ValueError` when
+  nothing is injected. No import-time `ort-vision-sdk` dependency (objects are
+  injected already-constructed).
 ## [0.148.0] — 2026-07-24
 
 ### Added

@@ -118,6 +118,26 @@ entra direto.
     `ort-vision-sdk[opencv]`. Escolha os providers no construtor
     (`Detector(..., providers=[...])`).
 
+## Endpoint pronto: `make_vision_router`
+
+Em vez de fiar cada rota na mão, injete os objetos que você carregou e o
+router monta **só** os endpoints correspondentes (espelha o
+`make_genai_router`):
+
+```python
+from fastapi import FastAPI
+from tempest_fastapi_sdk.vision import Detector, make_vision_router
+
+app = FastAPI()
+app.include_router(make_vision_router(detector=Detector("yolov8n.onnx", labels="coco")))
+# -> POST /api/vision/detect (UploadFile) -> list[DetectionSchema]
+```
+
+`classifier=` monta `POST /classify`, `segmenter=` monta `POST /segment`.
+Só o que for injetado aparece; sem nenhum objeto, levanta `ValueError`.
+Cada endpoint lê o `UploadFile`, chama `async_predict` e mapeia via
+`to_*_schemas`.
+
 ## Recap
 
 - `uv add "tempest-fastapi-sdk[vision]"`; importe de `tempest_fastapi_sdk.vision` (submódulo).
