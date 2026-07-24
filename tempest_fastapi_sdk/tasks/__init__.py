@@ -46,6 +46,21 @@ from tempest_fastapi_sdk.tasks.cron import (
 from tempest_fastapi_sdk.tasks.manager import (
     AsyncTaskBrokerManager as AsyncTaskBrokerManager,
 )
+from tempest_fastapi_sdk.tasks.observability import (
+    DeadLetter as DeadLetter,
+)
+from tempest_fastapi_sdk.tasks.observability import (
+    DeadLetterSink as DeadLetterSink,
+)
+from tempest_fastapi_sdk.tasks.observability import (
+    RetryPolicy as RetryPolicy,
+)
+from tempest_fastapi_sdk.tasks.observability import (
+    TaskMetrics as TaskMetrics,
+)
+from tempest_fastapi_sdk.tasks.observability import (
+    make_dead_letter_middleware as make_dead_letter_middleware,
+)
 from tempest_fastapi_sdk.tasks.oop import TaskBinding as TaskBinding
 from tempest_fastapi_sdk.tasks.oop import TaskDef as TaskDef
 from tempest_fastapi_sdk.tasks.oop import task_method as task_method
@@ -58,15 +73,20 @@ __all__: list[str] = [
     "AsyncTaskScheduler",
     "Cron",
     "CronOffset",
+    "DeadLetter",
+    "DeadLetterSink",
+    "RetryPolicy",
     "Task",
     "TaskBinding",
     "TaskDef",
+    "TaskMetrics",
     "TaskQueue",
     "Weekday",
     "daily",
     "every_minute",
     "every_n_minutes",
     "hourly",
+    "make_dead_letter_middleware",
     "monthly",
     "task_method",
     "weekdays",
