@@ -45,6 +45,21 @@ class TestParseStructured:
             parse_structured('{"name": "Alice"}', Person)
 
 
+@pytest.mark.model
+class TestBuildPrefixFnTf5:
+    def test_adapter_builds_on_real_tokenizer(self) -> None:
+        import torch
+        from transformers import AutoTokenizer
+
+        from tempest_fastapi_sdk.genai import build_prefix_allowed_tokens_fn
+
+        tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct")
+        fn = build_prefix_allowed_tokens_fn(tokenizer, Person)
+        allowed = fn(0, torch.tensor(tokenizer.encode("{")))
+        assert isinstance(allowed, list)
+        assert allowed
+
+
 class TestOllamaStructured:
     async def test_sends_format_schema_and_parses_instance(self) -> None:
         captured: dict[str, object] = {}

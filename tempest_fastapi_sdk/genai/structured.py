@@ -62,25 +62,74 @@ def build_prefix_allowed_tokens_fn(tokenizer: Any, schema: type[BaseModel]) -> A
 
     Raises:
         ImportError: When the ``[genai-structured]`` extra is not installed.
+
+    Note:
+        Reimplements ``lm-format-enforcer``'s transformers adapter against the
+        library's stable **core** (``JsonSchemaParser`` + ``TokenEnforcer`` +
+        ``TokenEnforcerTokenizerData``). The upstream
+        ``lmformatenforcer.integrations.transformers`` module imports
+        ``PreTrainedTokenizerBase`` from ``transformers.tokenization_utils``,
+        which moved in transformers 5.x — importing it raises. Building the
+        adapter here from the core avoids that broken import entirely.
     """
     _require_lmfe()
     from lmformatenforcer import JsonSchemaParser
-
-    try:
-        from lmformatenforcer.integrations.transformers import (
-            build_transformers_prefix_allowed_tokens_fn,
-        )
-    except ImportError as exc:
-        raise ImportError(
-            "lm-format-enforcer is installed but its transformers integration "
-            "failed to import — this usually means a version skew with the "
-            "installed transformers. Pin a compatible pair, pass "
-            "constrained=False for best-effort parsing, or use the Ollama "
-            "backend (its generate_structured needs no constraint library).",
-        ) from exc
+    from lmformatenforcer.tokenenforcer import TokenEnforcer
 
     parser = JsonSchemaParser(schema.model_json_schema())
-    return build_transformers_prefix_allowed_tokens_fn(tokenizer, parser)
+    tokenizer_data = _token_enforcer_tokenizer_data(tokenizer)
+    enforcer = TokenEnforcer(tokenizer_data, parser)
+
+    def prefix_allowed_tokens_fn(_batch_id: int, sent: Any) -> list[int]:
+        allowed = enforcer.get_allowed_tokens(sent.tolist())
+        return list(allowed.allowed_tokens)
+
+    return prefix_allowed_tokens_fn
+
+
+def _token_enforcer_tokenizer_data(tokenizer: Any) -> Any:
+    """Build ``TokenEnforcerTokenizerData`` from a HuggingFace tokenizer.
+
+    Mirrors ``lm-format-enforcer``'s
+    ``integrations.transformers.build_token_enforcer_tokenizer_data`` but
+    without importing that module (see :func:`build_prefix_allowed_tokens_fn`).
+    Tolerates the constructor-signature difference across lmfe versions
+    (older: 3 args; newer: ``use_bitmask`` + ``vocab_size``).
+
+    Args:
+        tokenizer (Any): A HuggingFace tokenizer.
+
+    Returns:
+        Any: The ``TokenEnforcerTokenizerData`` for this tokenizer.
+    """
+    from lmformatenforcer.tokenenforcer import TokenEnforcerTokenizerData
+
+    vocab_size = len(tokenizer)
+    token_zero = tokenizer.encode("0")[-1]
+    special = set(tokenizer.all_special_ids)
+    regular: list[tuple[int, str, bool]] = []
+    for token_id in range(vocab_size):
+        if token_id in special:
+            continue
+        decoded_after_zero = tokenizer.decode([token_zero, token_id])[1:]
+        decoded = tokenizer.decode([token_id])
+        regular.append(
+            (token_id, decoded_after_zero, len(decoded_after_zero) > len(decoded))
+        )
+
+    def decode_fn(tokens: list[int]) -> str:
+        return str(tokenizer.decode(tokens)).rstrip("\N{REPLACEMENT CHARACTER}")
+
+    try:
+        return TokenEnforcerTokenizerData(
+            regular,
+            decode_fn,
+            tokenizer.eos_token_id,
+            False,
+            vocab_size,
+        )
+    except TypeError:
+        return TokenEnforcerTokenizerData(regular, decode_fn, tokenizer.eos_token_id)
 
 
 def _extract_json(text: str) -> Any:

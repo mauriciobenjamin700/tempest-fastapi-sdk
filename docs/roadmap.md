@@ -78,24 +78,15 @@ geração, token/contexto, vision router, métricas, moderação + integração 
 pipeline) também. Os candidatos abaixo saíram da análise de visão geral de
 2026-07-24 — **fila futura, não ordenada** (puxada por pressão de negócio).
 
-### Hardening GenAI — dívida transformers 5.x
+### ✅ Hardening GenAI — dívida transformers 5.x (entregue v0.155.0)
 
-- **Structured output constrained na transformers 5.x.** Hoje
-  `TextGenerator.generate_structured(constrained=True)` depende do
-  `lm-format-enforcer`, cuja **integração transformers** quebra na 5.x
-  (`PreTrainedTokenizerBase` movido pra `transformers.tokenization_utils_base`).
-  Achado da investigação: o **core do lmfe**
-  (`JsonSchemaParser` / `TokenEnforcer` / `TokenEnforcerTokenizerData`) importa
-  OK — reimplementar o adapter `prefix_allowed_tokens_fn` em
-  `genai/structured.py` sem depender de
-  `lmformatenforcer.integrations.transformers`. Remove o erro-no-skew + o
-  fallback `constrained=False`.
-- **VLM Qwen2-VL/LLaVA rodando.** O `AutoProcessor` do Qwen2-VL exige
-  torchvision e a checagem `is_torchvision_available` da tf5 falha mesmo com
-  torchvision instalado — investigar (versão / `transforms.v2`) ou usar um VLM
-  image-only. Remover o `skip` do teste `@gpu`.
-- Revalidar a suíte `@gpu` e fechar os 2 caveats do
-  `planning/genai/manual-validation.md`.
+Structured output constrained agora funciona no transformers 5.x
+(`build_prefix_allowed_tokens_fn` reimplementado a partir do **core** do
+`lm-format-enforcer`, sem o módulo `integrations.transformers` quebrado); e o
+`VisionTextGenerator` carrega no tf5 (`AutoModelForImageTextToText` +
+`torchvision` no extra `[genai-vlm]`). Ambos validados no GPU (Qwen2.5-3B /
+Qwen2-VL-2B). Caveat remanescente: acurácia multimodal depende do wiring do
+processor por família (não-blocker) — ver `planning/genai/manual-validation.md`.
 
 ### Observabilidade de filas + tracing genai
 

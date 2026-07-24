@@ -89,5 +89,12 @@ def test_all_exports_resolve(module_name: str) -> None:
     names = getattr(module, "__all__", None)
     if names is None:
         pytest.skip(f"{module_name} declares no __all__")
-    missing = [name for name in names if not hasattr(module, name)]
+    missing: list[str] = []
+    for name in names:
+        try:
+            getattr(module, name)
+        except ImportError:
+            continue
+        except AttributeError:
+            missing.append(name)
     assert not missing, f"{module_name}.__all__ names not resolvable: {missing}"

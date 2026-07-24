@@ -881,10 +881,10 @@ rota estruturada recomendada, sem biblioteca extra**.
     `TextGenerator.generate_structured(prompt, schema, constrained=True)`
     restringe a decodificação com o `lm-format-enforcer`
     (extra `[genai-structured]`), então o modelo só emite tokens que
-    mantêm o JSON válido. Se a versão do `lm-format-enforcer` não casar
-    com a do `transformers` instalado, `constrained=True` levanta um erro
-    claro — nesse caso use `constrained=False` (best-effort: gera e faz o
-    parse) ou o backend Ollama.
+    mantêm o JSON válido — o adapter é construído a partir do core estável
+    da lib, então funciona no transformers 4.x **e 5.x** (validado no
+    Qwen2.5-3B). O `constrained=False` continua disponível pra best-effort
+    sem o extra.
 
 !!! tip "Só o parse"
     `parse_structured(texto, schema)` extrai o JSON de uma saída crua
