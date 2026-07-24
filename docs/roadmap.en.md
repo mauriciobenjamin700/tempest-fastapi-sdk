@@ -71,17 +71,55 @@ The full release history — every version with its **Added** / **Changed** / **
 
 ## What's next
 
-The "What's next" queue left from the Tier S/A/B backlog is **cleared** —
-the last item (management commands) shipped in v0.113.0. Upcoming
-releases are again pulled by business pressure.
+The Tier S/A/B backlog and the admin-panel evolution (Tiers 1–3 + refinement)
+are **done**; so is the self-hosted genai roadmap (v0.139–0.154 — tool calling,
+structured output, VLM, reranker, hybrid search, ONNX embeddings, generation
+cache, token/context, vision router, metrics, moderation + pipeline
+integration). The candidates below came out of the 2026-07-24 overview
+analysis — a **future, unordered queue** (pulled by business pressure).
 
-Natural candidates when demand shows up (admin panel evolution, already
-The admin-panel evolution is **essentially complete**: all of Tiers 1
-and 2, and Tier 3 with CSV import (v0.118), granular RBAC (v0.119) and
-lenses (v0.120). A refinement pass followed: JSON+time widgets (v0.121),
-UX polish (v0.122) and an [integrated example](admin-showcase.md) that
-wires it all into a shop admin. With **in-place inline editing** (v0.127)
-the admin-panel evolution is fully done; further work is business-pulled.
+### GenAI hardening — transformers 5.x debt
+
+- **Constrained structured output on transformers 5.x.**
+  `TextGenerator.generate_structured(constrained=True)` relies on
+  `lm-format-enforcer`, whose **transformers integration** breaks on 5.x
+  (`PreTrainedTokenizerBase` moved to `transformers.tokenization_utils_base`).
+  Investigation finding: the lmfe **core**
+  (`JsonSchemaParser` / `TokenEnforcer` / `TokenEnforcerTokenizerData`) imports
+  fine — reimplement the `prefix_allowed_tokens_fn` adapter in
+  `genai/structured.py` without depending on
+  `lmformatenforcer.integrations.transformers`. Removes the version-skew error
+  + the `constrained=False` fallback.
+- **VLM Qwen2-VL/LLaVA running.** Qwen2-VL's `AutoProcessor` requires
+  torchvision and the tf5 `is_torchvision_available` check fails even with
+  torchvision installed — investigate (version / `transforms.v2`) or use an
+  image-only VLM. Remove the `@gpu` test `skip`.
+- Re-validate the `@gpu` suite and close the two caveats in
+  `planning/genai/manual-validation.md`.
+
+### Queue observability + genai tracing
+
+- `TaskQueue`: **dead-letter** + retry policy + per-task metrics.
+- **Queue/task panel in the admin** (Celery-Flower-like), reusing the admin.
+- **OTel spans** on genai calls (`generate`/`chat`/`embed`/`rag`), reusing
+  `setup_tracing` + `GenAIMetrics`.
+
+### HTTP performance layer
+
+- **`ResponseCacheMiddleware`** — ETag / conditional-GET / `Cache-Control`,
+  reusing the Redis cache.
+- **Advanced rate limiting** — token-bucket + per-plan/principal quotas
+  (today: sliding-window only).
+
+### Modern auth — WebAuthn / passkeys
+
+- **WebAuthn** register/authenticate (`fido2`) beyond TOTP — passwordless,
+  phishing-resistant login.
+- `BaseWebAuthnCredentialModel` + service, integrated with `UserAuthService` /
+  `make_auth_router`.
+
+**Out of scope by decision:** OpenAI-compatible client (self-hosted focus),
+GraphQL/gRPC (REST by decision).
 
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
