@@ -876,6 +876,30 @@ the recommended structured route, no extra library**.
     (tolerating Markdown fences and surrounding prose) and validates it against
     the schema — reusable on any model output.
 
+### Generation cache (prompt → completion)
+
+**Deterministic** generations (greedy, or `temperature=0`) always produce the
+same text for the same prompt + params — so they can be cached and skip the
+model on a repeat. Pass a cache to the generator; only deterministic calls are
+cached (sampling never is, to avoid returning a stale sample):
+
+```python
+from tempest_fastapi_sdk.genai import (
+    GenerationConfig,
+    InMemoryGenerationCache,
+    OllamaGenerator,
+)
+
+gen = OllamaGenerator("llama3.2", generation_cache=InMemoryGenerationCache())
+cfg = GenerationConfig(temperature=0)   # deterministic → cacheable
+await gen.generate("Explain PIX.", config=cfg)   # runs the model
+await gen.generate("Explain PIX.", config=cfg)   # served from cache
+```
+
+`InMemoryGenerationCache` is process-local; `RedisGenerationCache` (the
+`[cache]` extra) shares across workers — the generator awaits the sync-or-async
+cache at one call site. Same on `TextGenerator` (`generation_cache=...`).
+Invalidate by dropping the key (or via a Redis TTL).
 ### Vision (local multimodal VLM)
 
 `VisionTextGenerator` is the multimodal sibling of `TextGenerator`: it loads an

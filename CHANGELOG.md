@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.147.0] — 2026-07-24
+
+### Added
+
+- **Generation cache** (`tempest_fastapi_sdk.genai`) — `InMemoryGenerationCache`
+  / `RedisGenerationCache` + `GenerationCache` / `AsyncGenerationCache`
+  protocols, wired into `TextGenerator` and `OllamaGenerator` via a
+  `generation_cache=` argument. Only **deterministic** generations
+  (`do_sample=False` / `temperature=0`) are cached — sampling calls always run
+  the model. Keys hash model id + prompt + parameters (`make_generation_key`);
+  `is_deterministic` and `cached_generate` are exposed for reuse. The generator
+  awaits sync-or-async caches at one call site.
 ## [0.146.0] — 2026-07-24
 
 ### Added
