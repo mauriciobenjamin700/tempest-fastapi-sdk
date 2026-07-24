@@ -90,10 +90,18 @@ processor por família (não-blocker) — ver `planning/genai/manual-validation.
 
 ### Observabilidade de filas + tracing genai
 
-- `TaskQueue`: **dead-letter** + política de retry + métricas por task.
-- **Painel de filas/tasks no admin** (estilo Celery-Flower), reusando o admin.
-- **Spans OTel** nas chamadas genai (`generate`/`chat`/`embed`/`rag`),
-  reusando `setup_tracing` + `GenAIMetrics`.
+Tema entregue em fatias, uma release por fatia:
+
+- ✅ **Spans OTel nas chamadas genai** (`generate`/`chat`/`embed`/`rag`) —
+  entregue na **v0.156.0**. `genai_span` ambiente reusa o `TracerProvider` do
+  `setup_tracing` (convenções semânticas GenAI); no-op sem o extra `[otel]`.
+  Ver a receita genai (*Tracing distribuído*).
+- ⏳ `TaskQueue`: **dead-letter** + política de retry + métricas por task
+  (próxima fatia).
+- **Painel de filas/tasks no admin** (estilo Celery-Flower) — **deferido**: o
+  TaskIQ não expõe introspecção de fila universal (o Flower é específico do
+  Celery), então depender de APIs de management do RabbitMQ/Redis vazaria o
+  backend. Reavaliar quando a pressão de negócio puxar.
 
 ### Camada de performance HTTP
 

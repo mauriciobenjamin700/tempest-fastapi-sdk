@@ -5,6 +5,25 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.156.0] — 2026-07-24
+
+### Added
+
+- **OpenTelemetry spans on genai calls** (`tempest_fastapi_sdk.genai.genai_span`).
+  Ambient tracing that reuses the global `TracerProvider` set up by
+  `setup_tracing` — call it once at app startup and `TextGenerator` /
+  `OllamaGenerator` (`generate` / `chat`), `Embedder.embed`, and the RAG
+  `Retriever.search` / `.retrieve` emit spans automatically, alongside the
+  existing FastAPI / SQLAlchemy / httpx instrumentation. Spans follow the
+  OpenTelemetry **GenAI semantic conventions** (`gen_ai.system` /
+  `gen_ai.operation.name` / `gen_ai.request.model`, plus
+  `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` on the Ollama
+  path); errors mark the span `ERROR` and record the exception. Zero-config
+  and zero-cost by default: no-op when the `[otel]` extra is absent and
+  non-recording when no provider is configured. Nothing needs to be injected
+  into the generators. First slice of the *queue observability + genai
+  tracing* roadmap theme.
+
 ## [0.155.0] — 2026-07-24
 
 ### Fixed

@@ -38,6 +38,7 @@ from tempest_fastapi_sdk.genai.structured import (
     build_prefix_allowed_tokens_fn,
     parse_structured,
 )
+from tempest_fastapi_sdk.genai.tracing import genai_span
 
 _QUANTIZATIONS: frozenset[ModelDtype] = frozenset({ModelDtype.INT8, ModelDtype.INT4})
 
@@ -554,11 +555,18 @@ class TextGenerator:
         op: str,
         run: Callable[[], Awaitable[str]],
     ) -> str:
-        """Run ``run``, recording request + latency when metrics are set."""
-        if self.metrics is None:
-            return await run()
-        async with self.metrics.track(self.model_id, op):
-            return await run()
+        """Run ``run`` inside an OTel span, recording metrics when set.
+
+        The span is emitted whenever an OpenTelemetry provider is configured
+        (see :class:`~tempest_fastapi_sdk.genai.tracing.genai_span`); metrics
+        are recorded only when a :class:`GenAIMetrics` was injected. Both are
+        no-ops otherwise, so the hot path stays free.
+        """
+        async with genai_span(op, self.model_id):
+            if self.metrics is None:
+                return await run()
+            async with self.metrics.track(self.model_id, op):
+                return await run()
 
     async def chat(
         self,

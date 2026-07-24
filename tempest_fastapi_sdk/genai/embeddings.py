@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import HardwareInfo, ModelDtype
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
+from tempest_fastapi_sdk.genai.tracing import genai_span
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -383,10 +384,11 @@ class Embedder:
         Returns:
             list[list[float]]: One vector per input text, in input order.
         """
-        if self.metrics is None:
-            return await self._embed_impl(texts, batch_size=batch_size)
-        async with self.metrics.track(self.model_id, "embed"):
-            return await self._embed_impl(texts, batch_size=batch_size)
+        async with genai_span("embed", self.model_id):
+            if self.metrics is None:
+                return await self._embed_impl(texts, batch_size=batch_size)
+            async with self.metrics.track(self.model_id, "embed"):
+                return await self._embed_impl(texts, batch_size=batch_size)
 
     async def _embed_impl(
         self,

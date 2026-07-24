@@ -940,6 +940,44 @@ async with metrics.track("meu-modelo", "generate") as span:
     ...  # roda o modelo
 ```
 
+### Tracing distribuído (OpenTelemetry)
+
+Além das métricas, as chamadas genai emitem **spans OpenTelemetry** — e sem
+configuração por gerador. Chame `setup_tracing` uma vez no startup (extra
+`[otel]`) e os spans passam a fluir junto com os do FastAPI/SQLAlchemy/httpx:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.api.tracing import setup_tracing
+
+app: FastAPI = FastAPI()
+setup_tracing(app, service_name="meu-servico", otlp_endpoint="localhost:4317")
+```
+
+A partir daí, `TextGenerator`/`OllamaGenerator` (`generate`/`chat`),
+`Embedder.embed` e o `Retriever.search`/`.retrieve` do RAG abrem um span
+automaticamente. Os spans seguem as **convenções semânticas GenAI** do
+OpenTelemetry (`gen_ai.system`, `gen_ai.operation.name`, `gen_ai.request.model`
+e, no caminho Ollama, `gen_ai.usage.input_tokens`/`gen_ai.usage.output_tokens`);
+uma exceção marca o span como `ERROR` e a registra.
+
+!!! info "Zero-config, zero-custo por padrão"
+    É **ambiente**: reusa o `TracerProvider` global do `setup_tracing`. Sem o
+    extra `[otel]` o helper vira no-op; com o extra mas sem provider
+    configurado, o tracer global gera spans não-gravados. Nada é injetado nos
+    geradores.
+
+Pra instrumentar uma chamada própria, use o mesmo context manager:
+
+```python
+from tempest_fastapi_sdk.genai import genai_span
+
+async with genai_span("generate", "meu-modelo") as span:
+    span.tokens_out = 128
+    ...  # roda o modelo
+```
+
 ### Contagem de tokens e janela de contexto
 
 Pra caber um chat na janela do modelo, conte tokens com o **tokenizer do

@@ -121,6 +121,9 @@ from tempest_fastapi_sdk.genai.tokens import (
 from tempest_fastapi_sdk.genai.tokens import (
     truncate_messages as truncate_messages,
 )
+from tempest_fastapi_sdk.genai.tracing import (
+    genai_span as genai_span,
+)
 from tempest_fastapi_sdk.genai.vision_text import (
     VisionTextGenerator as VisionTextGenerator,
 )
@@ -167,6 +170,7 @@ __all__: list[str] = [
     "count_tokens",
     "estimate_model_bytes",
     "fetch_num_params",
+    "genai_span",
     "is_deterministic",
     "make_ai_chat_router",
     "make_genai_router",
