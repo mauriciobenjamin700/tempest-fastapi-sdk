@@ -880,10 +880,10 @@ the recommended structured route, no extra library**.
 !!! info "On the local backend (transformers)"
     `TextGenerator.generate_structured(prompt, schema, constrained=True)`
     constrains decoding with `lm-format-enforcer` (the `[genai-structured]`
-    extra) so the model can only emit tokens that keep the JSON valid. If the
-    installed `lm-format-enforcer` doesn't match the installed `transformers`,
-    `constrained=True` raises a clear error — use `constrained=False`
-    (best-effort: generate then parse) or the Ollama backend instead.
+    extra) so the model can only emit tokens that keep the JSON valid — the
+    adapter is built from the library's stable core, so it works on
+    transformers 4.x **and 5.x** (validated on Qwen2.5-3B). `constrained=False`
+    stays available for best-effort parsing without the extra.
 
 !!! tip "Just the parse"
     `parse_structured(text, schema)` pulls the JSON out of a raw completion

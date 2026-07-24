@@ -5,6 +5,31 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.155.0] — 2026-07-24
+
+### Fixed
+
+- **Constrained structured output works on transformers 5.x.**
+  `build_prefix_allowed_tokens_fn` (used by
+  `TextGenerator.generate_structured(constrained=True)`) no longer imports
+  `lm-format-enforcer`'s `integrations.transformers` module, whose
+  `PreTrainedTokenizerBase` import from `transformers.tokenization_utils` broke
+  on transformers 5.x. The adapter is now built from the library's stable core
+  (`JsonSchemaParser` + `TokenEnforcer` + `TokenEnforcerTokenizerData`).
+  Validated on Qwen2.5-3B (GPU) end to end.
+- **`VisionTextGenerator` loads on transformers 5.x.** Uses
+  `AutoModelForImageTextToText` (falling back to the renamed
+  `AutoModelForVision2Seq`), and `torchvision` — required by modern VLM
+  processors (Qwen2-VL) — is now part of the `[genai-vlm]` extra. Validated
+  loading + generating on Qwen2-VL-2B (GPU).
+
+### Added
+
+- `@gpu` behavioral validation suite (`tests/genai/test_gpu_validation.py`)
+  now covers the constrained-structured and VLM paths on real models (was a
+  skip); a `@model` test builds the lm-format-enforcer adapter on a real
+  tokenizer under transformers 5.x.
+
 ## [0.154.0] — 2026-07-24
 
 ### Added

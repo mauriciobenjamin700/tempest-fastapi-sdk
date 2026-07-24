@@ -2,7 +2,8 @@
 
 `VisionTextGenerator` is the multimodal sibling of
 :class:`~tempest_fastapi_sdk.genai.text.TextGenerator`: it loads an
-``AutoModelForVision2Seq`` + ``AutoProcessor`` and generates text conditioned
+``AutoModelForImageTextToText`` (or the older ``AutoModelForVision2Seq``) +
+``AutoProcessor`` and generates text conditioned
 on one or more images, on your own hardware. It mirrors the ``TextBackend``
 surface (``generate`` / ``chat`` are image-optional) so text-only calls keep
 working, giving the transformers path the same multimodal reach the
@@ -170,7 +171,17 @@ class VisionTextGenerator:
             cache_dir=self.cache_dir,
             token=self.hf_token,
         )
-        self._model = transformers.AutoModelForVision2Seq.from_pretrained(
+        auto_cls = getattr(
+            transformers,
+            "AutoModelForImageTextToText",
+            getattr(transformers, "AutoModelForVision2Seq", None),
+        )
+        if auto_cls is None:  # pragma: no cover - guarded by transformers version
+            raise ImportError(
+                "No vision-language auto class found — needs transformers with "
+                "AutoModelForImageTextToText (>= 4.x) or AutoModelForVision2Seq.",
+            )
+        self._model = auto_cls.from_pretrained(
             self.model_id,
             cache_dir=self.cache_dir,
             token=self.hf_token,

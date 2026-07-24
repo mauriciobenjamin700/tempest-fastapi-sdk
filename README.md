@@ -124,7 +124,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[genai-chroma]` | `chromadb` | ChromaDB store — `ChromaVectorStore` (a `VectorStore`) + `ChatMemory` (recency-aware per-user long-term chat memory) |
 | `[genai-onnx]` | `onnxruntime`, `tokenizers` | Torch-free embeddings — `OnnxEmbedder` runs an ONNX-exported sentence model on CPU (attention-mask mean pooling), a `SupportsEmbed` drop-in for `Retriever` |
 | `[genai-structured]` | `lm-format-enforcer` | Schema-constrained output for the local `TextGenerator` — `generate_structured(prompt, schema, constrained=True)` bounds decoding to a Pydantic schema (Ollama's `generate_structured` needs no extra; uses the daemon `format` field) |
-| `[genai-vlm]` | `pillow` | Local vision-language generation — `VisionTextGenerator` (`AutoModelForVision2Seq`) generates text conditioned on images (path/bytes/PIL/ndarray); mirrors `TextGenerator`, image-optional |
+| `[genai-vlm]` | `pillow`, `torchvision` | Local vision-language generation — `VisionTextGenerator` (`AutoModelForImageTextToText`) generates text conditioned on images (path/bytes/PIL/ndarray); mirrors `TextGenerator`, image-optional |
 | `[geo]` | `httpx` | Geolocation — `haversine_km`, `estimate_travel` (offline heuristic, no dep) + `OSRMBackend` (free OSRM routing) |
 | `[ssr]` | `tempestweb` | `Page`, `html_response`, `make_htmx_router` — typed Python pages rendered to HTML; `htmx()` / `aria()` / `data()` typed attribute builders; plus `make_web_app_router` / `build_web_app` / `detect_build_mode` to serve a compiled `tempestweb build` (static wasm SPA or server WS/SSE) |
 | `[otel]` | `opentelemetry-sdk` + OTLP/gRPC exporter + FastAPI/SQLAlchemy/httpx instrumentors | `setup_tracing` — distributed tracing |
