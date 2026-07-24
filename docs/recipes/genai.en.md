@@ -876,6 +876,26 @@ the recommended structured route, no extra library**.
     (tolerating Markdown fences and surrounding prose) and validates it against
     the schema — reusable on any model output.
 
+### Token counting and context window
+
+To fit a chat into the model's window, count tokens with the **model's own
+tokenizer** (never a heuristic — BPE and SentencePiece disagree) and drop the
+oldest turns when it overflows:
+
+```python
+from tempest_fastapi_sdk.genai import count_tokens, truncate_messages
+
+n = count_tokens("Explain PIX.", tokenizer)   # the model's tokenizer
+
+fit = truncate_messages(
+    messages, max_tokens=3000, tokenizer=tokenizer,
+)   # keeps system + last turn, drops the oldest
+```
+
+`count_message_tokens(messages, tokenizer, per_message_overhead=4)` sums the
+chat cost; `truncate_messages` keeps `system` messages (moved to the front) and
+the most recent turn, dropping older ones until it fits. Both work over any
+tokenizer with `encode(text) -> sequence` (`AutoTokenizer` qualifies).
 ### Generation cache (prompt → completion)
 
 **Deterministic** generations (greedy, or `temperature=0`) always produce the

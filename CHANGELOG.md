@@ -5,6 +5,17 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.148.0] — 2026-07-24
+
+### Added
+
+- **Token counting + context management** (`tempest_fastapi_sdk.genai`) —
+  `count_tokens(text, tokenizer)`, `count_message_tokens(messages, tokenizer)`
+  and `truncate_messages(messages, max_tokens, tokenizer, keep_system=True)`.
+  Truncation keeps system messages and the most recent turn, dropping the
+  oldest until the chat fits. Works over any tokenizer exposing
+  `encode(text) -> sequence` (HuggingFace `AutoTokenizer` qualifies), so the
+  count uses the model's real vocabulary, not a heuristic.
 ## [0.147.0] — 2026-07-24
 
 ### Added

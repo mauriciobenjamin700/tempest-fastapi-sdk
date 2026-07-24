@@ -879,6 +879,26 @@ rota estruturada recomendada, sem biblioteca extra**.
     (tolera cercas markdown e texto ao redor) e valida contra o schema —
     útil pra reaproveitar em qualquer saída de modelo.
 
+### Contagem de tokens e janela de contexto
+
+Pra caber um chat na janela do modelo, conte tokens com o **tokenizer do
+próprio modelo** (nunca heurística — BPE e SentencePiece divergem) e dropе
+os turnos mais antigos quando estoura:
+
+```python
+from tempest_fastapi_sdk.genai import count_tokens, truncate_messages
+
+n = count_tokens("Explique PIX.", tokenizer)   # tokenizer do modelo
+
+fit = truncate_messages(
+    messages, max_tokens=3000, tokenizer=tokenizer,
+)   # mantém system + último turno, dropa os mais antigos
+```
+
+`count_message_tokens(messages, tokenizer, per_message_overhead=4)` soma o
+custo do chat; `truncate_messages` preserva os `system` (movidos pra frente)
+e o turno mais recente, dropando os antigos até caber. Funcionam sobre
+qualquer tokenizer com `encode(text) -> sequência` (o `AutoTokenizer` serve).
 ### Cache de geração (prompt → completion)
 
 Gerações **determinísticas** (greedy, ou `temperature=0`) produzem sempre o
