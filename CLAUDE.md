@@ -398,6 +398,17 @@ business need, not from a stale list. Keep this honest, not aspirational.
   `docs/`, `tempest_fastapi_sdk/cli/_templates/*.tmpl` MUST have full
   type annotations (params + return). User explicitly rejected
   "magic Django-style" untyped APIs.
+- **Docs/API guard.** `tests/test_docs_api_guard.py` (runs in `make
+  check`) asserts every ```python doc block parses and every
+  `__all__` name resolves — it catches broken examples and
+  renamed/removed exports the docs still reference. It does **not**
+  catch *prose* drift (a covers/roadmap line describing something as
+  backlog that's actually shipped, or vice-versa). So on every
+  feature/release, **re-read the covers list + any roadmap/next-version
+  prose in this file against the shipped code** and fix mismatches in
+  the same PR — this drifts easily (it happened for both the admin
+  tiers and the genai roadmap). Add `# docs-guard: skip` to a doc block
+  only for an intentionally non-parseable fragment.
 - **No emojis in code or docs** unless the user explicitly asks.
 - **Bilingual docs.** Every page lives twice: `docs/<page>.md`
   (PT-BR, default) and `docs/<page>.en.md` (EN-US). The MkDocs
