@@ -5576,12 +5576,14 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.151.0"
+version = "0.151.1"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
     { name = "click" },
+    { name = "email-validator" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -5802,12 +5804,14 @@ requires-dist = [
     { name = "coqui-tts", marker = "extra == 'genai-audio'", specifier = ">=0.24.0" },
     { name = "cryptography", marker = "extra == 'all'", specifier = ">=42.0.0" },
     { name = "cryptography", marker = "extra == 'webpush'", specifier = ">=42.0.0" },
+    { name = "email-validator", specifier = ">=2.0.0" },
     { name = "email-validator", marker = "extra == 'all'", specifier = ">=2.0.0" },
     { name = "email-validator", marker = "extra == 'email'", specifier = ">=2.0.0" },
     { name = "fastapi", specifier = ">=0.118.0" },
     { name = "faster-whisper", marker = "extra == 'genai-audio'", specifier = ">=1.0.0" },
     { name = "faststream", extras = ["rabbit"], marker = "extra == 'all'", specifier = ">=0.7.1" },
     { name = "faststream", extras = ["rabbit"], marker = "extra == 'queue'", specifier = ">=0.7.1" },
+    { name = "httpx", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'all'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'genai-ollama'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'genai-rag'", specifier = ">=0.28.0" },

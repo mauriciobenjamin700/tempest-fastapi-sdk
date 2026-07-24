@@ -5,6 +5,19 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.151.1] — 2026-07-24
+
+### Fixed
+
+- **`import tempest_fastapi_sdk` now works on a base install.** The top-level
+  package eagerly imports `auth` (which uses `httpx` in `auth.introspection`
+  and `EmailStr` in `auth.schemas`), so importing the package — or any
+  submodule like `tempest_fastapi_sdk.genai` — failed with `ModuleNotFoundError`
+  unless an extra happened to pull `httpx` + `email-validator`. Both are now
+  base dependencies, so `pip install tempest-fastapi-sdk[genai]` (and every
+  other minimal install) imports cleanly. Long-standing issue, masked by
+  `[all]`/dev environments.
+
 ## [0.151.0] — 2026-07-24
 
 ### Added
