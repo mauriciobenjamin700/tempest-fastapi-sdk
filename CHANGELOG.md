@@ -5,6 +5,17 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.146.0] — 2026-07-24
+
+### Added
+
+- **`OnnxEmbedder`** (`tempest_fastapi_sdk.genai.OnnxEmbedder`) — torch-free
+  text embeddings over ONNX Runtime (`onnxruntime` + `tokenizers`, the new
+  `[genai-onnx]` extra). Runs a sentence-embedding model exported to ONNX on
+  CPU with a light dependency set, satisfying the same `SupportsEmbed` protocol
+  as `Embedder`, so it drops into a `Retriever` / `make_genai_router`
+  unchanged. Pooling is the attention-mask-weighted mean of token embeddings
+  (never diluted by padding); `normalize=True` L2-normalizes for cosine.
 ## [0.145.0] — 2026-07-24
 
 ### Added

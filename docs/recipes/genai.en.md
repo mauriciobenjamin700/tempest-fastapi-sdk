@@ -558,6 +558,30 @@ q, *docs = await emb.embed(["question", "doc a", "doc b"])
 ranked = sorted(docs, key=lambda d: cosine_similarity(q, d), reverse=True)
 ```
 
+### ONNX embeddings (no torch)
+
+When you don't want the heavy `torch`/`transformers` stack just to embed,
+`OnnxEmbedder` runs an embedding model exported to ONNX via ONNX Runtime —
+light dependencies (`onnxruntime` + `tokenizers`, the `[genai-onnx]` extra),
+cheap on CPU. It satisfies the same `SupportsEmbed`, so it drops into a
+`Retriever` / `make_genai_router` unchanged.
+
+```python
+from tempest_fastapi_sdk.genai import OnnxEmbedder
+
+emb = OnnxEmbedder(
+    "all-MiniLM-L6-v2.onnx",
+    tokenizer="sentence-transformers/all-MiniLM-L6-v2",
+    normalize=True,
+)
+vectors = await emb.embed(["question", "doc a"])
+```
+
+Pooling is the **attention-mask-weighted mean** of the token embeddings (not a
+naive average over padding), so vectors match the torch `Embedder` for the same
+model (cosine ≈ 1.0). Export the model with `optimum`
+(`optimum-cli export onnx ...`) and point `model_path` at the `.onnx` file.
+
 ### Batch concurrent inference
 
 On a GPU, one item at a time wastes the device. `BatchScheduler` coalesces

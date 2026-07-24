@@ -42,6 +42,7 @@ from tempest_fastapi_sdk.genai.ollama import (
 )
 from tempest_fastapi_sdk.genai.ollama import OllamaEmbedder as OllamaEmbedder
 from tempest_fastapi_sdk.genai.ollama import OllamaGenerator as OllamaGenerator
+from tempest_fastapi_sdk.genai.onnx_embed import OnnxEmbedder as OnnxEmbedder
 from tempest_fastapi_sdk.genai.pipeline import AIChatPipeline as AIChatPipeline
 from tempest_fastapi_sdk.genai.pipeline import AIChatResult as AIChatResult
 from tempest_fastapi_sdk.genai.pipeline import Tool as Tool
@@ -104,6 +105,7 @@ __all__: list[str] = [
     "ModelRegistry",
     "OllamaEmbedder",
     "OllamaGenerator",
+    "OnnxEmbedder",
     "RedisEmbeddingCache",
     "TextBackend",
     "TextGenerator",

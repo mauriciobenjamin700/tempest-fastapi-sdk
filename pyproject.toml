@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.145.0"
+version = "0.146.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -121,6 +121,10 @@ genai-chroma = [
 genai-structured = [
     "lm-format-enforcer>=0.10.0",
 ]
+genai-onnx = [
+    "onnxruntime>=1.18.0",
+    "tokenizers>=0.20.0",
+]
 genai-vlm = [
     "pillow>=10.0.0",
 ]
@@ -236,6 +240,8 @@ dev = [
     "pymupdf>=1.24.0",
     "rank-bm25>=0.2.2",
     "pillow>=10.0.0",
+    "onnxruntime>=1.18.0",
+    "tokenizers>=0.20.0",
     "faststream[rabbit]>=0.7.1",
     "taskiq>=0.11.0",
     "taskiq-aio-pika>=0.4.0",
@@ -374,6 +380,10 @@ module = [
     "lmformatenforcer.*",
     "rank_bm25",
     "rank_bm25.*",
+    "onnxruntime",
+    "onnxruntime.*",
+    "tokenizers",
+    "tokenizers.*",
     "PIL",
     "PIL.*",
 ]
