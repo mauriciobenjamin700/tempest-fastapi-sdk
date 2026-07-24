@@ -254,7 +254,11 @@ chunks = await rag.search("o que é CNPJ?", top_k=5)  # funde denso + esparso
 `search(query, top_k, candidates)` pega `candidates` de cada lado e funde
 pra `top_k`. `reciprocal_rank_fusion(rankings, k=60)` está exposto avulso
 pra fundir rankings arbitrários. O índice BM25 é in-memory (reconstruído a
-cada `index`) — bom até dezenas de milhares de chunks.
+cada `index`) — bom até dezenas de milhares de chunks. Tem também
+`retrieve(query, top_k)` (busca híbrida → bloco de contexto), então o
+`HybridRetriever` satisfaz `SupportsRetrieve` e entra no
+`make_genai_router(retriever=...)` no lugar do `Retriever`.
+
 ### Reranking (cross-encoder)
 
 A busca densa (embed da query, embed dos chunks, cosseno) é rápida mas

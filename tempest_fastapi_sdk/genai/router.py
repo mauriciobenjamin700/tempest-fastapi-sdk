@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from starlette.responses import StreamingResponse
 
     from tempest_fastapi_sdk.genai.audio import SpeechToText, TextToSpeech
-    from tempest_fastapi_sdk.genai.rag import Retriever, SupportsEmbed
+    from tempest_fastapi_sdk.genai.rag import SupportsEmbed, SupportsRetrieve
     from tempest_fastapi_sdk.genai.text import TextBackend
 
 
@@ -155,7 +155,7 @@ def make_genai_router(
     *,
     text_generator: TextBackend | None = None,
     embedder: SupportsEmbed | None = None,
-    retriever: Retriever | None = None,
+    retriever: SupportsRetrieve | None = None,
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
     prefix: str = "/api/genai",
@@ -183,7 +183,8 @@ def make_genai_router(
             implementing the ``TextBackend`` protocol).
         embedder (SupportsEmbed | None): Backs ``/embed`` (an ``Embedder``,
             an ``OllamaEmbedder``, or any ``SupportsEmbed``).
-        retriever (Retriever | None): Backs ``/rag``.
+        retriever (SupportsRetrieve | None): Backs ``/rag`` — a ``Retriever``
+            (rerank via ``Retriever(reranker=...)``) or a ``HybridRetriever``.
         speech_to_text (SpeechToText | None): Backs ``/transcribe``.
         text_to_speech (TextToSpeech | None): Backs ``/tts``.
         prefix (str): URL prefix. Defaults to ``"/api/genai"``.

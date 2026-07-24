@@ -161,6 +161,37 @@ class HybridRetriever:
         fused = reciprocal_rank_fusion([dense_keys, sparse_keys], k=self.k_rrf)
         return [self._by_key[key] for key in fused[:top_k] if key in self._by_key]
 
+    async def retrieve(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        candidates: int = 20,
+        long_text: bool = True,
+        max_chars: int = 2000,
+    ) -> str:
+        """Search (hybrid) and build a prompt-ready context block.
+
+        The one-shot helper mirroring :meth:`Retriever.retrieve`, so a
+        ``HybridRetriever`` drops into ``make_genai_router``'s ``/rag``
+        endpoint (it satisfies ``SupportsRetrieve``).
+
+        Args:
+            query (str): The natural-language query.
+            top_k (int): How many chunks to include.
+            candidates (int): Candidates each retriever contributes to fusion.
+            long_text (bool): Full chunk bodies or truncate to ``max_chars``.
+            max_chars (int): Per-chunk truncation cap when ``long_text`` is
+                ``False``.
+
+        Returns:
+            str: A prompt-ready context block (see :func:`build_context`).
+        """
+        from tempest_fastapi_sdk.genai.rag.context import build_context
+
+        chunks = await self.search(query, top_k=top_k, candidates=candidates)
+        return build_context(query, chunks, long_text=long_text, max_chars=max_chars)
+
 
 __all__: list[str] = [
     "HybridRetriever",

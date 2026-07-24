@@ -5,6 +5,18 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.154.0] — 2026-07-24
+
+### Added
+
+- **`HybridRetriever.retrieve`** + **`SupportsRetrieve` protocol.** The hybrid
+  retriever gains the one-shot `retrieve(query, top_k) -> context` helper
+  mirroring `Retriever`, and `make_genai_router(retriever=...)` now accepts any
+  `SupportsRetrieve` (a `Retriever` — reranking through
+  `Retriever(reranker=...)` — or a `HybridRetriever`), so both back the `/rag`
+  endpoint unchanged. (Schema-constrained output stays a programmatic API via
+  `generate_structured`, not a generic HTTP endpoint.)
+
 ## [0.153.0] — 2026-07-24
 
 ### Added

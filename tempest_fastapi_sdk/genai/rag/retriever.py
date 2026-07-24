@@ -34,6 +34,20 @@ class SupportsEmbed(Protocol):
         ...
 
 
+@runtime_checkable
+class SupportsRetrieve(Protocol):
+    """A one-shot corpus-RAG helper: query in, context block out.
+
+    Implemented by both :class:`Retriever` and
+    :class:`~tempest_fastapi_sdk.genai.rag.HybridRetriever`, so either backs
+    :func:`~tempest_fastapi_sdk.genai.make_genai_router`'s ``/rag`` endpoint.
+    """
+
+    async def retrieve(self, query: str, *, top_k: int = ...) -> str:
+        """Search the corpus and return a prompt-ready context block."""
+        ...
+
+
 class Retriever:
     """Index chunks and retrieve the most relevant ones for a query.
 
@@ -153,4 +167,5 @@ class Retriever:
 __all__: list[str] = [
     "Retriever",
     "SupportsEmbed",
+    "SupportsRetrieve",
 ]
