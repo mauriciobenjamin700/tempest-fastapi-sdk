@@ -230,6 +230,31 @@ asyncio.run(main())
 `embed(texts, *, batch_size=32)` devolve `list[list[float]]`, igual ao
 `Embedder`.
 
+### Busca híbrida (BM25 + denso)
+
+A busca densa capta significado mas erra termos exatos — nomes próprios,
+códigos, siglas que a query compartilha literalmente com o chunk. O BM25
+(esparso) acerta esses e ignora semântica. O `HybridRetriever` roda os
+dois sobre os mesmos chunks indexados e funde os rankings com **Reciprocal
+Rank Fusion** — então "o que o BACEN faz?" acha o chunk que diz "BACEN"
+mesmo com score denso morno. BM25 vem do `rank-bm25` (extra `[genai-rag]`).
+
+```python
+from tempest_fastapi_sdk.genai import Embedder
+from tempest_fastapi_sdk.genai.rag import HybridRetriever, InMemoryVectorStore
+
+rag = HybridRetriever(
+    Embedder("sentence-transformers/all-MiniLM-L6-v2", normalize=True),
+    InMemoryVectorStore(),
+)
+await rag.index(chunks)                              # indexa denso + BM25
+chunks = await rag.search("o que é CNPJ?", top_k=5)  # funde denso + esparso
+```
+
+`search(query, top_k, candidates)` pega `candidates` de cada lado e funde
+pra `top_k`. `reciprocal_rank_fusion(rankings, k=60)` está exposto avulso
+pra fundir rankings arbitrários. O índice BM25 é in-memory (reconstruído a
+cada `index`) — bom até dezenas de milhares de chunks.
 ### Reranking (cross-encoder)
 
 A busca densa (embed da query, embed dos chunks, cosseno) é rápida mas
