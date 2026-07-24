@@ -5,6 +5,17 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.145.0] — 2026-07-24
+
+### Added
+
+- **`HybridRetriever`** (`tempest_fastapi_sdk.genai.rag`) — hybrid retrieval
+  fusing dense vectors and sparse BM25 with Reciprocal Rank Fusion, so exact
+  terms (proper nouns, codes, acronyms) a dense retriever misses are recovered.
+  `index` builds both a dense store and an in-memory BM25 index (`rank-bm25`,
+  added to the `[genai-rag]` extra); `search(query, top_k, candidates)` fuses
+  the two rankings. `reciprocal_rank_fusion(rankings, k=60)` is exposed
+  standalone for arbitrary rank lists.
 ## [0.144.0] — 2026-07-24
 
 ### Added

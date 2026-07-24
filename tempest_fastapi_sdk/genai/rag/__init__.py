@@ -19,6 +19,10 @@ from tempest_fastapi_sdk.genai.rag.extract import (
 from tempest_fastapi_sdk.genai.rag.extract import (
     ExtractionResult as ExtractionResult,
 )
+from tempest_fastapi_sdk.genai.rag.fusion import (
+    reciprocal_rank_fusion as reciprocal_rank_fusion,
+)
+from tempest_fastapi_sdk.genai.rag.hybrid import HybridRetriever as HybridRetriever
 from tempest_fastapi_sdk.genai.rag.pdf import PdfReader as PdfReader
 from tempest_fastapi_sdk.genai.rag.rerank import Reranker as Reranker
 from tempest_fastapi_sdk.genai.rag.rerank import SupportsRerank as SupportsRerank
@@ -44,6 +48,7 @@ __all__: list[str] = [
     "ContentExtractor",
     "Document",
     "ExtractionResult",
+    "HybridRetriever",
     "InMemoryVectorStore",
     "MemoryHit",
     "PdfPage",
@@ -60,4 +65,5 @@ __all__: list[str] = [
     "WebSearchBackend",
     "build_context",
     "chunk_text",
+    "reciprocal_rank_fusion",
 ]
