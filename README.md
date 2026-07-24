@@ -122,6 +122,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[genai-audio]` | `faster-whisper`, `coqui-tts` | Self-hosted voice — `SpeechToText` (STT) + `TextToSpeech` (TTS) + `Language` presets (PT-BR/EN-US) |
 | `[genai-ollama]` | `httpx` | Ollama backend — `OllamaGenerator` / `OllamaEmbedder` run text + embeddings against a local Ollama daemon instead of loading torch weights; drop into `make_genai_router` / `Retriever` |
 | `[genai-chroma]` | `chromadb` | ChromaDB store — `ChromaVectorStore` (a `VectorStore`) + `ChatMemory` (recency-aware per-user long-term chat memory) |
+| `[genai-structured]` | `lm-format-enforcer` | Schema-constrained output for the local `TextGenerator` — `generate_structured(prompt, schema, constrained=True)` bounds decoding to a Pydantic schema (Ollama's `generate_structured` needs no extra; uses the daemon `format` field) |
 | `[geo]` | `httpx` | Geolocation — `haversine_km`, `estimate_travel` (offline heuristic, no dep) + `OSRMBackend` (free OSRM routing) |
 | `[ssr]` | `tempestweb` | `Page`, `html_response`, `make_htmx_router` — typed Python pages rendered to HTML; `htmx()` / `aria()` / `data()` typed attribute builders; plus `make_web_app_router` / `build_web_app` / `detect_build_mode` to serve a compiled `tempestweb build` (static wasm SPA or server WS/SSE) |
 | `[otel]` | `opentelemetry-sdk` + OTLP/gRPC exporter + FastAPI/SQLAlchemy/httpx instrumentors | `setup_tracing` — distributed tracing |

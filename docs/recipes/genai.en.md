@@ -764,6 +764,43 @@ temperature=0.9)` uses `0.9`).
     `stop_strings` argument (requires transformers >= 4.44). Either may come
     from the `GenerationConfig` or per call — the per-call override wins.
 
+### Structured output (validated JSON)
+
+Force the model to return a Pydantic schema and get the validated instance
+back — instead of hoping the output happens to be parseable JSON:
+
+```python
+from pydantic import BaseModel
+from tempest_fastapi_sdk.genai import OllamaGenerator
+
+
+class Person(BaseModel):
+    name: str
+    age: int
+
+
+gen = OllamaGenerator("llama3.2")
+person: Person = await gen.generate_structured("Any person.", Person)
+# -> Person(name="...", age=...)
+```
+
+`OllamaGenerator` sends the schema in the daemon's `format` field (Ollama
+enforces JSON-schema-valid output natively) and parses the reply — **this is
+the recommended structured route, no extra library**.
+
+!!! info "On the local backend (transformers)"
+    `TextGenerator.generate_structured(prompt, schema, constrained=True)`
+    constrains decoding with `lm-format-enforcer` (the `[genai-structured]`
+    extra) so the model can only emit tokens that keep the JSON valid. If the
+    installed `lm-format-enforcer` doesn't match the installed `transformers`,
+    `constrained=True` raises a clear error — use `constrained=False`
+    (best-effort: generate then parse) or the Ollama backend instead.
+
+!!! tip "Just the parse"
+    `parse_structured(text, schema)` pulls the JSON out of a raw completion
+    (tolerating Markdown fences and surrounding prose) and validates it against
+    the schema — reusable on any model output.
+
 ### `make_genai_router` — ready endpoints
 
 Inject the objects you have loaded and the router mounts **only** the
