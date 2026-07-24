@@ -7,7 +7,7 @@ PACKAGE := tempest_fastapi_sdk
 PYTHON_VERSION := 3.11
 
 .DEFAULT_GOAL := help
-.PHONY: help install sync clean test cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
+.PHONY: help install sync clean test test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -24,6 +24,12 @@ sync: install ## Alias for `install`
 
 test: ## Run pytest with coverage
 	uv run pytest
+
+test-model: ## Run opt-in model smoke tests (downloads tiny weights on first run)
+	uv run pytest -m model
+
+test-gpu: ## Run GPU tests (needs CUDA; skipped without a GPU)
+	uv run pytest -m gpu
 
 cov: ## Open the last coverage HTML report (run `pytest --cov-report=html` first)
 	@command -v xdg-open >/dev/null && xdg-open htmlcov/index.html || open htmlcov/index.html
