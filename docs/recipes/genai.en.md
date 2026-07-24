@@ -230,6 +230,32 @@ asyncio.run(main())
 `embed(texts, *, batch_size=32)` returns `list[list[float]]`, just like
 `Embedder`.
 
+### Reranking (cross-encoder)
+
+Dense search (embed the query, embed the chunks, cosine) is fast but coarse:
+it never sees query and chunk together. A **cross-encoder** scores each
+`(query, chunk)` pair jointly — too slow for the whole corpus, ideal as a
+second stage over the top-N candidates. Inject a `Reranker` into the
+`Retriever`: search over-fetches candidates from the store and the
+cross-encoder narrows them to `top_k`.
+
+```python
+from tempest_fastapi_sdk.genai import Embedder
+from tempest_fastapi_sdk.genai.rag import InMemoryVectorStore, Reranker, Retriever
+
+rag = Retriever(
+    Embedder("sentence-transformers/all-MiniLM-L6-v2", normalize=True),
+    InMemoryVectorStore(),
+    reranker=Reranker("cross-encoder/ms-marco-MiniLM-L-6-v2"),
+)
+# search fetches max(top_k, rerank_candidates) from the store, then reorders:
+chunks = await rag.search("how to refund?", top_k=5, rerank_candidates=20)
+```
+
+Without a `reranker` the `Retriever` stays dense-only. `Reranker` (the
+`[genai]` extra) has lazy load + `unload`/`unload_if_idle` like
+`TextGenerator`.
+
 ### Same router, torch OR Ollama
 
 `make_genai_router` type-hints `TextBackend` / `SupportsEmbed`, so the

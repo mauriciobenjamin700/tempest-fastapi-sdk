@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from tempest_fastapi_sdk.genai.rag.context import build_context
 
 if TYPE_CHECKING:
+    from tempest_fastapi_sdk.genai.rag.rerank import SupportsRerank
     from tempest_fastapi_sdk.genai.rag.schemas import Chunk
     from tempest_fastapi_sdk.genai.rag.vectorstore import VectorStore
 
@@ -52,15 +53,27 @@ class Retriever:
         store (VectorStore): Persists and searches the vectors.
     """
 
-    def __init__(self, embedder: SupportsEmbed, store: VectorStore) -> None:
+    def __init__(
+        self,
+        embedder: SupportsEmbed,
+        store: VectorStore,
+        *,
+        reranker: SupportsRerank | None = None,
+    ) -> None:
         """Initialize the retriever.
 
         Args:
             embedder (SupportsEmbed): The embedding model (e.g. ``Embedder``).
             store (VectorStore): The vector store to index into and search.
+            reranker (SupportsRerank | None): Optional cross-encoder
+                (:class:`~tempest_fastapi_sdk.genai.rag.Reranker`) applied as a
+                second stage — :meth:`search` over-fetches candidates from the
+                store and the reranker narrows them to ``top_k``. ``None``
+                keeps the dense-only behavior.
         """
         self.embedder = embedder
         self.store = store
+        self.reranker = reranker
 
     async def index(self, chunks: Sequence[Chunk]) -> int:
         """Embed ``chunks`` and add them to the store.
@@ -78,18 +91,37 @@ class Retriever:
         await self.store.add(list(chunks), vectors)
         return len(chunks)
 
-    async def search(self, query: str, *, top_k: int = 5) -> list[Chunk]:
+    async def search(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        rerank_candidates: int = 20,
+    ) -> list[Chunk]:
         """Return the ``top_k`` chunks most relevant to ``query``.
+
+        With a ``reranker`` configured, the store is queried for
+        ``max(top_k, rerank_candidates)`` nearest chunks and the cross-encoder
+        reorders them down to ``top_k``; otherwise the dense ``top_k`` is
+        returned directly.
 
         Args:
             query (str): The natural-language query.
             top_k (int): How many chunks to return.
+            rerank_candidates (int): How many dense candidates to fetch before
+                reranking (ignored when no ``reranker`` is set).
 
         Returns:
             list[Chunk]: The nearest chunks, each with its ``score`` set.
         """
         (vector,) = await self.embedder.embed([query])
-        return await self.store.search(vector, top_k=top_k)
+        if self.reranker is None:
+            return await self.store.search(vector, top_k=top_k)
+        candidates = await self.store.search(
+            vector,
+            top_k=max(top_k, rerank_candidates),
+        )
+        return await self.reranker.rerank(query, candidates, top_k=top_k)
 
     async def retrieve(
         self,
