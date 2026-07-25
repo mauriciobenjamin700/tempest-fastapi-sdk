@@ -679,7 +679,7 @@ O `createEventStream` / `useEventStream` do
 consome esses endpoints com reconnect (backoff exponencial) embutido:
 
 ```typescript
-import { createEventStream } from "@mauriciobenjamin700/tempest-react-sdk";
+import { createEventStream } from "tempest-react-sdk";
 
 const stream = createEventStream<{ text: string }>("/feed", {
     withCredentials: true,        // manda cookie de auth no handshake

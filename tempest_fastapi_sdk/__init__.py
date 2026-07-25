@@ -27,6 +27,9 @@ from tempest_fastapi_sdk.admin import (
 from tempest_fastapi_sdk.api import (
     CSRF_COOKIE_NAME,
     CSRF_HEADER_NAME,
+    DEFAULT_ASSET_CACHE_CONTROL,
+    DEFAULT_DOCUMENT_CACHE_CONTROL,
+    DEFAULT_EXCLUDED_PREFIXES,
     DEFAULT_LATENCY_BUCKETS,
     DEFAULT_STATIC_SECURITY_HEADERS,
     IDEMPOTENCY_HEADER,
@@ -89,6 +92,7 @@ from tempest_fastapi_sdk.api import (
     make_prometheus_registry,
     make_prometheus_router,
     make_role_dependency,
+    make_spa_router,
     make_token_dependency,
     make_tool_spec_router,
     make_unhandled_exception_handler,
@@ -434,7 +438,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.162.0"
+__version__: str = "0.163.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -447,7 +451,10 @@ __all__: list[str] = [
     "CPF_PATTERN",
     "CSRF_COOKIE_NAME",
     "CSRF_HEADER_NAME",
+    "DEFAULT_ASSET_CACHE_CONTROL",
     "DEFAULT_AUTH_LOCALE",
+    "DEFAULT_DOCUMENT_CACHE_CONTROL",
+    "DEFAULT_EXCLUDED_PREFIXES",
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_LOCALE",
     "DEFAULT_STATIC_SECURITY_HEADERS",
@@ -784,6 +791,7 @@ __all__: list[str] = [
     "make_role_dependency",
     "make_session_dependency",
     "make_session_router",
+    "make_spa_router",
     "make_token_dependency",
     "make_tool_spec_router",
     "make_unhandled_exception_handler",

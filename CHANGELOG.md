@@ -5,6 +5,40 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.163.0] — 2026-07-25
+
+### Added
+
+- **`make_spa_router(dist_dir)`** (`tempest_fastapi_sdk.api.spa`): serve a
+  compiled React/Vite SPA from the FastAPI process, making a fullstack service
+  one origin and one deployment. Mounting `StaticFiles` alone is not enough —
+  a client-side router owns paths that exist in the browser and not on disk, so
+  a bare static mount 404s on every deep link and refresh. This router adds the
+  SPA fallback plus the details that are easy to get wrong:
+  - `index.html` is served `no-store` while content-hashed assets are
+    `immutable` for a year. Inverting this is the classic "users keep running
+    the old bundle after a deploy" bug, since the document is the one file whose
+    URL never changes.
+  - API prefixes (`DEFAULT_EXCLUDED_PREFIXES`, overridable) are excluded from
+    the fallback, so a typo'd endpoint stays a JSON 404 instead of a 200 with an
+    HTML body — which surfaces in the client as a confusing parse error.
+  - Only `GET`/`HEAD` fall back; `..` traversal cannot escape the build
+    directory in any encoding; a missing build raises at wiring time rather than
+    booting a service that 404s every page.
+- **Bilingual recipe "React SPA inside FastAPI"** covering the three modes: dev
+  with a Vite proxy, same-origin production, and the scaffold + multi-stage
+  Dockerfile. Documents the shared contract with
+  [`tempest-react-sdk`](https://github.com/mauriciobenjamin700/tempest-react-sdk)
+  — `createViteConfig`, `createApiClient`, `createTempestAuth`, `AuthGuard`,
+  and the `{detail, code, details}` error envelope both sides agree on.
+
+### Fixed
+
+- The SSE recipe imported `tempest-react-sdk` under a scoped name
+  (`@mauriciobenjamin700/tempest-react-sdk`) that does not exist on npm; the
+  package is published unscoped as `tempest-react-sdk`. The snippet could never
+  have resolved.
+
 ## [0.162.0] — 2026-07-25
 
 ### Fixed

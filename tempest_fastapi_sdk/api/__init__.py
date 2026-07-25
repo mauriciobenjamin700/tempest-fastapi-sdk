@@ -80,6 +80,12 @@ from tempest_fastapi_sdk.api.routers import (
     make_tool_spec_router,
 )
 from tempest_fastapi_sdk.api.server import run_server
+from tempest_fastapi_sdk.api.spa import (
+    DEFAULT_ASSET_CACHE_CONTROL,
+    DEFAULT_DOCUMENT_CACHE_CONTROL,
+    DEFAULT_EXCLUDED_PREFIXES,
+    make_spa_router,
+)
 from tempest_fastapi_sdk.api.static import (
     DEFAULT_STATIC_SECURITY_HEADERS,
     HardenedStaticFiles,
@@ -95,6 +101,9 @@ from tempest_fastapi_sdk.api.webhooks import (
 __all__: list[str] = [
     "CSRF_COOKIE_NAME",
     "CSRF_HEADER_NAME",
+    "DEFAULT_ASSET_CACHE_CONTROL",
+    "DEFAULT_DOCUMENT_CACHE_CONTROL",
+    "DEFAULT_EXCLUDED_PREFIXES",
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "IDEMPOTENCY_HEADER",
@@ -157,6 +166,7 @@ __all__: list[str] = [
     "make_prometheus_registry",
     "make_prometheus_router",
     "make_role_dependency",
+    "make_spa_router",
     "make_token_dependency",
     "make_tool_spec_router",
     "make_unhandled_exception_handler",
