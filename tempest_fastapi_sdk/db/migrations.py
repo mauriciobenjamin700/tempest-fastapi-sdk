@@ -185,7 +185,10 @@ class AlembicHelper:
 
         The SDK-generated ini ships with ``sqlalchemy.url = `` empty
         on purpose so secrets never enter version control — the
-        resolution chain above fills it at runtime.
+        resolution chain above fills it at runtime. That empty default
+        has been the SDK's shape since v0.30.2, which is why steps 3
+        and 4 exist at all: on a project generated before then the ini
+        still carries a URL and step 2 wins.
 
         Returns:
             Config: The configured Alembic config.
@@ -195,8 +198,6 @@ class AlembicHelper:
             config.set_main_option("sqlalchemy.url", self._db_url_override)
             return config
 
-        # Fall back to env/settings when the ini left ``sqlalchemy.url``
-        # empty (the SDK default since v0.30.2).
         if not config.get_main_option("sqlalchemy.url"):
             resolved = _resolve_runtime_database_url()
             if resolved:
@@ -218,6 +219,45 @@ class AlembicHelper:
         wires the metadata import, sets ``compare_type`` /
         ``compare_server_default`` and enables batch mode for SQLite.
 
+        Three details of the scaffold are deliberate:
+
+        * The ini is pre-seeded at :attr:`config_path` before calling
+          ``command.init``, because Alembic writes it wherever
+          ``config.config_file_name`` points — seeding is what makes
+          the file land where this helper later expects to find it.
+        * The ini Alembic wrote is then **replaced** by the SDK layout
+          (logger sections, ``file_template``, UTC timestamps), with
+          ``sqlalchemy.url`` left empty so credentials never enter
+          version control. The companion ``env.py`` template resolves
+          the URL at runtime from ``DATABASE_URL`` (or
+          ``src.core.settings``) and injects it back into the config
+          before the engine is built; pass ``db_url=`` on the
+          constructor to override for a one-off (CI smoke, scripted
+          migrations).
+        * ``[post_write_hooks]`` runs ``ruff format`` **then**
+          ``ruff check --fix`` over every generated revision, so the
+          files autogenerate emits — long ``sa.Column`` lines, trailing
+          whitespace in the header when ``down_revision`` is ``None``
+          — are lint-clean out of the box. The order matters: the
+          formatter wraps over-length lines (E501) and strips trailing
+          whitespace (W291), so running the linter first would report
+          errors the formatter is about to fix on the next hook.
+          ``--quiet`` keeps the second pass silent when nothing
+          actionable remains.
+
+        The generated ini also carries **no**
+        ``[loggers]``/``[handlers]``/``[formatters]`` sections, which is
+        the one omission worth explaining. ``env.py`` runs inside the
+        host application process, where ``configure_logging`` has
+        already set up Python's logging tree. Shipping the stock
+        ``[logger_root] level = WARN handlers = console`` block would
+        make ``fileConfig(alembic.ini)`` reset the root logger to WARN
+        plus a stderr handler, silencing the SDK's 500 handler, the
+        ``/logs`` writer and every JSON record the app emits. The
+        companion ``env.py`` still calls ``fileConfig`` — guarded on the
+        section being present — so a project that deliberately re-adds a
+        ``[loggers]`` block keeps working.
+
         Args:
             directory (str): Target directory for ``versions/`` and
                 ``env.py``. Created if missing.
@@ -234,9 +274,6 @@ class AlembicHelper:
                 env-var injection or by passing ``db_url`` to the
                 constructor.
         """
-        # Alembic's ``command.init`` writes the ini at
-        # ``config.config_file_name``; pre-seed it with our target
-        # path so the file lands where the helper expects.
         ini_path = Path(self.config_path)
         ini_path.parent.mkdir(parents=True, exist_ok=True)
         config = Config(str(ini_path))
@@ -244,9 +281,6 @@ class AlembicHelper:
         config.set_main_option("sqlalchemy.url", db_url)
         command.init(config, directory, template="async")
 
-        # Patch the generated env.py with the SDK template so
-        # autogenerate gets the project's metadata + sensible
-        # comparison flags out of the box.
         env_py = Path(directory) / "env.py"
         template_text = (
             resources.files("tempest_fastapi_sdk.db._alembic_templates")
@@ -266,15 +300,6 @@ class AlembicHelper:
             encoding="utf-8",
         )
 
-        # Overwrite the ini Alembic just wrote with the SDK's
-        # opinionated layout (logger sections, file_template, UTC).
-        # ``sqlalchemy.url`` is intentionally left empty so the
-        # credentials never land in version control. The companion
-        # ``env.py`` template resolves the URL at runtime from
-        # ``DATABASE_URL`` env var (or ``src.core.settings``) and
-        # injects it back into the Alembic config before the engine
-        # is built. Pass ``db_url=...`` on the constructor to override
-        # for one-off operations (CI smoke, scripted migrations).
         ini_lines = [
             "[alembic]",
             f"script_location = {directory}",
@@ -286,19 +311,6 @@ class AlembicHelper:
             ),
             "timezone = UTC",
             "",
-            # Auto-format every freshly generated revision so the
-            # files autogenerate emits (long ``sa.Column`` lines,
-            # trailing whitespace in the docstring header when
-            # ``down_revision`` is ``None``) are lint-clean out of
-            # the box.
-            #
-            # Order matters: ``ruff format`` MUST run first — it
-            # wraps over-length lines (E501) and strips trailing
-            # whitespace (W291). Running ``ruff check --fix`` first
-            # would emit noisy "found N errors / N fixed / M
-            # remaining" output for things the formatter is about
-            # to fix on the next hook. ``--quiet`` silences the
-            # second pass when nothing actionable is left.
             "[post_write_hooks]",
             "hooks = ruff_format, ruff_fix",
             "ruff_format.type = exec",
@@ -308,17 +320,6 @@ class AlembicHelper:
             "ruff_fix.executable = ruff",
             "ruff_fix.options = check --fix --quiet REVISION_SCRIPT_FILENAME",
             "",
-            # No [loggers]/[handlers]/[formatters] sections on purpose.
-            # ``env.py`` runs inside the host application process, and
-            # the host already configured Python's logging tree via
-            # ``configure_logging``. If we shipped the stock alembic.ini
-            # ``[logger_root] level = WARN handlers = console`` block,
-            # ``fileConfig(alembic.ini)`` from env.py would reset the
-            # root logger to WARN + a stderr handler, silencing the SDK
-            # 500 handler, the /logs writer and every JSON record the
-            # app emits. The companion env.py template still calls
-            # ``fileConfig`` (guarded on the section presence) so users
-            # who manually re-add a ``[loggers]`` block keep working.
         ]
         ini_path.write_text("\n".join(ini_lines), encoding="utf-8")
 
@@ -455,13 +456,8 @@ class AlembicHelper:
             )
         old_head = heads[0]
 
-        # 1. Empty the database so autogenerate captures the full schema
-        #    instead of an empty diff against the already-migrated DB.
         self.downgrade("base")
 
-        # 2. Clear the versions directory (backup into a subdir or delete).
-        #    Alembic is non-recursive by default, so a ``_squashed_*``
-        #    subdirectory of ``versions/`` is invisible to the script graph.
         versions_dir = Path(script.versions)
         revision_files = [
             path for path in versions_dir.glob("*.py") if path.name != "__init__.py"
@@ -475,7 +471,6 @@ class AlembicHelper:
             for path in revision_files:
                 path.unlink()
 
-        # 3. Autogenerate the single root revision and apply it.
         new_script = self.revision(message=message, autogenerate=True)
         self.upgrade("head")
 
@@ -499,9 +494,22 @@ class AlembicHelper:
         Reads ``alembic_version`` via a temporary sync engine derived
         from the configured URL (async drivers get stripped).
 
+        Falls back to :meth:`_current_via_async` when no sync DBAPI is
+        available for the backend. Two different exceptions signal that,
+        and both are caught: ``NoSuchModuleError`` when SQLAlchemy does
+        not know the stripped driver at all, and ``ModuleNotFoundError``
+        when it knows the driver but the package is not installed —
+        ``create_engine`` imports the DBAPI eagerly in SQLAlchemy 2.0,
+        so an asyncpg-only project (no psycopg2) raises on construction
+        rather than on connect.
+
         Returns:
             str | None: The revision identifier, or ``None`` when the
             ``alembic_version`` table is missing/empty.
+
+        Raises:
+            RuntimeError: When ``sqlalchemy.url`` is not configured, so
+                there is no database to read the revision from.
         """
         config = self.config
         url = config.get_main_option("sqlalchemy.url")
@@ -510,21 +518,12 @@ class AlembicHelper:
         try:
             engine = create_engine(_strip_async_driver(url))
         except (NoSuchModuleError, ModuleNotFoundError):
-            # No sync DBAPI for this backend: either SQLAlchemy doesn't
-            # know the driver (NoSuchModuleError) or it knows it but the
-            # package isn't installed (ModuleNotFoundError — create_engine
-            # eagerly imports the DBAPI in SQLAlchemy 2.0, e.g. an
-            # asyncpg-only project has no psycopg2). Read via the async
-            # driver instead.
             return self._current_via_async(url)
         try:
             with engine.connect() as connection:
                 migration_context = MigrationContext.configure(connection)
                 return migration_context.get_current_revision()
         except ModuleNotFoundError:
-            # No sync DBAPI installed for this backend (e.g. an
-            # asyncpg-only project has no psycopg2). Fall back to the
-            # async driver to read ``alembic_version``.
             return self._current_via_async(url)
         finally:
             engine.dispose()

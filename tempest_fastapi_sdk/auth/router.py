@@ -141,6 +141,28 @@ def make_auth_router(
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
+
+    Notes:
+        Which endpoint groups get mounted, and where:
+
+        * **JSON / SPA endpoints** are always mounted.
+        * **Cookie endpoints** are mounted when ``AUTH_TOKEN_DELIVERY`` is
+          ``cookie`` or ``both``. In ``cookie`` mode they take the normal
+          ``/login``, ``/refresh`` and ``/logout`` paths; in ``both`` mode
+          they move under a ``/cookie/*`` sub-prefix so they do not collide
+          with the bearer endpoints sharing the router.
+        * **Backend-rendered HTML endpoints** are mounted only when
+          ``AUTH_BACKEND_LINKS`` is on.
+        * **MFA endpoints** are mounted only when ``AUTH_MFA_ENABLED`` is on.
+
+        The refresh cookie is scoped to the auth base path rather than the
+        site root, so it reaches the refresh and logout endpoints but is not
+        sent along with ordinary API requests.
+
+        The authenticated-user dependency is shared by the password-change
+        route and, when enabled, the MFA routes. With cookies in play it also
+        accepts the access token from the cookie, with the header still
+        taking precedence.
     """
     from fastapi import Depends
 
@@ -165,9 +187,6 @@ def make_auth_router(
     delivery: TokenDelivery = token_delivery or auth_settings.AUTH_TOKEN_DELIVERY
     mount_bearer = delivery in ("bearer", "both")
     cookie_enabled = delivery in ("cookie", "both")
-    # In "both" mode the cookie endpoints live under a sub-prefix so they
-    # don't collide with the bearer ones; in pure "cookie" mode they take
-    # the normal /login, /refresh, /logout paths.
     cookie_suffix = "/cookie" if delivery == "both" else ""
     cookie_base = f"{prefix}{cookie_suffix}"
     cookies = cookie_config or AuthCookieConfig(
@@ -175,8 +194,6 @@ def make_auth_router(
         refresh_name=auth_settings.AUTH_REFRESH_COOKIE_NAME,
         access_max_age=service.jwt_settings.JWT_ACCESS_TTL_SECONDS,
         refresh_max_age=service.jwt_settings.JWT_REFRESH_TTL_SECONDS,
-        # Scope the refresh cookie to the auth base so it reaches both the
-        # refresh and logout endpoints, but not ordinary API routes.
         refresh_path=cookie_base or "/",
         secure=auth_settings.AUTH_COOKIE_SECURE,
         samesite=auth_settings.AUTH_COOKIE_SAMESITE,
@@ -209,9 +226,6 @@ def make_auth_router(
         )
         return HTMLResponse(content=html, status_code=400)
 
-    # Authenticated-user dependency, shared by the password-change route
-    # and (when enabled) the MFA routes. When cookies are in play it also
-    # accepts the access token from the cookie (header still wins).
     current_user_dep = make_jwt_user_dependency(
         service.jwt,
         user_loader=_make_user_loader(service, session_factory),
@@ -241,7 +255,6 @@ def make_auth_router(
         return lambda func: func
 
     # ------------------------------------------------------------------
-    # JSON / SPA endpoints — always mounted.
     # ------------------------------------------------------------------
 
     @router.post(
@@ -735,9 +748,6 @@ def make_auth_router(
             await session.commit()
 
     # ------------------------------------------------------------------
-    # Cookie endpoints — mounted when AUTH_TOKEN_DELIVERY is cookie/both.
-    # In "cookie" mode they take the normal /login, /refresh, /logout
-    # paths; in "both" mode they live under /cookie/* alongside bearer.
     # ------------------------------------------------------------------
 
     if cookie_enabled:
@@ -848,7 +858,6 @@ def make_auth_router(
             clear_auth_cookies(response, config=cookies)
 
     # ------------------------------------------------------------------
-    # Backend-only HTML endpoints — mounted only when AUTH_BACKEND_LINKS.
     # ------------------------------------------------------------------
 
     if backend_links:
@@ -1133,7 +1142,6 @@ def make_auth_router(
             return HTMLResponse(content=html)
 
     # ------------------------------------------------------------------
-    # MFA endpoints — mounted only when AUTH_MFA_ENABLED.
     # ------------------------------------------------------------------
 
     if auth_settings.AUTH_MFA_ENABLED:
