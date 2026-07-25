@@ -102,9 +102,14 @@ def _widget_for(
     Returns:
         tuple[str, str | None, list[tuple[str, str]]]: Widget name, the
         ``number`` step (or ``None``), and ``select`` options.
+
+    Notes:
+        Two checks are order-sensitive. ``JSON`` columns are matched first
+        because their ``python_type`` is undefined, so they would otherwise
+        fall through to a plain text input. And ``datetime`` is matched
+        before ``date``, since it is a subclass and the ``date`` branch
+        would swallow it.
     """
-    # JSON columns first — their ``python_type`` is undefined, so they
-    # would otherwise fall through to a plain text input.
     if isinstance(column.type, JSON):
         return ("json", None, [])
     if py is bool:
@@ -119,7 +124,6 @@ def _widget_for(
         return ("number", "1", [])
     if py is float or py is Decimal:
         return ("number", "any", [])
-    # datetime is a subclass of date — check it first.
     if py is _dt.datetime:
         return ("datetime", None, [])
     if py is _dt.date:
@@ -239,6 +243,16 @@ def build_form_fields(
 
     Returns:
         list[FormField]: Descriptors ready for the template.
+
+    Notes:
+        Autocomplete fields get an empty option list on purpose: the router
+        fills ``autocomplete_url`` + ``display_label`` and the options are
+        fetched on demand over HTMX rather than pre-loaded.
+
+        Upload fields cannot be pre-filled — a browser will not accept a
+        value for a file input — so the stored key is surfaced as a
+        read-only hint instead, and an existing file never forces the user
+        to re-upload to save the form.
     """
     columns = sa_inspect(admin.model).columns
     errors = errors or {}
@@ -254,8 +268,6 @@ def build_form_fields(
         widget, step, options = _widget_for(column, py)
         is_autocomplete = name in admin.autocomplete_fields
         if is_autocomplete:
-            # The router fills autocomplete_url + display_label; options
-            # are fetched on demand, not pre-loaded.
             widget = "autocomplete"
             options = []
         elif name in fk_options:
@@ -269,8 +281,6 @@ def build_form_fields(
         value: Any = ""
         checked = False
         if is_upload:
-            # File inputs can't be pre-filled; surface the stored key as a
-            # read-only hint and never force a re-upload when one exists.
             current = None if instance is None else getattr(instance, name, None)
             value = current or ""
             if current:
@@ -350,6 +360,11 @@ def parse_submission(
         ``errors`` maps field name → message for the ones that did not.
         Optional + blank fields are set to ``None`` when nullable, or
         omitted so the column default applies.
+
+    Notes:
+        Upload fields are skipped here. They carry an ``UploadFile`` rather
+        than a scalar, and the router saves the file and injects the
+        resulting key into ``data`` separately.
     """
     columns = sa_inspect(admin.model).columns
     data: dict[str, Any] = {}
@@ -360,8 +375,6 @@ def parse_submission(
         column = columns.get(name)
         if column is None:
             continue
-        # Upload fields hold an UploadFile, not a scalar — the router saves
-        # the file and injects the resulting key into ``data`` separately.
         if name in admin.upload_fields:
             continue
         py = _python_type(column)
@@ -378,7 +391,6 @@ def parse_submission(
             if _is_optional(column):
                 if column.nullable:
                     data[name] = None
-                # else: leave unset so the column default applies
             else:
                 errors[name] = "This field is required."
             continue

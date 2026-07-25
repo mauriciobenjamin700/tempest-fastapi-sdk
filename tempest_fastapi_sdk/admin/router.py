@@ -325,13 +325,16 @@ def make_admin_router(
 
         Returns:
             HTMLResponse: The rendered response.
+
+        Notes:
+            The sidebar navigation is injected here rather than per view
+            because every authenticated page shares it. It is built from
+            the registry, with no database hit, so one source drives both
+            the dashboard cards and the persistent sidebar.
         """
         context.setdefault("site", site)
         context.setdefault("messages", [])
         context.setdefault("static_url", f"{prefix}/static")
-        # Sidebar navigation, shared by every authenticated page. Built
-        # from the registry (no DB hit) so a single source drives both
-        # the dashboard cards and the persistent sidebar.
         context.setdefault(
             "nav_models",
             [
@@ -469,10 +472,14 @@ def make_admin_router(
         Returns:
             dict[str, list[tuple[str, str]]]: Field → ``(value, label)``
             options, capped at ``FK_OPTION_CAP`` rows.
+
+        Notes:
+            Fields listed in ``autocomplete_fields`` are skipped: those are
+            searched on demand over HTMX and must never be pre-loaded, which
+            is the whole point of marking them autocomplete.
         """
         options: dict[str, list[tuple[str, str]]] = {}
         for field_name, table in fk_fields(admin).items():
-            # Autocomplete FKs are searched on demand — never pre-loaded.
             if field_name in admin.autocomplete_fields:
                 continue
             referenced = site.get(table)
@@ -1030,6 +1037,17 @@ def make_admin_router(
 
         Returns:
             HTMLResponse: The list template.
+
+        Notes:
+            A lens is a saved preset. Its filters are ANDed underneath the
+            user's — user keys win on a conflict — and its ordering applies
+            only while the user has not clicked a column sort.
+
+            Two query-parameter sets are carried onto the rendered links so
+            navigating never silently drops the user's context: pagination
+            links keep search, filters and sort (``active_filters`` already
+            holds the full ``filter_*`` keys), and sort links keep the same
+            minus the paging and sort keys they are about to replace.
         """
         admin = site.get(slug)
         if admin is None:
@@ -1048,9 +1066,6 @@ def make_admin_router(
             active_ascending,
         ) = _resolve_filters_and_order(admin, request, q, sort, dir)
 
-        # A lens is a saved preset: its filters are ANDed under the
-        # user's (user keys win on conflict) and its ordering applies
-        # unless the user clicked a column sort.
         active_lens = admin.get_lens(lens) if lens else None
         if active_lens is not None:
             filters = {**active_lens.filters, **filters}
@@ -1076,15 +1091,12 @@ def make_admin_router(
             for instance in result["items"]
         ]
 
-        # Params preserved on pagination links (search + filters + sort).
-        # active_filters already holds the full ``filter_*`` query keys.
         query_params: dict[str, str] = {}
         if q:
             query_params["q"] = q
         if active_lens is not None:
             query_params["lens"] = lens
         query_params.update(active_filters)
-        # Params preserved on sort links — same minus paging/sort.
         sort_base = dict(query_params)
         if active_sort:
             query_params["sort"] = active_sort
@@ -1233,12 +1245,16 @@ def make_admin_router(
         Raises:
             HTTPException: ``404`` for unknown admin or when creation is
                 disabled.
+
+        Notes:
+            Editable fields are pre-filled from the query string. That is
+            what an inline "Add" link relies on to seed the parent foreign
+            key, so only names in ``editable_field_names()`` are accepted —
+            an arbitrary query parameter can never reach the form.
         """
         admin = _require_admin(slug, lambda a: a.can_create)
         principal = await _resolve_principal(request, db_session, session)
         await _require_access(principal, admin, AdminPermission.CREATE)
-        # Pre-fill editable fields from query params — this is what an
-        # inline "Add" link uses to seed the parent foreign key.
         editable = set(admin.editable_field_names())
         prefill = {
             key: value for key, value in request.query_params.items() if key in editable
@@ -1473,13 +1489,16 @@ def make_admin_router(
         Raises:
             HTTPException: ``404`` for unknown admin, ``403`` on CSRF
                 mismatch, ``400`` for an unknown / unpermitted action.
+
+        Notes:
+            The permission needed depends on the action: ``delete`` removes
+            rows and so requires ``DELETE``, while activate / deactivate and
+            every custom action only mutate them and require ``EDIT``.
         """
         admin = site.get(slug)
         if admin is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown admin")
         principal = await _resolve_principal(request, db_session, session)
-        # "delete" removes rows → DELETE; activate/deactivate/custom mutate
-        # rows → EDIT.
         needed = AdminPermission.DELETE if action == "delete" else AdminPermission.EDIT
         await _require_access(principal, admin, needed)
         _check_csrf(session, csrf_token)
@@ -1597,6 +1616,13 @@ def make_admin_router(
 
         Returns:
             HTMLResponse: The rendered detail template.
+
+        Notes:
+            Two column groups are held back from the field list:
+            ``hashed_password`` is never shown, and the audit/timestamp
+            columns move to the dedicated audit panel further down the page.
+            ``JSON`` columns are pretty-printed, mirroring what the edit
+            form's JSON widget does, so the two views read the same.
         """
         columns = admin.column_names()
         readonly = set(admin.readonly_fields)
@@ -1604,14 +1630,11 @@ def make_admin_router(
         json_columns: set[str] = set()
         fields: list[tuple[str, Any]] = []
         for column in columns:
-            # The hashed password is never shown; audit/timestamp columns
-            # move to the dedicated audit panel below.
             if column == "hashed_password" or column in _AUDIT_FIELDS:
                 continue
             raw_value = getattr(instance, column, None)
             col = model_columns.get(column)
             if col is not None and isinstance(col.type, JSON) and raw_value is not None:
-                # Pretty-print JSON, mirroring the edit-form JSON widget.
                 raw_value = json.dumps(
                     raw_value, indent=2, ensure_ascii=False, sort_keys=True
                 )
@@ -2014,6 +2037,17 @@ def make_admin_router(
         Returns:
             Response: Redirect to the parent detail on success; the
             re-rendered detail (``400``) with per-field errors otherwise.
+
+        Notes:
+            The parent foreign key is excluded from the parsed names and
+            forced from the URL instead, so a crafted form can never
+            re-point a child row at a different parent.
+
+            Posted inputs are named ``row.<key>.<field>`` and grouped by
+            row key before parsing. A new row whose every value is blank is
+            treated as an add row the user left untouched and skipped, so
+            submitting the formset without filling the extra row does not
+            create an empty child.
         """
         parent_admin = _require_admin(slug, lambda a: a.can_edit)
         principal = await _resolve_principal(request, db_session, session)
@@ -2042,12 +2076,10 @@ def make_admin_router(
         parent_id = getattr(parent, "id", None)
 
         form = await request.form()
-        # The parent foreign key is implied — forced below, never parsed.
         names = set(inline_editable_names(child_admin)) - {inline.fk_field}
         child_repo = child_admin.build_repository(db_session)
         actor_id = auth_backend.principal_id(principal)
 
-        # Group posted inputs by row key: ``row.<key>.<field>``.
         grouped: dict[str, dict[str, str]] = {}
         to_delete: set[str] = set()
         for full_key in form:
@@ -2085,7 +2117,6 @@ def make_admin_router(
                     await child_repo.delete(existing.id)
                 continue
             if is_new and not any(v.strip() for v in values.values()):
-                # A blank add row the user left untouched — skip it.
                 continue
             data, errs = parse_submission(child_admin, values, only=names)
             if errs:
@@ -2402,6 +2433,10 @@ def _bulk_actions(admin: Any) -> list[tuple[str, str]]:
     Returns:
         list[tuple[str, str]]: Action option pairs (empty when no
         mutation is permitted).
+
+    Notes:
+        Custom actions are namespaced as ``custom:<name>`` so their values
+        can never collide with the built-in ones.
     """
     actions: list[tuple[str, str]] = []
     if admin.can_edit:
@@ -2409,8 +2444,6 @@ def _bulk_actions(admin: Any) -> list[tuple[str, str]]:
         actions.append(("deactivate", "Deactivate"))
     if admin.can_delete:
         actions.append(("delete", "Delete"))
-    # Custom actions are namespaced (``custom:<name>``) so they can never
-    # collide with the built-in values above.
     for action in admin.custom_actions():
         actions.append((f"custom:{action.name}", action.label))
     return actions
@@ -2464,8 +2497,11 @@ def _build_editable_inline(
 
     Returns:
         dict[str, Any]: The template-ready editable inline block.
+
+    Notes:
+        The parent foreign key is dropped from the field list: it is implied
+        by the row being edited and must never become a formset input.
     """
-    # The parent foreign key is implied by the row — never a formset input.
     names = [n for n in inline_editable_names(child_admin) if n != inline.fk_field]
     headers = [
         form_field.label for form_field in build_form_fields(child_admin, only=names)
