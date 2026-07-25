@@ -960,9 +960,14 @@ class UserAuthService:
         Returns:
             str: The plaintext opaque token — surfaced once, never
             stored in cleartext.
+
+        Notes:
+            Asserts that ``refresh_token_model`` is configured rather than
+            handling ``None``: every caller reaches this only after the
+            opt-in DB-backed refresh flow is known to be enabled.
         """
         model = self.refresh_token_model
-        assert model is not None  # guarded by callers
+        assert model is not None
         plain, digest = generate_opaque_token(48)
         record = model(
             user_id=user_id,
@@ -994,9 +999,22 @@ class UserAuthService:
             InvalidTokenException: When the token is unknown, revoked,
                 expired, or already rotated (reuse — the family is
                 revoked as a side effect before raising).
+
+        Notes:
+            Reuse of an already-rotated token is the classic stolen-token
+            signal, so the whole family is revoked before raising: without
+            that, an attacker holding a descendant token could keep the
+            session alive indefinitely.
+
+            Timestamps are compared as naive UTC because the two supported
+            backends disagree — SQLite stores naive, Postgres returns
+            timezone-aware — and normalizing lets one code path serve both.
+
+            Asserts that ``refresh_token_model`` is configured; callers only
+            get here with the opt-in refresh flow enabled.
         """
         model = self.refresh_token_model
-        assert model is not None  # guarded by callers
+        assert model is not None
         digest = hash_opaque_token(token)
         result = await session.execute(select(model).where(model.token_hash == digest))
         record: BaseUserRefreshTokenModel | None = result.scalar_one_or_none()
@@ -1005,14 +1023,8 @@ class UserAuthService:
         if record.revoked_at is not None:
             raise InvalidTokenException(message="refresh token revoked")
         if record.used_at is not None:
-            # Reuse of an already-rotated token is the classic stolen-token
-            # signal — kill the whole family so the attacker can't keep the
-            # session alive with the descendant token.
             await self._revoke_family(session, record.family_id)
             raise InvalidTokenException(message="refresh token reuse detected")
-        # SQLite stores timestamps as naive UTC; Postgres returns
-        # timezone-aware. Normalize to naive for the comparison so the
-        # same code path works against both backends.
         now = utcnow().replace(tzinfo=None)
         expires_at = (
             record.expires_at.replace(tzinfo=None)
@@ -1028,9 +1040,13 @@ class UserAuthService:
         session: AsyncSession,
         family_id: UUID,
     ) -> None:
-        """Flip ``revoked_at`` on every still-active token in a family."""
+        """Flip ``revoked_at`` on every still-active token in a family.
+
+        Asserts that ``refresh_token_model`` is configured; callers only
+        reach this with the opt-in refresh flow enabled.
+        """
         model = self.refresh_token_model
-        assert model is not None  # guarded by callers
+        assert model is not None
         await session.execute(
             update(model)
             .where(model.family_id == family_id, model.revoked_at.is_(None))
@@ -1435,9 +1451,6 @@ class UserAuthService:
             raise InvalidTokenException(message="token not recognized")
         if record.used_at is not None:
             raise InvalidTokenException(message="token already used")
-        # SQLite stores timestamps as naive UTC; Postgres returns
-        # timezone-aware. Normalize to naive for the comparison so the
-        # same code path works against both backends.
         now = utcnow().replace(tzinfo=None)
         expires_at = (
             record.expires_at.replace(tzinfo=None)
@@ -1648,13 +1661,17 @@ class UserAuthService:
 
         Raises:
             ImportError: When the ``[mfa]`` extra is not installed.
+
+        Notes:
+            Enrolling wipes any previously stored recovery codes — enrollment
+            has rotation semantics, so an old code set never stays valid
+            alongside a new one.
         """
         from tempest_fastapi_sdk.utils.totp import TOTPHelper
 
         totp = TOTPHelper(issuer=self.auth_settings.AUTH_MFA_ISSUER)
         secret = totp.generate_secret()
         provisioning = totp.provisioning_uri(secret, user.email)
-        # Wipe previously stored recovery codes (rotation semantics).
         await session.execute(
             delete(recovery_code_model).where(
                 recovery_code_model.user_id == user.id,
@@ -1809,7 +1826,22 @@ class UserAuthService:
         code: str,
         recovery_code_model: type[BaseUserRecoveryCodeModel],
     ) -> bool:
-        """Check ``code`` against TOTP first, then unused recovery codes."""
+        """Check ``code`` against TOTP first, then unused recovery codes.
+
+        The recovery-code branch is the fallback, matched against the
+        single-use codes handed out (in plaintext) at enrollment.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            user (BaseUserModel): The user being verified.
+            code (str): The submitted TOTP or recovery code.
+            recovery_code_model (type[BaseUserRecoveryCodeModel]): The model
+                holding this project's recovery codes.
+
+        Returns:
+            bool: ``True`` when the code matched a valid TOTP window or an
+            unused recovery code.
+        """
         from tempest_fastapi_sdk.utils.totp import TOTPHelper
 
         if user.totp_secret:
@@ -1820,7 +1852,6 @@ class UserAuthService:
                 window=self.auth_settings.AUTH_MFA_VERIFY_WINDOW,
             ):
                 return True
-        # Fallback: single-use recovery code (plaintext from enrollment).
         digest = hash_opaque_token(code.strip())
         result = await session.execute(
             select(recovery_code_model).where(

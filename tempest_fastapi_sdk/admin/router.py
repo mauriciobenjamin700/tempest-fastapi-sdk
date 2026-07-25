@@ -893,7 +893,7 @@ def make_admin_router(
         for card in site.dashboard_cards:
             try:
                 data = await card.compute(db_session)
-            except Exception:  # a broken metric must not blank the page
+            except Exception:
                 continue
             entry: dict[str, Any] = {"label": card.label, "help": card.help_text}
             if isinstance(data, MetricTrend):
@@ -1348,6 +1348,11 @@ def make_admin_router(
         Raises:
             HTTPException: ``404`` when import is disabled; ``403`` on
                 CSRF mismatch.
+
+        Notes:
+            Row numbering in the error report starts at 2 because row 1 is the
+            CSV header, so the numbers line up with what the user sees in a
+            spreadsheet.
         """
         admin = _require_admin(slug, lambda a: a.can_import and a.can_create)
         principal = await _resolve_principal(request, db_session, session)
@@ -1367,7 +1372,7 @@ def make_admin_router(
             actor_id = auth_backend.principal_id(principal)
             created = 0
             row_errors: list[dict[str, Any]] = []
-            for line_no, row in enumerate(reader, start=2):  # row 1 is the header
+            for line_no, row in enumerate(reader, start=2):
                 data, errors = parse_submission(admin, row)
                 if errors:
                     row_errors.append({"row": line_no, "errors": errors})
