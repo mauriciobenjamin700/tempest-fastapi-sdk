@@ -76,11 +76,23 @@ class EmbeddingCache(Protocol):
     """A synchronous per-text vector cache (e.g. a dict wrapper)."""
 
     def get(self, key: str) -> list[float] | None:
-        """Return the cached vector for ``key``, or ``None`` on a miss."""
+        """Return the cached vector for ``key``, or ``None`` on a miss.
+
+        Args:
+            key (str): Cache key for the embedded text.
+
+        Returns:
+            list[float] | None: The cached vector, or ``None`` on a miss.
+        """
         ...
 
     def set(self, key: str, value: list[float]) -> None:
-        """Store ``value`` under ``key``."""
+        """Store ``value`` under ``key``.
+
+        Args:
+            key (str): Cache key for the embedded text.
+            value (list[float]): The vector to store.
+        """
         ...
 
 
@@ -97,11 +109,23 @@ class AsyncEmbeddingCache(Protocol):
     """
 
     async def get(self, key: str) -> list[float] | None:
-        """Return the cached vector for ``key``, or ``None`` on a miss."""
+        """Return the cached vector for ``key``, or ``None`` on a miss.
+
+        Args:
+            key (str): Cache key for the embedded text.
+
+        Returns:
+            list[float] | None: The cached vector, or ``None`` on a miss.
+        """
         ...
 
     async def set(self, key: str, value: list[float]) -> None:
-        """Store ``value`` under ``key``."""
+        """Store ``value`` under ``key``.
+
+        Args:
+            key (str): Cache key for the embedded text.
+            value (list[float]): The vector to store.
+        """
         ...
 
 
@@ -117,11 +141,23 @@ class InMemoryEmbeddingCache:
         self._store: dict[str, list[float]] = {}
 
     def get(self, key: str) -> list[float] | None:
-        """Return the cached vector for ``key`` or ``None``."""
+        """Return the cached vector for ``key`` or ``None``.
+
+        Args:
+            key (str): Cache key for the embedded text.
+
+        Returns:
+            list[float] | None: The cached vector, or ``None`` on a miss.
+        """
         return self._store.get(key)
 
     def set(self, key: str, value: list[float]) -> None:
-        """Store ``value`` under ``key``."""
+        """Store ``value`` under ``key``.
+
+        Args:
+            key (str): Cache key for the embedded text.
+            value (list[float]): The vector to store.
+        """
         self._store[key] = value
 
 

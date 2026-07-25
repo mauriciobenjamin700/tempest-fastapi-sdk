@@ -264,7 +264,15 @@ class _JWTDecoder(Protocol):
     """
 
     def decode_or_none(self, token: str) -> dict[str, Any] | None:
-        """Decode a token, returning ``None`` when it is missing/invalid."""
+        """Decode a token, returning ``None`` when it is missing/invalid.
+
+        Args:
+            token (str): The bearer token to decode.
+
+        Returns:
+            dict[str, Any] | None: The decoded claims, or ``None`` when the
+                token is absent or undecodable.
+        """
         ...
 
 

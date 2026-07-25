@@ -176,7 +176,19 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         with_: builtins.list[str] | None = None,
         where: Q | None = None,
     ) -> TenantModelType:
-        """See :meth:`BaseRepository.get` — scoped to the tenant."""
+        """See :meth:`BaseRepository.get` — scoped to the tenant.
+
+        Args:
+            filters (dict[str, Any]): Column filters applied on top of the
+                tenant scope.
+            for_update (bool): Whether to lock the selected rows.
+            with_ (builtins.list[str] | None): Relationship names to eager-
+                load.
+            where (Q | None): Extra filter narrowing the tenant-scoped query.
+
+        Returns:
+            TenantModelType: The row.
+        """
         return await super().get(
             self._with_tenant(filters),
             for_update=for_update,
@@ -191,7 +203,20 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         with_: builtins.list[str] | None = None,
         where: Q | None = None,
     ) -> TenantModelType | None:
-        """See :meth:`BaseRepository.get_or_none` — scoped to the tenant."""
+        """See :meth:`BaseRepository.get_or_none` — scoped to the tenant.
+
+        Args:
+            filters (dict[str, Any]): Column filters applied on top of the
+                tenant scope.
+            for_update (bool): Whether to lock the selected rows.
+            with_ (builtins.list[str] | None): Relationship names to eager-
+                load.
+            where (Q | None): Extra filter narrowing the tenant-scoped query.
+
+        Returns:
+            TenantModelType | None: The row, or ``None`` when absent or owned
+                by another tenant.
+        """
         return await super().get_or_none(
             self._with_tenant(filters),
             for_update=for_update,
@@ -200,7 +225,16 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         )
 
     async def exists(self, filters: dict[str, Any], where: Q | None = None) -> bool:
-        """See :meth:`BaseRepository.exists` — scoped to the tenant."""
+        """See :meth:`BaseRepository.exists` — scoped to the tenant.
+
+        Args:
+            filters (dict[str, Any]): Column filters applied on top of the
+                tenant scope.
+            where (Q | None): Extra filter narrowing the tenant-scoped query.
+
+        Returns:
+            bool: Whether any row matched.
+        """
         return await super().exists(self._with_tenant(filters), where=where)
 
     async def first(
@@ -211,7 +245,22 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         with_: builtins.list[str] | None = None,
         where: Q | None = None,
     ) -> TenantModelType | None:
-        """See :meth:`BaseRepository.first` — scoped to the tenant."""
+        """See :meth:`BaseRepository.first` — scoped to the tenant.
+
+        Args:
+            filters (dict[str, Any] | None): Column filters applied on top of
+                the tenant scope.
+            order_by (Any | None): Column to sort by; ``None`` keeps the
+                repository default.
+            ascending (bool): Whether to sort ascending.
+            with_ (builtins.list[str] | None): Relationship names to eager-
+                load.
+            where (Q | None): Extra filter narrowing the tenant-scoped query.
+
+        Returns:
+            TenantModelType | None: The row, or ``None`` when absent or owned
+                by another tenant.
+        """
         return await super().first(
             self._with_tenant(filters),
             order_by=order_by,
@@ -228,7 +277,22 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         with_: builtins.list[str] | None = None,
         where: Q | None = None,
     ) -> builtins.list[TenantModelType]:
-        """See :meth:`BaseRepository.list` — scoped to the tenant."""
+        """See :meth:`BaseRepository.list` — scoped to the tenant.
+
+        Args:
+            filters (dict[str, Any] | None): Column filters applied on top of
+                the tenant scope.
+            order_by (Any | None): Column to sort by; ``None`` keeps the
+                repository default.
+            ascending (bool): Whether to sort ascending.
+            with_ (builtins.list[str] | None): Relationship names to eager-
+                load.
+            where (Q | None): Extra filter narrowing the tenant-scoped query.
+
+        Returns:
+            builtins.list[TenantModelType]: Matching rows, scoped to the
+                tenant.
+        """
         return await super().list(
             self._with_tenant(filters),
             order_by=order_by,
@@ -240,7 +304,16 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
     async def count(
         self, filters: dict[str, Any] | None = None, where: Q | None = None
     ) -> int:
-        """See :meth:`BaseRepository.count` — scoped to the tenant."""
+        """See :meth:`BaseRepository.count` — scoped to the tenant.
+
+        Args:
+            filters (dict[str, Any] | None): Column filters applied on top of
+                the tenant scope.
+            where (Q | None): Extra filter narrowing the tenant-scoped query.
+
+        Returns:
+            int: How many rows matched.
+        """
         return await super().count(self._with_tenant(filters), where=where)
 
     async def paginate(
@@ -258,6 +331,21 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         When a pre-built ``query`` is passed, scope it yourself with
         ``.where(self.tenant_column == self.tenant_id)`` — the override
         only auto-scopes the default ``select(self.model)`` path.
+
+        Args:
+            filters (dict[str, Any] | None): Column filters applied on top of
+                the tenant scope.
+            order_by (str | None): Column to sort by; ``None`` keeps the
+                repository default.
+            page (int): 1-indexed page number.
+            page_size (int): Rows per page.
+            ascending (bool): Whether to sort ascending.
+            query (Any | None): A pre-built query to scope; ``None`` starts a
+                fresh one.
+            where (Q | None): Extra filter narrowing the tenant-scoped query.
+
+        Returns:
+            dict[str, Any]: The pagination envelope.
         """
         return await super().paginate(
             self._with_tenant(filters),
@@ -284,6 +372,20 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         applies even when a pre-built ``query`` is passed. As with
         :meth:`paginate`, joins/predicates inside that ``query`` are
         the caller's responsibility.
+
+        Args:
+            filters (dict[str, Any] | None): Column filters applied on top of
+                the tenant scope.
+            cursor (str | None): Opaque cursor from a previous page.
+            limit (int): Maximum rows to return.
+            order_by (str): Column to sort by; ``None`` keeps the repository
+                default.
+            ascending (bool): Whether to sort ascending.
+            query (Any | None): A pre-built query to scope; ``None`` starts a
+                fresh one.
+
+        Returns:
+            dict[str, Any]: The pagination envelope.
         """
         return await super().cursor_paginate(
             self._with_tenant(filters),
@@ -300,6 +402,14 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         Because the tenant predicate is always added, an empty
         ``filters`` deletes only **this tenant's** rows, never the whole
         table.
+
+        Args:
+            filters (dict[str, Any]): Column filters applied on top of the
+                tenant scope.
+            where (Q | None): Extra filter narrowing the tenant-scoped query.
+
+        Returns:
+            int: How many rows matched.
         """
         return await super().delete_many(self._with_tenant(filters), where=where)
 

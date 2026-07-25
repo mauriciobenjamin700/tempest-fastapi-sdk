@@ -52,11 +52,27 @@ class _RedisLike(Protocol):
     """
 
     async def get(self, key: str) -> str | bytes | None:
-        """Return the stored value (or ``None`` when absent)."""
+        """Return the stored value (or ``None`` when absent).
+
+        Args:
+            key (str): The idempotency key from the request header.
+
+        Returns:
+            str | bytes | None: The stored payload, or ``None`` on a miss.
+        """
         ...
 
     async def set(self, key: str, value: str, ex: int) -> object:
-        """Store ``value`` under ``key`` with TTL ``ex`` (seconds)."""
+        """Store ``value`` under ``key`` with TTL ``ex`` (seconds).
+
+        Args:
+            key (str): The idempotency key from the request header.
+            value (str): The serialized payload to store.
+            ex (int): Time-to-live in seconds.
+
+        Returns:
+            object: Whatever the client returns; the caller ignores it.
+        """
         ...
 
 
@@ -92,7 +108,14 @@ class IdempotencyStore(Protocol):
     """Protocol every idempotency cache implements."""
 
     async def get(self, key: str) -> CachedResponse | None:
-        """Return the cached response for ``key`` or ``None`` when missing."""
+        """Return the cached response for ``key`` or ``None`` when missing.
+
+        Args:
+            key (str): The idempotency key from the request header.
+
+        Returns:
+            CachedResponse | None: The stored response, or ``None`` on a miss.
+        """
         ...
 
     async def set(
@@ -102,7 +125,13 @@ class IdempotencyStore(Protocol):
         *,
         ttl_seconds: int,
     ) -> None:
-        """Store ``response`` under ``key`` with a TTL."""
+        """Store ``response`` under ``key`` with a TTL.
+
+        Args:
+            key (str): The idempotency key from the request header.
+            response (CachedResponse): The response to remember for replays.
+            ttl_seconds (int): How long the entry stays replayable.
+        """
         ...
 
 
@@ -124,7 +153,14 @@ class MemoryIdempotencyStore:
         self._lock: asyncio.Lock = asyncio.Lock()
 
     async def get(self, key: str) -> CachedResponse | None:
-        """Return the cached response, evicting if expired."""
+        """Return the cached response, evicting if expired.
+
+        Args:
+            key (str): The idempotency key from the request header.
+
+        Returns:
+            CachedResponse | None: The stored response, or ``None`` on a miss.
+        """
         async with self._lock:
             entry = self._store.get(key)
             if entry is None:
@@ -142,7 +178,13 @@ class MemoryIdempotencyStore:
         *,
         ttl_seconds: int,
     ) -> None:
-        """Store the response with an expiry."""
+        """Store the response with an expiry.
+
+        Args:
+            key (str): The idempotency key from the request header.
+            response (CachedResponse): The response to remember for replays.
+            ttl_seconds (int): How long the entry stays replayable.
+        """
         async with self._lock:
             self._store[key] = (time.monotonic() + ttl_seconds, response)
 
@@ -182,7 +224,14 @@ class RedisIdempotencyStore:
         return f"{self.prefix}{key}"
 
     async def get(self, key: str) -> CachedResponse | None:
-        """Fetch and decode the cached response."""
+        """Fetch and decode the cached response.
+
+        Args:
+            key (str): The idempotency key from the request header.
+
+        Returns:
+            CachedResponse | None: The stored response, or ``None`` on a miss.
+        """
         import base64
 
         raw = await self.client.get(self._key(key))
@@ -203,7 +252,13 @@ class RedisIdempotencyStore:
         *,
         ttl_seconds: int,
     ) -> None:
-        """Serialize and write with EXPIRE."""
+        """Serialize and write with EXPIRE.
+
+        Args:
+            key (str): The idempotency key from the request header.
+            response (CachedResponse): The response to remember for replays.
+            ttl_seconds (int): How long the entry stays replayable.
+        """
         import base64
 
         payload = json.dumps(
@@ -273,7 +328,17 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        """Replay cached responses when the same key reappears."""
+        """Replay cached responses when the same key reappears.
+
+        Args:
+            request (Request): The inbound request.
+            call_next (Callable[[Request], Awaitable[Response]]): The next
+                handler in the middleware chain.
+
+        Returns:
+            Response: The replayed response on a hit, otherwise the handler's
+                own.
+        """
         if request.method not in _MUTATING_METHODS:
             return await call_next(request)
 

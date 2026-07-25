@@ -139,6 +139,13 @@ class TaskDef:
         Raises:
             NotImplementedError: When neither ``run`` is overridden nor
                 any :func:`task_method` is defined.
+
+        Args:
+            *args (Any): Positional arguments forwarded to the task.
+            **kwargs (Any): Keyword arguments forwarded to the task.
+
+        Returns:
+            Any: Whatever the wrapped task returns.
         """
         raise NotImplementedError(
             "Override run() (constructor form) or mark methods with "

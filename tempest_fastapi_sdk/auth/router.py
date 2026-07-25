@@ -171,10 +171,6 @@ def make_auth_router(
     Raises:
         RuntimeError: When the requested token delivery mode needs a
             refresh-token model and the service was built without one.
-
-    Raises:
-        RuntimeError: When the requested token delivery mode needs a
-            refresh-token model and the service was built without one.
     """
     from fastapi import Depends
 

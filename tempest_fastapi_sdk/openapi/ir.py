@@ -61,7 +61,11 @@ class FieldIR:
 
     @property
     def has_metadata(self) -> bool:
-        """Whether the specification supplied any documentation for this field."""
+        """Whether the specification supplied any documentation for this field.
+
+        Returns:
+            bool: Whether the condition holds.
+        """
         return bool(self.title or self.description or self.examples)
 
 
@@ -106,6 +110,9 @@ class SchemaIR:
         input. Pydantic merges ``model_config`` across inheritance, so
         declaring it on the generated class keeps everything else the base
         sets.
+
+        Returns:
+            bool: Whether the condition holds.
         """
         return any(f.alias for f in self.fields)
 
@@ -172,12 +179,22 @@ class OperationIR:
 
     @property
     def path_parameters(self) -> tuple[ParameterIR, ...]:
-        """Parameters interpolated into the URL."""
+        """Parameters interpolated into the URL.
+
+        Returns:
+            tuple[ParameterIR, ...]: The matching parameters, in declaration
+                order.
+        """
         return tuple(p for p in self.parameters if p.location == "path")
 
     @property
     def query_parameters(self) -> tuple[ParameterIR, ...]:
-        """Parameters sent in the query string."""
+        """Parameters sent in the query string.
+
+        Returns:
+            tuple[ParameterIR, ...]: The matching parameters, in declaration
+                order.
+        """
         return tuple(p for p in self.parameters if p.location == "query")
 
 

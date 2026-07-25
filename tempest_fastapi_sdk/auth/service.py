@@ -1616,13 +1616,26 @@ class UserAuthService:
         :attr:`AuthSettings.AUTH_MFA_ENABLED` — when the kill-switch
         is off, every user is treated as unenrolled so the login
         flow stays single-step.
+
+        Args:
+            user (BaseUserModel): The user to inspect.
+
+        Returns:
+            bool: Whether the condition holds for that user.
         """
         if not self.auth_settings.AUTH_MFA_ENABLED:
             return False
         return getattr(user, "totp_enabled_at", None) is not None
 
     def issue_mfa_token(self, user: BaseUserModel) -> str:
-        """Mint the short-lived JWT that bridges step 1 and step 2 of login."""
+        """Mint the short-lived JWT that bridges step 1 and step 2 of login.
+
+        Args:
+            user (BaseUserModel): The user to inspect.
+
+        Returns:
+            str: The generated value.
+        """
         return self.jwt.encode(
             {"sub": str(user.id), "purpose": "mfa_pending"},
             ttl=timedelta(

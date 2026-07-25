@@ -68,7 +68,16 @@ class SessionMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        """Resolve the cookie before delegating to the route handler."""
+        """Resolve the cookie before delegating to the route handler.
+
+        Args:
+            request (Request): The inbound request.
+            call_next (Callable[[Request], Awaitable[Response]]): The next
+                handler in the middleware chain.
+
+        Returns:
+            Response: The downstream response, after this middleware ran.
+        """
         cookie = request.cookies.get(self.settings.SESSION_COOKIE_NAME)
         request.state.session = None
         request.state.session_id_plaintext = cookie

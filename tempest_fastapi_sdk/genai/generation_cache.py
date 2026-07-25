@@ -28,11 +28,25 @@ class GenerationCache(Protocol):
     """A synchronous prompt→completion cache (e.g. in-memory)."""
 
     def get(self, key: str) -> str | None:
-        """Return the cached completion for ``key`` or ``None``."""
+        """Return the cached completion for ``key`` or ``None``.
+
+        Args:
+            key (str): Cache key derived from the prompt and generation
+                settings.
+
+        Returns:
+            str | None: The cached completion, or ``None`` on a miss.
+        """
         ...
 
     def set(self, key: str, value: str) -> None:
-        """Store ``value`` under ``key``."""
+        """Store ``value`` under ``key``.
+
+        Args:
+            key (str): Cache key derived from the prompt and generation
+                settings.
+            value (str): The completion to store.
+        """
         ...
 
 
@@ -41,11 +55,25 @@ class AsyncGenerationCache(Protocol):
     """An asynchronous prompt→completion cache (e.g. Redis-backed)."""
 
     async def get(self, key: str) -> str | None:
-        """Return the cached completion for ``key`` or ``None``."""
+        """Return the cached completion for ``key`` or ``None``.
+
+        Args:
+            key (str): Cache key derived from the prompt and generation
+                settings.
+
+        Returns:
+            str | None: The cached completion, or ``None`` on a miss.
+        """
         ...
 
     async def set(self, key: str, value: str) -> None:
-        """Store ``value`` under ``key``."""
+        """Store ``value`` under ``key``.
+
+        Args:
+            key (str): Cache key derived from the prompt and generation
+                settings.
+            value (str): The completion to store.
+        """
         ...
 
 
@@ -57,11 +85,25 @@ class InMemoryGenerationCache:
         self._store: dict[str, str] = {}
 
     def get(self, key: str) -> str | None:
-        """Return the cached completion for ``key`` or ``None``."""
+        """Return the cached completion for ``key`` or ``None``.
+
+        Args:
+            key (str): Cache key derived from the prompt and generation
+                settings.
+
+        Returns:
+            str | None: The cached completion, or ``None`` on a miss.
+        """
         return self._store.get(key)
 
     def set(self, key: str, value: str) -> None:
-        """Store ``value`` under ``key``."""
+        """Store ``value`` under ``key``.
+
+        Args:
+            key (str): Cache key derived from the prompt and generation
+                settings.
+            value (str): The completion to store.
+        """
         self._store[key] = value
 
 
@@ -97,14 +139,28 @@ class RedisGenerationCache:
         self.ttl_seconds = ttl_seconds
 
     async def get(self, key: str) -> str | None:
-        """Return the cached completion for ``key`` or ``None``."""
+        """Return the cached completion for ``key`` or ``None``.
+
+        Args:
+            key (str): Cache key derived from the prompt and generation
+                settings.
+
+        Returns:
+            str | None: The cached completion, or ``None`` on a miss.
+        """
         raw = await self._redis.get(self.namespace + key)
         if raw is None:
             return None
         return raw.decode() if isinstance(raw, bytes) else str(raw)
 
     async def set(self, key: str, value: str) -> None:
-        """Store ``value`` under ``key`` (with the configured TTL)."""
+        """Store ``value`` under ``key`` (with the configured TTL).
+
+        Args:
+            key (str): Cache key derived from the prompt and generation
+                settings.
+            value (str): The completion to store.
+        """
         await self._redis.set(self.namespace + key, value, ex=self.ttl_seconds)
 
 

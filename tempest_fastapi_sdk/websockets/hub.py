@@ -113,7 +113,11 @@ class WebSocketHub:
             return connection
 
     async def unregister(self, connection_id: UUID) -> None:
-        """Remove a connection from every index. Idempotent."""
+        """Remove a connection from every index. Idempotent.
+
+        Args:
+            connection_id (UUID): Identifier of the connection.
+        """
         async with self._lock:
             await self._evict_locked(connection_id, code=None)
 
@@ -136,7 +140,12 @@ class WebSocketHub:
                 await connection.ws.close(code=code)
 
     async def subscribe(self, connection_id: UUID, topic: str) -> None:
-        """Add ``topic`` to the connection's subscription set."""
+        """Add ``topic`` to the connection's subscription set.
+
+        Args:
+            connection_id (UUID): Identifier of the connection.
+            topic (str): The topic to subscribe to or publish on.
+        """
         async with self._lock:
             connection = self._connections.get(connection_id)
             if connection is None:
@@ -145,7 +154,12 @@ class WebSocketHub:
             self._by_topic.setdefault(topic, set()).add(connection_id)
 
     async def unsubscribe(self, connection_id: UUID, topic: str) -> None:
-        """Drop ``topic`` from the connection's subscription set."""
+        """Drop ``topic`` from the connection's subscription set.
+
+        Args:
+            connection_id (UUID): Identifier of the connection.
+            topic (str): The topic to subscribe to or publish on.
+        """
         async with self._lock:
             connection = self._connections.get(connection_id)
             if connection is None:
@@ -221,15 +235,30 @@ class WebSocketHub:
         return delivered
 
     def online_users(self) -> set[UUID]:
-        """Return the set of users with at least one active connection."""
+        """Return the set of users with at least one active connection.
+
+        Returns:
+            set[UUID]: The connections reached.
+        """
         return set(self._by_user.keys())
 
     def connection_count(self) -> int:
-        """Return the total number of live connections."""
+        """Return the total number of live connections.
+
+        Returns:
+            int: How many connections received the message.
+        """
         return len(self._connections)
 
     def topic_count(self, topic: str) -> int:
-        """Return the number of subscribers for ``topic``."""
+        """Return the number of subscribers for ``topic``.
+
+        Args:
+            topic (str): The topic to subscribe to or publish on.
+
+        Returns:
+            int: How many connections received the message.
+        """
         return len(self._by_topic.get(topic, set()))
 
 

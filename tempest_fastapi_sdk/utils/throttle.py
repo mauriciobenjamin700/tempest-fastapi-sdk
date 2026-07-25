@@ -39,19 +39,55 @@ class ThrottleBackend(Protocol):
     """
 
     def incr(self, name: str) -> Awaitable[int]:
-        """Atomically increment ``name`` and return the new value."""
+        """Atomically increment ``name`` and return the new value.
+
+        Args:
+            name (str): Identifier being throttled (an IP, a user, an email).
+
+        Returns:
+            Awaitable[int]: Resolves to the current attempt count.
+        """
 
     def expire(self, name: str, seconds: int) -> Awaitable[Any]:
-        """Set a TTL (seconds) on ``name``."""
+        """Set a TTL (seconds) on ``name``.
+
+        Args:
+            name (str): Identifier being throttled (an IP, a user, an email).
+            seconds (int): Window length in seconds.
+
+        Returns:
+            Awaitable[Any]: Resolves once the backend call completes.
+        """
 
     def ttl(self, name: str) -> Awaitable[int]:
-        """Return remaining TTL in seconds (``-1``/``-2`` when unset)."""
+        """Return remaining TTL in seconds (``-1``/``-2`` when unset).
+
+        Args:
+            name (str): Identifier being throttled (an IP, a user, an email).
+
+        Returns:
+            Awaitable[int]: Resolves to the current attempt count.
+        """
 
     def get(self, name: str) -> Awaitable[Any]:
-        """Return the value at ``name`` (``None`` when absent)."""
+        """Return the value at ``name`` (``None`` when absent).
+
+        Args:
+            name (str): Identifier being throttled (an IP, a user, an email).
+
+        Returns:
+            Awaitable[Any]: Resolves once the backend call completes.
+        """
 
     def delete(self, name: str) -> Awaitable[Any]:
-        """Delete ``name``."""
+        """Delete ``name``.
+
+        Args:
+            name (str): Identifier being throttled (an IP, a user, an email).
+
+        Returns:
+            Awaitable[Any]: Resolves once the backend call completes.
+        """
 
 
 @dataclass(frozen=True)

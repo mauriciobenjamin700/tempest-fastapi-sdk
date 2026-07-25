@@ -52,19 +52,36 @@ class FeatureFlags:
         return self._default if default is None else default
 
     async def enable(self, name: str) -> None:
-        """Turn ``name`` on (delegates to the backend)."""
+        """Turn ``name`` on (delegates to the backend).
+
+        Args:
+            name (str): The flag name.
+        """
         await self._backend.set(name, True)
 
     async def disable(self, name: str) -> None:
-        """Turn ``name`` off (delegates to the backend)."""
+        """Turn ``name`` off (delegates to the backend).
+
+        Args:
+            name (str): The flag name.
+        """
         await self._backend.set(name, False)
 
     async def set(self, name: str, enabled: bool) -> None:
-        """Set ``name`` to ``enabled`` (delegates to the backend)."""
+        """Set ``name`` to ``enabled`` (delegates to the backend).
+
+        Args:
+            name (str): The flag name.
+            enabled (bool): The value to persist.
+        """
         await self._backend.set(name, enabled)
 
     async def all(self) -> dict[str, bool]:
-        """Return every known flag as a ``{name: enabled}`` mapping."""
+        """Return every known flag as a ``{name: enabled}`` mapping.
+
+        Returns:
+            dict[str, bool]: Every known flag as ``{name: enabled}``.
+        """
         return await self._backend.all()
 
 
