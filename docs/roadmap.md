@@ -101,10 +101,13 @@ Tema entregue em fatias, uma release por fatia:
   `dead_letter` (destino é seu, sem backend assumido), `TaskMetrics` no
   `/metrics` compartilhado. Middleware opt-in, importa sem o extra `[tasks]`.
   Ver a receita de filas (*Confiabilidade e observabilidade das tarefas*).
-- **Painel de filas/tasks no admin** (estilo Celery-Flower) — **deferido**: o
-  TaskIQ não expõe introspecção de fila universal (o Flower é específico do
-  Celery), então depender de APIs de management do RabbitMQ/Redis vazaria o
-  backend. Reavaliar quando a pressão de negócio puxar.
+- ✅ **Painel de tasks no admin** — entregue na **v0.158.0** como
+  dead-letter + inventário (não como clone do Flower). `BaseDeadLetterModel`
+  + `make_dead_letter_model`, `DbDeadLetterSink` (persiste falhas terminais),
+  `make_dead_letter_admin_model` (AdminModel read-mostly + ação **requeue**),
+  `task_inventory` (tasks registradas). Sem introspecção viva de fila —
+  o TaskIQ não expõe (o Flower é específico do Celery); mostra o que é real e
+  persistido. Ver a receita de filas (*Painel de dead-letter no admin*).
 
 ### Camada de performance HTTP
 

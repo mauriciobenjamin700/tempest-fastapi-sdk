@@ -375,6 +375,45 @@ tq: TaskQueue = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/")
 tq.enable_metrics(TaskMetrics())   # tasks_runs_total{task,status} + tasks_duration_seconds{task}
 ```
 
+### Dead-letter panel in the admin
+
+The `DeadLetterSink` says *what* to do with a failure; to **see and re-run** failures, persist them to a table and surface them in the admin. `DbDeadLetterSink` writes each terminal failure; `make_dead_letter_admin_model` builds a read-mostly `AdminModel` (filter by task, search the error, export) with an optional **requeue** bulk action.
+
+```python
+from tempest_fastapi_sdk.admin import AdminSite
+from tempest_fastapi_sdk.tasks import (
+    DbDeadLetterSink,
+    TaskQueue,
+    make_dead_letter_admin_model,
+    make_dead_letter_model,
+)
+
+from src.core.resources import db   # AsyncDatabaseManager
+
+
+DeadLetterModel = make_dead_letter_model()   # or subclass BaseDeadLetterModel by hand
+
+tq: TaskQueue = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/")
+tq.dead_letter(DbDeadLetterSink(db, DeadLetterModel))   # persist terminal failures
+
+site: AdminSite = AdminSite(title="Ops")
+site.register(make_dead_letter_admin_model(DeadLetterModel, tq=tq))   # panel + requeue
+```
+
+Passing `tq=` wires the **requeue** action: the operator selects rows, each call is re-enqueued with its stored `args` / `kwargs`, and the requeued rows are deleted.
+
+!!! info "No Flower clone"
+    TaskIQ exposes no live queue state (Flower is Celery-specific), so this panel does **not** try to show pending/in-flight jobs. It shows what is real and persisted: the terminal failures.
+
+For a "what tasks exist" inventory, `task_inventory(tq)` returns `list[TaskInfo]` (name / schedule / retry) read straight off the broker — serve it as JSON, a log, or your own page:
+
+```python
+from tempest_fastapi_sdk.tasks import task_inventory
+
+for info in task_inventory(tq):
+    print(info.name, info.schedule, info.retry_on_error, info.max_retries)
+```
+
 ## Workers in production
 
 The worker and the scheduler are separate processes pointing at the raw objects `TaskQueue` exposes:

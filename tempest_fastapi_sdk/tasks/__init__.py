@@ -43,6 +43,27 @@ from tempest_fastapi_sdk.tasks.cron import (
 from tempest_fastapi_sdk.tasks.cron import (
     weekly as weekly,
 )
+from tempest_fastapi_sdk.tasks.dead_letter import (
+    BaseDeadLetterModel as BaseDeadLetterModel,
+)
+from tempest_fastapi_sdk.tasks.dead_letter import (
+    DbDeadLetterSink as DbDeadLetterSink,
+)
+from tempest_fastapi_sdk.tasks.dead_letter import (
+    TaskInfo as TaskInfo,
+)
+from tempest_fastapi_sdk.tasks.dead_letter import (
+    make_dead_letter_admin_model as make_dead_letter_admin_model,
+)
+from tempest_fastapi_sdk.tasks.dead_letter import (
+    make_dead_letter_model as make_dead_letter_model,
+)
+from tempest_fastapi_sdk.tasks.dead_letter import (
+    make_requeue_action as make_requeue_action,
+)
+from tempest_fastapi_sdk.tasks.dead_letter import (
+    task_inventory as task_inventory,
+)
 from tempest_fastapi_sdk.tasks.manager import (
     AsyncTaskBrokerManager as AsyncTaskBrokerManager,
 )
@@ -71,14 +92,17 @@ from tempest_fastapi_sdk.tasks.scheduler import AsyncTaskScheduler as AsyncTaskS
 __all__: list[str] = [
     "AsyncTaskBrokerManager",
     "AsyncTaskScheduler",
+    "BaseDeadLetterModel",
     "Cron",
     "CronOffset",
+    "DbDeadLetterSink",
     "DeadLetter",
     "DeadLetterSink",
     "RetryPolicy",
     "Task",
     "TaskBinding",
     "TaskDef",
+    "TaskInfo",
     "TaskMetrics",
     "TaskQueue",
     "Weekday",
@@ -86,8 +110,12 @@ __all__: list[str] = [
     "every_minute",
     "every_n_minutes",
     "hourly",
+    "make_dead_letter_admin_model",
     "make_dead_letter_middleware",
+    "make_dead_letter_model",
+    "make_requeue_action",
     "monthly",
+    "task_inventory",
     "task_method",
     "weekdays",
     "weekends",
