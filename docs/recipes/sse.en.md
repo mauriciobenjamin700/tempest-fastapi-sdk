@@ -681,7 +681,7 @@ const es = new EventSource(`/api/feed?access_token=${accessToken}`);
 consumes these endpoints with built-in exponential-backoff reconnect:
 
 ```typescript
-import { createEventStream } from "@mauriciobenjamin700/tempest-react-sdk";
+import { createEventStream } from "tempest-react-sdk";
 
 const stream = createEventStream<{ text: string }>("/feed", {
     withCredentials: true,        // sends the auth cookie on the handshake

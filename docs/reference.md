@@ -195,6 +195,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.cookies.SameSite
 ::: tempest_fastapi_sdk.api.static.HardenedStaticFiles
 ::: tempest_fastapi_sdk.api.static.DEFAULT_STATIC_SECURITY_HEADERS
+::: tempest_fastapi_sdk.api.spa.make_spa_router
+::: tempest_fastapi_sdk.api.spa.DEFAULT_ASSET_CACHE_CONTROL
+::: tempest_fastapi_sdk.api.spa.DEFAULT_DOCUMENT_CACHE_CONTROL
+::: tempest_fastapi_sdk.api.spa.DEFAULT_EXCLUDED_PREFIXES
 ::: tempest_fastapi_sdk.api.webhooks.WebhookSender
 ::: tempest_fastapi_sdk.api.webhooks.WebhookDelivery
 ::: tempest_fastapi_sdk.api.tracing.setup_tracing
