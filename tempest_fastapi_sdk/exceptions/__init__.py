@@ -1,6 +1,9 @@
 """Application exception primitives exposed at module level."""
 
-from tempest_fastapi_sdk.exceptions.base import AppException
+from tempest_fastapi_sdk.exceptions.base import (
+    AppException,
+    InheritedErrorCodeWarning,
+)
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
 from tempest_fastapi_sdk.exceptions.forbidden import ForbiddenException
 from tempest_fastapi_sdk.exceptions.i18n import (
@@ -31,6 +34,7 @@ __all__: list[str] = [
     "ExpiredTokenException",
     "FileTooLargeException",
     "ForbiddenException",
+    "InheritedErrorCodeWarning",
     "InvalidFileTypeException",
     "InvalidTokenException",
     "MessageCatalog",

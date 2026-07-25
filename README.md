@@ -148,11 +148,11 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 
 | Module | Exports |
 | --- | --- |
-| `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]`, `CursorPaginationFilterSchema`, `CursorPaginationSchema`, `LogEntrySchema`, `encode_cursor`, `decode_cursor`, `build_pagination_link_header` |
+| `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `ErrorResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]`, `CursorPaginationFilterSchema`, `CursorPaginationSchema`, `LogEntrySchema`, `encode_cursor`, `decode_cursor`, `build_pagination_link_header` |
 | `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `BaseUserRecoveryCodeModel`, `make_user_recovery_code_model`, `UserTokenPurpose`, `BaseRepository[ModelType]`, `TenantScopedRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper` (+ `safe_upgrade`), `DestructiveMigrationError`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin`, `MFAMixin`, `LocaleColumnMixin`, `BASE_COLUMN_ORDER`, `reorder_base_columns_first`, `compose_hooks`, `SlowQueryLogger`, `BaseOutboxModel`, `OutboxRelay`, `OutboxStatus`, `BaseRepository.save_with_outbox`, audit trail (`BaseAuditLogModel`, `AuditAction`, `snapshot_model`, `diff_snapshots`, `BaseRepository.add_audited` / `update_audited` / `delete_audited`), eager-loading (`get`/`get_or_none`/`get_by_id`/`first`/`list` accept `with_=[...]`, dotted for nested), lifecycle signals (`RepositorySignal`, `connect` / `on_signal` / `disconnect`, `PRE_SAVE`/`POST_SAVE`/`PRE_DELETE`/`POST_DELETE`), `F` / `Q` expression wrappers (`F("stock") - 1` atomic updates; `Q(...) | Q(...)` OR/NOT via `where=`), `BaseWebPushSubscriptionModel` + `make_web_push_subscription_model` |
-| `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `FileTooLargeException`, `InvalidFileTypeException`, `TooManyRequestsException`, i18n (`MessageCatalog`, `default_message_catalog`, `parse_accept_language`, `DEFAULT_LOCALE`) |
+| `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `FileTooLargeException`, `InvalidFileTypeException`, `TooManyRequestsException`, `InheritedErrorCodeWarning`, i18n (`MessageCatalog`, `default_message_catalog`, `parse_accept_language`, `DEFAULT_LOCALE`) |
 | `tempest_fastapi_sdk.settings` | `BaseAppSettings` (+ `AppSettingsMeta`), `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings`, `MinIOSettings`, `AuthSettings` |
-| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_logs_router`, `make_prometheus_router`, `make_prometheus_registry`, `PrometheusMiddleware`, `BusinessMetrics`, `LogSource`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware` (+ `RateLimitStore`/`MemoryRateLimitStore`/`RedisRateLimitStore`/`RateLimitResult` and `key_by_ip`/`key_by_jwt_subject`/`key_by_jwt_claim`/`key_by_header`), `IdempotencyMiddleware`, `MemoryIdempotencyStore`, `RedisIdempotencyStore`, `BodySizeLimitMiddleware`, `CSRFMiddleware`, `make_csrf_token_dependency`, `GracefulShutdownMiddleware`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, outbound `WebhookSender` (+ `WebhookDelivery`), OAuth2 (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`), `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck`, `setup_tracing` *(extra: `[otel]`)* |
+| `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, OpenAPI error docs (`error_responses`, `raises`, `TempestAPIRouter`, `RaisesSpec`, `declared_raises`), `apply_cors`, `make_health_router`, `make_logs_router`, `make_prometheus_router`, `make_prometheus_registry`, `PrometheusMiddleware`, `BusinessMetrics`, `LogSource`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware` (+ `RateLimitStore`/`MemoryRateLimitStore`/`RedisRateLimitStore`/`RateLimitResult` and `key_by_ip`/`key_by_jwt_subject`/`key_by_jwt_claim`/`key_by_header`), `IdempotencyMiddleware`, `MemoryIdempotencyStore`, `RedisIdempotencyStore`, `BodySizeLimitMiddleware`, `CSRFMiddleware`, `make_csrf_token_dependency`, `GracefulShutdownMiddleware`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, outbound `WebhookSender` (+ `WebhookDelivery`), OAuth2 (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`), `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck`, `setup_tracing` *(extra: `[otel]`)* |
 | `tempest_fastapi_sdk.auth` *(extra: `[auth]`, opcional `[email]`, `[mfa]`)* | `UserAuthService`, `make_auth_router`, `SignupSchema` / `LoginSchema` / `RefreshSchema` / `PasswordResetRequestSchema` / `PasswordResetConfirmSchema` + responses, `ActivationToken`, `PasswordResetToken`, email change/verify/recovery (`EmailChangeRequestSchema` / `EmailChangeConfirmSchema` / `EmailRecoveryRequestSchema` / `EmailChangeToken` / `EmailVerificationToken`, old-email security notice, opt-in `AUTH_EMAIL_RECOVERY_ENABLED`), MFA schemas (`MFAEnrollResponseSchema` / `MFAConfirmSchema` / `MFAVerifySchema` / `MFADisableSchema`), opt-in DB-backed refresh tokens (`BaseUserRefreshTokenModel` / `make_user_refresh_token_model` / `LogoutSchema`) with rotation + reuse detection + `POST /auth/logout`, bilingual emails + backend pages (`AUTH_DEFAULT_LOCALE`, `normalize_locale` / `negotiate_locale`) — signup/activate/login/refresh/logout/reset + email change/recovery + TOTP 2FA out of the box |
 | `tempest_fastapi_sdk.authz` | Object-level permissions: `permission` (rule decorator), `has_perm` / `check_permission`, `PermissionRegistry` (injectable superuser bypass + static-permission fallback, `order.*`/`*` wildcards), `make_permission_checker` (FastAPI route guard), `PermissionMixin` (`await user.has_perm(perm, obj=...)`), `default_registry` |
 | `tempest_fastapi_sdk.checks` | System checks (Django-style config validation): `check` (register decorator), `run_checks` / `run_system_checks` (raises `SystemCheckError` on ERROR+), `CheckMessage` / `CheckLevel` + `debug`/`info`/`warning`/`error`/`critical`, `CheckRegistry` / `default_registry`; built-in settings checks + the `tempest check-config` CLI (auto-detects settings, `--tag` / `--fail-level`) |
@@ -3959,7 +3959,36 @@ Every `AppException` (and any subclass) is serialized by `register_exception_han
 | `FileTooLargeException` | 413 | `FILE_TOO_LARGE` |
 | `InvalidFileTypeException` | 415 | `INVALID_FILE_TYPE` |
 
-Subclasses set `message`/`code`/`status_code` as class attributes; instances can override `message` and attach a `details` dict at construction time.
+Subclasses set `message`/`code`/`status_code` as class attributes; instances can override `message` and attach a `details` dict at construction time. Declaring `code` **in the class body** is the documented form because it is the only introspectable one — a subclass that inherits a generic SDK code warns with `InheritedErrorCodeWarning`.
+
+#### Documenting the envelope in OpenAPI
+
+The envelope only helps a client that knows **which** `code` to expect, so `error_responses(*exception_classes)` builds the FastAPI `responses=` mapping from the classes themselves — grouped by status, with each `code` in an `examples` selector and the body pointing at `ErrorResponseSchema`:
+
+```python
+from tempest_fastapi_sdk import TempestAPIRouter, error_responses, raises
+
+router: TempestAPIRouter = TempestAPIRouter(prefix="/api/jobs")
+
+
+@router.post(
+    "/{service_id}/candidates",
+    status_code=201,
+    responses=error_responses(ServiceNotFoundException, ServiceFullException),
+)
+async def apply_to_service(service_id: UUID) -> CandidateResponseSchema:
+    """Apply the authenticated user to a service."""
+    raise NotImplementedError
+
+
+@router.get("/{service_id}")
+@raises(ServiceNotFoundException)
+async def read_service(service_id: UUID) -> ServiceResponseSchema:
+    """Same declaration next to the handler — TempestAPIRouter injects it."""
+    raise NotImplementedError
+```
+
+`tempest openapi-errors --check` compares each route's declaration against the exceptions statically reachable through `router -> controller -> service -> repository`, in both directions, and exits non-zero on drift. Full walkthrough: [Errors in OpenAPI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/openapi-errors/).
 
 ---
 

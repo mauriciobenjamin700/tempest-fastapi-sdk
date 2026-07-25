@@ -84,7 +84,22 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `sqlalchemy.url` empty — URL resolves at runtime from env /
   settings / constructor.
 - **Standardized exceptions** (`AppException` + subclasses) +
-  `register_exception_handlers`.
+  `register_exception_handlers`. **OpenAPI error docs (v0.160.0):**
+  `ErrorResponseSchema` (the `{detail, code, details}` envelope as a
+  schema), `error_responses(*exc_classes)` (class-introspected
+  `responses=`; groups by status, codes in an `examples` selector since
+  OpenAPI allows one response object per status; `catalog=`/`locale=`/
+  `descriptions=`), `@raises(...)` + `TempestAPIRouter` (drop-in
+  `APIRouter` expanding the tag before route construction, so the model
+  lands in `components.schemas`; explicit `responses=` wins per status) +
+  `declared_raises`/`RaisesSpec`, `AppException.details_example`,
+  `InheritedErrorCodeWarning` (subclass inheriting a **generic** SDK
+  `code` — domain codes and `message_key` never warn), and
+  `tempest openapi-errors [--check|--allow-unreachable|--path]` (static
+  `ast` walk of router->controller->service->repository reading `raise` +
+  `Raises:` sections; reports undocumented/unreachable, CI gate). Declaring
+  `code` in the **class body** is now the documented pattern — the raise-site
+  `code=` form is not introspectable.
 - **Observability** — structured logging + per-level files +
   `/logs` endpoint, metrics (CPU/RAM/GPU/Disk), Prometheus
   `/metrics` endpoint + `PrometheusMiddleware`, request-id

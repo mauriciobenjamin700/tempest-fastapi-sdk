@@ -673,6 +673,101 @@ def check_config_cmd(
     raise typer.Exit(1 if serious else 0)
 
 
+@app.command("openapi-errors")
+def openapi_errors_cmd(
+    paths: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--path",
+            "-p",
+            help="Source directory (or file) to scan. Repeatable. "
+            "Defaults to ./src or ./app, whichever exists.",
+        ),
+    ] = None,
+    check: Annotated[
+        bool,
+        typer.Option(
+            "--check/--no-check",
+            help="Exit non-zero when drift is found, for use as a CI step.",
+        ),
+    ] = False,
+    allow_unreachable: Annotated[
+        bool,
+        typer.Option(
+            "--allow-unreachable",
+            help="With --check, only fail on undocumented exceptions. "
+            "An over-declared route stays a warning.",
+        ),
+    ] = False,
+) -> None:
+    """Compare the exceptions each route raises against what it documents.
+
+    Walks ``router -> controller -> service -> repository`` statically
+    (via ``ast``, without importing the application) and reports two
+    directions: exceptions reachable from a handler but missing from its
+    ``error_responses(...)`` / ``@raises(...)`` declaration, and
+    exceptions declared but never reachable.
+
+    Reachability resolves calls by *name* and cannot see dynamic raises,
+    so read the report as a guide rather than a proof. Both blind spots
+    are covered by listing the exception in the function's Google-style
+    ``Raises:`` section, which the analyzer reads too.
+    """
+    from tempest_fastapi_sdk.cli.openapi_errors import (
+        analyze_paths,
+        default_source_paths,
+    )
+
+    targets = list(paths or []) or default_source_paths(Path.cwd())
+    if not targets:
+        typer.secho(
+            "No source directory found. Pass --path <dir> (expected ./src or ./app).",
+            fg="red",
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    try:
+        findings = analyze_paths(targets)
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    if not findings:
+        typer.secho(
+            f"Every route's declared errors match its flow "
+            f"({', '.join(str(target) for target in targets)}).",
+            fg="green",
+        )
+        raise typer.Exit(0)
+
+    undocumented_total = 0
+    for finding in findings:
+        typer.secho(
+            f"{finding.location}  {finding.route.method} {finding.route.path}",
+            fg="cyan",
+        )
+        if finding.undocumented:
+            undocumented_total += len(finding.undocumented)
+            typer.secho(
+                f"  undocumented: {', '.join(finding.undocumented)}",
+                fg="red",
+            )
+        if finding.unreachable:
+            typer.secho(
+                f"  unreachable:  {', '.join(finding.unreachable)}",
+                fg="yellow",
+            )
+
+    typer.secho(
+        f"{len(findings)} route(s) with drift, "
+        f"{undocumented_total} undocumented exception(s).",
+        fg="red" if undocumented_total else "yellow",
+    )
+    if not check:
+        raise typer.Exit(0)
+    raise typer.Exit(1 if undocumented_total or not allow_unreachable else 0)
+
+
 def main() -> None:
     """Console-script entry point.
 

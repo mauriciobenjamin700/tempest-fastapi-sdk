@@ -446,6 +446,32 @@ tempest secrets rotate --length 64 --no-backup
 !!! warning
     Rotacionar `JWT_SECRET` invalida todo token assinado com o valor antigo: usuários são deslogados e links de reset/ativação pendentes param de funcionar. Rotacione numa janela de manutenção e reinicie o serviço pra carregar os novos valores.
 
+### Erros documentados no OpenAPI — `tempest openapi-errors`
+
+Compara, por rota, as `AppException` que o fluxo pode levantar com o que a rota
+declarou em `error_responses(...)` / `@raises(...)`:
+
+```bash
+tempest openapi-errors                          # relatório informativo (exit 0)
+tempest openapi-errors --check                  # exit 1 quando há drift (gate de CI)
+tempest openapi-errors --path src --path libs   # diretórios explícitos, repetível
+tempest openapi-errors --check --allow-unreachable   # só falha em undocumented
+```
+
+Sem `--path`, varre `./src` ou `./app` — o que existir. A análise é estática
+(`ast`, sem importar a aplicação) e percorre `router -> controller -> service ->
+repository`, lendo os `raise` **e** as seções `Raises:` das docstrings.
+
+```text
+src/api/routers/jobs.py:15  POST /{service_id}/candidates
+  undocumented: CandidateAlreadyExistsException, ServiceFullException
+1 route(s) with drift, 2 undocumented exception(s).
+```
+
+Detalhes e limitações na receita [Erros no OpenAPI »](openapi-errors.md).
+
+---
+
 ### Gates de qualidade
 
 Os comandos de lint chamam a ferramenta do projeto. Eles procuram o executável no `PATH` primeiro e, caso contrário, caem para `uv run <tool>` para que um virtualenv local do projeto funcione sem ativação manual.

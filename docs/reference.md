@@ -79,6 +79,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.schemas.pagination.SyncFilterSchema
 ::: tempest_fastapi_sdk.schemas.pagination.SyncPaginationSchema
 ::: tempest_fastapi_sdk.schemas.logs.LogEntrySchema
+::: tempest_fastapi_sdk.schemas.errors.ErrorResponseSchema
 
 ---
 
@@ -95,6 +96,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ### `tempest_fastapi_sdk.exceptions`
 
 ::: tempest_fastapi_sdk.exceptions.base.AppException
+::: tempest_fastapi_sdk.exceptions.base.InheritedErrorCodeWarning
 ::: tempest_fastapi_sdk.exceptions.not_found.NotFoundException
 ::: tempest_fastapi_sdk.exceptions.conflict.ConflictException
 ::: tempest_fastapi_sdk.exceptions.unauthorized.UnauthorizedException
@@ -119,6 +121,11 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.handlers.make_app_exception_handler
 ::: tempest_fastapi_sdk.api.handlers.make_http_exception_handler
 ::: tempest_fastapi_sdk.api.handlers.make_unhandled_exception_handler
+::: tempest_fastapi_sdk.api.error_docs.error_responses
+::: tempest_fastapi_sdk.api.error_docs.raises
+::: tempest_fastapi_sdk.api.error_docs.TempestAPIRouter
+::: tempest_fastapi_sdk.api.error_docs.RaisesSpec
+::: tempest_fastapi_sdk.api.error_docs.declared_raises
 ::: tempest_fastapi_sdk.api.middlewares.RequestIDMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.IdempotencyMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.MemoryIdempotencyStore
