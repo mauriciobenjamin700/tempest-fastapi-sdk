@@ -5,6 +5,43 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.165.0] — 2026-07-25
+
+### Changed
+
+- **Docstring completeness sweep across the whole public surface.** Nothing in
+  the API changed; what changed is that the rendered API reference now carries a
+  complete parameter/return/raises table for every symbol it documents.
+  - **115 explanatory comments moved out of function bodies into the enclosing
+    docstring**, per the project rule that the *why* belongs in the docstring.
+    They are now visible in the rendered reference instead of only to whoever
+    opens the source.
+  - **139 missing `Args:` / `Returns:` sections** added across 29 modules —
+    mostly the repeated interface methods of the feature-flag backends, session
+    stores, idempotency and response-cache stores, the tenant repository mixin
+    and the storage backends.
+  - **15 rendered symbols had no docstring at all**: the response-cache
+    `Protocol` stubs, three OIDC URL properties, a nested token-counting helper,
+    and nine auth/session route handlers.
+  - **8 `Raises:` sections** on functions that raise from their own body.
+  - `make_auth_router`'s `recovery_code_model` parameter was undocumented.
+
+### Notes
+
+- Three measurement corrections worth recording, since each one changed what
+  "done" meant:
+  - A line-based comment scan **misses trailing comments** (`assert x  # why`)
+    and **counts YAML comments inside generated-file string literals** as code
+    comments. Both were wrong: the first under-reported, the second would have
+    stripped documentation out of the generated `docker-compose.yaml`. The sweep
+    was redone with `tokenize`.
+  - Section banners in a **class** body (`# Signup`, `# Login`) are outside the
+    rule, which is about function/method bodies. Removing them would have made a
+    1900-line service harder to navigate for no documentation gain.
+  - A `Raises:` on a `make_*_dependency` **factory** would be false: the raise
+    happens in the dependency it returns, which those docstrings already state
+    under `Returns:`. Nine of seventeen reported gaps were this.
+
 ## [0.164.0] — 2026-07-25
 
 ### Added
