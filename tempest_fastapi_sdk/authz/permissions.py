@@ -227,6 +227,10 @@ class PermissionRegistry:
 
         Returns:
             bool: ``True`` when the permission is granted.
+
+        Notes:
+            With no object, a rule that did not grant is not the final
+            answer: the static permission set is consulted as well.
         """
         if user is None:
             return False
@@ -243,7 +247,6 @@ class PermissionRegistry:
                     return True
             if obj is not None:
                 return False
-            # obj is None: rules did not grant → try the static set too.
 
         return permission in await self._static_permissions(user)
 

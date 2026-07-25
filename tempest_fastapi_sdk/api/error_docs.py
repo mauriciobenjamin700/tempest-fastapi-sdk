@@ -180,6 +180,12 @@ def error_responses(
             subclass. Passing an *instance* is the likely mistake, and
             silently producing an empty schema would be worse than
             failing at import.
+
+    Notes:
+        Two classes may legitimately share a ``code`` — a base and a
+        narrowing subclass. An examples map cannot hold two entries under
+        one name, so the duplicate key is qualified with the class name and
+        both examples survive.
     """
     for exception in exceptions:
         if not (isinstance(exception, type) and issubclass(exception, AppException)):
@@ -202,10 +208,6 @@ def error_responses(
             code = exception.code
             if code not in codes:
                 codes.append(code)
-            # Two classes may legitimately share a code (a base and a
-            # narrowing subclass). Keep both examples by qualifying the
-            # duplicate key, since an examples map cannot hold two
-            # entries under one name.
             key = code if code not in examples else f"{code} ({exception.__name__})"
             examples[key] = {
                 "summary": _summary_of(exception),

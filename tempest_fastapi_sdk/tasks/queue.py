@@ -306,13 +306,17 @@ class TaskQueue:
             Task | dict[str, Task]: A single :class:`Task` for the
             constructor form, or a ``dict`` keyed by method name for the
             grouped form.
+
+        Notes:
+            TaskIQ needs a plain function with a settable ``__name__``,
+            and a bound method has neither, so the method is wrapped.
+            Deliberately without ``functools.wraps``: that would make
+            ``inspect.signature`` follow ``__wrapped__`` back to a
+            signature including ``self``.
         """
         grouped = definition.is_grouped
         wrapped: dict[str, Task[Any, Any]] = {}
         for binding in definition.task_bindings():
-            # TaskIQ needs a plain function with a settable __name__; a bound
-            # method has neither. Wrap it (no functools.wraps — that would
-            # make inspect.signature follow __wrapped__ back to `self`).
             bound = binding.func
 
             async def _entry(*args: Any, _call: Any = bound, **kwargs: Any) -> Any:

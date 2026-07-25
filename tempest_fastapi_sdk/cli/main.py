@@ -647,10 +647,12 @@ def check_config_cmd(
 
     Exits non-zero when any message reaches ``--fail-level`` (default
     ``error``), so it doubles as a CI gate and a pre-deploy sanity check.
+
+    The current working directory is put on ``sys.path`` so the project is
+    importable when the command is invoked from its root.
     """
     from tempest_fastapi_sdk.checks import CheckLevel, run_checks
 
-    # Make the project importable when invoked from its root.
     if "" not in sys.path and str(Path.cwd()) not in sys.path:
         sys.path.insert(0, str(Path.cwd()))
 
@@ -923,12 +925,14 @@ def main() -> None:
     Mounts the project's management commands (``[tool.tempest] commands``
     or the conventional ``src.commands`` / ``app.commands`` / ``commands``
     modules) onto the root app, then runs the CLI. Discovery failures are
-    reported but never block the built-in commands.
+    caught broadly and reported, never raised: a broken project command
+    module must not brick the built-in commands that would let the user fix
+    it.
     """
     try:
         config = load_tempest_config()
         mount_project_commands(app, modules=config.commands)
-    except Exception as exc:  # never let discovery brick the CLI
+    except Exception as exc:
         typer.secho(
             f"tempest: could not load project commands: {exc}",
             err=True,

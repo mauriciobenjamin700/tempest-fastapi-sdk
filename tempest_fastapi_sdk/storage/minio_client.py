@@ -170,6 +170,14 @@ class AsyncMinIOClient:
             ImportError: When the ``minio`` package is not
                 installed. Install the ``[minio]`` extra:
                 ``pip install tempest-fastapi-sdk[minio]``.
+
+        Notes:
+            In split-endpoint mode a second client is built with the
+            same credentials, whose only job is signing presigned URLs
+            against the public host. SigV4 signs the ``Host`` header,
+            so the URL has to be *signed* with the public endpoint —
+            rewriting the host afterwards would invalidate the
+            signature.
         """
         try:
             from minio import Minio
@@ -192,10 +200,6 @@ class AsyncMinIOClient:
             session_token=session_token,
         )
 
-        # Split-endpoint: a second client, same credentials, whose only job
-        # is to sign presigned URLs against the public host. SigV4 signs the
-        # Host header, so the URL must be *signed* with the public endpoint —
-        # rewriting the host afterwards would invalidate the signature.
         self.public_endpoint: str | None = None
         self._presign_client: Minio = self.client
         if public_endpoint:

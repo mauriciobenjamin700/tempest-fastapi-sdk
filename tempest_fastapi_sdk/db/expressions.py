@@ -188,9 +188,12 @@ def build_filter_condition(
 
     Returns:
         ColumnElement[bool] | None: The condition, or ``None`` to skip.
+
+    Notes:
+        ``isnull`` is handled before the "a ``None`` value skips the
+        filter" rule, because it legitimately carries a boolean that may be
+        ``False``.
     """
-    # ``isnull`` carries a bool (possibly False), so it must be handled
-    # before the "None value skips" rule.
     if "__" in field and field.rpartition("__")[2] == "isnull":
         base = field.rpartition("__")[0]
         column = getattr(model, base, None)

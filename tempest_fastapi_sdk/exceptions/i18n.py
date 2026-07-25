@@ -38,6 +38,10 @@ def parse_accept_language(header: str | None) -> list[str]:
         list[str]: Locale tags ordered from most to least preferred,
         with the quality values stripped (e.g.
         ``["pt-BR", "pt", "en"]``).
+
+    Notes:
+        The header index is the sort tiebreaker, so tags sharing a quality
+        value keep the order the client sent them in.
     """
     if not header:
         return []
@@ -57,7 +61,6 @@ def parse_accept_language(header: str | None) -> list[str]:
                 quality = float(params[2:])
             except ValueError:
                 quality = 1.0
-        # ``index`` is the stable tiebreaker so equal-q tags keep order.
         parsed.append((quality, index, tag))
     parsed.sort(key=lambda item: (-item[0], item[1]))
     return [tag for _, _, tag in parsed]
@@ -78,13 +81,16 @@ class MessageCatalog:
             translations (Mapping[str, Mapping[str, str]]): A mapping of
                 locale tag to ``{message_key: template}``. Templates use
                 :meth:`str.format` placeholders (e.g. ``"{email}"``).
+
+        Notes:
+            A primary-subtag index is built alongside the full-tag one, so a
+            request for ``"en"`` matches a catalog holding ``"en-US"`` and
+            vice versa. The first locale registered for a given primary
+            subtag wins.
         """
         self._translations: dict[str, dict[str, str]] = {
             locale.lower(): dict(table) for locale, table in translations.items()
         }
-        # Primary-subtag fallback so a request for ``"en"`` matches a
-        # catalog holding ``"en-US"`` (and vice versa). First locale
-        # registered for a primary subtag wins.
         self._by_primary: dict[str, dict[str, str]] = {}
         for locale, table in self._translations.items():
             self._by_primary.setdefault(locale.split("-", 1)[0], table)

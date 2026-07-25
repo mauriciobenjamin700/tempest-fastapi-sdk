@@ -415,6 +415,11 @@ class WebhookSender:
     ) -> WebhookDelivery:
         """Deliver one signed webhook, retrying transient failures.
 
+        Only ``5xx`` and ``429`` are retried. Another ``4xx`` describes a
+        request the endpoint will reject identically next time, so retrying
+        it only delays the failure. A network-level error — no response at
+        all — is always transient and always retried.
+
         Args:
             url (str): The subscriber URL.
             event (str): The event type (sent in the event header).
@@ -443,7 +448,7 @@ class WebhookSender:
                     headers=request_headers,
                     timeout=self._timeout,
                 )
-            except _TRANSIENT_ERRORS as exc:  # network-level failure
+            except _TRANSIENT_ERRORS as exc:
                 status_code = None
                 error = f"{type(exc).__name__}: {exc}"
             else:
@@ -458,7 +463,6 @@ class WebhookSender:
                         delivery_id=delivery_id,
                     )
                 error = f"HTTP {status_code}"
-                # Only 5xx / 429 are worth retrying; other 4xx won't recover.
                 if not (status_code >= 500 or status_code == 429):
                     break
             if attempt < self._max_attempts:

@@ -201,13 +201,18 @@ class LocalUploadStorage:
         ``content_type`` and ``metadata`` are accepted for protocol
         parity but ignored — the local filesystem has nowhere to
         store them.
+
+        Notes:
+            ``content_type`` and ``metadata`` are accepted for
+            interface parity and discarded: a local filesystem backend
+            has nowhere to store them.
         """
         from tempest_fastapi_sdk.exceptions.upload import (
             FileTooLargeException,
             InvalidFileTypeException,
         )
 
-        del content_type, metadata  # not stored locally
+        del content_type, metadata
         assert _aiofiles is not None, "guarded by __init__"
         target = self._resolve(key)
         target.parent.mkdir(parents=True, exist_ok=True)

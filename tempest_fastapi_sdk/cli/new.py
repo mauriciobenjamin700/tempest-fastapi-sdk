@@ -235,6 +235,12 @@ def scaffold(
     Raises:
         typer.Exit: On invalid input or target collision without
             ``--force``.
+
+    Notes:
+        The optional source layers triggered by the chosen extras are
+        scaffolded too, so a fresh ``--extras queue`` project ships
+        ``src/queue/`` rather than requiring a follow-up ``tempest generate
+        --src``.
     """
     resolved_name, target = _resolve_name_and_target(name, path)
 
@@ -289,8 +295,6 @@ def scaffold(
     from tempest_fastapi_sdk.cli.docker_compose import _parse_extras
     from tempest_fastapi_sdk.cli.src_layers import add_src_layers
 
-    # Scaffold the optional source layers (queue / tasks) triggered by the
-    # chosen extras so a fresh `--extras queue` project ships src/queue/.
     layer_written, _ = add_src_layers(target, _parse_extras(extras), force=True)
     written.extend(layer_written)
 

@@ -262,7 +262,13 @@ def user_create(
         ),
     ),
 ) -> None:
-    """Create one user row + print its id."""
+    """Create one user row + print its id.
+
+    Notes:
+        With neither ``--admin`` nor ``--no-admin`` given, the choice is
+        prompted when attached to a terminal and defaults to non-admin
+        otherwise, so a scripted or CI run never blocks waiting on input.
+    """
     if not password:
         password = getpass("Password: ")
         confirm = getpass("Confirm: ")
@@ -274,9 +280,6 @@ def user_create(
         raise typer.Exit(2)
 
     if is_admin is None:
-        # Neither --admin nor --no-admin was passed: ask interactively
-        # when attached to a terminal, otherwise stay non-admin so CI /
-        # scripted runs never block on a prompt.
         if _stdin_is_interactive():
             is_admin = typer.confirm(
                 "Should this user be an administrator?",

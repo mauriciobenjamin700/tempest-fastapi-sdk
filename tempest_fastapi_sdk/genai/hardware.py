@@ -172,10 +172,20 @@ def fetch_num_params(model_id: str, *, token: str | None = None) -> int | None:
 
 
 def _device_capacity(hardware: HardwareInfo, device: str) -> int:
-    """Return the available bytes on ``device`` for ``hardware``."""
+    """Return the available bytes on ``device`` for ``hardware``.
+
+    Both ``mps`` and ``cpu`` report system RAM: Apple's unified memory means
+    the GPU shares it rather than having a pool of its own.
+
+    Args:
+        hardware (HardwareInfo): The probed hardware.
+        device (str): The device to size.
+
+    Returns:
+        int: Available bytes on that device.
+    """
     if device == "cuda" and hardware.gpus:
         return max(gpu.vram_free_bytes for gpu in hardware.gpus)
-    # MPS shares system RAM; CPU uses system RAM.
     return hardware.ram_available_bytes
 
 
@@ -270,7 +280,6 @@ def _suggest(
     device: str,
 ) -> str:
     """Return the best next step when a model doesn't fit as asked."""
-    # Try a smaller precision on the same device.
     order = [ModelDtype.BFLOAT16, ModelDtype.INT8, ModelDtype.INT4]
     available = _device_capacity(hardware, device)
     for candidate in order:
@@ -282,7 +291,6 @@ def _suggest(
                 f"~{estimate_model_bytes(num_params, candidate) / 1e9:.1f} GB) "
                 f"to fit {device}."
             )
-    # Fall back to CPU RAM if we were on GPU.
     if (
         device == "cuda"
         and estimate_model_bytes(num_params, ModelDtype.INT4)
@@ -317,6 +325,11 @@ def recommend(
 
     Returns:
         CapacityReport: The recommended configuration.
+
+    Notes:
+        Two fallbacks are tried in order: a smaller precision on the same
+        device first, since that keeps the model on the accelerator, and
+        only then CPU RAM when the current device is a GPU.
     """
     hw = hardware or probe_hardware()
     report = None

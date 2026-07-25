@@ -90,6 +90,10 @@ def reorder_base_columns_first(
         revision (Any): The new revision identifier — unused.
         directives (list[Any]): The list of ``MigrationScript``
             directives Alembic will render. Modified in-place.
+
+    Notes:
+        Nested directives (``ModifyTableOps`` and friends) are recursed
+        into, so the reorder applies inside a batch operation too.
     """
     del context, revision
     try:
@@ -103,7 +107,6 @@ def reorder_base_columns_first(
         for op in op_list:
             if isinstance(op, ops.CreateTableOp):
                 op.columns = _reordered_columns(op.columns, base_set)
-            # Recurse into nested directives (e.g. ModifyTableOps).
             for attr in ("ops", "upgrade_ops", "downgrade_ops"):
                 nested: Any = getattr(op, attr, None)
                 if nested is None:
@@ -156,6 +159,9 @@ _MISSING: Any = object()
 def _scalar_default_literal(value: Any) -> str | None:
     """Render a Python scalar as a SQL ``server_default`` literal.
 
+    ``bool`` is matched before ``int`` because it is a subclass of it; the
+    reverse order would render ``True`` as ``1``.
+
     Args:
         value (Any): The scalar pulled from a column's Python-side
             ``default`` (``ColumnDefault.arg``). ``Enum`` members are
@@ -171,7 +177,6 @@ def _scalar_default_literal(value: Any) -> str | None:
 
     if isinstance(value, Enum):
         value = value.value
-    # ``bool`` must come before ``int`` — it is a subclass of ``int``.
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (int, float)):
