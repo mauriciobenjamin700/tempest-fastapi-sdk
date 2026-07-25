@@ -345,6 +345,24 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `AdminActionResult`), file/image upload fields (`AdminModel(
   upload_fields=[...], upload_storage=...)`), rich list filters
   (bool/enum/FK select, date-range, text — auto by column type).
+- **OpenAPI codegen (v0.161.0)** — `tempest_fastapi_sdk.openapi` +
+  `tempest openapi-client <spec>`: generates Pydantic schemas **and** a
+  typed HTTP client from a third party's OpenAPI 3 spec into
+  `<src|app>/integrations/<name>/`. Every `Field` carries the spec's
+  `title`/`description`/`examples` (the module doubles as the
+  integration's docs); Python names + wire-name `alias` +
+  `populate_by_name`; reserved words resolved; optional collections
+  default to `[]`; enums → `BaseStrEnum`/`BaseIntEnum`; `allOf`
+  flattened; recursion via `model_rebuild()`. Client takes an injected
+  `HTTPClient` (so retry/breaker/creds stay with the caller, and
+  `httpx.MockTransport` tests it offline). Emitted code passes
+  `ruff check` + `ruff format --check` **before** the format pass
+  (asserted against raw output), and an unchanged spec regenerates
+  byte-identically. Unrepresentable constructs (`not`, external `$ref`,
+  Swagger 2.0, non-JSON bodies, header params) → `Any` + a
+  `# openapi: unsupported` marker + a line in the command summary —
+  never a silent wrong schema. YAML needs `[openapi]` (pyyaml); JSON
+  needs nothing.
 - **CLI** — `tempest new` (scaffolds layered service +
   docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
   `tempest generate --docker` (regen compose) / `--dockerfile`
@@ -352,7 +370,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tempest db init/revision/upgrade/downgrade/current/history/seed`,
   `tempest user create [--admin] / list`, `tempest secrets rotate`,
   plus quality gates (`lint`, `fix`, `format`, `fmt-check`, `type`,
-  `test`, `check`).
+  `test`, `check`), `openapi-errors`, `openapi-client`.
 
 The whole Tier S / Tier A / Tier B backlog that used to live here is
 **shipped**, and so is the five-item next-version plan that followed it

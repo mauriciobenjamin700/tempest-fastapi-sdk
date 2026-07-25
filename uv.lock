@@ -5576,7 +5576,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.160.0"
+version = "0.161.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -5622,6 +5622,7 @@ all = [
     { name = "pyotp" },
     { name = "python-multipart" },
     { name = "pywebpush" },
+    { name = "pyyaml" },
     { name = "redis" },
     { name = "taskiq" },
     { name = "taskiq-aio-pika" },
@@ -5692,6 +5693,9 @@ mfa = [
 ]
 minio = [
     { name = "minio" },
+]
+openapi = [
+    { name = "pyyaml" },
 ]
 otel = [
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
@@ -5859,6 +5863,8 @@ requires-dist = [
     { name = "python-multipart", marker = "extra == 'upload'", specifier = ">=0.0.12" },
     { name = "pywebpush", marker = "extra == 'all'", specifier = ">=2.0.0" },
     { name = "pywebpush", marker = "extra == 'webpush'", specifier = ">=2.0.0" },
+    { name = "pyyaml", marker = "extra == 'all'", specifier = ">=6.0" },
+    { name = "pyyaml", marker = "extra == 'openapi'", specifier = ">=6.0" },
     { name = "rank-bm25", marker = "extra == 'genai-rag'", specifier = ">=0.2.2" },
     { name = "redis", marker = "extra == 'all'", specifier = ">=5.0.0" },
     { name = "redis", marker = "extra == 'cache'", specifier = ">=5.0.0" },
@@ -5877,7 +5883,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'genai'", specifier = ">=4.44.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "openapi", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
 
 [package.metadata.requires-dev]
 dev = [

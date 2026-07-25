@@ -473,6 +473,33 @@ Details and limitations in the [Errors in OpenAPI »](openapi-errors.md) recipe.
 
 ---
 
+### Integration client — `tempest openapi-client`
+
+Generates Pydantic schemas + a typed HTTP client from a third party's OpenAPI
+specification:
+
+```bash
+tempest openapi-client https://api.vendor.com/openapi.json --name vendor
+tempest openapi-client ./vendor/spec.yaml --name vendor --force
+tempest openapi-client <spec> -H "Authorization: Bearer $TOKEN" --schemas-only
+```
+
+Writes `<src|app>/integrations/<name>/` with `schemas.py` (one class per
+component, with the spec's `title`/`description`/`examples` filled in) and
+`client.py` (one `async` method per operation, over an injected `HTTPClient`).
+
+```text
+  + src/integrations/vendor/__init__.py
+  + src/integrations/vendor/client.py
+  + src/integrations/vendor/schemas.py
+4 schema(s), 12 operation(s).
+```
+
+Details, OpenAPI coverage and limitations in the
+[Integration client (OpenAPI) »](openapi-client.md) recipe.
+
+---
+
 ### Quality gates
 
 The lint commands shell out to the project's tooling. They look for the executable on `PATH` first, and otherwise fall back to `uv run <tool>` so a project-local virtualenv works without manual activation.

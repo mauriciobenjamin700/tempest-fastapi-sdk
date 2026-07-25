@@ -126,6 +126,27 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.error_docs.TempestAPIRouter
 ::: tempest_fastapi_sdk.api.error_docs.RaisesSpec
 ::: tempest_fastapi_sdk.api.error_docs.declared_raises
+
+---
+
+## OpenAPI code generation
+
+### `tempest_fastapi_sdk.openapi`
+
+::: tempest_fastapi_sdk.openapi.generate.generate_integration
+::: tempest_fastapi_sdk.openapi.generate.GenerationResult
+::: tempest_fastapi_sdk.openapi.generate.default_output_dir
+::: tempest_fastapi_sdk.openapi.loader.load_spec
+::: tempest_fastapi_sdk.openapi.loader.SpecError
+::: tempest_fastapi_sdk.openapi.parse.parse_spec
+::: tempest_fastapi_sdk.openapi.emit_schemas.emit_schemas
+::: tempest_fastapi_sdk.openapi.emit_client.emit_client
+::: tempest_fastapi_sdk.openapi.ir.SpecIR
+::: tempest_fastapi_sdk.openapi.ir.SchemaIR
+::: tempest_fastapi_sdk.openapi.ir.FieldIR
+::: tempest_fastapi_sdk.openapi.ir.ClientIR
+::: tempest_fastapi_sdk.openapi.ir.OperationIR
+::: tempest_fastapi_sdk.openapi.ir.ParameterIR
 ::: tempest_fastapi_sdk.api.middlewares.RequestIDMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.IdempotencyMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.MemoryIdempotencyStore
