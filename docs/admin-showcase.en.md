@@ -271,7 +271,7 @@ class WebPushSubscription(BaseWebPushSubscriptionModel):
 ### The notification service
 
 One piece, orchestrating both channels. The broker is the same
-process-wide singleton from the [SSE recipe](recipes/sse.md#broadcast-pra-varios-clientes-ssebroker);
+process-wide singleton from the [SSE recipe](recipes/sse.md#broadcast-to-many-clients-ssebroker);
 the `WebPushSubscriptionService` comes from the [Web Push recipe](recipes/webpush.md#table-repository-service-and-controller-recommended).
 
 ```python
@@ -515,7 +515,7 @@ The endpoint itself is one line. Step by step, on every
    the request dies with `401` and **never** reaches the broker — the stream is
    private to staff.
 2. `Depends(get_broker)` injects the shared broker — the same process-wide
-   singleton from the [SSE recipe](recipes/sse.md#broadcast-pra-varios-clientes-ssebroker),
+   singleton from the [SSE recipe](recipes/sse.md#broadcast-to-many-clients-ssebroker),
    held on `app.state`.
 3. `broker.response(STAFF_CHANNEL)` does **three things in one call**:
      - **register** — creates a fresh `EventStream` and subscribes it to the
@@ -528,7 +528,7 @@ The endpoint itself is one line. Step by step, on every
        `try/finally` for you to forget.
 
 !!! info "Shared channel — every admin on the same `\"staff\"`"
-    In the [SSE recipe](recipes/sse.md#broadcast-pra-varios-clientes-ssebroker)
+    In the [SSE recipe](recipes/sse.md#broadcast-to-many-clients-ssebroker)
     the channel was **each user's id**: everyone on their own, isolated from the
     rest. Here it's the opposite — **every** logged-in admin subscribes to the
     **same** `"staff"` channel. That's why a single `broker.publish("staff", ...)`

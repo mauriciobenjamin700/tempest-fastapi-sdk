@@ -134,6 +134,8 @@ plugins:
             Utilitários: Utilities
             Helpers brasileiros: Brazilian helpers
             "Geolocalização (distância + tempo)": "Geolocation (distance + time)"
+            "Server-Sent Events (SSE)": "Server-Sent Events (SSE)"
+            "Tipagem (estático + runtime)": "Typing (static + runtime)"
             Referência: Reference
             "Projetos de aprendizado": Learning projects
             Marketplace: Marketplace

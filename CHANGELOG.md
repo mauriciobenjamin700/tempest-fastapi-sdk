@@ -5,6 +5,55 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.162.0] — 2026-07-25
+
+### Fixed
+
+- **The API reference was missing 190 public symbols** while claiming, in its
+  own opening paragraph, that every exported symbol was documented. Whole
+  feature areas had a recipe but no reference at all — `tasks` (29), `geo` (29),
+  `chat` (12), `reviews` (11), `queue` (4) — and the top-level directive carried
+  an `!^[a-z_]+$` filter that silently excluded **every function** from it.
+  Coverage is now 100% of `__all__` across the public modules, bar ten
+  deliberately excluded names.
+- **`llms.txt` was missing 25 of the 73 pages on the site.** The generating hook
+  used a hard-coded page list that drifted, so every feature shipped after it was
+  written (generative AI, geolocation, chat, reviews, vision, SSR, both OpenAPI
+  tools) was invisible to LLM consumers while being perfectly visible on the
+  site. Its summary also advertised ten extras when the package ships more than
+  twenty.
+- `docs/installation.md` and `docs/installation.en.md` had **drifted from each
+  other** — the PT page pinned `>=0.137.0`, the EN mirror `>=0.133.1`. Both, and
+  the `README.md` snippet, now reference the current release.
+- Three links in `docs/admin-showcase.en.md` pointed at the **Portuguese** anchor
+  slug of the SSE recipe, so they resolved to the top of the English page instead
+  of the section.
+- `Server-Sent Events (SSE)` and `Tipagem (estático + runtime)` had no
+  `nav_translations` entry, leaving Portuguese labels in the English navigation.
+
+### Changed
+
+- `mkdocs_hooks/llmstxt.py` derives its sections from the MkDocs `nav` and its
+  extras list from `[project.optional-dependencies]`, so neither can drift from
+  the site again.
+- `docs/reference.md` uses whole-module `:::` directives for `geo`, `vision`,
+  `ssr`, `queue`, `tasks`, `chat` and `reviews` instead of hand-listed symbols —
+  a namespace cannot fall behind its own exports.
+
+### Added
+
+- `tests/test_reference_coverage.py` — renders the reference page and asserts
+  every `__all__` name across the public modules emitted an anchor. Markdown
+  parsing cannot catch this class of gap (a `:::` directive may name a module,
+  and filters may exclude names), so the guard checks the **built HTML**.
+  Intentional exclusions live in an `ALLOWED_ABSENT` mapping that requires a
+  written reason, with a companion test that fails once an entry becomes stale.
+- `tests/test_llmstxt.py` — asserts the LLM index links every nav page, keeps the
+  llmstxt title/summary shape, advertises the real extras, and that
+  `llms-full.txt` carries inlined page bodies.
+- A `docs` pytest marker for the two guards above, which trigger one `mkdocs
+  build` per session.
+
 ## [0.161.0] — 2026-07-25
 
 ### Added
