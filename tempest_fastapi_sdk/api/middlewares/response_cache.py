@@ -141,9 +141,29 @@ class MemoryResponseCacheStore:
 class _RedisLike(Protocol):
     """The subset of ``redis.asyncio.Redis`` the Redis store uses."""
 
-    async def get(self, key: str) -> str | bytes | None: ...
+    async def get(self, key: str) -> str | bytes | None:
+        """Return the raw stored value for ``key``, or ``None`` when absent.
 
-    async def set(self, key: str, value: str, *, ex: int) -> object: ...
+        Args:
+            key (str): The cache key.
+
+        Returns:
+            str | bytes | None: The stored payload, or ``None`` on a miss.
+        """
+        ...
+
+    async def set(self, key: str, value: str, *, ex: int) -> object:
+        """Store ``value`` under ``key`` with a TTL.
+
+        Args:
+            key (str): The cache key.
+            value (str): The payload to store.
+            ex (int): Time-to-live in seconds.
+
+        Returns:
+            object: Whatever the client returns; the caller ignores it.
+        """
+        ...
 
 
 class RedisResponseCacheStore:

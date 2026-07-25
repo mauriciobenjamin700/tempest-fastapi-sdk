@@ -199,6 +199,10 @@ class TaskQueue:
 
         Returns:
             TaskQueue: A facade around an ``AioPikaBroker``.
+
+        Raises:
+            ImportError: When the ``[tasks]`` extra is not installed, so
+                ``taskiq_aio_pika`` is unavailable.
         """
         _require_taskiq()
         try:
@@ -221,6 +225,9 @@ class TaskQueue:
 
         Returns:
             TaskQueue: A facade around a Redis stream broker.
+
+        Raises:
+            ImportError: When ``taskiq_redis`` is not installed.
         """
         _require_taskiq()
         try:

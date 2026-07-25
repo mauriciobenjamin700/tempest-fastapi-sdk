@@ -138,6 +138,10 @@ def make_auth_router(
             security attributes. ``None`` (default) builds one from the
             ``AUTH_COOKIE_*`` settings and the JWT TTLs. Only used when
             the delivery mode involves cookies.
+        recovery_code_model (type[BaseUserRecoveryCodeModel] | None): Model
+            storing the one-time MFA recovery codes. ``None`` (default)
+            falls back to the SDK's bundled model, built on demand — pass
+            your own when the project owns that table.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -163,6 +167,14 @@ def make_auth_router(
         route and, when enabled, the MFA routes. With cookies in play it also
         accepts the access token from the cookie, with the header still
         taking precedence.
+
+    Raises:
+        RuntimeError: When the requested token delivery mode needs a
+            refresh-token model and the service was built without one.
+
+    Raises:
+        RuntimeError: When the requested token delivery mode needs a
+            refresh-token model and the service was built without one.
     """
     from fastapi import Depends
 
@@ -290,6 +302,16 @@ def make_auth_router(
         payload: SignupSchema,
         session: AsyncSession = session_dep,
     ) -> SignupResponseSchema:
+        """Register a new account.
+
+        Args:
+            payload (SignupSchema): Email, password and optional name.
+            session (AsyncSession): The request-scoped DB session.
+
+        Returns:
+            SignupResponseSchema: The created user, plus the activation
+            token or JWT pair depending on the configured flow.
+        """
         user, activation = await service.signup(
             session,
             email=payload.email,
@@ -347,6 +369,15 @@ def make_auth_router(
         token: str,
         session: AsyncSession = session_dep,
     ) -> ActivationResponseSchema:
+        """Activate an account from its activation token.
+
+        Args:
+            token (str): The activation token from the emailed link.
+            session (AsyncSession): The request-scoped DB session.
+
+        Returns:
+            ActivationResponseSchema: The activated user.
+        """
         user = await service.activate(session, token=token)
         access, refresh = await service.issue_token_pair(session, user)
         await session.commit()
@@ -383,6 +414,16 @@ def make_auth_router(
         payload: LoginSchema,
         session: AsyncSession = session_dep,
     ) -> LoginResponseSchema:
+        """Authenticate and issue the JWT pair.
+
+        Args:
+            payload (LoginSchema): Email and password.
+            session (AsyncSession): The request-scoped DB session.
+
+        Returns:
+            LoginResponseSchema: The token pair, or an MFA challenge when
+            the account has TOTP enrolled.
+        """
         user = await service.login(
             session,
             email=payload.email,
@@ -1175,6 +1216,16 @@ def make_auth_router(
             session: AsyncSession = session_dep,
             user: BaseUserModel = Depends(current_user_dep),
         ) -> MFAEnrollResponseSchema:
+            """Start TOTP enrollment and return the secret plus recovery codes.
+
+            Args:
+                session (AsyncSession): The request-scoped DB session.
+                user (BaseUserModel): The authenticated caller.
+
+            Returns:
+                MFAEnrollResponseSchema: The shared secret, provisioning URI and
+            one-time recovery codes — returned only once.
+            """
             secret, uri, codes = await service.mfa_enroll(
                 session,
                 user=user,
@@ -1208,6 +1259,13 @@ def make_auth_router(
             session: AsyncSession = session_dep,
             user: BaseUserModel = Depends(current_user_dep),
         ) -> None:
+            """Confirm TOTP enrollment with a code from the authenticator.
+
+            Args:
+                payload (MFAConfirmSchema): The 6-digit code from the authenticator.
+                session (AsyncSession): The request-scoped DB session.
+                user (BaseUserModel): The authenticated caller.
+            """
             await service.mfa_confirm(session, user=user, code=payload.code)
             await session.commit()
 
@@ -1232,6 +1290,14 @@ def make_auth_router(
             session: AsyncSession = session_dep,
             user: BaseUserModel = Depends(current_user_dep),
         ) -> None:
+            """Disable TOTP after re-authenticating with password and code.
+
+            Args:
+                payload (MFADisableSchema): The account password plus a valid TOTP
+                    or recovery code.
+                session (AsyncSession): The request-scoped DB session.
+                user (BaseUserModel): The authenticated caller.
+            """
             await service.mfa_disable(
                 session,
                 user=user,
@@ -1263,6 +1329,16 @@ def make_auth_router(
             payload: MFAVerifySchema,
             session: AsyncSession = session_dep,
         ) -> LoginResponseSchema:
+            """Exchange an MFA token plus TOTP code for the real JWT pair.
+
+            Args:
+                payload (MFAVerifySchema): The short-lived ``mfa_token`` from step
+                    one plus the current TOTP or recovery code.
+                session (AsyncSession): The request-scoped DB session.
+
+            Returns:
+                LoginResponseSchema: The access + refresh token pair.
+            """
             user = await service.mfa_verify(
                 session,
                 mfa_token=payload.mfa_token,

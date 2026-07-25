@@ -270,6 +270,12 @@ class AsyncDatabaseManager:
         Intended for tests and local development. Production schemas
         should be managed by Alembic (see
         :class:`tempest_fastapi_sdk.db.migrations.AlembicHelper`).
+
+        Raises:
+            RuntimeError: When the engine is not connected.
+
+        Raises:
+            RuntimeError: When the engine is not connected.
         """
         if self._engine is None:
             await self.connect()
@@ -282,6 +288,9 @@ class AsyncDatabaseManager:
         """Issue ``DROP TABLE`` for every model registered on ``BaseModel``.
 
         Intended for tests and local development.
+
+        Raises:
+            RuntimeError: When the engine is not connected.
         """
         if self._engine is None:
             await self.connect()

@@ -110,6 +110,17 @@ def make_session_router(
         response: Response,
         session: AsyncSession = db_dep,
     ) -> SessionResponseSchema:
+        """Authenticate and open a server-side session.
+
+        Args:
+            payload (SessionLoginSchema): Email and password.
+            request (Request): The inbound request, read for client metadata.
+            response (Response): The outgoing response, used to set the cookie.
+            session (AsyncSession): The request-scoped DB session.
+
+        Returns:
+            Response: The session cookie plus the login payload.
+        """
         user = await service.authenticate(
             session,
             email=payload.email,
@@ -164,6 +175,15 @@ def make_session_router(
         request: Request,
         session: Session = current_session_required,
     ) -> list[SessionSummarySchema]:
+        """List the caller's active sessions.
+
+        Args:
+            request (Request): The inbound request, read for client metadata.
+            session (Session): The caller's current server-side session.
+
+        Returns:
+            list[SessionInfoSchema]: One entry per active session.
+        """
         current_plain: str | None = getattr(request.state, "session_id_plaintext", None)
         return await service.list_sessions(
             session.user_id,

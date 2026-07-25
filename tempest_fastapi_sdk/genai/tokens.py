@@ -85,6 +85,14 @@ def truncate_messages(
     kept = list(rest)
 
     def total(msgs: list[dict[str, Any]]) -> int:
+        """Return the token count of ``msgs`` under the outer settings.
+
+        Args:
+            msgs (list[dict[str, Any]]): The messages to measure.
+
+        Returns:
+            int: Total tokens, including the per-message overhead.
+        """
         return count_message_tokens(
             msgs,
             tokenizer,
