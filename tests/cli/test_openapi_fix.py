@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
+from tempest_fastapi_sdk.cli import openapi_fix
 from tempest_fastapi_sdk.cli.main import app
 from tempest_fastapi_sdk.cli.openapi_fix import (
     DirtyWorkingTreeError,
@@ -343,3 +346,94 @@ class TestNothingToDo:
         _git(project, "commit", "-qm", "empty")
         output = _run(project, "--fix", monkeypatch=monkeypatch)
         assert "match its flow" in output
+
+
+class TestRuffResolution:
+    """`ruff` is located across the ways a project can expose it."""
+
+    def test_probes_and_rejects_a_broken_candidate(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A candidate that exists but cannot run is not accepted.
+
+        `uv run ruff` is the real case: `uv` is on PATH in this repo, yet
+        outside a uv project the invocation fails. Accepting it unprobed made
+        `normalize` a silent no-op while the caller believed it ran.
+        """
+        broken = tmp_path / "ruff"
+        broken.write_text("#!/bin/sh\nexit 3\n")
+        broken.chmod(0o755)
+        monkeypatch.setattr(
+            openapi_fix.shutil, "which", lambda name: str(broken) if name else None
+        )
+        monkeypatch.setattr(openapi_fix.importlib.util, "find_spec", lambda name: None)
+        assert openapi_fix.ruff_runner() is None
+
+    def test_falls_back_to_the_current_interpreter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With ruff importable but off PATH, `-m ruff` is used.
+
+        This is what `tempest` invoked by absolute path from a venv looks
+        like: the venv's `bin/` never joined PATH, so `shutil.which` misses a
+        ruff sitting right next to the running interpreter.
+        """
+        monkeypatch.setattr(openapi_fix.shutil, "which", lambda name: None)
+        runner = openapi_fix.ruff_runner()
+        if importlib.util.find_spec("ruff") is None:  # pragma: no cover
+            pytest.skip("ruff is not importable in this environment")
+        assert runner == [sys.executable, "-m", "ruff"]
+
+    def test_normalize_returns_source_without_a_runner(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No ruff means the splice is returned as written, not mangled."""
+        monkeypatch.setattr(openapi_fix, "ruff_runner", lambda: None)
+        source = "import os\nx=1\n"
+        assert openapi_fix.normalize(source) == source
+
+    def test_normalize_wraps_an_over_long_line(self) -> None:
+        """With ruff present, a line past the limit comes back wrapped."""
+        if openapi_fix.ruff_runner() is None:  # pragma: no cover
+            pytest.skip("no working ruff in this environment")
+        source = f'print("{"x" * 120}", 1, 2, 3)\n'
+        assert openapi_fix.normalize(source).count("\n") > 1
+
+    def test_normalize_uses_the_target_project_settings(self, tmp_path: Path) -> None:
+        """Formatting obeys the config next to the file being rewritten.
+
+        Ruff resolves settings by walking up from the path it is handed, so a
+        scratch file in the system temp directory would be formatted with
+        ruff's own defaults — and the result would then fail the project's
+        `ruff format --check`. `near=` is what keeps the two in agreement.
+        """
+        if openapi_fix.ruff_runner() is None:  # pragma: no cover
+            pytest.skip("no working ruff in this environment")
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.ruff]\nline-length = 200\n", encoding="utf-8"
+        )
+        source = f'print("{"x" * 120}", 1, 2, 3)\n'
+        assert openapi_fix.normalize(source, near=tmp_path) == source
+        assert openapi_fix.normalize(source).count("\n") > 1
+
+    def test_missing_ruff_is_reported_to_the_user(
+        self, project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The write says so when it could not format what it wrote.
+
+        Silence here would leave the project's own `ruff check` failing on a
+        file this command just produced, with no hint why.
+        """
+        monkeypatch.setattr(openapi_fix, "ruff_runner", lambda: None)
+        output = _run(project, "--fix", monkeypatch=monkeypatch)
+        assert "no working ruff found" in output
+        assert "tempest fix" in output
+
+    def test_no_notice_when_ruff_works(
+        self, project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The notice stays out of the way when formatting did happen."""
+        if openapi_fix.ruff_runner() is None:  # pragma: no cover
+            pytest.skip("no working ruff in this environment")
+        output = _run(project, "--fix", monkeypatch=monkeypatch)
+        assert "no working ruff found" not in output

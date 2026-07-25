@@ -976,6 +976,7 @@ def _apply_error_fixes(
         normalize,
         plan_file,
         render_file,
+        ruff_runner,
         unified_diff,
     )
 
@@ -983,6 +984,14 @@ def _apply_error_fixes(
     if not actionable:
         typer.secho("Nothing to fix — no undocumented exceptions.", fg="green")
         return
+
+    if ruff_runner() is None:
+        typer.secho(
+            "note: no working ruff found, so the new import stays where it was "
+            "spliced and a long decorator is not wrapped. Run `tempest fix` "
+            "afterwards to sort and format.",
+            fg="yellow",
+        )
 
     if not dry_run:
         try:
@@ -1002,7 +1011,7 @@ def _apply_error_fixes(
         if not plan.insertions:
             continue
         before = path.read_text(encoding="utf-8")
-        after = normalize(render_file(plan))
+        after = normalize(render_file(plan), near=path.parent)
         if dry_run:
             typer.echo(unified_diff(path, before, after, root), nl=False)
         else:

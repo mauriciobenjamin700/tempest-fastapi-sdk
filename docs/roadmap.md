@@ -139,6 +139,7 @@ Erros documentados no OpenAPI — correção automática:
 |---------|--------|------|
 | **`tempest openapi-errors --fix`** | ✅ v0.166 | Escreve as declarações que o `--check` apontava: injeta `responses=error_responses(...)` na rota, estende a declaração que já existir (`error_responses` ou `@raises`) preservando a ordem, e adiciona os imports que faltam. Edições ancoradas em posições da AST, saída passada por `ruff check --select I --fix` + `ruff format`. [Referência »](recipes/openapi-errors.md#passo-5-fix-escreve-as-declaracoes-por-voce) |
 | **Só acrescenta, com árvore limpa** | ✅ v0.166 | Findings `unreachable` nunca são removidos — alcançabilidade não enxerga raise dinâmico, então apagar por conta dela removeria declaração correta. Exige árvore git limpa, para `git diff` ser a revisão e `git checkout` o desfazer; `--dry-run` mostra o diff formatado e roda em árvore suja. |
+| **Formatação com a config do projeto** | ✅ v0.166.1 | O arquivo temporário entregue ao ruff é criado ao lado do arquivo reescrito, então `line-length` e seções de `isort` do projeto valem — e o que é escrito passa no `ruff format --check` do CI dele. Não achando um ruff que rode (`PATH`, `python -m ruff`, `uv run ruff`, cada um testado com `--version`), o comando grava e avisa. |
 
 ## Entregue na v0.163.0
 

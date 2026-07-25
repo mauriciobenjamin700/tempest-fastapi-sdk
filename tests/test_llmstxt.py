@@ -14,8 +14,6 @@ that derivation actually holds end to end, against the built file.
 from __future__ import annotations
 
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -42,29 +40,18 @@ def _nav_page_paths(nav: object, out: list[str]) -> None:
             _nav_page_paths(item, out)
 
 
-@pytest.fixture(scope="session")
-def built_site() -> Path:
-    """Build the docs once and return the site directory.
+@pytest.fixture(autouse=True)
+def _require_llms_index(built_site: Path) -> None:
+    """Skip the module when the hook that emits the index is disabled.
 
-    Returns:
-        Path: The built ``site/`` directory.
+    The ``built_site`` fixture itself lives in ``conftest`` and only builds;
+    whether the index exists is this module's precondition, not the build's.
+
+    Args:
+        built_site (Path): The built ``site/`` directory, from ``conftest``.
     """
-    if shutil.which("uv") is None:  # pragma: no cover - environment-dependent
-        pytest.skip("uv is required to build the documentation")
-    site = ROOT / "site"
-    if not (site / "llms.txt").exists():
-        completed = subprocess.run(
-            ["uv", "run", "--group", "docs", "mkdocs", "build", "--strict", "-q"],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if completed.returncode != 0:  # pragma: no cover - build failure
-            pytest.fail(f"mkdocs build failed:\n{completed.stdout}{completed.stderr}")
-    if not (site / "llms.txt").exists():  # pragma: no cover - hook disabled
+    if not (built_site / "llms.txt").exists():  # pragma: no cover - hook off
         pytest.skip("llms.txt was not emitted")
-    return site
 
 
 @pytest.fixture(scope="session")

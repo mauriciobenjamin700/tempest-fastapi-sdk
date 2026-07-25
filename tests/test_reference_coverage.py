@@ -20,13 +20,9 @@ from __future__ import annotations
 
 import importlib
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
-
-ROOT = Path(__file__).resolve().parent.parent
 
 PUBLIC_MODULES: tuple[str, ...] = (
     "tempest_fastapi_sdk",
@@ -65,28 +61,21 @@ of keeping it as a mapping rather than a bare set.
 
 
 @pytest.fixture(scope="session")
-def rendered_anchors() -> frozenset[str]:
-    """Build the docs once and return the reference page's anchor ids.
+def rendered_anchors(built_site: Path) -> frozenset[str]:
+    """Return the reference page's anchor ids from the built site.
+
+    Args:
+        built_site (Path): The built ``site/`` directory, from ``conftest``,
+            which rebuilds it whenever a docs input is newer. Reading a stale
+            ``site/`` here used to report every symbol added since the last
+            local build as missing from the reference.
 
     Returns:
         frozenset[str]: The trailing component of every
         ``id="tempest_fastapi_sdk..."`` anchor mkdocstrings emitted, which
         is the symbol name as a reader would search for it.
     """
-    if shutil.which("uv") is None:  # pragma: no cover - environment-dependent
-        pytest.skip("uv is required to build the documentation")
-    site = ROOT / "site"
-    page = site / "reference" / "index.html"
-    if not page.exists():
-        completed = subprocess.run(
-            ["uv", "run", "--group", "docs", "mkdocs", "build", "--strict", "-q"],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if completed.returncode != 0:  # pragma: no cover - build failure
-            pytest.fail(f"mkdocs build failed:\n{completed.stdout}{completed.stderr}")
+    page = built_site / "reference" / "index.html"
     if not page.exists():  # pragma: no cover - unexpected layout
         pytest.skip("reference page was not built")
     ids = re.findall(r'id="(tempest_fastapi_sdk[^"]*)"', page.read_text())
