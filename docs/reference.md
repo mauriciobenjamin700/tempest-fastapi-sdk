@@ -1,6 +1,11 @@
 # Referência da API
 
-Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https://mkdocstrings.github.io/). Todo símbolo público exportado por `tempest_fastapi_sdk` está documentado aqui com sua assinatura completa, parâmetros, tipo de retorno, exceções levantadas e localização no código-fonte.
+Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https://mkdocstrings.github.io/). Todo símbolo exportado no `__all__` de `tempest_fastapi_sdk` e dos seus submódulos públicos está documentado aqui — com assinatura completa, parâmetros, tipo de retorno, exceções levantadas e link para o código-fonte.
+
+!!! info "Cobertura verificada, não prometida"
+    `tests/test_reference_coverage.py` renderiza esta página e compara os âncoras emitidos com o `__all__` de cada módulo público, então um símbolo novo que não chegue aqui quebra o `make check`.
+
+    Três grupos ficam de fora **de propósito**, cada um com o motivo registrado no allowlist do teste: os aliases BR pré-0.76 sem sufixo `Field` (`CPF`, `CNPJ`, `CEP`, `CPFOrCNPJ`, `PhoneBR`) e `AsyncBrokerManager`, todos **deprecados** — documentá-los convidaria ao uso; e `Classifier` / `Detector` / `Segmenter`, que são reexports do `ort-vision-sdk` e pertencem à documentação daquele projeto.
 
 !!! tip "Buscando"
     Use a barra de busca no topo da página (ou pressione `/`) para pular para um símbolo pelo nome. O índice full-text inclui as docstrings, então buscas como "soft delete" ou "request id" caem na classe certa.
@@ -16,7 +21,6 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
       show_submodules: false
       filters:
         - "!^_"
-        - "!^[a-z_]+$"
 
 ---
 
@@ -147,10 +151,13 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.openapi.ir.ClientIR
 ::: tempest_fastapi_sdk.openapi.ir.OperationIR
 ::: tempest_fastapi_sdk.openapi.ir.ParameterIR
+::: tempest_fastapi_sdk.openapi.loader.parse_header_options
+::: tempest_fastapi_sdk.openapi.generate.suggest_client_class
 ::: tempest_fastapi_sdk.api.middlewares.RequestIDMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.IdempotencyMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.MemoryIdempotencyStore
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.RedisIdempotencyStore
+::: tempest_fastapi_sdk.api.middlewares.idempotency.IDEMPOTENCY_HEADER
 ::: tempest_fastapi_sdk.api.middlewares.body_size.BodySizeLimitMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.graceful.GracefulShutdownMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.csrf.CSRFMiddleware
@@ -182,6 +189,12 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.routers.metrics.make_prometheus_router
 ::: tempest_fastapi_sdk.api.routers.metrics.make_prometheus_registry
 ::: tempest_fastapi_sdk.api.routers.metrics.BusinessMetrics
+::: tempest_fastapi_sdk.api.routers.metrics.DEFAULT_LATENCY_BUCKETS
+::: tempest_fastapi_sdk.api.cookies.set_cookie
+::: tempest_fastapi_sdk.api.cookies.clear_cookie
+::: tempest_fastapi_sdk.api.cookies.SameSite
+::: tempest_fastapi_sdk.api.static.HardenedStaticFiles
+::: tempest_fastapi_sdk.api.static.DEFAULT_STATIC_SECURITY_HEADERS
 ::: tempest_fastapi_sdk.api.webhooks.WebhookSender
 ::: tempest_fastapi_sdk.api.webhooks.WebhookDelivery
 ::: tempest_fastapi_sdk.api.tracing.setup_tracing
@@ -213,6 +226,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.authz.permissions.check_permission
 ::: tempest_fastapi_sdk.authz.permissions.permission
 ::: tempest_fastapi_sdk.authz.permissions.PermissionMixin
+::: tempest_fastapi_sdk.authz.permissions.default_registry
 ::: tempest_fastapi_sdk.authz.dependencies.make_permission_checker
 
 ### `tempest_fastapi_sdk.sessions`
@@ -261,6 +275,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.config.Inline
 ::: tempest_fastapi_sdk.admin.config.Lens
 ::: tempest_fastapi_sdk.admin.permissions.AdminPermission
+::: tempest_fastapi_sdk.admin.permissions.AdminAccessPolicy
 ::: tempest_fastapi_sdk.admin.dashboard.MetricCard
 ::: tempest_fastapi_sdk.admin.dashboard.MetricValue
 ::: tempest_fastapi_sdk.admin.dashboard.MetricTrend
@@ -272,6 +287,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.admin.auth.UserModelAuthBackend
 ::: tempest_fastapi_sdk.admin.router.make_admin_router
 ::: tempest_fastapi_sdk.admin.discovery.discover_models
+::: tempest_fastapi_sdk.admin.session.AdminSession
+::: tempest_fastapi_sdk.admin.session.SignedCookieSessionStore
 
 ---
 
@@ -336,16 +353,15 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ### `tempest_fastapi_sdk.ssr`
 
-::: tempest_fastapi_sdk.ssr.page.Page
-::: tempest_fastapi_sdk.ssr.response.html_response
-::: tempest_fastapi_sdk.ssr.assets.make_htmx_router
-::: tempest_fastapi_sdk.ssr.attributes.htmx
-::: tempest_fastapi_sdk.ssr.attributes.aria
-::: tempest_fastapi_sdk.ssr.attributes.data
-::: tempest_fastapi_sdk.ssr.webapp.make_web_app_router
-::: tempest_fastapi_sdk.ssr.webapp.build_web_app
-::: tempest_fastapi_sdk.ssr.webapp.detect_build_mode
+::: tempest_fastapi_sdk.ssr
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
 
+::: tempest_fastapi_sdk.ssr.webapp.BuildMode
 ---
 
 ## Web Push
@@ -379,14 +395,13 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ### `tempest_fastapi_sdk.vision`
 
-::: tempest_fastapi_sdk.vision.schemas.DetectionSchema
-::: tempest_fastapi_sdk.vision.schemas.ClassificationSchema
-::: tempest_fastapi_sdk.vision.schemas.SegmentationSchema
-::: tempest_fastapi_sdk.vision.schemas.BoundingBoxSchema
-::: tempest_fastapi_sdk.vision.schemas.ClassProbabilitySchema
-::: tempest_fastapi_sdk.vision.mapping.to_detection_schemas
-::: tempest_fastapi_sdk.vision.mapping.to_classification_schema
-::: tempest_fastapi_sdk.vision.mapping.to_segmentation_schemas
+::: tempest_fastapi_sdk.vision
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
 
 ---
 
@@ -394,14 +409,73 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ### `tempest_fastapi_sdk.geo`
 
-::: tempest_fastapi_sdk.geo.schemas.Coordinate
-::: tempest_fastapi_sdk.geo.schemas.TravelEstimate
-::: tempest_fastapi_sdk.geo.enums.TravelMode
-::: tempest_fastapi_sdk.geo.distance.haversine_km
-::: tempest_fastapi_sdk.geo.estimate.estimate_travel
-::: tempest_fastapi_sdk.geo.estimate.duration_factor
-::: tempest_fastapi_sdk.geo.routing.RoutingBackend
-::: tempest_fastapi_sdk.geo.routing.OSRMBackend
+::: tempest_fastapi_sdk.geo
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+::: tempest_fastapi_sdk.geo.distance.EARTH_RADIUS_KM
+::: tempest_fastapi_sdk.geo.estimate.DEFAULT_CIRCUITY_FACTOR
+::: tempest_fastapi_sdk.geo.estimate.DEFAULT_CAR_SPEED_KMH
+::: tempest_fastapi_sdk.geo.estimate.DEFAULT_MODE_DURATION_FACTORS
+::: tempest_fastapi_sdk.geo.routing.DEFAULT_OSRM_BASE_URL
+::: tempest_fastapi_sdk.geo.routing.DEFAULT_MODE_PROFILES
+::: tempest_fastapi_sdk.geo.geocoding.DEFAULT_NOMINATIM_BASE_URL
+::: tempest_fastapi_sdk.geo.br.UF_CENTROIDS
+---
+
+## Fila e tarefas
+
+### `tempest_fastapi_sdk.queue`
+
+::: tempest_fastapi_sdk.queue
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+### `tempest_fastapi_sdk.tasks`
+
+::: tempest_fastapi_sdk.tasks
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
+## Chat
+
+### `tempest_fastapi_sdk.chat`
+
+::: tempest_fastapi_sdk.chat
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
+## Comentários e avaliações
+
+### `tempest_fastapi_sdk.reviews`
+
+::: tempest_fastapi_sdk.reviews
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
 
 ---
 

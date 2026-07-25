@@ -91,7 +91,7 @@ Via `pyproject.toml`:
 
 ```toml
 dependencies = [
-    "tempest-fastapi-sdk>=0.137.0",
+    "tempest-fastapi-sdk>=0.161.0",
 ]
 ```
 

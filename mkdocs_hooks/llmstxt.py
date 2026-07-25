@@ -8,8 +8,12 @@ keeps the output as clean Markdown — exactly what a model wants.
 
 Two files land at the site root:
 
-* ``llms.txt`` — a curated index: title, summary, then one bullet per page
-  grouped by section, each linking to its published URL.
+* ``llms.txt`` — an index: title, summary, then one bullet per page grouped
+  by section, each linking to its published URL. Sections and their pages are
+  **derived from the MkDocs ``nav``**, so a page added to the site is listed
+  here automatically. An earlier version hard-coded the list and drifted: 25 of
+  73 nav pages — every feature shipped after it was written — had gone missing
+  from the index.
 * ``llms-full.txt`` — every listed page concatenated into a single block, so
   a model can ingest the whole project at once.
 
@@ -28,81 +32,119 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from mkdocs.config.defaults import MkDocsConfig
 
-# One short paragraph giving a model the whole mental model up front.
-_DESCRIPTION = (
-    "tempest-fastapi-sdk are the shared FastAPI + SQLAlchemy 2.0 (async) + "
-    "Pydantic v2 building blocks used across Tempest services: BaseAppSettings, "
-    "BaseModel, BaseRepository[Model], BaseService, BaseController, base and "
-    "pagination schemas, the AppException hierarchy + handlers, "
-    "AsyncDatabaseManager, AlembicHelper, utilities (PasswordUtils, JWTUtils, "
-    "EmailUtils, UploadUtils, StoredFileServiceMixin, Brazilian document/phone "
-    "helpers), JWT auth (UserAuthService + make_jwt_user_dependency), MinIO/S3 "
-    "storage, a FastStream broker and TaskIQ tasks. Optional features ship as "
-    "extras ([auth], [email], [upload], [minio], [cache], [queue], [tasks], "
-    "[metrics], [webpush], [all]); Python >= 3.11."
+_SUMMARY: str = (
+    "tempest-fastapi-sdk holds the shared FastAPI + SQLAlchemy 2.0 (async) + "
+    "Pydantic v2 building blocks used across Tempest services. Core: "
+    "BaseAppSettings (+ composable settings mixins), BaseModel, "
+    "BaseRepository[Model], BaseService, BaseController, base/pagination "
+    "schemas, the AppException hierarchy + handlers (with an i18n message "
+    "catalog and OpenAPI error documentation), AsyncDatabaseManager and "
+    "AlembicHelper. Batteries: JWT/OAuth2 auth with a bundled signup/login/"
+    "reset flow and TOTP MFA, a Django-style admin site, typed SSR pages, "
+    "Server-Sent Events and WebSockets, Redis cache, FastStream queues and "
+    "TaskIQ tasks (retries + dead letters), MinIO/S3 storage and uploads, Web "
+    "Push, feature flags, audit trail, rate limiting and idempotency "
+    "middleware, Prometheus metrics and OpenTelemetry tracing, self-hosted "
+    "generative AI (local LLM, embeddings, RAG, speech), geolocation, "
+    "Brazilian document/phone/PIX validation, and a `tempest` CLI that "
+    "scaffolds services and generates typed clients from an OpenAPI spec. "
+    "Python >= 3.11."
 )
+"""One paragraph giving a model the whole mental model up front."""
 
-# Ordered sections → the PT-BR (default-language) source files they contain.
-_SECTIONS: dict[str, list[str]] = {
-    "Overview": [
-        "index.md",
-        "installation.md",
-        "architecture.md",
-        "tutorial.md",
-    ],
-    "Recipes": [
-        "recipes/index.md",
-        "recipes/database.md",
-        "recipes/multi-tenant.md",
-        "recipes/audit-trail.md",
-        "recipes/http.md",
-        "recipes/http-client.md",
-        "recipes/cache.md",
-        "recipes/feature-flags.md",
-        "recipes/realtime.md",
-        "recipes/websocket.md",
-        "recipes/queue-tasks.md",
-        "recipes/outbox.md",
-        "recipes/email.md",
-        "recipes/webpush.md",
-        "recipes/logging.md",
-        "recipes/observability.md",
-        "recipes/storage.md",
-        "recipes/uploads.md",
-        "recipes/stored-files.md",
-        "recipes/downloads.md",
-        "recipes/idempotency.md",
-        "recipes/offline-sync.md",
-        "recipes/auth-flow.md",
-        "recipes/mfa.md",
-        "recipes/sessions.md",
-        "recipes/metrics.md",
-        "recipes/admin.md",
-        "recipes/testing.md",
-        "recipes/deploy-safety.md",
-        "recipes/cli.md",
-        "recipes/security.md",
-        "recipes/utilities.md",
-        "recipes/br-helpers.md",
-    ],
-    "Learning (marketplace)": [
-        "learning/index.md",
-        "learning/marketplace/index.md",
-        "learning/marketplace/domain.md",
-        "learning/marketplace/business-rules.md",
-        "learning/marketplace/flows.md",
-        "learning/marketplace/api.md",
-    ],
-    "API reference": [
-        "reference.md",
-    ],
-    "Project": [
-        "roadmap.md",
-        "migration.md",
-        "contributing.md",
-        "changelog.md",
-    ],
-}
+
+def _extras(pyproject: Path) -> list[str]:
+    """Read the distribution's optional-dependency names.
+
+    Derived rather than written out because the previous hard-coded list went
+    stale: it still advertised ten extras long after the package shipped more
+    than twenty, so a model reading ``llms.txt`` was told features did not
+    exist.
+
+    Args:
+        pyproject (Path): Path to ``pyproject.toml``.
+
+    Returns:
+        list[str]: Extra names in declaration order, ``all`` last. Empty when
+        the file cannot be read — the summary then simply omits the list
+        rather than the build failing over a nicety.
+    """
+    try:
+        text = pyproject.read_text(encoding="utf-8")
+    except OSError:  # pragma: no cover - repo layout is fixed
+        return []
+    block = text.split("[project.optional-dependencies]", 1)
+    if len(block) == 1:
+        return []
+    names: list[str] = []
+    for line in block[1].splitlines():
+        if line.startswith("["):
+            break
+        match = re.match(r"^([A-Za-z0-9_-]+)\s*=\s*\[", line)
+        if match:
+            names.append(match.group(1))
+    return [n for n in names if n != "all"] + (["all"] if "all" in names else [])
+
+
+_UNGROUPED_SECTION: str = "Overview"
+"""Section used for top-level nav entries that are a bare page."""
+
+
+def _nav_sections(nav: object) -> dict[str, list[str]]:
+    """Derive ``{section title: [source paths]}`` from the MkDocs ``nav``.
+
+    Walking the nav is what keeps this index honest: the previous hard-coded
+    list silently stopped covering new pages, so anything shipped after it was
+    written became invisible to LLM consumers even though it was on the site.
+
+    Args:
+        nav (object): ``config["nav"]`` as MkDocs parsed it from YAML — a list
+            whose items are either a path string or a single-key mapping of
+            title to path, or to a nested list.
+
+    Returns:
+        dict[str, list[str]]: Sections in nav order, each holding the
+        default-language (PT-BR) source paths it groups. Nested sub-sections
+        are flattened into their top-level parent, since a two-level index is
+        easier for a model to skim than a deep tree.
+    """
+    sections: dict[str, list[str]] = {}
+
+    def collect(entry: object, out: list[str]) -> None:
+        """Append every ``.md`` path reachable from ``entry`` to ``out``."""
+        if isinstance(entry, str):
+            if entry.endswith(".md"):
+                out.append(entry)
+        elif isinstance(entry, dict):
+            for value in entry.values():
+                collect(value, out)
+        elif isinstance(entry, list):
+            for item in entry:
+                collect(item, out)
+
+    if not isinstance(nav, list):
+        return sections
+
+    for item in nav:
+        if isinstance(item, str):
+            sections.setdefault(_UNGROUPED_SECTION, []).extend(
+                [item] if item.endswith(".md") else []
+            )
+            continue
+        if not isinstance(item, dict):
+            continue
+        for title, value in item.items():
+            pages: list[str] = []
+            collect(value, pages)
+            if not pages:
+                continue
+            # A top-level entry that is a single page gets grouped rather than
+            # promoted: a dozen one-line "sections" is harder for a model to
+            # skim than one Overview block.
+            section = _UNGROUPED_SECTION if len(pages) == 1 else str(title)
+            sections.setdefault(section, []).extend(pages)
+    return sections
+
 
 _INCLUDE_RE = re.compile(r'{%\s*include-markdown\s+"([^"]+)"\s*%}')
 _MKDOCSTRINGS_RE = re.compile(r"^:::\s+\S+.*$", re.MULTILINE)
@@ -152,10 +194,15 @@ def on_post_build(config: MkDocsConfig) -> None:
     site_url = (config["site_url"] or "").rstrip("/")
     reference_url = f"{site_url}/reference/"
 
-    index = f"# {site_name}\n\n> {_DESCRIPTION}\n"
-    full = f"# {site_name}\n\n> {_DESCRIPTION}\n"
+    extras = _extras(Path(config["config_file_path"]).parent / "pyproject.toml")
+    summary = _SUMMARY
+    if extras:
+        rendered = ", ".join(f"[{name}]" for name in extras)
+        summary = f"{summary} Optional features ship as extras: {rendered}."
+    index = f"# {site_name}\n\n> {summary}\n"
+    full = f"# {site_name}\n\n> {summary}\n"
 
-    for section, files in _SECTIONS.items():
+    for section, files in _nav_sections(config["nav"]).items():
         index += f"\n## {section}\n\n"
         for src in files:
             src_path = docs_dir / src
