@@ -210,6 +210,14 @@ def make_admin_router(
 
     Returns:
         APIRouter: A router ready to attach via ``app.include_router``.
+
+    Raises:
+            ImportError: When the ``[admin]`` extra is not installed, so
+                Jinja2 is unavailable to render the templates.
+
+    Raises:
+            ImportError: When the ``[admin]`` extra is not installed, so
+                Jinja2 is unavailable to render the templates.
     """
     try:
         from fastapi.templating import Jinja2Templates

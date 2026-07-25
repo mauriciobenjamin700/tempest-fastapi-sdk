@@ -416,14 +416,17 @@ class OIDCProvider(_BaseOAuthClient):
 
     @property
     def authorize_url(self) -> str:
+        """The provider's authorization endpoint, from discovery or config."""
         return self._authorize_url
 
     @property
     def token_url(self) -> str:
+        """The provider's token endpoint, from discovery or config."""
         return self._token_url
 
     @property
     def userinfo_url(self) -> str | None:
+        """The provider's userinfo endpoint, when it advertises one."""
         return self._userinfo_url
 
     def _parse_user(self, payload: dict[str, Any]) -> OAuthUser:

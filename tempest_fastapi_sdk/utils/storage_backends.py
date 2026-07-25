@@ -103,6 +103,12 @@ class UploadStorage(Protocol):
                 exceeded mid-write.
             InvalidFileTypeException: When ``validator`` rejects
                 the first chunk.
+
+        Raises:
+            InvalidFileTypeException: When the sniffed MIME type is not
+                in the allowed set.
+            FileTooLargeException: When the stream exceeds the configured
+                maximum size.
         """
         ...
 
@@ -206,6 +212,12 @@ class LocalUploadStorage:
             ``content_type`` and ``metadata`` are accepted for
             interface parity and discarded: a local filesystem backend
             has nowhere to store them.
+
+        Raises:
+            InvalidFileTypeException: When the sniffed MIME type is not
+                in the allowed set.
+            FileTooLargeException: When the stream exceeds the configured
+                maximum size.
         """
         from tempest_fastapi_sdk.exceptions.upload import (
             FileTooLargeException,
