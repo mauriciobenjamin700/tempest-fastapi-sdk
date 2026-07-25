@@ -131,6 +131,18 @@ GraphQL/gRPC (REST by decision).
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## Shipped in v0.161.0
+
+Code generation from an OpenAPI specification:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **`tempest openapi-client <spec>`** | ✅ v0.161 | Point it at the spec (URL or file, JSON or YAML) and get `<src\|app>/integrations/<name>/` with `schemas.py` + `client.py`. The end of transcribing a third party's documentation by hand. `--name`/`--out`/`--header`/`--schemas-only`/`--force`/`--no-format`. [Reference »](recipes/openapi-client.md) |
+| **Schemas with metadata** | ✅ v0.161 | One `BaseSchema` class per component, with the **spec's** `title`/`description`/`examples` on every `Field` — the generated module is the integration's documentation. Python names + the wire name as `alias` + `populate_by_name`; reserved words resolved (`class` → `class_`); optional collections as empty lists; enums as `BaseStrEnum`/`BaseIntEnum`; `allOf` flattened; recursion via `model_rebuild()`. Nothing is invented where the spec documents nothing. [Reference »](recipes/openapi-client.md#schemaspy) |
+| **Typed HTTP client** | ✅ v0.161 | One `async` method per operation, over an **injected** `HTTPClient` — retry/backoff/circuit-breaker/credentials stay with the caller, and `httpx.MockTransport` tests the whole integration offline. Typed path/query params, validated body and response, full Google docstrings. [Reference »](recipes/openapi-client.md#clientpy) |
+| **Output that passes your gates** | ✅ v0.161 | The emitted code passes `ruff check` + `ruff format --check` **before** the formatting pass (tested against the raw output), so `--no-format` or a machine without ruff still yields a usable package. Regenerating an unchanged spec produces a byte-for-byte identical file, so the `git diff` of a `--force` is the integration's changelog. |
+| **It never guesses** | ✅ v0.161 | An unrepresentable construct (`not`, external `$ref`, Swagger 2.0, non-JSON body, header param) becomes `Any` + a `# openapi: unsupported` comment + a line in the command's summary. A wrong schema that looks right is worse than a documented gap. |
+
 ## Shipped in v0.160.0
 
 Errors documented in OpenAPI:

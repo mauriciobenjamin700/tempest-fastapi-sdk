@@ -5,6 +5,58 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.161.0] — 2026-07-25
+
+### Added
+
+- **`tempest openapi-client <spec>`** — generate Pydantic schemas **and** a typed
+  HTTP client from a third party's OpenAPI 3 specification, ending the manual
+  transcription of their documentation (#97). Point it at a URL or a file (JSON,
+  or YAML with the new `[openapi]` extra) and it writes a self-contained
+  `<src|app>/integrations/<name>/` package. Options: `--name`, `--out`,
+  `--header` (repeatable, for a spec behind authentication), `--path`,
+  `--schemas-only`, `--force`, `--no-format`.
+- **Generated schemas carry the specification's metadata.** One `BaseSchema`
+  class per component, with `title` / `description` / `examples` on every
+  `Field`, so the generated module doubles as the integration's documentation and
+  survives the third party changing or retiring their docs site. Field names are
+  Python-idiomatic with the wire name attached as an `alias` and
+  `populate_by_name` enabled, so both spellings are accepted on input and
+  `model_dump(by_alias=True)` returns the wire shape. Reserved words are resolved
+  (`class` → `class_`), optional collections default to an empty list (never
+  `list[X] | None`), string/integer enums become `BaseStrEnum` / `BaseIntEnum`
+  subclasses, `allOf` is flattened, and recursive or mutually-recursive models
+  get `model_rebuild()` calls. Nothing is invented where the specification
+  documents nothing.
+- **Generated client wraps an injected `HTTPClient`.** One `async` method per
+  operation with typed path/query parameters, a validated request body and a
+  validated response, plus a full Google-style docstring listing the documented
+  error statuses. Because the transport is injected, the retry policy, circuit
+  breaker and credentials stay with the caller and an `httpx.MockTransport`
+  exercises the whole integration without a network.
+- **`tempest_fastapi_sdk.openapi`** exposes the pieces for programmatic use:
+  `load_spec`, `parse_spec`, `emit_schemas`, `emit_client`,
+  `generate_integration`, `GenerationResult`, `default_output_dir`, `SpecError`
+  and the `SpecIR` / `SchemaIR` / `FieldIR` / `ClientIR` / `OperationIR` /
+  `ParameterIR` intermediate representation.
+- **`[openapi]` extra** (`pyyaml`) for YAML specifications. JSON needs nothing
+  beyond the standard library, and the download uses the already-base `httpx`.
+
+### Notes
+
+- **The emitter's output passes `ruff check` and `ruff format --check` before any
+  formatting pass**, which the test suite asserts against the raw
+  (`--no-format`) output. That means `--no-format`, or a machine with no ruff
+  installed, still produces a usable package — the `ruff` pass the command runs
+  by default is polish, not correctness.
+- **Regenerating an unchanged specification produces a byte-for-byte identical
+  file**, so the `git diff` after a `--force` is the integration's changelog:
+  every line is a real change from the third party.
+- **Unrepresentable constructs are never guessed.** `not`, external `$ref`,
+  Swagger 2.0, non-JSON bodies and `header`/`cookie` parameters degrade to `Any`
+  with a `# openapi: unsupported` marker and a line in the command's summary. A
+  wrong schema that looks right is worse than a documented gap.
+
 ## [0.160.0] — 2026-07-25
 
 ### Added

@@ -768,6 +768,125 @@ def openapi_errors_cmd(
     raise typer.Exit(1 if undocumented_total or not allow_unreachable else 0)
 
 
+@app.command("openapi-client")
+def openapi_client_cmd(
+    spec: Annotated[
+        str,
+        typer.Argument(
+            help="URL or path of the OpenAPI 3 specification to generate from.",
+        ),
+    ],
+    name: Annotated[
+        str | None,
+        typer.Option(
+            "--name",
+            "-n",
+            help="Integration name — becomes the package directory and the "
+            "client class prefix. Defaults to the spec's info.title.",
+        ),
+    ] = None,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            "-o",
+            help="Output directory. Defaults to <src|app>/integrations/<name>/.",
+        ),
+    ] = None,
+    headers: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--header",
+            "-H",
+            help="Header sent when fetching the spec, as 'Name: value'. "
+            "Repeatable — use it for a spec behind authentication.",
+        ),
+    ] = None,
+    target: Annotated[
+        str,
+        typer.Option(
+            "--path",
+            "-p",
+            help="Project root used to resolve the default output directory. "
+            "Defaults to the current working directory.",
+        ),
+    ] = ".",
+    schemas_only: Annotated[
+        bool,
+        typer.Option(
+            "--schemas-only",
+            help="Generate only schemas.py, skipping the HTTP client.",
+        ),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            "-f",
+            help="Overwrite generated files that already exist.",
+        ),
+    ] = False,
+    no_format: Annotated[
+        bool,
+        typer.Option(
+            "--no-format",
+            help="Skip the `ruff format` + `ruff check --fix` pass over the "
+            "generated files.",
+        ),
+    ] = False,
+) -> None:
+    """Generate Pydantic schemas + a typed HTTP client from an OpenAPI spec.
+
+    Writes a self-contained package — ``schemas.py`` with one class per
+    component and ``client.py`` with one async method per operation. Field
+    names are Python-idiomatic with the wire name attached as a Pydantic
+    ``alias``, and every field carries the ``title`` / ``description`` /
+    ``examples`` the specification provided, so the generated module
+    doubles as the integration's documentation.
+
+    The whole directory is generated, never hand-edited: rerun with
+    ``--force`` to refresh it when the third party ships a new version.
+    """
+    from tempest_fastapi_sdk.openapi.generate import generate_integration
+    from tempest_fastapi_sdk.openapi.loader import SpecError, parse_header_options
+
+    try:
+        parsed_headers = parse_header_options(list(headers or []))
+        result = generate_integration(
+            spec,
+            target=Path(target).expanduser().resolve(),
+            name=name,
+            out=out.expanduser().resolve() if out is not None else None,
+            headers=parsed_headers,
+            schemas_only=schemas_only,
+            force=force,
+            run_format=not no_format,
+        )
+    except SpecError as exc:
+        typer.secho(f"error: {exc}", fg="red", err=True)
+        raise typer.Exit(2) from exc
+
+    for path in result.written:
+        typer.secho(f"  + {path}", fg="green")
+    for path in result.skipped:
+        typer.secho(f"  = {path} (exists — pass --force to overwrite)", fg="yellow")
+
+    typer.echo(
+        f"{result.schema_count} schema(s), {result.operation_count} operation(s)."
+    )
+    if result.unsupported:
+        typer.secho(
+            f"{len(result.unsupported)} construct(s) could not be modelled "
+            f"(rendered as Any, marked in the output):",
+            fg="yellow",
+        )
+        for note in result.unsupported:
+            typer.secho(f"  - {note}", fg="yellow")
+
+    if result.skipped and not result.written:
+        raise typer.Exit(1)
+
+
 def main() -> None:
     """Console-script entry point.
 
