@@ -282,6 +282,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   routing, backend-agnostic; `make_dead_letter_middleware`), `TaskMetrics` +
   `TaskQueue.enable_metrics` (`tasks_runs_total`/`tasks_duration_seconds` on the
   shared Prometheus registry). Opt-in middleware, imports without `[tasks]`.
+  **Dead-letter panel (v0.158.0):** `BaseDeadLetterModel`/`make_dead_letter_model`
+  + `DbDeadLetterSink` (persist terminal failures) + `make_dead_letter_admin_model`
+  (read-mostly `AdminModel` + `make_requeue_action`) + `task_inventory`
+  (`TaskInfo` per registered task). No live queue introspection (TaskIQ exposes
+  none) — shows persisted failures + declared task set.
 - **BR validators** — CPF/CNPJ/CEP/phone, with `*Field` Pydantic types
   (`CPFField`/`CNPJField`/`CPFOrCNPJField`/`PhoneBRField`/`CEPField`;
   pre-0.76 unsuffixed names kept as deprecated aliases). **PIX keys**

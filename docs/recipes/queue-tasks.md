@@ -376,6 +376,45 @@ tq: TaskQueue = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/")
 tq.enable_metrics(TaskMetrics())   # tasks_runs_total{task,status} + tasks_duration_seconds{task}
 ```
 
+### Painel de dead-letter no admin
+
+O `DeadLetterSink` diz *o que* fazer com a falha; pra **ver e reprocessar** as falhas, persista-as numa tabela e mostre no admin. `DbDeadLetterSink` grava cada falha terminal; `make_dead_letter_admin_model` monta um `AdminModel` read-mostly (filtra por task, busca no erro, exporta) com uma ação em massa **requeue** opcional.
+
+```python
+from tempest_fastapi_sdk.admin import AdminSite
+from tempest_fastapi_sdk.tasks import (
+    DbDeadLetterSink,
+    TaskQueue,
+    make_dead_letter_admin_model,
+    make_dead_letter_model,
+)
+
+from src.core.resources import db   # AsyncDatabaseManager
+
+
+DeadLetterModel = make_dead_letter_model()   # ou herde BaseDeadLetterModel na mão
+
+tq: TaskQueue = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/")
+tq.dead_letter(DbDeadLetterSink(db, DeadLetterModel))   # persiste falhas terminais
+
+site: AdminSite = AdminSite(title="Ops")
+site.register(make_dead_letter_admin_model(DeadLetterModel, tq=tq))   # painel + requeue
+```
+
+O `tq=` liga a ação **requeue**: o operador seleciona linhas, reenfileira cada chamada com os `args`/`kwargs` guardados e as linhas reprocessadas são apagadas.
+
+!!! info "Sem clonar o Flower"
+    O TaskIQ não expõe estado vivo da fila (o Flower é específico do Celery), então este painel **não** tenta mostrar jobs pendentes/em execução. Ele mostra o que é real e persistido: as falhas terminais.
+
+Pra um inventário "quais tasks existem", `task_inventory(tq)` devolve `list[TaskInfo]` (nome / schedule / retry) lido direto do broker — sirva como JSON, log, ou sua própria página:
+
+```python
+from tempest_fastapi_sdk.tasks import task_inventory
+
+for info in task_inventory(tq):
+    print(info.name, info.schedule, info.retry_on_error, info.max_retries)
+```
+
 ## Workers em produção
 
 O worker e o scheduler são processos separados apontando pros objetos crus expostos pelo `TaskQueue`:

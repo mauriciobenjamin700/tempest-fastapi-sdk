@@ -5,6 +5,29 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.158.0] — 2026-07-24
+
+### Added
+
+- **Dead-letter panel + task inventory** (`tempest_fastapi_sdk.tasks`): persist
+  terminally-failed tasks and see/re-run them in the admin.
+  - `BaseDeadLetterModel` (abstract, over the SDK `BaseModel`) +
+    `make_dead_letter_model(tablename=, class_name=)` — one row per terminal
+    failure (task name/id, error + type, retries, args/kwargs as JSON).
+  - `DbDeadLetterSink(db, model)` — a ready `DeadLetterSink` that writes each
+    dead letter to that table (`tq.dead_letter(DbDeadLetterSink(db, model))`).
+  - `make_dead_letter_admin_model(model, tq=None)` — a read-mostly `AdminModel`
+    (list/filter by task + error type, search, export) with an optional
+    **requeue** bulk action (`make_requeue_action`) that re-enqueues the
+    selected calls with their stored `args`/`kwargs` and deletes the rows.
+  - `task_inventory(tq)` → `list[TaskInfo]` (name / schedule / retry policy)
+    read off the broker, for a "what tasks exist" view.
+
+  Deliberately no live queue introspection — TaskIQ exposes none (Flower is
+  Celery-specific), so the panel shows what is real and persisted: terminal
+  failures and the declared task set. Everything imports without the `[tasks]`
+  extra. Closes the *queue observability + genai tracing* roadmap theme.
+
 ## [0.157.0] — 2026-07-24
 
 ### Added

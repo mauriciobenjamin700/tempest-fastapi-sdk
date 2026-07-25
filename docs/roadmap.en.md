@@ -101,10 +101,13 @@ Delivered in slices, one release per slice:
   `dead_letter` (target is yours, no backend assumed), `TaskMetrics` into the
   shared `/metrics`. Opt-in middleware, imports without the `[tasks]` extra.
   See the queue recipe (*Task reliability and observability*).
-- **Queue/task panel in the admin** (Celery-Flower-like) — **deferred**:
-  TaskIQ exposes no universal queue introspection (Flower is Celery-specific),
-  so leaning on RabbitMQ/Redis management APIs would leak the backend.
-  Revisit when business need pulls for it.
+- ✅ **Task panel in the admin** — shipped in **v0.158.0** as dead-letter +
+  inventory (not a Flower clone). `BaseDeadLetterModel` +
+  `make_dead_letter_model`, `DbDeadLetterSink` (persists terminal failures),
+  `make_dead_letter_admin_model` (read-mostly AdminModel + **requeue** action),
+  `task_inventory` (registered tasks). No live queue introspection — TaskIQ
+  exposes none (Flower is Celery-specific); it shows what is real and
+  persisted. See the queue recipe (*Dead-letter panel in the admin*).
 
 ### HTTP performance layer
 
