@@ -330,6 +330,27 @@ def generate_cmd(
             ),
         ),
     ] = None,
+    spa_dir: Annotated[
+        str | None,
+        typer.Option(
+            "--spa-dir",
+            help=(
+                "Frontend directory to compile in a Node stage of the "
+                "Dockerfile (e.g. 'web'). Omitted, a co-located SPA is "
+                "auto-detected by its package.json."
+            ),
+        ),
+    ] = None,
+    no_spa: Annotated[
+        bool,
+        typer.Option(
+            "--no-spa",
+            help=(
+                "Emit a backend-only Dockerfile even when the project "
+                "has a frontend directory."
+            ),
+        ),
+    ] = False,
     force: Annotated[
         bool,
         typer.Option(
@@ -345,6 +366,13 @@ def generate_cmd(
     .env.example block), ``--dockerfile`` (Dockerfile + .dockerignore),
     and/or ``--src`` (optional source layers from the pinned extras).
     New generators land here as the SDK grows.
+
+    The Dockerfile is fullstack-aware: when the project holds a frontend
+    (a ``package.json`` under ``web/``, ``frontend/``, ``client/`` or
+    ``ui/``), it gains a Node stage that compiles the SPA and copies only
+    the emitted ``dist/`` into the runtime image. Point at a different
+    directory with ``--spa-dir``, or force a backend-only image with
+    ``--no-spa``.
     """
     if not docker and not dockerfile and not src:
         typer.echo(
@@ -368,6 +396,8 @@ def generate_cmd(
             resolved_target,
             project_name=project_name,
             force=force,
+            spa_dir=spa_dir,
+            detect_spa=not no_spa,
         )
     if src:
         generate_module.regenerate_src(

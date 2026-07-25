@@ -195,11 +195,104 @@ def _discover_port(target: Path, fallback: int = 8000) -> int:
     return fallback
 
 
+SPA_CANDIDATE_DIRS: tuple[str, ...] = ("web", "frontend", "client", "ui")
+"""Directory names checked when auto-detecting a co-located SPA."""
+
+_SPA_HEADER = """#
+# A single-page app was detected in {spa_dir}/, so this build is
+# fullstack: a Node stage compiles it and only the emitted dist/ is
+# copied into the final image — node_modules and the Node toolchain
+# never reach the runtime. Serve it from FastAPI with
+# `make_spa_router("{spa_dir}/dist")`, included after every API router.
+#
+"""
+
+_SPA_STAGE = (
+    "# ---- spa ---------------------------------------------"
+    "-----------------------\n"
+    """FROM node:22-alpine AS spa
+
+WORKDIR /spa
+
+# Install with the lockfile first so this layer caches on dependency
+# changes only. `npm ci` needs a lockfile; the glob keeps the COPY
+# working before one is committed, and the fallback covers that case.
+COPY {spa_dir}/package.json {spa_dir}/package-lock.json* ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+COPY {spa_dir}/ ./
+RUN npm run build
+
+"""
+)
+
+_SPA_IGNORE = """
+# Frontend — the Node stage installs and builds these itself. Copying a
+# local dist/ in would ship your machine's build instead of a reproducible
+# one, and node_modules would bloat the context by hundreds of megabytes.
+{spa_dir}/node_modules/
+{spa_dir}/dist/
+"""
+
+_SPA_COPY = """# The compiled SPA, from the Node stage. Nothing else crosses over, so
+# the runtime image carries no Node runtime and no node_modules.
+COPY --from=spa --chown=app:app /spa/dist /app/{spa_dir}/dist
+
+"""
+
+
+def detect_spa_dir(target: Path) -> str | None:
+    """Return the co-located SPA directory name, when there is one.
+
+    Args:
+        target (Path): Project root directory.
+
+    Returns:
+        str | None: The first of :data:`SPA_CANDIDATE_DIRS` that holds a
+        ``package.json``, or ``None`` when the project ships no frontend.
+        Detection is by ``package.json`` rather than by the directory
+        existing, so an empty ``web/`` placeholder does not produce a
+        Dockerfile stage that fails at ``npm ci``.
+    """
+    for name in SPA_CANDIDATE_DIRS:
+        if (target / name / "package.json").is_file():
+            return name
+    return None
+
+
+def _spa_context(spa_dir: str | None) -> dict[str, str]:
+    """Build the Dockerfile placeholders for the SPA stage.
+
+    Args:
+        spa_dir (str | None): The SPA directory, or ``None`` for a
+            backend-only build.
+
+    Returns:
+        dict[str, str]: Empty strings when there is no SPA, so the rendered
+        Dockerfile is byte-identical to the backend-only one.
+    """
+    if spa_dir is None:
+        return {
+            "SPA_HEADER": "",
+            "SPA_STAGE": "",
+            "SPA_COPY": "",
+            "SPA_IGNORE": "",
+        }
+    return {
+        "SPA_HEADER": _SPA_HEADER.format(spa_dir=spa_dir),
+        "SPA_STAGE": _SPA_STAGE.format(spa_dir=spa_dir),
+        "SPA_COPY": _SPA_COPY.format(spa_dir=spa_dir),
+        "SPA_IGNORE": _SPA_IGNORE.format(spa_dir=spa_dir),
+    }
+
+
 def regenerate_dockerfile(
     target: Path,
     *,
     project_name: str | None,
     force: bool,
+    spa_dir: str | None = None,
+    detect_spa: bool = True,
 ) -> None:
     """Regenerate the ``Dockerfile`` and ``.dockerignore``.
 
@@ -215,10 +308,17 @@ def regenerate_dockerfile(
             generated comments. Defaults to the ``[project] name`` value
             or the directory basename.
         force (bool): Overwrite the files if they already exist.
+        spa_dir (str | None): Explicit frontend directory to compile in a
+            Node stage. ``None`` auto-detects (see ``detect_spa``).
+        detect_spa (bool): Whether to auto-detect a co-located SPA when
+            ``spa_dir`` is ``None``. Pass ``False`` for a backend-only
+            image even in a project that has a frontend.
 
     Raises:
-        typer.Exit: When ``pyproject.toml`` is missing (exit 2) or a
-            target file exists without ``--force`` (exit 1).
+        typer.Exit: When ``pyproject.toml`` is missing (exit 2), a target
+            file exists without ``--force`` (exit 1), or an explicit
+            ``spa_dir`` holds no ``package.json`` (exit 1) — a silent
+            backend-only image would be worse than saying so.
     """
     # Imported here to avoid a module-level dependency on the scaffolder.
     from tempest_fastapi_sdk.cli.new import _render, _templates_root
@@ -228,9 +328,22 @@ def regenerate_dockerfile(
         pyproject_text,
         fallback=target.resolve().name,
     )
+    if spa_dir is not None:
+        if not (target / spa_dir / "package.json").is_file():
+            typer.echo(
+                f"error: {target / spa_dir / 'package.json'} not found — "
+                f"--spa-dir must point at a frontend package.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        resolved_spa: str | None = spa_dir
+    else:
+        resolved_spa = detect_spa_dir(target) if detect_spa else None
+
     context: dict[str, str] = {
         "PROJECT_NAME": resolved_name,
         "PORT": str(_discover_port(target)),
+        **_spa_context(resolved_spa),
     }
 
     root = _templates_root()
@@ -253,6 +366,11 @@ def regenerate_dockerfile(
             encoding="utf-8",
         )
         typer.echo(f"Regenerated {destination}", err=False)
+    if resolved_spa is not None:
+        typer.echo(
+            f"  SPA stage: builds {resolved_spa}/ and copies "
+            f"{resolved_spa}/dist into the image."
+        )
 
 
 def regenerate_src(

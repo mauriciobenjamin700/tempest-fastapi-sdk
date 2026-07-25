@@ -302,6 +302,31 @@ my-service/
 
 ### Multi-stage Dockerfile
 
+The generator handles this. With a `web/package.json` present,
+`tempest generate --dockerfile` detects the SPA and emits the Node stage:
+
+```bash
+tempest generate --dockerfile --force
+```
+
+```text
+Regenerated Dockerfile
+Regenerated .dockerignore
+  SPA stage: builds web/ and copies web/dist into the image.
+```
+
+Detection is by `package.json` — under `web/`, `frontend/`, `client/` or
+`ui/`. An empty directory does **not** count, otherwise the image build would
+die inside `npm ci`. For another layout use `--spa-dir apps-web`; to force a
+backend-only image in a project that has a frontend, `--no-spa`.
+
+The generated `.dockerignore` gains `web/node_modules/` and `web/dist/` too —
+`dist/` is ignored on purpose because the Node stage produces it. Copying a
+local `dist/` in would ship your machine's build instead of the reproducible
+one.
+
+The generated file looks like this:
+
 The SPA build happens in a Node stage and only `dist/` travels to the final
 image, so neither `node_modules` nor the Node toolchain enters the runtime:
 

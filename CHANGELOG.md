@@ -5,6 +5,31 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.164.0] — 2026-07-25
+
+### Added
+
+- **The generated `Dockerfile` is fullstack-aware.** When the project holds a
+  frontend, `tempest generate --dockerfile` (and `tempest new`) emit a Node
+  stage that installs and builds it, and copy **only** the resulting `dist/`
+  into the runtime image — neither `node_modules` nor the Node toolchain reach
+  the final layer. The `.dockerignore` gains the matching
+  `<spa>/node_modules/` + `<spa>/dist/` entries, since the stage produces the
+  build and a local copy would ship the developer's machine output instead.
+  - Detection is by `package.json` under `web/`, `frontend/`, `client/` or
+    `ui/` (`SPA_CANDIDATE_DIRS`), exposed as `detect_spa_dir`. An **empty**
+    directory deliberately does not count: emitting a stage for a placeholder
+    folder would fail the image build inside `npm ci`, with an error pointing
+    nowhere useful.
+  - `--spa-dir <dir>` selects an unconventional layout; `--no-spa` forces a
+    backend-only image. A `--spa-dir` holding no `package.json` exits 1 rather
+    than silently degrading to a backend-only build.
+  - `npm ci` requires a lockfile, so a freshly scaffolded frontend would break
+    the first build; the stage falls back to `npm install` when
+    `package-lock.json` is absent.
+  - A project with no frontend renders a **byte-identical** Dockerfile to
+    before, verified against the pre-change output.
+
 ## [0.163.0] — 2026-07-25
 
 ### Added

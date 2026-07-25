@@ -148,6 +148,29 @@ O comando lê o `[project] name` + extras do `pyproject.toml` do diretório atua
 
 ### Dockerfile para containerizar a app
 
+!!! tip "Fullstack: a SPA é detectada e compilada num stage Node"
+    Se o projeto tem um frontend — um `package.json` em `web/`, `frontend/`,
+    `client/` ou `ui/` — o Dockerfile gerado ganha um stage Node que instala e
+    compila a SPA, e só o `dist/` resultante é copiado para a imagem final.
+    Nem `node_modules` nem o toolchain do Node chegam ao runtime.
+
+    ```text
+    Regenerated Dockerfile
+    Regenerated .dockerignore
+      SPA stage: builds web/ and copies web/dist into the image.
+    ```
+
+    | Opção | Efeito |
+    | --- | --- |
+    | *(nenhuma)* | Detecta pelo `package.json`. Diretório vazio não conta |
+    | `--spa-dir apps-web` | Layout fora da convenção |
+    | `--no-spa` | Imagem backend-only mesmo com frontend presente |
+
+    Sirva o resultado com [`make_spa_router("web/dist")`](react-spa.md),
+    incluído **depois** de todos os routers de API. Projeto sem frontend gera
+    um Dockerfile byte a byte idêntico ao de antes.
+
+
 Desde a v0.71.0, `tempest new` também gera um **`Dockerfile`** + **`.dockerignore`** prontos pra empacotar o serviço como imagem. O `Dockerfile` é **multi-stage** e usa [uv](https://docs.astral.sh/uv/):
 
 - **stage `builder`** — instala as dependências num `/app/.venv` (camada cacheada que só re-roda quando `pyproject.toml` / `uv.lock` mudam), depois instala o projeto.
