@@ -1,6 +1,6 @@
 """Guards that keep the docs and the public API honest.
 
-Two cheap, low-false-positive checks that run in the gating suite:
+Three cheap, low-false-positive checks that run in the gating suite:
 
 1. **Doc code blocks parse** — every ```python fenced block in ``CLAUDE.md``,
    ``README.md`` and ``docs/**/*.md`` must be syntactically valid Python
@@ -12,6 +12,12 @@ Two cheap, low-false-positive checks that run in the gating suite:
    references a symbol which was renamed or removed. Modules whose optional
    extra is absent in the current environment are skipped (so the check is
    strongest in CI, which installs ``--all-extras``).
+3. **``BaseAppSettings`` is the last base** — every documented settings class
+   composes it after the mixins. Parsing alone does not catch this: the wrong
+   ordering is valid syntax that raises ``TypeError`` only at class creation,
+   so the snippet reads fine and fails on the reader's machine. A dedicated
+   check is warranted because the docs are bilingual — each snippet exists
+   twice, and fixing only one mirror is the likely failure.
 
 These do not (and cannot) police prose backlog claims — keeping the
 ``CLAUDE.md`` covers / roadmap prose in sync stays a release-checklist item.
@@ -59,6 +65,59 @@ def test_doc_python_blocks_parse() -> None:
                 rel = path.relative_to(_ROOT)
                 failures.append(f"{rel} block #{index}: {str(exc).splitlines()[0]}")
     assert not failures, "unparseable doc code blocks:\n" + "\n".join(failures)
+
+
+def _base_app_settings_offenders(tree: ast.AST) -> list[str]:
+    """Return class names that list ``BaseAppSettings`` before another base.
+
+    Args:
+        tree (ast.AST): A parsed module built from a doc code block.
+
+    Returns:
+        list[str]: Names of ``ClassDef`` nodes whose base list contains
+        ``BaseAppSettings`` somewhere other than the final position.
+        Empty when the block declares no settings class or composes it
+        correctly.
+    """
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        base_names = [base.id for base in node.bases if isinstance(base, ast.Name)]
+        if "BaseAppSettings" not in base_names:
+            continue
+        if base_names[-1] != "BaseAppSettings":
+            offenders.append(node.name)
+    return offenders
+
+
+def test_doc_settings_put_base_app_settings_last() -> None:
+    """No doc snippet composes ``BaseAppSettings`` ahead of a mixin.
+
+    Every SDK settings mixin subclasses ``BaseAppSettings``, so listing
+    the base first is an invalid MRO that raises at import. The docs
+    used to demonstrate exactly that ordering (see the
+    ``AppSettingsMeta`` docstring), which made the snippets
+    non-runnable.
+    """
+    failures: list[str] = []
+    for path in _doc_files():
+        for index, block in enumerate(_BLOCK_RE.findall(path.read_text())):
+            if "# docs-guard: skip" in block:
+                continue
+            try:
+                tree = ast.parse(_normalize(block))
+            except SyntaxError:
+                continue
+            rel = path.relative_to(_ROOT)
+            failures.extend(
+                f"{rel} block #{index}: class {name} lists BaseAppSettings "
+                f"before another base"
+                for name in _base_app_settings_offenders(tree)
+            )
+    assert not failures, "BaseAppSettings must be the LAST base:\n" + "\n".join(
+        failures
+    )
 
 
 _PUBLIC_MODULES: tuple[str, ...] = (

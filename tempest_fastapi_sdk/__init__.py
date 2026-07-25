@@ -279,6 +279,7 @@ from tempest_fastapi_sdk.sessions import (
     make_session_router,
 )
 from tempest_fastapi_sdk.settings import (
+    AppSettingsMeta,
     AuthSettings,
     BaseAppSettings,
     CORSSettings,
@@ -425,7 +426,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.159.0"
+__version__: str = "0.159.1"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -462,6 +463,7 @@ __all__: list[str] = [
     "AdminTheme",
     "AlembicHelper",
     "AppException",
+    "AppSettingsMeta",
     "ArtifactManifestEntry",
     "ArtifactRegistry",
     "ArtifactVersionMixin",

@@ -129,7 +129,7 @@ Running `demo`, the two `print` calls emit each message in order
 
 `list_messages` returns the SDK's standard offset-pagination dict
 (`items` already mapped to `MessageResponseSchema`, `total`, `page`,
-`size`, `pages`), ordered oldest-first.
+`page_size`, `pages`), ordered oldest-first.
 
 ## The router
 

@@ -128,7 +128,7 @@ antiga primeiro), com o UUID do remetente e o corpo:
 
 `list_messages` devolve o dicionário de paginação offset padrão do SDK
 (`items` já mapeados para `MessageResponseSchema`, `total`, `page`,
-`size`, `pages`), ordenado do mais antigo para o mais novo.
+`page_size`, `pages`), ordenado do mais antigo para o mais novo.
 
 ## O router
 

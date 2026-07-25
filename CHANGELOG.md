@@ -5,6 +5,42 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.159.1] — 2026-07-25
+
+### Added
+
+- **`AppSettingsMeta`** (`tempest_fastapi_sdk.settings`): the metaclass
+  `BaseAppSettings` now uses. It pre-checks base ordering and raises an
+  actionable `TypeError` when `BaseAppSettings` is listed before one of its own
+  subclasses (every SDK settings mixin), replacing Python's
+  `Cannot create a consistent method resolution order (MRO) for bases ...` —
+  which never names the fix — and the misleading `[metaclass]` error the
+  pydantic mypy plugin emits on the same line. The new message names both
+  classes and prints the corrected base list. It keeps the phrase
+  `method resolution order (MRO)` so existing matches on Python's wording still
+  hold.
+- Doc guard `test_doc_settings_put_base_app_settings_last`: every fenced
+  `python` block in `README.md` / `docs/**/*.md` that declares a class with
+  `BaseAppSettings` in its bases must place it last. Wrong ordering is valid
+  syntax that only fails at class creation, so the existing parse guard could
+  not catch it — and the bilingual docs duplicate every snippet.
+
+### Fixed
+
+- **Docs demonstrated the forbidden settings base ordering** (#95). Since
+  v0.138.1 every settings mixin subclasses `BaseAppSettings`, so the base must
+  come **last**. `docs/recipes/email.md` / `.en.md` shipped a copy-pasteable
+  `class Settings(BaseAppSettings, EmailSettings)` that raised `TypeError` on
+  import; the `docs/tutorial.md` / `.en.md` project tree, the responsibility
+  table and the matching `README.md` rows described `Settings(BaseAppSettings,
+  mixins...)`. All corrected, plus a `!!! warning` on the tutorial settings
+  page and a `0.138.1` section in `docs/migration.md` / `.en.md` stating the
+  rule with the real `TypeError` text.
+- **Pagination field named `size` instead of `page_size`** (#60).
+  `BaseRepository.paginate` returns `{items, total, page, page_size, pages}`;
+  the `README.md` repository table and `docs/recipes/chat.md` / `.en.md`
+  listed the key as `size`.
+
 ## [0.159.0] — 2026-07-25
 
 ### Added

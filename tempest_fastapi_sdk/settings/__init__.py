@@ -10,6 +10,7 @@ pylance, basedpyright) without requiring a project-level
 complaint from any IDE.
 """
 
+from tempest_fastapi_sdk.settings.base import AppSettingsMeta as AppSettingsMeta
 from tempest_fastapi_sdk.settings.base import BaseAppSettings as BaseAppSettings
 from tempest_fastapi_sdk.settings.mixins import AuthSettings as AuthSettings
 from tempest_fastapi_sdk.settings.mixins import CORSSettings as CORSSettings
@@ -29,6 +30,7 @@ from tempest_fastapi_sdk.settings.mixins import WebPushSettings as WebPushSettin
 from tempest_fastapi_sdk.settings.mixins import WebSocketSettings as WebSocketSettings
 
 __all__: list[str] = [
+    "AppSettingsMeta",
     "AuthSettings",
     "BaseAppSettings",
     "CORSSettings",

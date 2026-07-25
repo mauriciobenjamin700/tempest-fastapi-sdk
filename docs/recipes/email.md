@@ -63,7 +63,7 @@ from pydantic import Field
 from tempest_fastapi_sdk import BaseAppSettings, EmailSettings
 
 
-class Settings(BaseAppSettings, EmailSettings):
+class Settings(EmailSettings, BaseAppSettings):
     """Settings da aplicação. SMTP herdado de EmailSettings."""
 
     FRONTEND_URL: str = Field(

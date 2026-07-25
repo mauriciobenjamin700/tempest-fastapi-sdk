@@ -640,7 +640,7 @@ Resolution order for each kwarg is `explicit argument → settings.SERVER_* → 
 `BaseAppSettings` is the configured `pydantic-settings` base (`env_file=".env"`, `extra="ignore"`, `case_sensitive=True`). The SDK also exposes composable mixins for the most common dependencies; pick the ones the service needs and compose them on your `Settings` class.
 
 !!! warning "`BaseAppSettings` must be the last base"
-    Every mixin inherits `BaseAppSettings`, so they all carry the same `model_config` — including `env_file=".env"` — and `.env` is read regardless of the order in which the mixins appear. But `BaseAppSettings` **must** be the **last** base: since the mixins subclass it, listing it before any mixin violates Python's C3 linearization and breaks the import with `TypeError: Cannot create a consistent method resolution order (MRO)`. Always put `BaseAppSettings` at the end of the bases.
+    Every mixin inherits `BaseAppSettings`, so they all carry the same `model_config` — including `env_file=".env"` — and `.env` is read regardless of the order in which the mixins appear. But `BaseAppSettings` **must** be the **last** base: since the mixins subclass it, listing it before any mixin violates Python's C3 linearization and breaks the import. As of v0.159.1 the `AppSettingsMeta` metaclass intercepts this and raises `TypeError: Settings: BaseAppSettings must be the LAST base — DatabaseSettings already subclasses it ...`, which names the fix; before that the message was pydantic's raw `TypeError: Cannot create a consistent method resolution order (MRO)`. Always put `BaseAppSettings` at the end of the bases — see the [migration guide](../migration.md).
 
 ```python
 # src/core/settings.py

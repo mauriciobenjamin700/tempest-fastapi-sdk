@@ -2,6 +2,54 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.138.1 — `BaseAppSettings` tem que ser a **última** base
+
+A 0.138.1 passou a fazer **todo mixin de settings herdar `BaseAppSettings`** (antes eles estendiam `pydantic_settings.BaseSettings` cru). Isso conserta o `.env` deixando de ser carregado quando um mixin aparecia antes da base — o `model_config` canônico agora é materializado em cada mixin, independente da ordem.
+
+Em troca, a ordem das bases deixou de ser estilo e virou **regra dura**: como os mixins são subclasses de `BaseAppSettings`, a linearização C3 do Python proíbe a base preceder a própria subclasse.
+
+```python
+# docs-guard: skip — os dois primeiros exemplos são o erro que a seção descreve
+# ❌ quebra em tempo de import
+class Settings(DatabaseSettings, BaseAppSettings, RedisSettings): ...
+
+# ❌ também quebra
+class Settings(BaseAppSettings, DatabaseSettings): ...
+
+# ✅ BaseAppSettings por último
+class Settings(DatabaseSettings, RedisSettings, BaseAppSettings): ...
+```
+
+Antes da 0.159.1 o sintoma era o `TypeError` cru do pydantic, que não indica a correção:
+
+```text
+TypeError: Cannot create a consistent method resolution order (MRO) for bases BaseAppSettings, RedisSettings
+```
+
+e o `mypy` (com o plugin do pydantic) acusava duas vezes na mesma linha, sendo a segunda enganosa — sugere conflito de metaclasse quando a causa é só a posição de uma base:
+
+```text
+settings.py:4: error: Cannot determine consistent method resolution order (MRO) for "Settings"  [misc]
+settings.py:4: error: Metaclass conflict: the metaclass of a derived class must be a (non-strict) subclass of the metaclasses of all its bases  [metaclass]
+```
+
+A partir da 0.159.1, `BaseAppSettings` usa a metaclasse [`AppSettingsMeta`](reference.md), que pré-checa a posição das bases e troca a mensagem por uma instrução:
+
+```text
+TypeError: Settings: BaseAppSettings must be the LAST base — RedisSettings already subclasses it, so listing BaseAppSettings before it is an invalid method resolution order (MRO). Move BaseAppSettings to the end of the base list: class Settings(RedisSettings, BaseAppSettings).
+```
+
+### Verifique
+
+```bash
+# procure Settings com BaseAppSettings fora do fim da lista de bases
+grep -rn "class Settings(" -A 12 src/core/settings.py
+```
+
+- Mova `BaseAppSettings` para o **último** item da lista de bases.
+- A ordem **entre os mixins** continua livre — só a posição da base importa.
+- Nenhuma mudança de env var, de campo ou de valor: é exclusivamente ordem de herança.
+
 ## 0.92.0 — coluna `payload` no token de usuário
 
 A 0.92.0 adiciona o fluxo de **troca / re-verificação / recuperação de e-mail**. Para carregar o e-mail pendente até a confirmação, `BaseUserTokenModel` ganhou uma coluna nova:

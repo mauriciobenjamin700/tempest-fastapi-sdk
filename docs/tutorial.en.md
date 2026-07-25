@@ -32,7 +32,7 @@ my-service/
     ├── server.py                 # programmatic uvicorn.run(...) + module-level `app`
     ├── core/
     │   ├── __init__.py
-    │   ├── settings.py           # Settings(BaseAppSettings, mixins...)
+    │   ├── settings.py           # Settings(mixins..., BaseAppSettings)
     │   └── exceptions.py         # domain exceptions (UserNotFoundError, ...)
     ├── db/
     │   ├── __init__.py           # re-exports BaseModel + every model
@@ -74,7 +74,7 @@ Four files map onto four responsibilities:
 
 | File | Responsibility |
 | --- | --- |
-| `src/core/settings.py` | `Settings(BaseAppSettings, ...mixins)` — one source of truth for env vars. |
+| `src/core/settings.py` | `Settings(...mixins, BaseAppSettings)` — one source of truth for env vars. |
 | `src/api/dependencies/resources.py` | infra singletons (`db = AsyncDatabaseManager(**settings.database_kwargs())`, and — opt-in — storage/mail) + `get_db` / `get_session` providers. Single owner of resource lifecycle. |
 | `src/api/app.py` | thin `create_app()` factory — middleware + CORS + exception handlers + router includes + module-level `app` instance. **Imports** the resources from `dependencies`, never builds them. |
 | `src/server.py` | `run()` invoking `uvicorn.run("src.api.app:app", ...)` programmatically, plus re-exports `app` so external runners (gunicorn, uvicorn CLI) can import it. |
@@ -109,6 +109,40 @@ class Settings(ServerSettings, DatabaseSettings, BaseAppSettings):
 
 settings = Settings()
 ```
+
+!!! warning "`BaseAppSettings` is always the **last** base"
+
+    Every settings mixin the SDK ships (`ServerSettings`,
+    `DatabaseSettings`, `RedisSettings`, …) already **inherits**
+    `BaseAppSettings` — that is how each one carries the canonical
+    `model_config` (`env_file=".env"`, `extra="ignore"`,
+    `case_sensitive=True`) regardless of ordering.
+
+    The consequence: `BaseAppSettings` must come **last** in the base list.
+    Python forbids a base from preceding its own subclass (C3
+    linearization), so writing
+
+    ```python
+    # docs-guard: skip — this is the mistake the warning describes
+    class Settings(BaseAppSettings, DatabaseSettings):  # ❌ fails to import
+        ...
+    ```
+
+    fails **at import time** with:
+
+    ```text
+    TypeError: Settings: BaseAppSettings must be the LAST base —
+    DatabaseSettings already subclasses it, so listing BaseAppSettings
+    before it is an invalid method resolution order (MRO). Move
+    BaseAppSettings to the end of the base list:
+    class Settings(DatabaseSettings, BaseAppSettings).
+    ```
+
+    Before v0.159.1 the message was pydantic's raw `TypeError` (`Cannot
+    create a consistent method resolution order (MRO) for bases
+    BaseAppSettings, DatabaseSettings`), plus a misleading `[metaclass]`
+    error from `mypy` on the same line. The cause is identical in both
+    versions: move `BaseAppSettings` to the end.
 
 Infra resources (the database now; storage / mail later) live in
 `src/api/dependencies/resources.py`, built **once** and reached through
