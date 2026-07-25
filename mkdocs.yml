@@ -124,6 +124,7 @@ plugins:
             "MFA (TOTP / 2FA)": "MFA (TOTP / 2FA)"
             "Sessões server-side": "Server-side sessions"
             Métricas: Metrics
+            "Erros no OpenAPI (Swagger)": "Errors in OpenAPI (Swagger)"
             Painel admin: Admin site
             Testes: Testing
             "Deploy seguro (migrations + shutdown)": "Safe deploys (migrations + shutdown)"
@@ -273,6 +274,7 @@ nav:
       - MFA (TOTP / 2FA): recipes/mfa.md
       - Multi-tenant: recipes/multi-tenant.md
       - "Observabilidade (tracing)": recipes/observability.md
+      - "Erros no OpenAPI (Swagger)": recipes/openapi-errors.md
       - Outbox transacional: recipes/outbox.md
       - Painel admin: recipes/admin.md
       - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md

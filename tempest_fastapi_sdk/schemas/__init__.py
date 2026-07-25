@@ -1,6 +1,7 @@
 """Pydantic schema primitives exposed at module level."""
 
 from tempest_fastapi_sdk.schemas.base import BaseSchema
+from tempest_fastapi_sdk.schemas.errors import ErrorResponseSchema
 from tempest_fastapi_sdk.schemas.link_headers import build_pagination_link_header
 from tempest_fastapi_sdk.schemas.logs import LogEntrySchema
 from tempest_fastapi_sdk.schemas.pagination import (
@@ -22,6 +23,7 @@ __all__: list[str] = [
     "BaseSchema",
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
+    "ErrorResponseSchema",
     "LogEntrySchema",
     "SyncFilterSchema",
     "SyncPaginationSchema",

@@ -131,6 +131,18 @@ GraphQL/gRPC (REST por decisão).
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
+## Entregue na v0.160.0
+
+Erros documentados no OpenAPI:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`ErrorResponseSchema`** | ✅ v0.160 | O envelope `{detail, code, details}` que os handlers já emitiam agora existe como schema exportado — antes não havia para onde apontar um `responses={409: ...}` escrito à mão. [Referência »](recipes/openapi-errors.md#errorresponseschema) |
+| **`error_responses(*exceptions)`** | ✅ v0.160 | Monta o `responses=` do FastAPI a partir das classes de exception. Agrupa por status (OpenAPI só aceita um response object por status) e distingue os `code` num mapa de `examples` — Swagger/ReDoc renderizam como seletor, então dois 404 com codes diferentes ficam visíveis. `summary` do `__doc__`, `detail` do `message` ou de um `MessageCatalog`. [Referência »](recipes/openapi-errors.md#passo-2-error_responsesexceptions) |
+| **`@raises(...)` + `TempestAPIRouter`** | ✅ v0.160 | Mesma declaração junto do handler; o router expande a tag em `responses=` antes de construir a rota (então o modelo chega em `components.schemas` como `$ref`). Um `responses=` explícito ganha por status. [Referência »](recipes/openapi-errors.md#passo-3-raises-tempestapirouter) |
+| **`InheritedErrorCodeWarning`** | ✅ v0.160 | Subclasse que não declara `code` próprio e herda um genérico do SDK avisa na criação da classe — defeito silencioso que fez uma subclasse emitir `code: "CONFLICT"` por meses em produção. Não dispara para `code` de domínio nem quando há `message_key`. [Referência »](recipes/openapi-errors.md#o-aviso-que-pega-o-defeito-silencioso) |
+| **`tempest openapi-errors --check`** | ✅ v0.160 | Compara, por rota, o declarado com o alcançável em `router -> controller -> service -> repository`. Estático (`ast`, sem importar a app), lê `raise` **e** seções `Raises:`. Reporta `undocumented` + `unreachable`, sai não-zero como gate de CI. [Referência »](recipes/openapi-errors.md#passo-4-tempest-openapi-errors-check) |
+
 ## Entregue na v0.129.0
 
 SSR — builders tipados de atributos:

@@ -446,6 +446,33 @@ uv run python main.py                           # serves on the configured HOST:
 uv run pytest                                   # the bundled smoke test
 ```
 
+### Errors documented in OpenAPI — `tempest openapi-errors`
+
+Compares, per route, the `AppException`s the flow can raise against what the
+route declared in `error_responses(...)` / `@raises(...)`:
+
+```bash
+tempest openapi-errors                          # advisory report (exit 0)
+tempest openapi-errors --check                  # exit 1 on drift (CI gate)
+tempest openapi-errors --path src --path libs   # explicit directories, repeatable
+tempest openapi-errors --check --allow-unreachable   # fail only on undocumented
+```
+
+Without `--path` it scans `./src` or `./app` — whichever exists. The analysis is
+static (`ast`, without importing the application) and walks `router ->
+controller -> service -> repository`, reading both `raise` statements and the
+docstrings' `Raises:` sections.
+
+```text
+src/api/routers/jobs.py:15  POST /{service_id}/candidates
+  undocumented: CandidateAlreadyExistsException, ServiceFullException
+1 route(s) with drift, 2 undocumented exception(s).
+```
+
+Details and limitations in the [Errors in OpenAPI »](openapi-errors.md) recipe.
+
+---
+
 ### Quality gates
 
 The lint commands shell out to the project's tooling. They look for the executable on `PATH` first, and otherwise fall back to `uv run <tool>` so a project-local virtualenv works without manual activation.

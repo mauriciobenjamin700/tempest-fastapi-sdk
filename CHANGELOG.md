@@ -5,6 +5,64 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.160.0] — 2026-07-25
+
+### Added
+
+- **`ErrorResponseSchema`** (`tempest_fastapi_sdk.schemas`): the
+  `{detail, code, details}` envelope every SDK exception handler already emitted,
+  now an exported Pydantic model. Before this a route wanting to declare
+  `responses={409: ...}` had nothing to point at and had to retype the shape
+  inline (#96).
+- **`error_responses(*exception_classes)`** (`tempest_fastapi_sdk`): builds the
+  FastAPI `responses=` mapping by reading `status_code` / `code` / `message` /
+  `details_example` off each **class** — no instantiation. Groups by status code,
+  since OpenAPI allows exactly one response object per status, and distinguishes
+  the codes through an `examples` map that Swagger UI and ReDoc render as a
+  selector — so two 404s with different codes both stay visible. `summary` comes
+  from the class docstring, `detail` from the class `message` or from an
+  optional `MessageCatalog` (`catalog=` / `locale=`), and `descriptions=`
+  overrides a status's description.
+- **`raises(*exception_classes)` + `TempestAPIRouter`**: the same declaration
+  written next to the handler. `raises` tags the endpoint and returns it
+  unchanged (no wrapper, so FastAPI still sees the original signature);
+  `TempestAPIRouter` — a drop-in `APIRouter` — expands the tag into `responses=`
+  **before** the route is constructed, so the model reaches
+  `components.schemas` as a real `$ref`. An explicit `responses=` wins per
+  status code. `declared_raises(endpoint)` / `RaisesSpec` / `RAISES_ATTRIBUTE`
+  expose the tag for tooling.
+- **`AppException.details_example`**: documentation-only class attribute feeding
+  the OpenAPI example's `details` object. Never read at runtime.
+- **`InheritedErrorCodeWarning`** (`tempest_fastapi_sdk.exceptions`): emitted at
+  class creation when an `AppException` subclass declares neither `code` nor
+  `message_key` and therefore answers with one of the SDK's generic identifiers
+  (`"CONFLICT"`, `"NOT_FOUND"`, …). That is a silent defect — clients cannot tell
+  the failure apart from any other with the same status, and `error_responses()`
+  cannot document it. Inheriting a **domain** code (declared by a project-owned
+  ancestor) is deliberate specialization and never warns. Silence it with
+  `warnings.filterwarnings("ignore", category=InheritedErrorCodeWarning)`.
+- **`tempest openapi-errors [--check]`**: static drift check between the
+  exceptions each route declares and the ones reachable through
+  `router -> controller -> service -> repository`. Parses the project with `ast`
+  (never imports the application) and reads both `raise` statements and
+  Google-style `Raises:` docstring sections. Reports `undocumented` (the
+  documentation hole) and `unreachable` (an inflated list), exits non-zero with
+  `--check` so it doubles as a CI gate; `--allow-unreachable` narrows the failure
+  to undocumented only, `--path` selects what to scan (defaults to `./src` or
+  `./app`). Calls resolve by name and dynamic raises are invisible — both blind
+  spots are covered by the `Raises:` section, and the analyzer over-approximates
+  rather than hiding a hole.
+
+### Changed
+
+- `AppException`'s documented pattern is now declaring `code` (and
+  `status_code`) **in the class body**, with `__init__` building only `message` /
+  `details`. Passing `code=` at the raise site still works identically at
+  runtime, but hides the value from static introspection — `Exc.code` answers the
+  inherited generic while `Exc("x").code` answers the real one, and reading it
+  would require knowing each `__init__` signature. The class-body form is what
+  makes `error_responses()` possible.
+
 ## [0.159.1] — 2026-07-25
 
 ### Added
