@@ -534,6 +534,28 @@ honored.
     through `ruff check --select I --fix` and `ruff format`, so a new import
     lands in sorted position and a wrapped decorator comes out formatted.
 
+    That formatting uses **your project's config**, not ruff's defaults: the
+    temporary file is created next to the file being rewritten, and ruff
+    resolves its settings by walking up the directory tree. Your `line-length`
+    and your `isort` sections apply, so what the command writes passes your own
+    CI's `ruff format --check`.
+
+!!! note "With no ruff, it says so instead of pretending"
+    Normalization needs a ruff that actually runs — on `PATH`, importable in the
+    current interpreter (`python -m ruff`), or through `uv run ruff`. Every
+    candidate is probed with `--version` before being used. When none works the
+    write still happens (the splice is already valid Python) and the command
+    tells you what it skipped:
+
+    ```text
+    note: no working ruff found, so the new import stays where it was spliced
+    and a long decorator is not wrapped. Run `tempest fix` afterwards to sort
+    and format.
+    ```
+
+    Without that line you would find out from your CI's `ruff check` failing on
+    a file this very command just wrote.
+
 !!! check "A clean git tree is required"
     With a clean tree, `git diff` is the review and `git checkout` is the undo —
     the real safety net for a tool that edits code you wrote. With pending

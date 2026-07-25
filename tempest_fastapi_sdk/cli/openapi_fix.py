@@ -25,7 +25,10 @@ from __future__ import annotations
 
 import ast
 import difflib
+import importlib.util
+import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -292,7 +295,48 @@ def render_file(plan: FilePlan) -> str:
     return source
 
 
-def normalize(source: str, suffix: str = ".py") -> str:
+def ruff_runner() -> list[str] | None:
+    """Return an argv prefix that really runs ruff, or ``None``.
+
+    Resolution order, widest-reaching first:
+
+    1. ``ruff`` on ``PATH`` — an activated venv or a global install.
+    2. ``<current interpreter> -m ruff`` when the module is importable. This
+       is the case ``PATH`` misses: ``tempest`` invoked by absolute path from
+       a venv that also has ruff, so its ``bin/`` never joined ``PATH``.
+    3. ``uv run ruff``, for a project-local venv that is not activated.
+
+    Every candidate is probed with ``--version`` and only accepted on exit
+    ``0``. The probe is what makes the answer trustworthy: ``uv run`` resolves
+    from the *target project's* directory, so outside a uv project it exists
+    on ``PATH`` yet cannot run anything, and an unprobed candidate would make
+    the caller believe the source was normalized when it was not.
+
+    Returns:
+        list[str] | None: argv prefix to extend with ruff arguments, or
+        ``None`` when no working ruff could be found.
+    """
+    candidates: list[list[str]] = []
+    direct = shutil.which("ruff")
+    if direct is not None:
+        candidates.append([direct])
+    if importlib.util.find_spec("ruff") is not None:
+        candidates.append([sys.executable, "-m", "ruff"])
+    uv = shutil.which("uv")
+    if uv is not None:
+        candidates.append([uv, "run", "ruff"])
+    for candidate in candidates:
+        probe = subprocess.run(
+            [*candidate, "--version"],
+            capture_output=True,
+            check=False,
+        )
+        if probe.returncode == 0:
+            return candidate
+    return None
+
+
+def normalize(source: str, suffix: str = ".py", near: Path | None = None) -> str:
     """Run ``ruff format`` and the import sorter over rewritten source.
 
     The insertion is a single-line splice, so a decorator that was already
@@ -305,20 +349,28 @@ def normalize(source: str, suffix: str = ".py") -> str:
     Args:
         source (str): The rewritten file contents.
         suffix (str): Extension for the temporary file ruff is pointed at.
+        near (Path | None): Directory to place that temporary file in —
+            pass the directory of the file being rewritten. Ruff discovers
+            its settings by walking up from the path it is given, so a
+            scratch file in the system temp directory is formatted with
+            ruff's defaults instead of the project's ``line-length`` and
+            ``isort`` sections, and the result then fails the project's own
+            ``ruff format --check``. Defaults to the system temp directory
+            when the caller has no better place to point at.
 
     Returns:
-        str: The formatted source, or ``source`` unchanged when ruff is not
-        available. Degrading here is safe: the splice is already valid
-        Python, just not pretty.
+        str: The formatted source, or ``source`` unchanged when no working
+        ruff was found (see :func:`ruff_runner`). Degrading is safe — the
+        splice is already valid Python, just unsorted and possibly over-long
+        — but the caller should say so, because the project's own
+        ``ruff check`` will then flag the file this command just wrote.
     """
     import tempfile
 
-    from tempest_fastapi_sdk.cli.lint import _resolve
-
-    runner = _resolve("ruff")
+    runner = ruff_runner()
     if runner is None:
         return source
-    with tempfile.TemporaryDirectory() as directory:
+    with tempfile.TemporaryDirectory(dir=near) as directory:
         scratch = Path(directory) / f"scratch{suffix}"
         scratch.write_text(source, encoding="utf-8")
         subprocess.run(
@@ -369,5 +421,6 @@ __all__: list[str] = [
     "normalize",
     "plan_file",
     "render_file",
+    "ruff_runner",
     "unified_diff",
 ]

@@ -5,6 +5,43 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.166.1] — 2026-07-25
+
+Post-release validation of `--fix` against the published wheel, in a project
+that is not this repository. Three things only that setting can show.
+
+### Fixed
+
+- **`--fix` now formats with the target project's ruff config.** The scratch
+  file it hands to ruff was created in the system temp directory, where ruff
+  finds no `pyproject.toml` and falls back to its own defaults. A project on
+  `line-length = 120`, or with custom `isort` sections, got output formatted to
+  ruff's defaults — which its own `ruff format --check` then rejected, on a file
+  the command had just written. The scratch file is now created next to the file
+  being rewritten, so settings resolve the same way they do for the project.
+  `normalize()` takes a `near=` directory for this.
+- **Silent skip of that formatting is now reported.** `ruff` was resolved as
+  "on `PATH`, else `uv run ruff`", and neither branch was verified. Invoked by
+  absolute path from a venv (`/…/.venv/bin/tempest`), that venv's `bin/` is not
+  on `PATH`, so resolution fell through to `uv run ruff` — which exists but
+  cannot run outside a uv project, failing silently under `check=False`. The
+  write then emitted an unsorted import and an over-long decorator with no hint
+  why. New `ruff_runner()` adds `python -m ruff` for the importable-but-not-on-
+  `PATH` case, probes every candidate with `--version`, and the command prints a
+  `note:` line pointing at `tempest fix` when none works.
+- **The `docs`-marked tests no longer trust a stale `site/`.** Both fixtures
+  rebuilt only when the built file was *absent*, so an out-of-date local build
+  was read as current: 14 tests failed on a clean `main` naming pages and
+  symbols that were in fact present. CI never saw it, having no `site/` at all.
+  A single `built_site` fixture now lives in `tests/conftest.py` and rebuilds
+  whenever `mkdocs.yml`, `docs/` or `mkdocs_hooks/` is newer than the output.
+
+### Added
+
+- **`ruff_runner()`** in `tempest_fastapi_sdk.cli.openapi_fix` — returns a
+  probed argv prefix that runs ruff, or `None`. Exported for callers that want
+  to make the same "can I format this?" decision.
+
 ## [0.166.0] — 2026-07-25
 
 ### Added

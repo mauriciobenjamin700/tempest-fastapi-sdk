@@ -529,6 +529,28 @@ presente prova que o projeto optou por esse estilo; aí ele é respeitado.
     `ruff check --select I --fix` e `ruff format`, então o import novo cai na
     posição ordenada e o decorator quebrado em linhas sai formatado.
 
+    A formatação usa **a config do seu projeto**, não os defaults do ruff: o
+    arquivo temporário é criado ao lado do arquivo reescrito, e o ruff resolve
+    settings subindo a árvore de diretórios. Seu `line-length` e suas seções de
+    `isort` valem, então o que o comando escreve passa no `ruff format --check`
+    do seu próprio CI.
+
+!!! note "Sem ruff, ele avisa em vez de fingir"
+    A normalização depende de um ruff que realmente rode — no `PATH`, importável
+    no interpretador atual (`python -m ruff`), ou via `uv run ruff`. Cada
+    candidato é testado com `--version` antes de ser usado. Não achando nenhum, a
+    gravação acontece de todo jeito (o splice já é Python válido) e o comando diz
+    o que ficou de fora:
+
+    ```text
+    note: no working ruff found, so the new import stays where it was spliced
+    and a long decorator is not wrapped. Run `tempest fix` afterwards to sort
+    and format.
+    ```
+
+    Sem esse aviso você descobriria pelo `ruff check` do CI reclamando de um
+    arquivo que o próprio comando acabou de escrever.
+
 !!! check "Árvore git limpa obrigatória"
     Com a árvore limpa, `git diff` é a revisão e `git checkout` é o desfazer —
     a rede de segurança real de uma ferramenta que edita código que você
