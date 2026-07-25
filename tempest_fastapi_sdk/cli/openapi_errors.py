@@ -117,12 +117,27 @@ class RouteInfo:
         has_declaration (bool): Whether any declaration was found at all.
             Distinguishes "declared nothing" from "declared an empty
             list".
+        decorator_end (tuple[int, int] | None): ``(line, col)`` of the
+            closing parenthesis of the route decorator call, where a new
+            ``responses=`` argument is inserted.
+        error_responses_end (tuple[int, int] | None): Same, for an
+            existing ``error_responses(...)`` call, where missing
+            exceptions are appended.
+        raises_end (tuple[int, int] | None): Same, for an existing
+            ``@raises(...)`` decorator.
+        declares_empty_call (bool): Whether the existing declaration call
+            has no positional arguments yet, so the writer knows whether
+            to prefix an appended name with a comma.
     """
 
     method: str
     path: str
     declared: set[str] = field(default_factory=set)
     has_declaration: bool = False
+    decorator_end: tuple[int, int] | None = None
+    error_responses_end: tuple[int, int] | None = None
+    raises_end: tuple[int, int] | None = None
+    declares_empty_call: bool = False
 
 
 @dataclass(slots=True)
@@ -275,6 +290,39 @@ def _declared_in(node: ast.AST) -> tuple[set[str], bool]:
     return names, found
 
 
+def _declaration_anchors(
+    node: ast.AST,
+) -> tuple[tuple[int, int] | None, tuple[int, int] | None, bool]:
+    """Locate the existing declaration calls inside a decorator.
+
+    Args:
+        node (ast.AST): A decorator expression.
+
+    Returns:
+        tuple[tuple[int, int] | None, tuple[int, int] | None, bool]: The
+        end position of an ``error_responses(...)`` call, the end position
+        of a ``raises(...)`` call, and whether the one that was found has
+        no positional arguments yet. Positions are ``(line, col)`` of the
+        closing parenthesis, which is where a writer appends.
+    """
+    er: tuple[int, int] | None = None
+    ra: tuple[int, int] | None = None
+    empty = False
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        callee = _called_name(child)
+        if callee not in {"error_responses", "raises"}:
+            continue
+        end = (child.end_lineno or 0, child.end_col_offset or 0)
+        if callee == "error_responses":
+            er = end
+        else:
+            ra = end
+        empty = not child.args
+    return er, ra, empty
+
+
 def _route_of(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
 ) -> RouteInfo | None:
@@ -295,6 +343,9 @@ def _route_of(
     route: RouteInfo | None = None
     declared: set[str] = set()
     has_declaration = False
+    error_responses_end: tuple[int, int] | None = None
+    raises_end: tuple[int, int] | None = None
+    declares_empty = False
     for decorator in node.decorator_list:
         if (
             isinstance(decorator, ast.Call)
@@ -306,14 +357,31 @@ def _route_of(
                 value = decorator.args[0].value
                 if isinstance(value, str):
                     path = value
-            route = RouteInfo(method=decorator.func.attr.upper(), path=path)
+            route = RouteInfo(
+                method=decorator.func.attr.upper(),
+                path=path,
+                decorator_end=(
+                    decorator.end_lineno or 0,
+                    decorator.end_col_offset or 0,
+                ),
+            )
         names, found = _declared_in(decorator)
         declared |= names
         has_declaration = has_declaration or found
+        er, ra, empty = _declaration_anchors(decorator)
+        if er is not None:
+            error_responses_end = er
+            declares_empty = empty
+        if ra is not None:
+            raises_end = ra
+            declares_empty = empty
     if route is None:
         return None
     route.declared = declared
     route.has_declaration = has_declaration
+    route.error_responses_end = error_responses_end
+    route.raises_end = raises_end
+    route.declares_empty_call = declares_empty
     return route
 
 
@@ -443,6 +511,29 @@ def _reachable_exceptions(
     return found
 
 
+def _python_files(paths: Iterable[Path]) -> list[Path]:
+    """Expand the given paths into a sorted list of Python files.
+
+    Args:
+        paths (Iterable[Path]): Directories (walked recursively) or files.
+
+    Returns:
+        list[Path]: The ``*.py`` files to analyze.
+
+    Raises:
+        FileNotFoundError: If a given path does not exist.
+    """
+    files: list[Path] = []
+    for path in paths:
+        if not path.exists():
+            raise FileNotFoundError(f"No such path: {path}")
+        if path.is_dir():
+            files.extend(sorted(path.rglob("*.py")))
+        else:
+            files.append(path)
+    return files
+
+
 def analyze_paths(paths: Iterable[Path]) -> list[RouteFinding]:
     """Analyze source trees and return the drift found on each route.
 
@@ -466,14 +557,7 @@ def analyze_paths(paths: Iterable[Path]) -> list[RouteFinding]:
         this is advisory tooling, and one generated or vendored file must
         not blind the whole report.
     """
-    files: list[Path] = []
-    for path in paths:
-        if not path.exists():
-            raise FileNotFoundError(f"No such path: {path}")
-        if path.is_dir():
-            files.extend(sorted(path.rglob("*.py")))
-        else:
-            files.append(path)
+    files = _python_files(paths)
 
     parsed: list[tuple[Path, ast.Module]] = []
     for file in files:
@@ -512,6 +596,35 @@ def analyze_paths(paths: Iterable[Path]) -> list[RouteFinding]:
     return findings
 
 
+def exception_locations(paths: Iterable[Path]) -> dict[str, Path]:
+    """Map each project exception class name to the file that defines it.
+
+    A writer that injects ``error_responses(SomeException)`` has to import
+    the class too, and the import can only be synthesized from where the
+    ``class`` statement actually is. Names defined in more than one file
+    are dropped rather than guessed: emitting the wrong import would
+    produce code that imports a same-named class from the wrong module,
+    which type-checks and fails at runtime.
+
+    Args:
+        paths (Iterable[Path]): Directories (or files) to scan.
+
+    Returns:
+        dict[str, Path]: Class name to defining file, for unambiguous
+        names only.
+    """
+    seen: dict[str, list[Path]] = {}
+    for file in _python_files(paths):
+        try:
+            tree = ast.parse(file.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                seen.setdefault(node.name, []).append(file)
+    return {name: files[0] for name, files in seen.items() if len(files) == 1}
+
+
 def default_source_paths(root: Path) -> list[Path]:
     """Return the conventional source directories under ``root``.
 
@@ -535,4 +648,5 @@ __all__: list[str] = [
     "RouteInfo",
     "analyze_paths",
     "default_source_paths",
+    "exception_locations",
 ]

@@ -480,6 +480,8 @@ tempest openapi-errors                          # advisory report (exit 0)
 tempest openapi-errors --check                  # exit 1 on drift (CI gate)
 tempest openapi-errors --path src --path libs   # explicit directories, repeatable
 tempest openapi-errors --check --allow-unreachable   # fail only on undocumented
+tempest openapi-errors --fix --dry-run          # diff of the missing declarations
+tempest openapi-errors --fix                    # write (needs a clean git tree)
 ```
 
 Without `--path` it scans `./src` or `./app` — whichever exists. The analysis is
@@ -492,6 +494,11 @@ src/api/routers/jobs.py:15  POST /{service_id}/candidates
   undocumented: CandidateAlreadyExistsException, ServiceFullException
 1 route(s) with drift, 2 undocumented exception(s).
 ```
+
+`--fix` closes the gap by writing `responses=error_responses(...)` into the route
+(plus whatever imports are missing), extending an existing declaration instead of
+replacing it. It only ever adds: `unreachable` findings are never removed, since
+reachability cannot see a dynamic raise.
 
 Details and limitations in the [Errors in OpenAPI »](openapi-errors.md) recipe.
 

@@ -95,9 +95,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `declared_raises`/`RaisesSpec`, `AppException.details_example`,
   `InheritedErrorCodeWarning` (subclass inheriting a **generic** SDK
   `code` — domain codes and `message_key` never warn), and
-  `tempest openapi-errors [--check|--allow-unreachable|--path]` (static
-  `ast` walk of router->controller->service->repository reading `raise` +
-  `Raises:` sections; reports undocumented/unreachable, CI gate). Declaring
+  `tempest openapi-errors [--check|--allow-unreachable|--path|--fix|--dry-run]`
+  (static `ast` walk of router->controller->service->repository reading
+  `raise` + `Raises:` sections; reports undocumented/unreachable, CI gate).
+  **`--fix` (v0.166.0)** writes the missing declarations back: injects
+  `responses=error_responses(...)` into the decorator + the needed imports, or
+  appends to an existing `error_responses`/`@raises` call preserving order.
+  AST-anchored edits, `ruff` normalized, requires a clean git tree (`--dry-run`
+  is read-only and prints the diff). Adds only — `unreachable` is never
+  removed, and an ambiguous exception import is reported as `unresolved`
+  instead of guessed. Declaring
   `code` in the **class body** is now the documented pattern — the raise-site
   `code=` form is not introspectable.
 - **Observability** — structured logging + per-level files +

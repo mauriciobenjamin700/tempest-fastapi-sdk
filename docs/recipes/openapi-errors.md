@@ -444,6 +444,8 @@ Opções:
 | `--path DIR` | Diretório (ou arquivo) a varrer. Repetível. Default: `./src` ou `./app`. |
 | `--check` | Sai não-zero quando há drift. Sem ela o relatório é informativo. |
 | `--allow-unreachable` | Com `--check`, só falha em `undocumented`. Lista inflada fica aviso. |
+| `--fix` | Escreve as declarações faltantes no código. Exige árvore git limpa. |
+| `--dry-run` | Com `--fix`, imprime o diff em vez de gravar. Roda em árvore suja. |
 
 !!! warning "É um guia, não uma prova"
     Duas imprecisões conhecidas, ambas escolhidas para **super**estimar em vez
@@ -468,6 +470,86 @@ Análise de call graph fica fora do runtime de propósito: é frágil demais par
 dirigir um response schema em produção, mas perfeitamente aceitável num check
 que sai não-zero.
 
+## Passo 5 — `--fix` escreve as declarações por você
+
+Num projeto que já existe, o passo 4 costuma apontar dezenas de rotas. Repetir a
+mão o que o analisador já sabe é trabalho mecânico — `--fix` faz o mapeamento
+Exception → rota e grava o resultado:
+
+```bash
+tempest openapi-errors --fix --dry-run   # veja o diff primeiro
+tempest openapi-errors --fix             # grave
+```
+
+Numa rota que ainda não declara nada, ele injeta o parâmetro e o import:
+
+```diff
++from tempest_fastapi_sdk import error_responses
++
++from src.core.exceptions import CandidateAlreadyExistsException, ServiceFullException
+
+-@router.post("/{service_id}/candidates", status_code=201)
++@router.post(
++    "/{service_id}/candidates",
++    status_code=201,
++    responses=error_responses(
++        CandidateAlreadyExistsException, ServiceFullException
++    ),
++)
+ async def apply_to_service(service_id: str) -> CandidateResponseSchema:
+```
+
+Numa rota que já declara parte, ele **acrescenta** ao que existe — a ordem
+original é preservada:
+
+```diff
+-    responses=error_responses(ServiceNotFoundException),
++    responses=error_responses(ServiceNotFoundException, ServiceFullException),
+```
+
+Um `@raises(...)` existente também é estendido no lugar. Já a rota que não
+declara nada sempre recebe `error_responses`, nunca `@raises`: `@raises` só é
+lido pelo `TempestAPIRouter`, então injetá-lo num projeto de `APIRouter` puro
+produziria um decorator que não faz nada — o pior resultado possível para uma
+ferramenta que existe para fechar um buraco de documentação. Um `@raises` já
+presente prova que o projeto optou por esse estilo; aí ele é respeitado.
+
+### As três garantias
+
+!!! check "Só acrescenta, nunca remove"
+    Findings `unreachable` são deliberadamente ignorados. Alcançabilidade
+    resolve por nome de chamada e não enxerga raise dinâmico, então apagar uma
+    declaração baseado nela removeria declaração correta. Curadoria de lista
+    inflada continua manual.
+
+!!! check "Edições ancoradas na AST"
+    Cada inserção é posicionada no parêntese de fechamento de um nó de call, não
+    numa regex. Nada depende de como o decorator está formatado, e o resto do
+    arquivo — comentários, layout — não é tocado. O resultado passa por
+    `ruff check --select I --fix` e `ruff format`, então o import novo cai na
+    posição ordenada e o decorator quebrado em linhas sai formatado.
+
+!!! check "Árvore git limpa obrigatória"
+    Com a árvore limpa, `git diff` é a revisão e `git checkout` é o desfazer —
+    a rede de segurança real de uma ferramenta que edita código que você
+    escreveu. Com mudança pendente, o comando sai 1:
+
+    ```text
+    error: the working tree has uncommitted changes. Commit or stash them
+    first — with a clean tree, `git diff` reviews what this wrote and
+    `git checkout` undoes it.
+    ```
+
+    `--dry-run` é somente leitura, então roda em árvore suja sem reclamar.
+
+!!! warning "Uma exception que ele não consegue importar não é escrita"
+    O import é derivado do arquivo que define a classe. Quando o mesmo nome é
+    definido em mais de um arquivo — ou fora da raiz varrida — a resolução é
+    ambígua e escrever um import errado quebraria a aplicação. Nesse caso a
+    rota é pulada e o nome sai listado como `unresolved`; declare essa à mão.
+
+Rode `--check` depois: a segunda passada deve reportar sincronia.
+
 ## Recapitulando
 
 1. **Declare `code` no corpo da classe.** É a única forma introspectável; o
@@ -479,6 +561,9 @@ que sai não-zero.
    sem repetir o parâmetro.
 4. **`tempest openapi-errors --check`** compara declaração e fluxo nas duas
    direções e serve de gate de CI.
+5. **`tempest openapi-errors --fix`** grava o que falta — com `--dry-run` para
+   ver o diff antes, e exigindo árvore git limpa para que `git checkout` seja o
+   desfazer.
 
 Com os passos 1 e 2 o `openapi.json` passa a ser a fonte única, e o cliente
 gerado já vem com os codes. 🎉

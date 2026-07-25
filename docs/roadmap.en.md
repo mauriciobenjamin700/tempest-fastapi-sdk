@@ -131,6 +131,24 @@ GraphQL/gRPC (REST by decision).
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## Shipped in v0.166.0
+
+Errors in OpenAPI — automatic fix:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **`tempest openapi-errors --fix`** | ✅ v0.166 | Writes the declarations `--check` was pointing at: injects `responses=error_responses(...)` into the route, extends an existing declaration (`error_responses` or `@raises`) preserving its order, and adds the missing imports. Edits anchored on AST positions, output passed through `ruff check --select I --fix` + `ruff format`. [Reference »](recipes/openapi-errors.md#step-5-fix-writes-the-declarations-for-you) |
+| **Only ever adds, on a clean tree** | ✅ v0.166 | `unreachable` findings are never removed — reachability cannot see a dynamic raise, so deleting on its word would remove a correct declaration. Requires a clean git tree, so `git diff` is the review and `git checkout` the undo; `--dry-run` prints the formatted diff and runs on a dirty tree. |
+
+## Shipped in v0.163.0
+
+A React SPA served by FastAPI itself:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **`make_spa_router(dist_dir)`** | ✅ v0.163 | Serves a Vite/React `dist/` with history fallback, an inverted cache policy (document `no-store`, hashed assets `immutable`) and API prefixes excluded from the fallback. [Recipe »](recipes/react-spa.md) |
+| **`tempest generate --dockerfile` with an SPA stage** | ✅ v0.163 | Detects `web/`, `frontend/`, `client/` or `ui/` and emits a Node stage running `npm ci && npm run build` ahead of the Python stage, copying only `dist/` into the final image. |
+
 ## Shipped in v0.161.0
 
 Code generation from an OpenAPI specification:
