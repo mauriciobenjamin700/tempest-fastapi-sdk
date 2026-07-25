@@ -227,6 +227,11 @@ def make_spa_router(
             otherwise ``index.html`` so the client-side router can resolve
             the route. Paths under :data:`DEFAULT_EXCLUDED_PREFIXES` get a
             404 instead, keeping API errors machine-readable.
+
+        Notes:
+            ``resolve()`` collapses ``..`` segments, so comparing the
+            resolved candidate against the resolved root is what stops
+            a crafted path from escaping the build directory.
         """
         from fastapi import HTTPException
 
@@ -239,8 +244,6 @@ def make_spa_router(
 
         if spa_path:
             candidate = (root / spa_path).resolve()
-            # `resolve()` collapses `..`, so comparing against the root is
-            # what stops `/../../etc/passwd` from escaping the build dir.
             if candidate.is_file() and candidate.is_relative_to(root):
                 return FileResponse(
                     candidate,

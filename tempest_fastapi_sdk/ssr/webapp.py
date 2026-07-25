@@ -172,14 +172,19 @@ def make_web_app_router(
     )
 
     def _file_response(path: Path) -> FileResponse:
-        """Build a ``FileResponse`` with cache + security headers."""
+        """Build a ``FileResponse`` with cache + security headers.
+
+        Notes:
+            A service worker served from the root is allowed to claim
+            the whole origin scope, which is what lets it control every
+            page of the app.
+        """
         response = FileResponse(path, media_type=_media_type(path))
         if path.name in _ALWAYS_REVALIDATE:
             response.headers["Cache-Control"] = "no-cache"
         else:
             response.headers["Cache-Control"] = asset_cache_control
         if path.name == "sw.js":
-            # Let a root-served worker claim the whole origin scope.
             response.headers["Service-Worker-Allowed"] = "/"
         for header, value in headers.items():
             response.headers.setdefault(header, value)
@@ -242,6 +247,10 @@ def build_web_app(
     Raises:
         ValueError: When ``directory`` is not a server tempestweb build.
             Use :func:`make_web_app_router` for a static (wasm) build.
+
+    Notes:
+        The tempestweb runtime is imported lazily because only the server
+        build mode needs it; a wasm build must not pay for the import.
     """
     root = Path(directory).resolve()
     mode = detect_build_mode(root)
@@ -251,7 +260,6 @@ def build_web_app(
             "only — use make_web_app_router() for a static (wasm) build"
         )
 
-    # Imported lazily: only the server path needs the tempestweb runtime.
     from fastapi.staticfiles import StaticFiles
     from tempestweb.cli.loader import load_app
     from tempestweb.server import create_app

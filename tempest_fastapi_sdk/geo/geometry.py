@@ -171,6 +171,11 @@ def destination_point(
 
     Returns:
         The destination :class:`~tempest_fastapi_sdk.geo.Coordinate`.
+
+    Notes:
+        Longitude is normalised back into [-180, 180]; a bearing that
+        crosses the antimeridian would otherwise return a value outside the
+        valid range.
     """
     angular = distance_km / EARTH_RADIUS_KM
     bearing = radians(bearing_degrees)
@@ -184,7 +189,6 @@ def destination_point(
         sin(bearing) * sin(angular) * cos(lat1),
         cos(angular) - sin(lat1) * sin(lat2),
     )
-    # Normalise longitude to [-180, 180].
     lon2_deg = (degrees(lon2) + 540.0) % 360.0 - 180.0
     return Coordinate(latitude=degrees(lat2), longitude=lon2_deg)
 

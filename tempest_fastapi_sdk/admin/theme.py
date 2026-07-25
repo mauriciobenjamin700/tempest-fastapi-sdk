@@ -152,6 +152,12 @@ class AdminTheme:
         Returns:
             str: CSS text. Empty-safe — a default ``AdminTheme()`` still
             returns a valid (no-op-equivalent) block.
+
+        Notes:
+            Dark mode only overrides the content-area surfaces: the
+            header and sidebar are already dark via ``--tempest-bg``.
+            The override is skipped entirely when the project pinned
+            its own ``page_bg`` — an explicit value always wins.
         """
         root_lines = "\n".join(
             f"  {name}: {value};" for name, value in self.css_variables().items()
@@ -159,9 +165,6 @@ class AdminTheme:
         blocks: list[str] = [f":root {{\n{root_lines}\n}}"]
 
         if self.dark_mode and self.page_bg is None:
-            # Dark surfaces for the content area. The header/sidebar are
-            # already dark via --tempest-bg. Skipped when the project
-            # pinned its own page_bg (explicit value wins).
             blocks.append(
                 ":root {\n"
                 "  --tempest-page-bg: #0b1120;\n"

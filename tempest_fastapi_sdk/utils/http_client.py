@@ -212,7 +212,13 @@ class HTTPClient:
         return parsed.host or "_unknown_"
 
     async def _breaker_check(self, host: str) -> None:
-        """Open/half-open gate consulted before each attempt."""
+        """Open/half-open gate consulted before each attempt.
+
+        Notes:
+            In the half-open state a single probe request is allowed
+            through; the breaker then resets or re-opens based on its
+            outcome.
+        """
         if self.failure_threshold <= 0:
             return
         async with self._lock:
@@ -222,7 +228,6 @@ class HTTPClient:
             elapsed = time.monotonic() - state.opened_at
             if elapsed < self.recovery_seconds:
                 raise CircuitOpenError(host)
-            # half-open: allow one probe; reset on success/failure later.
             state.opened_at = 0.0
 
     async def _breaker_record(self, host: str, *, failed: bool) -> None:
@@ -289,6 +294,11 @@ class HTTPClient:
             CircuitOpenError: When the per-host breaker is open.
             httpx.HTTPError: When all attempts failed (last
                 exception is re-raised).
+
+        Notes:
+            The trailing raise is defensive only: the retry loop either
+            returns a response or raises, so it should never be
+            reached.
         """
         assert _httpx_mod is not None, "guarded by __init__"
         host = self._host_of(url)
@@ -327,7 +337,6 @@ class HTTPClient:
             await self._breaker_record(host, failed=False)
             return response
 
-        # Should be unreachable — the loop either returns or raises.
         if last_response is not None:
             return last_response
         assert last_exc is not None

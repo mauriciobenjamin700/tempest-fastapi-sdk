@@ -181,8 +181,22 @@ def make_session_router(
         response: Response,
         session: Session = current_session_required,
     ) -> Response:
+        """Revoke one of the caller's sessions by its public id.
+
+        Revoking your own session also clears the cookie, so the browser
+        stops presenting an identifier that no longer resolves.
+
+        Args:
+            public_id (str): Public id of the session to revoke.
+            request (Request): The inbound request.
+            response (Response): The outgoing response, used to clear the
+                cookie when the caller revoked themselves.
+            session (Session): The caller's current session.
+
+        Returns:
+            Response: An empty ``204``.
+        """
         await service.revoke_by_public_id(session.user_id, public_id)
-        # If the user revoked their own session, drop the cookie too.
         if session.session_id.startswith(public_id):
             _clear_session_cookie(response)
         response.status_code = status.HTTP_204_NO_CONTENT

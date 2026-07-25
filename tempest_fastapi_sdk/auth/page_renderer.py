@@ -56,6 +56,11 @@ def render_auth_page(
         jinja2.TemplateNotFound: When the template cannot be
             located in ``template_dir`` nor in the bundled
             directory.
+
+    Notes:
+        The bundled pages live under per-locale subdirectories, so a
+        locale-less call falls back to the default locale's subdirectory to
+        find them.
     """
     try:
         from jinja2 import (
@@ -74,8 +79,6 @@ def render_auth_page(
 
     search_paths: list[Path] = []
     bundled_dir = Path(__file__).resolve().parent / "templates"
-    # Bundled pages live under per-locale subdirs; a locale-less call
-    # falls back to the default locale subdir.
     bundled_locale = locale or DEFAULT_AUTH_LOCALE
     if template_dir is not None:
         if locale is not None:

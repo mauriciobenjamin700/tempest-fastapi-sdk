@@ -84,6 +84,12 @@ def _helper(
 
     Raises:
         typer.Exit: When ``alembic.ini`` is missing.
+
+    Notes:
+        Alembic's ``env.py`` imports the project's models from the working
+        directory (``src.db.models``), so the cwd is put on ``sys.path``
+        before the helper runs. Without it ``alembic upgrade`` fails with
+        ``ModuleNotFoundError: src``.
     """
     from tempest_fastapi_sdk import AlembicHelper
 
@@ -94,10 +100,6 @@ def _helper(
             err=True,
         )
         raise typer.Exit(2)
-    # Alembic's env.py imports the project's models from the cwd
-    # (``src.db.models``). Ensure the cwd is on sys.path before the
-    # helper runs, otherwise ``alembic upgrade`` fails with
-    # ``ModuleNotFoundError: src``.
     cwd = str(Path.cwd())
     if cwd not in sys.path:
         sys.path.insert(0, cwd)

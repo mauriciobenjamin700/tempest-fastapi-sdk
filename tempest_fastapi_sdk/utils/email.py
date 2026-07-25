@@ -92,6 +92,11 @@ class EmailUtils:
 
         Raises:
             ImportError: When the ``[email]`` extra is not installed.
+
+        Notes:
+            Jinja environments are memoized one per resolved locale, plus a
+            ``None`` key for locale-less renders, and built lazily on first
+            use.
         """
         if _aiosmtplib is None:
             raise ImportError(
@@ -109,8 +114,6 @@ class EmailUtils:
         self._template_dir: Path | None = (
             Path(template_dir) if template_dir is not None else None
         )
-        # One Jinja environment per resolved locale (plus the ``None`` key
-        # for locale-less renders), built lazily and memoized.
         self._jinja_envs: dict[str | None, jinja2.Environment] = {}
 
     async def send(
@@ -147,6 +150,15 @@ class EmailUtils:
         Raises:
             aiosmtplib.errors.SMTPException: Re-raised on any SMTP
                 error so callers can branch on the specific failure.
+
+        Notes:
+            STARTTLS is negotiated **opportunistically**: aiosmtplib upgrades
+            the connection only when the server advertises support, so a
+            plain server such as MailHog no longer hard-fails with
+            ``SMTP STARTTLS extension not supported by server``. Passing
+            ``start_tls=True`` would force the upgrade and raise there
+            instead. ``use_tls`` (implicit TLS / SMTPS) is mutually exclusive
+            with STARTTLS, so the upgrade is disabled in that case.
         """
         recipients: list[str] = [to] if isinstance(to, str) else list(to)
         cc_list: list[str] = list(cc or [])
@@ -175,13 +187,6 @@ class EmailUtils:
                 )
 
         assert _aiosmtplib is not None, "guarded by __init__"
-        # STARTTLS is negotiated *opportunistically*: aiosmtplib upgrades
-        # the connection only when the server advertises STARTTLS, so a
-        # plain server (e.g. MailHog) no longer hard-fails with
-        # "SMTP STARTTLS extension not supported by server." Passing
-        # ``start_tls=True`` would force it and raise on plain servers.
-        # ``use_tls`` (implicit TLS / SMTPS) is mutually exclusive with
-        # STARTTLS, so the upgrade is disabled in that case.
         start_tls: bool | None = (
             None if (self.use_starttls and not self.use_tls) else False
         )
@@ -260,6 +265,17 @@ class EmailUtils:
             ...     body="Bem-vinda, Ana!",
             ...     html=html,
             ... )
+
+        Notes:
+            Templates resolve through a ``ChoiceLoader``: the project's own
+            ``template_dir`` first, then the SDK's bundled ones
+            (``auth/activation``, ``auth/password_reset``). That is what lets
+            the bundled auth flow render its default emails without the
+            caller having to ship a ``template_dir`` at all.
+
+            The bundled templates live under per-locale subdirectories
+            (``pt-BR`` / ``en-US``), so a locale-less render falls back to
+            the default locale's subdirectory to reach them.
         """
         if Environment is None:
             raise ImportError(
@@ -268,20 +284,12 @@ class EmailUtils:
             )
         env = self._jinja_envs.get(locale)
         if env is None:
-            # ChoiceLoader: project templates first, SDK bundled
-            # templates (auth/activation, auth/password_reset) as
-            # fallback. Lets the bundled auth flow render its
-            # default emails without forcing the caller to ship
-            # ``template_dir``.
             from jinja2 import ChoiceLoader
 
             search_paths: list[Path] = []
             sdk_auth_templates = Path(__file__).resolve().parent.parent / (
                 "auth/templates"
             )
-            # The SDK bundled templates live under per-locale subdirs
-            # (``pt-BR`` / ``en-US``). A locale-less render still needs to
-            # reach them, so fall back to the default locale subdir.
             from tempest_fastapi_sdk.auth.locale import DEFAULT_AUTH_LOCALE
 
             bundled_locale = locale or DEFAULT_AUTH_LOCALE

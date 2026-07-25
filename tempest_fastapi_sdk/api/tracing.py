@@ -107,6 +107,12 @@ def setup_tracing(
     Raises:
         ImportError: If the ``[otel]`` extra is not installed.
         ValueError: If ``sample_ratio`` is outside ``[0, 1]``.
+
+    Notes:
+        When a ``TracerProvider`` is already installed — ``setup_tracing``
+        ran twice, or the host wired its own — it is reused rather than
+        replaced, and only the FastAPI instrumentation is attached to this
+        app.
     """
     _require_otel()
 
@@ -128,9 +134,6 @@ def setup_tracing(
 
     existing = trace.get_tracer_provider()
     if isinstance(existing, TracerProvider):
-        # A provider is already installed (e.g. setup_tracing ran
-        # twice, or the host wired its own). Reuse it, just attach the
-        # FastAPI instrumentation to this app.
         _instrument_fastapi(app, existing)
         return existing
 

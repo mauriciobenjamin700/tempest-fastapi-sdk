@@ -120,6 +120,11 @@ class OSRMBackend:
 
         Raises:
             RuntimeError: If the request fails or OSRM finds no route.
+
+        Notes:
+            Any transport or parse failure is normalised into the
+            backend's own error type, so callers branch on one
+            exception instead of on httpx internals.
         """
         coords = (
             f"{origin.longitude},{origin.latitude};"
@@ -134,7 +139,7 @@ class OSRMBackend:
             response = await self._http.get(url, params=params)
             response.raise_for_status()
             payload: dict[str, Any] = response.json()
-        except Exception as exc:  # normalize any transport/parse error
+        except Exception as exc:
             raise RuntimeError(f"OSRM request failed: {exc}") from exc
 
         if payload.get("code") != "Ok" or not payload.get("routes"):
@@ -186,6 +191,11 @@ class OSRMBackend:
         Raises:
             ValueError: If ``sources`` is empty.
             RuntimeError: If the request fails or OSRM returns no table.
+
+        Notes:
+            Any transport or parse failure is normalised into the
+            backend's own error type, so callers branch on one
+            exception instead of on httpx internals.
         """
         if not sources:
             raise ValueError("sources must not be empty")
@@ -206,7 +216,7 @@ class OSRMBackend:
             response = await self._http.get(url, params=params)
             response.raise_for_status()
             payload: dict[str, Any] = response.json()
-        except Exception as exc:  # normalize any transport/parse error
+        except Exception as exc:
             raise RuntimeError(f"OSRM table request failed: {exc}") from exc
 
         if payload.get("code") != "Ok":

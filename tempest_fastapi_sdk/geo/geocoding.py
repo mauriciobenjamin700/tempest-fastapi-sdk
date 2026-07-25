@@ -87,6 +87,11 @@ class NominatimBackend:
 
         Raises:
             RuntimeError: If the request fails.
+
+        Notes:
+            Any transport or parse failure is normalised into the
+            backend's own error type, so callers branch on one
+            exception instead of on httpx internals.
         """
         try:
             response = await self._http.get(
@@ -96,7 +101,7 @@ class NominatimBackend:
             )
             response.raise_for_status()
             payload: list[dict[str, Any]] = response.json()
-        except Exception as exc:  # normalize any transport/parse error
+        except Exception as exc:
             raise RuntimeError(f"Nominatim geocode failed: {exc}") from exc
 
         if not payload:
@@ -115,6 +120,11 @@ class NominatimBackend:
 
         Raises:
             RuntimeError: If the request fails.
+
+        Notes:
+            Any transport or parse failure is normalised into the
+            backend's own error type, so callers branch on one
+            exception instead of on httpx internals.
         """
         try:
             response = await self._http.get(
@@ -128,7 +138,7 @@ class NominatimBackend:
             )
             response.raise_for_status()
             payload: dict[str, Any] = response.json()
-        except Exception as exc:  # normalize any transport/parse error
+        except Exception as exc:
             raise RuntimeError(f"Nominatim reverse failed: {exc}") from exc
 
         if "lat" not in payload or "lon" not in payload:

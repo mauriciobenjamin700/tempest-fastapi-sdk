@@ -85,11 +85,16 @@ class MemorySessionStore:
             return session
 
     async def set(self, session: Session) -> None:
-        """Persist (or overwrite) ``session``."""
+        """Persist (or overwrite) ``session``.
+
+        Notes:
+            A write reusing an existing id under a different owner
+            rewrites both indexes, so the previous owner's index never
+            keeps a dangling entry.
+        """
         async with self._lock:
             existing = self._sessions.get(session.session_id)
             if existing is not None and existing.user_id != session.user_id:
-                # Same id but new owner: keep indexes consistent.
                 self._by_user.get(existing.user_id, set()).discard(
                     session.session_id,
                 )
@@ -202,7 +207,13 @@ class RedisSessionStore:
         return session
 
     async def set(self, session: Session) -> None:
-        """Persist (or overwrite) ``session`` with a TTL matching ``expires_at``."""
+        """Persist (or overwrite) ``session`` with a TTL matching ``expires_at``.
+
+        Notes:
+            The user-index TTL is bumped to track the longest-lived
+            session it points at, so the index never expires while a
+            session it references is valid.
+        """
         ttl_seconds = max(
             1,
             int(
@@ -221,7 +232,6 @@ class RedisSessionStore:
             ex=ttl_seconds,
         )
         await self._sadd(self._user_key(session.user_id), session.session_id)
-        # User index TTL grows with the longest-lived session — bump it.
         await self.client.expire(self._user_key(session.user_id), ttl_seconds)
 
     async def delete(self, session_id_hash: str) -> None:

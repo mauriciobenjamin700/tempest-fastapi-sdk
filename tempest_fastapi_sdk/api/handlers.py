@@ -68,6 +68,13 @@ def make_app_exception_handler(
     Returns:
         AppExceptionHandler: An async ``(request, exc) -> JSONResponse``
         callable.
+
+    Notes:
+        The request id is looked up in three places, in order: the
+        contextvar, which works for plain ASGI middlewares; the inbound
+        ``X-Request-ID`` header, needed because ``BaseHTTPMiddleware``
+        spawns a child task whose contextvars do not always reach the
+        exception handler; and finally ``None``.
     """
 
     async def _handler(
@@ -195,10 +202,6 @@ def make_unhandled_exception_handler(
     """
 
     async def _handler(request: Request, exc: Exception) -> JSONResponse:
-        # contextvar first (works for plain ASGI middlewares), then the
-        # inbound X-Request-ID header (BaseHTTPMiddleware spawns a child
-        # task so its contextvars don't always reach the exception
-        # handler), then None.
         request_id = (
             get_request_id()
             or request.headers.get("X-Request-ID")
@@ -270,6 +273,11 @@ def make_http_exception_handler(
         HTTPExceptionHandler: An async
         ``(request, exc) -> JSONResponse`` callable ready to pass to
         :meth:`FastAPI.add_exception_handler`.
+
+    Notes:
+        4xx responses are logged at ``INFO`` with no traceback and no
+        ``500.log`` marker, so an operator can still see which request
+        failed without paying for a stack trace on normal client errors.
     """
 
     async def _handler(
@@ -307,9 +315,6 @@ def make_http_exception_handler(
                 content=body,
                 headers=getattr(exc, "headers", None),
             )
-        # 4xx — INFO-level log (no traceback, no 500.log marker) so
-        # operators can still see the request that failed without
-        # paying the cost of a stack trace.
         logger.log(
             logging.INFO,
             "HTTPException %s during %s %s: %s",
@@ -379,12 +384,15 @@ def register_exception_handlers(
             :meth:`MessageCatalog.merge`-d with domain codes.
         default_locale (str): Locale used when ``Accept-Language`` is
             absent or unmatched. Defaults to ``"pt-BR"``.
+
+    Notes:
+        Starlette types ``add_exception_handler`` to accept only callables
+        keyed by the broad ``Exception``, while these handlers narrow their
+        second argument to ``AppException`` / ``StarletteHTTPException`` for
+        the SDK consumer's benefit. The ``type: ignore`` at each call is
+        therefore safe: the narrowing is exactly what the registration key
+        guarantees.
     """
-    # Starlette's ``add_exception_handler`` is typed to accept only
-    # callables keyed by the broad ``Exception`` — our typed
-    # handlers narrow the second arg to ``AppException`` /
-    # ``StarletteHTTPException`` for the SDK consumer, so the cast
-    # is safe at the boundary.
     app.add_exception_handler(
         AppException,
         make_app_exception_handler(  # type: ignore[arg-type]

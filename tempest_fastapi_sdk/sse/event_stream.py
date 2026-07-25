@@ -163,11 +163,14 @@ class EventStream:
                 kicks in. ``0`` disables the bound. Defaults to ``1000``.
             overflow (OverflowPolicy): Overflow reaction. Defaults to
                 ``"drop_oldest"``.
+
+        Notes:
+            Only ``"block"`` gets a hard-bounded queue, because only it wants
+            real backpressure. The drop policies keep an unbounded queue and
+            enforce the bound by hand on data events, which is what keeps the
+            close sentinel from ever being blocked or evicted — the stream can
+            always be terminated.
         """
-        # Only "block" needs a hard-bounded queue (real backpressure). The
-        # drop policies keep an unbounded queue and enforce the bound
-        # manually on data events, so the close sentinel is never blocked
-        # or evicted — the stream can always be terminated.
         native_maxsize: int = (
             max_queue if (max_queue > 0 and overflow == "block") else 0
         )
@@ -200,9 +203,14 @@ class EventStream:
         Args:
             item (ServerSentEvent | None): The event, or ``None`` to
                 signal end-of-stream.
+
+        Notes:
+            Three cases put straight through with no bound applied: the close
+            sentinel, ``"block"`` mode, and an unbounded stream. No data event
+            is ever dropped for them. Past the bound, ``"drop_newest"``
+            discards the incoming event and ``"drop_oldest"`` evicts the
+            stalest queued one to make room.
         """
-        # The close sentinel, "block" mode and unbounded streams put
-        # straight through — no data event is ever dropped for them.
         if item is None or self.max_queue <= 0 or self.overflow == "block":
             await self._queue.put(item)
             return
@@ -212,7 +220,6 @@ class EventStream:
         if self.overflow == "drop_newest":
             self._dropped += 1
             return
-        # drop_oldest: evict the stalest queued event to fit the new one.
         try:
             self._queue.get_nowait()
             self._dropped += 1

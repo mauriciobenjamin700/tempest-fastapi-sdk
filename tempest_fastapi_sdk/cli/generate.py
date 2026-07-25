@@ -129,6 +129,11 @@ def regenerate_docker_compose(
     Raises:
         typer.Exit: On invalid input or overwrite without
             ``--force``.
+
+    Notes:
+        Any previously generated block is stripped before appending, keyed
+        off a marker line, so re-running the command stays idempotent
+        instead of stacking duplicates.
     """
     pyproject_text = _read_pyproject(target)
     resolved_name = project_name or _discover_project_name(
@@ -154,8 +159,6 @@ def regenerate_docker_compose(
         addendum = env_block_for(resolved_extras)
         if addendum:
             existing = env_example.read_text(encoding="utf-8")
-            # Strip any previous SDK-generated block so re-runs stay
-            # idempotent. The block is appended after a marker line.
             marker = "\n# Postgres container credentials — read by docker compose.\n"
             if marker in existing:
                 existing = existing.split(marker, 1)[0].rstrip() + "\n"
@@ -320,7 +323,6 @@ def regenerate_dockerfile(
             ``spa_dir`` holds no ``package.json`` (exit 1) — a silent
             backend-only image would be worse than saying so.
     """
-    # Imported here to avoid a module-level dependency on the scaffolder.
     from tempest_fastapi_sdk.cli.new import _render, _templates_root
 
     pyproject_text = _read_pyproject(target)

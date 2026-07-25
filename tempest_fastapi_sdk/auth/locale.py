@@ -61,13 +61,16 @@ def normalize_locale(value: str | None, *, default: str = DEFAULT_AUTH_LOCALE) -
 
     Returns:
         str: One of :data:`SUPPORTED_LOCALES`.
+
+    Notes:
+        An unknown full tag falls back to its primary subtag, so ``pt-pt``
+        resolves as ``pt``.
     """
     if not value:
         return default
     key = value.strip().lower().replace("_", "-")
     if key in _CANONICAL:
         return _CANONICAL[key]
-    # Fall back to the primary subtag (e.g. ``"pt-pt"`` -> ``"pt"``).
     primary = key.split("-", 1)[0]
     return _CANONICAL.get(primary, default)
 

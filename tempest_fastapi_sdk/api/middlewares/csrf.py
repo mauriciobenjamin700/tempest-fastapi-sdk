@@ -80,12 +80,16 @@ def make_csrf_token_dependency(
     """
 
     def _ensure_token(request: Request) -> str:
-        """Return the existing CSRF token or mint a new one."""
+        """Return the existing CSRF token or mint a new one.
+
+        Notes:
+            The token is stashed on ``request.state`` so a route
+            handler can read it and call ``response.set_cookie`` itself
+            when it needs to.
+        """
         token = request.cookies.get(cookie_name)
         if token is None:
             token = generate_csrf_token()
-        # Stash on request.state so the route handler can read it
-        # and call ``response.set_cookie`` itself when needed.
         request.state.csrf_token = token
         return token
 

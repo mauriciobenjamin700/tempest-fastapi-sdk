@@ -144,6 +144,11 @@ def _field_lines(field: FieldIR) -> list[str]:
         list[str]: Source lines. A field with no metadata and no default
         is emitted as a bare annotation rather than an empty
         ``Field()`` call.
+
+    Notes:
+        When the default is the only thing to emit, it is written as a bare
+        assignment rather than wrapped in an otherwise-empty ``Field()``
+        call.
     """
     arguments = _field_arguments(field)
     if not arguments:
@@ -154,8 +159,6 @@ def _field_lines(field: FieldIR) -> list[str]:
         and field.default is not None
         and not field.default_is_factory
     ):
-        # The only thing to say is the default, so say it plainly rather
-        # than wrapping a bare value in a Field() call.
         return [f"    {field.name}: {field.annotation} = {field.default}"]
 
     single = f"    {field.name}: {field.annotation} = Field({', '.join(arguments)})"
@@ -175,6 +178,12 @@ def _model_lines(schema: SchemaIR) -> list[str]:
 
     Returns:
         list[str]: Source lines for the class.
+
+    Notes:
+        A model with only a docstring is already a complete class body, so
+        no ``pass`` is emitted. The comment that goes in its place records
+        that the emptiness came from the specification, not from a parsing
+        failure.
     """
     lines = [f"class {schema.name}(BaseSchema):"]
     docstring = f"{schema.docstring}"
@@ -196,9 +205,6 @@ def _model_lines(schema: SchemaIR) -> list[str]:
         )
 
     if not schema.fields:
-        # A model with only a docstring is a complete class body, so no
-        # `pass` is needed. The comment records that the emptiness came
-        # from the specification rather than from a parsing failure.
         lines.append("    # The specification declares no properties.")
         lines.append("")
         return lines

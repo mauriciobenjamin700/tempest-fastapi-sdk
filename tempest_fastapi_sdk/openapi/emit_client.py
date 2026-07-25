@@ -394,6 +394,12 @@ def emit_client(client: ClientIR, *, schemas_module: str = "schemas") -> str:
 
     Returns:
         str: The complete module source, ending in a newline.
+
+    Notes:
+        One blank line separates the import block from
+        ``DEFAULT_BASE_URL``, not two: isort wants a single separator
+        before a plain assignment, and reserves two for a ``def`` or
+        ``class``.
     """
     schema_names = sorted(_referenced_schema_names(client))
     lines: list[str] = [
@@ -422,9 +428,6 @@ def emit_client(client: ClientIR, *, schemas_module: str = "schemas") -> str:
 
     lines.extend(
         [
-            # One blank line, not two: isort wants a single separator
-            # between the import block and a plain assignment (two is only
-            # correct before a `def`/`class`).
             f'DEFAULT_BASE_URL: str = "{client.base_url}"',
             '"""``servers[0].url`` from the specification."""',
             "",

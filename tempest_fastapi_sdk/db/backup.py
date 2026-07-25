@@ -174,14 +174,17 @@ class DatabaseBackup:
             BackupToolMissingError: When ``pg_dump`` is not installed.
             RuntimeError: When the dump process fails or the SQLite file
                 is missing / in-memory.
+
+        Notes:
+            The dialect, the required tooling and the source are validated
+            **before** the destination directory is created, so a failed
+            backup never leaves an empty ``backups/`` behind for someone to
+            mistake for a successful run.
         """
         if plain is None:
             plain = output is not None and output.suffix == ".sql"
         dest = output or self._default_output(plain)
 
-        # Validate the dialect (and required tooling / source) BEFORE
-        # creating the destination directory, so a failed backup never
-        # leaves an empty ``backups/`` behind.
         if self.backend == "postgresql":
             tool = _require_tool("pg_dump")
             conn, env = self._pg_conn()
@@ -199,6 +202,9 @@ class DatabaseBackup:
 
     def restore(self, source: Path, *, clean: bool = True) -> None:
         """Restore the database from ``source``.
+
+        ``clean`` has no separate meaning for SQLite: the restore overwrites
+        the database file, which is inherently a clean replacement.
 
         Args:
             source (Path): The backup file. For Postgres the format is
@@ -222,8 +228,6 @@ class DatabaseBackup:
         if self.backend == "postgresql":
             self._pg_restore(source, clean=clean)
         elif self.backend == "sqlite":
-            # Overwriting the file is inherently clean; ``clean`` has no
-            # separate meaning for a file copy.
             self._sqlite_copy(source, self._sqlite_path())
         else:
             raise UnsupportedBackupBackendError(

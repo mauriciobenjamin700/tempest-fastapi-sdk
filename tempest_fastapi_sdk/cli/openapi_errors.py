@@ -460,6 +460,11 @@ def analyze_paths(paths: Iterable[Path]) -> list[RouteFinding]:
 
     Raises:
         FileNotFoundError: If a given path does not exist.
+
+    Notes:
+        A file that fails to parse is skipped rather than aborting the run:
+        this is advisory tooling, and one generated or vendored file must
+        not blind the whole report.
     """
     files: list[Path] = []
     for path in paths:
@@ -475,9 +480,6 @@ def analyze_paths(paths: Iterable[Path]) -> list[RouteFinding]:
         try:
             parsed.append((file, ast.parse(file.read_text(encoding="utf-8"))))
         except (SyntaxError, UnicodeDecodeError):
-            # A file the analyzer cannot parse is skipped rather than
-            # aborting the run: the check is advisory tooling, and one
-            # generated/vendored file must not blind the whole report.
             continue
 
     known = _exception_class_names(tree for _, tree in parsed)
