@@ -479,6 +479,8 @@ tempest openapi-errors                          # relatório informativo (exit 0
 tempest openapi-errors --check                  # exit 1 quando há drift (gate de CI)
 tempest openapi-errors --path src --path libs   # diretórios explícitos, repetível
 tempest openapi-errors --check --allow-unreachable   # só falha em undocumented
+tempest openapi-errors --fix --dry-run          # diff das declarações faltantes
+tempest openapi-errors --fix                    # grava (exige árvore git limpa)
 ```
 
 Sem `--path`, varre `./src` ou `./app` — o que existir. A análise é estática
@@ -490,6 +492,11 @@ src/api/routers/jobs.py:15  POST /{service_id}/candidates
   undocumented: CandidateAlreadyExistsException, ServiceFullException
 1 route(s) with drift, 2 undocumented exception(s).
 ```
+
+`--fix` fecha o buraco escrevendo `responses=error_responses(...)` na rota (mais
+os imports que faltarem), estendendo a declaração que já existir em vez de
+substituí-la. Ele só acrescenta: findings `unreachable` nunca são removidos, já
+que alcançabilidade não enxerga raise dinâmico.
 
 Detalhes e limitações na receita [Erros no OpenAPI »](openapi-errors.md).
 

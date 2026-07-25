@@ -3990,7 +3990,14 @@ async def read_service(service_id: UUID) -> ServiceResponseSchema:
     raise NotImplementedError
 ```
 
-`tempest openapi-errors --check` compares each route's declaration against the exceptions statically reachable through `router -> controller -> service -> repository`, in both directions, and exits non-zero on drift. Full walkthrough: [Errors in OpenAPI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/openapi-errors/).
+`tempest openapi-errors --check` compares each route's declaration against the exceptions statically reachable through `router -> controller -> service -> repository`, in both directions, and exits non-zero on drift.
+
+```bash
+tempest openapi-errors --fix --dry-run   # diff of the missing declarations
+tempest openapi-errors --fix             # write them (needs a clean git tree)
+```
+
+`--fix` writes what the check found: it injects `responses=error_responses(...)` into the route, extends an existing declaration instead of replacing it, and adds the missing imports. It only ever adds — `unreachable` findings are never removed, since reachability cannot see a dynamic raise. Full walkthrough: [Errors in OpenAPI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/openapi-errors/).
 
 ---
 

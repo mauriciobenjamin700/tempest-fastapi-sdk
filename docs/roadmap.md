@@ -131,6 +131,24 @@ GraphQL/gRPC (REST por decisão).
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
+## Entregue na v0.166.0
+
+Erros documentados no OpenAPI — correção automática:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`tempest openapi-errors --fix`** | ✅ v0.166 | Escreve as declarações que o `--check` apontava: injeta `responses=error_responses(...)` na rota, estende a declaração que já existir (`error_responses` ou `@raises`) preservando a ordem, e adiciona os imports que faltam. Edições ancoradas em posições da AST, saída passada por `ruff check --select I --fix` + `ruff format`. [Referência »](recipes/openapi-errors.md#passo-5-fix-escreve-as-declaracoes-por-voce) |
+| **Só acrescenta, com árvore limpa** | ✅ v0.166 | Findings `unreachable` nunca são removidos — alcançabilidade não enxerga raise dinâmico, então apagar por conta dela removeria declaração correta. Exige árvore git limpa, para `git diff` ser a revisão e `git checkout` o desfazer; `--dry-run` mostra o diff formatado e roda em árvore suja. |
+
+## Entregue na v0.163.0
+
+SPA React servida pelo próprio FastAPI:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`make_spa_router(dist_dir)`** | ✅ v0.163 | Serve o `dist/` de um build Vite/React com history fallback, política de cache invertida (documento `no-store`, assets com hash `immutable`) e prefixos de API excluídos do fallback. [Receita »](recipes/react-spa.md) |
+| **`tempest generate --dockerfile` com estágio de SPA** | ✅ v0.163 | Detecta `web/`, `frontend/`, `client/` ou `ui/` e emite um estágio Node que roda `npm ci && npm run build` antes do estágio Python, copiando só o `dist/` para a imagem final. |
+
 ## Entregue na v0.161.0
 
 Geração de código a partir de uma especificação OpenAPI:

@@ -731,6 +731,21 @@ def openapi_errors_cmd(
             "An over-declared route stays a warning.",
         ),
     ] = False,
+    fix: Annotated[
+        bool,
+        typer.Option(
+            "--fix",
+            help="Write the missing declarations into the routes, adding "
+            "the imports they need. Requires a clean git working tree.",
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="With --fix, print the unified diff instead of writing it.",
+        ),
+    ] = False,
 ) -> None:
     """Compare the exceptions each route raises against what it documents.
 
@@ -744,13 +759,22 @@ def openapi_errors_cmd(
     so read the report as a guide rather than a proof. Both blind spots
     are covered by listing the exception in the function's Google-style
     ``Raises:`` section, which the analyzer reads too.
+
+    ``--fix`` writes the missing declarations back into the routes and adds
+    the imports they need. It only ever **adds**: names already declared
+    keep their place, and the ``unreachable`` findings are never acted on,
+    because name-based reachability could otherwise delete a correct
+    declaration. A clean git working tree is required, so ``git diff`` is
+    the review and ``git checkout`` the undo; ``--dry-run`` prints the diff
+    instead of writing.
     """
     from tempest_fastapi_sdk.cli.openapi_errors import (
         analyze_paths,
         default_source_paths,
     )
 
-    targets = list(paths or []) or default_source_paths(Path.cwd())
+    project_root = Path.cwd()
+    targets = list(paths or []) or default_source_paths(project_root)
     if not targets:
         typer.secho(
             "No source directory found. Pass --path <dir> (expected ./src or ./app).",
@@ -795,6 +819,11 @@ def openapi_errors_cmd(
         f"{undocumented_total} undocumented exception(s).",
         fg="red" if undocumented_total else "yellow",
     )
+
+    if fix:
+        _apply_error_fixes(findings, targets, project_root, dry_run=dry_run)
+        raise typer.Exit(0)
+
     if not check:
         raise typer.Exit(0)
     raise typer.Exit(1 if undocumented_total or not allow_unreachable else 0)
@@ -917,6 +946,85 @@ def openapi_client_cmd(
 
     if result.skipped and not result.written:
         raise typer.Exit(1)
+
+
+def _apply_error_fixes(
+    findings: list[Any],
+    targets: list[Path],
+    root: Path,
+    *,
+    dry_run: bool,
+) -> None:
+    """Write (or preview) the missing error declarations.
+
+    Args:
+        findings (list[Any]): The routes the analyzer flagged.
+        targets (list[Path]): The scanned source paths, used to locate the
+            exception classes an import has to point at.
+        root (Path): Project root, used to derive dotted import paths and
+            to check the git working tree.
+        dry_run (bool): Print the unified diff instead of writing.
+
+    Raises:
+        typer.Exit: ``1`` when the working tree is dirty, since a rewrite
+            without a clean tree has no reviewable diff and no easy undo.
+    """
+    from tempest_fastapi_sdk.cli.openapi_errors import exception_locations
+    from tempest_fastapi_sdk.cli.openapi_fix import (
+        DirtyWorkingTreeError,
+        ensure_clean_worktree,
+        normalize,
+        plan_file,
+        render_file,
+        unified_diff,
+    )
+
+    actionable = [f for f in findings if f.undocumented]
+    if not actionable:
+        typer.secho("Nothing to fix — no undocumented exceptions.", fg="green")
+        return
+
+    if not dry_run:
+        try:
+            ensure_clean_worktree(root)
+        except DirtyWorkingTreeError as exc:
+            typer.secho(f"error: {exc}", fg="red", err=True)
+            raise typer.Exit(1) from exc
+
+    locations = exception_locations(targets)
+    by_file: dict[Path, list[Any]] = {}
+    for finding in actionable:
+        by_file.setdefault(finding.function.file, []).append(finding)
+
+    written = 0
+    for path, group in sorted(by_file.items()):
+        plan = plan_file(path, group, locations, root)
+        if not plan.insertions:
+            continue
+        before = path.read_text(encoding="utf-8")
+        after = normalize(render_file(plan))
+        if dry_run:
+            typer.echo(unified_diff(path, before, after, root), nl=False)
+        else:
+            path.write_text(after, encoding="utf-8")
+            typer.secho(f"  ~ {path} ({len(plan.routes)} route(s))", fg="green")
+            written += 1
+        if plan.unresolved:
+            typer.secho(
+                f"  ! {path}: could not import "
+                f"{', '.join(sorted(set(plan.unresolved)))} — add it by hand.",
+                fg="yellow",
+            )
+
+    if dry_run:
+        typer.secho("Dry run — nothing written.", fg="cyan")
+        return
+    if written:
+        typer.secho(
+            f"Wrote {written} file(s). Review with `git diff`, undo with "
+            f"`git checkout -- .`.",
+            fg="cyan",
+        )
 
 
 def main() -> None:

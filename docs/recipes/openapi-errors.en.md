@@ -448,6 +448,8 @@ Options:
 | `--path DIR` | Directory (or file) to scan. Repeatable. Defaults to `./src` or `./app`. |
 | `--check` | Exit non-zero on drift. Without it the report is advisory. |
 | `--allow-unreachable` | With `--check`, fail only on `undocumented`. An inflated list stays a warning. |
+| `--fix` | Write the missing declarations into the code. Requires a clean git tree. |
+| `--dry-run` | With `--fix`, print the diff instead of writing. Runs on a dirty tree. |
 
 !!! warning "It is a guide, not a proof"
     Two known imprecisions, both chosen to **over**-approximate rather than hide
@@ -473,6 +475,88 @@ Call-graph analysis stays out of the runtime on purpose: it is far too fragile t
 drive a response schema in production, but perfectly acceptable in a check that
 exits non-zero.
 
+## Step 5 — `--fix` writes the declarations for you
+
+On an existing project step 4 usually points at dozens of routes. Retyping by
+hand what the analyzer already knows is mechanical work — `--fix` does the
+Exception → route mapping and writes the result:
+
+```bash
+tempest openapi-errors --fix --dry-run   # look at the diff first
+tempest openapi-errors --fix             # write
+```
+
+On a route that declares nothing yet it injects the parameter and the imports:
+
+```diff
++from tempest_fastapi_sdk import error_responses
++
++from src.core.exceptions import CandidateAlreadyExistsException, ServiceFullException
+
+-@router.post("/{service_id}/candidates", status_code=201)
++@router.post(
++    "/{service_id}/candidates",
++    status_code=201,
++    responses=error_responses(
++        CandidateAlreadyExistsException, ServiceFullException
++    ),
++)
+ async def apply_to_service(service_id: str) -> CandidateResponseSchema:
+```
+
+On a route that already declares some of them it **appends** to what is there —
+the original order is preserved:
+
+```diff
+-    responses=error_responses(ServiceNotFoundException),
++    responses=error_responses(ServiceNotFoundException, ServiceFullException),
+```
+
+An existing `@raises(...)` is extended in place too. A route that declares
+nothing, though, always gets `error_responses`, never `@raises`: `@raises` is
+only read by `TempestAPIRouter`, so injecting it into a project on a plain
+`APIRouter` would produce a decorator that silently does nothing — the worst
+possible outcome for a tool that exists to close a documentation gap. An
+existing `@raises` proves the project opted into that style, so there it is
+honored.
+
+### The three guarantees
+
+!!! check "It only ever adds"
+    `unreachable` findings are deliberately ignored. Reachability resolves by
+    call name and cannot see a dynamic raise, so deleting a declaration on its
+    word would remove a correct one. Pruning an inflated list stays manual.
+
+!!! check "Edits anchored on the AST"
+    Every insertion is positioned at the closing parenthesis of a call node, not
+    by a regex. Nothing depends on how the decorator happens to be formatted,
+    and the rest of the file — comments, layout — is untouched. The result goes
+    through `ruff check --select I --fix` and `ruff format`, so a new import
+    lands in sorted position and a wrapped decorator comes out formatted.
+
+!!! check "A clean git tree is required"
+    With a clean tree, `git diff` is the review and `git checkout` is the undo —
+    the real safety net for a tool that edits code you wrote. With pending
+    changes the command exits 1:
+
+    ```text
+    error: the working tree has uncommitted changes. Commit or stash them
+    first — with a clean tree, `git diff` reviews what this wrote and
+    `git checkout` undoes it.
+    ```
+
+    `--dry-run` is read-only, so it runs on a dirty tree without complaining.
+
+!!! warning "An exception it cannot import is not written"
+    The import is derived from the file defining the class. When the same name
+    is defined in more than one file — or outside the scanned root — resolution
+    is ambiguous, and writing the wrong import would break the application. That
+    route is skipped and the name is reported as `unresolved`; declare that one
+    by hand.
+
+Run `--check` afterwards: the second pass should report that everything is in
+sync.
+
 ## Recap
 
 1. **Declare `code` in the class body.** It is the only introspectable form, and
@@ -484,6 +568,9 @@ exits non-zero.
    handler, without repeating the parameter.
 4. **`tempest openapi-errors --check`** compares declaration against flow in both
    directions and doubles as a CI gate.
+5. **`tempest openapi-errors --fix`** writes what is missing — with `--dry-run`
+   to see the diff first, and requiring a clean git tree so `git checkout` is
+   the undo.
 
 With steps 1 and 2 `openapi.json` becomes the single source of truth, and the
 generated client ships with the codes. 🎉

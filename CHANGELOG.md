@@ -5,6 +5,50 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.166.0] — 2026-07-25
+
+### Added
+
+- **`tempest openapi-errors --fix`** — writes the missing error declarations
+  back into the routes the check was already pointing at. On a route that
+  declares nothing it injects `responses=error_responses(...)` into the
+  decorator plus the imports the new names need; on a route that already
+  declares some of them it appends to the existing `error_responses(...)` or
+  `@raises(...)` call, preserving the original order.
+  - `--dry-run` prints a unified diff instead of writing, and runs on a dirty
+    tree since it is read-only. Both paths go through the same
+    `ruff check --select I --fix` + `ruff format` pass, so the preview is
+    exactly what a real write produces.
+  - A route that declares nothing always gets `error_responses`, never
+    `@raises`: `@raises` is only read by `TempestAPIRouter`, so injecting it
+    into a project on a plain `APIRouter` would produce a decorator that
+    silently does nothing. An existing `@raises` is extended in place.
+  - **It only ever adds.** `unreachable` findings are deliberately not acted
+    on — reachability resolves by call name and cannot see a dynamic raise, so
+    removing a declaration on its word could delete a correct one.
+  - Every edit is anchored on an AST position (the closing parenthesis of a
+    call node), never on a regex, so nothing depends on how the decorator is
+    formatted and the rest of the file is untouched.
+  - An exception whose defining module cannot be resolved unambiguously is
+    reported as `unresolved` and its route is skipped, rather than writing an
+    import that would break the application.
+- **`tempest_fastapi_sdk.cli.openapi_fix`** — the module behind the flag:
+  `plan_file` / `render_file` / `normalize` / `unified_diff` /
+  `ensure_clean_worktree` / `FilePlan` / `DirtyWorkingTreeError`.
+
+### Changed
+
+- `RouteInfo` (in `cli.openapi_errors`) now records the source positions of a
+  route's decorator and of any existing declaration call, which is what makes
+  the merge possible. `exception_locations()` maps an exception class name to
+  its defining file, dropping names defined in more than one file.
+
+### Notes
+
+- **Requires a clean git working tree to write.** With a clean tree `git diff`
+  is the review and `git checkout` is the undo — the real safety net for a tool
+  that edits code you wrote. A dirty tree exits 1 with instructions.
+
 ## [0.165.0] — 2026-07-25
 
 ### Changed
