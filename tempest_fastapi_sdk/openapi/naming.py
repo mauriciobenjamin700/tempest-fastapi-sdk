@@ -129,19 +129,27 @@ def is_shadowing_builtin(name: str) -> bool:
 def field_name(wire_name: str) -> str:
     """Return the Python field name for a wire property name.
 
+    Only **hard** keywords are suffixed. Soft keywords (``match``,
+    ``case``, ``type``, ``_``) are deliberately left alone for two
+    reasons. They are contextual — legal as an attribute name in every
+    Python version — so suffixing buys nothing. And the soft-keyword list
+    *grows*: ``type`` joined it in 3.12, so consulting
+    :func:`keyword.issoftkeyword` would make the generated field name
+    depend on the interpreter that ran the generator, and the same
+    specification would produce different code on 3.11 and 3.13.
+
     Args:
         wire_name (str): The property name from the specification.
 
     Returns:
         str: The ``snake_case`` name, suffixed with ``_`` when it collides
-        with a Python keyword (``class`` -> ``class_``, ``from`` ->
-        ``from_``) or a soft keyword (``match``, ``type`` as a statement
-        head). Builtins like ``id`` are kept verbatim — a model attribute
-        does not shadow the module namespace, and renaming them would
-        make every generated schema read worse.
+        with a Python **keyword** (``class`` -> ``class_``, ``from`` ->
+        ``from_``). Builtins like ``id`` are kept verbatim — a model
+        attribute does not shadow the module namespace, and renaming them
+        would make every generated schema read worse.
     """
     snake = to_snake(wire_name)
-    if keyword.iskeyword(snake) or keyword.issoftkeyword(snake):
+    if keyword.iskeyword(snake):
         return f"{snake}_"
     return snake
 
