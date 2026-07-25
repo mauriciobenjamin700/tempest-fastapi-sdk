@@ -111,10 +111,12 @@ Delivered in slices, one release per slice:
 
 ### HTTP performance layer
 
-- **`ResponseCacheMiddleware`** — ETag / conditional-GET / `Cache-Control`,
-  reusing the Redis cache.
-- **Advanced rate limiting** — token-bucket + per-plan/principal quotas
-  (today: sliding-window only).
+- ✅ **`ResponseCacheMiddleware`** — shipped in **v0.159.0**. ETag / conditional
+  GET (`304`) always on + opt-in server-side cache
+  (`ResponseCacheStore`/`Memory`/`Redis`), respects `no-store`/`private`/
+  `Set-Cookie`, keyed by `vary=`. See the HTTP recipe (*HTTP response cache*).
+- ⏳ **Advanced rate limiting** — token-bucket + per-plan/principal quotas
+  (today: sliding-window only). Next slice.
 
 ### Modern auth — WebAuthn / passkeys
 

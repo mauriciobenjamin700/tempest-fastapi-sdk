@@ -30,6 +30,12 @@ from tempest_fastapi_sdk.api.middlewares.rate_limit import (
     key_by_jwt_subject,
 )
 from tempest_fastapi_sdk.api.middlewares.request_id import RequestIDMiddleware
+from tempest_fastapi_sdk.api.middlewares.response_cache import (
+    MemoryResponseCacheStore,
+    RedisResponseCacheStore,
+    ResponseCacheMiddleware,
+    ResponseCacheStore,
+)
 
 __all__: list[str] = [
     "CSRF_COOKIE_NAME",
@@ -43,12 +49,16 @@ __all__: list[str] = [
     "IdempotencyStore",
     "MemoryIdempotencyStore",
     "MemoryRateLimitStore",
+    "MemoryResponseCacheStore",
     "RateLimitMiddleware",
     "RateLimitResult",
     "RateLimitStore",
     "RedisIdempotencyStore",
     "RedisRateLimitStore",
+    "RedisResponseCacheStore",
     "RequestIDMiddleware",
+    "ResponseCacheMiddleware",
+    "ResponseCacheStore",
     "apply_cors",
     "generate_csrf_token",
     "key_by_header",

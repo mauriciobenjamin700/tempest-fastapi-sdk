@@ -93,6 +93,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `X-Request-ID` propagation).
 - **HTTP layer** — `RequestIDMiddleware`, `RateLimitMiddleware`,
   `IdempotencyMiddleware` (memory + Redis stores),
+  `ResponseCacheMiddleware` (v0.159.0 — ETag/conditional-GET always on +
+  opt-in server-side cache via `ResponseCacheStore`/`Memory`/`Redis`; respects
+  `no-store`/`private`/`Set-Cookie`, `vary=` key),
   `BodySizeLimitMiddleware`, hardened static files, CORS,
   health + tool-spec routers.
 - **Pagination** — offset + cursor.

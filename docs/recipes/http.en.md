@@ -373,6 +373,48 @@ The sliding-window semantics are identical across both stores; only where the co
     Both need the `[cache]` extra (the `redis` package).
 
 
+## HTTP response cache (ETag / 304)
+
+`ResponseCacheMiddleware` delivers two performance wins, layered.
+
+**ETag + conditional GET (always on).** Every cacheable response gets a strong `ETag` (a hash of the body) and a `Cache-Control`. When the client sends a matching `If-None-Match`, the middleware answers `304 Not Modified` with no body — the handler still runs, but the bytes never go over the wire.
+
+```python
+from tempest_fastapi_sdk import ResponseCacheMiddleware
+
+
+def create_app() -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(ResponseCacheMiddleware, ttl_seconds=30)   # ETag/304 only
+    return app
+```
+
+**Server-side cache (opt-in via `store=`).** With a store wired, a cacheable `GET`/`HEAD` response is stored for `ttl_seconds`; a later matching request is served **without running the handler** (`X-Cache: HIT`), and an `If-None-Match` hit against the stored ETag still short-circuits to `304`.
+
+```python
+from tempest_fastapi_sdk import (
+    RedisResponseCacheStore,
+    ResponseCacheMiddleware,
+)
+
+
+def create_app(redis: Any) -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(
+        ResponseCacheMiddleware,
+        store=RedisResponseCacheStore(redis),   # shared across replicas
+        ttl_seconds=60,
+        vary=("Accept-Encoding",),               # varies the key and emits Vary
+    )
+    return app
+```
+
+Only safe methods (`GET`/`HEAD`) and successful responses (`200` by default) are cached. Responses that opt out — `Cache-Control: no-store`/`private` or a `Set-Cookie` (personalized) — are **never** stored.
+
+!!! tip "Cache key"
+    The key is `method|path|query` plus the headers listed in `vary=`. Pass `cacheable=<predicate>` to exclude specific requests, or `exempt_paths=(...)` to skip exact paths. The store mirrors the idempotency one (memory or Redis with a raw client), so it composes with the service's existing Redis.
+
+
 ## Webhook signature verification
 
 

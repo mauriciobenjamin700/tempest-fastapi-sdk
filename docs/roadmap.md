@@ -111,10 +111,12 @@ Tema entregue em fatias, uma release por fatia:
 
 ### Camada de performance HTTP
 
-- **`ResponseCacheMiddleware`** — ETag / conditional-GET / `Cache-Control`,
-  reusando o cache Redis.
-- **Rate-limit avançado** — token-bucket + quotas por-plano/principal
-  (hoje só sliding-window).
+- ✅ **`ResponseCacheMiddleware`** — entregue na **v0.159.0**. ETag / GET
+  condicional (`304`) sempre ligado + cache server-side opt-in
+  (`ResponseCacheStore`/`Memory`/`Redis`), respeita `no-store`/`private`/
+  `Set-Cookie`, chave por `vary=`. Ver a receita HTTP (*Cache de resposta HTTP*).
+- ⏳ **Rate-limit avançado** — token-bucket + quotas por-plano/principal
+  (hoje só sliding-window). Próxima fatia.
 
 ### Auth moderno — WebAuthn / passkeys
 

@@ -5,6 +5,26 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.159.0] — 2026-07-25
+
+### Added
+
+- **`ResponseCacheMiddleware`** (`tempest_fastapi_sdk.api.middlewares`): HTTP
+  response caching in two layers.
+  - **ETag + conditional GET (always on)** — every cacheable response gets a
+    strong `ETag` (sha256 of the body) and a `Cache-Control`; a matching
+    `If-None-Match` short-circuits to `304 Not Modified` with an empty body.
+  - **Server-side cache (opt-in via `store=`)** — a cacheable `GET`/`HEAD`
+    response is stored for `ttl_seconds` and a later matching request is served
+    without running the handler (`X-Cache: HIT`); the stored ETag still drives
+    conditional-GET `304`s.
+  - Stores mirror the idempotency shape: `ResponseCacheStore` protocol +
+    `MemoryResponseCacheStore` + `RedisResponseCacheStore` (raw client). Only
+    safe methods and successful statuses are cached; `no-store`/`private`/
+    `Set-Cookie` responses are never stored. `vary=` folds request headers into
+    the key (and emits `Vary`); `cacheable=`/`exempt_paths=` scope it. First
+    slice of the *HTTP performance layer* roadmap theme.
+
 ## [0.158.0] — 2026-07-24
 
 ### Added

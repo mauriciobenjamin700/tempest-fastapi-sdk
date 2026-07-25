@@ -373,6 +373,48 @@ A semântica de janela deslizante é idêntica nos dois stores; só muda onde os
     Os dois precisam do extra `[cache]` (o pacote `redis`).
 
 
+## Cache de resposta HTTP (ETag / 304)
+
+`ResponseCacheMiddleware` entrega dois ganhos de performance em camadas.
+
+**ETag + GET condicional (sempre ligado).** Toda resposta cacheável ganha um `ETag` forte (hash do corpo) e um `Cache-Control`. Quando o cliente manda um `If-None-Match` que bate, o middleware responde `304 Not Modified` sem corpo — o handler ainda roda, mas os bytes não vão pela rede.
+
+```python
+from tempest_fastapi_sdk import ResponseCacheMiddleware
+
+
+def create_app() -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(ResponseCacheMiddleware, ttl_seconds=30)   # só ETag/304
+    return app
+```
+
+**Cache server-side (opt-in via `store=`).** Com um store ligado, uma resposta `GET`/`HEAD` cacheável é guardada por `ttl_seconds`; uma requisição igual depois é servida **sem rodar o handler** (`X-Cache: HIT`), e um `If-None-Match` que bate no ETag guardado ainda curto-circuita pro `304`.
+
+```python
+from tempest_fastapi_sdk import (
+    RedisResponseCacheStore,
+    ResponseCacheMiddleware,
+)
+
+
+def create_app(redis: Any) -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(
+        ResponseCacheMiddleware,
+        store=RedisResponseCacheStore(redis),   # compartilhado entre réplicas
+        ttl_seconds=60,
+        vary=("Accept-Encoding",),               # varia a chave e emite Vary
+    )
+    return app
+```
+
+Só métodos seguros (`GET`/`HEAD`) e respostas de sucesso (`200` por padrão) são cacheados. Respostas que optam por fora — `Cache-Control: no-store`/`private` ou com `Set-Cookie` (personalizadas) — **nunca** são guardadas.
+
+!!! tip "Chave de cache"
+    A chave é `método|path|query` mais os headers listados em `vary=`. Passe `cacheable=<predicado>` pra excluir requisições específicas, ou `exempt_paths=(...)` pra pular paths exatos. O store espelha o do idempotency (memória ou Redis com client cru), então compõe com o mesmo Redis do serviço.
+
+
 ## Verificação de assinatura de webhook
 
 
