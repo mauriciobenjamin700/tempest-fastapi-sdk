@@ -151,7 +151,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.schemas` | `BaseSchema`, `BaseResponseSchema`, `BasePaginationFilterSchema`, `BasePaginationSchema[T]`, `CursorPaginationFilterSchema`, `CursorPaginationSchema`, `LogEntrySchema`, `encode_cursor`, `decode_cursor`, `build_pagination_link_header` |
 | `tempest_fastapi_sdk.db` | `BaseModel`, `BaseUserModel`, `BaseUserTokenModel`, `BaseUserRecoveryCodeModel`, `make_user_recovery_code_model`, `UserTokenPurpose`, `BaseRepository[ModelType]`, `TenantScopedRepository[ModelType]`, `AsyncDatabaseManager`, `AlembicHelper` (+ `safe_upgrade`), `DestructiveMigrationError`, `NAMING_CONVENTION`, `AuditMixin`, `SoftDeleteMixin`, `MFAMixin`, `LocaleColumnMixin`, `BASE_COLUMN_ORDER`, `reorder_base_columns_first`, `compose_hooks`, `SlowQueryLogger`, `BaseOutboxModel`, `OutboxRelay`, `OutboxStatus`, `BaseRepository.save_with_outbox`, audit trail (`BaseAuditLogModel`, `AuditAction`, `snapshot_model`, `diff_snapshots`, `BaseRepository.add_audited` / `update_audited` / `delete_audited`), eager-loading (`get`/`get_or_none`/`get_by_id`/`first`/`list` accept `with_=[...]`, dotted for nested), lifecycle signals (`RepositorySignal`, `connect` / `on_signal` / `disconnect`, `PRE_SAVE`/`POST_SAVE`/`PRE_DELETE`/`POST_DELETE`), `F` / `Q` expression wrappers (`F("stock") - 1` atomic updates; `Q(...) | Q(...)` OR/NOT via `where=`), `BaseWebPushSubscriptionModel` + `make_web_push_subscription_model` |
 | `tempest_fastapi_sdk.exceptions` | `AppException`, `NotFoundException`, `ConflictException`, `ValidationException`, `UnauthorizedException`, `ForbiddenException`, `InvalidTokenException`, `ExpiredTokenException`, `FileTooLargeException`, `InvalidFileTypeException`, `TooManyRequestsException`, i18n (`MessageCatalog`, `default_message_catalog`, `parse_accept_language`, `DEFAULT_LOCALE`) |
-| `tempest_fastapi_sdk.settings` | `BaseAppSettings`, `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings`, `MinIOSettings`, `AuthSettings` |
+| `tempest_fastapi_sdk.settings` | `BaseAppSettings` (+ `AppSettingsMeta`), `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings`, `MinIOSettings`, `AuthSettings` |
 | `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, `apply_cors`, `make_health_router`, `make_logs_router`, `make_prometheus_router`, `make_prometheus_registry`, `PrometheusMiddleware`, `BusinessMetrics`, `LogSource`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware` (+ `RateLimitStore`/`MemoryRateLimitStore`/`RedisRateLimitStore`/`RateLimitResult` and `key_by_ip`/`key_by_jwt_subject`/`key_by_jwt_claim`/`key_by_header`), `IdempotencyMiddleware`, `MemoryIdempotencyStore`, `RedisIdempotencyStore`, `BodySizeLimitMiddleware`, `CSRFMiddleware`, `make_csrf_token_dependency`, `GracefulShutdownMiddleware`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, outbound `WebhookSender` (+ `WebhookDelivery`), OAuth2 (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`), `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck`, `setup_tracing` *(extra: `[otel]`)* |
 | `tempest_fastapi_sdk.auth` *(extra: `[auth]`, opcional `[email]`, `[mfa]`)* | `UserAuthService`, `make_auth_router`, `SignupSchema` / `LoginSchema` / `RefreshSchema` / `PasswordResetRequestSchema` / `PasswordResetConfirmSchema` + responses, `ActivationToken`, `PasswordResetToken`, email change/verify/recovery (`EmailChangeRequestSchema` / `EmailChangeConfirmSchema` / `EmailRecoveryRequestSchema` / `EmailChangeToken` / `EmailVerificationToken`, old-email security notice, opt-in `AUTH_EMAIL_RECOVERY_ENABLED`), MFA schemas (`MFAEnrollResponseSchema` / `MFAConfirmSchema` / `MFAVerifySchema` / `MFADisableSchema`), opt-in DB-backed refresh tokens (`BaseUserRefreshTokenModel` / `make_user_refresh_token_model` / `LogoutSchema`) with rotation + reuse detection + `POST /auth/logout`, bilingual emails + backend pages (`AUTH_DEFAULT_LOCALE`, `normalize_locale` / `negotiate_locale`) — signup/activate/login/refresh/logout/reset + email change/recovery + TOTP 2FA out of the box |
 | `tempest_fastapi_sdk.authz` | Object-level permissions: `permission` (rule decorator), `has_perm` / `check_permission`, `PermissionRegistry` (injectable superuser bypass + static-permission fallback, `order.*`/`*` wildcards), `make_permission_checker` (FastAPI route guard), `PermissionMixin` (`await user.has_perm(perm, obj=...)`), `default_registry` |
@@ -236,7 +236,7 @@ my-service/
     ├── server.py                 # programmatic uvicorn.run(...) + module-level `app`
     ├── core/
     │   ├── __init__.py
-    │   ├── settings.py           # Settings(BaseAppSettings, mixins...)
+    │   ├── settings.py           # Settings(mixins..., BaseAppSettings)
     │   └── exceptions.py         # domain exceptions (UserNotFoundError, ...)
     ├── db/
     │   ├── __init__.py           # re-exports BaseModel + every model
@@ -277,7 +277,7 @@ Four files map onto four responsibilities:
 
 | File | Responsibility |
 | --- | --- |
-| `src/core/settings.py` | `Settings(BaseAppSettings, ...mixins)` — one source of truth for env vars. |
+| `src/core/settings.py` | `Settings(...mixins, BaseAppSettings)` — one source of truth for env vars. |
 | `src/api/app.py` | `create_app()` factory + middleware + CORS + exception handlers + router includes + module-level `app` instance. |
 | `src/server.py` | `run()` invoking `uvicorn.run("src.api.app:app", ...)` programmatically, plus re-exports `app` so external runners (gunicorn, uvicorn CLI) can import it. |
 | `main.py` | Process entry point — a single line under `if __name__ == "__main__":` calling `run()`. |
@@ -1995,7 +1995,9 @@ Query params: `source` (`all` | `debug` | `info` | `warning` | `error` | `critic
 
 ### Settings mixins composition recipe
 
-`BaseAppSettings` is the configured `pydantic-settings` base. The SDK also exposes composable mixins for the most common dependencies; pick the ones the service needs and put `BaseAppSettings` at the **end** of the MRO so its `model_config` wins.
+`BaseAppSettings` is the configured `pydantic-settings` base. The SDK also exposes composable mixins for the most common dependencies; pick the ones the service needs and put `BaseAppSettings` at the **end** of the base list.
+
+> **`BaseAppSettings` must be the last base.** Every mixin already subclasses it (that is how each one carries `env_file=".env"` regardless of ordering), so listing the base before a mixin is an invalid MRO and fails at import. Since v0.159.1 the `AppSettingsMeta` metaclass raises a message that names the fix instead of pydantic's raw `Cannot create a consistent method resolution order (MRO)`. See the [migration guide](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/migration/).
 
 ```python
 # src/core/settings.py
@@ -2071,7 +2073,7 @@ Each mixin owns its own env-var prefix — pick only the ones the service needs:
 | `get_by_id(id)` | `ResponseT` | Awaits `repository.get_by_id` + `repository.map_to_response`. Raises `repository.not_found_exception` on miss. |
 | `get_or_none(filters)` | `ResponseT \| None` | Same shape, returns `None` instead of raising. |
 | `list(filters=None, order_by=None, ascending=True)` | `list[ResponseT]` | Returns `[]` on empty match (never raises). |
-| `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` with mapped `items` + `total`/`page`/`size`/`pages`. | Offset pagination via `repository.paginate`. |
+| `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` with mapped `items` + `total`/`page`/`page_size`/`pages`. | Offset pagination via `repository.paginate`. |
 | `count(filters=None)` | `int` | Pass-through to `repository.count`. |
 | `exists(filters)` | `bool` | Pass-through to `repository.exists`. |
 | `update(id, data)` | `ResponseT` | Fetch by id, copy the fields present in `data` (typed `UpdateT`, the optional 3rd generic param — defaults to `BaseSchema`) onto the row, persist, map. `to_dict()` drops unset/`None`, so it serves PUT and PATCH alike. |

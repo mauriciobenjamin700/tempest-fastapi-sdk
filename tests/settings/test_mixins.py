@@ -304,3 +304,51 @@ class TestEnvFilePriority:
 
             class Settings(BaseAppSettings, DatabaseSettings):
                 """Base before the mixin — the ordering the docs forbid."""
+
+    def test_mro_error_message_names_the_fix(self) -> None:
+        """The ``TypeError`` states which base to move, and where.
+
+        Python's own message (``Cannot create a consistent method
+        resolution order (MRO) for bases ...``) never names the
+        correction, and under the pydantic mypy plugin the same line
+        also emits a misleading ``[metaclass]`` error.
+        :class:`AppSettingsMeta` replaces it with an instruction.
+        """
+        with pytest.raises(TypeError) as excinfo:
+
+            class Settings(BaseAppSettings, DatabaseSettings):
+                """Base before the mixin."""
+
+        message = str(excinfo.value)
+        assert "BaseAppSettings must be the LAST base" in message
+        assert "DatabaseSettings already subclasses it" in message
+        assert "class Settings(DatabaseSettings, BaseAppSettings)" in message
+
+    def test_base_between_mixins_raises(self) -> None:
+        """``BaseAppSettings`` in the middle of the bases is rejected too.
+
+        This is the shape that bit a real service: the base sat between
+        mixins from the era when mixins extended raw ``BaseSettings``,
+        where the ordering was only a silent ``model_config`` pitfall.
+        """
+        with pytest.raises(TypeError, match="BaseAppSettings must be the LAST base"):
+
+            class Settings(DatabaseSettings, BaseAppSettings, RedisSettings):
+                """Base between two mixins."""
+
+    def test_base_last_composes_cleanly(self) -> None:
+        """The documented ordering builds and keeps the canonical config."""
+
+        class Settings(DatabaseSettings, RedisSettings, BaseAppSettings):
+            """Base last — the only valid ordering."""
+
+        assert Settings.model_config["env_file"] == ".env"
+        assert Settings.model_config["case_sensitive"] is True
+
+    def test_base_alone_is_allowed(self) -> None:
+        """A ``Settings`` with no mixins still subclasses the base fine."""
+
+        class Settings(BaseAppSettings):
+            """No mixins — nothing to precede."""
+
+        assert Settings.model_config["extra"] == "ignore"

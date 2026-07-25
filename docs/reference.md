@@ -219,6 +219,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ### `tempest_fastapi_sdk.settings`
 
 ::: tempest_fastapi_sdk.settings.base.BaseAppSettings
+::: tempest_fastapi_sdk.settings.base.AppSettingsMeta
 ::: tempest_fastapi_sdk.settings.mixins
 
 ---
