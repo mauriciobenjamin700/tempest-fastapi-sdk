@@ -97,7 +97,11 @@ class MessageCatalog:
 
     @property
     def locales(self) -> list[str]:
-        """Return the locale tags this catalog knows, lower-cased."""
+        """Return the locale tags this catalog knows, lower-cased.
+
+        Returns:
+            list[str]: The catalog's locale tags, lower-cased.
+        """
         return list(self._translations)
 
     def _table_for(self, locale: str) -> dict[str, str]:

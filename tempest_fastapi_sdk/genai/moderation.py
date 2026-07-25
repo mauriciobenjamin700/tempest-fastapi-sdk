@@ -51,7 +51,14 @@ class ModerationBackend(Protocol):
     """Anything that screens a piece of text."""
 
     async def check(self, text: str) -> ModerationResult:
-        """Return the moderation verdict for ``text``."""
+        """Return the moderation verdict for ``text``.
+
+        Args:
+            text (str): The content to screen.
+
+        Returns:
+            ModerationResult: The verdict, with the matched categories.
+        """
         ...
 
 

@@ -55,7 +55,16 @@ class RoutingBackend(Protocol):
         *,
         mode: TravelMode = TravelMode.CAR,
     ) -> TravelEstimate:
-        """Return a road :class:`TravelEstimate` for the given trip."""
+        """Return a road :class:`TravelEstimate` for the given trip.
+
+        Args:
+            origin (Coordinate): Where the trip starts.
+            destination (Coordinate): Where it ends.
+            mode (TravelMode): The travel mode to estimate for.
+
+        Returns:
+            TravelEstimate: Distance and duration for that leg.
+        """
         ...
 
 

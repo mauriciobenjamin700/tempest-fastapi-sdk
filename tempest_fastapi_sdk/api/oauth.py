@@ -167,17 +167,30 @@ class _BaseOAuthClient:
 
     @property
     def authorize_url(self) -> str:
-        """Provider's authorize endpoint."""
+        """Provider's authorize endpoint.
+
+        Returns:
+            str: The configured endpoint URL.
+        """
         raise NotImplementedError
 
     @property
     def token_url(self) -> str:
-        """Provider's token-exchange endpoint."""
+        """Provider's token-exchange endpoint.
+
+        Returns:
+            str: The configured endpoint URL.
+        """
         raise NotImplementedError
 
     @property
     def userinfo_url(self) -> str | None:
-        """Provider's user-info endpoint (``None`` for ID-token-only flows)."""
+        """Provider's user-info endpoint (``None`` for ID-token-only flows).
+
+        Returns:
+            str | None: The endpoint URL, or ``None`` when the provider
+                advertises none.
+        """
         return None
 
     def _parse_user(self, payload: dict[str, Any]) -> OAuthUser:
@@ -295,17 +308,30 @@ class GoogleOAuthClient(_BaseOAuthClient):
 
     @property
     def authorize_url(self) -> str:
-        """Google's authorize endpoint."""
+        """Google's authorize endpoint.
+
+        Returns:
+            str: The configured endpoint URL.
+        """
         return "https://accounts.google.com/o/oauth2/v2/auth"
 
     @property
     def token_url(self) -> str:
-        """Google's token endpoint."""
+        """Google's token endpoint.
+
+        Returns:
+            str: The configured endpoint URL.
+        """
         return "https://oauth2.googleapis.com/token"
 
     @property
     def userinfo_url(self) -> str | None:
-        """OIDC-flavored userinfo endpoint."""
+        """OIDC-flavored userinfo endpoint.
+
+        Returns:
+            str | None: The endpoint URL, or ``None`` when the provider
+                advertises none.
+        """
         return "https://openidconnect.googleapis.com/v1/userinfo"
 
     def _default_scopes(self) -> list[str]:
@@ -333,17 +359,30 @@ class GitHubOAuthClient(_BaseOAuthClient):
 
     @property
     def authorize_url(self) -> str:
-        """GitHub's authorize endpoint."""
+        """GitHub's authorize endpoint.
+
+        Returns:
+            str: The configured endpoint URL.
+        """
         return "https://github.com/login/oauth/authorize"
 
     @property
     def token_url(self) -> str:
-        """GitHub's token endpoint."""
+        """GitHub's token endpoint.
+
+        Returns:
+            str: The configured endpoint URL.
+        """
         return "https://github.com/login/oauth/access_token"
 
     @property
     def userinfo_url(self) -> str | None:
-        """GitHub's user-info endpoint."""
+        """GitHub's user-info endpoint.
+
+        Returns:
+            str | None: The endpoint URL, or ``None`` when the provider
+                advertises none.
+        """
         return "https://api.github.com/user"
 
     def _default_scopes(self) -> list[str]:
@@ -416,17 +455,30 @@ class OIDCProvider(_BaseOAuthClient):
 
     @property
     def authorize_url(self) -> str:
-        """The provider's authorization endpoint, from discovery or config."""
+        """The provider's authorization endpoint, from discovery or config.
+
+        Returns:
+            str: The configured endpoint URL.
+        """
         return self._authorize_url
 
     @property
     def token_url(self) -> str:
-        """The provider's token endpoint, from discovery or config."""
+        """The provider's token endpoint, from discovery or config.
+
+        Returns:
+            str: The configured endpoint URL.
+        """
         return self._token_url
 
     @property
     def userinfo_url(self) -> str | None:
-        """The provider's userinfo endpoint, when it advertises one."""
+        """The provider's userinfo endpoint, when it advertises one.
+
+        Returns:
+            str | None: The endpoint URL, or ``None`` when the provider
+                advertises none.
+        """
         return self._userinfo_url
 
     def _parse_user(self, payload: dict[str, Any]) -> OAuthUser:

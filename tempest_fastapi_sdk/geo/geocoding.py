@@ -30,11 +30,27 @@ class GeocodingBackend(Protocol):
     """A source of forward and reverse geocoding."""
 
     async def geocode(self, query: str) -> GeocodeResult | None:
-        """Resolve a free-text address/place to a coordinate, or ``None``."""
+        """Resolve a free-text address/place to a coordinate, or ``None``.
+
+        Args:
+            query (str): Free-form address to resolve.
+
+        Returns:
+            GeocodeResult | None: The best match, or ``None`` when nothing
+                matched.
+        """
         ...
 
     async def reverse(self, coordinate: Coordinate) -> GeocodeResult | None:
-        """Resolve a coordinate to a place, or ``None``."""
+        """Resolve a coordinate to a place, or ``None``.
+
+        Args:
+            coordinate (Coordinate): The point to reverse-geocode.
+
+        Returns:
+            GeocodeResult | None: The best match, or ``None`` when nothing
+                matched.
+        """
         ...
 
 

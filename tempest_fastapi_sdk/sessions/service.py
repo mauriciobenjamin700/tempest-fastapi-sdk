@@ -209,12 +209,23 @@ class SessionAuth:
         return session
 
     async def revoke(self, session_id_plaintext: str) -> None:
-        """Invalidate one session by its plaintext id. Idempotent."""
+        """Invalidate one session by its plaintext id. Idempotent.
+
+        Args:
+            session_id_plaintext (str): The raw identifier from the cookie.
+        """
         session_hash = hash_opaque_token(session_id_plaintext)
         await self.store.delete(session_hash)
 
     async def revoke_all(self, user_id: UUID) -> int:
-        """Invalidate every session for ``user_id``. Returns count revoked."""
+        """Invalidate every session for ``user_id``. Returns count revoked.
+
+        Args:
+            user_id (UUID): Owner of the sessions.
+
+        Returns:
+            int: How many sessions were removed.
+        """
         return await self.store.delete_by_user(user_id)
 
     async def list_sessions(
@@ -266,6 +277,10 @@ class SessionAuth:
         Raises:
             NotFoundException: When no live session of ``user_id``
                 matches ``public_id``.
+
+        Args:
+            user_id (UUID): Owner of the sessions.
+            public_id (str): Public id of the session to act on.
         """
         sessions = await self.store.list_by_user(user_id)
         for session in sessions:

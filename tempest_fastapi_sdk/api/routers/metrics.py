@@ -159,7 +159,16 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        """Wrap the request with counters, gauge, and latency timer."""
+        """Wrap the request with counters, gauge, and latency timer.
+
+        Args:
+            request (Request): The inbound request.
+            call_next (Callable[[Request], Awaitable[Response]]): The next
+                handler in the middleware chain.
+
+        Returns:
+            Response: The downstream response, after this middleware ran.
+        """
         method = request.method
         self.in_progress.labels(method=method).inc()
         start = time.perf_counter()

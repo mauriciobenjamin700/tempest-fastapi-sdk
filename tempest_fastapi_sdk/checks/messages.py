@@ -67,35 +67,80 @@ class CheckMessage:
 def debug(
     message: str, *, hint: str | None = None, id: str | None = None
 ) -> CheckMessage:
-    """Build a ``DEBUG`` message. See :class:`CheckMessage`."""
+    """Build a ``DEBUG`` message. See :class:`CheckMessage`.
+
+    Args:
+        message (str): Human-readable description of the finding.
+        hint (str | None): How to fix it, when there is a concrete step.
+        id (str | None): Stable identifier used to silence the check.
+
+    Returns:
+        CheckMessage: The message, tagged at this level.
+    """
     return CheckMessage(CheckLevel.DEBUG, message, hint=hint, id=id)
 
 
 def info(
     message: str, *, hint: str | None = None, id: str | None = None
 ) -> CheckMessage:
-    """Build an ``INFO`` message. See :class:`CheckMessage`."""
+    """Build an ``INFO`` message. See :class:`CheckMessage`.
+
+    Args:
+        message (str): Human-readable description of the finding.
+        hint (str | None): How to fix it, when there is a concrete step.
+        id (str | None): Stable identifier used to silence the check.
+
+    Returns:
+        CheckMessage: The message, tagged at this level.
+    """
     return CheckMessage(CheckLevel.INFO, message, hint=hint, id=id)
 
 
 def warning(
     message: str, *, hint: str | None = None, id: str | None = None
 ) -> CheckMessage:
-    """Build a ``WARNING`` message. See :class:`CheckMessage`."""
+    """Build a ``WARNING`` message. See :class:`CheckMessage`.
+
+    Args:
+        message (str): Human-readable description of the finding.
+        hint (str | None): How to fix it, when there is a concrete step.
+        id (str | None): Stable identifier used to silence the check.
+
+    Returns:
+        CheckMessage: The message, tagged at this level.
+    """
     return CheckMessage(CheckLevel.WARNING, message, hint=hint, id=id)
 
 
 def error(
     message: str, *, hint: str | None = None, id: str | None = None
 ) -> CheckMessage:
-    """Build an ``ERROR`` message. See :class:`CheckMessage`."""
+    """Build an ``ERROR`` message. See :class:`CheckMessage`.
+
+    Args:
+        message (str): Human-readable description of the finding.
+        hint (str | None): How to fix it, when there is a concrete step.
+        id (str | None): Stable identifier used to silence the check.
+
+    Returns:
+        CheckMessage: The message, tagged at this level.
+    """
     return CheckMessage(CheckLevel.ERROR, message, hint=hint, id=id)
 
 
 def critical(
     message: str, *, hint: str | None = None, id: str | None = None
 ) -> CheckMessage:
-    """Build a ``CRITICAL`` message. See :class:`CheckMessage`."""
+    """Build a ``CRITICAL`` message. See :class:`CheckMessage`.
+
+    Args:
+        message (str): Human-readable description of the finding.
+        hint (str | None): How to fix it, when there is a concrete step.
+        id (str | None): Stable identifier used to silence the check.
+
+    Returns:
+        CheckMessage: The message, tagged at this level.
+    """
     return CheckMessage(CheckLevel.CRITICAL, message, hint=hint, id=id)
 
 

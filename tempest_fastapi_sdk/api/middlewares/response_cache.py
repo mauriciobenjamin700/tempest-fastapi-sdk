@@ -114,7 +114,15 @@ class MemoryResponseCacheStore:
         self._lock = asyncio.Lock()
 
     async def get(self, key: str) -> CachedResponse | None:
-        """Return the live cached response for ``key`` (expired entries drop)."""
+        """Return the live cached response for ``key`` (expired entries drop).
+
+        Args:
+            key (str): Cache key derived from method, path and the ``vary``
+                headers.
+
+        Returns:
+            CachedResponse | None: The stored response, or ``None`` on a miss.
+        """
         async with self._lock:
             entry = self._entries.get(key)
             if entry is None:
@@ -132,7 +140,14 @@ class MemoryResponseCacheStore:
         *,
         ttl_seconds: int,
     ) -> None:
-        """Store ``response`` under ``key`` with a monotonic-clock expiry."""
+        """Store ``response`` under ``key`` with a monotonic-clock expiry.
+
+        Args:
+            key (str): Cache key derived from method, path and the ``vary``
+                headers.
+            response (CachedResponse): The response to store.
+            ttl_seconds (int): How long the entry stays fresh.
+        """
         async with self._lock:
             self._entries[key] = (time.monotonic() + ttl_seconds, response)
 
@@ -188,7 +203,15 @@ class RedisResponseCacheStore:
         return f"{self._prefix}{key}"
 
     async def get(self, key: str) -> CachedResponse | None:
-        """Return the cached response for ``key``, or ``None`` on miss."""
+        """Return the cached response for ``key``, or ``None`` on miss.
+
+        Args:
+            key (str): Cache key derived from method, path and the ``vary``
+                headers.
+
+        Returns:
+            CachedResponse | None: The stored response, or ``None`` on a miss.
+        """
         import base64
         import json
 
@@ -210,7 +233,14 @@ class RedisResponseCacheStore:
         *,
         ttl_seconds: int,
     ) -> None:
-        """Store ``response`` under ``key`` with ``ex=ttl_seconds``."""
+        """Store ``response`` under ``key`` with ``ex=ttl_seconds``.
+
+        Args:
+            key (str): Cache key derived from method, path and the ``vary``
+                headers.
+            response (CachedResponse): The response to store.
+            ttl_seconds (int): How long the entry stays fresh.
+        """
         import base64
         import json
 
@@ -319,7 +349,17 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        """Serve from cache / ``304`` when possible, else cache the response."""
+        """Serve from cache / ``304`` when possible, else cache the response.
+
+        Args:
+            request (Request): The inbound request.
+            call_next (Callable[[Request], Awaitable[Response]]): The next
+                handler in the middleware chain.
+
+        Returns:
+            Response: A ``304`` when the ETag matches, the cached body on a
+                hit, otherwise the handler's own response.
+        """
         if request.method not in self._methods or request.url.path in self._exempt:
             return await call_next(request)
         if self._cacheable is not None and not self._cacheable(request):

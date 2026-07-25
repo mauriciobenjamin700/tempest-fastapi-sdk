@@ -57,11 +57,32 @@ class SupportsUpload(Protocol):
         filename: str | None = ...,
         keep_original_name: bool = ...,
     ) -> Path:
-        """Persist ``file`` and delete the object at ``old_key``."""
+        """Persist ``file`` and delete the object at ``old_key``.
+
+        Args:
+            old_key (Path | str | None): Previous object to delete after a
+                successful write.
+            file (UploadFile): The uploaded file.
+            subdir (str): Destination subdirectory.
+            filename (str | None): Override the stored name; ``None`` derives
+                one.
+            keep_original_name (bool): Whether to keep the client-provided
+                name.
+
+        Returns:
+            Path: The local path written.
+        """
         ...
 
     async def delete(self, key: Path | str) -> bool:
-        """Delete the object at ``key``; return whether it existed."""
+        """Delete the object at ``key``; return whether it existed.
+
+        Args:
+            key (Path | str): Stored object key.
+
+        Returns:
+            bool: Whether the object was removed.
+        """
         ...
 
 
@@ -77,7 +98,15 @@ class SupportsPresign(Protocol):
         *,
         expires: timedelta = ...,
     ) -> str:
-        """Return a temporary download URL for ``key``."""
+        """Return a temporary download URL for ``key``.
+
+        Args:
+            key (str): Stored object key.
+            expires (timedelta): How long the signed URL stays valid.
+
+        Returns:
+            str: The signed URL.
+        """
         ...
 
     async def presigned_get_urls(
@@ -87,7 +116,16 @@ class SupportsPresign(Protocol):
         expires: timedelta = ...,
         max_concurrency: int = ...,
     ) -> dict[str, str]:
-        """Return presigned download URLs for many keys, keyed by key."""
+        """Return presigned download URLs for many keys, keyed by key.
+
+        Args:
+            keys (Iterable[str]): Stored object keys.
+            expires (timedelta): How long the signed URL stays valid.
+            max_concurrency (int): How many operations to run at once.
+
+        Returns:
+            dict[str, str]: One signed URL per requested key.
+        """
         ...
 
 

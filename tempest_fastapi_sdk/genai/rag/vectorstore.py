@@ -29,7 +29,13 @@ class VectorStore(Protocol):
         chunks: Sequence[Chunk],
         vectors: Sequence[list[float]],
     ) -> None:
-        """Store ``chunks`` with their aligned ``vectors``."""
+        """Store ``chunks`` with their aligned ``vectors``.
+
+        Args:
+            chunks (Sequence[Chunk]): The chunks to index.
+            vectors (Sequence[list[float]]): One embedding per chunk, in the
+                same order.
+        """
         ...
 
     async def search(self, vector: list[float], *, top_k: int = 5) -> list[Chunk]:

@@ -103,7 +103,14 @@ class RetryPolicy:
     )
 
     def sleep_for(self, attempt: int) -> float:
-        """Compute the sleep between attempt ``n`` and attempt ``n+1``."""
+        """Compute the sleep between attempt ``n`` and attempt ``n+1``.
+
+        Args:
+            attempt (int): Zero-based retry attempt number.
+
+        Returns:
+            float: Seconds to wait before the next attempt.
+        """
         wait: float = self.backoff_initial_seconds * (2 ** max(0, attempt - 1))
         return min(wait, self.backoff_max_seconds)
 
@@ -347,23 +354,63 @@ class HTTPClient:
     # ------------------------------------------------------------------
 
     async def get(self, url: str, **kwargs: Any) -> httpx.Response:
-        """Shortcut for ``request("GET", url, ...)``."""
+        """Shortcut for ``request("GET", url, ...)``.
+
+        Args:
+            url (str): Absolute URL, or a path resolved against ``base_url``.
+            **kwargs (Any): Extra arguments forwarded to httpx.
+
+        Returns:
+            httpx.Response: The server's response.
+        """
         return await self.request("GET", url, **kwargs)
 
     async def post(self, url: str, **kwargs: Any) -> httpx.Response:
-        """Shortcut for ``request("POST", url, ...)``."""
+        """Shortcut for ``request("POST", url, ...)``.
+
+        Args:
+            url (str): Absolute URL, or a path resolved against ``base_url``.
+            **kwargs (Any): Extra arguments forwarded to httpx.
+
+        Returns:
+            httpx.Response: The server's response.
+        """
         return await self.request("POST", url, **kwargs)
 
     async def put(self, url: str, **kwargs: Any) -> httpx.Response:
-        """Shortcut for ``request("PUT", url, ...)``."""
+        """Shortcut for ``request("PUT", url, ...)``.
+
+        Args:
+            url (str): Absolute URL, or a path resolved against ``base_url``.
+            **kwargs (Any): Extra arguments forwarded to httpx.
+
+        Returns:
+            httpx.Response: The server's response.
+        """
         return await self.request("PUT", url, **kwargs)
 
     async def patch(self, url: str, **kwargs: Any) -> httpx.Response:
-        """Shortcut for ``request("PATCH", url, ...)``."""
+        """Shortcut for ``request("PATCH", url, ...)``.
+
+        Args:
+            url (str): Absolute URL, or a path resolved against ``base_url``.
+            **kwargs (Any): Extra arguments forwarded to httpx.
+
+        Returns:
+            httpx.Response: The server's response.
+        """
         return await self.request("PATCH", url, **kwargs)
 
     async def delete(self, url: str, **kwargs: Any) -> httpx.Response:
-        """Shortcut for ``request("DELETE", url, ...)``."""
+        """Shortcut for ``request("DELETE", url, ...)``.
+
+        Args:
+            url (str): Absolute URL, or a path resolved against ``base_url``.
+            **kwargs (Any): Extra arguments forwarded to httpx.
+
+        Returns:
+            httpx.Response: The server's response.
+        """
         return await self.request("DELETE", url, **kwargs)
 
     # ------------------------------------------------------------------

@@ -273,9 +273,6 @@ class AsyncDatabaseManager:
 
         Raises:
             RuntimeError: When the engine is not connected.
-
-        Raises:
-            RuntimeError: When the engine is not connected.
         """
         if self._engine is None:
             await self.connect()

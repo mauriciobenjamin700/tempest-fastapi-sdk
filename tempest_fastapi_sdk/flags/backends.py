@@ -42,15 +42,31 @@ class FeatureFlagBackend(Protocol):
     """Storage backend for boolean feature flags."""
 
     async def get(self, name: str) -> bool | None:
-        """Return the flag value, or ``None`` when it is unset."""
+        """Return the flag value, or ``None`` when it is unset.
+
+        Args:
+            name (str): The flag name.
+
+        Returns:
+            bool | None: The flag value, or ``None`` when it is unset.
+        """
         ...
 
     async def set(self, name: str, enabled: bool) -> None:
-        """Persist ``enabled`` for ``name`` (may raise if read-only)."""
+        """Persist ``enabled`` for ``name`` (may raise if read-only).
+
+        Args:
+            name (str): The flag name.
+            enabled (bool): The value to persist.
+        """
         ...
 
     async def all(self) -> dict[str, bool]:
-        """Return every known flag as a ``{name: enabled}`` mapping."""
+        """Return every known flag as a ``{name: enabled}`` mapping.
+
+        Returns:
+            dict[str, bool]: Every known flag as ``{name: enabled}``.
+        """
         ...
 
 
@@ -66,15 +82,31 @@ class MemoryFeatureFlagBackend:
         self._flags: dict[str, bool] = dict(initial or {})
 
     async def get(self, name: str) -> bool | None:
-        """Return the flag value, or ``None`` when unset."""
+        """Return the flag value, or ``None`` when unset.
+
+        Args:
+            name (str): The flag name.
+
+        Returns:
+            bool | None: The flag value, or ``None`` when it is unset.
+        """
         return self._flags.get(name)
 
     async def set(self, name: str, enabled: bool) -> None:
-        """Set the flag value in memory."""
+        """Set the flag value in memory.
+
+        Args:
+            name (str): The flag name.
+            enabled (bool): The value to persist.
+        """
         self._flags[name] = enabled
 
     async def all(self) -> dict[str, bool]:
-        """Return a copy of every flag."""
+        """Return a copy of every flag.
+
+        Returns:
+            dict[str, bool]: Every known flag as ``{name: enabled}``.
+        """
         return dict(self._flags)
 
 
@@ -111,7 +143,14 @@ class EnvFeatureFlagBackend:
         return f"{self._prefix}{name.upper()}"
 
     async def get(self, name: str) -> bool | None:
-        """Return the flag value from the environment, or ``None``."""
+        """Return the flag value from the environment, or ``None``.
+
+        Args:
+            name (str): The flag name.
+
+        Returns:
+            bool | None: The flag value, or ``None`` when it is unset.
+        """
         raw = self._environ.get(self._var(name))
         return None if raw is None else coerce_flag(raw)
 
@@ -120,11 +159,19 @@ class EnvFeatureFlagBackend:
 
         Raises:
             NotImplementedError: Always; env flags are static config.
+
+        Args:
+            name (str): The flag name.
+            enabled (bool): The value to persist.
         """
         raise NotImplementedError("EnvFeatureFlagBackend is read-only")
 
     async def all(self) -> dict[str, bool]:
-        """Return every ``FEATURE_*`` env var as a flag mapping."""
+        """Return every ``FEATURE_*`` env var as a flag mapping.
+
+        Returns:
+            dict[str, bool]: Every known flag as ``{name: enabled}``.
+        """
         flags: dict[str, bool] = {}
         for key, value in self._environ.items():
             if key.startswith(self._prefix):
@@ -179,16 +226,32 @@ class RedisFeatureFlagBackend:
         return value.decode() if isinstance(value, bytes) else str(value)
 
     async def get(self, name: str) -> bool | None:
-        """Return the flag value from the hash, or ``None`` when unset."""
+        """Return the flag value from the hash, or ``None`` when unset.
+
+        Args:
+            name (str): The flag name.
+
+        Returns:
+            bool | None: The flag value, or ``None`` when it is unset.
+        """
         raw = await self._redis.hget(self._key, name)
         return None if raw is None else coerce_flag(self._decode(raw))
 
     async def set(self, name: str, enabled: bool) -> None:
-        """Persist the flag as ``"1"`` / ``"0"`` in the hash."""
+        """Persist the flag as ``"1"`` / ``"0"`` in the hash.
+
+        Args:
+            name (str): The flag name.
+            enabled (bool): The value to persist.
+        """
         await self._redis.hset(self._key, name, "1" if enabled else "0")
 
     async def all(self) -> dict[str, bool]:
-        """Return every field in the hash as a flag mapping."""
+        """Return every field in the hash as a flag mapping.
+
+        Returns:
+            dict[str, bool]: Every known flag as ``{name: enabled}``.
+        """
         data: Mapping[Any, Any] = await self._redis.hgetall(self._key)
         return {
             self._decode(field): coerce_flag(self._decode(value))
@@ -214,7 +277,14 @@ class CompositeFeatureFlagBackend:
         self._backends: list[FeatureFlagBackend] = list(backends)
 
     async def get(self, name: str) -> bool | None:
-        """Return the first non-``None`` value across the layers."""
+        """Return the first non-``None`` value across the layers.
+
+        Args:
+            name (str): The flag name.
+
+        Returns:
+            bool | None: The flag value, or ``None`` when it is unset.
+        """
         for backend in self._backends:
             value = await backend.get(name)
             if value is not None:
@@ -226,6 +296,10 @@ class CompositeFeatureFlagBackend:
 
         Raises:
             NotImplementedError: When no layered backend is writable.
+
+        Args:
+            name (str): The flag name.
+            enabled (bool): The value to persist.
         """
         for backend in self._backends:
             try:
@@ -237,7 +311,11 @@ class CompositeFeatureFlagBackend:
         raise NotImplementedError("no writable backend in the composite")
 
     async def all(self) -> dict[str, bool]:
-        """Merge every layer, with higher-priority backends winning."""
+        """Merge every layer, with higher-priority backends winning.
+
+        Returns:
+            dict[str, bool]: Every known flag as ``{name: enabled}``.
+        """
         merged: dict[str, bool] = {}
         for backend in reversed(self._backends):
             merged.update(await backend.all())

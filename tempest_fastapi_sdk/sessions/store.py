@@ -38,23 +38,53 @@ class SessionStore(Protocol):
     """Persistence protocol every session backend implements."""
 
     async def get(self, session_id_hash: str) -> Session | None:
-        """Return the live session for ``session_id_hash`` or ``None``."""
+        """Return the live session for ``session_id_hash`` or ``None``.
+
+        Args:
+            session_id_hash (str): Hash of the session identifier.
+
+        Returns:
+            Session | None: The live session, or ``None`` when absent or
+                expired.
+        """
         ...
 
     async def set(self, session: Session) -> None:
-        """Persist (or overwrite) ``session``."""
+        """Persist (or overwrite) ``session``.
+
+        Args:
+            session (Session): The session to persist.
+        """
         ...
 
     async def delete(self, session_id_hash: str) -> None:
-        """Remove a single session. Idempotent."""
+        """Remove a single session. Idempotent.
+
+        Args:
+            session_id_hash (str): Hash of the session identifier.
+        """
         ...
 
     async def delete_by_user(self, user_id: UUID) -> int:
-        """Remove every session for ``user_id``. Returns count deleted."""
+        """Remove every session for ``user_id``. Returns count deleted.
+
+        Args:
+            user_id (UUID): Owner of the sessions.
+
+        Returns:
+            int: How many sessions were removed.
+        """
         ...
 
     async def list_by_user(self, user_id: UUID) -> list[Session]:
-        """Return every live session for ``user_id`` (oldest first)."""
+        """Return every live session for ``user_id`` (oldest first).
+
+        Args:
+            user_id (UUID): Owner of the sessions.
+
+        Returns:
+            list[Session]: Every live session for the user, oldest first.
+        """
         ...
 
 
@@ -74,7 +104,15 @@ class MemorySessionStore:
         self._lock: asyncio.Lock = asyncio.Lock()
 
     async def get(self, session_id_hash: str) -> Session | None:
-        """Return the live session for ``session_id_hash`` or ``None``."""
+        """Return the live session for ``session_id_hash`` or ``None``.
+
+        Args:
+            session_id_hash (str): Hash of the session identifier.
+
+        Returns:
+            Session | None: The live session, or ``None`` when absent or
+                expired.
+        """
         async with self._lock:
             session = self._sessions.get(session_id_hash)
             if session is None:
@@ -91,6 +129,9 @@ class MemorySessionStore:
             A write reusing an existing id under a different owner
             rewrites both indexes, so the previous owner's index never
             keeps a dangling entry.
+
+        Args:
+            session (Session): The session to persist.
         """
         async with self._lock:
             existing = self._sessions.get(session.session_id)
@@ -104,7 +145,11 @@ class MemorySessionStore:
             )
 
     async def delete(self, session_id_hash: str) -> None:
-        """Remove a single session. Idempotent."""
+        """Remove a single session. Idempotent.
+
+        Args:
+            session_id_hash (str): Hash of the session identifier.
+        """
         async with self._lock:
             session = self._sessions.pop(session_id_hash, None)
             if session is None:
@@ -114,7 +159,14 @@ class MemorySessionStore:
                 self._by_user.pop(session.user_id, None)
 
     async def delete_by_user(self, user_id: UUID) -> int:
-        """Remove every session for ``user_id``. Returns count deleted."""
+        """Remove every session for ``user_id``. Returns count deleted.
+
+        Args:
+            user_id (UUID): Owner of the sessions.
+
+        Returns:
+            int: How many sessions were removed.
+        """
         async with self._lock:
             ids = list(self._by_user.pop(user_id, set()))
             for session_id in ids:
@@ -122,7 +174,14 @@ class MemorySessionStore:
             return len(ids)
 
     async def list_by_user(self, user_id: UUID) -> list[Session]:
-        """Return every live session for ``user_id`` (oldest first)."""
+        """Return every live session for ``user_id`` (oldest first).
+
+        Args:
+            user_id (UUID): Owner of the sessions.
+
+        Returns:
+            list[Session]: Every live session for the user, oldest first.
+        """
         async with self._lock:
             ids = list(self._by_user.get(user_id, set()))
             sessions = []
@@ -195,7 +254,15 @@ class RedisSessionStore:
         return f"{self.prefix}user:{user_id}"
 
     async def get(self, session_id_hash: str) -> Session | None:
-        """Return the live session for ``session_id_hash`` or ``None``."""
+        """Return the live session for ``session_id_hash`` or ``None``.
+
+        Args:
+            session_id_hash (str): Hash of the session identifier.
+
+        Returns:
+            Session | None: The live session, or ``None`` when absent or
+                expired.
+        """
         raw = await self.client.get(self._session_key(session_id_hash))
         if raw is None:
             return None
@@ -213,6 +280,9 @@ class RedisSessionStore:
             The user-index TTL is bumped to track the longest-lived
             session it points at, so the index never expires while a
             session it references is valid.
+
+        Args:
+            session (Session): The session to persist.
         """
         ttl_seconds = max(
             1,
@@ -235,7 +305,11 @@ class RedisSessionStore:
         await self.client.expire(self._user_key(session.user_id), ttl_seconds)
 
     async def delete(self, session_id_hash: str) -> None:
-        """Remove a single session. Idempotent."""
+        """Remove a single session. Idempotent.
+
+        Args:
+            session_id_hash (str): Hash of the session identifier.
+        """
         raw = await self.client.get(self._session_key(session_id_hash))
         if raw is not None:
             payload = json.loads(raw)
@@ -245,7 +319,14 @@ class RedisSessionStore:
         await self.client.delete(self._session_key(session_id_hash))
 
     async def delete_by_user(self, user_id: UUID) -> int:
-        """Remove every session for ``user_id``. Returns count deleted."""
+        """Remove every session for ``user_id``. Returns count deleted.
+
+        Args:
+            user_id (UUID): Owner of the sessions.
+
+        Returns:
+            int: How many sessions were removed.
+        """
         decoded = await self._smembers(self._user_key(user_id))
         if decoded:
             await self.client.delete(
@@ -255,7 +336,14 @@ class RedisSessionStore:
         return len(decoded)
 
     async def list_by_user(self, user_id: UUID) -> list[Session]:
-        """Return every live session for ``user_id`` (oldest first)."""
+        """Return every live session for ``user_id`` (oldest first).
+
+        Args:
+            user_id (UUID): Owner of the sessions.
+
+        Returns:
+            list[Session]: Every live session for the user, oldest first.
+        """
         decoded = await self._smembers(self._user_key(user_id))
         sessions: list[Session] = []
         stale: list[str] = []

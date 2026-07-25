@@ -146,7 +146,16 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        """Enforce the double-submit check on unsafe methods."""
+        """Enforce the double-submit check on unsafe methods.
+
+        Args:
+            request (Request): The inbound request.
+            call_next (Callable[[Request], Awaitable[Response]]): The next
+                handler in the middleware chain.
+
+        Returns:
+            Response: The downstream response, after this middleware ran.
+        """
         if request.method not in _UNSAFE_METHODS:
             return await call_next(request)
         if self._is_excluded(request.url.path):

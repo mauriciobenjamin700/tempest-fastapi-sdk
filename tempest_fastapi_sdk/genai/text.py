@@ -140,7 +140,17 @@ class TextBackend(Protocol):
         config: GenerationConfig | None = ...,
         **kwargs: Any,
     ) -> str:
-        """Return a reply for a chat ``messages`` list."""
+        """Return a reply for a chat ``messages`` list.
+
+        Args:
+            messages (list[dict[str, str]]): The chat turns, oldest first.
+            config (GenerationConfig | None): Generation parameters; ``None``
+                uses the defaults.
+            **kwargs (Any): Extra generation parameters, overriding ``config``.
+
+        Returns:
+            str: The generated completion.
+        """
         ...
 
     def stream(
@@ -150,7 +160,17 @@ class TextBackend(Protocol):
         config: GenerationConfig | None = ...,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        """Stream a completion for ``prompt`` piece by piece."""
+        """Stream a completion for ``prompt`` piece by piece.
+
+        Args:
+            prompt (str): The prompt to complete.
+            config (GenerationConfig | None): Generation parameters; ``None``
+                uses the defaults.
+            **kwargs (Any): Extra generation parameters, overriding ``config``.
+
+        Returns:
+            AsyncIterator[str]: The completion, streamed token by token.
+        """
         ...
 
 
