@@ -44,6 +44,7 @@ from tempest_fastapi_sdk.api import (
     LogSource,
     MemoryIdempotencyStore,
     MemoryRateLimitStore,
+    MemoryResponseCacheStore,
     OAuthError,
     OAuthTokens,
     OAuthUser,
@@ -54,7 +55,10 @@ from tempest_fastapi_sdk.api import (
     RateLimitStore,
     RedisIdempotencyStore,
     RedisRateLimitStore,
+    RedisResponseCacheStore,
     RequestIDMiddleware,
+    ResponseCacheMiddleware,
+    ResponseCacheStore,
     RSAWebhookSignatureVerifier,
     SameSite,
     WebhookDelivery,
@@ -421,7 +425,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.158.0"
+__version__: str = "0.159.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -573,6 +577,7 @@ __all__: list[str] = [
     "MemoryIdempotencyStore",
     "MemoryMetrics",
     "MemoryRateLimitStore",
+    "MemoryResponseCacheStore",
     "MemorySessionStore",
     "MessageCatalog",
     "MetricCard",
@@ -625,12 +630,15 @@ __all__: list[str] = [
     "RedisFeatureFlagBackend",
     "RedisIdempotencyStore",
     "RedisRateLimitStore",
+    "RedisResponseCacheStore",
     "RedisSessionStore",
     "RedisSettings",
     "RefreshSchema",
     "Region",
     "RepositorySignal",
     "RequestIDMiddleware",
+    "ResponseCacheMiddleware",
+    "ResponseCacheStore",
     "RetryPolicy",
     "SSEBroker",
     "SSEData",
