@@ -204,9 +204,6 @@ def _build_file_handlers(log_dir: Path) -> list[logging.Handler]:
         http_500_handler.setFormatter(formatter)
         handlers.append(http_500_handler)
     except OSError:
-        # Release the FDs of any handlers opened before the failure so a
-        # partial build does not leak descriptors, then re-raise for the
-        # caller to decide whether to degrade to stdout-only.
         for handler in handlers:
             with contextlib.suppress(Exception):
                 handler.close()
@@ -282,6 +279,20 @@ def configure_logging(
         ValueError: When both ``stdout=False`` and ``file_output=False``
             are passed — that would silence every handler and leave
             the application blind, which is almost always a mistake.
+
+    Notes:
+        Existing handlers are **closed** before being removed, not just
+        detached. This runs once per application boot and once per test that
+        wants a clean state, and ``FileHandler`` / ``RotatingFileHandler``
+        hold a file descriptor each — without the close they would
+        accumulate across calls.
+
+        File logging is best-effort. A read-only or non-writable filesystem
+        is normal in hardened containers, serverless runtimes and CI, and
+        must never crash the application at startup, so the failure degrades
+        to stdout-only and the reason is surfaced once for an operator who
+        did want files. When there is no stdout handler to carry that
+        warning, it goes straight to stderr rather than being swallowed.
     """
     if not stdout and not file_output:
         raise ValueError(
@@ -292,11 +303,6 @@ def configure_logging(
     logger = logging.getLogger(logger_name)
     logger.setLevel(level)
     for handler in list(logger.handlers):
-        # Close before removing so file descriptors held by
-        # FileHandler / RotatingFileHandler subclasses are released.
-        # configure_logging() is called once per app boot AND once per
-        # test that wants a clean state — without close() those FDs
-        # would accumulate.
         with contextlib.suppress(Exception):
             handler.close()
         logger.removeHandler(handler)
@@ -318,11 +324,6 @@ def configure_logging(
         try:
             file_handlers = _build_file_handlers(Path(log_dir))
         except OSError as exc:
-            # File logging is best-effort: a read-only or non-writable
-            # filesystem (common in hardened containers, serverless and
-            # CI) must never crash the application at startup. Degrade to
-            # stdout-only and surface the reason once so the operator can
-            # fix the mount/permissions if files are actually wanted.
             msg = (
                 "tempest_fastapi_sdk: file logging disabled — could not "
                 f"prepare log_dir {str(log_dir)!r}: {exc}. Continuing "
@@ -331,8 +332,6 @@ def configure_logging(
             if stdout:
                 logger.warning(msg)
             else:
-                # No stdout handler to carry the warning — write straight
-                # to stderr so the reason is not swallowed silently.
                 print(msg, file=sys.stderr)
         else:
             for file_handler in file_handlers:

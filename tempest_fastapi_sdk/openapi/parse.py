@@ -229,7 +229,19 @@ class _Parser:
         return f"{base} | None" if nullable and base != "Any" else base
 
     def _render_concrete(self, schema: Mapping[str, Any], *, hint: str) -> str:
-        """Render a schema that is neither a ``$ref`` nor a combinator."""
+        """Render a schema that is neither a ``$ref`` nor a combinator.
+
+        An empty schema (`{}`) is not a gap in the specification — in
+        OpenAPI it legitimately means "any JSON value" — so it renders as
+        ``Any`` without a note.
+
+        Args:
+            schema (Mapping[str, Any]): The schema fragment.
+            hint (str): Name used when an inline schema is promoted.
+
+        Returns:
+            str: The rendered annotation.
+        """
         enum_values = schema.get("enum")
         base_type = self._base_type(schema)
 
@@ -253,7 +265,6 @@ class _Parser:
             return _PRIMITIVE_TYPES[base_type]
 
         if base_type is None and not schema:
-            # An empty schema legitimately means "any JSON value".
             return "Any"
 
         if base_type is not None:
@@ -441,6 +452,12 @@ class _Parser:
         Returns:
             str: The generated class name, or the rendered annotation when
             the component is a bare scalar that gets no class of its own.
+
+        Notes:
+            The class name is reserved **before** recursing into the
+            schema's properties. A self-referencing schema
+            (``Node.children: Node[]``) would otherwise re-enter this method
+            and register a second class for the same component.
         """
         existing = self.wire_to_class.get(wire_name)
         if existing is not None:
@@ -469,8 +486,6 @@ class _Parser:
             return rendered
 
         class_name = unique(to_pascal(wire_name), self.taken_class_names)
-        # Reserve the name before recursing: a self-referencing schema
-        # (Node.children: Node[]) would otherwise register a second class.
         self.wire_to_class[wire_name] = class_name
         self.schemas[class_name] = self._build_schema(class_name, wire_name, schema)
         return class_name
@@ -580,6 +595,10 @@ class _Parser:
     ) -> FieldIR:
         """Build the :class:`FieldIR` for one property.
 
+        A non-required collection defaults to an empty list rather than
+        ``None``, per the repo rule that "no matches" is an empty list and
+        not a missing value.
+
         Dependencies between generated classes are **not** collected here.
         During recursion neither the owner nor a mutually-referencing peer
         is registered yet, so reading them from the in-progress registry
@@ -600,7 +619,6 @@ class _Parser:
         default_is_factory = False
         if not required:
             if is_list:
-                # Repo rule: a collection field defaults to empty, never None.
                 default = "list"
                 default_is_factory = True
             else:
@@ -946,6 +964,12 @@ def _collect_constraints(schema: Mapping[str, Any]) -> dict[str, Any]:
         as a *boolean* (the OpenAPI 3.0 spelling, which modifies
         ``minimum``) is translated into ``gt``; the 3.1 numeric spelling is
         used directly.
+
+    Notes:
+        In 3.0 ``exclusiveMinimum`` / ``exclusiveMaximum`` are booleans that
+        qualify ``minimum`` / ``maximum``, so the flag is re-pointed at the
+        value it qualifies and the plain ``ge`` / ``le`` it would otherwise
+        produce is dropped. Emitting both would validate the wrong bound.
     """
     constraints: dict[str, Any] = {}
     for source, target in _STRING_CONSTRAINTS.items():
@@ -959,8 +983,6 @@ def _collect_constraints(schema: Mapping[str, Any]) -> dict[str, Any]:
             continue
         value = schema[source]
         if isinstance(value, bool):
-            # OpenAPI 3.0: exclusiveMinimum/Maximum are booleans modifying
-            # minimum/maximum. Re-point them at the value they qualify.
             partner = "minimum" if source == "exclusiveMinimum" else "maximum"
             if value and partner in schema:
                 constraints["gt" if partner == "minimum" else "lt"] = schema[partner]

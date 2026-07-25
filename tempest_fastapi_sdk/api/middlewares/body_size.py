@@ -57,7 +57,15 @@ class BodySizeLimitMiddleware:
         return any(path.startswith(prefix) for prefix in self.exclude_paths)
 
     async def _reject(self, send: Send) -> None:
-        """Emit a 413 ``Payload Too Large`` response."""
+        """Emit a 413 ``Payload Too Large`` response.
+
+        The ``body`` local below exists only to document the exact bytes this
+        middleware answers with; ``JSONResponse`` renders its own, so it is
+        discarded rather than sent.
+
+        Args:
+            send (Send): The ASGI send callable.
+        """
         body = (
             b'{"detail":"Request body too large.",'
             b'"code":"REQUEST_BODY_TOO_LARGE","details":{}}'
@@ -70,7 +78,7 @@ class BodySizeLimitMiddleware:
                 "details": {"max_bytes": self.max_bytes},
             },
         )
-        del body  # silence linter — JSONResponse renders its own body.
+        del body
         await response({"type": "http"}, self._noop_receive, send)
 
     @staticmethod
@@ -84,7 +92,26 @@ class BodySizeLimitMiddleware:
         receive: Receive,
         send: Send,
     ) -> None:
-        """Enforce the limit on every HTTP request."""
+        """Enforce the limit on every HTTP request.
+
+        Two passes, because neither alone is sufficient. The first is a fast
+        path on ``Content-Length``: an honest client declares the size up
+        front and gets rejected without a byte being read. The second wraps
+        ``receive`` and counts what actually arrives, which is what catches a
+        chunked or lying request whose header cannot be trusted.
+
+        When the streaming guard trips it returns ``http.disconnect`` rather
+        than raising: that drains the rest so the underlying transport closes
+        cleanly while telling the wrapped app the body ended. The 413 is then
+        emitted in the ``finally`` block, and only if the app has not already
+        responded — many handlers stop gracefully on disconnect and send
+        something themselves, in which case the extra ``send`` is a no-op.
+
+        Args:
+            scope (Scope): The ASGI scope.
+            receive (Receive): The upstream receive callable.
+            send (Send): The upstream send callable.
+        """
         if scope["type"] != "http" or self.max_bytes <= 0:
             await self.app(scope, receive, send)
             return
@@ -94,7 +121,6 @@ class BodySizeLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Step 1 — fast path on Content-Length.
         for name, value in scope.get("headers", []):
             if name == b"content-length":
                 try:
@@ -106,7 +132,6 @@ class BodySizeLimitMiddleware:
                     return
                 break
 
-        # Step 2 — defensive streaming check.
         seen = 0
         rejected = False
 
@@ -119,8 +144,6 @@ class BodySizeLimitMiddleware:
             seen += len(body)
             if seen > self.max_bytes and not rejected:
                 rejected = True
-                # Drain the rest so the underlying transport closes
-                # cleanly, but signal the upstream app that body ended.
                 return {"type": "http.disconnect"}
             return message
 
@@ -128,10 +151,6 @@ class BodySizeLimitMiddleware:
             await self.app(scope, _guarded_receive, send)
         finally:
             if rejected:
-                # Only reaches here if the app didn't already emit a
-                # response (e.g. it gracefully stopped on disconnect).
-                # Best effort: many handlers will have already sent
-                # something, in which case ``send`` becomes a no-op.
                 await self._reject(send)
 
 
