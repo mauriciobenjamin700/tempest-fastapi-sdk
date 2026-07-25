@@ -77,12 +77,11 @@ class TestFieldName:
             ("from", "from_"),
             ("import", "import_"),
             ("lambda", "lambda_"),
-            ("match", "match_"),
             ("emailAddress", "email_address"),
         ],
     )
     def test_conversions(self, wire: str, expected: str) -> None:
-        """Keywords are suffixed, everything else is just snake_cased."""
+        """Hard keywords are suffixed, everything else is just snake_cased."""
         assert field_name(wire) == expected
 
     def test_builtins_are_kept(self) -> None:
@@ -94,6 +93,19 @@ class TestFieldName:
         """
         assert field_name("id") == "id"
         assert field_name("type") == "type"
+
+    @pytest.mark.parametrize("wire", ["match", "case", "type", "_"])
+    def test_soft_keywords_are_kept(self, wire: str) -> None:
+        """Soft keywords are not suffixed, on any Python version.
+
+        They are contextual, so they are legal attribute names
+        everywhere — and the soft-keyword list grows between releases
+        (``type`` joined it in 3.12). Consulting it would make the
+        generated field name depend on the interpreter that ran the
+        generator, so the same specification would produce different code
+        on 3.11 and 3.13. This regressed CI on exactly that difference.
+        """
+        assert not field_name(wire).endswith("_") or wire == "_"
 
 
 class TestMethodName:
