@@ -525,7 +525,16 @@ presente prova que o projeto optou por esse estilo; aí ele é respeitado.
 !!! check "Edições ancoradas na AST"
     Cada inserção é posicionada no parêntese de fechamento de um nó de call, não
     numa regex. Nada depende de como o decorator está formatado, e o resto do
-    arquivo — comentários, layout — não é tocado. O resultado passa por
+    arquivo — comentários, layout — não é tocado.
+
+    A vírgula separadora é derivada do próprio código, via `tokenize`: um
+    decorator quebrado em linhas carrega **trailing comma** (o formato que o
+    `ruff format` produz), e prefixar outra vírgula ali geraria `,,` —
+    `SyntaxError`. Tokenizar é o que torna a checagem confiável: uma `,` ou um
+    `#` dentro de string (`description="a, b"`) é token próprio, então varrer
+    texto cru de trás para frente erraria. Corrigido em 0.168.3.
+
+    O resultado passa por
     `ruff check --select I --fix` e `ruff format`, então o import novo cai na
     posição ordenada e o decorator quebrado em linhas sai formatado.
 

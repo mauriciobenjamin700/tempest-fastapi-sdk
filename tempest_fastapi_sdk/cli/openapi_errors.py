@@ -126,8 +126,10 @@ class RouteInfo:
         raises_end (tuple[int, int] | None): Same, for an existing
             ``@raises(...)`` decorator.
         declares_empty_call (bool): Whether the existing declaration call
-            has no positional arguments yet, so the writer knows whether
-            to prefix an appended name with a comma.
+            has no positional arguments yet. Descriptive only — the writer
+            derives the separator it needs from the source itself
+            (``openapi_fix._separator_before``), since this flag cannot see
+            the trailing comma a multi-line call carries.
     """
 
     method: str

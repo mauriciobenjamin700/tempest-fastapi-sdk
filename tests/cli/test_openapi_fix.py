@@ -101,6 +101,66 @@ async def read_service(service_id: str) -> dict[str, str]:
 '''
 
 
+FORMATTED_ROUTER = '''"""Job routes."""
+
+from fastapi import APIRouter
+
+from src.services.candidate import CandidateService
+
+router = APIRouter(prefix="/api/jobs")
+
+
+@router.post(
+    "/{service_id}/candidates",
+    summary="Apply to a service",
+    description="Apply the current user, watching slots, quotas # limits.",
+    status_code=201,
+)
+async def apply_to_service(service_id: str) -> dict[str, str]:
+    """Apply the current user to a service."""
+    service = CandidateService()
+    await service.apply(service_id)
+    await service.validate_slots(service_id)
+    return {}
+'''
+"""A route decorator formatted the way ``ruff format`` writes it.
+
+Multi-line, therefore carrying a **trailing comma** — the shape that made
+``--fix`` emit two consecutive commas. The description holds a ``,`` and a
+``#`` inside a string literal, so a fixer scanning raw text backwards for
+punctuation would also go wrong here.
+"""
+
+FORMATTED_PARTIAL_ROUTER = '''"""Job routes."""
+
+from fastapi import APIRouter
+from tempest_fastapi_sdk import error_responses
+
+from src.core.exceptions import ServiceNotFoundException
+from src.services.candidate import CandidateService
+
+router = APIRouter(prefix="/api/jobs")
+
+
+@router.get(
+    "/{service_id}",
+    responses=error_responses(
+        ServiceNotFoundException,
+    ),
+)
+async def read_service(service_id: str) -> dict[str, str]:
+    """Read a service."""
+    service = CandidateService()
+    await service.validate_slots(service_id)
+    return {}
+'''
+"""An existing ``error_responses(...)`` exploded over several lines.
+
+Same trailing-comma hazard as :data:`FORMATTED_ROUTER`, on the append path
+instead of the inject path.
+"""
+
+
 def _git(root: Path, *args: str) -> None:
     """Run a git command inside ``root``.
 
@@ -289,6 +349,100 @@ class TestMerge:
         output = _run(project, "--fix", monkeypatch=monkeypatch)
         assert "unreachable:  ServiceNotFoundException" in output
         assert "ServiceNotFoundException" in path.read_text()
+
+
+class TestTrailingComma:
+    """A call that already ends with a comma must not receive a second one.
+
+    Every route in a formatted project hits this: ``ruff format`` explodes a
+    decorator with more than one argument over several lines and leaves a
+    trailing comma. ``--fix`` prefixed an unconditional ``", "`` before the
+    closing parenthesis, so the first such route produced
+    ``status_code=201,\\n, responses=...`` — a ``SyntaxError`` raised out of
+    ``render_file``, killing the run for every remaining file.
+    """
+
+    def test_injecting_into_a_formatted_decorator_parses(
+        self, project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The rewrite of a multi-line decorator is valid Python."""
+        path = project / "src" / "api" / "routers" / "jobs.py"
+        path.write_text(FORMATTED_ROUTER)
+        _git(project, "add", "-A")
+        _git(project, "commit", "-qm", "formatted")
+
+        _run(project, "--fix", monkeypatch=monkeypatch)
+
+        source = path.read_text()
+        ast.parse(source)
+        assert ",," not in source.replace("\n", "").replace(" ", "")
+        assert "error_responses(" in source
+
+    def test_appending_to_a_formatted_call_parses(
+        self, project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The rewrite of a multi-line ``error_responses(...)`` is valid too."""
+        path = project / "src" / "api" / "routers" / "jobs.py"
+        path.write_text(FORMATTED_PARTIAL_ROUTER)
+        _git(project, "add", "-A")
+        _git(project, "commit", "-qm", "formatted-partial")
+
+        _run(project, "--fix", monkeypatch=monkeypatch)
+
+        source = path.read_text()
+        ast.parse(source)
+        assert source.count("error_responses(") == 1
+        assert "ServiceFullException" in source
+        assert "ServiceNotFoundException" in source
+
+    def test_the_fix_still_runs_over_every_file(
+        self, project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A formatted route no longer aborts the run.
+
+        The crash happened while rendering, before anything was written, so the
+        symptom was a traceback and zero files touched — not a partial write.
+        """
+        path = project / "src" / "api" / "routers" / "jobs.py"
+        path.write_text(FORMATTED_ROUTER)
+        _git(project, "add", "-A")
+        _git(project, "commit", "-qm", "formatted")
+
+        output = _run(project, "--fix", monkeypatch=monkeypatch)
+
+        assert "Wrote 1 file(s)" in output
+        assert "SyntaxError" not in output
+
+
+class TestSeparatorBefore:
+    """``_separator_before`` reads the token before the insertion point."""
+
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            ("f(a)", ", "),
+            ("f()", ""),
+            ("f(\n    a,\n)", ""),
+            ("f(\n    a,  # keep\n)", ""),
+            ('f(\n    a="x, y # z",\n)', ""),
+            ('f(a="x, y")', ", "),
+        ],
+        ids=[
+            "single-arg",
+            "empty-call",
+            "trailing-comma",
+            "trailing-comma-then-comment",
+            "comma-and-hash-inside-string",
+            "comma-inside-string-no-trailing",
+        ],
+    )
+    def test_reads_the_last_code_token(self, source: str, expected: str) -> None:
+        """The comma is added only when the previous token is an argument."""
+        assert openapi_fix._separator_before(source, source.rindex(")")) == expected
+
+    def test_unparsable_source_falls_back_to_a_comma(self) -> None:
+        """A source ``tokenize`` rejects keeps the previous behavior."""
+        assert openapi_fix._separator_before("f(a,\n  'unterminated", 4) == ", "
 
 
 class TestSafety:

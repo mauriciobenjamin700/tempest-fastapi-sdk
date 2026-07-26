@@ -530,7 +530,16 @@ honored.
 !!! check "Edits anchored on the AST"
     Every insertion is positioned at the closing parenthesis of a call node, not
     by a regex. Nothing depends on how the decorator happens to be formatted,
-    and the rest of the file — comments, layout — is untouched. The result goes
+    and the rest of the file — comments, layout — is untouched.
+
+    The separating comma is derived from the code itself, via `tokenize`: a
+    decorator wrapped over several lines carries a **trailing comma** (the shape
+    `ruff format` produces), and prefixing another comma there would emit `,,` —
+    a `SyntaxError`. Tokenizing is what makes the check trustworthy: a `,` or a
+    `#` inside a string literal (`description="a, b"`) is a token of its own, so
+    scanning raw text backwards would go wrong. Fixed in 0.168.3.
+
+    The result goes
     through `ruff check --select I --fix` and `ruff format`, so a new import
     lands in sorted position and a wrapped decorator comes out formatted.
 
