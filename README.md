@@ -91,7 +91,7 @@ Via `pyproject.toml`:
 
 ```toml
 dependencies = [
-    "tempest-fastapi-sdk>=0.161.0",
+    "tempest-fastapi-sdk>=0.167.0",
 ]
 ```
 
@@ -156,7 +156,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.settings` | `BaseAppSettings` (+ `AppSettingsMeta`), `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings`, `MinIOSettings`, `AuthSettings` |
 | `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, OpenAPI error docs (`error_responses`, `raises`, `TempestAPIRouter`, `RaisesSpec`, `declared_raises`), `apply_cors`, `make_health_router`, `make_logs_router`, `make_prometheus_router`, `make_prometheus_registry`, `PrometheusMiddleware`, `BusinessMetrics`, `LogSource`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware` (+ `RateLimitStore`/`MemoryRateLimitStore`/`RedisRateLimitStore`/`RateLimitResult` and `key_by_ip`/`key_by_jwt_subject`/`key_by_jwt_claim`/`key_by_header`), `IdempotencyMiddleware`, `MemoryIdempotencyStore`, `RedisIdempotencyStore`, `BodySizeLimitMiddleware`, `CSRFMiddleware`, `make_csrf_token_dependency`, `GracefulShutdownMiddleware`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, outbound `WebhookSender` (+ `WebhookDelivery`), OAuth2 (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`), `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `make_spa_router` (serve a compiled React/Vite SPA with a client-side fallback), `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck`, `setup_tracing` *(extra: `[otel]`)* |
 | `tempest_fastapi_sdk.auth` *(extra: `[auth]`, opcional `[email]`, `[mfa]`)* | `UserAuthService`, `make_auth_router`, `SignupSchema` / `LoginSchema` / `RefreshSchema` / `PasswordResetRequestSchema` / `PasswordResetConfirmSchema` + responses, `ActivationToken`, `PasswordResetToken`, email change/verify/recovery (`EmailChangeRequestSchema` / `EmailChangeConfirmSchema` / `EmailRecoveryRequestSchema` / `EmailChangeToken` / `EmailVerificationToken`, old-email security notice, opt-in `AUTH_EMAIL_RECOVERY_ENABLED`), MFA schemas (`MFAEnrollResponseSchema` / `MFAConfirmSchema` / `MFAVerifySchema` / `MFADisableSchema`), opt-in DB-backed refresh tokens (`BaseUserRefreshTokenModel` / `make_user_refresh_token_model` / `LogoutSchema`) with rotation + reuse detection + `POST /auth/logout`, bilingual emails + backend pages (`AUTH_DEFAULT_LOCALE`, `normalize_locale` / `negotiate_locale`) — signup/activate/login/refresh/logout/reset + email change/recovery + TOTP 2FA out of the box |
-| `tempest_fastapi_sdk.authz` | Object-level permissions: `permission` (rule decorator), `has_perm` / `check_permission`, `PermissionRegistry` (injectable superuser bypass + static-permission fallback, `order.*`/`*` wildcards), `make_permission_checker` (FastAPI route guard), `PermissionMixin` (`await user.has_perm(perm, obj=...)`), `default_registry` |
+| `tempest_fastapi_sdk.authz` | Object-level permissions: `permission` (rule decorator), `has_perm` / `check_permission`, `PermissionRegistry` (injectable superuser bypass + static-permission fallback, `order.*`/`*` wildcards), `make_permission_checker` (FastAPI route guard), `PermissionMixin` (`await user.has_perm(perm, obj=...)`), `default_registry`, `requires` (guard decorator `(user) -> user | None`, checked at import time + by `tempest permissions`), `declared_guards` / `guarded_user_param`, `TempestPermissionError`, `GuardContractWarning` |
 | `tempest_fastapi_sdk.checks` | System checks (Django-style config validation): `check` (register decorator), `run_checks` / `run_system_checks` (raises `SystemCheckError` on ERROR+), `CheckMessage` / `CheckLevel` + `debug`/`info`/`warning`/`error`/`critical`, `CheckRegistry` / `default_registry`; built-in settings checks + the `tempest check-config` CLI (auto-detects settings, `--tag` / `--fail-level`) |
 | `tempest_fastapi_sdk.controllers` | `BaseController` |
 | `tempest_fastapi_sdk.services` | `BaseService` |
@@ -3998,6 +3998,39 @@ tempest openapi-errors --fix             # write them (needs a clean git tree)
 ```
 
 `--fix` writes what the check found: it injects `responses=error_responses(...)` into the route, extends an existing declaration instead of replacing it, and adds the missing imports. It only ever adds — `unreachable` findings are never removed, since reachability cannot see a dynamic raise. Full walkthrough: [Errors in OpenAPI](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/openapi-errors/).
+
+---
+
+### Permission guards
+
+`@requires` runs plain `(user) -> user | None` guards before a function body — on a route, a controller or a service, sync or `async`. A guard denies by raising an `AppException`, so the HTTP status, the error `code` and the `{detail, code, details}` envelope come from the SDK handlers.
+
+```python
+from fastapi import Depends
+from tempest_fastapi_sdk import error_responses, requires
+from tempest_fastapi_sdk.auth import require_active
+
+
+@router.delete("/orders/{order_id}", responses=error_responses(NotOrderOwnerException))
+@requires(require_active, order_owner)
+async def delete_order(
+    order_id: UUID,
+    user: UserModel = Depends(get_current_user),
+) -> None:
+    """The body runs only for an active user who owns the order."""
+    await controller.delete(order_id)
+```
+
+The user parameter is found by annotation (`user_param=` breaks a tie), and a guard's non-`None` return replaces the user the body sees — which is how `require_active` narrows `UserT | None` to `UserT`.
+
+Misuse is caught in three places: `TempestPermissionError` at import time (no guard, wrong arity, `async` guard on a sync function, no user parameter), `GuardContractWarning` at call time (a guard raising outside the `AppException` hierarchy, or returning `False` instead of denying), and `tempest permissions --check` in CI, which reads the same contract statically.
+
+```bash
+tempest permissions --check            # exit 1 on any error
+tempest permissions --check --strict   # fail on warnings too
+```
+
+`tempest openapi-errors` reads the `@requires` guards too, so a guard's exception shows up as `undocumented` on the route until it is declared. Full walkthrough: [Permission guards](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/permission-guards/).
 
 ---
 

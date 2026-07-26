@@ -454,7 +454,18 @@ def _iter_functions(
     Yields:
         FunctionInfo: One entry per (possibly nested) function
         definition, with its raises / docstring / call data filled in.
+
+    Notes:
+        The guards named by a ``@requires(...)`` decorator become
+        call-graph edges too. A guard denies by raising an
+        ``AppException``, so its exceptions are as reachable from the
+        route as those of any function the body calls — and the ``ast``
+        walk would otherwise see only the ``requires`` call itself, not
+        the names passed to it. Imported inside the loop because
+        :mod:`tempest_fastapi_sdk.cli.permissions` imports this module.
     """
+    from tempest_fastapi_sdk.cli.permissions import guard_names
+
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
@@ -464,6 +475,7 @@ def _iter_functions(
             lineno=node.lineno,
             documented=_docstring_raises(node),
             route=_route_of(node),
+            calls=set(guard_names(node)),
         )
         for child in ast.walk(node):
             if isinstance(child, ast.Raise):

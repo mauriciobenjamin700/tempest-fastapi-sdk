@@ -153,13 +153,19 @@ from tempest_fastapi_sdk.auth import (
     require_authenticated,
 )
 from tempest_fastapi_sdk.authz import (
+    Guard,
+    GuardContractWarning,
     PermissionMixin,
     PermissionRegistry,
+    TempestPermissionError,
     check_permission,
+    declared_guards,
     default_registry,
+    guarded_user_param,
     has_perm,
     make_permission_checker,
     permission,
+    requires,
 )
 from tempest_fastapi_sdk.checks import (
     CheckLevel,
@@ -438,7 +444,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.166.1"
+__version__: str = "0.167.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -560,6 +566,8 @@ __all__: list[str] = [
     "GitHubOAuthClient",
     "GoogleOAuthClient",
     "GracefulShutdownMiddleware",
+    "Guard",
+    "GuardContractWarning",
     "HTTPClient",
     "HardenedStaticFiles",
     "HealthCheck",
@@ -690,6 +698,7 @@ __all__: list[str] = [
     "TOTPHelper",
     "TaskIQSettings",
     "TempestAPIRouter",
+    "TempestPermissionError",
     "TenantScopedRepository",
     "ThrottleBackend",
     "ThrottleStatus",
@@ -740,6 +749,7 @@ __all__: list[str] = [
     "coerce_flag",
     "compose_hooks",
     "configure_logging",
+    "declared_guards",
     "declared_raises",
     "decode_cursor",
     "default_message_catalog",
@@ -758,6 +768,7 @@ __all__: list[str] = [
     "get_client_ip_from_scope",
     "get_request_id",
     "get_state",
+    "guarded_user_param",
     "has_perm",
     "hash_opaque_token",
     "is_valid_cep",
@@ -829,6 +840,7 @@ __all__: list[str] = [
     "require_annotations",
     "require_authenticated",
     "require_x_token",
+    "requires",
     "run_checks",
     "run_server",
     "run_system_checks",

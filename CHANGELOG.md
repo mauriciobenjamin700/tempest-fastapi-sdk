@@ -5,6 +5,60 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.167.0] — 2026-07-26
+
+Permission guards: a decorator that runs plain `(user) -> user | None`
+functions before a function body, plus the two-layer misuse check the user
+asked for — fail-fast at import time, static gate in CI.
+
+### Added
+
+- **`@requires(*guards, user_param=None)`** (`tempest_fastapi_sdk.authz`,
+  re-exported at the package root). Runs each guard on the user before the
+  decorated body, left to right, on a route handler, a controller or a service
+  method, sync or `async`. A guard receives the user, denies by raising an
+  `AppException` subclass (so the status, the error `code` and the
+  `{detail, code, details}` envelope come from `register_exception_handlers`),
+  and returns the user or `None`; a non-`None` return replaces the user the next
+  guard and the body see, which is how `require_authenticated` /
+  `require_active` / `require_admin` narrow `UserT | None` to `UserT`.
+  The user parameter is resolved from the annotations — the single parameter
+  typed as a `BaseModel` / `BaseUserModel` subclass — with `user_param=` to
+  name it explicitly or disambiguate two user models. The wrapper keeps the
+  decorated signature (with annotations already evaluated, so FastAPI resolves
+  them against the right module), leaving dependency injection and the OpenAPI
+  schema untouched.
+- **`TempestPermissionError`** — raised at decoration time (import time) for
+  `@requires()` with no guard, a non-callable guard, a guard that does not take
+  exactly one fillable parameter, an `async` guard under a synchronous function,
+  or a decorated function whose user parameter cannot be resolved. The
+  application refuses to start instead of running a check that never fires.
+- **`GuardContractWarning`** — warned at call time when a guard raises outside
+  the `AppException` hierarchy (the API layer would answer HTTP 500 with no
+  error code) or returns a non-user value such as `False` (a predicate-style
+  check whose denial cannot be honored). The original exception still
+  propagates; the warning names the guard.
+- **`declared_guards(fn)` / `guarded_user_param(fn)`** — read a function's
+  guards and its user parameter without calling it, for a router audit or a
+  test asserting every write route carries a guard.
+- **`tempest permissions [--check] [--strict] [--path]`** — static contract
+  check over the project source (`ast`, without importing the application), for
+  what runtime validation cannot see: a guard whose `raise` no test exercises, a
+  guard never wired. Errors: `no-guards`, `user-param-missing`,
+  `user-param-ambiguous`, `guard-arity`, `guard-async-in-sync`,
+  `guard-returns-bool`, `guard-foreign-exception`. Warnings:
+  `guard-never-denies`, `guard-missing-annotation`, `guard-return-type`,
+  `guard-unresolved`. `--check` exits non-zero on errors, `--strict` on warnings
+  too. Guards resolve by name; an ambiguous or out-of-scope name is reported as
+  `guard-unresolved` rather than checked against the wrong definition.
+
+### Changed
+
+- **`tempest openapi-errors` now follows `@requires` guards.** A guard denies by
+  raising, so its exceptions are as reachable from the route as those of any
+  function the body calls; they now show up as `undocumented` until the route
+  declares them, and `--fix` writes them like any other.
+
 ## [0.166.1] — 2026-07-25
 
 Post-release validation of `--fix` against the published wheel, in a project

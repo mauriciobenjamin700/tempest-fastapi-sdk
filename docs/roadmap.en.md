@@ -131,6 +131,18 @@ GraphQL/gRPC (REST by decision).
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## Shipped in v0.167.0
+
+Permission guards — decorator plus a two-layer linter:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **`@requires(*guards, user_param=None)`** | ✅ v0.167 | Runs guards that take the user and return the user (or `None`) before the body, on a route, a controller or a service, sync or `async`. A guard denies by raising an `AppException`; a non-`None` return replaces the user the next guard and the body see — that is how `require_active` narrows `Optional[UserT]` to `UserT`. The user parameter resolves from the annotation (`BaseModel`/`BaseUserModel`), `user_param=` breaks a tie. The signature is preserved, so dependency injection and the OpenAPI schema stay untouched. [Reference »](recipes/permission-guards.md) |
+| **Misuse caught at import time** | ✅ v0.167 | `TempestPermissionError` for `@requires()` with no guard, a non-callable guard, wrong arity, an `async` guard on a sync function, and a missing or ambiguous user parameter. The application refuses to start with a check that never fires. |
+| **Contract warning at call time** | ✅ v0.167 | `GuardContractWarning` when a guard raises outside the `AppException` hierarchy (the API would answer 500 with no `code`) or returns a non-user value such as `False` (a denial that would be ignored). The original exception still propagates. |
+| **`tempest permissions --check` / `--strict` / `--path`** | ✅ v0.167 | Static check (`ast`, without importing the app) for what runtime cannot see: a guard whose `raise` no test exercises, a guard never wired. Errors `no-guards`/`user-param-missing`/`user-param-ambiguous`/`guard-arity`/`guard-async-in-sync`/`guard-returns-bool`/`guard-foreign-exception`; warnings `guard-never-denies`/`guard-missing-annotation`/`guard-return-type`/`guard-unresolved`. An ambiguous or out-of-scope guard is reported, never guessed. |
+| **OpenAPI error-docs integration** | ✅ v0.167 | `tempest openapi-errors` follows the `@requires` guards, so a guard's exception shows up as `undocumented` until the route declares it — and `--fix` writes it. `declared_guards` / `guarded_user_param` expose a route's guards for auditing. |
+
 ## Shipped in v0.166.0
 
 Errors in OpenAPI — automatic fix:

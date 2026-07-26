@@ -829,6 +829,97 @@ def openapi_errors_cmd(
     raise typer.Exit(1 if undocumented_total or not allow_unreachable else 0)
 
 
+@app.command("permissions")
+def permissions_cmd(
+    paths: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--path",
+            "-p",
+            help="Source directory (or file) to scan. Repeatable. "
+            "Defaults to ./src or ./app, whichever exists.",
+        ),
+    ] = None,
+    check: Annotated[
+        bool,
+        typer.Option(
+            "--check/--no-check",
+            help="Exit non-zero when an error-level finding exists, for use "
+            "as a CI step.",
+        ),
+    ] = False,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help="With --check, fail on warnings too.",
+        ),
+    ] = False,
+) -> None:
+    """Check every ``@requires`` guard against its contract.
+
+    ``@requires`` validates what it can see when the module is imported —
+    that each guard is callable, takes one parameter, and that the
+    decorated function has a user to check. This command reads the rest of
+    the contract off the source with ``ast``, without importing the
+    application: a guard that raises outside the ``AppException``
+    hierarchy (answered as HTTP 500 with no error code), a predicate-style
+    guard whose ``return False`` is silently ignored, an ``async`` guard on
+    a synchronous function, a guard that can never deny.
+
+    Errors are contract violations that break the check at runtime;
+    warnings are conventions and cases the checker could not resolve
+    (a lambda guard, a guard defined outside the scanned paths, a name
+    matching several definitions — reported rather than guessed). ``--check``
+    fails on errors, ``--check --strict`` on warnings as well.
+    """
+    from tempest_fastapi_sdk.cli.openapi_errors import default_source_paths
+    from tempest_fastapi_sdk.cli.permissions import analyze_permissions
+
+    targets = list(paths or []) or default_source_paths(Path.cwd())
+    if not targets:
+        typer.secho(
+            "No source directory found. Pass --path <dir> (expected ./src or ./app).",
+            fg="red",
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    try:
+        findings = analyze_permissions(targets)
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    if not findings:
+        typer.secho(
+            f"Every @requires guard honors its contract "
+            f"({', '.join(str(target) for target in targets)}).",
+            fg="green",
+        )
+        raise typer.Exit(0)
+
+    errors = [finding for finding in findings if finding.severity == "error"]
+    current: str | None = None
+    for finding in findings:
+        header = f"{finding.location}  {finding.function}"
+        if header != current:
+            typer.secho(header, fg="cyan")
+            current = header
+        typer.secho(
+            f"  {finding.severity}: {finding.code}: {finding.message}",
+            fg="red" if finding.severity == "error" else "yellow",
+        )
+
+    typer.secho(
+        f"{len(findings)} finding(s), {len(errors)} error(s).",
+        fg="red" if errors else "yellow",
+    )
+
+    if not check:
+        raise typer.Exit(0)
+    raise typer.Exit(1 if errors or strict else 0)
+
+
 @app.command("openapi-client")
 def openapi_client_cmd(
     spec: Annotated[
