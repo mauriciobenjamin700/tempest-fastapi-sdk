@@ -5,6 +5,42 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.168.3] — 2026-07-26
+
+Second post-release finding from `--fix` running against a real project. The
+first one only a foreign project could show; this one only a **formatted**
+project could show.
+
+### Fixed
+
+- **`tempest openapi-errors --fix` no longer emits a double comma into a
+  formatted decorator.** The insertion point is the closing parenthesis of the
+  route decorator, and the appended text was prefixed with an unconditional
+  `", "`. A decorator with more than one argument is wrapped over several lines
+  by `ruff format`, which leaves a **trailing comma**, so the splice produced
+  `status_code=201,\n, responses=error_responses(...)` — two commas in a row.
+  `render_file` then called `ast.parse` on it and raised `SyntaxError`, aborting
+  the whole run before anything was written: on a service with 18 drifting
+  routes the command was unusable, and its own claim that "nothing depends on
+  how the decorator happens to be formatted" was false. The separator is now
+  derived from the source via `tokenize` — `""` when the call already ends with
+  a comma or is empty, `", "` otherwise. Tokenizing rather than scanning text
+  backwards is what makes it correct when a `,` or `#` sits inside a string
+  literal (`description="a, b # c"`). New `_separator_before()` and
+  `_char_offset_of()` (`tokenize` reports character columns where `ast` reports
+  UTF-8 byte columns — mixing the two lands past the intended character on any
+  non-ASCII line).
+- **`RouteInfo.declares_empty_call` is no longer load-bearing.** The writer used
+  it to decide the comma, but the flag only knows whether the call has zero
+  arguments — it cannot see a trailing comma, which is the case that broke. It
+  stays as descriptive metadata; its docstring now says so.
+
+### Documentation
+
+- `docs/recipes/openapi-errors.md` / `.en.md` — the "edits anchored on the AST"
+  guarantee now explains how the separating comma is derived, and why it is
+  tokenized rather than pattern-matched.
+
 ## [0.168.2] — 2026-07-26
 
 The documentation-organization rule becomes executable. Documentation and

@@ -26,9 +26,11 @@ from __future__ import annotations
 import ast
 import difflib
 import importlib.util
+import io
 import shutil
 import subprocess
 import sys
+import tokenize
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -122,6 +124,83 @@ def _offset_of(source: str, line: int, col: int) -> int:
     line_end = source.find("\n", start)
     raw = source[start : line_end if line_end != -1 else len(source)]
     return start + len(raw.encode("utf-8")[:col].decode("utf-8", errors="ignore"))
+
+
+_LAYOUT_TOKENS: frozenset[int] = frozenset(
+    {
+        tokenize.COMMENT,
+        tokenize.DEDENT,
+        tokenize.ENCODING,
+        tokenize.INDENT,
+        tokenize.NEWLINE,
+        tokenize.NL,
+    }
+)
+"""Token types that carry layout, not code, and so cannot end an argument."""
+
+
+def _char_offset_of(source: str, line: int, col: int) -> int:
+    """Convert a 1-indexed ``(line, col)`` ``tokenize`` position to an offset.
+
+    Distinct from :func:`_offset_of` because the two libraries disagree on what
+    a column is: ``ast`` reports UTF-8 byte columns, ``tokenize`` reports
+    character columns. Feeding a ``tokenize`` position to :func:`_offset_of`
+    lands past the intended character on any line holding non-ASCII text.
+
+    Args:
+        source (str): The file contents.
+        line (int): 1-indexed line number.
+        col (int): 0-indexed character column.
+
+    Returns:
+        int: The offset into ``source``.
+    """
+    start = 0
+    for _ in range(line - 1):
+        start = source.index("\n", start) + 1
+    return start + col
+
+
+def _separator_before(source: str, offset: int) -> str:
+    """Return the separator an argument inserted at ``offset`` needs.
+
+    The insertion point is the closing parenthesis of a call, and what sits
+    before it decides whether a comma is needed. A decorator formatted over
+    several lines carries a **trailing comma** — the shape ``ruff format`` and
+    ``black`` produce, and therefore the shape most real routes have::
+
+        @router.put(
+            "/me",
+            status_code=200,
+        )
+
+    Prefixing an unconditional ``", "`` there emits ``status_code=200,\\n,
+    responses=...`` — two commas in a row, a ``SyntaxError`` that took down the
+    whole ``--fix`` run on the first route it met.
+
+    Tokenizing is what makes the check trustworthy: a ``,`` or ``#`` inside a
+    string literal (``description="a, b"``) is a token of its own, so scanning
+    backwards over raw text would mistake it for real punctuation.
+
+    Args:
+        source (str): The file contents.
+        offset (int): The insertion point — the closing parenthesis.
+
+    Returns:
+        str: ``""`` when the call already ends with a comma or is empty,
+        ``", "`` when the new argument must be separated from the previous one.
+    """
+    last: str | None = None
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type in _LAYOUT_TOKENS:
+                continue
+            if _char_offset_of(source, *token.end) > offset:
+                break
+            last = token.string
+    except (IndentationError, tokenize.TokenError):
+        return ", "
+    return "" if last in {",", "("} else ", "
 
 
 def _module_path(file: Path, root: Path) -> str | None:
@@ -232,17 +311,18 @@ def plan_file(
         joined = ", ".join(missing)
         if route.error_responses_end is not None:
             anchor = route.error_responses_end
-            text = joined if route.declares_empty_call else f", {joined}"
+            addition = joined
         elif route.raises_end is not None:
             anchor = route.raises_end
-            text = joined if route.declares_empty_call else f", {joined}"
+            addition = joined
         elif route.decorator_end is not None:
             anchor = route.decorator_end
-            text = f", responses={DECLARATION_HELPER}({joined})"
+            addition = f"responses={DECLARATION_HELPER}({joined})"
         else:
             continue
         # The recorded position is the closing parenthesis; insert before it.
         offset = _offset_of(source, anchor[0], anchor[1]) - 1
+        text = f"{_separator_before(source, offset)}{addition}"
         plan.insertions.append((offset, text))
         plan.routes.append(f"{route.method} {route.path}")
 
