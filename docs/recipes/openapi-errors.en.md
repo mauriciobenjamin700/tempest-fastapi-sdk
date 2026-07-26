@@ -455,6 +455,12 @@ Options:
     Two known imprecisions, both chosen to **over**-approximate rather than hide
     a hole:
 
+    - **A call with no receiver resolves to module-level functions only.** `f()`
+      cannot reach an instance method, so only free functions (imported helpers,
+      `@requires` guards) are followed. Before 0.170.2 an `update(UserModel)` —
+      SQLAlchemy's `update` — matched any `.update` method in the project, and a
+      category route was blamed for a coin pack's 404. `delete`, `insert` and
+      `select` collide the same way.
     - **A call with an untyped receiver resolves by name.** `self.svc.get_by_id()`
       resolves through the **type** of `self.svc` when the attribute is
       annotated, and the search stays inside that class's hierarchy. Without an

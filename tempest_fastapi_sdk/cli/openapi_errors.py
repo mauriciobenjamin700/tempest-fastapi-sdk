@@ -96,10 +96,14 @@ class FunctionInfo:
         raised (set[str]): Exception names raised directly in the body.
         documented (set[str]): Exception names listed in the docstring's
             ``Raises:`` section.
-        calls (set[str]): Names this function calls whose receiver could
-            **not** be typed, used as name-only call-graph edges. Holds
-            the bare name for ``f()`` and the attribute for
-            ``obj.f()`` when ``obj``'s class is unknown.
+        calls (set[str]): Names called **without a receiver** — ``f()`` — plus
+            the guards a ``@requires`` decorator names. Resolved only against
+            module-level functions, since a bare call can never reach an
+            instance method.
+        attr_calls (set[str]): Attribute names called on a receiver whose class
+            could **not** be typed — ``obj.f()`` where ``obj`` is unannotated.
+            Resolved against every function with that name, methods included,
+            because the real target is genuinely unknown.
         typed_calls (set[tuple[str, str]]): ``(class, method)`` pairs for
             calls whose receiver resolved to a class — ``self.svc.f()``
             with ``svc`` annotated, an annotated parameter, ``self.f()``
@@ -117,6 +121,7 @@ class FunctionInfo:
     raised: set[str] = field(default_factory=set)
     documented: set[str] = field(default_factory=set)
     calls: set[str] = field(default_factory=set)
+    attr_calls: set[str] = field(default_factory=set)
     typed_calls: set[tuple[str, str]] = field(default_factory=set)
     owner: str | None = None
     route: RouteInfo | None = None
@@ -904,10 +909,12 @@ def _iter_functions(
                     if callee is None:
                         continue
                     receiver = _receiver_type(child, owner, attr_types, local_types)
-                    if receiver is None:
-                        info.calls.add(callee)
-                    else:
+                    if receiver is not None:
                         info.typed_calls.add((receiver, callee))
+                    elif isinstance(child.func, ast.Attribute):
+                        info.attr_calls.add(callee)
+                    else:
+                        info.calls.add(callee)
         yield info
 
 
@@ -1089,16 +1096,22 @@ def _reachable_exceptions(
 ) -> set[str]:
     """Union the exceptions reachable from a handler's call graph.
 
-    Two kinds of edge are followed, and the difference is what keeps the
+    Three kinds of edge are followed, and the difference is what keeps the
     report honest:
 
     * A **typed** edge (``self.svc.f()``, ``super().f()``, an annotated
       parameter) resolves inside the receiver's class hierarchy only.
       Finding nothing there means the method is inherited from outside the
       scanned tree, so no edge is followed at all.
-    * A **name-only** edge (a receiver that could not be typed) still
-      follows every function with that name, over-approximating rather
-      than missing.
+    * A **bare** edge — ``f()``, with no receiver — resolves only against
+      module-level functions. A bare call cannot reach an instance method, and
+      treating it as if it could is how ``update(UserModel)`` (SQLAlchemy's
+      ``update``) reached an unrelated ``CoinPackService.update`` and put a coin
+      pack's 404 on a category route. Imported helpers still resolve, since they
+      are module-level too.
+    * An **attribute** edge — ``obj.f()`` where ``obj``'s class is unknown —
+      still follows every function with that name, methods included,
+      over-approximating rather than missing.
 
     Resolving everything by bare name — as this did before — made every
     ``super().delete(id)`` reach every other ``delete`` in the project,
@@ -1123,6 +1136,12 @@ def _reachable_exceptions(
         found |= (current.raised | current.documented) & known
         targets: list[FunctionInfo] = []
         for callee in current.calls:
+            targets.extend(
+                target
+                for target in graph.by_name.get(callee, ())
+                if target.owner is None
+            )
+        for callee in current.attr_calls:
             targets.extend(graph.by_name.get(callee, ()))
         for receiver, method in current.typed_calls:
             resolved = _typed_targets(receiver, method, graph.by_qualname, graph.bases)
