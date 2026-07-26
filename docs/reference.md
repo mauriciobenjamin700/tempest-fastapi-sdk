@@ -24,13 +24,59 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
-## Core
+## Admin
 
-### `tempest_fastapi_sdk.core`
+### `tempest_fastapi_sdk.admin`
 
-::: tempest_fastapi_sdk.core.typed.strict_types
-::: tempest_fastapi_sdk.core.typed.typed
-::: tempest_fastapi_sdk.core.typed.require_annotations
+::: tempest_fastapi_sdk.admin.site.AdminSite
+::: tempest_fastapi_sdk.admin.config.AdminModel
+::: tempest_fastapi_sdk.admin.config.Inline
+::: tempest_fastapi_sdk.admin.config.Lens
+::: tempest_fastapi_sdk.admin.permissions.AdminPermission
+::: tempest_fastapi_sdk.admin.permissions.AdminAccessPolicy
+::: tempest_fastapi_sdk.admin.dashboard.MetricCard
+::: tempest_fastapi_sdk.admin.dashboard.MetricValue
+::: tempest_fastapi_sdk.admin.dashboard.MetricTrend
+::: tempest_fastapi_sdk.admin.dashboard.MetricPartition
+::: tempest_fastapi_sdk.admin.actions.admin_action
+::: tempest_fastapi_sdk.admin.actions.AdminActionContext
+::: tempest_fastapi_sdk.admin.actions.AdminActionResult
+::: tempest_fastapi_sdk.admin.auth.AdminAuthBackend
+::: tempest_fastapi_sdk.admin.auth.UserModelAuthBackend
+::: tempest_fastapi_sdk.admin.router.make_admin_router
+::: tempest_fastapi_sdk.admin.discovery.discover_models
+::: tempest_fastapi_sdk.admin.session.AdminSession
+::: tempest_fastapi_sdk.admin.session.SignedCookieSessionStore
+
+---
+
+## API (integração FastAPI)
+
+### `tempest_fastapi_sdk.api`
+
+::: tempest_fastapi_sdk.api.handlers.register_exception_handlers
+::: tempest_fastapi_sdk.api.handlers.make_app_exception_handler
+::: tempest_fastapi_sdk.api.handlers.make_http_exception_handler
+::: tempest_fastapi_sdk.api.handlers.make_unhandled_exception_handler
+::: tempest_fastapi_sdk.api.error_docs.error_responses
+::: tempest_fastapi_sdk.api.error_docs.raises
+::: tempest_fastapi_sdk.api.error_docs.TempestAPIRouter
+::: tempest_fastapi_sdk.api.error_docs.RaisesSpec
+::: tempest_fastapi_sdk.api.error_docs.declared_raises
+
+---
+
+## Artefatos (registro de versões)
+
+### `tempest_fastapi_sdk.artifacts`
+
+::: tempest_fastapi_sdk.artifacts.model.ArtifactVersionMixin
+::: tempest_fastapi_sdk.artifacts.registry.ArtifactRegistry
+::: tempest_fastapi_sdk.artifacts.registry.ArtifactManifestEntry
+::: tempest_fastapi_sdk.artifacts.registry.build_manifest_entries
+::: tempest_fastapi_sdk.artifacts.digest.file_digest
+::: tempest_fastapi_sdk.artifacts.digest.object_digest
+::: tempest_fastapi_sdk.artifacts.actions.make_activate_artifact_action
 
 ---
 
@@ -70,28 +116,63 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
-## Schemas
+## Cache
 
-### `tempest_fastapi_sdk.schemas`
-
-::: tempest_fastapi_sdk.schemas.base.BaseSchema
-::: tempest_fastapi_sdk.schemas.response.BaseResponseSchema
-::: tempest_fastapi_sdk.schemas.pagination.BasePaginationFilterSchema
-::: tempest_fastapi_sdk.schemas.pagination.BasePaginationSchema
-::: tempest_fastapi_sdk.schemas.pagination.CursorPaginationFilterSchema
-::: tempest_fastapi_sdk.schemas.pagination.CursorPaginationSchema
-::: tempest_fastapi_sdk.schemas.pagination.SyncFilterSchema
-::: tempest_fastapi_sdk.schemas.pagination.SyncPaginationSchema
-::: tempest_fastapi_sdk.schemas.logs.LogEntrySchema
-::: tempest_fastapi_sdk.schemas.errors.ErrorResponseSchema
+::: tempest_fastapi_sdk.cache.redis_manager.AsyncRedisManager
+::: tempest_fastapi_sdk.cache.decorator.cached
+::: tempest_fastapi_sdk.cache.invalidation.CacheInvalidator
 
 ---
 
-## Services & Controllers
+## Chat
 
-::: tempest_fastapi_sdk.services.base.BaseService
-::: tempest_fastapi_sdk.services.file_mixin.StoredFileServiceMixin
-::: tempest_fastapi_sdk.controllers.base.BaseController
+### `tempest_fastapi_sdk.chat`
+
+::: tempest_fastapi_sdk.chat
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
+## Comentários e avaliações
+
+### `tempest_fastapi_sdk.reviews`
+
+::: tempest_fastapi_sdk.reviews
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
+## Computer vision
+
+### `tempest_fastapi_sdk.vision`
+
+::: tempest_fastapi_sdk.vision
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
+## Core
+
+### `tempest_fastapi_sdk.core`
+
+::: tempest_fastapi_sdk.core.typed.strict_types
+::: tempest_fastapi_sdk.core.typed.typed
+::: tempest_fastapi_sdk.core.typed.require_annotations
 
 ---
 
@@ -117,20 +198,62 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
-## API (integração FastAPI)
+## Feature flags
 
-### `tempest_fastapi_sdk.api`
+::: tempest_fastapi_sdk.flags.service.FeatureFlags
+::: tempest_fastapi_sdk.flags.backends.FeatureFlagBackend
+::: tempest_fastapi_sdk.flags.backends.MemoryFeatureFlagBackend
+::: tempest_fastapi_sdk.flags.backends.EnvFeatureFlagBackend
+::: tempest_fastapi_sdk.flags.backends.RedisFeatureFlagBackend
+::: tempest_fastapi_sdk.flags.backends.CompositeFeatureFlagBackend
+::: tempest_fastapi_sdk.flags.dependencies.make_flag_dependency
 
-::: tempest_fastapi_sdk.api.handlers.register_exception_handlers
-::: tempest_fastapi_sdk.api.handlers.make_app_exception_handler
-::: tempest_fastapi_sdk.api.handlers.make_http_exception_handler
-::: tempest_fastapi_sdk.api.handlers.make_unhandled_exception_handler
-::: tempest_fastapi_sdk.api.error_docs.error_responses
-::: tempest_fastapi_sdk.api.error_docs.raises
-::: tempest_fastapi_sdk.api.error_docs.TempestAPIRouter
-::: tempest_fastapi_sdk.api.error_docs.RaisesSpec
-::: tempest_fastapi_sdk.api.error_docs.declared_raises
+---
 
+## Fila e tarefas
+
+### `tempest_fastapi_sdk.queue`
+
+::: tempest_fastapi_sdk.queue
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+### `tempest_fastapi_sdk.tasks`
+
+::: tempest_fastapi_sdk.tasks
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
+## Geolocalização
+
+### `tempest_fastapi_sdk.geo`
+
+::: tempest_fastapi_sdk.geo
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+::: tempest_fastapi_sdk.geo.distance.EARTH_RADIUS_KM
+::: tempest_fastapi_sdk.geo.estimate.DEFAULT_CIRCUITY_FACTOR
+::: tempest_fastapi_sdk.geo.estimate.DEFAULT_CAR_SPEED_KMH
+::: tempest_fastapi_sdk.geo.estimate.DEFAULT_MODE_DURATION_FACTORS
+::: tempest_fastapi_sdk.geo.routing.DEFAULT_OSRM_BASE_URL
+::: tempest_fastapi_sdk.geo.routing.DEFAULT_MODE_PROFILES
+::: tempest_fastapi_sdk.geo.geocoding.DEFAULT_NOMINATIM_BASE_URL
+::: tempest_fastapi_sdk.geo.br.UF_CENTROIDS
 ---
 
 ## OpenAPI code generation
@@ -267,74 +390,20 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
-## Settings
+## Schemas
 
-### `tempest_fastapi_sdk.settings`
+### `tempest_fastapi_sdk.schemas`
 
-::: tempest_fastapi_sdk.settings.base.BaseAppSettings
-::: tempest_fastapi_sdk.settings.base.AppSettingsMeta
-::: tempest_fastapi_sdk.settings.mixins
-
----
-
-## Admin
-
-### `tempest_fastapi_sdk.admin`
-
-::: tempest_fastapi_sdk.admin.site.AdminSite
-::: tempest_fastapi_sdk.admin.config.AdminModel
-::: tempest_fastapi_sdk.admin.config.Inline
-::: tempest_fastapi_sdk.admin.config.Lens
-::: tempest_fastapi_sdk.admin.permissions.AdminPermission
-::: tempest_fastapi_sdk.admin.permissions.AdminAccessPolicy
-::: tempest_fastapi_sdk.admin.dashboard.MetricCard
-::: tempest_fastapi_sdk.admin.dashboard.MetricValue
-::: tempest_fastapi_sdk.admin.dashboard.MetricTrend
-::: tempest_fastapi_sdk.admin.dashboard.MetricPartition
-::: tempest_fastapi_sdk.admin.actions.admin_action
-::: tempest_fastapi_sdk.admin.actions.AdminActionContext
-::: tempest_fastapi_sdk.admin.actions.AdminActionResult
-::: tempest_fastapi_sdk.admin.auth.AdminAuthBackend
-::: tempest_fastapi_sdk.admin.auth.UserModelAuthBackend
-::: tempest_fastapi_sdk.admin.router.make_admin_router
-::: tempest_fastapi_sdk.admin.discovery.discover_models
-::: tempest_fastapi_sdk.admin.session.AdminSession
-::: tempest_fastapi_sdk.admin.session.SignedCookieSessionStore
-
----
-
-## Cache
-
-::: tempest_fastapi_sdk.cache.redis_manager.AsyncRedisManager
-::: tempest_fastapi_sdk.cache.decorator.cached
-::: tempest_fastapi_sdk.cache.invalidation.CacheInvalidator
-
----
-
-## Feature flags
-
-::: tempest_fastapi_sdk.flags.service.FeatureFlags
-::: tempest_fastapi_sdk.flags.backends.FeatureFlagBackend
-::: tempest_fastapi_sdk.flags.backends.MemoryFeatureFlagBackend
-::: tempest_fastapi_sdk.flags.backends.EnvFeatureFlagBackend
-::: tempest_fastapi_sdk.flags.backends.RedisFeatureFlagBackend
-::: tempest_fastapi_sdk.flags.backends.CompositeFeatureFlagBackend
-::: tempest_fastapi_sdk.flags.dependencies.make_flag_dependency
-
----
-
-## System checks
-
-### `tempest_fastapi_sdk.checks`
-
-::: tempest_fastapi_sdk.checks.messages.CheckLevel
-::: tempest_fastapi_sdk.checks.messages.CheckMessage
-::: tempest_fastapi_sdk.checks.registry.CheckRegistry
-::: tempest_fastapi_sdk.checks.registry.check
-::: tempest_fastapi_sdk.checks.registry.register_check
-::: tempest_fastapi_sdk.checks.registry.run_checks
-::: tempest_fastapi_sdk.checks.registry.run_system_checks
-::: tempest_fastapi_sdk.checks.registry.SystemCheckError
+::: tempest_fastapi_sdk.schemas.base.BaseSchema
+::: tempest_fastapi_sdk.schemas.response.BaseResponseSchema
+::: tempest_fastapi_sdk.schemas.pagination.BasePaginationFilterSchema
+::: tempest_fastapi_sdk.schemas.pagination.BasePaginationSchema
+::: tempest_fastapi_sdk.schemas.pagination.CursorPaginationFilterSchema
+::: tempest_fastapi_sdk.schemas.pagination.CursorPaginationSchema
+::: tempest_fastapi_sdk.schemas.pagination.SyncFilterSchema
+::: tempest_fastapi_sdk.schemas.pagination.SyncPaginationSchema
+::: tempest_fastapi_sdk.schemas.logs.LogEntrySchema
+::: tempest_fastapi_sdk.schemas.errors.ErrorResponseSchema
 
 ---
 
@@ -349,14 +418,21 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
-## WebSocket
+## Services & Controllers
 
-### `tempest_fastapi_sdk.websockets`
+::: tempest_fastapi_sdk.services.base.BaseService
+::: tempest_fastapi_sdk.services.file_mixin.StoredFileServiceMixin
+::: tempest_fastapi_sdk.controllers.base.BaseController
 
-::: tempest_fastapi_sdk.websockets.hub.WebSocketHub
-::: tempest_fastapi_sdk.websockets.hub.WebSocketConnection
-::: tempest_fastapi_sdk.websockets.router.make_websocket_router
-::: tempest_fastapi_sdk.websockets.schemas.WSEnvelope
+---
+
+## Settings
+
+### `tempest_fastapi_sdk.settings`
+
+::: tempest_fastapi_sdk.settings.base.BaseAppSettings
+::: tempest_fastapi_sdk.settings.base.AppSettingsMeta
+::: tempest_fastapi_sdk.settings.mixins
 
 ---
 
@@ -375,118 +451,18 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.ssr.webapp.BuildMode
 ---
 
-## Web Push
+## System checks
 
-### `tempest_fastapi_sdk.webpush`
+### `tempest_fastapi_sdk.checks`
 
-::: tempest_fastapi_sdk.webpush.dispatcher.WebPushDispatcher
-::: tempest_fastapi_sdk.webpush.service.WebPushSubscriptionService
-::: tempest_fastapi_sdk.webpush.router.make_web_push_router
-::: tempest_fastapi_sdk.db.webpush_subscription_model.BaseWebPushSubscriptionModel
-::: tempest_fastapi_sdk.webpush.schemas.WebPushSubscriptionSchema
-::: tempest_fastapi_sdk.webpush.schemas.WebPushPayloadSchema
-
----
-
-## Artefatos (registro de versões)
-
-### `tempest_fastapi_sdk.artifacts`
-
-::: tempest_fastapi_sdk.artifacts.model.ArtifactVersionMixin
-::: tempest_fastapi_sdk.artifacts.registry.ArtifactRegistry
-::: tempest_fastapi_sdk.artifacts.registry.ArtifactManifestEntry
-::: tempest_fastapi_sdk.artifacts.registry.build_manifest_entries
-::: tempest_fastapi_sdk.artifacts.digest.file_digest
-::: tempest_fastapi_sdk.artifacts.digest.object_digest
-::: tempest_fastapi_sdk.artifacts.actions.make_activate_artifact_action
-
----
-
-## Computer vision
-
-### `tempest_fastapi_sdk.vision`
-
-::: tempest_fastapi_sdk.vision
-    options:
-      show_root_toc_entry: false
-      show_submodules: false
-      members_order: source
-      filters:
-        - "!^_"
-
----
-
-## Geolocalização
-
-### `tempest_fastapi_sdk.geo`
-
-::: tempest_fastapi_sdk.geo
-    options:
-      show_root_toc_entry: false
-      show_submodules: false
-      members_order: source
-      filters:
-        - "!^_"
-
-::: tempest_fastapi_sdk.geo.distance.EARTH_RADIUS_KM
-::: tempest_fastapi_sdk.geo.estimate.DEFAULT_CIRCUITY_FACTOR
-::: tempest_fastapi_sdk.geo.estimate.DEFAULT_CAR_SPEED_KMH
-::: tempest_fastapi_sdk.geo.estimate.DEFAULT_MODE_DURATION_FACTORS
-::: tempest_fastapi_sdk.geo.routing.DEFAULT_OSRM_BASE_URL
-::: tempest_fastapi_sdk.geo.routing.DEFAULT_MODE_PROFILES
-::: tempest_fastapi_sdk.geo.geocoding.DEFAULT_NOMINATIM_BASE_URL
-::: tempest_fastapi_sdk.geo.br.UF_CENTROIDS
----
-
-## Fila e tarefas
-
-### `tempest_fastapi_sdk.queue`
-
-::: tempest_fastapi_sdk.queue
-    options:
-      show_root_toc_entry: false
-      show_submodules: false
-      members_order: source
-      filters:
-        - "!^_"
-
-### `tempest_fastapi_sdk.tasks`
-
-::: tempest_fastapi_sdk.tasks
-    options:
-      show_root_toc_entry: false
-      show_submodules: false
-      members_order: source
-      filters:
-        - "!^_"
-
----
-
-## Chat
-
-### `tempest_fastapi_sdk.chat`
-
-::: tempest_fastapi_sdk.chat
-    options:
-      show_root_toc_entry: false
-      show_submodules: false
-      members_order: source
-      filters:
-        - "!^_"
-
----
-
-## Comentários e avaliações
-
-### `tempest_fastapi_sdk.reviews`
-
-::: tempest_fastapi_sdk.reviews
-    options:
-      show_root_toc_entry: false
-      show_submodules: false
-      members_order: source
-      filters:
-        - "!^_"
+::: tempest_fastapi_sdk.checks.messages.CheckLevel
+::: tempest_fastapi_sdk.checks.messages.CheckMessage
+::: tempest_fastapi_sdk.checks.registry.CheckRegistry
+::: tempest_fastapi_sdk.checks.registry.check
+::: tempest_fastapi_sdk.checks.registry.register_check
+::: tempest_fastapi_sdk.checks.registry.run_checks
+::: tempest_fastapi_sdk.checks.registry.run_system_checks
+::: tempest_fastapi_sdk.checks.registry.SystemCheckError
 
 ---
 
@@ -528,3 +504,27 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.utils.locations.uf_choices
 ::: tempest_fastapi_sdk.utils.locations.region_choices
 ::: tempest_fastapi_sdk.utils.locations.city_choices
+
+## Web Push
+
+### `tempest_fastapi_sdk.webpush`
+
+::: tempest_fastapi_sdk.webpush.dispatcher.WebPushDispatcher
+::: tempest_fastapi_sdk.webpush.service.WebPushSubscriptionService
+::: tempest_fastapi_sdk.webpush.router.make_web_push_router
+::: tempest_fastapi_sdk.db.webpush_subscription_model.BaseWebPushSubscriptionModel
+::: tempest_fastapi_sdk.webpush.schemas.WebPushSubscriptionSchema
+::: tempest_fastapi_sdk.webpush.schemas.WebPushPayloadSchema
+
+---
+
+## WebSocket
+
+### `tempest_fastapi_sdk.websockets`
+
+::: tempest_fastapi_sdk.websockets.hub.WebSocketHub
+::: tempest_fastapi_sdk.websockets.hub.WebSocketConnection
+::: tempest_fastapi_sdk.websockets.router.make_websocket_router
+::: tempest_fastapi_sdk.websockets.schemas.WSEnvelope
+
+---

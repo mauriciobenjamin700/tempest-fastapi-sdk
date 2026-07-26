@@ -5,6 +5,43 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.168.1] — 2026-07-26
+
+Documentation navigation only — no code change, no API change.
+
+### Changed
+
+- **Everything a reader scans to find a page is alphabetical now.** The recipe
+  list had grown to 53 entries in insertion order, which turns a lookup into a
+  full pass over the list. Sorted, accent- and case-insensitively:
+    - the `Receitas` / `Recipes` nav section (including the
+      `Exemplos completos` / `Complete examples` sub-section, itself at its
+      alphabetical position);
+    - both tables on the Recipes landing (`Tema`/`Theme` with all 53 recipes,
+      and the complete-examples table), each sorted in its own language;
+    - the themed groups of `docs/reference.md`, with
+      `## Superfície de topo` pinned first;
+    - the module table in `README.md`;
+    - the extras table in `docs/installation.md` + `.en.md`, with `[all]` last
+      because it is the catch-all, not an entry to look up.
+- **English gets its own nav.** `mkdocs-static-i18n` translates labels but
+  cannot reorder a shared nav, so an alphabetical PT nav left the EN sidebar in
+  Portuguese order (`File in the service` before `Versioned artifacts` before
+  `Audit trail`). The `en` locale now declares a full `nav` of its own, sorted
+  in English. `nav_translations` stays for the labels the plugin still resolves.
+
+The top-level tabs and the learning-project pages are deliberately **not**
+alphabetical: they follow a reading order (install before tutorial, business
+rules before endpoint map), where sorting would be the regression.
+
+### Added
+
+- **`tests/test_nav_ordering.py`** — guards what the sweep above fixed: the two
+  navs cover the same pages (no page reachable in one language only), no page
+  is listed twice, the alphabetical sections are alphabetical in both
+  languages, and the Recipes landing tables are sorted. Eight tests; a swapped
+  entry fails them.
+
 ## [0.168.0] — 2026-07-26
 
 Permission guards gain injected metadata: one generic guard, a specific check
