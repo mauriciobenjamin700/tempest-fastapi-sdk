@@ -70,14 +70,53 @@ uv run pytest
         └── core/               # settings + constants + exceptions
     ```
 
-Continue com **[Instalação »](installation.md)** para o passo a passo por extra, **[Arquitetura »](architecture.md)** para entender o fatiamento em camadas, ou vá direto para o **[Tutorial »](tutorial.md)**.
+## Por onde continuar
+
+<div class="grid cards" markdown>
+
+-   **[Instalação »](installation.md)**
+
+    Passo a passo por extra: o que cada um traz, o que fica de fora do `[all]` e como pinar a versão.
+
+-   **[Arquitetura »](architecture.md)**
+
+    O fatiamento em camadas (router → controller → service → repository) e por que ele é obrigatório.
+
+-   **[Tutorial »](tutorial.md)**
+
+    Linear, do zero: constrói a feature *Users* inteira passo a passo.
+
+-   **[Receitas »](recipes/index.md)**
+
+    O coração da doc: o **tour do SDK** (um exemplo mínimo por bloco), o índice das **53 receitas**, os **exemplos completos** (checkout Pix, marketplace, admin, fullstack web, GenAI) e o **SSR tipado**.
+
+-   **[Referência »](reference.md)**
+
+    A API completa gerada dos docstrings — assinatura, parâmetros, retorno, exceções e link pro código.
+
+-   **[Projetos de aprendizado »](learning/index.md)**
+
+    Um projeto guiado (marketplace) com regras de negócio, modelo de domínio, fluxos críticos e mapa de endpoints — pra estudar decisões, não só APIs.
+
+-   **[Roadmap »](roadmap.md)**
+
+    O que já foi entregue por versão e o que está na fila. Honesto, não aspiracional.
+
+-   **[Guia de migração »](migration.md)** · **[Changelog »](changelog.md)**
+
+    Mudanças que quebram compatibilidade e o histórico versão a versão.
+
+</div>
+
+!!! tip "Achou algo faltando ou errado na doc?"
+    [Abra uma issue](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/new/choose) — tratamos regressão de doc como regressão de código. Veja **[Contribuindo »](contributing.md)**.
 
 ## Status
 
 | Superfície | Estado |
 | --- | --- |
 | Python | 3.11 / 3.12 / 3.13 (matriz testada no CI) |
-| Testes | 630+ casos de pytest, cobertura ≥ 89 % |
+| Testes | 2.650+ casos de pytest, cobertura ≥ 90 % |
 | Type-checking | `mypy --strict`, `py.typed` distribuído (PEP 561) |
 | Lint / format | `ruff` (check + fix + format) |
 | Pipeline de release | publicação confiável no PyPI a cada tag `vX.Y.Z` |

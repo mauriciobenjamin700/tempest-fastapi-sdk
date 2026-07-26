@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentação (PT-BR / EN-US)
+    url: https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/
+    about: Tutorial, receitas, exemplos completos e a referência da API — confira antes de abrir a issue.
+  - name: Divulgação de segurança
+    url: mailto:mauricio.benjamin@reloverelations.com
+    about: Relate vulnerabilidades em privado por e-mail, nunca em issue pública.

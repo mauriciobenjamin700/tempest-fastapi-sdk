@@ -5,6 +5,55 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.167.2] — 2026-07-26
+
+Documentation layout only — no code change, no API change.
+
+### Changed
+
+- **The tab bar is down from 13 tabs to 11, and every section is reachable from
+  the landing page.** `Exemplos` and `SSR (páginas tipadas)` were loose
+  top-level nav entries, which crowded the Material tab bar; the landing page
+  meanwhile pointed only at Installation / Architecture / Tutorial, so Recipes,
+  Reference and Learning projects existed on the bar and nowhere in the prose.
+  Both fixed:
+    - `Exemplos` is gone as a tab. The five integrated walkthroughs (Pix
+      checkout, neighborhood marketplace, full store admin, fullstack web,
+      GenAI flows) now live under **Recipes** as the `Exemplos completos` /
+      `Complete examples` sub-section, and are indexed in a table on the
+      Recipes landing. Their URLs are unchanged.
+    - `SSR (páginas tipadas)` is now a recipe, listed in the Recipes index
+      alongside the others. URL unchanged.
+    - The **SDK tour** was merged into the Recipes landing
+      (`docs/recipes/index.md`) as its opening section, so one page is the
+      entry point instead of two competing for the role. `docs/tour.md` /
+      `docs/tour.en.md` are removed and the `/tour/` URL is gone — inbound
+      links now target the tour section of the Recipes landing.
+    - The Recipes index table covers **all 53 recipes**; twelve were missing
+      (`authz`, `permission-guards`, `introspection-auth`, `geo`, `genai`,
+      `file-store`, `artifact-registry`, `openapi-errors`, `openapi-client`,
+      `system-checks`, `management-commands`, `react-spa`) plus SSR.
+    - The landing page gained a **"Por onde continuar" / "Where to go next"**
+      card grid naming every section — Installation, Architecture, Tutorial,
+      Recipes, Reference, Learning projects, Roadmap, Migration guide and
+      Changelog — and its stale Status row (`630+ tests, ≥ 89 %`) now reads
+      `2.650+ / ≥ 90 %`.
+- **Contributing is issue-first.** The page now opens with the policy: the
+  useful contribution is an issue, not a PR, because the public surface is
+  versioned and the bilingual docs ship in the same commit as the code. It
+  explains what makes an issue actionable, why the ordering exists, and what a
+  PR needs *after* an issue is accepted. "Docs typo → PR straight against
+  `docs/<page>.md`" is gone: a fix touching only one of the two language
+  mirrors leaves the site inconsistent, so typos are issues too.
+
+### Added
+
+- **GitHub issue forms** under `.github/ISSUE_TEMPLATE/` — bug, feature / API
+  idea, documentation and usage question — with `config.yml` disabling blank
+  issues and pointing at the docs site and the private security contact. Plus a
+  `PULL_REQUEST_TEMPLATE.md` carrying the project's PT-BR PR shape and a
+  documentation checklist.
+
 ## [0.167.1] — 2026-07-26
 
 ### Fixed
