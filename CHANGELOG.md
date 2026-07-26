@@ -5,6 +5,37 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.168.2] — 2026-07-26
+
+The documentation-organization rule becomes executable. Documentation and
+tooling only — no code change, no API change.
+
+### Added
+
+- **`tests/test_docs_organization.py`** (renamed from
+  `tests/test_nav_ordering.py`, 15 tests) — the project rule "the docs stay
+  organized and in order" is now asserted instead of reviewed. On top of the
+  ordering checks the previous release added, it covers the structural half,
+  each item of which has drifted at least once:
+    - every page exists in **both languages** (`docs/<page>.md` +
+      `docs/<page>.en.md`), and no `.en.md` is orphaned;
+    - every page on disk is **reachable from its language's nav** — MkDocs
+      warns for the default nav, the EN nav is ours to check;
+    - the two navs cover the **same set** of pages, with no duplicates;
+    - the alphabetical sections are alphabetical **in both languages**;
+    - the Recipes landing tables are sorted **and list every recipe in the
+      nav** (twelve were missing when last audited).
+- **A "Regra de organização da documentação" section in `CLAUDE.md`** — the
+  six-step checklist for adding or renaming a page (two languages, two navs,
+  alphabetical position, landing table, reference stub, strict build), what the
+  guard covers, and what is deliberately *not* alphabetical (top-level tabs,
+  `learning/` pages, the landing tour, and the submodule grouping inside the
+  reference).
+- **The same rule on the contributor-facing pages** — `docs/contributing.md` +
+  `.en.md` now state it under Docs, and
+  `.github/PULL_REQUEST_TEMPLATE.md` grew three checklist items (both navs,
+  landing table, the guard).
+
 ## [0.168.1] — 2026-07-26
 
 Documentation navigation only — no code change, no API change.

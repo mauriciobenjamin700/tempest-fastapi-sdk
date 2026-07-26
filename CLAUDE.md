@@ -474,6 +474,56 @@ analysis (Django Admin, Laravel Nova, SQLAdmin, Starlette-Admin) run
 **Admin backlog: empty.** No queued admin work — pick the next theme from
 business need, not from a stale list. Keep this honest, not aspirational.
 
+## Regra de organização da documentação
+
+**A documentação fica organizada, ordenada e completa nas duas línguas.**
+Isso não é revisão de gosto: é regra do projeto, verificada por
+`tests/test_docs_organization.py` (roda dentro do `make check`, logo na
+CI). Uma página nova não está pronta enquanto os itens abaixo não valem.
+
+### Ao adicionar (ou renomear) uma página
+
+1. **Duas línguas.** `docs/<página>.md` (PT-BR, default) **e**
+   `docs/<página>.en.md` (EN-US). Espelho faltando cai em fallback
+   silencioso no site.
+2. **Dois navs.** A entrada vai no `nav:` de topo **e** no `nav:` do
+   locale `en` (dentro do plugin `i18n` no `mkdocs.yml`). O
+   `mkdocs-static-i18n` traduz rótulo mas **não reordena** nav
+   compartilhado, por isso existem dois — mexer em um exige mexer no
+   outro.
+3. **Na posição alfabética**, em cada língua, pelo rótulo visível
+   (comparação case- e acento-insensível). Vale para a seção
+   `Receitas`/`Recipes` e a subseção `Exemplos completos`/`Complete
+   examples`.
+4. **Índice da landing.** Receita nova entra na tabela de
+   `docs/recipes/index.md` **e** `.en.md`, também em ordem alfabética.
+5. **Referência.** Símbolo público novo ganha stub em
+   `docs/reference.md` (a `reference.en.md` é página-ponteiro, não
+   duplica).
+6. **Build limpo.** `uv run --group docs mkdocs build --strict` com zero
+   warning.
+
+### O que o guard cobre
+
+- espelho `.en.md` para toda página, e nenhuma `.en.md` órfã;
+- toda página do disco alcançável pelo nav da sua língua;
+- os dois navs cobrindo o mesmo conjunto de páginas, sem duplicata;
+- seções alfabéticas alfabéticas **nas duas línguas**;
+- tabelas da landing de receitas ordenadas **e** cobrindo toda receita
+  do nav.
+
+### O que fica fora da ordem alfabética, de propósito
+
+Abas de topo (`Início → Instalação → Arquitetura → Tutorial → …`),
+páginas de `learning/` e o tour na landing de receitas seguem **ordem
+didática**. Ordenar essas seria a regressão. Fora do nav, a mesma
+disciplina vale para listas que o leitor usa como índice: tabela de
+módulos do README, tabela de extras da instalação (com `[all]` por
+último, por ser catch-all) e os grupos temáticos de
+`docs/reference.md` (com `## Superfície de topo` fixa no início). Dentro
+da referência, os blocos `###` de módulo e suas entradas `:::` mantêm o
+agrupamento por submódulo — ali o agrupamento é a informação.
+
 ## Conventions specific to this repo
 
 - **Typed examples in docs.** Every code block in `README.md`,
@@ -491,18 +541,10 @@ business need, not from a stale list. Keep this honest, not aspirational.
   the same PR — this drifts easily (it happened for both the admin
   tiers and the genai roadmap). Add `# docs-guard: skip` to a doc block
   only for an intentionally non-parseable fragment.
-- **Navegação e índices em ordem alfabética.** A seção `Receitas` do
-  `nav` (e a subseção `Exemplos completos`), as tabelas da landing de
-  receitas, os grupos temáticos de `docs/reference.md`, a tabela de
-  módulos do README e a de extras da instalação são ordenadas
-  alfabeticamente (case/acento-insensível; `[all]` fica por último por
-  ser catch-all). O `mkdocs-static-i18n` **não** reordena nav por
-  idioma, então o locale `en` declara um `nav` próprio já ordenado em
-  inglês — mexer em um nav exige mexer no outro.
-  `tests/test_nav_ordering.py` falha se algo sair de ordem, se um nav
-  ganhar página que o outro não tem, ou se uma página aparecer duas
-  vezes. Abas de topo e páginas de `learning/` seguem ordem didática,
-  não alfabética — de propósito.
+- **Regra: a documentação fica organizada e em ordem — e isso é
+  testado.** Ver a seção "Regra de organização da documentação" acima;
+  `tests/test_docs_organization.py` (roda no `make check`) é a
+  autoridade.
 - **No emojis in code or docs** unless the user explicitly asks.
 - **Bilingual docs.** Every page lives twice: `docs/<page>.md`
   (PT-BR, default) and `docs/<page>.en.md` (EN-US). The MkDocs
