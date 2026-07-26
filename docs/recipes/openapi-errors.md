@@ -451,6 +451,12 @@ Opções:
     Duas imprecisões conhecidas, ambas escolhidas para **super**estimar em vez
     de esconder buraco:
 
+    - **Chamada sem receptor resolve só para função de módulo.** `f()` não pode
+      alcançar método de instância, então só funções module-level (helpers
+      importados, guards de `@requires`) entram. Antes de 0.170.2 um
+      `update(UserModel)` — o `update` do SQLAlchemy — casava com qualquer
+      método `.update` do projeto, e uma rota de categoria era acusada de
+      levantar o 404 de coin pack. `delete`, `insert` e `select` colidem igual.
     - **Chamada com receptor não tipado resolve por nome.** `self.svc.get_by_id()`
       resolve pelo **tipo** de `self.svc` quando o atributo está anotado — e a
       busca fica restrita à hierarquia daquela classe. Sem anotação, cai em

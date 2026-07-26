@@ -5,6 +5,30 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.170.2] — 2026-07-26
+
+### Fixed
+
+- **A bare call no longer resolves to an instance method.** ``f()`` and
+  ``obj.f()`` were the same kind of edge, and they are not: a call with no
+  receiver cannot reach a method. The cost showed up on the most ordinary code
+  there is — a repository doing
+  ``await self.session.execute(update(UserModel).where(...))`` with SQLAlchemy's
+  imported ``update`` registered a call to ``update``, which then matched an
+  unrelated ``CoinPackService.update`` and reported a coin pack's 404 on a
+  *category* route. ``delete``, ``insert`` and ``select`` collide the same way,
+  so any project using the expression API alongside a service method of the same
+  name was affected. Bare calls now resolve against module-level functions only,
+  which keeps imported helpers and ``@requires`` guards reachable; a call on an
+  unannotated receiver keeps the wide resolution, since there the target really
+  is unknown. New ``FunctionInfo.attr_calls`` holds that second kind.
+
+  Two consequences worth expecting on upgrade: routes stop being blamed for
+  exceptions from unrelated domains, and a declaration that only existed
+  *because* of that blame now surfaces as ``unreachable``. In the service this
+  was found on, both happened — one wrong ``undocumented`` disappeared and one
+  wrong declaration got reported.
+
 ## [0.170.1] — 2026-07-26
 
 Follow-up to 0.170.0, found by running it on the same service: the new
