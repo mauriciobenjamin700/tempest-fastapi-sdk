@@ -131,6 +131,18 @@ GraphQL/gRPC (REST por decisão).
 !!! note "O roadmap é honesto, não aspiracional"
     Itens fora dos próximos cuts só vão pro changelog quando a pressão de negócio puxar. Esta página é atualizada a cada release — se algo deveria estar aqui e não está, abra uma issue.
 
+## Entregue na v0.167.0
+
+Guards de permissão — decorator + linter em duas camadas:
+
+| Feature | Status | Onde |
+|---------|--------|------|
+| **`@requires(*guards, user_param=None)`** | ✅ v0.167 | Roda guards que recebem o usuário e devolvem o usuário (ou `None`) antes do corpo, em rota, controller ou service, sync ou `async`. Guard nega levantando `AppException`; retorno não-`None` substitui o usuário visto pelo próximo guard e pelo corpo — é assim que `require_active` estreita `Optional[UserT]` para `UserT`. Param do usuário resolvido pela anotação (`BaseModel`/`BaseUserModel`), `user_param=` desempata. Assinatura preservada, então DI e schema OpenAPI ficam intactos. [Referência »](recipes/permission-guards.md) |
+| **Erro de uso em tempo de import** | ✅ v0.167 | `TempestPermissionError` para `@requires()` sem guard, guard não-callable, aridade errada, guard `async` em função sync e param de usuário ausente ou ambíguo. A aplicação não sobe com uma checagem que nunca roda. |
+| **Aviso de contrato em tempo de chamada** | ✅ v0.167 | `GuardContractWarning` quando o guard levanta fora da hierarquia `AppException` (a API responderia 500 sem `code`) ou devolve valor não-usuário como `False` (negação que seria ignorada). A exceção original continua propagando. |
+| **`tempest permissions --check` / `--strict` / `--path`** | ✅ v0.167 | Checagem estática (`ast`, sem importar a app) do que o runtime não vê: guard cujo `raise` nenhum teste exercita, guard nunca ligado. Erros `no-guards`/`user-param-missing`/`user-param-ambiguous`/`guard-arity`/`guard-async-in-sync`/`guard-returns-bool`/`guard-foreign-exception`; warnings `guard-never-denies`/`guard-missing-annotation`/`guard-return-type`/`guard-unresolved`. Guard ambíguo ou fora do escopo é reportado, nunca adivinhado. |
+| **Integração com os erros do OpenAPI** | ✅ v0.167 | `tempest openapi-errors` segue os guards do `@requires`, então a exceção de um guard aparece como `undocumented` até a rota declarar — e `--fix` escreve. `declared_guards` / `guarded_user_param` expõem os guards de uma rota para auditoria. |
+
 ## Entregue na v0.166.0
 
 Erros documentados no OpenAPI — correção automática:

@@ -75,6 +75,24 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `refresh_token_model=` on `UserAuthService`) with rotation,
   family-wide reuse detection and `POST /auth/logout`
   (`LogoutSchema`).
+- **Permission guards (v0.167.0)** — `@requires(*guards, user_param=None)`
+  (`tempest_fastapi_sdk.authz`, re-exported at the root) runs plain
+  `(user) -> user | None` guards before a function body, at any layer, sync or
+  async; guards deny by raising an `AppException`, and a non-`None` return
+  replaces the user the body sees (how `require_active` narrows `UserT | None`).
+  The user param resolves from the annotations (`BaseModel`/`BaseUserModel`
+  subclass), `user_param=` disambiguates. Misuse caught in three places:
+  `TempestPermissionError` at import (no guard, wrong arity, async guard on a
+  sync fn, unresolvable user param), `GuardContractWarning` at call time
+  (foreign exception, `return False`), and
+  `tempest permissions [--check|--strict|--path]` statically (`ast`) — errors
+  `no-guards`/`user-param-missing`/`user-param-ambiguous`/`guard-arity`/
+  `guard-async-in-sync`/`guard-returns-bool`/`guard-foreign-exception`,
+  warnings `guard-never-denies`/`guard-missing-annotation`/`guard-return-type`/
+  `guard-unresolved` (ambiguous or out-of-scope guard reported, never guessed).
+  `openapi-errors` follows the guards, so their exceptions land in
+  `error_responses(...)`. `declared_guards`/`guarded_user_param` introspect a
+  route. Recipe: `docs/recipes/permission-guards.md`.
 - **DB** — `AsyncDatabaseManager`, `BaseRepository[T]` with
   bulk ops (`bulk_create_values`, `bulk_upsert`, `bulk_update`,
   `add_all`, etc.), `AlembicHelper`, `BaseModel`, audit /
@@ -377,7 +395,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tempest db init/revision/upgrade/downgrade/current/history/seed`,
   `tempest user create [--admin] / list`, `tempest secrets rotate`,
   plus quality gates (`lint`, `fix`, `format`, `fmt-check`, `type`,
-  `test`, `check`), `openapi-errors`, `openapi-client`.
+  `test`, `check`), `openapi-errors`, `openapi-client`, `permissions`.
 
 The whole Tier S / Tier A / Tier B backlog that used to live here is
 **shipped**, and so is the five-item next-version plan that followed it

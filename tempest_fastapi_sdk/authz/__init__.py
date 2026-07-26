@@ -23,16 +23,34 @@ from tempest_fastapi_sdk.authz.permissions import check_permission as check_perm
 from tempest_fastapi_sdk.authz.permissions import default_registry as default_registry
 from tempest_fastapi_sdk.authz.permissions import has_perm as has_perm
 from tempest_fastapi_sdk.authz.permissions import permission as permission
+from tempest_fastapi_sdk.authz.requires import USER_PARAM_NAMES as USER_PARAM_NAMES
+from tempest_fastapi_sdk.authz.requires import Guard as Guard
+from tempest_fastapi_sdk.authz.requires import (
+    GuardContractWarning as GuardContractWarning,
+)
+from tempest_fastapi_sdk.authz.requires import (
+    TempestPermissionError as TempestPermissionError,
+)
+from tempest_fastapi_sdk.authz.requires import declared_guards as declared_guards
+from tempest_fastapi_sdk.authz.requires import guarded_user_param as guarded_user_param
+from tempest_fastapi_sdk.authz.requires import requires as requires
 
 __all__: list[str] = [
+    "USER_PARAM_NAMES",
+    "Guard",
+    "GuardContractWarning",
     "PermissionCheck",
     "PermissionMixin",
     "PermissionRegistry",
     "PermissionResolver",
     "SuperuserPredicate",
+    "TempestPermissionError",
     "check_permission",
+    "declared_guards",
     "default_registry",
+    "guarded_user_param",
     "has_perm",
     "make_permission_checker",
     "permission",
+    "requires",
 ]

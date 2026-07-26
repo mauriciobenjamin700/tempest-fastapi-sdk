@@ -183,3 +183,10 @@ The mixin delegates to the global registry (`default_registry`).
 - Superuser and static set are injectable via `PermissionRegistry`.
 - Rules match by exact string or wildcard (`order.*`, `*`).
 - `PermissionMixin` gives you `await user.has_perm(...)`.
+
+!!! tip "Already holding the user?"
+    When the check is an invariant on the user itself (active, admin, owner of
+    the resource) rather than a question for the registry,
+    [`@requires`](permission-guards.md) runs `(user) -> user | None` guards at
+    any layer — and a guard may call `check_permission(...)` to combine both
+    approaches.

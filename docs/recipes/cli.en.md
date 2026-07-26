@@ -504,6 +504,37 @@ Details and limitations in the [Errors in OpenAPI »](openapi-errors.md) recipe.
 
 ---
 
+### Permission guards — `tempest permissions`
+
+Reads the `@requires` guard contract straight off the source (`ast`, without
+importing the application) and reports what the decorator cannot see at import
+time:
+
+```bash
+tempest permissions                    # informative report (exit 0)
+tempest permissions --check            # exit 1 on any error (CI gate)
+tempest permissions --check --strict   # fail on warnings too
+tempest permissions --path src --path libs
+```
+
+```text
+src/api/routers/orders.py:41  delete_order
+  error: guard-foreign-exception: guard 'order_owner' raises ValueError, which is
+    not an AppException subclass; the API layer answers it as HTTP 500 without an
+    error code
+2 finding(s), 1 error(s).
+```
+
+Errors: a guard raising outside the `AppException` hierarchy, a predicate-style
+guard (`-> bool`), wrong arity, an `async` guard on a sync function, a route with
+no user parameter. Warnings: a guard that never denies, a missing annotation, a
+guard the checker could not resolve (lambda, duplicated name, definition outside
+the scanned paths).
+
+Details in the [Permission guards (`@requires`) »](permission-guards.md) recipe.
+
+---
+
 ### Integration client — `tempest openapi-client`
 
 Generates Pydantic schemas + a typed HTTP client from a third party's OpenAPI

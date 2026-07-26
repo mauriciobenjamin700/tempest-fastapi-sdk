@@ -154,6 +154,7 @@ plugins:
             "Arquivo no serviço (mixin)": "File in the service (mixin)"
             "Auth por introspecção (resource server)": "Introspection auth (resource server)"
             "Permissões object-level": "Object-level permissions"
+            "Guards de permissão (@requires)": "Permission guards (@requires)"
             "Campos validados (tipos prontos)": "Validated fields (ready-made types)"
             "Management commands (tempest <cmd>)": "Management commands (tempest <cmd>)"
             "IA generativa self-hosted": "Self-hosted generative AI"
@@ -254,6 +255,7 @@ nav:
       - Auth flow (signup/reset): recipes/auth-flow.md
       - "Auth por introspecção (resource server)": recipes/introspection-auth.md
       - "Permissões object-level": recipes/authz.md
+      - "Guards de permissão (@requires)": recipes/permission-guards.md
       - Banco de dados: recipes/database.md
       - Cache: recipes/cache.md
       - "Chat (conversas + mensagens)": recipes/chat.md

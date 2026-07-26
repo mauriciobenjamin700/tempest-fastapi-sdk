@@ -232,6 +232,12 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.authz.permissions.PermissionMixin
 ::: tempest_fastapi_sdk.authz.permissions.default_registry
 ::: tempest_fastapi_sdk.authz.dependencies.make_permission_checker
+::: tempest_fastapi_sdk.authz.requires.requires
+::: tempest_fastapi_sdk.authz.requires.Guard
+::: tempest_fastapi_sdk.authz.requires.declared_guards
+::: tempest_fastapi_sdk.authz.requires.guarded_user_param
+::: tempest_fastapi_sdk.authz.requires.TempestPermissionError
+::: tempest_fastapi_sdk.authz.requires.GuardContractWarning
 
 ### `tempest_fastapi_sdk.sessions`
 
