@@ -86,6 +86,85 @@ plugins:
           name: English (US)
           build: true
           site_name: tempest-fastapi-sdk
+          nav:
+            - Home: index.md
+            - Installation: installation.md
+            - Architecture: architecture.md
+            - Tutorial: tutorial.md
+            - Recipes:
+              - recipes/index.md
+              - Admin site: recipes/admin.md
+              - Audit trail: recipes/audit-trail.md
+              - Auth flow (signup/reset): recipes/auth-flow.md
+              - Brazilian helpers: recipes/br-helpers.md
+              - Cache: recipes/cache.md
+              - Chat (conversations + messages): recipes/chat.md
+              - CLI: recipes/cli.md
+              - Comments + ratings: recipes/reviews.md
+              - Complete examples:
+                - Fullstack web (SSR, WASM, server): fullstack-web.md
+                - GenAI examples (flows): genai-examples.md
+                - Integrated example (complete admin): admin-showcase.md
+                - Integrated example (local marketplace): marketplace-local.md
+                - Integrated example (Pix checkout): integrated.md
+              - Computer vision (ONNX): recipes/vision.md
+              - Database: recipes/database.md
+              - Downloads: recipes/downloads.md
+              - Errors in OpenAPI (Swagger): recipes/openapi-errors.md
+              - Feature flags: recipes/feature-flags.md
+              - File in the service (mixin): recipes/stored-files.md
+              - Geolocation (distance + time): recipes/geo.md
+              - HTTP client (outbound): recipes/http-client.md
+              - HTTP layer: recipes/http.md
+              - Idempotency: recipes/idempotency.md
+              - Integration client (OpenAPI): recipes/openapi-client.md
+              - Introspection auth (resource server): recipes/introspection-auth.md
+              - Logging: recipes/logging.md
+              - Management commands (tempest <cmd>): recipes/management-commands.md
+              - Metrics: recipes/metrics.md
+              - MFA (TOTP / 2FA): recipes/mfa.md
+              - Multi-tenant: recipes/multi-tenant.md
+              - Object-level permissions: recipes/authz.md
+              - Observability (tracing): recipes/observability.md
+              - Offline-first sync (delta): recipes/offline-sync.md
+              - Permission guards (@requires): recipes/permission-guards.md
+              - Queue & Tasks: recipes/queue-tasks.md
+              - React SPA inside FastAPI: recipes/react-spa.md
+              - Real-time: recipes/realtime.md
+              - Refresh tokens (rotation/revocation): recipes/refresh-tokens.md
+              - Safe deploys (migrations + shutdown): recipes/deploy-safety.md
+              - Security: recipes/security.md
+              - Self-hosted generative AI: recipes/genai.md
+              - Server-Sent Events (SSE): recipes/sse.md
+              - Server-side sessions: recipes/sessions.md
+              - SSR (typed pages): ssr.md
+              - Storage (MinIO/S3): recipes/storage.md
+              - System checks (check-config): recipes/system-checks.md
+              - tempestweb frontend + SDK: recipes/tempestweb-frontend.md
+              - Testing: recipes/testing.md
+              - Transactional email: recipes/email.md
+              - Transactional outbox: recipes/outbox.md
+              - Typing (static + runtime): recipes/typing.md
+              - Unified file store: recipes/file-store.md
+              - Uploads (backends): recipes/uploads.md
+              - Utilities: recipes/utilities.md
+              - Validated fields (ready-made types): recipes/fields.md
+              - Versioned artifacts (models): recipes/artifact-registry.md
+              - Web Push: recipes/webpush.md
+              - WebSocket router: recipes/websocket.md
+            - Reference: reference.md
+            - Learning projects:
+              - learning/index.md
+              - Marketplace:
+                - learning/marketplace/index.md
+                - Business rules: learning/marketplace/business-rules.md
+                - Domain model: learning/marketplace/domain.md
+                - Critical flows: learning/marketplace/flows.md
+                - Endpoint map: learning/marketplace/api.md
+            - Roadmap: roadmap.md
+            - Migration guide: migration.md
+            - Contributing: contributing.md
+            - Changelog: changelog.md
           nav_translations:
             Início: Home
             Instalação: Installation
@@ -241,63 +320,63 @@ nav:
   - Tutorial: tutorial.md
   - Receitas:
       - recipes/index.md
-      - "Exemplos completos":
-          - "Exemplo integrado (checkout Pix)": integrated.md
-          - "Exemplo integrado (marketplace local)": marketplace-local.md
-          - "Exemplo integrado (admin completo)": admin-showcase.md
-          - "Fullstack web (SSR, WASM, server)": fullstack-web.md
-          - "Exemplos de GenAI (fluxos)": genai-examples.md
-      - "SSR (páginas tipadas)": ssr.md
       - "Arquivo no serviço (mixin)": recipes/stored-files.md
       - "Artefatos versionados (modelos)": recipes/artifact-registry.md
       - Audit trail: recipes/audit-trail.md
       - Auth flow (signup/reset): recipes/auth-flow.md
       - "Auth por introspecção (resource server)": recipes/introspection-auth.md
-      - "Permissões object-level": recipes/authz.md
-      - "Guards de permissão (@requires)": recipes/permission-guards.md
       - Banco de dados: recipes/database.md
       - Cache: recipes/cache.md
-      - "Chat (conversas + mensagens)": recipes/chat.md
-      - "Comentários + avaliações": recipes/reviews.md
       - Camada HTTP: recipes/http.md
+      - "Campos validados (tipos prontos)": recipes/fields.md
+      - "Chat (conversas + mensagens)": recipes/chat.md
       - CLI: recipes/cli.md
+      - "Cliente de integração (OpenAPI)": recipes/openapi-client.md
+      - "Comentários + avaliações": recipes/reviews.md
       - "Deploy seguro (migrations + shutdown)": recipes/deploy-safety.md
       - Downloads: recipes/downloads.md
-      - "File store (unificado)": recipes/file-store.md
-      - "Campos validados (tipos prontos)": recipes/fields.md
       - Email transacional: recipes/email.md
+      - "Erros no OpenAPI (Swagger)": recipes/openapi-errors.md
+      - "Exemplos completos":
+          - "Exemplo integrado (admin completo)": admin-showcase.md
+          - "Exemplo integrado (checkout Pix)": integrated.md
+          - "Exemplo integrado (marketplace local)": marketplace-local.md
+          - "Exemplos de GenAI (fluxos)": genai-examples.md
+          - "Fullstack web (SSR, WASM, server)": fullstack-web.md
       - Feature flags: recipes/feature-flags.md
-      - "Geolocalização (distância + tempo)": recipes/geo.md
-      - "Management commands (tempest <cmd>)": recipes/management-commands.md
       - Fila e Tarefas: recipes/queue-tasks.md
+      - "File store (unificado)": recipes/file-store.md
+      - "Frontend tempestweb + SDK": recipes/tempestweb-frontend.md
+      - "Geolocalização (distância + tempo)": recipes/geo.md
+      - "Guards de permissão (@requires)": recipes/permission-guards.md
       - Helpers brasileiros: recipes/br-helpers.md
       - "HTTP client (saída)": recipes/http-client.md
       - "IA generativa self-hosted": recipes/genai.md
       - Idempotência: recipes/idempotency.md
       - Logging: recipes/logging.md
+      - "Management commands (tempest <cmd>)": recipes/management-commands.md
       - Métricas: recipes/metrics.md
       - MFA (TOTP / 2FA): recipes/mfa.md
       - Multi-tenant: recipes/multi-tenant.md
       - "Observabilidade (tracing)": recipes/observability.md
-      - "Erros no OpenAPI (Swagger)": recipes/openapi-errors.md
-      - "Cliente de integração (OpenAPI)": recipes/openapi-client.md
-      - "SPA React no FastAPI": recipes/react-spa.md
       - Outbox transacional: recipes/outbox.md
       - Painel admin: recipes/admin.md
+      - "Permissões object-level": recipes/authz.md
       - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md
       - Segurança: recipes/security.md
       - "Server-Sent Events (SSE)": recipes/sse.md
       - Sessões server-side: recipes/sessions.md
+      - "SPA React no FastAPI": recipes/react-spa.md
+      - "SSR (páginas tipadas)": ssr.md
       - Storage (MinIO/S3): recipes/storage.md
-      - "System checks (check-config)": recipes/system-checks.md
       - Sync offline-first (delta): recipes/offline-sync.md
+      - "System checks (check-config)": recipes/system-checks.md
       - Tempo real: recipes/realtime.md
-      - "Frontend tempestweb + SDK": recipes/tempestweb-frontend.md
       - Testes: recipes/testing.md
       - "Tipagem (estático + runtime)": recipes/typing.md
       - Uploads (backends): recipes/uploads.md
-      - "Visão computacional (ONNX)": recipes/vision.md
       - Utilitários: recipes/utilities.md
+      - "Visão computacional (ONNX)": recipes/vision.md
       - Web Push: recipes/webpush.md
       - WebSocket router: recipes/websocket.md
   - Referência: reference.md

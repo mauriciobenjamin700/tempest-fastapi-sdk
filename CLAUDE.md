@@ -491,6 +491,18 @@ business need, not from a stale list. Keep this honest, not aspirational.
   the same PR — this drifts easily (it happened for both the admin
   tiers and the genai roadmap). Add `# docs-guard: skip` to a doc block
   only for an intentionally non-parseable fragment.
+- **Navegação e índices em ordem alfabética.** A seção `Receitas` do
+  `nav` (e a subseção `Exemplos completos`), as tabelas da landing de
+  receitas, os grupos temáticos de `docs/reference.md`, a tabela de
+  módulos do README e a de extras da instalação são ordenadas
+  alfabeticamente (case/acento-insensível; `[all]` fica por último por
+  ser catch-all). O `mkdocs-static-i18n` **não** reordena nav por
+  idioma, então o locale `en` declara um `nav` próprio já ordenado em
+  inglês — mexer em um nav exige mexer no outro.
+  `tests/test_nav_ordering.py` falha se algo sair de ordem, se um nav
+  ganhar página que o outro não tem, ou se uma página aparecer duas
+  vezes. Abas de topo e páginas de `learning/` seguem ordem didática,
+  não alfabética — de propósito.
 - **No emojis in code or docs** unless the user explicitly asks.
 - **Bilingual docs.** Every page lives twice: `docs/<page>.md`
   (PT-BR, default) and `docs/<page>.en.md` (EN-US). The MkDocs
