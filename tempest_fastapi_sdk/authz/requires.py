@@ -51,7 +51,27 @@ The guard contract:
 * **returns the user, or ``None``** — a non-``None`` return replaces the
   user seen by the next guard *and* by the decorated function, which is
   how the SDK guards narrow ``UserT | None`` to ``UserT``; ``None`` keeps
-  the current user unchanged.
+  the current user unchanged;
+* **may declare a second parameter** ``meta: dict[str, Any]`` to receive
+  metadata, which is what makes one generic guard specific per call site:
+
+  ```python
+  def has_role(user: UserModel, meta: dict[str, Any]) -> UserModel:
+      if meta["role"] not in user.roles:
+          raise ForbiddenException(message="Role required")
+      return user
+
+
+  @requires(has_role, meta={"role": "manager"})
+  async def close_month(user: UserModel = Depends(get_current_user)) -> None: ...
+  ```
+
+  ``meta=`` carries literals fixed at decoration; ``include_args=True``
+  merges the arguments of the call (path params, body, other dependencies)
+  into the same mapping, so an ownership guard reads
+  ``meta["order_id"]`` without the route having to hand it over. One-parameter
+  guards are unaffected — the second argument is passed only to guards that
+  declare it.
 
 The decorated function keeps its signature, so FastAPI's dependency
 injection, ``mypy`` and the OpenAPI schema are unaffected, and the
@@ -86,13 +106,19 @@ import inspect
 import types
 import typing
 import warnings
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, TypeVar
 
 from tempest_fastapi_sdk.exceptions.base import AppException
 
-Guard = Callable[[Any], Any | Awaitable[Any] | None]
-"""A permission guard: ``(user) -> user | None``, sync or ``async``.
+Guard = Callable[..., Any | Awaitable[Any] | None]
+"""A permission guard, sync or ``async``.
+
+Two accepted shapes: ``(user) -> user | None`` and
+``(user, meta: dict[str, Any]) -> user | None``. The second one receives
+the metadata :func:`requires` was configured with (``meta=`` literals plus,
+under ``include_args=True``, the arguments of the call), which is how one
+generic guard becomes a specific check per call site.
 
 Denial is expressed by raising an :class:`AppException` subclass, never
 by returning a falsy value.
@@ -341,8 +367,8 @@ def _resolve_user_param(fn: Callable[..., Any], explicit: str | None) -> str:
     )
 
 
-def _validate_guard(guard: Guard, *, owner: str, allow_async: bool) -> None:
-    """Assert that a guard matches the ``(user) -> user | None`` contract.
+def _validate_guard(guard: Guard, *, owner: str, allow_async: bool) -> bool:
+    """Assert a guard matches the contract, and say whether it wants meta.
 
     Args:
         guard (Guard): The guard to validate.
@@ -350,9 +376,15 @@ def _validate_guard(guard: Guard, *, owner: str, allow_async: bool) -> None:
         allow_async (bool): Whether the decorated function can await —
             ``True`` only when it is itself ``async``.
 
+    Returns:
+        bool: ``True`` when the guard declares the optional second
+        parameter and must therefore be called as ``guard(user, meta)``.
+        A guard whose signature cannot be introspected (a C callable) is
+        reported as ``False`` and called with the user alone.
+
     Raises:
         TempestPermissionError: When the guard is not callable, does not
-            take exactly one fillable parameter, or is a coroutine
+            take one or two fillable parameters, or is a coroutine
             function under a synchronous decorated function.
     """
     if not callable(guard):
@@ -368,7 +400,7 @@ def _validate_guard(guard: Guard, *, owner: str, allow_async: bool) -> None:
     try:
         sig = inspect.signature(guard)
     except (TypeError, ValueError):
-        return
+        return False
 
     positional = 0
     accepts_varargs = False
@@ -382,18 +414,21 @@ def _validate_guard(guard: Guard, *, owner: str, allow_async: bool) -> None:
                 raise TempestPermissionError(
                     f"@requires on {owner}: guard {_guard_name(guard)!r} has a "
                     f"required keyword-only parameter {param.name!r}; a guard "
-                    f"receives the user positionally and nothing else"
+                    f"receives the user and the metadata positionally and "
+                    f"nothing else"
                 )
         elif param.default is inspect.Parameter.empty:
             positional += 1
 
     if accepts_varargs and positional <= 1:
-        return
-    if positional != 1:
+        return False
+    if positional not in (1, 2):
         raise TempestPermissionError(
             f"@requires on {owner}: guard {_guard_name(guard)!r} takes "
-            f"{positional} required params, expected 1 (user)"
+            f"{positional} required params, expected 1 (user) or 2 "
+            f"(user, meta)"
         )
+    return positional == 2
 
 
 def _is_dependency_marker(value: Any) -> bool:
@@ -447,13 +482,21 @@ def _accept_result(result: Any, user: Any, guard: Guard, owner: str) -> Any:
     return user
 
 
-def _call_guard(guard: Guard, user: Any, owner: str) -> Any:
+def _call_guard(
+    guard: Guard,
+    user: Any,
+    owner: str,
+    meta: dict[str, Any] | None = None,
+) -> Any:
     """Invoke a guard, flagging exceptions outside the SDK hierarchy.
 
     Args:
         guard (Guard): The guard to call.
         user (Any): The current user.
         owner (str): The decorated function's name, for the message.
+        meta (dict[str, Any] | None): The metadata mapping to pass as the
+            guard's second argument. ``None`` calls the guard with the
+            user alone, which is the contract for a one-parameter guard.
 
     Returns:
         Any: The guard's return value, awaitable for an async guard.
@@ -468,7 +511,7 @@ def _call_guard(guard: Guard, user: Any, owner: str) -> Any:
             with no error ``code``.
     """
     try:
-        return guard(user)
+        return guard(user) if meta is None else guard(user, meta)
     except Exception as exc:
         if not isinstance(exc, AppException):
             warnings.warn(
@@ -556,9 +599,57 @@ def _bind_user(
     return bound, default
 
 
+def _build_meta(
+    bound: inspect.BoundArguments,
+    user_param: str,
+    static_meta: dict[str, Any],
+    include_args: bool,
+) -> dict[str, Any]:
+    """Build the metadata mapping handed to the guards of one call.
+
+    A fresh dict per call, shared by every guard in that call — so a guard
+    may add a key the next guard reads, while nothing leaks into the next
+    request.
+
+    Args:
+        bound (inspect.BoundArguments): The decorated function's bound
+            arguments.
+        user_param (str): Name of the user parameter, excluded from the
+            merged arguments because the guard already receives the user.
+        static_meta (dict[str, Any]): Literals declared at decoration.
+        include_args (bool): Whether to merge the call's arguments.
+
+    Returns:
+        dict[str, Any]: The metadata mapping. Parameters the caller left
+        out contribute their default, so the guard sees the values the body
+        will actually run with; a default that is a framework injection
+        marker (``Depends(...)``) is skipped rather than handed over as a
+        value. Keys from ``static_meta`` win over argument names: the
+        decoration is the explicit declaration, the arguments are ambient
+        data.
+    """
+    if not include_args:
+        return dict(static_meta)
+    payload = {
+        name: value for name, value in bound.arguments.items() if name != user_param
+    }
+    for name, param in bound.signature.parameters.items():
+        if name in payload or name == user_param:
+            continue
+        if param.default is inspect.Parameter.empty:
+            continue
+        if _is_dependency_marker(param.default):
+            continue
+        payload[name] = param.default
+    payload.update(static_meta)
+    return payload
+
+
 def requires(
     *guards: Guard,
     user_param: str | None = None,
+    meta: Mapping[str, Any] | None = None,
+    include_args: bool = False,
 ) -> Callable[[F], F]:
     """Run permission guards on the user before the function body.
 
@@ -581,15 +672,38 @@ def requires(
     **below** the route decorator so the router registers the guarded
     function.
 
+    A guard may declare an optional **second parameter** to receive a
+    ``dict[str, Any]`` of metadata, which is what turns one generic guard
+    into a specific check per call site: ``meta`` carries the literals
+    declared at decoration (``meta={"role": "manager"}``), and
+    ``include_args=True`` merges the arguments of the call itself (path
+    params, body, injected dependencies other than the user) into the same
+    mapping, so an ownership guard can read ``meta["order_id"]``. Guards
+    that declare one parameter are called exactly as before.
+
     Example:
         ```python
         @router.delete(
             "/orders/{order_id}",
             responses=error_responses(ForbiddenException),
         )
-        @requires(require_active, order_owner)
+        @requires(require_active, order_owner, include_args=True)
         async def delete_order(
             order_id: UUID,
+            user: UserModel = Depends(get_current_user),
+        ) -> None: ...
+        ```
+
+        ```python
+        def has_role(user: UserModel, meta: dict[str, Any]) -> UserModel:
+            # Raises ForbiddenException when the declared role is missing.
+            if meta["role"] not in user.roles:
+                raise ForbiddenException(message="Role required")
+            return user
+
+
+        @requires(has_role, meta={"role": "manager"})
+        async def close_month(
             user: UserModel = Depends(get_current_user),
         ) -> None: ...
         ```
@@ -598,6 +712,14 @@ def requires(
         *guards (Guard): One or more guards, applied in order.
         user_param (str | None): Name of the parameter carrying the user.
             ``None`` resolves it from the annotations.
+        meta (Mapping[str, Any] | None): Literal metadata handed to every
+            guard that declares a second parameter. Copied at decoration
+            time, so a later mutation of the passed mapping cannot change
+            what the route enforces.
+        include_args (bool): When ``True``, the arguments the decorated
+            function was called with (minus the user) are merged into the
+            metadata mapping. Keys from ``meta`` win over argument names,
+            since the decoration is the explicit declaration.
 
     Returns:
         Callable[[F], F]: The decorator, returning a wrapper with the same
@@ -606,8 +728,10 @@ def requires(
     Raises:
         TempestPermissionError: At decoration time when no guard was
             given, a guard is not callable or has the wrong signature, an
-            ``async`` guard is used on a synchronous function, or the user
-            parameter cannot be resolved.
+            ``async`` guard is used on a synchronous function, the user
+            parameter cannot be resolved, ``meta`` is not a mapping, or
+            ``meta`` / ``include_args`` was given while no guard declares a
+            second parameter to receive it.
 
     Warns:
         GuardContractWarning: At call time when a guard raises a
@@ -623,6 +747,13 @@ def requires(
             "@requires() needs at least one guard; an empty decorator would "
             "silently allow every request"
         )
+    if meta is not None and not isinstance(meta, Mapping):
+        raise TempestPermissionError(
+            f"@requires(meta=...) must be a mapping of str to Any, got "
+            f"{type(meta).__name__}"
+        )
+    static_meta: dict[str, Any] = dict(meta or {})
+    declares_meta = meta is not None or include_args
 
     def decorator(fn: F) -> F:
         """Wrap ``fn`` so the guards run before its body.
@@ -639,8 +770,16 @@ def requires(
         """
         owner = _guard_name(fn)
         is_async = inspect.iscoroutinefunction(fn)
-        for guard in guards:
+        wants_meta = tuple(
             _validate_guard(guard, owner=owner, allow_async=is_async)
+            for guard in guards
+        )
+        if declares_meta and not any(wants_meta):
+            raise TempestPermissionError(
+                f"@requires on {owner}: meta= / include_args= was given but no "
+                f"guard declares a second parameter to receive it; add "
+                f"(user, meta) to a guard or drop the argument"
+            )
         param = _resolve_user_param(fn, user_param)
         sig = inspect.signature(fn)
 
@@ -651,8 +790,11 @@ def requires(
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 """Run the guards, then await the decorated coroutine."""
                 bound, user = _bind_user(sig, param, owner, args, kwargs)
-                for guard in guards:
-                    result = _call_guard(guard, user, owner)
+                payload = _build_meta(bound, param, static_meta, include_args)
+                for guard, takes_meta in zip(guards, wants_meta, strict=True):
+                    result = _call_guard(
+                        guard, user, owner, payload if takes_meta else None
+                    )
                     if inspect.isawaitable(result):
                         result = await result
                     user = _accept_result(result, user, guard, owner)
@@ -672,8 +814,11 @@ def requires(
                         resolve.
                 """
                 bound, user = _bind_user(sig, param, owner, args, kwargs)
-                for guard in guards:
-                    result = _call_guard(guard, user, owner)
+                payload = _build_meta(bound, param, static_meta, include_args)
+                for guard, takes_meta in zip(guards, wants_meta, strict=True):
+                    result = _call_guard(
+                        guard, user, owner, payload if takes_meta else None
+                    )
                     if inspect.isawaitable(result):
                         raise TempestPermissionError(
                             f"@requires on {owner}: guard "
@@ -691,6 +836,7 @@ def requires(
             wrapper.__signature__ = resolved
         wrapper.__tempest_guards__ = tuple(guards)
         wrapper.__tempest_user_param__ = param
+        wrapper.__tempest_guard_meta__ = dict(static_meta)
         return typing.cast("F", wrapper)
 
     return decorator
@@ -714,6 +860,24 @@ def declared_guards(fn: Callable[..., Any]) -> tuple[Guard, ...]:
     return tuple(getattr(fn, "__tempest_guards__", ()))
 
 
+def guard_metadata(fn: Callable[..., Any]) -> dict[str, Any]:
+    """Return the literal metadata :func:`requires` attached to a function.
+
+    Only the ``meta=`` literals, which are fixed at decoration time — the
+    arguments merged by ``include_args=True`` exist per call and cannot be
+    read from the function object.
+
+    Args:
+        fn (Callable[..., Any]): The (possibly decorated) function.
+
+    Returns:
+        dict[str, Any]: A copy of the declared metadata, empty when the
+        function carries none.
+    """
+    value = getattr(fn, "__tempest_guard_meta__", None)
+    return dict(value) if isinstance(value, dict) else {}
+
+
 def guarded_user_param(fn: Callable[..., Any]) -> str | None:
     """Return the parameter name :func:`requires` reads the user from.
 
@@ -734,6 +898,7 @@ __all__: list[str] = [
     "GuardContractWarning",
     "TempestPermissionError",
     "declared_guards",
+    "guard_metadata",
     "guarded_user_param",
     "requires",
 ]

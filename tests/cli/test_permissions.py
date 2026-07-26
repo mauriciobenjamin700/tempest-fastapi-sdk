@@ -154,7 +154,9 @@ class TestGuardDefinitionFindings:
     def test_arity(self, tmp_path: Path) -> None:
         guards = GOOD_GUARDS.replace(
             "def order_owner(user: UserModel) -> UserModel:",
-            "def order_owner(user: UserModel, order: object) -> UserModel:",
+            "def order_owner(\n"
+            "    user: UserModel, meta: dict[str, Any], order: object\n"
+            ") -> UserModel:",
         )
         assert "guard-arity" in codes(tmp_path, guards=guards)
 
@@ -387,3 +389,112 @@ class TestCommand:
         result = CliRunner().invoke(app, ["permissions"])
         assert result.exit_code == 2
         assert "No source directory found" in result.output
+
+
+META_GUARDS: str = '''"""Authorization guards."""
+
+from typing import Any
+
+from src.core.exceptions import NotOrderOwnerException
+from src.db.models import UserModel
+
+
+def order_owner(user: UserModel, meta: dict[str, Any]) -> UserModel:
+    """Assert the user owns the order named by the metadata.
+
+    Args:
+        user (UserModel): The authenticated user.
+        meta (dict[str, Any]): Metadata injected by @requires.
+
+    Returns:
+        UserModel: The same user.
+
+    Raises:
+        NotOrderOwnerException: When the user is not the owner.
+    """
+    if meta["order_id"] not in user.orders:
+        raise NotOrderOwnerException()
+    return user
+'''
+
+
+class TestMetadataFindings:
+    def test_meta_guard_with_include_args_is_clean(self, tmp_path: Path) -> None:
+        router = GOOD_ROUTER.replace(
+            "@requires(require_active, order_owner)",
+            "@requires(require_active, order_owner, include_args=True)",
+        )
+        assert codes(tmp_path, guards=META_GUARDS, router=router) == set()
+
+    def test_meta_guard_with_static_meta_is_clean(self, tmp_path: Path) -> None:
+        router = GOOD_ROUTER.replace(
+            "@requires(require_active, order_owner)",
+            '@requires(require_active, order_owner, meta={"order_id": "x"})',
+        )
+        assert codes(tmp_path, guards=META_GUARDS, router=router) == set()
+
+    def test_meta_guard_without_configuration_warns(self, tmp_path: Path) -> None:
+        assert "guard-meta-missing" in codes(tmp_path, guards=META_GUARDS)
+
+    def test_meta_parameter_annotation(self, tmp_path: Path) -> None:
+        guards = META_GUARDS.replace(
+            "def order_owner(user: UserModel, meta: dict[str, Any]) -> UserModel:",
+            "def order_owner(user: UserModel, meta: str) -> UserModel:",
+        )
+        router = GOOD_ROUTER.replace(
+            "@requires(require_active, order_owner)",
+            "@requires(require_active, order_owner, include_args=True)",
+        )
+        assert "guard-meta-annotation" in codes(tmp_path, guards=guards, router=router)
+
+    def test_meta_parameter_unannotated(self, tmp_path: Path) -> None:
+        guards = META_GUARDS.replace(
+            "def order_owner(user: UserModel, meta: dict[str, Any]) -> UserModel:",
+            "def order_owner(user: UserModel, meta) -> UserModel:",
+        )
+        router = GOOD_ROUTER.replace(
+            "@requires(require_active, order_owner)",
+            "@requires(require_active, order_owner, include_args=True)",
+        )
+        assert "guard-missing-annotation" in codes(
+            tmp_path, guards=guards, router=router
+        )
+
+    def test_meta_unused(self, tmp_path: Path) -> None:
+        router = GOOD_ROUTER.replace(
+            "@requires(require_active, order_owner)",
+            '@requires(require_active, order_owner, meta={"role": "manager"})',
+        )
+        assert "meta-unused" in codes(tmp_path, router=router)
+
+    def test_meta_unused_held_back_for_an_unresolved_guard(
+        self, tmp_path: Path
+    ) -> None:
+        router = GOOD_ROUTER.replace(
+            "@requires(require_active, order_owner)",
+            "@requires(imported_from_elsewhere, include_args=True)",
+        )
+        found = codes(tmp_path, router=router)
+        assert "meta-unused" not in found
+        assert "guard-unresolved" in found
+
+    def test_meta_key_collision(self, tmp_path: Path) -> None:
+        router = GOOD_ROUTER.replace(
+            "@requires(require_active, order_owner)",
+            '@requires(order_owner, meta={"order_id": "x"}, include_args=True)',
+        )
+        assert "meta-key-collision" in codes(
+            tmp_path, guards=META_GUARDS, router=router
+        )
+
+    def test_command_reports_meta_unused_as_error(self, tmp_path: Path) -> None:
+        router = GOOD_ROUTER.replace(
+            "@requires(require_active, order_owner)",
+            '@requires(order_owner, meta={"role": "manager"})',
+        )
+        write_project(tmp_path, guards=GOOD_GUARDS, router=router)
+        result = CliRunner().invoke(
+            app, ["permissions", "--check", "--path", str(tmp_path / "src")]
+        )
+        assert result.exit_code == 1
+        assert "meta-unused" in result.output

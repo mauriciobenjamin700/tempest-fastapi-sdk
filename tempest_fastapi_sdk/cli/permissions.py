@@ -26,8 +26,12 @@ What it reports, per ``@requires``-decorated function:
   model, and no ``user_param=`` to point at one.
 * ``user-param-ambiguous`` (error) — several user-model parameters and no
   ``user_param=`` choosing between them.
-* ``guard-arity`` (error) — the guard does not take exactly one required
-  parameter.
+* ``guard-arity`` (error) — the guard does not take one required parameter
+  (the user) or two (the user plus the injected ``dict[str, Any]`` of
+  metadata).
+* ``meta-unused`` (error) — the decoration passes ``meta=`` /
+  ``include_args=True`` but no guard declares a second parameter to receive
+  it, so the configuration does nothing.
 * ``guard-async-in-sync`` (error) — an ``async`` guard on a synchronous
   function; the coroutine would never be awaited.
 * ``guard-returns-bool`` (error) — a predicate-style guard: its ``False``
@@ -41,6 +45,13 @@ What it reports, per ``@requires``-decorated function:
   return type is unannotated, against the project convention.
 * ``guard-return-type`` (warning) — the return annotation is neither the
   user, ``None``, nor their union.
+* ``guard-meta-missing`` (warning) — the guard declares a metadata
+  parameter but the decoration supplies none, so it reads an empty dict.
+* ``guard-meta-annotation`` (warning) — the metadata parameter is annotated
+  as something that cannot hold a ``dict[str, Any]``.
+* ``meta-key-collision`` (warning) — a ``meta=`` literal key shadows a
+  parameter name under ``include_args=True``; the literal wins and the
+  argument never reaches the guard.
 * ``guard-unresolved`` (warning) — the guard argument is not a plain name
   (a lambda, a call), or its definition is outside the scanned paths, or
   its name maps to several definitions. Reported rather than guessed: a
@@ -212,6 +223,48 @@ def _unresolvable_guard_args(call: ast.Call) -> list[str]:
     ]
 
 
+def _call_guard_names(call: ast.Call) -> list[str]:
+    """Return the resolvable guard names of one ``requires(...)`` call.
+
+    Args:
+        call (ast.Call): The decorator call.
+
+    Returns:
+        list[str]: The plain names passed positionally, in order.
+    """
+    return [
+        arg.id if isinstance(arg, ast.Name) else arg.attr
+        for arg in call.args
+        if isinstance(arg, ast.Name | ast.Attribute)
+    ]
+
+
+def _unresolved_guard_names(
+    call: ast.Call,
+    nodes: dict[str, list[_FunctionNode]],
+) -> list[str]:
+    """Return the guard references whose arity could not be determined.
+
+    Used to hold back the ``meta-unused`` verdict: a guard the checker
+    cannot resolve may well be the one that declares the metadata
+    parameter, and reporting "no guard receives it" would then be wrong.
+
+    Args:
+        call (ast.Call): The decorator call.
+        nodes (dict[str, list[_FunctionNode]]): Definitions per name.
+
+    Returns:
+        list[str]: Labels of the unresolvable references.
+    """
+    unresolved = _unresolvable_guard_args(call)
+    for name in _call_guard_names(call):
+        if name in SDK_GUARDS:
+            continue
+        if len(nodes.get(name, [])) != 1:
+            unresolved.append(name)
+    return unresolved
+
+
 def _explicit_user_param(call: ast.Call) -> str | None:
     """Return the ``user_param=`` literal of a ``requires(...)`` call.
 
@@ -299,6 +352,70 @@ def _annotation_mentions_user(annotation: ast.expr | None, users: set[str]) -> b
     return False
 
 
+_MAPPING_ANNOTATION_NAMES: frozenset[str] = frozenset(
+    {"dict", "Dict", "Mapping", "MutableMapping", "Any", "object"}
+)
+"""Annotation heads accepted for a guard's metadata parameter."""
+
+
+def _is_mapping_annotation(annotation: ast.expr) -> bool:
+    """Return whether an annotation reads as the injected metadata mapping.
+
+    Args:
+        annotation (ast.expr): The annotation node.
+
+    Returns:
+        bool: ``True`` for ``dict[...]`` / ``Mapping[...]`` / bare ``dict``
+        / ``Any`` — the shapes that can receive a ``dict[str, Any]``.
+    """
+    node: ast.expr = annotation
+    if isinstance(node, ast.Subscript):
+        node = node.value
+    if isinstance(node, ast.Attribute):
+        return node.attr in _MAPPING_ANNOTATION_NAMES
+    if isinstance(node, ast.Name):
+        return node.id in _MAPPING_ANNOTATION_NAMES
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value.split("[", 1)[0].rsplit(".", 1)[-1] in (
+            _MAPPING_ANNOTATION_NAMES
+        )
+    return False
+
+
+def _supplies_meta(call: ast.Call) -> tuple[bool, bool, list[str]]:
+    """Read the metadata configuration off a ``requires(...)`` call.
+
+    Args:
+        call (ast.Call): The decorator call.
+
+    Returns:
+        tuple[bool, bool, list[str]]: Whether metadata is supplied at all,
+        whether ``include_args`` is truthy, and the literal keys of a
+        ``meta={...}`` dict (empty when it is not a dict literal — a
+        variable is supplied but its keys cannot be read statically).
+    """
+    supplies = False
+    include_args = False
+    keys: list[str] = []
+    for keyword in call.keywords:
+        if keyword.arg == "meta":
+            supplies = True
+            if isinstance(keyword.value, ast.Dict):
+                keys = [
+                    key.value
+                    for key in keyword.value.keys
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str)
+                ]
+        elif keyword.arg == "include_args":
+            value = keyword.value
+            if (
+                isinstance(value, ast.Constant) and value.value is True
+            ) or not isinstance(value, ast.Constant):
+                supplies = True
+                include_args = True
+    return supplies, include_args, keys
+
+
 def _required_positional(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.arg]:
     """Return the parameters a caller must fill positionally.
 
@@ -370,6 +487,7 @@ def _check_guard_definition(
     guard_name: str,
     owner: str,
     owner_is_async: bool,
+    takes_meta: bool,
     users: set[str],
     known_exceptions: set[str],
     reachable_raises: set[str],
@@ -381,6 +499,9 @@ def _check_guard_definition(
         guard_name (str): The name it was referenced by.
         owner (str): The decorated function's name, for the message.
         owner_is_async (bool): Whether the decorated function is ``async``.
+        takes_meta (bool): Whether the ``@requires`` decoration supplies
+            metadata (``meta=`` or ``include_args=True``), which is what a
+            two-parameter guard needs to be useful.
         users (set[str]): Known user-model class names.
         known_exceptions (set[str]): Names that count as exception classes.
         reachable_raises (set[str]): Exceptions reachable from the guard's
@@ -414,20 +535,47 @@ def _check_guard_definition(
 
     positional = _required_positional(node)
     takes_varargs = node.args.vararg is not None
-    if len(positional) != 1 and not (takes_varargs and len(positional) <= 1):
+    if len(positional) not in (1, 2) and not (takes_varargs and len(positional) <= 1):
         add(
             "guard-arity",
             f"guard {guard_name!r} takes {len(positional)} required params, "
-            f"expected 1 (user)",
+            f"expected 1 (user) or 2 (user, meta)",
             "error",
         )
-    elif positional and positional[0].annotation is None:
-        add(
-            "guard-missing-annotation",
-            f"guard {guard_name!r} parameter {positional[0].arg!r} has no type "
-            f"annotation",
-            "warning",
-        )
+    else:
+        if positional and positional[0].annotation is None:
+            add(
+                "guard-missing-annotation",
+                f"guard {guard_name!r} parameter {positional[0].arg!r} has no "
+                f"type annotation",
+                "warning",
+            )
+        if len(positional) == 2:
+            meta_arg = positional[1]
+            if meta_arg.annotation is None:
+                add(
+                    "guard-missing-annotation",
+                    f"guard {guard_name!r} metadata parameter "
+                    f"{meta_arg.arg!r} has no type annotation; expected "
+                    f"dict[str, Any]",
+                    "warning",
+                )
+            elif not _is_mapping_annotation(meta_arg.annotation):
+                add(
+                    "guard-meta-annotation",
+                    f"guard {guard_name!r} declares {meta_arg.arg!r} as "
+                    f"{ast.unparse(meta_arg.annotation)}; @requires injects a "
+                    f"dict[str, Any] as the second argument",
+                    "warning",
+                )
+            if not takes_meta:
+                add(
+                    "guard-meta-missing",
+                    f"guard {guard_name!r} declares a metadata parameter but "
+                    f"the @requires on {owner} passes neither meta= nor "
+                    f"include_args=True; it would read an empty dict",
+                    "warning",
+                )
 
     for index, arg in enumerate(node.args.kwonlyargs):
         if node.args.kw_defaults[index] is None:
@@ -565,6 +713,7 @@ def _check_usage(
             "error",
         )
 
+    supplies_meta, include_args, meta_keys = _supplies_meta(call)
     explicit = _explicit_user_param(call)
     parameters = {
         arg.arg
@@ -603,7 +752,19 @@ def _check_usage(
             "warning",
         )
 
+    if supplies_meta and include_args:
+        collisions = sorted(set(meta_keys) & parameters)
+        for name in collisions:
+            add(
+                "meta-key-collision",
+                f"@requires(meta={{...}}, include_args=True) declares key "
+                f"{name!r}, which is also a parameter of {owner_name}; the "
+                f"literal wins and the argument never reaches the guard",
+                "warning",
+            )
+
     owner_is_async = isinstance(node, ast.AsyncFunctionDef)
+    meta_consumers = 0
     for guard_name in guard_names(node):
         if guard_name in SDK_GUARDS:
             continue
@@ -628,6 +789,8 @@ def _check_usage(
             )
             continue
         definition = definitions[0]
+        if len(_required_positional(definition.node)) == 2:
+            meta_consumers += 1
         reachable: set[str] = set()
         for info in infos.get(guard_name, []):
             reachable |= _reachable_exceptions(info, infos, known_exceptions)
@@ -637,10 +800,23 @@ def _check_usage(
                 guard_name=guard_name,
                 owner=owner_name,
                 owner_is_async=owner_is_async,
+                takes_meta=supplies_meta,
                 users=users,
                 known_exceptions=known_exceptions,
                 reachable_raises=reachable,
             )
+        )
+
+    if (
+        supplies_meta
+        and meta_consumers == 0
+        and not _unresolved_guard_names(call, nodes)
+    ):
+        add(
+            "meta-unused",
+            f"@requires on {owner_name} passes meta= / include_args= but no "
+            f"guard declares a second parameter to receive it",
+            "error",
         )
     return findings
 

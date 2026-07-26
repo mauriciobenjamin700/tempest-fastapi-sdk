@@ -161,6 +161,7 @@ from tempest_fastapi_sdk.authz import (
     check_permission,
     declared_guards,
     default_registry,
+    guard_metadata,
     guarded_user_param,
     has_perm,
     make_permission_checker,
@@ -444,7 +445,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.167.2"
+__version__: str = "0.168.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -768,6 +769,7 @@ __all__: list[str] = [
     "get_client_ip_from_scope",
     "get_request_id",
     "get_state",
+    "guard_metadata",
     "guarded_user_param",
     "has_perm",
     "hash_opaque_token",
