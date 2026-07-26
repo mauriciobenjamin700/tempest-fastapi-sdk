@@ -156,7 +156,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.settings` | `BaseAppSettings` (+ `AppSettingsMeta`), `ServerSettings`, `LogSettings`, `DatabaseSettings`, `RedisSettings`, `RabbitMQSettings`, `JWTSettings`, `CORSSettings`, `EmailSettings`, `UploadSettings`, `TokenSettings`, `WebPushSettings`, `TaskIQSettings`, `MinIOSettings`, `AuthSettings` |
 | `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, OpenAPI error docs (`error_responses`, `raises`, `TempestAPIRouter`, `RaisesSpec`, `declared_raises`), `apply_cors`, `make_health_router`, `make_logs_router`, `make_prometheus_router`, `make_prometheus_registry`, `PrometheusMiddleware`, `BusinessMetrics`, `LogSource`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware` (+ `RateLimitStore`/`MemoryRateLimitStore`/`RedisRateLimitStore`/`RateLimitResult` and `key_by_ip`/`key_by_jwt_subject`/`key_by_jwt_claim`/`key_by_header`), `IdempotencyMiddleware`, `MemoryIdempotencyStore`, `RedisIdempotencyStore`, `BodySizeLimitMiddleware`, `CSRFMiddleware`, `make_csrf_token_dependency`, `GracefulShutdownMiddleware`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, outbound `WebhookSender` (+ `WebhookDelivery`), OAuth2 (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`), `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `make_spa_router` (serve a compiled React/Vite SPA with a client-side fallback), `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck`, `setup_tracing` *(extra: `[otel]`)* |
 | `tempest_fastapi_sdk.auth` *(extra: `[auth]`, opcional `[email]`, `[mfa]`)* | `UserAuthService`, `make_auth_router`, `SignupSchema` / `LoginSchema` / `RefreshSchema` / `PasswordResetRequestSchema` / `PasswordResetConfirmSchema` + responses, `ActivationToken`, `PasswordResetToken`, email change/verify/recovery (`EmailChangeRequestSchema` / `EmailChangeConfirmSchema` / `EmailRecoveryRequestSchema` / `EmailChangeToken` / `EmailVerificationToken`, old-email security notice, opt-in `AUTH_EMAIL_RECOVERY_ENABLED`), MFA schemas (`MFAEnrollResponseSchema` / `MFAConfirmSchema` / `MFAVerifySchema` / `MFADisableSchema`), opt-in DB-backed refresh tokens (`BaseUserRefreshTokenModel` / `make_user_refresh_token_model` / `LogoutSchema`) with rotation + reuse detection + `POST /auth/logout`, bilingual emails + backend pages (`AUTH_DEFAULT_LOCALE`, `normalize_locale` / `negotiate_locale`) — signup/activate/login/refresh/logout/reset + email change/recovery + TOTP 2FA out of the box |
-| `tempest_fastapi_sdk.authz` | Object-level permissions: `permission` (rule decorator), `has_perm` / `check_permission`, `PermissionRegistry` (injectable superuser bypass + static-permission fallback, `order.*`/`*` wildcards), `make_permission_checker` (FastAPI route guard), `PermissionMixin` (`await user.has_perm(perm, obj=...)`), `default_registry`, `requires` (guard decorator `(user) -> user | None`, checked at import time + by `tempest permissions`), `declared_guards` / `guarded_user_param`, `TempestPermissionError`, `GuardContractWarning` |
+| `tempest_fastapi_sdk.authz` | Object-level permissions: `permission` (rule decorator), `has_perm` / `check_permission`, `PermissionRegistry` (injectable superuser bypass + static-permission fallback, `order.*`/`*` wildcards), `make_permission_checker` (FastAPI route guard), `PermissionMixin` (`await user.has_perm(perm, obj=...)`), `default_registry`, `requires` (guard decorator `(user) -> user | None`, optional `meta: dict[str, Any]` second parameter via `meta=` / `include_args=`, checked at import time + by `tempest permissions`), `declared_guards` / `guarded_user_param` / `guard_metadata`, `TempestPermissionError`, `GuardContractWarning` |
 | `tempest_fastapi_sdk.checks` | System checks (Django-style config validation): `check` (register decorator), `run_checks` / `run_system_checks` (raises `SystemCheckError` on ERROR+), `CheckMessage` / `CheckLevel` + `debug`/`info`/`warning`/`error`/`critical`, `CheckRegistry` / `default_registry`; built-in settings checks + the `tempest check-config` CLI (auto-detects settings, `--tag` / `--fail-level`) |
 | `tempest_fastapi_sdk.controllers` | `BaseController` |
 | `tempest_fastapi_sdk.services` | `BaseService` |
@@ -4022,6 +4022,27 @@ async def delete_order(
 ```
 
 The user parameter is found by annotation (`user_param=` breaks a tie), and a guard's non-`None` return replaces the user the body sees — which is how `require_active` narrows `UserT | None` to `UserT`.
+
+A guard may declare a second parameter to receive a `dict[str, Any]` of metadata, which is what turns one generic guard into a specific check per call site — `meta=` carries literals fixed at decoration, `include_args=True` merges the call's own arguments:
+
+```python
+def has_role(user: UserModel, meta: dict[str, Any]) -> UserModel:
+    """Deny unless the user holds the role the route declared."""
+    if meta["role"] not in user.roles:
+        raise MissingRoleException(role=meta["role"])
+    return user
+
+
+@requires(has_role, meta={"role": "manager"})
+async def close_month(user: UserModel = Depends(get_current_user)) -> None: ...
+
+
+@requires(order_owner, include_args=True)      # guard reads meta["order_id"]
+async def delete_order(
+    order_id: UUID,
+    user: UserModel = Depends(get_current_user),
+) -> None: ...
+```
 
 Misuse is caught in three places: `TempestPermissionError` at import time (no guard, wrong arity, `async` guard on a sync function, no user parameter), `GuardContractWarning` at call time (a guard raising outside the `AppException` hierarchy, or returning `False` instead of denying), and `tempest permissions --check` in CI, which reads the same contract statically.
 

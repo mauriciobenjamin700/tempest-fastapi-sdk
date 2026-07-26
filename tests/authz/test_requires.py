@@ -14,6 +14,7 @@ from tempest_fastapi_sdk import (
     ForbiddenException,
     UnauthorizedException,
     declared_guards,
+    guard_metadata,
     guarded_user_param,
     register_exception_handlers,
     requires,
@@ -256,21 +257,22 @@ class TestDecorationTimeValidation:
                 return "ok"
 
     def test_wrong_arity_rejected(self) -> None:
-        def two_params(user: UserModel, obj: Any) -> UserModel:
+        def three_params(user: UserModel, meta: dict[str, Any], obj: Any) -> UserModel:
             """Take one parameter too many.
 
             Args:
                 user (UserModel): The current user.
-                obj (Any): The target object.
+                meta (dict[str, Any]): Injected metadata.
+                obj (Any): The unfillable extra.
 
             Returns:
                 UserModel: The same user.
             """
             return user
 
-        with pytest.raises(TempestPermissionError, match="expected 1"):
+        with pytest.raises(TempestPermissionError, match=r"expected 1 \(user\) or 2"):
 
-            @requires(two_params)
+            @requires(three_params)
             def handler(user: UserModel) -> str:
                 """Never decorated successfully."""
                 return "ok"
@@ -552,3 +554,259 @@ class TestFastAPIIntegration:
         schema = app.openapi()
         parameters = schema["paths"]["/orders/{order_id}"]["get"]["parameters"]
         assert [param["name"] for param in parameters] == ["order_id"]
+
+
+class TestMetadata:
+    def test_static_meta_reaches_the_guard(self) -> None:
+        seen: list[dict[str, Any]] = []
+
+        def has_role(user: UserModel, meta: dict[str, Any]) -> UserModel:
+            """Record the metadata and deny when the role is missing.
+
+            Args:
+                user (UserModel): The current user.
+                meta (dict[str, Any]): Injected metadata.
+
+            Returns:
+                UserModel: The same user.
+
+            Raises:
+                ForbiddenException: When the declared role is missing.
+            """
+            seen.append(meta)
+            if meta["role"] != "manager":
+                raise ForbiddenException(message="Role required")
+            return user
+
+        @requires(has_role, meta={"role": "manager"})
+        def handler(user: UserModel) -> str:
+            """Run for a manager."""
+            return "ok"
+
+        assert handler(make_user()) == "ok"
+        assert seen == [{"role": "manager"}]
+
+    def test_static_meta_denies(self) -> None:
+        def has_role(user: UserModel, meta: dict[str, Any]) -> UserModel:
+            """Deny unless the declared role matches.
+
+            Args:
+                user (UserModel): The current user.
+                meta (dict[str, Any]): Injected metadata.
+
+            Returns:
+                UserModel: The same user.
+
+            Raises:
+                ForbiddenException: When the declared role is missing.
+            """
+            if meta["role"] != "manager":
+                raise ForbiddenException(message="Role required")
+            return user
+
+        @requires(has_role, meta={"role": "auditor"})
+        def handler(user: UserModel) -> str:
+            """Never reached."""
+            return "ok"
+
+        with pytest.raises(ForbiddenException):
+            handler(make_user())
+
+    def test_include_args_merges_the_call_arguments(self) -> None:
+        seen: list[dict[str, Any]] = []
+
+        def owns(user: UserModel, meta: dict[str, Any]) -> UserModel:
+            """Record the metadata built for this call.
+
+            Args:
+                user (UserModel): The current user.
+                meta (dict[str, Any]): Injected metadata.
+
+            Returns:
+                UserModel: The same user.
+            """
+            seen.append(dict(meta))
+            return user
+
+        @requires(owns, include_args=True)
+        def handler(order_id: str, user: UserModel, tenant: str = "acme") -> str:
+            """Run with the arguments visible to the guard."""
+            return order_id
+
+        assert handler("order-1", make_user()) == "order-1"
+        assert seen == [{"order_id": "order-1", "tenant": "acme"}]
+
+    def test_include_args_excludes_the_user(self) -> None:
+        seen: list[dict[str, Any]] = []
+
+        def probe(user: UserModel, meta: dict[str, Any]) -> None:
+            """Record the metadata keys.
+
+            Args:
+                user (UserModel): The current user.
+                meta (dict[str, Any]): Injected metadata.
+            """
+            seen.append(dict(meta))
+
+        @requires(probe, include_args=True)
+        def handler(user: UserModel) -> str:
+            """Run with no argument other than the user."""
+            return "ok"
+
+        handler(make_user())
+        assert seen == [{}]
+
+    def test_static_meta_wins_over_an_argument(self) -> None:
+        seen: list[dict[str, Any]] = []
+
+        def probe(user: UserModel, meta: dict[str, Any]) -> None:
+            """Record the metadata.
+
+            Args:
+                user (UserModel): The current user.
+                meta (dict[str, Any]): Injected metadata.
+            """
+            seen.append(dict(meta))
+
+        @requires(probe, meta={"scope": "declared"}, include_args=True)
+        def handler(scope: str, user: UserModel) -> str:
+            """Run with a colliding argument name."""
+            return scope
+
+        handler("from-call", make_user())
+        assert seen == [{"scope": "declared"}]
+
+    def test_one_param_guards_are_untouched(self) -> None:
+        calls: list[str] = []
+
+        def wants_meta(user: UserModel, meta: dict[str, Any]) -> None:
+            """Record that the two-parameter guard got the metadata.
+
+            Args:
+                user (UserModel): The current user.
+                meta (dict[str, Any]): Injected metadata.
+            """
+            calls.append(f"meta:{meta['role']}")
+
+        def wants_user(user: UserModel) -> None:
+            """Record that the one-parameter guard still gets only the user.
+
+            Args:
+                user (UserModel): The current user.
+            """
+            calls.append("user-only")
+
+        @requires(wants_meta, wants_user, meta={"role": "manager"})
+        def handler(user: UserModel) -> str:
+            """Mix guards that want metadata with guards that do not."""
+            return "ok"
+
+        assert handler(make_user()) == "ok"
+        assert calls == ["meta:manager", "user-only"]
+
+    def test_guards_share_the_mapping_within_a_call(self) -> None:
+        def stamp(user: UserModel, meta: dict[str, Any]) -> None:
+            """Add a key for the next guard.
+
+            Args:
+                user (UserModel): The current user.
+                meta (dict[str, Any]): Injected metadata.
+            """
+            meta["stamped"] = True
+
+        seen: list[dict[str, Any]] = []
+
+        def read(user: UserModel, meta: dict[str, Any]) -> None:
+            """Read what the previous guard added.
+
+            Args:
+                user (UserModel): The current user.
+                meta (dict[str, Any]): Injected metadata.
+            """
+            seen.append(dict(meta))
+
+        @requires(stamp, read, meta={"role": "manager"})
+        def handler(user: UserModel) -> str:
+            """Run both metadata guards."""
+            return "ok"
+
+        handler(make_user())
+        handler(make_user())
+        assert seen == [
+            {"role": "manager", "stamped": True},
+            {"role": "manager", "stamped": True},
+        ]
+
+    def test_declared_meta_is_copied_at_decoration(self) -> None:
+        declared: dict[str, Any] = {"role": "manager"}
+
+        def probe(user: UserModel, meta: dict[str, Any]) -> None:
+            """Assert the guard sees the value declared at decoration.
+
+            Args:
+                user (UserModel): The current user.
+                meta (dict[str, Any]): Injected metadata.
+            """
+            assert meta["role"] == "manager"
+
+        @requires(probe, meta=declared)
+        def handler(user: UserModel) -> str:
+            """Run with the copied metadata."""
+            return "ok"
+
+        declared["role"] = "intern"
+        assert handler(make_user()) == "ok"
+        assert guard_metadata(handler) == {"role": "manager"}
+
+    async def test_async_guard_receives_metadata(self) -> None:
+        seen: list[dict[str, Any]] = []
+
+        async def probe(user: UserModel, meta: dict[str, Any]) -> UserModel:
+            """Record the metadata asynchronously.
+
+            Args:
+                user (UserModel): The current user.
+                meta (dict[str, Any]): Injected metadata.
+
+            Returns:
+                UserModel: The same user.
+            """
+            seen.append(dict(meta))
+            return user
+
+        @requires(probe, meta={"role": "manager"}, include_args=True)
+        async def handler(order_id: str, user: UserModel) -> str:
+            """Run with metadata on the async path."""
+            return order_id
+
+        assert await handler("order-1", make_user()) == "order-1"
+        assert seen == [{"order_id": "order-1", "role": "manager"}]
+
+    def test_meta_without_a_consumer_rejected(self) -> None:
+        with pytest.raises(TempestPermissionError, match="no guard declares"):
+
+            @requires(owner_only, meta={"role": "manager"})
+            def handler(user: UserModel) -> str:
+                """Never decorated successfully."""
+                return "ok"
+
+    def test_include_args_without_a_consumer_rejected(self) -> None:
+        with pytest.raises(TempestPermissionError, match="no guard declares"):
+
+            @requires(owner_only, include_args=True)
+            def handler(user: UserModel) -> str:
+                """Never decorated successfully."""
+                return "ok"
+
+    def test_non_mapping_meta_rejected(self) -> None:
+        with pytest.raises(TempestPermissionError, match="must be a mapping"):
+            requires(owner_only, meta=["role"])  # type: ignore[arg-type]
+
+    def test_metadata_is_empty_without_configuration(self) -> None:
+        @requires(owner_only)
+        def handler(user: UserModel) -> str:
+            """Carry no declared metadata."""
+            return "ok"
+
+        assert guard_metadata(handler) == {}
+        assert guard_metadata(owner_only) == {}

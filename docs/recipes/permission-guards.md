@@ -163,6 +163,114 @@ async def me(user: UserModel | None = Depends(get_current_user_soft)) -> UserMod
 
 Devolver `None` é permitido e significa "não mexi no usuário".
 
+## Metadata: um guard genérico, vários call sites
+
+Um guard pode declarar um **segundo parâmetro** `meta: dict[str, Any]`. É isso que transforma um guard genérico numa checagem específica por rota — em vez de escrever `manager_only`, `auditor_only`, `admin_only`, você escreve `has_role` uma vez e cada call site diz qual papel exige.
+
+```python
+from typing import Any
+
+from tempest_fastapi_sdk import ForbiddenException, requires
+
+from src.db.models import UserModel
+
+
+def has_role(user: UserModel, meta: dict[str, Any]) -> UserModel:
+    """Assert the user holds the role the route declared.
+
+    Args:
+        user (UserModel): The authenticated user.
+        meta (dict[str, Any]): Metadata injected by ``@requires``.
+
+    Returns:
+        UserModel: The same user.
+
+    Raises:
+        MissingRoleException: When the declared role is missing.
+    """
+    if meta["role"] not in user.roles:
+        raise MissingRoleException(role=meta["role"])
+    return user
+
+
+@router.post("/reports/close-month")
+@requires(has_role, meta={"role": "manager"})
+async def close_month(user: UserModel = Depends(get_current_user)) -> None:
+    """Close the accounting month.
+
+    Args:
+        user (UserModel): The authenticated manager.
+    """
+    ...
+```
+
+Guards de **um** parâmetro continuam exatamente como antes — o segundo argumento só vai para quem o declara. Você pode misturar os dois numa mesma decoração.
+
+### `include_args=True`: o guard vê os argumentos da chamada
+
+`meta=` carrega literais fixados na decoração. Quando a checagem depende do **recurso** da requisição, ligue `include_args=True` e os argumentos da chamada (path params, body, outras dependências) entram no mesmo dicionário:
+
+```python
+def order_owner(user: UserModel, meta: dict[str, Any]) -> UserModel:
+    """Assert the user owns the order named by the metadata.
+
+    Args:
+        user (UserModel): The authenticated user.
+        meta (dict[str, Any]): Metadata injected by ``@requires``.
+
+    Returns:
+        UserModel: The same user.
+
+    Raises:
+        NotOrderOwnerException: When the user does not own the order.
+    """
+    if meta["order_id"] not in user.order_ids:
+        raise NotOrderOwnerException()
+    return user
+
+
+@router.delete("/orders/{order_id}")
+@requires(require_active, order_owner, include_args=True)
+async def delete_order(
+    order_id: UUID,
+    user: UserModel = Depends(get_current_user),
+) -> None:
+    """Delete an order the caller owns.
+
+    Args:
+        order_id (UUID): The order to delete.
+        user (UserModel): The authenticated, active, owning user.
+    """
+    ...
+```
+
+O guard recebe `{"order_id": UUID(...)}` sem a rota precisar repassar nada.
+
+!!! info "Regras da mesclagem"
+    - O **usuário sai** do dicionário — o guard já o recebe no primeiro parâmetro.
+    - Parâmetro que o chamador omitiu contribui com o **default**, então o guard vê os valores com que o corpo vai rodar. Default que é marcador de injeção (`Depends(...)`) é **descartado**, nunca entregue como valor.
+    - Chave declarada em `meta=` **ganha** de um argumento com o mesmo nome: a decoração é a declaração explícita, o argumento é dado ambiente. O `tempest permissions` avisa (`meta-key-collision`) quando isso acontece, porque o argumento nunca chega ao guard.
+    - O dicionário é **novo em cada chamada** e compartilhado pelos guards daquela chamada — um guard pode gravar uma chave que o próximo lê, e nada vaza para a próxima requisição.
+
+### Erros de configuração
+
+| Situação | O que acontece |
+| --- | --- |
+| `meta=` não é um mapping | `TempestPermissionError` no import |
+| `meta=` / `include_args=True` sem nenhum guard de 2 parâmetros | `TempestPermissionError` no import — a configuração não faria nada |
+| guard de 2 parâmetros e decoração sem `meta=`/`include_args=` | roda com `{}`; `tempest permissions` avisa `guard-meta-missing` |
+| guard com 3+ parâmetros obrigatórios | `TempestPermissionError` no import (`expected 1 (user) or 2 (user, meta)`) |
+
+Para auditar o que uma rota declarou:
+
+```python
+from tempest_fastapi_sdk import guard_metadata
+
+assert guard_metadata(close_month) == {"role": "manager"}
+```
+
+`guard_metadata` devolve só os literais de `meta=` — o que `include_args=True` mescla existe por chamada e não dá para ler do objeto função.
+
 ## Funciona em qualquer camada
 
 Nada aqui depende do FastAPI. O mesmo decorator vale para controller e service,
@@ -209,6 +317,7 @@ com:
 | guard `async` em função sync | `is async but ... is not` |
 | nenhum parâmetro de usuário | `no parameter annotated with a user model` |
 | dois parâmetros de usuário | `several parameters are user models` |
+| `meta=`/`include_args=` sem consumidor | `no guard declares a second parameter` |
 
 ### Em tempo de chamada — `GuardContractWarning`
 
@@ -251,13 +360,17 @@ Códigos reportados:
 | `no-guards` | erro | `@requires()` sem guard: tudo passa |
 | `user-param-missing` | erro | nenhum parâmetro é modelo de usuário |
 | `user-param-ambiguous` | erro | vários candidatos, sem `user_param=` |
-| `guard-arity` | erro | guard não recebe exatamente um parâmetro |
+| `guard-arity` | erro | guard não recebe 1 parâmetro (user) nem 2 (user, meta) |
+| `meta-unused` | erro | `meta=`/`include_args=` sem nenhum guard que receba |
 | `guard-async-in-sync` | erro | guard `async` em função sync |
 | `guard-returns-bool` | erro | guard-predicado: o `False` é ignorado |
 | `guard-foreign-exception` | erro | levanta fora da hierarquia `AppException` |
 | `guard-never-denies` | warning | nada no grafo de chamadas levanta |
 | `guard-missing-annotation` | warning | parâmetro ou retorno sem anotação |
 | `guard-return-type` | warning | retorno não é o usuário, `None` ou a união |
+| `guard-meta-missing` | warning | guard pede metadata e a decoração não passa nenhuma |
+| `guard-meta-annotation` | warning | 2º parâmetro anotado como algo que não recebe `dict[str, Any]` |
+| `meta-key-collision` | warning | chave de `meta=` encobre um parâmetro sob `include_args=True` |
 | `guard-unresolved` | warning | guard é lambda, está fora do escopo ou o nome bate com várias definições |
 
 !!! note "Reporta em vez de adivinhar"
@@ -308,9 +421,10 @@ obj=order)` e ganhar o registry inteiro dentro do `@requires`.
 
 ## Recap
 
-- **Guard** = `(user) -> user | None` que nega levantando `AppException`.
+- **Guard** = `(user) -> user | None` — ou `(user, meta) -> user | None` — que nega levantando `AppException`.
 - `@requires(g1, g2)` roda os guards na ordem, abaixo do decorator de rota.
 - O parâmetro do usuário sai da anotação; `user_param=` desempata.
+- `meta={...}` parametriza um guard genérico; `include_args=True` entrega os argumentos da chamada ao guard.
 - Retorno não-`None` substitui o usuário — é assim que o tipo estreita.
 - Funciona em router, controller e service, sync ou `async`.
 - Erro de uso: `TempestPermissionError` no import, `GuardContractWarning` na

@@ -5,6 +5,54 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.168.0] — 2026-07-26
+
+Permission guards gain injected metadata: one generic guard, a specific check
+per call site.
+
+### Added
+
+- **A guard may declare a second parameter `meta: dict[str, Any]`.** That is
+  what turns `manager_only` / `auditor_only` / `admin_only` into one
+  `has_role(user, meta)` whose call sites declare
+  `@requires(has_role, meta={"role": "manager"})`. One-parameter guards are
+  untouched — the second argument is passed only to guards that declare it, so
+  both shapes mix freely in the same decoration.
+- **`requires(..., meta=...)`** — literal metadata, copied at decoration time,
+  so a later mutation of the passed mapping cannot change what the route
+  enforces. Must be a `Mapping[str, Any]`; anything else is a
+  `TempestPermissionError` at import.
+- **`requires(..., include_args=True)`** — merges the arguments the decorated
+  function was called with into the same mapping, so an ownership guard reads
+  `meta["order_id"]` without the route handing it over. The user parameter is
+  excluded (the guard already receives it), a parameter the caller omitted
+  contributes its default so the guard sees the values the body will run with,
+  a default that is a framework injection marker (`Depends(...)`) is dropped
+  rather than passed as a value, and a `meta=` literal wins a name clash with
+  an argument — the decoration is the explicit declaration. The mapping is
+  fresh per call and shared by that call's guards, so one guard may write a key
+  the next one reads without anything leaking into the next request.
+- **`guard_metadata(fn)`** — reads the `meta=` literals off a decorated
+  function, next to `declared_guards` / `guarded_user_param`. Exported from
+  `tempest_fastapi_sdk` and `tempest_fastapi_sdk.authz`.
+- **Four static checks in `tempest permissions`:** `meta-unused` (error — the
+  decoration passes `meta=` / `include_args=True` but no guard declares a
+  second parameter; held back when a guard in that decoration could not be
+  resolved, since it may be the consumer), `guard-meta-missing` (warning — a
+  two-parameter guard whose decoration supplies no metadata reads an empty
+  dict), `guard-meta-annotation` (warning — the metadata parameter is annotated
+  as something that cannot hold a `dict[str, Any]`) and `meta-key-collision`
+  (warning — a `meta=` key shadows a parameter name under `include_args=True`,
+  so that argument never reaches the guard).
+
+### Changed
+
+- **`guard-arity` accepts one or two required parameters.** A guard taking
+  `(user, meta)` used to be rejected at import (`expected 1 (user)`); the
+  contract is now one *or* two, and the message reads
+  `expected 1 (user) or 2 (user, meta)`. Three or more is still an error. No
+  existing single-parameter guard changes behavior.
+
 ## [0.167.2] — 2026-07-26
 
 Documentation layout only — no code change, no API change.

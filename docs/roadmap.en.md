@@ -131,6 +131,17 @@ GraphQL/gRPC (REST by decision).
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## Shipped in v0.168.0
+
+Permission guards with metadata:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **Second parameter `meta: dict[str, Any]`** | ✅ v0.168 | A guard may declare a second parameter and receive metadata, which turns a generic guard into a route-specific check: write `has_role` once and let each call site declare `meta={"role": "manager"}`. One-parameter guards are untouched — the second argument only goes to guards that declare it. [Reference »](recipes/permission-guards.md) |
+| **`include_args=True`** | ✅ v0.168 | Merges the call's arguments (path params, body, other dependencies) into the same dict, so an ownership guard reads `meta["order_id"]` without the route handing anything over. User excluded, omitted parameters contribute their default, `Depends(...)` markers dropped, `meta=` literals winning over same-named arguments. |
+| **Misuse still caught at import** | ✅ v0.168 | `TempestPermissionError` when `meta=` is not a mapping, when `meta=`/`include_args=` have no guard to receive them, and when a guard asks for 3+ parameters. `guard_metadata(fn)` exposes the declared literals. |
+| **New static checks** | ✅ v0.168 | `tempest permissions` gained `meta-unused` (error), `guard-meta-missing`, `guard-meta-annotation` and `meta-key-collision` (warnings); `guard-arity` now accepts 1 or 2 parameters. The `meta-unused` verdict is held back when a guard in the decoration could not be resolved. |
+
 ## Shipped in v0.167.0
 
 Permission guards — decorator plus a two-layer linter:

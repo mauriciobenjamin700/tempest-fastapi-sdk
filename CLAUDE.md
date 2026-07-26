@@ -92,7 +92,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `guard-unresolved` (ambiguous or out-of-scope guard reported, never guessed).
   `openapi-errors` follows the guards, so their exceptions land in
   `error_responses(...)`. `declared_guards`/`guarded_user_param` introspect a
-  route. Recipe: `docs/recipes/permission-guards.md`.
+  route. **Metadata (v0.168.0):** a guard may declare a 2nd param
+  `meta: dict[str, Any]` — `meta={...}` literals fixed at decoration plus
+  `include_args=True` merging the call's args (user excluded, omitted params
+  contribute defaults, `Depends(...)` markers dropped, `meta=` wins a name
+  clash); one-param guards untouched; `TempestPermissionError` when `meta=`
+  isn't a mapping or nothing consumes it; `guard_metadata(fn)` reads the
+  literals; new static codes `meta-unused` (error), `guard-meta-missing`/
+  `guard-meta-annotation`/`meta-key-collision` (warnings). Recipe:
+  `docs/recipes/permission-guards.md`.
 - **DB** — `AsyncDatabaseManager`, `BaseRepository[T]` with
   bulk ops (`bulk_create_values`, `bulk_upsert`, `bulk_update`,
   `add_all`, etc.), `AlembicHelper`, `BaseModel`, audit /

@@ -32,6 +32,7 @@ from tempest_fastapi_sdk.authz.requires import (
     TempestPermissionError as TempestPermissionError,
 )
 from tempest_fastapi_sdk.authz.requires import declared_guards as declared_guards
+from tempest_fastapi_sdk.authz.requires import guard_metadata as guard_metadata
 from tempest_fastapi_sdk.authz.requires import guarded_user_param as guarded_user_param
 from tempest_fastapi_sdk.authz.requires import requires as requires
 
@@ -48,6 +49,7 @@ __all__: list[str] = [
     "check_permission",
     "declared_guards",
     "default_registry",
+    "guard_metadata",
     "guarded_user_param",
     "has_perm",
     "make_permission_checker",
