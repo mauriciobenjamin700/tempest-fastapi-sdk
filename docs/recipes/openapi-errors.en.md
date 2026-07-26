@@ -455,12 +455,34 @@ Options:
     Two known imprecisions, both chosen to **over**-approximate rather than hide
     a hole:
 
-    - **Calls resolve by name, not by type.** Two `get_by_id` methods on
-      different classes become one node, so their exceptions merge. That inflates
-      the reachable set (possibly clearing a genuine `unreachable`) instead of
-      hiding a real hole.
+    - **A call with an untyped receiver resolves by name.** `self.svc.get_by_id()`
+      resolves through the **type** of `self.svc` when the attribute is
+      annotated, and the search stays inside that class's hierarchy. Without an
+      annotation it falls back to name resolution: two `get_by_id` methods on
+      different classes become one node, so their exceptions merge. That
+      inflates the reachable set (possibly clearing a genuine `unreachable`)
+      instead of hiding a real hole. Annotating attributes — which the project
+      convention already requires — is what buys the precision.
+    - **A method inherited from outside the scanned tree is not followed**, with
+      one important exception: the classes you **configure** on the base
+      constructor. A `not_found_exception=CoinPackNotFoundException` in the
+      repository's `super().__init__()` is attributed to the inherited methods
+      that really raise it (`get`, `get_by_id`, `resolve`, `delete`,
+      `soft_delete`, `restore`), following the
+      controller → `service` → `repository` chain. The same holds for the
+      `*_conflict_exception` kwargs. Beyond that — an inherited SDK method that
+      raises no configured class — no edge is created, so declare what the base
+      raises in your `Raises:` section.
     - **Dynamic raises are invisible.** `raise EXCEPTION_MAP[key]` cannot be
       resolved statically.
+
+    !!! info "Fixed in 0.170.0"
+        Before 0.170.0 **every** call resolved by name, and the route decorator
+        was part of the graph — so `@router.delete(...)` registered a call to
+        `delete` and reached every `delete` in the project. In a tree whose only
+        `delete` was `CategoryRepository`'s, every DELETE route was reported as
+        raising `CategoryInUseException`. `get` and `post` collide the same way
+        wherever methods with those names exist.
 
     Both blind spots are covered by declaring the exception in the function's
     `Raises:` section — which the project convention already requires, and which

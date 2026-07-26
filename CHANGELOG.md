@@ -5,6 +5,63 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.170.0] — 2026-07-26
+
+Two findings from `openapi-errors` on a real service, in opposite directions: it
+was reporting exceptions a route cannot raise, and staying silent about the ones
+it raises through the SDK's own methods.
+
+### Added
+
+- **A class handed to a base constructor now counts as raised.** A repository
+  writes `not_found_exception=CoinPackNotFoundException` once and never names it
+  again — the `raise` is inside `BaseRepository`, outside the scanned tree — so
+  the 404 of every route reading or deleting that model went unreported. The
+  analyzer now reads the exception kwargs passed to `super().__init__(...)` and
+  attributes them to the inherited methods that raise them, walking the
+  delegation chain a layered service creates (a controller's `service`, a
+  service's `repository`, plus known bases). New `CONFIGURED_RAISERS` maps each
+  kwarg to those methods, so a create conflict is never attributed to a `delete`
+  nor a 404 to an `add`. Only `service` and `repository` are followed as
+  delegation links (`DELEGATION_ATTRS`): following every annotated attribute
+  made a service holding extra repositories donate their 404s to every route
+  that reached it. `test_openapi_errors_configured.py` asserts the table against
+  `BaseRepository` itself, transitively over `self.*` calls — which is how
+  `soft_delete` and `restore` were found to also surface the update conflict,
+  via `self.update(...)`.
+
+### Fixed
+
+- **A DELETE route no longer inherits another domain's exceptions.** The
+  analyzer walked the whole function node for calls, decorators included, so
+  `@router.delete("/{id}")` registered a call to `delete`. Every edge then
+  resolved by unqualified name, so that call reached every `delete` in the
+  project. In a service whose only `delete` was `CategoryRepository.delete`,
+  *every* DELETE route was reported as raising `CategoryInUseException` and
+  `CategoryNotFoundException` — and `--fix` wrote those wrong names into the
+  decorators. `get` and `post` collide identically wherever a project defines
+  methods with those names. Only the function body is walked now.
+- **Calls resolve through the receiver's type when it is annotated.**
+  `self.svc.f()`, `self.f()`, `super().f()` and a call on an annotated parameter
+  (a route handler's `controller: UserController`) now resolve inside that
+  class's hierarchy, walking bases breadth-first. Finding nothing there means
+  the method is inherited from outside the scanned tree — the SDK's own
+  `BaseController.delete`, say — so no edge is followed at all, instead of
+  falling back to the project method that happens to share the name. A receiver
+  that cannot be typed still resolves by name, keeping the deliberate
+  over-approximation where precision is unavailable.
+- **The permission checker resolves guards with the same edges.** Both commands
+  now build one shared `CallGraph` (`build_call_graph`), so a guard's reachable
+  exceptions and a route's are computed identically rather than by two indexes
+  that had drifted apart in precision.
+
+### Documentation
+
+- `docs/recipes/openapi-errors.md` / `.en.md` — the "it's a guide, not a proof"
+  warning now describes typed-versus-name resolution, states that a method
+  inherited from outside the scanned tree is not followed, and records what
+  0.170.0 fixed.
+
 ## [0.169.0] — 2026-07-26
 
 ### Added
