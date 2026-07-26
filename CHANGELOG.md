@@ -5,6 +5,35 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.169.0] — 2026-07-26
+
+### Added
+
+- **`BaseRepository` accepts a conflict exception class per operation.** Every
+  write raised the SDK's own `ConflictException`, whose `code` is the generic
+  `"CONFLICT"` — so a duplicate name and a violated FK reached the client as the
+  same 409, and `error_responses()` had nothing specific to document. Only the
+  *message* was customizable (`create_conflict_message` and friends), and a
+  message is not something a frontend can branch on. Each `*_message` kwarg now
+  has a matching `*_exception`: `conflict_exception` as the blanket default plus
+  `create_conflict_exception`, `update_conflict_exception`,
+  `bulk_create_conflict_exception` and `bulk_update_conflict_exception` for the
+  individual write paths. Resolution is most-specific-first (per-operation →
+  blanket → `ConflictException`), the resolved classes are exposed as attributes
+  like `not_found_exception` already was, and all ten `raise` sites across
+  `add` / `add_all` / `save_with_outbox` / `add_audited` / `update` /
+  `update_audited` / `update_many` / `bulk_update` / `bulk_create_values` /
+  `bulk_upsert` honor them. Every kwarg is optional and the default path is
+  unchanged, so existing repositories keep raising exactly what they raised
+  before. The class is instantiated as `cls(message=...)` — the same contract
+  `not_found_exception` has — so a subclass must accept a `message` keyword.
+
+### Documentation
+
+- `docs/recipes/database.md` / `.en.md` — new "exception classes per repository"
+  tip: why a message alone is not enough, the coin-pack example, the
+  kwarg-to-operation table, and the `cls(message=...)` contract.
+
 ## [0.168.3] — 2026-07-26
 
 Second post-release finding from `--fix` running against a real project. The
