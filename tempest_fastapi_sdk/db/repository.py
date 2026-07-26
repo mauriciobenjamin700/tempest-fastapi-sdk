@@ -77,6 +77,16 @@ class BaseRepository(Generic[ModelType]):
     ``create_conflict_message``, etc.); when omitted, sensible defaults
     derived from ``self.model.__name__`` are used.
 
+    Each message has a matching **exception class** kwarg
+    (``not_found_exception``, ``conflict_exception`` and the
+    per-operation ``create_conflict_exception`` / ``update_…`` /
+    ``bulk_create_…`` / ``bulk_update_…``). They exist because a message
+    alone cannot be branched on: the default ``ConflictException``
+    answers ``code = "CONFLICT"``, so every duplicate-key failure in the
+    service looks identical to a client. Passing a domain subclass —
+    which declares its own ``code`` — makes the 409 identifiable without
+    the repository knowing anything about the domain.
+
     The same three abstract mappers ``map_to_schema`` / ``map_to_model``
     / ``map_to_response`` are kept so concrete repositories own the
     translation between ORM rows and DTOs.
@@ -85,6 +95,15 @@ class BaseRepository(Generic[ModelType]):
         model (type[ModelType]): The SQLAlchemy model class operated on.
         not_found_exception (type[AppException]): Exception class raised
             when single-record lookups miss.
+        create_conflict_exception (type[AppException]): Exception class
+            raised when ``add`` / ``save_with_outbox`` / ``add_audited``
+            hit ``IntegrityError``.
+        update_conflict_exception (type[AppException]): Same, for
+            ``update`` / ``update_audited``.
+        bulk_create_conflict_exception (type[AppException]): Same, for
+            ``add_all`` / ``bulk_create_values`` / ``bulk_upsert``.
+        bulk_update_conflict_exception (type[AppException]): Same, for
+            ``update_many`` / ``bulk_update``.
         session (AsyncSession): The async database session.
     """
 
@@ -94,6 +113,11 @@ class BaseRepository(Generic[ModelType]):
         *,
         model: type[ModelType],
         not_found_exception: type[AppException] = NotFoundException,
+        conflict_exception: type[AppException] = ConflictException,
+        create_conflict_exception: type[AppException] | None = None,
+        update_conflict_exception: type[AppException] | None = None,
+        bulk_create_conflict_exception: type[AppException] | None = None,
+        bulk_update_conflict_exception: type[AppException] | None = None,
         not_found_message: str | None = None,
         create_conflict_message: str | None = None,
         update_conflict_message: str | None = None,
@@ -108,6 +132,22 @@ class BaseRepository(Generic[ModelType]):
         model class name (e.g. ``"User not found"``,
         ``"Conflict creating User"``).
 
+        Every ``*_exception`` kwarg is optional too, and each one pairs
+        with the ``*_message`` of the same name. Passing a domain
+        subclass is what gives the failure a ``code`` of its own:
+        ``ConflictException`` answers ``"CONFLICT"``, so a client cannot
+        tell a duplicate coin pack apart from any other 409 (the same
+        reason :class:`AppException` warns when a subclass declares no
+        ``code``). Conflicts resolve most-specific-first —
+        ``create_conflict_exception`` if given, else
+        ``conflict_exception``, else :class:`ConflictException` — so one
+        kwarg can cover every write, or each write can differ.
+
+        The class is instantiated as ``cls(message=...)``, the same
+        contract ``not_found_exception`` already has, so a subclass must
+        accept a ``message`` keyword. Declaring ``code`` in the class
+        body and taking ``message`` optionally satisfies both.
+
         Args:
             session (AsyncSession): The async database session.
             model (type[ModelType]): The SQLAlchemy model class this
@@ -116,6 +156,22 @@ class BaseRepository(Generic[ModelType]):
                 raised when single-record lookups miss. Defaults to
                 :class:`NotFoundException`; pass a domain-specific
                 subclass for richer 404 messages.
+            conflict_exception (type[AppException]): Exception class
+                raised when a write hits ``IntegrityError``. Defaults to
+                :class:`ConflictException`; the per-operation kwargs
+                below override it.
+            create_conflict_exception (type[AppException] | None):
+                Overrides ``conflict_exception`` for ``add``,
+                ``save_with_outbox`` and ``add_audited``.
+            update_conflict_exception (type[AppException] | None):
+                Overrides ``conflict_exception`` for ``update`` and
+                ``update_audited``.
+            bulk_create_conflict_exception (type[AppException] | None):
+                Overrides ``conflict_exception`` for ``add_all``,
+                ``bulk_create_values`` and ``bulk_upsert``.
+            bulk_update_conflict_exception (type[AppException] | None):
+                Overrides ``conflict_exception`` for ``update_many`` and
+                ``bulk_update``.
             not_found_message (str | None): Message used when ``get``,
                 ``get_by_id``, ``delete``, ``soft_delete`` or
                 ``restore`` find no matching record.
@@ -140,6 +196,18 @@ class BaseRepository(Generic[ModelType]):
         self.session: AsyncSession = session
         self.model: type[ModelType] = model
         self.not_found_exception: type[AppException] = not_found_exception
+        self.create_conflict_exception: type[AppException] = (
+            create_conflict_exception or conflict_exception
+        )
+        self.update_conflict_exception: type[AppException] = (
+            update_conflict_exception or conflict_exception
+        )
+        self.bulk_create_conflict_exception: type[AppException] = (
+            bulk_create_conflict_exception or conflict_exception
+        )
+        self.bulk_update_conflict_exception: type[AppException] = (
+            bulk_update_conflict_exception or conflict_exception
+        )
         name = self.model.__name__
         self._not_found_message: str = not_found_message or f"{name} not found"
         self._create_conflict_message: str = (
@@ -862,7 +930,7 @@ class BaseRepository(Generic[ModelType]):
             logger.warning(
                 "IntegrityError on %s.add: %s", self.model.__name__, exc.orig
             )
-            raise ConflictException(
+            raise self.create_conflict_exception(
                 message=self._create_conflict_message,
             ) from exc
         except Exception:
@@ -896,7 +964,7 @@ class BaseRepository(Generic[ModelType]):
             logger.warning(
                 "IntegrityError on %s.add_all: %s", self.model.__name__, exc.orig
             )
-            raise ConflictException(
+            raise self.bulk_create_conflict_exception(
                 message=self._bulk_create_conflict_message,
             ) from exc
         except Exception:
@@ -943,7 +1011,7 @@ class BaseRepository(Generic[ModelType]):
                 self.model.__name__,
                 exc.orig,
             )
-            raise ConflictException(
+            raise self.create_conflict_exception(
                 message=self._create_conflict_message,
             ) from exc
         except Exception:
@@ -1009,7 +1077,7 @@ class BaseRepository(Generic[ModelType]):
                 self.model.__name__,
                 exc.orig,
             )
-            raise ConflictException(
+            raise self.create_conflict_exception(
                 message=self._create_conflict_message,
             ) from exc
         except Exception:
@@ -1062,7 +1130,7 @@ class BaseRepository(Generic[ModelType]):
                 self.model.__name__,
                 exc.orig,
             )
-            raise ConflictException(
+            raise self.update_conflict_exception(
                 message=self._update_conflict_message,
             ) from exc
         except Exception:
@@ -1126,7 +1194,7 @@ class BaseRepository(Generic[ModelType]):
             logger.warning(
                 "IntegrityError on %s.update: %s", self.model.__name__, exc.orig
             )
-            raise ConflictException(
+            raise self.update_conflict_exception(
                 message=self._update_conflict_message,
             ) from exc
         except Exception:
@@ -1159,7 +1227,7 @@ class BaseRepository(Generic[ModelType]):
                 self.model.__name__,
                 exc.orig,
             )
-            raise ConflictException(
+            raise self.bulk_update_conflict_exception(
                 message=self._bulk_update_conflict_message,
             ) from exc
         except Exception:
@@ -1218,7 +1286,7 @@ class BaseRepository(Generic[ModelType]):
                 self.model.__name__,
                 exc.orig,
             )
-            raise ConflictException(
+            raise self.bulk_update_conflict_exception(
                 message=self._bulk_update_conflict_message,
             ) from exc
         except Exception:
@@ -1262,7 +1330,7 @@ class BaseRepository(Generic[ModelType]):
                 self.model.__name__,
                 exc.orig,
             )
-            raise ConflictException(
+            raise self.bulk_create_conflict_exception(
                 message=self._bulk_create_conflict_message,
             ) from exc
         except Exception:
@@ -1348,7 +1416,7 @@ class BaseRepository(Generic[ModelType]):
                 self.model.__name__,
                 exc.orig,
             )
-            raise ConflictException(
+            raise self.bulk_create_conflict_exception(
                 message=self._bulk_create_conflict_message,
             ) from exc
         except Exception:

@@ -311,9 +311,66 @@ class UserRepository(BaseRepository[UserModel]):
     `update_conflict_message`, `bulk_create_conflict_message` e
     `bulk_update_conflict_message` customizam o texto das exceções. Sem
     eles, o SDK gera mensagens a partir de `Model.__name__` (`"User not
-    found"`, `"Conflict creating User"`). Passe `not_found_exception=`
-    para subir uma exceção de domínio mais rica que o `NotFoundException`
-    padrão.
+    found"`, `"Conflict creating User"`).
+
+!!! tip "Classes de exceção por repository"
+    Cada `*_message` tem um `*_exception` correspondente. A mensagem sozinha
+    não dá para o cliente ramificar: o `ConflictException` padrão responde
+    `code = "CONFLICT"`, então uma chave duplicada de coin pack fica
+    indistinguível de qualquer outro 409 — e `error_responses()` não consegue
+    documentá-la. Passando uma subclasse de domínio (que **declara seu próprio
+    `code` no corpo da classe**), o 409 fica identificável sem o repository
+    saber nada do domínio:
+
+    ```python
+    from tempest_fastapi_sdk import BaseRepository, ConflictException
+
+    from src.core.exceptions import CoinPackNotFoundException
+    from src.db.models import CoinPackModel
+
+
+    class CoinPackAlreadyExistsException(ConflictException):
+        """Raised when a coin pack name is already taken."""
+
+        code: str = "COIN_PACK_ALREADY_EXISTS"
+
+
+    class CoinPackRepository(BaseRepository[CoinPackModel]):
+        """Data access for coin packs."""
+
+        def __init__(self, session: AsyncSession) -> None:
+            """Initialize the repository.
+
+            Args:
+                session (AsyncSession): The async database session.
+            """
+            super().__init__(
+                session,
+                model=CoinPackModel,
+                not_found_exception=CoinPackNotFoundException,
+                create_conflict_exception=CoinPackAlreadyExistsException,
+            )
+    ```
+
+    A resolução é do mais específico para o mais genérico —
+    `create_conflict_exception` se informado, senão `conflict_exception`, senão
+    `ConflictException` — então um kwarg só (`conflict_exception=`) cobre todas
+    as escritas, ou cada escrita usa a sua:
+
+    | Kwarg | Cobre |
+    | --- | --- |
+    | `create_conflict_exception` | `add`, `save_with_outbox`, `add_audited` |
+    | `update_conflict_exception` | `update`, `update_audited` |
+    | `bulk_create_conflict_exception` | `add_all`, `bulk_create_values`, `bulk_upsert` |
+    | `bulk_update_conflict_exception` | `update_many`, `bulk_update` |
+    | `conflict_exception` | fallback de todas as quatro |
+
+    A classe é instanciada como `cls(message=...)`, o mesmo contrato que
+    `not_found_exception` já tem — então ela precisa aceitar o keyword
+    `message`. Declarar `code` no corpo da classe e receber `message` opcional
+    atende aos dois. Todos os kwargs são opcionais: omitindo-os, o
+    comportamento é o de antes (`ConflictException` genérico). Disponível a
+    partir de 0.169.0.
 
 ### O CRUD que você ganha
 
