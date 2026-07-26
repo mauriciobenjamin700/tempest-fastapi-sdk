@@ -92,7 +92,10 @@ make docs-serve              # mkdocs serve — live reload em http://127.0.0.1:
 make docs-build              # build do site estático em ./site/
 ```
 
-Toda página vive em duas línguas (`docs/<página>.md` + `docs/<página>.en.md`) e o build roda com `--strict` — warning é erro. As edições caem no site do Pages no push para `main` via [`.github/workflows/docs.yml`](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/blob/main/.github/workflows/docs.yml).
+Toda página vive em duas línguas (`docs/<página>.md` + `docs/<página>.en.md`) e o build roda com `--strict` — warning é erro.
+
+!!! info "A documentação é mantida organizada por regra, não por revisão"
+    Página nova exige: os **dois** arquivos (PT + `.en.md`), entrada nos **dois** navs (o `nav:` de topo e o `nav:` do locale `en` — o plugin i18n traduz rótulo mas não reordena nav compartilhado), na **posição alfabética** de cada língua, mais a linha na tabela de `docs/recipes/index.md`/`.en.md` quando for receita, e o stub em `docs/reference.md` quando expõe símbolo novo. `uv run pytest tests/test_docs_organization.py` falha se algo disso faltar ou sair de ordem — e ele roda no `make check`, logo na CI. Abas de topo, páginas de `learning/` e o tour da landing seguem ordem didática de propósito. As edições caem no site do Pages no push para `main` via [`.github/workflows/docs.yml`](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/blob/main/.github/workflows/docs.yml).
 
 ## Estilo das mensagens de commit
 

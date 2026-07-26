@@ -1,4 +1,4 @@
-"""Guard that the navigation stays alphabetical and bilingual.
+"""Guard the project rule: the documentation stays organized and in order.
 
 Two failures this catches, both of which degrade navigation silently:
 
@@ -19,6 +19,18 @@ sorting them would be the regression, not the fix.
 The same ordering is asserted for the **tables on the Recipes landing**,
 which are the other surface a reader scans to find a page — a nav sorted
 against an unsorted index is still a bad lookup.
+
+On top of ordering, the structural half of the rule is asserted too, because
+each of these has already drifted at least once:
+
+* every page exists in **both languages** (``docs/<page>.md`` +
+  ``docs/<page>.en.md``) — a missing mirror silently falls back to the other
+  language on the built site;
+* every page file is **reachable from its language's nav** — a page nobody
+  links is a page nobody reads (MkDocs warns for the default nav; the EN nav
+  is ours to check);
+* every recipe in the nav is **listed on the Recipes landing** — twelve
+  recipes were missing from that table when it was last audited.
 
 Only the ``nav`` blocks are parsed, never the whole config: ``mkdocs.yml``
 carries ``!!python/name:`` tags that PyYAML's SafeLoader rejects, while the
@@ -277,3 +289,107 @@ class TestRecipeIndexTables:
             f"{page} table {header!r} is not alphabetical; expected "
             f"{sorted(names, key=sort_key)}"
         )
+
+
+def _recipe_pages() -> list[str]:
+    """Return every recipe page in the default language.
+
+    Returns:
+        list[str]: Source-relative paths, sorted.
+    """
+    return sorted(
+        f"recipes/{path.name}"
+        for path in (ROOT / "docs" / "recipes").glob("*.md")
+        if not path.name.endswith(".en.md")
+    )
+
+
+def _table_targets(page: str) -> set[str]:
+    """Return the pages a landing table links to.
+
+    Args:
+        page (str): The landing page, relative to ``docs/``.
+
+    Returns:
+        set[str]: Link targets normalized to ``docs/``-relative paths.
+    """
+    text = (ROOT / "docs" / page).read_text(encoding="utf-8")
+    targets: set[str] = set()
+    for row in text.splitlines():
+        if not row.startswith("| **["):
+            continue
+        for match in re.finditer(r"\]\(([^)]+\.md)\)", row):
+            target = match.group(1)
+            if target.startswith("../"):
+                targets.add(target[3:])
+            else:
+                targets.add(f"recipes/{target}")
+    return targets
+
+
+class TestBilingualMirrors:
+    def test_every_page_has_an_english_mirror(self) -> None:
+        docs = ROOT / "docs"
+        missing = sorted(
+            str(path.relative_to(docs))
+            for path in docs.rglob("*.md")
+            if not path.name.endswith(".en.md")
+            and not path.with_name(f"{path.stem}.en.md").exists()
+        )
+        assert not missing, f"pages with no .en.md mirror: {missing}"
+
+    def test_no_orphan_english_page(self) -> None:
+        docs = ROOT / "docs"
+        orphans = sorted(
+            str(path.relative_to(docs))
+            for path in docs.rglob("*.en.md")
+            if not path.with_name(f"{path.name.removesuffix('.en.md')}.md").exists()
+        )
+        assert not orphans, f".en.md pages with no default-language page: {orphans}"
+
+
+class TestEveryPageIsReachable:
+    def test_default_nav_lists_every_page(self, pt_nav: list[Any]) -> None:
+        pages: list[str] = []
+        _pages(pt_nav, pages)
+        docs = ROOT / "docs"
+        on_disk = {
+            str(path.relative_to(docs))
+            for path in docs.rglob("*.md")
+            if not path.name.endswith(".en.md")
+        }
+        assert not on_disk - set(pages), (
+            f"pages absent from the PT nav: {sorted(on_disk - set(pages))}"
+        )
+
+    def test_english_nav_lists_every_page(self, en_nav: list[Any]) -> None:
+        pages: list[str] = []
+        _pages(en_nav, pages)
+        docs = ROOT / "docs"
+        on_disk = {
+            str(path.relative_to(docs))
+            for path in docs.rglob("*.md")
+            if not path.name.endswith(".en.md")
+        }
+        assert not on_disk - set(pages), (
+            f"pages absent from the EN nav: {sorted(on_disk - set(pages))}"
+        )
+
+
+class TestRecipeIndexCoverage:
+    @pytest.mark.parametrize("landing", ["recipes/index.md", "recipes/index.en.md"])
+    def test_landing_lists_every_recipe(self, landing: str, pt_nav: list[Any]) -> None:
+        nav_pages: list[str] = []
+        _pages(pt_nav, nav_pages)
+        recipes = {
+            p for p in nav_pages if p.startswith("recipes/") and p != "recipes/index.md"
+        }
+        listed = _table_targets(landing)
+        missing = sorted(recipes - listed)
+        assert not missing, f"{landing} does not list: {missing}"
+
+    def test_every_recipe_file_is_in_the_nav(self, pt_nav: list[Any]) -> None:
+        nav_pages: list[str] = []
+        _pages(pt_nav, nav_pages)
+        missing = sorted(set(_recipe_pages()) - set(nav_pages))
+        assert not missing, f"recipe files absent from the nav: {missing}"

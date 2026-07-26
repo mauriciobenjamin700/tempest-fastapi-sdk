@@ -46,5 +46,8 @@ Issue relacionada: #
 - [ ] `README.md`
 - [ ] `CHANGELOG.md`
 - [ ] receita / página em `docs/<página>.md` **e** `docs/<página>.en.md`
+- [ ] entrada nos **dois** navs (`nav:` de topo + `nav:` do locale `en`), na posição alfabética de cada língua
+- [ ] receita nova listada na tabela de `docs/recipes/index.md` **e** `.en.md`
 - [ ] stub em `docs/reference.md` para cada símbolo público novo
 - [ ] `uv run --group docs mkdocs build --strict` verde
+- [ ] `uv run pytest tests/test_docs_organization.py` verde
