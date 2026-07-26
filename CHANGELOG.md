@@ -5,6 +5,35 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.167.1] — 2026-07-26
+
+### Fixed
+
+- **`BaseController` now accepts services typed over a concrete update
+  schema.** `ServiceT`'s bound was written `BaseService[Any, Any]`, which is not
+  a partial application: PEP 696 fills the omitted `UpdateT` with its
+  `BaseSchema` default, and since that parameter is invariant the bound admitted
+  only services whose update schema was exactly `BaseSchema`. Every service
+  written the documented way — `BaseService[Repo, Resp, MyUpdateSchema]` — was
+  rejected by the type checker with `Type parameter "UpdateT@BaseService" is
+  invariant, but "MyUpdateSchema" is not the same as "BaseSchema"`, forcing a
+  `# type: ignore[type-var]` on the controller declaration. The bound is now
+  `BaseService[Any, Any, Any]`, which leaves the invariant parameter open while
+  keeping the `BaseSchema` constraint. Type-check only — runtime behavior is
+  unchanged, and the `# type: ignore[type-var]` workarounds can be dropped.
+- **The suite can now see this class of bug.** `mypy` runs over the package, not
+  over `tests/`, so `tests/controllers/test_base.py` already declared exactly
+  this service/controller pair and stayed green. New
+  `tests/controllers/test_generic_bounds.py` inspects `ServiceT.__bound__`
+  directly and runs `mypy --strict` over a downstream-shaped snippet, asserting
+  no `[type-var]` diagnostic.
+
+### Documentation
+
+- `docs/architecture.md` / `docs/architecture.en.md` — the controllers & services
+  section now shows the 3rd generic parameter on both layers and notes that the
+  pair requires 0.167.1+.
+
 ## [0.167.0] — 2026-07-26
 
 Permission guards: a decorator that runs plain `(user) -> user | None`

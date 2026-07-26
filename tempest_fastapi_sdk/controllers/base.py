@@ -10,7 +10,13 @@ from typing_extensions import TypeVar
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.services.base import BaseService
 
-ServiceT = TypeVar("ServiceT", bound=BaseService[Any, Any])
+ServiceT = TypeVar("ServiceT", bound=BaseService[Any, Any, Any])
+"""Concrete service class the controller delegates to. The bound spells all
+three of :class:`BaseService`'s parameters as ``Any``: ``BaseService[Any, Any]``
+is not a partial application — PEP 696 fills the omitted ``UpdateT`` with its
+default (:class:`BaseSchema`), and because ``UpdateT`` is invariant that bound
+only admits services whose update schema is exactly ``BaseSchema``. Any service
+declared as ``BaseService[Repo, Resp, MyUpdateSchema]`` would be rejected."""
 ResponseT = TypeVar("ResponseT")
 UpdateT = TypeVar("UpdateT", bound=BaseSchema, default=BaseSchema)
 """Update-payload schema for :meth:`BaseController.update`. Defaults to

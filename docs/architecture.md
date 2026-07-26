@@ -163,6 +163,31 @@ O que você herda ao subclassear `BaseController[ServiceT, ResponseT]`:
 | `update(id, data)` | `service.update` | Igual. |
 | `delete(id)` | `service.delete` | Igual. |
 
+!!! tip "Tipando o payload de `update` ponta a ponta"
+    O 3º parâmetro genérico é o schema de update, e ele precisa ser o **mesmo** nas duas camadas: um service declarado como `BaseService[Repo, Resp, MeuUpdateSchema]` encaixa em `BaseController[MeuService, Resp, MeuUpdateSchema]`. Omitir o 3º parâmetro em qualquer uma delas cai no default `BaseSchema`, e o `data` de `update` chega sem tipo preciso.
+
+    ```python
+    from tempest_fastapi_sdk import BaseController, BaseService
+
+    from src.db.repositories import CoinPackRepository
+    from src.schemas import CoinPackResponseSchema, CoinPackUpdateSchema
+
+
+    class CoinPackService(
+        BaseService[CoinPackRepository, CoinPackResponseSchema, CoinPackUpdateSchema]
+    ):
+        """Service tipado sobre o schema de update concreto."""
+
+
+    class CoinPackController(
+        BaseController[CoinPackService, CoinPackResponseSchema, CoinPackUpdateSchema]
+    ):
+        """Controller que repete o mesmo schema de update."""
+    ```
+
+    !!! warning "Requer 0.167.1+"
+        Em versões anteriores esse par falhava no type check com `Type parameter "UpdateT@BaseService" is invariant, but "CoinPackUpdateSchema" is not the same as "BaseSchema"` — o bound de `ServiceT` deixava o parâmetro invariante fixado em `BaseSchema`. Corrigido em 0.167.1; nada muda em runtime.
+
 Quando um caso de uso precisa de regras de domínio, sobrescreva o método herdado no service. Quando um caso de uso precisa coordenar mais de um service, sobrescreva o método herdado (ou adicione um novo) no controller. O router nunca cresce — ele só depende do controller.
 
 ```python
