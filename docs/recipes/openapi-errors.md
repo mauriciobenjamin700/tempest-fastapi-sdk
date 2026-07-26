@@ -468,6 +468,16 @@ Opções:
       `*_conflict_exception`. Fora disso — um método herdado do SDK que não
       levanta classe configurada — nenhuma aresta é criada, então declare na
       seção `Raises:` o que a base levanta por você.
+
+        A cadeia é montada a partir de `self.service` / `self.repository`
+        anotados **ou** dos parâmetros genéricos da base: uma camada
+        pass-through como
+        `class CategoryService(BaseService[CategoryRepository, Resp])` não tem
+        `__init__` para ler, e o subscript é a única declaração do que ela
+        delega. Ao longo dessa cadeia, uma camada que **sobrescreve** o método —
+        um repository cujo `delete` traduz `IntegrityError` num 409 de domínio —
+        é percorrida como qualquer outra função, não só consultada por
+        configuração. Ambos corrigidos em 0.170.1.
     - **Raise dinâmico é invisível.** `raise EXCEPTION_MAP[key]` não é
       resolvível estaticamente.
 

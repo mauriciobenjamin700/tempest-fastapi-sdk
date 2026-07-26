@@ -471,6 +471,57 @@ def _base_names(node: ast.ClassDef) -> list[str]:
     return names
 
 
+GENERIC_DELEGATES: dict[str, dict[int, str]] = {
+    "BaseService": {0: "repository"},
+    "BaseController": {0: "service"},
+}
+"""Where an SDK base's generic parameters name the object it delegates to.
+
+``BaseService[RepositoryT, ResponseT]`` stores its first parameter as
+``self.repository``; ``BaseController[ServiceT, ResponseT]`` stores its first as
+``self.service``. A concrete class that overrides nothing has **no** ``__init__``
+to read::
+
+    class CategoryService(BaseService[CategoryRepository, CategoryResponseSchema]):
+        \"\"\"Business logic for categories.\"\"\"
+
+Its subscript is then the only statement of what it delegates to, and without
+reading it the chain from a route to the repository breaks at exactly the classes
+that are pure pass-throughs — the common case the layering encourages.
+"""
+
+
+def _generic_delegates(node: ast.ClassDef) -> dict[str, str]:
+    """Map delegation attributes declared through a base's generic parameters.
+
+    Args:
+        node (ast.ClassDef): The class to inspect.
+
+    Returns:
+        dict[str, str]: Attribute name to class name, for every base listed in
+        :data:`GENERIC_DELEGATES`. Empty when the class subscripts no known
+        base.
+    """
+    delegates: dict[str, str] = {}
+    for base in node.bases:
+        if not isinstance(base, ast.Subscript):
+            continue
+        base_name = _annotation_name(base.value)
+        positions = GENERIC_DELEGATES.get(base_name or "")
+        if positions is None:
+            continue
+        arguments = (
+            base.slice.elts if isinstance(base.slice, ast.Tuple) else [base.slice]
+        )
+        for index, attr in positions.items():
+            if index >= len(arguments):
+                continue
+            argument = _annotation_name(arguments[index])
+            if argument is not None:
+                delegates[attr] = argument
+    return delegates
+
+
 def _iter_classes(tree: ast.Module) -> Iterator[ClassInfo]:
     """Yield a :class:`ClassInfo` for every class in a module.
 
@@ -482,10 +533,12 @@ def _iter_classes(tree: ast.Module) -> Iterator[ClassInfo]:
     """
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
+            attr_types = _generic_delegates(node)
+            attr_types.update(_class_attr_types(node))
             yield ClassInfo(
                 name=node.name,
                 bases=_base_names(node),
-                attr_types=_class_attr_types(node),
+                attr_types=attr_types,
                 configured_exceptions=_configured_in_init(node),
             )
 
@@ -976,7 +1029,7 @@ def _inherited_exceptions(
     receiver: str,
     method: str,
     graph: CallGraph,
-) -> set[str]:
+) -> tuple[list[FunctionInfo], set[str]]:
     """Attribute a raise that happens inside an inherited method.
 
     A repository writes ``not_found_exception=CoinPackNotFoundException``
@@ -998,17 +1051,25 @@ def _inherited_exceptions(
         graph (CallGraph): The analyzed classes.
 
     Returns:
-        set[str]: Exception names configured for this method anywhere in
-        the chain.
+        tuple[list[FunctionInfo], set[str]]: The methods found further down
+        the chain, and the exception names configured for this method
+        anywhere in it. A layer that overrides the method — a repository
+        whose own ``delete`` translates an ``IntegrityError`` — is returned
+        as a target so its ``raise`` statements are walked like any other;
+        collecting only configured classes would miss it.
     """
+    targets: list[FunctionInfo] = []
     found: set[str] = set()
     queue: list[str] = [receiver]
     seen: set[str] = {receiver}
     while queue:
-        current = graph.classes.get(queue.pop(0))
+        name = queue.pop(0)
+        current = graph.classes.get(name)
         if current is None:
             continue
         found |= _configured_for(current, method)
+        if name != receiver:
+            targets.extend(graph.by_qualname.get((name, method), ()))
         delegates = [
             class_name
             for attr, class_name in current.attr_types.items()
@@ -1018,7 +1079,7 @@ def _inherited_exceptions(
             if candidate not in seen:
                 seen.add(candidate)
                 queue.append(candidate)
-    return found
+    return targets, found
 
 
 def _reachable_exceptions(
@@ -1067,7 +1128,9 @@ def _reachable_exceptions(
             resolved = _typed_targets(receiver, method, graph.by_qualname, graph.bases)
             targets.extend(resolved)
             if not resolved:
-                found |= _inherited_exceptions(receiver, method, graph) & known
+                delegated, configured = _inherited_exceptions(receiver, method, graph)
+                targets.extend(delegated)
+                found |= configured & known
         for target in targets:
             if id(target) in seen:
                 continue
