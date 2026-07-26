@@ -77,13 +77,13 @@ from pathlib import Path
 from typing import Literal
 
 from tempest_fastapi_sdk.cli.openapi_errors import (
-    FunctionInfo,
+    CallGraph,
     _docstring_raises,
     _exception_class_names,
-    _iter_functions,
     _python_files,
     _raised_name,
     _reachable_exceptions,
+    build_call_graph,
 )
 
 Severity = Literal["error", "warning"]
@@ -658,7 +658,7 @@ def _check_usage(
     users: set[str],
     known_exceptions: set[str],
     nodes: dict[str, list[_FunctionNode]],
-    infos: dict[str, list[FunctionInfo]],
+    graph: CallGraph,
 ) -> list[GuardFinding]:
     """Check one ``@requires`` decoration and every guard it names.
 
@@ -668,7 +668,9 @@ def _check_usage(
         users (set[str]): Known user-model class names.
         known_exceptions (set[str]): Names that count as exception classes.
         nodes (dict[str, list[_FunctionNode]]): Definitions per name.
-        infos (dict[str, list[FunctionInfo]]): Call-graph index per name.
+        graph (CallGraph): Shared call-graph indexes, so a guard's
+            reachable exceptions resolve with the same typed edges the
+            route analyzer uses.
 
     Returns:
         list[GuardFinding]: The findings for this decoration.
@@ -792,8 +794,8 @@ def _check_usage(
         if len(_required_positional(definition.node)) == 2:
             meta_consumers += 1
         reachable: set[str] = set()
-        for info in infos.get(guard_name, []):
-            reachable |= _reachable_exceptions(info, infos, known_exceptions)
+        for info in graph.by_name.get(guard_name, []):
+            reachable |= _reachable_exceptions(info, graph, known_exceptions)
         findings.extend(
             _check_guard_definition(
                 definition,
@@ -851,10 +853,7 @@ def analyze_permissions(paths: Iterable[Path]) -> list[GuardFinding]:
     users = _user_model_names(tree for _, tree in parsed)
     nodes = _index_nodes(parsed)
 
-    infos: dict[str, list[FunctionInfo]] = {}
-    for file, tree in parsed:
-        for info in _iter_functions(tree, file):
-            infos.setdefault(info.name, []).append(info)
+    graph = build_call_graph(parsed)
 
     findings: list[GuardFinding] = []
     for definitions in nodes.values():
@@ -870,7 +869,7 @@ def analyze_permissions(paths: Iterable[Path]) -> list[GuardFinding]:
                         users=users,
                         known_exceptions=known_exceptions,
                         nodes=nodes,
-                        infos=infos,
+                        graph=graph,
                     )
                 )
 

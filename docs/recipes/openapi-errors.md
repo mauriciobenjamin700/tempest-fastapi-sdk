@@ -451,12 +451,34 @@ Opções:
     Duas imprecisões conhecidas, ambas escolhidas para **super**estimar em vez
     de esconder buraco:
 
-    - **Chamadas resolvem por nome, não por tipo.** Dois métodos `get_by_id` em
-      classes diferentes viram um só nó, então as exceptions se misturam. Isso
-      infla o conjunto alcançável (pode limpar um `unreachable` de verdade) em
-      vez de esconder um buraco.
+    - **Chamada com receptor não tipado resolve por nome.** `self.svc.get_by_id()`
+      resolve pelo **tipo** de `self.svc` quando o atributo está anotado — e a
+      busca fica restrita à hierarquia daquela classe. Sem anotação, cai em
+      resolução por nome: dois `get_by_id` em classes diferentes viram um só nó
+      e as exceptions se misturam. Isso infla o conjunto alcançável (pode
+      limpar um `unreachable` de verdade) em vez de esconder um buraco. Tipar
+      os atributos — que a convenção do projeto já exige — é o que dá precisão.
+    - **Método herdado de fora da árvore varrida não é seguido**, com uma
+      exceção importante: as classes que você **configura** no construtor da
+      base. Um `not_found_exception=CoinPackNotFoundException` no
+      `super().__init__()` do repository é atribuído aos métodos herdados que
+      de fato o levantam (`get`, `get_by_id`, `resolve`, `delete`,
+      `soft_delete`, `restore`), seguindo a cadeia
+      controller → `service` → `repository`. O mesmo vale para os
+      `*_conflict_exception`. Fora disso — um método herdado do SDK que não
+      levanta classe configurada — nenhuma aresta é criada, então declare na
+      seção `Raises:` o que a base levanta por você.
     - **Raise dinâmico é invisível.** `raise EXCEPTION_MAP[key]` não é
       resolvível estaticamente.
+
+    !!! info "Corrigido em 0.170.0"
+        Antes de 0.170.0 **toda** chamada resolvia por nome, e o decorator da
+        rota entrava no grafo — então `@router.delete(...)` registrava uma
+        chamada a `delete` e alcançava qualquer `delete` do projeto. Numa
+        árvore onde o único `delete` era o de `CategoryRepository`, todas as
+        rotas DELETE eram reportadas levantando `CategoryInUseException`.
+        `get` e `post` colidem do mesmo jeito onde existam métodos com esses
+        nomes.
 
     Os dois pontos cegos são cobertos declarando a exception na seção `Raises:`
     da função — que a convenção do projeto já exige, e que o analisador lê.
