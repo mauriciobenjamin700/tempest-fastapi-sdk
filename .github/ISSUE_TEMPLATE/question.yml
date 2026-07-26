@@ -1,0 +1,36 @@
+name: Dúvida de uso
+description: "\"Como faço X com o SDK?\""
+title: "dúvida: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Dúvida é bem-vinda como issue: se a resposta não estava na doc, a doc
+        tem um buraco — e a issue costuma virar uma receita ou um trecho novo.
+  - type: textarea
+    id: goal
+    attributes:
+      label: O que você quer fazer
+      description: O objetivo em uma ou duas frases.
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: O que você já tentou
+      description: Código, se houver, e onde travou.
+      render: python
+  - type: input
+    id: docs-read
+    attributes:
+      label: Páginas da doc que você leu
+      description: Ajuda a saber onde a explicação falhou.
+      placeholder: "recipes/auth-flow, tutorial"
+  - type: input
+    id: sdk-version
+    attributes:
+      label: Versão do SDK
+      placeholder: "0.167.1"
+    validations:
+      required: true

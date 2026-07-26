@@ -1,0 +1,39 @@
+name: Documentação
+description: Página confusa, exemplo que não roda, informação desatualizada ou typo
+title: "docs: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cada página existe duas vezes (`docs/<página>.md` em PT-BR e
+        `docs/<página>.en.md` em EN-US). Por isso a correção sai daqui, aplicada
+        nas duas de uma vez — um PR que arruma só um lado deixa o site
+        inconsistente.
+  - type: input
+    id: page
+    attributes:
+      label: Página
+      description: URL ou caminho do arquivo.
+      placeholder: "https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/permission-guards/"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: O que está errado
+      description: Cole o trecho e diga o que ele deveria dizer. Se é um exemplo que não roda, inclua o erro.
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Tipo
+      options:
+        - Exemplo não roda / está errado
+        - Informação desatualizada
+        - Explicação confusa ou incompleta
+        - Falta uma página / receita
+        - Typo / formatação
+    validations:
+      required: true

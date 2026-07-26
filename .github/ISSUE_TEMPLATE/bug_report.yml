@@ -1,0 +1,63 @@
+name: Bug
+description: Algo não se comporta como a documentação diz
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por reportar. Issue é o canal padrão deste repositório — se você
+        quiser implementar a correção, diga isso abaixo e espere o alinhamento
+        antes de abrir PR (a doc PT+EN e o release andam junto com o código).
+  - type: input
+    id: sdk-version
+    attributes:
+      label: Versão do SDK
+      description: 'Saída de `python -c "import tempest_fastapi_sdk as t; print(t.__version__)"`'
+      placeholder: "0.167.1"
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Versão do Python
+      placeholder: "3.12.11"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: O que aconteceu
+      description: Inclua o traceback completo, não só a última linha.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: O que você esperava
+      description: E, se aplicável, o trecho da doc que diz isso.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Como reproduzir
+      description: Snippet mínimo e completo — com imports, sem `...`.
+      render: python
+    validations:
+      required: true
+  - type: input
+    id: extras
+    attributes:
+      label: Extras instalados
+      placeholder: "[auth,cache,queue] — ou [all]"
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Antes de enviar
+      options:
+        - label: Reproduzi na versão mais recente publicada no PyPI.
+          required: true
+        - label: Procurei uma issue existente sobre o mesmo comportamento.
+          required: true

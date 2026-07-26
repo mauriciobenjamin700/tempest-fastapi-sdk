@@ -2,10 +2,279 @@
 
 Passo a passo curtos no estilo "quero conectar X". Cada página começa com **qual problema resolve**, **quando recorrer a ela** e um exemplo de código completo que você pode copiar literalmente.
 
-!!! tip "Quando ler o quê"
-    - Só precisa consultar uma assinatura? Pule para a **[Referência »](../reference.md)**.
-    - Construindo um serviço novo do zero? Siga primeiro o **[Tutorial »](../tutorial.md)** linear.
-    - Conectando uma peça específica do SDK? Você está no lugar certo — escolha a receita abaixo.
+!!! tip "Comece por aqui"
+    - **Serviço novo do zero?** Siga o **[Tutorial »](../tutorial.md)** — linear, constrói a feature *Users* passo a passo.
+    - **Só precisa de uma assinatura?** Pule para a **[Referência »](../reference.md)**.
+    - **Conectando uma peça específica?** Você está no lugar certo — o [tour](#tour-do-sdk-um-exemplo-por-bloco) abaixo dá o mapa, e o [índice](#indice-das-receitas) leva à receita completa.
+    - **Quer ver tudo junto num app real?** Vá para os **[exemplos completos](#exemplos-completos)**.
+    - **Quer estudar num projeto guiado?** Veja os **[Projetos de aprendizado »](../learning/index.md)**.
+
+## Tour do SDK — um exemplo por bloco
+
+Um passeio por **tudo** que o `tempest-fastapi-sdk` oferece: cada bloco tem o conceito em uma linha, um exemplo mínimo runnable e o link pra receita completa. Leia de cima a baixo pra ter o mapa mental, ou pule pro que precisa — instale só os extras que usar (`uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.167.0"`).
+
+### Fundação
+
+`BaseAppSettings`, `AsyncDatabaseManager`, `create_app` factory, `run()`.
+
+```python
+from tempest_fastapi_sdk import AsyncDatabaseManager, BaseAppSettings
+
+
+class Settings(BaseAppSettings):
+    DATABASE_URL: str = "sqlite+aiosqlite:///./app.db"
+
+
+settings = Settings()
+db = AsyncDatabaseManager(settings.DATABASE_URL)
+```
+
+Veja o [Tutorial](../tutorial.md) e a receita de [Banco de dados](database.md).
+
+### Schemas e campos validados
+
+`BaseSchema` + tipos `Annotated` que se autodescrevem (dinheiro, %, slug,
+lat/long, e brasileiros: CPF/CNPJ/CEP/telefone + **chave Pix**).
+
+```python
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import CentsField, PixKeyField, SlugField
+
+
+class ProductSchema(BaseSchema):
+    slug: SlugField
+    price_cents: CentsField          # int >= 0
+    pix_key: PixKeyField             # CPF/CNPJ/e-mail/telefone/aleatória
+```
+
+Receitas: [Campos validados](fields.md), [Helpers brasileiros](br-helpers.md).
+
+### Repository, Service, Controller
+
+`BaseRepository[Model]` (CRUD + bulk ops), `BaseService`, `BaseController`
+com `get_by_id`/`list`/`paginate`/`update`/`delete` prontos.
+
+```python
+from tempest_fastapi_sdk import BaseRepository, BaseService
+
+
+class UserRepository(BaseRepository[UserModel]):
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, model=UserModel)
+
+
+class UserService(BaseService[UserRepository, UserResponseSchema]):
+    ...
+```
+
+Receitas: [Tutorial](../tutorial.md), [Banco de dados](database.md).
+
+### Paginação
+
+Offset e cursor, com header `Link`.
+
+```python
+from tempest_fastapi_sdk import BasePaginationFilterSchema, CursorPaginationFilterSchema
+```
+
+### Exceções padronizadas
+
+`AppException` + subclasses → HTTP correto; `register_exception_handlers(app)`.
+
+```python
+from tempest_fastapi_sdk import NotFoundException, register_exception_handlers
+
+register_exception_handlers(app)
+raise NotFoundException(message="user not found")   # -> 404 padronizado
+```
+
+### Autenticação completa
+
+Fluxo bundled: signup/activate/login/reset/**troca e recuperação de
+e-mail**/MFA + deps JWT (header/cookie/query).
+
+```python
+from tempest_fastapi_sdk import UserAuthService, make_auth_router
+
+auth = UserAuthService(user_model=UserModel, token_model=UserTokenModel,
+                       auth_settings=settings, jwt_settings=settings)
+app.include_router(make_auth_router(auth, session_factory=db.session_dependency))
+```
+
+Receitas: [Auth flow](auth-flow.md), [MFA](mfa.md),
+[Refresh tokens](refresh-tokens.md), [Sessões](sessions.md).
+
+### Cache
+
+`AsyncRedisManager` + `@cached` + `CacheInvalidator` (namespace/tag).
+
+```python
+from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
+
+redis = AsyncRedisManager(settings.REDIS_URL)
+
+
+@cached(redis, ttl=300, namespace="products", tags=lambda a, k: [f"p:{k['pid']}"])
+async def get_product(*, pid: str) -> dict: ...
+```
+
+Receita: [Cache](cache.md).
+
+### Fila e tarefas em background
+
+`MessageBroker` (pub/sub FastStream), `TaskQueue` (TaskIQ) + cron por
+enum/helper, ambos escondendo a lib.
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker
+from tempest_fastapi_sdk.tasks import TaskQueue, Cron, CronOffset
+
+mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)
+tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)
+
+
+@mq.on("orders.paid")
+async def on_paid(event: OrderPaid) -> None: ...
+
+
+@tq.cron(Cron.EVERY_WEEKDAY_9AM, cron_offset=CronOffset.BRASILIA)
+async def digest() -> None: ...
+```
+
+Receitas: [Fila e Tarefas](queue-tasks.md), [Outbox](outbox.md).
+
+### Tempo real
+
+SSE (`EventStream`/`SSEBroker` com backpressure), WebSocket router, Web Push.
+
+```python
+from tempest_fastapi_sdk import EventStream
+
+@app.get("/events")
+async def events():
+    stream = EventStream()
+    ...
+    return stream.response(on_disconnect=task.cancel)
+```
+
+Receitas: [SSE](sse.md), [WebSocket](websocket.md),
+[Web Push](webpush.md), [Tempo real](realtime.md).
+
+### Observabilidade
+
+Logging estruturado + `/logs`, métricas CPU/RAM/GPU + Prometheus `/metrics`,
+request-id, tracing OTel, health + tool-spec.
+
+```python
+from tempest_fastapi_sdk import make_health_router, RequestIDMiddleware
+
+app.add_middleware(RequestIDMiddleware)
+app.include_router(make_health_router(checks={"db": db.health_check}))
+```
+
+Receitas: [Logging](logging.md), [Métricas](metrics.md),
+[Observabilidade](observability.md).
+
+### Hardening HTTP
+
+Rate limit (sliding window), idempotência, CSRF, CORS, limite de body,
+static seguro.
+
+```python
+from tempest_fastapi_sdk import RateLimitMiddleware, IdempotencyMiddleware
+
+app.add_middleware(RateLimitMiddleware, store=..., max_requests=100, window_seconds=60)
+app.add_middleware(IdempotencyMiddleware, store=...)
+```
+
+Receitas: [Camada HTTP](http.md), [Idempotência](idempotency.md),
+[Segurança](security.md).
+
+### Arquivos
+
+`UploadUtils` (local/MinIO), `DownloadUtils`, `FileStoreUtils` (facade),
+storage MinIO/S3, presigned URLs.
+
+```python
+from tempest_fastapi_sdk import FileStoreUtils
+
+store = FileStoreUtils(source="./uploads")     # ou um AsyncMinIOClient
+key = await store.save(upload_file)
+```
+
+Receitas: [File store](file-store.md), [Uploads](uploads.md),
+[Downloads](downloads.md), [Storage](storage.md).
+
+### Extras de domínio
+
+Feature flags, audit trail, multi-tenant, sync offline-first, sessões
+server-side, HTTP client tipado, i18n de erros.
+
+```python
+from tempest_fastapi_sdk import FeatureFlags, make_flag_dependency
+```
+
+Receitas: [Feature flags](feature-flags.md), [Audit trail](audit-trail.md),
+[Multi-tenant](multi-tenant.md), [Sync offline](offline-sync.md),
+[HTTP client](http-client.md).
+
+### IA generativa self-hosted
+
+Checagem de hardware, LLM local, embeddings, RAG (web + PDF) — tudo no
+seu hardware.
+
+!!! info "Instalação"
+    O SDK já vem com `tempest-fastapi-sdk`. A IA generativa self-hosted depende do extra `[genai]` — `uv add "tempest-fastapi-sdk[genai]"` (traz `torch`, `transformers`, `accelerate`, `safetensors` e `huggingface-hub`).
+
+```python
+from tempest_fastapi_sdk.genai import can_run, TextGenerator
+from tempest_fastapi_sdk.genai.rag import PdfReader, build_context
+
+if can_run(model_id="Qwen/Qwen2.5-7B-Instruct").fits:
+    gen = TextGenerator("Qwen/Qwen2.5-7B-Instruct", quantization="int4")
+    chunks = PdfReader().chunks("/kb/manual.pdf")
+    answer = await gen.generate(build_context("como estornar?", chunks))
+```
+
+Receita: [IA generativa self-hosted](genai.md).
+
+### Painel admin
+
+`AdminSite` + `AdminModel` + `make_admin_router` (Jinja+HTMX, temas,
+ações, upload, filtros).
+
+Receita: [Painel admin](admin.md).
+
+### SSR e visão
+
+SSR tipado (`Page`/`html_response`) sobre `tempestweb`; visão computacional
+(`Detector`/`Classifier`/`Segmenter`) via `ort-vision-sdk`.
+
+Receitas: [SSR](../ssr.md), [Visão](vision.md).
+
+### CLI e deploy
+
+`tempest new` (scaffold), `tempest db` (migrations), `tempest user`,
+`tempest secrets`, gates de qualidade; deploy seguro (migrations + graceful
+shutdown).
+
+```bash
+tempest new my-service && cd my-service
+tempest db init && tempest db upgrade
+tempest check          # ruff + mypy + testes
+```
+
+Receitas: [CLI](cli.md), [Deploy seguro](deploy-safety.md).
+
+### Recap
+
+O SDK cobre o ciclo inteiro de um serviço FastAPI: fundação tipada →
+persistência → auth → cache → background → tempo real → observabilidade →
+hardening → arquivos → IA → admin → CLI/deploy. Cada seção acima aponta pra
+receita com o guia completo. Comece pelo [Tutorial](../tutorial.md) e volte
+aqui pra plugar cada capacidade conforme precisar.
+
+## Índice das receitas
 
 | Tema | Cobre |
 | --- | --- |
@@ -49,6 +318,31 @@ Passo a passo curtos no estilo "quero conectar X". Cada página começa com **qu
 | **[CLI »](cli.md)** | `tempest new` / `db` (+ `seed`) / `user` / `secrets rotate` / `lint` / `fix` / `format` / `type` / `test` / `check` |
 | **[Segurança »](security.md)** | `AttemptThrottle`, helpers de token opaco, `HardenedStaticFiles`, headers de segurança |
 | **[Helpers brasileiros »](br-helpers.md)** | validação + normalização de CPF / CNPJ / CEP / telefone |
+| **[Permissões object-level »](authz.md)** | `permission` (decorator de regra), `has_perm` / `check_permission`, `PermissionRegistry`, `make_permission_checker`, `PermissionMixin` |
+| **[Guards de permissão (@requires) »](permission-guards.md)** | `@requires` + guards `(user) -> user`, `TempestPermissionError`, `GuardContractWarning`, `tempest permissions --check` |
+| **[Auth por introspecção (resource server) »](introspection-auth.md)** | `IntrospectionAuth` — validar bearer opaco perguntando ao provedor de identidade upstream |
+| **[Geolocalização (distância + tempo) »](geo.md)** | `haversine_km`, `estimate_travel`, `OSRMBackend`, `NominatimBackend`, `GeoPointMixin` / `GeoRepositoryMixin` |
+| **[IA generativa self-hosted »](genai.md)** | `probe_hardware` / `can_run`, `TextGenerator`, `Embedder`, RAG (web + PDF), áudio (STT/TTS), `make_genai_router` |
+| **[File store (unificado) »](file-store.md)** | `FileStoreUtils` — upload + download + presign sobre um backend só |
+| **[Artefatos versionados (modelos) »](artifact-registry.md)** | `ArtifactRegistry`, `ArtifactVersionMixin`, `build_manifest_entries`, `file_digest` — versão ativa sem redeploy |
+| **[Erros no OpenAPI (Swagger) »](openapi-errors.md)** | `error_responses`, `@raises`, `TempestAPIRouter`, `ErrorResponseSchema`, `tempest openapi-errors --fix` |
+| **[Cliente de integração (OpenAPI) »](openapi-client.md)** | `tempest openapi-client` — schemas Pydantic + client tipado a partir da spec de um terceiro |
+| **[System checks (check-config) »](system-checks.md)** | `run_system_checks`, `@check`, `CheckMessage`, `tempest check-config` — validar settings antes de servir |
+| **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | registrar comandos próprios na CLI `tempest` do projeto |
+| **[SSR (páginas tipadas) »](../ssr.md)** | `Page`, `html_response`, `make_htmx_router`, hospedar um build do `tempestweb` |
+| **[SPA React no FastAPI »](react-spa.md)** | `make_spa_router` — servir o build do Vite pelo mesmo processo, com history fallback |
+
+## Exemplos completos
+
+As receitas mostram uma peça por vez. Estas páginas juntam **várias** num fluxo que roda de ponta a ponta — leia quando quiser ver as decisões de integração, não a API isolada.
+
+| Exemplo | O que junta |
+| --- | --- |
+| **[Checkout com Pix »](../integrated.md)** | auth JWT + campos validados (`PixKeyField`) + cache + outbox transacional + `MessageBroker` + `TaskQueue` + SSE + Web Push |
+| **[Marketplace de bairro »](../marketplace-local.md)** | geo (vendedores próximos, distância/tempo) + chat em tempo real + notificações ao vivo + avaliações com estrelas |
+| **[Admin de loja completo »](../admin-showcase.md)** | audit history + autocomplete FK + inlines + cards de negócio + import CSV + RBAC granular + lenses |
+| **[Fullstack web (SSR, WASM, server) »](../fullstack-web.md)** | os três modos de falar com o `tempestweb`: SSR + HTMX, SPA WASM e server-mode |
+| **[Fluxos de GenAI »](../genai-examples.md)** | capacidade de hardware → LLM local → embeddings/RAG → áudio, self-hosted de ponta a ponta |
 
 ## Anatomia de uma receita
 

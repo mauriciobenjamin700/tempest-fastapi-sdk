@@ -1,6 +1,6 @@
 # Integrated example — Pix checkout
 
-The [Tour](tour.md) shows each piece in isolation. Here they work
+The [SDK tour](recipes/index.md#sdk-tour-one-example-per-block) shows each piece in isolation. Here they work
 **together** in a real flow: an authenticated customer pays an order via
 Pix, and the system prices it with a cache, writes the order + event in the
 **same transaction** (outbox), fires a background email, and notifies the
@@ -332,7 +332,7 @@ async def feed(user: UserModel = Depends(current_user)) -> StreamingResponse:
 5. The browser gets the update immediately on `GET /api/feed` / `GET /notifications/stream`;
    whoever is away receives the **Web Push**.
 
-Each capability has its own recipe (see the [Tour](tour.md)); the point
+Each capability has its own recipe (see the [recipe index](recipes/index.md#recipe-index)); the point
 here is how they compose with no manual glue: exceptions become the right
 HTTP status, tokens gate the route, fields reject junk, the outbox
 guarantees the event, and real time closes the loop.

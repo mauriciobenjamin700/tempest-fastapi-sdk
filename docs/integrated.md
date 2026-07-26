@@ -1,6 +1,6 @@
 # Exemplo integrado — checkout com Pix
 
-O [Tour](tour.md) mostra cada peça isolada. Aqui elas trabalham **juntas**
+O [tour do SDK](recipes/index.md#tour-do-sdk-um-exemplo-por-bloco) mostra cada peça isolada. Aqui elas trabalham **juntas**
 num fluxo real: um cliente autenticado paga um pedido via Pix, e o sistema
 precifica com cache, grava pedido + evento na **mesma transação** (outbox),
 dispara um e-mail em background e notifica o cliente em tempo real por
@@ -333,7 +333,7 @@ async def feed(user: UserModel = Depends(current_user)) -> StreamingResponse:
 5. O browser recebe o update na hora em `GET /api/feed` / `GET /notifications/stream`;
    quem está fora recebe o **Web Push**.
 
-Cada capacidade tem sua receita dedicada (veja o [Tour](tour.md)); aqui o
+Cada capacidade tem sua receita dedicada (veja o [índice das receitas](recipes/index.md#indice-das-receitas)); aqui o
 ponto é como elas se compõem sem cola manual: exceções viram HTTP certo,
 tokens abrem a rota, campos barram lixo, o outbox garante o evento, e o
 tempo real fecha o loop.

@@ -1,0 +1,59 @@
+name: Feature / ideia de API
+description: Uma capacidade nova ou uma mudança na superfície pública
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Descreva o **caso de uso**, não a solução já desenhada — o problema
+        costuma ter uma resposta melhor com as peças que o SDK já tem. O escopo
+        e o formato da API são combinados aqui, antes de existir código.
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Caso de uso
+      description: O que você está construindo e onde o SDK te obriga a escrever código repetido, frágil ou fora do padrão.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: Como você resolve isso hoje
+      description: O workaround atual, com código se ajudar.
+      render: python
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Ideia de API (opcional)
+      description: Se já imaginou uma assinatura, mostre o call site que gostaria de escrever.
+      render: python
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área do SDK
+      options:
+        - auth / authz
+        - db / repository / migrations
+        - api / middlewares / HTTP
+        - queue / tasks / outbox
+        - cache / flags
+        - admin
+        - genai
+        - geo
+        - storage / upload / download
+        - sse / websocket / webpush
+        - CLI / tooling
+        - docs
+        - outra / não sei
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Antes de enviar
+      options:
+        - label: Verifiquei no [roadmap](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/roadmap/) se já está entregue ou na fila.
+          required: true
+        - label: Procurei uma issue existente com o mesmo pedido.
+          required: true
