@@ -163,6 +163,31 @@ What you inherit by subclassing `BaseController[ServiceT, ResponseT]`:
 | `update(id, data)` | `service.update` | Same. |
 | `delete(id)` | `service.delete` | Same. |
 
+!!! tip "Typing the `update` payload end to end"
+    The 3rd generic parameter is the update schema, and it must be the **same** on both layers: a service declared as `BaseService[Repo, Resp, MyUpdateSchema]` fits `BaseController[MyService, Resp, MyUpdateSchema]`. Omit the 3rd parameter on either one and it falls back to the `BaseSchema` default, leaving `update`'s `data` loosely typed.
+
+    ```python
+    from tempest_fastapi_sdk import BaseController, BaseService
+
+    from src.db.repositories import CoinPackRepository
+    from src.schemas import CoinPackResponseSchema, CoinPackUpdateSchema
+
+
+    class CoinPackService(
+        BaseService[CoinPackRepository, CoinPackResponseSchema, CoinPackUpdateSchema]
+    ):
+        """Service typed over the concrete update schema."""
+
+
+    class CoinPackController(
+        BaseController[CoinPackService, CoinPackResponseSchema, CoinPackUpdateSchema]
+    ):
+        """Controller repeating the same update schema."""
+    ```
+
+    !!! warning "Requires 0.167.1+"
+        On earlier versions this pair failed type checking with `Type parameter "UpdateT@BaseService" is invariant, but "CoinPackUpdateSchema" is not the same as "BaseSchema"` — `ServiceT`'s bound pinned that invariant parameter to `BaseSchema`. Fixed in 0.167.1; nothing changes at runtime.
+
 When a use case needs domain rules, override the inherited method in the service. When a use case needs to coordinate more than one service, override the inherited method (or add a new one) in the controller. The router never grows — it only depends on the controller.
 
 ```python
