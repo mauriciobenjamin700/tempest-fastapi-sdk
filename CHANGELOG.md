@@ -5,6 +5,31 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.170.1] — 2026-07-26
+
+Follow-up to 0.170.0, found by running it on the same service: the new
+delegation chain broke at the classes the layering encourages most.
+
+### Fixed
+
+- **A pass-through layer no longer breaks the chain.** A service that overrides
+  nothing has no `__init__` to read — `class CategoryService(BaseService[
+  CategoryRepository, CategoryResponseSchema])` states what it delegates to
+  *only* through the base's generic parameters. 0.170.0 read attributes and
+  constructor parameters, so the walk stopped there and the route that deletes a
+  category was reported as declaring two **unreachable** exceptions it actually
+  raises. That is worse than silence: it invites deleting a correct declaration.
+  New `GENERIC_DELEGATES` maps `BaseService[RepositoryT, …]` to `repository` and
+  `BaseController[ServiceT, …]` to `service`; only those two bases are
+  interpreted, since `BaseRepository[Model]`'s parameter is an ORM model and
+  reading positions blindly would invent a delegation link to a table class.
+- **An override further down the chain is now walked, not just mined.** Only
+  constructor configuration was collected along the chain, so a repository whose
+  own `delete` translates an `IntegrityError` into a domain 409 contributed
+  nothing — nothing configures that exception, it is raised outright. Those
+  methods are returned as ordinary call-graph targets now, so their `raise`
+  statements and `Raises:` sections are read like any other.
+
 ## [0.170.0] — 2026-07-26
 
 Two findings from `openapi-errors` on a real service, in opposite directions: it

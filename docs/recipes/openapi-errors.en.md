@@ -473,6 +473,15 @@ Options:
       `*_conflict_exception` kwargs. Beyond that — an inherited SDK method that
       raises no configured class — no edge is created, so declare what the base
       raises in your `Raises:` section.
+
+        The chain is built from annotated `self.service` / `self.repository`
+        **or** from the base's generic parameters: a pass-through layer like
+        `class CategoryService(BaseService[CategoryRepository, Resp])` has no
+        `__init__` to read, and the subscript is its only statement of what it
+        delegates to. Along that chain, a layer that **overrides** the method —
+        a repository whose `delete` translates an `IntegrityError` into a domain
+        409 — is walked like any other function, not merely consulted for
+        configuration. Both fixed in 0.170.1.
     - **Dynamic raises are invisible.** `raise EXCEPTION_MAP[key]` cannot be
       resolved statically.
 
