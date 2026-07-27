@@ -51,6 +51,18 @@ CI on tag push runs `release-pypi.yml` (trusted-publishing — no
 token), then `docs.yml` redeploys GitHub Pages. Don't push a tag
 without the docs being green.
 
+**Docs-only change skips all of this.** Touched only `docs/`,
+`README.md` or `CLAUDE.md` prose (no `tempest_fastapi_sdk/**` delta)?
+No version bump, no CHANGELOG entry, no tag — commit `docs: <subject>`
+and push straight to `main` (rebase on `origin/main` first if behind).
+`docs.yml` triggers on the `main` push and redeploys Pages by itself.
+Gate is just `uv run --group docs mkdocs build --strict` +
+`pytest tests/test_docs_api_guard.py tests/test_docs_organization.py`;
+the full `make check` is unnecessary because no Python changed. See
+"Docs-only change" in the global `CLAUDE.md` for the reasoning. A
+docstring edit that changes a signature or behavior is **not**
+docs-only — that follows the flow above.
+
 ## Roadmap — features we still owe
 
 The SDK currently covers (Sep 2025+, post-v0.31.x):
