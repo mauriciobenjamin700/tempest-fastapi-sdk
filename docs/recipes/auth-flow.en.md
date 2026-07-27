@@ -1092,7 +1092,7 @@ emails/                            # ← template_dir="emails"
 
 Since v0.49.0, `UserAuthService` builds that dependency for you — `current_user_dependency()`. It:
 
-1. Reads `Authorization: Bearer <jwt>` via `HTTPBearer`.
+1. Looks the token up in three places, in **header → cookie → query string** order (first hit wins): `Authorization: Bearer <jwt>` via `HTTPBearer`, then the cookie (`cookie_name`), and finally the query parameter (`query_param`).
 2. Decodes and verifies the JWT with **the same `JWTUtils` the service signs with** — no second secret to keep in sync.
 3. Pulls the `sub` (user id) from the payload, opens a session from `db=`, and returns the persisted `UserModel`.
 
@@ -1110,6 +1110,27 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
 
 !!! info "Requires `db=` on `UserAuthService`"
     `current_user_dependency` resolves the user by opening its own session, so the service must have been created with `db=` (the `AsyncDatabaseManager` from [Minimum setup](#minimum-setup)). Because it reuses the internal `self.jwt`, the token is verified with the **same** secret that signed it — the divergent-`JWT_SECRET` footgun is gone.
+
+!!! tip "Not header-only: cookie and query string count too"
+    The dependency tries **header → cookie → query string** and stops at the first hit, so the single line above serves both bearer clients and cookie clients.
+
+    - **Cookie — automatic.** With `AUTH_TOKEN_DELIVERY` set to `"cookie"` or `"both"`, `cookie_name` is **auto-derived** from `AUTH_ACCESS_COOKIE_NAME` — the same cookie the bundled `/auth/login` set. Zero extra wiring: a route guarded by this dependency already accepts that cookie. A bearer-only delivery mode leaves it `None` (header only). Pass `cookie_name="..."` to force a name.
+    - **Query string — opt-in.** Never auto-derived. It exists for clients that can send neither a header **nor** a cookie — the classic case being the browser `EventSource` (SSE) cross-origin:
+
+    ```python
+    # src/api/dependencies/auth.py
+    from src.api.app import auth_service
+
+    get_current_user = auth_service.current_user_dependency(
+        cookie_name="access_token",
+        query_param="access_token",
+    )
+    ```
+
+    Full SSE walkthrough in the [SSE recipe »](sse.md#authentication-cookie-or-query-string).
+
+!!! warning "A token in the URL leaks"
+    Query strings land in access logs, browser history and the `Referer` header. Enable `query_param` only over TLS, only with a **short-lived access token** (never a refresh token), and scrub the value from your log format. When the client shares the API's origin, prefer a session cookie (`withCredentials`).
 
 ??? note "No `UserAuthService`? Build the dependency by hand"
     If your service doesn't use the bundled flow, the `make_jwt_user_dependency` primitive accepts any `JWTUtils` + a one-argument async `user_loader`:

@@ -1087,7 +1087,7 @@ emails/                            # ← template_dir="emails"
 
 Desde a v0.49.0, o próprio `UserAuthService` constrói essa dependency — `current_user_dependency()`. Ela:
 
-1. Lê `Authorization: Bearer <jwt>` via `HTTPBearer`.
+1. Procura o token em três lugares, na ordem **header → cookie → query string** (primeiro hit ganha): `Authorization: Bearer <jwt>` via `HTTPBearer`, depois o cookie (`cookie_name`) e por último o parâmetro de query (`query_param`).
 2. Decodifica e verifica o JWT com **o mesmo `JWTUtils` que o service usou pra assinar** — sem segundo segredo pra manter sincronizado.
 3. Pega o `sub` (id do usuário) do payload, abre uma sessão a partir do `db=` e devolve o `UserModel` persistido.
 
@@ -1105,6 +1105,27 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
 
 !!! info "Requer `db=` no `UserAuthService`"
     `current_user_dependency` resolve o usuário abrindo a própria sessão, então o service precisa ter sido criado com `db=` (o `AsyncDatabaseManager` do [Setup mínimo](#setup-minimo)). Como reusa o `self.jwt` interno, o token é validado com o **mesmo** segredo que assinou — o footgun de `JWT_SECRET` divergente some.
+
+!!! tip "Não é só o header: cookie e query string também valem"
+    A dependency tenta **header → cookie → query string** e para no primeiro hit, então a mesma linha acima serve cliente bearer e cliente cookie.
+
+    - **Cookie — automático.** Com `AUTH_TOKEN_DELIVERY` em `"cookie"` ou `"both"`, o `cookie_name` é **auto-derivado** de `AUTH_ACCESS_COOKIE_NAME`, o mesmo cookie que o `/auth/login` bundled setou. Zero wiring extra: rota guardada por essa dependency já aceita o cookie. Em delivery bearer-only fica `None` (só header). Passe `cookie_name="..."` pra forçar um nome.
+    - **Query string — opt-in.** Nunca é auto-derivada. Serve pra cliente que não consegue mandar header **nem** cookie — caso clássico é o `EventSource` do browser (SSE) cross-origin:
+
+    ```python
+    # src/api/dependencies/auth.py
+    from src.api.app import auth_service
+
+    get_current_user = auth_service.current_user_dependency(
+        cookie_name="access_token",
+        query_param="access_token",
+    )
+    ```
+
+    Detalhe do fluxo SSE na [receita SSE »](sse.md#autenticacao-cookie-ou-query-string).
+
+!!! warning "Token na URL vaza"
+    Query string entra em log de acesso, histórico do browser e header `Referer`. Habilite `query_param` só sobre TLS, só com **access token de vida curta** (nunca refresh token), e limpe o valor do formato de log. Se o cliente compartilha a origem da API, prefira cookie de sessão (`withCredentials`).
 
 ??? note "Sem `UserAuthService`? Monte a dependency na mão"
     Se o seu serviço não usa o flow bundled, a primitiva `make_jwt_user_dependency` aceita qualquer `JWTUtils` + um `user_loader` async de um argumento:
