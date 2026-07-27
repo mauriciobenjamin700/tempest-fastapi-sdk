@@ -1104,7 +1104,9 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
 ```
 
 !!! info "Requer `db=` no `UserAuthService`"
-    `current_user_dependency` resolve o usuário abrindo a própria sessão, então o service precisa ter sido criado com `db=` (o `AsyncDatabaseManager` do [Setup mínimo](#setup-minimo)). Como reusa o `self.jwt` interno, o token é validado com o **mesmo** segredo que assinou — o footgun de `JWT_SECRET` divergente some.
+    `current_user_dependency` precisa do `db=` (o `AsyncDatabaseManager` do [Setup mínimo](#setup-minimo)) — sem ele, levanta `RuntimeError`. Como reusa o `self.jwt` interno, o token é validado com o **mesmo** segredo que assinou — o footgun de `JWT_SECRET` divergente some.
+
+    O usuário é carregado na sessão **do request** (`db.session_dependency` por default), a mesma que os seus repositórios usam. Ou seja: a instância vem *attached* e você pode mutar/`refresh` sem tomar `InvalidRequestError: Instance is not persistent within this Session`. Se os seus repositórios dependem de outro callable de sessão (um `get_session` local, por exemplo), passe **esse mesmo callable** em `session_dependency=` — o FastAPI cacheia sub-dependency por callable, então um wrapper diferente abre uma segunda sessão e volta a destacar o usuário.
 
 !!! tip "Não é só o header: cookie e query string também valem"
     A dependency tenta **header → cookie → query string** e para no primeiro hit, então a mesma linha acima serve cliente bearer e cliente cookie.

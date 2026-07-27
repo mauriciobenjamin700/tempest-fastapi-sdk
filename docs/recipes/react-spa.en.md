@@ -204,8 +204,14 @@ an `HttpOnly` cookie JavaScript cannot reach.
 # src/api/app.py
 from tempest_fastapi_sdk import make_auth_router
 
+from src.api.dependencies.resources import db
+
 app.include_router(
-    make_auth_router(auth_service, session_factory, token_delivery="cookie"),
+    make_auth_router(
+        auth_service,
+        session_factory=db.session_dependency,
+        token_delivery="cookie",
+    ),
     prefix="/api/auth",
     tags=["auth"],
 )

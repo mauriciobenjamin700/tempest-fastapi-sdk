@@ -2883,18 +2883,19 @@ async def github_event(body: bytes = Depends(github.dependency())) -> None:
 
 Supports `hex` (default) and `base64` encodings, any hashlib algorithm guaranteed across platforms, and an optional `prefix` (e.g. `"sha256="`) stripped before comparison. Use the imperative `verifier.verify(body, signature)` from queue handlers when validation happens outside the FastAPI pipeline.
 
-For providers that sign with an RSA private key (Apple App Store, Google Play, custom enterprise services), swap `WebhookSignatureVerifier` for `RSAWebhookSignatureVerifier` — same `dependency()` / `verify()` surface, but it validates the signature against a PEM-encoded public key (`PKCS1v15` over SHA-256 by default; pass `hash_algorithm="sha512"` or `padding="pss"` to match the provider).
+For providers that sign with an RSA private key (OpenPix/Woovi, Apple App Store, custom enterprise services), swap `WebhookSignatureVerifier` for `RSAWebhookSignatureVerifier` — same `dependency()` / `verify()` surface, but it validates the signature against a PEM-encoded public key. `RSASSA-PKCS1-v1_5` over SHA-256 by default; `algorithm=` accepts `"sha256"`, `"sha384"` or `"sha512"` (anything else raises `ValueError`). The signature header is always read as **base64** — there is no `encoding=` knob, and PSS padding is not supported.
 
 ```python
 from tempest_fastapi_sdk import RSAWebhookSignatureVerifier
 
 apple = RSAWebhookSignatureVerifier(
-    public_key_pem=settings.APPLE_PUBLIC_KEY_PEM,
+    settings.APPLE_PUBLIC_KEY_PEM,
     header_name="X-Apple-Signature",
-    encoding="base64",
-    hash_algorithm="sha256",
+    algorithm="sha256",
 )
 ```
+
+Requires `cryptography` (bundled with the `[webpush]` extra); the import is deferred to first use.
 
 ### Pagination Link headers recipe
 
@@ -3306,38 +3307,47 @@ async def login(email: str, password: str) -> User:
 
 ### Opaque tokens recipe
 
-`generate_opaque_token` produces a high-entropy URL-safe token (default 32 bytes / 256 bits via `secrets.token_urlsafe`); `hash_opaque_token` stores it as an HMAC-SHA-256 digest so a leaked database row is useless on its own; `verify_opaque_token` performs constant-time comparison. Use them for password reset links, email confirmation, API keys, opaque session IDs — anything where the issued secret is never inspected by the recipient.
+`generate_opaque_token()` returns **both halves in one call** — `(plaintext, token_hash)`. The plaintext is a URL-safe string (32 bytes of entropy by default, ~43 chars) shown to the user exactly once; `token_hash` is the lowercase SHA-256 hex digest, the only value you persist, so a leaked table row is useless on its own. `hash_opaque_token(plaintext)` re-derives that digest and `verify_opaque_token(plaintext, token_hash)` compares in constant time. Use them for password reset links, email confirmation, API keys, opaque session IDs — anything where the issued secret is never inspected by the recipient.
 
 ```python
+from datetime import timedelta
+from uuid import UUID
+
 from tempest_fastapi_sdk import (
     generate_opaque_token,
-    hash_opaque_token,
+    utcnow,
     verify_opaque_token,
 )
-from src.core.settings import settings
 
 
-def issue_reset_token(user_id: UUID) -> str:
-    plain = generate_opaque_token()
-    digest = hash_opaque_token(plain, secret=settings.OPAQUE_TOKEN_PEPPER)
+async def issue_reset_token(user_id: UUID) -> str:
+    """Persist the digest and return the plaintext to email once."""
+    plaintext, token_hash = generate_opaque_token()
     await reset_tokens_repo.add(
-        PasswordResetToken(user_id=user_id, digest=digest, expires_at=...),
+        PasswordResetToken(
+            user_id=user_id,
+            token_hash=token_hash,
+            expires_at=utcnow() + timedelta(hours=1),
+        ),
     )
-    return plain  # send this in the email — never store it
+    return plaintext  # send this in the email — never store it
 
 
-async def consume_reset_token(plain: str, user_id: UUID) -> bool:
-    record = await reset_tokens_repo.get_or_none({"user_id": user_id})
-    if record is None or record.is_expired:
+async def consume_reset_token(plaintext: str, user_id: UUID) -> bool:
+    """Redeem a token one-shot: verify the digest, then stamp `used_at`."""
+    record = await reset_tokens_repo.get_or_none(
+        {"user_id": user_id, "used_at": None},
+    )
+    if record is None or record.expires_at < utcnow():
         return False
-    return verify_opaque_token(
-        plain,
-        record.digest,
-        secret=settings.OPAQUE_TOKEN_PEPPER,
-    )
+    if not verify_opaque_token(plaintext, record.token_hash):
+        return False
+    record.used_at = utcnow()
+    await reset_tokens_repo.update(record)
+    return True
 ```
 
-`secret=` is optional — passing the same pepper across `hash_*` / `verify_*` adds a service-wide secret so the digest column alone cannot be brute-forced. Defaults: 32 bytes of entropy, HMAC-SHA-256, constant-time compare. Override `nbytes=` for longer keys (API keys / refresh tokens).
+The digest is **plain SHA-256, no pepper and no HMAC** — by design: an opaque token already carries 256 bits of entropy, so a pepper adds no practical resistance. For a low-entropy secret (a human password) use `PasswordUtils.hash` (bcrypt) instead, never these helpers. `generate_opaque_token(nbytes=64)` raises the entropy for longer-lived keys.
 
 ### Client IP extraction recipe
 

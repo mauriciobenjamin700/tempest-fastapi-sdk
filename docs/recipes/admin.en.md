@@ -556,7 +556,15 @@ def policy(user: UserModel, admin: AdminModel, action: AdminPermission) -> bool:
     return admin.model is not AuditLog              # editor: everything but AuditLog
 
 
-app.include_router(make_admin_router(site, ..., access_policy=policy))
+app.include_router(
+    make_admin_router(
+        site,
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key=settings.JWT_SECRET,
+        access_policy=policy,
+    ),
+)
 ```
 
 The policy is asked `(principal, admin, action)` for **every** action —

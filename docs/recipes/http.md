@@ -2,7 +2,7 @@
 
 Middlewares, dependências, routers e composição de middleware para a superfície da API.
 
-Você vai montar aqui a superfície HTTP inteira de um serviço a partir dos primitivos que o `tempest_fastapi_sdk` entrega — sem escrever middleware, exception handler ou glue de bootstrap na mão. Cada seção é independente: pegue só a que você precisa agora. Esta receita cobre ~11 primitivos:
+Você vai montar aqui a superfície HTTP inteira de um serviço a partir dos primitivos que o `tempest_fastapi_sdk` entrega — sem escrever middleware, exception handler ou glue de bootstrap na mão. Cada seção é independente: pegue só a que você precisa agora. Esta receita cobre ~12 primitivos:
 
 - **`create_app()` + `register_exception_handlers`** — bootstrap canônico e o envelope de erro padronizado (com i18n opcional via `MessageCatalog`).
 - **`RequestIDMiddleware`** — correlação `X-Request-ID` em cada linha de log.
@@ -10,6 +10,7 @@ Você vai montar aqui a superfície HTTP inteira de um serviço a partir dos pri
 - **`make_health_router` / `make_token_dependency`** — liveness/readiness + o guarda de segredo compartilhado `X-Token`.
 - **Dependências JWT / bearer / role / permission** — controle de rota por token e por papel.
 - **`RateLimitMiddleware`** — janela deslizante, chave por IP/usuário/tenant, store em memória ou Redis.
+- **`BodySizeLimitMiddleware`** — teto de bytes no corpo do request, com 413 antes de qualquer parse.
 - **`WebhookSignatureVerifier` / `RSAWebhookSignatureVerifier`** — validação de webhooks assinados (HMAC ou RSA).
 - **`build_pagination_link_header`** — header `Link` RFC 8288 no estilo GitHub.
 - **`make_tool_spec_router`** — manifesto legível por máquina no prefixo raiz.
@@ -372,6 +373,44 @@ A semântica de janela deslizante é idêntica nos dois stores; só muda onde os
     `Depends(cache.client_dependency)`, ou o `SSEBroker` montado no lifespan.
     Os dois precisam do extra `[cache]` (o pacote `redis`).
 
+
+## Limite de tamanho do body (`BodySizeLimitMiddleware`)
+
+Um upload de 2 GB num endpoint que espera JSON derruba o worker antes de
+qualquer validação do Pydantic. `BodySizeLimitMiddleware` é ASGI puro e corta
+isso na porta:
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+from tempest_fastapi_sdk import BodySizeLimitMiddleware
+
+app: FastAPI = FastAPI()
+
+app.add_middleware(
+    BodySizeLimitMiddleware,
+    max_bytes=2 * 1024 * 1024,             # 2 MiB pra qualquer request
+    exclude_paths=("/api/files/upload",),  # rota de upload tem limite próprio
+)
+```
+
+São **duas** checagens:
+
+1. **Header** — `Content-Length` acima do teto responde `413` na hora, sem ler
+   um byte do corpo. Pega o caso comum, em que o cliente sabe o tamanho.
+2. **Streaming** — em upload `chunked` (sem `Content-Length`), o middleware
+   conta os bytes das mensagens `http.request` e aborta ao cruzar o teto.
+
+A resposta é o envelope canônico do SDK:
+`{"detail": "Request body too large.", "code": "REQUEST_BODY_TOO_LARGE", "details": {}}`
+com HTTP 413.
+
+!!! info "`exclude_paths` casa por prefixo"
+    O match é `startswith`, então quanto mais específico o prefixo, melhor —
+    `("/api/files",)` libera tudo abaixo de `/api/files`. Use pra rota que
+    aceita arquivo grande de propósito e aplica o **próprio** limite (via
+    `UploadUtils(max_size=...)`, por exemplo). `max_bytes=0` desliga a
+    checagem — não suba isso pra produção.
 
 ## Cache de resposta HTTP (ETag / 304)
 
@@ -816,12 +855,15 @@ async def login(
 
 #### Proteja uma rota — dependência JWT
 
-Use `make_jwt_user_dependency` para conectar o esquema bearer + decode do JWT + carga do usuário em uma chamada. A única costura é `user_loader(subject)`, um callable async que mapeia o claim de subject do JWT para o seu `UserModel` de domínio.
+Use `make_jwt_user_dependency` para conectar o esquema bearer + decode do JWT + carga do usuário em uma chamada. A única costura é o `user_loader`, um callable async que mapeia o claim de subject do JWT para o seu `UserModel` de domínio — chamado como `user_loader(subject)` por default, ou `user_loader(subject, session)` quando você passa `session_dependency=` (recomendado: assim o usuário volta *attached* na sessão do request e pode ser mutado sem `InvalidRequestError`).
+
+O token é procurado em **header → cookie → query string**, primeiro hit ganha: `Authorization: Bearer` sempre, mais o cookie de `cookie_name=` e o parâmetro de `query_param=` quando você os habilita (ambos `None` por default). `subject_claim=` troca o claim lido (default `"sub"`) e `error_message=` o texto do 401.
 
 ```python
 # src/api/dependencies/auth.py
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from tempest_fastapi_sdk import make_jwt_user_dependency
 
 from src.api.app import db
@@ -830,20 +872,29 @@ from src.db.models import UserModel
 from src.db.repositories import UserRepository
 
 
-async def load_user(subject: str) -> UserModel:
+async def load_user(subject: str, session: AsyncSession) -> UserModel:
     """Resolve the JWT subject (a UUID string) to a persisted user.
 
-    Opens its own session so the dependency stays request-scope-agnostic
-    (the loader is called once per request, and SDK exceptions raised
-    inside translate to the canonical 401/404 envelope).
+    Receives the request-scoped session because the dependency below
+    declares `session_dependency=`, so the user comes back attached to
+    the same session the route's repositories use. SDK exceptions raised
+    inside translate to the canonical 401/404 envelope.
     """
-    async with db.get_session_context() as session:
-        repo = UserRepository(session)
-        return await repo.get_by_id(UUID(subject))
+    repo = UserRepository(session)
+    return await repo.get_by_id(UUID(subject))
 
 
-get_current_user = make_jwt_user_dependency(tokens, load_user)
-get_current_user_or_none = make_jwt_user_dependency(tokens, load_user, soft=True)
+get_current_user = make_jwt_user_dependency(
+    tokens,
+    load_user,
+    session_dependency=db.session_dependency,
+)
+get_current_user_or_none = make_jwt_user_dependency(
+    tokens,
+    load_user,
+    soft=True,
+    session_dependency=db.session_dependency,
+)
 ```
 
 ```python
