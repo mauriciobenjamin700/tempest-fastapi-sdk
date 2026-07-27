@@ -182,6 +182,43 @@ user.profile_picture = str(new_key)
 Para **baixar** o que foi enviado (local ou MinIO), use o
 [`DownloadUtils`](downloads.md) — ele aceita o mesmo backend no construtor.
 
+### Streaming direto pro backend — `write_stream` e `UploadResult`
+
+`save()` é a porta de entrada pra `UploadFile` do FastAPI e devolve a **key**.
+Quando os bytes não vêm de um formulário — proxy de outro serviço, resultado de
+um job, arquivo gerado na hora — fale com o backend direto: `write_stream`
+consome um `AsyncIterator[bytes]` sem buffer do arquivo inteiro na memória, e
+devolve um `UploadResult`:
+
+```python
+from collections.abc import AsyncIterator
+
+from tempest_fastapi_sdk import LocalUploadStorage, UploadResult
+
+storage: LocalUploadStorage = LocalUploadStorage("./var/uploads")
+
+
+async def store_report(chunks: AsyncIterator[bytes]) -> UploadResult:
+    """Persist a generated report without buffering it in memory."""
+    return await storage.write_stream(
+        "reports/2026-07.csv",
+        chunks,
+        content_type="text/csv",
+        max_size_bytes=50 * 1024 * 1024,
+    )
+```
+
+| Campo | Tipo | Conteúdo |
+| --- | --- | --- |
+| `key` | `str` | Identificador canônico — caminho relativo no local, key S3 no MinIO |
+| `size` | `int` | Bytes gravados |
+| `path` | `Path` ou `None` | Caminho em disco, só quando o backend escreve em filesystem |
+| `url` | `str` ou `None` | URL de download (presigned ou estática), quando o backend sabe gerar |
+
+`max_size_bytes=` corta o stream ao cruzar o teto (`FileTooLargeException`), e
+`validator=` inspeciona os primeiros bytes — as duas checagens rodam
+**enquanto** grava, sem esperar o arquivo terminar.
+
 ## Quando usar presigned PUT direto
 
 Pra arquivos > 50 MB, evite buffer em memória — mande o cliente fazer `PUT`

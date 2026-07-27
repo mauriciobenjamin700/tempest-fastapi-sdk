@@ -185,6 +185,43 @@ To **download** what was uploaded (local or MinIO), use
 [`DownloadUtils`](downloads.md) — it takes the same backend in its
 constructor.
 
+### Streaming straight to the backend — `write_stream` and `UploadResult`
+
+`save()` is the entry point for FastAPI's `UploadFile` and returns the **key**.
+When the bytes do not come from a form — proxying another service, a job's
+output, a file generated on the fly — talk to the backend directly:
+`write_stream` consumes an `AsyncIterator[bytes]` without buffering the whole
+file in memory, and returns an `UploadResult`:
+
+```python
+from collections.abc import AsyncIterator
+
+from tempest_fastapi_sdk import LocalUploadStorage, UploadResult
+
+storage: LocalUploadStorage = LocalUploadStorage("./var/uploads")
+
+
+async def store_report(chunks: AsyncIterator[bytes]) -> UploadResult:
+    """Persist a generated report without buffering it in memory."""
+    return await storage.write_stream(
+        "reports/2026-07.csv",
+        chunks,
+        content_type="text/csv",
+        max_size_bytes=50 * 1024 * 1024,
+    )
+```
+
+| Field | Type | Content |
+| --- | --- | --- |
+| `key` | `str` | Canonical identifier — relative path locally, S3 key on MinIO |
+| `size` | `int` | Bytes written |
+| `path` | `Path` or `None` | On-disk path, only when the backend writes to a filesystem |
+| `url` | `str` or `None` | Download URL (presigned or static), when the backend can mint one |
+
+`max_size_bytes=` aborts the stream once the cap is crossed
+(`FileTooLargeException`), and `validator=` inspects the leading bytes — both
+checks run **while** writing, without waiting for the upload to finish.
+
 ## When to use a direct presigned PUT
 
 For files > 50 MB, skip the in-memory buffer — have the client `PUT`

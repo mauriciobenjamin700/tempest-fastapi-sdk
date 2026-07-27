@@ -199,6 +199,25 @@ Quatro factories de dependência vivem em `tempest_fastapi_sdk.api.dependencies.
 | `make_jwt_user_dependency(tokens, user_loader, soft=False, subject_claim="sub")` | Decodifica o bearer JWT, aguarda `user_loader(subject)`, retorna o usuário carregado. |
 | `make_role_dependency(tokens, ["admin"], require_all=False, roles_claim="roles")` / `make_permission_dependency(tokens, ["users:write"], require_all=True, permissions_claim="permissions")` | Decodifica o bearer JWT e controla a rota por roles / permissões. |
 
+!!! info "Fora de rota: `require_x_token`"
+    A checagem do segredo compartilhado também existe em forma imperativa —
+    `require_x_token(secret, token)` levanta `UnauthorizedException` quando não
+    casa (e é no-op com `secret=""`, o modo dev). Serve onde não há `Depends`
+    pra pendurar: um consumidor de fila que recebe o token no payload, um
+    handler de WebSocket, um script. Em rota, prefira
+    `make_token_dependency(secret)` — o Swagger mostra o header.
+
+    ```python
+    from tempest_fastapi_sdk import require_x_token
+
+    from src.core.settings import settings
+
+
+    def handle_job(payload: dict[str, str]) -> None:
+        """Reject the job unless it carries the shared secret."""
+        require_x_token(settings.TOKEN_SECRET, payload.get("token", ""))
+    ```
+
 !!! tip "Usa o flow bundled? Pule o `load_user`"
     Se você monta auth com `UserAuthService` + `make_auth_router`, não precisa escrever `load_user` nem instanciar um `JWTUtils` aqui — chame `auth_service.current_user_dependency()` (e `.current_user_dependency(soft=True)`), que reusa o `JWTUtils` interno do service. Veja a [receita de auth »](auth-flow.md#pegando-o-current_user-da-requisicao). O exemplo abaixo é a montagem manual, pra quando você **não** usa o service.
 

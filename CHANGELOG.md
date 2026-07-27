@@ -5,6 +5,77 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.170.3] — 2026-07-27
+
+### Added
+
+- **Docs signature guard** (``tests/test_docs_signature_guard.py``, runs in
+  ``make check``). The existing guard proved a doc snippet *parses* and that
+  every ``__all__`` name resolves — neither catches the example that passes a
+  keyword the function does not accept, hands a keyword-only parameter
+  positionally, or imports a symbol that no longer exists. Those raise
+  ``TypeError``/``ImportError`` on the reader's first run, and the prose written
+  around the invented parameter documents behavior that never existed. Four
+  static checks now cover it: keywords exist in the real signature, positional
+  arity fits (which also catches the ``f(obj, ..., kw=1)`` elision, whose
+  literal ``Ellipsis`` is a real argument), SDK imports resolve, and no install
+  snippet requires a version above the packaged one. Symbols resolve **per
+  block, from that block's own imports**, so the two different ``RetryPolicy``
+  classes (``tempest_fastapi_sdk`` for HTTP, ``.tasks`` for TaskIQ) are never
+  confused; a snippet that uses a symbol without importing it is left alone.
+- **Social login recipe** (``docs/recipes/oauth.md`` + ``.en.md``).
+  ``GoogleOAuthClient`` / ``GitHubOAuthClient`` / ``OIDCProvider`` /
+  ``OAuthUser`` / ``OAuthTokens`` / ``OAuthError`` / ``generate_oauth_state``
+  had shipped for releases with no page of their own — they appeared only as
+  names in the module tables. The recipe walks the whole flow (register the app,
+  build the client once, ``state`` in an ``HttpOnly`` cookie, the callback,
+  linking to a local user and minting your own token), plus the GitHub and
+  generic-OIDC variants and the CSRF reasoning behind ``state``.
+
+### Fixed
+
+- **Documentation for shipped-but-unmentioned surface.** Each of these worked
+  and was reachable only through the API reference:
+  ``BodySizeLimitMiddleware`` (``max_bytes`` / ``exclude_paths``, the
+  header-vs-streaming checks, the 413 envelope) in the HTTP recipe;
+  ``CSRFMiddleware`` + ``make_csrf_token_dependency`` +
+  ``generate_csrf_token`` in the security recipe — the sessions recipe already
+  linked to a CSRF section that did not exist; ``DatabaseBackup`` (+
+  ``BackupToolMissingError`` / ``UnsupportedBackupBackendError``) in the
+  safe-deploys recipe; ``AuthCookieConfig`` / ``apply_auth_cookies`` /
+  ``clear_auth_cookies`` in the auth recipe;
+  ``make_web_push_subscription_model`` in the Web Push recipe;
+  ``UploadStorage.write_stream`` + ``UploadResult`` in the uploads recipe;
+  ``require_x_token`` in the HTTP recipe.
+- **Doc examples that raised ``TypeError`` when copied** (found by the new
+  guard): the README opaque-token section treated
+  ``generate_opaque_token()`` as returning a string and passed a ``secret=``
+  pepper neither hash nor verify accepts — and contradicted the security recipe,
+  which correctly documents plain SHA-256 with no pepper;
+  ``RSAWebhookSignatureVerifier`` was shown with ``encoding=`` /
+  ``hash_algorithm=`` (the parameter is ``algorithm=``, and PSS padding is not
+  supported); the React-SPA recipe passed ``session_factory`` positionally to
+  ``make_auth_router``; the admin RBAC example passed a literal ``Ellipsis``,
+  so a copy-paste failed on the required ``db`` / ``auth_backend`` /
+  ``secret_key`` keywords.
+- **``current_user_dependency`` session semantics.** The auth recipe said it
+  "opens its own session"; it loads the user on the **request** session
+  (``db.session_dependency`` by default), which is the point of the sharing and
+  the reason ``session_dependency=`` must be the exact callable the
+  repositories use. The HTTP recipe's hand-rolled loader now takes the shared
+  session too, and documents the header → cookie → query lookup order.
+- **Generic install floors** in ``docs/installation.md`` and the recipes
+  landing now reference the current release instead of ``>=0.161.0`` /
+  ``>=0.167.0``. Per-feature floors (``>=0.89.0`` on auth/MFA/metrics) stay as
+  the version the feature landed in.
+- **A red test on ``main``**: ``test_unparsable_source_falls_back_to_a_comma``
+  asserted the ``_separator_before`` fallback using an offset inside the first
+  line. Up to Python 3.11 the tokenizer emits ``ERRORTOKEN`` for an
+  unterminated quote and only raises ``TokenError`` at EOF, so that offset
+  broke out of the loop before the failure and exercised the normal path. The
+  offset now sits past the malformed literal. Test-only — ``--fix`` behavior is
+  unchanged.
+
 ## [0.170.2] — 2026-07-26
 
 ### Fixed

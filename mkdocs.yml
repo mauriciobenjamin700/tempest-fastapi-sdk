@@ -137,6 +137,7 @@ plugins:
               - Self-hosted generative AI: recipes/genai.md
               - Server-Sent Events (SSE): recipes/sse.md
               - Server-side sessions: recipes/sessions.md
+              - "Social login (OAuth2/OIDC)": recipes/oauth.md
               - SSR (typed pages): ssr.md
               - Storage (MinIO/S3): recipes/storage.md
               - System checks (check-config): recipes/system-checks.md
@@ -194,6 +195,7 @@ plugins:
             Email transacional: Transactional email
             Web Push: Web Push
             Logging: Logging
+            "Login social (OAuth2/OIDC)": "Social login (OAuth2/OIDC)"
             Storage (MinIO/S3): Storage (MinIO/S3)
             Uploads (backends): Uploads (backends)
             Downloads: Downloads
@@ -354,6 +356,7 @@ nav:
       - "IA generativa self-hosted": recipes/genai.md
       - Idempotência: recipes/idempotency.md
       - Logging: recipes/logging.md
+      - "Login social (OAuth2/OIDC)": recipes/oauth.md
       - "Management commands (tempest <cmd>)": recipes/management-commands.md
       - Métricas: recipes/metrics.md
       - MFA (TOTP / 2FA): recipes/mfa.md

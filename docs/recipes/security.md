@@ -143,6 +143,76 @@ app.mount(
 )
 ```
 
+## CSRF em fluxo com cookie (`CSRFMiddleware`)
+
+Sessão por cookie tem um problema que bearer token não tem: o browser reenvia o
+cookie **sozinho**, mesmo numa request disparada por outro site. `SameSite=lax`
+barra a maior parte disso, mas não POST de formulário em subdomínio nem cliente
+antigo. `CSRFMiddleware` fecha com double-submit:
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+from tempest_fastapi_sdk import CSRFMiddleware
+
+app: FastAPI = FastAPI()
+
+app.add_middleware(
+    CSRFMiddleware,
+    exclude_paths=("/api/", "/webhooks/"),
+)
+```
+
+Em `POST`/`PUT`/`PATCH`/`DELETE` a request precisa carregar **as duas** coisas
+com o mesmo valor: o cookie `csrf_token` e o header `X-CSRF-Token`. Faltando ou
+divergindo, a resposta é `403` no envelope canônico do SDK. `GET`/`HEAD`/
+`OPTIONS` passam sempre. Os defaults estão em `CSRF_COOKIE_NAME` e
+`CSRF_HEADER_NAME`; troque com `cookie_name=`/`header_name=`.
+
+!!! info "Por que excluir `/api/`"
+    Rota autenticada por `Authorization: Bearer` **não** é vulnerável a CSRF —
+    o browser não anexa o header sozinho. Exigir token ali só quebraria cliente
+    mobile. Webhook assinado (`WebhookSignatureVerifier`) idem: a autenticação
+    já é a assinatura. O match de `exclude_paths` é por prefixo (`startswith`).
+
+Pra emitir o token, monte `make_csrf_token_dependency()` na rota que renderiza a
+página — ela grava o cookie quando falta e devolve o valor pro template:
+
+```python
+# src/api/routers/pages.py
+from fastapi import APIRouter, Depends
+from tempest_fastapi_sdk import make_csrf_token_dependency
+
+router: APIRouter = APIRouter()
+csrf_token = make_csrf_token_dependency()
+
+
+@router.get("/login")
+async def login_page(token: str = Depends(csrf_token)) -> dict[str, str]:
+    """Render the login shell carrying the CSRF token."""
+    return {"csrf_token": token}
+```
+
+O cliente reenvia esse valor no header a cada request de escrita:
+
+```javascript
+await fetch("/auth/login", {
+  method: "POST",
+  credentials: "include",
+  headers: { "X-CSRF-Token": token, "Content-Type": "application/json" },
+  body: JSON.stringify({ email, password }),
+});
+```
+
+`generate_csrf_token(n_bytes=32)` está exposto pra quem quer emitir o token fora
+de uma dependency (um handler SSR, por exemplo).
+
+!!! warning "CSRF só importa se a credencial viaja automática"
+    Use quando a sessão está em cookie — `AUTH_TOKEN_DELIVERY=cookie`/`both`
+    ([receita de auth](auth-flow.md)) ou sessão server-side
+    ([receita de sessões](sessions.md)). Serviço 100% bearer não precisa do
+    middleware.
+
 ## Cookies de sessão
 
 `set_cookie` / `clear_cookie` escrevem cookies com defaults seguros (`HttpOnly=True`, `Secure=True`, `samesite="lax"`). `SameSite` é um **type alias** `Literal["lax", "strict", "none"]` — passe a string literal, não um enum.

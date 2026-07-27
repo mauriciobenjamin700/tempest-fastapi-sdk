@@ -441,8 +441,16 @@ class TestSeparatorBefore:
         assert openapi_fix._separator_before(source, source.rindex(")")) == expected
 
     def test_unparsable_source_falls_back_to_a_comma(self) -> None:
-        """A source ``tokenize`` rejects keeps the previous behavior."""
-        assert openapi_fix._separator_before("f(a,\n  'unterminated", 4) == ", "
+        """A source ``tokenize`` rejects keeps the previous behavior.
+
+        The offset must sit **past** the malformed literal. Up to Python 3.11
+        the tokenizer emits ``ERRORTOKEN`` for the unterminated quote and only
+        raises ``TokenError`` at EOF, so an offset inside the first line breaks
+        out of the loop before the failure and exercises the normal path
+        instead of the fallback.
+        """
+        source: str = "f(a,\n  'unterminated"
+        assert openapi_fix._separator_before(source, len(source)) == ", "
 
 
 class TestSafety:

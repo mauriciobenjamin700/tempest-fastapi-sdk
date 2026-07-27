@@ -305,6 +305,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.oauth.OIDCProvider
 ::: tempest_fastapi_sdk.api.oauth.OAuthUser
 ::: tempest_fastapi_sdk.api.oauth.OAuthTokens
+::: tempest_fastapi_sdk.api.oauth.OAuthError
+::: tempest_fastapi_sdk.api.oauth.generate_oauth_state
 ::: tempest_fastapi_sdk.api.middlewares.cors.apply_cors
 ::: tempest_fastapi_sdk.api.routers.health.make_health_router
 ::: tempest_fastapi_sdk.api.routers.logs.make_logs_router

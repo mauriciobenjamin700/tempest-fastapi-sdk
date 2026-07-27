@@ -107,6 +107,28 @@ O `BaseWebPushSubscriptionModel` já traz `endpoint` (único + indexado),
 `p256dh`, `auth`, `expiration_time` e `user_agent`; você só adiciona a FK
 `user_id`. Lembre de gerar a migration pra essa tabela nova.
 
+!!! tip "Sem nada a customizar? A factory faz a classe pra você"
+    `make_web_push_subscription_model(user_table="users")` gera a classe
+    concreta — mesma tabela, mesma FK `ON DELETE CASCADE` — quando você não
+    precisa de coluna extra:
+
+    ```python
+    # src/db/models/webpush.py
+    from tempest_fastapi_sdk import (
+        BaseWebPushSubscriptionModel,
+        make_web_push_subscription_model,
+    )
+
+    WebPushSubscriptionModel: type[BaseWebPushSubscriptionModel] = (
+        make_web_push_subscription_model(user_table="users")
+    )
+    ```
+
+    `tablename=` e `class_name=` mudam os defaults
+    (`web_push_subscriptions` / `WebPushSubscriptionModel`). Precisando de
+    coluna própria — um `device_label`, um `tenant_id` — escreva a subclasse à
+    mão como acima; a factory não aceita campos extra.
+
 ### 2. Repository — subclasse tipada do `BaseRepository`
 
 Seguindo o padrão dos demais repositórios do projeto, crie uma subclasse

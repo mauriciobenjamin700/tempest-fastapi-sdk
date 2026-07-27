@@ -53,6 +53,61 @@ helper.safe_upgrade("head", force=True)  # eu sei o que estou fazendo
     `DROP COLUMN` / `DROP TABLE` são irreversíveis. Só use `force=True`
     depois de backup e revisão humana.
 
+## Backup antes de migrar (`DatabaseBackup`)
+
+`safe_upgrade` recusa a migration destrutiva, mas às vezes o DROP é proposital.
+A ordem certa nesse caso é backup → `force=True` → validar. `DatabaseBackup`
+faz o dump a partir da mesma `DATABASE_URL` do serviço:
+
+```python
+# scripts/deploy.py
+from pathlib import Path
+
+from tempest_fastapi_sdk import DatabaseBackup
+
+from src.core.settings import settings
+
+backup: DatabaseBackup = DatabaseBackup(settings.DATABASE_URL)
+written: Path = backup.backup()
+print(f"dump em {written}")
+```
+
+O sufixo `+asyncpg`/`+aiosqlite` da URL é removido sozinho — você passa a URL da
+aplicação, sem manter uma segunda variável só pro backup. Sem `output=`, o
+arquivo sai em `backups/<db>_<AAAAMMDD-HHMMSS>.<ext>`.
+
+| Backend | `backup()` usa | Formato |
+| --- | --- | --- |
+| `postgresql` | `pg_dump` | custom (`-Fc`) por default; `.sql` no `output` (ou `plain=True`) faz dump texto |
+| `sqlite` | cópia de arquivo | o próprio `.sqlite` |
+
+Restaurar é o espelho — o formato sai da extensão:
+
+```python
+backup.restore(Path("backups/app_20260727-104500.dump"))
+```
+
+`clean=True` (default) derruba os objetos antes de recriar, então a restauração
+é uma cópia fiel: `pg_restore --clean --if-exists` no formato custom, `DROP
+SCHEMA public CASCADE` antes do `psql -f` no plain, sobrescrita do arquivo no
+SQLite. Passe `clean=False` pra restaurar **por cima** de um banco existente.
+
+!!! warning "Os dois erros que você vai ver primeiro"
+    - `BackupToolMissingError` — `pg_dump`/`pg_restore`/`psql` não está no
+      `PATH`. Container de app raramente traz o client do Postgres; instale
+      `postgresql-client` na imagem que roda o deploy, ou rode o backup de
+      outro lugar.
+    - `UnsupportedBackupBackendError` — dialeto sem estratégia (MySQL, SQL
+      Server). Só Postgres e SQLite são cobertos.
+
+    Os dois são levantados **antes** de criar `backups/`, então uma falha nunca
+    deixa um diretório vazio pra alguém confundir com backup feito.
+
+!!! info "Métodos síncronos, de propósito"
+    `pg_dump` é processo, cópia de arquivo é I/O de disco — nada disso ganha com
+    `async`. Chame de um comando de CLI ou script de deploy; se precisar de
+    dentro de código async, use `asyncio.to_thread(backup.backup)`.
+
 ## Graceful shutdown: drenar requests em voo
 
 No rollout, o orquestrador manda `SIGTERM` e, depois de um tempo,
@@ -106,5 +161,8 @@ Configure o grace period do orquestrador um pouco **acima** do
 - `AlembicHelper.safe_upgrade()` recusa migrations destrutivas
   (`DestructiveMigrationError`); `force=True` libera; `pending_destructive_ops()`
   só inspeciona.
+- `DatabaseBackup(url).backup()` / `.restore(path)` — dump e restauração por
+  dialeto (Postgres via `pg_dump`/`pg_restore`, SQLite por cópia), a partir da
+  mesma `DATABASE_URL` do serviço.
 - `GracefulShutdownMiddleware` responde `503` durante a drenagem e
   `wait_drained()` espera as requests em voo — dirigido pelo `lifespan`.

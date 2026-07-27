@@ -962,6 +962,44 @@ POST /auth/cookie/logout
 !!! info "What stays in the body"
     Cookie delivery covers the **login / refresh / logout** lifecycle. Activation (`POST /auth/activate/{token}`), signup auto-login (`AUTH_AUTO_ACTIVATE`) and `POST /auth/mfa/verify` still return the JWT pair in the body, regardless of `AUTH_TOKEN_DELIVERY`.
 
+!!! tip "Fine-tuning the cookies: `cookie_config=`"
+    The `AUTH_COOKIE_*` settings cover the common case. When you need
+    per-attribute control — name, `max_age`, refresh path, `Domain` — pass an
+    `AuthCookieConfig` to `make_auth_router`; it wins over the settings:
+
+    ```python
+    from tempest_fastapi_sdk import AuthCookieConfig, make_auth_router
+
+    app.include_router(
+        make_auth_router(
+            auth_service,
+            session_factory=db.session_dependency,
+            token_delivery="cookie",
+            cookie_config=AuthCookieConfig(
+                access_name="session",
+                refresh_name="session_refresh",
+                access_max_age=900,
+                refresh_max_age=1209600,
+                samesite="none",
+                secure=True,
+                domain=".example.com",
+            ),
+        ),
+    )
+    ```
+
+    Mirror `access_max_age` on `JWT_ACCESS_TTL_SECONDS` and `refresh_max_age` on
+    `JWT_REFRESH_TTL_SECONDS`: a cookie outliving its token leaves the browser
+    sending a dead credential, and the reverse logs the user out early. The
+    router narrows `refresh_path` to the refresh endpoint, so the long-lived
+    token never rides on an ordinary call. `http_only=True` is the whole point
+    of cookie mode — do not turn it off.
+
+    Outside `make_auth_router` the same rules apply through
+    `apply_auth_cookies(response, access_token=..., refresh_token=..., config=...)`
+    and `clear_auth_cookies(response, config=...)` — handy in a login route of
+    your own (the OAuth callback in the [social login recipe](oauth.md), say).
+
 !!! tip "CORS with credentials"
     For a cross-origin SPA to send/receive cookies, the backend needs `allow_credentials=True` in CORS **and** `AUTH_COOKIE_SAMESITE=none` + `AUTH_COOKIE_SECURE=true` (hence HTTPS). Same-origin (frontend served from the API's domain) works with the default `lax`.
 

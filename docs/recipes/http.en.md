@@ -199,6 +199,25 @@ Four dependency factories live in `tempest_fastapi_sdk.api.dependencies.auth` �
 | `make_jwt_user_dependency(tokens, user_loader, soft=False, subject_claim="sub")` | Decode the bearer JWT, await `user_loader(subject)`, return the loaded user. |
 | `make_role_dependency(tokens, ["admin"], require_all=False, roles_claim="roles")` / `make_permission_dependency(tokens, ["users:write"], require_all=True, permissions_claim="permissions")` | Decode the bearer JWT and gate the route on roles / permissions. |
 
+!!! info "Outside a route: `require_x_token`"
+    The shared-secret check also exists in imperative form —
+    `require_x_token(secret, token)` raises `UnauthorizedException` on a
+    mismatch (and is a no-op with `secret=""`, the dev mode). Use it where there
+    is no `Depends` to hang off: a queue consumer receiving the token in the
+    payload, a WebSocket handler, a script. On a route prefer
+    `make_token_dependency(secret)` — Swagger then shows the header.
+
+    ```python
+    from tempest_fastapi_sdk import require_x_token
+
+    from src.core.settings import settings
+
+
+    def handle_job(payload: dict[str, str]) -> None:
+        """Reject the job unless it carries the shared secret."""
+        require_x_token(settings.TOKEN_SECRET, payload.get("token", ""))
+    ```
+
 !!! tip "Using the bundled flow? Skip `load_user`"
     If you wire auth with `UserAuthService` + `make_auth_router`, you don't write `load_user` or instantiate a `JWTUtils` here — call `auth_service.current_user_dependency()` (and `.current_user_dependency(soft=True)`), which reuses the service's internal `JWTUtils`. See the [auth recipe »](auth-flow.en.md#getting-the-current_user-from-the-request). The example below is the manual wiring, for when you're **not** using the service.
 

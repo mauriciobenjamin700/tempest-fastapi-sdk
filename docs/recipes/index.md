@@ -11,7 +11,7 @@ Passo a passo curtos no estilo "quero conectar X". Cada página começa com **qu
 
 ## Tour do SDK — um exemplo por bloco
 
-Um passeio por **tudo** que o `tempest-fastapi-sdk` oferece: cada bloco tem o conceito em uma linha, um exemplo mínimo runnable e o link pra receita completa. Leia de cima a baixo pra ter o mapa mental, ou pule pro que precisa — instale só os extras que usar (`uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.167.0"`).
+Um passeio por **tudo** que o `tempest-fastapi-sdk` oferece: cada bloco tem o conceito em uma linha, um exemplo mínimo runnable e o link pra receita completa. Leia de cima a baixo pra ter o mapa mental, ou pule pro que precisa — instale só os extras que usar (`uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.170.3"`).
 
 ### Fundação
 
@@ -306,6 +306,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[IA generativa self-hosted »](genai.md)** | `probe_hardware` / `can_run`, `TextGenerator`, `Embedder`, RAG (web + PDF), áudio (STT/TTS), `make_genai_router` |
 | **[Idempotência »](idempotency.md)** | `IdempotencyMiddleware`, `MemoryIdempotencyStore` / `IdempotencyStore` (Redis) — replay seguro de POST/PUT/PATCH/DELETE |
 | **[Logging »](logging.md)** | `LogUtils`, logging JSON estruturado, propagação de request-ID |
+| **[Login social (OAuth2/OIDC) »](oauth.md)** | `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `generate_oauth_state` |
 | **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | registrar comandos próprios na CLI `tempest` do projeto |
 | **[Métricas »](metrics.md)** | `MetricsUtils` — snapshots de CPU / RAM / disco / GPU |
 | **[MFA (TOTP / 2FA) »](mfa.md)** | `MFAMixin`, `TOTPHelper`, endpoints enroll/confirm/verify/disable no `make_auth_router`, códigos de recuperação |

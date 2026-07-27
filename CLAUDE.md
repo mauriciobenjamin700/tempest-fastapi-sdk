@@ -553,6 +553,19 @@ agrupamento por submódulo — ali o agrupamento é a informação.
   the same PR — this drifts easily (it happened for both the admin
   tiers and the genai roadmap). Add `# docs-guard: skip` to a doc block
   only for an intentionally non-parseable fragment.
+- **Docs signature guard (v0.170.3).**
+  `tests/test_docs_signature_guard.py` (also in `make check`) is the
+  layer above: it checks every doc example **against the real
+  signatures** — keywords exist, positional arity fits (so
+  `f(obj, ..., kw=1)` is caught: the literal `Ellipsis` is an
+  argument), `from tempest_fastapi_sdk... import X` resolves, and no
+  install snippet requires a version above `pyproject.toml`'s. Symbols
+  resolve per block from that block's own imports, so the two
+  `RetryPolicy` classes (root/HTTP `max_attempts` vs `.tasks`
+  `max_retries`) never collide; a symbol used without an import is not
+  checked. **Prose is still unguarded**: a sentence promising a
+  parameter that does not exist only fails this suite when an example
+  passes it, so re-read the prose you write around a signature.
 - **Regra: a documentação fica organizada e em ordem — e isso é
   testado.** Ver a seção "Regra de organização da documentação" acima;
   `tests/test_docs_organization.py` (roda no `make check`) é a
