@@ -22,6 +22,23 @@ class TestBaseStrEnum:
     def test_member_compares_equal_to_value(self) -> None:
         assert Color.RED == "red"
 
+    def test_str_renders_the_value(self) -> None:
+        """``str()`` must not leak ``"Color.RED"`` (str/Enum mixin footgun)."""
+        assert str(Color.RED) == "red"
+
+    def test_fstring_renders_the_value(self) -> None:
+        """f-strings go through ``__format__``, overridden alongside ``__str__``."""
+        assert f"{Color.RED}" == "red"
+        assert "{}".format(Color.GREEN) == "green"  # noqa: UP032
+        assert format(Color.GREEN) == "green"
+
+    def test_string_format_spec_applies_to_the_value(self) -> None:
+        assert f"{Color.RED:>5}" == "  red"
+
+    def test_repr_still_identifies_the_member(self) -> None:
+        """Only text conversion changed; ``repr`` stays debuggable."""
+        assert "RED" in repr(Color.RED)
+
     def test_values(self) -> None:
         assert Color.values() == ["red", "green"]
 
@@ -68,6 +85,14 @@ class TestBaseIntEnum:
 
     def test_member_compares_equal_to_value(self) -> None:
         assert Priority.HIGH == 2
+
+    def test_str_renders_the_value(self) -> None:
+        assert str(Priority.HIGH) == "2"
+        assert f"{Priority.LOW}" == "1"
+
+    def test_numeric_format_spec_still_applies(self) -> None:
+        """``__format__`` delegates to the int, so numeric specs keep working."""
+        assert f"{Priority.HIGH:03d}" == "002"
 
     def test_values(self) -> None:
         assert Priority.values() == [1, 2]

@@ -9,7 +9,10 @@ columns as their value.
 The introspection helpers (``values``/``keys``/``choices``/``to_dict``)
 and the lenient constructor (``from_value``/``has_value``/``has_key``)
 are shared between both bases via :class:`_EnumHelpers` so there is a
-single implementation regardless of the underlying value type.
+single implementation regardless of the underlying value type. That mixin
+also renders members as their value under ``str()`` and f-strings, so a
+member interpolated into a log line, a query string or a raw column value
+never leaks ``"Class.MEMBER"``.
 """
 
 from enum import Enum
@@ -29,7 +32,47 @@ class _EnumHelpers:
     Not meant to be used directly; mix it into an ``Enum`` subclass
     alongside a value type. Use :class:`BaseStrEnum` or
     :class:`BaseIntEnum` instead.
+
+    Besides the introspection helpers, this mixin normalizes text
+    conversion: ``__str__`` and ``__format__`` render the member's
+    **value**, never ``"Class.MEMBER"``. Sitting first in the MRO — ahead
+    of the mixed-in value type and of ``Enum`` — makes this the single
+    implementation both bases inherit.
     """
+
+    def __str__(self) -> str:
+        """Render the member as its value.
+
+        ``Enum`` would otherwise return ``"Class.MEMBER"`` here, the classic
+        mixin footgun: a member interpolated into an f-string, a log line, a
+        query string or a raw column value silently becomes
+        ``"OrderStatus.PAID"`` instead of ``"paid"``. Rendering the value
+        matches :class:`enum.StrEnum` and makes ``str(member)`` a safe,
+        explicit way to reach the stored representation.
+
+        Returns:
+            str: The member's value as text — the value itself for a
+            :class:`BaseStrEnum`, its decimal form for a
+            :class:`BaseIntEnum`.
+        """
+        return str(self.value)  # type: ignore[attr-defined]
+
+    def __format__(self, format_spec: str) -> str:
+        """Format the member's value under ``format_spec``.
+
+        Overriding ``__str__`` alone is not enough: f-strings and
+        :func:`format` go through ``Enum.__format__``, which ignores it.
+        Delegating to the value's own ``__format__`` also keeps numeric
+        specs working on :class:`BaseIntEnum` (``f"{Priority.HIGH:03d}"``
+        -> ``"002"``).
+
+        Args:
+            format_spec (str): The standard format specification.
+
+        Returns:
+            str: The formatted value.
+        """
+        return format(self.value, format_spec)  # type: ignore[attr-defined]
 
     @classmethod
     def values(cls) -> list[Any]:
@@ -141,18 +184,18 @@ class _EnumHelpers:
 class BaseStrEnum(_EnumHelpers, str, Enum):  # noqa: UP042
     """Base class for string-valued enums.
 
-    Note:
-        Deliberately a ``str`` + ``Enum`` mixin rather than
-        :class:`enum.StrEnum`. The two differ in ``str(member)``
-        (``"Cls.MEMBER"`` here vs. the bare value under ``StrEnum``);
-        keeping the mixin form preserves the behaviour consumers already
-        rely on across services.
-
-
     Mixing in ``str`` makes every member a genuine string instance, so
     members compare equal to their values (``Member == "VALUE"``),
     serialize cleanly outside Pydantic, and bind directly to ``String``
     database columns as their value.
+
+    Note:
+        Deliberately a ``str`` + ``Enum`` mixin rather than
+        :class:`enum.StrEnum`, which is only available from Python 3.11 and
+        would not carry the shared helpers. Text conversion, however,
+        matches ``StrEnum``: ``str(member)`` and ``f"{member}"`` both render
+        the bare value (``"paid"``), never ``"OrderStatus.PAID"`` — see
+        :meth:`_EnumHelpers.__str__`.
     """
 
 
@@ -163,6 +206,11 @@ class BaseIntEnum(_EnumHelpers, int, Enum):
     members compare equal to their values (``Member == 1``), serialize
     cleanly outside Pydantic, and bind directly to ``Integer`` database
     columns as their value.
+
+    Note:
+        As with :class:`BaseStrEnum`, ``str(member)`` and ``f"{member}"``
+        render the value (``"2"``), not ``"Priority.HIGH"``, and numeric
+        format specs keep working (``f"{Priority.HIGH:03d}"`` -> ``"002"``).
     """
 
 

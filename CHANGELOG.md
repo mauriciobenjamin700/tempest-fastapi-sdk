@@ -5,6 +5,35 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.171.0] — 2026-07-28
+
+### Changed
+
+- **`BaseStrEnum` / `BaseIntEnum` now render their value under `str()` and
+  f-strings** (``tempest_fastapi_sdk/core/enums.py``). Both bases are
+  ``str``/``int`` + ``Enum`` mixins, and ``Enum`` owns ``__str__`` /
+  ``__format__`` on those — so ``str(OrderStatus.PAID)`` returned
+  ``"OrderStatus.PAID"`` even though ``OrderStatus.PAID == "paid"`` holds.
+  Members compare, serialize and bind to the database as their value, but the
+  moment one was interpolated into an f-string, a log line, a query string or
+  written to a raw column, the member *name* leaked instead. The SDK had
+  already paid for this once: the OpenAPI client generator needed an explicit
+  ``.value`` so enum query params did not go out as
+  ``status=CustomerStatus.PAST_DUE`` (``tests/openapi/test_generate.py``).
+  ``_EnumHelpers`` — first in the MRO for both bases — now overrides
+  ``__str__`` **and** ``__format__`` (f-strings go through the latter, so
+  overriding only the former fixes nothing) to delegate to the value, matching
+  ``enum.StrEnum``. Numeric format specs keep working on ``BaseIntEnum``
+  (``f"{Priority.HIGH:03d}"`` -> ``"002"``), and ``repr()`` is untouched, so
+  members stay debuggable.
+
+  **Migration:** ``str(member)`` / ``f"{member}"`` now yield ``"paid"`` instead
+  of ``"OrderStatus.PAID"``. Code that *wanted* the qualified name — log
+  messages, debug output — should switch to ``repr(member)`` or
+  ``member.name``. Everything that wanted the value (the overwhelming majority,
+  and every place that was silently wrong) needs no change, and
+  ``member.value`` behaves exactly as before.
+
 ## [0.170.3] — 2026-07-27
 
 ### Added

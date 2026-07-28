@@ -187,6 +187,22 @@ assert OrderStatus.PENDING == "pending"          # str inheritance
 assert "paid" in OrderStatus                      # raw value membership
 assert OrderStatus("paid") is OrderStatus.PAID    # canonical lookup
 assert Priority.NORMAL + 1 == Priority.HIGH       # int math
+assert str(OrderStatus.PAID) == "paid"            # text conversion = value
+assert f"{Priority.HIGH:03d}" == "002"            # numeric specs keep working
 ```
 
 Because they inherit from `str` / `int`, Pydantic serializes them transparently as their underlying value and SQLAlchemy can persist them via the standard `Enum` column without an extra converter.
+
+!!! tip "`str(member)` gives you the value, not `\"Class.MEMBER\"`"
+    On a bare `str`/`Enum` mixin, `str(OrderStatus.PAID)` and
+    `f"{OrderStatus.PAID}"` return `"OrderStatus.PAID"` — the classic footgun
+    that leaks the member name into a log line, a query string, or a value
+    written to a raw column. The SDK bases override `__str__` **and**
+    `__format__` to render the value, the way `enum.StrEnum` does. So
+    `str(status)` is a safe, explicit way to reach the stored representation —
+    equivalent to `status.value`, and without breaking numeric specs on
+    `BaseIntEnum`.
+
+    Changed in **0.171.0**. Before that, `str()` returned `"Class.MEMBER"`; if
+    some code of yours relied on that format (log messages, say), switch it to
+    `repr(member)` or `member.name`.

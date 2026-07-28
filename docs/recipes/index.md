@@ -11,7 +11,7 @@ Passo a passo curtos no estilo "quero conectar X". Cada página começa com **qu
 
 ## Tour do SDK — um exemplo por bloco
 
-Um passeio por **tudo** que o `tempest-fastapi-sdk` oferece: cada bloco tem o conceito em uma linha, um exemplo mínimo runnable e o link pra receita completa. Leia de cima a baixo pra ter o mapa mental, ou pule pro que precisa — instale só os extras que usar (`uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.170.3"`).
+Um passeio por **tudo** que o `tempest-fastapi-sdk` oferece: cada bloco tem o conceito em uma linha, um exemplo mínimo runnable e o link pra receita completa. Leia de cima a baixo pra ter o mapa mental, ou pule pro que precisa — instale só os extras que usar (`uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.171.0"`).
 
 ### Fundação
 

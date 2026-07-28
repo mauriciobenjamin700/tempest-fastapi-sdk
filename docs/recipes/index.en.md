@@ -11,7 +11,7 @@ Bite-sized "I want to wire X" walkthroughs. Each page starts with **what problem
 
 ## SDK tour — one example per block
 
-A walk through **everything** the `tempest-fastapi-sdk` offers: each block has the concept in one line, a minimal runnable example, and a link to the full recipe. Read top to bottom for the mental map, or jump to what you need — install only the extras you use (`uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.170.3"`).
+A walk through **everything** the `tempest-fastapi-sdk` offers: each block has the concept in one line, a minimal runnable example, and a link to the full recipe. Read top to bottom for the mental map, or jump to what you need — install only the extras you use (`uv add "tempest-fastapi-sdk[auth,cache,queue]>=0.171.0"`).
 
 ### Foundation
 
