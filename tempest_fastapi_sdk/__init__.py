@@ -98,6 +98,8 @@ from tempest_fastapi_sdk.api import (
     make_unhandled_exception_handler,
     raises,
     register_exception_handlers,
+    render_entries_json,
+    render_entries_markdown,
     require_x_token,
     run_server,
     set_cookie,
@@ -445,7 +447,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.171.1"
+__version__: str = "0.172.0"
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
@@ -835,6 +837,8 @@ __all__: list[str] = [
     "region_choices",
     "register_check",
     "register_exception_handlers",
+    "render_entries_json",
+    "render_entries_markdown",
     "reorder_base_columns_first",
     "request_id_ctx",
     "require_active",

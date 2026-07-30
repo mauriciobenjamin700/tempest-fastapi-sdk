@@ -108,6 +108,147 @@ def _read_entries(files: list[Path]) -> list[dict[str, Any]]:
     return entries
 
 
+_MARKDOWN_CONTEXT_KEYS: tuple[str, ...] = (
+    "path",
+    "method",
+    "status_code",
+    "request_id",
+    "http_500",
+)
+"""Record keys promoted to the summary table of an exported entry.
+
+The formatter writes ``extra={...}`` fields as top-level keys, so a record
+carries whatever the emitting call site attached. These are the ones worth
+seeing first when reading a failure: what was requested and which correlation id
+to grep for. Everything else still ships under "Other fields", so nothing an
+application logged is lost in the export.
+"""
+
+_RESERVED_KEYS: frozenset[str] = frozenset(
+    {"timestamp", "level", "logger", "name", "message", "exception"}
+)
+"""Keys rendered outside the extra-fields section, so they are not repeated."""
+
+
+def _entry_to_markdown(entry: dict[str, Any], *, index: int) -> list[str]:
+    """Render one log record as markdown lines.
+
+    A traceback goes into a fenced block so it survives a paste into an issue
+    with its indentation intact — which is the whole point of the export, since
+    a traceback pasted as prose is unreadable.
+
+    Args:
+        entry (dict[str, Any]): The parsed log record.
+        index (int): 1-based position in the export, used as the heading number
+            so entries stay referenceable ("see #3") in a review thread.
+
+    Returns:
+        list[str]: The markdown lines for this record.
+    """
+    level = str(entry.get("level", "—"))
+    timestamp = str(entry.get("timestamp", "—"))
+    logger_name = str(entry.get("logger", entry.get("name", "—")))
+    lines = [
+        f"### {index}. `{level}` · {timestamp}",
+        "",
+        f"- **Logger:** `{logger_name}`",
+        f"- **Message:** {entry.get('message', '')}",
+    ]
+    for key in _MARKDOWN_CONTEXT_KEYS:
+        if key in entry and entry[key] is not None:
+            lines.append(f"- **{key}:** `{entry[key]}`")
+
+    extras = {
+        key: value
+        for key, value in entry.items()
+        if key not in _RESERVED_KEYS and key not in _MARKDOWN_CONTEXT_KEYS
+    }
+    if extras:
+        lines.append(
+            "- **Other fields:** "
+            + ", ".join(f"`{key}={value}`" for key, value in sorted(extras.items()))
+        )
+
+    traceback_text = entry.get("exception")
+    if traceback_text:
+        lines.extend(["", "```pytb", str(traceback_text).rstrip(), "```"])
+    lines.append("")
+    return lines
+
+
+def render_entries_markdown(
+    entries: list[dict[str, Any]],
+    *,
+    source: str = "all",
+    query: str | None = None,
+    truncated_from: int | None = None,
+) -> str:
+    """Render log records as a markdown document ready to paste into an issue.
+
+    Built for the "a 500 happened, hand me the trace" loop: the on-disk records
+    already carry the formatted traceback under ``exception`` (the SDK's
+    exception handlers log with ``exc_info=True``), but reading it out of a
+    paginated HTML table or a JSON blob is painful. This lays each record out
+    with its context fields and puts the traceback in a fenced ``pytb`` block.
+
+    Args:
+        entries (list[dict[str, Any]]): The records to render, in the order they
+            should appear (the callers pass newest-first).
+        source (str): The log source the export came from, echoed in the header
+            so a pasted document says what it is.
+        query (str | None): The message filter that produced the selection, also
+            echoed — an export of a filtered view is otherwise indistinguishable
+            from a complete one.
+        truncated_from (int | None): When the selection was capped, the total
+            number of matching records. Stated in the header rather than left
+            implicit, so a partial export never reads as an exhaustive one.
+
+    Returns:
+        str: The markdown document. A header is always present, so an empty
+            selection still produces something self-describing.
+    """
+    header = [
+        "# Application logs",
+        "",
+        f"- **Source:** `{source}`",
+        f"- **Records:** {len(entries)}",
+    ]
+    if query:
+        header.append(f"- **Message filter:** `{query}`")
+    if truncated_from is not None:
+        header.append(
+            f"- **Truncated:** showing the {len(entries)} most recent of "
+            f"{truncated_from} matching records"
+        )
+    header.append("")
+
+    if not entries:
+        header.extend(["_No records matched the current filter._", ""])
+        return "\n".join(header)
+
+    body: list[str] = []
+    for position, entry in enumerate(entries, start=1):
+        body.extend(_entry_to_markdown(entry, index=position))
+    return "\n".join(header + body)
+
+
+def render_entries_json(entries: list[dict[str, Any]]) -> str:
+    """Render log records as a pretty-printed JSON array.
+
+    The records are emitted verbatim — every field the application logged,
+    traceback included — so the output can be fed to tooling rather than read.
+    Non-serializable values fall back to their ``str()`` form so one exotic
+    ``extra=`` value cannot fail the whole export.
+
+    Args:
+        entries (list[dict[str, Any]]): The records to render.
+
+    Returns:
+        str: The JSON document, indented for diff-friendliness.
+    """
+    return json.dumps(entries, indent=2, ensure_ascii=False, default=str)
+
+
 def make_logs_router(
     *,
     log_dir: str | Path = "logs",
@@ -241,4 +382,6 @@ def make_logs_router(
 __all__: list[str] = [
     "LogSource",
     "make_logs_router",
+    "render_entries_json",
+    "render_entries_markdown",
 ]

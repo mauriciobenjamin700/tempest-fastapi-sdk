@@ -310,6 +310,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.middlewares.cors.apply_cors
 ::: tempest_fastapi_sdk.api.routers.health.make_health_router
 ::: tempest_fastapi_sdk.api.routers.logs.make_logs_router
+::: tempest_fastapi_sdk.api.routers.logs.render_entries_markdown
+::: tempest_fastapi_sdk.api.routers.logs.render_entries_json
 ::: tempest_fastapi_sdk.api.routers.metrics.PrometheusMiddleware
 ::: tempest_fastapi_sdk.api.routers.metrics.make_prometheus_router
 ::: tempest_fastapi_sdk.api.routers.metrics.make_prometheus_registry

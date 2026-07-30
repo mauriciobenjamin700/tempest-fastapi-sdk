@@ -1161,6 +1161,129 @@ a.tempest-admin-list__new:hover {
   box-shadow: var(--tempest-shadow);
 }
 
+.tempest-admin-logs__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.tempest-admin-logs__export {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--tempest-radius);
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tempest-admin-logs__export:hover {
+  background: #f1f5f9;
+}
+
+.tempest-admin-logs__meta {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+.tempest-admin-logs__meta li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+.tempest-admin-logs__meta span {
+  color: var(--tempest-fg-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.68rem;
+}
+
+.tempest-admin-logs__meta code {
+  word-break: break-all;
+}
+
+/* Collapsed by default so a page full of 500s stays scannable; details/summary
+   keeps that working with no JavaScript, which the admin does not ship. */
+.tempest-admin-logs__trace {
+  margin-top: 0.5rem;
+}
+
+/* The summary carries the record's own message, so the whole item is the click
+   target instead of a separate link. It must therefore read as body text, not
+   as a control — the affordance is the marker plus the hint chip. */
+.tempest-admin-logs__trace summary {
+  cursor: pointer;
+  list-style: none;
+  display: block;
+}
+
+.tempest-admin-logs__trace summary::-webkit-details-marker {
+  display: none;
+}
+
+.tempest-admin-logs__msg-text::before {
+  content: "▸";
+  display: inline-block;
+  width: 0.9rem;
+  color: #991b1b;
+  font-size: 0.7rem;
+}
+
+.tempest-admin-logs__trace[open] .tempest-admin-logs__msg-text::before {
+  content: "▾";
+}
+
+.tempest-admin-logs__trace-hint {
+  display: inline-block;
+  margin-top: 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #991b1b;
+}
+
+.tempest-admin-logs__trace[open] .tempest-admin-logs__trace-hint {
+  opacity: 0.55;
+}
+
+/* Lines wrap instead of extending. A <pre> is sized by its longest line and it
+   sits in a table cell, which sizes to content, so `overflow-x` on the <pre>
+   cannot shrink it: the table grew past its scroll container (measured 1364px
+   against a 1012px wrap) and the trace could only be read by dragging the table
+   sideways. Wrapping keeps the table at its container width. It costs the
+   alignment of the caret markers on screen; the markdown export carries the
+   exact unwrapped text for real analysis. */
+.tempest-admin-logs__trace pre {
+  margin: 0.5rem 0 0;
+  padding: 0.75rem;
+  max-height: 24rem;
+  overflow-y: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: var(--tempest-radius);
+  font-size: 0.74rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: all;
+  user-select: all;
+}
+
+.tempest-admin-logs__note {
+  color: var(--tempest-fg-soft);
+  font-size: 0.8rem;
+  margin-top: 0.75rem;
+}
+
 /* ---- Sidebar off-canvas on tablet/mobile, burger reveals it ---- */
 @media (max-width: 768px) {
   .tempest-admin-burger {

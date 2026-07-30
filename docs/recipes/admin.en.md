@@ -196,6 +196,7 @@ app.include_router(
 - `GET/POST /admin/mfa` — TOTP second-factor challenge between the password step and access, for MFA-enabled principals.
 - `GET  /admin/` — dashboard: a card per model with its **live row count** + Browse/New, plus a **metrics panel** (CPU/RAM/disk via `MetricsUtils`). On by default, omitted without the `[metrics]` extra, disable with `make_admin_router(show_metrics=False)`.
 - `GET  /admin/logs` — **application logs** (when `show_logs=True`): reads the structured JSON files written by `configure_logging(log_dir=…)`, with source filter (`?source=`), free-text search (`?q=`) and pagination. Color-coded level badges. Renders an empty state when no log files exist yet.
+- `GET  /admin/logs/export` — **log export** (`?format=md|json`): downloads the filtered selection as markdown (traceback in a fenced block, ready to paste into an issue) or verbatim JSON.
 - `GET  /admin/m/{slug}/` — list view with pagination + free-text search (`?q=`) + per-field filters (`?filter_<field>=value`) + clickable **column sorting** (`?sort=<column>&dir=asc|desc`).
 - `GET  /admin/m/{slug}/export.csv` / `export.json` — **export** the current result set (honoring search/filters/sort) as CSV or JSON. Row cap via `make_admin_router(export_max_rows=…)` (default 5000).
 - `POST /admin/m/{slug}/bulk` — **bulk actions** (delete / activate / deactivate + your **custom actions**) on the selected rows.
@@ -316,6 +317,32 @@ site.register(AdminModel(
     It is **opt-in** (`show_logs=False` by default) because the payload
     exposes tracebacks and request metadata — only enable it behind the
     admin login. With no files in `log_dir`, the page shows an empty state.
+
+!!! tip "500 tracebacks and export-to-issue"
+    Every record carrying a traceback (the SDK's handlers log with
+    `exc_info=True`) becomes a clickable item: **the message itself is the
+    trigger**, so clicking anywhere on the entry reveals the trace, with the
+    request correlation fields (`path`, `method`, `status_code`,
+    `request_id`) alongside it. Plain `<details>`/`<summary>`, no JS,
+    collapsed by default so a page full of 500s stays scannable — a record
+    without a traceback grows no toggle at all.
+
+    `GET /admin/logs/export?format=md|json` downloads the **filtered**
+    selection (the page's own `?source=` and `?q=`), newest first, up to 500
+    records:
+
+    - **`format=md`** — each traceback goes into a ```` ```pytb ```` fenced
+      block, so it survives a paste into an issue or PR with its indentation
+      intact. The header states the source, the count, the active filter and
+      — when the 500-record cap bites — how many records matched in total, so
+      a partial export never reads as a complete one.
+    - **`format=json`** — the records verbatim, including every field the
+      application logged through `extra=`, for tooling to consume.
+
+    The export inherits the admin session gate: a traceback is exactly the
+    payload that must not be world-readable. To build your own export,
+    `render_entries_markdown` and `render_entries_json` are exported at the
+    package level.
 
 !!! tip "Responsive by default"
     The bundled templates + CSS are responsive: on narrow screens (≤600px) the header stacks, search/filters/actions go full-width, tables get horizontal scroll (never breaking the layout), and the detail grid collapses to a single column. Column headers are clickable to toggle sort order (▲/▼).

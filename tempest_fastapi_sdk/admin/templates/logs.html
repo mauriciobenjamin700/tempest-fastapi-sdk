@@ -4,6 +4,12 @@
 <section class="tempest-admin-logs">
   <div class="tempest-admin-list__header">
     <h1>Application logs</h1>
+    {% if available %}
+    <div class="tempest-admin-logs__actions">
+      <a class="tempest-admin-logs__export" href="{{ export_md_url }}" download>Export .md</a>
+      <a class="tempest-admin-logs__export" href="{{ export_json_url }}" download>Export .json</a>
+    </div>
+    {% endif %}
   </div>
 
   {% if not available %}
@@ -41,6 +47,11 @@
       </thead>
       <tbody>
         {% for entry in entries %}
+        {% set traceback = entry.get("exception") %}
+        {% set ctx = [] %}
+        {% for key in context_keys %}
+          {% if entry.get(key) is not none %}{% set _ = ctx.append((key, entry.get(key))) %}{% endif %}
+        {% endfor %}
         <tr>
           <td class="tempest-admin-logs__ts">{{ entry.get("timestamp", "") }}</td>
           <td>
@@ -48,7 +59,37 @@
             <span class="tempest-log-badge tempest-log-badge--{{ level }}">{{ entry.get("level", "—") }}</span>
           </td>
           <td class="tempest-admin-logs__logger">{{ entry.get("logger", entry.get("name", "—")) }}</td>
-          <td class="tempest-admin-logs__msg">{{ entry.get("message", "") }}</td>
+          <td class="tempest-admin-logs__msg">
+            {% if traceback %}
+            {# The whole record is the toggle: clicking anywhere on the message
+               reveals the traceback. Collapsed by default so a page of 500s
+               stays scannable, and pure <details>/<summary> so it works with
+               the admin shipping no JavaScript. #}
+            <details class="tempest-admin-logs__trace">
+              <summary>
+                <span class="tempest-admin-logs__msg-text">{{ entry.get("message", "") }}</span>
+                {% if ctx %}
+                <ul class="tempest-admin-logs__meta">
+                  {% for key, value in ctx %}
+                  <li><span>{{ key }}</span><code>{{ value }}</code></li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+                <span class="tempest-admin-logs__trace-hint">Traceback</span>
+              </summary>
+              <pre><code>{{ traceback }}</code></pre>
+            </details>
+            {% else %}
+            {{ entry.get("message", "") }}
+            {% if ctx %}
+            <ul class="tempest-admin-logs__meta">
+              {% for key, value in ctx %}
+              <li><span>{{ key }}</span><code>{{ value }}</code></li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -64,6 +105,12 @@
     <a href="?{{ pagination.query_for(pagination.page + 1) }}">Next &raquo;</a>
     {% endif %}
   </div>
+
+  <p class="tempest-admin-logs__note">
+    An export covers every record matching the current filter, newest first, up to
+    {{ export_max }} — not just this page. Markdown wraps each traceback in a fenced
+    block so it survives a paste into an issue; JSON ships the records verbatim.
+  </p>
   {% else %}
   <p class="tempest-admin-logs__empty">No records match the current filter.</p>
   {% endif %}

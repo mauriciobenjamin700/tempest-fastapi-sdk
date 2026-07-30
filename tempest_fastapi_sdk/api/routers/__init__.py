@@ -7,6 +7,8 @@ from tempest_fastapi_sdk.api.routers.health import (
 from tempest_fastapi_sdk.api.routers.logs import (
     LogSource,
     make_logs_router,
+    render_entries_json,
+    render_entries_markdown,
 )
 from tempest_fastapi_sdk.api.routers.metrics import (
     DEFAULT_LATENCY_BUCKETS,
@@ -28,4 +30,6 @@ __all__: list[str] = [
     "make_prometheus_registry",
     "make_prometheus_router",
     "make_tool_spec_router",
+    "render_entries_json",
+    "render_entries_markdown",
 ]

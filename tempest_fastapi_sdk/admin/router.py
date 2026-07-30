@@ -10,7 +10,7 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime, time
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlencode
 from uuid import uuid4
 
@@ -56,6 +56,8 @@ from tempest_fastapi_sdk.api.routers.logs import (
     LogSource,
     _read_entries,
     _resolve_files,
+    render_entries_json,
+    render_entries_markdown,
 )
 from tempest_fastapi_sdk.db.expressions import escape_like
 from tempest_fastapi_sdk.db.repository import BaseRepository
@@ -932,6 +934,102 @@ def make_admin_router(
     if show_logs:
         _log_base = Path(log_dir)
         _logs_page_size = 50
+        _logs_export_max = 500
+
+        async def _collect_log_entries(
+            source: LogSource, q: str | None
+        ) -> list[dict[str, Any]]:
+            """Read, filter and sort the log records for a source, newest first.
+
+            Shared by the logs page and the export so the exported document is
+            exactly the selection on screen. Duplicating the filter would let the
+            two drift, and an export that quietly disagrees with the page it was
+            taken from is worse than no export.
+
+            Args:
+                source (LogSource): Which log file(s) to read.
+                q (str | None): Case-insensitive message substring filter.
+
+            Returns:
+                list[dict[str, Any]]: The matching records, newest first.
+            """
+            files = _resolve_files(_log_base, source)
+            entries = await run_in_threadpool(_read_entries, files)
+            needle = q.lower() if q else None
+            if needle is not None:
+                entries = [
+                    entry
+                    for entry in entries
+                    if needle in str(entry.get("message", "")).lower()
+                ]
+            entries.sort(
+                key=lambda item: str(item.get("timestamp", "")),
+                reverse=True,
+            )
+            return entries
+
+        @router.get("/logs/export", name="admin_logs_export")
+        async def logs_export(
+            source: LogSource = Query(default="all"),
+            q: str | None = Query(default=None),
+            format: Literal["md", "json"] = Query(default="md"),
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Download the current log selection as markdown or JSON.
+
+            Answers the "a 500 happened, paste me the trace" loop. The records
+            already carry the formatted traceback under ``exception`` — the SDK's
+            exception handlers log with ``exc_info=True`` — so the export is a
+            rendering concern, not a capture one. Markdown puts each traceback in
+            a fenced block so it survives a paste into an issue; JSON ships the
+            records verbatim for tooling.
+
+            Honors the same ``source`` / ``q`` filters as the page, so the file
+            matches what the operator was looking at. At most
+            ``_logs_export_max`` of the newest matching records are written, and
+            the markdown header states the cap when it bites rather than letting
+            a partial export read as a complete one.
+
+            Inherits the admin session guard: tracebacks and request metadata are
+            exactly the payload that must not be world-readable.
+
+            Args:
+                source (LogSource): Which log file(s) to read.
+                q (str | None): Case-insensitive message substring filter.
+                format (Literal["md", "json"]): Output format.
+                session (AdminSession): The validated admin session.
+
+            Returns:
+                Response: The rendered document as a file attachment.
+            """
+            entries = await _collect_log_entries(source, q)
+            total = len(entries)
+            window = entries[:_logs_export_max]
+            truncated_from = total if total > len(window) else None
+
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+            if format == "json":
+                body = render_entries_json(window)
+                media_type = "application/json"
+                suffix = "json"
+            else:
+                body = render_entries_markdown(
+                    window,
+                    source=source,
+                    query=q,
+                    truncated_from=truncated_from,
+                )
+                media_type = "text/markdown; charset=utf-8"
+                suffix = "md"
+
+            filename = f"logs-{source}-{stamp}.{suffix}"
+            return Response(
+                content=body,
+                media_type=media_type,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"',
+                },
+            )
 
         @router.get("/logs", name="admin_logs")
         async def logs_view(
@@ -958,20 +1056,7 @@ def make_admin_router(
             """
             principal = await _resolve_principal(request, db_session, session)
 
-            files = _resolve_files(_log_base, source)
-            entries = await run_in_threadpool(_read_entries, files)
-
-            needle = q.lower() if q else None
-            if needle is not None:
-                entries = [
-                    entry
-                    for entry in entries
-                    if needle in str(entry.get("message", "")).lower()
-                ]
-            entries.sort(
-                key=lambda item: str(item.get("timestamp", "")),
-                reverse=True,
-            )
+            entries = await _collect_log_entries(source, q)
 
             total = len(entries)
             offset = (page - 1) * _logs_page_size
@@ -988,6 +1073,11 @@ def make_admin_router(
                 total=total,
                 query_params={k: v for k, v in kept_params.items() if v},
             )
+            export_query = urlencode(
+                {k: v for k, v in kept_params.items() if v},
+            )
+            export_base = f"{prefix}/logs/export"
+            separator = "&" if export_query else ""
             return _render(
                 request,
                 "logs.html",
@@ -1009,6 +1099,14 @@ def make_admin_router(
                     "query": q or "",
                     "available": available,
                     "pagination": pagination,
+                    "export_md_url": (
+                        f"{export_base}?{export_query}{separator}format=md"
+                    ),
+                    "export_json_url": (
+                        f"{export_base}?{export_query}{separator}format=json"
+                    ),
+                    "export_max": _logs_export_max,
+                    "context_keys": ("path", "method", "status_code", "request_id"),
                 },
             )
 

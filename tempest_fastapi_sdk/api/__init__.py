@@ -78,6 +78,8 @@ from tempest_fastapi_sdk.api.routers import (
     make_prometheus_registry,
     make_prometheus_router,
     make_tool_spec_router,
+    render_entries_json,
+    render_entries_markdown,
 )
 from tempest_fastapi_sdk.api.server import run_server
 from tempest_fastapi_sdk.api.spa import (
@@ -172,6 +174,8 @@ __all__: list[str] = [
     "make_unhandled_exception_handler",
     "raises",
     "register_exception_handlers",
+    "render_entries_json",
+    "render_entries_markdown",
     "require_x_token",
     "run_server",
     "set_cookie",

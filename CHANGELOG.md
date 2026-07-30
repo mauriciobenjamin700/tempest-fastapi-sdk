@@ -5,6 +5,58 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.172.0] — 2026-07-30
+
+### Added
+
+- **The admin logs page now shows the traceback of a 500, and exports the
+  selection as markdown or JSON** (`tempest_fastapi_sdk/admin/router.py`,
+  `admin/templates/logs.html`, `api/routers/logs.py`). Diagnosing an unhandled
+  error from the panel was impossible: the table rendered four columns
+  (timestamp, level, logger, message) and dropped every other field, so the
+  `exception` value — the formatted traceback the SDK's own exception handlers
+  write with `exc_info=True` — sat on disk and never reached the screen. The only
+  way to read it was to shell into the server, and there was no way to hand it to
+  anyone. This bit during the `0.171.1` investigation: the single clue to a
+  production 500 was a log line with the trace stripped off.
+
+  Each record carrying a traceback is now a collapsed disclosure: the record's
+  own message is the `<summary>`, so clicking anywhere on the entry reveals the
+  trace, with the request correlation fields (`path`, `method`, `status_code`,
+  `request_id`) alongside it. Plain `<details>`/`<summary>` — the admin ships no
+  JavaScript — collapsed by default so a page full of 500s stays scannable, and a
+  record without a traceback grows no toggle at all.
+
+  The traceback wraps rather than extending: a `<pre>` is sized by its longest
+  line and sits in a table cell, which sizes to content, so `overflow-x` on the
+  `<pre>` could not shrink it — the table grew past its scroll container (1364px
+  against a 1012px wrap) and the trace could only be read by dragging the table
+  sideways. Wrapping costs the alignment of the caret markers on screen; the
+  export carries the exact unwrapped text.
+
+  New `GET {prefix}/logs/export?format=md|json` downloads the **filtered**
+  selection (the page's own `?source=` and `?q=`), newest first, capped at 500
+  records:
+
+  - `format=md` puts each traceback in a fenced ```` ```pytb ```` block, so it
+    survives a paste into an issue or PR with its indentation intact. The header
+    states the source, the record count, the active filter and — when the cap
+    bites — how many records matched in total, so a partial export never reads as
+    a complete one.
+  - `format=json` emits the records verbatim, including every field the
+    application attached through `extra=`, for tooling rather than reading.
+
+  Page and export share one collector, so the file always matches what the
+  operator was looking at. The export inherits the admin session guard — a
+  traceback is exactly the payload that must not be world-readable.
+
+- **`render_entries_markdown` / `render_entries_json`** are exported at the
+  package level (`tempest_fastapi_sdk/api/routers/logs.py`) so a service can
+  build its own export — a CLI command, a CI step, a chat-ops hook — off the same
+  rendering the admin panel uses. `render_entries_json` falls back to `str()` for
+  non-serializable values, so one exotic `extra=` value cannot fail a whole
+  export.
+
 ## [0.171.1] — 2026-07-30
 
 ### Fixed

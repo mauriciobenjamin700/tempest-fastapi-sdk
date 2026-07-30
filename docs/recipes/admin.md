@@ -179,6 +179,7 @@ app.include_router(
 - `GET/POST /admin/mfa` — desafio TOTP (segundo fator) entre a senha e o acesso, para principais com MFA habilitado.
 - `GET  /admin/` — dashboard: card por modelo com **contagem de linhas** + Browse/New, e um **painel de métricas** (CPU/RAM/disco via `MetricsUtils`). Painel ligado por default, omitido sem o extra `[metrics]`, desligável com `make_admin_router(show_metrics=False)`.
 - `GET  /admin/logs` — **logs da aplicação** (quando `show_logs=True`): lê os arquivos JSON estruturados escritos pelo `configure_logging(log_dir=…)`, com filtro por fonte (`?source=`), busca em texto (`?q=`) e paginação. Badges coloridos por nível. Quando ainda não há arquivos de log, mostra um estado vazio.
+- `GET  /admin/logs/export` — **export dos logs** (`?format=md|json`): baixa a seleção filtrada como markdown (traceback em bloco cercado, pronto para colar em issue) ou JSON verbatim.
 - `GET  /admin/m/{slug}/` — list view com paginação + busca em texto livre (`?q=`) + filtros por campo (`?filter_<field>=value`) + **ordenação por coluna** clicável (`?sort=<coluna>&dir=asc|desc`).
 - `GET  /admin/m/{slug}/export.csv` / `export.json` — **exporta** o resultado atual (respeitando busca/filtros/ordenação) como CSV ou JSON. Limite de linhas via `make_admin_router(export_max_rows=…)` (default 5000).
 - `POST /admin/m/{slug}/bulk` — **ações em massa** (delete / activate / deactivate + suas **ações customizadas**) nas linhas selecionadas.
@@ -298,6 +299,32 @@ site.register(AdminModel(
     É **opt-in** (`show_logs=False` por default) porque o payload expõe
     tracebacks e metadados de request — só habilite atrás do login do
     admin. Sem arquivos no `log_dir`, a página mostra um estado vazio.
+
+!!! tip "Traceback de erros 500 e export para issue"
+    Cada registro que carrega um traceback (os handlers do SDK logam com
+    `exc_info=True`) vira um item clicável: **a própria mensagem é o
+    gatilho**, então clicar em qualquer ponto da entrada revela o trace,
+    com os campos de correlação do request (`path`, `method`,
+    `status_code`, `request_id`) ao lado. `<details>`/`<summary>` puro, sem
+    JS, recolhido por default para que uma página cheia de 500 continue
+    escaneável — registro sem traceback não ganha gatilho nenhum.
+
+    `GET /admin/logs/export?format=md|json` baixa a seleção **filtrada**
+    (mesmos `?source=` e `?q=` da página), do mais recente para o mais
+    antigo, até 500 registros:
+
+    - **`format=md`** — cada traceback vai num bloco cercado ```` ```pytb ````,
+      então sobrevive a um colar em issue/PR com a indentação intacta. O
+      cabeçalho declara fonte, contagem, filtro aplicado e — quando o teto
+      de 500 corta — quantos registros casavam no total, para um export
+      parcial nunca se passar por completo.
+    - **`format=json`** — os registros verbatim, com todo campo que a
+      aplicação logou via `extra=`, para consumo por ferramenta.
+
+    O export herda o gate de sessão do admin: traceback é exatamente o
+    payload que não pode ficar público. Para montar seu próprio export,
+    `render_entries_markdown` e `render_entries_json` são exportados no
+    nível do pacote.
 
 !!! tip "Responsivo por padrão"
     Os templates + CSS embutidos são responsivos: em telas estreitas (≤600px) o header empilha, busca/filtros/ações viram full-width, as tabelas ganham scroll horizontal (nunca quebram o layout) e o grid do detail colapsa para uma coluna. Headers de coluna são clicáveis para alternar a ordenação (▲/▼).
