@@ -1151,6 +1151,8 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
 
     The user is loaded on the **request-scoped** session (`db.session_dependency` by default) — the very one your repositories use. So the instance comes back *attached* and you can mutate / `refresh` it without hitting `InvalidRequestError: Instance is not persistent within this Session`. If your repositories depend on a different session callable (a project-local `get_session`, say), pass **that exact callable** as `session_dependency=` — FastAPI caches a sub-dependency by callable, so a distinct wrapper opens a second session and detaches the user again.
 
+    The same guarantee holds for `make_auth_router`'s own authenticated routes (`/auth/password-change`, `/auth/mfa/*`): they load the user on the request session as of **0.171.1**. Before that the router opened a private session and handed back an already-*detached* instance, so the write was silently dropped and the following `refresh` blew up — `/auth/password-change` answered 500 while keeping the old password.
+
 !!! tip "Not header-only: cookie and query string count too"
     The dependency tries **header → cookie → query string** and stops at the first hit, so the single line above serves both bearer clients and cookie clients.
 

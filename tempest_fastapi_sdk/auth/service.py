@@ -410,6 +410,43 @@ class UserAuthService:
         await session.refresh(user)
         return user
 
+    async def _attach(
+        self, session: AsyncSession, user: BaseUserModel
+    ) -> BaseUserModel:
+        """Return ``user`` guaranteed to belong to ``session``.
+
+        Every method that receives an already-loaded user from its caller —
+        rather than fetching it itself — is one ``session`` mismatch away from
+        losing its writes. A detached (or foreign-session) instance accepts
+        attribute assignment happily, ``session.flush()`` then finds nothing to
+        write because the instance is not in that session's identity map, and the
+        following ``session.refresh()`` raises ``InvalidRequestError: Instance is
+        not persistent within this Session``. The failure mode is the worst kind:
+        the write silently vanishes, and the error surfaces one line later
+        pointing at ``refresh`` instead of at the real cause.
+
+        The bundled router hands over a request-scoped, attached instance, so
+        this is normally a no-op check. It matters for callers driving the
+        service directly — a background task, a CLI command, a test — where the
+        user may have been loaded somewhere else entirely.
+
+        ``merge`` is used rather than a re-fetch by primary key so pending
+        in-memory changes on the passed instance are carried over instead of
+        being discarded.
+
+        Args:
+            session (AsyncSession): The session the write must land on.
+            user (BaseUserModel): The user handed in by the caller.
+
+        Returns:
+            BaseUserModel: ``user`` itself when already attached, otherwise the
+                session-local instance to mutate in its place.
+        """
+        if user in session:
+            return user
+        merged: BaseUserModel = await session.merge(user)
+        return merged
+
     async def change_password(
         self,
         session: AsyncSession,
@@ -447,6 +484,7 @@ class UserAuthService:
         if not self.passwords.verify(current_password, user.hashed_password):
             raise UnauthorizedException(message="current password is incorrect")
         self._enforce_password_policy(new_password)
+        user = await self._attach(session, user)
         user.hashed_password = self.passwords.hash(new_password)
         await session.flush()
         await session.refresh(user)
@@ -1699,6 +1737,7 @@ class UserAuthService:
                 code_hash=code_hash,
             )
             session.add(record)
+        user = await self._attach(session, user)
         user.totp_secret = secret
         user.totp_enabled_at = None
         await session.flush()
@@ -1738,6 +1777,7 @@ class UserAuthService:
             window=self.auth_settings.AUTH_MFA_VERIFY_WINDOW,
         ):
             raise UnauthorizedException(message="invalid MFA code")
+        user = await self._attach(session, user)
         user.totp_enabled_at = utcnow()
         await session.flush()
         await session.refresh(user)
@@ -1774,6 +1814,7 @@ class UserAuthService:
             raise ValidationException(message="MFA not active")
         if not await self._verify_mfa_code(session, user, code, recovery_code_model):
             raise UnauthorizedException(message="invalid MFA code")
+        user = await self._attach(session, user)
         user.totp_secret = None
         user.totp_enabled_at = None
         await session.execute(

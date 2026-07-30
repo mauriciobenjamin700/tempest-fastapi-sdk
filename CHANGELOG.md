@@ -5,6 +5,58 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.171.1] — 2026-07-30
+
+### Fixed
+
+- **`make_auth_router` now loads the authenticated user on the request session,
+  so `POST /auth/password-change` actually rotates the password**
+  (`tempest_fastapi_sdk/auth/router.py`). The router built its authenticated-user
+  dependency without the `session_dependency` seam `make_jwt_user_dependency`
+  provides, so `_make_user_loader` opened a **private** session, fetched the user
+  and returned it after that session closed. Every authenticated route of the
+  bundled router therefore received a **detached** instance, and the damage was
+  silent-then-loud: assigning `user.hashed_password` succeeded,
+  `session.flush()` wrote **nothing** (the instance is absent from that session's
+  identity map), and the following `session.refresh(user)` raised
+  `InvalidRequestError: Instance is not persistent within this Session`. The
+  endpoint answered **500** *and* left the old password valid — reported from
+  production as "changing the password does nothing".
+
+  `UserAuthService.current_user_dependency` already defaulted to
+  `self.db.session_dependency` and the docs already promised an attached
+  instance; only the bundled router bypassed it. The loader is now a
+  two-argument `(user_id, session)` callable and the dependency is wired with
+  `session_dependency=_session` — the **same** callable the route bodies depend
+  on, because FastAPI caches a sub-dependency by its callable and a different
+  wrapper would open a second session and detach the user again.
+
+  The existing router tests could not catch this: they wire a `session_factory`
+  that `yield`s one shared `AsyncSession`, making the loader's "private" session
+  and the route's session the same object.
+  `tests/auth/test_router_session_sharing.py` drives the router through a factory
+  that opens a **new** session per call, the way
+  `AsyncDatabaseManager.session_dependency` does in a real app, and asserts a
+  single request opens exactly one session.
+
+  Same root cause fixed for `POST /auth/mfa/confirm` and `POST /auth/mfa/disable`,
+  which mutate `totp_secret` / `totp_enabled_at` through the same dependency.
+
+- **`UserAuthService` methods that receive an already-loaded user now re-attach it
+  to the session they write through** (`tempest_fastapi_sdk/auth/service.py`).
+  `change_password`, `mfa_enroll`, `mfa_confirm` and `mfa_disable` take the user
+  from their caller instead of fetching it, which made every one of them a session
+  mismatch away from losing its writes — with the error surfacing at `refresh`,
+  one line past the real cause. A private `_attach` helper returns the user
+  untouched when it already belongs to the session and `merge`s it in otherwise
+  (`merge` rather than a re-fetch by primary key, so pending in-memory changes are
+  carried over instead of discarded). This makes the flows correct for callers
+  driving the service directly — a background task, a CLI command, a test — not
+  only through the bundled router.
+
+  **Migration:** none. Behavior only becomes correct where it previously failed;
+  no signature changed.
+
 ## [0.171.0] — 2026-07-28
 
 ### Changed

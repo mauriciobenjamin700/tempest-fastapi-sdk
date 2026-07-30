@@ -236,8 +236,9 @@ def make_auth_router(
 
     current_user_dep = make_jwt_user_dependency(
         service.jwt,
-        user_loader=_make_user_loader(service, session_factory),
+        user_loader=_make_user_loader(service),
         cookie_name=cookies.access_name if cookie_enabled else None,
+        session_dependency=_session,
     )
 
     def _mount_if(
@@ -1354,20 +1355,31 @@ def make_auth_router(
 
 def _make_user_loader(
     service: UserAuthService,
-    session_factory: Callable[[], AsyncIterator[AsyncSession]],
-) -> Callable[[str], Coroutine[Any, Any, BaseUserModel | None]]:
-    """Build the awaitable ``(user_id) -> BaseUserModel`` JWT user loader.
+) -> Callable[[str, AsyncSession], Coroutine[Any, Any, BaseUserModel | None]]:
+    """Build the awaitable ``(user_id, session) -> BaseUserModel`` JWT user loader.
 
-    Opens a fresh session per call so the dependency stays
-    request-scope-agnostic.
+    Loads the user on the **request-scoped** session handed in by
+    :func:`~tempest_fastapi_sdk.make_jwt_user_dependency`, so the instance stays
+    attached to the same session the route body writes through. The earlier
+    version opened a private session per call and returned the user after that
+    session closed, which left every authenticated route of this router holding a
+    **detached** instance: a mutation in the route body was flushed against a
+    session that did not contain it (a silent no-op) and the following
+    ``session.refresh(user)`` raised ``InvalidRequestError: Instance is not
+    persistent within this Session``. ``POST /auth/password-change`` failed that
+    way — answering 500 *and* leaving the old password in place.
+
+    Args:
+        service (UserAuthService): The service owning the user model to load.
+
+    Returns:
+        Callable: The two-argument loader the shared-session dependency calls.
     """
     from uuid import UUID
 
-    async def _load(user_id: str) -> BaseUserModel | None:
-        async for s in session_factory():
-            obj: BaseUserModel | None = await s.get(service.user_model, UUID(user_id))
-            return obj
-        return None  # pragma: no cover - session_factory always yields once
+    async def _load(user_id: str, session: AsyncSession) -> BaseUserModel | None:
+        obj: BaseUserModel | None = await session.get(service.user_model, UUID(user_id))
+        return obj
 
     return _load
 

@@ -1146,6 +1146,8 @@ get_current_user_or_none = auth_service.current_user_dependency(soft=True)
 
     O usuário é carregado na sessão **do request** (`db.session_dependency` por default), a mesma que os seus repositórios usam. Ou seja: a instância vem *attached* e você pode mutar/`refresh` sem tomar `InvalidRequestError: Instance is not persistent within this Session`. Se os seus repositórios dependem de outro callable de sessão (um `get_session` local, por exemplo), passe **esse mesmo callable** em `session_dependency=` — o FastAPI cacheia sub-dependency por callable, então um wrapper diferente abre uma segunda sessão e volta a destacar o usuário.
 
+    A mesma garantia vale para as rotas autenticadas do próprio `make_auth_router` (`/auth/password-change`, `/auth/mfa/*`): elas carregam o usuário na sessão do request desde a **0.171.1**. Antes disso o router abria uma sessão privada e devolvia a instância já *detached*, então a escrita era descartada em silêncio e o `refresh` seguinte estourava — `/auth/password-change` respondia 500 mantendo a senha antiga.
+
 !!! tip "Não é só o header: cookie e query string também valem"
     A dependency tenta **header → cookie → query string** e para no primeiro hit, então a mesma linha acima serve cliente bearer e cliente cookie.
 
