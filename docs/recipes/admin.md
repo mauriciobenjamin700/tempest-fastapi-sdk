@@ -321,6 +321,11 @@ site.register(AdminModel(
     - **`format=json`** — os registros verbatim, com todo campo que a
       aplicação logou via `extra=`, para consumo por ferramenta.
 
+    Em telas abaixo de 600px a tabela vira **cards empilhados** (o header
+    é escondido e cada célula se nomeia sozinha), então a mensagem e o
+    traceback ficam na viewport sem scroll horizontal. As outras list views
+    mantêm o scroll lateral, que serve para lista que se folheia.
+
     O export herda o gate de sessão do admin: traceback é exatamente o
     payload que não pode ficar público. Para montar seu próprio export,
     `render_entries_markdown` e `render_entries_json` são exportados no

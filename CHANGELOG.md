@@ -5,6 +5,34 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.172.1] — 2026-07-30
+
+### Fixed
+
+- **The admin logs table is readable on a phone, and a copied row keeps its
+  separators** (`tempest_fastapi_sdk/admin/static/admin.css`,
+  `admin/templates/logs.html`). Two problems with the `0.172.0` traceback view,
+  both found on real screens rather than in tests.
+
+  Below 600px the four-column table only fit by scrolling sideways, and the
+  fourth column is the one that matters — message, request context, traceback. An
+  opened trace showed up as a tall blank row until the operator dragged the table
+  across (measured at 414px: `table.scrollWidth` 676 against a 390px wrap). The
+  logs table now stacks into cards at that breakpoint: `thead` is dropped and each
+  cell names itself from a new `data-label`, so the message and its traceback sit
+  in the viewport with no horizontal scroll (375px table in a 375px wrap). Scoped
+  to this table — the other list views keep the scroll treatment, which suits a
+  list you skim rather than read.
+
+  The request-context chips (`path`, `method`, `status_code`, `request_id`) were
+  separated only by a flex `gap`. That renders separation but contributes no
+  character, so copying a row to paste into an issue yielded `status_code404` and
+  `request_idd7332783-…`. The markup now carries a real space between the label
+  and the value, and the visual gap widened, since an uppercase micro-label
+  against a monospace value reads as one token.
+
+  **Migration:** none.
+
 ## [0.172.0] — 2026-07-30
 
 ### Added

@@ -176,6 +176,38 @@ class TestTracebackOnThePage:
         assert "/api/auth/password-change" in response.text
         assert "b1ddc2ad-3649-4306-82b9-d442dc8f864b" in response.text
 
+    async def test_context_label_and_value_are_separated_in_the_markup(
+        self, app_with_logs: FastAPI
+    ) -> None:
+        """A real space sits between the label and the value, not just a CSS gap.
+
+        ``gap`` is layout: it renders separation but contributes no character, so
+        copying a row to paste into an issue produced ``status_code404``. The
+        space has to be in the markup for the copied text to read.
+        """
+        async with _client(app_with_logs) as client:
+            await _login(client)
+            response = await client.get("/admin/logs", params={"source": "500"})
+
+        assert "<span>path</span> <code>" in response.text
+        assert "<span>request_id</span> <code>" in response.text
+        assert "</span><code>" not in response.text
+
+    async def test_cells_carry_labels_for_the_stacked_mobile_layout(
+        self, app_with_logs: FastAPI
+    ) -> None:
+        """``data-label`` feeds the card labels once the header is dropped.
+
+        Below 600px the table becomes stacked cards and ``thead`` is hidden, so
+        each value needs to name itself or the card is four anonymous lines.
+        """
+        async with _client(app_with_logs) as client:
+            await _login(client)
+            response = await client.get("/admin/logs")
+
+        for label in ("Timestamp", "Level", "Logger", "Message"):
+            assert f'data-label="{label}"' in response.text
+
     async def test_record_without_traceback_has_no_details_block(
         self, app_with_logs: FastAPI
     ) -> None:

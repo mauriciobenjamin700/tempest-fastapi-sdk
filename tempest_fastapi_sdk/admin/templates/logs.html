@@ -53,13 +53,13 @@
           {% if entry.get(key) is not none %}{% set _ = ctx.append((key, entry.get(key))) %}{% endif %}
         {% endfor %}
         <tr>
-          <td class="tempest-admin-logs__ts">{{ entry.get("timestamp", "") }}</td>
-          <td>
+          <td class="tempest-admin-logs__ts" data-label="Timestamp">{{ entry.get("timestamp", "") }}</td>
+          <td data-label="Level">
             {% set level = (entry.get("level", "") or "")|lower %}
             <span class="tempest-log-badge tempest-log-badge--{{ level }}">{{ entry.get("level", "—") }}</span>
           </td>
-          <td class="tempest-admin-logs__logger">{{ entry.get("logger", entry.get("name", "—")) }}</td>
-          <td class="tempest-admin-logs__msg">
+          <td class="tempest-admin-logs__logger" data-label="Logger">{{ entry.get("logger", entry.get("name", "—")) }}</td>
+          <td class="tempest-admin-logs__msg" data-label="Message">
             {% if traceback %}
             {# The whole record is the toggle: clicking anywhere on the message
                reveals the traceback. Collapsed by default so a page of 500s
@@ -71,7 +71,7 @@
                 {% if ctx %}
                 <ul class="tempest-admin-logs__meta">
                   {% for key, value in ctx %}
-                  <li><span>{{ key }}</span><code>{{ value }}</code></li>
+                  <li><span>{{ key }}</span> <code>{{ value }}</code></li>
                   {% endfor %}
                 </ul>
                 {% endif %}
@@ -84,7 +84,7 @@
             {% if ctx %}
             <ul class="tempest-admin-logs__meta">
               {% for key, value in ctx %}
-              <li><span>{{ key }}</span><code>{{ value }}</code></li>
+              <li><span>{{ key }}</span> <code>{{ value }}</code></li>
               {% endfor %}
             </ul>
             {% endif %}

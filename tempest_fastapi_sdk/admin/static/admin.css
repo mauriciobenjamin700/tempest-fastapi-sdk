@@ -1060,6 +1060,68 @@ a.tempest-admin-list__new:hover {
     padding: 1rem;
   }
 
+  /* The logs table becomes stacked cards. Horizontal scroll is fine for a
+     list view you skim, but the logs table's fourth column carries the
+     message, the request context and the traceback — everything you came to
+     read — so at this width it sat off-screen behind a sideways drag, and an
+     opened traceback showed up only as a tall blank row. Labels come from
+     each cell's data-label, so the header can be dropped without losing
+     which value is which. Scoped to this table: the other list views keep
+     the scroll treatment. */
+  .tempest-admin-logs .tempest-admin-table-wrap {
+    overflow-x: visible;
+  }
+
+  .tempest-admin-logs__table thead {
+    display: none;
+  }
+
+  .tempest-admin-logs__table,
+  .tempest-admin-logs__table tbody,
+  .tempest-admin-logs__table tr,
+  .tempest-admin-logs__table td {
+    display: block;
+    width: 100%;
+  }
+
+  .tempest-admin-logs__table tr {
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .tempest-admin-logs__table tr:last-child {
+    border-bottom: none;
+  }
+
+  .tempest-admin-logs__table td {
+    padding: 0.1rem 0;
+    border: none;
+  }
+
+  .tempest-admin-logs__table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--tempest-fg-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.64rem;
+    font-weight: 600;
+  }
+
+  /* The message is the card's body, not another labelled field. */
+  .tempest-admin-logs__table td.tempest-admin-logs__msg {
+    margin-top: 0.5rem;
+  }
+
+  .tempest-admin-logs__table td.tempest-admin-logs__msg::before {
+    display: none;
+  }
+
+  .tempest-admin-logs__logger {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
   .tempest-admin-detail__fields dt {
     margin-top: 0.75rem;
   }
@@ -1193,10 +1255,15 @@ a.tempest-admin-list__new:hover {
   font-size: 0.75rem;
 }
 
+/* The gap is layout only — it does not survive a copy, and an operator copying a
+   row to paste into an issue would get "status_code404". The template keeps a
+   real space between the label and the value for that; this widens the visual
+   separation on top of it, since an uppercase micro-label sitting against a
+   monospace value reads as one token. */
 .tempest-admin-logs__meta li {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.3rem;
+  gap: 0.4rem;
 }
 
 .tempest-admin-logs__meta span {
