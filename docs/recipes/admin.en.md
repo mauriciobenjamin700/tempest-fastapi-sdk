@@ -339,6 +339,11 @@ site.register(AdminModel(
     - **`format=json`** — the records verbatim, including every field the
       application logged through `extra=`, for tooling to consume.
 
+    Below 600px the table becomes **stacked cards** (the header is dropped
+    and each cell names itself), so the message and the traceback sit in the
+    viewport with no horizontal scroll. The other list views keep the
+    sideways scroll, which suits a list you skim.
+
     The export inherits the admin session gate: a traceback is exactly the
     payload that must not be world-readable. To build your own export,
     `render_entries_markdown` and `render_entries_json` are exported at the
