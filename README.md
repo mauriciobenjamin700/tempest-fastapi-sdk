@@ -6,6 +6,7 @@
 
 - **PT-BR:** [Tutorial](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/tutorial/) · [Receitas](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/) · [Referência da API](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/reference/)
 - **EN-US:** [Tutorial](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/tutorial/) · [Recipes](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/recipes/) · [API reference](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/reference/)
+- **Começando do zero / New to Python tooling:** [Instalar o uv](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/getting-started/uv/) · [Install uv](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/en/getting-started/uv/) — trilha para iniciantes: `uv`, versões do Python, primeiro projeto e documentações oficiais.
 - **🤖 For LLMs:** [llms.txt](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/llms.txt) (curated index) · [llms-full.txt](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/llms-full.txt) (the whole docs in one block) — [llmstxt.org](https://llmstxt.org) convention.
 
 > 💡 `uv run mkdocs serve` (ou `make docs-serve`) é só para preview local — em produção use as URLs do GitHub Pages acima. / For local preview only — in production use the GitHub Pages URLs above.

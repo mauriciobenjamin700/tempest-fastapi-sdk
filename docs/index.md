@@ -74,6 +74,10 @@ uv run pytest
 
 <div class="grid cards" markdown>
 
+-   **[Começando do zero »](getting-started/uv.md)**
+
+    Trilha para iniciantes: instalar o `uv`, escolher a versão do Python, criar o primeiro projeto e onde ficam as documentações oficiais.
+
 -   **[Instalação »](installation.md)**
 
     Passo a passo por extra: o que cada um traz, o que fica de fora do `[all]` e como pinar a versão.

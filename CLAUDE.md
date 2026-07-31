@@ -527,7 +527,9 @@ CI). Uma página nova não está pronta enquanto os itens abaixo não valem.
 ### O que fica fora da ordem alfabética, de propósito
 
 Abas de topo (`Início → Instalação → Arquitetura → Tutorial → …`),
-páginas de `learning/` e o tour na landing de receitas seguem **ordem
+páginas de `learning/`, a trilha de `getting-started/` (aninhada sob a
+aba `Instalação`: uv → versões do Python → primeiro projeto →
+documentação oficial) e o tour na landing de receitas seguem **ordem
 didática**. Ordenar essas seria a regressão. Fora do nav, a mesma
 disciplina vale para listas que o leitor usa como índice: tabela de
 módulos do README, tabela de extras da instalação (com `[all]` por

@@ -88,7 +88,12 @@ plugins:
           site_name: tempest-fastapi-sdk
           nav:
             - Home: index.md
-            - Installation: installation.md
+            - Installation:
+              - installation.md
+              - Install uv: getting-started/uv.md
+              - Pick your Python version: getting-started/python-versions.md
+              - Your first project: getting-started/first-project.md
+              - Official reference docs: getting-started/references.md
             - Architecture: architecture.md
             - Tutorial: tutorial.md
             - Recipes:
@@ -317,7 +322,12 @@ markdown_extensions:
 
 nav:
   - Início: index.md
-  - Instalação: installation.md
+  - Instalação:
+      - installation.md
+      - "Instalar o uv": getting-started/uv.md
+      - "Escolher a versão do Python": getting-started/python-versions.md
+      - "Seu primeiro projeto": getting-started/first-project.md
+      - "Documentação oficial de referência": getting-started/references.md
   - Arquitetura: architecture.md
   - Tutorial: tutorial.md
   - Receitas:
