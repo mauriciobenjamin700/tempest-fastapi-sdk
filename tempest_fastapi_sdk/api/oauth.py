@@ -36,6 +36,31 @@ class OAuthError(AppException):
     status_code: int = 502
 
 
+def _as_bool(value: Any) -> bool | None:
+    """Normalize an OIDC boolean claim that may arrive as a string.
+
+    Some IdPs serialize ``email_verified`` as ``"true"`` / ``"false"``
+    rather than a JSON boolean. An unrecognized value returns ``None``
+    (unknown) rather than ``False``, so a caller cannot mistake "the
+    provider did not say" for "the provider said no".
+
+    Args:
+        value (Any): The raw claim value.
+
+    Returns:
+        bool | None: The parsed flag, or ``None`` when absent/unparseable.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes"}:
+            return True
+        if lowered in {"false", "0", "no"}:
+            return False
+    return None
+
+
 @dataclass(slots=True)
 class OAuthUser:
     """Normalized user identity returned by every provider.
@@ -50,8 +75,12 @@ class OAuthUser:
             feed the same user table.
         subject (str): Stable per-provider user id. Combine with
             ``provider`` for a globally-unique key.
-        email (str | None): Verified email when the provider
-            returned one. Some IdPs gate this behind extra scopes.
+        email (str | None): The email the provider returned, if any.
+            Some IdPs gate this behind extra scopes. **Not necessarily
+            verified** — check ``email_verified`` before trusting it.
+        email_verified (bool | None): Whether the provider states it has
+            verified ``email``. ``None`` means the provider said nothing
+            either way, which is not the same as ``True``.
         name (str | None): Human-readable display name.
         picture (str | None): Avatar / profile picture URL.
         raw (dict[str, Any]): Full provider payload for advanced
@@ -61,6 +90,7 @@ class OAuthUser:
     provider: str
     subject: str
     email: str | None = None
+    email_verified: bool | None = None
     name: str | None = None
     picture: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
@@ -342,6 +372,7 @@ class GoogleOAuthClient(_BaseOAuthClient):
             provider=self.provider_name,
             subject=str(payload["sub"]),
             email=payload.get("email"),
+            email_verified=_as_bool(payload.get("email_verified")),
             name=payload.get("name"),
             picture=payload.get("picture"),
             raw=payload,
@@ -389,6 +420,15 @@ class GitHubOAuthClient(_BaseOAuthClient):
         return ["read:user", "user:email"]
 
     def _parse_user(self, payload: dict[str, Any]) -> OAuthUser:
+        """Map ``GET /user`` onto :class:`OAuthUser`.
+
+        ``email_verified`` is left ``None``: the ``GET /user`` payload the
+        client reads carries no verification flag, and the address it
+        returns is the account's *public* profile email, which GitHub does
+        not require to be verified. Call ``GET /user/emails`` (scope
+        ``user:email``) and read the ``verified`` field there when you need
+        the answer.
+        """
         return OAuthUser(
             provider=self.provider_name,
             subject=str(payload["id"]),
@@ -486,6 +526,7 @@ class OIDCProvider(_BaseOAuthClient):
             provider=self.provider_name,
             subject=str(payload.get("sub") or payload["id"]),
             email=payload.get("email"),
+            email_verified=_as_bool(payload.get("email_verified")),
             name=payload.get("name") or payload.get("preferred_username"),
             picture=payload.get("picture"),
             raw=payload,

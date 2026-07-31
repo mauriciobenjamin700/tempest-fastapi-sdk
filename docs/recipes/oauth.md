@@ -196,7 +196,8 @@ async def callback(request: Request, code: str, state: str) -> RedirectResponse:
 | --- | --- | --- |
 | `provider` | `str` | `"google"`, `"github"`, `"oidc:auth0"` — a chave do provedor |
 | `subject` | `str` | Id estável **dentro** daquele provedor |
-| `email` | `str` ou `None` | E-mail, quando o provedor devolve |
+| `email` | `str` ou `None` | E-mail, quando o provedor devolve. **Não necessariamente verificado** |
+| `email_verified` | `bool` ou `None` | O provedor afirma ter verificado o e-mail? `None` = não disse nada |
 | `name` | `str` ou `None` | Nome de exibição |
 | `picture` | `str` ou `None` | URL do avatar |
 | `raw` | `dict[str, Any]` | Payload cru do provedor, pra claims customizadas |
@@ -205,6 +206,15 @@ async def callback(request: Request, code: str, state: str) -> RedirectResponse:
     E-mail muda, e o mesmo e-mail pode chegar por dois provedores. Guarde as
     duas colunas com um índice único composto — é o que permite a mesma pessoa
     ter Google e GitHub ligados na mesma conta.
+
+!!! danger "Ligar conta por e-mail exige `email_verified is True`"
+    Se você casa o login social com uma conta existente pelo e-mail, um
+    provedor que devolve endereço **não verificado** entrega a conta da vítima:
+    basta o atacante cadastrar o e-mail dela no provedor sem confirmar. É o caso
+    do GitHub — o `email` de `GET /user` é o do perfil público, que o GitHub não
+    exige verificar. Só faça o vínculo automático quando
+    `profile.email_verified is True`; com `None` ou `False`, peça a confirmação
+    do e-mail no seu próprio fluxo antes de ligar.
 
 ## 5. Ligando no seu usuário
 
@@ -284,6 +294,10 @@ github: GitHubOAuthClient = GitHubOAuthClient(
 - **`email` pode vir `None`.** Scopes default são `read:user` e `user:email`,
   mas quem marca o e-mail como privado no GitHub não expõe no `/user`. Trate
   `profile.email is None` — pedindo o e-mail numa tela sua, por exemplo.
+- **`email_verified` é sempre `None` aqui.** O payload de `GET /user` não traz
+  nenhum campo de verificação, então o SDK não inventa um. Se você precisa da
+  resposta, chame `GET /user/emails` (scope `user:email`) e leia o campo
+  `verified` de lá.
 
 ## Qualquer outro IdP: `OIDCProvider`
 

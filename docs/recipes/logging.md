@@ -148,8 +148,18 @@ Parâmetros de query:
 | --- | --- | --- |
 | `source` | `all` (padrão), `debug`, `info`, `warning`, `error`, `critical`, `500` | Qual arquivo ler. `all` mescla todos os níveis; `500` retorna só os 500 isolados. |
 | `q` | texto | Substring (case-insensitive) na mensagem. |
-| `start` / `end` | ISO-8601 | Limita os registros a uma janela de tempo. |
+| `start` / `end` | ISO-8601 | Limita os registros a uma janela de tempo. Um valor sem offset (`2026-05-31T00:00:00`, ou só a data) é lido como UTC. |
 | `page` / `page_size` | inteiros | Paginação (1-indexada). |
+
+!!! info "A leitura é limitada por arquivo"
+    Cada request lê os **20 000 registros mais recentes** de cada arquivo
+    selecionado (`DEFAULT_MAX_RECORDS_PER_FILE`), não o arquivo inteiro. O
+    endpoint ordena do mais novo pro mais antigo e pagina, então o que ficou de
+    fora não era alcançável de qualquer forma — e sem o limite um diretório de
+    log de vários gigabytes ia inteiro pra memória a cada request, derrubando o
+    worker antes de responder. Ajuste com
+    `make_logs_router(max_records_per_file=...)`; quando o corte acontece, um
+    `WARNING` é logado nomeando o `source`.
 
 !!! check "Recap"
     - `configure_logging(log_dir=...)` → stdout **+** um arquivo por nível.

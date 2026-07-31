@@ -197,7 +197,8 @@ async def callback(request: Request, code: str, state: str) -> RedirectResponse:
 | --- | --- | --- |
 | `provider` | `str` | `"google"`, `"github"`, `"oidc:auth0"` — the provider key |
 | `subject` | `str` | Stable id **within** that provider |
-| `email` | `str` or `None` | Email, when the provider returns one |
+| `email` | `str` or `None` | Email, when the provider returns one. **Not necessarily verified** |
+| `email_verified` | `bool` or `None` | Does the provider state it verified the email? `None` = it said nothing |
 | `name` | `str` or `None` | Display name |
 | `picture` | `str` or `None` | Avatar URL |
 | `raw` | `dict[str, Any]` | Raw provider payload, for custom claims |
@@ -206,6 +207,15 @@ async def callback(request: Request, code: str, state: str) -> RedirectResponse:
     Emails change, and the same email can arrive from two providers. Store both
     columns under a composite unique index — that is what lets one person link
     Google and GitHub to the same account.
+
+!!! danger "Linking an account by email requires `email_verified is True`"
+    If you match a social login to an existing account by email, a provider
+    returning an **unverified** address hands over the victim's account: the
+    attacker only has to register her email with the provider without confirming
+    it. GitHub is exactly that case — the `email` from `GET /user` is the public
+    profile one, which GitHub does not require verifying. Only link
+    automatically when `profile.email_verified is True`; on `None` or `False`,
+    confirm the email through your own flow first.
 
 ## 5. Linking to your own user
 
@@ -286,6 +296,9 @@ github: GitHubOAuthClient = GitHubOAuthClient(
   but a user who marks their email private on GitHub does not expose it on
   `/user`. Handle `profile.email is None` — by asking for the email on a screen
   of your own, for instance.
+- **`email_verified` is always `None` here.** The `GET /user` payload carries no
+  verification field, so the SDK does not invent one. When you need the answer,
+  call `GET /user/emails` (scope `user:email`) and read its `verified` field.
 
 ## Any other IdP: `OIDCProvider`
 

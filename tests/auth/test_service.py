@@ -1590,3 +1590,91 @@ class TestCurrentUserResolution:
                 assert resp.json() == {"anonymous": True}
         finally:
             await db.disconnect()
+
+
+class TestPasswordUpperBound:
+    """A password past the hasher's limit is a 422, not a 500.
+
+    bcrypt refuses anything over 72 UTF-8 bytes — ``hashpw`` raises
+    ``ValueError`` — and with no upper bound in the policy that reached the
+    unhandled-exception handler. Bytes, not characters: four per emoji.
+    """
+
+    async def test_signup_rejects_an_over_long_password(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service_minlen(8)
+        with pytest.raises(ValidationException) as exc:
+            await service.signup(
+                session,
+                email="long@a.com",
+                password="a" * 73,
+            )
+        assert exc.value.details["max_bytes"] == 72
+        assert exc.value.details["length_bytes"] == 73
+
+    async def test_the_boundary_is_accepted(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service_minlen(8)
+        user, _ = await service.signup(
+            session,
+            email="exactly72@a.com",
+            password="a" * 72,
+        )
+        assert user.email == "exactly72@a.com"
+
+    async def test_the_limit_counts_bytes_not_characters(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        """19 four-byte emoji are 76 bytes — under 72 characters, over the limit."""
+        service = _service_minlen(8)
+        password = "🔒" * 19
+        assert len(password) < 72
+        with pytest.raises(ValidationException) as exc:
+            await service.signup(
+                session,
+                email="emoji@a.com",
+                password=password,
+            )
+        assert exc.value.details["length_bytes"] == 76
+
+    async def test_password_change_rejects_an_over_long_password(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service_minlen(8)
+        user, _ = await service.signup(
+            session,
+            email="change-long@a.com",
+            password="original-pass",
+        )
+        with pytest.raises(ValidationException):
+            await service.change_password(
+                session,
+                user=user,
+                current_password="original-pass",
+                new_password="b" * 73,
+            )
+
+    async def test_a_raised_ceiling_is_honored(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        """The bound is configuration, for a project that swaps the hasher."""
+        auth = AuthSettings(
+            AUTH_AUTO_ACTIVATE=True,
+            AUTH_PASSWORD_MIN_LENGTH=8,
+            AUTH_PASSWORD_MAX_BYTES=200,
+        )
+        service = UserAuthService(
+            user_model=_TestUser,
+            token_model=_TestUserToken,  # type: ignore[arg-type]
+            auth_settings=auth,
+            jwt_settings=JWTSettings(JWT_SECRET="x" * 32),
+            email=None,
+        )
+        service._enforce_password_policy("a" * 150)

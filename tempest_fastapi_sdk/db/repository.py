@@ -28,6 +28,7 @@ from tempest_fastapi_sdk.db.signals import RepositorySignal, emit, has_handlers
 from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
+from tempest_fastapi_sdk.exceptions.validation import ValidationException
 from tempest_fastapi_sdk.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
@@ -299,6 +300,42 @@ class BaseRepository(Generic[ModelType]):
         if clause is not None:
             query = query.where(clause)
         return query
+
+    def _resolve_order_column(self, order_by: str) -> Any:
+        """Resolve ``order_by`` to a real column on the model.
+
+        ``order_by`` reaches the repository straight from a query parameter
+        (:class:`~tempest_fastapi_sdk.BasePaginationFilterSchema` declares it
+        as a plain ``str``), so it is untrusted input. A bare
+        ``getattr(self.model, order_by)`` turned any other name into an
+        ``AttributeError`` — and, worse, a name that happens to exist on the
+        class but is not a column (``metadata``, ``registry``) into an
+        ``AttributeError`` one frame later on ``.desc()``. Both surfaced as an
+        HTTP 500 on a request that is merely wrong.
+
+        Resolution goes through the mapper's column set, so only mapped
+        columns are orderable and anything else is a 422.
+
+        Args:
+            order_by (str): The column name requested by the caller.
+
+        Returns:
+            Any: The ``InstrumentedAttribute`` to order by.
+
+        Raises:
+            ValidationException: When ``order_by`` is not a mapped column.
+        """
+        mapper = inspect(self.model)
+        if order_by in mapper.columns:
+            column: Any = getattr(self.model, order_by)
+            return column
+        raise ValidationException(
+            message=f"{self.model.__name__!r} has no column {order_by!r}",
+            details={
+                "order_by": order_by,
+                "allowed": sorted(mapper.columns.keys()),
+            },
+        )
 
     def _relationship_options(self, with_: list[str]) -> list[Any]:
         """Build eager-load loader options for the given relationship paths.
@@ -675,6 +712,11 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             dict[str, Any]: A mapping with keys ``items``, ``total``,
             ``page``, ``size``, ``pages``.
+
+        Raises:
+            ValidationException: When ``order_by`` names something that is
+                not a mapped column. It arrives from a query parameter, so
+                a bad value answers 422 rather than crashing the request.
         """
         if query is None:
             query = select(self.model)
@@ -687,7 +729,7 @@ class BaseRepository(Generic[ModelType]):
         if order_by is None:
             query = query.order_by(self.model.created_at.desc())
         else:
-            column = getattr(self.model, order_by)
+            column = self._resolve_order_column(order_by)
             query = query.order_by(column if ascending else column.desc())
 
         count_query = select(func.count()).select_from(query.subquery())
@@ -749,19 +791,17 @@ class BaseRepository(Generic[ModelType]):
             ``has_more`` and ``limit``.
 
         Raises:
-            ValueError: When ``order_by`` is not a column on the
-                model, or when ``cursor`` is malformed.
+            ValidationException: When ``order_by`` is not a mapped column
+                on the model — it comes from a query parameter, so a bad
+                value is a 422 and not a server error.
+            ValueError: When ``cursor`` is malformed.
         """
         from tempest_fastapi_sdk.schemas.pagination import (
             decode_cursor,
             encode_cursor,
         )
 
-        column = getattr(self.model, order_by, None)
-        if column is None:
-            raise ValueError(
-                f"{self.model.__name__!r} has no column {order_by!r}",
-            )
+        column = self._resolve_order_column(order_by)
 
         if query is None:
             query = select(self.model)
@@ -878,8 +918,9 @@ class BaseRepository(Generic[ModelType]):
             query started, to be persisted as the next ``since``.
 
         Raises:
-            ValueError: When ``order_by`` is not a column on the model,
-                or when ``cursor`` is malformed.
+            ValidationException: When ``order_by`` is not a mapped column
+                on the model.
+            ValueError: When ``cursor`` is malformed.
         """
         server_time = utcnow()
 

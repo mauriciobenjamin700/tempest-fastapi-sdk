@@ -441,6 +441,7 @@ Controls the signing and lifetime of the tokens login returns. **It's the same `
 | Env var | Type | Default | What it does |
 |---------|------|---------|--------------|
 | `AUTH_PASSWORD_MIN_LENGTH` | `int` (≥1) | `12` | Minimum length accepted on signup **and** reset. |
+| `AUTH_PASSWORD_MAX_BYTES` | `int` (≥1) | `72` | Maximum length in UTF-8 **bytes**. This is bcrypt's hard limit. |
 | `AUTH_PASSWORD_REQUIRE_COMPLEXITY` | `bool` | `false` | `true` = require 1 lowercase + 1 uppercase + 1 digit + 1 special character. |
 
 These two interact — **this is where it usually gets confusing**. The exact rule:
@@ -459,6 +460,9 @@ Decision table:
 
 !!! warning "The floor is the single source of truth"
     The request schemas (`SignupSchema`, `PasswordResetConfirmSchema`) impose **no** length bound of their own — they delegate to these two vars. Lowering `AUTH_PASSWORD_MIN_LENGTH` to `4` genuinely relaxes validation on the route too. There is no hidden second limit in the schema "protecting" you.
+
+!!! danger "The ceiling counts bytes, not characters"
+    `AUTH_PASSWORD_MAX_BYTES` exists because bcrypt **refuses** input over 72 bytes: `hashpw` raises `ValueError`, and without the ceiling that surfaced as a **500** on signup / reset / password change. Bytes is the unit the hash sees, and 72 bytes arrive well before 72 characters on non-ASCII text — an emoji costs 4 bytes, an accented letter 2, so `"🔒" * 19` (19 characters) is already over the limit and answers **422**. Only raise the value if you swap the hasher for one without the limit.
 
 ### Group 3 — Email flow control (`AuthSettings`)
 

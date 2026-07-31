@@ -28,6 +28,7 @@ from __future__ import annotations
 import hmac
 import secrets
 from collections.abc import Awaitable, Callable
+from typing import Literal
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -62,34 +63,58 @@ def generate_csrf_token(n_bytes: int = 32) -> str:
 def make_csrf_token_dependency(
     *,
     cookie_name: str = CSRF_COOKIE_NAME,
-) -> Callable[[Request], str]:
+    secure: bool = True,
+    samesite: Literal["lax", "strict", "none"] = "lax",
+    max_age: int | None = None,
+) -> Callable[[Request, Response], str]:
     """Build a FastAPI dependency that issues + returns the CSRF token.
 
-    Use this on the route that renders the login page (or the
-    HTML shell that triggers form submissions). The dependency
-    sets the cookie on the response when missing, returning the
-    token so the template can embed it as a hidden input or read
-    it via ``document.cookie``.
+    Use this on the route that renders the login page (or the HTML shell
+    that triggers form submissions). It returns the token so the template
+    can embed it as a hidden input, and when the cookie is absent it
+    **sets** it on the outgoing response — the double-submit check needs
+    both halves, and a dependency that only returned the value left the
+    cookie missing, so every later ``POST`` answered ``403``.
+
+    The cookie is deliberately **not** ``HttpOnly``: a browser client has
+    to read it to echo the value in the ``X-CSRF-Token`` header, which is
+    the whole double-submit mechanism. That is safe as long as the value
+    is only a CSRF token — never put anything else in this cookie.
 
     Args:
         cookie_name (str): Cookie key — must match
             ``CSRFMiddleware(cookie_name=…)``.
+        secure (bool): Emit the ``Secure`` flag. Keep ``True`` in
+            production; set ``False`` only for a plain-HTTP dev server.
+        samesite (Literal["lax", "strict", "none"]): ``SameSite``
+            policy. ``"none"`` requires ``secure=True``.
+        max_age (int | None): Cookie lifetime in seconds. ``None``
+            (default) makes it a session cookie.
 
     Returns:
-        Callable[[Request], str]: FastAPI dependency.
+        Callable[[Request, Response], str]: FastAPI dependency.
     """
 
-    def _ensure_token(request: Request) -> str:
-        """Return the existing CSRF token or mint a new one.
+    def _ensure_token(request: Request, response: Response) -> str:
+        """Return the existing CSRF token, minting and setting one if absent.
 
         Notes:
-            The token is stashed on ``request.state`` so a route
-            handler can read it and call ``response.set_cookie`` itself
-            when it needs to.
+            The token is also stashed on ``request.state.csrf_token`` so a
+            handler that builds its own ``Response`` object (rather than
+            letting FastAPI serialize a return value) can read it and carry
+            the cookie over itself.
         """
         token = request.cookies.get(cookie_name)
         if token is None:
             token = generate_csrf_token()
+            response.set_cookie(
+                cookie_name,
+                token,
+                max_age=max_age,
+                httponly=False,
+                secure=secure,
+                samesite=samesite,
+            )
         request.state.csrf_token = token
         return token
 

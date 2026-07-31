@@ -2,6 +2,53 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.174.0 — erros que eram 500 viram 422, e o `order_by` é validado
+
+Correções de robustez. Todas trocam um crash por uma resposta correta; nenhuma exige mudança de código, mas quatro mudam o status ou a exceção que o seu serviço vê.
+
+### Senha longa agora é 422
+
+Existe um teto: `AUTH_PASSWORD_MAX_BYTES`, default `72` — o limite duro do bcrypt, contado em **bytes** UTF-8. Antes, senha acima disso levantava `ValueError` do `hashpw` e subia como **500** no signup / reset / troca. Agora é `ValidationException` (**422**).
+
+Se o seu frontend não valida comprimento, ele passa a receber 422 onde recebia 500. Se você trocou o hasher por um sem esse limite, suba o valor.
+
+### `order_by` inválido agora é `ValidationException`
+
+`BaseRepository.paginate` e `cursor_paginate` resolvem `order_by` pelo mapper do model. Nome que não é coluna mapeada levanta `ValidationException` (**422**) em vez de `AttributeError` (**500**).
+
+Mudança de contrato em `cursor_paginate`: ele levantava `ValueError` nesse caso. Quem tinha `except ValueError` em volta precisa ajustar:
+
+```python
+from tempest_fastapi_sdk.exceptions import ValidationException
+
+try:
+    page = await repo.cursor_paginate(order_by=filters.order_by)
+except ValidationException:
+    ...
+```
+
+`ValueError` continua sendo o erro de cursor malformado.
+
+### `BodySizeLimitMiddleware`: body grande em streaming responde 413
+
+O 413 passou a ser emitido no instante em que a contagem estoura, e o que o app enviar depois é descartado. Antes ele saía num `finally`, depois de o app já ter respondido — e o FastAPI responde, convertendo o `ClientDisconnect` do guard em **400**. O segundo `http.response.start` fazia o uvicorn levantar `RuntimeError: Response already started`.
+
+Efeito prático: um upload em streaming acima do limite responde **413** onde recentemente respondia **400** (com um `RuntimeError` no log). Um handler que não lê o body continua respondendo o que ele mesmo respondia — não há como retirar uma resposta já enviada.
+
+### `make_csrf_token_dependency` grava o cookie
+
+Antes ela só devolvia o token, então o cookie ficava ausente e o `POST` seguinte caía com 403. Agora ela grava (`Secure` + `SameSite=Lax`, não `HttpOnly` — o cliente precisa ler pra ecoar no header).
+
+Se você já gravava o cookie à mão no handler, o valor é o mesmo (`request.state.csrf_token`) e nada muda: a dependency não sobrescreve cookie existente. Em dev sobre HTTP puro, passe `secure=False`, senão o browser não devolve o cookie.
+
+### `OAuthUser.email_verified`
+
+Campo novo (default `None`), nada quebra. Mas **leia a nota**: se você liga login social a conta existente pelo e-mail, exija `profile.email_verified is True`. No GitHub o valor é sempre `None` — o `GET /user` não traz campo de verificação, e o e-mail que ele devolve é o do perfil público, que o GitHub não exige verificar.
+
+### `GET /logs` lê no máximo 20 000 registros por arquivo
+
+Ajuste com `make_logs_router(max_records_per_file=...)`. São os mais recentes; o endpoint ordena do mais novo e pagina, então o que ficou fora não era alcançável. Um `WARNING` é logado quando o corte acontece.
+
 ## 0.138.1 — `BaseAppSettings` tem que ser a **última** base
 
 A 0.138.1 passou a fazer **todo mixin de settings herdar `BaseAppSettings`** (antes eles estendiam `pydantic_settings.BaseSettings` cru). Isso conserta o `.env` deixando de ser carregado quando um mixin aparecia antes da base — o `model_config` canônico agora é materializado em cada mixin, independente da ordem.
