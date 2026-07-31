@@ -126,10 +126,23 @@ from tempest_fastapi_sdk.utils.throttle import (
     ThrottleBackend,
     ThrottleStatus,
 )
+from tempest_fastapi_sdk.utils.token_types import (
+    ACCESS_TOKEN_TYPE as ACCESS_TOKEN_TYPE,
+)
+from tempest_fastapi_sdk.utils.token_types import (
+    MFA_TOKEN_TYPE as MFA_TOKEN_TYPE,
+)
+from tempest_fastapi_sdk.utils.token_types import (
+    REFRESH_TOKEN_TYPE as REFRESH_TOKEN_TYPE,
+)
+from tempest_fastapi_sdk.utils.token_types import (
+    token_type_allowed as token_type_allowed,
+)
 from tempest_fastapi_sdk.utils.totp import TOTPHelper
 from tempest_fastapi_sdk.utils.upload import UploadUtils, sniff_mime
 
 __all__: list[str] = [
+    "ACCESS_TOKEN_TYPE",
     "CEP",
     "CEP_PATTERN",
     "CNPJ",
@@ -137,7 +150,9 @@ __all__: list[str] = [
     "CPF",
     "CPF_CNPJ_PATTERN",
     "CPF_PATTERN",
+    "MFA_TOKEN_TYPE",
     "PHONE_BR_PATTERN",
+    "REFRESH_TOKEN_TYPE",
     "REQUEST_ID_HEADER",
     "UF",
     "AttemptThrottle",
@@ -227,6 +242,7 @@ __all__: list[str] = [
     "sniff_mime",
     "states_by_region",
     "to_utc",
+    "token_type_allowed",
     "uf_choices",
     "utcnow",
     "verify_opaque_token",

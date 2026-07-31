@@ -68,6 +68,46 @@ Use the fields to build friendly error payloads. `raise_if_blocked` already craf
 !!! warning "`AttemptThrottle` ships no in-memory backend"
     For tests without Redis, use a fake/double via [fakeredis](https://github.com/cunla/fakeredis-py) (`pip install fakeredis`) — it satisfies the `ThrottleBackend` Protocol (`get`, `incr`, `expire`, `ttl`, `delete`) with a fully in-memory Redis API.
 
+## JWT token types (`typ`)
+
+A service running the bundled auth flow mints three JWTs **with one secret**: the access token, the refresh token, and the intermediate token bridging the two steps of an MFA login. A valid signature therefore says nothing about *which* one arrived — and a route guard that only reads `sub` would take all three.
+
+`typ` is what separates them. `UserAuthService` stamps one on everything it issues:
+
+| Token | `typ` | Valid at |
+| --- | --- | --- |
+| Access | `ACCESS_TOKEN_TYPE` (`"access"`) | Any authenticated route |
+| Refresh | `REFRESH_TOKEN_TYPE` (`"refresh"`) | `POST /auth/refresh` only |
+| MFA pending | `MFA_TOKEN_TYPE` (`"mfa"`) | `POST /auth/mfa/verify` only |
+
+`make_bearer_token_dependency` and `make_jwt_user_dependency` accept **only** `access` by default:
+
+```python
+from tempest_fastapi_sdk import (
+    ACCESS_TOKEN_TYPE,
+    REFRESH_TOKEN_TYPE,
+    JWTUtils,
+    make_bearer_token_dependency,
+)
+
+tokens = JWTUtils(secret="…" * 8)
+
+# Default: access-only. A refresh or MFA-pending token gets a 401.
+require_claims = make_bearer_token_dependency(tokens)
+
+# A route that deliberately takes another type (e.g. a rotation endpoint):
+require_refresh = make_bearer_token_dependency(
+    tokens,
+    accepted_typ=(REFRESH_TOKEN_TYPE,),
+)
+```
+
+!!! danger "Why this matters"
+    `/login` returns the `mfa_token` to a client that has proven **only the password**. Without the type check it works as a bearer on every authenticated route — the second factor becomes decoration. Same for the refresh token: it is long-lived on purpose, and accepting it as an access token defeats the reason the access token is short.
+
+!!! note "A token without `typ` still works"
+    Projects signing JWTs directly with `JWTUtils.encode()` need no change: a token with no `typ` is accepted, otherwise upgrading the SDK would log every live session out. The two legacy markers the SDK already stamped — `refresh: True` and `purpose: "mfa_pending"` — are recognized and **rejected** as access. Use `token_type_allowed()` when you need the same decision outside a dependency.
+
 ## Opaque single-use tokens
 
 `generate_opaque_token()` returns `(plaintext, token_hash)` in one call — `plaintext` is a URL-safe string (default 32 bytes ≈ 43 chars), `token_hash` is the lowercase SHA-256 hex digest (64 chars). You store **only the hash** in the DB; `plaintext` leaves via email/SMS exactly once. Use it for password reset, email confirmation, API keys, opaque session IDs — anything where the issued secret is never inspected again.

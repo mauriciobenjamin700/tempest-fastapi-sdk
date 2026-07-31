@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -15,11 +15,16 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from tempest_fastapi_sdk import (
+    ACCESS_TOKEN_TYPE,
+    MFA_TOKEN_TYPE,
+    REFRESH_TOKEN_TYPE,
     BaseModel,
     BaseUserModel,
     UserAuthService,
     make_auth_router,
+    make_jwt_user_dependency,
     make_user_token_model,
+    register_exception_handlers,
 )
 from tempest_fastapi_sdk.exceptions import (
     ForbiddenException,
@@ -191,3 +196,113 @@ class TestRefreshRouter:
             r = await c.post("/auth/refresh", json={"refresh_token": "nope"})
 
         assert r.status_code == 401, r.text
+
+
+class TestIssuedTokenTypes:
+    """Every token the service mints declares what it is.
+
+    All three are signed with the same secret, so a route guard that only
+    reads ``sub`` would treat any of them as a session. The ``typ`` claim is
+    what keeps the refresh token and the MFA-pending token out.
+    """
+
+    async def test_access_token_declares_access(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()
+        user = await _make_user(service, session, email="typ-access@a.com")
+        access, _refresh = service.issue_jwt_pair(user)
+        assert service.jwt.decode(access)["typ"] == ACCESS_TOKEN_TYPE
+
+    async def test_refresh_token_declares_refresh(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()
+        user = await _make_user(service, session, email="typ-refresh@a.com")
+        _access, refresh = service.issue_jwt_pair(user)
+        claims = service.jwt.decode(refresh)
+        assert claims["typ"] == REFRESH_TOKEN_TYPE
+        assert claims["refresh"] is True
+
+    async def test_mfa_token_declares_mfa(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()
+        user = await _make_user(service, session, email="typ-mfa@a.com")
+        claims = service.jwt.decode(service.issue_mfa_token(user))
+        assert claims["typ"] == MFA_TOKEN_TYPE
+        assert claims["purpose"] == "mfa_pending"
+
+    async def test_issue_token_pair_declares_both(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        service = _service()
+        user = await _make_user(service, session, email="typ-pair@a.com")
+        access, refresh = await service.issue_token_pair(session, user)
+        assert service.jwt.decode(access)["typ"] == ACCESS_TOKEN_TYPE
+        assert service.jwt.decode(refresh)["typ"] == REFRESH_TOKEN_TYPE
+
+    async def test_refresh_flow_accepts_a_typ_only_token(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        """A token carrying ``typ`` but not the legacy ``refresh`` flag works."""
+        service = _service()
+        user = await _make_user(service, session, email="typ-only@a.com")
+        token = service.jwt.encode(
+            {"sub": str(user.id), "typ": REFRESH_TOKEN_TYPE},
+        )
+
+        out_user, access, refresh = await service.refresh_tokens(
+            session, refresh_token=token
+        )
+
+        assert out_user.id == user.id
+        assert access and refresh
+
+    async def test_mfa_token_cannot_authorize_a_route(
+        self,
+        session: AsyncSession,
+    ) -> None:
+        """Step one of a two-step login must not hand out a usable session."""
+        service = _service()
+        user = await _make_user(service, session, email="mfa-replay@a.com")
+        mfa_token = service.issue_mfa_token(user)
+
+        current_user = make_jwt_user_dependency(
+            service.jwt,
+            lambda subject: _load_by_id(session, subject),
+        )
+        app = FastAPI()
+        register_exception_handlers(app)
+
+        @app.get("/me")
+        async def me(loaded: Any = Depends(current_user)) -> dict[str, str]:
+            return {"id": str(loaded.id)}
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://t") as client:
+            denied = await client.get(
+                "/me", headers={"Authorization": f"Bearer {mfa_token}"}
+            )
+            allowed = await client.get(
+                "/me",
+                headers={
+                    "Authorization": f"Bearer {service._encode_access(user)}",
+                },
+            )
+
+        assert denied.status_code == 401
+        assert allowed.status_code == 200
+        assert allowed.json() == {"id": str(user.id)}
+
+
+async def _load_by_id(session: AsyncSession, subject: str) -> Any:
+    """Resolve a user id string to its row on the given session."""
+    from uuid import UUID
+
+    return await session.get(_RefreshUser, UUID(subject))

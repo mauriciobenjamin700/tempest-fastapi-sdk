@@ -9,6 +9,9 @@ from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from tempest_fastapi_sdk import (
+    ACCESS_TOKEN_TYPE,
+    MFA_TOKEN_TYPE,
+    REFRESH_TOKEN_TYPE,
     JWTUtils,
     make_bearer_token_dependency,
     make_jwt_user_dependency,
@@ -262,3 +265,105 @@ async def test_jwt_user_dependency_respects_custom_subject_claim() -> None:
         )
     assert response.status_code == 200
     assert response.json()["user"]["id"] == "xyz"
+
+
+class TestTokenTypeIsolation:
+    """A validly-signed token of the wrong kind must not authorize a request.
+
+    Access, refresh and MFA-pending tokens share one signing secret, so the
+    signature check alone cannot tell them apart. These cover the ``typ``
+    gate that does.
+    """
+
+    async def test_mfa_pending_token_is_rejected_as_access(self) -> None:
+        app, tokens = _make_bearer_app(soft=False)
+        token = tokens.encode({"sub": "u1", "typ": MFA_TOKEN_TYPE})
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/claims",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 401
+
+    async def test_refresh_token_is_rejected_as_access(self) -> None:
+        app, tokens = _make_bearer_app(soft=False)
+        token = tokens.encode({"sub": "u1", "typ": REFRESH_TOKEN_TYPE})
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/claims",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 401
+
+    async def test_legacy_refresh_marker_is_rejected_as_access(self) -> None:
+        app, tokens = _make_bearer_app(soft=False)
+        token = tokens.encode({"sub": "u1", "refresh": True})
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/claims",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 401
+
+    async def test_access_token_passes(self) -> None:
+        app, tokens = _make_bearer_app(soft=False)
+        token = tokens.encode({"sub": "u1", "typ": ACCESS_TOKEN_TYPE})
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/claims",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 200
+        assert response.json()["payload"]["sub"] == "u1"
+
+    async def test_soft_mode_downgrades_wrong_type_to_anonymous(self) -> None:
+        app, tokens = _make_bearer_app(soft=True)
+        token = tokens.encode({"sub": "u1", "typ": MFA_TOKEN_TYPE})
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/claims",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 200
+        assert response.json()["payload"] is None
+
+    async def test_user_dependency_rejects_mfa_pending_token(self) -> None:
+        app, tokens = _make_user_app(soft=False)
+        token = tokens.encode({"sub": "u1", "typ": MFA_TOKEN_TYPE})
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 401
+
+    async def test_widened_accepted_typ_admits_refresh(self) -> None:
+        tokens = _make_tokens()
+        decode = make_bearer_token_dependency(
+            tokens,
+            accepted_typ=(REFRESH_TOKEN_TYPE,),
+        )
+
+        app = FastAPI()
+        register_exception_handlers(app)
+
+        @app.get("/claims")
+        async def claims(
+            payload: dict[str, Any] | None = Depends(decode),
+        ) -> dict[str, Any]:
+            return {"payload": payload}
+
+        token = tokens.encode({"sub": "u1", "typ": REFRESH_TOKEN_TYPE})
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/claims",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 200

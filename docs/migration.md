@@ -2,6 +2,52 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.173.0 — token só vale onde foi emitido pra valer, e cache não é mais compartilhado
+
+Três correções de segurança mudam comportamento de default. Nenhuma exige mexer em código, mas vale conferir se você dependia do comportamento antigo.
+
+### Refresh e MFA-pendente deixam de autorizar rota
+
+`make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency` e `UserAuthService.current_user_dependency()` aceitam agora **só** token de tipo `access`.
+
+Antes, os três JWTs que o `UserAuthService` emite com o mesmo segredo verificavam identicamente, então o refresh token e o `mfa_token` do passo 1 do login funcionavam como bearer em qualquer rota autenticada — o segundo fator era contornável com só a senha.
+
+Você é afetado se **de propósito** mandava um refresh token para uma rota comum:
+
+```python
+from tempest_fastapi_sdk import REFRESH_TOKEN_TYPE, make_bearer_token_dependency
+
+# Volta a aceitar aquele tipo naquela rota específica:
+require_refresh = make_bearer_token_dependency(tokens, accepted_typ=(REFRESH_TOKEN_TYPE,))
+```
+
+Token assinado à mão com `JWTUtils.encode()` e **sem** `typ` continua aceito — a atualização não derruba sessão ativa. Só os marcadores que o próprio SDK estampava (`refresh: True`, `purpose: "mfa_pending"`) passam a ser rejeitados como access.
+
+### `ResponseCacheMiddleware`: `private` por padrão, credencial não usa o store
+
+Dois defaults mudaram:
+
+- O `Cache-Control` emitido passou de `public, max-age=N` para `private, max-age=N`. Se você servia conteúdo genuinamente compartilhado e contava com cache de CDN, declare de novo: `cache_control="public, max-age=N"`.
+- Requisição com `Authorization` ou `Cookie` não lê nem escreve no store compartilhado (`ETag`/`304` continuam). Para recuperar cache em rota autenticada, passe `cache_credentialed=True` — a credencial entra na chave, então cada chamador tem a sua entrada.
+
+O header `X-Cache` também só aparece quando existe `store=`; antes vinha `MISS` mesmo no modo só-ETag.
+
+### `IdempotencyMiddleware`: chave escopada por chamador
+
+A chave passou de `(method, path, key)` para `(chamador, method, path, key)`, com o chamador vindo de um digest de `Authorization`/`Cookie`. Reuse da chave de outra pessoa não devolve mais a resposta dela.
+
+Se o seu cliente troca de credencial entre o pedido original e o retry (rotação de token no meio do backoff), o retry deixa de bater na entrada anterior. Nesse caso aponte a identidade para algo estável:
+
+```python
+app.add_middleware(
+    IdempotencyMiddleware,
+    store=store,
+    principal_resolver=lambda request: request.headers.get("x-api-key-id", ""),
+)
+```
+
+Também mudou: `5xx` não é mais cacheado (`cache_server_errors=True` restaura), `Set-Cookie` fica fora da cópia guardada, e requisições concorrentes com a mesma chave no mesmo processo são serializadas.
+
 ## 0.138.1 — `BaseAppSettings` tem que ser a **última** base
 
 A 0.138.1 passou a fazer **todo mixin de settings herdar `BaseAppSettings`** (antes eles estendiam `pydantic_settings.BaseSettings` cru). Isso conserta o `.env` deixando de ser carregado quando um mixin aparecia antes da base — o `model_config` canônico agora é materializado em cada mixin, independente da ordem.
