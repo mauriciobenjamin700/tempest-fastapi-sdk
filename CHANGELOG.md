@@ -5,6 +5,58 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.186.0] — 2026-08-01
+
+### Added
+
+- **Fact stores that survive a restart.** `InMemoryFactStore` loses
+  everything when the process dies, which is the one thing durable memory
+  must not do. Two backends now keep it, both behind the same four-method
+  protocol so swapping is a constructor change:
+
+  * **`DbFactStore`** over `BaseFactModel` / `make_fact_model` — a row per
+    fact, for when facts are part of your domain and you want them in
+    backups, in the admin, joined against a user. Each operation opens its
+    own short transaction, so a fact the agent asserted mid-run survives a
+    run that later fails. The unique index on `(subject, key)` is
+    **yours to declare** in the migration — the SDK cannot know whether your
+    table is shared or partitioned, and without it a write race leaves two
+    rows.
+  * **`RedisFactStore`** — one hash per subject, so listing is a single
+    `HGETALL` and every operation is O(1). For preferences shared across
+    replicas where a migration is more ceremony than the data deserves.
+
+- **`tempest_fastapi_sdk.agents.testing` — so you can test your agent.** An
+  agent's behaviour depends on what the model decides, which makes it feel
+  untestable. But almost every bug worth catching is in *your* code — a tool
+  that mishandles an argument, a budget that never fires, a skill whose tools
+  never unlock — and all of it is testable by **scripting the model's
+  decisions**.
+
+  `ScriptedBackend` (with `replies` / `replies_with_tool` /
+  `replies_with_tools` / `tool_call`) replays a plan you wrote and records
+  `system_prompts`, `prompts` and `specs_seen` per turn — which is how you
+  prove a skill's tools stayed hidden until loaded, or that facts were
+  actually injected. `FailingBackend` checks a backend outage becomes
+  `StopReason.ERROR` rather than an exception escaping into a request
+  handler. `assert_completed` / `assert_used_tools` / `assert_artifact` /
+  `tool_steps` / `failed_steps` cover the assertions, and `assert_completed`
+  exists because the common mistake is checking only `run.output` — a
+  budget-truncated run carries text too, so that assertion passes on
+  half-finished work.
+
+  These are the helpers the SDK's own 200+ agent tests use; they are exported
+  because your agent deserves the same treatment, and because a test that
+  boots a real model is slow, flaky and tests the wrong thing.
+
+### Documentation
+
+- **New recipe: testing and validating an agent** (`agents-testing.md`, both
+  languages) — the minimal test, error recovery, budgets, proving on-demand
+  skills and injected memory, backend outages, and a separate `@model` layer
+  for the one question scripting cannot answer: does the model pick the right
+  tool.
+
 ## [0.185.0] — 2026-08-01
 
 ### Added

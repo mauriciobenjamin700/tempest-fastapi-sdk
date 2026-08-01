@@ -45,6 +45,10 @@ from tempest_fastapi_sdk.agents.builtin import (
     transcribe_audio_tool as transcribe_audio_tool,
 )
 from tempest_fastapi_sdk.agents.builtin import web_search_tool as web_search_tool
+from tempest_fastapi_sdk.agents.fact_stores import BaseFactModel as BaseFactModel
+from tempest_fastapi_sdk.agents.fact_stores import DbFactStore as DbFactStore
+from tempest_fastapi_sdk.agents.fact_stores import RedisFactStore as RedisFactStore
+from tempest_fastapi_sdk.agents.fact_stores import make_fact_model as make_fact_model
 from tempest_fastapi_sdk.agents.loop import APPROVAL_TOKEN as APPROVAL_TOKEN
 from tempest_fastapi_sdk.agents.loop import (
     DEFAULT_CRITIC_PROMPT as DEFAULT_CRITIC_PROMPT,
@@ -139,13 +143,16 @@ __all__: list[str] = [
     "AgentTool",
     "AgentToolError",
     "BaseAgentRunModel",
+    "BaseFactModel",
     "DbAgentRunSink",
+    "DbFactStore",
     "Fact",
     "FactStore",
     "InMemoryAgentRunSink",
     "InMemoryFactStore",
     "LoopIteration",
     "LoopResult",
+    "RedisFactStore",
     "Skill",
     "StepKind",
     "StopReason",
@@ -166,6 +173,7 @@ __all__: list[str] = [
     "loaded_skills",
     "make_agent_router",
     "make_agent_run_model",
+    "make_fact_model",
     "recall_prompt",
     "refine",
     "retrieve_tool",
