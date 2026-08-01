@@ -1,0 +1,371 @@
+# AI agents
+
+An **agent** takes a goal, decides what to do, calls tools, and reports what
+it did. That last part is what separates it from a chat: the run comes back
+with a **step-by-step trace** — arguments, outputs, timings, failures — plus
+whatever files it produced.
+
+The ready-made tools wrap the models the SDK already runs locally: text,
+image, audio and RAG. No paid API, nothing leaving the machine.
+
+```bash
+uv add "tempest-fastapi-sdk"        # the module itself needs no extra
+```
+
+!!! info "Submodule, no extra"
+    `from tempest_fastapi_sdk.agents import Agent`. The module imports with
+    no extra at all — the weight lives in the objects **you** inject, and
+    each keeps its own lazy loading.
+
+## Your first agent
+
+```python
+from typing import Any
+
+from tempest_fastapi_sdk.agents import Agent, AgentContext, text_tool
+from tempest_fastapi_sdk.genai import TextGenerator
+
+
+async def get_weather(arguments: dict[str, Any], _context: AgentContext) -> str:
+    """Return the weather for a city."""
+    return f"{arguments['city']}: 22 degrees, clear sky"
+
+
+tool = text_tool(
+    "get_weather",
+    "Get the current weather for a city.",
+    get_weather,
+    parameters={
+        "type": "object",
+        "properties": {"city": {"type": "string", "description": "City name."}},
+        "required": ["city"],
+    },
+)
+
+agent = Agent(TextGenerator("Qwen/Qwen2.5-0.5B-Instruct"), tools=[tool])
+run = await agent.run("What is the weather in Recife? Use the tool.")
+
+print(run.output)
+print(run.tool_calls)
+print([(step.kind, step.name) for step in run.steps])
+```
+
+```text
+The weather in Recife is 22 degrees, clear sky.
+['get_weather']
+[('model', 'chat'), ('tool', 'get_weather'), ('model', 'chat')]
+```
+
+Three steps: the model asked for the tool, the tool ran, the model read the
+result and answered. All of it on a 0.5B model running on CPU.
+
+!!! tip "The tool description is what matters"
+    The model picks by `description` — it is the only text it reads about
+    your tool. Worth more care than the implementation.
+
+## Always check `stop_reason`
+
+```python
+run = await agent.run("a long task")
+if not run.succeeded:
+    print("truncated:", run.stop_reason)
+```
+
+`succeeded` is `True` only when the **model** decided it was done. The other
+reasons are the agent cutting the run short:
+
+| `stop_reason` | What happened |
+| --- | --- |
+| `completed` | The model answered without asking for another tool. |
+| `max_steps` | The step budget ran out first. |
+| `timeout` | The wall-clock budget ran out first. |
+| `max_tool_calls` | The tool-call budget ran out first. |
+| `error` | The model backend failed. |
+| `blocked` | Moderation rejected the goal or the answer. |
+
+!!! warning "A truncated run still carries text"
+    The `output` of a cut-short run is the last thing the model said —
+    partial work, not a final answer. A caller that ignores `stop_reason`
+    presents half-finished work as done.
+
+## Budget
+
+```python
+from tempest_fastapi_sdk.agents import Agent, AgentBudget
+
+agent = Agent(
+    generator,
+    tools=tools,
+    budget=AgentBudget(max_steps=8, max_seconds=90, max_tool_calls=5),
+)
+```
+
+Steps alone do **not** bound a run: one tool call can hang, and the agent
+sits there without burning a single step. That is why wall-clock is checked
+too, and why `max_seconds` has a default (120s) rather than being optional.
+
+## Tools over your local models
+
+This is where the module meets the rest of the SDK:
+
+```python
+from tempest_fastapi_sdk.agents import (
+    Agent,
+    describe_image_tool,
+    generate_image_tool,
+    retrieve_tool,
+    speak_tool,
+    transcribe_audio_tool,
+    web_search_tool,
+)
+
+agent = Agent(
+    generator,
+    tools=[
+        generate_image_tool(image_generator, default_steps=4),
+        describe_image_tool(vision_generator),
+        transcribe_audio_tool(speech_to_text),
+        speak_tool(text_to_speech),
+        retrieve_tool(retriever),
+        web_search_tool(web_search),
+    ],
+)
+```
+
+| Tool | Model behind it | What it does |
+| --- | --- | --- |
+| `generate_image_tool` | `ImageGenerator` | Draws, stored as an artifact |
+| `describe_image_tool` | `VisionTextGenerator` | Looks at an image and answers |
+| `transcribe_audio_tool` | `SpeechToText` | Audio → text |
+| `speak_tool` | `TextToSpeech` | Text → audio (WAV artifact) |
+| `retrieve_tool` | `Retriever` | Searches the indexed corpus |
+| `web_search_tool` | `WebSearch` | Searches the web via SearXNG |
+| `save_artifact_tool` | — | Saves text as a deliverable file |
+
+!!! note "`default_steps` is not a detail"
+    A turbo model wants ~4 diffusion steps and a full one ~30. If the LLM
+    picks blind, a render takes ten times longer than it needs to. Pin your
+    checkpoint's value on the tool.
+
+## Chaining multimodal: draw, then look
+
+This is where **named artifacts** earn their keep:
+
+```python
+run = await agent.run(
+    "Draw a red bicycle as bike.png, then tell me what appears in the "
+    "image you created.",
+)
+for step in run.steps:
+    print(step.kind, step.name, step.artifacts)
+print(run.artifact("bike.png").media_type)
+```
+
+```text
+model chat []
+tool generate_image ['bike.png']
+model chat []
+tool describe_image []
+model chat []
+image/png
+```
+
+`generate_image` registers `bike.png` on the run; `describe_image` accepts
+that same name and reads the bytes back from the context. **The image never
+touches disk and the model never carries base64 in the prompt** — it just
+passes a name along.
+
+If the model invents a name that does not exist, the tool says which ones do:
+
+```text
+no artifact named 'chart.png'; available: bike.png
+```
+
+That is deliberate: a bare "not found" gives the model nothing to correct
+with.
+
+## A failing tool does not end the run
+
+```python
+from tempest_fastapi_sdk.agents import AgentToolError
+
+
+async def save(arguments: dict[str, Any], _context: AgentContext) -> str:
+    """Save something, or explain why it could not be saved."""
+    raise AgentToolError("disk is full")
+```
+
+The step is marked with `error`, and the message goes back **to the model**
+as an observation. It usually tries another route. Letting the exception
+escape would throw away everything the run had done so far.
+
+```python
+failed = [step for step in run.steps if step.error]
+print(failed[0].error)
+```
+
+```text
+AgentToolError: disk is full
+```
+
+Any exception from the handler is treated the same way — using
+`AgentToolError` just makes the intent explicit.
+
+## Writing your own tool
+
+```python
+from typing import Any
+
+from tempest_fastapi_sdk.agents import (
+    AgentArtifact,
+    AgentContext,
+    AgentTool,
+    ToolResult,
+)
+
+
+async def render_report(
+    arguments: dict[str, Any],
+    context: AgentContext,
+) -> ToolResult:
+    """Render a report and return it as a downloadable artifact."""
+    body = f"# {arguments['title']}\n\n{arguments['body']}"
+    return ToolResult(
+        text=f"Report '{arguments['title']}' generated.",
+        artifacts=[
+            AgentArtifact(
+                name="report.md",
+                media_type="text/markdown",
+                data=body.encode("utf-8"),
+            ),
+        ],
+    )
+
+
+tool = AgentTool(
+    name="render_report",
+    description="Render a titled report the user can download.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "body": {"type": "string"},
+        },
+        "required": ["title", "body"],
+    },
+    handler=render_report,
+)
+```
+
+The handler takes **two** arguments: `arguments` (what the model passed) and
+`context` (the run's artifacts). Returning a plain `str` works too when
+there is nothing binary — it is wrapped into a `ToolResult` for you.
+
+!!! tip "Already have `AIChatPipeline` tools?"
+    `AgentTool.from_tool(tool)` adapts the chat pipeline's single-argument
+    tools without touching them.
+
+## Serving it over HTTP
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.agents import (
+    Agent,
+    InMemoryAgentRunSink,
+    make_agent_router,
+)
+
+store = InMemoryAgentRunSink(max_runs=50)
+agent = Agent(generator, tools=tools, run_sink=store)
+
+app = FastAPI()
+app.include_router(make_agent_router(agent, run_store=store))
+```
+
+| Route | What it does |
+| --- | --- |
+| `POST /api/agent/run` | Runs to completion, returns the record |
+| `POST /api/agent/run/stream` | Each step as an SSE event, then `done` |
+| `GET /api/agent/runs` | Recent runs (only with a `run_store`) |
+| `GET /api/agent/runs/{i}/artifacts/{name}` | Downloads an artifact |
+
+The JSON carries artifacts as **metadata** (name, type, size), never bytes:
+a generated image is megabytes, and base64 in the body inflates that by a
+third. The bytes come from a second request with the right media type —
+which also means an `<img src>` works directly.
+
+## Keeping the runs
+
+By default nothing is kept: the run goes back to the caller and that is it.
+
+```python
+from tempest_fastapi_sdk.agents import InMemoryAgentRunSink
+
+store = InMemoryAgentRunSink(max_runs=100)
+agent = Agent(generator, tools=tools, run_sink=store)
+```
+
+The buffer is bounded **on purpose** — runs carry their artifacts, and an
+unbounded list of image-generating runs is a memory leak with a slow fuse.
+
+To persist properly:
+
+```python
+from tempest_fastapi_sdk.agents import DbAgentRunSink, make_agent_run_model
+
+model = make_agent_run_model(tablename="agent_runs")
+agent = Agent(generator, tools=tools, run_sink=DbAgentRunSink(db, model))
+```
+
+!!! note "The table keeps the trace, not the bytes"
+    Artifacts are megabytes; a run table is not a blob store. What is kept
+    are the **names** and media types, so a reader knows what was produced
+    and can look for it wherever you put it.
+
+Any `async` callable taking an `AgentRun` is a valid sink — routing to a
+log, a queue or a bucket is one line. A sink failure **never** fails the
+run: the work is done and the caller is already holding the answer.
+
+## Moderation
+
+```python
+agent = Agent(generator, tools=tools, moderator=moderator)
+run = await agent.run("something disallowed")
+print(run.stop_reason, run.output)
+```
+
+```text
+blocked blocked by moderation (toxicity)
+```
+
+The goal is checked **before** the model sees anything, and the answer
+before it is returned. A rejection becomes `StopReason.BLOCKED`, not an
+exception.
+
+## Watching it work
+
+```python
+async for step in agent.stream("Draw a cat and describe it"):
+    print(step.index, step.kind, step.name, step.error or step.output[:60])
+```
+
+The run is finalized (and sent to the sink) once the iterator is exhausted.
+Abandoning it midway leaves no record — the right behaviour for a cancelled
+request.
+
+## Recap
+
+- **`Agent.run(goal)`** returns an `AgentRun`: answer, trace, artifacts and
+  **why it stopped**.
+- **`AgentBudget`** bounds steps, time and tool calls; time is what actually
+  protects a request.
+- **Ready-made tools** cover image, vision, audio, RAG and web over the
+  models you already host.
+- **Named artifacts** chain multimodal work without disk or base64.
+- **A tool error becomes an observation** for the model, not an exception.
+- **Persistence is opt-in** — memory by default, ORM when you want it.
+
+Where to go next: [Self-hosted generative AI](genai.md) for the models
+themselves, [Image generation](image-generation.md) and
+[Model weights](model-weights.md) to pin what the agent uses.

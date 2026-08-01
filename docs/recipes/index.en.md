@@ -280,6 +280,7 @@ come back here to plug in each capability as you need it.
 | Theme | Covers |
 | --- | --- |
 | **[Admin site »](admin.md)** | `AdminSite`, `AdminModel`, `make_admin_router`, `BaseUserModel` |
+| **[AI agents »](agents.md)** | `Agent` (goal → trace + artifacts), `AgentBudget` (steps/time/calls), `AgentTool` + ready-made tools over image/vision/audio/RAG, `InMemoryAgentRunSink` / `DbAgentRunSink`, `make_agent_router` |
 | **[Audit trail »](audit-trail.md)** | `BaseAuditLogModel`, `add_audited` / `update_audited` / `delete_audited`, `snapshot_model` / `diff_snapshots` |
 | **[Auth flow (signup/reset) »](auth-flow.md)** | `UserAuthService`, `make_auth_router` — signup / activation / login / password reset, token delivery (bearer/cookie/both), `BaseUserModel` |
 | **[Brazilian helpers »](br-helpers.md)** | CPF / CNPJ / CEP / phone validation + normalization |
