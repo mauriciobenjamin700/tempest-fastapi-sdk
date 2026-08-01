@@ -69,6 +69,12 @@ from tempest_fastapi_sdk.genai.hub import model_disk_bytes as model_disk_bytes
 from tempest_fastapi_sdk.genai.hub import remove_cached_model as remove_cached_model
 from tempest_fastapi_sdk.genai.hub import resolve_revision as resolve_revision
 from tempest_fastapi_sdk.genai.image import ImageGenerator as ImageGenerator
+from tempest_fastapi_sdk.genai.inventory import LoadedModel as LoadedModel
+from tempest_fastapi_sdk.genai.inventory import (
+    ModelRuntimeReport as ModelRuntimeReport,
+)
+from tempest_fastapi_sdk.genai.inventory import describe_model as describe_model
+from tempest_fastapi_sdk.genai.inventory import runtime_report as runtime_report
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics as GenAIMetrics
 from tempest_fastapi_sdk.genai.moderation import (
     ClassifierModerator as ClassifierModerator,
@@ -168,9 +174,11 @@ __all__: list[str] = [
     "ImageGenerator",
     "InMemoryEmbeddingCache",
     "InMemoryGenerationCache",
+    "LoadedModel",
     "ModelDtype",
     "ModelRef",
     "ModelRegistry",
+    "ModelRuntimeReport",
     "ModelSnapshot",
     "ModerationBackend",
     "ModerationResult",
@@ -193,6 +201,7 @@ __all__: list[str] = [
     "cosine_similarity",
     "count_message_tokens",
     "count_tokens",
+    "describe_model",
     "download_model",
     "estimate_model_bytes",
     "fetch_num_params",
@@ -209,5 +218,6 @@ __all__: list[str] = [
     "remove_cached_model",
     "resolve_device",
     "resolve_revision",
+    "runtime_report",
     "truncate_messages",
 ]

@@ -5,6 +5,58 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.179.0] — 2026-08-01
+
+### Added
+
+- **`tempest_fastapi_sdk.genai.inventory` — what is loaded right now.** A
+  self-hosted service can hold a language model, an embedder, a reranker and
+  a diffusion pipeline at once, each holding gigabytes of VRAM for as long as
+  it stays resident, and nothing could report which. `ModelRegistry` knew how
+  many entries it held, not which; every loader kept its idle clock to
+  itself. Pure Python — imports with no extra installed.
+
+  `describe_model(handle, key=...)` turns any SDK loader (or any object that
+  walks like one) into a `LoadedModel`, reading **attributes only**: calling
+  it on a generator that has never loaded reports `loaded=False` and leaves
+  it unloaded, which is what makes it safe inside a health check. What a
+  handle does not expose comes back `None` rather than guessed, and a handle
+  implementing only `is_loaded` still appears — vanishing from a memory audit
+  is worse than appearing with blanks. `LoadedModel.idle_past_threshold`
+  answers "is this due to be freed", `False` whenever any input is unknown.
+
+  `runtime_report(models, ...)` puts those next to `probe_hardware()` in a
+  `ModelRuntimeReport`, sorted **loaded first, longest-idle first** — the
+  order an operator reads when a card is full. `probe=False` skips the NVML
+  read, the only part of the call that costs anything.
+
+- **`ModelRegistry.inventory()` / `.items()` / `.unload_idle()`.**
+  `unload_idle()` calls each handle's `unload_if_idle()` and returns the keys
+  it freed; **entries stay registered**, because a generator that dropped its
+  weights is still the right object to hand out and reloads on next use.
+  That makes it the method a periodic task wants, where `evict()` /
+  `evict_all()` forget the entry entirely. Handles without the hook are
+  skipped rather than unloaded on a guess.
+
+- **`GET /models` on `make_genai_router(models=...)`**, accepting a
+  `ModelRegistry` or a plain dict/list of handles.
+
+- **A uniform idle clock on the three loaders that lacked one.**
+  `ClassifierModerator` tracked `_last_used` without exposing it and had no
+  `unload` at all; `SpeechToText` had `unload` but no idle clock;
+  `OnnxEmbedder` had neither. All three now carry `seconds_idle` /
+  `unload_if_idle` / `idle_unload_seconds` (`OnnxEmbedder` gains `unload`),
+  matching the loaders that already had them.
+
+### Fixed
+
+- **`make_genai_router` refused an empty `ModelRegistry`.** The guard tested
+  the injected objects for truthiness, and a registry defines `__len__`, so
+  an empty one — the normal state at startup, before anything is loaded —
+  read as "nothing injected" and raised. It now tests `is None`, so the
+  endpoint can be mounted at the only moment you can mount it. An empty
+  `dict`/`list` of handles was affected the same way.
+
 ## [0.178.0] — 2026-08-01
 
 ### Added

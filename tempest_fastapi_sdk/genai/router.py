@@ -19,10 +19,11 @@ use, so importing this module costs nothing.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Response, UploadFile, status
 
+from tempest_fastapi_sdk.genai.inventory import ModelRuntimeReport, runtime_report
 from tempest_fastapi_sdk.genai.schemas import GenerationConfig, ImageGenerationConfig
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.sse import ServerSentEvent, sse_response
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.genai.audio import SpeechToText, TextToSpeech
     from tempest_fastapi_sdk.genai.image import ImageGenerator
     from tempest_fastapi_sdk.genai.rag import SupportsEmbed, SupportsRetrieve
+    from tempest_fastapi_sdk.genai.registry import ModelRegistry
     from tempest_fastapi_sdk.genai.text import TextBackend
 
 
@@ -173,6 +175,7 @@ def make_genai_router(
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
     image_generator: ImageGenerator | None = None,
+    models: ModelRegistry | dict[str, Any] | list[Any] | None = None,
     prefix: str = "/api/genai",
     tags: list[str] | None = None,
 ) -> APIRouter:
@@ -189,6 +192,8 @@ def make_genai_router(
     * ``text_to_speech`` -> ``POST {prefix}/tts`` (returns ``audio/wav``).
     * ``image_generator`` -> ``POST {prefix}/image`` (returns the encoded
       image, with the seed in ``X-Image-Seed``).
+    * ``models`` -> ``GET {prefix}/models`` (what is resident in memory
+      right now, next to the host's memory picture).
 
     The router owns only the HTTP surface; the caller owns model
     lifecycle (loading, idle-unloading, auth). Add your own auth by
@@ -205,6 +210,9 @@ def make_genai_router(
         speech_to_text (SpeechToText | None): Backs ``/transcribe``.
         text_to_speech (TextToSpeech | None): Backs ``/tts``.
         image_generator (ImageGenerator | None): Backs ``/image``.
+        models (ModelRegistry | dict[str, Any] | list[Any] | None): Backs
+            ``/models`` — a ``ModelRegistry``, or a dict/list of handles you
+            hold yourself.
         prefix (str): URL prefix. Defaults to ``"/api/genai"``.
         tags (list[str] | None): OpenAPI tags. Defaults to ``["genai"]``.
 
@@ -213,22 +221,26 @@ def make_genai_router(
 
     Raises:
         ValueError: When no GenAI object is provided (the router would be
-            empty).
+            empty). Emptiness is tested with ``is None``, not truthiness:
+            an empty ``ModelRegistry`` — the normal state at startup, before
+            anything has been loaded — is falsy, and refusing it would make
+            the endpoint impossible to mount at the only time you can mount
+            it.
     """
-    if not any(
-        (
-            text_generator,
-            embedder,
-            retriever,
-            speech_to_text,
-            text_to_speech,
-            image_generator,
-        ),
-    ):
+    injected = (
+        text_generator,
+        embedder,
+        retriever,
+        speech_to_text,
+        text_to_speech,
+        image_generator,
+        models,
+    )
+    if all(item is None for item in injected):
         raise ValueError(
             "make_genai_router needs at least one GenAI object "
             "(text_generator / embedder / retriever / speech_to_text / "
-            "text_to_speech / image_generator).",
+            "text_to_speech / image_generator / models).",
         )
 
     router = APIRouter(prefix=prefix, tags=list(tags or ["genai"]))
@@ -359,6 +371,26 @@ def make_genai_router(
                 speaker=body.speaker,
             )
             return Response(content=wav, media_type="audio/wav")
+
+    if models is not None:
+        held = models
+
+        @router.get("/models", response_model=ModelRuntimeReport)
+        async def list_models(probe: bool = True) -> ModelRuntimeReport:
+            """Report which models are resident in memory right now.
+
+            Args:
+                probe (bool): Include the host memory snapshot. Pass
+                    ``false`` to skip reading NVML — the only part of this
+                    endpoint that costs anything.
+
+            Returns:
+                ModelRuntimeReport: The handles, loaded first and
+                longest-idle first, plus the host picture when probed.
+            """
+            if hasattr(held, "inventory"):
+                return held.inventory(probe=probe)  # type: ignore[no-any-return]
+            return runtime_report(held, probe=probe)
 
     if image_generator is not None:
         images = image_generator

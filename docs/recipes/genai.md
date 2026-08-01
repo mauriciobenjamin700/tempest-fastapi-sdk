@@ -631,6 +631,96 @@ def get_embedder(model_id: str) -> Embedder:
     return registry.get(model_id, lambda: Embedder(model_id))
 ```
 
+### O que está carregado agora
+
+Um serviço self-hosted pode segurar vários modelos ao mesmo tempo, cada um
+ocupando gigabytes de VRAM enquanto ficar carregado. `runtime_report`
+responde a pergunta operacional — *o que está residente agora?*:
+
+```python
+from tempest_fastapi_sdk.genai import Embedder, TextGenerator, runtime_report
+
+report = runtime_report(
+    {
+        "chat": TextGenerator("Qwen/Qwen2.5-0.5B-Instruct"),
+        "embed": Embedder("sentence-transformers/all-MiniLM-L6-v2"),
+    },
+)
+for model in report.models:
+    print(model.key, model.kind, model.loaded, model.seconds_idle)
+print(report.loaded_count, "de", report.total_count)
+```
+
+```text
+chat TextGenerator True 612.4
+embed Embedder False None
+1 de 2
+```
+
+A ordem não é acidental: **carregados primeiro, e entre eles o mais ocioso
+primeiro** — é a ordem que alguém lê quando a placa encheu e precisa decidir
+o que liberar. `model.idle_past_threshold` diz quais já passaram do próprio
+limite.
+
+Para um handle só, `describe_model`:
+
+```python
+from tempest_fastapi_sdk.genai import TextGenerator, describe_model
+
+info = describe_model(TextGenerator("Qwen/Qwen2.5-0.5B-Instruct"), key="chat")
+print(info.kind, info.model_id, info.device, info.loaded)
+```
+
+!!! check "Ler nunca carrega"
+    `describe_model` só lê atributos — chamá-lo num gerador que nunca
+    carregou devolve `loaded=False` e o deixa descarregado. É o que torna
+    seguro chamar isso num serviço vivo, inclusive dentro de um health
+    check.
+
+!!! note "Campo ausente vira `None`, não chute"
+    Cada loader expõe uma superfície um pouco diferente, e objetos de
+    terceiros expõem menos ainda. Um handle que só implementa `is_loaded`
+    ainda aparece no relatório, com o resto `None` — melhor que sumir de
+    uma auditoria de memória.
+
+O registry sabe se descrever sozinho, e sabe liberar o que envelheceu:
+
+```python
+from tempest_fastapi_sdk.genai import ModelRegistry
+
+registry = ModelRegistry(max_models=3)
+report = registry.inventory(probe=False)
+freed = registry.unload_idle()
+print(freed)
+```
+
+`unload_idle()` chama o `unload_if_idle()` de cada handle e devolve as
+chaves que liberou. **As entradas continuam registradas** — um
+`TextGenerator` que soltou os pesos ainda é o objeto certo pra entregar, e
+ele recarrega no próximo uso. Para esquecer a entrada de vez, use `evict()`
+/ `evict_all()`.
+
+E por HTTP:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.genai import ModelRegistry, make_genai_router
+
+registry = ModelRegistry(max_models=3)
+app = FastAPI()
+app.include_router(make_genai_router(models=registry))
+```
+
+```bash
+curl "http://127.0.0.1:8000/api/genai/models?probe=false"
+```
+
+O `probe=false` pula a leitura de NVML — a única parte do endpoint que custa
+alguma coisa. Com o default, o relatório vem junto do retrato de memória do
+host, então uma chamada responde "o que está carregado" e "quanto ainda
+cabe" de uma vez.
+
 ## Áudio (voz)
 
 Interpretar e gerar voz no seu hardware — sem API externa. Requer o extra

@@ -282,6 +282,16 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
       filters:
         - "!^_"
 
+### `tempest_fastapi_sdk.genai.inventory`
+
+::: tempest_fastapi_sdk.genai.inventory
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
 ### `tempest_fastapi_sdk.genai.image`
 
 ::: tempest_fastapi_sdk.genai.image

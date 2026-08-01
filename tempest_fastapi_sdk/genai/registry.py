@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Callable
-from typing import Protocol, TypeVar, runtime_checkable
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
 
 @runtime_checkable
@@ -102,6 +102,66 @@ class ModelRegistry:
         for model in self._models.values():
             model.unload()
         self._models.clear()
+
+    def items(self) -> dict[str, Unloadable]:
+        """Return the live entries, most-recently-used last.
+
+        A copy, so iterating it while evicting is safe.
+
+        Returns:
+            dict[str, Unloadable]: Key to model, in LRU order — the first
+            entry is the next one eviction would take.
+        """
+        return dict(self._models)
+
+    def inventory(
+        self,
+        *,
+        hardware: Any | None = None,
+        probe: bool = True,
+    ) -> Any:
+        """Report what this registry is holding in memory right now.
+
+        The capacity ceiling says how many models *may* be live; this says
+        which ones are, on what device, and how long each has been idle —
+        the question an operator actually asks when a card fills up.
+
+        Args:
+            hardware (Any | None): A ``HardwareInfo`` snapshot to reuse
+                instead of probing the host again.
+            probe (bool): When no snapshot is given, probe the host.
+                ``False`` skips it, which makes this call pure bookkeeping.
+
+        Returns:
+            ModelRuntimeReport: The held handles plus, optionally, the
+            host's memory picture.
+        """
+        from tempest_fastapi_sdk.genai.inventory import runtime_report
+
+        return runtime_report(dict(self._models), hardware=hardware, probe=probe)
+
+    def unload_idle(self) -> list[str]:
+        """Free every held model that has sat idle past its own threshold.
+
+        Entries stay in the registry — a `TextGenerator` that unloaded its
+        weights is still the right object to hand out, and it reloads on
+        next use. This frees memory without losing the configuration, so
+        it is what a periodic task should call; :meth:`evict` and
+        :meth:`evict_all` are for forgetting the entry entirely.
+
+        A handle that does not implement ``unload_if_idle`` is skipped:
+        without an idle clock there is no basis to decide, and unloading
+        someone's model on a guess is worse than leaving it.
+
+        Returns:
+            list[str]: The keys whose models this call unloaded.
+        """
+        freed: list[str] = []
+        for key, model in self._models.items():
+            hook = getattr(model, "unload_if_idle", None)
+            if callable(hook) and hook():
+                freed.append(key)
+        return freed
 
     def __len__(self) -> int:
         """Return how many models are currently live."""

@@ -13,6 +13,7 @@ helpers import without the ``[genai-audio]`` extra.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.genai.audio.language import Language, whisper_language
@@ -106,6 +107,7 @@ class SpeechToText:
         revision: str | None = None,
         local_files_only: bool = False,
         hf_token: str | None = None,
+        idle_unload_seconds: float | None = None,
         beam_size: int = 5,
         vad_filter: bool = True,
     ) -> None:
@@ -129,6 +131,9 @@ class SpeechToText:
             local_files_only (bool): Load from the cache without touching
                 the network.
             hf_token (str | None): Hub token for gated/private models.
+            idle_unload_seconds (float | None): When set,
+                :meth:`unload_if_idle` frees the model after this many idle
+                seconds.
             beam_size (int): Beam width for decoding — higher is more
                 accurate but slower. Overridable per call.
             vad_filter (bool): Drop non-speech with faster-whisper's voice
@@ -146,15 +151,41 @@ class SpeechToText:
         self.revision = revision
         self.local_files_only = local_files_only
         self.hf_token = hf_token
+        self.idle_unload_seconds = idle_unload_seconds
         self.beam_size = beam_size
         self.vad_filter = vad_filter
         self._model: Any = None
         self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._last_used: float = time.monotonic()
 
     @property
     def is_loaded(self) -> bool:
         """Return ``True`` once the model is in memory."""
         return self._model is not None
+
+    @property
+    def seconds_idle(self) -> float:
+        """Return seconds since the last transcription (or load).
+
+        Returns:
+            float: Idle time in seconds.
+        """
+        return time.monotonic() - self._last_used
+
+    def unload_if_idle(self) -> bool:
+        """Free the model when it has been idle past the threshold.
+
+        Returns:
+            bool: ``True`` when this call unloaded the model, ``False``
+            when it was already free, still in use, or no
+            ``idle_unload_seconds`` was configured.
+        """
+        if self.idle_unload_seconds is None or not self.is_loaded:
+            return False
+        if self.seconds_idle < self.idle_unload_seconds:
+            return False
+        self.unload()
+        return True
 
     def load(self) -> None:  # pragma: no cover - needs faster-whisper + a model
         """Download (if needed) and load the Whisper model. Idempotent.
@@ -210,7 +241,7 @@ class SpeechToText:
             duration and segments.
         """
         async with self._semaphore:
-            return await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 self._transcribe_sync,
                 audio,
                 whisper_language(language),
@@ -218,6 +249,8 @@ class SpeechToText:
                 self.beam_size if beam_size is None else beam_size,
                 self.vad_filter if vad_filter is None else vad_filter,
             )
+        self._last_used = time.monotonic()
+        return result
 
     def _transcribe_sync(  # pragma: no cover - needs faster-whisper + a model
         self,
