@@ -58,6 +58,16 @@ from tempest_fastapi_sdk.genai.hardware import (
 from tempest_fastapi_sdk.genai.hardware import (
     recommend as recommend,
 )
+from tempest_fastapi_sdk.genai.hub import CachedModel as CachedModel
+from tempest_fastapi_sdk.genai.hub import CachedRevision as CachedRevision
+from tempest_fastapi_sdk.genai.hub import ModelRef as ModelRef
+from tempest_fastapi_sdk.genai.hub import ModelSnapshot as ModelSnapshot
+from tempest_fastapi_sdk.genai.hub import cache_size_bytes as cache_size_bytes
+from tempest_fastapi_sdk.genai.hub import download_model as download_model
+from tempest_fastapi_sdk.genai.hub import list_cached_models as list_cached_models
+from tempest_fastapi_sdk.genai.hub import model_disk_bytes as model_disk_bytes
+from tempest_fastapi_sdk.genai.hub import remove_cached_model as remove_cached_model
+from tempest_fastapi_sdk.genai.hub import resolve_revision as resolve_revision
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics as GenAIMetrics
 from tempest_fastapi_sdk.genai.moderation import (
     ClassifierModerator as ClassifierModerator,
@@ -135,6 +145,8 @@ __all__: list[str] = [
     "AsyncEmbeddingCache",
     "AsyncGenerationCache",
     "BatchScheduler",
+    "CachedModel",
+    "CachedRevision",
     "CapacityReport",
     "ClassifierModerator",
     "Embedder",
@@ -147,7 +159,9 @@ __all__: list[str] = [
     "InMemoryEmbeddingCache",
     "InMemoryGenerationCache",
     "ModelDtype",
+    "ModelRef",
     "ModelRegistry",
+    "ModelSnapshot",
     "ModerationBackend",
     "ModerationResult",
     "OllamaEmbedder",
@@ -163,21 +177,27 @@ __all__: list[str] = [
     "auto_dtype_name",
     "build_prefix_allowed_tokens_fn",
     "bytes_per_param",
+    "cache_size_bytes",
     "cached_generate",
     "can_run",
     "cosine_similarity",
     "count_message_tokens",
     "count_tokens",
+    "download_model",
     "estimate_model_bytes",
     "fetch_num_params",
     "genai_span",
     "is_deterministic",
+    "list_cached_models",
     "make_ai_chat_router",
     "make_genai_router",
     "make_generation_key",
+    "model_disk_bytes",
     "parse_structured",
     "probe_hardware",
     "recommend",
+    "remove_cached_model",
     "resolve_device",
+    "resolve_revision",
     "truncate_messages",
 ]

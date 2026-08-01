@@ -103,10 +103,20 @@ class SpeechToText:
         compute_type: str = "auto",
         max_concurrent: int = 2,
         cache_dir: str | None = None,
+        revision: str | None = None,
+        local_files_only: bool = False,
+        hf_token: str | None = None,
         beam_size: int = 5,
         vad_filter: bool = True,
     ) -> None:
         """Configure the transcriber (does not load weights yet).
+
+        faster-whisper names the same three Hub knobs differently
+        (``download_root`` / ``use_auth_token``), so they are mapped here
+        rather than splatted from a
+        :class:`~tempest_fastapi_sdk.genai.ModelRef`. ``trust_remote_code``
+        has no counterpart: CTranslate2 loads weights, never repository
+        Python.
 
         Args:
             model_size (str): Whisper size/name or a local path.
@@ -114,6 +124,11 @@ class SpeechToText:
             compute_type (str): faster-whisper compute type or ``"auto"``.
             max_concurrent (int): Max simultaneous transcriptions.
             cache_dir (str | None): Where to cache downloaded weights.
+            revision (str | None): Branch, tag or commit sha to load;
+                ``None`` follows the moving Hub default.
+            local_files_only (bool): Load from the cache without touching
+                the network.
+            hf_token (str | None): Hub token for gated/private models.
             beam_size (int): Beam width for decoding — higher is more
                 accurate but slower. Overridable per call.
             vad_filter (bool): Drop non-speech with faster-whisper's voice
@@ -128,6 +143,9 @@ class SpeechToText:
         self.device = resolve_audio_device(device)
         self.compute_type = resolve_compute_type(compute_type, self.device)
         self.cache_dir = cache_dir
+        self.revision = revision
+        self.local_files_only = local_files_only
+        self.hf_token = hf_token
         self.beam_size = beam_size
         self.vad_filter = vad_filter
         self._model: Any = None
@@ -152,6 +170,9 @@ class SpeechToText:
             device=self.device,
             compute_type=self.compute_type,
             download_root=self.cache_dir,
+            revision=self.revision,
+            local_files_only=self.local_files_only,
+            use_auth_token=self.hf_token,
         )
 
     def unload(self) -> None:

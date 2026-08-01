@@ -5681,7 +5681,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.175.0"
+version = "0.176.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -5759,6 +5759,9 @@ genai-audio = [
 ]
 genai-chroma = [
     { name = "chromadb" },
+]
+genai-hub = [
+    { name = "huggingface-hub" },
 ]
 genai-ollama = [
     { name = "httpx" },
@@ -5939,6 +5942,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'geo'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'http'", specifier = ">=0.28.0" },
     { name = "huggingface-hub", marker = "extra == 'genai'", specifier = ">=0.24.0" },
+    { name = "huggingface-hub", marker = "extra == 'genai-hub'", specifier = ">=0.24.0" },
     { name = "itsdangerous", marker = "extra == 'admin'", specifier = ">=2.2.0" },
     { name = "itsdangerous", marker = "extra == 'all'", specifier = ">=2.2.0" },
     { name = "jinja2", marker = "extra == 'admin'", specifier = ">=3.1.0" },
@@ -6004,7 +6008,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'genai'", specifier = ">=4.44.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "openapi", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "modelops", "modelops-onnx", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "openapi", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "modelops", "modelops-onnx", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
 
 [package.metadata.requires-dev]
 dev = [

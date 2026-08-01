@@ -1,0 +1,321 @@
+# Model weights (Hub lifecycle)
+
+Loading a model by id is the easy half. The other half is everything the
+first `from_pretrained` call hides: **which commit** you actually got, **how
+many gigabytes** it wrote to **which directory**, whether the disk had room,
+and how to make the next boot reproduce the same weights **without a
+network**.
+
+The `tempest_fastapi_sdk.genai.hub` module owns that half.
+
+```bash
+uv add "tempest-fastapi-sdk[genai-hub]"   # the weight lifecycle alone
+uv add "tempest-fastapi-sdk[genai]"       # includes the above + torch/transformers
+```
+
+!!! info "The module imports with no extra at all"
+    `huggingface_hub` is resolved inside the function that needs it. The
+    schemas (`ModelRef`, `CachedModel`) stay usable and testable on a host
+    that will never download anything; a missing dependency raises an
+    `ImportError` naming the extra to install.
+
+## The problem: `main` moves
+
+This is what nearly every self-hosted service writes on day one:
+
+```python
+from tempest_fastapi_sdk.genai import TextGenerator
+
+generator = TextGenerator("Qwen/Qwen2.5-0.5B-Instruct")
+```
+
+It works. And it has three holes:
+
+| Hole | What actually happens |
+| --- | --- |
+| **Unpinned revision** | The author pushes to `main`. The pod restarts. You are serving different weights without having changed a line. |
+| **Download inside the request** | The first `POST /generate` pays for a multi-gigabyte download while a client waits on the other end. |
+| **No offline mode** | An air-gapped host has no way to *guarantee* the load will not reach the network — it only finds out when it fails. |
+
+All three close with the same three keywords, and they are identical across
+every loader in the SDK.
+
+## Pin the revision
+
+First, find the commit behind the branch:
+
+```python
+from tempest_fastapi_sdk.genai import resolve_revision
+
+sha: str | None = resolve_revision("Qwen/Qwen2.5-0.5B-Instruct", revision="main")
+print(sha)
+```
+
+```text
+a8b602d5f1c9e0d3b7c1f4a2e9d8c7b6a5f4e3d2
+```
+
+From the terminal, the same thing — alongside the download:
+
+```bash
+tempest model pull Qwen/Qwen2.5-0.5B-Instruct --pin
+```
+
+```text
+Qwen/Qwen2.5-0.5B-Instruct
+  revision   : default
+  pin to     : a8b602d5f1c9e0d3b7c1f4a2e9d8c7b6a5f4e3d2
+  path       : /home/u/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B-Instruct/snapshots/a8b602d
+  size       : 999.59 MB
+  files      : 9
+```
+
+Store the sha in the service configuration and pass it down:
+
+```python
+from tempest_fastapi_sdk.genai import TextGenerator
+
+generator = TextGenerator(
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    revision="a8b602d5f1c9e0d3b7c1f4a2e9d8c7b6a5f4e3d2",
+)
+```
+
+!!! tip "`resolve_revision` returns `None` when it cannot pin"
+    Hub down, private repository without a token, revision that does not
+    exist — the function returns `None` instead of raising. The caller
+    decides whether to proceed unpinned or abort the deploy; that call is
+    yours, not the library's.
+
+## Download before serving
+
+The place to pay for a download is the image build or the deploy step —
+never the request path.
+
+```python
+from tempest_fastapi_sdk.genai import ModelSnapshot, download_model
+
+snapshot: ModelSnapshot = download_model(
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    revision="a8b602d5f1c9e0d3b7c1f4a2e9d8c7b6a5f4e3d2",
+    cache_dir="/var/lib/models",
+    allow_patterns=["*.json", "*.safetensors"],
+)
+print(snapshot.size_bytes, snapshot.file_count, snapshot.path)
+```
+
+In the `Dockerfile`, one line:
+
+```dockerfile
+RUN tempest model pull Qwen/Qwen2.5-0.5B-Instruct \
+    --revision a8b602d5f1c9e0d3b7c1f4a2e9d8c7b6a5f4e3d2 \
+    --cache-dir /var/lib/models \
+    --allow "*.json" --allow "*.safetensors"
+```
+
+!!! check "`--allow` is not a detail"
+    Many repositories publish the weights **twice** — `.bin` and
+    `.safetensors`. Restricting to the formats you actually load usually cuts
+    half the download and half the disk.
+
+### It refuses to start what will not fit
+
+`download_model` sizes the repository on the Hub before writing anything and
+compares it against the free space:
+
+```python
+from tempest_fastapi_sdk.genai import download_model
+
+try:
+    download_model("meta-llama/Llama-3.1-70B", cache_dir="/var/lib/models")
+except OSError as exc:
+    print(exc)
+```
+
+```text
+meta-llama/Llama-3.1-70B needs ~154.0 GB (estimate x1.1) but only 41.3 GB are free on /var/lib/models
+```
+
+Failing in two seconds with a number beats failing forty minutes later with
+a half-written cache. To size it without downloading:
+
+```python
+from tempest_fastapi_sdk.genai import model_disk_bytes
+
+needed: int | None = model_disk_bytes("Qwen/Qwen2.5-0.5B-Instruct")
+print(needed)
+```
+
+!!! note "Disk and memory are different questions"
+    `model_disk_bytes` answers "does it fit the volume?". What answers "does
+    it fit RAM/VRAM?" is [`can_run`](genai.md) — the two checks are
+    independent, and a healthy deploy runs both.
+
+## Run offline
+
+With the weights already cached, `local_files_only=True` turns any load into
+a purely local operation:
+
+```python
+from tempest_fastapi_sdk.genai import Embedder, TextGenerator
+
+generator = TextGenerator(
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    revision="a8b602d5f1c9e0d3b7c1f4a2e9d8c7b6a5f4e3d2",
+    cache_dir="/var/lib/models",
+    local_files_only=True,
+)
+embedder = Embedder(
+    "sentence-transformers/all-MiniLM-L6-v2",
+    cache_dir="/var/lib/models",
+    local_files_only=True,
+)
+```
+
+If the weights are not there the load fails **immediately**, instead of
+quietly reaching the network from a host that was supposed to be isolated.
+
+## The same three keywords everywhere
+
+There is no per-class "way to pin":
+
+| Class | Module |
+| --- | --- |
+| `TextGenerator` | `tempest_fastapi_sdk.genai` |
+| `Embedder` | `tempest_fastapi_sdk.genai` |
+| `VisionTextGenerator` | `tempest_fastapi_sdk.genai` |
+| `ClassifierModerator` | `tempest_fastapi_sdk.genai` |
+| `Reranker` | `tempest_fastapi_sdk.genai.rag` |
+
+All of them take `revision=`, `local_files_only=` and `trust_remote_code=`,
+on top of the `cache_dir=`/`hf_token=` that already existed. Two exceptions,
+both forced by the library underneath:
+
+- **`SpeechToText`** takes `revision=`, `local_files_only=` and `hf_token=`,
+  but not `trust_remote_code` — CTranslate2 loads weights, never repository
+  Python.
+- **`OnnxEmbedder`** already has the graph on disk; only the tokenizer comes
+  from the Hub, so the parameters are `tokenizer_revision=` and `hf_token=`.
+  Point `tokenizer` at a local `tokenizer.json` when the host must not reach
+  the network.
+
+### `trust_remote_code` is opt-in on purpose
+
+```python
+from tempest_fastapi_sdk.genai import VisionTextGenerator
+
+generator = VisionTextGenerator(
+    "Qwen/Qwen2-VL-2B-Instruct",
+    trust_remote_code=True,
+)
+```
+
+!!! warning "This executes Python from the repository"
+    Some architectures only load with `trust_remote_code=True`, and
+    `transformers` says so in the error message. Flipping the switch runs code
+    you did not review, from the same repository the weights came from — which
+    is why it is per-model rather than an SDK default. If you do flip it, pin
+    the revision alongside: the code you audited today and the code tomorrow
+    are the same `main`.
+
+## See and reclaim the cache
+
+Weights are the biggest thing a self-hosted service writes to disk, and
+nothing prunes them: every model ever loaded stays until someone removes it.
+
+```bash
+tempest model cache-list --revisions
+```
+
+```text
+   4.43 GB  Qwen/Qwen2-VL-2B-Instruct
+   4.43 GB    a1b2c3d4e5f6  [main]
+ 999.59 MB  Qwen/Qwen2.5-0.5B-Instruct
+ 999.59 MB    a8b602d5f1c9  [main]
+ 181.97 MB  sentence-transformers/all-MiniLM-L6-v2
+ 181.97 MB    1110a243fdf4  [main]
+   5.61 GB  total
+```
+
+In Python, to expose it on an operations endpoint:
+
+```python
+from tempest_fastapi_sdk.genai import CachedModel, cache_size_bytes, list_cached_models
+
+models: list[CachedModel] = list_cached_models()
+for model in models:
+    print(model.model_id, model.size_bytes, len(model.revisions))
+print(cache_size_bytes())
+```
+
+To reclaim space:
+
+```bash
+tempest model cache-rm Qwen/Qwen2-VL-2B-Instruct --dry-run
+```
+
+```text
+would free 4.43 GB by removing Qwen/Qwen2-VL-2B-Instruct
+```
+
+```python
+from tempest_fastapi_sdk.genai import remove_cached_model
+
+freed: int = remove_cached_model(
+    "Qwen/Qwen2-VL-2B-Instruct",
+    revision="a1b2c3d4e5f6",
+)
+print(freed)
+```
+
+!!! danger "Removing weights has no undo"
+    The only way back is downloading them again. That is why the command asks
+    for confirmation (skip it with `--yes`) and `--dry-run` reports the size
+    without touching anything. A model that is not cached returns `0` — not an
+    error, a successful no-op.
+
+## The object underneath: `ModelRef`
+
+Every loader builds a `ModelRef` and forwards it. You rarely need to
+construct one by hand, but it is what explains the behaviour:
+
+```python
+from tempest_fastapi_sdk.genai import ModelRef
+
+ref = ModelRef(
+    model_id="Qwen/Qwen2.5-0.5B-Instruct",
+    revision="a8b602d",
+    local_files_only=True,
+)
+print(ref.loader_kwargs())
+print(ref.download_kwargs())
+```
+
+```text
+{'revision': 'a8b602d', 'local_files_only': True}
+{'revision': 'a8b602d', 'local_files_only': True}
+```
+
+Only what **differs from the default** is emitted. That keeps the call
+identical to what the SDK sent before when nothing is pinned, and keeps the
+same dictionary usable with narrower loaders —
+`tokenizers.Tokenizer.from_pretrained` accepts `revision` but not
+`trust_remote_code`. `download_kwargs()` drops `trust_remote_code`, which is
+a load-time decision and means nothing while fetching files.
+
+## Recap
+
+- **`resolve_revision`** turns `main` into the immutable sha. Pin it and the
+  boot stops depending on the day.
+- **`download_model`** / **`tempest model pull`** pays for the download in
+  the build or the deploy, and refuses to start what the disk cannot hold.
+- **`local_files_only=True`** makes the load purely local — the mode an
+  air-gapped host wants.
+- **`trust_remote_code=True`** is opt-in per model, because it executes
+  repository code.
+- **`list_cached_models`** / **`remove_cached_model`** (and `cache-list` /
+  `cache-rm`) show and reclaim what the weights occupy.
+
+Where to go next: [Self-hosted generative AI](genai.md) for what to do with
+the weights once loaded, and [Modelops](modelops.md) to measure, quantize and
+export them.

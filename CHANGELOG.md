@@ -5,6 +5,80 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.176.0] — 2026-08-01
+
+### Added
+
+- **`tempest_fastapi_sdk.genai.hub` — the weight lifecycle of a self-hosted
+  HuggingFace model.** Loading a model by id is the easy half. The other half
+  is everything the first `from_pretrained` call hides: which commit you
+  actually got, how many gigabytes it wrote to which directory, whether the
+  disk had room, and how to make the next boot reproduce the same weights
+  without a network. New extra `[genai-hub]` (`huggingface-hub` alone, already
+  contained in `[genai]`); the module imports with neither, because every Hub
+  call resolves its dependency inside the function that needs it.
+
+  **Pinning.** `resolve_revision(model_id, revision="main")` returns the
+  immutable commit sha behind a branch or tag. An unpinned service loads
+  whatever `main` holds the day it restarts — the author pushes, the pod
+  cycles, and it is serving different weights without a line having changed.
+  The function returns `None` rather than raising when the Hub is unreachable
+  or the repository does not exist, so the caller decides whether to proceed
+  unpinned or abort the deploy.
+
+  **Fetching.** `download_model` materializes a revision on local disk with
+  `allow_patterns`/`ignore_patterns` (most repositories ship the weights twice
+  — `.bin` and `.safetensors` — so restricting the globs usually halves both
+  the download and the disk), and returns a `ModelSnapshot` carrying the path,
+  the byte total and the file count. It sizes the repository through
+  `model_disk_bytes` — Hub metadata, no download — before writing anything and
+  raises `OSError` when the filesystem cannot hold the estimate times a 1.1
+  margin: failing in two seconds with a number beats failing forty minutes
+  later with a half-written cache. `can_run` answers whether a model fits RAM
+  or VRAM; this answers whether it fits the volume, and a healthy deploy asks
+  both.
+
+  **Cache.** `list_cached_models` / `cache_size_bytes` / `remove_cached_model`
+  report and reclaim what the local cache holds. Weights are the biggest thing
+  a self-hosted service writes to disk and nothing prunes them — every model
+  ever loaded stays until removed. Removal reports the bytes freed, supports a
+  `dry_run`, accepts a revision by sha *or* by ref name, and returns `0` for a
+  model that is not cached, which is a successful no-op rather than an error.
+
+- **`revision=`, `local_files_only=` and `trust_remote_code=` on every
+  loader.** `TextGenerator`, `Embedder`, `VisionTextGenerator`,
+  `ClassifierModerator` and `Reranker` take the same three keywords next to
+  the `cache_dir=`/`hf_token=` they already had, each building a `ModelRef`
+  and forwarding it — so there is no per-class way to pin. `ModelRef` emits
+  only the values that differ from the default, which keeps an unpinned call
+  byte-identical to what the SDK sent before and keeps the same dictionary
+  usable with narrower loaders (`tokenizers.Tokenizer.from_pretrained` takes
+  `revision` but not `trust_remote_code`).
+
+  `local_files_only=True` makes a load purely local, so an air-gapped or
+  deploy-frozen host fails immediately instead of quietly reaching the
+  network. `trust_remote_code` stays opt-in per model: some architectures
+  require it, and it executes Python from the same repository the weights came
+  from.
+
+  Two loaders differ, both because of the library underneath. `SpeechToText`
+  gains `revision=`, `local_files_only=` and `hf_token=` mapped onto
+  faster-whisper's own names (`download_root` / `use_auth_token`) and has no
+  `trust_remote_code` — CTranslate2 loads weights, never repository Python.
+  `OnnxEmbedder` already holds the graph on disk, so only its tokenizer can be
+  pinned: `tokenizer_revision=` and `hf_token=`.
+
+- **`tempest model pull` / `cache-list` / `cache-rm`.** The weight lifecycle
+  from a Makefile, a `Dockerfile` or a deploy job. `pull --pin` downloads and
+  prints the commit sha to feed back as `--revision`; `cache-list --revisions`
+  breaks the cache down per commit; `cache-rm` confirms before deleting
+  (`--yes` skips, `--dry-run` reports the size without touching anything).
+
+### Changed
+
+- The `[genai]` extra's README description no longer says model runners are
+  upcoming — they have shipped since v0.98.
+
 ## [0.175.0] — 2026-07-31
 
 ### Added

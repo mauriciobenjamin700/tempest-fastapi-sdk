@@ -286,6 +286,24 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (unit/`@model`/`@gpu`) + plans live under `planning/genai/`. **Fix:** `httpx`
   + `email-validator` are base deps so a minimal/`[genai]` install imports
   (v0.151.1).
+- **GenAI weight lifecycle (v0.176.0)** — `tempest_fastapi_sdk.genai.hub`,
+  extra `[genai-hub]` (`huggingface-hub` alone; contained in `[genai]`, and
+  the module imports with neither). `ModelRef` carries the weight identity
+  (id/revision/cache/token/`local_files_only`/`trust_remote_code`) and emits
+  **only non-default** kwargs, so an unpinned call stays byte-identical and the
+  same dict works with narrower loaders. `resolve_revision` (branch → commit
+  sha, `None` when unreachable — never raises), `model_disk_bytes` (Hub
+  metadata, no download), `download_model` (`allow`/`ignore` globs →
+  `ModelSnapshot`; refuses with `OSError` when free space < estimate x1.1),
+  `list_cached_models`/`cache_size_bytes`/`remove_cached_model` (by sha or ref
+  name, `dry_run`, `0` for absent = no-op). All 5 transformers loaders
+  (`TextGenerator`/`Embedder`/`VisionTextGenerator`/`ClassifierModerator`/
+  `Reranker`) take `revision=`/`local_files_only=`/`trust_remote_code=`;
+  `SpeechToText` maps onto faster-whisper's `download_root`/`use_auth_token`
+  and has no `trust_remote_code` (CTranslate2 runs no repo Python);
+  `OnnxEmbedder` pins its tokenizer only (`tokenizer_revision=`/`hf_token=`).
+  CLI `tempest model pull|cache-list|cache-rm`. Recipe:
+  `docs/recipes/model-weights.md`.
 - **SSR** (`[ssr]` extra) — `tempest_fastapi_sdk.ssr`: typed Python
   pages rendered to HTML via `tempestweb`'s `render_to_html` /
   `render_document`. `Page` (typed `Component` base — `body()` +
@@ -444,7 +462,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (regen Dockerfile + .dockerignore) / `--src` (extra source layers),
   `tempest db init/revision/upgrade/downgrade/current/history/seed`,
   `tempest user create [--admin] / list`, `tempest secrets rotate`,
-  `tempest model analyze/bench/optimize/quantize/export-ort/hardware`,
+  `tempest model analyze/bench/optimize/quantize/export-ort/hardware/
+  pull/cache-list/cache-rm`,
   plus quality gates (`lint`, `fix`, `format`, `fmt-check`, `type`,
   `test`, `check`), `openapi-errors`, `openapi-client`, `permissions`.
 

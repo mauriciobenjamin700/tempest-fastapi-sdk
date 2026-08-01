@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pydantic import Field
 
+from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.text import _require_transformers, resolve_device
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
@@ -128,6 +129,9 @@ class ClassifierModerator:
         device: str = "auto",
         cache_dir: str | None = None,
         hf_token: str | None = None,
+        revision: str | None = None,
+        local_files_only: bool = False,
+        trust_remote_code: bool = False,
         hardware: HardwareInfo | None = None,
     ) -> None:
         """Configure the moderator (does not load weights yet).
@@ -140,6 +144,12 @@ class ClassifierModerator:
             device (str): ``"auto"`` / ``"cuda"`` / ``"mps"`` / ``"cpu"``.
             cache_dir (str | None): Weight cache directory.
             hf_token (str | None): Hub token for gated models.
+            revision (str | None): Branch, tag or commit sha to load;
+                ``None`` follows the moving Hub default.
+            local_files_only (bool): Load from the cache without touching
+                the network.
+            trust_remote_code (bool): Allow the repository's own Python to
+                run at load time.
             hardware (HardwareInfo | None): Injected snapshot (tests).
         """
         self.model_id = model_id
@@ -148,6 +158,14 @@ class ClassifierModerator:
         self.device = resolve_device(device, hardware)
         self.cache_dir = cache_dir
         self.hf_token = hf_token
+        self.source = ModelRef(
+            model_id=model_id,
+            revision=revision,
+            cache_dir=cache_dir,
+            token=hf_token,
+            local_files_only=local_files_only,
+            trust_remote_code=trust_remote_code,
+        )
         self._model: Any = None
         self._tokenizer: Any = None
         self._last_used: float = time.monotonic()
@@ -168,13 +186,11 @@ class ClassifierModerator:
         _torch, transformers = _require_transformers()
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(
             self.model_id,
-            cache_dir=self.cache_dir,
-            token=self.hf_token,
+            **self.source.loader_kwargs(),
         )
         self._model = transformers.AutoModelForSequenceClassification.from_pretrained(
             self.model_id,
-            cache_dir=self.cache_dir,
-            token=self.hf_token,
+            **self.source.loader_kwargs(),
         )
         self._model = self._model.to(self.device if self.device != "cpu" else "cpu")
         self._model.eval()
