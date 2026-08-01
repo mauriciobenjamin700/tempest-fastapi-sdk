@@ -5,6 +5,94 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.173.0] — 2026-07-31
+
+### Added
+
+- **`tempest_fastapi_sdk.modelops` — export, benchmark and quantize the models
+  a service serves.** Three jobs that only make sense together: you quantize to
+  make a model cheaper, you benchmark to find out whether it actually got
+  cheaper, and you export to the format the target device runs. Three new
+  extras so nobody installs weight they do not use — `[modelops]` (psutil +
+  nvidia-ml-py), `[modelops-onnx]` (onnx + onnxruntime), `[modelops-quant]`
+  (`optimum[onnxruntime]`). The module itself imports with none of them; every
+  heavy dependency is resolved inside the function that needs it and its
+  absence raises an `ImportError` naming the extra.
+
+  **Benchmark.** `benchmark(call, ...)` times any zero-argument callable;
+  `benchmark_onnx`, `benchmark_torch` and `benchmark_models` build on it, so an
+  ONNX session, a torch module and a closure all produce the same
+  `BenchmarkProfile`. The loop runs N warm-up calls and discards them, times N
+  repetitions, and reports median plus IQR first — inference latency is
+  heavy-tailed, and a mean hides the tail a p99 SLO cares about — alongside
+  p95/p99, throughput, RSS peak and delta, CPU usage and GPU memory. Symbolic
+  input dimensions are resolved from `dynamic_dims=` or `input_shapes=` and
+  raise rather than being guessed: feeding a 1x1 image to a convolutional model
+  produces a confidently wrong number.
+
+  **Energy.** Four samplers behind one `PowerSampler` protocol, so the loop
+  never branches on the host. `NvmlPowerSampler` prefers the driver's monotonic
+  total-energy counter (`nvmlDeviceGetTotalEnergyConsumption`, Volta+) and falls
+  back to integrating sampled power on older cards; `NvidiaSmiPowerSampler`
+  polls the binary when `pynvml` is absent; `RaplEnergySampler` reads CPU
+  package energy from the Linux powercap tree, summing package domains only and
+  handling counter wraparound; `NullPowerSampler` measures nothing and reports
+  it. Every sampler degrades into that last behaviour instead of raising, and
+  every reading carries an `EnergySource` because a GPU figure and a RAPL figure
+  are not the same quantity — and neither is wall-plug. A CPU run does not
+  resolve a GPU sampler by default: attributing a shared card's idle draw and
+  other processes' VRAM to a CPU model would be worse than reporting nothing.
+
+  **Ranking.** `composite_scores` weighs min-max-normalized cost dimensions
+  (`DEFAULT_COST_WEIGHTS` tuned for edge/mobile) and renormalizes twice so a
+  missing measurement cannot distort the result: a dimension no profile measured
+  is dropped entirely, and a dimension one profile lacks is skipped for that
+  profile alone. `pareto_points` annotates the non-dominated set, skipping any
+  axis either side did not measure, and degrading to a cost-only frontier when
+  no `quality` was supplied — the SDK never invents a quality number. `rank`
+  returns a `BenchmarkReport` carrying the sorted profiles, the frontier, the
+  effective weights and the host description.
+
+  **Export.** `export_torch_to_onnx` (opset, dynamic axes, fp16),
+  `export_onnx_to_ort` (file or directory → `.ort`, `FIXED`/`RUNTIME` style,
+  `target_platform`, type reduction) and `optimize_onnx_graph` (persist ONNX
+  Runtime's fusions into a new `.onnx`). The ORT conversion also surfaces the
+  `.required_operators.config` it writes, which is what lets a minimal ONNX
+  Runtime build drop from tens of megabytes to a few.
+
+  **Quantization.** `quantize_onnx_dynamic` (no calibration data),
+  `quantize_onnx_static` (calibration reader built from any iterable of feed
+  dicts, `QDQ`/`QOperator`, MinMax/Entropy/Percentile), and the HuggingFace path
+  through `optimum` — `export_hf_to_onnx`, `optimize_hf_onnx` (`O1`–`O4`),
+  `quantize_hf_onnx` (arm64/avx2/avx512/avx512_vnni/tensorrt) — plus
+  `quantize_hf_bnb` for int4/int8 weights that stay loadable by
+  `AutoModelForCausalLM`.
+
+  **Static analysis.** `analyze_onnx` sums parameters from the initializer
+  dimensions without loading a weight; `analyze_ort` reports shapes and size
+  (the serialized format drops the initializer table, so the parameter count is
+  honestly `0`); `analyze_torch` counts parameters and, given an example input,
+  forward GFLOPs; `analyze_model` dispatches on the suffix.
+
+  Recipe: `docs/recipes/modelops.md`.
+
+- **`tempest model` CLI** (`tempest_fastapi_sdk/cli/model.py`) —
+  `analyze` / `bench` / `optimize` / `quantize` / `export-ort` / `hardware`,
+  with `--json` on the reporting commands so the loop runs from a Makefile or a
+  CI step. `tempest model hardware` reports what the host can measure, not just
+  what it can run: whether NVML, the `nvidia-smi` fallback or the RAPL counters
+  are actually readable here. A missing extra exits 2 with the install line
+  rather than a traceback.
+
+### Changed
+
+- **`[all]` now includes `onnx`** but still excludes `[modelops-quant]`, which
+  is documented alongside the heavy GenAI stacks. `optimum-onnx` currently
+  declares `transformers<5`, so installing `[modelops-quant]` next to `[genai]`
+  in one environment resolves `transformers` to the 4.x series. Services that
+  need `transformers` 5.x at runtime should quantize in a separate build
+  environment and deploy only the generated `.onnx`.
+
 ## [0.172.1] — 2026-07-30
 
 ### Fixed

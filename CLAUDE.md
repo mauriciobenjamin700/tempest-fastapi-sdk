@@ -192,6 +192,31 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `ort-vision-sdk`: lazy `Detector`/`Classifier`/`Segmenter` + prediction
   schemas + `to_detection_schemas`/`to_classification_schema`/
   `to_segmentation_schemas` mappers.
+- **Modelops (v0.173.0)** — `tempest_fastapi_sdk.modelops`, three extras
+  (`[modelops]` psutil+nvidia-ml-py, `[modelops-onnx]` onnx+onnxruntime,
+  `[modelops-quant]` `optimum[onnxruntime]`); the module imports with none of
+  them. **Bench:** `benchmark` (any callable) + `benchmark_onnx`/
+  `benchmark_torch`/`benchmark_models` — warm-up + N reps, median/IQR first,
+  p95/p99, throughput, RSS peak/delta, GPU memory; symbolic dims resolved via
+  `dynamic_dims=`/`input_shapes=` or raise (never guessed). **Energy:**
+  `PowerSampler` protocol + `NvmlPowerSampler` (prefers the NVML total-energy
+  counter, falls back to integrating power), `NvidiaSmiPowerSampler`,
+  `RaplEnergySampler` (CPU package via powercap, package domains only,
+  wraparound handled), `NullPowerSampler`; `resolve_power_sampler`/
+  `resolve_cpu_energy_sampler`; every reading carries an `EnergySource` and a
+  CPU run resolves no GPU sampler. **Ranking:** `composite_scores`
+  (`DEFAULT_COST_WEIGHTS`, weights renormalized over measured dims twice),
+  `pareto_points` (unmeasured axis skipped, cost-only frontier without
+  `quality`), `rank` → `BenchmarkReport`. **Export:** `export_torch_to_onnx`,
+  `export_onnx_to_ort` (file or dir, FIXED/RUNTIME, `target_platform`, type
+  reduction, `.required_operators.config`), `optimize_onnx_graph`.
+  **Quantization:** `quantize_onnx_dynamic`/`quantize_onnx_static` plus HF via
+  optimum (`export_hf_to_onnx`/`optimize_hf_onnx`/`quantize_hf_onnx`) and
+  `quantize_hf_bnb`. **Static:** `analyze_onnx`/`analyze_ort`/`analyze_torch`/
+  `analyze_model`. CLI `tempest model analyze|bench|optimize|quantize|
+  export-ort|hardware`. Recipe: `docs/recipes/modelops.md`. **Caveat:**
+  `optimum-onnx` pins `transformers<5`, so `[modelops-quant]` + `[genai]` in
+  one env resolves transformers to 4.x.
 - **GenAI self-hosted** (`[genai]` extra: transformers+torch+accelerate;
   `[genai-quant]` = bitsandbytes) — `tempest_fastapi_sdk.genai`, delivered
   in slices. **Shipped (v0.96):** hardware capacity check — `probe_hardware`
@@ -414,6 +439,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (regen Dockerfile + .dockerignore) / `--src` (extra source layers),
   `tempest db init/revision/upgrade/downgrade/current/history/seed`,
   `tempest user create [--admin] / list`, `tempest secrets rotate`,
+  `tempest model analyze/bench/optimize/quantize/export-ort/hardware`,
   plus quality gates (`lint`, `fix`, `format`, `fmt-check`, `type`,
   `test`, `check`), `openapi-errors`, `openapi-client`, `permissions`.
 

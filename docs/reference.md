@@ -256,6 +256,20 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.geo.br.UF_CENTROIDS
 ---
 
+## Modelops
+
+### `tempest_fastapi_sdk.modelops`
+
+::: tempest_fastapi_sdk.modelops
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
 ## OpenAPI code generation
 
 ### `tempest_fastapi_sdk.openapi`

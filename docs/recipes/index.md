@@ -310,6 +310,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | registrar comandos próprios na CLI `tempest` do projeto |
 | **[Métricas »](metrics.md)** | `MetricsUtils` — snapshots de CPU / RAM / disco / GPU |
 | **[MFA (TOTP / 2FA) »](mfa.md)** | `MFAMixin`, `TOTPHelper`, endpoints enroll/confirm/verify/disable no `make_auth_router`, códigos de recuperação |
+| **[Modelops (export, bench, quantização) »](modelops.md)** | `benchmark_onnx` (latência/RAM/GPU/energia), `export_onnx_to_ort`, `quantize_onnx_dynamic`, `quantize_hf_onnx`, `rank` + fronteira de Pareto, `tempest model` |
 | **[Multi-tenant »](multi-tenant.md)** | `TenantScopedRepository` — isolamento por `tenant_id` em toda query |
 | **[Observabilidade (tracing) »](observability.md)** | `setup_tracing` (OpenTelemetry), `SlowQueryLogger` |
 | **[Outbox transacional »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — eventos confiáveis |

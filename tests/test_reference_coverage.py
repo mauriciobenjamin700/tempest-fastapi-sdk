@@ -30,6 +30,7 @@ PUBLIC_MODULES: tuple[str, ...] = (
     "tempest_fastapi_sdk.chat",
     "tempest_fastapi_sdk.flags",
     "tempest_fastapi_sdk.geo",
+    "tempest_fastapi_sdk.modelops",
     "tempest_fastapi_sdk.openapi",
     "tempest_fastapi_sdk.queue",
     "tempest_fastapi_sdk.reviews",

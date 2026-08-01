@@ -35,6 +35,9 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[mfa]` | `pyotp` | `TOTPHelper` + endpoints MFA/2FA (TOTP) do fluxo bundled de auth |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
+| `[modelops]` | `psutil`, `nvidia-ml-py` | benchmark de qualquer callable: latência, RAM, GPU e energia (`benchmark`, `NvmlPowerSampler`, `RaplEnergySampler`) |
+| `[modelops-onnx]` | `onnx`, `onnxruntime` | análise estática, benchmark ONNX, `.onnx` → `.ort`, otimização de grafo e quantização (`analyze_onnx`, `benchmark_onnx`, `export_onnx_to_ort`, `quantize_onnx_dynamic`) |
+| `[modelops-quant]` | `optimum[onnxruntime]` | exportar/otimizar/quantizar modelos HuggingFace (`export_hf_to_onnx`, `optimize_hf_onnx`, `quantize_hf_onnx`) |
 | `[otel]` | `opentelemetry-sdk`, exporter OTLP + instrumentações FastAPI/SQLAlchemy/httpx | instrumentação OpenTelemetry via `setup_tracing` |
 | `[postgres]` | `asyncpg` | driver async PostgreSQL para URLs `postgresql+asyncpg://` (produção) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
@@ -45,7 +48,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils`, `DownloadUtils`, `LocalUploadStorage` |
 | `[vision]` | `ort-vision-sdk` | helpers de visão (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | tudo acima **exceto** os stacks pesados de GenAI (`[genai]`, `[genai-quant]`, `[genai-rag]`, `[genai-audio]`) | todos os helpers, menos os de GenAI pesado — instale `[genai]`/`[genai-rag]`/etc. à parte |
+| `[all]` | tudo acima **exceto** os stacks pesados de GenAI (`[genai]`, `[genai-quant]`, `[genai-rag]`, `[genai-audio]`, `[modelops-quant]`) | todos os helpers, menos os de GenAI pesado — instale `[genai]`/`[genai-rag]`/`[modelops-quant]`/etc. à parte |
 
 === "Subconjunto (recomendado)"
 

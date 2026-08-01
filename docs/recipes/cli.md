@@ -469,6 +469,34 @@ tempest secrets rotate --length 64 --no-backup
 !!! warning
     Rotacionar `JWT_SECRET` invalida todo token assinado com o valor antigo: usuários são deslogados e links de reset/ativação pendentes param de funcionar. Rotacione numa janela de manutenção e reinicie o serviço pra carregar os novos valores.
 
+### Modelos — `tempest model`
+
+Análise, benchmark, conversão e quantização de modelos ONNX. Precisa do
+extra `[modelops-onnx]`, exceto `hardware`, que só reporta o que esta
+máquina consegue medir:
+
+```bash
+tempest model analyze models/classify.onnx
+tempest model bench models/classify.onnx --dim height=224 --dim width=224
+tempest model quantize models/classify.onnx models/classify.int8.onnx
+tempest model export-ort models/classify.int8.onnx -o dist/mobile -t arm
+tempest model hardware
+```
+
+| Comando | O que faz |
+| --- | --- |
+| `analyze` | Parâmetros, tamanho, opset e shapes, sem executar o modelo. |
+| `bench` | Latência (mediana/IQR/p95/p99), RAM, GPU e energia sobre N repetições. |
+| `optimize` | Persiste as otimizações de grafo do ONNX Runtime num novo `.onnx`. |
+| `quantize` | Quantização dinâmica int8. |
+| `export-ort` | Converte para `.ort` + `.required_operators.config`. |
+| `hardware` | O que a máquina roda e qual sampler de energia está disponível. |
+
+`analyze`, `bench` e `hardware` aceitam `--json`, o que os torna
+utilizáveis como passo de CI. Extra ausente sai com código 2 e a linha de
+instalação, nunca com traceback. Detalhes em
+[Modelops](modelops.md).
+
 ### Erros documentados no OpenAPI — `tempest openapi-errors`
 
 Compara, por rota, as `AppException` que o fluxo pode levantar com o que a rota

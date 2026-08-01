@@ -35,6 +35,9 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[mfa]` | `pyotp` | `TOTPHelper` + MFA/2FA (TOTP) endpoints on the bundled auth flow |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
+| `[modelops]` | `psutil`, `nvidia-ml-py` | benchmark any callable: latency, RAM, GPU and energy (`benchmark`, `NvmlPowerSampler`, `RaplEnergySampler`) |
+| `[modelops-onnx]` | `onnx`, `onnxruntime` | static analysis, ONNX benchmarking, `.onnx` → `.ort`, graph optimization and quantization (`analyze_onnx`, `benchmark_onnx`, `export_onnx_to_ort`, `quantize_onnx_dynamic`) |
+| `[modelops-quant]` | `optimum[onnxruntime]` | export/optimize/quantize HuggingFace models (`export_hf_to_onnx`, `optimize_hf_onnx`, `quantize_hf_onnx`) |
 | `[otel]` | `opentelemetry-sdk`, OTLP exporter + FastAPI/SQLAlchemy/httpx instrumentations | OpenTelemetry instrumentation via `setup_tracing` |
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
@@ -45,7 +48,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils`, `DownloadUtils`, `LocalUploadStorage` |
 | `[vision]` | `ort-vision-sdk` | vision helpers (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | everything above **except** the heavy GenAI stacks (`[genai]`, `[genai-quant]`, `[genai-rag]`, `[genai-audio]`) | every helper except the heavy GenAI ones — install `[genai]`/`[genai-rag]`/etc. separately |
+| `[all]` | everything above **except** the heavy GenAI stacks (`[genai]`, `[genai-quant]`, `[genai-rag]`, `[genai-audio]`, `[modelops-quant]`) | every helper except the heavy GenAI ones — install `[genai]`/`[genai-rag]`/`[modelops-quant]`/etc. separately |
 
 === "Subset (recommended)"
 

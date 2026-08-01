@@ -20,6 +20,7 @@ from tempest_fastapi_sdk.cli.config import (
     load_tempest_config,
 )
 from tempest_fastapi_sdk.cli.db import db_app
+from tempest_fastapi_sdk.cli.model import model_app
 from tempest_fastapi_sdk.cli.secrets import secrets_app
 from tempest_fastapi_sdk.cli.user import user_app
 
@@ -144,6 +145,7 @@ app: typer.Typer = typer.Typer(
 app.add_typer(db_app, name="db")
 app.add_typer(user_app, name="user")
 app.add_typer(secrets_app, name="secrets")
+app.add_typer(model_app, name="model")
 
 
 def _print_version(value: bool) -> None:
