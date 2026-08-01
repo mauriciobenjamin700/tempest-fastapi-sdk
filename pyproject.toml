@@ -142,11 +142,6 @@ modelops-onnx = [
     "onnx>=1.16.0",
     "onnxruntime>=1.18.0",
 ]
-modelops-quant = [
-    "optimum[onnxruntime]>=1.20.0",
-    "onnx>=1.16.0",
-    "onnxruntime>=1.18.0",
-]
 geo = [
     "httpx>=0.28.0",
 ]
@@ -263,6 +258,7 @@ dev = [
     "pillow>=10.0.0",
     "onnxruntime>=1.18.0",
     "onnx>=1.16.0",
+    "onnxscript>=0.1.0",
     "tokenizers>=0.20.0",
     "faststream[rabbit]>=0.7.1",
     "taskiq>=0.11.0",
@@ -406,8 +402,8 @@ module = [
     "onnxruntime.*",
     "onnx",
     "onnx.*",
-    "optimum",
-    "optimum.*",
+    "onnxscript",
+    "onnxscript.*",
     "bitsandbytes",
     "bitsandbytes.*",
     "tokenizers",

@@ -12,12 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`tempest_fastapi_sdk.modelops` — export, benchmark and quantize the models
   a service serves.** Three jobs that only make sense together: you quantize to
   make a model cheaper, you benchmark to find out whether it actually got
-  cheaper, and you export to the format the target device runs. Three new
-  extras so nobody installs weight they do not use — `[modelops]` (psutil +
-  nvidia-ml-py), `[modelops-onnx]` (onnx + onnxruntime), `[modelops-quant]`
-  (`optimum[onnxruntime]`). The module itself imports with none of them; every
-  heavy dependency is resolved inside the function that needs it and its
-  absence raises an `ImportError` naming the extra.
+  cheaper, and you export to the format the target device runs. Two new extras
+  so nobody installs weight they do not use — `[modelops]` (psutil +
+  nvidia-ml-py) and `[modelops-onnx]` (onnx + onnxruntime). The module itself
+  imports with neither; every heavy dependency is resolved inside the function
+  that needs it and its absence raises an `ImportError` naming the extra.
+  **Nothing in modelops constrains your `transformers` version** — see the
+  quantization paragraph below for why that took deliberate work.
 
   **Benchmark.** `benchmark(call, ...)` times any zero-argument callable;
   `benchmark_onnx`, `benchmark_torch` and `benchmark_models` build on it, so an
@@ -62,11 +63,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **Quantization.** `quantize_onnx_dynamic` (no calibration data),
   `quantize_onnx_static` (calibration reader built from any iterable of feed
-  dicts, `QDQ`/`QOperator`, MinMax/Entropy/Percentile), and the HuggingFace path
-  through `optimum` — `export_hf_to_onnx`, `optimize_hf_onnx` (`O1`–`O4`),
-  `quantize_hf_onnx` (arm64/avx2/avx512/avx512_vnni/tensorrt) — plus
-  `quantize_hf_bnb` for int4/int8 weights that stay loadable by
-  `AutoModelForCausalLM`.
+  dicts, `QDQ`/`QOperator`, MinMax/Entropy/Percentile), the transformers-export
+  path — `optimize_hf_onnx` (`O1`–`O4`) and `quantize_hf_onnx`
+  (arm64/avx2/avx512/avx512_vnni) — plus `quantize_hf_bnb` for int4/int8
+  weights that stay loadable by `AutoModelForCausalLM`.
+
+  The transformers path runs on `onnxruntime.transformers` and
+  `onnxruntime.quantization`, **not** on HuggingFace `optimum`. `optimum-onnx`
+  declares `transformers<4.58`, and an upper bound on a published package
+  propagates to every consumer; meanwhile `ORTOptimizer` and `ORTQuantizer`
+  delegate to the same `onnxruntime` entry points this SDK already depends on,
+  so the dependency bought a wrapper and cost a ceiling. The preset tables it
+  did carry — the `O1`–`O4` levels, the per-ISA weight types, and the
+  HuggingFace-to-fusion architecture map — are now explicit named constants in
+  `modelops/quantize.py`, each documenting its provenance, and
+  `tests/modelops/test_quantize.py` pins them against the installed runtime.
+  `optimize_hf_onnx` gained `model_type=` (override the fusion type, or work on
+  a bare graph) and `use_external_data_format=`; both functions now carry the
+  export's `config.json` and tokenizer into the output directory.
+
+  **Producing** the ONNX export is the one capability with no substitute
+  outside `optimum`, and it is now a documented build step instead of a
+  dependency: `uvx --from "optimum[onnxruntime]" optimum-cli export onnx ...`
+  resolves the cap inside a throwaway environment that never touches your
+  project. See `docs/recipes/modelops.md`.
 
   **Static analysis.** `analyze_onnx` sums parameters from the initializer
   dimensions without loading a weight; `analyze_ort` reports shapes and size
@@ -86,12 +106,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`[all]` now includes `onnx`** but still excludes `[modelops-quant]`, which
-  is documented alongside the heavy GenAI stacks. `optimum-onnx` currently
-  declares `transformers<5`, so installing `[modelops-quant]` next to `[genai]`
-  in one environment resolves `transformers` to the 4.x series. Services that
-  need `transformers` 5.x at runtime should quantize in a separate build
-  environment and deploy only the generated `.onnx`.
+- **`[all]` now includes `onnx`.** No modelops extra pulls `optimum`, so
+  `uv sync --all-extras` keeps resolving `transformers` to the 5.x series and
+  the GenAI suite stays exercised against it in CI.
+
+- **`export_torch_to_onnx` checks for `onnxscript` up front.** From torch 2.9
+  on, `torch.onnx.export` defaults to the dynamo exporter, which imports
+  `onnxscript` lazily — a missing install surfaced as a `ModuleNotFoundError`
+  raised from inside torch, midway through the export. It now raises the same
+  actionable `ImportError` every other optional dependency in this module
+  produces. `onnxscript` joined the `dev` group so CI exercises the path.
 
 ## [0.172.1] — 2026-07-30
 

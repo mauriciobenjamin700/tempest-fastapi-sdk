@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import builtins
 import importlib.util
+from typing import Any
 
 import pytest
 
@@ -18,8 +20,37 @@ class TestResolvers:
     def test_fixed_device(self) -> None:
         assert resolve_audio_device("cpu") == "cpu"
 
-    def test_auto_without_torch_is_cpu(self) -> None:
-        # torch absent in CI -> cpu
+    def test_auto_without_torch_is_cpu(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No torch means no way to see a GPU, so ``auto`` lands on cpu.
+
+        The import is blocked rather than left to the host: asserting the bare
+        outcome would pass only on a CPU-only machine and fail on every
+        developer box with a working CUDA install.
+        """
+        real_import = builtins.__import__
+
+        def no_torch(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name == "torch" or name.startswith("torch."):
+                raise ImportError("no module named torch")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", no_torch)
+        assert resolve_audio_device("auto") == "cpu"
+
+    def test_auto_with_a_cuda_gpu_is_cuda(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A visible CUDA device wins ``auto``."""
+        torch = pytest.importorskip("torch")
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        assert resolve_audio_device("auto") == "cuda"
+
+    def test_auto_with_torch_but_no_gpu_is_cpu(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Torch installed but no device visible still resolves to cpu."""
+        torch = pytest.importorskip("torch")
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
         assert resolve_audio_device("auto") == "cpu"
 
     def test_compute_type_auto(self) -> None:

@@ -11,8 +11,15 @@ GPU e **energia** na mesma janela — o número de "quão rápido" e o de
 ```bash
 uv add "tempest-fastapi-sdk[modelops]"        # só benchmark
 uv add "tempest-fastapi-sdk[modelops-onnx]"   # + ONNX, .ort, quantização
-uv add "tempest-fastapi-sdk[modelops-quant]"  # + HuggingFace via optimum
 ```
+
+!!! check "Nada aqui limita a sua versão de `transformers`"
+    Dois extras, e nenhum deles carrega `optimum` — que hoje declara
+    `transformers<4.58`. O caminho HuggingFace (otimizar e quantizar um
+    export) roda sobre o `onnxruntime` do `[modelops-onnx]`, então o seu
+    serviço fica livre para usar a série 5.x. O único passo que exige
+    `optimum` é gerar o export, e ele vira um comando `uvx` descartável —
+    veja "HuggingFace: otimizar e quantizar um export".
 
 !!! info "Submódulo, não top-level"
     Como `genai`/`vision`, isso é ferramental pesado e fica no submódulo:
@@ -348,33 +355,48 @@ print(result.notes)
     antes de subir. Quando uma camada específica desaba, use
     `nodes_to_exclude=` pra deixar só ela em float.
 
-## HuggingFace: exportar, otimizar, quantizar
+## HuggingFace: otimizar e quantizar um export
 
 ```bash
-uv add "tempest-fastapi-sdk[modelops-quant]"
+uv add "tempest-fastapi-sdk[modelops-onnx]"
 ```
 
-O caminho completo, do Hub ao artefato int8:
+### Passo 0: o export sai do SDK, de propósito
+
+Transformar uma arquitetura arbitrária em ONNX exige uma descrição de grafo
+por arquitetura, e o único registro mantido disso vive no `optimum` da
+HuggingFace — que declara `transformers<4.58`. Um teto desses viaja para
+**todo mundo** que instala o SDK, então ele não entra aqui. O export vira um
+passo de build que você roda num ambiente descartável:
+
+```bash
+uvx --from "optimum[onnxruntime]" optimum-cli export onnx \
+    --model distilbert-base-uncased --task text-classification \
+    exports/distilbert
+```
+
+!!! tip "Por que `uvx` e não um extra"
+    O `uvx` resolve o `optimum` num ambiente temporário e joga fora depois.
+    O teto de `transformers` fica lá dentro e nunca toca o seu projeto — você
+    continua livre para rodar `transformers` 5.x em runtime. É a mesma
+    capacidade, sem o custo de amarrar o pacote.
+
+### Passo 1 e 2: fundir e quantizar
+
+O diretório que aquele comando escreveu é a entrada das duas funções abaixo.
+Nenhuma delas toca no `optimum`: ambas rodam sobre o `onnxruntime` que o
+`[modelops-onnx]` já traz.
 
 ```python
-from tempest_fastapi_sdk.modelops import (
-    export_hf_to_onnx,
-    optimize_hf_onnx,
-    quantize_hf_onnx,
-)
+from tempest_fastapi_sdk.modelops import optimize_hf_onnx, quantize_hf_onnx
 
-exported = export_hf_to_onnx(
-    "distilbert-base-uncased",
-    "exports/distilbert",
-    task="text-classification",
-)
 optimized = optimize_hf_onnx("exports/distilbert", "exports/distilbert-o2")
 quantized = quantize_hf_onnx(
     "exports/distilbert-o2",
     "exports/distilbert-int8",
     target="avx512_vnni",
 )
-print(exported.output_size_mb, quantized.compression_ratio)
+print(optimized.size_ratio, quantized.compression_ratio)
 ```
 
 `optimize_hf_onnx` é **lossless em precisão** nos níveis `O1`/`O2`: funde
@@ -382,17 +404,48 @@ atenção, layer norm e afins em kernels únicos sem mudar o que o grafo
 calcula. `O3` troca por uma GELU aproximada e `O4` converte pra float16 —
 esses dois mexem nos números, e `O4` é só GPU.
 
-`target` escolhe o conjunto de instruções: `arm64` (celular, Raspberry Pi,
-Apple silicon, Graviton), `avx2`, `avx512`, `avx512_vnni` (o caminho int8
-mais rápido em x86) ou `tensorrt`. Escolher o errado ainda produz um modelo
-válido, só que lento.
+O tipo de fusão sai do `config.json` do export. Arquitetura fora do mapa é
+**reportada, nunca chutada** — fundir um grafo com a forma errada gera um
+modelo que carrega e devolve números errados. Quando isso acontecer, escolha
+você:
 
-!!! warning "`optimum` prende `transformers` abaixo da 5.x"
-    O `optimum-onnx` de hoje declara `transformers<5`. Instalar
-    `[modelops-quant]` junto de `[genai]` no mesmo ambiente resolve
-    `transformers` para a série 4.x. Se o seu serviço precisa de
-    `transformers` 5.x em runtime, mantenha a quantização num ambiente de
-    build separado e faça o deploy só do `.onnx` gerado.
+```python
+optimized = optimize_hf_onnx(
+    "exports/minha-arquitetura",
+    "exports/minha-arquitetura-o2",
+    model_type="bert",
+)
+```
+
+`model_type=` também serve para otimizar um grafo solto, sem `config.json` do
+lado.
+
+!!! note "Export com vários grafos"
+    Modelos encoder-decoder exportam vários `.onnx` no mesmo diretório
+    (`encoder_model.onnx`, `decoder_model.onnx`…). Nesse caso passe
+    `file_name=` para escolher qual processar — cada um vai separado. Sem
+    isso as funções levantam `ValueError` listando o que encontraram, em vez
+    de pegar um ao acaso.
+
+`target` escolhe o conjunto de instruções: `arm64` (celular, Raspberry Pi,
+Apple silicon, Graviton), `avx2`, `avx512` ou `avx512_vnni` (o caminho int8
+mais rápido em x86). Escolher o errado ainda produz um modelo válido, só que
+lento.
+
+!!! info "`reduce_range` só existe onde faz sentido"
+    AVX2 e AVX512 sem VNNI podem saturar acumulando int8, e cair para 7 bits
+    evita isso. ARM64 e VNNI não têm o problema — ali `reduce_range=True`
+    seria só perda de acurácia, então é recusado com `ValueError` em vez de
+    aceito e ignorado.
+
+Não há alvo `tensorrt`: aquele perfil é de quantização **estática**, e
+`quantize_hf_onnx` é o caminho dinâmico. Para um artefato TensorRT use
+`quantize_onnx_static` (a seção "Estática: com amostras representativas"
+acima) com os seus próprios dados de calibração.
+
+Os dois passos copiam os arquivos não-grafo do export (`config.json`,
+tokenizer, preprocessador) para o diretório de saída, então o resultado
+continua carregável por `AutoTokenizer`.
 
 Para modelos generativos que continuam em PyTorch existe o caminho
 bitsandbytes, que salva os pesos int4/int8 recarregáveis por
@@ -415,9 +468,9 @@ Precisa de `[genai]` + `[genai-quant]` e de uma GPU CUDA: o bitsandbytes
 não tem kernel de CPU pra conversão.
 
 !!! danger "`trust_remote_code=True` executa Python remoto"
-    `export_hf_to_onnx` e `quantize_hf_bnb` aceitam a flag porque algumas
-    arquiteturas do Hub exigem. Ela roda código arbitrário do repositório
-    remoto na sua máquina — só ligue para um repositório que você auditou.
+    `quantize_hf_bnb` aceita a flag porque algumas arquiteturas do Hub
+    exigem. Ela roda código arbitrário do repositório remoto na sua máquina —
+    só ligue para um repositório que você auditou.
 
 ## Levar pro edge: `.onnx` para `.ort`
 
@@ -579,8 +632,8 @@ tempest model bench models/classify.onnx --json > bench.json
   Pareto; `quality` é sua, o SDK não inventa.
 - Quantize dinâmico primeiro, estático quando tiver dados de calibração —
   e **re-meça a acurácia** nos dois casos.
-- Para HuggingFace: `export_hf_to_onnx` → `optimize_hf_onnx` →
-  `quantize_hf_onnx`, ciente do teto de `transformers` que o `optimum`
-  impõe.
+- Para HuggingFace: exporte com `optimum-cli` via `uvx` (fora do projeto,
+  para o teto de `transformers` não entrar), depois `optimize_hf_onnx` →
+  `quantize_hf_onnx` com o `onnxruntime` que você já tem.
 - Para edge: `.onnx` → `.ort` com `target_platform` e o
   `.required_operators.config` do build mínimo.

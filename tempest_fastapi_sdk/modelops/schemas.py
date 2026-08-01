@@ -118,24 +118,25 @@ class QuantizationBackend(BaseStrEnum):
       quantized on the fly. No calibration data needed.
     * ``ONNXRUNTIME_STATIC`` — weights *and* activations quantized using
       calibration samples. Faster, needs representative inputs.
-    * ``OPTIMUM_ONNX`` — HuggingFace `optimum` driving ONNX Runtime over a
-      transformers model directory.
+    * ``ONNXRUNTIME_TRANSFORMERS`` — the same dynamic quantizer, applied to a
+      transformers export directory with the weight type and saturation
+      settings that suit transformer graphs.
     * ``BITSANDBYTES`` — transformers + bitsandbytes int8/int4 weights, kept
       in the PyTorch format.
     """
 
     ONNXRUNTIME_DYNAMIC = "onnxruntime_dynamic"
     ONNXRUNTIME_STATIC = "onnxruntime_static"
-    OPTIMUM_ONNX = "optimum_onnx"
+    ONNXRUNTIME_TRANSFORMERS = "onnxruntime_transformers"
     BITSANDBYTES = "bitsandbytes"
 
 
 class HFOptimizationLevel(BaseStrEnum):
-    """`optimum` graph-optimization preset for a transformers ONNX model.
+    """Graph-optimization preset for a transformers ONNX export.
 
     * ``O1`` — basic general optimizations.
     * ``O2`` — ``O1`` plus transformers-specific fusions (attention, layer
-      norm). The usual pick.
+      norm). The usual pick, and the last one that is precision-preserving.
     * ``O3`` — ``O2`` plus GELU approximation (small numeric drift).
     * ``O4`` — ``O3`` plus float16 conversion. **GPU only.**
     """
@@ -147,7 +148,7 @@ class HFOptimizationLevel(BaseStrEnum):
 
 
 class HFQuantizationTarget(BaseStrEnum):
-    """Instruction set the `optimum` quantization config targets.
+    """CPU instruction set a transformers export is quantized for.
 
     Picking the wrong one still produces a valid model, just a slower one —
     the fused integer kernels are only selected when the CPU supports them.
@@ -156,14 +157,17 @@ class HFQuantizationTarget(BaseStrEnum):
     * ``AVX2`` — any x86-64 since ~2013.
     * ``AVX512`` — Skylake-SP and newer server CPUs.
     * ``AVX512_VNNI`` — Cascade Lake and newer; the fastest int8 path.
-    * ``TENSORRT`` — NVIDIA GPUs through the TensorRT provider.
+
+    There is no TensorRT member: that target is static-quantization only, and
+    :func:`~tempest_fastapi_sdk.modelops.quantize_hf_onnx` is a dynamic path.
+    Use :func:`~tempest_fastapi_sdk.modelops.quantize_onnx_static` with your
+    own calibration data for a TensorRT-bound artifact.
     """
 
     ARM64 = "arm64"
     AVX2 = "avx2"
     AVX512 = "avx512"
     AVX512_VNNI = "avx512_vnni"
-    TENSORRT = "tensorrt"
 
 
 class EnergySource(BaseStrEnum):

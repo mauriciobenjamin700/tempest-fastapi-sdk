@@ -7,6 +7,7 @@ installed ``onnx`` / ``onnxruntime`` — a mock would agree with itself.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +70,36 @@ def bigger_onnx(tmp_path: Path) -> Path:
     path = tmp_path / "bigger.onnx"
     _build_gemm_model(path, features=8, units=512)
     return path
+
+
+@pytest.fixture
+def hf_export_dir(tmp_path: Path) -> Path:
+    """Return a directory shaped like an ONNX export of a transformers model.
+
+    An export is a graph plus the files a runtime needs to use it. The graph
+    here is the same tiny Gemm the other fixtures build — the fusion passes
+    find nothing to fuse in it, which is exactly what we want: the tests are
+    checking our plumbing into ONNX Runtime, not ONNX Runtime's fusions.
+
+    Returns:
+        Path: Directory holding ``model.onnx``, ``config.json`` and a
+        tokenizer sidecar.
+    """
+    pytest.importorskip("onnx")
+    export = tmp_path / "export"
+    _build_gemm_model(export / "model.onnx", features=8, units=64)
+    (export / "config.json").write_text(
+        json.dumps(
+            {
+                "model_type": "distilbert",
+                "num_attention_heads": 12,
+                "hidden_size": 768,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (export / "tokenizer.json").write_text("{}", encoding="utf-8")
+    return export
 
 
 class FakeInputSpec:

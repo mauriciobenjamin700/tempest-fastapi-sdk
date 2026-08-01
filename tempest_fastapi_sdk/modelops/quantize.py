@@ -9,9 +9,9 @@ get depends entirely on which path you take, so pick deliberately:
   dynamic, faster still, and usually more accurate on models that dynamic
   quantization degrades.
 * :func:`quantize_hf_onnx` — needs a transformers ONNX export. Dynamic int8
-  with transformers-aware operator selection.
+  with the operator set and per-ISA settings that suit transformer graphs.
 * :func:`optimize_hf_onnx` — needs a transformers ONNX export. Fusion only,
-  so no precision is lost at all.
+  so no precision is lost at ``O1``/``O2``.
 * :func:`quantize_hf_bnb` — needs a GPU. Int8/int4 weights that stay in the
   PyTorch format, for generation.
 
@@ -21,14 +21,32 @@ tolerates it. Benchmark the quantized artifact with
 :func:`~tempest_fastapi_sdk.modelops.benchmark_onnx` and re-run your
 evaluation set before shipping.
 
-The ONNX functions need the ``[modelops-onnx]`` extra; the HuggingFace ONNX
-ones need ``[modelops-quant]``; :func:`quantize_hf_bnb` needs ``[genai]``
+Every ONNX function here — raw graphs and transformers exports alike — needs
+only the ``[modelops-onnx]`` extra. :func:`quantize_hf_bnb` needs ``[genai]``
 plus ``[genai-quant]``.
+
+**Producing the transformers export is deliberately out of scope.** Turning
+an arbitrary architecture into ONNX needs a per-architecture graph
+description, and the only maintained registry of those lives in HuggingFace
+`optimum`, which pins ``transformers`` to an upper bound. Depending on it
+would propagate that cap to every consumer of this SDK, so the export stays a
+one-off build step you run in a throwaway environment::
+
+    uvx --from "optimum[onnxruntime]" optimum-cli export onnx \\
+        --model distilbert-base-uncased --task text-classification \\
+        exports/distilbert
+
+Point :func:`optimize_hf_onnx` and :func:`quantize_hf_onnx` at the directory
+that command writes. Everything after the export runs on the ``onnxruntime``
+this SDK already depends on, with no bound on ``transformers`` at all.
 """
 
 from __future__ import annotations
 
+import json
+import shutil
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -91,24 +109,197 @@ def _require_onnx_quantization() -> Any:
     return quantization
 
 
-def _require_optimum() -> Any:
-    """Import ``optimum.onnxruntime`` or raise a helpful error.
+_ORT_FUSION_MODEL_TYPES: dict[str, str] = {
+    "albert": "bert",
+    "bart": "bart",
+    "bert": "bert",
+    "big_bird": "bert",
+    "bigbird_pegasus": "bart",
+    "blenderbot": "bert",
+    "bloom": "gpt2",
+    "camembert": "bert",
+    "clip": "clip",
+    "codegen": "gpt2",
+    "deberta": "bert",
+    "deberta-v2": "bert",
+    "dinov2": "vit",
+    "distilbert": "bert",
+    "electra": "bert",
+    "gpt2": "gpt2",
+    "gpt_bigcode": "gpt2",
+    "gpt_neo": "gpt2",
+    "gpt_neox": "gpt2",
+    "gptj": "gpt2",
+    "granite": "gpt2",
+    "llama": "gpt2",
+    "longt5": "bert",
+    "m2m_100": "bart",
+    "marian": "bart",
+    "mbart": "bart",
+    "mistral": "gpt2",
+    "modernbert": "bert",
+    "mpnet": "bert",
+    "mt5": "bart",
+    "nystromformer": "bert",
+    "pegasus": "bert",
+    "pix2struct": "vit",
+    "roberta": "bert",
+    "segformer": "vit",
+    "t5": "bert",
+    "vit": "vit",
+    "whisper": "bart",
+    "xlm-roberta": "bert",
+}
+"""HuggingFace ``model_type`` mapped to an ONNX Runtime fusion model type.
+
+ONNX Runtime's fusion registry keys off its own coarser set of graph shapes,
+not off HuggingFace architecture names: every BERT-shaped encoder fuses as
+``"bert"``, every decoder-only stack as ``"gpt2"``, every encoder-decoder as
+``"bart"``. The mapping is not derivable — ``t5`` fusing as ``"bert"`` rather
+than ONNX Runtime's own ``"t5"`` is an empirical choice, not a naming rule.
+
+Ported from `optimum`'s ``ORTConfigManager._conf``
+(``optimum/onnxruntime/utils.py``), which is where that empirical knowledge
+was accumulated. ``tests/modelops/test_quantize.py`` asserts every value here
+still exists in the installed runtime's registry, so a rename upstream fails
+the suite instead of silently falling back.
+
+An architecture absent from this table is reported, never guessed: fusing a
+graph as the wrong shape produces a model that loads and returns wrong
+numbers. Pass ``model_type=`` explicitly to override.
+"""
+
+
+@dataclass(frozen=True)
+class _OptimizationSpec:
+    """One graph-optimization preset, resolved to ONNX Runtime arguments.
+
+    Attributes:
+        opt_level (int): ONNX Runtime ``opt_level`` — 1 is basic, 2 adds the
+            extended graph transformations.
+        transformers_specific (bool): Whether to run the transformer fusions
+            on top of the runtime's own passes. Maps to the inverse of
+            ``only_onnxruntime``.
+        gelu_approximation (bool): Swap GELU for its tanh approximation.
+            Faster, and it moves the numbers.
+        fp16 (bool): Convert the graph to float16 after fusing.
+    """
+
+    opt_level: int
+    transformers_specific: bool
+    gelu_approximation: bool
+    fp16: bool
+
+
+_OPTIMIZATION_SPECS: dict[HFOptimizationLevel, _OptimizationSpec] = {
+    HFOptimizationLevel.O1: _OptimizationSpec(
+        opt_level=1,
+        transformers_specific=False,
+        gelu_approximation=False,
+        fp16=False,
+    ),
+    HFOptimizationLevel.O2: _OptimizationSpec(
+        opt_level=2,
+        transformers_specific=True,
+        gelu_approximation=False,
+        fp16=False,
+    ),
+    HFOptimizationLevel.O3: _OptimizationSpec(
+        opt_level=2,
+        transformers_specific=True,
+        gelu_approximation=True,
+        fp16=False,
+    ),
+    HFOptimizationLevel.O4: _OptimizationSpec(
+        opt_level=2,
+        transformers_specific=True,
+        gelu_approximation=True,
+        fp16=True,
+    ),
+}
+"""The ``O1`` to ``O4`` presets.
+
+Ported from `optimum`'s ``AutoOptimizationConfig._LEVELS``
+(``optimum/onnxruntime/configuration.py``).
+
+Note that ``O3`` and ``O4`` share ``opt_level=2`` with ``O2``: the escalation
+past ``O2`` is not a deeper runtime level, it is opting into transformations
+that change the computed numbers.
+"""
+
+
+@dataclass(frozen=True)
+class _IsaQuantizationSpec:
+    """Dynamic-quantization settings for one target instruction set.
+
+    Attributes:
+        weight_type (QuantWeightType): Integer type the weights become.
+        tunable_reduce_range (bool): Whether ``reduce_range`` is meaningful
+            on this ISA. Only the pre-VNNI x86 targets saturate, so it is
+            rejected elsewhere rather than silently costing accuracy.
+    """
+
+    weight_type: QuantWeightType
+    tunable_reduce_range: bool
+
+
+_ISA_QUANTIZATION_SPECS: dict[HFQuantizationTarget, _IsaQuantizationSpec] = {
+    HFQuantizationTarget.ARM64: _IsaQuantizationSpec(
+        weight_type=QuantWeightType.INT8,
+        tunable_reduce_range=False,
+    ),
+    HFQuantizationTarget.AVX2: _IsaQuantizationSpec(
+        weight_type=QuantWeightType.UINT8,
+        tunable_reduce_range=True,
+    ),
+    HFQuantizationTarget.AVX512: _IsaQuantizationSpec(
+        weight_type=QuantWeightType.INT8,
+        tunable_reduce_range=True,
+    ),
+    HFQuantizationTarget.AVX512_VNNI: _IsaQuantizationSpec(
+        weight_type=QuantWeightType.INT8,
+        tunable_reduce_range=False,
+    ),
+}
+"""Per-ISA weight types, ported from `optimum`'s ``AutoQuantizationConfig``.
+
+Two things are worth knowing about this table, because both look like
+mistakes and are not:
+
+* ``AVX2`` takes **unsigned** int8 weights while the others take signed. That
+  is what `optimum` selects, and it follows the kernels AVX2 actually has.
+* ``reduce_range`` is exposed only on ``AVX2`` and ``AVX512``. Those lack VNNI,
+  so their int8 accumulation can saturate and dropping to 7 bits avoids it.
+  ARM64 and VNNI do not have the problem, and there ``reduce_range`` would be
+  pure accuracy loss — so it is refused instead of accepted and ignored.
+
+Activation types are absent on purpose: dynamic quantization derives
+activation ranges at inference, so ONNX Runtime's ``quantize_dynamic`` takes
+no activation dtype at all.
+"""
+
+
+def _require_ort_transformers() -> Any:
+    """Import ``onnxruntime.transformers.optimizer`` or raise a helpful error.
+
+    This ships inside the ``onnxruntime`` wheel — it is the same fusion engine
+    `optimum` delegates to — so the ``[modelops-onnx]`` extra is all it needs.
 
     Returns:
-        Any: The ``optimum.onnxruntime`` module.
+        Any: The ``onnxruntime.transformers.optimizer`` module.
 
     Raises:
-        ImportError: When the ``[modelops-quant]`` extra is not installed.
+        ImportError: When the ``[modelops-onnx]`` extra is not installed.
     """
     try:
-        from optimum import onnxruntime as optimum_ort
+        from onnxruntime.transformers import optimizer
     except ImportError as exc:
         raise ImportError(
-            "HuggingFace optimization requires the optional "
-            "[modelops-quant] extra (optimum + onnxruntime). Install with: "
-            "pip install tempest-fastapi-sdk[modelops-quant]",
+            "transformers graph optimization requires the optional "
+            "[modelops-onnx] extra (onnx + onnxruntime). Install with: "
+            "pip install tempest-fastapi-sdk[modelops-onnx]",
         ) from exc
-    return optimum_ort
+    return optimizer
 
 
 def _resolve_enum(module: Any, container: str, attribute: str, label: str) -> Any:
@@ -422,76 +613,195 @@ def _quantization_result(
     )
 
 
-def export_hf_to_onnx(
-    model_id: str,
-    output_dir: str | Path,
-    *,
-    task: str = "auto",
-    opset: int | None = None,
-    device: str = "cpu",
-    trust_remote_code: bool = False,
-    cache_dir: str | Path | None = None,
-) -> ExportResult:
-    """Export a HuggingFace model to ONNX with `optimum`.
+_CONFIG_HEAD_KEYS: tuple[str, ...] = ("num_attention_heads", "n_head", "num_heads")
+"""Keys a HuggingFace config may use for the attention-head count."""
 
-    The output is a *directory*: the graph plus the tokenizer and config
-    files the runtime needs. Encoder-decoder models emit several graphs.
+_CONFIG_HIDDEN_KEYS: tuple[str, ...] = ("hidden_size", "n_embd", "d_model")
+"""Keys a HuggingFace config may use for the hidden size."""
+
+_EXTERNAL_DATA_THRESHOLD_MB: float = 1900.0
+"""Graph size above which tensors must be written outside the protobuf.
+
+Protobuf caps a single message at 2 GB. A graph near that ceiling cannot be
+serialized inline, so the writer switches to external data. This is a format
+limit, not a tuning knob.
+"""
+
+
+@dataclass(frozen=True)
+class _FusionArchitecture:
+    """What ONNX Runtime's fusion pass needs to know about a model.
+
+    Attributes:
+        model_type (str): Fusion model type, e.g. ``"bert"``.
+        num_heads (int): Attention-head count, or ``0`` to let the runtime
+            infer it from the graph.
+        hidden_size (int): Hidden size, or ``0`` to let the runtime infer it.
+    """
+
+    model_type: str
+    num_heads: int
+    hidden_size: int
+
+
+def _resolve_export_graph(export_dir: Path, file_name: str | None) -> Path:
+    """Pick which ONNX graph inside a transformers export to work on.
 
     Args:
-        model_id (str): Hub id or a local directory.
-        output_dir (str | Path): Directory to write the export into.
-        task (str): Task to export for (``"text-classification"``,
-            ``"feature-extraction"``, ``"token-classification"``…).
-            ``"auto"`` infers it from the model config, which is right for
-            most models and wrong for the ones with several heads.
-        opset (int | None): ONNX opset. Defaults to `optimum`'s minimum for
-            the architecture.
-        device (str): Device to trace on. ``"cuda"`` is faster for large
-            models but requires the weights to fit in VRAM.
-        trust_remote_code (bool): Allow executing custom modelling code from
-            the Hub repository. **This runs arbitrary Python from a remote
-            source** — only enable it for a repository you audited.
-        cache_dir (str | Path | None): HuggingFace cache directory.
+        export_dir (Path): Directory an ONNX export wrote.
+        file_name (str | None): Explicit graph to use. Required when the
+            export holds more than one.
 
     Returns:
-        ExportResult: The written directory and its total size.
+        Path: The chosen graph file.
 
     Raises:
-        ImportError: When the ``[modelops-quant]`` extra is missing.
-
-    Example:
-
-        >>> from tempest_fastapi_sdk.modelops import export_hf_to_onnx
-        >>> result = export_hf_to_onnx(
-        ...     "distilbert-base-uncased",
-        ...     "exports/distilbert",
-        ...     task="text-classification",
-        ... )
-        >>> result.output_path
+        FileNotFoundError: When the directory, or the named graph, is missing.
+        ValueError: When the export holds several graphs and none was named.
     """
-    _require_optimum()
-    from optimum.exporters.onnx import main_export
+    if not export_dir.is_dir():
+        raise FileNotFoundError(f"export directory not found: {export_dir}")
+    if file_name is not None:
+        graph = export_dir / file_name
+        if not graph.is_file():
+            raise FileNotFoundError(f"graph not found in export: {graph}")
+        return graph
+    graphs = sorted(export_dir.glob("*.onnx"))
+    if not graphs:
+        raise FileNotFoundError(f"no .onnx graph in export directory: {export_dir}")
+    if len(graphs) > 1:
+        names = ", ".join(graph.name for graph in graphs)
+        raise ValueError(
+            f"export holds {len(graphs)} graphs ({names}); pass file_name= to "
+            "pick one. Encoder-decoder exports split into several graphs, and "
+            "each has to be processed on its own"
+        )
+    return graphs[0]
 
-    destination = Path(output_dir)
-    destination.mkdir(parents=True, exist_ok=True)
-    main_export(
-        model_name_or_path=model_id,
-        output=str(destination),
-        task=task,
-        opset=opset,
-        device=device,
-        trust_remote_code=trust_remote_code,
-        cache_dir=str(cache_dir) if cache_dir is not None else None,
+
+def _resolve_fusion_architecture(
+    export_dir: Path,
+    model_type: str | None,
+    supported_types: Mapping[str, Any],
+) -> _FusionArchitecture:
+    """Read a transformers export's config and map it onto ONNX Runtime's registry.
+
+    Head count and hidden size are optional: ONNX Runtime treats ``0`` as
+    "infer it from the graph", which is what a config missing those keys gets.
+    The model type is not optional — fusing a graph as the wrong shape yields a
+    model that loads and computes the wrong thing — so an unknown architecture
+    raises instead of falling back to a default.
+
+    Args:
+        export_dir (Path): Directory holding ``config.json``.
+        model_type (str | None): Override, skipping the config lookup. Must
+            name a type the installed runtime knows.
+        supported_types (Mapping[str, Any]): The runtime's fusion registry.
+
+    Returns:
+        _FusionArchitecture: Resolved fusion arguments.
+
+    Raises:
+        FileNotFoundError: When ``config.json`` is missing and no override was
+            given.
+        ValueError: When the config is unreadable, or the architecture is not
+            in the mapping, or the override is unknown to the runtime.
+    """
+    if model_type is not None and model_type not in supported_types:
+        known = ", ".join(sorted(supported_types))
+        raise ValueError(
+            f"model_type={model_type!r} is not a fusion type this onnxruntime "
+            f"knows; supported: {known}"
+        )
+
+    config_path = export_dir / "config.json"
+    config: dict[str, Any] = {}
+    if config_path.is_file():
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"could not read {config_path}: {exc}") from exc
+    elif model_type is None:
+        raise FileNotFoundError(
+            f"{config_path} not found: optimize/quantize expect the directory "
+            "an ONNX export wrote, config.json included. Pass model_type= to "
+            "work on a bare graph instead"
+        )
+
+    if model_type is None:
+        declared = config.get("model_type")
+        if not isinstance(declared, str):
+            raise ValueError(
+                f"{config_path} has no string 'model_type'; pass model_type= explicitly"
+            )
+        if declared not in _ORT_FUSION_MODEL_TYPES:
+            known = ", ".join(sorted(_ORT_FUSION_MODEL_TYPES))
+            raise ValueError(
+                f"no fusion mapping for architecture {declared!r}. Fusing it as "
+                "the wrong graph shape would produce a model that loads and "
+                f"returns wrong numbers, so it is not guessed. Mapped "
+                f"architectures: {known}. Pass model_type= to choose a fusion "
+                "type yourself, or skip optimization and quantize directly"
+            )
+        model_type = _ORT_FUSION_MODEL_TYPES[declared]
+
+    return _FusionArchitecture(
+        model_type=model_type,
+        num_heads=_first_int(config, _CONFIG_HEAD_KEYS),
+        hidden_size=_first_int(config, _CONFIG_HIDDEN_KEYS),
     )
-    output_size = size_mb(destination)
-    return ExportResult(
-        source_path=model_id,
-        output_path=str(destination),
-        format=ModelFormat.ONNX,
-        output_size_mb=output_size,
-        size_ratio=1.0,
-        opset=opset,
-    )
+
+
+def _first_int(config: Mapping[str, Any], keys: Sequence[str]) -> int:
+    """Read the first key holding an int, or ``0`` when none does.
+
+    Args:
+        config (Mapping[str, Any]): Parsed HuggingFace config.
+        keys (Sequence[str]): Candidate keys, most canonical first.
+
+    Returns:
+        int: The value found, or ``0`` meaning "let the runtime infer it".
+    """
+    for key in keys:
+        value = config.get(key)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+    return 0
+
+
+def _copy_export_sidecars(source: Path, destination: Path) -> None:
+    """Copy an export's non-graph files next to the processed graph.
+
+    An ONNX export directory is a graph plus the files a runtime needs to use
+    it: ``config.json``, the tokenizer, preprocessor settings. Processing the
+    graph without carrying those forward leaves an output directory that
+    ``AutoTokenizer`` cannot load, so they come along.
+
+    Args:
+        source (Path): Original export directory.
+        destination (Path): Directory the processed graph was written to.
+    """
+    for entry in sorted(source.iterdir()):
+        if not entry.is_file() or entry.suffix in {".onnx", ".onnx_data"}:
+            continue
+        target = destination / entry.name
+        if not target.exists():
+            shutil.copy2(entry, target)
+
+
+def _use_external_data(graph: Path, override: bool | None) -> bool:
+    """Decide whether the output graph needs external tensor storage.
+
+    Args:
+        graph (Path): Input graph, used to size the decision.
+        override (bool | None): Explicit choice, or ``None`` to size it.
+
+    Returns:
+        bool: Whether to write tensors outside the protobuf.
+    """
+    if override is not None:
+        return override
+    return size_mb(graph) > _EXTERNAL_DATA_THRESHOLD_MB
 
 
 def optimize_hf_onnx(
@@ -501,31 +811,50 @@ def optimize_hf_onnx(
     level: HFOptimizationLevel = HFOptimizationLevel.O2,
     for_gpu: bool = False,
     file_name: str | None = None,
+    model_type: str | None = None,
+    use_external_data_format: bool | None = None,
 ) -> ExportResult:
-    """Apply `optimum`'s graph fusions to an exported transformers model.
+    """Apply ONNX Runtime's transformer fusions to an exported model.
 
-    Unlike quantization this is **lossless in precision** at ``O1``/``O2``:
-    it fuses attention, layer norm and friends into single kernels without
-    changing what the graph computes. ``O3`` swaps in an approximate GELU
-    and ``O4`` converts to float16, so those two do move the numbers.
+    Unlike quantization this is **lossless in precision** at ``O1``/``O2``: it
+    fuses attention, layer norm and friends into single kernels without
+    changing what the graph computes. ``O3`` swaps in an approximate GELU and
+    ``O4`` converts to float16, so those two do move the numbers.
+
+    The fusion engine is ``onnxruntime.transformers``, which ships inside the
+    ``onnxruntime`` wheel — no HuggingFace `optimum` involved, and therefore no
+    bound on your ``transformers`` version. See this module's docstring for how
+    to produce the export in the first place.
 
     Args:
-        model_dir (str | Path): Directory produced by
-            :func:`export_hf_to_onnx`.
-        output_dir (str | Path): Where to write the optimized model.
+        model_dir (str | Path): Directory an ONNX export wrote — the graph plus
+            ``config.json``.
+        output_dir (str | Path): Where to write the optimized model. The
+            export's non-graph files are copied along.
         level (HFOptimizationLevel): Optimization preset. ``O4`` requires
             ``for_gpu=True``.
         for_gpu (bool): Target GPU kernels. A model optimized for GPU is not
             portable back to CPU.
-        file_name (str | None): Specific graph inside ``model_dir``, for
-            exports that contain more than one.
+        file_name (str | None): Specific graph inside ``model_dir``. Required
+            when the export holds more than one.
+        model_type (str | None): Override the fusion type instead of deriving
+            it from ``config.json``. Use this for an architecture the mapping
+            does not cover, or to optimize a bare graph with no config beside
+            it.
+        use_external_data_format (bool | None): Write tensors outside the
+            protobuf. ``None`` decides by size, which is what a model near the
+            2 GB protobuf ceiling needs.
 
     Returns:
         ExportResult: The optimized directory and its size.
 
     Raises:
-        ImportError: When the ``[modelops-quant]`` extra is missing.
-        ValueError: When ``O4`` is requested without ``for_gpu``.
+        ImportError: When the ``[modelops-onnx]`` extra is missing.
+        ValueError: When ``O4`` is requested without ``for_gpu``, when the
+            export holds several graphs and none was named, or when the
+            architecture has no fusion mapping.
+        FileNotFoundError: When the export directory or its ``config.json`` is
+            missing.
 
     Example:
 
@@ -535,8 +864,8 @@ def optimize_hf_onnx(
         ... )
         >>> result.output_path
     """
-    optimum_ort = _require_optimum()
-    from optimum.onnxruntime.configuration import AutoOptimizationConfig
+    optimizer = _require_ort_transformers()
+    from onnxruntime.transformers.fusion_options import FusionOptions
 
     level = HFOptimizationLevel(level)
     if level is HFOptimizationLevel.O4 and not for_gpu:
@@ -546,19 +875,36 @@ def optimize_hf_onnx(
         )
 
     source = Path(model_dir)
+    graph = _resolve_export_graph(source, file_name)
+    architecture = _resolve_fusion_architecture(
+        source, model_type, optimizer.MODEL_TYPES
+    )
+    spec = _OPTIMIZATION_SPECS[level]
+
+    options = FusionOptions(architecture.model_type)
+    options.enable_gelu_approximation = spec.gelu_approximation
+
+    optimized = optimizer.optimize_model(
+        str(graph),
+        architecture.model_type,
+        architecture.num_heads,
+        architecture.hidden_size,
+        optimization_options=options,
+        opt_level=spec.opt_level,
+        use_gpu=for_gpu,
+        only_onnxruntime=not spec.transformers_specific,
+    )
+    if spec.fp16:
+        optimized.convert_float_to_float16(keep_io_types=True)
+
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
+    optimized.save_model_to_file(
+        str(destination / graph.name),
+        use_external_data_format=_use_external_data(graph, use_external_data_format),
+    )
+    _copy_export_sidecars(source, destination)
 
-    optimizer = optimum_ort.ORTOptimizer.from_pretrained(
-        str(source),
-        file_names=[file_name] if file_name else None,
-    )
-    optimizer.optimize(
-        save_dir=str(destination),
-        optimization_config=getattr(AutoOptimizationConfig, level.value)(
-            for_gpu=for_gpu
-        ),
-    )
     source_size = size_mb(source)
     output_size = size_mb(destination)
     return ExportResult(
@@ -577,13 +923,16 @@ def quantize_hf_onnx(
     *,
     target: HFQuantizationTarget = HFQuantizationTarget.AVX512_VNNI,
     per_channel: bool = False,
+    reduce_range: bool = False,
+    symmetric_weights: bool = True,
     file_name: str | None = None,
 ) -> QuantizationResult:
-    """Dynamically quantize an exported transformers model with `optimum`.
+    """Dynamically quantize an exported transformers model to int8.
 
-    Same idea as :func:`quantize_onnx_dynamic`, but `optimum` picks the
-    operator set and symmetry settings that suit transformer graphs, and
-    ``target`` selects kernels for the CPU you will actually deploy on.
+    Same engine as :func:`quantize_onnx_dynamic`, with the weight type and
+    saturation settings that suit transformer graphs on the CPU you will
+    actually deploy on, and with the export's tokenizer and config carried
+    forward so the output directory stays loadable.
 
     Static quantization is deliberately not offered here: it needs a
     calibration dataset, and building one is a modelling decision. Export
@@ -591,19 +940,30 @@ def quantize_hf_onnx(
     samples.
 
     Args:
-        model_dir (str | Path): Directory produced by
-            :func:`export_hf_to_onnx`.
+        model_dir (str | Path): Directory an ONNX export wrote.
         output_dir (str | Path): Where to write the quantized model.
-        target (HFQuantizationTarget): Instruction set to target. Choosing
-            one your CPU lacks still yields a valid model, just a slow one.
-        per_channel (bool): Quantize weights per channel.
-        file_name (str | None): Specific graph inside ``model_dir``.
+        target (HFQuantizationTarget): Instruction set to target. Choosing one
+            your CPU lacks still yields a valid model, just a slow one.
+        per_channel (bool): Quantize weights per output channel instead of per
+            tensor. Better accuracy, slightly larger.
+        reduce_range (bool): Use 7 bits instead of 8, avoiding the int8
+            saturation that pre-VNNI x86 is prone to. Only ``AVX2`` and
+            ``AVX512`` can saturate, so passing it for another target is an
+            error rather than a silent accuracy loss.
+        symmetric_weights (bool): Center the weight range on zero. On by
+            default, matching ONNX Runtime.
+        file_name (str | None): Specific graph inside ``model_dir``. Required
+            when the export holds more than one.
 
     Returns:
         QuantizationResult: The quantized directory and its size ratio.
 
     Raises:
-        ImportError: When the ``[modelops-quant]`` extra is missing.
+        ImportError: When the ``[modelops-onnx]`` extra is missing.
+        ValueError: When ``reduce_range`` is set for an ISA that cannot
+            saturate, or when the export holds several graphs and none was
+            named.
+        FileNotFoundError: When the export directory is missing.
 
     Example:
 
@@ -615,29 +975,41 @@ def quantize_hf_onnx(
         ... )
         >>> result.compression_ratio
     """
-    optimum_ort = _require_optimum()
-    from optimum.onnxruntime.configuration import AutoQuantizationConfig
-
+    quantization = _require_onnx_quantization()
     target = HFQuantizationTarget(target)
+    spec = _ISA_QUANTIZATION_SPECS[target]
+    if reduce_range and not spec.tunable_reduce_range:
+        raise ValueError(
+            f"reduce_range has no purpose on {target.value}: its int8 "
+            "accumulation does not saturate, so 7-bit weights would only cost "
+            "accuracy. It applies to avx2 and avx512"
+        )
+
     source = Path(model_dir)
+    graph = _resolve_export_graph(source, file_name)
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
 
-    factory = getattr(AutoQuantizationConfig, target.value)
-    config = (
-        factory(per_channel=per_channel)
-        if target is HFQuantizationTarget.TENSORRT
-        else factory(is_static=False, per_channel=per_channel)
+    quantization.quantize_dynamic(
+        str(graph),
+        str(destination / graph.name),
+        weight_type=_resolve_enum(
+            quantization,
+            "QuantType",
+            _QUANT_TYPE_ATTRS[spec.weight_type],
+            spec.weight_type.value,
+        ),
+        per_channel=per_channel,
+        reduce_range=reduce_range,
+        extra_options={"WeightSymmetric": symmetric_weights},
     )
-    quantizer = optimum_ort.ORTQuantizer.from_pretrained(
-        str(source), file_name=file_name
-    )
-    quantizer.quantize(save_dir=str(destination), quantization_config=config)
+    _copy_export_sidecars(source, destination)
+
     return _quantization_result(
         source,
         destination,
-        backend=QuantizationBackend.OPTIMUM_ONNX,
-        weight_type=QuantWeightType.INT8,
+        backend=QuantizationBackend.ONNXRUNTIME_TRANSFORMERS,
+        weight_type=spec.weight_type,
         per_channel=per_channel,
         notes=[f"targeted {target.value}"],
     )
@@ -761,7 +1133,6 @@ def _require_transformers() -> tuple[Any, Any]:
 
 
 __all__: list[str] = [
-    "export_hf_to_onnx",
     "optimize_hf_onnx",
     "quantize_hf_bnb",
     "quantize_hf_onnx",

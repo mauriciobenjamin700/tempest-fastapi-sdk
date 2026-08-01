@@ -15,19 +15,30 @@ target device runs.
     profile = benchmark_onnx("m.int8.onnx", n_repetitions=50)
     mobile = export_onnx_to_ort("m.int8.onnx", "dist/", target_platform="arm")
 
-Three extras, so you install only the weight you need:
+Two extras, so you install only the weight you need:
 
 * ``[modelops]`` — psutil + nvidia-ml-py. Enough for :func:`benchmark` over
   any callable, with CPU/RAM/GPU/energy measurement.
 * ``[modelops-onnx]`` — adds onnx + onnxruntime: static analysis, ONNX
-  benchmarking, ``.onnx`` to ``.ort`` conversion, graph optimization and
-  ONNX quantization.
-* ``[modelops-quant]`` — adds `optimum`: exporting, optimizing and
-  quantizing HuggingFace models.
+  benchmarking, ``.onnx`` to ``.ort`` conversion, graph optimization, and
+  quantization of both raw graphs and transformers exports.
 
-This module itself imports with none of them. Every heavy dependency is
-resolved inside the function that needs it, and its absence raises an
-``ImportError`` naming the extra to install.
+This module itself imports with neither. Every heavy dependency is resolved
+inside the function that needs it, and its absence raises an ``ImportError``
+naming the extra to install.
+
+There is no HuggingFace ONNX *export* here, on purpose. The only maintained
+per-architecture export registry lives in `optimum`, which caps
+``transformers`` to an upper bound that would propagate to every consumer of
+this SDK. Run it as a build step in a throwaway environment instead::
+
+    uvx --from "optimum[onnxruntime]" optimum-cli export onnx \\
+        --model distilbert-base-uncased --task text-classification \\
+        exports/distilbert
+
+then point :func:`optimize_hf_onnx` and :func:`quantize_hf_onnx` at that
+directory. Both run on ``onnxruntime``'s own transformers tooling, so nothing
+here constrains your ``transformers`` version.
 """
 
 from tempest_fastapi_sdk.modelops.bench import (
@@ -74,9 +85,6 @@ from tempest_fastapi_sdk.modelops.export import (
 )
 from tempest_fastapi_sdk.modelops.export import (
     optimize_onnx_graph as optimize_onnx_graph,
-)
-from tempest_fastapi_sdk.modelops.quantize import (
-    export_hf_to_onnx as export_hf_to_onnx,
 )
 from tempest_fastapi_sdk.modelops.quantize import (
     optimize_hf_onnx as optimize_hf_onnx,
@@ -197,7 +205,6 @@ __all__: list[str] = [
     "benchmark_torch",
     "composite_scores",
     "default_providers",
-    "export_hf_to_onnx",
     "export_onnx_to_ort",
     "export_torch_to_onnx",
     "optimize_hf_onnx",

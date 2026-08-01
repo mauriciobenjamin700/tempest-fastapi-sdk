@@ -192,10 +192,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `ort-vision-sdk`: lazy `Detector`/`Classifier`/`Segmenter` + prediction
   schemas + `to_detection_schemas`/`to_classification_schema`/
   `to_segmentation_schemas` mappers.
-- **Modelops (v0.173.0)** — `tempest_fastapi_sdk.modelops`, three extras
-  (`[modelops]` psutil+nvidia-ml-py, `[modelops-onnx]` onnx+onnxruntime,
-  `[modelops-quant]` `optimum[onnxruntime]`); the module imports with none of
-  them. **Bench:** `benchmark` (any callable) + `benchmark_onnx`/
+- **Modelops (v0.173.0)** — `tempest_fastapi_sdk.modelops`, two extras
+  (`[modelops]` psutil+nvidia-ml-py, `[modelops-onnx]` onnx+onnxruntime); the
+  module imports with neither. **Bench:** `benchmark` (any callable) + `benchmark_onnx`/
   `benchmark_torch`/`benchmark_models` — warm-up + N reps, median/IQR first,
   p95/p99, throughput, RSS peak/delta, GPU memory; symbolic dims resolved via
   `dynamic_dims=`/`input_shapes=` or raise (never guessed). **Energy:**
@@ -210,13 +209,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `quality`), `rank` → `BenchmarkReport`. **Export:** `export_torch_to_onnx`,
   `export_onnx_to_ort` (file or dir, FIXED/RUNTIME, `target_platform`, type
   reduction, `.required_operators.config`), `optimize_onnx_graph`.
-  **Quantization:** `quantize_onnx_dynamic`/`quantize_onnx_static` plus HF via
-  optimum (`export_hf_to_onnx`/`optimize_hf_onnx`/`quantize_hf_onnx`) and
-  `quantize_hf_bnb`. **Static:** `analyze_onnx`/`analyze_ort`/`analyze_torch`/
-  `analyze_model`. CLI `tempest model analyze|bench|optimize|quantize|
-  export-ort|hardware`. Recipe: `docs/recipes/modelops.md`. **Caveat:**
-  `optimum-onnx` pins `transformers<5`, so `[modelops-quant]` + `[genai]` in
-  one env resolves transformers to 4.x.
+  **Quantization:** `quantize_onnx_dynamic`/`quantize_onnx_static` plus the
+  transformers-export path `optimize_hf_onnx` (`model_type=` override,
+  `file_name=` for multi-graph exports) / `quantize_hf_onnx` (arm64/avx2/
+  avx512/avx512_vnni; `reduce_range` refused where the ISA cannot saturate),
+  and `quantize_hf_bnb`. **No `optimum` dependency** — it capped
+  `transformers<4.58` while only wrapping `onnxruntime`, so the tables it
+  carried (`_OPTIMIZATION_SPECS`, `_ISA_QUANTIZATION_SPECS`,
+  `_ORT_FUSION_MODEL_TYPES`) are ported constants pinned by tests, and
+  producing the export is a documented `uvx optimum-cli` step. See the
+  "Dependency policy" section in the global `CLAUDE.md`. **Static:**
+  `analyze_onnx`/`analyze_ort`/`analyze_torch`/`analyze_model`. CLI
+  `tempest model analyze|bench|optimize|quantize|export-ort|hardware`.
+  Recipe: `docs/recipes/modelops.md`.
 - **GenAI self-hosted** (`[genai]` extra: transformers+torch+accelerate;
   `[genai-quant]` = bitsandbytes) — `tempest_fastapi_sdk.genai`, delivered
   in slices. **Shipped (v0.96):** hardware capacity check — `probe_hardware`

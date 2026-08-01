@@ -41,6 +41,35 @@ ORT_CONFIG_SUFFIXES: tuple[str, ...] = (
 )
 """Side files the ORT conversion writes for minimal-build kernel selection."""
 
+
+def _require_torch_onnx_export() -> Any:
+    """Import ``torch`` and check its ONNX exporter can actually run.
+
+    Since torch 2.9 ``torch.onnx.export`` defaults to the dynamo exporter,
+    which imports ``onnxscript`` lazily — so a missing ``onnxscript`` surfaces
+    as a ``ModuleNotFoundError`` from deep inside torch, halfway through the
+    export, rather than as something actionable. Checking up front turns that
+    into the same "install this" message every other optional dependency in
+    this module produces.
+
+    Returns:
+        Any: The ``torch`` module.
+
+    Raises:
+        ImportError: When torch or ``onnxscript`` is missing.
+    """
+    torch = _require_torch()
+    try:
+        import onnxscript  # noqa: F401
+    except ImportError as exc:
+        raise ImportError(
+            "torch.onnx.export needs onnxscript from torch 2.9 onwards (its "
+            "dynamo exporter is built on it). Install with: "
+            "pip install onnxscript",
+        ) from exc
+    return torch
+
+
 _GRAPH_LEVEL_ATTRS: dict[GraphOptimizationLevel, str] = {
     GraphOptimizationLevel.DISABLE_ALL: "ORT_DISABLE_ALL",
     GraphOptimizationLevel.BASIC: "ORT_ENABLE_BASIC",
@@ -302,7 +331,7 @@ def export_torch_to_onnx(
         >>> result.opset
         17
     """
-    torch = _require_torch()
+    torch = _require_torch_onnx_export()
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
