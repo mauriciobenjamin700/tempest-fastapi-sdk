@@ -280,6 +280,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | --- | --- |
 | **[Agentes de IA »](agents.md)** | `Agent` (objetivo → traço + artefatos), `AgentBudget` (passos/tempo/chamadas), `AgentTool` + ferramentas prontas sobre imagem/visão/áudio/RAG, `InMemoryAgentRunSink` / `DbAgentRunSink`, `make_agent_router` |
 | **[Agentes de IA (avançado) »](agents-advanced.md)** | saída estruturada tipada (`run_structured`), três camadas de memória (`scratchpad_tools` / `fact_tools` / `recall_prompt`), `Skill` sob demanda, `agent_tool` para delegação, `run_until` / `refine` |
+| **[Agentes de IA (testes) »](agents-testing.md)** | `ScriptedBackend` / `replies` / `replies_with_tool` para escrever as decisões do modelo, `assert_completed` / `assert_used_tools` / `assert_artifact`, `FailingBackend`, e a camada `@model` separada |
 | **[Arquivo no serviço (mixin) »](stored-files.md)** | `StoredFileServiceMixin` — `set_file` / `replace` / `clear_file` sobre `UploadUtils` |
 | **[Artefatos versionados (modelos) »](artifact-registry.md)** | `ArtifactRegistry`, `ArtifactVersionMixin`, `build_manifest_entries`, `file_digest` — versão ativa sem redeploy |
 | **[Audit trail »](audit-trail.md)** | `BaseAuditLogModel`, `add_audited` / `update_audited` / `delete_audited`, `snapshot_model` / `diff_snapshots` |

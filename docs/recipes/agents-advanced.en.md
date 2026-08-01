@@ -172,9 +172,53 @@ What you already know:
 namespace — right for a single-purpose agent, wrong for anything per-user.
 
 !!! warning "`InMemoryFactStore` vanishes on restart"
-    Which is the one thing durable memory is supposed not to do. It is for
-    tests and getting started; implement `FactStore` over your own table
-    before that matters. It is four methods.
+    Which is the one thing durable memory is supposed not to do. Use it for
+    tests and getting started, then swap in one of the two below before it
+    matters.
+
+#### Facts in a table
+
+```python
+from tempest_fastapi_sdk.agents import Agent, DbFactStore, fact_tools, make_fact_model
+
+model = make_fact_model(tablename="agent_facts")
+store = DbFactStore(db, model)
+
+agent = Agent(generator, tools=fact_tools(store, subject=user_id))
+```
+
+Pick this when facts are part of your domain: you want them in backups, in
+the admin, joined against a user, and readable by something other than the
+agent. In production, subclass `BaseFactModel` by hand so migrations pick
+the table up statically.
+
+!!! danger "Declare the unique index in your migration"
+    A fact is identified by `(subject, key)`, but the SDK cannot declare the
+    constraint for you — it does not know whether your table is partitioned
+    or shared. Add it in the migration:
+
+    ```sql
+    UNIQUE (subject, key)
+    ```
+
+    Without it, a race between two writes leaves two rows, and reads start
+    returning whichever the database feels like.
+
+#### Facts in Redis
+
+```python
+from tempest_fastapi_sdk.agents import RedisFactStore
+
+store = RedisFactStore(redis, prefix="agent:facts")
+```
+
+One hash per subject — listing someone's facts is a single `HGETALL`, and
+every operation is O(1). Pick this when facts are preferences shared across
+replicas and a migration is more ceremony than the data deserves. Needs the
+`[cache]` extra.
+
+All three implement the same four-method protocol, so swapping is a
+constructor change.
 
 ### Recall — semantic, across runs
 

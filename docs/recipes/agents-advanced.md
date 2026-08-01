@@ -173,9 +173,52 @@ compartilhado — certo para um agente de propósito único, errado para
 qualquer coisa por usuário.
 
 !!! warning "O `InMemoryFactStore` some no restart"
-    Que é exatamente o que memória durável não deveria fazer. Ele serve para
-    testes e para começar; implemente o `FactStore` sobre a sua tabela antes
-    que isso importe. São quatro métodos.
+    Que é exatamente o que memória durável não deveria fazer. Use-o para
+    testes e para começar, e troque por um dos dois abaixo antes que importe.
+
+#### Fatos numa tabela
+
+```python
+from tempest_fastapi_sdk.agents import Agent, DbFactStore, fact_tools, make_fact_model
+
+model = make_fact_model(tablename="agent_facts")
+store = DbFactStore(db, model)
+
+agent = Agent(generator, tools=fact_tools(store, subject=user_id))
+```
+
+Escolha esta quando os fatos fazem parte do seu domínio: você quer eles no
+backup, no admin, cruzados com o usuário, e legíveis por algo que não é o
+agente. Em produção, herde de `BaseFactModel` à mão para a migration
+enxergar a tabela estaticamente.
+
+!!! danger "Declare o índice único na migration"
+    Um fato é identificado por `(subject, key)`, mas o SDK não pode declarar
+    a constraint por você — não sabe se a sua tabela é particionada ou
+    compartilhada. Adicione na migration:
+
+    ```sql
+    UNIQUE (subject, key)
+    ```
+
+    Sem ela, uma corrida entre duas escritas deixa duas linhas, e as leituras
+    passam a devolver a que o banco preferir.
+
+#### Fatos no Redis
+
+```python
+from tempest_fastapi_sdk.agents import RedisFactStore
+
+store = RedisFactStore(redis, prefix="agent:facts")
+```
+
+Um hash por subject — listar os fatos de alguém é um `HGETALL`, e toda
+operação é O(1). Escolha esta quando os fatos são preferências
+compartilhadas entre réplicas e uma migration é mais cerimônia do que o dado
+merece. Requer o extra `[cache]`.
+
+Os três implementam o mesmo protocolo de quatro métodos, então trocar é
+mudança de construtor.
 
 ### Recall — semântico, entre execuções
 
