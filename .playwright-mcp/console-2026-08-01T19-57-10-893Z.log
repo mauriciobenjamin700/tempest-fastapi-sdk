@@ -1,0 +1,8 @@
+[      18ms] [ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://127.0.0.1:8766/favicon.ico:0
+[      40ms] [ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://127.0.0.1:8766/ort-wasm-simd-threaded.jsep.wasm:0
+[      40ms] [ERROR] wasm streaming compile failed: TypeError: Failed to execute 'compile' on 'WebAssembly': HTTP status code is not ok @ http://127.0.0.1:8766/ort.bundle.min.mjs:6
+[      40ms] [ERROR] falling back to ArrayBuffer instantiation @ http://127.0.0.1:8766/ort.bundle.min.mjs:6
+[      44ms] [ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://127.0.0.1:8766/ort-wasm-simd-threaded.jsep.wasm:0
+[      44ms] [ERROR] failed to asynchronously prepare wasm: both async and sync fetching of the wasm failed @ http://127.0.0.1:8766/ort.bundle.min.mjs:6
+[      44ms] [ERROR] Aborted(both async and sync fetching of the wasm failed) @ http://127.0.0.1:8766/ort.bundle.min.mjs:6
+[      48ms] [ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://127.0.0.1:8766/ort.all.bundle.min.mjs:0

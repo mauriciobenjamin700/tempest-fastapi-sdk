@@ -51,6 +51,26 @@ from tempest_fastapi_sdk.modelops.bench import (
 )
 from tempest_fastapi_sdk.modelops.bench import benchmark_onnx as benchmark_onnx
 from tempest_fastapi_sdk.modelops.bench import benchmark_torch as benchmark_torch
+from tempest_fastapi_sdk.modelops.edge import (
+    BASELINE_FILENAME as BASELINE_FILENAME,
+)
+from tempest_fastapi_sdk.modelops.edge import MANIFEST_FILENAME as MANIFEST_FILENAME
+from tempest_fastapi_sdk.modelops.edge import (
+    MANIFEST_SCHEMA_VERSION as MANIFEST_SCHEMA_VERSION,
+)
+from tempest_fastapi_sdk.modelops.edge import EdgeManifest as EdgeManifest
+from tempest_fastapi_sdk.modelops.edge import EdgePackage as EdgePackage
+from tempest_fastapi_sdk.modelops.edge import (
+    LoadedEdgePackage as LoadedEdgePackage,
+)
+from tempest_fastapi_sdk.modelops.edge import ModelFile as ModelFile
+from tempest_fastapi_sdk.modelops.edge import ModelInput as ModelInput
+from tempest_fastapi_sdk.modelops.edge import ModelOutput as ModelOutput
+from tempest_fastapi_sdk.modelops.edge import edge_pipeline as edge_pipeline
+from tempest_fastapi_sdk.modelops.edge import (
+    load_edge_package as load_edge_package,
+)
+from tempest_fastapi_sdk.modelops.edge import read_manifest as read_manifest
 from tempest_fastapi_sdk.modelops.energy import (
     DEFAULT_SAMPLE_INTERVAL_S as DEFAULT_SAMPLE_INTERVAL_S,
 )
@@ -232,6 +252,7 @@ from tempest_fastapi_sdk.modelops.static import (
 )
 
 __all__: list[str] = [
+    "BASELINE_FILENAME",
     "DEFAULT_BINS",
     "DEFAULT_COST_WEIGHTS",
     "DEFAULT_INTRA_OP_THREADS",
@@ -240,6 +261,8 @@ __all__: list[str] = [
     "DEFAULT_SAMPLE_INTERVAL_S",
     "DEFAULT_WARMUP",
     "DEFAULT_WINDOW_ROWS",
+    "MANIFEST_FILENAME",
+    "MANIFEST_SCHEMA_VERSION",
     "MIN_ROWS_FOR_DRIFT",
     "ORT_CONFIG_SUFFIXES",
     "PSI_MODERATE",
@@ -252,6 +275,8 @@ __all__: list[str] = [
     "DriftReport",
     "DriftVerdict",
     "EdgeBundle",
+    "EdgeManifest",
+    "EdgePackage",
     "EdgeStage",
     "EnergyReading",
     "EnergySource",
@@ -264,7 +289,11 @@ __all__: list[str] = [
     "HFOptimizationLevel",
     "HFQuantizationTarget",
     "LatencyReport",
+    "LoadedEdgePackage",
+    "ModelFile",
     "ModelFormat",
+    "ModelInput",
+    "ModelOutput",
     "MonitoringReport",
     "NullPowerSampler",
     "NvidiaSmiPowerSampler",
@@ -304,9 +333,11 @@ __all__: list[str] = [
     "composite_scores",
     "default_providers",
     "edge_bundle",
+    "edge_pipeline",
     "export_onnx_to_ort",
     "export_sklearn_to_onnx",
     "export_torch_to_onnx",
+    "load_edge_package",
     "make_prediction_router",
     "optimize_hf_onnx",
     "optimize_onnx_graph",
@@ -317,6 +348,7 @@ __all__: list[str] = [
     "quantize_onnx_dynamic",
     "quantize_onnx_static",
     "rank",
+    "read_manifest",
     "resolve_cpu_energy_sampler",
     "resolve_power_sampler",
     "uses_ml_domain",

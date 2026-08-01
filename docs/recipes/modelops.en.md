@@ -152,15 +152,28 @@ output is a label and which is a score** (indexing `[1]` works until you
 serve a regressor), dtype coercion, and the warm-up — the first call pays
 for allocation and kernel selection.
 
-!!! danger "Threads are the decision that costs the most latency on the edge"
-    ONNX Runtime defaults to **one thread per core**. That is right on a
-    server saturating a large model, and often **wrong on a small device**:
-    on a 4-core SBC running one model per request, the threads spend more
-    time coordinating than computing.
+!!! danger "Threads: the rule is the shape of the workload, not the size of the device"
+    The default here is `intra_op_threads=1`, and the reason is not the
+    obvious one. It is not that threads "hurt on a small device" — it is
+    that in a service with N concurrent requests, per-request threads
+    oversubscribe the CPU and **every** request gets slower.
 
-    The default here is `intra_op_threads=1` for that reason. Raise it only
-    after measuring **on the target device** — not on your laptop, whose
-    core count and memory bandwidth are not the device's:
+    Measured on a 12-core machine, a 300-tree forest over 20 features:
+
+    | Threads | 1 row | 1000 rows |
+    | --- | --- | --- |
+    | 1 | 0.019 ms | 16.6 ms |
+    | 2 | 0.013 ms | 8.2 ms |
+    | 4 | 0.012 ms | 4.2 ms |
+    | 8 | 0.010 ms | 2.3 ms |
+
+    A batch scales nearly linearly. A small graph does not: the same
+    measurement on a logistic regression gave 0.213 ms for 1000 rows at one
+    thread and 0.214 ms at eight — there is no work to split.
+
+    So: **a batch or a large ensemble wants threads**; one row at a time on
+    a small graph does not care; a service serving many callers at once
+    wants this default. Measure on the target device:
 
     ```python
     from tempest_fastapi_sdk.modelops import benchmark_onnx
@@ -226,6 +239,126 @@ periodic task — it is a no-op when the right version is already loaded.
     than a re-download. Nothing is deleted automatically — on a small disk
     you want to decide when old versions go.
 
+
+## The edge package: one directory, two runtimes
+
+`edge_bundle` answers "what does each optimisation stage cost on my model".
+The next question is: **what do I actually publish, and how does the thing
+running it know what it got.**
+
+```python
+from tempest_fastapi_sdk.modelops import edge_pipeline
+
+package = edge_pipeline(
+    model,
+    X_train,
+    "dist/risk",
+    name="risk",
+    labels=y_train,
+    feature_names=["age", "income", "tenure", "score", "visits"],
+)
+print(package.manifest.version, package.manifest.verified)
+```
+
+```text
+cc17b06c76d4 True
+```
+
+Four files come out, and you publish the whole directory:
+
+```text
+dist/risk/
+├── risk.onnx          the graph
+├── risk.onnx.gz       the same, at 10-13% of the size
+├── baseline.json      drift reference, taken from training
+└── manifest.json      the contract
+```
+
+### Why a manifest
+
+A published model is never one file. Whoever runs it needs the **column
+order** that produced the training, the classes it can answer, the digest to
+know the download arrived whole, and the version to know whether it already
+has this one.
+
+Without a manifest all of that lives in a wiki page that goes stale — and
+the failure is silent: a model served with two columns swapped answers
+confidently and wrongly.
+
+```python
+from tempest_fastapi_sdk.modelops import load_edge_package
+
+loaded = load_edge_package("dist/risk")
+result = loaded.predictor.predict(rows)
+loaded.monitor.observe(rows, result)
+```
+
+One line gives you a predictor plus a monitor already wired to the package's
+baseline, with the version stamped onto every report. `manifest.json` is
+plain JSON and carries a `schema_version`: the same directory is served as
+static assets to
+[`tempest-react-sdk/tabular`](https://mauriciobenjamin700.github.io/tempest-react-sdk/en/tabular/),
+which reads the same file in the browser.
+
+!!! check "A truncated download fails as a digest mismatch, not as a parse error"
+    `load_edge_package` checks the SHA-256 before loading. Half a model
+    becomes a message that says so — instead of a protobuf error, or worse,
+    nothing.
+
+!!! danger "An export that does not reproduce the estimator does not pass"
+    The pipeline verifies against the estimator's own predictions and
+    **raises** when they disagree. It is the one outcome it refuses to let
+    through quietly: there are known converter defects (binary tree
+    ensembles on skl2onnx 1.20) that produce a graph which runs smoothly and
+    answers wrongly.
+
+## What is actually worth optimising (measured)
+
+I ran the stages on real forests of 10 to 300 trees exported from
+scikit-learn. Three of the four do not pay:
+
+| Stage | 10 trees | 50 trees | 300 trees |
+| --- | --- | --- | --- |
+| Exported `.onnx` | 381 KB | 1,955 KB | 12,061 KB |
+| Graph optimisation | 381 KB | 1,955 KB | 12,061 KB |
+| `.ort` conversion | 878 KB | 4,497 KB | 26,970 KB |
+| **gzip** | **51 KB** | **226 KB** | **1,266 KB** |
+
+- **Graph optimisation changes nothing** (0.1 KB): `ai.onnx.ml` operators
+  are single nodes, there is nothing to fuse.
+- **`.ort` more than doubles it**, at every scale. It is a loading format,
+  not a compression one.
+- **int8 quantisation does not apply**: tree and linear parameters are node
+  attributes, not tensors.
+- **gzip takes it to 10-13%** and costs one `Content-Encoding` header.
+
+That is why `edge_pipeline` runs export → verify → baseline → manifest +
+gzip, and nothing else. Use `edge_bundle` when you want those stages
+measured on **your** model rather than trusting the table.
+
+### Size is decided before you export
+
+The estimator is the lever, not the post-processing. A 50-tree forest over
+20 features, 3 classes, accuracy on a held-out test set:
+
+| `max_depth` | Size | Accuracy | 1 row |
+| --- | --- | --- | --- |
+| 3 | 36 KB | 0.797 | 0.0073 ms |
+| 6 | 257 KB | 0.881 | 0.0075 ms |
+| 12 | 1,275 KB | 0.918 | 0.0078 ms |
+| unlimited | 1,444 KB | 0.922 | 0.0079 ms |
+
+`max_depth=6` fits in 1/5.6 of the space for 4 points of accuracy. And look
+at the last column: **latency is not what you are trading** — it barely
+moves. On the edge the cost is bytes, not milliseconds.
+
+Same lesson in the tree count: 10 → 300 trees multiplies the file by 32
+(381 KB → 12 MB) and the latency by 2.7 (0.0073 → 0.0199 ms/row).
+
+!!! tip "Input: pass an array, not a list of lists"
+    Measured over 1000 rows: `float32` 2.65 ms, `float64` 2.66 ms (the
+    conversion costs nothing measurable), Python list-of-lists 2.99 ms. Only
+    the last one shows up, and by ~12%.
 
 ## Knowing whether the model still works
 

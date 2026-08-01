@@ -150,16 +150,29 @@ O predictor resolve o que você teria que resolver à mão: **qual é o input**
 score** (indexar `[1]` funciona até você servir um regressor), coerção de
 dtype, e o *warmup* — a primeira chamada paga alocação e seleção de kernel.
 
-!!! danger "Threads são a decisão que mais custa latência na borda"
-    O ONNX Runtime usa **uma thread por core** por padrão. Está certo num
-    servidor saturando um modelo grande, e frequentemente **errado num
-    dispositivo pequeno**: num SBC de 4 cores rodando um modelo por
-    requisição, as threads gastam mais tempo se coordenando do que
-    computando.
+!!! danger "Threads: a regra é o formato da carga, não o tamanho do aparelho"
+    O default aqui é `intra_op_threads=1`, e o motivo não é o que parece.
+    Não é que threads "atrapalham num aparelho pequeno" — é que num serviço
+    com N requisições concorrentes, threads por requisição sobrecarregam a
+    CPU e **todas** ficam mais lentas.
 
-    O default aqui é `intra_op_threads=1` por isso. Aumente só depois de
-    medir **no dispositivo alvo** — não no seu notebook, cujo número de
-    cores e banda de memória não são os dele:
+    Medido numa máquina de 12 cores, floresta de 300 árvores sobre 20
+    features:
+
+    | Threads | 1 linha | 1000 linhas |
+    | --- | --- | --- |
+    | 1 | 0,019 ms | 16,6 ms |
+    | 2 | 0,013 ms | 8,2 ms |
+    | 4 | 0,012 ms | 4,2 ms |
+    | 8 | 0,010 ms | 2,3 ms |
+
+    Lote escala quase linearmente. Grafo pequeno não: a mesma medição numa
+    regressão logística deu 0,213 ms para 1000 linhas com 1 thread e 0,214 ms
+    com 8 — não há trabalho para dividir.
+
+    Então: **lote ou ensemble grande quer threads**; uma linha por vez num
+    grafo pequeno é indiferente; serviço atendendo muita gente ao mesmo tempo
+    quer este default. Meça no aparelho alvo:
 
     ```python
     from tempest_fastapi_sdk.modelops import benchmark_onnx
@@ -226,6 +239,124 @@ periódica — é no-op quando já está na versão certa.
     novo download. Nada é apagado sozinho — num disco pequeno você quer
     decidir quando as versões antigas saem.
 
+
+## O pacote de borda: um diretório, dois runtimes
+
+`edge_bundle` responde "quanto cada estágio de otimização custa no meu
+modelo". A pergunta seguinte é: **o que eu de fato publico, e como quem roda
+sabe o que recebeu.**
+
+```python
+from tempest_fastapi_sdk.modelops import edge_pipeline
+
+package = edge_pipeline(
+    model,
+    X_train,
+    "dist/risk",
+    name="risk",
+    labels=y_train,
+    feature_names=["idade", "renda", "tempo_casa", "score", "visitas"],
+)
+print(package.manifest.version, package.manifest.verified)
+```
+
+```text
+cc17b06c76d4 True
+```
+
+Saem quatro arquivos, e você publica o diretório inteiro:
+
+```text
+dist/risk/
+├── risk.onnx          o grafo
+├── risk.onnx.gz       o mesmo, 10-13% do tamanho
+├── baseline.json      referência de deriva, tirada do treino
+└── manifest.json      o contrato
+```
+
+### Por que manifesto
+
+Modelo publicado nunca é um arquivo só. Quem roda precisa da **ordem das
+colunas** que gerou o treino, das classes que ele sabe responder, do digest
+para saber se o download veio inteiro e da versão para saber se já tem essa.
+
+Sem manifesto, isso tudo vive numa página de wiki que envelhece — e a falha
+é silenciosa: modelo servido com duas colunas trocadas responde com
+confiança e errado.
+
+```python
+from tempest_fastapi_sdk.modelops import load_edge_package
+
+loaded = load_edge_package("dist/risk")
+result = loaded.predictor.predict(rows)
+loaded.monitor.observe(rows, result)
+```
+
+Uma linha entrega predictor + monitor já ligado à baseline do pacote, com a
+versão carimbada em todo relatório. O `manifest.json` é JSON puro e tem
+`schema_version`: o mesmo diretório é servido como asset estático para o
+[`tempest-react-sdk/tabular`](https://mauriciobenjamin700.github.io/tempest-react-sdk/tabular/),
+que lê o mesmo arquivo no navegador.
+
+!!! check "Download truncado falha como digest, não como erro de parse"
+    `load_edge_package` confere o SHA-256 antes de carregar. Meio modelo
+    vira uma mensagem dizendo isso — em vez de um erro de protobuf, ou pior,
+    de nada.
+
+!!! danger "Export que não reproduz o estimador não passa"
+    O pipeline verifica contra as predições do próprio estimador e
+    **levanta** se discordarem. É o único desfecho que ele se recusa a
+    deixar passar quieto: existe defeito conhecido de conversor
+    (árvore + binário no skl2onnx 1.20) que gera um grafo que roda liso e
+    responde errado.
+
+## O que otimizar de verdade (medido)
+
+Rodei os estágios em florestas reais de 10 a 300 árvores, exportadas do
+scikit-learn. Três dos quatro não pagam:
+
+| Estágio | 10 árvores | 50 árvores | 300 árvores |
+| --- | --- | --- | --- |
+| `.onnx` exportado | 381 KB | 1.955 KB | 12.061 KB |
+| Otimização de grafo | 381 KB | 1.955 KB | 12.061 KB |
+| Conversão `.ort` | 878 KB | 4.497 KB | 26.970 KB |
+| **gzip** | **51 KB** | **226 KB** | **1.266 KB** |
+
+- **Otimizar grafo não muda nada** (0,1 KB): operadores `ai.onnx.ml` são nós
+  únicos, não há o que fundir.
+- **`.ort` mais que dobra**, em toda escala. É formato de carregamento, não
+  de compressão.
+- **Quantização int8 não se aplica**: parâmetros de árvore e de linear são
+  atributos de nó, não tensores.
+- **gzip leva a 10-13%** e custa um header `Content-Encoding`.
+
+Por isso `edge_pipeline` roda export → verify → baseline → manifest + gzip, e
+só. Use `edge_bundle` quando quiser ver esses estágios medidos no **seu**
+modelo em vez de confiar na tabela.
+
+### O tamanho se decide antes de exportar
+
+O estimador é o lever, não o pós-processamento. Floresta de 50 árvores, 20
+features, 3 classes, acurácia em teste separado:
+
+| `max_depth` | Tamanho | Acurácia | 1 linha |
+| --- | --- | --- | --- |
+| 3 | 36 KB | 0,797 | 0,0073 ms |
+| 6 | 257 KB | 0,881 | 0,0075 ms |
+| 12 | 1.275 KB | 0,918 | 0,0078 ms |
+| sem limite | 1.444 KB | 0,922 | 0,0079 ms |
+
+`max_depth=6` cabe em 1/5,6 do espaço por 4 pontos de acurácia. E repare na
+última coluna: **latência não é o que você está trocando** — ela mal se move.
+Na borda o que dói é byte, não milissegundo.
+
+Mesma lição no número de árvores: 10 → 300 árvores multiplica o arquivo por
+32 (381 KB → 12 MB) e a latência por 2,7 (0,0073 → 0,0199 ms/linha).
+
+!!! tip "Entrada: passe array, não lista de listas"
+    Medido em 1000 linhas: `float32` 2,65 ms, `float64` 2,66 ms (converter
+    não custa nada mensurável), lista de listas do Python 2,99 ms. Só o
+    último aparece, e em ~12%.
 
 ## Saber se o modelo ainda funciona
 

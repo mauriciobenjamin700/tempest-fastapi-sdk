@@ -5,6 +5,71 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.191.0] — 2026-08-01
+
+### Added
+
+- **`edge_pipeline` — from a fitted estimator to a directory two runtimes
+  consume.** `edge_bundle` answers "what does each optimisation stage cost on
+  my model"; this answers the question after it: what you actually publish,
+  and how the thing running it knows what it got. Writes the graph, a gzipped
+  copy, the drift baseline and a `manifest.json`, and you ship the directory
+  whole.
+
+  **The manifest is a cross-language contract**, with a pinned
+  `schema_version`: the same directory is served as static assets to
+  `tempest-react-sdk/tabular` in the browser. It carries the column order
+  used at training (the field that catches two swapped columns — nothing
+  else in the package does; a model fed the right columns in the wrong order
+  answers confidently and wrongly), the classes in score order, the SHA-256,
+  and a content-derived version so republishing identical bytes never looks
+  like a new model.
+
+- **`load_edge_package`** — one line to a predictor plus a `PredictionMonitor`
+  already wired to the package's baseline, with the version stamped onto
+  every report. Verifies the model against the manifest digest first, so a
+  truncated download fails as a digest mismatch rather than as a protobuf
+  error — or worse, than not at all.
+
+- **`read_manifest`** — reads the package description without loading the
+  graph, so a device can answer "is the published version the one I have"
+  on a schedule.
+
+- **`edge_pipeline` refuses to package an export that does not reproduce the
+  estimator.** The known converter defects (binary tree ensembles on
+  skl2onnx 1.20) produce a graph that runs smoothly and answers wrongly, so
+  a silent pass is the one outcome this gate exists to prevent.
+
+### Changed
+
+- **Corrected the threading guidance in `DEFAULT_INTRA_OP_THREADS` and the
+  modelops recipe.** The previous text justified the default of one thread
+  with "on a small device the threads spend more time coordinating than
+  computing". That was reasoned, not measured, and measuring does not
+  support it: on a 300-tree forest, 1000 rows went from 16.6 ms at one
+  thread to 2.3 ms at eight, and even a single row improved (0.019 ms to
+  0.010 ms). The default is still one, for a different and real reason —
+  in a service with concurrent requests, per-request threads oversubscribe
+  the CPU and every request gets slower. The rule is now stated as the shape
+  of the workload: a batch or a large ensemble wants threads, a small graph
+  is indifferent (a logistic regression measured 0.213 ms vs 0.214 ms for
+  1000 rows across 1 and 8 threads).
+
+### Documentation
+
+- **The measured edge-optimisation table**, in both languages. Run on real
+  forests of 10 to 300 trees: graph optimisation changes the file by 0.1 KB
+  (the `ai.onnx.ml` operators are single nodes, nothing to fuse), `.ort`
+  conversion more than doubles it at every scale (381 KB to 878 KB; 12.1 MB
+  to 27.0 MB), int8 quantisation does not apply at all, and gzip takes it to
+  10-13%. Three of the four stages do not pay, which is why the pipeline
+  runs only the ones that do.
+- **Where size is actually decided**: a 50-tree forest at `max_depth=6` is
+  257 KB at 0.881 test accuracy against 1444 KB at 0.922 unlimited — 5.6x
+  the bytes for 4 points — while single-row latency moves from 0.0075 ms to
+  0.0079 ms. On the edge the currency is bytes, not milliseconds, and the
+  estimator is the lever.
+
 ## [0.190.0] — 2026-08-01
 
 ### Added

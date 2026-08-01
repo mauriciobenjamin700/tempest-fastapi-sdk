@@ -239,7 +239,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   below `MIN_ROWS_FOR_DRIFT`; PSI thresholds documented as a **convention,
   not a statistical test**. `PredictionMetrics` publishes it to Prometheus;
   `make_prediction_router(monitor=, metrics=)` mounts `GET /monitor`.
-  Recipe: `docs/recipes/modelops.md`.
+  **Edge package (v0.191.0):** `edge_pipeline` (export → verify → drift
+  baseline → `manifest.json` + gzip, in one shippable directory),
+  `load_edge_package` (predictor + monitor wired, SHA-256 checked),
+  `read_manifest`; `EdgeManifest` is a **cross-language contract** with a
+  pinned `schema_version` — `tempest-react-sdk/tabular` reads the same file
+  in the browser. Measured and documented: graph optimisation is a no-op on
+  `ai.onnx.ml`, `.ort` more than doubles the file, int8 does not apply, gzip
+  reaches 10-13%; and `DEFAULT_INTRA_OP_THREADS = 1` was **re-justified** —
+  the old "coordination costs more than parallelism" claim was not
+  measurable; the real reason is oversubscription across concurrent
+  requests. Recipe: `docs/recipes/modelops.md`.
 - **GenAI self-hosted** (`[genai]` extra: transformers+torch+accelerate;
   `[genai-quant]` = bitsandbytes) — `tempest_fastapi_sdk.genai`, delivered
   in slices. **Shipped (v0.96):** hardware capacity check — `probe_hardware`

@@ -40,12 +40,35 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 DEFAULT_INTRA_OP_THREADS: int = 1
-"""Intra-op threads for a constrained device.
+"""Intra-op threads. One, because one request should not take the machine.
 
-ONNX Runtime's own default is one per core. That is right for a server
-saturating a large model and usually wrong for edge inference on a small
-graph, where the coordination costs more than the parallelism buys.
-Raise it only after measuring with
+ONNX Runtime's own default is one thread per core. In a service that is
+usually the wrong default for a different reason than it first appears:
+with per-request threads, N concurrent requests oversubscribe the CPU and
+every one of them gets slower. One thread per request keeps the
+arithmetic predictable, and the parallelism you want lives in the
+concurrent requests themselves.
+
+**Raise it when a single call has real work to do.** Measured on a 12-core
+machine, a 300-tree forest over 20 features:
+
+===================  ==============  ==================
+Threads              One row (ms)    1000 rows (ms)
+===================  ==============  ==================
+1                    0.019           16.6
+2                    0.013           8.2
+4                    0.012           4.2
+8                    0.010           2.3
+===================  ==============  ==================
+
+A batch scales almost linearly with threads. A small graph does not: the
+same measurement on a logistic regression showed 0.213 ms for 1000 rows at
+one thread and 0.214 ms at eight — the work is too small to split.
+
+So the rule is the shape of the workload, not the size of the device:
+batched or large-ensemble inference wants threads, one-row-at-a-time on a
+small graph does not care, and a service serving many callers at once
+wants this default. Measure with
 :func:`~tempest_fastapi_sdk.modelops.benchmark_onnx` on the target device
 — not on your laptop, whose core count and memory bandwidth are not the
 device's.
