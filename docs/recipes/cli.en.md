@@ -470,6 +470,33 @@ uv run python main.py                           # serves on the configured HOST:
 uv run pytest                                   # the bundled smoke test
 ```
 
+### Models — `tempest model`
+
+Analyze, benchmark, convert and quantize ONNX models. Needs the
+`[modelops-onnx]` extra, except `hardware`, which only reports what this
+host can measure:
+
+```bash
+tempest model analyze models/classify.onnx
+tempest model bench models/classify.onnx --dim height=224 --dim width=224
+tempest model quantize models/classify.onnx models/classify.int8.onnx
+tempest model export-ort models/classify.int8.onnx -o dist/mobile -t arm
+tempest model hardware
+```
+
+| Command | What it does |
+| --- | --- |
+| `analyze` | Parameters, size, opset and shapes, without running the model. |
+| `bench` | Latency (median/IQR/p95/p99), RAM, GPU and energy over N repetitions. |
+| `optimize` | Persists ONNX Runtime's graph optimizations into a new `.onnx`. |
+| `quantize` | Dynamic int8 quantization. |
+| `export-ort` | Converts to `.ort` plus `.required_operators.config`. |
+| `hardware` | What the host runs and which energy sampler is available. |
+
+`analyze`, `bench` and `hardware` accept `--json`, which makes them usable
+as a CI step. A missing extra exits 2 with the install line, never a
+traceback. Details in [Modelops](modelops.md).
+
 ### Errors documented in OpenAPI — `tempest openapi-errors`
 
 Compares, per route, the `AppException`s the flow can raise against what the

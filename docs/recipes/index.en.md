@@ -303,6 +303,7 @@ come back here to plug in each capability as you need it.
 | **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | register your own commands on the project's `tempest` CLI |
 | **[Metrics »](metrics.md)** | `MetricsUtils` — CPU / RAM / disk / GPU snapshots |
 | **[MFA (TOTP / 2FA) »](mfa.md)** | `MFAMixin`, `TOTPHelper`, enroll/confirm/verify/disable endpoints on `make_auth_router`, recovery codes |
+| **[Modelops (export, bench, quantization) »](modelops.md)** | `benchmark_onnx` (latency/RAM/GPU/energy), `export_onnx_to_ort`, `quantize_onnx_dynamic`, `quantize_hf_onnx`, `rank` + Pareto frontier, `tempest model` |
 | **[Multi-tenant »](multi-tenant.md)** | `TenantScopedRepository` — `tenant_id` isolation on every query |
 | **[Object-level permissions »](authz.md)** | `permission` (rule decorator), `has_perm` / `check_permission`, `PermissionRegistry`, `make_permission_checker`, `PermissionMixin` |
 | **[Observability (tracing) »](observability.md)** | `setup_tracing` (OpenTelemetry), `SlowQueryLogger` |

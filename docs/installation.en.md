@@ -35,6 +35,8 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[mfa]` | `pyotp` | `TOTPHelper` + MFA/2FA (TOTP) endpoints on the bundled auth flow |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `MinIOUploadStorage` |
+| `[modelops]` | `psutil`, `nvidia-ml-py` | benchmark any callable: latency, RAM, GPU and energy (`benchmark`, `NvmlPowerSampler`, `RaplEnergySampler`) |
+| `[modelops-onnx]` | `onnx`, `onnxruntime` | static analysis, ONNX benchmarking, `.onnx` → `.ort`, graph optimization and quantization — of raw graphs (`analyze_onnx`, `benchmark_onnx`, `export_onnx_to_ort`, `quantize_onnx_dynamic`) and of transformers exports (`optimize_hf_onnx`, `quantize_hf_onnx`) |
 | `[otel]` | `opentelemetry-sdk`, OTLP exporter + FastAPI/SQLAlchemy/httpx instrumentations | OpenTelemetry instrumentation via `setup_tracing` |
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |

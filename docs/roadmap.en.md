@@ -131,6 +131,19 @@ GraphQL/gRPC (REST by decision).
 !!! note "This roadmap is honest, not aspirational"
     Items past the next cuts only land on the changelog when business pressure pulls them. This page is refreshed on every release — if something belongs here and isn't, open an issue.
 
+## Shipped in v0.173.0
+
+Modelops — export, measure and quantize the models a service serves:
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **CPU/RAM/GPU/energy benchmarking** | ✅ v0.173 | `benchmark` times any callable; `benchmark_onnx`/`benchmark_torch`/`benchmark_models` build on it. Discarded warm-up plus N repetitions, median and IQR first (latency is heavy-tailed), p95/p99, throughput, RSS peak and delta, GPU memory. [Modelops »](recipes/modelops.md) |
+| **Energy measurement with provenance** | ✅ v0.173 | `NvmlPowerSampler` (prefers the driver's total-energy counter, falls back to integrating power), `NvidiaSmiPowerSampler`, `RaplEnergySampler` (CPU package energy via powercap, wraparound handled) and `NullPowerSampler`. Every number carries an `EnergySource` — none of them is wall-plug. A CPU run resolves no GPU sampler. |
+| **Ranking: composite score + Pareto** | ✅ v0.173 | `composite_scores` with weights renormalized over the dimensions actually measured, `pareto_points` skipping unmeasured axes instead of assuming the best, `rank` → `BenchmarkReport` with the effective weights and the host description. |
+| **`.onnx` → `.ort` and graph optimization** | ✅ v0.173 | `export_onnx_to_ort` (file or directory, `FIXED`/`RUNTIME` style, `target_platform`, type reduction, `.required_operators.config` for the minimal build), `export_torch_to_onnx` and `optimize_onnx_graph`. |
+| **ONNX and HuggingFace quantization** | ✅ v0.173 | `quantize_onnx_dynamic`, `quantize_onnx_static` (calibration reader from any iterable of feeds), and the transformers-export path on ONNX Runtime's own tooling: `optimize_hf_onnx` (`O1`–`O4`), `quantize_hf_onnx` (arm64/avx2/avx512/avx512_vnni) — plus `quantize_hf_bnb` (int4/int8 in PyTorch). No `optimum` dependency, so nothing here caps your `transformers` version. |
+| **`tempest model` CLI** | ✅ v0.173 | `analyze` / `bench` / `optimize` / `quantize` / `export-ort` / `hardware`, with `--json` on the reporting commands. A missing extra exits 2 with the install line. [CLI »](recipes/cli.md) |
+
 ## Shipped in v0.168.0
 
 Permission guards with metadata:
