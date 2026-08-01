@@ -45,6 +45,19 @@ from tempest_fastapi_sdk.agents.builtin import (
     transcribe_audio_tool as transcribe_audio_tool,
 )
 from tempest_fastapi_sdk.agents.builtin import web_search_tool as web_search_tool
+from tempest_fastapi_sdk.agents.loop import APPROVAL_TOKEN as APPROVAL_TOKEN
+from tempest_fastapi_sdk.agents.loop import (
+    DEFAULT_CRITIC_PROMPT as DEFAULT_CRITIC_PROMPT,
+)
+from tempest_fastapi_sdk.agents.loop import LoopIteration as LoopIteration
+from tempest_fastapi_sdk.agents.loop import LoopResult as LoopResult
+from tempest_fastapi_sdk.agents.loop import Verdict as Verdict
+from tempest_fastapi_sdk.agents.loop import refine as refine
+from tempest_fastapi_sdk.agents.loop import run_until as run_until
+from tempest_fastapi_sdk.agents.loop import succeeded as succeeded
+from tempest_fastapi_sdk.agents.multi import DEFAULT_MAX_DEPTH as DEFAULT_MAX_DEPTH
+from tempest_fastapi_sdk.agents.multi import agent_tool as agent_tool
+from tempest_fastapi_sdk.agents.multi import team_tools as team_tools
 from tempest_fastapi_sdk.agents.router import (
     AgentArtifactSchema as AgentArtifactSchema,
 )
@@ -79,6 +92,9 @@ from tempest_fastapi_sdk.agents.tools import ToolReturn as ToolReturn
 from tempest_fastapi_sdk.agents.tools import text_tool as text_tool
 
 __all__: list[str] = [
+    "APPROVAL_TOKEN",
+    "DEFAULT_CRITIC_PROMPT",
+    "DEFAULT_MAX_DEPTH",
     "DEFAULT_SYSTEM_PROMPT",
     "Agent",
     "AgentArtifact",
@@ -95,18 +111,26 @@ __all__: list[str] = [
     "BaseAgentRunModel",
     "DbAgentRunSink",
     "InMemoryAgentRunSink",
+    "LoopIteration",
+    "LoopResult",
     "StepKind",
     "StopReason",
     "ToolHandler",
     "ToolResult",
     "ToolReturn",
+    "Verdict",
+    "agent_tool",
     "describe_image_tool",
     "generate_image_tool",
     "make_agent_router",
     "make_agent_run_model",
+    "refine",
     "retrieve_tool",
+    "run_until",
     "save_artifact_tool",
     "speak_tool",
+    "succeeded",
+    "team_tools",
     "text_tool",
     "transcribe_audio_tool",
     "web_search_tool",

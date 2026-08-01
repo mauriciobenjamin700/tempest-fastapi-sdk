@@ -354,6 +354,174 @@ The run is finalized (and sent to the sink) once the iterator is exhausted.
 Abandoning it midway leaves no record — the right behaviour for a cancelled
 request.
 
+## Delegating to another agent
+
+There is no "team" object here, and that is the design: an agent already
+knows how to pick a tool by name and read what it returns, so the cheapest
+way to hand work to a specialist is to **make the specialist a tool**.
+
+```python
+from tempest_fastapi_sdk.agents import Agent, agent_tool, web_search_tool
+
+researcher = Agent(
+    generator,
+    tools=[web_search_tool(web_search)],
+    name="researcher",
+)
+writer = Agent(
+    generator,
+    tools=[agent_tool(researcher, description="Research a topic on the web.")],
+    name="writer",
+)
+
+run = await writer.run("Write a short brief about PIX.")
+for step in run.steps:
+    print(step.kind, step.name, len(step.children))
+```
+
+```text
+model chat 0
+agent ask_researcher 3
+model chat 0
+```
+
+The delegation step is `agent`, not `tool` — and the child's trace hangs off
+it in `children`. A delegation is the one step that can cost as much as a
+whole run; reading a trace where the expensive step looks like a function
+call is how you misread where the time went. `step.total_steps` counts the
+subtree.
+
+### Three guards delegation needs
+
+| Guard | Why |
+| --- | --- |
+| **Inherited clock** | The child may finish sooner than its own budget allows but **never** later than the parent's — the parent is the one holding a request open. The earlier of the two wins. |
+| **Bounded depth** | Nothing stops the model from having A delegate to B which delegates back to A. `max_depth` (3 by default) turns that into a refusal the model can read and work around. |
+| **Prefixed artifacts** | What the child produces surfaces on the parent as `researcher/report.md`. Two specialists writing `report.md` cannot clobber each other. |
+
+```python
+run = await writer.run("...")
+print([a.name for a in run.artifacts])
+```
+
+```text
+['illustrator/chart.png', 'researcher/notes.md']
+```
+
+!!! warning "A truncated child is flagged, not hidden"
+    If the sub-agent stops on a budget, the text returned to the parent
+    starts with `[stopped: timeout]`. A parent handed only the partial
+    answer would present it as a complete one.
+
+Several specialists at once:
+
+```python
+from tempest_fastapi_sdk.agents import Agent, team_tools
+
+coordinator = Agent(
+    generator,
+    tools=team_tools({
+        researcher: "Research facts on the web.",
+        illustrator: "Draw images from a description.",
+    }),
+    name="coordinator",
+)
+```
+
+!!! tip "The description is what the coordinator chooses on"
+    Passing the description alongside each agent is the shape that keeps
+    those descriptions readable next to each other — and they are the only
+    basis the coordinator has for deciding who gets the work.
+
+## Loop: keep going until it passes a check
+
+A run stops when the **model** says it is done. That often means "out of
+ideas" rather than "good enough".
+
+```python
+from tempest_fastapi_sdk.agents import AgentRun, run_until
+
+def parses(run: AgentRun) -> bool:
+    """Accept only output that is valid JSON."""
+    import json
+    try:
+        json.loads(run.output)
+    except ValueError:
+        return False
+    return run.succeeded
+
+result = await run_until(
+    agent,
+    "Return the data as JSON.",
+    until=parses,
+    max_rounds=4,
+    max_seconds=120,
+)
+print(result.accepted, result.rounds, result.output)
+```
+
+The predicate is where the value is: a check that actually **runs** the
+output — parses it, imports the module, hits the endpoint — is a far harder
+gate than asking the model whether it is happy. That is why this loop can
+improve on a single run at all.
+
+Each later round sees the rejected attempt:
+
+```text
+Return the data as JSON.
+
+Your previous attempt was rejected. It was:
+
+Here is the data: name=John, age=30
+
+Produce a different and better answer.
+```
+
+A model that cannot see its previous attempt tends to reproduce it. Pass
+`feedback=` to write that text yourself.
+
+!!! danger "`accepted=False` means nothing passed"
+    Running out of rounds is not approval. `result.output` is the best
+    attempt, not a validated answer — check `result.accepted`, not just the
+    text.
+
+## Loop: generate, critique, revise
+
+A second agent reading the first one's output catches what the author
+cannot — the same reason code review works on people.
+
+```python
+from tempest_fastapi_sdk.agents import refine
+
+result = await refine(writer, reviewer, "Write the release notes.")
+
+print(result.accepted, result.rounds)
+for iteration in result.iterations:
+    print(iteration.index, iteration.accepted, iteration.critique)
+```
+
+```text
+True 2
+0 False Too vague about the breaking change; name the version.
+1 True None
+```
+
+The critic approves by replying with exactly `APPROVED`. A critic asked for
+free-form judgement hedges — "looks good, though you might consider..." is
+impossible to branch on. One reserved word makes the decision
+machine-readable while the **rejection** stays free-form, which is the half
+that needs to be expressive.
+
+!!! note "The critic does not rewrite"
+    Forcing it to describe the fix keeps the work — and the accountability
+    for it — with the worker. A critic that rewrites tends to smuggle in its
+    own errors unreviewed.
+
+!!! warning "Cost multiplies"
+    `rounds` runs of an agent allowing N steps is `rounds * N` model calls.
+    That is exactly the point of these loops, and why every one of them
+    takes a hard ceiling.
+
 ## Recap
 
 - **`Agent.run(goal)`** returns an `AgentRun`: answer, trace, artifacts and
@@ -365,6 +533,10 @@ request.
 - **Named artifacts** chain multimodal work without disk or base64.
 - **A tool error becomes an observation** for the model, not an exception.
 - **Persistence is opt-in** — memory by default, ORM when you want it.
+- **`agent_tool`** turns one agent into another's tool; the clock is
+  inherited, depth is bounded and the child's trace nests.
+- **`run_until`** keeps going until your predicate accepts; **`refine`** uses
+  a critic. In both, `accepted=False` means nothing passed.
 
 Where to go next: [Self-hosted generative AI](genai.md) for the models
 themselves, [Image generation](image-generation.md) and

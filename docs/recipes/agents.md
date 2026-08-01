@@ -356,6 +356,173 @@ A execução só é finalizada (e mandada ao sink) quando o iterador se esgota.
 Abandonar no meio não deixa registro — que é o certo para uma requisição
 cancelada.
 
+## Delegar para outro agente
+
+Não existe objeto "time" aqui, e isso é o design: um agente já sabe escolher
+uma ferramenta pelo nome e ler o que ela devolve, então o jeito mais barato
+de passar trabalho a um especialista é **transformar o especialista numa
+ferramenta**.
+
+```python
+from tempest_fastapi_sdk.agents import Agent, agent_tool, web_search_tool
+
+researcher = Agent(
+    generator,
+    tools=[web_search_tool(web_search)],
+    name="researcher",
+)
+writer = Agent(
+    generator,
+    tools=[agent_tool(researcher, description="Pesquise um tema na web.")],
+    name="writer",
+)
+
+run = await writer.run("Escreva um resumo sobre PIX.")
+for step in run.steps:
+    print(step.kind, step.name, len(step.children))
+```
+
+```text
+model chat 0
+agent ask_researcher 3
+model chat 0
+```
+
+O passo da delegação é `agent`, não `tool` — e o traço do filho fica
+**aninhado** nele, em `children`. Uma delegação é o único passo que pode
+custar tanto quanto uma execução inteira; ler um traço onde o passo caro
+parece uma chamada de função é como você interpreta errado para onde foi o
+tempo. `step.total_steps` conta a subárvore.
+
+### Três guardas que a delegação precisa
+
+| Guarda | Por quê |
+| --- | --- |
+| **Relógio herdado** | O filho pode terminar antes do próprio orçamento, mas **nunca** depois do relógio do pai — é o pai que está segurando uma requisição aberta. Vale o menor dos dois. |
+| **Profundidade limitada** | Nada impede o modelo de fazer A delegar para B que delega para A. `max_depth` (3 por padrão) transforma isso numa recusa que o modelo lê e contorna. |
+| **Artefatos com prefixo** | O que o filho produz sobe para o pai como `researcher/report.md`. Dois especialistas escrevendo `report.md` não se sobrescrevem. |
+
+```python
+run = await writer.run("...")
+print([a.name for a in run.artifacts])
+```
+
+```text
+['illustrator/chart.png', 'researcher/notes.md']
+```
+
+!!! warning "O filho truncado é sinalizado, não escondido"
+    Se o sub-agente parar por orçamento, o texto que volta ao pai começa com
+    `[stopped: timeout]`. Um pai que recebesse só a resposta parcial a
+    apresentaria como completa.
+
+Vários especialistas de uma vez:
+
+```python
+from tempest_fastapi_sdk.agents import Agent, team_tools
+
+coordinator = Agent(
+    generator,
+    tools=team_tools({
+        researcher: "Pesquise fatos na web.",
+        illustrator: "Desenhe imagens a partir de uma descrição.",
+    }),
+    name="coordinator",
+)
+```
+
+!!! tip "A descrição é o que o coordenador usa para escolher"
+    Passar a descrição junto de cada agente é a forma que mantém as
+    descrições legíveis lado a lado — e é só nelas que o coordenador se
+    baseia para decidir a quem entregar.
+
+## Loop: insistir até passar num critério
+
+Uma execução para quando o **modelo** diz que terminou. Isso costuma
+significar "sem mais ideias", não "está bom".
+
+```python
+from tempest_fastapi_sdk.agents import AgentRun, run_until
+
+def parses(run: AgentRun) -> bool:
+    """Accept only output that is valid JSON."""
+    import json
+    try:
+        json.loads(run.output)
+    except ValueError:
+        return False
+    return run.succeeded
+
+result = await run_until(
+    agent,
+    "Devolva os dados como JSON.",
+    until=parses,
+    max_rounds=4,
+    max_seconds=120,
+)
+print(result.accepted, result.rounds, result.output)
+```
+
+O predicado é onde está o valor: um teste que **executa** a saída — faz o
+parse, importa o módulo, chama o endpoint — é uma barreira muito mais dura
+que perguntar ao modelo se ele está satisfeito. É por isso que esse laço
+consegue melhorar sobre uma execução única.
+
+Cada rodada seguinte vê a tentativa rejeitada:
+
+```text
+Devolva os dados como JSON.
+
+Your previous attempt was rejected. It was:
+
+Aqui estão os dados: nome=João, idade=30
+
+Produce a different and better answer.
+```
+
+Um modelo que não enxerga a própria tentativa anterior tende a reproduzi-la.
+Passe `feedback=` para escrever esse texto do seu jeito.
+
+!!! danger "`accepted=False` significa que nada passou"
+    Ficar sem rodadas não é aprovação. `result.output` é a melhor tentativa,
+    não uma resposta validada — cheque `result.accepted`, não só o texto.
+
+## Loop: gerar, criticar, revisar
+
+Um segundo agente lendo a saída do primeiro pega o que o autor não pega —
+pelo mesmo motivo que code review funciona com gente.
+
+```python
+from tempest_fastapi_sdk.agents import refine
+
+result = await refine(writer, reviewer, "Escreva as notas de release.")
+
+print(result.accepted, result.rounds)
+for iteration in result.iterations:
+    print(iteration.index, iteration.accepted, iteration.critique)
+```
+
+```text
+True 2
+0 False Vago demais sobre a mudança incompatível; cite a versão.
+1 True None
+```
+
+O crítico aprova respondendo exatamente `APPROVED`. Um crítico solto hesita
+— "está bom, embora você pudesse considerar..." é impossível de ramificar.
+Uma palavra reservada torna a decisão legível por máquina e deixa a
+**rejeição** livre, que é a metade que precisa ser expressiva.
+
+!!! note "O crítico não reescreve"
+    Obrigá-lo a descrever a correção mantém o trabalho (e a
+    responsabilidade por ele) com o worker. Um crítico que reescreve acaba
+    contrabandeando os próprios erros sem revisão.
+
+!!! warning "Custo multiplica"
+    `rounds` execuções de um agente com N passos são `rounds * N` chamadas
+    de modelo. É exatamente o ponto desses laços — e por isso todos exigem
+    um teto duro.
+
 ## Recapitulando
 
 - **`Agent.run(goal)`** devolve `AgentRun`: resposta, traço, artefatos e
@@ -367,6 +534,10 @@ cancelada.
 - **Artefatos nomeados** encadeiam multimodal sem disco e sem base64.
 - **Erro de ferramenta vira observação** para o modelo, não exceção.
 - **Persistência é opt-in** — memória por padrão, ORM quando quiser.
+- **`agent_tool`** transforma um agente em ferramenta de outro; o relógio é
+  herdado, a profundidade é limitada e o traço do filho fica aninhado.
+- **`run_until`** insiste até o seu predicado aceitar; **`refine`** usa um
+  crítico. Nos dois, `accepted=False` quer dizer que nada passou.
 
 Onde continuar: [IA generativa self-hosted](genai.md) para os modelos em si,
 [Geração de imagem](image-generation.md) e

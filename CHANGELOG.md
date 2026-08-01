@@ -5,6 +5,54 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.182.0] — 2026-08-01
+
+### Added
+
+- **Delegation — `agent_tool(agent)` / `team_tools(...)`.** There is no
+  separate "team" object, and that is the design: an agent already knows how
+  to pick a tool by name and read what it returns, so the cheapest way to
+  hand work to a specialist is to make the specialist **a tool**. What
+  delegation does need is three guards a plain tool does not:
+
+  * **The clock is inherited.** `AgentContext.deadline` carries an absolute
+    instant, and each run takes the **earlier** of its own budget and the
+    one handed down. A sub-agent may finish sooner than its budget allows
+    but never later than its parent's, because the parent is holding a
+    request open.
+  * **Depth is bounded.** `max_depth` (3 by default) turns A→B→A from an
+    infinite loop into a refusal the model reads and works around.
+  * **The child's work comes back.** Artifacts merge into the parent
+    namespaced as `<agent>/<name>`, so two specialists writing `report.md`
+    cannot clobber each other, and a truncated child is reported as
+    `[stopped: timeout] …` rather than passing partial work off as complete.
+
+  New `StepKind.AGENT` plus `AgentStep.children` / `.agent` /
+  `.total_steps`: a delegation is the one step that can cost as much as a
+  whole run, and a trace where the expensive step looks like a function call
+  is a trace you misread.
+
+- **Autonomous loops — `run_until` and `refine`.** A single run stops when
+  the model says it is done, which often means "out of ideas".
+  `run_until(agent, goal, until=...)` repeats until a **predicate you wrote**
+  accepts — ordinary Python that can parse the JSON, import the module or
+  call your service, which is a far harder gate than asking the model
+  whether it is satisfied. `refine(worker, critic, goal)` runs
+  generate-critique-revise with two agents; the critic approves with the
+  exact token `APPROVED` (free-form judgement hedges and cannot be branched
+  on) and never rewrites, keeping the work and the accountability with the
+  worker. Both carry every round in `LoopResult` / `LoopIteration`, bound
+  total wall-clock across rounds, and report `accepted=False` when nothing
+  passed — running out of rounds is not approval.
+
+### Fixed
+
+- **A delegated agent did not actually inherit its parent's clock.** The
+  effective deadline was computed onto the run state but never written back
+  to the `AgentContext`, so `context.child()` handed the sub-agent `None`
+  and it ran to its own budget. Caught by the test written for the
+  behaviour; the deadline now lands on the context that delegation reads.
+
 ## [0.181.0] — 2026-08-01
 
 ### Added
