@@ -100,6 +100,7 @@ plugins:
               - recipes/index.md
               - Admin site: recipes/admin.md
               - AI agents: recipes/agents.md
+              - AI agents (advanced): recipes/agents-advanced.md
               - Audit trail: recipes/audit-trail.md
               - Auth flow (signup/reset): recipes/auth-flow.md
               - Brazilian helpers: recipes/br-helpers.md
@@ -338,6 +339,7 @@ nav:
   - Receitas:
       - recipes/index.md
       - "Agentes de IA": recipes/agents.md
+      - "Agentes de IA (avançado)": recipes/agents-advanced.md
       - "Arquivo no serviço (mixin)": recipes/stored-files.md
       - "Artefatos versionados (modelos)": recipes/artifact-registry.md
       - Audit trail: recipes/audit-trail.md
