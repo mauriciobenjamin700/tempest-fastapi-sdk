@@ -221,6 +221,24 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   "Dependency policy" section in the global `CLAUDE.md`. **Static:**
   `analyze_onnx`/`analyze_ort`/`analyze_torch`/`analyze_model`. CLI
   `tempest model analyze|bench|optimize|quantize|export-ort|hardware`.
+  **sklearn to the edge (v0.188.0, `[modelops-sklearn]` = skl2onnx):**
+  `export_sklearn_to_onnx` (float32 + ZipMap off), `verify_sklearn_onnx`,
+  `edge_bundle` (returns the *smallest* artifact — optimize/`.ort` grow tiny
+  graphs), `uses_ml_domain` (int8 quantization does not apply to
+  `ai.onnx.ml`). `hummingbird-ml` rejected: caps `onnx<=1.16.1`.
+  **Serving (v0.189.0):** `OnnxPredictor` (resolves input/output names,
+  `DEFAULT_INTRA_OP_THREADS = 1` for constrained devices, reports the
+  providers *actually* in use, `reload` builds the new session before
+  dropping the old so a bad rollout degrades to the previous version),
+  `make_prediction_router`, `RegistryModelSource` (fleet update over the
+  existing `ArtifactRegistry`, one cached file per version).
+  **Monitoring (v0.190.0):** `PredictionMonitor` + `baseline_from_samples`
+  + `population_stability_index` — latency/volume, input drift (PSI vs a
+  training-time baseline of bin edges only) and prediction distribution;
+  constant memory (counters, never rows), per-window, `insufficient_data`
+  below `MIN_ROWS_FOR_DRIFT`; PSI thresholds documented as a **convention,
+  not a statistical test**. `PredictionMetrics` publishes it to Prometheus;
+  `make_prediction_router(monitor=, metrics=)` mounts `GET /monitor`.
   Recipe: `docs/recipes/modelops.md`.
 - **GenAI self-hosted** (`[genai]` extra: transformers+torch+accelerate;
   `[genai-quant]` = bitsandbytes) — `tempest_fastapi_sdk.genai`, delivered

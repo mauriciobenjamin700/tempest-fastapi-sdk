@@ -227,6 +227,123 @@ periodic task — it is a no-op when the right version is already loaded.
     you want to decide when old versions go.
 
 
+## Knowing whether the model still works
+
+The device answers in 3 ms. That says nothing about whether the answers are
+right.
+
+In production there are no labels — nobody tells the device it just
+misclassified something — so **accuracy is not measurable there**. What *is*
+measurable is whether the world still looks like the one the model was
+trained on, and whether the model's own output has shifted. Both are
+proxies, and the implementation says so rather than pretending otherwise.
+
+```python
+from tempest_fastapi_sdk.modelops import PredictionMonitor, baseline_from_samples
+
+baseline = baseline_from_samples(X_train, labels=y_train)
+monitor = PredictionMonitor(baseline=baseline)
+
+result = predictor.predict(rows)
+monitor.observe(rows, result)
+
+report = monitor.report()
+print(report.drift.verdict, report.drift.worst_psi)
+```
+
+```text
+significant 3.95
+```
+
+### Three signals, because they separate different failures
+
+| Signal | Catches |
+| --- | --- |
+| Latency and volume | A thermally throttled device, a provider that fell back to CPU |
+| Input drift | A sensor that changed units, a form that changed a default, a season the training data never saw |
+| Prediction distribution | Inputs within their usual ranges, combined in a way that pushes every row to one class |
+
+Reading the last two together is what gives a diagnosis:
+
+!!! tip "How to read the combination"
+    - **Input moved, output stable** → usually a harmless covariate shift.
+    - **Output moved, input stable** → the model is extrapolating.
+    - **Both moved** → retrain, do not tune a threshold.
+
+### The baseline comes from training, not from production
+
+`baseline_from_samples` keeps **bin edges and proportions**, never the rows.
+That is a few kilobytes and no records — small enough to version alongside
+the model.
+
+```python
+from pathlib import Path
+
+Path("dist/baseline.json").write_text(baseline.model_dump_json())
+```
+
+!!! danger "Building the baseline from production traffic defeats the measurement"
+    It would describe the **already drifted** population as normal. The
+    baseline comes from the training set, at training time.
+
+### PSI, and what it is not
+
+The metric is the **Population Stability Index**, the credit-scoring
+standard for decades: `< 0.1` stable, `0.1-0.25` moved, `> 0.25` moved
+enough to distrust the calibration.
+
+!!! warning "A convention, not a statistical test"
+    PSI has no p-value and no null distribution. It does not tell you the
+    shift is significant — only that it is large by a rule of thumb the
+    industry agreed on. Crossing a threshold is a reason to **look**, not a
+    reason to act automatically.
+
+Below `MIN_ROWS_FOR_DRIFT` (100 rows) the verdict is `insufficient_data`,
+not `stable`: with 30 rows across 10 bins, an empty bin is the expected
+outcome of sampling. "We do not have traffic yet" and "there is no drift"
+are different answers, and the second one would lie on the dashboard.
+
+### Constant memory
+
+Rows are counted into bins and discarded. The cost is
+`n_features x n_bins` counters regardless of traffic — nothing accumulates a
+copy of the requests, which also means no feature value stays in memory to
+leak into a log or a crash dump.
+
+Drift is measured **per window** (`DEFAULT_WINDOW_ROWS`, 1000 rows). When
+one closes it becomes the last complete measurement and the counters reset,
+so the numbers describe recent traffic rather than everything since boot —
+which would take days to react to a real shift.
+
+### Over HTTP and in Prometheus
+
+```python
+from tempest_fastapi_sdk.modelops import PredictionMetrics
+
+app.include_router(
+    make_prediction_router(
+        predictor,
+        monitor=monitor,
+        metrics=PredictionMetrics(),
+    ),
+)
+```
+
+`GET /api/predict/monitor` returns the whole report; the metrics go to the
+same registry the SDK's `/metrics` endpoint serves
+(`edge_model_predictions_total`, `edge_model_prediction_seconds`,
+`edge_model_feature_drift_psi{feature}`,
+`edge_model_prediction_share{label}`).
+
+!!! check "Swapping the model resets the monitor"
+    `POST /model/sync` calls `monitor.reset()` when the version actually
+    changes. Mixing two versions into one percentile would hide exactly the
+    regression a fleet update needs to catch.
+
+    Without a baseline the monitor still records latency and the output
+    distribution — a device with no baseline should not be left with no
+    monitoring at all.
+
 ## Measure before you optimize
 
 Measuring comes first. Without `tempest model bench` you have no baseline

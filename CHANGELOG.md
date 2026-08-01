@@ -5,6 +5,69 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.190.0] — 2026-08-01
+
+### Added
+
+- **Edge monitoring — `PredictionMonitor`, because a device that answers in
+  3 ms tells you nothing about whether the answers are right.** In
+  production there are no labels, so accuracy is not measurable on the
+  device. Three proxies are, and the module says they are proxies rather
+  than pretending otherwise:
+
+  * **Latency and volume** — the only signal that catches a thermally
+    throttled device or a provider that silently fell back to CPU.
+  * **Input drift** — live features against a training-set baseline, by
+    Population Stability Index.
+  * **Prediction distribution** — what the model is answering, against what
+    it answered on the training data. This catches the failure input drift
+    misses: features within their usual ranges, combined in a way that
+    pushes every row to one class.
+
+  Read together they diagnose: input moved with stable output is usually a
+  harmless covariate shift; output moved with stable input means the model
+  is extrapolating; both moved means retraining.
+
+- **`baseline_from_samples`** — summarises the training set into bin edges
+  and proportions, never the rows. A few kilobytes, no records, versionable
+  next to the model. The docstring says to build it at training time:
+  building it from production traffic would describe the already-drifted
+  population as normal.
+
+- **`population_stability_index`** with the conventional thresholds as named
+  constants — `PSI_MODERATE = 0.1`, `PSI_SIGNIFICANT = 0.25`, from
+  credit-scorecard practice, pinned by a test. **Documented as a convention,
+  not a statistical test**: PSI has no p-value and no null distribution, so
+  a crossing is a reason to look, not to act automatically. Below
+  `MIN_ROWS_FOR_DRIFT` (100 rows) the verdict is `insufficient_data` rather
+  than `stable` — with 30 rows across 10 bins an empty bin is the expected
+  outcome of sampling, and "no traffic yet" is a different answer from "no
+  drift".
+
+  A constant training feature gets a narrow middle bin instead of degenerate
+  edges: with one catch-all bin, drift on that feature could never be
+  detected.
+
+- **Constant memory, by construction.** Rows are counted into bins and
+  discarded — `n_features x n_bins` counters regardless of traffic. Nothing
+  retains a copy of the requests, so no feature value stays in memory to
+  leak into a log or a crash dump. Drift is measured per window
+  (`DEFAULT_WINDOW_ROWS`), so the numbers track recent traffic rather than
+  everything since boot.
+
+- **`PredictionMetrics`** — the same numbers as Prometheus metrics on the
+  registry the SDK's `/metrics` endpoint already serves. Split from the
+  monitor on purpose: counters and the latency histogram are cheap per
+  request, drift gauges only change when a window closes. Insufficient
+  samples publish no gauge, so a noisy PSI from 12 rows never becomes a
+  spike on a dashboard.
+
+- **`make_prediction_router(..., monitor=, metrics=)`** — records every
+  request and mounts `GET /monitor`. A `422` is not counted: it never
+  reached the model. `POST /model/sync` resets the monitor when the version
+  actually changes, since mixing two versions into one latency percentile
+  hides exactly the regression a fleet update needs to catch.
+
 ## [0.189.0] — 2026-08-01
 
 ### Added
