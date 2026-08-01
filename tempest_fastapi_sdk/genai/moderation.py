@@ -132,6 +132,7 @@ class ClassifierModerator:
         revision: str | None = None,
         local_files_only: bool = False,
         trust_remote_code: bool = False,
+        idle_unload_seconds: float | None = None,
         hardware: HardwareInfo | None = None,
     ) -> None:
         """Configure the moderator (does not load weights yet).
@@ -150,6 +151,9 @@ class ClassifierModerator:
                 the network.
             trust_remote_code (bool): Allow the repository's own Python to
                 run at load time.
+            idle_unload_seconds (float | None): When set,
+                :meth:`unload_if_idle` frees the classifier after this many
+                idle seconds.
             hardware (HardwareInfo | None): Injected snapshot (tests).
         """
         self.model_id = model_id
@@ -166,6 +170,7 @@ class ClassifierModerator:
             local_files_only=local_files_only,
             trust_remote_code=trust_remote_code,
         )
+        self.idle_unload_seconds = idle_unload_seconds
         self._model: Any = None
         self._tokenizer: Any = None
         self._last_used: float = time.monotonic()
@@ -174,6 +179,35 @@ class ClassifierModerator:
     def is_loaded(self) -> bool:
         """Return ``True`` once the weights are in memory."""
         return self._model is not None
+
+    @property
+    def seconds_idle(self) -> float:
+        """Return seconds since the last moderation call (or load).
+
+        Returns:
+            float: Idle time in seconds.
+        """
+        return time.monotonic() - self._last_used
+
+    def unload(self) -> None:
+        """Free the classifier and its memory. Safe when not loaded."""
+        self._model = None
+        self._tokenizer = None
+
+    def unload_if_idle(self) -> bool:
+        """Free the classifier when idle past its configured threshold.
+
+        Returns:
+            bool: ``True`` when this call unloaded the model, ``False``
+            when it was already free, still in use, or no
+            ``idle_unload_seconds`` was configured.
+        """
+        if self.idle_unload_seconds is None or not self.is_loaded:
+            return False
+        if self.seconds_idle < self.idle_unload_seconds:
+            return False
+        self.unload()
+        return True
 
     def load(self) -> None:  # pragma: no cover - needs torch + a real model
         """Load the classifier + tokenizer. Idempotent.

@@ -135,6 +135,18 @@ class OnnxEmbedder:
         """Return ``True`` once the session and tokenizer are ready."""
         return self._session is not None
 
+    def unload(self) -> None:
+        """Drop the ONNX session and tokenizer. Safe when not loaded.
+
+        Present so the embedder can live in a
+        :class:`~tempest_fastapi_sdk.genai.ModelRegistry` and be reported by
+        the runtime inventory alongside the torch loaders. The session holds
+        far less than a torch model, but "far less" is not "nothing" on a
+        box running several.
+        """
+        self._session = None
+        self._tokenizer = None
+
     def load(self) -> None:  # pragma: no cover - needs onnxruntime + a real model
         """Load the ONNX session and tokenizer. Idempotent."""
         if self.is_loaded:

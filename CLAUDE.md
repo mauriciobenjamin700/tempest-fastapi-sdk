@@ -327,6 +327,21 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   showed the load itself takes decisions `.pipeline` cannot express —
   `safety_checker=None` (SD 1.x/2.x bundle an extra CLIP), `variant="fp16"`,
   `use_safetensors=True`. Recipe: `docs/recipes/image-generation.md`.
+- **Runtime model inventory (v0.179.0)** — `tempest_fastapi_sdk.genai.inventory`
+  (pure Python, no extra). `describe_model(handle, key=)` → `LoadedModel`
+  reading **attributes only** (never triggers a load; unknown fields are
+  `None`, never guessed; a handle exposing only `is_loaded` still appears);
+  `LoadedModel.idle_past_threshold` is `False` whenever any input is unknown.
+  `runtime_report(models, probe=)` → `ModelRuntimeReport` sorted **loaded
+  first, longest-idle first** next to `probe_hardware()`. `ModelRegistry`
+  gained `.inventory()` / `.items()` / `.unload_idle()` — the last frees
+  weights but **keeps the entry** (it reloads on next use), unlike
+  `evict()`. `GET /models` via `make_genai_router(models=)`.
+  `ClassifierModerator` / `SpeechToText` / `OnnxEmbedder` gained the uniform
+  `seconds_idle` / `unload_if_idle` / `unload` they lacked. **Fix:** the
+  router's guard tested truthiness, so an empty `ModelRegistry` (`__len__`
+  == 0 — the startup state) read as "nothing injected"; it now tests
+  `is None`.
 - **SSR** (`[ssr]` extra) — `tempest_fastapi_sdk.ssr`: typed Python
   pages rendered to HTML via `tempestweb`'s `render_to_html` /
   `render_document`. `Page` (typed `Component` base — `body()` +
