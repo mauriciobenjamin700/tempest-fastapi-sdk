@@ -227,6 +227,121 @@ periódica — é no-op quando já está na versão certa.
     decidir quando as versões antigas saem.
 
 
+## Saber se o modelo ainda funciona
+
+O dispositivo responde em 3 ms. Isso não diz nada sobre as respostas estarem
+certas.
+
+Em produção não há rótulo — ninguém avisa o dispositivo que ele acabou de
+classificar errado —, então **acurácia não é medível ali**. O que dá para
+medir é se o mundo ainda se parece com aquele do treino, e se a saída do
+modelo mudou. São proxies, e a implementação diz isso em vez de fingir o
+contrário.
+
+```python
+from tempest_fastapi_sdk.modelops import PredictionMonitor, baseline_from_samples
+
+baseline = baseline_from_samples(X_train, labels=y_train)
+monitor = PredictionMonitor(baseline=baseline)
+
+result = predictor.predict(rows)
+monitor.observe(rows, result)
+
+report = monitor.report()
+print(report.drift.verdict, report.drift.worst_psi)
+```
+
+```text
+significant 3.95
+```
+
+### Três sinais, porque separam falhas diferentes
+
+| Sinal | Pega |
+| --- | --- |
+| Latência e volume | Dispositivo em throttling térmico, provider que caiu para CPU |
+| Deriva de entrada | Sensor que mudou de unidade, formulário que mudou um default, estação do ano que o treino não viu |
+| Distribuição das predições | Entradas nas faixas de sempre, mas combinadas de um jeito que joga tudo para uma classe |
+
+Ler os dois últimos juntos é o que dá diagnóstico:
+
+!!! tip "Como interpretar a combinação"
+    - **Entrada mudou, saída estável** → *covariate shift* geralmente inócuo.
+    - **Saída mudou, entrada estável** → o modelo está extrapolando.
+    - **Os dois mudaram** → retreinar, não ajustar limiar.
+
+### A baseline sai do treino, não da produção
+
+`baseline_from_samples` guarda **bordas de bin e proporções**, nunca as
+linhas. São poucos kilobytes e nenhum registro — dá para versionar junto do
+modelo.
+
+```python
+from pathlib import Path
+
+Path("dist/baseline.json").write_text(baseline.model_dump_json())
+```
+
+!!! danger "Construir a baseline com tráfego de produção anula a medição"
+    Ela passaria a descrever a população **já derivada** como normal. A
+    baseline sai do conjunto de treino, no momento do treino.
+
+### PSI, e o que ele não é
+
+A métrica é o **Population Stability Index**, padrão em *credit scoring* há
+décadas: `< 0.1` estável, `0.1–0.25` mudou, `> 0.25` mudou o bastante para
+não confiar na calibração.
+
+!!! warning "Convenção, não teste estatístico"
+    PSI não tem p-valor nem distribuição nula. Ele não diz que a mudança é
+    significante — diz que é grande segundo uma regra de bolso que a
+    indústria adotou. Cruzar o limiar é motivo para **olhar**, não para agir
+    sozinho.
+
+Abaixo de `MIN_ROWS_FOR_DRIFT` (100 linhas) o veredito é
+`insufficient_data`, não `stable`: com 30 linhas em 10 bins, bin vazio é
+resultado esperado da amostragem. "Ainda não temos tráfego" e "não há
+deriva" são respostas diferentes, e a segunda mentiria no painel.
+
+### Memória constante
+
+Linhas são contadas nos bins e descartadas. O custo é
+`n_features x n_bins` contadores, independentemente do tráfego — nada
+acumula cópia das requisições, o que também significa que nenhum valor de
+feature fica em memória para vazar em log ou dump.
+
+A deriva é medida **por janela** (`DEFAULT_WINDOW_ROWS`, 1000 linhas). Ao
+fechar, a janela vira a última medição completa e os contadores zeram, então
+os números descrevem tráfego recente em vez de tudo desde o boot — que
+levaria dias para reagir a uma mudança real.
+
+### No HTTP e no Prometheus
+
+```python
+from tempest_fastapi_sdk.modelops import PredictionMetrics
+
+app.include_router(
+    make_prediction_router(
+        predictor,
+        monitor=monitor,
+        metrics=PredictionMetrics(),
+    ),
+)
+```
+
+`GET /api/predict/monitor` devolve o relatório inteiro; as métricas vão para
+o mesmo registry do `/metrics` do SDK (`edge_model_predictions_total`,
+`edge_model_prediction_seconds`, `edge_model_feature_drift_psi{feature}`,
+`edge_model_prediction_share{label}`).
+
+!!! check "Trocar de modelo zera o monitor"
+    `POST /model/sync` chama `monitor.reset()` quando a versão muda de
+    verdade. Misturar duas versões no mesmo percentil esconderia exatamente
+    a regressão que a atualização de frota precisa pegar.
+
+    Sem baseline o monitor ainda registra latência e distribuição de saída —
+    um dispositivo sem baseline não deve ficar sem monitoramento nenhum.
+
 ## Medir antes de otimizar
 
 A primeira coisa é medir. Sem `tempest model bench` você não tem base de

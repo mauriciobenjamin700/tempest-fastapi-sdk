@@ -20,11 +20,16 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, HTTPException, status
 from pydantic import Field
 
+from tempest_fastapi_sdk.modelops.monitoring import MonitoringReport
 from tempest_fastapi_sdk.modelops.serving import OnnxPredictor, PredictorInfo
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.artifacts.registry import ArtifactRegistry
+    from tempest_fastapi_sdk.modelops.monitoring import (
+        PredictionMetrics,
+        PredictionMonitor,
+    )
 
 
 class PredictRequestSchema(BaseSchema):
@@ -192,6 +197,8 @@ def make_prediction_router(
     predictor: OnnxPredictor,
     *,
     source: RegistryModelSource | None = None,
+    monitor: PredictionMonitor | None = None,
+    metrics: PredictionMetrics | None = None,
     prefix: str = "/api/predict",
     tags: list[str] | None = None,
 ) -> APIRouter:
@@ -204,6 +211,8 @@ def make_prediction_router(
       **actually** in use, and the thread configuration.
     * ``POST {prefix}/model/sync`` — check the registry and reload if a
       newer version is current (only with a ``source``).
+    * ``GET  {prefix}/monitor`` — latency, input drift and prediction
+      distribution (only with a ``monitor``).
 
     Example:
 
@@ -215,6 +224,12 @@ def make_prediction_router(
         source (RegistryModelSource | None): Registry-backed updates.
             Without it the sync endpoint is not mounted, since there
             would be nothing to sync against.
+        monitor (PredictionMonitor | None): Records every request and
+            serves the monitor endpoint. Without it the endpoint is not
+            mounted.
+        metrics (PredictionMetrics | None): Publishes the same numbers to
+            Prometheus. Independent of ``monitor``: a device can export
+            latency without carrying a drift baseline.
         prefix (str): URL prefix.
         tags (list[str] | None): OpenAPI tags.
 
@@ -245,6 +260,10 @@ def make_prediction_router(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=str(exc),
             ) from exc
+        if monitor is not None:
+            monitor.observe(body.rows, result)
+        if metrics is not None:
+            metrics.observe(result)
         return PredictResponseSchema(
             labels=result.labels,
             probabilities=result.probabilities,
@@ -270,6 +289,11 @@ def make_prediction_router(
         async def sync_model() -> PredictorInfo:
             """Reload from the registry if a newer version is current.
 
+            A monitor, when present, is reset on an actual version change:
+            its counters describe the previous model, and mixing two
+            versions into one latency percentile hides exactly the
+            regression a fleet update needs to catch.
+
             Returns:
                 PredictorInfo: The model in service after the check —
                 unchanged when nothing newer was published.
@@ -279,15 +303,36 @@ def make_prediction_router(
                     reached or the new file failed to load. The previous
                     model keeps serving either way.
             """
+            before = _source.current_version
             try:
-                await _source.sync(predictor)
+                after = await _source.sync(predictor)
             except Exception as exc:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail=f"model sync failed, still serving the previous "
                     f"version: {exc}",
                 ) from exc
+            if monitor is not None and after != before:
+                monitor.reset()
+                monitor.model_version = after
             return predictor.info
+
+    if monitor is not None:
+        _monitor = monitor
+
+        @router.get("/monitor", response_model=MonitoringReport)
+        async def monitor_report() -> MonitoringReport:
+            """Report latency, input drift and prediction distribution.
+
+            Returns:
+                MonitoringReport: What the device has measured. Drift
+                comes from the current window once it holds enough rows,
+                and from the last complete window before that.
+            """
+            report = _monitor.report()
+            if metrics is not None:
+                metrics.observe_report(report)
+            return report
 
     return router
 

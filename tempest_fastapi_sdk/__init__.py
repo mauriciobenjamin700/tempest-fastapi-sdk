@@ -452,7 +452,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.189.0"
+__version__: str = "0.190.0"
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",

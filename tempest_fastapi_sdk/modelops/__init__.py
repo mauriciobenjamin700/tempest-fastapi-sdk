@@ -86,6 +86,41 @@ from tempest_fastapi_sdk.modelops.export import (
 from tempest_fastapi_sdk.modelops.export import (
     optimize_onnx_graph as optimize_onnx_graph,
 )
+from tempest_fastapi_sdk.modelops.monitoring import DEFAULT_BINS as DEFAULT_BINS
+from tempest_fastapi_sdk.modelops.monitoring import (
+    DEFAULT_WINDOW_ROWS as DEFAULT_WINDOW_ROWS,
+)
+from tempest_fastapi_sdk.modelops.monitoring import (
+    MIN_ROWS_FOR_DRIFT as MIN_ROWS_FOR_DRIFT,
+)
+from tempest_fastapi_sdk.modelops.monitoring import PSI_MODERATE as PSI_MODERATE
+from tempest_fastapi_sdk.modelops.monitoring import (
+    PSI_SIGNIFICANT as PSI_SIGNIFICANT,
+)
+from tempest_fastapi_sdk.modelops.monitoring import DriftReport as DriftReport
+from tempest_fastapi_sdk.modelops.monitoring import DriftVerdict as DriftVerdict
+from tempest_fastapi_sdk.modelops.monitoring import FeatureBaseline as FeatureBaseline
+from tempest_fastapi_sdk.modelops.monitoring import FeatureBins as FeatureBins
+from tempest_fastapi_sdk.modelops.monitoring import FeatureDrift as FeatureDrift
+from tempest_fastapi_sdk.modelops.monitoring import LatencyReport as LatencyReport
+from tempest_fastapi_sdk.modelops.monitoring import (
+    MonitoringReport as MonitoringReport,
+)
+from tempest_fastapi_sdk.modelops.monitoring import (
+    PredictionDistribution as PredictionDistribution,
+)
+from tempest_fastapi_sdk.modelops.monitoring import (
+    PredictionMetrics as PredictionMetrics,
+)
+from tempest_fastapi_sdk.modelops.monitoring import (
+    PredictionMonitor as PredictionMonitor,
+)
+from tempest_fastapi_sdk.modelops.monitoring import (
+    baseline_from_samples as baseline_from_samples,
+)
+from tempest_fastapi_sdk.modelops.monitoring import (
+    population_stability_index as population_stability_index,
+)
 from tempest_fastapi_sdk.modelops.quantize import (
     optimize_hf_onnx as optimize_hf_onnx,
 )
@@ -197,28 +232,40 @@ from tempest_fastapi_sdk.modelops.static import (
 )
 
 __all__: list[str] = [
+    "DEFAULT_BINS",
     "DEFAULT_COST_WEIGHTS",
     "DEFAULT_INTRA_OP_THREADS",
     "DEFAULT_OPSET",
     "DEFAULT_REPETITIONS",
     "DEFAULT_SAMPLE_INTERVAL_S",
     "DEFAULT_WARMUP",
+    "DEFAULT_WINDOW_ROWS",
+    "MIN_ROWS_FOR_DRIFT",
     "ORT_CONFIG_SUFFIXES",
+    "PSI_MODERATE",
+    "PSI_SIGNIFICANT",
     "RAPL_ROOT",
     "REMOTE_PROVIDERS",
     "BenchmarkProfile",
     "BenchmarkReport",
     "CalibrationMethod",
+    "DriftReport",
+    "DriftVerdict",
     "EdgeBundle",
     "EdgeStage",
     "EnergyReading",
     "EnergySource",
     "ExportResult",
     "ExportVerification",
+    "FeatureBaseline",
+    "FeatureBins",
+    "FeatureDrift",
     "GraphOptimizationLevel",
     "HFOptimizationLevel",
     "HFQuantizationTarget",
+    "LatencyReport",
     "ModelFormat",
+    "MonitoringReport",
     "NullPowerSampler",
     "NvidiaSmiPowerSampler",
     "NvmlPowerSampler",
@@ -229,6 +276,9 @@ __all__: list[str] = [
     "PredictRequestSchema",
     "PredictResponseSchema",
     "Prediction",
+    "PredictionDistribution",
+    "PredictionMetrics",
+    "PredictionMonitor",
     "PredictorInfo",
     "QuantWeightType",
     "QuantizationBackend",
@@ -246,6 +296,7 @@ __all__: list[str] = [
     "analyze_onnx",
     "analyze_ort",
     "analyze_torch",
+    "baseline_from_samples",
     "benchmark",
     "benchmark_models",
     "benchmark_onnx",
@@ -260,6 +311,7 @@ __all__: list[str] = [
     "optimize_hf_onnx",
     "optimize_onnx_graph",
     "pareto_points",
+    "population_stability_index",
     "quantize_hf_bnb",
     "quantize_hf_onnx",
     "quantize_onnx_dynamic",
