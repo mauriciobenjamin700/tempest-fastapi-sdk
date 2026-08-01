@@ -127,6 +127,82 @@ print(profile.runtime.latency_ms_median)
 ```
 
 
+## Vim de um `.pkl`. E agora?
+
+O time de treino entrega `joblib.dump(...)`, porque é o que todo notebook
+escreve. O navegador não tem como usar isso: **pickle é um programa Python**,
+não um dado. Rodar exigiria um runtime Python inteiro no browser — o que
+mata offline, tamanho e o motivo do módulo existir.
+
+A ponte é de **build**, não de request:
+
+```python
+from tempest_fastapi_sdk.modelops import edge_pipeline_from_pickle
+
+package = edge_pipeline_from_pickle(
+    "artifacts/risk.pkl",
+    X_train,
+    "dist/risk",
+    labels=y_train,
+)
+print(package.manifest.source.file, package.manifest.verified)
+```
+
+```text
+risk.pkl True
+```
+
+O `.pkl` fica na esteira. O que vai para dispositivo e navegador é o pacote
+ONNX — que o `edge_pipeline` já verifica contra as predições do próprio
+objeto carregado.
+
+!!! danger "Carregar pickle executa código arbitrário"
+    `joblib.load` e `pickle.load` não são parsers: eles **executam
+    instruções do arquivo**. Pickle de origem não confiável é execução
+    remota de código, não é risco a ponderar.
+
+    Por isso `load_sklearn_artifact` aceita **caminho local** e recusa URL
+    com erro explícito — não como proteção (quem quiser baixa antes), mas
+    para que não exista no código a forma "carregue o modelo desta URL",
+    que é o que transforma um registry em superfície de RCE.
+
+    Regra prática: `.pkl` só de artefato que a **sua** esteira gerou, em
+    ambiente de build. Nunca de upload, nunca baixado por dispositivo. É
+    exatamente a assimetria que a conversão resolve — **ONNX é dado,
+    pickle é programa**.
+
+!!! warning "Pickle não tem contrato de versão em que dá para confiar"
+    Medido no scikit-learn 1.9: modelo serializado por uma versão e lido por
+    outra **não emite aviso nenhum** e não guarda campo de versão — a
+    divergência, quando importa, é silenciosa.
+
+    Ler uma vez no build e publicar ONNX troca essa classe de problema por
+    uma conversão que ou verifica ou recusa. O manifesto registra a versão
+    do scikit-learn **que fez a conversão**, que é o único fato de versão
+    que a cadeia tem para oferecer.
+
+### O que a ponte faz além de `joblib.load`
+
+**Recupera a ordem das colunas.** Modelo treinado com DataFrame guarda
+`feature_names_in_`; a ponte lê e escreve no manifesto. É o campo que evita
+o erro que nenhuma checagem de runtime pega — features certas na ordem
+errada.
+
+**Acha o modelo dentro do dict.** Esteira quase sempre despeja
+`{"model": est, "auc": 0.91, ...}`. Com um só estimador dentro, resolve
+sozinho; com dois, **recusa e lista o que achou** em vez de chutar:
+
+```python
+package = edge_pipeline_from_pickle("bundle.pkl", X, "dist/", key="challenger")
+```
+
+**Grava a procedência.** Nome, SHA-256 e tamanho do `.pkl` vão para
+`manifest.source`, então um modelo rodando num dispositivo daqui a seis
+meses ainda responde "qual arquivo me gerou".
+
+**Rejeita o que não prediz** com mensagem direta, em vez de deixar o erro
+aparecer lá no conversor.
+
 ## Servir o modelo na borda
 
 Exportar produz o arquivo. Isto é tudo entre o arquivo e uma resposta —

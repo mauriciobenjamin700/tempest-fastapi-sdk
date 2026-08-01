@@ -127,6 +127,83 @@ print(profile.runtime.latency_ms_median)
 ```
 
 
+## It arrived as a `.pkl`. Now what?
+
+The training team hands over `joblib.dump(...)`, because that is what every
+notebook writes. The browser cannot use it: **a pickle is a Python
+program**, not data. Running it would need a whole Python runtime in the
+browser — which kills offline, size, and the reason the module exists.
+
+The bridge belongs to the **build**, not to the request path:
+
+```python
+from tempest_fastapi_sdk.modelops import edge_pipeline_from_pickle
+
+package = edge_pipeline_from_pickle(
+    "artifacts/risk.pkl",
+    X_train,
+    "dist/risk",
+    labels=y_train,
+)
+print(package.manifest.source.file, package.manifest.verified)
+```
+
+```text
+risk.pkl True
+```
+
+The `.pkl` stays in the pipeline. What goes to devices and browsers is the
+ONNX package — which `edge_pipeline` already verifies against the loaded
+object's own predictions.
+
+!!! danger "Loading a pickle executes arbitrary code"
+    `joblib.load` and `pickle.load` are not parsers: they **run
+    instructions from the file**. A pickle from an untrusted source is
+    remote code execution, not a risk to weigh.
+
+    That is why `load_sklearn_artifact` takes a **local path** and refuses a
+    URL with an explicit error — not as protection (anyone can download
+    first), but so the shape "load the model from this URL" never exists in
+    the code, since that is what turns a registry into an RCE surface.
+
+    Rule of thumb: `.pkl` only from artifacts **your** pipeline produced, in
+    your build environment. Never from an upload, never downloaded by a
+    device. It is exactly the asymmetry conversion resolves — **ONNX is
+    data, a pickle is a program**.
+
+!!! warning "A pickle carries no version contract you can rely on"
+    Measured on scikit-learn 1.9: a model pickled by one version and loaded
+    by another emits **no warning at all** and stores no version field — the
+    mismatch, when it matters, is silent.
+
+    Reading it once at build time and publishing ONNX trades that class of
+    problem for a conversion that either verifies or refuses. The manifest
+    records the scikit-learn version **that performed the conversion**,
+    which is the only version fact the chain has to offer.
+
+### What the bridge does beyond `joblib.load`
+
+**It recovers the column order.** A model fitted on a DataFrame carries
+`feature_names_in_`; the bridge reads it into the manifest. That is the
+field that catches the error no runtime check can — the right features in
+the wrong order.
+
+**It finds the model inside the dict.** Pipelines almost always dump
+`{"model": est, "auc": 0.91, ...}`. With exactly one estimator inside it
+resolves by itself; with two it **refuses and lists what it found** rather
+than guessing:
+
+```python
+package = edge_pipeline_from_pickle("bundle.pkl", X, "dist/", key="challenger")
+```
+
+**It records provenance.** The `.pkl`'s name, SHA-256 and size go into
+`manifest.source`, so a model running on a device six months from now can
+still answer "which file produced me".
+
+**It refuses what cannot predict** with a direct message, instead of letting
+the failure surface inside the converter.
+
 ## Serving the model on the device
 
 Exporting produces the file. This is everything between that file and an

@@ -214,6 +214,61 @@ class ModelOutput(BaseSchema):
     )
 
 
+class ArtifactSource(BaseSchema):
+    """Where the packaged model came from, when it came from somewhere.
+
+    Present when the package was built from an existing artifact — today a
+    `.pkl` handed over by a training pipeline. It is what lets someone
+    holding a model that is running on a device answer "which file made
+    this", months later.
+
+    Attributes:
+        file (str): Name of the source artifact.
+        kind (str): What it was, e.g. ``"pickle"``.
+        sha256 (str): Digest of that file.
+        bytes (int): Its size.
+        sklearn_version (str): The scikit-learn version that read it and
+            performed the conversion. A pickle records no version of its
+            own (measured on scikit-learn 1.9), so this is the only
+            version fact the chain can offer.
+        warnings (list[str]): Warnings raised while reading the source.
+    """
+
+    file: str = Field(
+        title="File",
+        description="Name of the source artifact.",
+        examples=["risk.pkl"],
+    )
+    kind: str = Field(
+        default="pickle",
+        title="Kind",
+        description="What the source artifact was.",
+        examples=["pickle"],
+    )
+    sha256: str = Field(
+        default="",
+        title="SHA-256",
+        description="Digest of the source artifact.",
+    )
+    bytes: int = Field(
+        default=0,
+        title="Bytes",
+        description="Size of the source artifact.",
+        examples=[48_120],
+    )
+    sklearn_version: str = Field(
+        default="",
+        title="scikit-learn version",
+        description="Version that read the source and converted it.",
+        examples=["1.9.0"],
+    )
+    warnings: list[str] = Field(
+        default_factory=list,
+        title="Warnings",
+        description="Warnings raised while reading the source.",
+    )
+
+
 class EdgeManifest(BaseSchema):
     """Everything a runtime needs to serve the package correctly.
 
@@ -236,6 +291,8 @@ class EdgeManifest(BaseSchema):
             estimator's own predictions. ``None`` means it was not checked
             — which is worth seeing rather than assuming.
         verification (ExportVerification | None): The numbers behind it.
+        source (ArtifactSource | None): Where the packaged model came
+            from, when it was built from an existing artifact.
         baseline_file (str | None): Drift baseline filename.
         baseline_samples (int): Rows the baseline summarises.
     """
@@ -297,6 +354,11 @@ class EdgeManifest(BaseSchema):
         default=None,
         title="Verification",
         description="The numbers behind the check.",
+    )
+    source: ArtifactSource | None = Field(
+        default=None,
+        title="Source",
+        description="Where the packaged model came from, when known.",
     )
     baseline_file: str | None = Field(
         default=None,
@@ -757,6 +819,7 @@ __all__: list[str] = [
     "BASELINE_FILENAME",
     "MANIFEST_FILENAME",
     "MANIFEST_SCHEMA_VERSION",
+    "ArtifactSource",
     "EdgeManifest",
     "EdgePackage",
     "LoadedEdgePackage",

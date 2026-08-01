@@ -58,6 +58,7 @@ from tempest_fastapi_sdk.modelops.edge import MANIFEST_FILENAME as MANIFEST_FILE
 from tempest_fastapi_sdk.modelops.edge import (
     MANIFEST_SCHEMA_VERSION as MANIFEST_SCHEMA_VERSION,
 )
+from tempest_fastapi_sdk.modelops.edge import ArtifactSource as ArtifactSource
 from tempest_fastapi_sdk.modelops.edge import EdgeManifest as EdgeManifest
 from tempest_fastapi_sdk.modelops.edge import EdgePackage as EdgePackage
 from tempest_fastapi_sdk.modelops.edge import (
@@ -140,6 +141,13 @@ from tempest_fastapi_sdk.modelops.monitoring import (
 )
 from tempest_fastapi_sdk.modelops.monitoring import (
     population_stability_index as population_stability_index,
+)
+from tempest_fastapi_sdk.modelops.pickled import LoadedArtifact as LoadedArtifact
+from tempest_fastapi_sdk.modelops.pickled import (
+    edge_pipeline_from_pickle as edge_pipeline_from_pickle,
+)
+from tempest_fastapi_sdk.modelops.pickled import (
+    load_sklearn_artifact as load_sklearn_artifact,
 )
 from tempest_fastapi_sdk.modelops.quantize import (
     optimize_hf_onnx as optimize_hf_onnx,
@@ -269,6 +277,7 @@ __all__: list[str] = [
     "PSI_SIGNIFICANT",
     "RAPL_ROOT",
     "REMOTE_PROVIDERS",
+    "ArtifactSource",
     "BenchmarkProfile",
     "BenchmarkReport",
     "CalibrationMethod",
@@ -289,6 +298,7 @@ __all__: list[str] = [
     "HFOptimizationLevel",
     "HFQuantizationTarget",
     "LatencyReport",
+    "LoadedArtifact",
     "LoadedEdgePackage",
     "ModelFile",
     "ModelFormat",
@@ -334,10 +344,12 @@ __all__: list[str] = [
     "default_providers",
     "edge_bundle",
     "edge_pipeline",
+    "edge_pipeline_from_pickle",
     "export_onnx_to_ort",
     "export_sklearn_to_onnx",
     "export_torch_to_onnx",
     "load_edge_package",
+    "load_sklearn_artifact",
     "make_prediction_router",
     "optimize_hf_onnx",
     "optimize_onnx_graph",

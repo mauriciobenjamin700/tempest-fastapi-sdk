@@ -5,6 +5,54 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.193.0] — 2026-08-01
+
+### Added
+
+- **`edge_pipeline_from_pickle` and `load_sklearn_artifact` — the bridge from
+  what training hands over to what a browser can run.** A training pipeline
+  produces `joblib.dump(...)`; a browser cannot use it, because a pickle is a
+  Python program rather than data, and running one would need a Python
+  runtime in the page. The bridge belongs to the **build**: read the pickle
+  once, in your own environment, and publish the ONNX package that devices
+  and browsers actually load.
+
+  **Loading a pickle executes arbitrary code**, so `load_sklearn_artifact`
+  takes a local path and refuses a URL with an explicit error. Not as
+  protection — anyone can download first — but so the shape "load the model
+  from this URL" never exists in the code, since that is what turns a model
+  registry into a remote-code-execution surface.
+
+  It does four things `joblib.load` does not:
+
+  * **Recovers the column order** from the estimator's `feature_names_in_`,
+    so a model fitted on a DataFrame carries its columns into the manifest.
+    That is the field that catches the failure no runtime check can — the
+    right features in the wrong order.
+  * **Finds the estimator inside a dict** (`{"model": est, "auc": 0.91}` is
+    what pipelines actually dump). One estimator resolves silently; two make
+    it refuse and list what it found rather than guess. `key=` decides.
+  * **Records provenance** — the pickle's name, SHA-256, size and the
+    scikit-learn version that performed the conversion — in a new optional
+    `source` block on the manifest, so an artifact running on a device can
+    be traced back to the file that produced it.
+  * **Refuses what cannot predict** with a direct message instead of letting
+    the failure surface inside the converter.
+
+- **`ArtifactSource` on `EdgeManifest`.** Optional and additive, so
+  `schema_version` stays `1` and existing readers — including
+  `tempest-react-sdk/tabular`, which ignores unknown fields by design — keep
+  working unchanged.
+
+### Documentation
+
+- **A pickle section in the modelops recipe, both languages**, stating the
+  trust boundary plainly (ONNX is data, a pickle is a program) and a
+  measured caveat: on scikit-learn 1.9 a model pickled by one version and
+  loaded by another emits **no warning and stores no version field**. The
+  mismatch is silent, which is another argument for converting at build time
+  rather than shipping the pickle.
+
 ## [0.192.0] — 2026-08-01
 
 ### Changed
