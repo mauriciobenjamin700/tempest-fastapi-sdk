@@ -192,8 +192,9 @@ class TestInputDrift:
         monitor = PredictionMonitor(baseline=baseline, window_rows=100)
         for seed in range(20):
             monitor.observe(_normal(100, seed), _prediction([0] * 100))
-        counts = sum(len(feature) for feature in monitor._counts)
-        assert counts == sum(len(feature.edges) + 1 for feature in baseline.features)
+        expected = len(baseline.features) * monitor._bins_per_feature
+        assert monitor._counts.size == expected
+        assert monitor._counts.nbytes < 4096
 
     def test_a_mismatched_width_never_breaks_serving(
         self,

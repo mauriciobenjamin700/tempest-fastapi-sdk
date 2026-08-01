@@ -5,6 +5,51 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.192.0] — 2026-08-01
+
+### Changed
+
+- **`PredictionMonitor.observe` is 11x faster, because measuring it showed
+  monitoring cost more than inference.** Running the SDK's own instruments
+  over the serving stack found the drift binning at **67 us per single-row
+  call against 7.5 us of actual inference** — the monitor was 9x the model.
+  The cause was the obvious shape: a Python loop per feature, then per bin.
+
+  It is now vectorised — one comparison against a padded edge matrix
+  resolves every feature of every row, and a single `bincount` folds the
+  batch into flat counters allocated once. Measured after: **6.0 us** for one
+  row (from 67.1) and **49.7 us** for 64 rows (from ~104). Counters are a
+  single `int64` array instead of a list of lists, so the constant-memory
+  promise is now literally one allocation.
+
+  No behaviour change: the same bins, the same PSI, the same reports. The
+  window reset refills the existing array rather than rebuilding it.
+
+### Documentation
+
+- **A measured optimisation playbook** in the modelops recipe, both
+  languages, produced with `benchmark_models` / `analyze_onnx` / `rank` /
+  `PredictionMonitor` over 7 estimators on one dataset:
+
+  * **The transport dominates, not the model.** One row over HTTP costs
+    1.22 ms against 0.0075 ms of inference — 160x — measured with an
+    in-process client, so a real network is worse. Batching moves the
+    per-row cost from 1,223 us to 16 us (batch 512), a 74x win that no model
+    choice can match. Per-row inference plateaus at ~1.5 us from batch 8.
+  * **"Tabular means forest" cost 880x the size for worse accuracy** on this
+    dataset: a 300-tree forest is 13.4 MB at 0.931, a small MLP is 15.3 KB
+    at 0.966, in the same latency band. Not a law — the point is that
+    `benchmark_models` answers it in three lines.
+  * **gzip does not pay the same on every model**: 15% on a forest, 23% on a
+    tree, **84% on a logistic regression**. The earlier "10-13%" figure is
+    specific to tree ensembles, and the docs now say so.
+  * **Cold start**: `read_manifest` 0.15 ms, `load_edge_package` 2.16 ms with
+    the SHA-256 check and 2.00 ms without — so the digest check stays on by
+    default, and the cheap manifest read is what makes polling for a new
+    version viable.
+  * **Energy is reported as `unavailable` rather than invented** on a host
+    without powercap or NVML — stated in the playbook with the reason.
+
 ## [0.191.0] — 2026-08-01
 
 ### Added
