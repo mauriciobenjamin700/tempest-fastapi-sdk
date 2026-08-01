@@ -221,6 +221,48 @@ class Agent:
             del step
         return await self._finish(goal, state)
 
+    async def run_structured(
+        self,
+        goal: str,
+        output: type[Any],
+        *,
+        context: AgentContext | None = None,
+        allow_text_fallback: bool = True,
+    ) -> Any:
+        """Work towards ``goal`` and return a validated object.
+
+        Convenience wrapper over
+        :func:`~tempest_fastapi_sdk.agents.run_structured`. The agent gains
+        a temporary answer tool shaped like ``output``; calling it is how
+        the model finishes, which keeps the answer inside the tool-calling
+        path instead of asking for JSON as prose.
+
+        Example:
+
+            >>> run = await agent.run_structured("Read the invoice.", Invoice)
+            >>> run.data.total_cents if run.has_data else run.parse_error
+
+        Args:
+            goal (str): What the agent should accomplish.
+            output (type[Any]): A Pydantic model describing the answer.
+            context (AgentContext | None): A pre-seeded context.
+            allow_text_fallback (bool): Try to parse JSON out of a prose
+                reply when the model ignores the tool.
+
+        Returns:
+            StructuredRun: The run record with ``data`` set, or
+            ``parse_error`` explaining why it is not.
+        """
+        from tempest_fastapi_sdk.agents.structured import run_structured
+
+        return await run_structured(
+            self,
+            goal,
+            output,
+            context=context,
+            allow_text_fallback=allow_text_fallback,
+        )
+
     async def stream(
         self,
         goal: str,

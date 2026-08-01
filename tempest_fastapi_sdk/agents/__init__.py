@@ -84,18 +84,32 @@ from tempest_fastapi_sdk.agents.storage import (
 from tempest_fastapi_sdk.agents.storage import (
     make_agent_run_model as make_agent_run_model,
 )
+from tempest_fastapi_sdk.agents.structured import FINAL_ANSWER_TOOL as FINAL_ANSWER_TOOL
+from tempest_fastapi_sdk.agents.structured import StructuredRun as StructuredRun
+from tempest_fastapi_sdk.agents.structured import (
+    final_answer_tool as final_answer_tool,
+)
+from tempest_fastapi_sdk.agents.structured import run_structured as run_structured
+from tempest_fastapi_sdk.agents.structured import (
+    structured_verdict as structured_verdict,
+)
 from tempest_fastapi_sdk.agents.tools import AgentContext as AgentContext
 from tempest_fastapi_sdk.agents.tools import AgentTool as AgentTool
 from tempest_fastapi_sdk.agents.tools import AgentToolError as AgentToolError
 from tempest_fastapi_sdk.agents.tools import ToolHandler as ToolHandler
 from tempest_fastapi_sdk.agents.tools import ToolReturn as ToolReturn
 from tempest_fastapi_sdk.agents.tools import text_tool as text_tool
+from tempest_fastapi_sdk.agents.typed import TypedHandler as TypedHandler
+from tempest_fastapi_sdk.agents.typed import schema_of as schema_of
+from tempest_fastapi_sdk.agents.typed import tool as tool
+from tempest_fastapi_sdk.agents.typed import typed_tool as typed_tool
 
 __all__: list[str] = [
     "APPROVAL_TOKEN",
     "DEFAULT_CRITIC_PROMPT",
     "DEFAULT_MAX_DEPTH",
     "DEFAULT_SYSTEM_PROMPT",
+    "FINAL_ANSWER_TOOL",
     "Agent",
     "AgentArtifact",
     "AgentArtifactSchema",
@@ -115,23 +129,31 @@ __all__: list[str] = [
     "LoopResult",
     "StepKind",
     "StopReason",
+    "StructuredRun",
     "ToolHandler",
     "ToolResult",
     "ToolReturn",
+    "TypedHandler",
     "Verdict",
     "agent_tool",
     "describe_image_tool",
+    "final_answer_tool",
     "generate_image_tool",
     "make_agent_router",
     "make_agent_run_model",
     "refine",
     "retrieve_tool",
+    "run_structured",
     "run_until",
     "save_artifact_tool",
+    "schema_of",
     "speak_tool",
+    "structured_verdict",
     "succeeded",
     "team_tools",
     "text_tool",
+    "tool",
     "transcribe_audio_tool",
+    "typed_tool",
     "web_search_tool",
 ]
