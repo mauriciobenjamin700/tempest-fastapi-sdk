@@ -28,6 +28,105 @@ uv add "tempest-fastapi-sdk[modelops-onnx]"   # + ONNX, .ort, quantização
     função que precisa dela, e a ausência levanta um `ImportError` dizendo
     qual extra instalar.
 
+## scikit-learn para a borda
+
+Modelos clássicos do sklearn são o caso mais comum de embarcado: pequenos,
+rápidos, e presos ao Python enquanto vivem como `.pkl`. Exportar para ONNX
+tira Python, NumPy e o próprio scikit-learn do dispositivo.
+
+```bash
+uv add "tempest-fastapi-sdk[modelops-onnx,modelops-sklearn]"
+```
+
+```python
+from tempest_fastapi_sdk.modelops import edge_bundle
+
+bundle = edge_bundle(
+    model,                       # estimador ou Pipeline já treinado
+    X_train[:50],                # só para dar forma ao grafo
+    "dist/",
+    name="classifier",
+    verify_samples=X_test,       # dados de validação, não os de export
+)
+
+print(bundle.deployable)
+print(bundle.verification.passed, bundle.verification.label_agreement)
+```
+
+### Três decisões que o SDK toma por você
+
+| Decisão | Por quê |
+| --- | --- |
+| **float32**, não float64 | O sklearn trabalha em precisão dupla; runtime de borda quer simples. Metade da memória, e é a precisão que os aceleradores implementam. **Muda os números** — por isso a verificação. |
+| **ZipMap desligado** | Por padrão o `skl2onnx` embrulha as probabilidades num `ZipMap`: um **dicionário por linha**. Cômodo em Python, inutilizável num runtime mínimo que não implementa o operador. |
+| **Verificar sempre** | Um export que discorda em silêncio do modelo treinado é pior que um que falha, porque você o coloca em produção. |
+
+### O que a medição mostrou
+
+Rodando contra estimadores de verdade, três resultados que a doc prefere
+dizer a deixar você descobrir:
+
+!!! warning "Quantização int8 não se aplica à maioria dos modelos sklearn"
+    Árvores, modelos lineares e scalers convertem para operadores
+    `ai.onnx.ml`, cujos parâmetros são atributos de nó, não tensores de peso.
+    Não há matriz para requantizar, e o quantizador recusa com `Failed to
+    find proper ai.onnx domain`. O `edge_bundle` detecta e **pula com a
+    razão**, em vez de falhar de forma opaca.
+
+!!! warning "Otimizar e converter para `.ort` costuma **aumentar** o arquivo"
+    Esses grafos têm kilobytes; os metadados adicionados superam o que é
+    economizado. Por isso o `edge_bundle` entrega o **menor** artefato
+    produzido, não o último — devolver um arquivo maior chamando de
+    otimizado seria uma mentira que a ferramenta conta sozinha.
+
+!!! danger "Árvore + classificação binária converte errado hoje"
+    Com `skl2onnx` 1.20 e scikit-learn 1.9, um `RandomForestClassifier`
+    binário gera um grafo cuja saída de probabilidade é um score em
+    `[-1, 1]` em vez de `[0, 1]`, e os rótulos previstos discordam do
+    estimador numa fração significativa das linhas. Multiclasse e modelos
+    lineares estão corretos.
+
+    Nenhuma opção do conversor resolve — `zipmap`, `raw_scores` e quatro
+    opsets diferentes foram testados. O `export.warnings` sinaliza a
+    combinação, e a verificação pega:
+
+    ```python
+    export = export_sklearn_to_onnx(model, X[:10], "m.onnx")
+    if export.needs_verification:
+        print(export.warnings[0])
+    ```
+
+    Alternativas: usar uma formulação multiclasse, um modelo linear, ou
+    fixar versões que você validou.
+
+### Com e sem GPU
+
+**CPU (o caso comum de borda):** o ganho é dispensar Python e linkar um
+runtime mínimo do ONNX Runtime — não a quantização, que como visto acima
+raramente se aplica aqui.
+
+**Com GPU:** mantenha o `.onnx` e escolha o provider ao carregar:
+
+```python
+import onnxruntime
+
+session = onnxruntime.InferenceSession(
+    "dist/classifier.onnx",
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+)
+```
+
+Meça antes de assumir que ajudou — modelos sklearn são pequenos, e o custo
+de transferir para a GPU pode superar o ganho de computá-los lá:
+
+```python
+from tempest_fastapi_sdk.modelops import benchmark_onnx
+
+profile = benchmark_onnx("dist/classifier.onnx", providers=["CUDAExecutionProvider"])
+print(profile.runtime.latency_ms_median)
+```
+
+
 ## Medir antes de otimizar
 
 A primeira coisa é medir. Sem `tempest model bench` você não tem base de

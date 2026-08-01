@@ -5,6 +5,62 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.188.0] — 2026-08-01
+
+### Added
+
+- **`tempest_fastapi_sdk.modelops.sklearn` — take a scikit-learn model to
+  something an edge device runs.** New extra `[modelops-sklearn]`
+  (`skl2onnx`, which declares only lower bounds and so constrains nothing).
+  The rest of the edge path already existed here; this is the missing front
+  end.
+
+  `skl2onnx` does the conversion. This module makes the decisions it leaves
+  to you, each of which is easy to get wrong in a way that only shows up in
+  production:
+
+  * **float32 by default.** scikit-learn works in double precision, edge
+    runtimes want single. The conversion is almost always right and it
+    *changes the numbers*, so it is stated and verified rather than assumed.
+  * **ZipMap off by default.** `skl2onnx` otherwise wraps classifier
+    probabilities in a `ZipMap`, emitting a **dictionary per row**:
+    convenient in Python, and unusable on a minimal runtime that does not
+    implement the operator. The output is a plain tensor instead.
+  * **`verify_sklearn_onnx`.** Runs the estimator and the graph over the
+    same rows and compares — label agreement for classifiers, maximum
+    absolute difference for regressors. An export that silently disagrees
+    with the model you trained is worse than one that fails, because you
+    ship it.
+
+  `edge_bundle` chains export → verify → optimise → quantise → `.ort` and
+  reports the size after each stage.
+
+### Measured, and reported honestly
+
+Running this against real estimators produced three findings the
+documentation now states outright rather than leaving to be discovered:
+
+- **Integer quantisation does not apply to most scikit-learn models.** Trees,
+  linear models and scalers convert to `ai.onnx.ml` operators whose
+  parameters are node attributes, not weight tensors; the quantiser refuses
+  with `Failed to find proper ai.onnx domain`. `uses_ml_domain` detects this
+  and the stage is skipped **with the reason** instead of failing opaquely.
+- **The optimiser and `.ort` conversion often make these graphs bigger.**
+  They are kilobytes; the metadata added outweighs what is saved. So
+  `edge_bundle` ships the **smallest** artifact produced, not the last one —
+  returning a larger file and calling it optimised would be a lie the tool
+  tells by default.
+- **Binary tree-ensemble classifiers convert incorrectly** with `skl2onnx`
+  1.20 + scikit-learn 1.9: the probability output is a decision score in
+  `[-1, 1]` and predicted labels disagree with the estimator on a
+  significant fraction of rows. Multi-class trees and linear models are
+  fine. No converter option changes it — `zipmap`, `raw_scores` and four
+  target opsets were tried. `SklearnExport.warnings` now flags the
+  combination at export time, and verification catches it.
+
+  This is exactly what the verification step is for, and it is why the
+  recipe treats verifying as mandatory rather than optional.
+
 ## [0.187.0] — 2026-08-01
 
 ### Added
