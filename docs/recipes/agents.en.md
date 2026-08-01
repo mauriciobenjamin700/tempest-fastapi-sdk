@@ -476,6 +476,140 @@ The run is finalized (and sent to the sink) once the iterator is exhausted.
 Abandoning it midway leaves no record — the right behaviour for a cancelled
 request.
 
+## Memory: three layers, and which to pick
+
+"The agent should remember" hides **three separate needs**, and picking the
+wrong one is why memory features disappoint. All three are here, all opt-in.
+
+| Layer | Lives for | Reach for it when |
+| --- | --- | --- |
+| **Scratchpad** | one run | A long run needs to park a finding so a later step can use it without re-deriving or re-reading. |
+| **Facts** | forever, editable | Something is **true** and should stay true: a preference, an account id, a policy. You want to read and correct it outside the model. |
+| **Recall** | forever, fuzzy | Past conversations *might* be relevant and you cannot know in advance which. Semantic search decides. |
+
+!!! danger "The distinction that matters most: facts vs recall"
+    A **fact** is asserted and exact — you can list facts, edit one, delete
+    one, and show a user what the system believes about them. **Recall** is
+    retrieved and approximate — it surfaces text that *looks* related, which
+    is powerful and **unauditable**.
+
+    Storing "the user's plan is enterprise" in recall means nobody can
+    correct it. Storing a whole conversation as a fact means nothing useful
+    comes back.
+
+### Scratchpad — within one run
+
+```python
+from tempest_fastapi_sdk.agents import Agent, AgentContext, scratchpad, scratchpad_tools
+
+agent = Agent(generator, tools=scratchpad_tools())
+
+context = AgentContext()
+run = await agent.run("Total the invoice lines, then apply the discount.", context=context)
+print(scratchpad(context))
+```
+
+```text
+{'subtotal': '1240.50'}
+```
+
+The model gets `note_write` / `note_read` / `note_list`. Notes live on
+`AgentContext.state` and **vanish when the run ends** — that is the feature,
+not the limitation: a note from an unrelated run turning up mid-task is
+worse than no notes at all.
+
+Reach for it when a run is long and derives something several steps before
+it needs it. Without it the model either re-derives (slow, and the second
+answer may differ) or carries it in the conversation, competing with
+everything else for attention.
+
+### Facts — durable and editable
+
+```python
+from tempest_fastapi_sdk.agents import (
+    Agent,
+    InMemoryFactStore,
+    fact_tools,
+    facts_prompt,
+)
+
+store = InMemoryFactStore()
+await store.put("timezone", "America/Recife", subject="user-42")
+
+agent = Agent(
+    generator,
+    tools=fact_tools(store, subject="user-42"),
+    system_prompt=BASE_PROMPT + await facts_prompt(store, subject="user-42"),
+)
+```
+
+The block injected into the prompt:
+
+```text
+What you already know:
+- timezone: America/Recife
+```
+
+!!! tip "Injecting beats making the model look it up"
+    By the time the model realises it needs the timezone, it has usually
+    already answered in the wrong one. Facts are short and few — the prompt
+    cost is small and the model cannot fail to consult them.
+
+`fact_tools` gives `fact_remember` / `fact_recall` / `fact_list` /
+`fact_forget`. Pass `allow_forget=False` when facts are curated elsewhere:
+**a model that can delete what it disagrees with will**.
+
+`subject=` isolates by user or tenant. Leaving it `None` gives one shared
+namespace — right for a single-purpose agent, wrong for anything per-user.
+
+!!! warning "`InMemoryFactStore` vanishes on restart"
+    Which is the one thing durable memory is supposed not to do. It is for
+    tests and getting started; implement `FactStore` over your own table
+    before that matters. It is four methods.
+
+### Recall — semantic, across runs
+
+```python
+from tempest_fastapi_sdk.agents import Agent, recall_prompt
+
+goal = "Schedule a call with the client."
+agent = Agent(
+    generator,
+    system_prompt=BASE_PROMPT + await recall_prompt(chat_memory, goal, user_id="u1"),
+)
+```
+
+```text
+Possibly relevant from earlier conversations:
+- they prefer morning meetings
+```
+
+Reuses the `ChatMemory` (Chroma/pgvector) the SDK already ships. Note the
+heading: **"possibly relevant"**. Recall surfaces what *looks* related, and
+presenting that as fact is how an agent starts confidently asserting things
+nobody ever wrote.
+
+!!! check "A recall failure never stops the agent"
+    If the vector store is down, `recall_prompt` returns an empty string and
+    the run continues. Recall is an enhancement, not a requirement.
+
+### Combining them
+
+Nothing stops you using all three — they do not compete, they answer
+different questions:
+
+```python
+agent = Agent(
+    generator,
+    tools=[*scratchpad_tools(), *fact_tools(store, subject=user_id)],
+    system_prompt=(
+        BASE_PROMPT
+        + await facts_prompt(store, subject=user_id)
+        + await recall_prompt(chat_memory, goal, user_id=user_id)
+    ),
+)
+```
+
 ## Skills: capabilities loaded on demand
 
 Every tool an agent can call sits in its prompt, and every line there costs

@@ -5,6 +5,39 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.185.0] — 2026-08-01
+
+### Added
+
+- **Three agent memory layers, all opt-in.** "The agent should remember"
+  hides three separate needs, and picking the wrong one is why memory
+  features disappoint:
+
+  * **Scratchpad** (`scratchpad_tools`, `scratchpad`) — lives for one run.
+    A long run derives something several steps before it needs it; without
+    somewhere to park it the model either re-derives (slow, and the second
+    answer may differ) or carries it in the conversation, competing for
+    attention. Notes live on `AgentContext.state` and vanish with the run,
+    which is the feature: a note from an unrelated run turning up mid-task
+    is worse than no notes.
+  * **Facts** (`Fact`, `FactStore`, `InMemoryFactStore`, `fact_tools`,
+    `facts_prompt`) — durable and **editable**. `subject=` isolates by user
+    or tenant; `allow_forget=False` makes them read-only for the model,
+    because a model that can delete what it disagrees with will.
+    `facts_prompt` injects them rather than making the model ask — by the
+    time it realises it needs the timezone it has usually answered in the
+    wrong one.
+  * **Recall** (`recall_prompt`) — durable and **fuzzy**, over the existing
+    `ChatMemory`. Returns an empty string when the backend fails, so a
+    vector-store outage never stops the agent.
+
+  The distinction that matters is facts vs recall. A fact is asserted and
+  exact — listable, editable, showable to the user. Recall is retrieved and
+  approximate, which is powerful and unauditable. Storing "the user's plan
+  is enterprise" in recall means nobody can correct it; storing a whole
+  conversation as a fact means nothing useful comes back. The recipe leads
+  with that table.
+
 ## [0.184.0] — 2026-08-01
 
 ### Added

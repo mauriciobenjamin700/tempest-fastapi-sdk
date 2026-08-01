@@ -55,6 +55,14 @@ from tempest_fastapi_sdk.agents.loop import Verdict as Verdict
 from tempest_fastapi_sdk.agents.loop import refine as refine
 from tempest_fastapi_sdk.agents.loop import run_until as run_until
 from tempest_fastapi_sdk.agents.loop import succeeded as succeeded
+from tempest_fastapi_sdk.agents.memory import Fact as Fact
+from tempest_fastapi_sdk.agents.memory import FactStore as FactStore
+from tempest_fastapi_sdk.agents.memory import InMemoryFactStore as InMemoryFactStore
+from tempest_fastapi_sdk.agents.memory import fact_tools as fact_tools
+from tempest_fastapi_sdk.agents.memory import facts_prompt as facts_prompt
+from tempest_fastapi_sdk.agents.memory import recall_prompt as recall_prompt
+from tempest_fastapi_sdk.agents.memory import scratchpad as scratchpad
+from tempest_fastapi_sdk.agents.memory import scratchpad_tools as scratchpad_tools
 from tempest_fastapi_sdk.agents.multi import DEFAULT_MAX_DEPTH as DEFAULT_MAX_DEPTH
 from tempest_fastapi_sdk.agents.multi import agent_tool as agent_tool
 from tempest_fastapi_sdk.agents.multi import team_tools as team_tools
@@ -132,7 +140,10 @@ __all__: list[str] = [
     "AgentToolError",
     "BaseAgentRunModel",
     "DbAgentRunSink",
+    "Fact",
+    "FactStore",
     "InMemoryAgentRunSink",
+    "InMemoryFactStore",
     "LoopIteration",
     "LoopResult",
     "Skill",
@@ -147,18 +158,23 @@ __all__: list[str] = [
     "agent_tool",
     "describe_image_tool",
     "discover_skills",
+    "fact_tools",
+    "facts_prompt",
     "final_answer_tool",
     "generate_image_tool",
     "load_skill_tool",
     "loaded_skills",
     "make_agent_router",
     "make_agent_run_model",
+    "recall_prompt",
     "refine",
     "retrieve_tool",
     "run_structured",
     "run_until",
     "save_artifact_tool",
     "schema_of",
+    "scratchpad",
+    "scratchpad_tools",
     "skill_from_markdown",
     "skills_prompt",
     "speak_tool",
