@@ -68,6 +68,7 @@ from tempest_fastapi_sdk.genai.hub import list_cached_models as list_cached_mode
 from tempest_fastapi_sdk.genai.hub import model_disk_bytes as model_disk_bytes
 from tempest_fastapi_sdk.genai.hub import remove_cached_model as remove_cached_model
 from tempest_fastapi_sdk.genai.hub import resolve_revision as resolve_revision
+from tempest_fastapi_sdk.genai.image import ImageGenerator as ImageGenerator
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics as GenAIMetrics
 from tempest_fastapi_sdk.genai.moderation import (
     ClassifierModerator as ClassifierModerator,
@@ -93,6 +94,9 @@ from tempest_fastapi_sdk.genai.schemas import (
     CapacityReport as CapacityReport,
 )
 from tempest_fastapi_sdk.genai.schemas import (
+    GeneratedImage as GeneratedImage,
+)
+from tempest_fastapi_sdk.genai.schemas import (
     GenerationConfig as GenerationConfig,
 )
 from tempest_fastapi_sdk.genai.schemas import (
@@ -100,6 +104,9 @@ from tempest_fastapi_sdk.genai.schemas import (
 )
 from tempest_fastapi_sdk.genai.schemas import (
     HardwareInfo as HardwareInfo,
+)
+from tempest_fastapi_sdk.genai.schemas import (
+    ImageGenerationConfig as ImageGenerationConfig,
 )
 from tempest_fastapi_sdk.genai.schemas import (
     ModelDtype as ModelDtype,
@@ -153,9 +160,12 @@ __all__: list[str] = [
     "EmbeddingCache",
     "GPUInfo",
     "GenAIMetrics",
+    "GeneratedImage",
     "GenerationCache",
     "GenerationConfig",
     "HardwareInfo",
+    "ImageGenerationConfig",
+    "ImageGenerator",
     "InMemoryEmbeddingCache",
     "InMemoryGenerationCache",
     "ModelDtype",
