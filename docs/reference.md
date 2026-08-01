@@ -24,6 +24,20 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## Agentes de IA
+
+### `tempest_fastapi_sdk.agents`
+
+::: tempest_fastapi_sdk.agents
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: alphabetical
+      filters:
+        - "!^_"
+
+---
+
 ## Admin
 
 ### `tempest_fastapi_sdk.admin`

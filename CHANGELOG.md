@@ -5,6 +5,63 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.181.0] — 2026-08-01
+
+### Added
+
+- **`tempest_fastapi_sdk.agents` — AI agents over the models you already
+  self-host.** An agent takes a **goal**, decides what to do, calls tools and
+  reports what it did. That last part is what separates it from
+  `AIChatPipeline`, which answers a chat turn: a run comes back with a
+  step-by-step trace — arguments, outputs, timings, failures — plus the files
+  it produced. Submodule import, no extra required; the weight lives in the
+  objects you inject.
+
+  **`Agent.run(goal)` → `AgentRun`**, or `Agent.stream(goal)` yielding each
+  `AgentStep` as it lands. Three properties are deliberate, each avoiding a
+  specific bug:
+
+  * **A tool that raises does not end the run.** The failure is recorded on
+    the step and handed back to the model as an observation — a model told
+    "no artifact named 'chart.png'; available: bike.png" usually fixes itself
+    next turn, where an escaping exception would discard the whole run.
+  * **Every ceiling is enforced and named.** `AgentBudget` bounds steps,
+    wall-clock and tool calls, and `StopReason` says which one fired. Steps
+    alone do not bound a run — one tool call can hang — so `max_seconds`
+    defaults to 120 rather than being optional. `AgentRun.succeeded` is
+    `True` only for `COMPLETED`, because a truncated run still carries text
+    and a caller that ignores the reason ships half-finished work as done.
+  * **Binary results never enter the prompt.** A tool returns `ToolResult`
+    (text for the model, `AgentArtifact` bytes for the caller), and artifacts
+    are held **by name** on the run.
+
+  **Ready-made tools over the local models** — `generate_image_tool`
+  (`ImageGenerator`), `describe_image_tool` (`VisionTextGenerator`),
+  `transcribe_audio_tool` (`SpeechToText`), `speak_tool` (`TextToSpeech`),
+  `retrieve_tool` (`Retriever`), `web_search_tool` (`WebSearch`),
+  `save_artifact_tool`, plus `text_tool` for hand-written ones. They chain
+  through named artifacts: an agent draws `bike.png` and the next step asks
+  the vision model about `bike.png`, with the bytes never touching disk and
+  base64 never touching the prompt. `AgentTool.from_tool` adapts an existing
+  `AIChatPipeline` tool.
+
+  **Persistence is opt-in**: nothing by default, `InMemoryAgentRunSink` for a
+  bounded ring buffer (bounded because runs carry their artifacts, and an
+  unbounded list of image-generating runs is a slow memory leak), or
+  `BaseAgentRunModel` / `make_agent_run_model` / `DbAgentRunSink` for a table.
+  The table keeps the trace and the artifact **names**, not the bytes — a run
+  table is not a blob store. A sink failure never fails the run.
+
+  **`make_agent_router(agent, run_store=...)`** serves `POST /run`,
+  `POST /run/stream` (SSE, one event per step and a trailing `done`),
+  `GET /runs` and artifact download. Artifacts travel as metadata in JSON and
+  as raw bytes with a real media type on their own endpoint, so an `<img
+  src>` works and a megabyte image does not get inflated by base64.
+
+  Validated end to end against a real local model: Qwen2.5-0.5B on CPU chose
+  the tool, extracted its argument, read the result and answered — three
+  steps, 5.1 seconds.
+
 ## [0.180.0] — 2026-08-01
 
 ### Added

@@ -351,6 +351,32 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   time. Also closed the `docs/reference.md` hole: the top-level `genai`
   surface + `genai.rag` + `genai.audio` now render (269 symbols), where
   before only the three new submodules did.
+- **Agents (v0.181.0)** — `tempest_fastapi_sdk.agents`, submodule import, **no
+  extra**. Goal in, traced run out — the split from `AIChatPipeline` (which
+  answers a chat *turn*). `Agent.run/stream` → `AgentRun` (output + `steps` +
+  `artifacts` + `stop_reason`); `AgentBudget` bounds steps/wall-clock/tool
+  calls and `StopReason` names which fired (`succeeded` is `COMPLETED` only —
+  a truncated run still carries text). **Three deliberate properties:** a
+  raising tool becomes an observation fed back to the model, never a crashed
+  run; every ceiling is enforced *and reported* (`max_seconds` defaults to 120
+  because steps alone do not bound a hung call); binary results never enter
+  the prompt (`ToolResult` = text for the model + `AgentArtifact` bytes for
+  the caller). Handlers take **two** positionals `(arguments, context)` — the
+  `AgentContext` holds artifacts **by name**, which is what chains multimodal
+  work (draw `bike.png`, then have the VLM describe `bike.png`, no disk, no
+  base64); `require_artifact` lists what exists so the model can self-correct.
+  Builtin tools over the local models: `generate_image_tool`,
+  `describe_image_tool`, `transcribe_audio_tool`, `speak_tool`,
+  `retrieve_tool`, `web_search_tool`, `save_artifact_tool`, `text_tool`;
+  `AgentTool.from_tool` adapts a pipeline `Tool`. Persistence **opt-in**:
+  none → `InMemoryAgentRunSink` (bounded — runs carry artifacts) →
+  `BaseAgentRunModel`/`make_agent_run_model`/`DbAgentRunSink` (keeps the trace
+  and artifact *names*, not bytes). `make_agent_router` (`POST /run`,
+  `/run/stream` SSE + `done`, `GET /runs`, artifact download with a real media
+  type). Run state lives in a local `_RunState`, never on `self` — two
+  concurrent runs on one agent must not mix. Recipe:
+  `docs/recipes/agents.md`. **Next agreed saga: multi-agent + agent loop**
+  (user: local use, token cost is not a constraint).
 - **SSR** (`[ssr]` extra) — `tempest_fastapi_sdk.ssr`: typed Python
   pages rendered to HTML via `tempestweb`'s `render_to_html` /
   `render_document`. `Page` (typed `Component` base — `body()` +
