@@ -474,6 +474,35 @@ Only safe methods (`GET`/`HEAD`) and successful responses (`200` by default) are
 !!! tip "Cache key"
     The key is `method|path|query` plus the headers listed in `vary=`. Pass `cacheable=<predicate>` to exclude specific requests, or `exempt_paths=(...)` to skip exact paths. The store mirrors the idempotency one (memory or Redis with a raw client), so it composes with the service's existing Redis.
 
+### A credentialed request does not share a cache entry
+
+Notice what the key does **not** contain: who asked. If two people's `GET /api/me` land on the same key, the first stored response is served to the second — and to any anonymous caller hitting the same path.
+
+So a request carrying `Authorization` or `Cookie` **bypasses the shared store**. It still gets an `ETag` and a `304` (both per-response, and safe); it just never enters a cache someone else can read.
+
+```python
+from tempest_fastapi_sdk import (
+    RedisResponseCacheStore,
+    ResponseCacheMiddleware,
+)
+
+
+def create_app(redis: Any) -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(
+        ResponseCacheMiddleware,
+        store=RedisResponseCacheStore(redis),
+        ttl_seconds=60,
+        cache_credentialed=True,   # opt in: the key now includes the credential
+    )
+    return app
+```
+
+With `cache_credentialed=True` a digest of the credential headers joins the key, so each caller gets its own entry and caching works for authenticated routes again. Only turn it on after checking that the cached routes do not carry a **second** identity the credential does not stand for (a tenant header, a session independent of the path) — there, credentials alone do not separate enough.
+
+!!! warning "`Cache-Control` defaults to `private`"
+    The emitted default is `private, max-age=<max_age>`. The middleware cannot know whether a route's body is personalized, and a wrong `public` there makes a shared proxy serve one user's response to another. Pass `cache_control="public, max-age=…"` **deliberately**, on a router that only serves shared content.
+
 
 ## Webhook signature verification
 
@@ -517,6 +546,26 @@ async def github_event(body: bytes = Depends(github.dependency())) -> None:
 ```
 
 Supports `hex` (default) and `base64` encodings, any hashlib algorithm guaranteed across platforms, and an optional `prefix` (e.g. `"sha256="`) stripped before comparison. Use the imperative `verifier.verify(body, signature)` from queue handlers when validation happens outside the FastAPI pipeline.
+
+The signature covers **the body only**, so a captured delivery stays valid forever — anyone who observes one can resend it indefinitely. Pass `timestamp_header=` to also require a recent unix timestamp and reject anything outside the window:
+
+```python
+github = WebhookSignatureVerifier(
+    settings.GITHUB_WEBHOOK_SECRET,
+    header_name="X-Hub-Signature-256",
+    prefix="sha256=",
+)
+
+check_github = github.dependency(
+    timestamp_header="X-Webhook-Timestamp",
+    max_age_seconds=300,
+)
+```
+
+It is opt-in because a provider that sends no such header would have its legitimate traffic rejected. The SDK's own `WebhookSender` sends `X-Webhook-Timestamp`.
+
+!!! warning "The timestamp is not covered by the signature"
+    Since only the body is signed, whoever replays a capture can also rewrite the timestamp to a current one. The check bounds **accidental and opportunistic** replay, not an active attacker who reads and rewrites the request. Closing that depends on the provider signing `timestamp.body` — the shape Stripe uses; when yours does, verify it with `verifier.verify(f"{ts}.".encode() + body, signature)`.
 
 For providers that sign with an RSA private key (Apple App Store, Google Play, custom enterprise services), swap `WebhookSignatureVerifier` for `RSAWebhookSignatureVerifier` — same `verify(body, signature)` surface, but it validates the signature against a PEM-encoded public key. Uses `RSASSA-PKCS1-v1_5` over SHA-256/384/512 (configurable via `algorithm=`). Requires the `cryptography` package (installed by the `[webpush]` extra).
 

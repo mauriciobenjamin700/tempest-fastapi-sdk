@@ -47,12 +47,22 @@ class PasswordUtils:
     def hash(self, plain: str) -> str:
         """Hash a plaintext password.
 
+        bcrypt refuses inputs over **72 UTF-8 bytes** — note bytes, not
+        characters, so an emoji costs four and an accented Latin letter
+        two. Validate the length before calling this from a request
+        handler, or the ``ValueError`` becomes an HTTP 500 instead of a
+        422; :class:`~tempest_fastapi_sdk.UserAuthService` does that via
+        ``AUTH_PASSWORD_MAX_BYTES``.
+
         Args:
             plain (str): The plaintext password.
 
         Returns:
             str: The bcrypt hash encoded as a UTF-8 string, ready to
             persist in a database column.
+
+        Raises:
+            ValueError: When ``plain`` exceeds 72 UTF-8 bytes.
         """
         salt = _bcrypt.gensalt(rounds=self.rounds)
         return _bcrypt.hashpw(plain.encode("utf-8"), salt).decode("utf-8")

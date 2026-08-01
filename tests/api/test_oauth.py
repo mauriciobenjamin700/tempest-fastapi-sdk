@@ -210,3 +210,113 @@ class TestOIDCProvider:
             assert user.subject == "user-42"
         finally:
             await provider.aclose()
+
+
+class TestEmailVerification:
+    """``email`` alone must not be treated as proof of ownership.
+
+    Linking an account by a provider-supplied address is a takeover path when
+    that address was never verified — GitHub's profile email is the classic
+    case. ``email_verified`` carries the provider's own statement, and ``None``
+    means it made none.
+    """
+
+    async def test_google_reports_the_verified_claim(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "sub": "1",
+                    "email": "ana@example.com",
+                    "email_verified": True,
+                },
+            )
+
+        client = _client_with_handler(GoogleOAuthClient, handler)
+        from tempest_fastapi_sdk import OAuthTokens
+
+        try:
+            user = await client.fetch_user(
+                OAuthTokens(access_token="t", token_type="Bearer"),
+            )
+            assert user.email_verified is True
+        finally:
+            await client.aclose()
+
+    async def test_google_reports_an_unverified_email(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "sub": "1",
+                    "email": "ana@example.com",
+                    "email_verified": False,
+                },
+            )
+
+        client = _client_with_handler(GoogleOAuthClient, handler)
+        from tempest_fastapi_sdk import OAuthTokens
+
+        try:
+            user = await client.fetch_user(
+                OAuthTokens(access_token="t", token_type="Bearer"),
+            )
+            assert user.email_verified is False
+        finally:
+            await client.aclose()
+
+    async def test_string_claim_is_normalized(self) -> None:
+        """Some IdPs serialize the claim as ``"true"`` rather than a boolean."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"sub": "1", "email": "a@b.c", "email_verified": "true"},
+            )
+
+        client = _client_with_handler(GoogleOAuthClient, handler)
+        from tempest_fastapi_sdk import OAuthTokens
+
+        try:
+            user = await client.fetch_user(
+                OAuthTokens(access_token="t", token_type="Bearer"),
+            )
+            assert user.email_verified is True
+        finally:
+            await client.aclose()
+
+    async def test_absent_claim_is_unknown_not_false(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"sub": "1", "email": "a@b.c"})
+
+        client = _client_with_handler(GoogleOAuthClient, handler)
+        from tempest_fastapi_sdk import OAuthTokens
+
+        try:
+            user = await client.fetch_user(
+                OAuthTokens(access_token="t", token_type="Bearer"),
+            )
+            assert user.email_verified is None
+        finally:
+            await client.aclose()
+
+    async def test_github_never_claims_verification(self) -> None:
+        """``GET /user`` has no verification field, so the answer is unknown."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"id": 42, "login": "ana", "email": "ana@example.com"},
+            )
+
+        client = _client_with_handler(GitHubOAuthClient, handler)
+        from tempest_fastapi_sdk import OAuthTokens
+
+        try:
+            user = await client.fetch_user(
+                OAuthTokens(access_token="gho_x", token_type="Bearer"),
+            )
+            assert user.email == "ana@example.com"
+            assert user.email_verified is None
+        finally:
+            await client.aclose()

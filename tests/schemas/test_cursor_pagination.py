@@ -15,6 +15,7 @@ from tempest_fastapi_sdk import (
     decode_cursor,
     encode_cursor,
 )
+from tempest_fastapi_sdk.exceptions import ValidationException
 
 
 class Note(BaseModel):
@@ -114,8 +115,19 @@ class TestCursorPaginate:
         assert len(result["items"]) == 3
 
     async def test_invalid_order_by_raises(self, repo: BaseRepository[Note]) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationException):
             await repo.cursor_paginate(order_by="ghost_column")
+
+    async def test_non_column_attribute_raises(
+        self, repo: BaseRepository[Note]
+    ) -> None:
+        """A real class attribute that is not a column is rejected too.
+
+        ``metadata`` exists on every declarative model, so a plain
+        ``getattr`` found it and only failed one frame later on ``.desc()``.
+        """
+        with pytest.raises(ValidationException):
+            await repo.cursor_paginate(order_by="metadata")
 
     async def test_descending_order(self, repo: BaseRepository[Note]) -> None:
         await repo.add_all([Note(title=f"n{i}") for i in range(3)])

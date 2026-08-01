@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 import secrets
 from collections.abc import Callable
 from datetime import UTC, date, datetime, time
@@ -68,6 +69,8 @@ if TYPE_CHECKING:
 
     from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
 
+
+logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -954,7 +957,13 @@ def make_admin_router(
                 list[dict[str, Any]]: The matching records, newest first.
             """
             files = _resolve_files(_log_base, source)
-            entries = await run_in_threadpool(_read_entries, files)
+            entries, truncated = await run_in_threadpool(_read_entries, files)
+            if truncated:
+                logger.warning(
+                    "Admin log source %r exceeds the per-file read cap; older "
+                    "records were not read for this request.",
+                    source,
+                )
             needle = q.lower() if q else None
             if needle is not None:
                 entries = [

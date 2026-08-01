@@ -68,6 +68,46 @@ Use os campos pra montar payloads de erro amigáveis. `raise_if_blocked` já cri
 !!! warning "`AttemptThrottle` não tem backend bundled in-memory"
     Pra testes sem Redis, use um fake/double via [fakeredis](https://github.com/cunla/fakeredis-py) (`pip install fakeredis`) que satisfaz a interface `ThrottleBackend` (métodos `get`, `incr`, `expire`, `ttl`, `delete`) e expõe um Redis funcional 100% em memória.
 
+## Tipos de token JWT (`typ`)
+
+Um serviço com o fluxo de auth bundled emite três JWTs **com o mesmo segredo**: o access token, o refresh token e o token intermediário que liga os dois passos de um login com MFA. Assinatura válida, portanto, não diz nada sobre *qual* deles chegou — e um guard de rota que só lê `sub` aceitaria os três.
+
+O `typ` é o que separa. `UserAuthService` estampa um em tudo que emite:
+
+| Token | `typ` | Onde vale |
+| --- | --- | --- |
+| Access | `ACCESS_TOKEN_TYPE` (`"access"`) | Qualquer rota autenticada |
+| Refresh | `REFRESH_TOKEN_TYPE` (`"refresh"`) | Só `POST /auth/refresh` |
+| MFA pendente | `MFA_TOKEN_TYPE` (`"mfa"`) | Só `POST /auth/mfa/verify` |
+
+`make_bearer_token_dependency` e `make_jwt_user_dependency` aceitam **só** `access` por padrão:
+
+```python
+from tempest_fastapi_sdk import (
+    ACCESS_TOKEN_TYPE,
+    REFRESH_TOKEN_TYPE,
+    JWTUtils,
+    make_bearer_token_dependency,
+)
+
+tokens = JWTUtils(secret="…" * 8)
+
+# Padrão: access-only. Um refresh ou um MFA-pendente devolve 401.
+require_claims = make_bearer_token_dependency(tokens)
+
+# Rota que de propósito recebe outro tipo (ex.: um endpoint de rotação):
+require_refresh = make_bearer_token_dependency(
+    tokens,
+    accepted_typ=(REFRESH_TOKEN_TYPE,),
+)
+```
+
+!!! danger "Por que isso importa"
+    O `mfa_token` é devolvido pelo `/login` a um cliente que provou **só a senha**. Sem a checagem de tipo ele serve como bearer em qualquer rota autenticada — o segundo fator vira decoração. O mesmo vale pro refresh token: ele tem vida longa de propósito, e aceitá-lo como access anula o motivo de o access token ser curto.
+
+!!! note "Token sem `typ` continua valendo"
+    Quem assina JWT direto com `JWTUtils.encode()` não precisa mudar nada: um token sem `typ` é aceito, senão atualizar o SDK derrubaria toda sessão ativa. Os dois marcadores antigos que o SDK já estampava — `refresh: True` e `purpose: "mfa_pending"` — são reconhecidos e **rejeitados** como access. Use `token_type_allowed()` se precisar da mesma decisão fora de uma dependency.
+
 ## Tokens opacos single-use
 
 `generate_opaque_token()` produz `(plaintext, token_hash)` em uma chamada — `plaintext` é uma string URL-safe (default 32 bytes ≈ 43 chars), `token_hash` é o digest SHA-256 hex em lowercase (64 chars). Você guarda **só o hash** no banco; o `plaintext` sai pelo e-mail/SMS uma única vez. Use pra password reset, confirmação de e-mail, API keys, IDs de sessão opacos — qualquer coisa onde o segredo emitido nunca volta a ser inspecionado.
@@ -176,7 +216,10 @@ divergindo, a resposta é `403` no envelope canônico do SDK. `GET`/`HEAD`/
     já é a assinatura. O match de `exclude_paths` é por prefixo (`startswith`).
 
 Pra emitir o token, monte `make_csrf_token_dependency()` na rota que renderiza a
-página — ela grava o cookie quando falta e devolve o valor pro template:
+página — ela **grava o cookie** quando falta e devolve o valor pro template. As
+duas metades são necessárias: o double-submit compara cookie e header, então uma
+dependency que só devolvesse o valor deixaria o cookie ausente e o `POST`
+seguinte — justamente aquele pra que a página foi renderizada — cairia com 403.
 
 ```python
 # src/api/routers/pages.py
@@ -192,6 +235,15 @@ async def login_page(token: str = Depends(csrf_token)) -> dict[str, str]:
     """Render the login shell carrying the CSRF token."""
     return {"csrf_token": token}
 ```
+
+!!! info "Esse cookie não é `HttpOnly`, de propósito"
+    O cliente precisa **ler** o valor pra ecoar no header `X-CSRF-Token` — é o
+    mecanismo inteiro do double-submit. `HttpOnly` quebraria isso. É seguro
+    enquanto o cookie carregar só o token CSRF; nunca coloque outra coisa nele.
+    Ele sai com `Secure` e `SameSite=Lax` por padrão: use
+    `make_csrf_token_dependency(secure=False)` só num dev server em HTTP puro,
+    e `samesite="none"` (com `secure=True`) quando o frontend está em outra
+    origem.
 
 O cliente reenvia esse valor no header a cada request de escrita:
 

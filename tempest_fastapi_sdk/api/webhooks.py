@@ -31,6 +31,32 @@ except ImportError:  # pragma: no cover - httpx is an optional dependency
     _TRANSIENT_ERRORS = ()
 
 
+def _timestamp_is_fresh(raw: str, *, max_age_seconds: int) -> bool:
+    """Return whether ``raw`` is a unix timestamp within the allowed window.
+
+    A missing or unparseable value is not fresh: the caller asked for the
+    check, so a delivery that cannot prove its age fails it. Future
+    timestamps are bounded by the same window, which absorbs modest clock
+    skew between sender and receiver without accepting an arbitrarily
+    post-dated request.
+
+    Args:
+        raw (str): The header value, seconds since the epoch.
+        max_age_seconds (int): Allowed distance from now, in either
+            direction.
+
+    Returns:
+        bool: ``True`` when the delivery is recent enough to accept.
+    """
+    if not raw:
+        return False
+    try:
+        sent_at = float(raw)
+    except ValueError:
+        return False
+    return abs(time.time() - sent_at) <= max_age_seconds
+
+
 class WebhookSignatureVerifier:
     """Validate HMAC-signed webhook payloads (Stripe/GitHub-style).
 
@@ -114,6 +140,8 @@ class WebhookSignatureVerifier:
         self,
         *,
         error_message: str = "Invalid webhook signature",
+        timestamp_header: str | None = None,
+        max_age_seconds: int = 300,
     ) -> Callable[..., Coroutine[Any, Any, bytes]]:
         """Build a FastAPI dependency that validates the inbound webhook.
 
@@ -121,9 +149,32 @@ class WebhookSignatureVerifier:
         signature, and returns the body bytes so the route handler can
         re-parse it without re-reading the stream.
 
+        **Replay.** The signature covers the body and nothing else, so a
+        captured request stays valid forever — anyone who can observe one
+        delivery can resend it indefinitely. Pass ``timestamp_header=`` to
+        additionally require a fresh unix-timestamp header and reject
+        anything older than ``max_age_seconds``, which bounds the window a
+        captured delivery can be replayed in. It is opt-in because not every
+        provider sends such a header, and turning it on unilaterally would
+        reject their legitimate traffic. The SDK's own
+        :class:`WebhookSender` sends ``X-Webhook-Timestamp``.
+
+        !!! warning "The timestamp is not covered by the signature"
+            Only the body is signed, so an attacker replaying a capture can
+            also rewrite the timestamp to a current one. The check therefore
+            bounds *accidental* and *opportunistic* replay, not an active
+            attacker who reads and rewrites the request. Closing that needs
+            the provider to sign ``timestamp.body`` — the shape Stripe uses;
+            when yours does, verify it with
+            ``verifier.verify(f"{ts}.".encode() + body, signature)``.
+
         Args:
             error_message (str): Message attached to the raised
                 :class:`UnauthorizedException` when verification fails.
+            timestamp_header (str | None): Header carrying a unix timestamp
+                (seconds). ``None`` (default) skips the freshness check.
+            max_age_seconds (int): How old a timestamped delivery may be.
+                Ignored unless ``timestamp_header`` is set.
 
         Returns:
             Callable[..., Coroutine[Any, Any, bytes]]: An async
@@ -132,13 +183,19 @@ class WebhookSignatureVerifier:
         """
         header_alias = self.header_name
         verifier = self
+        timestamp_alias = timestamp_header or "X-Unused-Timestamp"
 
         async def _verify(
             request: Request,
             signature: str = Header(default="", alias=header_alias),
+            timestamp: str = Header(default="", alias=timestamp_alias),
         ) -> bytes:
             body = await request.body()
             if not signature or not verifier.verify(body, signature):
+                raise UnauthorizedException(message=error_message)
+            if timestamp_header is not None and not _timestamp_is_fresh(
+                timestamp, max_age_seconds=max_age_seconds
+            ):
                 raise UnauthorizedException(message=error_message)
             return body
 

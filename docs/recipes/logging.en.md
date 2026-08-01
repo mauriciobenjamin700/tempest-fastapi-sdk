@@ -151,8 +151,17 @@ Query parameters:
 | --- | --- | --- |
 | `source` | `all` (default), `debug`, `info`, `warning`, `error`, `critical`, `500` | Which file to read. `all` merges every level; `500` returns only the isolated 500s. |
 | `q` | text | Case-insensitive substring match on the message. |
-| `start` / `end` | ISO-8601 | Limit records to a time window. |
+| `start` / `end` | ISO-8601 | Limit records to a time window. A value with no offset (`2026-05-31T00:00:00`, or a bare date) is read as UTC. |
 | `page` / `page_size` | integers | Pagination (1-indexed). |
+
+!!! info "The read is bounded per file"
+    Each request reads the **newest 20,000 records** of every selected file
+    (`DEFAULT_MAX_RECORDS_PER_FILE`), not the whole file. The endpoint sorts
+    newest-first and paginates, so what was left out was unreachable anyway —
+    and without the bound a multi-gigabyte log directory went into memory whole
+    on every request, taking the worker down before it answered. Tune it with
+    `make_logs_router(max_records_per_file=...)`; when the cap bites, a
+    `WARNING` is logged naming the `source`.
 
 !!! check "Recap"
     - `configure_logging(log_dir=...)` → stdout **+** one file per level.

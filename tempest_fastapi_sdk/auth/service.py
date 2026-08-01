@@ -60,6 +60,11 @@ from tempest_fastapi_sdk.utils.opaque_token import (
     hash_opaque_token,
 )
 from tempest_fastapi_sdk.utils.password import PasswordUtils
+from tempest_fastapi_sdk.utils.token_types import (
+    ACCESS_TOKEN_TYPE,
+    MFA_TOKEN_TYPE,
+    REFRESH_TOKEN_TYPE,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
@@ -803,17 +808,34 @@ class UserAuthService:
             stateless JWTs.
         """
         access = self._encode_access(user)
-        refresh = self.jwt.encode(
-            {"sub": str(user.id), "refresh": True},
-            ttl=timedelta(seconds=self.jwt_settings.JWT_REFRESH_TTL_SECONDS),
-        )
+        refresh = self._encode_refresh(user)
         return access, refresh
 
     def _encode_access(self, user: BaseUserModel) -> str:
-        """Sign a short-lived access JWT carrying ``sub`` + ``email``."""
+        """Sign a short-lived access JWT carrying ``sub`` + ``email``.
+
+        The ``typ`` claim is what stops the other tokens minted with this
+        same secret — the refresh token and the MFA-pending token — from
+        being replayed as an access token against a route guard that only
+        reads ``sub``. See
+        :mod:`tempest_fastapi_sdk.utils.token_types`.
+        """
         return self.jwt.encode(
-            {"sub": str(user.id), "email": user.email},
+            {"sub": str(user.id), "email": user.email, "typ": ACCESS_TOKEN_TYPE},
             ttl=timedelta(seconds=self.jwt_settings.JWT_ACCESS_TTL_SECONDS),
+        )
+
+    def _encode_refresh(self, user: BaseUserModel) -> str:
+        """Sign a long-lived stateless refresh JWT.
+
+        Carries both ``typ`` and the historical ``refresh: True`` marker:
+        the former is what the request guards check, the latter keeps a
+        token issued by this version exchangeable at ``/auth/refresh`` by a
+        service still running an older SDK during a rolling deploy.
+        """
+        return self.jwt.encode(
+            {"sub": str(user.id), "refresh": True, "typ": REFRESH_TOKEN_TYPE},
+            ttl=timedelta(seconds=self.jwt_settings.JWT_REFRESH_TTL_SECONDS),
         )
 
     async def issue_token_pair(
@@ -854,11 +876,7 @@ class UserAuthService:
         """
         access = self._encode_access(user)
         if self.refresh_token_model is None:
-            refresh = self.jwt.encode(
-                {"sub": str(user.id), "refresh": True},
-                ttl=timedelta(seconds=self.jwt_settings.JWT_REFRESH_TTL_SECONDS),
-            )
-            return access, refresh
+            return access, self._encode_refresh(user)
         refresh = await self._issue_refresh_record(
             session, user_id=user.id, family_id=family_id
         )
@@ -913,7 +931,10 @@ class UserAuthService:
         """
         if self.refresh_token_model is None:
             claims = self.jwt.decode(refresh_token)
-            if not claims.get("refresh"):
+            is_refresh = (
+                claims.get("refresh") is True or claims.get("typ") == REFRESH_TOKEN_TYPE
+            )
+            if not is_refresh:
                 raise InvalidTokenException(message="not a refresh token")
             subject = claims.get("sub")
             if not subject:
@@ -1323,13 +1344,20 @@ class UserAuthService:
         contain at least one lowercase letter, one uppercase letter,
         one digit, and one special (non-alphanumeric) character.
 
+        The upper bound (``AUTH_PASSWORD_MAX_BYTES``, default 72) is
+        measured in UTF-8 **bytes**, because that is the unit bcrypt
+        counts: ``bcrypt.hashpw`` raises ``ValueError`` past 72 bytes.
+        Without this check that surfaced as an HTTP 500 from signup /
+        password-reset / password-change, and 72 bytes is reached well
+        before 72 characters on non-ASCII input (four bytes per emoji).
+
         Args:
             password (str): The plaintext password to check.
 
         Raises:
-            ValidationException: When the password is too short or,
-                under complexity mode, missing a required character
-                class.
+            ValidationException: When the password is too short, too
+                long for the hasher, or — under complexity mode —
+                missing a required character class.
         """
         require_complexity = self.auth_settings.AUTH_PASSWORD_REQUIRE_COMPLEXITY
         floor = self.auth_settings.AUTH_PASSWORD_MIN_LENGTH
@@ -1339,6 +1367,16 @@ class UserAuthService:
             raise ValidationException(
                 message=f"password must be at least {floor} characters",
                 details={"min_length": floor},
+            )
+        ceiling = self.auth_settings.AUTH_PASSWORD_MAX_BYTES
+        encoded_length = len(password.encode("utf-8"))
+        if encoded_length > ceiling:
+            raise ValidationException(
+                message=f"password must be at most {ceiling} bytes",
+                details={
+                    "max_bytes": ceiling,
+                    "length_bytes": encoded_length,
+                },
             )
         if not require_complexity:
             return
@@ -1668,6 +1706,11 @@ class UserAuthService:
     def issue_mfa_token(self, user: BaseUserModel) -> str:
         """Mint the short-lived JWT that bridges step 1 and step 2 of login.
 
+        The token proves the password step only. Its ``typ`` claim keeps a
+        route guard from accepting it as an access token, which would let a
+        caller who knows just the password skip the second factor
+        entirely.
+
         Args:
             user (BaseUserModel): The user to inspect.
 
@@ -1675,7 +1718,11 @@ class UserAuthService:
             str: The generated value.
         """
         return self.jwt.encode(
-            {"sub": str(user.id), "purpose": "mfa_pending"},
+            {
+                "sub": str(user.id),
+                "purpose": "mfa_pending",
+                "typ": MFA_TOKEN_TYPE,
+            },
             ttl=timedelta(
                 seconds=self.auth_settings.AUTH_MFA_TOKEN_TTL_SECONDS,
             ),

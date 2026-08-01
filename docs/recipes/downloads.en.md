@@ -115,6 +115,20 @@ header: str = build_content_disposition("report 2026.pdf", as_attachment=True)
 # -> attachment; filename="report 2026.pdf"; filename*=UTF-8''report%202026.pdf
 ```
 
+!!! warning "The name is treated as untrusted"
+    In normal use it is `UploadFile.filename` — chosen by the client. On top of
+    reducing it to a basename (no path gets through), the function strips
+    **every** control character: a name containing `\r\n` produced a header
+    with a real line break, which an ASGI server that does not validate header
+    values (uvicorn on `httptools`) writes to the socket as-is, letting whoever
+    uploaded the file append headers of their own to your response.
+
+    ```python
+    build_content_disposition("rep\r\nX-Injected: 1.pdf")
+    # -> attachment; filename="repX-Injected: 1.pdf"; filename*=...
+    #    one line, always
+    ```
+
 ## Recap
 
 - `DownloadUtils(folder)` or `DownloadUtils(minio_client)` — backend at construction.

@@ -2,6 +2,100 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.174.0 — crashes become 422s, and `order_by` is validated
+
+Robustness fixes. Each trades a crash for a correct answer; none requires a code change, but four change the status or the exception your service sees.
+
+### A long password is now a 422
+
+There is a ceiling: `AUTH_PASSWORD_MAX_BYTES`, default `72` — bcrypt's hard limit, counted in UTF-8 **bytes**. A password past it used to raise `ValueError` from `hashpw` and surface as a **500** on signup / reset / change. It is now a `ValidationException` (**422**).
+
+If your frontend does not validate length, it starts receiving 422 where it received 500. If you swapped the hasher for one without the limit, raise the value.
+
+### An invalid `order_by` is now a `ValidationException`
+
+`BaseRepository.paginate` and `cursor_paginate` resolve `order_by` through the model's mapper. A name that is not a mapped column raises `ValidationException` (**422**) instead of `AttributeError` (**500**).
+
+Contract change in `cursor_paginate`: it used to raise `ValueError` there. Code catching `ValueError` around it needs updating:
+
+```python
+from tempest_fastapi_sdk.exceptions import ValidationException
+
+try:
+    page = await repo.cursor_paginate(order_by=filters.order_by)
+except ValidationException:
+    ...
+```
+
+`ValueError` still signals a malformed cursor.
+
+### `BodySizeLimitMiddleware`: a streaming oversize body answers 413
+
+The 413 is now emitted the moment the count is exceeded, and whatever the app sends afterwards is dropped. It used to go out in a `finally`, after the app had answered — and FastAPI does answer, converting the guard's `ClientDisconnect` into a **400**. The second `http.response.start` made uvicorn raise `RuntimeError: Response already started`.
+
+In practice: a streaming upload over the limit answers **413** where it recently answered **400** (with a `RuntimeError` in the log). A handler that never reads the body still answers whatever it answered before — a sent response cannot be retracted.
+
+### `make_csrf_token_dependency` sets the cookie
+
+It used to only return the token, so the cookie stayed absent and the following `POST` was rejected with a 403. It now sets it (`Secure` + `SameSite=Lax`, and not `HttpOnly` — the client must read it to echo the header).
+
+If you were already setting the cookie by hand in the handler, the value is the same (`request.state.csrf_token`) and nothing changes: the dependency does not overwrite an existing cookie. On a plain-HTTP dev server pass `secure=False`, or the browser will not send it back.
+
+### `OAuthUser.email_verified`
+
+A new field (default `None`), so nothing breaks. But **read the note**: if you link a social login to an existing account by email, require `profile.email_verified is True`. On GitHub the value is always `None` — `GET /user` carries no verification field, and the email it returns is the public profile one, which GitHub does not require verifying.
+
+### `GET /logs` reads at most 20,000 records per file
+
+Tune it with `make_logs_router(max_records_per_file=...)`. They are the newest ones; the endpoint sorts newest-first and paginates, so what was left out was unreachable. A `WARNING` is logged when the cap bites.
+
+## 0.173.0 — a token only works where it was meant to, and caches stop being shared
+
+Three security fixes change default behavior. None requires a code change, but check whether you were relying on the old behavior.
+
+### Refresh and MFA-pending tokens no longer authorize a route
+
+`make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency` and `UserAuthService.current_user_dependency()` now accept **only** `access`-type tokens.
+
+Before, the three JWTs `UserAuthService` mints with one secret verified identically, so the refresh token and the step-one `mfa_token` worked as a bearer on any authenticated route — the second factor was bypassable with just the password.
+
+You are affected if you **deliberately** sent a refresh token to a regular route:
+
+```python
+from tempest_fastapi_sdk import REFRESH_TOKEN_TYPE, make_bearer_token_dependency
+
+# Take that type again, on that one route:
+require_refresh = make_bearer_token_dependency(tokens, accepted_typ=(REFRESH_TOKEN_TYPE,))
+```
+
+A token hand-signed with `JWTUtils.encode()` and carrying **no** `typ` is still accepted — the upgrade does not log live sessions out. Only the markers the SDK itself stamped (`refresh: True`, `purpose: "mfa_pending"`) are now rejected as access.
+
+### `ResponseCacheMiddleware`: `private` by default, credentials skip the store
+
+Two defaults changed:
+
+- The emitted `Cache-Control` went from `public, max-age=N` to `private, max-age=N`. If you served genuinely shared content and relied on CDN caching, declare it again: `cache_control="public, max-age=N"`.
+- A request with `Authorization` or `Cookie` neither reads nor writes the shared store (`ETag`/`304` still apply). To get caching back on an authenticated route, pass `cache_credentialed=True` — the credential joins the key, so each caller gets its own entry.
+
+The `X-Cache` header now only appears when a `store=` is configured; it used to report `MISS` even in ETag-only mode.
+
+### `IdempotencyMiddleware`: key scoped to the caller
+
+The key went from `(method, path, key)` to `(caller, method, path, key)`, the caller being a digest of `Authorization`/`Cookie`. Reusing someone else's key no longer returns their response.
+
+If your client swaps credentials between the original request and the retry (a token rotation mid-backoff), the retry no longer hits the earlier entry. Point identity at something stable there:
+
+```python
+app.add_middleware(
+    IdempotencyMiddleware,
+    store=store,
+    principal_resolver=lambda request: request.headers.get("x-api-key-id", ""),
+)
+```
+
+Also changed: `5xx` is no longer cached (`cache_server_errors=True` restores it), `Set-Cookie` is left out of the stored copy, and concurrent requests sharing a key are serialized within a process.
+
+
 ## 0.138.1 — `BaseAppSettings` must be the **last** base
 
 0.138.1 made **every settings mixin inherit `BaseAppSettings`** (they used to extend raw `pydantic_settings.BaseSettings`). That fixes `.env` silently not loading when a mixin was listed before the base — the canonical `model_config` is now materialized onto every mixin regardless of ordering.

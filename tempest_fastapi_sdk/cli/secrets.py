@@ -19,6 +19,7 @@ leaves every other line untouched.
 from __future__ import annotations
 
 import secrets
+from contextlib import suppress
 from pathlib import Path
 
 import typer
@@ -58,6 +59,11 @@ def _rewrite_env(path: Path, new_values: dict[str, str]) -> tuple[list[str], lis
         path (Path): The ``.env`` file (may not exist yet).
         new_values (dict[str, str]): ``KEY -> new secret`` mapping.
 
+    The file is left readable by its owner only (``0600``). It now holds
+    freshly minted secrets, and the process umask on a shared host commonly
+    yields ``0644`` — world-readable, which for this content is a leak on
+    its own.
+
     Returns:
         tuple[list[str], list[str]]: ``(updated_keys, appended_keys)``.
     """
@@ -80,7 +86,18 @@ def _rewrite_env(path: Path, new_values: dict[str, str]) -> tuple[list[str], lis
     for key in appended:
         out.append(f"{key}={remaining[key]}")
     path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    _restrict(path)
     return updated, appended
+
+
+def _restrict(path: Path) -> None:
+    """Make ``path`` readable and writable by its owner only.
+
+    Args:
+        path (Path): The file to lock down.
+    """
+    with suppress(OSError):
+        path.chmod(0o600)
 
 
 @secrets_app.command("rotate")
@@ -141,6 +158,7 @@ def secrets_rotate(
     if path.is_file() and not no_backup:
         backup = path.with_suffix(path.suffix + ".bak")
         backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        _restrict(backup)
         typer.echo(f"Backed up {path} -> {backup}")
 
     updated, appended = _rewrite_env(path, new_values)

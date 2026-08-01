@@ -118,3 +118,78 @@ async def test_token_required_when_secret_set(tmp_path: Path) -> None:
         allowed = await client.get("/logs", headers={"X-Token": "s3cret"})
     assert denied.status_code == 401
     assert allowed.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_naive_start_bound_is_read_as_utc(tmp_path: Path) -> None:
+    """An offset-free bound must filter, not crash.
+
+    Pydantic accepts ``2020-01-01T00:00:00`` and hands back a **naive**
+    datetime; log timestamps are always aware (the formatter writes ``...Z``).
+    Comparing the two raised ``TypeError`` — a 500 on a well-formed request.
+    """
+    _seed_logs(tmp_path)
+    async with _client(_app(tmp_path)) as client:
+        response = await client.get("/logs", params={"start": "2020-01-01T00:00:00"})
+    assert response.status_code == 200
+    assert response.json()["total"] == 6
+
+
+@pytest.mark.asyncio
+async def test_naive_date_only_bound_is_accepted(tmp_path: Path) -> None:
+    _seed_logs(tmp_path)
+    async with _client(_app(tmp_path)) as client:
+        response = await client.get("/logs", params={"start": "2020-01-01"})
+    assert response.status_code == 200
+    assert response.json()["total"] == 6
+
+
+@pytest.mark.asyncio
+async def test_naive_future_bound_filters_everything_out(tmp_path: Path) -> None:
+    _seed_logs(tmp_path)
+    async with _client(_app(tmp_path)) as client:
+        response = await client.get("/logs", params={"start": "2999-01-01T00:00:00"})
+    assert response.status_code == 200
+    assert response.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_aware_bound_still_works(tmp_path: Path) -> None:
+    _seed_logs(tmp_path)
+    async with _client(_app(tmp_path)) as client:
+        response = await client.get(
+            "/logs", params={"end": "2999-01-01T00:00:00+00:00"}
+        )
+    assert response.status_code == 200
+    assert response.json()["total"] == 6
+
+
+@pytest.mark.asyncio
+async def test_per_file_cap_keeps_the_newest_records(tmp_path: Path) -> None:
+    """The read is bounded, and it is the tail that survives.
+
+    Without a cap the endpoint materialized every line of every selected file
+    before paginating, so a multi-gigabyte log directory took the worker down.
+    """
+    logger = configure_logging(
+        level="INFO",
+        logger_name="tempest.logs.router.cap",
+        log_dir=tmp_path,
+    )
+    for index in range(10):
+        logger.info("line %d", index)
+
+    app = FastAPI()
+    app.include_router(
+        make_logs_router(log_dir=tmp_path, max_records_per_file=3),
+    )
+    async with _client(app) as client:
+        response = await client.get("/logs", params={"source": "info"})
+
+    body = response.json()
+    assert body["total"] == 3
+    assert [item["message"] for item in body["items"]] == [
+        "line 9",
+        "line 8",
+        "line 7",
+    ]

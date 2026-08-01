@@ -958,6 +958,15 @@ class UserRepository(BaseRepository[UserModel]):
 query, so custom joins still report a correct total. When `order_by` is
 `None`, it orders by `created_at desc`.
 
+!!! warning "`order_by` is validated against the model's columns"
+    It arrives straight from a query parameter (`BasePaginationFilterSchema`
+    declares a `str`), so it is untrusted input. `paginate` and
+    `cursor_paginate` resolve the name through the mapper and raise
+    `ValidationException` (**422**) when it is not a mapped column — including
+    an attribute that exists on the class but is not a column, like `metadata`.
+    Before that, an unknown name became an `AttributeError`, i.e. a **500** on a
+    request that was merely invalid.
+
 !!! tip "Forward the schema without unpacking it by hand"
     The `get_conditions()` / `get_pagination_conditions()` pair covers both
     sides of the filter: the former returns only the domain filters, the

@@ -172,10 +172,25 @@ class PostGISRepositoryMixin:
 
         Returns:
             The matching rows ordered by ascending distance.
+
+        Raises:
+            ValueError: When either field name is not a mapped column. The
+                two names are interpolated into a ``text()`` fragment — the
+                centre coordinates and radius are bound parameters, but a
+                column name cannot be — so they are checked against the
+                mapper rather than trusted. Nothing stops a route from
+                forwarding a query parameter here.
         """
+        from sqlalchemy import inspect as sa_inspect
         from sqlalchemy import select
 
         repo = cast("BaseRepository[Any]", self)
+        columns = sa_inspect(repo.model).columns
+        for name in (latitude_field, longitude_field):
+            if name not in columns:
+                raise ValueError(
+                    f"{repo.model.__name__!r} has no column {name!r}",
+                )
         point = (
             f"ST_SetSRID(ST_MakePoint({longitude_field}, {latitude_field}), 4326)"
             "::geography"

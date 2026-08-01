@@ -440,6 +440,7 @@ Controla a assinatura e validade dos tokens que o login devolve. **É o mesmo `J
 | Env var | Tipo | Default | O que faz |
 |---------|------|---------|-----------|
 | `AUTH_PASSWORD_MIN_LENGTH` | `int` (≥1) | `12` | Comprimento mínimo aceito no signup **e** no reset. |
+| `AUTH_PASSWORD_MAX_BYTES` | `int` (≥1) | `72` | Comprimento máximo em **bytes** UTF-8. É o limite duro do bcrypt. |
 | `AUTH_PASSWORD_REQUIRE_COMPLEXITY` | `bool` | `false` | `true` = exige 1 minúscula + 1 maiúscula + 1 dígito + 1 caractere especial. |
 
 Os dois interagem — **é aqui que costuma confundir**. A regra exata:
@@ -458,6 +459,9 @@ Tabela de decisão:
 
 !!! warning "O piso é fonte única da verdade"
     Os schemas de request (`SignupSchema`, `PasswordResetConfirmSchema`) **não** impõem limite próprio de comprimento — eles delegam pra essas duas vars. Baixar `AUTH_PASSWORD_MIN_LENGTH` pra `4` realmente afrouxa a validação na rota também. Não há um segundo limite escondido no schema "te protegendo".
+
+!!! danger "O teto conta bytes, não caracteres"
+    `AUTH_PASSWORD_MAX_BYTES` existe porque bcrypt **recusa** entrada acima de 72 bytes: `hashpw` levanta `ValueError`, e sem esse teto o erro subia como **500** no signup / reset / troca de senha. Bytes é a unidade que o hash vê, e 72 bytes chegam bem antes de 72 caracteres em texto não-ASCII — um emoji custa 4 bytes, uma letra acentuada 2, então `"🔒" * 19` (19 caracteres) já passa do limite e responde **422**. Só aumente o valor se você trocar o hasher por um sem esse limite.
 
 ### Grupo 3 — Controle do fluxo de e-mail (`AuthSettings`)
 

@@ -115,6 +115,20 @@ header: str = build_content_disposition("relatorio 2026.pdf", as_attachment=True
 # -> attachment; filename="relatorio 2026.pdf"; filename*=UTF-8''relatorio%202026.pdf
 ```
 
+!!! warning "O nome é tratado como não confiável"
+    No uso normal ele é `UploadFile.filename`, ou seja, escolhido pelo cliente.
+    Além de reduzir a basename (nenhum path passa), a função remove **todo**
+    caractere de controle: um nome com `\r\n` produzia um header com quebra de
+    linha real, que um servidor ASGI sem validação de header value (uvicorn no
+    `httptools`) escreve no socket como está — deixando quem enviou o arquivo
+    acrescentar headers próprios na sua resposta.
+
+    ```python
+    build_content_disposition("rel\r\nX-Injected: 1.pdf")
+    # -> attachment; filename="relX-Injected: 1.pdf"; filename*=...
+    #    uma linha só, sempre
+    ```
+
 ## Recap
 
 - `DownloadUtils(pasta)` ou `DownloadUtils(minio_client)` — backend no construtor.

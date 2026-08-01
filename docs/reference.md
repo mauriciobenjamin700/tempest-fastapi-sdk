@@ -324,6 +324,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.api.middlewares.cors.apply_cors
 ::: tempest_fastapi_sdk.api.routers.health.make_health_router
 ::: tempest_fastapi_sdk.api.routers.logs.make_logs_router
+::: tempest_fastapi_sdk.api.routers.logs.DEFAULT_MAX_RECORDS_PER_FILE
 ::: tempest_fastapi_sdk.api.routers.logs.render_entries_markdown
 ::: tempest_fastapi_sdk.api.routers.logs.render_entries_json
 ::: tempest_fastapi_sdk.api.routers.metrics.PrometheusMiddleware
@@ -499,6 +500,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ::: tempest_fastapi_sdk.utils.password.PasswordUtils
 ::: tempest_fastapi_sdk.utils.jwt.JWTUtils
+::: tempest_fastapi_sdk.utils.token_types.token_type_allowed
 ::: tempest_fastapi_sdk.utils.totp.TOTPHelper
 ::: tempest_fastapi_sdk.utils.email.EmailUtils
 ::: tempest_fastapi_sdk.utils.upload.UploadUtils

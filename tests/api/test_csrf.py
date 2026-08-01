@@ -92,3 +92,71 @@ class TestCSRFToken:
         token = generate_csrf_token()
         # base64url: only A-Z a-z 0-9 - _
         assert all(c.isalnum() or c in "-_" for c in token)
+
+
+class TestTokenDependencySetsCookie:
+    """The dependency has to set the cookie, not just return the value.
+
+    Double-submit needs both halves. When the dependency only returned the
+    token, the cookie stayed absent, so the very next ``POST`` — the one the
+    page was rendered to make — was rejected with a 403.
+    """
+
+    async def test_cookie_is_set_when_absent(self) -> None:
+        app = _build_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            response = await c.get("/page")
+        assert response.cookies[CSRF_COOKIE_NAME] == response.json()["csrf"]
+
+    async def test_the_issued_cookie_authorizes_the_next_post(self) -> None:
+        """Over TLS, because the cookie is ``Secure`` — as it should be."""
+        app = _build_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="https://t"
+        ) as c:
+            page = await c.get("/page")
+            token = page.json()["csrf"]
+            submitted = await c.post(
+                "/submit",
+                headers={CSRF_HEADER_NAME: token},
+            )
+        assert submitted.status_code == 200
+
+    async def test_existing_cookie_is_reused_not_rotated(self) -> None:
+        app = _build_app()
+        token = generate_csrf_token()
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            response = await c.get("/page", cookies={CSRF_COOKIE_NAME: token})
+        assert response.json()["csrf"] == token
+        assert CSRF_COOKIE_NAME not in response.cookies
+
+    async def test_cookie_is_readable_by_scripts(self) -> None:
+        """The client must read it to echo the header — HttpOnly would break that."""
+        app = _build_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            response = await c.get("/page")
+        header = response.headers["set-cookie"].lower()
+        assert "httponly" not in header
+        assert "secure" in header
+        assert "samesite=lax" in header
+
+    async def test_secure_flag_can_be_disabled_for_http_dev(self) -> None:
+        app = FastAPI()
+
+        @app.get("/page")
+        async def page(
+            token: str = Depends(make_csrf_token_dependency(secure=False)),
+        ) -> dict[str, str]:
+            return {"csrf": token}
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            response = await c.get("/page")
+        assert "secure" not in response.headers["set-cookie"].lower()

@@ -5,7 +5,7 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.173.0] — 2026-07-31
+## [0.175.0] — 2026-07-31
 
 ### Added
 
@@ -116,6 +116,162 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   raised from inside torch, midway through the export. It now raises the same
   actionable `ImportError` every other optional dependency in this module
   produces. `onnxscript` joined the `dev` group so CI exercises the path.
+
+## [0.174.0] — 2026-07-30
+
+Second half of the security sweep: the reachable-by-a-request crashes, and the
+hardening items around them. None of these needed a valid session to hit.
+
+### Fixed
+
+- **A password over 72 bytes answered 500 instead of 422**
+  (`auth/service.py`, `settings/mixins.py`, `utils/password.py`). bcrypt
+  refuses input past 72 UTF-8 **bytes** — `hashpw` raises `ValueError` — and
+  the policy only had a lower bound, so signup, password-reset confirm and
+  password change all crashed on a long password. New
+  `AUTH_PASSWORD_MAX_BYTES` (default `72`) rejects it as a validation error.
+  Bytes, not characters: `"🔒" * 19` is 19 characters and 76 bytes.
+
+- **`GET /logs` crashed on an offset-free `start` / `end`**
+  (`api/routers/logs.py`). Pydantic hands back a naive `datetime` for
+  `2026-01-01T00:00:00`, log timestamps are aware (`...Z`), and comparing the
+  two raises `TypeError`. A bare bound is now read as UTC.
+
+- **`GET /logs` read every selected file into memory whole**
+  (`api/routers/logs.py`, `admin/router.py`). Filtering and pagination
+  happened after the load, so a service whose log directory had grown to
+  gigabytes took the worker down instead of answering. Each request now reads
+  the newest `DEFAULT_MAX_RECORDS_PER_FILE` (20k) records per file through a
+  bounded deque, tunable via `make_logs_router(max_records_per_file=...)`, and
+  logs a warning when the cap bites. The admin logs page shares the fix.
+
+- **An unknown `order_by` crashed pagination** (`db/repository.py`).
+  `BasePaginationFilterSchema.order_by` is a plain `str` query parameter, and
+  `paginate` passed it to a bare `getattr` — an unknown name raised
+  `AttributeError`, and a name that exists but is not a column (`metadata`,
+  `registry`) raised it one frame later on `.desc()`. Both are now resolved
+  through the mapper's column set and raise `ValidationException` (422).
+  `cursor_paginate` validated already but had the same non-column hole; it now
+  shares the check.
+
+- **A client-supplied filename could add a header to the response**
+  (`utils/download.py`). `build_content_disposition` took the basename but left
+  control characters in, so a name containing `\r\n` produced a header value
+  with a real line break — which an ASGI server that does not validate header
+  values (uvicorn on `httptools`) writes to the socket verbatim. Every C0/C1
+  character is now stripped. In the documented usage the name is
+  `UploadFile.filename`, so this is caller-controlled input.
+
+- **`BodySizeLimitMiddleware` could crash the response it was protecting**
+  (`api/middlewares/body_size.py`). The 413 was emitted in a `finally`, after
+  the app had answered — and FastAPI does answer, converting the guard's
+  `ClientDisconnect` into a `400`. The second `http.response.start` makes
+  uvicorn raise `RuntimeError: Response already started`. The 413 is now sent
+  the moment the count is exceeded, while the app is still reading the body,
+  and anything the app sends afterwards is dropped. A streaming oversize body
+  therefore answers `413` where it recently answered `400`.
+
+- **`make_csrf_token_dependency` never set the cookie its docstring promised**
+  (`api/middlewares/csrf.py`). It returned the token and stashed it on
+  `request.state`, leaving the cookie absent — so the double-submit check the
+  page was rendered for rejected the following `POST` with a 403. It now sets
+  the cookie (`Secure` + `SameSite=Lax`, and deliberately not `HttpOnly`,
+  since the client must read it), with `secure=` / `samesite=` / `max_age=`
+  overrides.
+
+### Security
+
+- **`OAuthUser.email_verified`** (`api/oauth.py`). `email` was surfaced with no
+  indication of whether the provider had verified it. A service linking a
+  social login to an existing account by email hands over the victim's account
+  when the address was never verified — GitHub's `GET /user` returns the public
+  profile email, which GitHub does not require verifying. Google and generic
+  OIDC now report the `email_verified` claim (string forms normalized); GitHub
+  reports `None`, meaning unknown, rather than implying either answer.
+
+- **Opt-in webhook replay window** (`api/webhooks.py`). The signature covers
+  the body only, so a captured delivery stayed valid forever.
+  `verifier.dependency(timestamp_header=..., max_age_seconds=...)` additionally
+  requires a fresh unix-timestamp header. Opt-in because a provider that sends
+  no such header would have its legitimate traffic rejected — and documented as
+  bounding opportunistic replay only, since an attacker who rewrites the
+  request can rewrite the timestamp too.
+
+- **`PostGISRepositoryMixin.nearby` validates its column names**
+  (`geo/db.py`). `latitude_field` / `longitude_field` are interpolated into a
+  `text()` fragment (a column name cannot be a bind parameter). They are
+  developer-supplied today, but nothing stopped a route from forwarding a query
+  parameter; they are now checked against the mapper.
+
+- **`tempest secrets rotate` writes `0600`** (`cli/secrets.py`). The rewritten
+  `.env` and its `.env.bak` inherited the process umask, commonly `0644` —
+  world-readable, for a file that now holds freshly minted secrets.
+
+## [0.173.0] — 2026-07-30
+
+### Security
+
+- **A refresh token or an MFA-pending token no longer authorizes a request**
+  (`tempest_fastapi_sdk/utils/token_types.py` (new),
+  `api/dependencies/auth.py`, `auth/service.py`).
+
+  `UserAuthService` signs three JWTs with the same secret: the access token, the
+  refresh token, and the intermediate token that bridges the two steps of an MFA
+  login. Nothing distinguished them once the signature verified, and
+  `make_jwt_user_dependency` authorized any token carrying a `sub`. Since
+  `POST /auth/login` hands the `mfa_token` back to a client that has proven only
+  the password, that token worked as a bearer on every authenticated route — the
+  second factor was skippable. The long-lived refresh token was accepted the same
+  way, which defeats the point of a short access token.
+
+  Every issued token now declares a `typ` (`ACCESS_TOKEN_TYPE` /
+  `REFRESH_TOKEN_TYPE` / `MFA_TOKEN_TYPE`), and the bearer, current-user, role
+  and permission dependencies accept `access` only. `accepted_typ=` widens that
+  per call site. A token with no `typ` — one a project signed itself with
+  `JWTUtils.encode()` — is still accepted, so upgrading does not invalidate live
+  sessions; the legacy markers the SDK did stamp (`refresh: True`,
+  `purpose: "mfa_pending"`) are recognized and rejected as access.
+  `token_type_allowed()` exposes the same decision outside a dependency.
+
+- **`ResponseCacheMiddleware` no longer serves one caller's response to
+  another** (`api/middlewares/response_cache.py`).
+
+  The cache key was `method|path|query` plus the `vary=` headers — nothing about
+  who asked. An authenticated `GET` that did not set `Cache-Control: private`
+  itself (most routes do not) was stored and replayed to the next caller on that
+  path, anonymous ones included. The emitted `Cache-Control` also defaulted to
+  `public`, telling browsers and CDNs to keep personalized bodies.
+
+  A request carrying `Authorization` or `Cookie` now bypasses the shared store;
+  it still gets its `ETag` and `304`, which are per-response. `Cache-Control`
+  defaults to `private, max-age=N`. `cache_credentialed=True` opts a deployment
+  back into caching credentialed traffic, folding a digest of those headers into
+  the key so each caller gets its own entry.
+
+- **`IdempotencyMiddleware` scopes each entry to the caller that created it**
+  (`api/middlewares/idempotency.py`).
+
+  The key was `(method, path, key)` with `key` chosen by the client, so two
+  callers picking the same string shared an entry — and a replay returns the
+  stored response, headers included. The key now also carries a digest of the
+  request credentials; `principal_resolver=` replaces that with your own identity
+  (an API-key id, a tenant header). A `Set-Cookie` is dropped from the stored
+  copy, so a replay can never re-issue the original caller's session.
+
+### Changed
+
+- `IdempotencyMiddleware` no longer caches `5xx` responses, so a client retry
+  after a transient failure actually reaches the handler instead of replaying the
+  error for the entry's whole TTL. `cache_server_errors=True` restores the old
+  behavior.
+- Concurrent requests sharing an idempotency key are serialized within a process:
+  the second waits and replays the first's response rather than running the
+  handler again. Across replicas the store still only deduplicates completed
+  requests.
+- `ResponseCacheMiddleware` emits `X-Cache` only when a `store=` is configured.
+  It previously reported `MISS` in ETag-only mode, where there is no cache to
+  miss.
+
 
 ## [0.172.1] — 2026-07-30
 

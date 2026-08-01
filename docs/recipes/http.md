@@ -472,6 +472,35 @@ Só métodos seguros (`GET`/`HEAD`) e respostas de sucesso (`200` por padrão) s
 !!! tip "Chave de cache"
     A chave é `método|path|query` mais os headers listados em `vary=`. Passe `cacheable=<predicado>` pra excluir requisições específicas, ou `exempt_paths=(...)` pra pular paths exatos. O store espelha o do idempotency (memória ou Redis com client cru), então compõe com o mesmo Redis do serviço.
 
+### Requisição autenticada não divide entrada de cache
+
+Repare no que a chave **não** tem: quem pediu. Se `GET /api/me` de duas pessoas cai na mesma chave, a primeira resposta guardada é servida pra segunda — e pra qualquer anônimo que peça o mesmo path.
+
+Por isso uma requisição que carrega `Authorization` ou `Cookie` **passa por fora do store compartilhado**. Ela continua ganhando `ETag` e `304` (que são por resposta, e seguros); só não entra num cache que outra pessoa pode ler.
+
+```python
+from tempest_fastapi_sdk import (
+    RedisResponseCacheStore,
+    ResponseCacheMiddleware,
+)
+
+
+def create_app(redis: Any) -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(
+        ResponseCacheMiddleware,
+        store=RedisResponseCacheStore(redis),
+        ttl_seconds=60,
+        cache_credentialed=True,   # opt-in: chave passa a incluir a credencial
+    )
+    return app
+```
+
+Com `cache_credentialed=True` um digest dos headers de credencial entra na chave, então cada chamador ganha a sua entrada e o cache volta a valer pra rota autenticada. Ligue só depois de conferir que as rotas cacheadas não carregam uma **segunda** identidade que a credencial não representa (um header de tenant, uma sessão independente do path) — nesse caso a credencial sozinha não separa o suficiente.
+
+!!! warning "`Cache-Control` padrão é `private`"
+    O default emitido é `private, max-age=<max_age>`. O middleware não tem como saber se o corpo de uma rota é personalizado, e um `public` errado ali faz um proxy compartilhado servir a resposta de um usuário pra outro. Passe `cache_control="public, max-age=…"` **de propósito**, num router que só serve conteúdo compartilhado.
+
 
 ## Verificação de assinatura de webhook
 
@@ -515,6 +544,26 @@ async def github_event(body: bytes = Depends(github.dependency())) -> None:
 ```
 
 Suporta encodings `hex` (default) e `base64`, qualquer algoritmo hashlib garantido entre plataformas, e um `prefix` opcional (ex.: `"sha256="`) removido antes da comparação. Use o imperativo `verifier.verify(body, signature)` de handlers de fila quando a validação acontece fora do pipeline FastAPI.
+
+A assinatura cobre **só o corpo**, então uma entrega capturada continua válida pra sempre — quem observar uma pode reenviar indefinidamente. Passe `timestamp_header=` pra também exigir um timestamp unix recente e recusar o que estiver fora da janela:
+
+```python
+github = WebhookSignatureVerifier(
+    settings.GITHUB_WEBHOOK_SECRET,
+    header_name="X-Hub-Signature-256",
+    prefix="sha256=",
+)
+
+check_github = github.dependency(
+    timestamp_header="X-Webhook-Timestamp",
+    max_age_seconds=300,
+)
+```
+
+É opt-in porque provedor que não manda esse header teria o tráfego legítimo recusado. O `WebhookSender` do próprio SDK envia `X-Webhook-Timestamp`.
+
+!!! warning "O timestamp não entra na assinatura"
+    Como só o corpo é assinado, quem replica uma captura também pode reescrever o timestamp pra um atual. A checagem limita replay **acidental e oportunista**, não um atacante ativo que lê e reescreve a request. Fechar isso depende do provedor assinar `timestamp.body` — o formato que o Stripe usa; quando o seu fizer isso, valide com `verifier.verify(f"{ts}.".encode() + body, signature)`.
 
 Para provedores que assinam com uma chave privada RSA (Apple App Store, Google Play, serviços enterprise custom), troque `WebhookSignatureVerifier` por `RSAWebhookSignatureVerifier` — mesma superfície `verify(body, signature)`, mas valida a assinatura contra uma chave pública codificada em PEM. Usa `RSASSA-PKCS1-v1_5` sobre SHA-256/384/512 (configurável via `algorithm=`). Requer o pacote `cryptography` (instalado com o extra `[webpush]`).
 

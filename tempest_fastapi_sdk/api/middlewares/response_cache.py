@@ -19,6 +19,16 @@ out (``Cache-Control: no-store``/``private`` or a ``Set-Cookie``) are never
 stored. Vary the cache key on request headers with ``vary=`` (also emitted as a
 ``Vary`` response header). The store mirrors the idempotency store shape
 (memory + Redis, raw client), so it composes with the SDK's existing Redis.
+
+**Credentialed requests never share a cache entry.** A request carrying an
+``Authorization`` header or a ``Cookie`` bypasses the shared store entirely,
+because its response is presumed to be about *that* caller — caching it under
+a key made of method + path would serve one user's data to the next. Those
+requests still get an ``ETag`` and a ``304``, which is per-response and safe.
+Pass ``cache_credentialed=True`` to opt a deployment back in; the credential
+headers are then folded (hashed) into the key so each caller gets its own
+entry. The emitted ``Cache-Control`` also defaults to ``private``, so no
+browser or CDN in the path stores a personalized response either.
 """
 
 from __future__ import annotations
@@ -37,6 +47,9 @@ from starlette.types import ASGIApp
 from tempest_fastapi_sdk.api.middlewares.idempotency import CachedResponse
 
 _ETAG_HEADER = "etag"
+
+_CREDENTIAL_HEADERS: tuple[str, ...] = ("authorization", "cookie")
+"""Request headers whose presence marks the response as caller-specific."""
 
 
 def _compute_etag(body: bytes) -> str:
@@ -282,6 +295,7 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
         vary: tuple[str, ...] = (),
         exempt_paths: tuple[str, ...] = (),
         cacheable: Callable[[Request], bool] | None = None,
+        cache_credentialed: bool = False,
     ) -> None:
         """Configure the middleware.
 
@@ -294,7 +308,13 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
             max_age (int | None): ``Cache-Control: max-age`` value; defaults to
                 ``ttl_seconds``.
             cache_control (str | None): Explicit ``Cache-Control`` value; when
-                set it overrides the ``max_age``-derived one.
+                set it overrides the ``max_age``-derived one. The default is
+                ``private, max-age=<max_age>`` — ``private`` because the
+                middleware cannot know whether a given route's body is
+                personalized, and a wrong ``public`` there means a shared
+                proxy serves one user's response to another. Set it to
+                ``"public, max-age=…"`` deliberately, on a router that only
+                serves shared content.
             methods (tuple[str, ...]): HTTP methods eligible for caching.
             cacheable_status (tuple[int, ...]): Status codes eligible for
                 caching (default: only ``200``).
@@ -304,6 +324,15 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
                 middleware.
             cacheable (Callable[[Request], bool] | None): Optional predicate;
                 when it returns ``False`` the request bypasses caching.
+            cache_credentialed (bool): Whether a request carrying an
+                ``Authorization`` header or a ``Cookie`` may use the shared
+                store. ``False`` (default) makes such requests bypass it —
+                their response belongs to one caller, and the key does not
+                identify callers. ``True`` folds a digest of those headers
+                into the key, so each set of credentials gets its own entry;
+                only turn it on once you have checked that the cached routes
+                do not embed a second identity (a tenant header, a
+                path-independent session).
 
         Raises:
             ValueError: When ``ttl_seconds`` is not positive.
@@ -317,18 +346,48 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
         self._cache_control = (
             cache_control
             if cache_control is not None
-            else f"public, max-age={resolved_max_age}"
+            else f"private, max-age={resolved_max_age}"
         )
         self._methods = frozenset(methods)
         self._cacheable_status = frozenset(cacheable_status)
         self._vary = tuple(vary)
         self._exempt = frozenset(exempt_paths)
         self._cacheable = cacheable
+        self._cache_credentialed = cache_credentialed
 
-    def _build_key(self, request: Request) -> str:
-        """Build the cache key from method, path, query, and varied headers."""
+    @staticmethod
+    def _credentials(request: Request) -> str | None:
+        """Return a digest of the request's credential headers, if any.
+
+        Args:
+            request (Request): The inbound request.
+
+        Returns:
+            str | None: A short digest identifying the caller's credentials,
+            or ``None`` when the request carries none.
+        """
+        raw = "|".join(
+            f"{name}={request.headers.get(name, '')}" for name in _CREDENTIAL_HEADERS
+        )
+        if raw == "|".join(f"{name}=" for name in _CREDENTIAL_HEADERS):
+            return None
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _build_key(self, request: Request, credentials: str | None) -> str:
+        """Build the cache key from method, path, query, and varied headers.
+
+        Args:
+            request (Request): The inbound request.
+            credentials (str | None): Digest from :meth:`_credentials`, folded
+                in so two callers never collide on one entry.
+
+        Returns:
+            str: The cache key.
+        """
         parts = [request.method, request.url.path, request.url.query]
         parts.extend(f"{name}={request.headers.get(name, '')}" for name in self._vary)
+        if credentials is not None:
+            parts.append(f"cred={credentials}")
         return "|".join(parts)
 
     def _decorate(self, headers: dict[str, str], etag: str) -> dict[str, str]:
@@ -365,11 +424,15 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
         if self._cacheable is not None and not self._cacheable(request):
             return await call_next(request)
 
-        key = self._build_key(request)
+        credentials = self._credentials(request)
+        share_store = credentials is None or self._cache_credentialed
+        store = self._store if share_store else None
+        key_credentials = credentials if self._cache_credentialed else None
+        key = self._build_key(request, key_credentials)
         if_none_match = request.headers.get("if-none-match")
 
-        if self._store is not None:
-            cached = await self._store.get(key)
+        if store is not None:
+            cached = await store.get(key)
             if cached is not None:
                 etag = dict(cached.headers).get(
                     _ETAG_HEADER, _compute_etag(cached.body)
@@ -398,19 +461,20 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
             etag,
         )
 
-        if self._store is not None:
+        if store is not None:
             stored = CachedResponse(
                 status_code=response.status_code,
                 headers=list(headers.items()),
                 body=body,
                 media_type=response.media_type,
             )
-            await self._store.set(key, stored, ttl_seconds=self._ttl)
+            await store.set(key, stored, ttl_seconds=self._ttl)
 
         if if_none_match and _etag_matches(if_none_match, etag):
             return self._not_modified(etag)
 
-        headers["x-cache"] = "MISS"
+        if store is not None:
+            headers["x-cache"] = "MISS"
         return Response(
             content=body,
             status_code=response.status_code,
