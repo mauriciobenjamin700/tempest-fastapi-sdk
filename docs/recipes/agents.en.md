@@ -476,6 +476,99 @@ The run is finalized (and sent to the sink) once the iterator is exhausted.
 Abandoning it midway leaves no record — the right behaviour for a cancelled
 request.
 
+## Skills: capabilities loaded on demand
+
+Every tool an agent can call sits in its prompt, and every line there costs
+context and dilutes attention. Ten well-documented capabilities — each with
+its conventions, its edge cases, its worked example — is more instruction
+than a small local model can hold, and quality drops on **all ten**.
+
+A **skill** splits what the model needs to *choose* from what it needs to
+*do*:
+
+```python
+from tempest_fastapi_sdk.agents import Agent, Skill
+
+invoicing = Skill(
+    name="invoicing",
+    description="Read and validate Brazilian invoices (NF-e).",
+    instructions=INVOICE_GUIDE,          # as long as it needs to be
+    tools=[parse_nfe, validate_cnpj],
+)
+
+agent = Agent(generator, skills=[invoicing])
+```
+
+Only this reaches the prompt:
+
+```text
+- invoicing: Read and validate Brazilian invoices (NF-e).
+```
+
+When the model decides the skill applies, it calls `load_skill` and **then**
+receives the full instructions — and the skill's tools come into existence.
+
+```python
+run = await agent.run("Validate the attached invoice.")
+print(run.tool_calls)
+```
+
+```text
+['load_skill', 'parse_nfe', 'validate_cnpj']
+```
+
+!!! check "A skill's tools stay hidden until it is loaded"
+    Before `load_skill`, `parse_nfe` is not in the tool list the model sees
+    — its name and schema cost nothing while unused. A hundred capabilities
+    cost a hundred short lines, and the one in use gets the whole page.
+
+!!! tip "The description is what decides"
+    It is the **only** text the model sees before loading. Say what the skill
+    is *for*, not how it works: "read and validate NF-e" makes the model
+    choose correctly; "assorted tax utilities" does not.
+
+### Skills from files
+
+To add a capability without touching code:
+
+```python
+from tempest_fastapi_sdk.agents import Agent, discover_skills
+
+agent = Agent(generator, skills=discover_skills("skills/"))
+```
+
+Each `skills/<name>/SKILL.md`:
+
+```markdown
+---
+name: invoicing
+description: Read and validate Brazilian invoices (NF-e).
+---
+
+The full guide goes here, as long as it needs to be.
+```
+
+Same format as Claude Code's skills, so one file works in both places. Tools
+cannot come from a file — they are Python — so attach them afterwards:
+
+```python
+skill.tools.append(parse_nfe)
+```
+
+!!! note "A missing directory is not an error"
+    `discover_skills` returns `[]` when the directory does not exist, so a
+    service starts fine without one.
+
+To see what an agent loaded during a run:
+
+```python
+from tempest_fastapi_sdk.agents import AgentContext, loaded_skills
+
+context = AgentContext()
+run = await agent.run("...", context=context)
+print(loaded_skills(context))
+```
+
 ## Delegating to another agent
 
 There is no "team" object here, and that is the design: an agent already

@@ -476,6 +476,101 @@ A execução só é finalizada (e mandada ao sink) quando o iterador se esgota.
 Abandonar no meio não deixa registro — que é o certo para uma requisição
 cancelada.
 
+## Skills: capacidades carregadas sob demanda
+
+Toda ferramenta que o agente pode chamar ocupa espaço no prompt, e cada linha
+ali custa contexto e dilui atenção. Dez capacidades bem documentadas — cada
+uma com suas convenções, seus casos de borda, seu exemplo — é mais instrução
+do que um modelo local pequeno consegue segurar, e a qualidade cai **nas
+dez**.
+
+Uma **skill** separa o que o modelo precisa para *escolher* do que ele precisa
+para *fazer*:
+
+```python
+from tempest_fastapi_sdk.agents import Agent, Skill
+
+invoicing = Skill(
+    name="invoicing",
+    description="Ler e validar notas fiscais brasileiras (NF-e).",
+    instructions=INVOICE_GUIDE,          # tão longo quanto precisar
+    tools=[parse_nfe, validate_cnpj],
+)
+
+agent = Agent(generator, skills=[invoicing])
+```
+
+No prompt fica só isto:
+
+```text
+- invoicing: Ler e validar notas fiscais brasileiras (NF-e).
+```
+
+Quando o modelo decide que a skill se aplica, ele chama `load_skill` e **aí**
+recebe as instruções completas — e as ferramentas dela passam a existir.
+
+```python
+run = await agent.run("Valide a nota em anexo.")
+print(run.tool_calls)
+```
+
+```text
+['load_skill', 'parse_nfe', 'validate_cnpj']
+```
+
+!!! check "As ferramentas da skill ficam escondidas até o load"
+    Antes do `load_skill`, `parse_nfe` não aparece na lista de ferramentas
+    que o modelo vê — nome e schema não custam nada enquanto não são usados.
+    Cem capacidades custam cem linhas curtas, e a que está em uso ganha a
+    página inteira.
+
+!!! tip "A descrição é o que decide"
+    É o **único** texto que o modelo vê antes de carregar. Diga para que a
+    skill serve, não como ela funciona: "ler e validar NF-e" faz o modelo
+    escolher certo; "utilitários fiscais diversos" não.
+
+### Skills em arquivo
+
+Para adicionar capacidade sem mexer em código:
+
+```python
+from tempest_fastapi_sdk.agents import Agent, discover_skills
+
+agent = Agent(generator, skills=discover_skills("skills/"))
+```
+
+Cada `skills/<nome>/SKILL.md`:
+
+```markdown
+---
+name: invoicing
+description: Ler e validar notas fiscais brasileiras (NF-e).
+---
+
+O guia completo vai aqui, do tamanho que precisar.
+```
+
+É o mesmo formato das skills do Claude Code, então o arquivo serve nos dois
+lugares. Ferramentas não vêm de arquivo — são Python — então anexe depois:
+
+```python
+skill.tools.append(parse_nfe)
+```
+
+!!! note "Diretório ausente não é erro"
+    `discover_skills` devolve `[]` quando o diretório não existe, para o
+    serviço subir normalmente sem ele.
+
+Para saber o que o agente carregou numa execução:
+
+```python
+from tempest_fastapi_sdk.agents import AgentContext, loaded_skills
+
+context = AgentContext()
+run = await agent.run("...", context=context)
+print(loaded_skills(context))
+```
+
 ## Delegar para outro agente
 
 Não existe objeto "time" aqui, e isso é o design: um agente já sabe escolher
