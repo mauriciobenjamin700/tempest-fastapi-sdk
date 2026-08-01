@@ -109,6 +109,18 @@ from tempest_fastapi_sdk.modelops.ranking import (
 )
 from tempest_fastapi_sdk.modelops.ranking import pareto_points as pareto_points
 from tempest_fastapi_sdk.modelops.ranking import rank as rank
+from tempest_fastapi_sdk.modelops.router import (
+    PredictRequestSchema as PredictRequestSchema,
+)
+from tempest_fastapi_sdk.modelops.router import (
+    PredictResponseSchema as PredictResponseSchema,
+)
+from tempest_fastapi_sdk.modelops.router import (
+    RegistryModelSource as RegistryModelSource,
+)
+from tempest_fastapi_sdk.modelops.router import (
+    make_prediction_router as make_prediction_router,
+)
 from tempest_fastapi_sdk.modelops.schemas import (
     BenchmarkProfile as BenchmarkProfile,
 )
@@ -151,6 +163,12 @@ from tempest_fastapi_sdk.modelops.schemas import (
     StaticModelMetrics as StaticModelMetrics,
 )
 from tempest_fastapi_sdk.modelops.schemas import TensorSpec as TensorSpec
+from tempest_fastapi_sdk.modelops.serving import (
+    DEFAULT_INTRA_OP_THREADS as DEFAULT_INTRA_OP_THREADS,
+)
+from tempest_fastapi_sdk.modelops.serving import OnnxPredictor as OnnxPredictor
+from tempest_fastapi_sdk.modelops.serving import Prediction as Prediction
+from tempest_fastapi_sdk.modelops.serving import PredictorInfo as PredictorInfo
 from tempest_fastapi_sdk.modelops.sklearn import DEFAULT_OPSET as DEFAULT_OPSET
 from tempest_fastapi_sdk.modelops.sklearn import EdgeBundle as EdgeBundle
 from tempest_fastapi_sdk.modelops.sklearn import EdgeStage as EdgeStage
@@ -180,6 +198,7 @@ from tempest_fastapi_sdk.modelops.static import (
 
 __all__: list[str] = [
     "DEFAULT_COST_WEIGHTS",
+    "DEFAULT_INTRA_OP_THREADS",
     "DEFAULT_OPSET",
     "DEFAULT_REPETITIONS",
     "DEFAULT_SAMPLE_INTERVAL_S",
@@ -203,14 +222,20 @@ __all__: list[str] = [
     "NullPowerSampler",
     "NvidiaSmiPowerSampler",
     "NvmlPowerSampler",
+    "OnnxPredictor",
     "OrtOptimizationStyle",
     "ParetoPoint",
     "PowerSampler",
+    "PredictRequestSchema",
+    "PredictResponseSchema",
+    "Prediction",
+    "PredictorInfo",
     "QuantWeightType",
     "QuantizationBackend",
     "QuantizationFormat",
     "QuantizationResult",
     "RaplEnergySampler",
+    "RegistryModelSource",
     "RuntimeAggregate",
     "RuntimeSample",
     "SklearnExport",
@@ -231,6 +256,7 @@ __all__: list[str] = [
     "export_onnx_to_ort",
     "export_sklearn_to_onnx",
     "export_torch_to_onnx",
+    "make_prediction_router",
     "optimize_hf_onnx",
     "optimize_onnx_graph",
     "pareto_points",
