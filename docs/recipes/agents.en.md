@@ -211,6 +211,128 @@ AgentToolError: disk is full
 Any exception from the handler is treated the same way — using
 `AgentToolError` just makes the intent explicit.
 
+## Pydantic-typed tools
+
+Writing JSON-schema by hand next to the handler means **two descriptions of
+the same thing**, drifting apart from the first edit: the schema says `city`,
+the handler reads `arguments["town"]`, and nothing catches it until a model
+calls the tool. The `@tool` decorator removes the duplicate.
+
+```python
+from pydantic import Field
+
+from tempest_fastapi_sdk.agents import AgentContext, tool
+from tempest_fastapi_sdk.schemas import BaseSchema
+
+
+class WeatherArgs(BaseSchema):
+    """Arguments for the weather tool."""
+
+    city: str = Field(description="City to look up.")
+    days: int = Field(default=1, ge=1, le=7, description="Forecast horizon.")
+
+
+@tool("get_weather", "Get the current weather for a city.")
+async def get_weather(args: WeatherArgs, context: AgentContext) -> str:
+    """Return the forecast for the requested city."""
+    return f"{args.city}: 22 degrees, {args.days}d"
+```
+
+The schema the model sees is **generated** from the Pydantic model, and the
+handler receives a **validated instance** — `args.city` is typed and `mypy`
+checks it.
+
+!!! check "A bad argument becomes an observation, not a `KeyError`"
+    Validation happens **before** the handler runs. A model that invents
+    `town=` gets back:
+
+    ```text
+    invalid arguments for get_weather: city: Field required
+    ```
+
+    Precise enough to correct from next turn. Before, that blew up in the
+    middle of your code.
+
+Constraints declared on the model are enforced too: `ge`, `le`,
+`max_length`, enums. A model asking for `days=500` is corrected before you
+see it.
+
+Without the decorator (lambdas, bound methods, handlers from elsewhere):
+
+```python
+from tempest_fastapi_sdk.agents import typed_tool
+
+built = typed_tool("get_weather", "Get the weather.", WeatherArgs, get_weather_impl)
+```
+
+## Structured output: an object, not a paragraph
+
+An agent that ends in prose is fine for a chat and useless for a pipeline —
+something downstream has to turn "the invoice totals R$ 1,240.50 and is due
+on the 15th" back into fields, and that breaks the day the model phrases it
+differently.
+
+```python
+from pydantic import Field
+
+from tempest_fastapi_sdk.agents import Agent
+from tempest_fastapi_sdk.schemas import BaseSchema
+
+
+class WeatherReport(BaseSchema):
+    """The structured answer."""
+
+    city: str = Field(description="City reported on.")
+    celsius: int = Field(description="Temperature in celsius.")
+    sky: str = Field(description="Sky condition, one word.")
+
+
+run = await agent.run_structured("Get the weather in Recife and report it.", WeatherReport)
+
+if run.has_data:
+    print(run.data.city, run.data.celsius)
+else:
+    print("no data:", run.parse_error)
+```
+
+```text
+Recife 22
+```
+
+`run.data` is an instance of **your** model — `run.data.celsius` is an `int`,
+and the type-checker knows it.
+
+### Why not ask for JSON and parse it
+
+The agent gains a temporary `final_answer` tool shaped like your model, and
+**calling that tool is how the model finishes**. The arguments *are* the
+structured output, already validated, carried by the same tool-calling
+machinery the rest of the agent uses — no second format for the model to get
+wrong.
+
+!!! tip "Small models answer in prose anyway"
+    Small local models routinely work the task out correctly and then answer
+    in text regardless of instructions. That is why there is an **extraction
+    pass**: when the prose carries no JSON, the SDK makes one more call whose
+    **only** tool is the answer tool, asking the model to restate what it
+    already said in that shape. With nothing else to call and nothing left to
+    reason about, even a 0.5B model fills the fields.
+
+    It costs one extra model call — the right trade when the alternative is
+    losing the whole run. Switch it off with `extraction_retry=False`.
+
+!!! warning "Always check `has_data`"
+    A run can be `succeeded` and still carry `data=None` — the budget ran
+    out, or even the extraction failed. `run.parse_error` says which. And
+    small models sometimes leave a field empty rather than omitting it:
+    validate the values, not just the presence of the object.
+
+To keep trying until the shape arrives, compose with the loop:
+
+```python
+from tempest_fastapi_sdk.agents import run_until, structured_verdict
+```
+
 ## Writing your own tool
 
 ```python

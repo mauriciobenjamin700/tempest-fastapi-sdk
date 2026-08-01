@@ -5,6 +5,46 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.183.0] — 2026-08-01
+
+### Added
+
+- **`@tool` — agent tools whose arguments are a Pydantic model.** Writing
+  JSON-schema by hand next to a handler means two descriptions of the same
+  thing, drifting apart from the first edit: the schema says `city`, the
+  handler reads `arguments["town"]`, and nothing catches it until a model
+  calls the tool. The decorator reads the args model off the handler's first
+  annotation and generates the schema from it, so there is one description.
+  The handler receives a **validated instance** (`args.city` is typed and
+  checked), and because validation now runs *before* the handler, a model
+  that invents an argument gets `invalid arguments for get_weather: city:
+  Field required` back as an observation — precise enough to correct from —
+  instead of a `KeyError` halfway through your code. Constraints (`ge`,
+  `le`, enums) are enforced the same way. `typed_tool` is the non-decorator
+  form; `schema_of` exposes the schema generation, which inlines Pydantic's
+  `$defs`/`$ref` because local tool-calling models handle a flat object far
+  more reliably. A malformed handler fails at **decoration**, not on first
+  use.
+
+- **`Agent.run_structured(goal, output=Model)` → `StructuredRun[Model]`.**
+  An agent that ends in prose is useless to a pipeline. Rather than asking
+  for JSON and parsing the reply, the agent is given a temporary
+  `final_answer` tool shaped like your model, and calling it *is* how the
+  model finishes — the arguments are the answer, already validated, carried
+  by the tool-calling path the backend already handles well. `run.data` is
+  an instance of your model; `run.parse_error` says why when it is `None`.
+  `structured_verdict` composes with `run_until` to retry until the shape
+  arrives.
+
+  **Extraction pass.** Validating against a real local model showed the case
+  that actually happens: Qwen2.5-0.5B solved the task, called the right
+  tool, and then answered in prose anyway — leaving nothing to parse. So
+  when the prose carries no JSON, the SDK makes one more call whose **only**
+  tool is the answer tool, asking the model to restate what it already said
+  in that shape. With nothing else to call and no reasoning left to do, even
+  a 0.5B model fills the fields. It costs one model call against losing the
+  entire run; `extraction_retry=False` disables it.
+
 ## [0.182.0] — 2026-08-01
 
 ### Added

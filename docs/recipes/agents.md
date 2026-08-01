@@ -213,6 +213,126 @@ AgentToolError: disco cheio
 Qualquer exceção do handler é tratada igual — a diferença de usar
 `AgentToolError` é só deixar a intenção explícita.
 
+## Ferramentas tipadas com Pydantic
+
+Escrever JSON-schema à mão ao lado do handler significa **duas descrições da
+mesma coisa**, que divergem na primeira edição: o schema diz `city`, o
+handler lê `arguments["town"]`, e nada acusa até um modelo chamar a
+ferramenta. O decorator `@tool` elimina a duplicata.
+
+```python
+from pydantic import Field
+
+from tempest_fastapi_sdk.agents import AgentContext, tool
+from tempest_fastapi_sdk.schemas import BaseSchema
+
+
+class WeatherArgs(BaseSchema):
+    """Arguments for the weather tool."""
+
+    city: str = Field(description="Cidade a consultar.")
+    days: int = Field(default=1, ge=1, le=7, description="Horizonte em dias.")
+
+
+@tool("get_weather", "Get the current weather for a city.")
+async def get_weather(args: WeatherArgs, context: AgentContext) -> str:
+    """Return the forecast for the requested city."""
+    return f"{args.city}: 22 graus, {args.days}d"
+```
+
+O schema que o modelo vê é **gerado** do modelo Pydantic, e o handler recebe
+uma instância **validada** — `args.city` é tipado e o `mypy` confere.
+
+!!! check "Erro de argumento vira observação, não `KeyError`"
+    A validação acontece **antes** do handler rodar. Um modelo que inventa
+    `town=` recebe de volta:
+
+    ```text
+    invalid arguments for get_weather: city: Field required
+    ```
+
+    Preciso o bastante para ele se corrigir no turno seguinte. Antes, isso
+    explodia no meio do seu código.
+
+Restrições declaradas no modelo valem: `ge`, `le`, `max_length`, enums. Um
+modelo pedindo `days=500` é corrigido antes de você ver.
+
+Sem decorator (handler que é lambda, método ligado, ou vem de outro lugar):
+
+```python
+from tempest_fastapi_sdk.agents import typed_tool
+
+built = typed_tool("get_weather", "Get the weather.", WeatherArgs, get_weather_impl)
+```
+
+## Saída estruturada: um objeto, não um parágrafo
+
+Um agente que termina em prosa serve para chat e não serve para pipeline —
+algo lá na frente tem que transformar "a nota totaliza R$ 1.240,50 e vence
+dia 15" de volta em campos, e isso quebra no dia em que o modelo escrever
+diferente.
+
+```python
+from pydantic import Field
+
+from tempest_fastapi_sdk.agents import Agent
+from tempest_fastapi_sdk.schemas import BaseSchema
+
+
+class WeatherReport(BaseSchema):
+    """The structured answer."""
+
+    city: str = Field(description="Cidade reportada.")
+    celsius: int = Field(description="Temperatura em celsius.")
+    sky: str = Field(description="Condição do céu, uma palavra.")
+
+
+run = await agent.run_structured("Consulte o tempo no Recife e reporte.", WeatherReport)
+
+if run.has_data:
+    print(run.data.city, run.data.celsius)
+else:
+    print("sem dados:", run.parse_error)
+```
+
+```text
+Recife 22
+```
+
+`run.data` é uma instância do **seu** modelo — `run.data.celsius` é `int`, e
+o type-checker sabe disso.
+
+### Por que não pedir JSON e dar parse
+
+O agente ganha uma ferramenta temporária `final_answer` com o formato do seu
+modelo, e **chamar essa ferramenta é como o modelo termina**. Os argumentos
+*são* a resposta estruturada, já validados, carregados pela mesma máquina de
+tool-calling que o resto do agente usa — sem um segundo formato para o modelo
+errar.
+
+!!! tip "Modelo pequeno responde em prosa mesmo assim"
+    Modelos locais pequenos frequentemente resolvem a tarefa certo e depois
+    respondem em texto, ignorando a instrução. Por isso existe uma **passada
+    de extração**: quando a prosa não traz JSON, o SDK faz mais uma chamada
+    cuja **única** ferramenta é a de resposta, pedindo para reescrever o que
+    já foi dito naquele formato. Sem nada mais para chamar e nada mais para
+    raciocinar, até um modelo de 0.5B preenche os campos.
+
+    Custa uma chamada extra de modelo — troca certa quando a alternativa é
+    perder a execução inteira. Desligue com `extraction_retry=False`.
+
+!!! warning "Sempre cheque `has_data`"
+    Uma execução pode ser `succeeded` e ainda assim vir com `data=None` — o
+    orçamento acabou, ou nem a extração conseguiu. `run.parse_error` diz
+    qual foi o caso. E modelos pequenos às vezes deixam um campo vazio em vez
+    de omitir: valide os valores, não só a presença do objeto.
+
+Para insistir até a forma chegar, componha com o laço:
+
+```python
+from tempest_fastapi_sdk.agents import run_until, structured_verdict
+```
+
 ## Escrever a sua própria ferramenta
 
 ```python
