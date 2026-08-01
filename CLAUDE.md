@@ -341,7 +341,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `seconds_idle` / `unload_if_idle` / `unload` they lacked. **Fix:** the
   router's guard tested truthiness, so an empty `ModelRegistry` (`__len__`
   == 0 — the startup state) read as "nothing injected"; it now tests
-  `is None`.
+  `is None`. **v0.180.0** wired the inventory into the two surfaces someone
+  already watches: `GenAIMetrics.observe_inventory(report)` publishes
+  `genai_models_loaded{kind,device}` / `genai_models_known` /
+  `genai_gpu_vram_free_bytes{index}` (labelled series **cleared per call** —
+  a gauge is a snapshot, so an unloaded model must stop being reported), and
+  `make_model_cards(models, include_vram=)` (`genai/admin.py`) returns
+  `AdminSite(dashboard_cards=)` entries reading the handles at **render**
+  time. Also closed the `docs/reference.md` hole: the top-level `genai`
+  surface + `genai.rag` + `genai.audio` now render (269 symbols), where
+  before only the three new submodules did.
 - **SSR** (`[ssr]` extra) — `tempest_fastapi_sdk.ssr`: typed Python
   pages rendered to HTML via `tempestweb`'s `render_to_html` /
   `render_document`. `Page` (typed `Component` base — `body()` +

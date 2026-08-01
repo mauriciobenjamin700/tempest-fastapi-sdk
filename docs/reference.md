@@ -272,6 +272,40 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ## Modelos self-hosted
 
+A superfície de topo do `genai` — geração de texto, embeddings, VLM,
+moderação, cache, métricas e router. Os submódulos que exigem outra
+disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
+
+### `tempest_fastapi_sdk.genai`
+
+::: tempest_fastapi_sdk.genai
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: alphabetical
+      filters:
+        - "!^_"
+
+### `tempest_fastapi_sdk.genai.rag`
+
+::: tempest_fastapi_sdk.genai.rag
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: alphabetical
+      filters:
+        - "!^_"
+
+### `tempest_fastapi_sdk.genai.audio`
+
+::: tempest_fastapi_sdk.genai.audio
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: alphabetical
+      filters:
+        - "!^_"
+
 ### `tempest_fastapi_sdk.genai.hub`
 
 ::: tempest_fastapi_sdk.genai.hub
