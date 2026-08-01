@@ -75,6 +75,13 @@ from tempest_fastapi_sdk.agents.schemas import AgentStep as AgentStep
 from tempest_fastapi_sdk.agents.schemas import StepKind as StepKind
 from tempest_fastapi_sdk.agents.schemas import StopReason as StopReason
 from tempest_fastapi_sdk.agents.schemas import ToolResult as ToolResult
+from tempest_fastapi_sdk.agents.skills import LOAD_SKILL_TOOL as LOAD_SKILL_TOOL
+from tempest_fastapi_sdk.agents.skills import Skill as Skill
+from tempest_fastapi_sdk.agents.skills import discover_skills as discover_skills
+from tempest_fastapi_sdk.agents.skills import load_skill_tool as load_skill_tool
+from tempest_fastapi_sdk.agents.skills import loaded_skills as loaded_skills
+from tempest_fastapi_sdk.agents.skills import skill_from_markdown as skill_from_markdown
+from tempest_fastapi_sdk.agents.skills import skills_prompt as skills_prompt
 from tempest_fastapi_sdk.agents.storage import AgentRunSink as AgentRunSink
 from tempest_fastapi_sdk.agents.storage import BaseAgentRunModel as BaseAgentRunModel
 from tempest_fastapi_sdk.agents.storage import DbAgentRunSink as DbAgentRunSink
@@ -110,6 +117,7 @@ __all__: list[str] = [
     "DEFAULT_MAX_DEPTH",
     "DEFAULT_SYSTEM_PROMPT",
     "FINAL_ANSWER_TOOL",
+    "LOAD_SKILL_TOOL",
     "Agent",
     "AgentArtifact",
     "AgentArtifactSchema",
@@ -127,6 +135,7 @@ __all__: list[str] = [
     "InMemoryAgentRunSink",
     "LoopIteration",
     "LoopResult",
+    "Skill",
     "StepKind",
     "StopReason",
     "StructuredRun",
@@ -137,8 +146,11 @@ __all__: list[str] = [
     "Verdict",
     "agent_tool",
     "describe_image_tool",
+    "discover_skills",
     "final_answer_tool",
     "generate_image_tool",
+    "load_skill_tool",
+    "loaded_skills",
     "make_agent_router",
     "make_agent_run_model",
     "refine",
@@ -147,6 +159,8 @@ __all__: list[str] = [
     "run_until",
     "save_artifact_tool",
     "schema_of",
+    "skill_from_markdown",
+    "skills_prompt",
     "speak_tool",
     "structured_verdict",
     "succeeded",

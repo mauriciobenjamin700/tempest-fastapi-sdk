@@ -40,6 +40,12 @@ from tempest_fastapi_sdk.agents.schemas import (
     StepKind,
     StopReason,
 )
+from tempest_fastapi_sdk.agents.skills import (
+    Skill,
+    load_skill_tool,
+    loaded_skills,
+    skills_prompt,
+)
 from tempest_fastapi_sdk.agents.tools import AgentContext, AgentTool
 
 if TYPE_CHECKING:
@@ -119,6 +125,7 @@ class Agent:
         generator: Any,
         *,
         tools: Sequence[AgentTool] = (),
+        skills: Sequence[Skill] = (),
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         budget: AgentBudget | None = None,
         moderator: ModerationBackend | None = None,
@@ -134,6 +141,11 @@ class Agent:
                 (and ``chat`` as the toolless fallback).
             tools (Sequence[AgentTool]): What the model may call. An empty
                 sequence makes this a single-shot answerer.
+            skills (Sequence[Skill]): Capabilities loaded on demand. Only
+                each one's name and one-line description sit in the prompt;
+                the full instructions and the skill's own tools arrive when
+                the model loads it. This is how an agent can have many
+                capabilities without the prompt growing to match.
             system_prompt (str): The instruction prepended to every run.
             budget (AgentBudget | None): Ceilings; a default
                 :class:`~tempest_fastapi_sdk.agents.AgentBudget` when
@@ -152,6 +164,10 @@ class Agent:
         """
         self.generator = generator
         self.tools = list(tools)
+        self.skills = list(skills)
+        if self.skills:
+            self.tools.append(load_skill_tool(self.skills))
+            system_prompt = system_prompt + skills_prompt(self.skills)
         self.system_prompt = system_prompt
         self.budget = budget or AgentBudget()
         self.moderator = moderator
@@ -168,9 +184,42 @@ class Agent:
         """
         return [tool.name for tool in self.tools]
 
-    def _specs(self) -> list[dict[str, Any]]:
-        """Return the tool specifications passed to the backend."""
-        return [tool.to_spec() for tool in self.tools]
+    def _available(self, context: AgentContext) -> list[AgentTool]:
+        """Return the tools callable right now, given what is loaded.
+
+        A skill's tools are hidden until the model loads the skill — that
+        is the whole point of the split — so this is recomputed each turn
+        rather than fixed at construction.
+
+        Args:
+            context (AgentContext): The run context, holding the set of
+                loaded skills.
+
+        Returns:
+            list[AgentTool]: Base tools plus the tools of every loaded
+            skill.
+        """
+        if not self.skills:
+            return self.tools
+        opened = loaded_skills(context)
+        extra = [
+            tool
+            for skill in self.skills
+            if skill.name in opened
+            for tool in skill.tools
+        ]
+        return [*self.tools, *extra]
+
+    def _specs(self, context: AgentContext) -> list[dict[str, Any]]:
+        """Return the tool specifications passed to the backend.
+
+        Args:
+            context (AgentContext): The run context.
+
+        Returns:
+            list[dict[str, Any]]: One spec per currently-callable tool.
+        """
+        return [tool.to_spec() for tool in self._available(context)]
 
     async def _blocked(self, text: str) -> str | None:
         """Return the moderation reason when ``text`` is rejected.
@@ -370,14 +419,15 @@ class Agent:
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": goal},
         ]
-        tool_by_name = {tool.name: tool for tool in self.tools}
-        specs = self._specs()
-
         while True:
             stop = self._stop_for_budget(state)
             if stop is not None:
                 state.outcome = stop
                 return
+
+            available = self._available(state.context)
+            tool_by_name = {tool.name: tool for tool in available}
+            specs = [tool.to_spec() for tool in available]
 
             step_started = time.monotonic()
             try:

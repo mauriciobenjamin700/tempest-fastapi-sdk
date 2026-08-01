@@ -5,6 +5,35 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.184.0] — 2026-08-01
+
+### Added
+
+- **`Skill` — capabilities the agent loads only when it decides to use
+  them.** Every tool an agent can call sits in its prompt, and every line
+  there costs context and dilutes attention. Ten well-documented
+  capabilities is more instruction than a small local model can hold, and
+  quality drops on all ten.
+
+  A skill splits what the model needs to **choose** from what it needs to
+  **do**: the name and one-line description are always in the prompt, while
+  the full instructions *and the skill's own tools* arrive only after the
+  model calls `load_skill`. A hundred capabilities cost a hundred short
+  lines, and the one in use gets the whole page. `Agent(skills=[...])` wires
+  the loader and the prompt block; the tool list is recomputed each turn, so
+  a skill's tools genuinely do not exist until it is loaded — and calling
+  one early gets the usual `unknown tool` observation the model recovers
+  from.
+
+  `skill_from_markdown` and `discover_skills` read skills from
+  `<dir>/<name>/SKILL.md` with the same frontmatter format Claude Code
+  uses, so one file works in both places and a deployment can add a
+  capability without a code change. Tools stay in Python and are attached
+  afterwards. A missing skills directory returns `[]` rather than raising,
+  so a service starts fine without one. `loaded_skills(context)` reports
+  what a run actually reached for — usually the first thing you want when it
+  took a wrong turn.
+
 ## [0.183.0] — 2026-08-01
 
 ### Added
