@@ -49,6 +49,53 @@ A new field (default `None`), so nothing breaks. But **read the note**: if you l
 
 Tune it with `make_logs_router(max_records_per_file=...)`. They are the newest ones; the endpoint sorts newest-first and paginates, so what was left out was unreachable. A `WARNING` is logged when the cap bites.
 
+## 0.173.0 — a token only works where it was meant to, and caches stop being shared
+
+Three security fixes change default behavior. None requires a code change, but check whether you were relying on the old behavior.
+
+### Refresh and MFA-pending tokens no longer authorize a route
+
+`make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency` and `UserAuthService.current_user_dependency()` now accept **only** `access`-type tokens.
+
+Before, the three JWTs `UserAuthService` mints with one secret verified identically, so the refresh token and the step-one `mfa_token` worked as a bearer on any authenticated route — the second factor was bypassable with just the password.
+
+You are affected if you **deliberately** sent a refresh token to a regular route:
+
+```python
+from tempest_fastapi_sdk import REFRESH_TOKEN_TYPE, make_bearer_token_dependency
+
+# Take that type again, on that one route:
+require_refresh = make_bearer_token_dependency(tokens, accepted_typ=(REFRESH_TOKEN_TYPE,))
+```
+
+A token hand-signed with `JWTUtils.encode()` and carrying **no** `typ` is still accepted — the upgrade does not log live sessions out. Only the markers the SDK itself stamped (`refresh: True`, `purpose: "mfa_pending"`) are now rejected as access.
+
+### `ResponseCacheMiddleware`: `private` by default, credentials skip the store
+
+Two defaults changed:
+
+- The emitted `Cache-Control` went from `public, max-age=N` to `private, max-age=N`. If you served genuinely shared content and relied on CDN caching, declare it again: `cache_control="public, max-age=N"`.
+- A request with `Authorization` or `Cookie` neither reads nor writes the shared store (`ETag`/`304` still apply). To get caching back on an authenticated route, pass `cache_credentialed=True` — the credential joins the key, so each caller gets its own entry.
+
+The `X-Cache` header now only appears when a `store=` is configured; it used to report `MISS` even in ETag-only mode.
+
+### `IdempotencyMiddleware`: key scoped to the caller
+
+The key went from `(method, path, key)` to `(caller, method, path, key)`, the caller being a digest of `Authorization`/`Cookie`. Reusing someone else's key no longer returns their response.
+
+If your client swaps credentials between the original request and the retry (a token rotation mid-backoff), the retry no longer hits the earlier entry. Point identity at something stable there:
+
+```python
+app.add_middleware(
+    IdempotencyMiddleware,
+    store=store,
+    principal_resolver=lambda request: request.headers.get("x-api-key-id", ""),
+)
+```
+
+Also changed: `5xx` is no longer cached (`cache_server_errors=True` restores it), `Set-Cookie` is left out of the stored copy, and concurrent requests sharing a key are serialized within a process.
+
+
 ## 0.138.1 — `BaseAppSettings` must be the **last** base
 
 0.138.1 made **every settings mixin inherit `BaseAppSettings`** (they used to extend raw `pydantic_settings.BaseSettings`). That fixes `.env` silently not loading when a mixin was listed before the base — the canonical `model_config` is now materialized onto every mixin regardless of ordering.

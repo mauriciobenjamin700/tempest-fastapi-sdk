@@ -486,6 +486,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ::: tempest_fastapi_sdk.utils.password.PasswordUtils
 ::: tempest_fastapi_sdk.utils.jwt.JWTUtils
+::: tempest_fastapi_sdk.utils.token_types.token_type_allowed
 ::: tempest_fastapi_sdk.utils.totp.TOTPHelper
 ::: tempest_fastapi_sdk.utils.email.EmailUtils
 ::: tempest_fastapi_sdk.utils.upload.UploadUtils

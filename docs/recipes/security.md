@@ -68,6 +68,46 @@ Use os campos pra montar payloads de erro amigáveis. `raise_if_blocked` já cri
 !!! warning "`AttemptThrottle` não tem backend bundled in-memory"
     Pra testes sem Redis, use um fake/double via [fakeredis](https://github.com/cunla/fakeredis-py) (`pip install fakeredis`) que satisfaz a interface `ThrottleBackend` (métodos `get`, `incr`, `expire`, `ttl`, `delete`) e expõe um Redis funcional 100% em memória.
 
+## Tipos de token JWT (`typ`)
+
+Um serviço com o fluxo de auth bundled emite três JWTs **com o mesmo segredo**: o access token, o refresh token e o token intermediário que liga os dois passos de um login com MFA. Assinatura válida, portanto, não diz nada sobre *qual* deles chegou — e um guard de rota que só lê `sub` aceitaria os três.
+
+O `typ` é o que separa. `UserAuthService` estampa um em tudo que emite:
+
+| Token | `typ` | Onde vale |
+| --- | --- | --- |
+| Access | `ACCESS_TOKEN_TYPE` (`"access"`) | Qualquer rota autenticada |
+| Refresh | `REFRESH_TOKEN_TYPE` (`"refresh"`) | Só `POST /auth/refresh` |
+| MFA pendente | `MFA_TOKEN_TYPE` (`"mfa"`) | Só `POST /auth/mfa/verify` |
+
+`make_bearer_token_dependency` e `make_jwt_user_dependency` aceitam **só** `access` por padrão:
+
+```python
+from tempest_fastapi_sdk import (
+    ACCESS_TOKEN_TYPE,
+    REFRESH_TOKEN_TYPE,
+    JWTUtils,
+    make_bearer_token_dependency,
+)
+
+tokens = JWTUtils(secret="…" * 8)
+
+# Padrão: access-only. Um refresh ou um MFA-pendente devolve 401.
+require_claims = make_bearer_token_dependency(tokens)
+
+# Rota que de propósito recebe outro tipo (ex.: um endpoint de rotação):
+require_refresh = make_bearer_token_dependency(
+    tokens,
+    accepted_typ=(REFRESH_TOKEN_TYPE,),
+)
+```
+
+!!! danger "Por que isso importa"
+    O `mfa_token` é devolvido pelo `/login` a um cliente que provou **só a senha**. Sem a checagem de tipo ele serve como bearer em qualquer rota autenticada — o segundo fator vira decoração. O mesmo vale pro refresh token: ele tem vida longa de propósito, e aceitá-lo como access anula o motivo de o access token ser curto.
+
+!!! note "Token sem `typ` continua valendo"
+    Quem assina JWT direto com `JWTUtils.encode()` não precisa mudar nada: um token sem `typ` é aceito, senão atualizar o SDK derrubaria toda sessão ativa. Os dois marcadores antigos que o SDK já estampava — `refresh: True` e `purpose: "mfa_pending"` — são reconhecidos e **rejeitados** como access. Use `token_type_allowed()` se precisar da mesma decisão fora de uma dependency.
+
 ## Tokens opacos single-use
 
 `generate_opaque_token()` produz `(plaintext, token_hash)` em uma chamada — `plaintext` é uma string URL-safe (default 32 bytes ≈ 43 chars), `token_hash` é o digest SHA-256 hex em lowercase (64 chars). Você guarda **só o hash** no banco; o `plaintext` sai pelo e-mail/SMS uma única vez. Use pra password reset, confirmação de e-mail, API keys, IDs de sessão opacos — qualquer coisa onde o segredo emitido nunca volta a ser inspecionado.

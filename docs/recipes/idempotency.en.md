@@ -2,19 +2,42 @@
 
 `IdempotencyMiddleware` implements the `Idempotency-Key` pattern used by Stripe, AWS, GitHub and Plaid: the client sends a unique header and, **once the first request completes**, the server replays the same response on any retry — no duplicate row in the database, no double charge.
 
-!!! warning "No in-progress lock"
-    Deduplication only kicks in **after** the first request finishes and its response is cached. Concurrent retries that arrive **while the original is still in-flight** are NOT deduplicated — the middleware has no in-progress lock (unlike Stripe's 409-while-in-progress), so both run the handler. Keep client timeouts generous relative to handler latency to avoid premature retries.
+!!! warning "The in-progress lock is per process"
+    Within one process, concurrent requests sharing a key are serialized: the second waits for the first to finish and replays its response. **Across replicas it does not hold** — the store deduplicates retries (the first has finished and written), but two simultaneous requests landing on different replicas both run the handler. Keep client timeouts generous relative to handler latency to avoid premature retries.
 
 ## How it works
 
 1. Client sends `POST /charge` with `Idempotency-Key: chk_<uuid>`.
-2. Middleware runs the handler, stores the complete response keyed by `(method, path, key)`.
+2. Middleware runs the handler, stores the complete response keyed by `(caller, method, path, key)`.
 3. Client retries? Middleware returns the **same cached response**. Handler doesn't run again.
 
 Only mutating verbs (`POST` / `PUT` / `PATCH` / `DELETE`) are eligible — `GET` is already idempotent.
 
 !!! warning "Opt-in per request"
     Requests without the header pass straight through. Existing endpoints aren't disturbed — only callers that need the guarantee send the header.
+
+## The key is scoped to the caller
+
+The header value is chosen **by the client**. On its own it identifies nobody: two callers picking the same string on the same endpoint would share the entry, and the replay hands back the stored **response** — body and headers included.
+
+So the middleware folds a digest of the request's credentials (`Authorization` / `Cookie`) into the key. An entry is only ever replayed to the credentials that created it.
+
+```python
+app.add_middleware(
+    IdempotencyMiddleware,
+    store=MemoryIdempotencyStore(),
+    ttl_seconds=24 * 3600,
+    principal_resolver=lambda request: request.headers.get("x-tenant-id", ""),
+)
+```
+
+Use `principal_resolver=` when identity lives elsewhere — an API-key id, a tenant header. Returning a constant there restores the old behavior (one entry per key, shared across callers) and is **unsafe** on a multi-tenant endpoint.
+
+!!! note "What is not replayed"
+    A `Set-Cookie` from the original response is left **out** of the stored copy — re-issuing the first caller's session on a replay would hand that session over. The original caller still gets its cookie; only the replay does not.
+
+!!! tip "5xx is not cached"
+    By default responses `>= 500` do not enter the store, so the client's retry actually reaches the handler. A transient failure cached for `ttl_seconds` would pin that key to the error for the entry's whole life. Pass `cache_server_errors=True` if your case needs the opposite.
 
 ## Minimum setup (single-replica / dev)
 

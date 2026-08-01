@@ -95,6 +95,72 @@ hardening items around them. None of these needed a valid session to hit.
   `.env` and its `.env.bak` inherited the process umask, commonly `0644` —
   world-readable, for a file that now holds freshly minted secrets.
 
+## [0.173.0] — 2026-07-30
+
+### Security
+
+- **A refresh token or an MFA-pending token no longer authorizes a request**
+  (`tempest_fastapi_sdk/utils/token_types.py` (new),
+  `api/dependencies/auth.py`, `auth/service.py`).
+
+  `UserAuthService` signs three JWTs with the same secret: the access token, the
+  refresh token, and the intermediate token that bridges the two steps of an MFA
+  login. Nothing distinguished them once the signature verified, and
+  `make_jwt_user_dependency` authorized any token carrying a `sub`. Since
+  `POST /auth/login` hands the `mfa_token` back to a client that has proven only
+  the password, that token worked as a bearer on every authenticated route — the
+  second factor was skippable. The long-lived refresh token was accepted the same
+  way, which defeats the point of a short access token.
+
+  Every issued token now declares a `typ` (`ACCESS_TOKEN_TYPE` /
+  `REFRESH_TOKEN_TYPE` / `MFA_TOKEN_TYPE`), and the bearer, current-user, role
+  and permission dependencies accept `access` only. `accepted_typ=` widens that
+  per call site. A token with no `typ` — one a project signed itself with
+  `JWTUtils.encode()` — is still accepted, so upgrading does not invalidate live
+  sessions; the legacy markers the SDK did stamp (`refresh: True`,
+  `purpose: "mfa_pending"`) are recognized and rejected as access.
+  `token_type_allowed()` exposes the same decision outside a dependency.
+
+- **`ResponseCacheMiddleware` no longer serves one caller's response to
+  another** (`api/middlewares/response_cache.py`).
+
+  The cache key was `method|path|query` plus the `vary=` headers — nothing about
+  who asked. An authenticated `GET` that did not set `Cache-Control: private`
+  itself (most routes do not) was stored and replayed to the next caller on that
+  path, anonymous ones included. The emitted `Cache-Control` also defaulted to
+  `public`, telling browsers and CDNs to keep personalized bodies.
+
+  A request carrying `Authorization` or `Cookie` now bypasses the shared store;
+  it still gets its `ETag` and `304`, which are per-response. `Cache-Control`
+  defaults to `private, max-age=N`. `cache_credentialed=True` opts a deployment
+  back into caching credentialed traffic, folding a digest of those headers into
+  the key so each caller gets its own entry.
+
+- **`IdempotencyMiddleware` scopes each entry to the caller that created it**
+  (`api/middlewares/idempotency.py`).
+
+  The key was `(method, path, key)` with `key` chosen by the client, so two
+  callers picking the same string shared an entry — and a replay returns the
+  stored response, headers included. The key now also carries a digest of the
+  request credentials; `principal_resolver=` replaces that with your own identity
+  (an API-key id, a tenant header). A `Set-Cookie` is dropped from the stored
+  copy, so a replay can never re-issue the original caller's session.
+
+### Changed
+
+- `IdempotencyMiddleware` no longer caches `5xx` responses, so a client retry
+  after a transient failure actually reaches the handler instead of replaying the
+  error for the entry's whole TTL. `cache_server_errors=True` restores the old
+  behavior.
+- Concurrent requests sharing an idempotency key are serialized within a process:
+  the second waits and replays the first's response rather than running the
+  handler again. Across replicas the store still only deduplicates completed
+  requests.
+- `ResponseCacheMiddleware` emits `X-Cache` only when a `store=` is configured.
+  It previously reported `MISS` in ETag-only mode, where there is no cache to
+  miss.
+
+
 ## [0.172.1] — 2026-07-30
 
 ### Fixed

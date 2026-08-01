@@ -330,6 +330,7 @@ from tempest_fastapi_sdk.sse import (
 )
 from tempest_fastapi_sdk.storage import AsyncMinIOClient, ObjectStat, PutObjectItem
 from tempest_fastapi_sdk.utils import (
+    ACCESS_TOKEN_TYPE,
     CEP,
     CEP_PATTERN,
     CNPJ,
@@ -337,7 +338,9 @@ from tempest_fastapi_sdk.utils import (
     CPF,
     CPF_CNPJ_PATTERN,
     CPF_PATTERN,
+    MFA_TOKEN_TYPE,
     PHONE_BR_PATTERN,
+    REFRESH_TOKEN_TYPE,
     REQUEST_ID_HEADER,
     UF,
     AttemptThrottle,
@@ -427,6 +430,7 @@ from tempest_fastapi_sdk.utils import (
     sniff_mime,
     states_by_region,
     to_utc,
+    token_type_allowed,
     uf_choices,
     utcnow,
     verify_opaque_token,
@@ -451,6 +455,7 @@ from tempest_fastapi_sdk.websockets import (
 __version__: str = "0.174.0"
 
 __all__: list[str] = [
+    "ACCESS_TOKEN_TYPE",
     "BASE_COLUMN_ORDER",
     "CEP",
     "CEP_PATTERN",
@@ -470,9 +475,11 @@ __all__: list[str] = [
     "DEFAULT_MAX_RECORDS_PER_FILE",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "IDEMPOTENCY_HEADER",
+    "MFA_TOKEN_TYPE",
     "NAMING_CONVENTION",
     "PHONE_BR_PATTERN",
     "RAISES_ATTRIBUTE",
+    "REFRESH_TOKEN_TYPE",
     "REQUEST_ID_HEADER",
     "SUPPORTED_LOCALES",
     "UF",
@@ -861,6 +868,7 @@ __all__: list[str] = [
     "states_by_region",
     "strict_types",
     "to_utc",
+    "token_type_allowed",
     "typed",
     "uf_choices",
     "utcnow",

@@ -11,6 +11,9 @@ Requires **Python 3.11+**.
 !!! tip "Use `uv` instead"
     `uv add tempest-fastapi-sdk` is faster and writes to `pyproject.toml` for you.
 
+!!! info "First time with modern Python?"
+    This page assumes you already have a working environment. If you do not, follow the beginner track, which starts from absolute zero: **[Install uv »](getting-started/uv.md)** → **[Pick your Python version »](getting-started/python-versions.md)** → **[Your first project »](getting-started/first-project.md)** → **[Official reference docs »](getting-started/references.md)**.
+
 ## Optional extras
 
 Feature-rich helpers pull in third-party dependencies that you only need when you actually use the helper. Pick the extras your service consumes:

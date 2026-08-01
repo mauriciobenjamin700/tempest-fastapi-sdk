@@ -26,11 +26,25 @@ so deployments can pick what they have already:
 * :class:`RedisIdempotencyStore` — backed by an async ``redis``
   client. Required when more than one replica serves traffic,
   otherwise replicas can't see each other's cached responses.
+
+Keys are scoped to the caller
+-----------------------------
+
+The header value is chosen by the client, so it is not on its own a safe
+cache key: two callers that pick the same string on the same endpoint —
+by collision or by one guessing the other's — would share an entry, and
+the replay hands back the stored **response**, body and headers included.
+The middleware therefore folds a digest of the request's credentials
+(``Authorization`` / ``Cookie``) into the key, so an entry is only ever
+replayed to the credentials that created it. ``principal_resolver=``
+overrides that with your own notion of identity (a tenant id, an API-key
+id) when credentials alone are too coarse or too fine.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import time
 from collections.abc import Awaitable, Callable
@@ -82,6 +96,13 @@ IDEMPOTENCY_HEADER: str = "Idempotency-Key"
 # Mutating verbs the middleware caches. Reads are naturally idempotent
 # and replaying them wastes the cache.
 _MUTATING_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+# Headers that identify the caller when no `principal_resolver` is given.
+_CREDENTIAL_HEADERS: tuple[str, ...] = ("authorization", "cookie")
+
+# Never replayed: a `Set-Cookie` minted for the original caller would be
+# re-issued to whoever replays the key, handing over that session.
+_UNREPLAYABLE_HEADERS: frozenset[str] = frozenset({"set-cookie"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,8 +298,8 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
 
     Only mutating verbs (``POST`` / ``PUT`` / ``PATCH`` /
     ``DELETE``) are eligible. The key is scoped per
-    ``(method, path, key)`` so a key reused across different
-    endpoints doesn't collide.
+    ``(caller, method, path, key)`` so a key reused across different
+    endpoints — or by a different caller — doesn't collide.
 
     Add to FastAPI like any other ASGI middleware:
 
@@ -301,6 +322,8 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         store: IdempotencyStore,
         ttl_seconds: int = 24 * 3600,
         header_name: str = IDEMPOTENCY_HEADER,
+        principal_resolver: Callable[[Request], str] | None = None,
+        cache_server_errors: bool = False,
     ) -> None:
         """Initialize the middleware.
 
@@ -314,14 +337,88 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                 client retries with exponential backoff.
             header_name (str): Header carrying the idempotency key.
                 Defaults to the canonical ``Idempotency-Key``.
+            principal_resolver (Callable[[Request], str] | None): Returns
+                the caller identity folded into the cache key. ``None``
+                (default) digests the ``Authorization`` / ``Cookie``
+                headers, which is right whenever those carry the identity.
+                Supply your own when identity lives elsewhere (an API-key
+                id, a tenant header) — returning a constant restores the
+                old cross-caller behavior and is unsafe on a multi-tenant
+                endpoint.
+            cache_server_errors (bool): Whether a ``5xx`` is stored and
+                replayed. ``False`` (default) lets the client's retry
+                actually reach the handler — a transient failure cached
+                for ``ttl_seconds`` would otherwise pin that key to the
+                error for as long as the entry lives.
         """
         super().__init__(app)
         self.store: IdempotencyStore = store
         self.ttl_seconds: int = ttl_seconds
         self.header_name: str = header_name
+        self.principal_resolver: Callable[[Request], str] | None = principal_resolver
+        self.cache_server_errors: bool = cache_server_errors
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._locks_guard: asyncio.Lock = asyncio.Lock()
+
+    def _principal(self, request: Request) -> str:
+        """Return the caller identity to scope the cache key by.
+
+        Args:
+            request (Request): The inbound request.
+
+        Returns:
+            str: A short, opaque identity token. Empty string for an
+            unauthenticated request, which is itself a scope (anonymous
+            callers share one, and see only anonymous responses).
+        """
+        if self.principal_resolver is not None:
+            return self.principal_resolver(request)
+        raw = "|".join(
+            f"{name}={request.headers.get(name, '')}" for name in _CREDENTIAL_HEADERS
+        )
+        if raw == "|".join(f"{name}=" for name in _CREDENTIAL_HEADERS):
+            return ""
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
 
     def _build_cache_key(self, request: Request, key: str) -> str:
-        return f"{request.method}:{request.url.path}:{key}"
+        return f"{self._principal(request)}:{request.method}:{request.url.path}:{key}"
+
+    async def _lock_for(self, cache_key: str) -> asyncio.Lock:
+        """Return the process-local lock guarding ``cache_key``.
+
+        Serializes concurrent requests that share a key so the second one
+        waits and then replays the first's stored response, instead of both
+        reaching the handler and doing the work twice. This is per-process:
+        with several replicas behind a load balancer the store still
+        deduplicates retries, but two *simultaneous* requests landing on
+        different replicas can both execute.
+
+        Args:
+            cache_key (str): The scoped cache key.
+
+        Returns:
+            asyncio.Lock: The lock for that key.
+        """
+        async with self._locks_guard:
+            lock = self._locks.get(cache_key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._locks[cache_key] = lock
+            return lock
+
+    async def _release_lock(self, cache_key: str) -> None:
+        """Drop the lock for ``cache_key`` when nobody else holds it.
+
+        Keeps :attr:`_locks` from growing once per key seen, which over a
+        long-lived process with client-generated keys is an unbounded leak.
+
+        Args:
+            cache_key (str): The scoped cache key.
+        """
+        async with self._locks_guard:
+            lock = self._locks.get(cache_key)
+            if lock is not None and not lock.locked():
+                del self._locks[cache_key]
 
     async def dispatch(
         self,
@@ -347,6 +444,31 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         cache_key = self._build_cache_key(request, key)
+        lock = await self._lock_for(cache_key)
+        try:
+            async with lock:
+                return await self._dispatch_locked(request, call_next, cache_key)
+        finally:
+            await self._release_lock(cache_key)
+
+    async def _dispatch_locked(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+        cache_key: str,
+    ) -> Response:
+        """Serve the cached response for ``cache_key`` or produce and store it.
+
+        Args:
+            request (Request): The inbound request.
+            call_next (Callable[[Request], Awaitable[Response]]): The next
+                handler in the middleware chain.
+            cache_key (str): The caller-scoped cache key.
+
+        Returns:
+            Response: The replayed response on a hit, otherwise the
+                handler's own.
+        """
         cached = await self.store.get(cache_key)
         if cached is not None:
             return Response(
@@ -365,24 +487,30 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
             body_chunks.append(chunk)
         body = b"".join(body_chunks)
 
+        replayable_headers = [
+            (name.decode("latin-1"), value.decode("latin-1"))
+            for name, value in response.raw_headers
+            if name.decode("latin-1").lower() not in _UNREPLAYABLE_HEADERS
+        ]
         cached_response = CachedResponse(
             status_code=response.status_code,
-            headers=[
-                (k.decode("latin-1"), v.decode("latin-1"))
-                for k, v in response.raw_headers
-            ],
+            headers=replayable_headers,
             body=body,
             media_type=response.media_type,
         )
-        await self.store.set(
-            cache_key,
-            cached_response,
-            ttl_seconds=self.ttl_seconds,
-        )
+        if self.cache_server_errors or response.status_code < 500:
+            await self.store.set(
+                cache_key,
+                cached_response,
+                ttl_seconds=self.ttl_seconds,
+            )
         return Response(
             content=body,
             status_code=response.status_code,
-            headers=dict(cached_response.headers),
+            headers={
+                name.decode("latin-1"): value.decode("latin-1")
+                for name, value in response.raw_headers
+            },
             media_type=response.media_type,
         )
 
