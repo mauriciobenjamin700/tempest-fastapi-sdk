@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}SQL console · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-sql">
+  <div class="tempest-admin-list__header">
+    <h1>SQL console</h1>
+  </div>
+
+  <div class="tempest-admin-sql__policy">
+    <span class="tempest-admin-sql__policy-item">
+      <strong>Allowed:</strong> {{ capabilities|join(", ") or "nothing" }}
+    </span>
+    {% if allowed_tables %}
+    <span class="tempest-admin-sql__policy-item">
+      <strong>Tables:</strong> {{ allowed_tables|join(", ") }}
+    </span>
+    {% endif %}
+    {% if denied_tables %}
+    <span class="tempest-admin-sql__policy-item">
+      <strong>Denied:</strong> {{ denied_tables|join(", ") }}
+    </span>
+    {% endif %}
+    <span class="tempest-admin-sql__policy-item">
+      <strong>Row cap:</strong> {{ max_rows }}
+    </span>
+  </div>
+
+  {% if not read_only %}
+  <p class="tempest-admin-sql__warning">
+    This console can modify data. Statements run against the live database
+    and are not undoable from here.
+  </p>
+  {% endif %}
+
+  <form method="post" action="{{ nav_sql_url }}" class="tempest-admin-sql__form">
+    <label for="sql-input" class="tempest-admin-sql__label">Statement</label>
+    <textarea id="sql-input"
+              name="sql"
+              rows="8"
+              spellcheck="false"
+              class="tempest-admin-sql__editor"
+              placeholder="SELECT * FROM ...">{{ submitted or "" }}</textarea>
+    <div class="tempest-admin-sql__actions">
+      <button type="submit" class="tempest-admin-sql__run">Run</button>
+    </div>
+  </form>
+
+  {% if error %}
+  <div class="tempest-admin-sql__error" role="alert">
+    <strong>{{ error_kind }}</strong>
+    <span>{{ error }}</span>
+  </div>
+  {% endif %}
+
+  {% if result %}
+  <div class="tempest-admin-sql__meta">
+    <span>{{ result.capability }}</span>
+    <span>{{ result.row_count }} row{{ "" if result.row_count == 1 else "s" }}</span>
+    <span>{{ "%.3f"|format(result.seconds) }}s</span>
+    {% if result.truncated %}
+    <span class="tempest-admin-sql__truncated">
+      truncated at {{ max_rows }} rows
+    </span>
+    {% endif %}
+  </div>
+
+  {% if result.columns %}
+  <div class="tempest-admin-sql__grid-wrap">
+    <table class="tempest-admin-sql__grid">
+      <thead>
+        <tr>
+          {% for column in result.columns %}
+          <th>{{ column }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in result.rows %}
+        <tr>
+          {% for cell in row %}
+          <td>{% if cell is none %}<em>NULL</em>{% else %}{{ cell }}{% endif %}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not result.rows %}
+  <p class="tempest-admin-sql__empty">The query returned no rows.</p>
+  {% endif %}
+  {% else %}
+  <p class="tempest-admin-sql__empty">
+    Statement executed. {{ result.row_count }} row{{ "" if result.row_count == 1 else "s" }} affected.
+  </p>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

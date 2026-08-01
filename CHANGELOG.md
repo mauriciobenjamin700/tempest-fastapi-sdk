@@ -5,6 +5,52 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.187.0] — 2026-08-01
+
+### Added
+
+- **A SQL console for the admin, with a policy in front of it** — new extra
+  `[admin-sql]` (`sqlglot`, zero further dependencies). Opt-in via
+  `make_admin_router(sql_shell=...)`; without it the route does not exist.
+
+  **The honest framing, stated in the module docstring and the recipe:** a
+  SQL filter in the application is **defence in depth, not a security
+  boundary**. The analyser parses statements properly rather than matching
+  strings, which stops the ordinary accidents — a `DROP` typed by someone who
+  meant `SELECT`, an `UPDATE` with no `WHERE`, a query against a table holding
+  card data. It will not stop a determined operator, because SQL has CTEs,
+  subqueries, functions and dialect extensions and any parser-based allowlist
+  is a game of coverage. The boundary that holds is the **database role**;
+  point the console at a restricted connection and let the policy narrow
+  further and produce readable refusals.
+
+  `SqlShellPolicy` carries `capabilities` (READ / INSERT / UPDATE / DELETE /
+  DDL / DROP / ADMIN), `allowed_tables`, `denied_tables`, `max_rows`,
+  `max_statements`, `require_where` and `statement_timeout_ms`. Defaults are
+  the safest useful thing: read-only, one statement, WHERE required,
+  1000 rows.
+
+  Design points worth stating: **deny beats allow**, so a table in
+  `denied_tables` cannot be re-permitted by a broad rule elsewhere.
+  **Unclassifiable statements land on `ADMIN`**, the most privileged
+  capability, so a construct nobody anticipated needs the highest permission
+  instead of passing as harmless. **Subqueries and CTEs are walked**, because
+  a policy reading only the top-level `FROM` would miss exactly where a table
+  gets hidden — while CTE *aliases* are subtracted, so
+  `WITH recent AS (SELECT … FROM orders)` reports `orders` and not `recent`.
+  **Multi-statement input is refused by default**, since that is how an
+  allowed `SELECT` carries a `DROP` past someone skimming the box. Reads run
+  in a rolled-back transaction.
+
+  Every attempt is audited through `SqlAuditor` — **including refusals**,
+  because what someone tried to run is usually more interesting than what
+  worked. Auditor failures are swallowed so a broken sink cannot take the
+  console down.
+
+  The page shows the active policy before you type, warns when the console
+  can write, and renders a policy refusal differently from a database error:
+  "you may not do that" and "your SQL is wrong" lead to different fixes.
+
 ## [0.186.0] — 2026-08-01
 
 ### Added

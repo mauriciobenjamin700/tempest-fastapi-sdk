@@ -5601,6 +5601,15 @@ asyncio = [
 ]
 
 [[package]]
+name = "sqlglot"
+version = "30.14.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3a/cd/39a94f0f98076ee8e7c7c38fd4bba8d7845b0c629ff967057c64ef2c0989/sqlglot-30.14.0.tar.gz", hash = "sha256:df2ef5d2b8ca814313781f4ff35bf63e58f821ef517eeddbd523c19a61fa9bb9", size = 5944410, upload-time = "2026-07-27T11:23:30.698Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/ec/a729883ceda22dcd9117ce182f64d884bf494e72c4dfce00c2ad0a5978e1/sqlglot-30.14.0-py3-none-any.whl", hash = "sha256:fc768e24889d63a5e1237dea7ad305e5ffb4356a98b0bed828f89591ebcd3636", size = 719007, upload-time = "2026-07-27T11:23:28.637Z" },
+]
+
+[[package]]
 name = "standard-aifc"
 version = "3.13.0"
 source = { registry = "https://pypi.org/simple" }
@@ -5713,7 +5722,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.186.0"
+version = "0.187.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -5731,6 +5740,9 @@ dependencies = [
 admin = [
     { name = "itsdangerous" },
     { name = "jinja2" },
+]
+admin-sql = [
+    { name = "sqlglot" },
 ]
 all = [
     { name = "aiofiles" },
@@ -6033,6 +6045,7 @@ requires-dist = [
     { name = "redis", marker = "extra == 'cache'", specifier = ">=5.0.0" },
     { name = "safetensors", marker = "extra == 'genai'", specifier = ">=0.4.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.49" },
+    { name = "sqlglot", marker = "extra == 'admin-sql'", specifier = ">=25.0.0" },
     { name = "taskiq", marker = "extra == 'all'", specifier = ">=0.11.0" },
     { name = "taskiq", marker = "extra == 'tasks'", specifier = ">=0.11.0" },
     { name = "taskiq-aio-pika", marker = "extra == 'all'", specifier = ">=0.4.0" },
@@ -6046,7 +6059,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'genai'", specifier = ">=4.44.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "minio", "http", "openapi", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-onnx", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "admin-sql", "minio", "http", "openapi", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-onnx", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
 
 [package.metadata.requires-dev]
 dev = [

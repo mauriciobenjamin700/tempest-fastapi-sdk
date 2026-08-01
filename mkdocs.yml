@@ -99,6 +99,7 @@ plugins:
             - Recipes:
               - recipes/index.md
               - Admin site: recipes/admin.md
+              - Admin SQL console: recipes/admin-sql-console.md
               - AI agents: recipes/agents.md
               - AI agents (advanced): recipes/agents-advanced.md
               - AI agents (testing): recipes/agents-testing.md
@@ -355,6 +356,7 @@ nav:
       - CLI: recipes/cli.md
       - "Cliente de integração (OpenAPI)": recipes/openapi-client.md
       - "Comentários + avaliações": recipes/reviews.md
+      - "Console SQL no admin": recipes/admin-sql-console.md
       - "Deploy seguro (migrations + shutdown)": recipes/deploy-safety.md
       - Downloads: recipes/downloads.md
       - Email transacional: recipes/email.md

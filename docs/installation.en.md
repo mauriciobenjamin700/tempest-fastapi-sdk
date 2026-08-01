@@ -21,6 +21,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | Extra | Pulls in | Unlocks |
 | --- | --- | --- |
 | `[admin]` | `jinja2`, `itsdangerous` | `AdminSite`, `AdminModel`, `make_admin_router` |
+| `[admin-sql]` | `sqlglot` | admin SQL console: `SqlShellService` + `SqlShellPolicy` (capabilities, allowed/denied tables, row cap), real statement parsing, every attempt audited |
 | `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils`, bundled `UserAuthService` + `make_auth_router` flow |
 | `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
 | `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (with `render_template` + Jinja2 templates) |

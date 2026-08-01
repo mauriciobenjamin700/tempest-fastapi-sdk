@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.186.0"
+version = "0.187.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -77,6 +77,9 @@ tasks = [
 admin = [
     "jinja2>=3.1.0",
     "itsdangerous>=2.2.0",
+]
+admin-sql = [
+    "sqlglot>=25.0.0",
 ]
 minio = [
     "minio>=7.2.0",

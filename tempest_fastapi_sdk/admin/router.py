@@ -53,6 +53,11 @@ from tempest_fastapi_sdk.admin.session import (
     SignedCookieSessionStore,
 )
 from tempest_fastapi_sdk.admin.site import AdminSite
+from tempest_fastapi_sdk.admin.sql_shell import (
+    SqlShellDenied,
+    SqlShellError,
+    SqlShellService,
+)
 from tempest_fastapi_sdk.api.routers.logs import (
     LogSource,
     _read_entries,
@@ -146,6 +151,7 @@ def make_admin_router(
     show_logs: bool = False,
     log_dir: str | Path = "logs",
     access_policy: AdminAccessPolicy | None = None,
+    sql_shell: SqlShellService | None = None,
 ) -> APIRouter:
     """Build the FastAPI router that mounts the admin site.
 
@@ -356,6 +362,10 @@ def make_admin_router(
         )
         context.setdefault("nav_index_url", f"{prefix}/")
         context.setdefault("nav_logs_url", f"{prefix}/logs" if show_logs else None)
+        context.setdefault(
+            "nav_sql_url",
+            f"{prefix}/sql" if sql_shell is not None else None,
+        )
         return templates.TemplateResponse(
             request,
             template,
@@ -2316,6 +2326,85 @@ def make_admin_router(
             url=f"{prefix}/m/{slug}/",
             status_code=status.HTTP_303_SEE_OTHER,
         )
+
+    if sql_shell is not None:
+        _shell = sql_shell
+
+        def _sql_context(session: AdminSession) -> dict[str, Any]:
+            """Build the template context describing the active policy.
+
+            The policy is shown on the page so the operator knows the
+            limits before typing, rather than discovering them through
+            refusals.
+
+            Args:
+                session (AdminSession): The validated admin session.
+
+            Returns:
+                dict[str, Any]: The base context.
+            """
+            policy = _shell.policy
+            return {
+                "capabilities": sorted(str(item) for item in policy.capabilities),
+                "allowed_tables": sorted(policy.allowed_tables),
+                "denied_tables": sorted(policy.denied_tables),
+                "max_rows": policy.max_rows,
+                "read_only": policy.read_only,
+                "principal_label": session.principal_id,
+            }
+
+        @router.get("/sql", response_class=HTMLResponse, name="admin_sql")
+        async def sql_console(
+            request: Request,
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Render the empty SQL console.
+
+            Args:
+                request (Request): The incoming request.
+                session (AdminSession): The validated session.
+
+            Returns:
+                Response: The console page.
+            """
+            return _render(request, "sql_shell.html", _sql_context(session))
+
+        @router.post("/sql", response_class=HTMLResponse, name="admin_sql_run")
+        async def sql_console_run(
+            request: Request,
+            sql: str = Form(default=""),
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Run a statement and render the result or the refusal.
+
+            A refusal and a database error are rendered differently on
+            purpose: "you may not do that" and "your SQL is wrong" send
+            the operator to different fixes, and collapsing them into one
+            red box wastes the distinction the service went to the trouble
+            of making.
+
+            Args:
+                request (Request): The incoming request.
+                sql (str): The submitted statement.
+                session (AdminSession): The validated session.
+
+            Returns:
+                Response: The console page with the outcome.
+            """
+            context = _sql_context(session)
+            context["submitted"] = sql
+            try:
+                context["result"] = await _shell.execute(
+                    sql,
+                    principal=str(session.principal_id),
+                )
+            except SqlShellDenied as exc:
+                context["error_kind"] = "Refused by policy"
+                context["error"] = str(exc)
+            except SqlShellError as exc:
+                context["error_kind"] = "Statement failed"
+                context["error"] = str(exc)
+            return _render(request, "sql_shell.html", context)
 
     return router
 

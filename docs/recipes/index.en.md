@@ -280,6 +280,7 @@ come back here to plug in each capability as you need it.
 | Theme | Covers |
 | --- | --- |
 | **[Admin site »](admin.md)** | `AdminSite`, `AdminModel`, `make_admin_router`, `BaseUserModel` |
+| **[Admin SQL console »](admin-sql-console.md)** | `SqlShellService` + `SqlShellPolicy` (capabilities, allowed/denied tables, row cap, `require_where`), real parsing via `sqlglot`, every attempt audited, opt-in admin page |
 | **[AI agents »](agents.md)** | `Agent` (goal → trace + artifacts), `AgentBudget` (steps/time/calls), `AgentTool` + ready-made tools over image/vision/audio/RAG, `InMemoryAgentRunSink` / `DbAgentRunSink`, `make_agent_router` |
 | **[AI agents (advanced) »](agents-advanced.md)** | typed structured output (`run_structured`), three memory layers (`scratchpad_tools` / `fact_tools` / `recall_prompt`), on-demand `Skill`, `agent_tool` delegation, `run_until` / `refine` |
 | **[AI agents (testing) »](agents-testing.md)** | `ScriptedBackend` / `replies` / `replies_with_tool` to script the model's decisions, `assert_completed` / `assert_used_tools` / `assert_artifact`, `FailingBackend`, and the separate `@model` layer |
