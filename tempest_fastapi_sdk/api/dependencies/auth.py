@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hmac
-from collections.abc import Callable, Coroutine, Iterable
+from collections.abc import Callable, Collection, Coroutine, Iterable
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, Header, Request
@@ -11,6 +11,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from tempest_fastapi_sdk.exceptions.forbidden import ForbiddenException
 from tempest_fastapi_sdk.exceptions.unauthorized import UnauthorizedException
+from tempest_fastapi_sdk.utils.token_types import (
+    ACCESS_TOKEN_TYPE,
+    token_type_allowed,
+)
 
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.utils.jwt import JWTUtils
@@ -90,6 +94,7 @@ def make_bearer_token_dependency(
     bearer_scheme: HTTPBearer | None = None,
     cookie_name: str | None = None,
     query_param: str | None = None,
+    accepted_typ: Collection[str] = (ACCESS_TOKEN_TYPE,),
     error_message: str = "Authorization token is missing or invalid",
 ) -> Callable[..., Coroutine[Any, Any, dict[str, Any] | None]]:
     """Build a FastAPI dependency that decodes a JWT from header/cookie/query.
@@ -135,6 +140,13 @@ def make_bearer_token_dependency(
             query-string parameter (e.g. ``"access_token"``) if header
             and cookie are both absent. ``None`` (default) skips it.
             See the security warning above before enabling.
+        accepted_typ (Collection[str]): Token types this dependency
+            accepts, matched against the ``typ`` claim. Defaults to
+            ``(ACCESS_TOKEN_TYPE,)`` — a refresh token or the
+            MFA-pending token from step one of a two-step login is
+            **rejected**, even though both are validly signed with the
+            same secret. Widen it only for a route that deliberately
+            takes another kind of token.
         error_message (str): Message attached to the raised
             :class:`UnauthorizedException` when ``soft`` is ``False``.
 
@@ -162,8 +174,14 @@ def make_bearer_token_dependency(
                 return None
             raise UnauthorizedException(message=error_message)
         if soft:
-            return tokens.decode_or_none(raw_token)
-        return tokens.decode(raw_token)
+            payload = tokens.decode_or_none(raw_token)
+            if payload is None or not token_type_allowed(payload, accepted_typ):
+                return None
+            return payload
+        payload = tokens.decode(raw_token)
+        if not token_type_allowed(payload, accepted_typ):
+            raise UnauthorizedException(message=error_message)
+        return payload
 
     _decode_bearer.__doc__ = (
         "Decode the JWT (Authorization header, cookie or query param) "
@@ -180,6 +198,7 @@ def make_jwt_user_dependency(
     bearer_scheme: HTTPBearer | None = None,
     cookie_name: str | None = None,
     query_param: str | None = None,
+    accepted_typ: Collection[str] = (ACCESS_TOKEN_TYPE,),
     subject_claim: str = "sub",
     error_message: str = "Authorization token is missing or invalid",
     session_dependency: Callable[..., Any] | None = None,
@@ -234,6 +253,11 @@ def make_jwt_user_dependency(
             query-string parameter for the access token (cookieless
             clients such as ``EventSource``). See the security warning
             on :func:`make_bearer_token_dependency` before enabling.
+        accepted_typ (Collection[str]): Token types accepted, matched
+            against the ``typ`` claim. Defaults to access-only, so the
+            refresh token and the MFA-pending token cannot stand in for
+            an access token. See
+            :func:`make_bearer_token_dependency`.
         subject_claim (str): Which JWT claim carries the user id.
             Defaults to ``"sub"``.
         error_message (str): Message attached to the raised
@@ -253,6 +277,7 @@ def make_jwt_user_dependency(
         bearer_scheme=bearer_scheme,
         cookie_name=cookie_name,
         query_param=query_param,
+        accepted_typ=accepted_typ,
         error_message=error_message,
     )
 

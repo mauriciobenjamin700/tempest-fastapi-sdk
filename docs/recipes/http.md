@@ -472,6 +472,35 @@ Só métodos seguros (`GET`/`HEAD`) e respostas de sucesso (`200` por padrão) s
 !!! tip "Chave de cache"
     A chave é `método|path|query` mais os headers listados em `vary=`. Passe `cacheable=<predicado>` pra excluir requisições específicas, ou `exempt_paths=(...)` pra pular paths exatos. O store espelha o do idempotency (memória ou Redis com client cru), então compõe com o mesmo Redis do serviço.
 
+### Requisição autenticada não divide entrada de cache
+
+Repare no que a chave **não** tem: quem pediu. Se `GET /api/me` de duas pessoas cai na mesma chave, a primeira resposta guardada é servida pra segunda — e pra qualquer anônimo que peça o mesmo path.
+
+Por isso uma requisição que carrega `Authorization` ou `Cookie` **passa por fora do store compartilhado**. Ela continua ganhando `ETag` e `304` (que são por resposta, e seguros); só não entra num cache que outra pessoa pode ler.
+
+```python
+from tempest_fastapi_sdk import (
+    RedisResponseCacheStore,
+    ResponseCacheMiddleware,
+)
+
+
+def create_app(redis: Any) -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(
+        ResponseCacheMiddleware,
+        store=RedisResponseCacheStore(redis),
+        ttl_seconds=60,
+        cache_credentialed=True,   # opt-in: chave passa a incluir a credencial
+    )
+    return app
+```
+
+Com `cache_credentialed=True` um digest dos headers de credencial entra na chave, então cada chamador ganha a sua entrada e o cache volta a valer pra rota autenticada. Ligue só depois de conferir que as rotas cacheadas não carregam uma **segunda** identidade que a credencial não representa (um header de tenant, uma sessão independente do path) — nesse caso a credencial sozinha não separa o suficiente.
+
+!!! warning "`Cache-Control` padrão é `private`"
+    O default emitido é `private, max-age=<max_age>`. O middleware não tem como saber se o corpo de uma rota é personalizado, e um `public` errado ali faz um proxy compartilhado servir a resposta de um usuário pra outro. Passe `cache_control="public, max-age=…"` **de propósito**, num router que só serve conteúdo compartilhado.
+
 
 ## Verificação de assinatura de webhook
 

@@ -53,7 +53,7 @@ class TestEtag:
             r = await c.get("/data")
         assert r.status_code == 200
         assert r.headers["etag"].startswith('"')
-        assert r.headers["cache-control"] == "public, max-age=30"
+        assert r.headers["cache-control"] == "private, max-age=30"
 
     async def test_conditional_get_returns_304(self) -> None:
         app, _ = _make_app(ttl_seconds=30)
@@ -161,3 +161,97 @@ class TestSkips:
 class TestStore:
     def test_memory_store_is_protocol(self) -> None:
         assert isinstance(MemoryResponseCacheStore(), ResponseCacheStore)
+
+
+class TestCredentialedRequests:
+    """A response tied to one caller must never be served to another.
+
+    The key is method + path + varied headers, which says nothing about who
+    asked. So a credentialed request bypasses the shared store unless the
+    deployment opts in, in which case the credentials join the key.
+    """
+
+    async def test_authorization_header_bypasses_the_store(self) -> None:
+        store = MemoryResponseCacheStore()
+        app, counter = _make_app(store=store, ttl_seconds=30)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r1 = await c.get("/data", headers={"Authorization": "Bearer alice"})
+            r2 = await c.get("/data", headers={"Authorization": "Bearer bob"})
+        assert counter["n"] == 2
+        assert r1.json() == {"call": 1}
+        assert r2.json() == {"call": 2}
+        assert "x-cache" not in r2.headers
+
+    async def test_cookie_bypasses_the_store(self) -> None:
+        store = MemoryResponseCacheStore()
+        app, counter = _make_app(store=store, ttl_seconds=30)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            await c.get("/data", headers={"Cookie": "session=alice"})
+            await c.get("/data", headers={"Cookie": "session=bob"})
+        assert counter["n"] == 2
+
+    async def test_anonymous_request_never_reads_a_credentialed_entry(self) -> None:
+        store = MemoryResponseCacheStore()
+        app, counter = _make_app(store=store, ttl_seconds=30)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            await c.get("/data", headers={"Authorization": "Bearer alice"})
+            anon = await c.get("/data")
+        assert counter["n"] == 2
+        assert anon.json() == {"call": 2}
+
+    async def test_opt_in_scopes_the_entry_per_credential(self) -> None:
+        store = MemoryResponseCacheStore()
+        app, counter = _make_app(store=store, ttl_seconds=30, cache_credentialed=True)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            alice1 = await c.get("/data", headers={"Authorization": "Bearer alice"})
+            alice2 = await c.get("/data", headers={"Authorization": "Bearer alice"})
+            bob = await c.get("/data", headers={"Authorization": "Bearer bob"})
+        assert alice1.json() == {"call": 1}
+        assert alice2.json() == {"call": 1}
+        assert alice2.headers["x-cache"] == "HIT"
+        assert bob.json() == {"call": 2}
+        assert counter["n"] == 2
+
+    async def test_anonymous_traffic_still_shares_the_store(self) -> None:
+        store = MemoryResponseCacheStore()
+        app, counter = _make_app(store=store, ttl_seconds=30)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            await c.get("/data")
+            second = await c.get("/data")
+        assert counter["n"] == 1
+        assert second.headers["x-cache"] == "HIT"
+
+    async def test_credentialed_request_still_gets_etag_and_304(self) -> None:
+        store = MemoryResponseCacheStore()
+        app, _ = _make_app(store=store, ttl_seconds=30)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            first = await c.get("/const", headers={"Authorization": "Bearer alice"})
+            second = await c.get(
+                "/const",
+                headers={
+                    "Authorization": "Bearer alice",
+                    "If-None-Match": first.headers["etag"],
+                },
+            )
+        assert first.headers["cache-control"] == "private, max-age=30"
+        assert second.status_code == 304
+
+    async def test_explicit_cache_control_still_wins(self) -> None:
+        app, _ = _make_app(ttl_seconds=30, cache_control="public, max-age=120")
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            response = await c.get("/const")
+        assert response.headers["cache-control"] == "public, max-age=120"
