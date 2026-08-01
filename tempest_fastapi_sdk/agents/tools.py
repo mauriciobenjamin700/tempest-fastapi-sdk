@@ -48,11 +48,49 @@ class AgentContext:
             never has to know which step produced it.
         state (dict[str, Any]): Free-form scratch space shared across the
             run's tools, for callers wiring their own coordination.
+        depth (int): How many delegations deep this run is. ``0`` is the
+            top-level run; a sub-agent sees ``1``, its own sub-agent ``2``.
+            It is what stops A delegating to B delegating back to A
+            forever.
+        deadline (float | None): A ``time.monotonic()`` instant this run
+            must not run past, inherited from the caller. A sub-agent may
+            finish sooner than its own budget allows but **never** later
+            than its parent's clock, because the parent is the one holding
+            a request open.
+        parent (str | None): Name of the agent that delegated here, for
+            reading a nested trace.
     """
 
     goal: str = ""
     artifacts: dict[str, AgentArtifact] = field(default_factory=dict)
     state: dict[str, Any] = field(default_factory=dict)
+    depth: int = 0
+    deadline: float | None = None
+    parent: str | None = None
+
+    def child(self, *, goal: str, parent: str) -> AgentContext:
+        """Derive the context a delegated agent should run under.
+
+        The child gets its **own** artifact namespace — a sub-agent that
+        writes ``report.md`` must not silently overwrite the parent's
+        ``report.md`` — while inheriting the deadline and one more level of
+        depth. Whatever it produces is merged back explicitly by the
+        caller, so the parent decides what to keep.
+
+        Args:
+            goal (str): The sub-goal being delegated.
+            parent (str): The delegating agent's name.
+
+        Returns:
+            AgentContext: The child context.
+        """
+        return AgentContext(
+            goal=goal,
+            depth=self.depth + 1,
+            deadline=self.deadline,
+            parent=parent,
+            state=self.state,
+        )
 
     def require_artifact(self, name: str) -> AgentArtifact:
         """Return an artifact by name, or fail with a message for the model.

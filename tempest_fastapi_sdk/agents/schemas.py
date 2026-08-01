@@ -27,10 +27,16 @@ class StepKind(BaseStrEnum):
 
     * ``MODEL`` — the language model was asked to think or answer.
     * ``TOOL`` — a tool the model chose was invoked.
+    * ``AGENT`` — the work was delegated to another agent, whose own trace
+      hangs off :attr:`AgentStep.children`. Distinct from ``TOOL`` because
+      a delegation is the one step that can cost as much as a whole run,
+      and reading a trace where the expensive step looks like a function
+      call is how you misread where the time went.
     """
 
     MODEL = "model"
     TOOL = "tool"
+    AGENT = "agent"
 
 
 class StopReason(BaseStrEnum):
@@ -127,6 +133,12 @@ class ToolResult(BaseSchema):
         title="Artifacts",
         description="Binary results produced by the tool.",
     )
+    run: AgentRun | None = Field(
+        default=None,
+        title="Delegated run",
+        description="Set when the tool was another agent — its full run, "
+        "so the caller can nest the trace instead of losing it.",
+    )
 
     @classmethod
     def of(cls, value: ToolResult | str) -> ToolResult:
@@ -202,6 +214,29 @@ class AgentStep(BaseSchema):
         description="Wall-clock duration of the step.",
         examples=[1.42],
     )
+    agent: str | None = Field(
+        default=None,
+        title="Agent",
+        description="For a delegation, the name of the agent that ran.",
+        examples=["researcher"],
+    )
+    children: list[AgentStep] = Field(
+        default_factory=list,
+        title="Children",
+        description="The delegated agent's own trace, when this step "
+        "delegated. Nested rather than flattened so the parent's trace "
+        "stays readable at one level and the detail is still there.",
+    )
+
+    @property
+    def total_steps(self) -> int:
+        """Return this step plus every nested step beneath it.
+
+        Returns:
+            int: The step count of the whole subtree, so a caller can see
+            the real cost of a delegation instead of counting it as one.
+        """
+        return 1 + sum(child.total_steps for child in self.children)
 
 
 class AgentBudget(BaseSchema):
@@ -330,6 +365,10 @@ class AgentRun(BaseSchema):
             if item.name == name:
                 return item
         return None
+
+
+ToolResult.model_rebuild()
+"""Resolve ``ToolResult.run``, which forward-references `AgentRun` below."""
 
 
 __all__: list[str] = [

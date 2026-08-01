@@ -375,8 +375,27 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `/run/stream` SSE + `done`, `GET /runs`, artifact download with a real media
   type). Run state lives in a local `_RunState`, never on `self` — two
   concurrent runs on one agent must not mix. Recipe:
-  `docs/recipes/agents.md`. **Next agreed saga: multi-agent + agent loop**
-  (user: local use, token cost is not a constraint).
+  `docs/recipes/agents.md`.
+- **Multi-agent + loops (v0.182.0)** — delegation with **no team object**: an
+  agent already picks tools by name, so `agent_tool(agent)` /
+  `team_tools({agent: description})` make a specialist *a tool*. Three guards
+  a plain tool does not need: the **clock is inherited**
+  (`AgentContext.deadline` is absolute; each run takes the **earlier** of its
+  own budget and the inherited one, so a child never outlives the request its
+  parent holds open), **depth is bounded** (`max_depth`, default 3, turns
+  A->B->A into a readable refusal), and the **child's work returns**
+  (artifacts namespaced `<agent>/<name>`; a truncated child comes back as
+  `[stopped: …] …` instead of passing partial work as complete). New
+  `StepKind.AGENT` + `AgentStep.children`/`.agent`/`.total_steps` — a
+  delegation can cost as much as a whole run and must not read as a function
+  call. **Loops:** `run_until(agent, goal, until=)` repeats until a predicate
+  *you* wrote accepts (real Python — parse it, import it, call it — a far
+  harder gate than asking the model); `refine(worker, critic, goal)` is
+  generate-critique-revise, critic approves with the exact token `APPROVED`
+  and never rewrites. `LoopResult`/`LoopIteration` keep every round;
+  `accepted=False` means nothing passed. **Fixed here:** the effective
+  deadline was written to the run state but not back to the `AgentContext`,
+  so delegation handed the child `None` and it ran to its own budget.
 - **SSR** (`[ssr]` extra) — `tempest_fastapi_sdk.ssr`: typed Python
   pages rendered to HTML via `tempestweb`'s `render_to_html` /
   `render_document`. `Page` (typed `Component` base — `body()` +

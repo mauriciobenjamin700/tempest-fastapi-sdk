@@ -78,6 +78,9 @@ class _RunState:
         output (str): The final answer.
         started (float): ``time.monotonic()`` at the start.
         tool_calls (int): Tool invocations so far.
+        deadline (float | None): The effective instant to stop at — the
+            earlier of this agent's own budget and any deadline inherited
+            from a delegating parent.
     """
 
     context: AgentContext
@@ -86,6 +89,7 @@ class _RunState:
     output: str = ""
     started: float = 0.0
     tool_calls: int = 0
+    deadline: float | None = None
 
 
 class Agent:
@@ -246,6 +250,30 @@ class Agent:
             yield step
         await self._finish(goal, state)
 
+    def _deadline(self, started: float, inherited: float | None) -> float | None:
+        """Return the instant this run must stop at.
+
+        The **earlier** of the two clocks wins. A sub-agent configured with
+        a generous budget cannot extend the request its parent is holding
+        open, and a parent with a long budget cannot make a child ignore
+        its own shorter one.
+
+        Args:
+            started (float): ``time.monotonic()`` at the run's start.
+            inherited (float | None): A deadline from a delegating parent.
+
+        Returns:
+            float | None: The effective deadline, or ``None`` when neither
+            side sets a time limit.
+        """
+        own = (
+            started + self.budget.max_seconds
+            if self.budget.max_seconds is not None
+            else None
+        )
+        candidates = [value for value in (own, inherited) if value is not None]
+        return min(candidates) if candidates else None
+
     def _stop_for_budget(self, state: _RunState) -> StopReason | None:
         """Return the ceiling that has been crossed, if any.
 
@@ -263,10 +291,7 @@ class Agent:
             and state.tool_calls >= budget.max_tool_calls
         ):
             return StopReason.MAX_TOOL_CALLS
-        if (
-            budget.max_seconds is not None
-            and time.monotonic() - state.started >= budget.max_seconds
-        ):
+        if state.deadline is not None and time.monotonic() >= state.deadline:
             return StopReason.TIMEOUT
         return None
 
@@ -290,6 +315,8 @@ class Agent:
         """
         state.started = time.monotonic()
         state.context.goal = goal
+        state.deadline = self._deadline(state.started, state.context.deadline)
+        state.context.deadline = state.deadline
 
         reason = await self._blocked(goal)
         if reason is not None:
@@ -450,14 +477,17 @@ class Agent:
 
         for artifact in result.artifacts:
             ctx.artifacts[artifact.name] = artifact
+        delegated = result.run
         return AgentStep(
             index=index,
-            kind=StepKind.TOOL,
+            kind=StepKind.AGENT if delegated is not None else StepKind.TOOL,
             name=name,
             arguments=arguments,
             output=result.text,
             artifacts=[artifact.name for artifact in result.artifacts],
             seconds=time.monotonic() - started,
+            agent=delegated.agent if delegated is not None else None,
+            children=delegated.steps if delegated is not None else [],
         )
 
     async def _finish(self, goal: str, state: _RunState) -> AgentRun:
