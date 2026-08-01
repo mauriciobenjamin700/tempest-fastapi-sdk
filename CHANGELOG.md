@@ -5,6 +5,46 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.189.0] — 2026-08-01
+
+### Added
+
+- **`OnnxPredictor` — running an exported model on the device that has to
+  run it.** Exporting produces a file; this is everything between that file
+  and an answer, and it is code every consumer otherwise writes identically
+  and gets subtly wrong: which input is the input (the name is not constant
+  across exporters), which output is a label and which is a score (indexing
+  `[1]` works until you serve a regressor), dtype coercion, and the warm-up
+  that moves first-call allocation off the first real request.
+
+  **Threads default to one intra-op.** ONNX Runtime's own default is one per
+  core, which is right on a server and often wrong on a constrained device:
+  on a 4-core SBC running one small model per request, the threads spend
+  more time coordinating than computing. `DEFAULT_INTRA_OP_THREADS = 1`
+  says so, and the docstring says to measure on the target device before
+  raising it.
+
+  `PredictorInfo.providers` reports the providers **actually in use**, not
+  the ones requested — ONNX Runtime falls back to CPU silently, so a device
+  you believe is on CUDA may not be.
+
+- **`make_prediction_router`** — `POST /predict`, `GET /model` (what is
+  loaded, which providers, how many threads), and `POST /model/sync`. A row
+  of the wrong width is a `422`, not a `500`.
+
+- **`RegistryModelSource` — updating a fleet without a deploy.** The device
+  asks the existing `ArtifactRegistry` which version is current, downloads
+  it if absent, and reloads. `sync()` is a no-op when the right version is
+  already loaded, so it is safe on a schedule.
+
+  **A bad rollout degrades to the previous version, never to nothing.**
+  `OnnxPredictor.reload` builds the new session *before* dropping the old
+  one, so a corrupt or unloadable file leaves the device serving the
+  previous model. A fleet that can go silent from a deploy is worse than one
+  that is occasionally out of date. One file per version is cached, so a
+  rollback is a reload rather than a re-download, and nothing is deleted
+  automatically — on a small disk that is the operator's call.
+
 ## [0.188.0] — 2026-08-01
 
 ### Added

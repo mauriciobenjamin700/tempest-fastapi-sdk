@@ -127,6 +127,106 @@ print(profile.runtime.latency_ms_median)
 ```
 
 
+## Servir o modelo na borda
+
+Exportar produz o arquivo. Isto é tudo entre o arquivo e uma resposta —
+código que todo consumidor reescreve igual e erra do mesmo jeito.
+
+```python
+from tempest_fastapi_sdk.modelops import OnnxPredictor
+
+predictor = OnnxPredictor("dist/classifier.onnx")
+result = predictor.predict([[5.1, 3.5, 1.4, 0.2]])
+
+print(result.labels, result.probabilities[0])
+```
+
+```text
+[0] [0.98, 0.02, 0.0]
+```
+
+O predictor resolve o que você teria que resolver à mão: **qual é o input**
+(o nome não é constante entre exportadores), **qual output é rótulo e qual é
+score** (indexar `[1]` funciona até você servir um regressor), coerção de
+dtype, e o *warmup* — a primeira chamada paga alocação e seleção de kernel.
+
+!!! danger "Threads são a decisão que mais custa latência na borda"
+    O ONNX Runtime usa **uma thread por core** por padrão. Está certo num
+    servidor saturando um modelo grande, e frequentemente **errado num
+    dispositivo pequeno**: num SBC de 4 cores rodando um modelo por
+    requisição, as threads gastam mais tempo se coordenando do que
+    computando.
+
+    O default aqui é `intra_op_threads=1` por isso. Aumente só depois de
+    medir **no dispositivo alvo** — não no seu notebook, cujo número de
+    cores e banda de memória não são os dele:
+
+    ```python
+    from tempest_fastapi_sdk.modelops import benchmark_onnx
+
+    profile = benchmark_onnx("dist/classifier.onnx", n_repetitions=200)
+    print(profile.runtime.latency_ms_median)
+    ```
+
+### Com GPU
+
+```python
+predictor = OnnxPredictor(
+    "dist/classifier.onnx",
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+)
+print(predictor.info.providers)
+```
+
+!!! warning "Sempre inclua o fallback de CPU"
+    Sem ele, um problema de driver vira falha de carga em vez de resposta
+    mais lenta. E cheque `info.providers`: o ONNX Runtime **cai para CPU em
+    silêncio**, então o dispositivo que você acha que está na GPU pode não
+    estar.
+
+### Servir por HTTP
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.modelops import OnnxPredictor, make_prediction_router
+
+app = FastAPI()
+app.include_router(make_prediction_router(OnnxPredictor("dist/classifier.onnx")))
+```
+
+| Rota | O que faz |
+| --- | --- |
+| `POST /api/predict/` | Prediz para um lote de linhas |
+| `GET /api/predict/model` | O que está carregado, providers **em uso**, threads |
+| `POST /api/predict/model/sync` | Recarrega da registry (só com `source`) |
+
+Linha de largura errada vira **422**, não 500 — é erro do cliente.
+
+### Trocar o modelo sem redeploy
+
+```python
+from tempest_fastapi_sdk.modelops import RegistryModelSource
+
+source = RegistryModelSource(registry, "fraud-classifier", cache_dir="models/")
+app.include_router(make_prediction_router(predictor, source=source))
+```
+
+O dispositivo pergunta à `ArtifactRegistry` qual versão está ativa, baixa se
+ainda não tiver, e recarrega. Chame `source.sync(predictor)` numa tarefa
+periódica — é no-op quando já está na versão certa.
+
+!!! check "Rollout ruim degrada para a versão anterior, nunca para nada"
+    A sessão nova é construída **antes** de a antiga ser descartada. Um
+    arquivo corrompido deixa o predictor servindo o modelo anterior em vez
+    de tirar o dispositivo do ar. Uma frota que pode ficar muda por causa de
+    um deploy é pior que uma que ocasionalmente fica desatualizada.
+
+    Uma versão por arquivo no `cache_dir`, então rollback é um reload, não um
+    novo download. Nada é apagado sozinho — num disco pequeno você quer
+    decidir quando as versões antigas saem.
+
+
 ## Medir antes de otimizar
 
 A primeira coisa é medir. Sem `tempest model bench` você não tem base de
