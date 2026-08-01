@@ -19,6 +19,7 @@ import math
 import time
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import HardwareInfo, ModelDtype
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
@@ -259,6 +260,9 @@ class Embedder:
         normalize: bool = False,
         cache_dir: str | None = None,
         hf_token: str | None = None,
+        revision: str | None = None,
+        local_files_only: bool = False,
+        trust_remote_code: bool = False,
         idle_unload_seconds: float | None = None,
         hardware: HardwareInfo | None = None,
         metrics: GenAIMetrics | None = None,
@@ -278,6 +282,12 @@ class Embedder:
                 vector so cosine similarity is a plain dot product.
             cache_dir (str | None): Weights cache directory.
             hf_token (str | None): Hub token for gated/private models.
+            revision (str | None): Branch, tag or commit sha to load;
+                ``None`` follows the moving Hub default.
+            local_files_only (bool): Load from the cache without touching
+                the network.
+            trust_remote_code (bool): Allow the repository's own Python to
+                run at load time.
             idle_unload_seconds (float | None): Idle threshold for
                 :meth:`unload_if_idle`.
             hardware (HardwareInfo | None): Injected snapshot for device
@@ -297,6 +307,14 @@ class Embedder:
         self.normalize = normalize
         self.cache_dir = cache_dir
         self.hf_token = hf_token
+        self.source = ModelRef(
+            model_id=model_id,
+            revision=revision,
+            cache_dir=cache_dir,
+            token=hf_token,
+            local_files_only=local_files_only,
+            trust_remote_code=trust_remote_code,
+        )
         self.idle_unload_seconds = idle_unload_seconds
         self.metrics = metrics
         self._model: Any = None
@@ -364,14 +382,12 @@ class Embedder:
         torch, transformers = _require_transformers()
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(
             self.model_id,
-            cache_dir=self.cache_dir,
-            token=self.hf_token,
+            **self.source.loader_kwargs(),
         )
         model = transformers.AutoModel.from_pretrained(
             self.model_id,
             torch_dtype=getattr(torch, self.dtype.value),
-            cache_dir=self.cache_dir,
-            token=self.hf_token,
+            **self.source.loader_kwargs(),
         )
         self._model = model.to(self.device)
         self._touch()

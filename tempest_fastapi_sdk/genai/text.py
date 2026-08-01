@@ -27,6 +27,7 @@ from tempest_fastapi_sdk.genai.generation_cache import (
     cached_generate,
 )
 from tempest_fastapi_sdk.genai.hardware import probe_hardware
+from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
 from tempest_fastapi_sdk.genai.schemas import (
     GenerationConfig,
@@ -244,6 +245,9 @@ class TextGenerator:
         device (str): The resolved device (``cuda`` / ``mps`` / ``cpu``).
         dtype (ModelDtype): The resolved compute precision.
         quantization (ModelDtype | None): int8/int4 when quantized.
+        source (ModelRef): The resolved weight identity (id, revision,
+            cache, token, offline/remote-code flags) forwarded to every
+            ``from_pretrained`` call.
         idle_unload_seconds (float | None): Idle threshold used by
             :meth:`unload_if_idle`.
     """
@@ -257,6 +261,9 @@ class TextGenerator:
         quantization: str | ModelDtype | None = None,
         cache_dir: str | None = None,
         hf_token: str | None = None,
+        revision: str | None = None,
+        local_files_only: bool = False,
+        trust_remote_code: bool = False,
         idle_unload_seconds: float | None = None,
         hardware: HardwareInfo | None = None,
         generation_cache: GenerationCache | AsyncGenerationCache | None = None,
@@ -274,6 +281,17 @@ class TextGenerator:
                 to quantize (needs ``[genai-quant]``), or ``None``.
             cache_dir (str | None): Where to cache downloaded weights.
             hf_token (str | None): Hub token for gated/private models.
+            revision (str | None): Branch, tag or commit sha to load.
+                ``None`` follows the Hub default, which moves when the
+                author pushes; pin a sha (see
+                :func:`~tempest_fastapi_sdk.genai.resolve_revision`) for a
+                reproducible deployment.
+            local_files_only (bool): Load from the cache without touching
+                the network — what an air-gapped or deploy-frozen host
+                wants.
+            trust_remote_code (bool): Allow the repository's own Python to
+                run at load time. Required by some architectures, and it
+                executes code you did not review, so it stays opt-in.
             idle_unload_seconds (float | None): When set, :meth:`unload_if_idle`
                 frees the model after this many idle seconds.
             hardware (HardwareInfo | None): Injected snapshot for device
@@ -304,6 +322,14 @@ class TextGenerator:
             raise ValueError("quantization must be 'int8', 'int4' or None")
         self.cache_dir = cache_dir
         self.hf_token = hf_token
+        self.source = ModelRef(
+            model_id=model_id,
+            revision=revision,
+            cache_dir=cache_dir,
+            token=hf_token,
+            local_files_only=local_files_only,
+            trust_remote_code=trust_remote_code,
+        )
         self.idle_unload_seconds = idle_unload_seconds
         self.generation_cache = generation_cache
         self.metrics = metrics
@@ -358,10 +384,7 @@ class TextGenerator:
         if self.is_loaded:
             return
         torch, transformers = _require_transformers()
-        kwargs: dict[str, Any] = {
-            "cache_dir": self.cache_dir,
-            "token": self.hf_token,
-        }
+        kwargs: dict[str, Any] = self.source.loader_kwargs()
         if self.quantization is not None:
             bits = 8 if self.quantization is ModelDtype.INT8 else 4
             kwargs["quantization_config"] = transformers.BitsAndBytesConfig(
@@ -374,8 +397,7 @@ class TextGenerator:
 
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(
             self.model_id,
-            cache_dir=self.cache_dir,
-            token=self.hf_token,
+            **self.source.loader_kwargs(),
         )
         self._model = transformers.AutoModelForCausalLM.from_pretrained(
             self.model_id,

@@ -20,6 +20,7 @@ import asyncio
 from typing import Any
 
 from tempest_fastapi_sdk.genai.embeddings import _l2_normalize
+from tempest_fastapi_sdk.genai.hub import ModelRef
 
 
 def _require_onnx() -> tuple[Any, Any]:
@@ -88,17 +89,29 @@ class OnnxEmbedder:
         model_path: str,
         *,
         tokenizer: str,
+        tokenizer_revision: str | None = None,
+        hf_token: str | None = None,
         normalize: bool = False,
         max_length: int = 512,
         providers: list[str] | None = None,
     ) -> None:
         """Configure the embedder (does not load the model yet).
 
+        The ONNX graph is already on local disk, so only the tokenizer can
+        come from the Hub — the pinning keywords apply to it alone.
+        ``tokenizers.Tokenizer.from_pretrained`` accepts ``revision`` and
+        ``token`` and nothing else, so there is no offline flag to forward
+        here; point ``tokenizer`` at a local ``tokenizer.json`` when the
+        host must not reach the network.
+
         Args:
             model_path (str): Path to the ONNX model file.
             tokenizer (str): A HuggingFace tokenizer id (loaded via
                 ``tokenizers.Tokenizer.from_pretrained``) or a path to a
                 ``tokenizer.json`` (loaded via ``from_file``).
+            tokenizer_revision (str | None): Branch, tag or commit sha for
+                the Hub tokenizer; ignored for a local ``tokenizer.json``.
+            hf_token (str | None): Hub token for a gated/private tokenizer.
             normalize (bool): L2-normalize the output vectors.
             max_length (int): Truncate/pad tokenization to this length.
             providers (list[str] | None): ONNX Runtime execution providers;
@@ -106,6 +119,11 @@ class OnnxEmbedder:
         """
         self.model_path = model_path
         self.tokenizer_ref = tokenizer
+        self.tokenizer_source = ModelRef(
+            model_id=tokenizer,
+            revision=tokenizer_revision,
+            token=hf_token,
+        )
         self.normalize = normalize
         self.max_length = max_length
         self.providers = providers
@@ -126,12 +144,13 @@ class OnnxEmbedder:
             self.model_path,
             providers=self.providers,
         )
-        loader = (
-            tokenizer_cls.from_file
-            if self.tokenizer_ref.endswith(".json")
-            else tokenizer_cls.from_pretrained
-        )
-        self._tokenizer = loader(self.tokenizer_ref)
+        if self.tokenizer_ref.endswith(".json"):
+            self._tokenizer = tokenizer_cls.from_file(self.tokenizer_ref)
+        else:
+            self._tokenizer = tokenizer_cls.from_pretrained(
+                self.tokenizer_ref,
+                **self.tokenizer_source.loader_kwargs(),
+            )
         self._tokenizer.enable_truncation(max_length=self.max_length)
         self._tokenizer.enable_padding()
 

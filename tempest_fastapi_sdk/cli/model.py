@@ -9,9 +9,17 @@ without anyone writing a throwaway script:
     tempest model quantize models/classify.onnx models/classify.int8.onnx
     tempest model export-ort models/classify.int8.onnx -o dist/ -t arm
 
-Every command needs the ``[modelops-onnx]`` extra except ``hardware``, which
-reports what this host can measure and therefore has to work everywhere. A
-missing extra exits 2 with the install line, never a traceback.
+It also owns the weight lifecycle of the HuggingFace models a service
+self-hosts, so a deployment can fetch and pin them before serving traffic:
+
+    tempest model pull Qwen/Qwen2.5-0.5B-Instruct --pin
+    tempest model cache-list --revisions
+    tempest model cache-rm Qwen/Qwen2.5-0.5B-Instruct --dry-run
+
+The ONNX commands need the ``[modelops-onnx]`` extra and the three cache
+commands need ``[genai-hub]``; ``hardware`` reports what this host can
+measure and therefore has to work everywhere. A missing extra exits 2 with
+the install line, never a traceback.
 """
 
 from __future__ import annotations
@@ -23,7 +31,7 @@ import typer
 
 model_app: typer.Typer = typer.Typer(
     name="model",
-    help="Analyze, benchmark, convert and quantize ONNX models.",
+    help="Fetch, analyze, benchmark, convert and quantize models.",
     no_args_is_help=True,
 )
 
@@ -408,6 +416,196 @@ def hardware_cmd(
         f"  cpu        : {type(cpu_sampler).__name__} "
         f"({'available' if cpu_sampler.available else 'unavailable'})"
     )
+
+
+def _format_bytes(value: int) -> str:
+    """Render a byte count in the largest unit that keeps it readable.
+
+    Args:
+        value (int): The byte count.
+
+    Returns:
+        str: The value in B, KB, MB or GB (decimal units, matching how
+        model cards and disk vendors quote sizes).
+    """
+    for unit, scale in (("GB", 10**9), ("MB", 10**6), ("KB", 10**3)):
+        if value >= scale:
+            return f"{value / scale:.2f} {unit}"
+    return f"{value} B"
+
+
+@model_app.command("pull")
+def pull_cmd(
+    model_id: str = typer.Argument(..., help="HuggingFace model id (org/name)."),
+    revision: str | None = typer.Option(
+        None, "--revision", "-r", help="Branch, tag or commit sha to fetch."
+    ),
+    cache_dir: str | None = typer.Option(
+        None, "--cache-dir", help="Where to write; defaults to HF_HUB_CACHE."
+    ),
+    token: str | None = typer.Option(
+        None, "--token", help="Hub token for gated or private repositories."
+    ),
+    allow: list[str] = typer.Option(
+        [], "--allow", help="Only fetch files matching this glob (repeatable)."
+    ),
+    ignore: list[str] = typer.Option(
+        [], "--ignore", help="Skip files matching this glob (repeatable)."
+    ),
+    no_disk_check: bool = typer.Option(
+        False, "--no-disk-check", help="Download without checking free space first."
+    ),
+    pin: bool = typer.Option(
+        False, "--pin", help="Resolve the revision to a commit sha and print it."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print the snapshot as JSON."),
+) -> None:
+    """Download a model's weights ahead of the first request.
+
+    Put this in the image build or the deploy step so the request path
+    only ever loads from disk — otherwise the first ``/generate`` call
+    pays for a multi-gigabyte download while a client waits on it.
+
+    ``--pin`` prints the commit sha behind the revision. Feed it back as
+    ``--revision`` (and into the service configuration) and every boot
+    loads the same weights instead of whatever ``main`` holds that day.
+    """
+    from tempest_fastapi_sdk.genai import download_model, resolve_revision
+
+    try:
+        snapshot = download_model(
+            model_id,
+            revision=revision,
+            cache_dir=cache_dir,
+            token=token,
+            allow_patterns=list(allow) or None,
+            ignore_patterns=list(ignore) or None,
+            check_disk=not no_disk_check,
+        )
+    except (ImportError, OSError) as exc:
+        _fail(str(exc))
+        return
+
+    resolved = (
+        resolve_revision(model_id, revision=revision or "main", token=token)
+        if pin
+        else None
+    )
+    if as_json:
+        payload = snapshot.model_dump(mode="json")
+        payload["resolved_revision"] = resolved
+        _echo_json(payload)
+        return
+
+    typer.secho(f"{snapshot.model_id}", fg="cyan", bold=True)
+    typer.echo(f"  revision   : {snapshot.revision or 'default'}")
+    if pin:
+        typer.echo(f"  pin to     : {resolved or 'unresolved (Hub unreachable)'}")
+    typer.echo(f"  path       : {snapshot.path}")
+    typer.echo(f"  size       : {_format_bytes(snapshot.size_bytes)}")
+    typer.echo(f"  files      : {snapshot.file_count}")
+
+
+@model_app.command("cache-list")
+def cache_list_cmd(
+    cache_dir: str | None = typer.Option(
+        None, "--cache-dir", help="Cache to scan; defaults to HF_HUB_CACHE."
+    ),
+    revisions: bool = typer.Option(
+        False, "--revisions", help="List each cached revision, not just totals."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print the listing as JSON."),
+) -> None:
+    """Show which models the local weight cache holds, largest first.
+
+    Weights are the biggest thing a self-hosted service writes to disk and
+    nothing prunes them: every model ever loaded stays until removed. This
+    is how you find out what is actually there before the volume fills.
+    """
+    from tempest_fastapi_sdk.genai import list_cached_models
+
+    try:
+        models = list_cached_models(cache_dir)
+    except ImportError as exc:
+        _fail(str(exc))
+        return
+
+    if as_json:
+        _echo_json([model.model_dump(mode="json") for model in models])
+        return
+
+    if not models:
+        typer.echo("no models cached")
+        return
+
+    total = sum(model.size_bytes for model in models)
+    for model in models:
+        typer.secho(
+            f"{_format_bytes(model.size_bytes):>10}  {model.model_id}",
+            fg="cyan",
+        )
+        if revisions:
+            for cached in model.revisions:
+                refs = ", ".join(cached.refs) or "-"
+                typer.echo(
+                    f"{_format_bytes(cached.size_bytes):>10}    "
+                    f"{cached.revision[:12]}  [{refs}]"
+                )
+    typer.secho(f"{_format_bytes(total):>10}  total", bold=True)
+
+
+@model_app.command("cache-rm")
+def cache_rm_cmd(
+    model_id: str = typer.Argument(..., help="HuggingFace model id to remove."),
+    revision: str | None = typer.Option(
+        None, "--revision", "-r", help="Remove only this revision (sha or ref)."
+    ),
+    cache_dir: str | None = typer.Option(
+        None, "--cache-dir", help="Cache to operate on; defaults to HF_HUB_CACHE."
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Report the space that would be freed."
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip the confirmation prompt."
+    ),
+) -> None:
+    """Delete a model from the local weight cache.
+
+    Without ``--revision`` this removes every cached revision of the
+    model. Deleting weights is not recoverable except by downloading them
+    again, so the command asks for confirmation unless ``--yes`` is
+    passed; ``--dry-run`` reports the size without touching anything.
+    """
+    from tempest_fastapi_sdk.genai import remove_cached_model
+
+    try:
+        freed = remove_cached_model(
+            model_id,
+            revision=revision,
+            cache_dir=cache_dir,
+            dry_run=True,
+        )
+    except ImportError as exc:
+        _fail(str(exc))
+        return
+
+    if not freed:
+        typer.echo(f"{model_id} is not cached — nothing to remove")
+        return
+
+    target = f"{model_id}@{revision}" if revision else model_id
+    if dry_run:
+        typer.echo(f"would free {_format_bytes(freed)} by removing {target}")
+        return
+
+    if not yes:
+        typer.confirm(
+            f"remove {target} and free {_format_bytes(freed)}?",
+            abort=True,
+        )
+    removed = remove_cached_model(model_id, revision=revision, cache_dir=cache_dir)
+    typer.secho(f"freed {_format_bytes(removed)}", fg="green")
 
 
 __all__: list[str] = ["model_app"]

@@ -29,6 +29,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.schemas import GenerationConfig, HardwareInfo, ModelDtype
 from tempest_fastapi_sdk.genai.text import (
     _require_transformers,
@@ -110,6 +111,9 @@ class VisionTextGenerator:
         dtype: str | ModelDtype = "auto",
         cache_dir: str | None = None,
         hf_token: str | None = None,
+        revision: str | None = None,
+        local_files_only: bool = False,
+        trust_remote_code: bool = False,
         idle_unload_seconds: float | None = None,
         hardware: HardwareInfo | None = None,
     ) -> None:
@@ -121,6 +125,12 @@ class VisionTextGenerator:
             dtype (str | ModelDtype): Compute precision, or ``"auto"``.
             cache_dir (str | None): Where to cache downloaded weights.
             hf_token (str | None): Hub token for gated/private models.
+            revision (str | None): Branch, tag or commit sha to load;
+                ``None`` follows the moving Hub default.
+            local_files_only (bool): Load from the cache without touching
+                the network.
+            trust_remote_code (bool): Allow the repository's own Python to
+                run at load time — several VLM repositories require it.
             idle_unload_seconds (float | None): When set,
                 :meth:`unload_if_idle` frees the model after this idle window.
             hardware (HardwareInfo | None): Injected snapshot for device
@@ -135,6 +145,14 @@ class VisionTextGenerator:
         )
         self.cache_dir = cache_dir
         self.hf_token = hf_token
+        self.source = ModelRef(
+            model_id=model_id,
+            revision=revision,
+            cache_dir=cache_dir,
+            token=hf_token,
+            local_files_only=local_files_only,
+            trust_remote_code=trust_remote_code,
+        )
         self.idle_unload_seconds = idle_unload_seconds
         self._model: Any = None
         self._processor: Any = None
@@ -168,8 +186,7 @@ class VisionTextGenerator:
         torch, transformers = _require_transformers()
         self._processor = transformers.AutoProcessor.from_pretrained(
             self.model_id,
-            cache_dir=self.cache_dir,
-            token=self.hf_token,
+            **self.source.loader_kwargs(),
         )
         auto_cls = getattr(
             transformers,
@@ -183,10 +200,9 @@ class VisionTextGenerator:
             )
         self._model = auto_cls.from_pretrained(
             self.model_id,
-            cache_dir=self.cache_dir,
-            token=self.hf_token,
             torch_dtype=getattr(torch, self.dtype.value),
             device_map=self.device if self.device != "cpu" else None,
+            **self.source.loader_kwargs(),
         )
         if self.device == "cpu":
             self._model = self._model.to("cpu")

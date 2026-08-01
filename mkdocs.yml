@@ -128,6 +128,7 @@ plugins:
               - Management commands (tempest <cmd>): recipes/management-commands.md
               - Metrics: recipes/metrics.md
               - MFA (TOTP / 2FA): recipes/mfa.md
+              - "Model weights (Hub lifecycle)": recipes/model-weights.md
               - "Modelops (export, bench, quantization)": recipes/modelops.md
               - Multi-tenant: recipes/multi-tenant.md
               - Object-level permissions: recipes/authz.md
@@ -378,6 +379,7 @@ nav:
       - Outbox transacional: recipes/outbox.md
       - Painel admin: recipes/admin.md
       - "Permissões object-level": recipes/authz.md
+      - "Pesos de modelos (ciclo no Hub)": recipes/model-weights.md
       - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md
       - Segurança: recipes/security.md
       - "Server-Sent Events (SSE)": recipes/sse.md

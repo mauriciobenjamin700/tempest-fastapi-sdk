@@ -270,6 +270,20 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## Modelos self-hosted (pesos do Hub)
+
+### `tempest_fastapi_sdk.genai.hub`
+
+::: tempest_fastapi_sdk.genai.hub
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
 ## OpenAPI code generation
 
 ### `tempest_fastapi_sdk.openapi`
