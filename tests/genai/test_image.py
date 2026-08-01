@@ -192,6 +192,59 @@ class TestLoad:
         with pytest.raises(ValueError, match="max_concurrent"):
             ImageGenerator("org/diffusion", max_concurrent=0)
 
+    def test_pipeline_kwargs_reach_from_pretrained(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake = _install(monkeypatch)
+        generator = ImageGenerator(
+            "org/diffusion",
+            device="cpu",
+            pipeline_kwargs={
+                "safety_checker": None,
+                "variant": "fp16",
+                "use_safetensors": True,
+            },
+        )
+        generator.load()
+        loaded = fake.AutoPipelineForText2Image.load_kwargs
+        assert loaded["safety_checker"] is None
+        assert loaded["variant"] == "fp16"
+        assert loaded["use_safetensors"] is True
+
+    def test_pipeline_kwargs_win_over_computed_ones(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake = _install(monkeypatch)
+        generator = ImageGenerator(
+            "org/diffusion",
+            device="cpu",
+            pipeline_kwargs={"torch_dtype": "float16"},
+        )
+        generator.load()
+        assert fake.AutoPipelineForText2Image.load_kwargs["torch_dtype"] == "float16"
+
+    def test_absent_pipeline_kwargs_add_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake = _install(monkeypatch)
+        ImageGenerator("org/diffusion", device="cpu").load()
+        assert set(fake.AutoPipelineForText2Image.load_kwargs) == {
+            "model_id",
+            "torch_dtype",
+        }
+
+    def test_caller_dict_is_not_aliased(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = _install(monkeypatch)
+        caller_owned: dict[str, Any] = {"variant": "fp16"}
+        generator = ImageGenerator(
+            "org/diffusion",
+            device="cpu",
+            pipeline_kwargs=caller_owned,
+        )
+        caller_owned["variant"] = "mutated"
+        generator.load()
+        assert fake.AutoPipelineForText2Image.load_kwargs["variant"] == "fp16"
+
 
 class TestGenerate:
     @pytest.mark.asyncio
