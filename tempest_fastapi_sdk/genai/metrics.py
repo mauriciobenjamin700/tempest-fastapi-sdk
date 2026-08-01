@@ -84,6 +84,58 @@ class GenAIMetrics:
             ["model"],
             **kwargs,
         )
+        self._models_loaded = prometheus.Gauge(
+            f"{namespace}_models_loaded",
+            "Models resident in memory right now.",
+            ["kind", "device"],
+            **kwargs,
+        )
+        self._models_known = prometheus.Gauge(
+            f"{namespace}_models_known",
+            "Models the service holds handles for, loaded or not.",
+            **kwargs,
+        )
+        self._vram_free = prometheus.Gauge(
+            f"{namespace}_gpu_vram_free_bytes",
+            "Free VRAM per CUDA device, as of the last inventory.",
+            ["index"],
+            **kwargs,
+        )
+
+    def observe_inventory(self, report: Any) -> None:
+        """Publish a runtime inventory as gauge values.
+
+        Counters answer "how much work went through"; these answer "what is
+        resident *now*", which is the question that explains an OOM. Feed it
+        from a periodic task:
+
+            >>> metrics.observe_inventory(registry.inventory(probe=False))
+
+        The labelled gauges are cleared first, because they describe a
+        snapshot: a model that unloaded between two calls must stop being
+        reported, and an unlabelled leftover would read as still resident.
+        Cleared-then-empty is the correct picture for a service holding
+        nothing.
+
+        Args:
+            report (Any): A
+                :class:`~tempest_fastapi_sdk.genai.ModelRuntimeReport`.
+        """
+        self._models_loaded.clear()
+        for model in report.models:
+            if not model.loaded:
+                continue
+            self._models_loaded.labels(
+                kind=model.kind,
+                device=model.device or "unknown",
+            ).inc()
+        self._models_known.set(report.total_count)
+        hardware = getattr(report, "hardware", None)
+        if hardware is None:
+            return
+        self._vram_free.clear()
+        for gpu in hardware.gpus:
+            self._vram_free.labels(index=str(gpu.index)).set(gpu.vram_free_bytes)
 
     def record(
         self,

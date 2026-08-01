@@ -6,6 +6,7 @@ imports without the ``[genai]`` extra; ``torch`` / ``transformers`` are
 only needed to probe real GPUs and (later) run inference.
 """
 
+from tempest_fastapi_sdk.genai.admin import make_model_cards as make_model_cards
 from tempest_fastapi_sdk.genai.batching import BatchScheduler as BatchScheduler
 from tempest_fastapi_sdk.genai.embeddings import (
     AsyncEmbeddingCache as AsyncEmbeddingCache,
@@ -211,6 +212,7 @@ __all__: list[str] = [
     "make_ai_chat_router",
     "make_genai_router",
     "make_generation_key",
+    "make_model_cards",
     "model_disk_bytes",
     "parse_structured",
     "probe_hardware",

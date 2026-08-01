@@ -719,6 +719,50 @@ anything. With the default, the report comes alongside the host's memory
 picture, so one call answers both "what is loaded" and "how much room is
 left".
 
+### In Prometheus and in the admin
+
+The same inventory feeds the two surfaces someone is already watching.
+
+```python
+from tempest_fastapi_sdk.genai import GenAIMetrics, ModelRegistry
+
+registry = ModelRegistry(max_models=3)
+metrics = GenAIMetrics()
+
+def publish() -> None:
+    metrics.observe_inventory(registry.inventory(probe=False))
+```
+
+Call `publish()` from a periodic task and `/metrics` starts exposing
+`genai_models_loaded{kind,device}`, `genai_models_known` and — when the
+report carried hardware — `genai_gpu_vram_free_bytes{index}`.
+
+!!! note "A gauge is a snapshot, which is why it is cleared first"
+    The counters answer "how much work went through"; these answer "what is
+    resident **now**", the question that explains an OOM. The labelled series
+    are cleared on every call: a model that unloaded between two snapshots
+    must **stop** being reported, or the stale value reads as residency.
+
+In the admin, the same numbers become cards:
+
+```python
+from tempest_fastapi_sdk.admin import AdminSite
+from tempest_fastapi_sdk.genai import ModelRegistry, make_model_cards
+
+registry = ModelRegistry(max_models=3)
+site = AdminSite(dashboard_cards=make_model_cards(registry))
+```
+
+Three of them: **Models resident** (`2 of 5`), **Resident by device**
+(`cuda: 2, cpu: 1`) and **VRAM free**. Only the last one probes the host, so
+pass `include_vram=False` on a GPU-less box or when the dashboard must not
+read NVML.
+
+!!! tip "The handles are read at render time"
+    A registry that is empty when you build the site still reports correctly
+    once models load — the cards query the inventory on every render, not at
+    construction.
+
 ## Audio (voice)
 
 Interpret and generate voice on your hardware — no external API. Needs the

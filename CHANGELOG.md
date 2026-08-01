@@ -5,6 +5,38 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.180.0] — 2026-08-01
+
+### Added
+
+- **`GenAIMetrics.observe_inventory(report)`** — the runtime inventory as
+  Prometheus gauges: `genai_models_loaded{kind,device}`,
+  `genai_models_known`, and `genai_gpu_vram_free_bytes{index}` when the
+  report carried a hardware snapshot. The existing counters answer "how much
+  work went through"; these answer "what is resident *now*", which is the
+  question that explains an OOM. Labelled series are cleared on every call
+  because a gauge here describes a snapshot: a model that unloaded between
+  two observations has to stop being reported, or the stale series reads as
+  residency. Feed it from a periodic task.
+
+- **`make_model_cards(models, include_vram=True)`**
+  (`tempest_fastapi_sdk.genai.admin`) — the same inventory as admin
+  dashboard cards for `AdminSite(dashboard_cards=[...])`: resident count
+  (`2 of 5`), a per-device breakdown, and free VRAM. The cards ignore the
+  `AsyncSession` the dashboard passes them, since this data comes from
+  process memory rather than the database, and they read the handles at
+  **render** time — a registry that is empty when the site is built still
+  reports correctly once models load. `include_vram=False` drops the only
+  card that probes the host.
+
+### Documentation
+
+- **The `genai` API reference was a hole.** `docs/reference.md` documented
+  `genai.hub`, `genai.image` and `genai.inventory` — the submodules added
+  this week — while the module those sit on top of had no reference entry at
+  all. The top-level `tempest_fastapi_sdk.genai` surface plus `genai.rag`
+  and `genai.audio` are now rendered there, 269 symbols in total.
+
 ## [0.179.0] — 2026-08-01
 
 ### Added
