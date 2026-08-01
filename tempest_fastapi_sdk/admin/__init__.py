@@ -40,6 +40,16 @@ from tempest_fastapi_sdk.admin.session import (
     SignedCookieSessionStore as SignedCookieSessionStore,
 )
 from tempest_fastapi_sdk.admin.site import AdminSite as AdminSite
+from tempest_fastapi_sdk.admin.sql_shell import SqlAudit as SqlAudit
+from tempest_fastapi_sdk.admin.sql_shell import SqlAuditor as SqlAuditor
+from tempest_fastapi_sdk.admin.sql_shell import SqlCapability as SqlCapability
+from tempest_fastapi_sdk.admin.sql_shell import SqlResult as SqlResult
+from tempest_fastapi_sdk.admin.sql_shell import SqlShellDenied as SqlShellDenied
+from tempest_fastapi_sdk.admin.sql_shell import SqlShellError as SqlShellError
+from tempest_fastapi_sdk.admin.sql_shell import SqlShellPolicy as SqlShellPolicy
+from tempest_fastapi_sdk.admin.sql_shell import SqlShellService as SqlShellService
+from tempest_fastapi_sdk.admin.sql_shell import SqlStatement as SqlStatement
+from tempest_fastapi_sdk.admin.sql_shell import analyze_sql as analyze_sql
 from tempest_fastapi_sdk.admin.theme import AdminTheme as AdminTheme
 
 __all__: list[str] = [
@@ -64,8 +74,18 @@ __all__: list[str] = [
     "OrderRef",
     "SessionStore",
     "SignedCookieSessionStore",
+    "SqlAudit",
+    "SqlAuditor",
+    "SqlCapability",
+    "SqlResult",
+    "SqlShellDenied",
+    "SqlShellError",
+    "SqlShellPolicy",
+    "SqlShellService",
+    "SqlStatement",
     "UserModelAuthBackend",
     "admin_action",
+    "analyze_sql",
     "discover_models",
     "make_admin_router",
 ]

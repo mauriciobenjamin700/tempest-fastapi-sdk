@@ -64,6 +64,20 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+### `tempest_fastapi_sdk.admin.sql_shell`
+
+::: tempest_fastapi_sdk.admin.sql_shell
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+::: tempest_fastapi_sdk.admin.sql_shell.SqlAuditor
+
+---
+
 ## API (integração FastAPI)
 
 ### `tempest_fastapi_sdk.api`

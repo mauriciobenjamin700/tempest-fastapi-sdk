@@ -66,11 +66,19 @@
         </a>
         {% endfor %}
         {% endif %}
-        {% if nav_logs_url %}
+        {% if nav_logs_url or nav_sql_url %}
         <span class="tempest-admin-sidebar__heading">System</span>
+        {% endif %}
+        {% if nav_logs_url %}
         <a href="{{ nav_logs_url }}"
            class="tempest-admin-sidebar__link{% if path == nav_logs_url %} tempest-admin-sidebar__link--active{% endif %}">
           Logs
+        </a>
+        {% endif %}
+        {% if nav_sql_url %}
+        <a href="{{ nav_sql_url }}"
+           class="tempest-admin-sidebar__link{% if path == nav_sql_url %} tempest-admin-sidebar__link--active{% endif %}">
+          SQL console
         </a>
         {% endif %}
       </nav>
