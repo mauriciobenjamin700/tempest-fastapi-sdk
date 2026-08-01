@@ -5,6 +5,60 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.177.0] — 2026-08-01
+
+### Added
+
+- **`ImageGenerator` — the generative modality the SDK was missing.** It
+  already generated text, understood images (VLM), embedded, transcribed and
+  synthesized speech; it could not draw. `tempest_fastapi_sdk.genai.image`
+  runs a HuggingFace diffusion pipeline on your own hardware, behind a new
+  `[genai-image]` extra (`diffusers` + `pillow`); the module imports without
+  it.
+
+  It deliberately mirrors `TextGenerator` — same device/precision
+  resolution, same lazy `load`, same `unload` / `unload_if_idle`, same Hub
+  pinning keywords — so a service that already self-hosts a language model
+  gains images without learning a second set of conventions.
+
+  **`generate(prompt, config=...)`** returns `list[GeneratedImage]`, not
+  loose bytes, because the **seed travels with the image**. Diffusion is
+  deterministic given a seed, so returning the one actually used is the
+  difference between an image you liked and an image you can reproduce —
+  and when the caller passes none, only the generator knows which was drawn.
+  **`edit(prompt, image, strength=...)`** redraws an existing image (path,
+  bytes, PIL or NumPy) through `AutoPipelineForImage2Image.from_pipe`, which
+  reuses the already-loaded UNet, VAE and text encoders: an SDXL pipeline is
+  ~7 GB, and loading a second copy is how a service OOMs at the first edit.
+
+  `ImageGenerationConfig` types `negative_prompt`, `width`, `height`,
+  `steps`, `guidance_scale`, `seed` and `num_images`, forwarding only what
+  you set. That matters more here than for text — a distilled turbo model
+  wants 4 steps at guidance `0.0`, a full SDXL wants 30 at `7.5`, and
+  applying one model's numbers to the other either wastes the compute or
+  degrades the image.
+
+  Concurrency defaults to **one** render: unlike an LLM, a single diffusion
+  call already saturates the GPU, so running two concurrently makes both
+  slower and doubles peak VRAM. `.pipeline` is the escape hatch for swapping
+  the scheduler, attaching a LoRA or enabling a memory optimization the SDK
+  does not wrap.
+
+- **`make_genai_router(image_generator=...)` → `POST /image`.** The response
+  body is the encoded image itself, typed from the generator's
+  `image_format`, with the seed in an `X-Image-Seed` header so a client can
+  reproduce the render. Only the first image is returned — batches go
+  through the class.
+
+### Note on dependencies
+
+`diffusers` declares `httpx<1.0.0` and `huggingface-hub<2.0`. Neither bites
+today (httpx is still on the 0.28 line) and, being an optional extra, the
+bound only enters the resolution of whoever installs `[genai-image]` — it
+does not reach a service that skips it. It is accepted because diffusion
+schedulers, pipelines and VAE decoding are real engineering with a long tail
+of correctness, not a preset table we could restate in tens of lines.
+
 ## [0.176.0] — 2026-08-01
 
 ### Added

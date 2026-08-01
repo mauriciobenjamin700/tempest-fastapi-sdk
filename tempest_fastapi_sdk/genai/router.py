@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Response, UploadFile, status
 
-from tempest_fastapi_sdk.genai.schemas import GenerationConfig
+from tempest_fastapi_sdk.genai.schemas import GenerationConfig, ImageGenerationConfig
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 from tempest_fastapi_sdk.sse import ServerSentEvent, sse_response
 
@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from starlette.responses import StreamingResponse
 
     from tempest_fastapi_sdk.genai.audio import SpeechToText, TextToSpeech
+    from tempest_fastapi_sdk.genai.image import ImageGenerator
     from tempest_fastapi_sdk.genai.rag import SupportsEmbed, SupportsRetrieve
     from tempest_fastapi_sdk.genai.text import TextBackend
 
@@ -151,6 +152,19 @@ class TTSRequestSchema(BaseSchema):
     speaker: str | None = None
 
 
+class ImageRequestSchema(BaseSchema):
+    """Request body for ``POST /image``.
+
+    Attributes:
+        prompt (str): What to draw.
+        config (ImageGenerationConfig | None): Size, steps, guidance and
+            seed. Left unset, the model's own defaults apply.
+    """
+
+    prompt: str
+    config: ImageGenerationConfig | None = None
+
+
 def make_genai_router(
     *,
     text_generator: TextBackend | None = None,
@@ -158,6 +172,7 @@ def make_genai_router(
     retriever: SupportsRetrieve | None = None,
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
+    image_generator: ImageGenerator | None = None,
     prefix: str = "/api/genai",
     tags: list[str] | None = None,
 ) -> APIRouter:
@@ -172,6 +187,8 @@ def make_genai_router(
     * ``retriever`` -> ``POST {prefix}/rag`` (query -> context block).
     * ``speech_to_text`` -> ``POST {prefix}/transcribe`` (audio upload).
     * ``text_to_speech`` -> ``POST {prefix}/tts`` (returns ``audio/wav``).
+    * ``image_generator`` -> ``POST {prefix}/image`` (returns the encoded
+      image, with the seed in ``X-Image-Seed``).
 
     The router owns only the HTTP surface; the caller owns model
     lifecycle (loading, idle-unloading, auth). Add your own auth by
@@ -187,6 +204,7 @@ def make_genai_router(
             (rerank via ``Retriever(reranker=...)``) or a ``HybridRetriever``.
         speech_to_text (SpeechToText | None): Backs ``/transcribe``.
         text_to_speech (TextToSpeech | None): Backs ``/tts``.
+        image_generator (ImageGenerator | None): Backs ``/image``.
         prefix (str): URL prefix. Defaults to ``"/api/genai"``.
         tags (list[str] | None): OpenAPI tags. Defaults to ``["genai"]``.
 
@@ -198,12 +216,19 @@ def make_genai_router(
             empty).
     """
     if not any(
-        (text_generator, embedder, retriever, speech_to_text, text_to_speech),
+        (
+            text_generator,
+            embedder,
+            retriever,
+            speech_to_text,
+            text_to_speech,
+            image_generator,
+        ),
     ):
         raise ValueError(
             "make_genai_router needs at least one GenAI object "
             "(text_generator / embedder / retriever / speech_to_text / "
-            "text_to_speech).",
+            "text_to_speech / image_generator).",
         )
 
     router = APIRouter(prefix=prefix, tags=list(tags or ["genai"]))
@@ -335,6 +360,37 @@ def make_genai_router(
             )
             return Response(content=wav, media_type="audio/wav")
 
+    if image_generator is not None:
+        images = image_generator
+
+        @router.post(
+            "/image",
+            status_code=status.HTTP_200_OK,
+            response_class=Response,
+        )
+        async def render_image(body: ImageRequestSchema) -> Response:
+            """Render one image and return its bytes.
+
+            Only the first image is returned, because the response body is
+            the image itself — ask for several with the class directly when
+            you need a batch. The seed that produced it travels in the
+            ``X-Image-Seed`` header, so a client can reproduce the render.
+
+            Args:
+                body (ImageRequestSchema): Prompt + optional config.
+
+            Returns:
+                Response: The encoded image, typed by the generator's
+                ``image_format``.
+            """
+            rendered = await images.generate(body.prompt, config=body.config)
+            first = rendered[0]
+            return Response(
+                content=first.data,
+                media_type=f"image/{first.image_format}",
+                headers={"X-Image-Seed": str(first.seed)},
+            )
+
     return router
 
 
@@ -346,6 +402,7 @@ __all__: list[str] = [
     "EmbedResponseSchema",
     "GenerateRequestSchema",
     "GenerateResponseSchema",
+    "ImageRequestSchema",
     "RagRequestSchema",
     "RagResponseSchema",
     "TTSRequestSchema",

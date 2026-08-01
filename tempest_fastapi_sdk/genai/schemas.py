@@ -198,10 +198,158 @@ class GenerationConfig(BaseSchema):
         return data
 
 
+class ImageGenerationConfig(BaseSchema):
+    """Typed parameters for local image generation.
+
+    Passed to :class:`~tempest_fastapi_sdk.genai.ImageGenerator`. Only the
+    fields you set are forwarded to the diffusion pipeline, so a partial
+    config layers on top of the model's own defaults — which matters here
+    more than for text, because the right step count and guidance scale
+    differ by an order of magnitude between a distilled turbo model and a
+    full SDXL.
+
+    Example:
+
+        >>> cfg = ImageGenerationConfig(steps=4, guidance_scale=0.0, seed=7)
+        >>> images = await generator.generate("a red bicycle", config=cfg)
+
+    Attributes:
+        negative_prompt (str | None): What to steer away from. Ignored by
+            models that do not implement classifier-free guidance.
+        width (int | None): Output width in pixels; must suit the model
+            (multiples of 8, and SDXL expects ~1024).
+        height (int | None): Output height in pixels.
+        steps (int | None): Denoising steps. Distilled/turbo models want
+            1-8; full models want 20-50.
+        guidance_scale (float | None): How hard to follow the prompt.
+            Turbo models want ``0.0``; full models want 5-9.
+        seed (int | None): RNG seed. Set it and the same prompt gives the
+            same image on the same hardware.
+        num_images (int): How many images to generate per call.
+    """
+
+    negative_prompt: str | None = Field(
+        default=None,
+        title="Negative prompt",
+        description="What to steer the image away from.",
+        examples=["blurry, watermark"],
+    )
+    width: int | None = Field(
+        default=None,
+        gt=0,
+        title="Width",
+        description="Output width in pixels.",
+        examples=[512, 1024],
+    )
+    height: int | None = Field(
+        default=None,
+        gt=0,
+        title="Height",
+        description="Output height in pixels.",
+        examples=[512, 1024],
+    )
+    steps: int | None = Field(
+        default=None,
+        gt=0,
+        title="Steps",
+        description="Denoising steps; turbo models want 1-8, full ones 20-50.",
+        examples=[4, 30],
+    )
+    guidance_scale: float | None = Field(
+        default=None,
+        ge=0.0,
+        title="Guidance scale",
+        description="Prompt adherence; 0.0 for turbo models, 5-9 for full ones.",
+        examples=[0.0, 7.5],
+    )
+    seed: int | None = Field(
+        default=None,
+        title="Seed",
+        description="RNG seed for a reproducible image.",
+        examples=[7],
+    )
+    num_images: int = Field(
+        default=1,
+        gt=0,
+        title="Number of images",
+        description="How many images to generate per call.",
+        examples=[1, 4],
+    )
+
+    def to_pipeline_kwargs(self) -> dict[str, Any]:
+        """Return the explicitly-set pipeline keywords.
+
+        ``seed`` is excluded: diffusers takes reproducibility through a
+        ``torch.Generator``, not a keyword, so the generator builds one from
+        it. ``steps`` and ``num_images`` are renamed to the diffusers
+        spellings (``num_inference_steps`` / ``num_images_per_prompt``) —
+        the SDK keeps the short names because they are what the parameter
+        actually is.
+
+        Returns:
+            dict[str, Any]: Keywords to splat into the pipeline call.
+        """
+        data = self.model_dump(exclude_none=True, exclude_unset=True)
+        data.pop("seed", None)
+        if "steps" in data:
+            data["num_inference_steps"] = data.pop("steps")
+        if "num_images" in data:
+            data["num_images_per_prompt"] = data.pop("num_images")
+        return data
+
+
+class GeneratedImage(BaseSchema):
+    """One rendered image plus what it takes to render it again.
+
+    The seed travels with the image on purpose. Diffusion is deterministic
+    given a seed, so returning the seed the run actually used is the
+    difference between "nice image, gone forever" and "nice image, here is
+    how to get it back" — and when the caller passes no seed, only the
+    generator knows which one was drawn.
+
+    Attributes:
+        data (bytes): The encoded image (PNG unless ``image_format`` says
+            otherwise).
+        image_format (str): The encoding, lowercase (``"png"``).
+        seed (int): The seed this image was rendered with.
+        width (int): Pixel width of the result.
+        height (int): Pixel height of the result.
+    """
+
+    data: bytes = Field(
+        title="Image bytes",
+        description="The encoded image data.",
+        examples=[b"<binary image data>"],
+    )
+    image_format: str = Field(
+        default="png",
+        title="Format",
+        description="Encoding of the bytes, lowercase.",
+        examples=["png"],
+    )
+    seed: int = Field(
+        title="Seed",
+        description="The seed this image was rendered with.",
+        examples=[7],
+    )
+    width: int = Field(
+        title="Width",
+        description="Pixel width of the result.",
+        examples=[512],
+    )
+    height: int = Field(
+        title="Height",
+        description="Pixel height of the result.",
+        examples=[512],
+    )
+
+
 __all__: list[str] = [
     "CapacityReport",
     "GPUInfo",
+    "GeneratedImage",
     "GenerationConfig",
     "HardwareInfo",
+    "ImageGenerationConfig",
     "ModelDtype",
 ]

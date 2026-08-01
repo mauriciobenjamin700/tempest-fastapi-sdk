@@ -122,6 +122,7 @@ plugins:
               - HTTP client (outbound): recipes/http-client.md
               - HTTP layer: recipes/http.md
               - Idempotency: recipes/idempotency.md
+              - "Image generation (local)": recipes/image-generation.md
               - Integration client (OpenAPI): recipes/openapi-client.md
               - Introspection auth (resource server): recipes/introspection-auth.md
               - Logging: recipes/logging.md
@@ -363,6 +364,7 @@ nav:
       - "File store (unificado)": recipes/file-store.md
       - "Frontend tempestweb + SDK": recipes/tempestweb-frontend.md
       - "Geolocalização (distância + tempo)": recipes/geo.md
+      - "Geração de imagem (local)": recipes/image-generation.md
       - "Guards de permissão (@requires)": recipes/permission-guards.md
       - Helpers brasileiros: recipes/br-helpers.md
       - "HTTP client (saída)": recipes/http-client.md

@@ -304,6 +304,25 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `OnnxEmbedder` pins its tokenizer only (`tokenizer_revision=`/`hf_token=`).
   CLI `tempest model pull|cache-list|cache-rm`. Recipe:
   `docs/recipes/model-weights.md`.
+- **Image generation (v0.177.0)** — `tempest_fastapi_sdk.genai.image`, extra
+  `[genai-image]` (`diffusers`+`pillow`; module imports without it). Closes
+  the last missing generative modality. `ImageGenerator` mirrors
+  `TextGenerator` (device/dtype resolution, lazy load, `unload_if_idle`, the
+  Hub pinning keywords): `generate(prompt, config=)` → `list[GeneratedImage]`
+  carrying the **seed** (drawn when unset, so every result is reproducible),
+  `edit(prompt, image, strength=)` via `AutoPipelineForImage2Image.from_pipe`
+  (reuses the loaded UNet/VAE/text encoders — no second copy of a ~7 GB
+  pipeline), `.pipeline` escape hatch for scheduler/LoRA.
+  `ImageGenerationConfig` renames to the diffusers spellings
+  (`steps`→`num_inference_steps`, `num_images`→`num_images_per_prompt`) and
+  forwards only what is set — turbo wants 4 steps/guidance 0.0, full SDXL
+  wants 30/7.5. `max_concurrent=1` by default (one diffusion call saturates
+  the GPU; two double peak VRAM). `make_genai_router(image_generator=)` →
+  `POST /image` returning the encoded bytes + `X-Image-Seed`. **Dependency
+  note:** `diffusers` declares `httpx<1.0.0` + `huggingface-hub<2.0` —
+  inert today and confined to the optional extra, accepted because
+  schedulers/pipelines/VAE are real engineering, not a preset table. Recipe:
+  `docs/recipes/image-generation.md`.
 - **SSR** (`[ssr]` extra) — `tempest_fastapi_sdk.ssr`: typed Python
   pages rendered to HTML via `tempestweb`'s `render_to_html` /
   `render_document`. `Page` (typed `Component` base — `body()` +
