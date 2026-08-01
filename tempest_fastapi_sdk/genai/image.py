@@ -150,6 +150,8 @@ class ImageGenerator:
         source (ModelRef): The resolved weight identity forwarded to
             ``from_pretrained``.
         image_format (str): Encoding of the returned bytes.
+        pipeline_kwargs (dict[str, Any]): Extra ``from_pretrained``
+            keywords, applied last so they override what the SDK computes.
         idle_unload_seconds (float | None): Idle threshold used by
             :meth:`unload_if_idle`.
     """
@@ -166,6 +168,7 @@ class ImageGenerator:
         local_files_only: bool = False,
         trust_remote_code: bool = False,
         image_format: str = "png",
+        pipeline_kwargs: dict[str, Any] | None = None,
         max_concurrent: int = 1,
         idle_unload_seconds: float | None = None,
         hardware: HardwareInfo | None = None,
@@ -188,6 +191,16 @@ class ImageGenerator:
                 run at load time.
             image_format (str): Encoding of the returned bytes — ``"png"``
                 (lossless, the default), ``"jpeg"`` or ``"webp"``.
+            pipeline_kwargs (dict[str, Any] | None): Extra keywords for
+                ``from_pretrained``, for the load-time decisions the SDK
+                does not model. The three that come up constantly:
+                ``{"safety_checker": None}`` skips the extra CLIP that
+                Stable Diffusion 1.x repositories bundle (it costs memory
+                and can blank an image); ``{"variant": "fp16"}`` fetches
+                the half-precision weights, roughly halving the download;
+                ``{"use_safetensors": True}`` refuses a pickle checkpoint.
+                Keys here win over the ones the SDK computes, so this is
+                also the way to override ``torch_dtype``.
             max_concurrent (int): Simultaneous renders. Defaults to ``1``
                 because one diffusion call already saturates the GPU.
             idle_unload_seconds (float | None): When set,
@@ -220,6 +233,7 @@ class ImageGenerator:
             trust_remote_code=trust_remote_code,
         )
         self.image_format = image_format.lower()
+        self.pipeline_kwargs: dict[str, Any] = dict(pipeline_kwargs or {})
         self.idle_unload_seconds = idle_unload_seconds
         self.metrics = metrics
         self._pipeline: Any = None
@@ -275,10 +289,14 @@ class ImageGenerator:
         if self.is_loaded:
             return
         torch, diffusers = _require_diffusers()
+        kwargs: dict[str, Any] = {
+            "torch_dtype": getattr(torch, self.dtype.value),
+            **self.source.loader_kwargs(),
+            **self.pipeline_kwargs,
+        }
         self._pipeline = diffusers.AutoPipelineForText2Image.from_pretrained(
             self.model_id,
-            torch_dtype=getattr(torch, self.dtype.value),
-            **self.source.loader_kwargs(),
+            **kwargs,
         )
         self._pipeline = self._pipeline.to(self.device)
         self._touch()

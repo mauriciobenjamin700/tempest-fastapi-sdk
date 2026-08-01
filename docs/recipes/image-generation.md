@@ -203,6 +203,40 @@ As mesmas três palavras-chave dos outros loaders. Baixe antes de servir com
 — um pipeline de difusão pesa vários gigabytes, e pagá-lo dentro do primeiro
 request é pior aqui que em qualquer outro lugar.
 
+## Decisões de load: `pipeline_kwargs`
+
+Algumas escolhas acontecem **na hora de carregar**, não na hora de desenhar —
+e aí o escape hatch não serve, porque o custo já foi pago. Para essas, passe
+`pipeline_kwargs`:
+
+```python
+from tempest_fastapi_sdk.genai import ImageGenerator
+
+generator = ImageGenerator(
+    "stabilityai/stable-diffusion-2-1",
+    pipeline_kwargs={
+        "safety_checker": None,
+        "variant": "fp16",
+        "use_safetensors": True,
+    },
+)
+```
+
+| Chave | Por que importa |
+| --- | --- |
+| `safety_checker: None` | Repositórios Stable Diffusion 1.x/2.x embutem um CLIP extra só para filtrar. Ele ocupa memória e às vezes devolve a imagem preta. |
+| `variant: "fp16"` | Baixa os pesos em meia precisão — costuma cortar o download pela metade. |
+| `use_safetensors: True` | Recusa checkpoint em pickle. |
+
+!!! warning "Desligar o filtro é decisão sua, e ela tem licença"
+    A licença do Stable Diffusion pede que resultados não filtrados não sejam
+    expostos ao público. Desligue com consciência do seu caso de uso — o
+    próprio `diffusers` avisa em runtime quando você faz isso.
+
+As chaves de `pipeline_kwargs` são aplicadas **por último**, então elas
+vencem o que o SDK calculou — é também assim que você sobrescreve o
+`torch_dtype`.
+
 ## Trocar o scheduler (escape hatch)
 
 ```python

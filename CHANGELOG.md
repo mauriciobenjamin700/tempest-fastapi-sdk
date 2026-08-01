@@ -5,6 +5,25 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.178.0] — 2026-08-01
+
+### Added
+
+- **`ImageGenerator(pipeline_kwargs=...)`** — extra keywords forwarded to
+  `from_pretrained`, applied last so they override what the SDK computes
+  (including `torch_dtype`).
+
+  Found by validating v0.177.0 against a real diffusion pipeline: the load
+  itself takes decisions the SDK does not model, and `.pipeline` cannot
+  express them because by the time you hold it the cost is already paid.
+  The three that come up immediately are `{"safety_checker": None}` (Stable
+  Diffusion 1.x/2.x repositories bundle an extra CLIP purely to filter — it
+  costs memory, and a tiny test pipeline crashes on it outright),
+  `{"variant": "fp16"}` (roughly halves the download) and
+  `{"use_safetensors": True}` (refuse a pickle checkpoint). The dictionary
+  is copied, so a later mutation by the caller cannot change what a
+  subsequent load sends.
+
 ## [0.177.0] — 2026-08-01
 
 ### Added

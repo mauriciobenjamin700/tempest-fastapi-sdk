@@ -205,6 +205,39 @@ with `tempest model pull` and see
 several gigabytes, and paying for it inside the first request hurts more
 here than anywhere else.
 
+## Load-time decisions: `pipeline_kwargs`
+
+Some choices happen **while loading**, not while drawing — and there the
+escape hatch is no help, because the cost is already paid. Pass those through
+`pipeline_kwargs`:
+
+```python
+from tempest_fastapi_sdk.genai import ImageGenerator
+
+generator = ImageGenerator(
+    "stabilityai/stable-diffusion-2-1",
+    pipeline_kwargs={
+        "safety_checker": None,
+        "variant": "fp16",
+        "use_safetensors": True,
+    },
+)
+```
+
+| Key | Why it matters |
+| --- | --- |
+| `safety_checker: None` | Stable Diffusion 1.x/2.x repositories bundle an extra CLIP purely to filter. It costs memory and sometimes returns a blank image. |
+| `variant: "fp16"` | Fetches the half-precision weights — usually halves the download. |
+| `use_safetensors: True` | Refuses a pickle checkpoint. |
+
+!!! warning "Turning the filter off is your call, and it has a licence"
+    The Stable Diffusion licence asks that unfiltered results not be exposed
+    publicly. Disable it knowing your use case — `diffusers` itself warns at
+    runtime when you do.
+
+Keys in `pipeline_kwargs` are applied **last**, so they win over whatever the
+SDK computed — that is also how you override `torch_dtype`.
+
 ## Swapping the scheduler (escape hatch)
 
 ```python

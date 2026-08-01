@@ -321,8 +321,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `POST /image` returning the encoded bytes + `X-Image-Seed`. **Dependency
   note:** `diffusers` declares `httpx<1.0.0` + `huggingface-hub<2.0` —
   inert today and confined to the optional extra, accepted because
-  schedulers/pipelines/VAE are real engineering, not a preset table. Recipe:
-  `docs/recipes/image-generation.md`.
+  schedulers/pipelines/VAE are real engineering, not a preset table.
+  **v0.178.0** added `pipeline_kwargs=` (extra `from_pretrained` keywords,
+  applied last so they beat the computed ones) after real-model validation
+  showed the load itself takes decisions `.pipeline` cannot express —
+  `safety_checker=None` (SD 1.x/2.x bundle an extra CLIP), `variant="fp16"`,
+  `use_safetensors=True`. Recipe: `docs/recipes/image-generation.md`.
 - **SSR** (`[ssr]` extra) — `tempest_fastapi_sdk.ssr`: typed Python
   pages rendered to HTML via `tempestweb`'s `render_to_html` /
   `render_document`. `Page` (typed `Component` base — `body()` +
