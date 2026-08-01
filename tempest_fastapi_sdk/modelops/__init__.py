@@ -151,6 +151,22 @@ from tempest_fastapi_sdk.modelops.schemas import (
     StaticModelMetrics as StaticModelMetrics,
 )
 from tempest_fastapi_sdk.modelops.schemas import TensorSpec as TensorSpec
+from tempest_fastapi_sdk.modelops.sklearn import DEFAULT_OPSET as DEFAULT_OPSET
+from tempest_fastapi_sdk.modelops.sklearn import EdgeBundle as EdgeBundle
+from tempest_fastapi_sdk.modelops.sklearn import EdgeStage as EdgeStage
+from tempest_fastapi_sdk.modelops.sklearn import (
+    ExportVerification as ExportVerification,
+)
+from tempest_fastapi_sdk.modelops.sklearn import SklearnExport as SklearnExport
+from tempest_fastapi_sdk.modelops.sklearn import TensorDtype as TensorDtype
+from tempest_fastapi_sdk.modelops.sklearn import edge_bundle as edge_bundle
+from tempest_fastapi_sdk.modelops.sklearn import (
+    export_sklearn_to_onnx as export_sklearn_to_onnx,
+)
+from tempest_fastapi_sdk.modelops.sklearn import uses_ml_domain as uses_ml_domain
+from tempest_fastapi_sdk.modelops.sklearn import (
+    verify_sklearn_onnx as verify_sklearn_onnx,
+)
 from tempest_fastapi_sdk.modelops.static import (
     REMOTE_PROVIDERS as REMOTE_PROVIDERS,
 )
@@ -164,6 +180,7 @@ from tempest_fastapi_sdk.modelops.static import (
 
 __all__: list[str] = [
     "DEFAULT_COST_WEIGHTS",
+    "DEFAULT_OPSET",
     "DEFAULT_REPETITIONS",
     "DEFAULT_SAMPLE_INTERVAL_S",
     "DEFAULT_WARMUP",
@@ -173,9 +190,12 @@ __all__: list[str] = [
     "BenchmarkProfile",
     "BenchmarkReport",
     "CalibrationMethod",
+    "EdgeBundle",
+    "EdgeStage",
     "EnergyReading",
     "EnergySource",
     "ExportResult",
+    "ExportVerification",
     "GraphOptimizationLevel",
     "HFOptimizationLevel",
     "HFQuantizationTarget",
@@ -193,7 +213,9 @@ __all__: list[str] = [
     "RaplEnergySampler",
     "RuntimeAggregate",
     "RuntimeSample",
+    "SklearnExport",
     "StaticModelMetrics",
+    "TensorDtype",
     "TensorSpec",
     "analyze_model",
     "analyze_onnx",
@@ -205,7 +227,9 @@ __all__: list[str] = [
     "benchmark_torch",
     "composite_scores",
     "default_providers",
+    "edge_bundle",
     "export_onnx_to_ort",
+    "export_sklearn_to_onnx",
     "export_torch_to_onnx",
     "optimize_hf_onnx",
     "optimize_onnx_graph",
@@ -217,4 +241,6 @@ __all__: list[str] = [
     "rank",
     "resolve_cpu_energy_sampler",
     "resolve_power_sampler",
+    "uses_ml_domain",
+    "verify_sklearn_onnx",
 ]

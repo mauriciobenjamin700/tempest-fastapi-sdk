@@ -28,6 +28,105 @@ uv add "tempest-fastapi-sdk[modelops-onnx]"   # + ONNX, .ort, quantization
     inside the function that needs it, and its absence raises an
     `ImportError` naming the extra to install.
 
+## scikit-learn to the edge
+
+Classic scikit-learn models are the most common embedded case: small, fast,
+and stuck to Python for as long as they live as a `.pkl`. Exporting to ONNX
+takes Python, NumPy and scikit-learn itself off the device.
+
+```bash
+uv add "tempest-fastapi-sdk[modelops-onnx,modelops-sklearn]"
+```
+
+```python
+from tempest_fastapi_sdk.modelops import edge_bundle
+
+bundle = edge_bundle(
+    model,                       # a fitted estimator or Pipeline
+    X_train[:50],                # only to shape the graph
+    "dist/",
+    name="classifier",
+    verify_samples=X_test,       # held-out data, not the export rows
+)
+
+print(bundle.deployable)
+print(bundle.verification.passed, bundle.verification.label_agreement)
+```
+
+### Three decisions the SDK makes for you
+
+| Decision | Why |
+| --- | --- |
+| **float32**, not float64 | scikit-learn works in double precision; edge runtimes want single. Half the memory, and the precision accelerators implement. It **changes the numbers** — hence the verification. |
+| **ZipMap off** | By default `skl2onnx` wraps probabilities in a `ZipMap`: a **dictionary per row**. Convenient in Python, unusable on a minimal runtime that does not implement the operator. |
+| **Always verify** | An export that silently disagrees with the model you trained is worse than one that fails, because you ship it. |
+
+### What measuring showed
+
+Run against real estimators, three results the docs would rather state than
+let you discover:
+
+!!! warning "int8 quantisation does not apply to most scikit-learn models"
+    Trees, linear models and scalers convert to `ai.onnx.ml` operators whose
+    parameters are node attributes, not weight tensors. There is no matrix to
+    requantise, and the quantiser refuses with `Failed to find proper ai.onnx
+    domain`. `edge_bundle` detects this and **skips with the reason** rather
+    than failing opaquely.
+
+!!! warning "Optimising and converting to `.ort` often makes the file bigger"
+    These graphs are kilobytes; the metadata added outweighs what is saved.
+    So `edge_bundle` ships the **smallest** artifact produced, not the last
+    one — handing back a larger file and calling it optimised would be a lie
+    the tool tells on its own.
+
+!!! danger "Tree + binary classification converts incorrectly today"
+    With `skl2onnx` 1.20 and scikit-learn 1.9, a binary
+    `RandomForestClassifier` produces a graph whose probability output is a
+    score in `[-1, 1]` rather than `[0, 1]`, and the predicted labels
+    disagree with the estimator on a significant fraction of rows.
+    Multi-class and linear models are correct.
+
+    No converter option fixes it — `zipmap`, `raw_scores` and four target
+    opsets were tried. `export.warnings` flags the combination, and
+    verification catches it:
+
+    ```python
+    export = export_sklearn_to_onnx(model, X[:10], "m.onnx")
+    if export.needs_verification:
+        print(export.warnings[0])
+    ```
+
+    Alternatives: a multi-class formulation, a linear model, or pinning
+    versions you have validated.
+
+### With and without a GPU
+
+**CPU (the common edge case):** the win is dropping Python and linking a
+minimal ONNX Runtime build — not quantisation, which as above rarely applies
+here.
+
+**With a GPU:** keep the `.onnx` and pick the provider at load time:
+
+```python
+import onnxruntime
+
+session = onnxruntime.InferenceSession(
+    "dist/classifier.onnx",
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+)
+```
+
+Measure before assuming it helped — these models are small, and the cost of
+moving data to the GPU can exceed the gain of computing there:
+
+```python
+from tempest_fastapi_sdk.modelops import benchmark_onnx
+
+profile = benchmark_onnx("dist/classifier.onnx", providers=["CUDAExecutionProvider"])
+print(profile.runtime.latency_ms_median)
+```
+
+
 ## Measure before you optimize
 
 Measuring comes first. Without `tempest model bench` you have no baseline

@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.187.0"
+version = "0.188.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -151,6 +151,9 @@ modelops = [
 modelops-onnx = [
     "onnx>=1.16.0",
     "onnxruntime>=1.18.0",
+]
+modelops-sklearn = [
+    "skl2onnx>=1.16.0",
 ]
 geo = [
     "httpx>=0.28.0",
@@ -422,6 +425,8 @@ module = [
     "PIL.*",
     "torchvision",
     "torchvision.*",
+    "skl2onnx",
+    "skl2onnx.*",
     "diffusers",
     "diffusers.*",
     "yaml",
