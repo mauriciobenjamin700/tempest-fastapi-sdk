@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from collections import deque
+from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from typing import Any, Literal
 
@@ -36,6 +38,16 @@ LogSource = Literal[
 duplicating ``error.log`` rows); the rest map to a single file.
 """
 
+DEFAULT_MAX_RECORDS_PER_FILE: int = 20_000
+"""How many of the newest records are read from each log file per request.
+
+A bound is required, not tuning: without one the endpoint materialized every
+line of every selected file before paginating, so a service whose log
+directory had grown to gigabytes answered with a dead worker. 20k records per
+file is far past any page a caller can reach (the largest page is
+``max_page_size``) while keeping the read a bounded, predictable cost.
+"""
+
 _LEVEL_FILE_BY_NAME: dict[str, str] = {
     logging.getLevelName(levelno).lower(): filename
     for levelno, filename in LEVEL_LOG_FILES.items()
@@ -60,6 +72,28 @@ def _parse_timestamp(value: str) -> datetime | None:
         return None
 
 
+def _as_aware(moment: datetime) -> datetime:
+    """Return ``moment`` in UTC, assuming UTC when it carries no offset.
+
+    The ``start`` / ``end`` query parameters arrive through Pydantic, which
+    accepts an offset-free value like ``2026-01-01T00:00:00`` and hands back
+    a **naive** datetime. Log timestamps are always aware (the formatter
+    writes ``...Z``), and comparing the two raises ``TypeError: can't
+    compare offset-naive and offset-aware datetimes`` — an HTTP 500 on what
+    is really a well-formed request. Reading a bare timestamp as UTC is the
+    only interpretation consistent with the records it filters.
+
+    Args:
+        moment (datetime): The bound supplied by the caller.
+
+    Returns:
+        datetime: The same instant, guaranteed offset-aware.
+    """
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=UTC)
+    return moment
+
+
 def _resolve_files(log_dir: Path, source: LogSource) -> list[Path]:
     """Resolve the log files to read for a given ``source``.
 
@@ -78,22 +112,39 @@ def _resolve_files(log_dir: Path, source: LogSource) -> list[Path]:
     return [log_dir / _LEVEL_FILE_BY_NAME[source]]
 
 
-def _read_entries(files: list[Path]) -> list[dict[str, Any]]:
-    """Read and JSON-parse every non-empty line from ``files``.
+def _read_entries(
+    files: list[Path],
+    *,
+    max_records_per_file: int = DEFAULT_MAX_RECORDS_PER_FILE,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Read and JSON-parse the newest lines of each file in ``files``.
 
     Malformed lines and missing files are skipped silently so a single
     corrupt line never breaks the endpoint.
 
+    Only the last ``max_records_per_file`` records of each file are kept,
+    streamed through a bounded :class:`collections.deque`. The endpoint sorts
+    newest-first and paginates, so older records were never reachable
+    anyway — but reading the whole file to find that out meant a service with
+    a multi-gigabyte log directory pinned that much memory per request, and
+    the worker died before answering.
+
     Args:
         files (list[Path]): The log files to read.
+        max_records_per_file (int): Cap on records kept per file.
 
     Returns:
-        list[dict[str, Any]]: The parsed records across all files.
+        tuple[list[dict[str, Any]], bool]: The parsed records across all
+        files, and whether any file was truncated by the cap — the caller
+        surfaces that so a partial view never reads as a complete one.
     """
     entries: list[dict[str, Any]] = []
+    truncated = False
     for file_path in files:
         if not file_path.exists():
             continue
+        window: deque[dict[str, Any]] = deque(maxlen=max_records_per_file)
+        seen = 0
         with file_path.open("r", encoding="utf-8") as handle:
             for raw_line in handle:
                 line = raw_line.strip()
@@ -104,8 +155,12 @@ def _read_entries(files: list[Path]) -> list[dict[str, Any]]:
                 except json.JSONDecodeError:
                     continue
                 if isinstance(parsed, dict):
-                    entries.append(parsed)
-    return entries
+                    seen += 1
+                    window.append(parsed)
+        if seen > max_records_per_file:
+            truncated = True
+        entries.extend(window)
+    return entries, truncated
 
 
 _MARKDOWN_CONTEXT_KEYS: tuple[str, ...] = (
@@ -258,6 +313,7 @@ def make_logs_router(
     header_name: str = "X-Token",
     default_page_size: int = 20,
     max_page_size: int = 200,
+    max_records_per_file: int = DEFAULT_MAX_RECORDS_PER_FILE,
 ) -> APIRouter:
     """Build a router that serves the on-disk JSON logs, paginated.
 
@@ -285,6 +341,11 @@ def make_logs_router(
         header_name (str): Auth header name. Defaults to ``"X-Token"``.
         default_page_size (int): Page size when the caller omits it.
         max_page_size (int): Upper bound enforced on ``page_size``.
+        max_records_per_file (int): How many of the newest records are read
+            from each file per request. See
+            :data:`DEFAULT_MAX_RECORDS_PER_FILE` — the bound is what keeps a
+            large log directory from being read into memory whole. When it
+            bites, a warning is logged naming the source.
 
     Returns:
         APIRouter: A router ready to ``include_router(...)`` on the app.
@@ -342,8 +403,19 @@ def make_logs_router(
         """
         size = min(page_size, max_page_size)
         files = _resolve_files(base_dir, source)
-        entries = await run_in_threadpool(_read_entries, files)
+        entries, truncated = await run_in_threadpool(
+            partial(_read_entries, files, max_records_per_file=max_records_per_file)
+        )
+        if truncated:
+            logger.warning(
+                "Log source %r exceeds %d records per file; older records were "
+                "not read for this request.",
+                source,
+                max_records_per_file,
+            )
 
+        lower = _as_aware(start) if start is not None else None
+        upper = _as_aware(end) if end is not None else None
         needle = q.lower() if q else None
         filtered: list[dict[str, Any]] = []
         for entry in entries:
@@ -351,13 +423,13 @@ def make_logs_router(
                 message = str(entry.get("message", "")).lower()
                 if needle not in message:
                     continue
-            if start is not None or end is not None:
+            if lower is not None or upper is not None:
                 moment = _parse_timestamp(str(entry.get("timestamp", "")))
                 if moment is None:
                     continue
-                if start is not None and moment < start:
+                if lower is not None and moment < lower:
                     continue
-                if end is not None and moment > end:
+                if upper is not None and moment > upper:
                     continue
             filtered.append(entry)
 
@@ -380,6 +452,7 @@ def make_logs_router(
 
 
 __all__: list[str] = [
+    "DEFAULT_MAX_RECORDS_PER_FILE",
     "LogSource",
     "make_logs_router",
     "render_entries_json",

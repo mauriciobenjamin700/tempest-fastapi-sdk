@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -76,3 +77,35 @@ class TestValidation:
             ["secrets", "rotate", "--env", str(tmp_path / ".env"), "--keys", " "],
         )
         assert result.exit_code == 2
+
+
+class TestPermissions:
+    """The rewritten files hold live secrets, so only the owner may read them.
+
+    The process umask on a shared host commonly yields ``0644``.
+    """
+
+    def test_env_is_owner_only(self, tmp_path: Path) -> None:
+        env = tmp_path / ".env"
+        env.write_text("JWT_SECRET=old\n", encoding="utf-8")
+        env.chmod(0o644)
+
+        result = runner.invoke(app, ["secrets", "rotate", "--env", str(env)])
+        assert result.exit_code == 0, result.stdout
+        assert stat.S_IMODE(env.stat().st_mode) == 0o600
+
+    def test_backup_is_owner_only(self, tmp_path: Path) -> None:
+        env = tmp_path / ".env"
+        env.write_text("JWT_SECRET=old\n", encoding="utf-8")
+
+        runner.invoke(app, ["secrets", "rotate", "--env", str(env)])
+
+        backup = tmp_path / ".env.bak"
+        assert backup.is_file()
+        assert stat.S_IMODE(backup.stat().st_mode) == 0o600
+
+    def test_a_created_env_is_owner_only(self, tmp_path: Path) -> None:
+        env = tmp_path / ".env"
+        result = runner.invoke(app, ["secrets", "rotate", "--env", str(env)])
+        assert result.exit_code == 0, result.stdout
+        assert stat.S_IMODE(env.stat().st_mode) == 0o600

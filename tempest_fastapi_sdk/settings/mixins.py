@@ -835,6 +835,8 @@ class AuthSettings(BaseAppSettings):
             template filename. Default: ``"password_reset.html"``.
         AUTH_PASSWORD_MIN_LENGTH (int): Minimum accepted password length.
             Default: ``12``.
+        AUTH_PASSWORD_MAX_BYTES (int): Maximum accepted password length in
+            UTF-8 bytes. Default: ``72`` (the bcrypt limit).
         AUTH_PASSWORD_REQUIRE_COMPLEXITY (bool): Require character-class
             complexity (and >= 8 length). Default: ``False``.
         AUTH_BACKEND_LINKS (bool): Mount backend-rendered activation/reset
@@ -972,6 +974,23 @@ class AuthSettings(BaseAppSettings):
             "router path too."
         ),
         examples=[4, 8, 12, 16],
+    )
+    AUTH_PASSWORD_MAX_BYTES: int = Field(
+        default=72,
+        ge=1,
+        title="Maximum password length (UTF-8 bytes)",
+        description=(
+            "Signup + reset + change reject passwords longer than this, "
+            "measured in **bytes** rather than characters because that is "
+            "what the hash sees. The default of 72 is bcrypt's hard limit: "
+            "``bcrypt.hashpw`` raises ``ValueError`` past it, which without "
+            "this check surfaced as an HTTP 500 instead of a validation "
+            "error. Note that 72 bytes is fewer than 72 characters for "
+            "non-ASCII input — an emoji costs 4 bytes, an accented Latin "
+            "letter 2. Raise it only if you swap the hasher for one without "
+            "the limit."
+        ),
+        examples=[72, 128],
     )
     AUTH_PASSWORD_REQUIRE_COMPLEXITY: bool = Field(
         default=False,

@@ -31,6 +31,7 @@ from tempest_fastapi_sdk.api import (
     DEFAULT_DOCUMENT_CACHE_CONTROL,
     DEFAULT_EXCLUDED_PREFIXES,
     DEFAULT_LATENCY_BUCKETS,
+    DEFAULT_MAX_RECORDS_PER_FILE,
     DEFAULT_STATIC_SECURITY_HEADERS,
     IDEMPOTENCY_HEADER,
     RAISES_ATTRIBUTE,
@@ -451,7 +452,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.173.0"
+__version__: str = "0.174.0"
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
@@ -471,6 +472,7 @@ __all__: list[str] = [
     "DEFAULT_EXCLUDED_PREFIXES",
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_LOCALE",
+    "DEFAULT_MAX_RECORDS_PER_FILE",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "IDEMPOTENCY_HEADER",
     "MFA_TOKEN_TYPE",

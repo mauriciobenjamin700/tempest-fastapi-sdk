@@ -5,6 +5,7 @@ from tempest_fastapi_sdk.api.routers.health import (
     make_health_router,
 )
 from tempest_fastapi_sdk.api.routers.logs import (
+    DEFAULT_MAX_RECORDS_PER_FILE,
     LogSource,
     make_logs_router,
     render_entries_json,
@@ -21,6 +22,7 @@ from tempest_fastapi_sdk.api.routers.tool_spec import make_tool_spec_router
 
 __all__: list[str] = [
     "DEFAULT_LATENCY_BUCKETS",
+    "DEFAULT_MAX_RECORDS_PER_FILE",
     "BusinessMetrics",
     "HealthCheck",
     "LogSource",

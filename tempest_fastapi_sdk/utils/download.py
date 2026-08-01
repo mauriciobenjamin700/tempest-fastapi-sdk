@@ -38,9 +38,20 @@ def build_content_disposition(filename: str, *, as_attachment: bool = True) -> s
     legacy fallback) and a UTF-8 ``filename*`` parameter (RFC 5987) so
     non-ASCII names survive across clients.
 
+    The name is treated as untrusted, because in the documented usage it is
+    ``UploadFile.filename`` — a value the client chose. Taking the basename
+    stops a path from being injected, but on its own left the control
+    characters in: a name containing ``\\r\\n`` produced a header value with a
+    real line break, which an ASGI server that does not validate header
+    values (uvicorn on ``httptools``) writes to the socket verbatim, letting
+    the caller append headers of their own to your response. Every character
+    below ``0x20`` plus ``DEL`` is dropped here, so what comes out is always
+    a single header line.
+
     Args:
         filename (str): The name the client should see for the download.
-            Reduced to its basename so a path can never be injected.
+            Reduced to its basename, with control characters removed, so
+            neither a path nor a header break can be injected.
         as_attachment (bool): ``True`` forces a download
             (``attachment``); ``False`` lets the browser render inline
             (``inline``). Default ``True``.
@@ -50,13 +61,28 @@ def build_content_disposition(filename: str, *, as_attachment: bool = True) -> s
         ``attachment; filename="a.pdf"; filename*=UTF-8''a.pdf``.
     """
     disposition: str = "attachment" if as_attachment else "inline"
-    safe_name: str = Path(filename).name or "download"
+    sanitized: str = _strip_control_chars(filename)
+    safe_name: str = Path(sanitized).name or "download"
     ascii_fallback: str = safe_name.encode("ascii", "ignore").decode("ascii")
     ascii_fallback = ascii_fallback.replace("\\", "_").replace('"', "_")
     if not ascii_fallback:
         ascii_fallback = "download"
     encoded: str = quote(safe_name, safe="")
     return f"{disposition}; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded}"
+
+
+def _strip_control_chars(value: str) -> str:
+    """Return ``value`` without C0/C1 control characters or ``DEL``.
+
+    Args:
+        value (str): The raw, client-supplied name.
+
+    Returns:
+        str: The same text with every non-printable character removed.
+    """
+    return "".join(
+        char for char in value if not (ord(char) < 0x20 or 0x7F <= ord(char) <= 0x9F)
+    )
 
 
 class DownloadUtils:

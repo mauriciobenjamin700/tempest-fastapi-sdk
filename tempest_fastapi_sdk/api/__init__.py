@@ -69,6 +69,7 @@ from tempest_fastapi_sdk.api.oauth import (
 )
 from tempest_fastapi_sdk.api.routers import (
     DEFAULT_LATENCY_BUCKETS,
+    DEFAULT_MAX_RECORDS_PER_FILE,
     BusinessMetrics,
     HealthCheck,
     LogSource,
@@ -107,6 +108,7 @@ __all__: list[str] = [
     "DEFAULT_DOCUMENT_CACHE_CONTROL",
     "DEFAULT_EXCLUDED_PREFIXES",
     "DEFAULT_LATENCY_BUCKETS",
+    "DEFAULT_MAX_RECORDS_PER_FILE",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "IDEMPOTENCY_HEADER",
     "RAISES_ATTRIBUTE",

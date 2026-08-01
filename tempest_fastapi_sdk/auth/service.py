@@ -1344,13 +1344,20 @@ class UserAuthService:
         contain at least one lowercase letter, one uppercase letter,
         one digit, and one special (non-alphanumeric) character.
 
+        The upper bound (``AUTH_PASSWORD_MAX_BYTES``, default 72) is
+        measured in UTF-8 **bytes**, because that is the unit bcrypt
+        counts: ``bcrypt.hashpw`` raises ``ValueError`` past 72 bytes.
+        Without this check that surfaced as an HTTP 500 from signup /
+        password-reset / password-change, and 72 bytes is reached well
+        before 72 characters on non-ASCII input (four bytes per emoji).
+
         Args:
             password (str): The plaintext password to check.
 
         Raises:
-            ValidationException: When the password is too short or,
-                under complexity mode, missing a required character
-                class.
+            ValidationException: When the password is too short, too
+                long for the hasher, or — under complexity mode —
+                missing a required character class.
         """
         require_complexity = self.auth_settings.AUTH_PASSWORD_REQUIRE_COMPLEXITY
         floor = self.auth_settings.AUTH_PASSWORD_MIN_LENGTH
@@ -1360,6 +1367,16 @@ class UserAuthService:
             raise ValidationException(
                 message=f"password must be at least {floor} characters",
                 details={"min_length": floor},
+            )
+        ceiling = self.auth_settings.AUTH_PASSWORD_MAX_BYTES
+        encoded_length = len(password.encode("utf-8"))
+        if encoded_length > ceiling:
+            raise ValidationException(
+                message=f"password must be at most {ceiling} bytes",
+                details={
+                    "max_bytes": ceiling,
+                    "length_bytes": encoded_length,
+                },
             )
         if not require_complexity:
             return

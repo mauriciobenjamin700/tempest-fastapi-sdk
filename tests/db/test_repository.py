@@ -14,6 +14,7 @@ from tempest_fastapi_sdk import (
     ConflictException,
     NotFoundException,
     SoftDeleteMixin,
+    ValidationException,
 )
 
 
@@ -559,3 +560,54 @@ class TestChangesSince:
             seen.extend(page["items"])
             cursor = page["next_cursor"]
         assert len({r.id for r in seen}) == 5
+
+
+class TestOrderByValidation:
+    """``order_by`` is untrusted input, so a bad value is a 422 not a 500.
+
+    ``BasePaginationFilterSchema`` declares it as a plain ``str`` query
+    parameter. A bare ``getattr(self.model, order_by)`` turned an unknown name
+    into ``AttributeError``, and a name that exists but is not a column into
+    the same one frame later on ``.desc()``.
+    """
+
+    async def test_unknown_column_raises_validation(
+        self, repo: ProductRepository
+    ) -> None:
+        with pytest.raises(ValidationException) as exc:
+            await repo.paginate(order_by="ghost_column")
+        assert exc.value.details["order_by"] == "ghost_column"
+        assert "name" in exc.value.details["allowed"]
+
+    async def test_non_column_class_attribute_raises_validation(
+        self, repo: ProductRepository
+    ) -> None:
+        for attribute in ("metadata", "registry", "__init__"):
+            with pytest.raises(ValidationException):
+                await repo.paginate(order_by=attribute)
+
+    async def test_relationship_name_is_not_orderable(
+        self, repo: ProductRepository
+    ) -> None:
+        with pytest.raises(ValidationException):
+            await repo.paginate(order_by="category ; DROP TABLE x")
+
+    async def test_real_column_still_orders(self, repo: ProductRepository) -> None:
+        await repo.add_all(
+            [
+                Product(name="banana", category="fruit"),
+                Product(name="apple", category="fruit"),
+            ]
+        )
+        page = await repo.paginate(order_by="name", ascending=True, page_size=10)
+        assert [item.name for item in page["items"]] == ["apple", "banana"]
+
+    async def test_descending_still_works(self, repo: ProductRepository) -> None:
+        await repo.add_all(
+            [
+                Product(name="banana", category="fruit"),
+                Product(name="apple", category="fruit"),
+            ]
+        )
+        page = await repo.paginate(order_by="name", ascending=False, page_size=10)
+        assert [item.name for item in page["items"]] == ["banana", "apple"]

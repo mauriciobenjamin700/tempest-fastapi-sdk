@@ -100,12 +100,25 @@ class BodySizeLimitMiddleware:
         ``receive`` and counts what actually arrives, which is what catches a
         chunked or lying request whose header cannot be trusted.
 
-        When the streaming guard trips it returns ``http.disconnect`` rather
-        than raising: that drains the rest so the underlying transport closes
-        cleanly while telling the wrapped app the body ended. The 413 is then
-        emitted in the ``finally`` block, and only if the app has not already
-        responded — many handlers stop gracefully on disconnect and send
-        something themselves, in which case the extra ``send`` is a no-op.
+        When the streaming guard trips, the 413 is emitted **at that moment**
+        — the app is still reading the body, so no response has begun and the
+        answer is ours to give. Only then does ``receive`` report
+        ``http.disconnect``, which unwinds the handler while telling it the
+        body ended.
+
+        Everything the app sends afterwards is dropped. It has to be: the
+        request is already answered, and a second ``http.response.start`` is
+        not ignored by the server — uvicorn raises ``RuntimeError: Response
+        already started``. Emitting the 413 in a ``finally`` instead, as this
+        used to, hit exactly that whenever the app answered on its own, and
+        FastAPI does answer: it converts the ``ClientDisconnect`` raised while
+        parsing a declared body into a ``400``. So the choice is between one
+        413 and a 400 followed by a crash.
+
+        A handler that never reads the body is the one case the guard cannot
+        pre-empt — it answers before the counting has anything to say, and
+        that response stands. Nothing oversized was processed there either
+        way, since the bytes were counted and discarded rather than consumed.
 
         Args:
             scope (Scope): The ASGI scope.
@@ -133,25 +146,32 @@ class BodySizeLimitMiddleware:
                 break
 
         seen = 0
-        rejected = False
+        answered = False
+        response_started = False
 
         async def _guarded_receive() -> Message:
-            nonlocal seen, rejected
+            nonlocal seen, answered
             message = await receive()
             if message["type"] != "http.request":
                 return message
             body = message.get("body", b"")
             seen += len(body)
-            if seen > self.max_bytes and not rejected:
-                rejected = True
+            if seen > self.max_bytes and not answered:
+                if not response_started:
+                    answered = True
+                    await self._reject(send)
                 return {"type": "http.disconnect"}
             return message
 
-        try:
-            await self.app(scope, _guarded_receive, send)
-        finally:
-            if rejected:
-                await self._reject(send)
+        async def _guarded_send(message: Message) -> None:
+            nonlocal response_started
+            if answered:
+                return
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        await self.app(scope, _guarded_receive, _guarded_send)
 
 
 __all__: list[str] = [

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import time
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -106,5 +107,112 @@ class TestWebhookSignatureVerifier:
                 "/hook",
                 content=b"payload",
                 headers={"X-Signature": "deadbeef"},
+            )
+        assert response.status_code == 401
+
+
+class TestReplayWindow:
+    """A body-only signature stays valid forever, so freshness is opt-in.
+
+    Without a timestamp check a captured delivery can be resent indefinitely.
+    The check is not enabled by default because a provider that sends no such
+    header would have its legitimate traffic rejected.
+    """
+
+    @staticmethod
+    def _app(**dependency_kwargs: object) -> tuple[FastAPI, bytes, str]:
+        verifier = WebhookSignatureVerifier("topsecret")
+        body = b'{"event":"ping"}'
+        signature = hmac.new(b"topsecret", body, hashlib.sha256).hexdigest()
+
+        app = FastAPI()
+        register_exception_handlers(app)
+
+        @app.post("/hook")
+        async def hook(
+            raw: bytes = Depends(verifier.dependency(**dependency_kwargs)),  # type: ignore[arg-type]
+        ) -> dict[str, int]:
+            return {"size": len(raw)}
+
+        return app, body, signature
+
+    async def test_fresh_timestamp_is_accepted(self) -> None:
+        app, body, signature = self._app(timestamp_header="X-Webhook-Timestamp")
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://t") as client:
+            response = await client.post(
+                "/hook",
+                content=body,
+                headers={
+                    "X-Signature": signature,
+                    "X-Webhook-Timestamp": str(int(time.time())),
+                },
+            )
+        assert response.status_code == 200
+
+    async def test_stale_timestamp_is_rejected(self) -> None:
+        app, body, signature = self._app(
+            timestamp_header="X-Webhook-Timestamp",
+            max_age_seconds=60,
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://t") as client:
+            response = await client.post(
+                "/hook",
+                content=body,
+                headers={
+                    "X-Signature": signature,
+                    "X-Webhook-Timestamp": str(int(time.time()) - 3600),
+                },
+            )
+        assert response.status_code == 401
+
+    async def test_missing_timestamp_is_rejected_when_required(self) -> None:
+        app, body, signature = self._app(timestamp_header="X-Webhook-Timestamp")
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://t") as client:
+            response = await client.post(
+                "/hook",
+                content=body,
+                headers={"X-Signature": signature},
+            )
+        assert response.status_code == 401
+
+    async def test_unparseable_timestamp_is_rejected(self) -> None:
+        app, body, signature = self._app(timestamp_header="X-Webhook-Timestamp")
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://t") as client:
+            response = await client.post(
+                "/hook",
+                content=body,
+                headers={
+                    "X-Signature": signature,
+                    "X-Webhook-Timestamp": "not-a-number",
+                },
+            )
+        assert response.status_code == 401
+
+    async def test_check_is_off_by_default(self) -> None:
+        app, body, signature = self._app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://t") as client:
+            response = await client.post(
+                "/hook",
+                content=body,
+                headers={"X-Signature": signature},
+            )
+        assert response.status_code == 200
+
+    async def test_a_bad_signature_still_loses_with_a_fresh_timestamp(self) -> None:
+        app, body, _signature = self._app(timestamp_header="X-Webhook-Timestamp")
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://t") as client:
+            response = await client.post(
+                "/hook",
+                content=body,
+                headers={
+                    "X-Signature": "deadbeef",
+                    "X-Webhook-Timestamp": str(int(time.time())),
+                },
             )
         assert response.status_code == 401

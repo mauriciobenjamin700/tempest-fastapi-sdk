@@ -545,6 +545,26 @@ async def github_event(body: bytes = Depends(github.dependency())) -> None:
 
 Suporta encodings `hex` (default) e `base64`, qualquer algoritmo hashlib garantido entre plataformas, e um `prefix` opcional (ex.: `"sha256="`) removido antes da comparação. Use o imperativo `verifier.verify(body, signature)` de handlers de fila quando a validação acontece fora do pipeline FastAPI.
 
+A assinatura cobre **só o corpo**, então uma entrega capturada continua válida pra sempre — quem observar uma pode reenviar indefinidamente. Passe `timestamp_header=` pra também exigir um timestamp unix recente e recusar o que estiver fora da janela:
+
+```python
+github = WebhookSignatureVerifier(
+    settings.GITHUB_WEBHOOK_SECRET,
+    header_name="X-Hub-Signature-256",
+    prefix="sha256=",
+)
+
+check_github = github.dependency(
+    timestamp_header="X-Webhook-Timestamp",
+    max_age_seconds=300,
+)
+```
+
+É opt-in porque provedor que não manda esse header teria o tráfego legítimo recusado. O `WebhookSender` do próprio SDK envia `X-Webhook-Timestamp`.
+
+!!! warning "O timestamp não entra na assinatura"
+    Como só o corpo é assinado, quem replica uma captura também pode reescrever o timestamp pra um atual. A checagem limita replay **acidental e oportunista**, não um atacante ativo que lê e reescreve a request. Fechar isso depende do provedor assinar `timestamp.body` — o formato que o Stripe usa; quando o seu fizer isso, valide com `verifier.verify(f"{ts}.".encode() + body, signature)`.
+
 Para provedores que assinam com uma chave privada RSA (Apple App Store, Google Play, serviços enterprise custom), troque `WebhookSignatureVerifier` por `RSAWebhookSignatureVerifier` — mesma superfície `verify(body, signature)`, mas valida a assinatura contra uma chave pública codificada em PEM. Usa `RSASSA-PKCS1-v1_5` sobre SHA-256/384/512 (configurável via `algorithm=`). Requer o pacote `cryptography` (instalado com o extra `[webpush]`).
 
 ```python

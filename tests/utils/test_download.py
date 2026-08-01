@@ -154,3 +154,35 @@ class TestBuildContentDisposition:
     def test_path_is_reduced_to_basename(self) -> None:
         value = build_content_disposition("../../etc/passwd")
         assert 'filename="passwd"' in value
+
+
+class TestControlCharacterStripping:
+    """A client-chosen filename must not be able to add a header line.
+
+    In the documented usage the name is ``UploadFile.filename``, so it is
+    attacker-controlled. An ASGI server that does not validate header values
+    (uvicorn on ``httptools``) writes a ``\\r\\n`` straight to the socket.
+    """
+
+    def test_crlf_is_removed(self) -> None:
+        header = build_content_disposition("rep\r\nX-Injected: 1.pdf")
+        assert "\r" not in header
+        assert "\n" not in header
+        assert "X-Injected" in header
+
+    def test_other_control_chars_are_removed(self) -> None:
+        header = build_content_disposition("a\x00b\x08c\x1fd\x7fe.pdf")
+        assert header == (
+            "attachment; filename=\"abcde.pdf\"; filename*=UTF-8''abcde.pdf"
+        )
+
+    def test_name_of_only_control_chars_falls_back(self) -> None:
+        header = build_content_disposition("\r\n\x00")
+        assert header == (
+            "attachment; filename=\"download\"; filename*=UTF-8''download"
+        )
+
+    def test_normal_name_is_untouched(self) -> None:
+        header = build_content_disposition("relatório final.pdf")
+        assert 'filename="relatrio final.pdf"' in header
+        assert "filename*=UTF-8''relat%C3%B3rio%20final.pdf" in header

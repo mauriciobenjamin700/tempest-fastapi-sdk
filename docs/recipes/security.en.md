@@ -217,8 +217,11 @@ mismatched, the answer is `403` in the SDK's canonical envelope. `GET`/`HEAD`/
     `exclude_paths` matches by prefix (`startswith`).
 
 To issue the token, mount `make_csrf_token_dependency()` on the route that
-renders the page — it writes the cookie when absent and returns the value for
-the template:
+renders the page — it **writes the cookie** when absent and returns the value
+for the template. Both halves are required: double-submit compares cookie
+against header, so a dependency that only returned the value left the cookie
+missing and the next `POST` — the very one the page was rendered to make — was
+rejected with a 403.
 
 ```python
 # src/api/routers/pages.py
@@ -234,6 +237,15 @@ async def login_page(token: str = Depends(csrf_token)) -> dict[str, str]:
     """Render the login shell carrying the CSRF token."""
     return {"csrf_token": token}
 ```
+
+!!! info "This cookie is deliberately not `HttpOnly`"
+    The client has to **read** the value to echo it in the `X-CSRF-Token`
+    header — that is the whole double-submit mechanism, and `HttpOnly` would
+    break it. It is safe as long as the cookie carries only the CSRF token;
+    never put anything else in it. It goes out with `Secure` and
+    `SameSite=Lax` by default: use `make_csrf_token_dependency(secure=False)`
+    only on a plain-HTTP dev server, and `samesite="none"` (with
+    `secure=True`) when the frontend lives on another origin.
 
 The client echoes that value in the header on every write:
 
