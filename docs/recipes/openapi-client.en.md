@@ -183,12 +183,20 @@ vendor: VendorClient = VendorClient(vendor_http)
 And using it:
 
 ```python
-customers = await vendor.list_customers(
-    page_size=25,
-    status=CustomerStatus.PAST_DUE,
-)
-for customer in customers:
-    print(customer.email_address, customer.created_at)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    customers = await vendor.list_customers(
+        page_size=25,
+        status=CustomerStatus.PAST_DUE,
+    )
+    for customer in customers:
+        print(customer.email_address, customer.created_at)
+
+
+asyncio.run(main())
 ```
 
 !!! check "Testable without a network"

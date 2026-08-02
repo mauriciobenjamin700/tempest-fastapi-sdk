@@ -11,6 +11,8 @@ Before downloading gigabytes, check; let the SDK pick the precision that
 fits:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import TextGenerator, recommend
 
 MODEL = "Qwen/Qwen2.5-7B-Instruct"
@@ -25,8 +27,15 @@ gen = TextGenerator(
     quantization=rec.dtype.value if rec.dtype.value in ("int8", "int4") else None,
     idle_unload_seconds=300,             # free VRAM between bursts
 )
-answer = await gen.generate("Explain PIX in one sentence.")
-print(answer)
+
+
+async def main() -> None:
+    """Run this example."""
+    answer = await gen.generate("Explain PIX in one sentence.")
+    print(answer)
+
+
+asyncio.run(main())
 ```
 
 ## 2. RAG over a PDF knowledge base
@@ -35,6 +44,8 @@ Index the PDFs once, answer grounded questions afterwards. In-memory here
 (dev); swap for `PgVectorStore(db, dim=384)` in production.
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import Embedder, TextGenerator
 from tempest_fastapi_sdk.genai.rag import InMemoryVectorStore, PdfReader, Retriever
 
@@ -44,15 +55,21 @@ rag = Retriever(
 )
 gen = TextGenerator("Qwen/Qwen2.5-7B-Instruct", quantization="int4")
 
-# indexing (once, at startup or in a job)
-for pdf in ("manual.pdf", "faq.pdf", "policies.pdf"):
-    await rag.index(PdfReader().chunks(f"/kb/{pdf}", max_chars=1500, overlap=150))
 
-# querying (cheap, per request)
-async def answer(question: str) -> str:
-    context = await rag.retrieve(question, top_k=5)
-    prompt = f"{context}\n\nAnswer only from the sources above.\n{question}"
-    return await gen.generate(prompt, max_new_tokens=400)
+async def main() -> None:
+    """Run this example."""
+    # indexing (once, at startup or in a job)
+    for pdf in ("manual.pdf", "faq.pdf", "policies.pdf"):
+        await rag.index(PdfReader().chunks(f"/kb/{pdf}", max_chars=1500, overlap=150))
+
+    # querying (cheap, per request)
+    async def answer(question: str) -> str:
+        context = await rag.retrieve(question, top_k=5)
+        prompt = f"{context}\n\nAnswer only from the sources above.\n{question}"
+        return await gen.generate(prompt, max_new_tokens=400)
+
+
+asyncio.run(main())
 ```
 
 ## 3. Web-grounded answer (SearXNG)

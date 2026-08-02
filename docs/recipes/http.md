@@ -595,28 +595,36 @@ backoff exponencial. Outros 4xx **não** são re-tentados. O cliente httpx
     `uv add "tempest-fastapi-sdk[http]"` (traz `httpx`).
 
 ```python
+import asyncio
+
 import httpx
 
 from tempest_fastapi_sdk import WebhookSender, WebhookSignatureVerifier
 
 verifier = WebhookSignatureVerifier(settings.WEBHOOK_SECRET, prefix="sha256=")
 
-async with httpx.AsyncClient() as client:
-    sender = WebhookSender(client, signer=verifier, max_attempts=4)
-    result = await sender.send(
-        "https://assinante.example.com/hooks",
-        event="order.paid",
-        payload={"id": str(order.id), "total": 4200},
-    )
-    if not result.delivered:
-        # result.status_code / result.attempts / result.error
-        ...  # enfileira pra reprocessar, alerta, etc.
 
-# Mesmo evento pra vários assinantes, concorrente:
-results = await sender.send_many(
-    [(sub.url, {"id": str(order.id)}) for sub in subscribers],
-    event="order.paid",
-)
+async def main() -> None:
+    """Run this example."""
+    async with httpx.AsyncClient() as client:
+        sender = WebhookSender(client, signer=verifier, max_attempts=4)
+        result = await sender.send(
+            "https://assinante.example.com/hooks",
+            event="order.paid",
+            payload={"id": str(order.id), "total": 4200},
+        )
+        if not result.delivered:
+            # result.status_code / result.attempts / result.error
+            ...  # enfileira pra reprocessar, alerta, etc.
+
+    # Mesmo evento pra vários assinantes, concorrente:
+    results = await sender.send_many(
+        [(sub.url, {"id": str(order.id)}) for sub in subscribers],
+        event="order.paid",
+    )
+
+
+asyncio.run(main())
 ```
 
 Cada entrega envia os headers `X-Webhook-Event`, `X-Webhook-Id` (uuid

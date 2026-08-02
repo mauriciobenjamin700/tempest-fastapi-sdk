@@ -72,8 +72,11 @@ async def lifespan(_: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-# De qualquer service/handler — channel primeiro, mensagem depois:
-await mq.publish("orders.paid", OrderPaid(order_id="abc", user_id="u1"))
+@app.post("/orders/{order_id}/pay")
+async def pay_order(order_id: str) -> dict[str, str]:
+    """Publish from any service/handler — channel first, message second."""
+    await mq.publish("orders.paid", OrderPaid(order_id=order_id, user_id="u1"))
+    return {"status": "published"}
 ```
 
 !!! info "Transportes"
@@ -165,11 +168,19 @@ async def send_welcome(to: str, name: str) -> None:
 `@tq.task` devolve um objeto `Task` tipado com **duas** ações claras:
 
 ```python
-# Enfileira pro worker e volta na hora (a resposta HTTP não espera):
-await send_welcome.enqueue(to=user.email, name=user.name)
+import asyncio
 
-# Roda inline, aqui mesmo, e devolve o valor real (útil em testes / reuso):
-await send_welcome.run(to="a@b.com", name="Ana")
+
+async def main() -> None:
+    """Run this example."""
+    # Enfileira pro worker e volta na hora (a resposta HTTP não espera):
+    await send_welcome.enqueue(to=user.email, name=user.name)
+
+    # Roda inline, aqui mesmo, e devolve o valor real (útil em testes / reuso):
+    await send_welcome.run(to="a@b.com", name="Ana")
+
+
+asyncio.run(main())
 ```
 
 !!! tip "`enqueue` no lugar de `.kiq`"
@@ -198,6 +209,8 @@ Simétrico aos consumidores: agrupe tarefas numa classe com `TaskDef`.
 `Task` por método (forma agrupada).
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.tasks import TaskDef, task_method
 
 
@@ -211,20 +224,27 @@ class NightlyReport(TaskDef):
 
 
 nightly = tq.register(NightlyReport())        # -> Task
-await nightly.enqueue(day="2026-07-05")
 
 
-# Forma agrupada — várias tarefas, cada método marcado com @task_method:
-class ReportTasks(TaskDef):
-    @task_method(name="reports:nightly")
-    async def nightly(self, day: str) -> None: ...
-
-    @task_method()
-    async def weekly(self) -> None: ...
+async def main() -> None:
+    """Run this example."""
+    await nightly.enqueue(day="2026-07-05")
 
 
-tasks = tq.register(ReportTasks())            # -> {"nightly": Task, "weekly": Task}
-await tasks["nightly"].enqueue(day="2026-07-05")
+    # Forma agrupada — várias tarefas, cada método marcado com @task_method:
+    class ReportTasks(TaskDef):
+        @task_method(name="reports:nightly")
+        async def nightly(self, day: str) -> None: ...
+
+        @task_method()
+        async def weekly(self) -> None: ...
+
+
+    tasks = tq.register(ReportTasks())            # -> {"nightly": Task, "weekly": Task}
+    await tasks["nightly"].enqueue(day="2026-07-05")
+
+
+asyncio.run(main())
 ```
 
 O `@tq.task` (decorator em função) segue disponível — as duas formas

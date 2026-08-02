@@ -421,23 +421,31 @@ passing the id of **whoever should hear about it**. The new order notifies the
 **seller**; the new chat message notifies the **recipient**:
 
 ```python
-# New order -> notify the seller (after persisting the order):
-await notifications.notify(
-    seller_id,
-    event="order_created",
-    title="New order",
-    body=f"Order for R$ {order.total}",
-    data={"order_id": str(order.id), "total": str(order.total)},
-)
+import asyncio
 
-# New chat message -> notify the recipient (after persisting the message):
-await notifications.notify(
-    recipient_id,
-    event="chat_message",
-    title=sender_name,
-    body=preview,
-    data={"room_id": str(conversation_id)},
-)
+
+async def main() -> None:
+    """Run this example."""
+    # New order -> notify the seller (after persisting the order):
+    await notifications.notify(
+        seller_id,
+        event="order_created",
+        title="New order",
+        body=f"Order for R$ {order.total}",
+        data={"order_id": str(order.id), "total": str(order.total)},
+    )
+
+    # New chat message -> notify the recipient (after persisting the message):
+    await notifications.notify(
+        recipient_id,
+        event="chat_message",
+        title=sender_name,
+        body=preview,
+        data={"room_id": str(conversation_id)},
+    )
+
+
+asyncio.run(main())
 ```
 
 Why each call's `user_id` is different:

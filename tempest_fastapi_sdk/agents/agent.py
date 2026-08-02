@@ -33,6 +33,7 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from tempest_fastapi_sdk.agents.protocols import AgentBackend
 from tempest_fastapi_sdk.agents.schemas import (
     AgentBudget,
     AgentRun,
@@ -113,7 +114,7 @@ class Agent:
         (True, ['generate_image'])
 
     Attributes:
-        generator (Any): The text backend driving the loop.
+        generator (AgentBackend): The text backend driving the loop.
         tools (list[AgentTool]): What the model may call.
         system_prompt (str): The instruction prepended to every run.
         budget (AgentBudget): The ceilings a run must not cross.
@@ -122,7 +123,7 @@ class Agent:
 
     def __init__(
         self,
-        generator: Any,
+        generator: AgentBackend,
         *,
         tools: Sequence[AgentTool] = (),
         skills: Sequence[Skill] = (),
@@ -136,9 +137,11 @@ class Agent:
         """Configure the agent.
 
         Args:
-            generator (Any): A text backend — ``TextGenerator``,
-                ``OllamaGenerator``, or anything with ``chat_with_tools``
-                (and ``chat`` as the toolless fallback).
+            generator (AgentBackend): A text backend — ``TextGenerator``,
+                ``OllamaGenerator``, or anything implementing
+                :class:`~tempest_fastapi_sdk.agents.ToolCallingBackend`.
+                A plain :class:`~tempest_fastapi_sdk.agents.ChatBackend`
+                (``chat`` only) is accepted and runs toolless.
             tools (Sequence[AgentTool]): What the model may call. An empty
                 sequence makes this a single-shot answerer.
             skills (Sequence[Skill]): Capabilities loaded on demand. Only

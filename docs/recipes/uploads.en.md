@@ -39,6 +39,8 @@ async def upload(file: UploadFile) -> dict[str, str]:
 Pass the `AsyncMinIOClient` directly — nothing else changes:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import AsyncMinIOClient, UploadUtils
 
 from src.core.settings import settings
@@ -46,8 +48,14 @@ from src.core.settings import settings
 minio = AsyncMinIOClient(**settings.minio_kwargs())
 uploads = UploadUtils(minio, max_size_bytes=10 * 1024 * 1024)
 
-# identical to the local case:
-key = await uploads.save(file, filename="logo.png")   # writes to the bucket
+
+async def main() -> None:
+    """Run this example."""
+    # identical to the local case:
+    key = await uploads.save(file, filename="logo.png")   # writes to the bucket
+
+
+asyncio.run(main())
 ```
 
 !!! tip "Centralize in `resources.py`"
@@ -154,8 +162,16 @@ else:
 ## Common operations
 
 ```python
-key = await uploads.save(file, filename="logo.png")  # -> Path("logo.png")
-removed = await uploads.delete(key)                  # async; True/False
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    key = await uploads.save(file, filename="logo.png")  # -> Path("logo.png")
+    removed = await uploads.delete(key)                  # async; True/False
+
+
+asyncio.run(main())
 ```
 
 ### Swap a file (avatar, attachment) — `replace`
@@ -166,11 +182,19 @@ The classic case: the user uploads a new profile picture and you want to
 `replace`:
 
 ```python
-# old_key is whatever is stored on the model today (may be None on 1st upload)
-new_key = await uploads.replace(
-    user.profile_picture, file, filename=f"{user.id}.jpg"
-)
-user.profile_picture = str(new_key)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    # old_key is whatever is stored on the model today (may be None on 1st upload)
+    new_key = await uploads.replace(
+        user.profile_picture, file, filename=f"{user.id}.jpg"
+    )
+    user.profile_picture = str(new_key)
+
+
+asyncio.run(main())
 ```
 
 !!! tip "Order matters — and `replace` gets it right for you"

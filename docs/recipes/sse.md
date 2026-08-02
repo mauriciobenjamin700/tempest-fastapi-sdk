@@ -134,12 +134,20 @@ sozinho.
 `publish()` aceita os quatro campos do spec:
 
 ```python
-await stream.publish(
-    {"orderId": "abc", "status": "paid"},  # data: vira JSON automático
-    event="order_update",                  # event: nome do listener no front
-    id="42",                               # id: vira Last-Event-ID (resume)
-    retry=3000,                            # retry: dica de reconexão (ms)
-)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    await stream.publish(
+        {"orderId": "abc", "status": "paid"},  # data: vira JSON automático
+        event="order_update",                  # event: nome do listener no front
+        id="42",                               # id: vira Last-Event-ID (resume)
+        retry=3000,                            # retry: dica de reconexão (ms)
+    )
+
+
+asyncio.run(main())
 ```
 
 | Campo | Pro quê serve |
@@ -565,11 +573,19 @@ O domínio publica **no exchange** (não no `broker.publish` direto) — aí che
 todos os workers:
 
 ```python
-# de qualquer worker/handler:
-await mq.broker.publish(
-    {"channel": str(user_id), "event": "order_created", "data": {"order_id": str(order.id)}},
-    exchange=sse_exchange,
-)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    # de qualquer worker/handler:
+    await mq.broker.publish(
+        {"channel": str(user_id), "event": "order_created", "data": {"order_id": str(order.id)}},
+        exchange=sse_exchange,
+    )
+
+
+asyncio.run(main())
 ```
 
 !!! tip "Redis continua o caminho mais simples"

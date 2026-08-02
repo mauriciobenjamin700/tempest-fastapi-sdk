@@ -381,15 +381,23 @@ async def nearby_stores(repo: StoreRepository, center: Coordinate) -> list[Store
 OpenStreetMap Nominatim, for free. Injected `httpx` client, like OSRM:
 
 ```python
+import asyncio
+
 import httpx
 from tempest_fastapi_sdk.geo import NominatimBackend
 
-async with httpx.AsyncClient() as client:
-    geocoder = NominatimBackend(http_client=client, user_agent="my-app/1.0")
-    hit = await geocoder.geocode("Av. Paulista, 1578, São Paulo")
-    if hit:
-        print(hit.coordinate, hit.display_name)
-    place = await geocoder.reverse(Coordinate(latitude=-23.561, longitude=-46.656))
+
+async def main() -> None:
+    """Run this example."""
+    async with httpx.AsyncClient() as client:
+        geocoder = NominatimBackend(http_client=client, user_agent="my-app/1.0")
+        hit = await geocoder.geocode("Av. Paulista, 1578, São Paulo")
+        if hit:
+            print(hit.coordinate, hit.display_name)
+        place = await geocoder.reverse(Coordinate(latitude=-23.561, longitude=-46.656))
+
+
+asyncio.run(main())
 ```
 
 !!! warning "Public Nominatim usage policy"
@@ -403,15 +411,23 @@ OSRM does more than point-to-point: `matrix` computes N×M in one call
 returns the route line decoded into `TravelEstimate.geometry`:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.geo import OSRMBackend
 
 backend = OSRMBackend(http_client=client)
 
-matrix = await backend.matrix(origins, destinations)  # DistanceMatrix
-print(matrix.durations_minutes[0][2])  # time origin 0 -> destination 2
 
-route = await backend.route(a, b, with_geometry=True)
-draw_on_map(route.geometry)  # list[Coordinate]
+async def main() -> None:
+    """Run this example."""
+    matrix = await backend.matrix(origins, destinations)  # DistanceMatrix
+    print(matrix.durations_minutes[0][2])  # time origin 0 -> destination 2
+
+    route = await backend.route(a, b, with_geometry=True)
+    draw_on_map(route.geometry)  # list[Coordinate]
+
+
+asyncio.run(main())
 ```
 
 `encode_polyline` / `decode_polyline` convert the line to/from the compact
@@ -435,10 +451,19 @@ travelled = path_length_km(gps_points)
 ## Brazil: UF centroid and CEP → coordinate
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.geo import cep_to_coordinate, uf_centroid
 
 pin = uf_centroid("SP")  # approximate state centre, offline
-coord = await cep_to_coordinate("01310-100", geocoder=geocoder)  # via Nominatim
+
+
+async def main() -> None:
+    """Run this example."""
+    coord = await cep_to_coordinate("01310-100", geocoder=geocoder)  # via Nominatim
+
+
+asyncio.run(main())
 ```
 
 ## Recap

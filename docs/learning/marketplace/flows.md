@@ -267,13 +267,21 @@ o pedido virou `SHIPPED`), ele faz **uma só chamada** — não sabe nem se impo
 que existem dois canais por baixo:
 
 ```python
-await self.notifications.notify(
-    order.buyer_id,
-    event="order_shipped",
-    title="Pedido a caminho",
-    body=f"Pedido {order.code} saiu para entrega.",
-    data={"order_id": str(order.id), "status": order.status},
-)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    await self.notifications.notify(
+        order.buyer_id,
+        event="order_shipped",
+        title="Pedido a caminho",
+        body=f"Pedido {order.code} saiu para entrega.",
+        data={"order_id": str(order.id), "status": order.status},
+    )
+
+
+asyncio.run(main())
 ```
 
 O que cada argumento faz:

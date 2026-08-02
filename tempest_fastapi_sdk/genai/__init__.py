@@ -8,6 +8,13 @@ only needed to probe real GPUs and (later) run inference.
 
 from tempest_fastapi_sdk.genai.admin import make_model_cards as make_model_cards
 from tempest_fastapi_sdk.genai.batching import BatchScheduler as BatchScheduler
+from tempest_fastapi_sdk.genai.catalog import EmbeddingModel as EmbeddingModel
+from tempest_fastapi_sdk.genai.catalog import ImageModel as ImageModel
+from tempest_fastapi_sdk.genai.catalog import RerankerModel as RerankerModel
+from tempest_fastapi_sdk.genai.catalog import SpeechToTextModel as SpeechToTextModel
+from tempest_fastapi_sdk.genai.catalog import TextModel as TextModel
+from tempest_fastapi_sdk.genai.catalog import TextToSpeechModel as TextToSpeechModel
+from tempest_fastapi_sdk.genai.catalog import VisionModel as VisionModel
 from tempest_fastapi_sdk.genai.embeddings import (
     AsyncEmbeddingCache as AsyncEmbeddingCache,
 )
@@ -165,6 +172,7 @@ __all__: list[str] = [
     "ClassifierModerator",
     "Embedder",
     "EmbeddingCache",
+    "EmbeddingModel",
     "GPUInfo",
     "GenAIMetrics",
     "GeneratedImage",
@@ -173,6 +181,7 @@ __all__: list[str] = [
     "HardwareInfo",
     "ImageGenerationConfig",
     "ImageGenerator",
+    "ImageModel",
     "InMemoryEmbeddingCache",
     "InMemoryGenerationCache",
     "LoadedModel",
@@ -188,10 +197,15 @@ __all__: list[str] = [
     "OnnxEmbedder",
     "RedisEmbeddingCache",
     "RedisGenerationCache",
+    "RerankerModel",
     "RuleModerator",
+    "SpeechToTextModel",
     "TextBackend",
     "TextGenerator",
+    "TextModel",
+    "TextToSpeechModel",
     "Tool",
+    "VisionModel",
     "VisionTextGenerator",
     "auto_dtype_name",
     "build_prefix_allowed_tokens_fn",

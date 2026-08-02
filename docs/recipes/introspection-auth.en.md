@@ -100,8 +100,16 @@ gets **403**.
 4. returns the claims dict.
 
 ```python
-claims: dict[str, Any] = await auth.get_claims(credentials)
-# {"sub": "…", "access_apps": ["famacha"], "email": "…", ...}
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    claims: dict[str, Any] = await auth.get_claims(credentials)
+    # {"sub": "…", "access_apps": ["famacha"], "email": "…", ...}
+
+
+asyncio.run(main())
 ```
 
 ### `get_user_id` — the common shortcut
@@ -111,7 +119,15 @@ depends on the same bearer, calls `get_claims` internally, and does
 `UUID(str(claims["sub"]))`:
 
 ```python
-user_id: UUID = await auth.get_user_id(credentials)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    user_id: UUID = await auth.get_user_id(credentials)
+
+
+asyncio.run(main())
 ```
 
 A missing subject, or one that isn't a valid UUID, becomes

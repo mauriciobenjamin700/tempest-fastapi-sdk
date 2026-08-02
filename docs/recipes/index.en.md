@@ -197,10 +197,19 @@ Recipes: [HTTP layer](http.md), [Idempotency](idempotency.md),
 MinIO/S3 storage, presigned URLs.
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import FileStoreUtils
 
 store = FileStoreUtils(source="./uploads")     # or an AsyncMinIOClient
-key = await store.save(upload_file)
+
+
+async def main() -> None:
+    """Run this example."""
+    key = await store.save(upload_file)
+
+
+asyncio.run(main())
 ```
 
 Recipes: [File store](file-store.md), [Uploads](uploads.md),
@@ -228,13 +237,21 @@ hardware.
     The core ships with `tempest-fastapi-sdk`. Self-hosted generative AI needs the `[genai]` extra — `uv add "tempest-fastapi-sdk[genai]"` (pulls in `torch`, `transformers`, `accelerate`, `safetensors` and `huggingface-hub`).
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import can_run, TextGenerator
 from tempest_fastapi_sdk.genai.rag import PdfReader, build_context
 
-if can_run(model_id="Qwen/Qwen2.5-7B-Instruct").fits:
-    gen = TextGenerator("Qwen/Qwen2.5-7B-Instruct", quantization="int4")
-    chunks = PdfReader().chunks("/kb/manual.pdf")
-    answer = await gen.generate(build_context("how to refund?", chunks))
+
+async def main() -> None:
+    """Run this example."""
+    if can_run(model_id="Qwen/Qwen2.5-7B-Instruct").fits:
+        gen = TextGenerator("Qwen/Qwen2.5-7B-Instruct", quantization="int4")
+        chunks = PdfReader().chunks("/kb/manual.pdf")
+        answer = await gen.generate(build_context("how to refund?", chunks))
+
+
+asyncio.run(main())
 ```
 
 Recipe: [Self-hosted generative AI](genai.md).
@@ -289,6 +306,7 @@ come back here to plug in each capability as you need it.
 | **[Brazilian helpers »](br-helpers.md)** | CPF / CNPJ / CEP / phone validation + normalization |
 | **[Cache »](cache.md)** | `AsyncRedisManager`, `@cached` decorator, `CacheInvalidator` (tag/namespace) |
 | **[Chat (conversations + messages) »](chat.md)** | `ChatService`, `make_chat_router`, base tables + real-time fan-out via `SSEBroker` |
+| **[Choosing a model »](models.md)** | `TextModel` / `EmbeddingModel` / `RerankerModel` / `VisionModel` / `ImageModel` / `SpeechToTextModel` / `TextToSpeechModel` — named Hub ids and the use-case table behind each pick |
 | **[CLI »](cli.md)** | `tempest new` / `db` (+ `seed`) / `user` / `secrets rotate` / `lint` / `fix` / `format` / `type` / `test` / `check` |
 | **[Comments + ratings »](reviews.md)** | `ReviewService`, `make_reviews_router`, 0–5 star scores with aggregation, threaded comments |
 | **[Computer vision (ONNX) »](vision.md)** | `Detector` / `Classifier` / `Segmenter` + prediction schemas |

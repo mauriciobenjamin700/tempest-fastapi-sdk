@@ -5,12 +5,20 @@ Ligue e desligue funcionalidades **sem redeploy**: rollouts graduais, kill-switc
 ## Começo rápido
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import FeatureFlags, MemoryFeatureFlagBackend
 
 flags = FeatureFlags(MemoryFeatureFlagBackend({"new_checkout": True}))
 
-if await flags.is_enabled("new_checkout"):
-    ...                                                       # caminho novo
+
+async def main() -> None:
+    """Run this example."""
+    if await flags.is_enabled("new_checkout"):
+        ...                                                       # caminho novo
+
+
+asyncio.run(main())
 ```
 
 `is_enabled(name)` devolve o valor do flag, ou o `default` do serviço (`False`) quando o flag não existe. Passe `default=True` por chamada para inverter isso pontualmente. Toggle com `enable` / `disable` / `set`, e liste tudo com `all()`.

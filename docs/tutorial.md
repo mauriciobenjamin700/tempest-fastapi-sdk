@@ -414,18 +414,27 @@ Para CRUD simples você não precisa de uma subclasse nenhuma — instancie `Bas
 
 ```python
 # anywhere a session is in scope
+import asyncio
+
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
 
 repository = BaseRepository(session, model=UserModel)
-await repository.add(
-    UserModel(
-        email="ana@example.com",
-        name="Ana",
-        password_hash="<bcrypt-hash>",
+
+
+async def main() -> None:
+    """Run this example."""
+    await repository.add(
+        UserModel(
+            email="ana@example.com",
+            name="Ana",
+            password_hash="<bcrypt-hash>",
+        )
     )
-)
+
+
+asyncio.run(main())
 ```
 
 Subclasse quando quiser embutir mensagens específicas de domínio, trocar a exceção de not-found, sobrescrever os métodos de mapeamento ou adicionar queries custom. A assinatura do construtor (não os atributos de classe) é o contrato:

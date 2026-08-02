@@ -198,8 +198,17 @@ replay offline) recebe a mesma resposta, sem criar tarefa duplicada.
 
 ```python
 # frontend: gera a chave uma vez, reusa em cada tentativa
+import asyncio
+
 key = http.generate_idempotency_key()
-await http.request("POST", "/api/tasks", json={"title": "X"}, idempotency_key=key)
+
+
+async def main() -> None:
+    """Run this example."""
+    await http.request("POST", "/api/tasks", json={"title": "X"}, idempotency_key=key)
+
+
+asyncio.run(main())
 ```
 
 Veja [Idempotência](idempotency.md) para o lado do servidor (TTL, store
@@ -212,13 +221,21 @@ exponencial nas requests seguras (métodos idempotentes, ou qualquer método
 com `idempotency_key`):
 
 ```python
+import asyncio
+
 from tempestweb.native.http import RetryOptions
 
-res = await http.request(
-    "GET",
-    "/api/tasks",
-    retry=RetryOptions(attempts=4, base_delay=0.2, factor=2.0),
-)
+
+async def main() -> None:
+    """Run this example."""
+    res = await http.request(
+        "GET",
+        "/api/tasks",
+        retry=RetryOptions(attempts=4, base_delay=0.2, factor=2.0),
+    )
+
+
+asyncio.run(main())
 ```
 
 ## CORS: mesma origem vs. origem separada

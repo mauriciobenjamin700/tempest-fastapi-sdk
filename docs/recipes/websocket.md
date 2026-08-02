@@ -173,27 +173,43 @@ ws.addEventListener("close", (event) => {
 `WebSocketHub` expõe três patterns:
 
 ```python
-# 1. send_to — todos os sockets de um usuário (multi-tab)
-await hub.send_to(user_id, WSEnvelope(type="notification", data={"text": "..."}))
+import asyncio
 
-# 2. broadcast com topic — só quem se inscreveu naquele tópico
-await hub.broadcast(
-    WSEnvelope(type="order.paid", data={"id": str(order_id)}),
-    topic=f"order:{order_id}",
-)
 
-# 3. broadcast sem topic — TODO mundo conectado (use raramente)
-await hub.broadcast(
-    WSEnvelope(type="system.announcement", data={"text": "Servidor em manutenção"}),
-)
+async def main() -> None:
+    """Run this example."""
+    # 1. send_to — todos os sockets de um usuário (multi-tab)
+    await hub.send_to(user_id, WSEnvelope(type="notification", data={"text": "..."}))
+
+    # 2. broadcast com topic — só quem se inscreveu naquele tópico
+    await hub.broadcast(
+        WSEnvelope(type="order.paid", data={"id": str(order_id)}),
+        topic=f"order:{order_id}",
+    )
+
+    # 3. broadcast sem topic — TODO mundo conectado (use raramente)
+    await hub.broadcast(
+        WSEnvelope(type="system.announcement", data={"text": "Servidor em manutenção"}),
+    )
+
+
+asyncio.run(main())
 ```
 
 Subscription lifecycle controlada pelo handler:
 
 ```python
-await hub.subscribe(connection.connection_id, "order:01HE...")
-# ... mais tarde
-await hub.unsubscribe(connection.connection_id, "order:01HE...")
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    await hub.subscribe(connection.connection_id, "order:01HE...")
+    # ... mais tarde
+    await hub.unsubscribe(connection.connection_id, "order:01HE...")
+
+
+asyncio.run(main())
 ```
 
 Sockets mortos são detectados na hora do `send_to`/`broadcast` (a chamada `send_json` falha) — o hub remove automaticamente do registry.

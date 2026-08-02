@@ -70,6 +70,11 @@ from tempest_fastapi_sdk.agents.memory import scratchpad_tools as scratchpad_too
 from tempest_fastapi_sdk.agents.multi import DEFAULT_MAX_DEPTH as DEFAULT_MAX_DEPTH
 from tempest_fastapi_sdk.agents.multi import agent_tool as agent_tool
 from tempest_fastapi_sdk.agents.multi import team_tools as team_tools
+from tempest_fastapi_sdk.agents.protocols import AgentBackend as AgentBackend
+from tempest_fastapi_sdk.agents.protocols import ChatBackend as ChatBackend
+from tempest_fastapi_sdk.agents.protocols import (
+    ToolCallingBackend as ToolCallingBackend,
+)
 from tempest_fastapi_sdk.agents.router import (
     AgentArtifactSchema as AgentArtifactSchema,
 )
@@ -133,6 +138,7 @@ __all__: list[str] = [
     "Agent",
     "AgentArtifact",
     "AgentArtifactSchema",
+    "AgentBackend",
     "AgentBudget",
     "AgentContext",
     "AgentRun",
@@ -144,6 +150,7 @@ __all__: list[str] = [
     "AgentToolError",
     "BaseAgentRunModel",
     "BaseFactModel",
+    "ChatBackend",
     "DbAgentRunSink",
     "DbFactStore",
     "Fact",
@@ -157,6 +164,7 @@ __all__: list[str] = [
     "StepKind",
     "StopReason",
     "StructuredRun",
+    "ToolCallingBackend",
     "ToolHandler",
     "ToolResult",
     "ToolReturn",

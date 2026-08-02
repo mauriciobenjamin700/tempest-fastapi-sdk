@@ -217,6 +217,25 @@ class TestNew:
         # when switching DATABASE_URL to PostgreSQL.
         assert '# "asyncpg>=0.30.0",' in pyproject
 
+    def test_scaffold_is_not_a_package(self, tmp_path: Path) -> None:
+        """A scaffolded service must declare no build backend.
+
+        Services are deployed, not published, so the generated project sets
+        ``[tool.uv] package = false`` instead of a build-system table. A
+        build backend there makes every ``uv sync`` build a pointless wheel
+        and breaks as soon as the layout diverges from what it expects.
+        """
+        result = runner.invoke(
+            app,
+            ["new", "demo_svc", "--path", str(tmp_path), "--extras", ""],
+        )
+        assert result.exit_code == 0
+        pyproject = (tmp_path / "demo_svc" / "pyproject.toml").read_text()
+        assert "[build-system]" not in pyproject
+        assert "hatchling" not in pyproject
+        assert "[tool.hatch" not in pyproject
+        assert "package = false" in pyproject
+
     def test_empty_extras_drops_bracket_block(self, tmp_path: Path) -> None:
         result = runner.invoke(
             app,

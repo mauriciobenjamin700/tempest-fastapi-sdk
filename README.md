@@ -575,18 +575,27 @@ For plain CRUD you don't need a subclass at all — instantiate `BaseRepository`
 
 ```python
 # anywhere a session is in scope
+import asyncio
+
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
 
 repository = BaseRepository(session, model=UserModel)
-await repository.add(
-    UserModel(
-        email="ana@example.com",
-        name="Ana",
-        password_hash="<bcrypt-hash>",
+
+
+async def main() -> None:
+    """Run this example."""
+    await repository.add(
+        UserModel(
+            email="ana@example.com",
+            name="Ana",
+            password_hash="<bcrypt-hash>",
+        )
     )
-)
+
+
+asyncio.run(main())
 ```
 
 Subclass when you want to bake in domain-specific messages, swap the not-found exception, override the mapper methods or add custom queries. The constructor signature (not class attributes) is the contract:
@@ -1614,7 +1623,15 @@ document_digits = normalize_cpf_cnpj(raw_document)
 The normalizers strip masks before saving, so repository filters and unique constraints all work on the canonical digits-only form:
 
 ```python
-await repo.get({"document": normalize_cpf_cnpj(query)})
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    await repo.get({"document": normalize_cpf_cnpj(query)})
+
+
+asyncio.run(main())
 ```
 
 ---
@@ -2352,18 +2369,27 @@ from tempest_fastapi_sdk.cache import AsyncRedisManager
 
 cache = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
 
-# Lifespan
-await cache.connect()
-...
-await cache.disconnect()
 
-# Direct use
-await cache.client.set("user:123:name", "Ana", ex=300)
-name = await cache.client.get("user:123:name")
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Open the pool on startup, close it on shutdown."""
+    await cache.connect()
+    try:
+        yield
+    finally:
+        await cache.disconnect()
+
 
 # FastAPI dependency — yields the live client.
 from fastapi import Depends
 from redis.asyncio import Redis
+
+
+@router.get("/named")
+async def named_endpoint() -> dict[str, str | None]:
+    """Direct use of the manager's client."""
+    await cache.client.set("user:123:name", "Ana", ex=300)
+    return {"name": await cache.client.get("user:123:name")}
 
 
 @router.get("/cached")
@@ -2491,14 +2517,22 @@ async def handle_order_paid(event: OrderPaid) -> None:
     await mark_order_paid(event.order_id, event.user_id)
 
 
-# src/api/app.py lifespan
-await mq.connect()
-...
-await mq.disconnect()
+# src/api/app.py
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Connect the broker on startup, drain it on shutdown."""
+    await mq.connect()
+    try:
+        yield
+    finally:
+        await mq.disconnect()
 
 
-# Publish from anywhere — channel first, message second
-await mq.publish("orders.paid", OrderPaid(order_id="abc", user_id="x"))
+@app.post("/orders/{order_id}/pay")
+async def pay_order(order_id: str) -> dict[str, str]:
+    """Publish from anywhere — channel first, message second."""
+    await mq.publish("orders.paid", OrderPaid(order_id=order_id, user_id="x"))
+    return {"status": "published"}
 ```
 
 `@mq.on(channel)` declares a consumer (the handler's Pydantic type hint validates each message); `publish(channel, message)` sends it. Lifecycle is `connect()` / `disconnect()` / `lifespan()` / `health_check()` / `is_connected`; the raw broker stays at `mq.broker`. Wire it on the health router with `make_health_router(checks={"queue": mq.health_check})`. See the [Queues and Tasks recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/queue-tasks/) for the full guide.
@@ -2522,16 +2556,27 @@ async def send_welcome_email(to: str, name: str) -> None:
     await email_utils.send(to=to, subject="Welcome!", body=f"Hi, {name}.")
 
 
-# src/api/app.py lifespan
-await tq.connect()
-...
-await tq.disconnect()
+# src/api/app.py
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Connect the task broker on startup, close it on shutdown."""
+    await tq.connect()
+    try:
+        yield
+    finally:
+        await tq.disconnect()
 
 
-# From a request handler: hand it to a worker and return immediately
-await send_welcome_email.enqueue(to=user.email, name=user.name)
-# In tests / reuse: run the body inline and get the real value back
-await send_welcome_email.run(to="a@b.com", name="Ana")
+@app.post("/signup")
+async def signup(email: str, name: str) -> dict[str, str]:
+    """Hand the email to a worker and return immediately."""
+    await send_welcome_email.enqueue(to=email, name=name)
+    return {"status": "queued"}
+
+
+async def test_send_welcome_email() -> None:
+    """In tests / reuse: run the body inline and get the real value back."""
+    await send_welcome_email.run(to="a@b.com", name="Ana")
 ```
 
 `@tq.task` returns a typed `Task` with `enqueue()` (to a worker) and `run()` (inline, no broker). Periodic tasks live on the same object via `@tq.cron(...)` / `@tq.interval(...)`; `tq.broker` / `tq.scheduler` feed the standalone `taskiq worker` / `taskiq scheduler` CLIs. `TaskQueue.memory()` runs tasks synchronously in-process for tests.
@@ -2643,8 +2688,10 @@ for disk in snapshot.disks:
 for gpu in snapshot.gpus:
     print(gpu.name, gpu.utilization_percent, gpu.memory_used_bytes)
 
-# Async — runs every collector concurrently via asyncio.gather
-snapshot = await MetricsUtils.snapshot_async(disk_paths=["/"])
+async def collect() -> None:
+    """Async — runs every collector concurrently via asyncio.gather."""
+    snapshot = await MetricsUtils.snapshot_async(disk_paths=["/"])
+    print(snapshot.cpu.percent)
 
 
 @router.get("/metrics")

@@ -597,28 +597,36 @@ client is injected (you own its lifecycle).
     `uv add "tempest-fastapi-sdk[http]"` (pulls in `httpx`).
 
 ```python
+import asyncio
+
 import httpx
 
 from tempest_fastapi_sdk import WebhookSender, WebhookSignatureVerifier
 
 verifier = WebhookSignatureVerifier(settings.WEBHOOK_SECRET, prefix="sha256=")
 
-async with httpx.AsyncClient() as client:
-    sender = WebhookSender(client, signer=verifier, max_attempts=4)
-    result = await sender.send(
-        "https://subscriber.example.com/hooks",
-        event="order.paid",
-        payload={"id": str(order.id), "total": 4200},
-    )
-    if not result.delivered:
-        # result.status_code / result.attempts / result.error
-        ...  # enqueue for retry, alert, etc.
 
-# Same event to many subscribers, concurrently:
-results = await sender.send_many(
-    [(sub.url, {"id": str(order.id)}) for sub in subscribers],
-    event="order.paid",
-)
+async def main() -> None:
+    """Run this example."""
+    async with httpx.AsyncClient() as client:
+        sender = WebhookSender(client, signer=verifier, max_attempts=4)
+        result = await sender.send(
+            "https://subscriber.example.com/hooks",
+            event="order.paid",
+            payload={"id": str(order.id), "total": 4200},
+        )
+        if not result.delivered:
+            # result.status_code / result.attempts / result.error
+            ...  # enqueue for retry, alert, etc.
+
+    # Same event to many subscribers, concurrently:
+    results = await sender.send_many(
+        [(sub.url, {"id": str(order.id)}) for sub in subscribers],
+        event="order.paid",
+    )
+
+
+asyncio.run(main())
 ```
 
 Each delivery sends `X-Webhook-Event`, `X-Webhook-Id` (a unique uuid) and

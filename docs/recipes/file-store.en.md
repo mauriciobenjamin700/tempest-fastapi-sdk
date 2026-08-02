@@ -52,6 +52,8 @@ Pass an `AsyncMinIOClient` instead of the directory. Nothing else in your code
 changes:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import AsyncMinIOClient, FileStoreUtils
 
 minio = AsyncMinIOClient(
@@ -62,8 +64,14 @@ minio = AsyncMinIOClient(
 )
 store = FileStoreUtils(minio, max_size_bytes=5 * 1024 * 1024)
 
-key = await store.save(file, subdir="users/42")   # writes to the bucket
-url = await store.presigned_get_url(str(key))       # signed read URL
+
+async def main() -> None:
+    """Run this example."""
+    key = await store.save(file, subdir="users/42")   # writes to the bucket
+    url = await store.presigned_get_url(str(key))       # signed read URL
+
+
+asyncio.run(main())
 ```
 
 !!! info "Bucket"
@@ -77,10 +85,18 @@ client download/upload straight from MinIO without streaming the bytes through
 your API:
 
 ```python
+import asyncio
+
 from datetime import timedelta
 
-get_url = await store.presigned_get_url(key, expires=timedelta(hours=1))
-put_url = await store.presigned_put_url(key, expires=timedelta(minutes=15))
+
+async def main() -> None:
+    """Run this example."""
+    get_url = await store.presigned_get_url(key, expires=timedelta(hours=1))
+    put_url = await store.presigned_put_url(key, expires=timedelta(minutes=15))
+
+
+asyncio.run(main())
 ```
 
 !!! note "Local returns `None`"
@@ -119,8 +135,16 @@ store = FileStoreUtils(
 one intact), then deletes the old one — through the same backend:
 
 ```python
-new_key = await store.replace(user.avatar_key, file, filename=f"{user.id}.png")
-user.avatar_key = str(new_key)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    new_key = await store.replace(user.avatar_key, file, filename=f"{user.id}.png")
+    user.avatar_key = str(new_key)
+
+
+asyncio.run(main())
 ```
 
 ## Escape hatches

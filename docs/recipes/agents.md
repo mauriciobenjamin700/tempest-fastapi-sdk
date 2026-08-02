@@ -9,13 +9,20 @@ As ferramentas prontas embrulham os modelos que o SDK já roda localmente:
 texto, imagem, áudio e RAG. Nada de API paga, nada saindo da máquina.
 
 ```bash
-uv add "tempest-fastapi-sdk"        # o módulo em si não precisa de extra
+uv add "tempest-fastapi-sdk[genai]"   # agents não precisa de extra; o modelo, sim
 ```
 
 !!! info "Submódulo, sem extra"
     `from tempest_fastapi_sdk.agents import Agent`. O módulo importa sem
     nenhum extra — o peso está nos objetos que **você** injeta, e cada um
     mantém o próprio carregamento preguiçoso.
+
+!!! warning "O modelo é que puxa o extra"
+    Um agente sem modelo não faz nada, e todo exemplo desta página injeta um
+    `TextGenerator`, que vive em `[genai]`. Sem ele a primeira instanciação
+    levanta `ImportError: Text generation requires the optional [genai]
+    extra.` Vale o mesmo para `[genai-image]`, `[genai-audio]` e
+    `[genai-rag]` nas seções seguintes.
 
 !!! tip "Esta página é a trilha básica"
     Leia na ordem: ela constrói um agente do zero até servi-lo por HTTP.
@@ -25,7 +32,8 @@ uv add "tempest-fastapi-sdk"        # o módulo em si não precisa de extra
 
 ## O primeiro agente
 
-```python
+```python hl_lines="25 28 35"
+import asyncio
 from typing import Any
 
 from tempest_fastapi_sdk.agents import Agent, AgentContext, text_tool
@@ -48,12 +56,18 @@ tool = text_tool(
     },
 )
 
-agent = Agent(TextGenerator("Qwen/Qwen2.5-0.5B-Instruct"), tools=[tool])
-run = await agent.run("Qual o tempo no Recife? Use a ferramenta.")
 
-print(run.output)
-print(run.tool_calls)
-print([(step.kind, step.name) for step in run.steps])
+async def main() -> None:
+    """Run the agent once and print the output plus the step trace."""
+    agent = Agent(TextGenerator("Qwen/Qwen2.5-0.5B-Instruct"), tools=[tool])
+    run = await agent.run("Qual o tempo no Recife? Use a ferramenta.")
+
+    print(run.output)
+    print(run.tool_calls)
+    print([(step.kind, step.name) for step in run.steps])
+
+
+asyncio.run(main())
 ```
 
 ```text
@@ -65,6 +79,13 @@ The weather in Recife is 22 degrees, clear sky.
 Três passos: o modelo pediu a ferramenta, a ferramenta rodou, o modelo leu o
 resultado e respondeu. Tudo isso num modelo de 0.5B rodando em CPU.
 
+!!! warning "`agent.run` é corrotina — precisa de contexto assíncrono"
+    `await` fora de uma função `async` é `SyntaxError`. Por isso a chamada
+    mora em `async def main()` e o script termina com `asyncio.run(main())`
+    — e por isso todo exemplo desta página repete esse envelope. Num
+    endpoint FastAPI (`async def`) você já está em contexto assíncrono:
+    chame `await agent.run(...)` direto, sem `asyncio.run`.
+
 !!! tip "A descrição da ferramenta é o que importa"
     O modelo escolhe pelo `description` — é o único texto que ele lê sobre a
     ferramenta. Vale mais cuidado ali que na implementação.
@@ -72,9 +93,17 @@ resultado e respondeu. Tudo isso num modelo de 0.5B rodando em CPU.
 ## Sempre olhe o `stop_reason`
 
 ```python
-run = await agent.run("uma tarefa longa")
-if not run.succeeded:
-    print("truncado:", run.stop_reason)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    run = await agent.run("uma tarefa longa")
+    if not run.succeeded:
+        print("truncado:", run.stop_reason)
+
+
+asyncio.run(main())
 ```
 
 `succeeded` só é `True` quando o **modelo** decidiu que terminou. Os outros
@@ -168,6 +197,7 @@ built = typed_tool("get_weather", "Get the weather.", WeatherArgs, get_weather_i
 Aqui é onde o módulo encosta no resto do SDK:
 
 ```python
+from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.agents import (
     Agent,
     describe_image_tool,
@@ -176,6 +206,32 @@ from tempest_fastapi_sdk.agents import (
     speak_tool,
     transcribe_audio_tool,
     web_search_tool,
+)
+from tempest_fastapi_sdk.genai import (
+    Embedder,
+    ImageGenerator,
+    TextGenerator,
+    VisionTextGenerator,
+)
+from tempest_fastapi_sdk.genai.audio import SpeechToText, TextToSpeech
+from tempest_fastapi_sdk.genai.rag import (
+    InMemoryVectorStore,
+    Retriever,
+    SearxngBackend,
+    WebSearch,
+)
+
+generator = TextGenerator("Qwen/Qwen2.5-7B-Instruct")
+image_generator = ImageGenerator("stabilityai/sdxl-turbo")
+vision_generator = VisionTextGenerator("Qwen/Qwen2-VL-2B-Instruct")
+speech_to_text = SpeechToText("base")
+text_to_speech = TextToSpeech()
+retriever = Retriever(
+    Embedder("sentence-transformers/all-MiniLM-L6-v2"),
+    InMemoryVectorStore(),
+)
+web_search = WebSearch(
+    SearxngBackend("http://localhost:8080", http_client=HTTPClient()),
 )
 
 agent = Agent(
@@ -190,6 +246,12 @@ agent = Agent(
     ],
 )
 ```
+
+!!! warning "Cada ferramenta puxa o seu extra"
+    `[genai]` (texto), `[genai-image]` (imagem), `[genai-vlm]` (visão),
+    `[genai-audio]` (STT/TTS) e `[genai-rag]` (retriever + busca web).
+    Instale só as que você vai usar — os pesos só são baixados na primeira
+    chamada de cada modelo, não na instanciação acima.
 
 | Ferramenta | Modelo por trás | O que faz |
 | --- | --- | --- |
@@ -211,13 +273,21 @@ agent = Agent(
 É aqui que os **artefatos nomeados** ganham sentido:
 
 ```python
-run = await agent.run(
-    "Desenhe uma bicicleta vermelha como bike.png e depois me diga o que "
-    "aparece na imagem que você criou.",
-)
-for step in run.steps:
-    print(step.kind, step.name, step.artifacts)
-print(run.artifact("bike.png").media_type)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    run = await agent.run(
+        "Desenhe uma bicicleta vermelha como bike.png e depois me diga o que "
+        "aparece na imagem que você criou.",
+    )
+    for step in run.steps:
+        print(step.kind, step.name, step.artifacts)
+    print(run.artifact("bike.png").media_type)
+
+
+asyncio.run(main())
 ```
 
 ```text

@@ -135,12 +135,20 @@ for you.
 `publish()` takes the four spec fields:
 
 ```python
-await stream.publish(
-    {"orderId": "abc", "status": "paid"},  # data: auto-JSON
-    event="order_update",                  # event: front-end listener name
-    id="42",                               # id: becomes Last-Event-ID (resume)
-    retry=3000,                            # retry: reconnect hint (ms)
-)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    await stream.publish(
+        {"orderId": "abc", "status": "paid"},  # data: auto-JSON
+        event="order_update",                  # event: front-end listener name
+        id="42",                               # id: becomes Last-Event-ID (resume)
+        retry=3000,                            # retry: reconnect hint (ms)
+    )
+
+
+asyncio.run(main())
 ```
 
 | Field | What it does |
@@ -567,11 +575,19 @@ The domain publishes **to the exchange** (not to `broker.publish` directly) — 
 it reaches every worker:
 
 ```python
-# from any worker/handler:
-await mq.broker.publish(
-    {"channel": str(user_id), "event": "order_created", "data": {"order_id": str(order.id)}},
-    exchange=sse_exchange,
-)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    # from any worker/handler:
+    await mq.broker.publish(
+        {"channel": str(user_id), "event": "order_created", "data": {"order_id": str(order.id)}},
+        exchange=sse_exchange,
+    )
+
+
+asyncio.run(main())
 ```
 
 !!! tip "Redis is still the simpler path"

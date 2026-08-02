@@ -5735,7 +5735,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.195.0"
+version = "0.196.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -5753,6 +5753,7 @@ dependencies = [
 admin = [
     { name = "itsdangerous" },
     { name = "jinja2" },
+    { name = "python-multipart" },
 ]
 admin-sql = [
     { name = "sqlglot" },
@@ -6050,6 +6051,7 @@ requires-dist = [
     { name = "pymupdf", marker = "extra == 'genai-rag'", specifier = ">=1.24.0" },
     { name = "pyotp", marker = "extra == 'all'", specifier = ">=2.9.0" },
     { name = "pyotp", marker = "extra == 'mfa'", specifier = ">=2.9.0" },
+    { name = "python-multipart", marker = "extra == 'admin'", specifier = ">=0.0.12" },
     { name = "python-multipart", marker = "extra == 'all'", specifier = ">=0.0.12" },
     { name = "python-multipart", marker = "extra == 'upload'", specifier = ">=0.0.12" },
     { name = "pywebpush", marker = "extra == 'all'", specifier = ">=2.0.0" },

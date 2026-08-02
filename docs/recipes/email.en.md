@@ -114,12 +114,20 @@ iterable; the `body` (plain text) is always sent and `html` becomes the
 multipart alternative when present.
 
 ```python
-await mailer.send(
-    to="ana@example.com",
-    subject="Welcome!",
-    body="Your account was created.",
-    html="<p>Your account was <strong>created</strong>.</p>",
-)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    await mailer.send(
+        to="ana@example.com",
+        subject="Welcome!",
+        body="Your account was created.",
+        html="<p>Your account was <strong>created</strong>.</p>",
+    )
+
+
+asyncio.run(main())
 ```
 
 Optional per-message parameters: `cc`, `bcc`, `attachments`
@@ -135,6 +143,8 @@ Autoescaping is on for `.html` / `.htm` / `.xml`.
 
 ```python
 # src/core/mailer.py
+import asyncio
+
 mailer = EmailUtils(
     host=settings.SMTP_HOST,
     port=settings.SMTP_PORT,
@@ -146,12 +156,19 @@ html: str = mailer.render_template(
     "welcome.html",
     {"user_name": "Ana", "app_url": "https://app.example.com"},
 )
-await mailer.send(
-    to="ana@example.com",
-    subject="Welcome!",
-    body="Welcome, Ana!",
-    html=html,
-)
+
+
+async def main() -> None:
+    """Run this example."""
+    await mailer.send(
+        to="ana@example.com",
+        subject="Welcome!",
+        body="Welcome, Ana!",
+        html=html,
+    )
+
+
+asyncio.run(main())
 ```
 
 !!! info "Bundled auth-flow templates"

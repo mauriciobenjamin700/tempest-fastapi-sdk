@@ -202,6 +202,8 @@ refresh) e `create_many(n)` cria várias. Overrides por chamada vencem os
 defaults.
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.testing import ModelFactory, seq
 
 users = ModelFactory(
@@ -212,9 +214,15 @@ users = ModelFactory(
     is_admin=False,
 )
 
-alice = await users.create(is_admin=True)     # 1 linha, um campo trocado
-team = await users.create_many(5)             # 5 linhas, e-mails únicos
-draft = users.build(email="temp@x.com")        # instância não salva
+
+async def main() -> None:
+    """Run this example."""
+    alice = await users.create(is_admin=True)     # 1 linha, um campo trocado
+    team = await users.create_many(5)             # 5 linhas, e-mails únicos
+    draft = users.build(email="temp@x.com")        # instância não salva
+
+
+asyncio.run(main())
 ```
 
 **Sem mágica**: a factory nunca adivinha valor de campo obrigatório —

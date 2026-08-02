@@ -125,15 +125,31 @@ dá `commit` — tudo num passo.
 ## Servir a URL — `file_url`
 
 ```python
-url = await self.file_url(user.profile_picture)            # 1h de validade
-url = await self.file_url(user.profile_picture, expires=timedelta(minutes=5))
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    url = await self.file_url(user.profile_picture)            # 1h de validade
+    url = await self.file_url(user.profile_picture, expires=timedelta(minutes=5))
+
+
+asyncio.run(main())
 ```
 
 Devolve `None` quando a chave é vazia, então você pode jogar o resultado
 direto num campo do schema de resposta sem `if`:
 
 ```python
-response.profile_picture_url = await self.file_url(updated.profile_picture)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    response.profile_picture_url = await self.file_url(updated.profile_picture)
+
+
+asyncio.run(main())
 ```
 
 ## Uma página inteira — `file_urls` *(v0.133.0+)*
@@ -173,7 +189,15 @@ Chaves `None`/vazias são **descartadas** e duplicatas **deduplicadas**, então 
 ## Remover o arquivo — `clear_file`
 
 ```python
-updated = await self.clear_file(user, field="profile_picture")
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    updated = await self.clear_file(user, field="profile_picture")
+
+
+asyncio.run(main())
 ```
 
 Apaga o objeto do storage e zera o campo. Quando o campo já está vazio, é
@@ -184,8 +208,16 @@ um **no-op**: a entidade volta sem `commit` e sem chamar o storage.
 `field=` é só um argumento — o mesmo serviço cuida de quantos campos quiser:
 
 ```python
-await self.set_file(event, cover, field="cover_image", subdir="events/covers")
-await self.set_file(event, banner, field="banner_image", subdir="events/banners")
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    await self.set_file(event, cover, field="cover_image", subdir="events/covers")
+    await self.set_file(event, banner, field="banner_image", subdir="events/banners")
+
+
+asyncio.run(main())
 ```
 
 ## Recapitulando

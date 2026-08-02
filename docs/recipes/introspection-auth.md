@@ -100,8 +100,16 @@ o upstream rejeita recebe **401**; um usuário sem `famacha` no
 4. devolve o dict de claims.
 
 ```python
-claims: dict[str, Any] = await auth.get_claims(credentials)
-# {"sub": "…", "access_apps": ["famacha"], "email": "…", ...}
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    claims: dict[str, Any] = await auth.get_claims(credentials)
+    # {"sub": "…", "access_apps": ["famacha"], "email": "…", ...}
+
+
+asyncio.run(main())
 ```
 
 ### `get_user_id` — o atalho comum
@@ -111,7 +119,15 @@ Na maioria das rotas você só quer o id do usuário, não o dict inteiro.
 faz `UUID(str(claims["sub"]))`:
 
 ```python
-user_id: UUID = await auth.get_user_id(credentials)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    user_id: UUID = await auth.get_user_id(credentials)
+
+
+asyncio.run(main())
 ```
 
 Subject ausente ou que não é um UUID válido vira `UnauthorizedException`.

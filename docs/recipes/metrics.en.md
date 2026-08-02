@@ -90,6 +90,8 @@ queue depth, job duration — use `BusinessMetrics`: a typed factory of
 all shows up on the same `GET /metrics`.
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import BusinessMetrics, make_prometheus_registry
 
 registry = make_prometheus_registry()
@@ -100,8 +102,15 @@ queue = metrics.gauge("queue_depth", "Items in queue")
 job = metrics.histogram("job_seconds", "Job duration", buckets=[0.1, 1, 10])
 
 orders.labels(status="paid").inc()
-queue.set(await repo.count({"status": "pending"}))
-job.observe(elapsed)
+
+
+async def main() -> None:
+    """Run this example."""
+    queue.set(await repo.count({"status": "pending"}))
+    job.observe(elapsed)
+
+
+asyncio.run(main())
 ```
 
 Shows on `/metrics` as `shop_orders_total{status="paid"}`, `shop_queue_depth`,
@@ -147,13 +156,21 @@ async def system_metrics() -> dict[str, Any]:
 ### Individual collectors
 
 ```python
-snapshot = await MetricsUtils.snapshot_async(disk_paths=["/"])
+import asyncio
 
-print(snapshot.cpu.percent, snapshot.memory.percent)
-for disk in snapshot.disks:
-    print(disk.path, disk.percent)
-for gpu in snapshot.gpus:
-    print(gpu.name, gpu.utilization_percent, gpu.memory_used_bytes)
+
+async def main() -> None:
+    """Run this example."""
+    snapshot = await MetricsUtils.snapshot_async(disk_paths=["/"])
+
+    print(snapshot.cpu.percent, snapshot.memory.percent)
+    for disk in snapshot.disks:
+        print(disk.path, disk.percent)
+    for gpu in snapshot.gpus:
+        print(gpu.name, gpu.utilization_percent, gpu.memory_used_bytes)
+
+
+asyncio.run(main())
 ```
 
 Individual collectors are also available: `MetricsUtils.cpu(interval=...)`, `MetricsUtils.memory()`, `MetricsUtils.disk(path)`, `MetricsUtils.disks(paths)`, `MetricsUtils.gpus()` — plus their `*_async` variants. Each one returns a typed dataclass (`CPUMetrics`, `MemoryMetrics`, `DiskMetrics`, `GPUMetrics`, `SystemMetrics`) with a `to_dict()` helper for JSON serialization.

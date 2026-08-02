@@ -242,12 +242,21 @@ CRUD, filters, bulk ops and pagination. There are two ways to use it.
 When you have no custom query, instantiate directly:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
 
 repository = BaseRepository(session, model=UserModel)
-user = await repository.get_by_id(user_id)
+
+
+async def main() -> None:
+    """Run this example."""
+    user = await repository.get_by_id(user_id)
+
+
+asyncio.run(main())
 ```
 
 ### Subclass mode — when you have your own queries
@@ -379,43 +388,51 @@ Recall the project's collection convention: **single-record** lookups
 raise 404; **collection** lookups return `[]`.
 
 ```python
-# Read — single record (404 when missing)
-user = await repository.get_by_id(user_id)
-user = await repository.get({"email": "a@b.com"})
+import asyncio
 
-# Read — may not exist (None, no 404)
-user = await repository.get_or_none({"email": "a@b.com"})
-first = await repository.first({"is_active": True})
 
-# Read — collection (always [], never 404)
-users = await repository.list({"is_active": True})
+async def main() -> None:
+    """Run this example."""
+    # Read — single record (404 when missing)
+    user = await repository.get_by_id(user_id)
+    user = await repository.get({"email": "a@b.com"})
 
-# Existence / count
-exists = await repository.exists({"email": "a@b.com"})
-total = await repository.count({"is_active": True})
+    # Read — may not exist (None, no 404)
+    user = await repository.get_or_none({"email": "a@b.com"})
+    first = await repository.first({"is_active": True})
 
-# "Is this value already used by ANOTHER row?" — uniqueness check on update
-taken = await repository.exists_excluding(
-    {"email": "a@b.com"}, exclude_id=user.id
-)
+    # Read — collection (always [], never 404)
+    users = await repository.list({"is_active": True})
 
-# id-or-instance → instance (no scattered if isinstance in services)
-user = await repository.resolve(user_or_id)
+    # Existence / count
+    exists = await repository.exists({"email": "a@b.com"})
+    total = await repository.count({"is_active": True})
 
-# Write
-created = await repository.add(
-    UserModel(name="Ana", email="ana@x.com", password_hash="...")
-)
-updated = await repository.update(user)         # commits mutations on an attached instance
+    # "Is this value already used by ANOTHER row?" — uniqueness check on update
+    taken = await repository.exists_excluding(
+        {"email": "a@b.com"}, exclude_id=user.id
+    )
 
-# Removal
-await repository.delete(user_id)                # hard delete (404 if missing)
-await repository.delete_many({"is_active": False})  # returns count
-await repository.delete_batch([id1, id2, id3])      # by PK, returns count
+    # id-or-instance → instance (no scattered if isinstance in services)
+    user = await repository.resolve(user_or_id)
 
-# Soft-delete via the is_active flag (no SoftDeleteMixin needed)
-await repository.soft_delete(user_id)           # is_active = False
-await repository.restore(user_id)               # is_active = True
+    # Write
+    created = await repository.add(
+        UserModel(name="Ana", email="ana@x.com", password_hash="...")
+    )
+    updated = await repository.update(user)         # commits mutations on an attached instance
+
+    # Removal
+    await repository.delete(user_id)                # hard delete (404 if missing)
+    await repository.delete_many({"is_active": False})  # returns count
+    await repository.delete_batch([id1, id2, id3])      # by PK, returns count
+
+    # Soft-delete via the is_active flag (no SoftDeleteMixin needed)
+    await repository.soft_delete(user_id)           # is_active = False
+    await repository.restore(user_id)               # is_active = True
+
+
+asyncio.run(main())
 ```
 
 !!! note "`update` expects an attached instance"
@@ -464,19 +481,27 @@ the relationship up front, in the same query. Every read method (`get`,
 `get_or_none`, `get_by_id`, `first`, `list`) accepts `with_=`:
 
 ```python
-# Load the user and its orders in a single round trip
-user = await repository.get_by_id(user_id, with_=["orders"])
-for order in user.orders:      # no lazy load, no MissingGreenlet
-    print(order.total)
+import asyncio
 
-# Several relationships + nested (dotted)
-user = await repository.get_by_id(
-    user_id,
-    with_=["profile", "orders.items"],   # orders → and each order's items
-)
 
-# Works on collections too
-users = await repository.list({"is_active": True}, with_=["orders"])
+async def main() -> None:
+    """Run this example."""
+    # Load the user and its orders in a single round trip
+    user = await repository.get_by_id(user_id, with_=["orders"])
+    for order in user.orders:      # no lazy load, no MissingGreenlet
+        print(order.total)
+
+    # Several relationships + nested (dotted)
+    user = await repository.get_by_id(
+        user_id,
+        with_=["profile", "orders.items"],   # orders → and each order's items
+    )
+
+    # Works on collections too
+    users = await repository.list({"is_active": True}, with_=["orders"])
+
+
+asyncio.run(main())
 ```
 
 Each path uses `selectinload`: N related rows cost **one** extra query
@@ -562,32 +587,48 @@ read-modify-write races: two requests read `10`, both write `9`.
 update:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import F
 
-# stock = stock - 1, in the database
-await repository.bulk_update({"id": product_id}, {"stock": F("stock") - 1})
 
-# arithmetic from either side and between columns
-await repository.bulk_update({"id": pid}, {"stock": 100 - F("stock")})
-await repository.bulk_update({"id": pid}, {"total": F("price") * F("qty")})
+async def main() -> None:
+    """Run this example."""
+    # stock = stock - 1, in the database
+    await repository.bulk_update({"id": product_id}, {"stock": F("stock") - 1})
+
+    # arithmetic from either side and between columns
+    await repository.bulk_update({"id": pid}, {"stock": 100 - F("stock")})
+    await repository.bulk_update({"id": pid}, {"total": F("price") * F("qty")})
+
+
+asyncio.run(main())
 ```
 
 **`Q` — the `OR` / `NOT` the filter dict can't express.** The dict ANDs
 everything; `Q` combines with `&` / `|` / `~` and enters via `where=`:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import Q
 
-# status open OR pending
-open_ = await repository.list(where=Q(status="open") | Q(status="pending"))
 
-# active and NOT guest
-active = await repository.list(where=Q(is_active=True) & ~Q(role="guest"))
+async def main() -> None:
+    """Run this example."""
+    # status open OR pending
+    open_ = await repository.list(where=Q(status="open") | Q(status="pending"))
 
-# combine with the dict (AND): stock >= 5 AND (open OR closed)
-rows = await repository.list(
-    {"stock__gte": 5}, where=Q(status="open") | Q(status="closed")
-)
+    # active and NOT guest
+    active = await repository.list(where=Q(is_active=True) & ~Q(role="guest"))
+
+    # combine with the dict (AND): stock >= 5 AND (open OR closed)
+    rows = await repository.list(
+        {"stock__gte": 5}, where=Q(status="open") | Q(status="closed")
+    )
+
+
+asyncio.run(main())
 ```
 
 `Q` uses the same conventions as the filter dict (`name` ILIKE,
@@ -637,17 +678,25 @@ engine. A `None` value **always skips** the condition (a missing filter ≠
 | any other column | `col == value` | `{"email": "a@b.com"}` |
 
 ```python
-# "active rows updated after the watermark" — timestamp precision
-changed = await repository.list({
-    "is_active": True,
-    "updated_at__gt": watermark,
-})
+import asyncio
 
-# "created between two dates" — whole day
-report = await repository.list({"start_in": start, "end_in": end})
 
-# text search + membership in a set
-hits = await repository.list({"name": "silva", "id": selected_ids})
+async def main() -> None:
+    """Run this example."""
+    # "active rows updated after the watermark" — timestamp precision
+    changed = await repository.list({
+        "is_active": True,
+        "updated_at__gt": watermark,
+    })
+
+    # "created between two dates" — whole day
+    report = await repository.list({"start_in": start, "end_in": end})
+
+    # text search + membership in a set
+    hits = await repository.list({"name": "silva", "id": selected_ids})
+
+
+asyncio.run(main())
 ```
 
 !!! info "`start_in`/`end_in` vs `__gt`/`__lt`"
@@ -686,11 +735,19 @@ class ProductFilter(BasePaginationFilterSchema):
 ```
 
 ```python
-# In the service/repo the whole schema becomes filters + pagination:
-data = await repo.paginate(
-    filters=f.get_conditions(),          # name/category_id__in/price__between/…
-    **f.get_pagination_conditions(),     # page/page_size/order_by/ascending
-)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    # In the service/repo the whole schema becomes filters + pagination:
+    data = await repo.paginate(
+        filters=f.get_conditions(),          # name/category_id__in/price__between/…
+        **f.get_pagination_conditions(),     # page/page_size/order_by/ascending
+    )
+
+
+asyncio.run(main())
 ```
 
 The frontend calls `?category_id__in=1&category_id__in=2&price__between=10&price__between=20`
@@ -711,26 +768,34 @@ families: those that **keep** the unit-of-work (instances refreshed back)
 and those that **bypass** it (a single statement, no refresh).
 
 ```python
-# Keeps the UoW — attached, refreshed instances
-created = await repository.add_all([m1, m2, m3])      # several INSERTs, 1 tx
-updated = await repository.update_many([u1, u2])      # several UPDATEs, 1 tx
+import asyncio
 
-# Bypasses the UoW — one statement, scales better (>= 50 rows)
-n = await repository.bulk_create_values([
-    {"name": "A", "email": "a@x.com", "password_hash": "..."},
-    {"name": "B", "email": "b@x.com", "password_hash": "..."},
-])  # INSERT ... VALUES (...), (...) — returns row count
 
-n = await repository.bulk_update(
-    filters={"is_active": False},
-    values={"is_active": True},
-)  # UPDATE ... WHERE — returns affected row count
+async def main() -> None:
+    """Run this example."""
+    # Keeps the UoW — attached, refreshed instances
+    created = await repository.add_all([m1, m2, m3])      # several INSERTs, 1 tx
+    updated = await repository.update_many([u1, u2])      # several UPDATEs, 1 tx
 
-n = await repository.bulk_upsert(
-    rows=[{"sku": "ABC", "price": 10}, {"sku": "DEF", "price": 20}],
-    conflict_columns=["sku"],          # requires a UNIQUE index
-    update_columns=["price"],          # None = update everything but PK + conflict
-)  # INSERT ... ON CONFLICT DO UPDATE — Postgres and SQLite
+    # Bypasses the UoW — one statement, scales better (>= 50 rows)
+    n = await repository.bulk_create_values([
+        {"name": "A", "email": "a@x.com", "password_hash": "..."},
+        {"name": "B", "email": "b@x.com", "password_hash": "..."},
+    ])  # INSERT ... VALUES (...), (...) — returns row count
+
+    n = await repository.bulk_update(
+        filters={"is_active": False},
+        values={"is_active": True},
+    )  # UPDATE ... WHERE — returns affected row count
+
+    n = await repository.bulk_upsert(
+        rows=[{"sku": "ABC", "price": 10}, {"sku": "DEF", "price": 20}],
+        conflict_columns=["sku"],          # requires a UNIQUE index
+        update_columns=["price"],          # None = update everything but PK + conflict
+    )  # INSERT ... ON CONFLICT DO UPDATE — Postgres and SQLite
+
+
+asyncio.run(main())
 ```
 
 !!! warning "`bulk_update` refuses an empty filter"

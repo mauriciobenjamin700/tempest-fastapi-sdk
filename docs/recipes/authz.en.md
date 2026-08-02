@@ -45,20 +45,36 @@ def only_owner_can_delete(user: UserModel, order: OrderModel) -> bool:
 ### 2. Ask the registry
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.authz import has_perm
 
-allowed: bool = await has_perm(current_user, "order.delete", obj=order)
-if allowed:
-    await repository.delete(order.id)
+
+async def main() -> None:
+    """Run this example."""
+    allowed: bool = await has_perm(current_user, "order.delete", obj=order)
+    if allowed:
+        await repository.delete(order.id)
+
+
+asyncio.run(main())
 ```
 
 Or raise `ForbiddenException` directly on denial:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.authz import check_permission
 
-await check_permission(current_user, "order.delete", obj=order)
-# flow continues if allowed; 403 otherwise
+
+async def main() -> None:
+    """Run this example."""
+    await check_permission(current_user, "order.delete", obj=order)
+    # flow continues if allowed; 403 otherwise
+
+
+asyncio.run(main())
 ```
 
 ### 3. (Optional) Guard the route
@@ -150,7 +166,9 @@ def rule(user: UserModel, order: OrderModel) -> bool:
     return order.owner_id == user.id
 
 
-allowed = await has_perm(user, "order.delete", obj=order, registry=registry)
+async def can_delete(user: UserModel, order: OrderModel) -> bool:
+    """Resolve the rule for one user/order pair."""
+    return await has_perm(user, "order.delete", obj=order, registry=registry)
 ```
 
 ## The `user.has_perm(...)` call site
@@ -158,6 +176,8 @@ allowed = await has_perm(user, "order.delete", obj=order, registry=registry)
 Inherit `PermissionMixin` on your user model for the shortcut:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import BaseUserModel
 from tempest_fastapi_sdk.authz import PermissionMixin
 
@@ -166,9 +186,14 @@ class UserModel(BaseUserModel, PermissionMixin):
     __tablename__ = "users"
 
 
-# anywhere:
-if await user.has_perm("order.delete", obj=order):
-    ...
+async def main() -> None:
+    """Run this example."""
+    # anywhere:
+    if await user.has_perm("order.delete", obj=order):
+        ...
+
+
+asyncio.run(main())
 ```
 
 The mixin delegates to the global registry (`default_registry`).

@@ -421,23 +421,31 @@ o id de **quem deve ser avisado**. O pedido novo avisa o **vendedor**; a
 mensagem nova de chat avisa o **destinatário**:
 
 ```python
-# Pedido novo -> avisa o vendedor (após persistir o pedido):
-await notifications.notify(
-    seller_id,
-    event="order_created",
-    title="Novo pedido",
-    body=f"Pedido de R$ {order.total}",
-    data={"order_id": str(order.id), "total": str(order.total)},
-)
+import asyncio
 
-# Mensagem nova de chat -> avisa o destinatário (após persistir a mensagem):
-await notifications.notify(
-    recipient_id,
-    event="chat_message",
-    title=sender_name,
-    body=preview,
-    data={"room_id": str(conversation_id)},
-)
+
+async def main() -> None:
+    """Run this example."""
+    # Pedido novo -> avisa o vendedor (após persistir o pedido):
+    await notifications.notify(
+        seller_id,
+        event="order_created",
+        title="Novo pedido",
+        body=f"Pedido de R$ {order.total}",
+        data={"order_id": str(order.id), "total": str(order.total)},
+    )
+
+    # Mensagem nova de chat -> avisa o destinatário (após persistir a mensagem):
+    await notifications.notify(
+        recipient_id,
+        event="chat_message",
+        title=sender_name,
+        body=preview,
+        data={"room_id": str(conversation_id)},
+    )
+
+
+asyncio.run(main())
 ```
 
 Por que o `user_id` de cada chamada é diferente:

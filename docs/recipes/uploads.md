@@ -38,6 +38,8 @@ async def upload(file: UploadFile) -> dict[str, str]:
 Passe o `AsyncMinIOClient` direto — nada mais muda:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import AsyncMinIOClient, UploadUtils
 
 from src.core.settings import settings
@@ -45,8 +47,14 @@ from src.core.settings import settings
 minio = AsyncMinIOClient(**settings.minio_kwargs())
 uploads = UploadUtils(minio, max_size_bytes=10 * 1024 * 1024)
 
-# idêntico ao caso local:
-key = await uploads.save(file, filename="logo.png")   # grava no bucket
+
+async def main() -> None:
+    """Run this example."""
+    # idêntico ao caso local:
+    key = await uploads.save(file, filename="logo.png")   # grava no bucket
+
+
+asyncio.run(main())
 ```
 
 !!! tip "Centralize em `resources.py`"
@@ -153,8 +161,16 @@ else:
 ## Operações comuns
 
 ```python
-key = await uploads.save(file, filename="logo.png")  # -> Path("logo.png")
-removed = await uploads.delete(key)                  # async; True/False
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    key = await uploads.save(file, filename="logo.png")  # -> Path("logo.png")
+    removed = await uploads.delete(key)                  # async; True/False
+
+
+asyncio.run(main())
 ```
 
 ### Trocar um arquivo (avatar, anexo) — `replace`
@@ -164,11 +180,19 @@ O caso clássico: o usuário manda uma foto de perfil nova e você quer
 mão (e arriscar apagar pelo backend errado), use `replace`:
 
 ```python
-# old_key é o que está salvo hoje no model (pode ser None no 1º upload)
-new_key = await uploads.replace(
-    user.profile_picture, file, filename=f"{user.id}.jpg"
-)
-user.profile_picture = str(new_key)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    # old_key é o que está salvo hoje no model (pode ser None no 1º upload)
+    new_key = await uploads.replace(
+        user.profile_picture, file, filename=f"{user.id}.jpg"
+    )
+    user.profile_picture = str(new_key)
+
+
+asyncio.run(main())
 ```
 
 !!! tip "A ordem importa — e o `replace` acerta pra você"

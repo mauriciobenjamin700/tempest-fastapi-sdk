@@ -72,8 +72,11 @@ async def lifespan(_: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-# From any service/handler — channel first, message second:
-await mq.publish("orders.paid", OrderPaid(order_id="abc", user_id="u1"))
+@app.post("/orders/{order_id}/pay")
+async def pay_order(order_id: str) -> dict[str, str]:
+    """Publish from any service/handler — channel first, message second."""
+    await mq.publish("orders.paid", OrderPaid(order_id=order_id, user_id="u1"))
+    return {"status": "published"}
 ```
 
 !!! info "Transports"
@@ -165,11 +168,19 @@ async def send_welcome(to: str, name: str) -> None:
 `@tq.task` returns a typed `Task` object with **two** clear actions:
 
 ```python
-# Enqueue to the worker and return immediately (the HTTP response doesn't wait):
-await send_welcome.enqueue(to=user.email, name=user.name)
+import asyncio
 
-# Run inline, right here, returning the real value (handy in tests / reuse):
-await send_welcome.run(to="a@b.com", name="Ana")
+
+async def main() -> None:
+    """Run this example."""
+    # Enqueue to the worker and return immediately (the HTTP response doesn't wait):
+    await send_welcome.enqueue(to=user.email, name=user.name)
+
+    # Run inline, right here, returning the real value (handy in tests / reuse):
+    await send_welcome.run(to="a@b.com", name="Ana")
+
+
+asyncio.run(main())
 ```
 
 !!! tip "`enqueue` instead of `.kiq`"
@@ -198,6 +209,8 @@ Symmetric to consumers: group tasks in a class with `TaskDef`.
 `Task` keyed by method (grouped form).
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.tasks import TaskDef, task_method
 
 
@@ -211,20 +224,27 @@ class NightlyReport(TaskDef):
 
 
 nightly = tq.register(NightlyReport())        # -> Task
-await nightly.enqueue(day="2026-07-05")
 
 
-# Grouped form — many tasks, each method marked with @task_method:
-class ReportTasks(TaskDef):
-    @task_method(name="reports:nightly")
-    async def nightly(self, day: str) -> None: ...
-
-    @task_method()
-    async def weekly(self) -> None: ...
+async def main() -> None:
+    """Run this example."""
+    await nightly.enqueue(day="2026-07-05")
 
 
-tasks = tq.register(ReportTasks())            # -> {"nightly": Task, "weekly": Task}
-await tasks["nightly"].enqueue(day="2026-07-05")
+    # Grouped form — many tasks, each method marked with @task_method:
+    class ReportTasks(TaskDef):
+        @task_method(name="reports:nightly")
+        async def nightly(self, day: str) -> None: ...
+
+        @task_method()
+        async def weekly(self) -> None: ...
+
+
+    tasks = tq.register(ReportTasks())            # -> {"nightly": Task, "weekly": Task}
+    await tasks["nightly"].enqueue(day="2026-07-05")
+
+
+asyncio.run(main())
 ```
 
 The `@tq.task` function decorator is still available — both styles coexist.

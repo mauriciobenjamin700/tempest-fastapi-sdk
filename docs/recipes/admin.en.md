@@ -372,16 +372,24 @@ class AuditLog(BaseAuditLogModel):
 
 ```python
 # write the trail on writes (create/update/delete)
+import asyncio
+
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.db.audit import snapshot_model
 
 repo = BaseRepository(session, model=OrderModel, audit_model=AuditLog)
 
-order = await repo.add_audited(OrderModel(...), actor=str(current_user.id))
 
-before = snapshot_model(order)
-order.status = "shipped"
-await repo.update_audited(order, before, actor=str(current_user.id))
+async def main() -> None:
+    """Run this example."""
+    order = await repo.add_audited(OrderModel(...), actor=str(current_user.id))
+
+    before = snapshot_model(order)
+    order.status = "shipped"
+    await repo.update_audited(order, before, actor=str(current_user.id))
+
+
+asyncio.run(main())
 ```
 
 Then wire the same `audit_model` into the admin:

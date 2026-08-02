@@ -49,8 +49,16 @@ class ProductRepository(BaseRepository[ProductModel]):
 ### Create
 
 ```python
-product = await repo.add_audited(ProductModel(name="Widget"), actor=str(user.id))
-# grava o produto + uma entrada CREATE com {"after": {...}}
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    product = await repo.add_audited(ProductModel(name="Widget"), actor=str(user.id))
+    # grava o produto + uma entrada CREATE com {"after": {...}}
+
+
+asyncio.run(main())
 ```
 
 ### Update — tire um snapshot antes de mutar
@@ -85,8 +93,16 @@ async def rename_product(
 ### Delete
 
 ```python
-await repo.delete_audited(product, actor=str(user.id))
-# apaga a linha + grava uma entrada DELETE com {"before": {...}}
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    await repo.delete_audited(product, actor=str(user.id))
+    # apaga a linha + grava uma entrada DELETE com {"before": {...}}
+
+
+asyncio.run(main())
 ```
 
 !!! warning "Mesma transação"

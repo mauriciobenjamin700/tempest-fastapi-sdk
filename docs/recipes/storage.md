@@ -245,14 +245,22 @@ Chaves **duplicadas são deduplicadas** (cada objeto é assinado/baixado uma vez
 Upload em lote usa `PutObjectItem`, que espelha os argumentos por-objeto de `put_object` (content-type, metadata, length para streams):
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import PutObjectItem
 
-etags = await storage.put_objects(
-    [
-        PutObjectItem(key="thumbs/a.jpg", data=thumb_a, content_type="image/jpeg"),
-        PutObjectItem(key="thumbs/b.jpg", data=thumb_b, content_type="image/jpeg"),
-    ]
-)
+
+async def main() -> None:
+    """Run this example."""
+    etags = await storage.put_objects(
+        [
+            PutObjectItem(key="thumbs/a.jpg", data=thumb_a, content_type="image/jpeg"),
+            PutObjectItem(key="thumbs/b.jpg", data=thumb_b, content_type="image/jpeg"),
+        ]
+    )
+
+
+asyncio.run(main())
 ```
 
 !!! warning "`get_objects_bytes` carrega tudo em memória"
@@ -279,8 +287,16 @@ async def list_files(prefix: str = "") -> list[str]:
 ### Copiar / mover
 
 ```python
-await storage.copy_object("uploads/draft-1", "uploads/final-1")
-await storage.remove_object("uploads/draft-1")
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    await storage.copy_object("uploads/draft-1", "uploads/final-1")
+    await storage.remove_object("uploads/draft-1")
+
+
+asyncio.run(main())
 ```
 
 ## Quando NÃO usar `AsyncMinIOClient`

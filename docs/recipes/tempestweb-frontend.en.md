@@ -200,8 +200,17 @@ creating a duplicate task.
 
 ```python
 # frontend: generate the key once, reuse it across attempts
+import asyncio
+
 key = http.generate_idempotency_key()
-await http.request("POST", "/api/tasks", json={"title": "X"}, idempotency_key=key)
+
+
+async def main() -> None:
+    """Run this example."""
+    await http.request("POST", "/api/tasks", json={"title": "X"}, idempotency_key=key)
+
+
+asyncio.run(main())
 ```
 
 See [Idempotency](idempotency.md) for the server side (TTL, Redis store, which
@@ -214,13 +223,21 @@ backoff for safe requests (idempotent methods, or any method carrying an
 `idempotency_key`):
 
 ```python
+import asyncio
+
 from tempestweb.native.http import RetryOptions
 
-res = await http.request(
-    "GET",
-    "/api/tasks",
-    retry=RetryOptions(attempts=4, base_delay=0.2, factor=2.0),
-)
+
+async def main() -> None:
+    """Run this example."""
+    res = await http.request(
+        "GET",
+        "/api/tasks",
+        retry=RetryOptions(attempts=4, base_delay=0.2, factor=2.0),
+    )
+
+
+asyncio.run(main())
 ```
 
 ## CORS: same origin vs. separate origin

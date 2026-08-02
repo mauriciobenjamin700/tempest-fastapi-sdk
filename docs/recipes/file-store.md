@@ -50,6 +50,8 @@ checa existência (`exists`) e troca (`replace`) — sem instanciar mais nada.
 Passe um `AsyncMinIOClient` no lugar da pasta. Nada mais no seu código muda:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import AsyncMinIOClient, FileStoreUtils
 
 minio = AsyncMinIOClient(
@@ -60,8 +62,14 @@ minio = AsyncMinIOClient(
 )
 store = FileStoreUtils(minio, max_size_bytes=5 * 1024 * 1024)
 
-key = await store.save(file, subdir="users/42")   # grava no bucket
-url = await store.presigned_get_url(str(key))       # URL assinada de leitura
+
+async def main() -> None:
+    """Run this example."""
+    key = await store.save(file, subdir="users/42")   # grava no bucket
+    url = await store.presigned_get_url(str(key))       # URL assinada de leitura
+
+
+asyncio.run(main())
 ```
 
 !!! info "Bucket"
@@ -74,10 +82,18 @@ No backend MinIO, `FileStoreUtils` expõe os dois atalhos de presign — deixe o
 cliente baixar/subir direto do MinIO, sem passar os bytes pela sua API:
 
 ```python
+import asyncio
+
 from datetime import timedelta
 
-get_url = await store.presigned_get_url(key, expires=timedelta(hours=1))
-put_url = await store.presigned_put_url(key, expires=timedelta(minutes=15))
+
+async def main() -> None:
+    """Run this example."""
+    get_url = await store.presigned_get_url(key, expires=timedelta(hours=1))
+    put_url = await store.presigned_put_url(key, expires=timedelta(minutes=15))
+
+
+asyncio.run(main())
 ```
 
 !!! note "Local devolve `None`"
@@ -115,8 +131,16 @@ store = FileStoreUtils(
 intacto), depois apaga o antigo — pelo mesmo backend:
 
 ```python
-new_key = await store.replace(user.avatar_key, file, filename=f"{user.id}.png")
-user.avatar_key = str(new_key)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    new_key = await store.replace(user.avatar_key, file, filename=f"{user.id}.png")
+    user.avatar_key = str(new_key)
+
+
+asyncio.run(main())
 ```
 
 ## Escape hatches

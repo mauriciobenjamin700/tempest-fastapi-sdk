@@ -25,6 +25,8 @@ on the 15th" back into fields, and that breaks the day the model phrases it
 differently.
 
 ```python
+import asyncio
+
 from pydantic import Field
 
 from tempest_fastapi_sdk.agents import Agent
@@ -39,12 +41,17 @@ class WeatherReport(BaseSchema):
     sky: str = Field(description="Sky condition, one word.")
 
 
-run = await agent.run_structured("Get the weather in Recife and report it.", WeatherReport)
+async def main() -> None:
+    """Run this example."""
+    run = await agent.run_structured("Get the weather in Recife and report it.", WeatherReport)
 
-if run.has_data:
-    print(run.data.city, run.data.celsius)
-else:
-    print("no data:", run.parse_error)
+    if run.has_data:
+        print(run.data.city, run.data.celsius)
+    else:
+        print("no data:", run.parse_error)
+
+
+asyncio.run(main())
 ```
 
 ```text
@@ -109,13 +116,22 @@ wrong one is why memory features disappoint. All three are here, all opt-in.
 ### Scratchpad — within one run
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.agents import Agent, AgentContext, scratchpad, scratchpad_tools
 
 agent = Agent(generator, tools=scratchpad_tools())
 
 context = AgentContext()
-run = await agent.run("Total the invoice lines, then apply the discount.", context=context)
-print(scratchpad(context))
+
+
+async def main() -> None:
+    """Run this example."""
+    run = await agent.run("Total the invoice lines, then apply the discount.", context=context)
+    print(scratchpad(context))
+
+
+asyncio.run(main())
 ```
 
 ```text
@@ -135,6 +151,8 @@ everything else for attention.
 ### Facts — durable and editable
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.agents import (
     Agent,
     InMemoryFactStore,
@@ -143,13 +161,20 @@ from tempest_fastapi_sdk.agents import (
 )
 
 store = InMemoryFactStore()
-await store.put("timezone", "America/Recife", subject="user-42")
 
-agent = Agent(
-    generator,
-    tools=fact_tools(store, subject="user-42"),
-    system_prompt=BASE_PROMPT + await facts_prompt(store, subject="user-42"),
-)
+
+async def main() -> None:
+    """Run this example."""
+    await store.put("timezone", "America/Recife", subject="user-42")
+
+    agent = Agent(
+        generator,
+        tools=fact_tools(store, subject="user-42"),
+        system_prompt=BASE_PROMPT + await facts_prompt(store, subject="user-42"),
+    )
+
+
+asyncio.run(main())
 ```
 
 The block injected into the prompt:
@@ -223,13 +248,22 @@ constructor change.
 ### Recall — semantic, across runs
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.agents import Agent, recall_prompt
 
 goal = "Schedule a call with the client."
-agent = Agent(
-    generator,
-    system_prompt=BASE_PROMPT + await recall_prompt(chat_memory, goal, user_id="u1"),
-)
+
+
+async def main() -> None:
+    """Run this example."""
+    agent = Agent(
+        generator,
+        system_prompt=BASE_PROMPT + await recall_prompt(chat_memory, goal, user_id="u1"),
+    )
+
+
+asyncio.run(main())
 ```
 
 ```text
@@ -252,15 +286,23 @@ Nothing stops you using all three — they do not compete, they answer
 different questions:
 
 ```python
-agent = Agent(
-    generator,
-    tools=[*scratchpad_tools(), *fact_tools(store, subject=user_id)],
-    system_prompt=(
-        BASE_PROMPT
-        + await facts_prompt(store, subject=user_id)
-        + await recall_prompt(chat_memory, goal, user_id=user_id)
-    ),
-)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    agent = Agent(
+        generator,
+        tools=[*scratchpad_tools(), *fact_tools(store, subject=user_id)],
+        system_prompt=(
+            BASE_PROMPT
+            + await facts_prompt(store, subject=user_id)
+            + await recall_prompt(chat_memory, goal, user_id=user_id)
+        ),
+    )
+
+
+asyncio.run(main())
 ```
 
 ## Skills: capabilities loaded on demand
@@ -296,8 +338,16 @@ When the model decides the skill applies, it calls `load_skill` and **then**
 receives the full instructions — and the skill's tools come into existence.
 
 ```python
-run = await agent.run("Validate the attached invoice.")
-print(run.tool_calls)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    run = await agent.run("Validate the attached invoice.")
+    print(run.tool_calls)
+
+
+asyncio.run(main())
 ```
 
 ```text
@@ -349,11 +399,20 @@ skill.tools.append(parse_nfe)
 To see what an agent loaded during a run:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.agents import AgentContext, loaded_skills
 
 context = AgentContext()
-run = await agent.run("...", context=context)
-print(loaded_skills(context))
+
+
+async def main() -> None:
+    """Run this example."""
+    run = await agent.run("...", context=context)
+    print(loaded_skills(context))
+
+
+asyncio.run(main())
 ```
 
 ## Delegating to another agent
@@ -363,6 +422,8 @@ knows how to pick a tool by name and read what it returns, so the cheapest
 way to hand work to a specialist is to **make the specialist a tool**.
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.agents import Agent, agent_tool, web_search_tool
 
 researcher = Agent(
@@ -376,9 +437,15 @@ writer = Agent(
     name="writer",
 )
 
-run = await writer.run("Write a short brief about PIX.")
-for step in run.steps:
-    print(step.kind, step.name, len(step.children))
+
+async def main() -> None:
+    """Run this example."""
+    run = await writer.run("Write a short brief about PIX.")
+    for step in run.steps:
+        print(step.kind, step.name, len(step.children))
+
+
+asyncio.run(main())
 ```
 
 ```text
@@ -402,8 +469,16 @@ subtree.
 | **Prefixed artifacts** | What the child produces surfaces on the parent as `researcher/report.md`. Two specialists writing `report.md` cannot clobber each other. |
 
 ```python
-run = await writer.run("...")
-print([a.name for a in run.artifacts])
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    run = await writer.run("...")
+    print([a.name for a in run.artifacts])
+
+
+asyncio.run(main())
 ```
 
 ```text
@@ -441,6 +516,8 @@ A run stops when the **model** says it is done. That often means "out of
 ideas" rather than "good enough".
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.agents import AgentRun, run_until
 
 def parses(run: AgentRun) -> bool:
@@ -452,14 +529,20 @@ def parses(run: AgentRun) -> bool:
         return False
     return run.succeeded
 
-result = await run_until(
-    agent,
-    "Return the data as JSON.",
-    until=parses,
-    max_rounds=4,
-    max_seconds=120,
-)
-print(result.accepted, result.rounds, result.output)
+
+async def main() -> None:
+    """Run this example."""
+    result = await run_until(
+        agent,
+        "Return the data as JSON.",
+        until=parses,
+        max_rounds=4,
+        max_seconds=120,
+    )
+    print(result.accepted, result.rounds, result.output)
+
+
+asyncio.run(main())
 ```
 
 The predicate is where the value is: a check that actually **runs** the
@@ -493,13 +576,21 @@ A second agent reading the first one's output catches what the author
 cannot — the same reason code review works on people.
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.agents import refine
 
-result = await refine(writer, reviewer, "Write the release notes.")
 
-print(result.accepted, result.rounds)
-for iteration in result.iterations:
-    print(iteration.index, iteration.accepted, iteration.critique)
+async def main() -> None:
+    """Run this example."""
+    result = await refine(writer, reviewer, "Write the release notes.")
+
+    print(result.accepted, result.rounds)
+    for iteration in result.iterations:
+        print(iteration.index, iteration.accepted, iteration.critique)
+
+
+asyncio.run(main())
 ```
 
 ```text
@@ -559,9 +650,18 @@ run: the work is done and the caller is already holding the answer.
 ## Moderation
 
 ```python
+import asyncio
+
 agent = Agent(generator, tools=tools, moderator=moderator)
-run = await agent.run("something disallowed")
-print(run.stop_reason, run.output)
+
+
+async def main() -> None:
+    """Run this example."""
+    run = await agent.run("something disallowed")
+    print(run.stop_reason, run.output)
+
+
+asyncio.run(main())
 ```
 
 ```text
@@ -575,8 +675,16 @@ exception.
 ## Watching it work
 
 ```python
-async for step in agent.stream("Draw a cat and describe it"):
-    print(step.index, step.kind, step.name, step.error or step.output[:60])
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    async for step in agent.stream("Draw a cat and describe it"):
+        print(step.index, step.kind, step.name, step.error or step.output[:60])
+
+
+asyncio.run(main())
 ```
 
 The run is finalized (and sent to the sink) once the iterator is exhausted.

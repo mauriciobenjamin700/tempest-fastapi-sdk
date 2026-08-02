@@ -378,15 +378,23 @@ async def nearby_stores(repo: StoreRepository, center: Coordinate) -> list[Store
 OpenStreetMap Nominatim, grátis. Cliente `httpx` injetado, igual OSRM:
 
 ```python
+import asyncio
+
 import httpx
 from tempest_fastapi_sdk.geo import NominatimBackend
 
-async with httpx.AsyncClient() as client:
-    geocoder = NominatimBackend(http_client=client, user_agent="meu-app/1.0")
-    hit = await geocoder.geocode("Av. Paulista, 1578, São Paulo")
-    if hit:
-        print(hit.coordinate, hit.display_name)
-    lugar = await geocoder.reverse(Coordinate(latitude=-23.561, longitude=-46.656))
+
+async def main() -> None:
+    """Run this example."""
+    async with httpx.AsyncClient() as client:
+        geocoder = NominatimBackend(http_client=client, user_agent="meu-app/1.0")
+        hit = await geocoder.geocode("Av. Paulista, 1578, São Paulo")
+        if hit:
+            print(hit.coordinate, hit.display_name)
+        lugar = await geocoder.reverse(Coordinate(latitude=-23.561, longitude=-46.656))
+
+
+asyncio.run(main())
 ```
 
 !!! warning "Política do Nominatim público"
@@ -400,15 +408,23 @@ O OSRM faz mais que ponto-a-ponto: `matrix` calcula N×M numa chamada
 devolve a linha da rota decodificada em `TravelEstimate.geometry`:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.geo import OSRMBackend
 
 backend = OSRMBackend(http_client=client)
 
-matriz = await backend.matrix(origens, destinos)  # DistanceMatrix
-print(matriz.durations_minutes[0][2])  # tempo origem 0 → destino 2
 
-rota = await backend.route(a, b, with_geometry=True)
-desenhar_no_mapa(rota.geometry)  # list[Coordinate]
+async def main() -> None:
+    """Run this example."""
+    matriz = await backend.matrix(origens, destinos)  # DistanceMatrix
+    print(matriz.durations_minutes[0][2])  # tempo origem 0 → destino 2
+
+    rota = await backend.route(a, b, with_geometry=True)
+    desenhar_no_mapa(rota.geometry)  # list[Coordinate]
+
+
+asyncio.run(main())
 ```
 
 `encode_polyline` / `decode_polyline` convertem a linha pro formato
@@ -432,10 +448,19 @@ percorrido = path_length_km(pontos_do_gps)
 ## Brasil: centroide por UF e CEP → coordenada
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.geo import cep_to_coordinate, uf_centroid
 
 pino = uf_centroid("SP")  # centro aproximado do estado, offline
-coord = await cep_to_coordinate("01310-100", geocoder=geocoder)  # via Nominatim
+
+
+async def main() -> None:
+    """Run this example."""
+    coord = await cep_to_coordinate("01310-100", geocoder=geocoder)  # via Nominatim
+
+
+asyncio.run(main())
 ```
 
 ## Recap

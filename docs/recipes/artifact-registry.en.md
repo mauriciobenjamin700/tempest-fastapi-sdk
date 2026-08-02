@@ -61,15 +61,23 @@ def build_registry(session, storage: AsyncMinIOClient) -> ArtifactRegistry[Model
 The three operations:
 
 ```python
-# The served version of "detect" (or None when none has been activated yet).
-current = await registry.current("detect")
+import asyncio
 
-# The current version of every artifact (one current per name).
-rows = await registry.list_current()
 
-# Activate a version: flip is_current on it and clear it on the same-name
-# siblings, all in one transaction.
-activated = await registry.activate(version_id)
+async def main() -> None:
+    """Run this example."""
+    # The served version of "detect" (or None when none has been activated yet).
+    current = await registry.current("detect")
+
+    # The current version of every artifact (one current per name).
+    rows = await registry.list_current()
+
+    # Activate a version: flip is_current on it and clear it on the same-name
+    # siblings, all in one transaction.
+    activated = await registry.activate(version_id)
+
+
+asyncio.run(main())
 ```
 
 !!! note "One current per `name`, enforced on write"
@@ -80,13 +88,21 @@ activated = await registry.activate(version_id)
 Both helpers return `(sha256, size)` **without loading the whole file into memory** (1 MiB chunks) and memoize the result, because the identity is immutable:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.artifacts import file_digest, object_digest
 
-# On-disk file (the bundled fallback), cached by path:
-sha256, size = await file_digest("/opt/models/detect.onnx")
 
-# Object in MinIO, cached by (bucket, key):
-sha256, size = await object_digest(storage, "models", "detect/1.2.0.onnx")
+async def main() -> None:
+    """Run this example."""
+    # On-disk file (the bundled fallback), cached by path:
+    sha256, size = await file_digest("/opt/models/detect.onnx")
+
+    # Object in MinIO, cached by (bucket, key):
+    sha256, size = await object_digest(storage, "models", "detect/1.2.0.onnx")
+
+
+asyncio.run(main())
 ```
 
 ## 4. The manifest
@@ -94,6 +110,8 @@ sha256, size = await object_digest(storage, "models", "detect/1.2.0.onnx")
 `build_manifest_entries` walks the current versions and asks a **`digest_source` you provide** for each row's `(sha256, size)` — that's where you decide where the bytes come from (MinIO for active versions, disk for the bundled fallback).
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.artifacts import (
     ArtifactManifestEntry,
     build_manifest_entries,
@@ -101,14 +119,19 @@ from tempest_fastapi_sdk.artifacts import (
 )
 
 
-async def model_digest(row: ModelVersion) -> tuple[str, int]:
-    """Digest the current version from its MinIO object."""
-    return await object_digest(storage, "models", row.file_key)
+async def main() -> None:
+    """Run this example."""
+    async def model_digest(row: ModelVersion) -> tuple[str, int]:
+        """Digest the current version from its MinIO object."""
+        return await object_digest(storage, "models", row.file_key)
 
 
-entries: list[ArtifactManifestEntry] = await build_manifest_entries(
-    registry, digest_source=model_digest
-)
+    entries: list[ArtifactManifestEntry] = await build_manifest_entries(
+        registry, digest_source=model_digest
+    )
+
+
+asyncio.run(main())
 ```
 
 Each `ArtifactManifestEntry` carries `name`, `version`, `file_key`, `sha256`, `size`. The **final envelope** (download URL, global manifest version, domain fields like `input_size`) is yours to assemble on top:

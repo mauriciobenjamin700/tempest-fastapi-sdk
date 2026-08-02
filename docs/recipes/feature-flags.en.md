@@ -5,12 +5,20 @@ Turn features on and off **without a redeploy**: gradual rollouts, kill-switches
 ## Quick start
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import FeatureFlags, MemoryFeatureFlagBackend
 
 flags = FeatureFlags(MemoryFeatureFlagBackend({"new_checkout": True}))
 
-if await flags.is_enabled("new_checkout"):
-    ...                                                       # new path
+
+async def main() -> None:
+    """Run this example."""
+    if await flags.is_enabled("new_checkout"):
+        ...                                                       # new path
+
+
+asyncio.run(main())
 ```
 
 `is_enabled(name)` returns the flag value, or the service `default` (`False`) when the flag is unset. Pass `default=True` per call to flip that locally. Toggle with `enable` / `disable` / `set`, and list everything with `all()`.

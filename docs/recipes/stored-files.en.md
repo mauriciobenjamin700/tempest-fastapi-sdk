@@ -127,15 +127,31 @@ stores the key and commits — in one step.
 ## Serve the URL — `file_url`
 
 ```python
-url = await self.file_url(user.profile_picture)            # 1h lifetime
-url = await self.file_url(user.profile_picture, expires=timedelta(minutes=5))
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    url = await self.file_url(user.profile_picture)            # 1h lifetime
+    url = await self.file_url(user.profile_picture, expires=timedelta(minutes=5))
+
+
+asyncio.run(main())
 ```
 
 Returns `None` when the key is empty, so you can feed the result straight into
 a response-schema field without an `if`:
 
 ```python
-response.profile_picture_url = await self.file_url(updated.profile_picture)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    response.profile_picture_url = await self.file_url(updated.profile_picture)
+
+
+asyncio.run(main())
 ```
 
 ## A whole page — `file_urls` *(v0.133.0+)*
@@ -175,7 +191,15 @@ async def _load_profile_picture_from_users(
 ## Remove the file — `clear_file`
 
 ```python
-updated = await self.clear_file(user, field="profile_picture")
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    updated = await self.clear_file(user, field="profile_picture")
+
+
+asyncio.run(main())
 ```
 
 Deletes the storage object and nulls the field. When the field is already
@@ -187,8 +211,16 @@ touching storage.
 `field=` is just an argument — one service handles as many fields as you like:
 
 ```python
-await self.set_file(event, cover, field="cover_image", subdir="events/covers")
-await self.set_file(event, banner, field="banner_image", subdir="events/banners")
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    await self.set_file(event, cover, field="cover_image", subdir="events/covers")
+    await self.set_file(event, banner, field="banner_image", subdir="events/banners")
+
+
+asyncio.run(main())
 ```
 
 ## Recap

@@ -358,10 +358,18 @@ Notify a user (all devices, automatic pruning built in) — from any
 service/controller that holds the `WebPushSubscriptionService`:
 
 ```python
-delivered: int = await service.notify_user(
-    user.id,
-    {"title": "Payment confirmed", "body": "Order approved."},
-)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    delivered: int = await service.notify_user(
+        user.id,
+        {"title": "Payment confirmed", "body": "Order approved."},
+    )
+
+
+asyncio.run(main())
 ```
 
 ### Ready-made router (opt-in, bypasses the layers)

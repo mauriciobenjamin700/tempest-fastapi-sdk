@@ -100,6 +100,8 @@ int4/int8, carrega os pesos preguiçosamente (na 1ª chamada) e libera VRAM
 quando ocioso. Requer `[genai]` (e `[genai-quant]` pra quantizar).
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import TextGenerator
 
 gen = TextGenerator(
@@ -108,19 +110,25 @@ gen = TextGenerator(
     idle_unload_seconds=300,        # libera VRAM após 5 min ocioso
 )
 
-texto = await gen.generate("Explique PIX em uma frase.", max_new_tokens=128)
 
-# chat com template de papéis:
-resposta = await gen.chat([
-    {"role": "system", "content": "Você responde em PT-BR."},
-    {"role": "user", "content": "O que é PIX?"},
-])
+async def main() -> None:
+    """Run this example."""
+    texto = await gen.generate("Explique PIX em uma frase.", max_new_tokens=128)
 
-# streaming token a token:
-async for pedaco in gen.stream("Escreva um haiku sobre chuva."):
-    print(pedaco, end="", flush=True)
+    # chat com template de papéis:
+    resposta = await gen.chat([
+        {"role": "system", "content": "Você responde em PT-BR."},
+        {"role": "user", "content": "O que é PIX?"},
+    ])
 
-gen.unload()                        # libera a memória na hora
+    # streaming token a token:
+    async for pedaco in gen.stream("Escreva um haiku sobre chuva."):
+        print(pedaco, end="", flush=True)
+
+    gen.unload()                        # libera a memória na hora
+
+
+asyncio.run(main())
 ```
 
 A geração bloqueante roda em `asyncio.to_thread` — não trava o event loop.
@@ -240,6 +248,8 @@ Rank Fusion** — então "o que o BACEN faz?" acha o chunk que diz "BACEN"
 mesmo com score denso morno. BM25 vem do `rank-bm25` (extra `[genai-rag]`).
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import Embedder
 from tempest_fastapi_sdk.genai.rag import HybridRetriever, InMemoryVectorStore
 
@@ -247,8 +257,15 @@ rag = HybridRetriever(
     Embedder("sentence-transformers/all-MiniLM-L6-v2", normalize=True),
     InMemoryVectorStore(),
 )
-await rag.index(chunks)                              # indexa denso + BM25
-chunks = await rag.search("o que é CNPJ?", top_k=5)  # funde denso + esparso
+
+
+async def main() -> None:
+    """Run this example."""
+    await rag.index(chunks)                              # indexa denso + BM25
+    chunks = await rag.search("o que é CNPJ?", top_k=5)  # funde denso + esparso
+
+
+asyncio.run(main())
 ```
 
 `search(query, top_k, candidates)` pega `candidates` de cada lado e funde
@@ -269,6 +286,8 @@ inteiro, ideal como 2ª etapa sobre os top-N candidatos. Injete um
 cross-encoder afina pra `top_k`.
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import Embedder
 from tempest_fastapi_sdk.genai.rag import InMemoryVectorStore, Reranker, Retriever
 
@@ -277,8 +296,15 @@ rag = Retriever(
     InMemoryVectorStore(),
     reranker=Reranker("cross-encoder/ms-marco-MiniLM-L-6-v2"),
 )
-# search pega max(top_k, rerank_candidates) do store e reordena pra top_k:
-chunks = await rag.search("como estornar?", top_k=5, rerank_candidates=20)
+
+
+async def main() -> None:
+    """Run this example."""
+    # search pega max(top_k, rerank_candidates) do store e reordena pra top_k:
+    chunks = await rag.search("como estornar?", top_k=5, rerank_candidates=20)
+
+
+asyncio.run(main())
 ```
 
 Sem `reranker`, o `Retriever` continua denso puro. O `Reranker` (extra
@@ -546,6 +572,8 @@ RAG, clustering). Carrega o modelo uma vez, faz batch e (opcional) cacheia
 vetor por texto — cache hit nem toca no modelo.
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import Embedder, InMemoryEmbeddingCache
 
 emb = Embedder(
@@ -553,7 +581,13 @@ emb = Embedder(
     cache=InMemoryEmbeddingCache(),     # ou um wrapper Redis (get/set)
 )
 
-vetores = await emb.embed(["o que é pix?", "como estornar?"])   # list[list[float]]
+
+async def main() -> None:
+    """Run this example."""
+    vetores = await emb.embed(["o que é pix?", "como estornar?"])   # list[list[float]]
+
+
+asyncio.run(main())
 ```
 
 O `cache` é qualquer objeto com `get(key)->list|None` e `set(key, val)` —
@@ -565,11 +599,20 @@ Pra busca semântica, use `normalize=True` (vetores unitários) + a função
 `cosine_similarity`:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import cosine_similarity
 
 emb = Embedder("sentence-transformers/all-MiniLM-L6-v2", normalize=True)
-q, *docs = await emb.embed(["pergunta", "doc a", "doc b"])
-ranked = sorted(docs, key=lambda d: cosine_similarity(q, d), reverse=True)
+
+
+async def main() -> None:
+    """Run this example."""
+    q, *docs = await emb.embed(["pergunta", "doc a", "doc b"])
+    ranked = sorted(docs, key=lambda d: cosine_similarity(q, d), reverse=True)
+
+
+asyncio.run(main())
 ```
 
 ### Embeddings ONNX (sem torch)
@@ -581,6 +624,8 @@ Runtime — dependências leves (`onnxruntime` + `tokenizers`, extra
 no `Retriever` / `make_genai_router` sem mudar nada.
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import OnnxEmbedder
 
 emb = OnnxEmbedder(
@@ -588,7 +633,14 @@ emb = OnnxEmbedder(
     tokenizer="sentence-transformers/all-MiniLM-L6-v2",
     normalize=True,
 )
-vectors = await emb.embed(["pergunta", "doc a"])
+
+
+async def main() -> None:
+    """Run this example."""
+    vectors = await emb.embed(["pergunta", "doc a"])
+
+
+asyncio.run(main())
 ```
 
 O pooling é a **média ponderada pela attention mask** dos embeddings de
@@ -603,13 +655,21 @@ coalesce chamadas concorrentes num lote só — cada chamador ainda dá
 `await` no seu próprio resultado:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import BatchScheduler
 
 sched = BatchScheduler(emb._embed_many, max_batch=32, max_wait_ms=10)
 
-# N requests concorrentes viram 1 forward pass:
-vetor = await sched.submit("texto")
-await sched.aclose()
+
+async def main() -> None:
+    """Run this example."""
+    # N requests concorrentes viram 1 forward pass:
+    vetor = await sched.submit("texto")
+    await sched.aclose()
+
+
+asyncio.run(main())
 ```
 
 Forma um lote quando junta `max_batch` itens **ou** passa `max_wait_ms`
@@ -779,13 +839,22 @@ rápido em CPU/GPU). Carrega uma vez, roda em worker thread, serializa
 chamadas por um semáforo.
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai.audio import SpeechToText
 
 stt = SpeechToText("base", device="auto")     # tiny…large-v3
-result = await stt.transcribe("reuniao.wav")
-print(result.text, result.language, result.duration)
-for seg in result.segments:                    # timestamps por trecho
-    print(seg.start, seg.end, seg.text)
+
+
+async def main() -> None:
+    """Run this example."""
+    result = await stt.transcribe("reuniao.wav")
+    print(result.text, result.language, result.duration)
+    for seg in result.segments:                    # timestamps por trecho
+        print(seg.start, seg.end, seg.text)
+
+
+asyncio.run(main())
 ```
 
 Aceita caminho ou `bytes`. `device`/`compute_type` resolvem sozinhos
@@ -797,12 +866,21 @@ Aceita caminho ou `bytes`. `device`/`compute_type` resolvem sozinhos
 (lazy + thread + semáforo).
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai.audio import TextToSpeech
 
 tts = TextToSpeech("tts_models/multilingual/multi-dataset/xtts_v2")
-wav = await tts.synthesize("Olá, mundo.", language="pt")   # -> bytes WAV
-# clonagem de voz (XTTS): passe um clipe de referência
-wav = await tts.synthesize("Oi!", language="pt", speaker_wav="ref.wav")
+
+
+async def main() -> None:
+    """Run this example."""
+    wav = await tts.synthesize("Olá, mundo.", language="pt")   # -> bytes WAV
+    # clonagem de voz (XTTS): passe um clipe de referência
+    wav = await tts.synthesize("Oi!", language="pt", speaker_wav="ref.wav")
+
+
+asyncio.run(main())
 ```
 
 `synthesize` devolve os `bytes` do WAV; passe `out_path=` pra também
@@ -815,14 +893,22 @@ Não precisa saber o código do Whisper nem escolher modelo TTS: use o enum
 por idioma:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai.audio import Language, SpeechToText, TextToSpeech
 
-# STT: força o idioma sem decorar o código
-await SpeechToText("base").transcribe("audio.wav", language=Language.PT_BR)
 
-# TTS: pega o modelo padrão do idioma automaticamente
-tts = TextToSpeech.for_language(Language.PT_BR)     # modelo pt-BR
-wav = await tts.synthesize("Olá, mundo.")
+async def main() -> None:
+    """Run this example."""
+    # STT: força o idioma sem decorar o código
+    await SpeechToText("base").transcribe("audio.wav", language=Language.PT_BR)
+
+    # TTS: pega o modelo padrão do idioma automaticamente
+    tts = TextToSpeech.for_language(Language.PT_BR)     # modelo pt-BR
+    wav = await tts.synthesize("Olá, mundo.")
+
+
+asyncio.run(main())
 ```
 
 `preset_for(Language.PT_BR)` expõe o preset (`whisper_language`,
@@ -845,6 +931,8 @@ pro prompt — tudo sem enviar dados pra fora. Requer o extra `[genai-rag]`
 ### Busca web (SearXNG)
 
 ```python
+import asyncio
+
 import httpx
 from tempest_fastapi_sdk.genai.rag import SearxngBackend, WebSearch, build_context
 from tempest_fastapi_sdk.utils.http_client import HTTPClient
@@ -852,9 +940,15 @@ from tempest_fastapi_sdk.utils.http_client import HTTPClient
 client = HTTPClient()
 search = WebSearch(SearxngBackend("http://localhost:8080", http_client=client))
 
-results = await search.search("o que é PIX?", max_results=5)   # list[SearchResult]
-context = build_context("o que é PIX?", results, long_text=False, max_chars=2000)
-# -> string pronta pra injetar no prompt do seu TextGenerator
+
+async def main() -> None:
+    """Run this example."""
+    results = await search.search("o que é PIX?", max_results=5)   # list[SearchResult]
+    context = build_context("o que é PIX?", results, long_text=False, max_chars=2000)
+    # -> string pronta pra injetar no prompt do seu TextGenerator
+
+
+asyncio.run(main())
 ```
 
 O backend é um `Protocol` (`WebSearchBackend`) — troque o SearXNG por
@@ -883,13 +977,22 @@ O snippet do buscador é raso. Pra dar "verdade" pra LLM, busque cada
 página e extraia o texto limpo (via `trafilatura`):
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai.rag import ContentExtractor
 
 extractor = ContentExtractor(http_client=httpx.AsyncClient())
-for result in results:
-    outcome = await extractor.extract(result.url)
-    result.content = outcome.text          # "" quando falha; outcome.failed marca
-context = build_context("o que é PIX?", results)   # agora com corpo completo
+
+
+async def main() -> None:
+    """Run this example."""
+    for result in results:
+        outcome = await extractor.extract(result.url)
+        result.content = outcome.text          # "" quando falha; outcome.failed marca
+    context = build_context("o que é PIX?", results)   # agora com corpo completo
+
+
+asyncio.run(main())
 ```
 
 Falhas (timeout, 4xx/5xx, página sem corpo) **nunca** levantam — voltam
@@ -930,15 +1033,23 @@ e recupere por similaridade. `Retriever` amarra `Embedder` → store →
 `build_context`:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import Embedder
 from tempest_fastapi_sdk.genai.rag import InMemoryVectorStore, PdfReader, Retriever
 
 rag = Retriever(Embedder("sentence-transformers/all-MiniLM-L6-v2", normalize=True),
                 InMemoryVectorStore())
 
-await rag.index(PdfReader().chunks("/kb/manual.pdf"))     # uma vez
-context = await rag.retrieve("como estornar?", top_k=5)   # depois, barato
-answer = await gen.generate(context)
+
+async def main() -> None:
+    """Run this example."""
+    await rag.index(PdfReader().chunks("/kb/manual.pdf"))     # uma vez
+    context = await rag.retrieve("como estornar?", top_k=5)   # depois, barato
+    answer = await gen.generate(context)
+
+
+asyncio.run(main())
 ```
 
 - **`VectorStore`** é um `Protocol` — `InMemoryVectorStore` (dev/testes,
@@ -967,13 +1078,21 @@ por cada chamada, monte um `GenerationConfig` validado e reutilizável e
 passe via `config=`:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import GenerationConfig, TextGenerator
 
 gen = TextGenerator("Qwen/Qwen2.5-7B-Instruct", quantization="int4")
 config = GenerationConfig(max_new_tokens=512, temperature=0.2, top_p=0.9)
 
-await gen.generate("Explique PIX em uma frase.", config=config)
-await gen.chat([{"role": "user", "content": "Oi"}], config=config)
+
+async def main() -> None:
+    """Run this example."""
+    await gen.generate("Explique PIX em uma frase.", config=config)
+    await gen.chat([{"role": "user", "content": "Oi"}], config=config)
+
+
+asyncio.run(main())
 ```
 
 Só os campos definidos entram sobre os defaults; `**kwargs` explícitos
@@ -994,6 +1113,8 @@ Force o modelo a devolver um schema Pydantic e receba a instância já
 validada — em vez de torcer pra saída ser um JSON parseável:
 
 ```python
+import asyncio
+
 from pydantic import BaseModel
 from tempest_fastapi_sdk.genai import OllamaGenerator
 
@@ -1004,8 +1125,15 @@ class Pessoa(BaseModel):
 
 
 gen = OllamaGenerator("llama3.2")
-pessoa: Pessoa = await gen.generate_structured("Uma pessoa qualquer.", Pessoa)
-# -> Pessoa(nome="...", idade=...)
+
+
+async def main() -> None:
+    """Run this example."""
+    pessoa: Pessoa = await gen.generate_structured("Uma pessoa qualquer.", Pessoa)
+    # -> Pessoa(nome="...", idade=...)
+
+
+asyncio.run(main())
 ```
 
 O `OllamaGenerator` manda o schema no campo `format` do daemon (o Ollama
@@ -1033,12 +1161,21 @@ plugável. Dois backends satisfazem o `ModerationBackend` e devolvem um
 `ModerationResult` (`flagged`, `categories`, `score`):
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import RuleModerator
 
 mod = RuleModerator(["palavrão", "termo-proibido"], category="abuso")
-verdict = await mod.check(user_input)
-if verdict.flagged:
-    ...   # bloqueie ou anote, conforme a política
+
+
+async def main() -> None:
+    """Run this example."""
+    verdict = await mod.check(user_input)
+    if verdict.flagged:
+        ...   # bloqueie ou anote, conforme a política
+
+
+asyncio.run(main())
 ```
 
 `RuleModerator` é dep-free e previsível (block-list whole-word,
@@ -1056,11 +1193,20 @@ rotulados por modelo e operação. Reusa o `prometheus-client` (extra
 `PrometheusMiddleware`/`/metrics` do SDK). É **opt-in**:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import GenAIMetrics, OllamaGenerator
 
 metrics = GenAIMetrics()
 gen = OllamaGenerator("llama3.2", metrics=metrics)
-await gen.generate("Explique PIX.")   # registra request + latência + tokens
+
+
+async def main() -> None:
+    """Run this example."""
+    await gen.generate("Explique PIX.")   # registra request + latência + tokens
+
+
+asyncio.run(main())
 ```
 
 `OllamaGenerator`, `TextGenerator` e `Embedder` aceitam `metrics=` e
@@ -1070,9 +1216,17 @@ qualquer outra chamada, envolva com o context manager e informe os tokens
 que souber:
 
 ```python
-async with metrics.track("meu-modelo", "generate") as span:
-    span.tokens_out = 128
-    ...  # roda o modelo
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    async with metrics.track("meu-modelo", "generate") as span:
+        span.tokens_out = 128
+        ...  # roda o modelo
+
+
+asyncio.run(main())
 ```
 
 ### Tracing distribuído (OpenTelemetry)
@@ -1106,11 +1260,19 @@ uma exceção marca o span como `ERROR` e a registra.
 Pra instrumentar uma chamada própria, use o mesmo context manager:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import genai_span
 
-async with genai_span("generate", "meu-modelo") as span:
-    span.tokens_out = 128
-    ...  # roda o modelo
+
+async def main() -> None:
+    """Run this example."""
+    async with genai_span("generate", "meu-modelo") as span:
+        span.tokens_out = 128
+        ...  # roda o modelo
+
+
+asyncio.run(main())
 ```
 
 ### Contagem de tokens e janela de contexto
@@ -1141,6 +1303,8 @@ numa repetição. Passe um cache no gerador; só chamadas determinísticas são
 cacheadas (sampling nunca, pra não devolver amostra velha):
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import (
     GenerationConfig,
     InMemoryGenerationCache,
@@ -1149,8 +1313,15 @@ from tempest_fastapi_sdk.genai import (
 
 gen = OllamaGenerator("llama3.2", generation_cache=InMemoryGenerationCache())
 cfg = GenerationConfig(temperature=0)   # determinístico → cacheável
-await gen.generate("Explique PIX.", config=cfg)   # roda o modelo
-await gen.generate("Explique PIX.", config=cfg)   # servido do cache
+
+
+async def main() -> None:
+    """Run this example."""
+    await gen.generate("Explique PIX.", config=cfg)   # roda o modelo
+    await gen.generate("Explique PIX.", config=cfg)   # servido do cache
+
+
+asyncio.run(main())
 ```
 
 `InMemoryGenerationCache` é local ao processo; `RedisGenerationCache`
@@ -1165,13 +1336,22 @@ imagens, no seu hardware. Paridade com o `OllamaGenerator`, que já aceita
 `images`. Requer `[genai]` + `[genai-vlm]` (Pillow).
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import VisionTextGenerator
 
 gen = VisionTextGenerator("llava-hf/llava-1.5-7b-hf")
-descricao = await gen.generate(
-    "USER: <image>\nDescreva a imagem.\nASSISTANT:",
-    images=["foto.jpg"],
-)
+
+
+async def main() -> None:
+    """Run this example."""
+    descricao = await gen.generate(
+        "USER: <image>\nDescreva a imagem.\nASSISTANT:",
+        images=["foto.jpg"],
+    )
+
+
+asyncio.run(main())
 ```
 
 As imagens entram como caminho, `bytes`, `PIL.Image` ou `ndarray` NumPy
@@ -1224,6 +1404,8 @@ assíncrono. Troque por `RedisEmbeddingCache` para compartilhar vetores
 entre processos sem mudar o call site:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.cache import AsyncRedisManager
 from tempest_fastapi_sdk.genai import Embedder, RedisEmbeddingCache
 
@@ -1235,7 +1417,13 @@ redis = AsyncRedisManager(**settings.redis_kwargs())
 cache = RedisEmbeddingCache(redis.client, ttl_seconds=86400)
 embedder = Embedder("sentence-transformers/all-MiniLM-L6-v2", cache=cache)
 
-await embedder.embed(["texto"])  # 1ª vez calcula; próximos workers reaproveitam
+
+async def main() -> None:
+    """Run this example."""
+    await embedder.embed(["texto"])  # 1ª vez calcula; próximos workers reaproveitam
+
+
+asyncio.run(main())
 ```
 
 O `Embedder` aguarda `get`/`set` quando o cache é assíncrono e chama

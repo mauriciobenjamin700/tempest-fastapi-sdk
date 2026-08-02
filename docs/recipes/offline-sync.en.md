@@ -228,14 +228,22 @@ suffix on any `filters`. Available in `list`, `paginate`, `cursor_paginate`,
 `count` and so on.
 
 ```python
-# updated_at > watermark (timestamp precision)
-await repo.list(filters={"updated_at__gt": watermark})
+import asyncio
 
-# range: 1 <= value <= 10
-await repo.list(filters={"value__gte": 1, "value__lte": 10})
 
-# not equal
-await repo.list(filters={"status__ne": "archived"})
+async def main() -> None:
+    """Run this example."""
+    # updated_at > watermark (timestamp precision)
+    await repo.list(filters={"updated_at__gt": watermark})
+
+    # range: 1 <= value <= 10
+    await repo.list(filters={"value__gte": 1, "value__lte": 10})
+
+    # not equal
+    await repo.list(filters={"status__ne": "archived"})
+
+
+asyncio.run(main())
 ```
 
 Operators: `gt`, `gte`, `lt`, `lte`, `ne`. A `None` value skips the condition,

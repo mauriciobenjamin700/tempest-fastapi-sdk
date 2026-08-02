@@ -5,6 +5,93 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.196.0] — 2026-08-02
+
+### Added
+
+- **`TextModel`, `EmbeddingModel`, `RerankerModel`, `VisionModel`,
+  `ImageModel`, `SpeechToTextModel`, `TextToSpeechModel`** — `StrEnum`s
+  naming the model ids the SDK is exercised against, exported from
+  `tempest_fastapi_sdk.genai`. Every constructor still takes a plain
+  `str`; the enums exist so a typo is a `NameError` at import instead of
+  a 404 mid-download, and so the choice itself is documented:
+
+  ```python
+  from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+
+  gen = TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT)
+  ```
+
+  The new recipe **Escolhendo o modelo / Choosing a model** carries the
+  use-case table behind each pick — size, VRAM, language coverage, and
+  the traps (E5 needs `query: ` / `passage: ` prefixes; a turbo image
+  checkpoint wants ~4 steps where a full one wants ~30; changing the
+  embedder invalidates an existing index).
+
+- **`ChatBackend` and `ToolCallingBackend` protocols** in
+  `tempest_fastapi_sdk.agents`, with `AgentBackend` as the union. `Agent`
+  now takes `generator: AgentBackend` instead of `generator: Any`, so
+  passing an embedder or a bare string is a type error at the call site
+  rather than an `AttributeError` inside the loop. `TextGenerator` and
+  `OllamaGenerator` satisfy `ToolCallingBackend` unchanged.
+
+### Fixed
+
+- **`tempest new` scaffolded services as installable packages.** The
+  generated `pyproject.toml` carried a `[build-system]` table (hatchling)
+  plus `[tool.hatch.build.targets.wheel] packages = ["src"]`. A service is
+  deployed, never published — so every `uv sync` / `uv add` built and
+  installed a wheel out of `src/` for nothing, and any deviation from the
+  layout the build backend expects turned a routine dependency change into
+  a build failure.
+
+  The scaffold now declares `[tool.uv] package = false` instead. Imports are
+  unaffected: `python main.py` runs from the project root, and
+  `tests/__init__.py` makes pytest prepend that same root to `sys.path`.
+
+  Existing projects apply the same fix by hand — drop the `[build-system]`
+  and `[tool.hatch.build.targets.wheel]` tables, then add:
+
+  ```toml
+  [tool.uv]
+  package = false
+  ```
+
+- **The `[admin]` extra was missing `python-multipart`.** The admin login
+  route declares `identifier: str = Form(...)`, and FastAPI raises at import
+  time when `python-multipart` is absent:
+
+  ```text
+  RuntimeError: Form data requires "python-multipart" to be installed.
+  ```
+
+  `tempest new` enables `admin` by default, so a freshly scaffolded service
+  crashed inside `create_app()` unless `[upload]` happened to be installed
+  too. `python-multipart>=0.0.12` is now a hard dependency of the extra.
+
+- **186 documented examples awaited at module level.** Copy-pasting one
+  into a file raised `SyntaxError: 'await' outside function` before it did
+  anything — the docs promise runnable examples and these were not. Every
+  offending fence across 75 pages (both languages plus the README) now
+  wraps the awaiting part in `async def main()` and ends with
+  `asyncio.run(main())`, or moves it into the FastAPI endpoint / lifespan
+  it belongs to.
+
+  `tests/test_docs_examples_compile.py` keeps it from coming back: it
+  `compile()`s every Python fence in `docs/` and `README.md` and fails on
+  async-context errors. It uses `compile()`, not `ast.parse()` — the
+  "await outside function" rule is enforced by the symtable pass, so
+  `ast.parse("x = await f()")` succeeds and a guard built on it would be
+  silently vacuous.
+
+- **The agents recipe told readers no extra was needed.** The install line
+  said `uv add "tempest-fastapi-sdk"`, then every example injected a
+  `TextGenerator` — which raises `ImportError: Text generation requires the
+  optional [genai] extra.` on first instantiation. The page now installs
+  `[genai]` and says which extra each tool pulls in, and the "tools over
+  your local models" example instantiates every model it passes instead of
+  referencing undefined names.
+
 ## [0.195.0] — 2026-08-02
 
 ### Fixed

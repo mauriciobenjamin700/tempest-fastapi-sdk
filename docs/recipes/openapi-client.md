@@ -182,12 +182,20 @@ terceiro: TerceiroClient = TerceiroClient(terceiro_http)
 E usando:
 
 ```python
-customers = await terceiro.list_customers(
-    page_size=25,
-    status=CustomerStatus.PAST_DUE,
-)
-for customer in customers:
-    print(customer.email_address, customer.created_at)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    customers = await terceiro.list_customers(
+        page_size=25,
+        status=CustomerStatus.PAST_DUE,
+    )
+    for customer in customers:
+        print(customer.email_address, customer.created_at)
+
+
+asyncio.run(main())
 ```
 
 !!! check "Testável sem rede"

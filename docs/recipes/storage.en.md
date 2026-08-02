@@ -245,14 +245,22 @@ Duplicate keys are **collapsed** (each object is signed/fetched once), and the r
 Batch upload uses `PutObjectItem`, which mirrors the per-object arguments of `put_object` (content type, metadata, length for streams):
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import PutObjectItem
 
-etags = await storage.put_objects(
-    [
-        PutObjectItem(key="thumbs/a.jpg", data=thumb_a, content_type="image/jpeg"),
-        PutObjectItem(key="thumbs/b.jpg", data=thumb_b, content_type="image/jpeg"),
-    ]
-)
+
+async def main() -> None:
+    """Run this example."""
+    etags = await storage.put_objects(
+        [
+            PutObjectItem(key="thumbs/a.jpg", data=thumb_a, content_type="image/jpeg"),
+            PutObjectItem(key="thumbs/b.jpg", data=thumb_b, content_type="image/jpeg"),
+        ]
+    )
+
+
+asyncio.run(main())
 ```
 
 !!! warning "`get_objects_bytes` loads everything in memory"
@@ -279,8 +287,16 @@ async def list_files(prefix: str = "") -> list[str]:
 ### Copy / move
 
 ```python
-await storage.copy_object("uploads/draft-1", "uploads/final-1")
-await storage.remove_object("uploads/draft-1")
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    await storage.copy_object("uploads/draft-1", "uploads/final-1")
+    await storage.remove_object("uploads/draft-1")
+
+
+asyncio.run(main())
 ```
 
 ## When NOT to use `AsyncMinIOClient`

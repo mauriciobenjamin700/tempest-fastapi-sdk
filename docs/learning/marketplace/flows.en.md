@@ -268,13 +268,21 @@ the order became `SHIPPED`), it makes **one call** — it neither knows nor care
 that there are two channels underneath:
 
 ```python
-await self.notifications.notify(
-    order.buyer_id,
-    event="order_shipped",
-    title="Order on its way",
-    body=f"Order {order.code} is out for delivery.",
-    data={"order_id": str(order.id), "status": order.status},
-)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    await self.notifications.notify(
+        order.buyer_id,
+        event="order_shipped",
+        title="Order on its way",
+        body=f"Order {order.code} is out for delivery.",
+        data={"order_id": str(order.id), "status": order.status},
+    )
+
+
+asyncio.run(main())
 ```
 
 What each argument does:

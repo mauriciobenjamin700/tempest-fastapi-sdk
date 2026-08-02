@@ -32,15 +32,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(lifespan=lifespan)
 
-# Uso direto (dentro de um handler, depois do startup do lifespan)
-await cache.client.set("user:123:name", "Ana", ex=300)
-name = await cache.client.get("user:123:name")
-
 # Dependência FastAPI — entrega o client ativo.
 from fastapi import APIRouter, Depends
 from redis.asyncio import Redis
 
 router = APIRouter()
+
+
+@router.get("/named")
+async def named_endpoint() -> dict[str, str | None]:
+    """Use the manager's client directly, after lifespan startup ran."""
+    await cache.client.set("user:123:name", "Ana", ex=300)
+    name = await cache.client.get("user:123:name")
+    return {"name": name}
 
 
 @router.get("/cached")

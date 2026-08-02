@@ -19,12 +19,20 @@ If your frontend does not validate length, it starts receiving 422 where it rece
 Contract change in `cursor_paginate`: it used to raise `ValueError` there. Code catching `ValueError` around it needs updating:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.exceptions import ValidationException
 
-try:
-    page = await repo.cursor_paginate(order_by=filters.order_by)
-except ValidationException:
-    ...
+
+async def main() -> None:
+    """Run this example."""
+    try:
+        page = await repo.cursor_paginate(order_by=filters.order_by)
+    except ValidationException:
+        ...
+
+
+asyncio.run(main())
 ```
 
 `ValueError` still signals a malformed cursor.

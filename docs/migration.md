@@ -19,12 +19,20 @@ Se o seu frontend não valida comprimento, ele passa a receber 422 onde recebia 
 Mudança de contrato em `cursor_paginate`: ele levantava `ValueError` nesse caso. Quem tinha `except ValueError` em volta precisa ajustar:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.exceptions import ValidationException
 
-try:
-    page = await repo.cursor_paginate(order_by=filters.order_by)
-except ValidationException:
-    ...
+
+async def main() -> None:
+    """Run this example."""
+    try:
+        page = await repo.cursor_paginate(order_by=filters.order_by)
+    except ValidationException:
+        ...
+
+
+asyncio.run(main())
 ```
 
 `ValueError` continua sendo o erro de cursor malformado.

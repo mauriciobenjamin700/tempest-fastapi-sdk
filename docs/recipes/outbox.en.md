@@ -107,7 +107,15 @@ For loop-free scenarios (a test, a cron job), call `drain_once()`, which
 returns how many events were published:
 
 ```python
-published: int = await relay.drain_once()
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    published: int = await relay.drain_once()
+
+
+asyncio.run(main())
 ```
 
 ## Recap

@@ -91,7 +91,15 @@ def validate_document(raw_document: str) -> str:
 Os normalizadores removem as máscaras antes de salvar, então os filtros de repository e as constraints de unicidade funcionam sobre a forma canônica só-dígitos:
 
 ```python
-await repo.get({"document": normalize_cpf_cnpj(query)})
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    await repo.get({"document": normalize_cpf_cnpj(query)})
+
+
+asyncio.run(main())
 ```
 
 ---

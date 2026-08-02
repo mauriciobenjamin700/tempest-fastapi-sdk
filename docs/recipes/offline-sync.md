@@ -228,14 +228,22 @@ Esta é a parte que costuma dar bug. Siga à risca:
 `cursor_paginate`, `count` etc.
 
 ```python
-# updated_at > watermark (precisão de timestamp)
-await repo.list(filters={"updated_at__gt": watermark})
+import asyncio
 
-# faixa: 1 <= value <= 10
-await repo.list(filters={"value__gte": 1, "value__lte": 10})
 
-# diferente de
-await repo.list(filters={"status__ne": "archived"})
+async def main() -> None:
+    """Run this example."""
+    # updated_at > watermark (precisão de timestamp)
+    await repo.list(filters={"updated_at__gt": watermark})
+
+    # faixa: 1 <= value <= 10
+    await repo.list(filters={"value__gte": 1, "value__lte": 10})
+
+    # diferente de
+    await repo.list(filters={"status__ne": "archived"})
+
+
+asyncio.run(main())
 ```
 
 Operadores: `gt`, `gte`, `lt`, `lte`, `ne`. Um valor `None` ignora a condição,

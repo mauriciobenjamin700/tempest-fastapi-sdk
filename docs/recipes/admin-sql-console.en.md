@@ -208,13 +208,22 @@ effect, a dialect quirk — leaves nothing behind.
 The service does not depend on the page:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.admin import SqlShellDenied, SqlShellService
 
 service = SqlShellService(db, policy=policy, dialect="postgres")
-try:
-    result = await service.execute("SELECT 1", principal="job@internal")
-except SqlShellDenied as exc:
-    print("refused:", exc)
+
+
+async def main() -> None:
+    """Run this example."""
+    try:
+        result = await service.execute("SELECT 1", principal="job@internal")
+    except SqlShellDenied as exc:
+        print("refused:", exc)
+
+
+asyncio.run(main())
 ```
 
 ## Checklist before enabling in production

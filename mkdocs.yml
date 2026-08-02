@@ -108,6 +108,7 @@ plugins:
               - Brazilian helpers: recipes/br-helpers.md
               - Cache: recipes/cache.md
               - Chat (conversations + messages): recipes/chat.md
+              - Choosing a model: recipes/models.md
               - CLI: recipes/cli.md
               - Comments + ratings: recipes/reviews.md
               - Complete examples:
@@ -251,6 +252,7 @@ plugins:
             "Campos validados (tipos prontos)": "Validated fields (ready-made types)"
             "Management commands (tempest <cmd>)": "Management commands (tempest <cmd>)"
             "IA generativa self-hosted": "Self-hosted generative AI"
+            "Escolhendo o modelo": "Choosing a model"
             "Observabilidade (tracing)": "Observability (tracing)"
             "Refresh tokens (rotação/revogação)": "Refresh tokens (rotation/revocation)"
             "System checks (check-config)": "System checks (check-config)"
@@ -361,6 +363,7 @@ nav:
       - Downloads: recipes/downloads.md
       - Email transacional: recipes/email.md
       - "Erros no OpenAPI (Swagger)": recipes/openapi-errors.md
+      - "Escolhendo o modelo": recipes/models.md
       - "Exemplos completos":
           - "Exemplo integrado (admin completo)": admin-showcase.md
           - "Exemplo integrado (checkout Pix)": integrated.md

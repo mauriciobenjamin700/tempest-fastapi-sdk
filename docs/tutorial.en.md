@@ -415,18 +415,27 @@ For plain CRUD you don't need a subclass at all — instantiate `BaseRepository`
 
 ```python
 # anywhere a session is in scope
+import asyncio
+
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
 
 repository = BaseRepository(session, model=UserModel)
-await repository.add(
-    UserModel(
-        email="ana@example.com",
-        name="Ana",
-        password_hash="<bcrypt-hash>",
+
+
+async def main() -> None:
+    """Run this example."""
+    await repository.add(
+        UserModel(
+            email="ana@example.com",
+            name="Ana",
+            password_hash="<bcrypt-hash>",
+        )
     )
-)
+
+
+asyncio.run(main())
 ```
 
 Subclass when you want to bake in domain-specific messages, swap the not-found exception, override the mapper methods or add custom queries. The constructor signature (not class attributes) is the contract:

@@ -202,6 +202,8 @@ session; `build()` returns a loose instance, `create()` persists it
 overrides win over the defaults.
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.testing import ModelFactory, seq
 
 users = ModelFactory(
@@ -212,9 +214,15 @@ users = ModelFactory(
     is_admin=False,
 )
 
-alice = await users.create(is_admin=True)     # one row, one field changed
-team = await users.create_many(5)             # five rows, unique emails
-draft = users.build(email="temp@x.com")        # unsaved instance
+
+async def main() -> None:
+    """Run this example."""
+    alice = await users.create(is_admin=True)     # one row, one field changed
+    team = await users.create_many(5)             # five rows, unique emails
+    draft = users.build(email="temp@x.com")        # unsaved instance
+
+
+asyncio.run(main())
 ```
 
 **No magic**: the factory never guesses a required field's value — you

@@ -25,14 +25,23 @@ uv add "tempest-fastapi-sdk[genai,genai-image]"
 ## O primeiro desenho
 
 ```python
+import asyncio
+
 from pathlib import Path
 
 from tempest_fastapi_sdk.genai import ImageGenerator
 
 generator = ImageGenerator("stabilityai/sdxl-turbo")
-images = await generator.generate("a lighthouse at dawn")
-Path("lighthouse.png").write_bytes(images[0].data)
-print(images[0].seed, images[0].width, images[0].height)
+
+
+async def main() -> None:
+    """Run this example."""
+    images = await generator.generate("a lighthouse at dawn")
+    Path("lighthouse.png").write_bytes(images[0].data)
+    print(images[0].seed, images[0].width, images[0].height)
+
+
+asyncio.run(main())
 ```
 
 ```text
@@ -48,29 +57,47 @@ gerador sabe qual foi sorteada — por isso ele conta.
 ## Configurar: turbo e completo querem coisas opostas
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import ImageGenerationConfig, ImageGenerator
 
 turbo = ImageGenerator("stabilityai/sdxl-turbo")
-images = await turbo.generate(
-    "a lighthouse at dawn",
-    config=ImageGenerationConfig(steps=4, guidance_scale=0.0, seed=7),
-)
+
+
+async def main() -> None:
+    """Run this example."""
+    images = await turbo.generate(
+        "a lighthouse at dawn",
+        config=ImageGenerationConfig(steps=4, guidance_scale=0.0, seed=7),
+    )
+
+
+asyncio.run(main())
 ```
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import ImageGenerationConfig, ImageGenerator
 
 full = ImageGenerator("stabilityai/stable-diffusion-xl-base-1.0")
-images = await full.generate(
-    "a lighthouse at dawn",
-    config=ImageGenerationConfig(
-        steps=30,
-        guidance_scale=7.5,
-        width=1024,
-        height=1024,
-        negative_prompt="blurry, watermark",
-    ),
-)
+
+
+async def main() -> None:
+    """Run this example."""
+    images = await full.generate(
+        "a lighthouse at dawn",
+        config=ImageGenerationConfig(
+            steps=30,
+            guidance_scale=7.5,
+            width=1024,
+            height=1024,
+            negative_prompt="blurry, watermark",
+        ),
+    )
+
+
+asyncio.run(main())
 ```
 
 | Campo | Modelo turbo/destilado | Modelo completo |
@@ -87,18 +114,27 @@ images = await full.generate(
 ## Reproduzir
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import ImageGenerationConfig, ImageGenerator
 
 generator = ImageGenerator("stabilityai/sdxl-turbo")
-first = await generator.generate(
-    "a lighthouse at dawn",
-    config=ImageGenerationConfig(seed=7, steps=4, guidance_scale=0.0),
-)
-again = await generator.generate(
-    "a lighthouse at dawn",
-    config=ImageGenerationConfig(seed=7, steps=4, guidance_scale=0.0),
-)
-print(first[0].data == again[0].data)
+
+
+async def main() -> None:
+    """Run this example."""
+    first = await generator.generate(
+        "a lighthouse at dawn",
+        config=ImageGenerationConfig(seed=7, steps=4, guidance_scale=0.0),
+    )
+    again = await generator.generate(
+        "a lighthouse at dawn",
+        config=ImageGenerationConfig(seed=7, steps=4, guidance_scale=0.0),
+    )
+    print(first[0].data == again[0].data)
+
+
+asyncio.run(main())
 ```
 
 ```text
@@ -113,17 +149,26 @@ host, não como hash universal.
 ## Redesenhar uma imagem existente
 
 ```python
+import asyncio
+
 from pathlib import Path
 
 from tempest_fastapi_sdk.genai import ImageGenerator
 
 generator = ImageGenerator("stabilityai/sdxl-turbo")
-edited = await generator.edit(
-    "the same room, at night",
-    "room.png",
-    strength=0.6,
-)
-Path("room-night.png").write_bytes(edited[0].data)
+
+
+async def main() -> None:
+    """Run this example."""
+    edited = await generator.edit(
+        "the same room, at night",
+        "room.png",
+        strength=0.6,
+    )
+    Path("room-night.png").write_bytes(edited[0].data)
+
+
+asyncio.run(main())
 ```
 
 `strength` diz o quanto sair da entrada: perto de `0.0` mantém a composição

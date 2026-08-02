@@ -208,13 +208,22 @@ colateral, uma peculiaridade de dialeto — não deixa nada para trás.
 O serviço não depende da página:
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.admin import SqlShellDenied, SqlShellService
 
 service = SqlShellService(db, policy=policy, dialect="postgres")
-try:
-    result = await service.execute("SELECT 1", principal="job@internal")
-except SqlShellDenied as exc:
-    print("refused:", exc)
+
+
+async def main() -> None:
+    """Run this example."""
+    try:
+        result = await service.execute("SELECT 1", principal="job@internal")
+    except SqlShellDenied as exc:
+        print("refused:", exc)
+
+
+asyncio.run(main())
 ```
 
 ## Checklist antes de ligar em produção

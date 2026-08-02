@@ -196,10 +196,19 @@ Receitas: [Camada HTTP](http.md), [Idempotência](idempotency.md),
 storage MinIO/S3, presigned URLs.
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk import FileStoreUtils
 
 store = FileStoreUtils(source="./uploads")     # ou um AsyncMinIOClient
-key = await store.save(upload_file)
+
+
+async def main() -> None:
+    """Run this example."""
+    key = await store.save(upload_file)
+
+
+asyncio.run(main())
 ```
 
 Receitas: [File store](file-store.md), [Uploads](uploads.md),
@@ -227,13 +236,21 @@ seu hardware.
     O SDK já vem com `tempest-fastapi-sdk`. A IA generativa self-hosted depende do extra `[genai]` — `uv add "tempest-fastapi-sdk[genai]"` (traz `torch`, `transformers`, `accelerate`, `safetensors` e `huggingface-hub`).
 
 ```python
+import asyncio
+
 from tempest_fastapi_sdk.genai import can_run, TextGenerator
 from tempest_fastapi_sdk.genai.rag import PdfReader, build_context
 
-if can_run(model_id="Qwen/Qwen2.5-7B-Instruct").fits:
-    gen = TextGenerator("Qwen/Qwen2.5-7B-Instruct", quantization="int4")
-    chunks = PdfReader().chunks("/kb/manual.pdf")
-    answer = await gen.generate(build_context("como estornar?", chunks))
+
+async def main() -> None:
+    """Run this example."""
+    if can_run(model_id="Qwen/Qwen2.5-7B-Instruct").fits:
+        gen = TextGenerator("Qwen/Qwen2.5-7B-Instruct", quantization="int4")
+        chunks = PdfReader().chunks("/kb/manual.pdf")
+        answer = await gen.generate(build_context("como estornar?", chunks))
+
+
+asyncio.run(main())
 ```
 
 Receita: [IA generativa self-hosted](genai.md).
@@ -299,6 +316,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Downloads »](downloads.md)** | `DownloadUtils` — `file_response`, `stream`, `build_content_disposition`, anti path-traversal |
 | **[Email transacional »](email.md)** | `EmailUtils` — SMTP, corpo texto/HTML, anexos, templates Jinja2 |
 | **[Erros no OpenAPI (Swagger) »](openapi-errors.md)** | `error_responses`, `@raises`, `TempestAPIRouter`, `ErrorResponseSchema`, `tempest openapi-errors --fix` |
+| **[Escolhendo o modelo »](models.md)** | `TextModel` / `EmbeddingModel` / `RerankerModel` / `VisionModel` / `ImageModel` / `SpeechToTextModel` / `TextToSpeechModel` — ids do Hub com nome, e a tabela de caso de uso por trás de cada escolha |
 | **[Feature flags »](feature-flags.md)** | `FeatureFlags`, backends env/Redis/composto, `make_flag_dependency` |
 | **[Fila e Tarefas »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, outbox transacional |
 | **[File store (unificado) »](file-store.md)** | `FileStoreUtils` — upload + download + presign sobre um backend só |

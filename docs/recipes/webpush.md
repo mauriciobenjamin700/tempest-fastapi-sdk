@@ -356,10 +356,18 @@ Enviar pra um usuário (todos os devices, poda automática embutida) — de
 dentro de qualquer serviço/controller que tenha o `WebPushSubscriptionService`:
 
 ```python
-delivered: int = await service.notify_user(
-    user.id,
-    {"title": "Pagamento confirmado", "body": "Pedido aprovado."},
-)
+import asyncio
+
+
+async def main() -> None:
+    """Run this example."""
+    delivered: int = await service.notify_user(
+        user.id,
+        {"title": "Pagamento confirmado", "body": "Pedido aprovado."},
+    )
+
+
+asyncio.run(main())
 ```
 
 ### Router pronto (opt-in, contorna as camadas)
