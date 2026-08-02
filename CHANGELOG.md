@@ -5,6 +5,65 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.199.0] — 2026-08-02
+
+### Fixed
+
+- **Every model load printed a deprecation warning from `transformers`.**
+  The five loaders passed `torch_dtype=` to `from_pretrained`, which
+  `transformers` renamed to `dtype`:
+
+  ```text
+  [transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+  ```
+
+  One line per load, in the logs of every service that hosts a model, for a
+  keyword the caller never chose. The SDK now picks the name the installed
+  version wants.
+
+  The choice is version-gated rather than switched outright because the SDK
+  supports `transformers>=4.44`, and the boundary was measured against the
+  released wheels instead of assumed: **4.55.0 rejects `dtype` and never
+  warns; 4.56.0 accepts it and starts warning about `torch_dtype`; 5.x keeps
+  both.** Sending `dtype` to an older release would have been worse than the
+  warning — unknown keywords are forwarded to the config, so the precision
+  would be dropped in silence. `DTYPE_KWARG_RENAMED_IN` carries that
+  provenance, and a test pins both sides of the boundary.
+
+  Scoped to the `transformers` loaders (`TextGenerator`,
+  `VisionTextGenerator`, `Embedder`, `Reranker`, `ClassifierModerator`).
+  `ImageGenerator` goes through `diffusers`, which took `dtype` much later
+  than the `diffusers>=0.31` this SDK supports, so the image path still
+  sends `torch_dtype` on purpose.
+
+### Added
+
+- **`GENAI_CACHE_DIR`, `GENAI_OFFLINE` and `GENAI_HF_TOKEN`, plus the
+  `GenAISettings` mixin.** Where the weights live and whether a load may
+  use the network are deployment facts, and they were only expressible as
+  arguments — repeated at every `TextGenerator(...)`, `Embedder(...)`,
+  `SpeechToText(...)` in the codebase.
+
+  The three now have environment variables that act as **defaults**, so a
+  service sets them once in compose or the chart. **An argument always
+  wins, in both directions**: with `GENAI_OFFLINE=true` in the
+  environment, an explicit `local_files_only=False` still reaches the
+  network. That is why `local_files_only` became `bool | None` — `None`
+  means "take the environment", which a plain `False` could never express.
+
+  `GenAISettings` is the typed face of the same three variables, for
+  services that want them in `Settings` and in `tempest check-config`. The
+  loaders read the environment directly, so declaring it is optional.
+
+### Changed
+
+- **The Model weights recipe explains the Hub's rate-limit warning.** It
+  shows up on a run that downloads nothing, which reads like a bug: with
+  `local_files_only=False` the load still contacts the Hub to resolve the
+  revision, and that anonymous request is what prints it. Setting
+  `local_files_only=True` removes the request and the warning — now
+  documented with the before/after.
+
 ## [0.198.0] — 2026-08-02
 
 ### Added

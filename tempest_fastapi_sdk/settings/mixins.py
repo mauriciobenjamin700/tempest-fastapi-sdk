@@ -1718,11 +1718,83 @@ class WebSocketSettings(BaseAppSettings):
     )
 
 
+class GenAISettings(BaseAppSettings):
+    """Where model weights live, and whether loads may use the network.
+
+    The genai loaders read these three variables **as defaults**: an
+    argument passed to a loader always wins, so a service pins the cache
+    and the offline switch once — compose, chart, systemd unit — and a
+    call that needs something different still says so per model.
+
+    ```python
+    from tempest_fastapi_sdk import BaseAppSettings, GenAISettings
+
+
+    class Settings(GenAISettings, BaseAppSettings):
+        pass
+    ```
+
+    ```bash
+    # .env — read by the loaders even without the class above
+    GENAI_CACHE_DIR=/models      # survives a container restart
+    GENAI_OFFLINE=true           # never reach the Hub at load time
+    GENAI_HF_TOKEN=hf_xxx        # gated repos, and no anonymous rate limit
+    ```
+
+    Declaring the class is what makes the values typed, documented and
+    visible in `tempest check-config`; the loaders themselves read the
+    environment directly, so a service that never declares it still gets
+    the same behaviour.
+
+    Attributes:
+        GENAI_CACHE_DIR (str | None): Weight cache directory. ``None``
+            keeps the ``huggingface_hub`` default (``$HF_HOME/hub``, else
+            ``~/.cache/huggingface/hub``). Default: ``None``.
+        GENAI_OFFLINE (bool): Load from that cache without touching the
+            network. Default: ``False``.
+        GENAI_HF_TOKEN (str | None): Hub token for gated or private
+            repositories. Default: ``None``.
+    """
+
+    GENAI_CACHE_DIR: str | None = Field(
+        default=None,
+        title="Model weight cache directory",
+        description=(
+            "Where downloaded weights are written and read back from. "
+            "``None`` uses the ``huggingface_hub`` default. Point it at a "
+            "mounted volume in a container, or every restart re-downloads "
+            "the model."
+        ),
+        examples=["/models", "/var/lib/models"],
+    )
+    GENAI_OFFLINE: bool = Field(
+        default=False,
+        title="Offline model loading",
+        description=(
+            "Load weights from the cache and never reach the Hub — what an "
+            "air-gapped or deploy-frozen host wants. It also silences the "
+            "Hub's anonymous rate-limit warning, which is printed by the "
+            "revision check, not by a download."
+        ),
+        examples=[True, False],
+    )
+    GENAI_HF_TOKEN: str | None = Field(
+        default=None,
+        title="HuggingFace Hub token",
+        description=(
+            "Token for gated or private repositories. Without it downloads "
+            "are anonymous and rate-limited."
+        ),
+        examples=["hf_xxx"],
+    )
+
+
 __all__: list[str] = [
     "AuthSettings",
     "CORSSettings",
     "DatabaseSettings",
     "EmailSettings",
+    "GenAISettings",
     "JWTSettings",
     "LogSettings",
     "MinIOSettings",

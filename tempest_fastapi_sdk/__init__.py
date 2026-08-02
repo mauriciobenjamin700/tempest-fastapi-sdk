@@ -308,6 +308,7 @@ from tempest_fastapi_sdk.settings import (
     CORSSettings,
     DatabaseSettings,
     EmailSettings,
+    GenAISettings,
     JWTSettings,
     LogSettings,
     MinIOSettings,
@@ -453,7 +454,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router,
 )
 
-__version__: str = "0.198.0"
+__version__: str = "0.199.0"
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
@@ -577,6 +578,7 @@ __all__: list[str] = [
     "FileTooLargeException",
     "ForbiddenException",
     "GPUMetrics",
+    "GenAISettings",
     "GitHubOAuthClient",
     "GoogleOAuthClient",
     "GracefulShutdownMiddleware",

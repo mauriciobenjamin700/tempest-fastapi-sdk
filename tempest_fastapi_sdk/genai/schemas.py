@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from itertools import takewhile
 from typing import Any
 
 from pydantic import Field
@@ -344,7 +345,56 @@ class GeneratedImage(BaseSchema):
     )
 
 
+DTYPE_KWARG_RENAMED_IN: tuple[int, int] = (4, 56)
+"""First ``transformers`` release that takes ``dtype`` on ``from_pretrained``.
+
+Verified against the released wheels, not from memory: 4.55.0 rejects
+``dtype`` and never warns; 4.56.0 accepts it *and* logs
+``` `torch_dtype` is deprecated! Use `dtype` instead! ``` for the old name;
+5.x keeps both with the same warning. The SDK supports ``>=4.44``, so the
+keyword has to be chosen at call time rather than hard-coded.
+"""
+
+
+def precision_kwarg(dtype: Any) -> dict[str, Any]:
+    """Return the ``from_pretrained`` precision keyword for this install.
+
+    Passing ``torch_dtype`` to a modern ``transformers`` still works, and
+    prints a deprecation line on every single load — noise the SDK emits
+    into the logs of every service that hosts a model. Passing ``dtype`` to
+    an older one is worse than noisy: unknown keywords are forwarded to the
+    config, so the precision would be silently ignored.
+
+    Only for ``transformers`` loaders. The ``diffusers`` pipelines took
+    ``dtype`` much later and the SDK still supports ``diffusers>=0.31``, so
+    the image path keeps sending ``torch_dtype``.
+
+    Args:
+        dtype (Any): The resolved ``torch`` dtype to load the weights under.
+
+    Returns:
+        dict[str, Any]: A single-entry kwargs dict, keyed ``dtype`` on
+        transformers >= 4.56 and ``torch_dtype`` below it. With no
+        ``transformers`` installed there is nothing to load either, so the
+        current name is returned rather than raising here — the real
+        ``ImportError``, with its install hint, comes from the loader.
+    """
+    try:
+        import transformers
+    except ImportError:
+        return {"dtype": dtype}
+
+    parts: list[int] = []
+    for chunk in transformers.__version__.split(".")[:2]:
+        digits = "".join(takewhile(str.isdigit, chunk))
+        parts.append(int(digits) if digits else 0)
+    version = [*parts, 0, 0][:2]
+    key = "dtype" if tuple(version) >= DTYPE_KWARG_RENAMED_IN else "torch_dtype"
+    return {key: dtype}
+
+
 __all__: list[str] = [
+    "DTYPE_KWARG_RENAMED_IN",
     "CapacityReport",
     "GPUInfo",
     "GeneratedImage",
@@ -352,4 +402,5 @@ __all__: list[str] = [
     "HardwareInfo",
     "ImageGenerationConfig",
     "ModelDtype",
+    "precision_kwarg",
 ]

@@ -105,7 +105,7 @@ class SpeechToText:
         max_concurrent: int = 2,
         cache_dir: str | None = None,
         revision: str | None = None,
-        local_files_only: bool = False,
+        local_files_only: bool | None = None,
         hf_token: str | None = None,
         idle_unload_seconds: float | None = None,
         beam_size: int = 5,
@@ -135,8 +135,10 @@ class SpeechToText:
                 not re-download the model on every restart.
             revision (str | None): Branch, tag or commit sha to load;
                 ``None`` follows the moving Hub default.
-            local_files_only (bool): Load from the cache without touching
-                the network.
+            local_files_only (bool | None): Load from the cache without
+                touching the network — what an air-gapped or deploy-frozen
+                host wants. ``None`` (the default) takes ``GENAI_OFFLINE``
+                from the environment; passing the argument overrides it.
             hf_token (str | None): Hub token for gated or private
                 repositories. ``None`` falls back to ``HF_TOKEN`` in the
                 environment; without either, anonymous downloads work but

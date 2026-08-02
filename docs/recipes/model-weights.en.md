@@ -73,9 +73,62 @@ The default cache is `huggingface_hub`'s own:
     environment (or pass `hf_token=` to the loader) and the warning goes away
     with the limit — and it is mandatory for a *gated* model such as Llama.
 
+    **And it shows up even when the weights are already cached.** It is not
+    the download: with `local_files_only=False` (the default) the load still
+    reaches the Hub to resolve the revision, and that anonymous request is
+    what prints the warning. With `local_files_only=True` there is no request
+    at all — and no warning:
+
+    ```text
+    $ python app.py                          # default
+    Warning: You are sending unauthenticated requests to the HF Hub...
+
+    $ python app.py                          # local_files_only=True
+    (nothing)
+    ```
+
 **Changing `model_id` or `revision` is a different cache entry.** That is not
 a bug: they are different weights. If a second run downloaded again, one of
 those two changed — or the process's `HF_HOME` did.
+
+### Configure it once, in the environment
+
+Passing `cache_dir=` and `local_files_only=` to every loader works, but it
+scatters an infrastructure decision through domain code. All three values
+have an environment variable — and **the argument always wins**, so the
+service sets the default and a call that needs something else still can:
+
+| Variable | Equivalent argument | Effect |
+| --- | --- | --- |
+| `GENAI_CACHE_DIR` | `cache_dir=` | Where weights are written and read |
+| `GENAI_OFFLINE` | `local_files_only=` | Load from cache, never touch the network |
+| `GENAI_HF_TOKEN` | `hf_token=` | Authenticate to the Hub (gated + no rate limit) |
+
+```bash
+# .env
+GENAI_CACHE_DIR=/models
+GENAI_OFFLINE=true
+GENAI_HF_TOKEN=hf_xxx
+```
+
+```python title="settings.py"
+from tempest_fastapi_sdk import BaseAppSettings, GenAISettings
+
+
+class Settings(GenAISettings, BaseAppSettings):
+    """The three variables, typed and visible to `tempest check-config`."""
+```
+
+!!! info "Declaring the class is optional"
+    The loaders read the environment directly — a service that never
+    declares `GenAISettings` behaves the same. The class is what makes the
+    values typed, documented and visible in the config check.
+
+`GENAI_OFFLINE` accepts `1`, `true`, `yes` and `on`, in any case; anything
+else is false. And, repeating it because it is the point: passing the
+argument beats the variable **in both directions** — with
+`GENAI_OFFLINE=true` in the environment, an explicit `local_files_only=False`
+goes back to using the network.
 
 ## The problem: `main` moves
 
