@@ -90,9 +90,12 @@ for real time):
 ```python
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.chat import ChatService
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.db.models import ConversationModel, ConversationParticipantModel, MessageModel
 
 
 def build_chat_service(session: AsyncSession) -> ChatService:
@@ -145,6 +148,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.chat import make_chat_router
 
+from src.api.dependencies.resources import db
+from src.api.dependencies.services import build_chat_service
+
+sessionmaker = db.get_session_context
+
 
 async def get_session() -> AsyncIterator[AsyncSession]:
     async with sessionmaker() as session:
@@ -188,7 +196,14 @@ reusing the SSE fan-out the SDK already has. Without a broker, the
 `/stream` endpoint responds `404`.
 
 ```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import BaseRepository
+from tempest_fastapi_sdk.chat import ChatService
 from tempest_fastapi_sdk.sse import SSEBroker
+
+from src.db.models import ConversationModel, ConversationParticipantModel, MessageModel
+
 
 broker = SSEBroker()  # single-process; pass redis=<client> for multi-worker
 

@@ -137,6 +137,10 @@ for you.
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import EventStream
+
+stream = EventStream()
+
 
 async def main() -> None:
     """Run this example."""
@@ -198,6 +202,15 @@ terminates. `stream.dropped_events` counts how many events were lost to
 overflow, so you can surface it in metrics/logs:
 
 ```python
+import logging
+
+from tempest_fastapi_sdk import EventStream
+
+logger = logging.getLogger(__name__)
+
+stream = EventStream()
+
+
 if stream.dropped_events:
     logger.warning("Slow SSE client: %d events dropped", stream.dropped_events)
 ```
@@ -576,6 +589,18 @@ it reaches every worker:
 
 ```python
 import asyncio
+from uuid import UUID
+
+from src.db.models import OrderModel, UserModel
+from src.queue import mq
+
+order = OrderModel(user_id=user.id, total=100)
+
+sse_exchange = "sse.fanout"
+
+user_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
+
+user = UserModel(name="Ana", email="ana@example.com")
 
 
 async def main() -> None:
@@ -647,12 +672,26 @@ current_user = auth_service.current_user_dependency(query_param="access_token")
 
 ```python
 # src/api/routers/feed.py
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from starlette.responses import StreamingResponse
 
 from tempest_fastapi_sdk import SSEBroker
+
+from src.db.models import User, UserModel
+
+current_user = UserModel(name="Ana", email="ana@example.com")
+
+
+def get_broker() -> SSEBroker:
+    """Return the process-wide broker built at startup."""
+    return broker
+
+
+broker = SSEBroker()
+
 
 router = APIRouter()
 

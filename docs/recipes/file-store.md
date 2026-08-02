@@ -88,8 +88,13 @@ cliente baixar/subir direto do MinIO, sem passar os bytes pela sua API:
 
 ```python
 import asyncio
-
 from datetime import timedelta
+
+from tempest_fastapi_sdk import FileStoreUtils
+
+key = "avatars/ana.png"
+
+store = FileStoreUtils(source="./uploads")
 
 
 async def main() -> None:
@@ -141,6 +146,18 @@ intacto), depois apaga o antigo — pelo mesmo backend:
 ```python
 import asyncio
 
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import FileStoreUtils
+
+from src.db.models import UserModel
+
+file: UploadFile = ...  # comes from the endpoint signature
+
+store = FileStoreUtils(source="./uploads")
+
+user = UserModel(name="Ana", email="ana@example.com")
+
 
 async def main() -> None:
     """Run this example."""
@@ -156,6 +173,11 @@ asyncio.run(main())
 As peças internas continuam acessíveis quando você precisa do controle fino:
 
 ```python
+from tempest_fastapi_sdk import FileStoreUtils
+
+store = FileStoreUtils(source="./uploads")
+
+
 store.uploader     # UploadUtils     — save/replace/delete/validate
 store.downloader   # DownloadUtils   — download/file_response/stream/resolve
 store.backend      # UploadStorage   — write_stream/delete/exists/presigned_url

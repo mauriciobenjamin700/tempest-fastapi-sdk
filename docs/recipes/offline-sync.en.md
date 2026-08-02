@@ -56,7 +56,10 @@ row → schema:
 
 ```python
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import AnalysisModel
 
 
 class AnalysisRepository(BaseRepository[AnalysisModel]):
@@ -72,6 +75,9 @@ The `id` belongs to the client, so "upsert by id" never duplicates on retry:
 
 ```python
 from uuid import UUID
+
+from src.db.models import AnalysisModel
+from src.db.repositories import AnalysisRepository
 
 
 async def upsert_analysis(
@@ -164,7 +170,14 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+
 from tempest_fastapi_sdk import SyncFilterSchema, SyncPaginationSchema
+
+from src.api.dependencies.auth import get_current_user_id
+from src.api.dependencies.repositories import get_analysis_repository
+from src.db.repositories import AnalysisRepository
+from src.schemas import AnalysisResponseSchema
+
 
 router = APIRouter(prefix="/api/analyses", tags=["sync"])
 
@@ -231,6 +244,15 @@ suffix on any `filters`. Available in `list`, `paginate`, `cursor_paginate`,
 
 ```python
 import asyncio
+from datetime import datetime, timedelta, timezone
+
+from src.db.repositories import AnalysisRepository
+
+repo = AnalysisRepository(session)
+
+watermark = datetime.now(timezone.utc) - timedelta(hours=1)
+
+session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:

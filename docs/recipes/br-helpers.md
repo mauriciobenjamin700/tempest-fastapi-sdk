@@ -57,6 +57,9 @@ Entrada válida:
 Após a validação:
 
 ```python
+from src.schemas import CustomerCreateSchema
+
+
 CustomerCreateSchema(...).document  # "52998224725"
 CustomerCreateSchema(...).phone     # "5511988887777"
 ```
@@ -92,6 +95,16 @@ Os normalizadores removem as máscaras antes de salvar, então os filtros de rep
 
 ```python
 import asyncio
+
+from tempest_fastapi_sdk.utils import normalize_cpf_cnpj
+
+from src.db.repositories import CustomerRepository
+
+query = "529.982.247-25"
+
+repo = CustomerRepository(session)
+
+session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -230,6 +243,9 @@ def list_city_choices(uf: str) -> list[ChoiceBR]:
 O `value` de `uf_choices()` é a sigla — o mesmo valor que `UFField` valida na volta, então o que o `<select>` envia já entra direto no seu schema:
 
 ```python
+from tempest_fastapi_sdk.utils import city_choices, region_choices, uf_choices
+
+
 uf_choices()[0]          # ChoiceBR(value="AC", label="Acre")
 region_choices()[0]      # ChoiceBR(value="Norte", label="Norte")
 city_choices("sp")[0]    # ChoiceBR(value="Adamantina", label="Adamantina")
@@ -301,7 +317,10 @@ Um datetime naive é marcado como UTC (não convertido do horário local) para s
 `modify_dict` é o pequeno utilitário que alimenta `BaseSchema.to_dict(exclude=..., include=...)` e `BaseModel.update_from_dict(...)`. Use-o diretamente quando não quiser chamar round-trips do Pydantic:
 
 ```python
-from tempest_fastapi_sdk import LogUtils, modify_dict
+from tempest_fastapi_sdk import LogUtils, PasswordUtils, modify_dict
+
+passwords = PasswordUtils()
+
 
 log = LogUtils("app.users")
 

@@ -1301,6 +1301,18 @@ async def profile(current: UserModel = Depends(get_current_user)) -> UserRespons
 For routes that work both authenticated **and** anonymous (e.g. a public feed that personalizes when logged in), use the `soft` variant — it returns `None` instead of raising:
 
 ```python
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.auth import get_current_user_or_none
+from src.db.models import UserModel
+from src.schemas import PostResponseSchema
+from src.services import FeedService
+
+feed_service = FeedService()
+
+router = APIRouter()
+
+
 @router.get("/feed")
 async def feed(
     current: UserModel | None = Depends(get_current_user_or_none),

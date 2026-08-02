@@ -61,6 +61,15 @@ class ProductRepository(BaseRepository[ProductModel]):
 ```python
 import asyncio
 
+from src.db.models import ProductModel, UserModel
+from src.db.repositories import ProductRepository
+
+repo = ProductRepository(session)
+
+user = UserModel(name="Ana", email="ana@example.com")
+
+session = None  # provided by db.get_session_context() in your code
+
 
 async def main() -> None:
     """Run this example."""
@@ -78,6 +87,8 @@ the snapshot with `repo.snapshot(...)` before mutating the instance:
 
 ```python
 from uuid import UUID
+
+from src.db.repositories import ProductRepository
 
 
 async def rename_product(
@@ -105,6 +116,17 @@ async def rename_product(
 
 ```python
 import asyncio
+
+from src.db.models import ProductModel, UserModel
+from src.db.repositories import ProductRepository
+
+product = ProductModel(name="Café", price_cents=1990)
+
+repo = ProductRepository(session)
+
+user = UserModel(name="Ana", email="ana@example.com")
+
+session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:

@@ -1296,6 +1296,18 @@ async def profile(current: UserModel = Depends(get_current_user)) -> UserRespons
 Para rotas que funcionam logado **e** anônimo (ex.: feed público que personaliza se houver login), use a variante `soft` — ela devolve `None` em vez de levantar:
 
 ```python
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.auth import get_current_user_or_none
+from src.db.models import UserModel
+from src.schemas import PostResponseSchema
+from src.services import FeedService
+
+feed_service = FeedService()
+
+router = APIRouter()
+
+
 @router.get("/feed")
 async def feed(
     current: UserModel | None = Depends(get_current_user_or_none),

@@ -68,6 +68,13 @@ print(de_carro.source)                                   # "heuristic"
 Os padrões são ajustáveis por chamada:
 
 ```python
+from tempest_fastapi_sdk.geo import Coordinate, TravelMode, estimate_travel
+
+destino = Coordinate(latitude=-7.9899, longitude=-34.8386)
+
+origem = Coordinate(latitude=-8.0476, longitude=-34.8770)
+
+
 estimate_travel(
     origem,
     destino,
@@ -126,6 +133,9 @@ por um mock nos testes ou por outra implementação sem mudar o call site.
 Um padrão comum: tente o OSRM e caia na heurística se a rede falhar.
 
 ```python
+from tempest_fastapi_sdk.geo import OSRMBackend, TravelEstimate, estimate_travel
+
+
 async def estimar(origem, destino, mode, client) -> TravelEstimate:
     """Rota real quando dá; senão, estimativa offline."""
     try:
@@ -322,6 +332,13 @@ a `Coordinate` de objetos seus:
 ```python
 from tempest_fastapi_sdk.geo import Coordinate, nearest, within_radius
 
+store_a = Coordinate(latitude=-8.0476, longitude=-34.8770)
+
+store_b = Coordinate(latitude=-7.9899, longitude=-34.8386)
+
+store_c = Coordinate(latitude=-8.1130, longitude=-34.9060)
+
+
 center = Coordinate(latitude=-23.55, longitude=-46.63)
 stores = [store_a, store_b, store_c]  # objetos com .location: Coordinate
 
@@ -411,7 +428,32 @@ devolve a linha da rota decodificada em `TravelEstimate.geometry`:
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.geo import OSRMBackend
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.geo import BoundingBox, Coordinate, OSRMBackend
+
+a = store_a
+
+b = store_b
+
+client = HTTPClient()
+
+
+def desenhar_no_mapa(box: BoundingBox) -> None:
+    """Render the bounding box on your map widget."""
+
+
+destinos = [destino]
+
+origens = [origem]
+
+store_a = Coordinate(latitude=-8.0476, longitude=-34.8770)
+
+store_b = Coordinate(latitude=-7.9899, longitude=-34.8386)
+
+destino = Coordinate(latitude=-7.9899, longitude=-34.8386)
+
+origem = Coordinate(latitude=-8.0476, longitude=-34.8770)
+
 
 backend = OSRMBackend(http_client=client)
 
@@ -435,9 +477,23 @@ compacto do Google/OSRM (precision 5 ou 6), sem dependência.
 
 ```python
 from tempest_fastapi_sdk.geo import (
-    destination_point, initial_bearing, point_in_polygon,
-    polygon_area_km2, path_length_km,
+    BoundingBox,
+    Coordinate,
+    destination_point,
+    initial_bearing,
+    path_length_km,
+    point_in_polygon,
+    polygon_area_km2,
 )
+
+center = ponto
+
+ponto = Coordinate(latitude=-8.0476, longitude=-34.8770)
+
+pontos_do_gps = [ponto, Coordinate(latitude=-7.9899, longitude=-34.8386)]
+
+zona_de_entrega = BoundingBox.around(ponto, radius_km=5)
+
 
 alvo = destination_point(center, bearing_degrees=90.0, distance_km=2.0)  # 2 km a leste
 rumo = initial_bearing(center, alvo)                                     # ~90.0
@@ -451,7 +507,11 @@ percorrido = path_length_km(pontos_do_gps)
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.geo import cep_to_coordinate, uf_centroid
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.geo import NominatimBackend, cep_to_coordinate, uf_centroid
+
+geocoder = NominatimBackend(http_client=HTTPClient())
+
 
 pino = uf_centroid("SP")  # centro aproximado do estado, offline
 

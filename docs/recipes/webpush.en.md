@@ -360,6 +360,19 @@ service/controller that holds the `WebPushSubscriptionService`:
 ```python
 import asyncio
 
+from tempest_fastapi_sdk.webpush import WebPushSubscriptionService
+
+from src.db.models import UserModel
+from src.db.repositories import WebPushSubscriptionRepository
+
+service = WebPushSubscriptionService(subscriptions_repo)
+
+user = UserModel(name="Ana", email="ana@example.com")
+
+subscriptions_repo = WebPushSubscriptionRepository(session)
+
+session = None  # provided by db.get_session_context() in your code
+
 
 async def main() -> None:
     """Run this example."""
@@ -431,6 +444,16 @@ from tempest_fastapi_sdk import (
     WebPushPayloadSchema,
     WebPushSubscriptionSchema,
 )
+from tempest_fastapi_sdk.webpush import WebPushDispatcher
+
+from src.core.settings import settings
+from src.db.repositories import WebPushSubscriptionRepository
+
+dispatcher = WebPushDispatcher(settings)
+
+subscriptions_repo = WebPushSubscriptionRepository(session)
+
+session = None  # provided by db.get_session_context() in your code
 
 
 async def notify_order_paid(
@@ -456,6 +479,22 @@ and **returns the dead endpoints** (404/410) for you to remove — other
 failures are logged, not raised.
 
 ```python
+from tempest_fastapi_sdk.webpush import (
+    WebPushDispatcher,
+    WebPushPayloadSchema,
+    WebPushSubscriptionSchema,
+)
+
+from src.core.settings import settings
+from src.db.repositories import WebPushSubscriptionRepository
+
+dispatcher = WebPushDispatcher(settings)
+
+subscriptions_repo = WebPushSubscriptionRepository(session)
+
+session = None  # provided by db.get_session_context() in your code
+
+
 async def broadcast(
     subs: list[WebPushSubscriptionSchema],
     payload: WebPushPayloadSchema,
