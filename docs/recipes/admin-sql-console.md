@@ -55,7 +55,7 @@ from src.core.settings import settings
 from src.db.models import UserModel
 from src.services.audit import record_sql_attempt
 
-auth_backend = UserModelAuthBackend(db, UserModel)
+auth_backend = UserModelAuthBackend(UserModel)
 
 console_db = AsyncDatabaseManager(settings.READONLY_DATABASE_URL)
 

@@ -523,14 +523,20 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from tempest_fastapi_sdk import ArtifactRegistry
+from tempest_fastapi_sdk import BaseRepository
+from tempest_fastapi_sdk.artifacts import ArtifactRegistry
 from tempest_fastapi_sdk.modelops import (
     OnnxPredictor,
     RegistryModelSource,
     make_prediction_router,
 )
 
+from src.db.models import ModelVersion
+
+session = None   # vem do db.get_session_context() no seu código
+
 predictor = OnnxPredictor("model.onnx")
-registry = ArtifactRegistry(root=Path("artifacts"))
+registry = ArtifactRegistry(BaseRepository(session, model=ModelVersion))
 app = FastAPI()
 
 

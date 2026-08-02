@@ -57,7 +57,7 @@ from tempest_fastapi_sdk import IntrospectionAuth
 from src.api.dependencies.auth import auth
 from src.core.settings import settings
 
-service = IntrospectionAuth(settings)
+service = IntrospectionAuth(userinfo_url=settings.IAGRO_USERINFO_URL)
 
 
 router = APIRouter(prefix="/api/animals", tags=["animals"])
@@ -114,7 +114,7 @@ from tempest_fastapi_sdk import IntrospectionAuth
 
 from src.core.settings import settings
 
-auth = IntrospectionAuth(settings)
+auth = IntrospectionAuth(userinfo_url=settings.IAGRO_USERINFO_URL)
 
 credentials = "eyJhbGciOiJIUzI1NiJ9.token"
 
@@ -142,7 +142,7 @@ from tempest_fastapi_sdk import IntrospectionAuth
 
 from src.core.settings import settings
 
-auth = IntrospectionAuth(settings)
+auth = IntrospectionAuth(userinfo_url=settings.IAGRO_USERINFO_URL)
 
 credentials = "eyJhbGciOiJIUzI1NiJ9.token"
 
