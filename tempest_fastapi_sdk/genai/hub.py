@@ -29,11 +29,12 @@ this module imports with no extra installed and the schemas stay usable
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
@@ -84,12 +85,15 @@ class ModelRef(BaseSchema):
         model_id (str): The Hub model id (``"org/name"``) or a local path.
         revision (str | None): Branch, tag or commit sha. ``None`` means
             the Hub default (``main``) — convenient, not reproducible.
-        cache_dir (str | None): Where weights are cached. ``None`` uses
-            the ``HF_HUB_CACHE`` default.
+        cache_dir (str | None): Where weights are cached. ``None`` takes
+            ``GENAI_CACHE_DIR`` from the environment, falling back to the
+            ``HF_HUB_CACHE`` default.
         token (str | None): Hub token for gated or private repositories.
-        local_files_only (bool): When ``True``, never touch the network:
-            load from the cache or fail. This is what an air-gapped or
-            deploy-frozen production host wants.
+            ``None`` takes ``GENAI_HF_TOKEN``.
+        local_files_only (bool | None): When ``True``, never touch the
+            network: load from the cache or fail — what an air-gapped or
+            deploy-frozen production host wants. ``None`` takes
+            ``GENAI_OFFLINE``, falling back to ``False``.
         trust_remote_code (bool): When ``True``, allow the repository's
             own Python to run at load time. Some architectures require
             it; it also executes code you did not review, so it stays
@@ -119,10 +123,13 @@ class ModelRef(BaseSchema):
         description="Token for gated or private repositories.",
         examples=["hf_xxx"],
     )
-    local_files_only: bool = Field(
-        default=False,
+    local_files_only: bool | None = Field(
+        default=None,
         title="Offline only",
-        description="Load from cache only; never reach the network.",
+        description=(
+            "Load from cache only; never reach the network. None takes the "
+            "GENAI_OFFLINE variable, falling back to False."
+        ),
         examples=[True],
     )
     trust_remote_code: bool = Field(
@@ -131,6 +138,57 @@ class ModelRef(BaseSchema):
         description="Allow the repository's own Python to run at load time.",
         examples=[False],
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _fill_from_environment(cls, data: Any) -> Any:
+        """Fill the fields the caller left out from ``GENAI_*`` variables.
+
+        Precedence is one-directional on purpose: **an argument always
+        wins**. The variables set the *default*, so a service configures
+        the cache and the offline switch once — in compose, in the chart,
+        in the systemd unit — and a call that cares can still override it
+        per model.
+
+        | Variable | Field | Effect |
+        | --- | --- | --- |
+        | ``GENAI_CACHE_DIR`` | ``cache_dir`` | Weights land there |
+        | ``GENAI_OFFLINE`` | ``local_files_only`` | Loads stay offline |
+        | ``GENAI_HF_TOKEN`` | ``token`` | Requests carry the token |
+
+        ``GENAI_OFFLINE`` reads as true for ``1``, ``true``, ``yes`` and
+        ``on``, case-insensitively; anything else is false.
+
+        Args:
+            data (Any): The raw input — a mapping when the model is built
+                from keywords, anything else when it is not (validation
+                from an instance or a JSON string), in which case it is
+                returned untouched.
+
+        Returns:
+            Any: The input with environment defaults filled in for keys
+            the caller did not provide.
+        """
+        if not isinstance(data, dict):
+            return data
+        filled = dict(data)
+        cache_dir = os.getenv("GENAI_CACHE_DIR")
+        if cache_dir and filled.get("cache_dir") is None:
+            filled["cache_dir"] = cache_dir
+        token = os.getenv("GENAI_HF_TOKEN")
+        if token and filled.get("token") is None:
+            filled["token"] = token
+        offline = os.getenv("GENAI_OFFLINE")
+        if offline is not None and filled.get("local_files_only") is None:
+            filled["local_files_only"] = offline.strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+        if filled.get("local_files_only") is None:
+            filled["local_files_only"] = False
+        return filled
 
     def loader_kwargs(self) -> dict[str, Any]:
         """Return the ``from_pretrained`` keywords this ref implies.
@@ -405,7 +463,7 @@ def download_model(
     revision: str | None = None,
     cache_dir: str | None = None,
     token: str | None = None,
-    local_files_only: bool = False,
+    local_files_only: bool | None = None,
     allow_patterns: list[str] | None = None,
     ignore_patterns: list[str] | None = None,
     check_disk: bool = True,

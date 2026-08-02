@@ -98,7 +98,7 @@ class Reranker:
         cache_dir: str | None = None,
         hf_token: str | None = None,
         revision: str | None = None,
-        local_files_only: bool = False,
+        local_files_only: bool | None = None,
         trust_remote_code: bool = False,
         max_length: int = 512,
         idle_unload_seconds: float | None = None,
@@ -121,8 +121,10 @@ class Reranker:
             hf_token (str | None): Hub token for gated/private models.
             revision (str | None): Branch, tag or commit sha to load;
                 ``None`` follows the moving Hub default.
-            local_files_only (bool): Load from the cache without touching
-                the network.
+            local_files_only (bool | None): Load from the cache without
+                touching the network — what an air-gapped or deploy-frozen
+                host wants. ``None`` (the default) takes ``GENAI_OFFLINE``
+                from the environment; passing the argument overrides it.
             trust_remote_code (bool): Allow the repository's own Python to
                 run at load time.
             max_length (int): Max tokens per ``(query, chunk)`` pair.

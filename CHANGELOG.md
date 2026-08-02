@@ -36,6 +36,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than the `diffusers>=0.31` this SDK supports, so the image path still
   sends `torch_dtype` on purpose.
 
+### Added
+
+- **`GENAI_CACHE_DIR`, `GENAI_OFFLINE` and `GENAI_HF_TOKEN`, plus the
+  `GenAISettings` mixin.** Where the weights live and whether a load may
+  use the network are deployment facts, and they were only expressible as
+  arguments — repeated at every `TextGenerator(...)`, `Embedder(...)`,
+  `SpeechToText(...)` in the codebase.
+
+  The three now have environment variables that act as **defaults**, so a
+  service sets them once in compose or the chart. **An argument always
+  wins, in both directions**: with `GENAI_OFFLINE=true` in the
+  environment, an explicit `local_files_only=False` still reaches the
+  network. That is why `local_files_only` became `bool | None` — `None`
+  means "take the environment", which a plain `False` could never express.
+
+  `GenAISettings` is the typed face of the same three variables, for
+  services that want them in `Settings` and in `tempest check-config`. The
+  loaders read the environment directly, so declaring it is optional.
+
 ### Changed
 
 - **The Model weights recipe explains the Hub's rate-limit warning.** It

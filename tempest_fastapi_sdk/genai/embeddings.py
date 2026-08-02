@@ -265,7 +265,7 @@ class Embedder:
         cache_dir: str | None = None,
         hf_token: str | None = None,
         revision: str | None = None,
-        local_files_only: bool = False,
+        local_files_only: bool | None = None,
         trust_remote_code: bool = False,
         idle_unload_seconds: float | None = None,
         hardware: HardwareInfo | None = None,
@@ -298,8 +298,10 @@ class Embedder:
                 are rate-limited (the Hub says so on stderr).
             revision (str | None): Branch, tag or commit sha to load;
                 ``None`` follows the moving Hub default.
-            local_files_only (bool): Load from the cache without touching
-                the network.
+            local_files_only (bool | None): Load from the cache without
+                touching the network — what an air-gapped or deploy-frozen
+                host wants. ``None`` (the default) takes ``GENAI_OFFLINE``
+                from the environment; passing the argument overrides it.
             trust_remote_code (bool): Allow the repository's own Python to
                 run at load time.
             idle_unload_seconds (float | None): Idle threshold for

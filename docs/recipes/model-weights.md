@@ -88,6 +88,44 @@ O cache padrão é o do `huggingface_hub`:
 diferentes. Se a segunda execução voltou a baixar, foi um desses dois que
 mudou — ou o `HF_HOME` do processo.
 
+### Configurar uma vez, no ambiente
+
+Passar `cache_dir=` e `local_files_only=` em cada loader funciona, mas
+espalha decisão de infraestrutura pelo código de domínio. Os três valores
+têm variável de ambiente — e o **argumento sempre vence**, então o serviço
+define o padrão e a chamada que precisa de outra coisa continua podendo:
+
+| Variável | Argumento equivalente | Efeito |
+| --- | --- | --- |
+| `GENAI_CACHE_DIR` | `cache_dir=` | Onde os pesos são escritos e lidos |
+| `GENAI_OFFLINE` | `local_files_only=` | Carrega do cache, nunca toca a rede |
+| `GENAI_HF_TOKEN` | `hf_token=` | Autentica no Hub (gated + sem rate limit) |
+
+```bash
+# .env
+GENAI_CACHE_DIR=/models
+GENAI_OFFLINE=true
+GENAI_HF_TOKEN=hf_xxx
+```
+
+```python title="settings.py"
+from tempest_fastapi_sdk import BaseAppSettings, GenAISettings
+
+
+class Settings(GenAISettings, BaseAppSettings):
+    """As três variáveis, tipadas e visíveis no `tempest check-config`."""
+```
+
+!!! info "Declarar a classe é opcional"
+    Os loaders leem o ambiente direto — um serviço que nunca declarou
+    `GenAISettings` tem o mesmo comportamento. A classe serve pra tipar,
+    documentar e fazer as três aparecerem na checagem de config.
+
+`GENAI_OFFLINE` aceita `1`, `true`, `yes` e `on` (maiúsculas ou não);
+qualquer outra coisa é falso. E, repetindo porque é o ponto: passar o
+argumento vence a variável **nos dois sentidos** — com `GENAI_OFFLINE=true`
+no ambiente, um `local_files_only=False` explícito volta a usar a rede.
+
 ## O problema: `main` se move
 
 Isto aqui é o que quase todo serviço self-hosted faz no primeiro dia:

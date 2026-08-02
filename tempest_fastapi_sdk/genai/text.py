@@ -263,7 +263,7 @@ class TextGenerator:
         cache_dir: str | None = None,
         hf_token: str | None = None,
         revision: str | None = None,
-        local_files_only: bool = False,
+        local_files_only: bool | None = None,
         trust_remote_code: bool = False,
         idle_unload_seconds: float | None = None,
         hardware: HardwareInfo | None = None,
@@ -297,9 +297,10 @@ class TextGenerator:
                 author pushes; pin a sha (see
                 :func:`~tempest_fastapi_sdk.genai.resolve_revision`) for a
                 reproducible deployment.
-            local_files_only (bool): Load from the cache without touching
-                the network — what an air-gapped or deploy-frozen host
-                wants.
+            local_files_only (bool | None): Load from the cache without
+                touching the network — what an air-gapped or deploy-frozen
+                host wants. ``None`` (the default) takes ``GENAI_OFFLINE``
+                from the environment; passing the argument overrides it.
             trust_remote_code (bool): Allow the repository's own Python to
                 run at load time. Required by some architectures, and it
                 executes code you did not review, so it stays opt-in.
