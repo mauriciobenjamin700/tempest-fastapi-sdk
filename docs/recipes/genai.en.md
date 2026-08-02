@@ -525,7 +525,15 @@ One router, a whole chat backend in-process:
 ```python
 from fastapi import FastAPI
 
-from tempest_fastapi_sdk.genai import make_ai_chat_router
+from tempest_fastapi_sdk.genai import (
+    AIChatPipeline,
+    TextGenerator,
+    TextModel,
+    make_ai_chat_router,
+)
+
+pipeline = AIChatPipeline(generator=TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT))
+
 
 app = FastAPI()
 app.include_router(make_ai_chat_router(pipeline))   # prefix /api/ai-chat
@@ -546,6 +554,10 @@ tool-calls **before** it starts emitting):
 
 ```python
 import asyncio
+
+from tempest_fastapi_sdk.genai import AIChatPipeline, TextGenerator, TextModel
+
+pipeline = AIChatPipeline(generator=TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT))
 
 
 async def stream_demo() -> None:
@@ -658,7 +670,10 @@ result:
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.genai import BatchScheduler
+from tempest_fastapi_sdk.genai import BatchScheduler, Embedder, EmbeddingModel
+
+emb = Embedder(EmbeddingModel.ALL_MINILM_L6_V2)
+
 
 sched = BatchScheduler(emb._embed_many, max_batch=32, max_wait_ms=10)
 
@@ -977,7 +992,12 @@ and extract the clean text (via `trafilatura`):
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.genai.rag import ContentExtractor
+import httpx
+
+from tempest_fastapi_sdk.genai.rag import ContentExtractor, build_context
+
+results = []  # hits from a previous retriever.search(...)
+
 
 extractor = ContentExtractor(http_client=httpx.AsyncClient())
 
@@ -1032,8 +1052,11 @@ store** and retrieve by similarity. `Retriever` ties `Embedder` → store →
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.genai import Embedder
+from tempest_fastapi_sdk.genai import Embedder, TextGenerator, TextModel
 from tempest_fastapi_sdk.genai.rag import InMemoryVectorStore, PdfReader, Retriever
+
+gen = TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT)
+
 
 rag = Retriever(Embedder("sentence-transformers/all-MiniLM-L6-v2", normalize=True),
                 InMemoryVectorStore())
@@ -1056,7 +1079,13 @@ asyncio.run(main())
   distance operator `<=>`. Needs `[genai-rag]` + `CREATE EXTENSION vector`.
 
 ```python
-from tempest_fastapi_sdk.genai.rag import PgVectorStore
+from tempest_fastapi_sdk.genai import Embedder, EmbeddingModel
+from tempest_fastapi_sdk.genai.rag import PgVectorStore, Retriever
+
+from src.api.dependencies.resources import db
+
+embedder = Embedder(EmbeddingModel.ALL_MINILM_L6_V2)
+
 
 store = PgVectorStore(db, dim=384)          # db = AsyncDatabaseManager
 rag = Retriever(embedder, store)
@@ -1162,6 +1191,9 @@ import asyncio
 
 from tempest_fastapi_sdk.genai import RuleModerator
 
+user_input = "Explique PIX em uma frase."
+
+
 mod = RuleModerator(["slur", "banned-term"], category="abuse")
 
 
@@ -1213,6 +1245,10 @@ manager and set the tokens you know:
 
 ```python
 import asyncio
+
+from tempest_fastapi_sdk.genai import GenAIMetrics
+
+metrics = GenAIMetrics()
 
 
 async def main() -> None:
@@ -1278,7 +1314,17 @@ tokenizer** (never a heuristic — BPE and SentencePiece disagree) and drop the
 oldest turns when it overflows:
 
 ```python
-from tempest_fastapi_sdk.genai import count_tokens, truncate_messages
+from tempest_fastapi_sdk.genai import (
+    TextGenerator,
+    TextModel,
+    count_tokens,
+    truncate_messages,
+)
+
+messages = [{"role": "user", "content": "oi"}]
+tokenizer = gen.tokenizer
+gen = TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT)
+
 
 n = count_tokens("Explain PIX.", tokenizer)   # the model's tokenizer
 

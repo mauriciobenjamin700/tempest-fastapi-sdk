@@ -139,6 +139,13 @@ by default):
 
 ```python
 # UserModel gets a tuned config...
+
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import UserModel
+
+
 site.register(AdminModel(
     model=UserModel,
     list_display=[UserModel.email, UserModel.is_admin],
@@ -231,8 +238,15 @@ from tempest_fastapi_sdk import (
     AdminActionContext,
     AdminActionResult,
     AdminModel,
+    EmailUtils,
     admin_action,
 )
+
+from src.admin import site
+from src.core.settings import settings
+from src.db.models import UserModel
+
+mailer = EmailUtils(settings)
 
 
 @admin_action(label="Send welcome")
@@ -275,6 +289,9 @@ input** on the form. List the column in `upload_fields` and pass an
 ```python
 from tempest_fastapi_sdk import AdminModel
 from tempest_fastapi_sdk.utils import LocalUploadStorage
+
+from src.admin import site
+from src.db.models import DocumentModel
 
 
 site.register(AdminModel(
@@ -372,10 +389,17 @@ class AuditLog(BaseAuditLogModel):
 
 ```python
 # write the trail on writes (create/update/delete)
+
 import asyncio
 
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.db.audit import snapshot_model
+
+from src.db.models import AuditLog, OrderModel, UserModel
+
+current_user = UserModel(name="Ana", email="ana@example.com")
+session = None  # injected by the admin action context
+
 
 repo = BaseRepository(session, model=OrderModel, audit_model=AuditLog)
 
@@ -396,6 +420,13 @@ Then wire the same `audit_model` into the admin:
 
 ```python
 # src/admin/site.py
+
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import AuditLog, OrderModel
+
+
 site.register(AdminModel(model=OrderModel, audit_model=AuditLog))
 ```
 
@@ -420,6 +451,13 @@ box** (HTMX) that queries the target on demand:
 
 ```python
 # src/admin/site.py
+
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import Company, Employee
+
+
 site.register(AdminModel(model=Company, search_fields=[Company.name]))
 site.register(
     AdminModel(model=Employee, autocomplete_fields=[Employee.company_id])
@@ -446,7 +484,12 @@ an **Add** button that pre-fills the parent FK.
 
 ```python
 # src/admin/site.py
+
 from tempest_fastapi_sdk import AdminModel, Inline
+
+from src.admin import site
+from src.db.models import Member, Team
+
 
 site.register(
     AdminModel(
@@ -473,6 +516,12 @@ becomes a formset: one input row per existing child plus a blank row to
 add another.
 
 ```python
+from tempest_fastapi_sdk import AdminModel, Inline
+
+from src.admin import site
+from src.db.models import Member, Team
+
+
 site.register(
     AdminModel(
         model=Team,
@@ -514,10 +563,23 @@ metrics — orders today, revenue vs last week, users by plan — pass
 three types:
 
 ```python
-from tempest_fastapi_sdk import (
-    AdminSite, MetricCard, MetricValue, MetricTrend, MetricPartition,
-)
+from datetime import date, timedelta
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import (
+    AdminSite,
+    MetricCard,
+    MetricPartition,
+    MetricTrend,
+    MetricValue,
+)
+
+from src.db.repositories import OrderRepository
+
+last_week = this_week - timedelta(days=7)
+this_week = today - timedelta(days=7)
+today = date.today()
 
 
 async def orders_today(session: AsyncSession) -> MetricValue:
@@ -560,6 +622,12 @@ The admin already exports the list (CSV/JSON). The counterpart: upload a
 CSV to bulk-**create** records. Enable it with `can_import=True`:
 
 ```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import Product
+
+
 site.register(AdminModel(model=Product, can_import=True))
 ```
 
@@ -585,7 +653,21 @@ orders but can't delete, an "editor" that only touches content — pass an
 `access_policy` to `make_admin_router`:
 
 ```python
-from tempest_fastapi_sdk import AdminPermission, make_admin_router
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AdminModel,
+    AdminPermission,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+
+from src.admin import site
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import AuditLog, UserModel
+
+app = FastAPI()
 
 
 def policy(user: UserModel, admin: AdminModel, action: AdminPermission) -> bool:
@@ -639,6 +721,10 @@ oldest first" every time, they click the tab:
 
 ```python
 from tempest_fastapi_sdk import AdminModel, Lens
+
+from src.admin import site
+from src.db.models import Ticket
+
 
 site.register(
     AdminModel(
@@ -710,7 +796,15 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError
+from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError, GoogleOAuthClient
+
+from src.core.settings import settings
+
+my_oauth_client = GoogleOAuthClient(
+    client_id=settings.GOOGLE_CLIENT_ID,
+    client_secret=settings.GOOGLE_CLIENT_SECRET,
+    redirect_uri=settings.GOOGLE_REDIRECT_URI,
+)
 
 
 class OAuthAdminBackend(AdminAuthBackend):

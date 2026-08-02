@@ -43,6 +43,7 @@ Um guard é uma função comum: **recebe o usuário**, **devolve o usuário** (o
 ```python
 from tempest_fastapi_sdk import ForbiddenException
 
+from src.core.exceptions import NotOrderOwnerException
 from src.db.models import UserModel
 
 
@@ -75,14 +76,19 @@ def order_owner(user: UserModel) -> UserModel:
 ```python
 from uuid import UUID
 
-from fastapi import Depends
+from fastapi import APIRouter, Depends
+
 from tempest_fastapi_sdk import error_responses, requires
 from tempest_fastapi_sdk.auth import require_active
 
 from src.api.dependencies import get_current_user
 from src.api.guards import order_owner
+from src.controllers import OrderController
 from src.core.exceptions import NotOrderOwnerException
 from src.db.models import UserModel
+
+controller = OrderController(...)
+router = APIRouter()
 
 
 @router.delete(
@@ -119,6 +125,15 @@ comum.
 Quando há mais de um usuário na assinatura, aponte qual:
 
 ```python
+from fastapi import Depends
+
+from tempest_fastapi_sdk import requires
+
+from src.api.dependencies.auth import get_current_user, get_target_user
+from src.core.guards import can_ban_users
+from src.db.models import UserModel
+
+
 @requires(can_ban_users, user_param="target")
 async def ban_user(
     actor: UserModel = Depends(get_current_user),
@@ -154,6 +169,14 @@ pelo corpo da função**. É assim que os guards do SDK
 `UserT | None` em `UserT`:
 
 ```python
+from fastapi import Depends
+
+from tempest_fastapi_sdk import require_active, requires
+
+from src.api.dependencies.auth import get_current_user_soft
+from src.db.models import UserModel
+
+
 @requires(require_active)
 async def me(user: UserModel | None = Depends(get_current_user_soft)) -> UserModel:
     """Return the authenticated user.
@@ -177,9 +200,15 @@ Um guard pode declarar um **segundo parâmetro** `meta: dict[str, Any]`. É isso
 ```python
 from typing import Any
 
+from fastapi import APIRouter, Depends
+
 from tempest_fastapi_sdk import ForbiddenException, requires
 
+from src.api.dependencies.auth import get_current_user
+from src.core.exceptions import MissingRoleException
 from src.db.models import UserModel
+
+router = APIRouter()
 
 
 def has_role(user: UserModel, meta: dict[str, Any]) -> UserModel:
@@ -218,6 +247,20 @@ Guards de **um** parâmetro continuam exatamente como antes — o segundo argume
 `meta=` carrega literais fixados na decoração. Quando a checagem depende do **recurso** da requisição, ligue `include_args=True` e os argumentos da chamada (path params, body, outras dependências) entram no mesmo dicionário:
 
 ```python
+from typing import Any
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
+
+from tempest_fastapi_sdk import require_active, requires
+
+from src.api.dependencies.auth import get_current_user
+from src.core.exceptions import NotOrderOwnerException
+from src.db.models import UserModel
+
+router = APIRouter()
+
+
 def order_owner(user: UserModel, meta: dict[str, Any]) -> UserModel:
     """Assert the user owns the order named by the metadata.
 
@@ -272,6 +315,9 @@ Para auditar o que uma rota declarou:
 
 ```python
 from tempest_fastapi_sdk import guard_metadata
+
+from src.services.billing import close_month
+
 
 assert guard_metadata(close_month) == {"role": "manager"}
 ```
@@ -409,7 +455,11 @@ igual a qualquer outra exceção do fluxo. Detalhes na receita
 ## Auditar os guards de uma rota
 
 ```python
-from tempest_fastapi_sdk import declared_guards, guarded_user_param
+from tempest_fastapi_sdk import declared_guards, guarded_user_param, require_active
+
+from src.core.guards import order_owner
+from src.services.orders import delete_order
+
 
 assert declared_guards(delete_order) == (require_active, order_owner)
 assert guarded_user_param(delete_order) == "user"
