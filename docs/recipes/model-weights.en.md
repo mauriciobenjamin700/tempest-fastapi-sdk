@@ -19,6 +19,64 @@ uv add "tempest-fastapi-sdk[genai]"       # includes the above + torch/transform
     that will never download anything; a missing dependency raises an
     `ImportError` naming the extra to install.
 
+## Where the weights live (and why the second run is instant)
+
+Before any configuration, the fact that answers the most common question:
+**the download happens once**. The first call writes the weights to an
+on-disk cache; every run after that reads them from there, with no network.
+
+```text
+$ python test.py          # first time
+model.safetensors: 988MB [00:14, 66.7MB/s]
+Loading weights: 100%|██████████| 290/290 [00:00<00:00, 1084 it/s]
+
+$ python test.py          # every time after
+Loading weights: 100%|██████████| 290/290 [00:00<00:00, 2335 it/s]
+```
+
+The default cache is `huggingface_hub`'s own:
+
+| Where | When |
+| --- | --- |
+| `$HF_HOME/hub` | `HF_HOME` is set in the environment |
+| `~/.cache/huggingface/hub` | the default, when it is not |
+| `cache_dir="..."` | you passed the argument to the loader — wins over both |
+
+!!! warning "Container restarts, cache gone"
+    The cache lives on the process's filesystem. In a container with no
+    volume, every restart downloads everything again — gigabytes of network
+    and minutes of boot on each deploy. Mount a volume and point the cache
+    at it:
+
+    ```yaml
+    # docker-compose.yaml
+    services:
+      api:
+        environment:
+          HF_HOME: /models
+        volumes:
+          - hf-cache:/models
+
+    volumes:
+      hf-cache:
+    ```
+
+    Or, if you prefer it in code, `TextGenerator(..., cache_dir="/models")`.
+
+!!! tip "That rate-limit warning on stderr"
+    ```text
+    Warning: You are sending unauthenticated requests to the HF Hub.
+    Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+    ```
+
+    Anonymous downloads work, but they are throttled. Set `HF_TOKEN` in the
+    environment (or pass `hf_token=` to the loader) and the warning goes away
+    with the limit — and it is mandatory for a *gated* model such as Llama.
+
+**Changing `model_id` or `revision` is a different cache entry.** That is not
+a bug: they are different weights. If a second run downloaded again, one of
+those two changed — or the process's `HF_HOME` did.
+
 ## The problem: `main` moves
 
 This is what nearly every self-hosted service writes on day one:

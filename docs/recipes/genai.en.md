@@ -131,6 +131,14 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+!!! info "Weights download once — then it is a disk cache"
+    The first call writes the gigabytes to `$HF_HOME/hub` (or
+    `~/.cache/huggingface/hub`); later runs read them from there, no network.
+    In a **container with no volume** that is lost on every restart. Pointing
+    the cache somewhere durable, pinning the revision, pre-downloading at
+    deploy time and running offline are all in
+    **[Model weights »](model-weights.md#where-the-weights-live-and-why-the-second-run-is-instant)**.
+
 Blocking generation runs in `asyncio.to_thread` — it never blocks the
 event loop. `device="auto"` picks CUDA → MPS → CPU; `dtype="auto"` uses
 bf16 on GPU and fp32 on CPU.

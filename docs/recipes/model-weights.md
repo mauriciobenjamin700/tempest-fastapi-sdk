@@ -18,6 +18,63 @@ uv add "tempest-fastapi-sdk[genai]"       # já inclui o de cima + torch/transfo
     nunca vai baixar nada; a ausência da dependência levanta um `ImportError`
     dizendo qual extra instalar.
 
+## Onde os pesos ficam (e por que a 2ª execução é instantânea)
+
+Antes de qualquer configuração, o fato que resolve a dúvida mais comum: **o
+download acontece uma vez só**. A primeira chamada escreve os pesos num cache
+em disco; toda execução seguinte lê de lá, sem rede.
+
+```text
+$ python test.py          # 1ª vez
+model.safetensors: 988MB [00:14, 66.7MB/s]
+Loading weights: 100%|██████████| 290/290 [00:00<00:00, 1084 it/s]
+
+$ python test.py          # 2ª vez em diante
+Loading weights: 100%|██████████| 290/290 [00:00<00:00, 2335 it/s]
+```
+
+O cache padrão é o do `huggingface_hub`:
+
+| Onde | Quando |
+| --- | --- |
+| `$HF_HOME/hub` | `HF_HOME` definido no ambiente |
+| `~/.cache/huggingface/hub` | o padrão, quando não está |
+| `cache_dir="..."` | você passou o argumento no loader — vence os dois acima |
+
+!!! warning "Container reinicia, cache some"
+    O cache mora no filesystem do processo. Num container sem volume, cada
+    restart baixa tudo de novo — GB de rede e minutos de boot a cada deploy.
+    Monte um volume e aponte o cache pra ele:
+
+    ```yaml
+    # docker-compose.yaml
+    services:
+      api:
+        environment:
+          HF_HOME: /models
+        volumes:
+          - hf-cache:/models
+
+    volumes:
+      hf-cache:
+    ```
+
+    Ou, se preferir no código, `TextGenerator(..., cache_dir="/models")`.
+
+!!! tip "O aviso de rate limit que aparece no stderr"
+    ```text
+    Warning: You are sending unauthenticated requests to the HF Hub.
+    Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+    ```
+
+    Download anônimo funciona, mas é limitado. Defina `HF_TOKEN` no ambiente
+    (ou passe `hf_token=` no loader) e o aviso some junto com o limite —
+    obrigatório para modelo *gated*, como o Llama.
+
+**Trocar o `model_id` ou a `revision` é um cache novo.** Não é bug: são pesos
+diferentes. Se a segunda execução voltou a baixar, foi um desses dois que
+mudou — ou o `HF_HOME` do processo.
+
 ## O problema: `main` se move
 
 Isto aqui é o que quase todo serviço self-hosted faz no primeiro dia:

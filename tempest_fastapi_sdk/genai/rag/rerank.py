@@ -106,7 +106,14 @@ class Reranker:
             model_id (str): HuggingFace cross-encoder id.
             device (str): ``"auto"`` / ``"cuda"`` / ``"mps"`` / ``"cpu"``.
             dtype (str | ModelDtype): Compute precision, or ``"auto"``.
-            cache_dir (str | None): Where to cache downloaded weights.
+            cache_dir (str | None): Where the downloaded weights are
+                written and read back from. ``None`` uses the
+                ``huggingface_hub`` default — ``$HF_HOME/hub``, or
+                ``~/.cache/huggingface/hub`` when ``HF_HOME`` is unset —
+                which is why the second run of a script starts instantly
+                instead of downloading again. Point it at a mounted
+                volume when the process is a container, so the layer does
+                not re-download the model on every restart.
             hf_token (str | None): Hub token for gated/private models.
             revision (str | None): Branch, tag or commit sha to load;
                 ``None`` follows the moving Hub default.

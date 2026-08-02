@@ -131,6 +131,13 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+!!! info "O peso baixa uma vez — depois é cache em disco"
+    A primeira chamada escreve os GB em `$HF_HOME/hub` (ou
+    `~/.cache/huggingface/hub`); as execuções seguintes leem de lá, sem rede.
+    Num **container sem volume** isso se perde a cada restart. Como apontar o
+    cache, fixar a revisão, pré-baixar no deploy e rodar offline está em
+    **[Pesos de modelos »](model-weights.md#onde-os-pesos-ficam-e-por-que-a-2a-execucao-e-instantanea)**.
+
 A geração bloqueante roda em `asyncio.to_thread` — não trava o event loop.
 `device="auto"` escolhe CUDA → MPS → CPU; `dtype="auto"` usa bf16 em GPU e
 fp32 em CPU.

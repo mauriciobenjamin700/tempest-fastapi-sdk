@@ -86,6 +86,13 @@ The weather in Recife is 22 degrees, clear sky.
 [('model', 'chat'), ('tool', 'get_weather'), ('model', 'chat')]
 ```
 
+!!! info "O peso baixa uma vez — depois é cache em disco"
+    A primeira chamada escreve os GB em `$HF_HOME/hub` (ou
+    `~/.cache/huggingface/hub`); as execuções seguintes leem de lá, sem rede.
+    Num **container sem volume** isso se perde a cada restart. Como apontar o
+    cache, fixar a revisão, pré-baixar no deploy e rodar offline está em
+    **[Pesos de modelos »](model-weights.md#onde-os-pesos-ficam-e-por-que-a-2a-execucao-e-instantanea)**.
+
 Três passos: o modelo pediu a ferramenta, a ferramenta rodou, o modelo leu o
 resultado e respondeu. Tudo isso num modelo de 0.5B rodando em CPU.
 
