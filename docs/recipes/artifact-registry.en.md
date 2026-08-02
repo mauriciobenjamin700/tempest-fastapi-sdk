@@ -51,6 +51,8 @@ That's it — you inherit `id` / `is_active` / `created_at` / `updated_at` from 
 from tempest_fastapi_sdk import AsyncMinIOClient, BaseRepository
 from tempest_fastapi_sdk.artifacts import ArtifactRegistry
 
+from src.db.models import ModelVersion
+
 
 def build_registry(session, storage: AsyncMinIOClient) -> ArtifactRegistry[ModelVersion]:
     """Assemble the registry for the model-version table."""
@@ -90,7 +92,10 @@ Both helpers return `(sha256, size)` **without loading the whole file into memor
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import UploadUtils
 from tempest_fastapi_sdk.artifacts import file_digest, object_digest
+
+storage = UploadUtils(source="./uploads")
 
 
 async def main() -> None:

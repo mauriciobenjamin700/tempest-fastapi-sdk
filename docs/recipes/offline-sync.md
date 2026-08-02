@@ -118,6 +118,8 @@ crescente de `updated_at`, paginado por cursor, **com os tombstones**:
 from datetime import datetime
 from uuid import UUID
 
+from src.db.repositories import AnalysisRepository
+
 
 async def pull_changes(
     repo: AnalysisRepository,

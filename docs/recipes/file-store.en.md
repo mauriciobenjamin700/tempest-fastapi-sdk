@@ -54,7 +54,12 @@ changes:
 ```python
 import asyncio
 
+from fastapi import UploadFile
+
 from tempest_fastapi_sdk import AsyncMinIOClient, FileStoreUtils
+
+file: UploadFile = ...  # comes from the endpoint signature
+
 
 minio = AsyncMinIOClient(
     endpoint="minio:9000",

@@ -47,7 +47,16 @@ def only_owner_can_delete(user: UserModel, order: OrderModel) -> bool:
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.authz import has_perm
+
+from src.db.models import OrderModel, UserModel
+
+current_user = UserModel(name="Ana", email="ana@example.com")
+order = OrderModel(user_id=user.id, total=100)
+repository = BaseRepository(session, model=UserModel)
+user = UserModel(name="Ana", email="ana@example.com")
+session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -66,6 +75,12 @@ Ou levante `ForbiddenException` direto quando negado:
 import asyncio
 
 from tempest_fastapi_sdk.authz import check_permission
+
+from src.db.models import OrderModel, UserModel
+
+current_user = UserModel(name="Ana", email="ana@example.com")
+order = OrderModel(user_id=user.id, total=100)
+user = UserModel(name="Ana", email="ana@example.com")
 
 
 async def main() -> None:
@@ -183,6 +198,11 @@ import asyncio
 
 from tempest_fastapi_sdk import BaseUserModel
 from tempest_fastapi_sdk.authz import PermissionMixin
+
+from src.db.models import OrderModel, UserModel
+
+order = OrderModel(user_id=user.id, total=100)
+user = UserModel(name="Ana", email="ana@example.com")
 
 
 class UserModel(BaseUserModel, PermissionMixin):

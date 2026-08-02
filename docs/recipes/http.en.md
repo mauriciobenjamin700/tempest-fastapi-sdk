@@ -599,6 +599,12 @@ For providers that sign with an RSA private key (Apple App Store, Google Play, c
 ```python
 from tempest_fastapi_sdk import RSAWebhookSignatureVerifier
 
+from src.core.settings import settings
+
+base64_signature_header_value = "c2lnbmF0dXJl"
+raw_body_bytes = b'{"event": "order.paid"}'
+
+
 apple = RSAWebhookSignatureVerifier(
     public_key_pem=settings.APPLE_PUBLIC_KEY_PEM,
     header_name="X-Apple-Signature",
@@ -629,6 +635,12 @@ import asyncio
 import httpx
 
 from tempest_fastapi_sdk import WebhookSender, WebhookSignatureVerifier
+
+from src.core.settings import settings
+
+order = {"id": "abc", "status": "paid"}
+subscribers = ["https://partner.example.com/hooks"]
+
 
 verifier = WebhookSignatureVerifier(settings.WEBHOOK_SECRET, prefix="sha256=")
 
@@ -1031,6 +1043,17 @@ async def me(current: UserModel = Depends(get_current_user)) -> UserResponseSche
 `get_current_user_or_none` above already uses `soft=True` — it returns `None` instead of raising on a missing or invalid token, so endpoints can work both authenticated and anonymous:
 
 ```python
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.auth import get_current_user_or_none
+from src.db.models import UserModel
+from src.schemas import FeedResponseSchema
+from src.services import FeedService
+
+feed_service = FeedService()
+router = APIRouter()
+
+
 @router.get("/feed")
 async def feed(
     current: UserModel | None = Depends(get_current_user_or_none),
@@ -1102,6 +1125,16 @@ Add `set_avatar` to both the service and the controller (the controller stays a 
 
 ```python
 # src/services/user.py
+
+from uuid import UUID
+
+from tempest_fastapi_sdk import UploadUtils
+
+from src.schemas import UserResponseSchema
+
+avatar_storage = UploadUtils(source="./uploads/avatars")
+
+
 class UserService:
     async def set_avatar(self, user_id: UUID, path: str) -> UserResponseSchema:
         user = await self.repo.get_by_id(user_id)

@@ -41,9 +41,14 @@ Pass the `AsyncMinIOClient` directly — nothing else changes:
 ```python
 import asyncio
 
+from fastapi import UploadFile
+
 from tempest_fastapi_sdk import AsyncMinIOClient, UploadUtils
 
 from src.core.settings import settings
+
+file: UploadFile = ...  # comes from the endpoint signature
+
 
 minio = AsyncMinIOClient(**settings.minio_kwargs())
 uploads = UploadUtils(minio, max_size_bytes=10 * 1024 * 1024)
@@ -96,6 +101,14 @@ uploads = UploadUtils(
 ```
 
 ```python
+from fastapi import APIRouter, UploadFile
+
+from tempest_fastapi_sdk import UploadUtils
+
+uploads = UploadUtils(source="./uploads")
+router = APIRouter()
+
+
 @router.post("/models")
 async def upload_model(file: UploadFile) -> dict[str, str]:
     """Accepts only .onnx / .ort; a .zip raises 415 here inside save()."""
@@ -169,6 +182,13 @@ else:
 ```python
 import asyncio
 
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import UploadUtils
+
+file: UploadFile = ...  # comes from the endpoint signature
+uploads = UploadUtils(source="./uploads")
+
 
 async def main() -> None:
     """Run this example."""
@@ -188,6 +208,16 @@ The classic case: the user uploads a new profile picture and you want to
 
 ```python
 import asyncio
+
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import UploadUtils
+
+from src.db.models import UserModel
+
+file: UploadFile = ...  # comes from the endpoint signature
+uploads = UploadUtils(source="./uploads")
+user = UserModel(name="Ana", email="ana@example.com")
 
 
 async def main() -> None:

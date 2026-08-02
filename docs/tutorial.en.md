@@ -415,11 +415,15 @@ For plain CRUD you don't need a subclass at all — instantiate `BaseRepository`
 
 ```python
 # anywhere a session is in scope
+
 import asyncio
 
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
+
+session = None  # provided by db.get_session_context() in your code
+
 
 repository = BaseRepository(session, model=UserModel)
 

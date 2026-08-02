@@ -551,6 +551,13 @@ class UserEmailAlreadyTakenError(ConflictException):
 For one-off codes you don't need a subclass — pass them to the constructor:
 
 ```python
+from uuid import UUID
+
+from tempest_fastapi_sdk import NotFoundException
+
+order_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
+
+
 raise NotFoundException(
     "Pedido não encontrado",
     code="ORDER_NOT_FOUND",
@@ -576,11 +583,15 @@ For plain CRUD you don't need a subclass at all — instantiate `BaseRepository`
 
 ```python
 # anywhere a session is in scope
+
 import asyncio
 
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
+
+session = None  # provided by db.get_session_context() in your code
+
 
 repository = BaseRepository(session, model=UserModel)
 
@@ -1152,6 +1163,17 @@ async def me(current: UserModel = Depends(get_current_user)) -> UserResponseSche
 `get_current_user_or_none` above already uses `soft=True` — it returns `None` instead of raising on a missing or invalid token, so endpoints can work both authenticated and anonymous:
 
 ```python
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.auth import get_current_user_or_none
+from src.db.models import UserModel
+from src.schemas import FeedResponseSchema
+from src.services import FeedService
+
+feed_service = FeedService()
+router = APIRouter()
+
+
 @router.get("/feed")
 async def feed(
     current: UserModel | None = Depends(get_current_user_or_none),
@@ -1221,6 +1243,16 @@ Add `set_avatar` to both the service and the controller (the controller stays a 
 
 ```python
 # src/services/user.py
+
+from uuid import UUID
+
+from tempest_fastapi_sdk import UploadUtils
+
+from src.schemas import UserResponseSchema
+
+avatar_storage = UploadUtils(source="./uploads/avatars")
+
+
 class UserService:
     async def set_avatar(self, user_id: UUID, path: str) -> UserResponseSchema:
         user = await self.repo.get_by_id(user_id)
@@ -1581,9 +1613,13 @@ Small stateless helpers from `tempest_fastapi_sdk.utils` that the SDK itself rel
 `utcnow` is the canonical "now" for the SDK. Use it for soft-delete timestamps, JWT `iat` / `exp`, audit trails — anything where mixing naive and aware datetimes would burn you later.
 
 ```python
-from datetime import timedelta
+from datetime import datetime, timedelta
+
+from fastapi import Request
 
 from tempest_fastapi_sdk import to_utc, utcnow
+
+request: Request = ...  # the current FastAPI request
 
 
 now = utcnow()                      # timezone-aware UTC
@@ -1601,7 +1637,10 @@ A naive datetime is tagged with UTC (not converted from local time) so it's pred
 `modify_dict` is the tiny utility that powers `BaseSchema.to_dict(exclude=..., include=...)` and `BaseModel.update_from_dict(...)`. Use it directly when you don't want to call into Pydantic round-trips:
 
 ```python
-from tempest_fastapi_sdk import LogUtils, modify_dict
+from tempest_fastapi_sdk import LogUtils, PasswordUtils, modify_dict
+
+passwords = PasswordUtils()
+
 
 log = LogUtils("app.users")
 
@@ -1685,6 +1724,9 @@ Valid input:
 After validation:
 
 ```python
+from src.schemas import CustomerCreateSchema
+
+
 CustomerCreateSchema(...).document  # "52998224725"
 CustomerCreateSchema(...).phone     # "5511988887777"
 ```
@@ -1692,11 +1734,11 @@ CustomerCreateSchema(...).phone     # "5511988887777"
 #### Manual validation (services, controllers, queue handlers)
 
 ```python
-from tempest_fastapi_sdk.utils import (
-    is_valid_cpf_cnpj,
-    normalize_cpf_cnpj,
-    only_digits,
-)
+from tempest_fastapi_sdk import ValidationException
+from tempest_fastapi_sdk.utils import is_valid_cpf_cnpj, normalize_cpf_cnpj, only_digits
+
+raw_document = "529.982.247-25"
+
 
 if not is_valid_cpf_cnpj(raw_document):
     raise ValidationException(message="Documento inválido")
@@ -1710,6 +1752,15 @@ The normalizers strip masks before saving, so repository filters and unique cons
 
 ```python
 import asyncio
+
+from tempest_fastapi_sdk import BaseRepository
+from tempest_fastapi_sdk.utils import normalize_cpf_cnpj
+
+from src.db.models import UserModel
+
+query = "52998224725"
+repo = BaseRepository(session, model=UserModel)
+session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -2028,6 +2079,12 @@ Key points:
 ```python
 from tempest_fastapi_sdk import LogUtils, configure_logging
 from tempest_fastapi_sdk.core import get_request_id
+
+from src.db.models import UserModel
+
+risky = LogUtils.mask
+user = UserModel(name="Ana", email="ana@example.com")
+
 
 # Imperative — call once during bootstrap.
 configure_logging(level="INFO", json_output=True)
@@ -2387,11 +2444,16 @@ Repository helper (cursor over `created_at` + `id` tie-break):
 
 ```python
 # src/db/repositories/user.py
-from sqlalchemy import asc, desc
+
+from typing import Any
+
+from sqlalchemy import asc, desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import BaseRepository, decode_cursor, encode_cursor
 
 from src.db.models.user import UserModel
+from src.schemas import UserCursorPage
 from src.schemas.user import UserResponse
 
 
@@ -2442,6 +2504,15 @@ class UserRepository(BaseRepository[UserModel]):
 Router:
 
 ```python
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.controllers import get_user_controller
+from src.controllers import UserController
+from src.schemas import UserCursorFilter, UserCursorPage
+
+router = APIRouter()
+
+
 @router.get("/", response_model=UserCursorPage)
 async def list_users(
     f: UserCursorFilter = Depends(),
@@ -2555,12 +2626,19 @@ The queue is **bounded** (`max_queue`, default `1000`): a slow client can't grow
 
 ```python
 # src/services/notifications.py
+
 from tempest_fastapi_sdk import (
     WebPushDispatcher,
     WebPushGoneError,
     WebPushPayloadSchema,
     WebPushSubscriptionSchema,
 )
+
+from src.core.settings import settings
+from src.db.repositories import WebPushSubscriptionRepository
+
+subscriptions_repo = WebPushSubscriptionRepository(session)
+session = None  # provided by db.get_session_context() in your code
 
 
 dispatcher = WebPushDispatcher(
@@ -2603,11 +2681,19 @@ Install with `[queue]` (pulls `faststream[rabbit]`).
 
 ```python
 # src/queue/__init__.py
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 from pydantic import BaseModel
 
 from tempest_fastapi_sdk.queue import MessageBroker
 
 from src.core.settings import settings
+from src.services.orders import mark_order_paid
+
+app = FastAPI()
 
 
 mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)  # or .redis / .kafka / .nats
@@ -2649,9 +2735,19 @@ async def pay_order(order_id: str) -> dict[str, str]:
 
 ```python
 # src/tasks/__init__.py
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import EmailUtils
 from tempest_fastapi_sdk.tasks import TaskQueue
 
 from src.core.settings import settings
+
+email_utils = EmailUtils(settings)
+app = FastAPI()
 
 
 tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)  # or .redis / .memory (tests)
@@ -2742,6 +2838,19 @@ Wire it into the app lifespan next to the broker manager:
 
 ```python
 # src/api/app.py
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk.tasks import AsyncTaskScheduler
+
+from src.tasks import tasks
+
+scheduler = AsyncTaskScheduler(tasks)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await tasks.connect()
@@ -2956,9 +3065,15 @@ Imperative variants: `is_valid_cep(value)`, `normalize_cep(value)`, plus `CEP_PA
 `@cached(redis, ttl=..., key_prefix=...)` memoizes the result of an async function in Redis. Cache keys are derived from the function's `__qualname__` plus a SHA-256 of args/kwargs; pass `key_prefix=` to namespace entries so invalidation works by prefix scan.
 
 ```python
+from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
 
 from src.core.settings import settings
+from src.db.models import UserModel
+
+load_from_db = repo.get_by_id
+repo = BaseRepository(session, model=UserModel)
+session = None  # provided by db.get_session_context() in your code
 
 
 redis = AsyncRedisManager(settings.REDIS_URL)
@@ -3290,8 +3405,9 @@ from tempest_fastapi_sdk.tasks import AsyncTaskScheduler
 
 from src.api.app import broker as queue_broker  # FastStream AsyncBrokerManager
 from src.api.app import db
+from src.db.repositories import OutboxRepository
 
-scheduler = AsyncTaskScheduler(broker)
+scheduler = AsyncTaskScheduler(queue_broker)
 
 
 @scheduler.interval(seconds=5)
@@ -3349,6 +3465,9 @@ assert Priority.NORMAL + 1 == Priority.HIGH       # int math
 Both bases add introspection + lookup helpers so you rarely reach for `enum` internals:
 
 ```python
+from src.core.constants import OrderStatus
+
+
 OrderStatus.values()                       # ["pending", "paid", "shipped", "cancelled"]
 OrderStatus.keys()                         # ["PENDING", "PAID", "SHIPPED", "CANCELLED"]
 OrderStatus.to_dict()                      # {"PENDING": "pending", ...}
@@ -3471,10 +3590,17 @@ def logout(response: Response) -> None:
 `AttemptThrottle` counts failed attempts per key (typically `<endpoint>:<identifier>` — login email, password-reset target, IP, etc.). The constructor takes a `backend` — any object matching the `ThrottleBackend` Protocol (`get`/`incr`/`expire`/`ttl`/`delete`), which `redis.asyncio.Redis` satisfies out of the box — plus `max_attempts` + `window_seconds`. No in-memory backend is bundled: pass the Redis client from `AsyncRedisManager` (or a [fakeredis](https://github.com/cunla/fakeredis-py) double in tests).
 
 ```python
-from tempest_fastapi_sdk import AttemptThrottle, UnauthorizedException
+from tempest_fastapi_sdk import AttemptThrottle, PasswordUtils, UnauthorizedException
 from tempest_fastapi_sdk.cache import AsyncRedisManager
 
 from src.core.settings import settings
+from src.db.models import User
+from src.db.repositories import UserRepository
+
+password_utils = PasswordUtils()
+users_repo = UserRepository(session)
+session = None  # provided by db.get_session_context() in your code
+
 
 cache = AsyncRedisManager(settings.REDIS_URL)
 # cache.client is redis.asyncio.Redis — matches the ThrottleBackend Protocol
@@ -3510,11 +3636,13 @@ async def login(email: str, password: str) -> User:
 from datetime import timedelta
 from uuid import UUID
 
-from tempest_fastapi_sdk import (
-    generate_opaque_token,
-    utcnow,
-    verify_opaque_token,
-)
+from tempest_fastapi_sdk import generate_opaque_token, utcnow, verify_opaque_token
+
+from src.db.models import PasswordResetToken
+from src.db.repositories import UserTokenRepository
+
+reset_tokens_repo = UserTokenRepository(session)
+session = None  # provided by db.get_session_context() in your code
 
 
 async def issue_reset_token(user_id: UUID) -> str:
@@ -3551,9 +3679,14 @@ The digest is **plain SHA-256, no pepper and no HMAC** — by design: an opaque 
 `get_client_ip(request)` and `get_client_ip_from_scope(scope)` return the real client IP behind a proxy. By design they accept **one** trusted header name (`trusted_header=`) that your edge proxy is known to set (e.g. `"x-real-ip"` on Nginx) — without it, they use the direct peer address. Anti-spoofing belongs at the proxy (which overwrites the header with the real peer), not in Python, so the SDK only reads the header you declare trusted.
 
 ```python
-from fastapi import Request
+from fastapi import APIRouter, Request
 
-from tempest_fastapi_sdk import get_client_ip
+from tempest_fastapi_sdk import AttemptThrottle, get_client_ip
+
+from src.schemas import LoginIn, LoginOut
+
+throttle = AttemptThrottle(max_attempts=5, window_seconds=300)
+router = APIRouter()
 
 
 @router.post("/login")
@@ -3872,7 +4005,15 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError
+from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError, GoogleOAuthClient
+
+from src.core.settings import settings
+
+my_oauth_client = GoogleOAuthClient(
+    client_id=settings.GOOGLE_CLIENT_ID,
+    client_secret=settings.GOOGLE_CLIENT_SECRET,
+    redirect_uri=settings.GOOGLE_REDIRECT_URI,
+)
 
 
 class OAuthAdminBackend(AdminAuthBackend):
@@ -4175,7 +4316,13 @@ Subclasses set `message`/`code`/`status_code` as class attributes; instances can
 The envelope only helps a client that knows **which** `code` to expect, so `error_responses(*exception_classes)` builds the FastAPI `responses=` mapping from the classes themselves — grouped by status, with each `code` in an `examples` selector and the body pointing at `ErrorResponseSchema`:
 
 ```python
+from uuid import UUID
+
 from tempest_fastapi_sdk import TempestAPIRouter, error_responses, raises
+
+from src.core.exceptions import ServiceFullException, ServiceNotFoundException
+from src.schemas import CandidateResponseSchema, ServiceResponseSchema
+
 
 router: TempestAPIRouter = TempestAPIRouter(prefix="/api/jobs")
 
@@ -4213,9 +4360,21 @@ tempest openapi-errors --fix             # write them (needs a clean git tree)
 `@requires` runs plain `(user) -> user | None` guards before a function body — on a route, a controller or a service, sync or `async`. A guard denies by raising an `AppException`, so the HTTP status, the error `code` and the `{detail, code, details}` envelope come from the SDK handlers.
 
 ```python
-from fastapi import Depends
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
+
 from tempest_fastapi_sdk import error_responses, requires
 from tempest_fastapi_sdk.auth import require_active
+
+from src.api.dependencies.auth import get_current_user
+from src.controllers import OrderController
+from src.core.exceptions import NotOrderOwnerException
+from src.core.guards import order_owner
+from src.db.models import UserModel
+
+controller = OrderController(...)
+router = APIRouter()
 
 
 @router.delete("/orders/{order_id}", responses=error_responses(NotOrderOwnerException))
@@ -4233,6 +4392,19 @@ The user parameter is found by annotation (`user_param=` breaks a tie), and a gu
 A guard may declare a second parameter to receive a `dict[str, Any]` of metadata, which is what turns one generic guard into a specific check per call site — `meta=` carries literals fixed at decoration, `include_args=True` merges the call's own arguments:
 
 ```python
+from typing import Any
+from uuid import UUID
+
+from fastapi import Depends
+
+from tempest_fastapi_sdk import requires
+
+from src.api.dependencies.auth import get_current_user
+from src.core.exceptions import MissingRoleException
+from src.core.guards import order_owner
+from src.db.models import UserModel
+
+
 def has_role(user: UserModel, meta: dict[str, Any]) -> UserModel:
     """Deny unless the user holds the role the route declared."""
     if meta["role"] not in user.roles:

@@ -206,6 +206,11 @@ import asyncio
 
 from tempest_fastapi_sdk.testing import ModelFactory, seq
 
+from src.db.models import UserModel
+
+session = None  # provided by db.get_session_context() in your code
+
+
 users = ModelFactory(
     session,
     UserModel,

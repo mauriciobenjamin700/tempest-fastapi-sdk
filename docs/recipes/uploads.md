@@ -40,9 +40,14 @@ Passe o `AsyncMinIOClient` direto — nada mais muda:
 ```python
 import asyncio
 
+from fastapi import UploadFile
+
 from tempest_fastapi_sdk import AsyncMinIOClient, UploadUtils
 
 from src.core.settings import settings
+
+file: UploadFile = ...  # comes from the endpoint signature
+
 
 minio = AsyncMinIOClient(**settings.minio_kwargs())
 uploads = UploadUtils(minio, max_size_bytes=10 * 1024 * 1024)
@@ -95,6 +100,14 @@ uploads = UploadUtils(
 ```
 
 ```python
+from fastapi import APIRouter, UploadFile
+
+from tempest_fastapi_sdk import UploadUtils
+
+uploads = UploadUtils(source="./uploads")
+router = APIRouter()
+
+
 @router.post("/models")
 async def upload_model(file: UploadFile) -> dict[str, str]:
     """Aceita só .onnx / .ort; um .zip levanta 415 aqui dentro do save()."""
@@ -168,6 +181,13 @@ else:
 ```python
 import asyncio
 
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import UploadUtils
+
+file: UploadFile = ...  # comes from the endpoint signature
+uploads = UploadUtils(source="./uploads")
+
 
 async def main() -> None:
     """Run this example."""
@@ -186,6 +206,16 @@ mão (e arriscar apagar pelo backend errado), use `replace`:
 
 ```python
 import asyncio
+
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import UploadUtils
+
+from src.db.models import UserModel
+
+file: UploadFile = ...  # comes from the endpoint signature
+uploads = UploadUtils(source="./uploads")
+user = UserModel(name="Ana", email="ana@example.com")
 
 
 async def main() -> None:

@@ -76,8 +76,11 @@ unsafe. Write the order row **and** the outbox row together —
 
 ```python
 # src/services/orders.py
+
 from src.core.resources import db
 from src.db.models import OrderModel, OutboxModel
+from src.db.repositories import OrderRepository
+from src.schemas import CheckoutSchema
 from src.services.catalog import get_product_cents
 
 
@@ -113,9 +116,14 @@ automatically).
 
 ```python
 # src/api/routers/checkout.py
+
 from fastapi import APIRouter, Depends
 
 from src.api.dependencies import current_user, get_order_service
+from src.db.models import UserModel
+from src.schemas import CheckoutSchema
+from src.services import OrderService
+
 
 router = APIRouter(prefix="/api/checkout")
 
@@ -266,6 +274,20 @@ all: `broker.response(channel)`.
 
 ```python
 # src/api/routers/notifications.py
+
+from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
+
+from tempest_fastapi_sdk.webpush import WebPushDispatcher
+
+from src.core.settings import settings
+from src.db.models import UserModel
+
+current_user = UserModel(name="Ana", email="ana@example.com")
+notifications = WebPushDispatcher(settings)
+router = APIRouter()
+
+
 @router.get("/notifications/stream")
 async def stream(user: UserModel = Depends(current_user)) -> StreamingResponse:
     return notifications.broker.response(str(user.id))
@@ -309,10 +331,15 @@ SSE is **core** (no extra); Web Push needs the extra:
 
 ```python
 # src/api/routers/feed.py
+
 from fastapi import APIRouter, Depends
 from starlette.responses import StreamingResponse
 
 from src.core.resources import events
+from src.db.models import UserModel
+
+current_user = UserModel(name="Ana", email="ana@example.com")
+
 
 router = APIRouter()
 

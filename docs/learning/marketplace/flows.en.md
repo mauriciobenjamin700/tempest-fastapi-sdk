@@ -356,6 +356,7 @@ receive the SSE half. The endpoint is one line: `broker.response(str(user.id))`.
 
 ```python
 # src/api/routers/notifications.py
+
 from fastapi import APIRouter, Depends
 from starlette.responses import StreamingResponse
 
@@ -363,6 +364,8 @@ from tempest_fastapi_sdk import SSEBroker
 
 from src.api.dependencies.auth import get_current_user
 from src.api.dependencies.resources import get_broker
+from src.db.models import User
+
 
 router = APIRouter()
 

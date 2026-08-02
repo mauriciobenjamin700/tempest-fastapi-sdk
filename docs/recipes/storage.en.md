@@ -289,6 +289,10 @@ async def list_files(prefix: str = "") -> list[str]:
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import UploadUtils
+
+storage = UploadUtils(source="./uploads")
+
 
 async def main() -> None:
     """Run this example."""

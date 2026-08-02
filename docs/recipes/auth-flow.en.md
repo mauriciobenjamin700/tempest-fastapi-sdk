@@ -863,6 +863,22 @@ Password reset follows the same pattern: GET renders an HTML form; POST (form-en
 **To override:** pass `template_dir` to `make_auth_router` and add files with the same filenames.
 
 ```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import UserAuthService, make_auth_router
+
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+auth_service = UserAuthService(
+    user_model=UserModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+)
+app = FastAPI()
+
+
 app.include_router(
     make_auth_router(
         auth_service,
@@ -925,6 +941,22 @@ AUTH_COOKIE_SAMESITE=lax         # "none" (+Secure) if the SPA is cross-site
 ```
 
 ```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import UserAuthService, make_auth_router
+
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+auth_service = UserAuthService(
+    user_model=UserModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+)
+app = FastAPI()
+
+
 app.include_router(make_auth_router(auth_service, session_factory=db.session_dependency))
 ```
 
@@ -1303,6 +1335,11 @@ from tempest_fastapi_sdk import (
 The detail that matters: each one **returns the user already narrowed** — non-`None`, with the concrete type preserved — so the rest of the function stops seeing `| None`:
 
 ```python
+from tempest_fastapi_sdk import require_admin
+
+from src.db.models import UserModel
+
+
 class ReportService:
     async def delete_all(self, current: UserModel | None) -> None:
         """Only an admin may purge reports."""

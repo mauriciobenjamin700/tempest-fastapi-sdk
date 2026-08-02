@@ -124,7 +124,19 @@ uv add "tempest-fastapi-sdk[modelops-onnx,modelops-sklearn]"
 ```
 
 ```python
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
 from tempest_fastapi_sdk.modelops import edge_bundle
+
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+model = RandomForestClassifier(n_estimators=20, random_state=0).fit(
+    X_train, y_train
+)
+
 
 bundle = edge_bundle(
     model,                       # a fitted estimator or Pipeline
@@ -222,7 +234,15 @@ browser — which kills offline, size, and the reason the module exists.
 The bridge belongs to the **build**, not to the request path:
 
 ```python
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+
 from tempest_fastapi_sdk.modelops import edge_pipeline_from_pickle
+
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+
 
 package = edge_pipeline_from_pickle(
     "artifacts/risk.pkl",
@@ -279,6 +299,17 @@ resolves by itself; with two it **refuses and lists what it found** rather
 than guessing:
 
 ```python
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+
+from tempest_fastapi_sdk.modelops import edge_pipeline_from_pickle
+
+X = X_test
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+
+
 package = edge_pipeline_from_pickle("bundle.pkl", X, "dist/", key="challenger")
 ```
 
@@ -299,7 +330,19 @@ For an app whose only model is tabular, the runtime **is** the download. So
 there is a way out that drops the runtime instead of the model:
 
 ```python
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
 from tempest_fastapi_sdk.modelops import export_sklearn_to_compact
+
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+model = RandomForestClassifier(n_estimators=20, random_state=0).fit(
+    X_train, y_train
+)
+
 
 export = export_sklearn_to_compact(model, X_test, "dist/risk.tmc")
 print(export.kind, export.size_bytes, export.verified)
@@ -317,6 +360,23 @@ and this exporter writes what it reads.
 In an edge package it travels alongside the graph:
 
 ```python
+from pathlib import Path
+
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
+from tempest_fastapi_sdk.modelops import edge_pipeline_from_pickle
+
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+edge_pipeline = edge_pipeline_from_pickle(Path("model.pkl"))
+model = RandomForestClassifier(n_estimators=20, random_state=0).fit(
+    X_train, y_train
+)
+
+
 package = edge_pipeline(model, X_train, "dist/risk", labels=y_train, compact=True)
 print([(r.kind, r.bytes) for r in package.manifest.runtimes])
 ```
@@ -462,7 +522,21 @@ A row of the wrong width is a **422**, not a 500 — it is a client error.
 ### Swapping the model without a deploy
 
 ```python
-from tempest_fastapi_sdk.modelops import RegistryModelSource
+from pathlib import Path
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import ArtifactRegistry
+from tempest_fastapi_sdk.modelops import (
+    OnnxPredictor,
+    RegistryModelSource,
+    make_prediction_router,
+)
+
+predictor = OnnxPredictor("model.onnx")
+registry = ArtifactRegistry(root=Path("artifacts"))
+app = FastAPI()
+
 
 source = RegistryModelSource(registry, "fraud-classifier", cache_dir="models/")
 app.include_router(make_prediction_router(predictor, source=source))
@@ -490,7 +564,19 @@ The next question is: **what do I actually publish, and how does the thing
 running it know what it got.**
 
 ```python
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
 from tempest_fastapi_sdk.modelops import edge_pipeline
+
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+model = RandomForestClassifier(n_estimators=20, random_state=0).fit(
+    X_train, y_train
+)
+
 
 package = edge_pipeline(
     model,
@@ -529,7 +615,16 @@ the failure is silent: a model served with two columns swapped answers
 confidently and wrongly.
 
 ```python
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+
 from tempest_fastapi_sdk.modelops import load_edge_package
+
+rows = X_test.tolist()
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+
 
 loaded = load_edge_package("dist/risk")
 result = loaded.predictor.predict(rows)
@@ -615,7 +710,21 @@ trained on, and whether the model's own output has shifted. Both are
 proxies, and the implementation says so rather than pretending otherwise.
 
 ```python
-from tempest_fastapi_sdk.modelops import PredictionMonitor, baseline_from_samples
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+
+from tempest_fastapi_sdk.modelops import (
+    OnnxPredictor,
+    PredictionMonitor,
+    baseline_from_samples,
+)
+
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+predictor = OnnxPredictor("model.onnx")
+rows = X_test.tolist()
+
 
 baseline = baseline_from_samples(X_train, labels=y_train)
 monitor = PredictionMonitor(baseline=baseline)
@@ -654,6 +763,15 @@ the model.
 
 ```python
 from pathlib import Path
+
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+
+baseline = X_train
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+
 
 Path("dist/baseline.json").write_text(baseline.model_dump_json())
 ```
@@ -694,7 +812,24 @@ which would take days to react to a real shift.
 ### Over HTTP and in Prometheus
 
 ```python
-from tempest_fastapi_sdk.modelops import PredictionMetrics
+from fastapi import FastAPI
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+
+from tempest_fastapi_sdk.modelops import (
+    PredictionMonitor,
+    OnnxPredictor,
+    PredictionMetrics,
+    make_prediction_router,
+)
+
+baseline, _, _, _ = train_test_split(  # the training matrix the drift baseline is measured against
+    *load_iris(return_X_y=True), random_state=0
+)
+monitor = PredictionMonitor(baseline=baseline)
+predictor = OnnxPredictor("model.onnx")
+app = FastAPI()
+
 
 app.include_router(
     make_prediction_router(
@@ -1092,6 +1227,9 @@ parameter is for:
 ```python
 from tempest_fastapi_sdk.modelops import rank
 
+profiles = []  # results collected from a previous benchmark run
+
+
 report = rank(
     profiles,
     weights={"latency_ms_p99": 0.7, "rss_peak_mb": 0.3},
@@ -1105,6 +1243,9 @@ survives is the set of defensible choices:
 
 ```python
 from tempest_fastapi_sdk.modelops import pareto_points
+
+profiles = []  # results collected from a previous benchmark run
+
 
 for point in pareto_points(profiles):
     if point.is_pareto:
@@ -1242,6 +1383,9 @@ wrong shape yields a model that loads and returns wrong numbers. When that
 happens, choose it yourself:
 
 ```python
+from tempest_fastapi_sdk.modelops import optimize_hf_onnx
+
+
 optimized = optimize_hf_onnx(
     "exports/my-architecture",
     "exports/my-architecture-o2",

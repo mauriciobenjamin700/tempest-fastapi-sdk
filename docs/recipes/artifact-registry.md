@@ -51,6 +51,8 @@ Pronto — você herda `id` / `is_active` / `created_at` / `updated_at` do `Base
 from tempest_fastapi_sdk import AsyncMinIOClient, BaseRepository
 from tempest_fastapi_sdk.artifacts import ArtifactRegistry
 
+from src.db.models import ModelVersion
+
 
 def build_registry(session, storage: AsyncMinIOClient) -> ArtifactRegistry[ModelVersion]:
     """Monta o registry para a tabela de versões de modelo."""
@@ -90,7 +92,10 @@ Os dois helpers devolvem `(sha256, size)` **sem carregar o arquivo inteiro na me
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import UploadUtils
 from tempest_fastapi_sdk.artifacts import file_digest, object_digest
+
+storage = UploadUtils(source="./uploads")
 
 
 async def main() -> None:

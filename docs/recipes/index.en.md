@@ -141,7 +141,11 @@ enum/helpers, both hiding the underlying lib.
 
 ```python
 from tempest_fastapi_sdk.queue import MessageBroker
-from tempest_fastapi_sdk.tasks import TaskQueue, Cron, CronOffset
+from tempest_fastapi_sdk.tasks import Cron, CronOffset, TaskQueue
+
+from src.core.settings import settings
+from src.queue import OrderPaid
+
 
 mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)
 tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)

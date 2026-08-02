@@ -77,6 +77,11 @@ generated from the classes above.
 ### The `Page` class
 
 ```python
+from tempestweb import Column, Text, Widget
+
+from tempest_fastapi_sdk.ssr import Page
+
+
 class HomePage(Page):
     user: str
 
@@ -106,6 +111,10 @@ return html_response(HomePage(title="Home", user="Ana"), title="Home")
 Its signature:
 
 ```python
+from fastapi.responses import HTMLResponse
+from tempestweb import Widget
+
+
 def html_response(
     widget: Widget,
     *,
@@ -490,7 +499,12 @@ Before (stringly-typed) and after (clear and typed):
 Button(label="Save", attrs={"hx-post": "/save", "hx-swap": "outerHTML"})
 
 # after
+
+from tempestweb import Button
+
 from tempest_fastapi_sdk.ssr import htmx
+
+
 Button(label="Save", attrs=htmx(post="/save", swap="outerHTML"))
 ```
 

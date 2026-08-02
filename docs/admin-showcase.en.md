@@ -204,13 +204,15 @@ for the writes it performs when `audit_model=` is set.
 
 ```python
 # src/api/app.py
+
 from fastapi import FastAPI
 
 from tempest_fastapi_sdk import UserModelAuthBackend, make_admin_router
 
 from src.admin.site import access_policy, site
 from src.core.settings import settings
-from src.db.connection import db  # your AsyncDatabaseManager
+from src.db.connection import db
+from src.db.models import User
 
 
 def create_app() -> FastAPI:

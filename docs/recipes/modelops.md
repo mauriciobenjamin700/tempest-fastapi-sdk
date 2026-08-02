@@ -124,7 +124,19 @@ uv add "tempest-fastapi-sdk[modelops-onnx,modelops-sklearn]"
 ```
 
 ```python
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
 from tempest_fastapi_sdk.modelops import edge_bundle
+
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+model = RandomForestClassifier(n_estimators=20, random_state=0).fit(
+    X_train, y_train
+)
+
 
 bundle = edge_bundle(
     model,                       # estimador ou Pipeline já treinado
@@ -222,7 +234,15 @@ mata offline, tamanho e o motivo do módulo existir.
 A ponte é de **build**, não de request:
 
 ```python
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+
 from tempest_fastapi_sdk.modelops import edge_pipeline_from_pickle
+
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+
 
 package = edge_pipeline_from_pickle(
     "artifacts/risk.pkl",
@@ -278,6 +298,17 @@ errada.
 sozinho; com dois, **recusa e lista o que achou** em vez de chutar:
 
 ```python
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+
+from tempest_fastapi_sdk.modelops import edge_pipeline_from_pickle
+
+X = X_test
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+
+
 package = edge_pipeline_from_pickle("bundle.pkl", X, "dist/", key="challenger")
 ```
 
@@ -298,7 +329,19 @@ Para um app cujo único modelo é tabular, o runtime **é** o download. Então
 existe uma saída que descarta o runtime em vez do modelo:
 
 ```python
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
 from tempest_fastapi_sdk.modelops import export_sklearn_to_compact
+
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+model = RandomForestClassifier(n_estimators=20, random_state=0).fit(
+    X_train, y_train
+)
+
 
 export = export_sklearn_to_compact(model, X_test, "dist/risk.tmc")
 print(export.kind, export.size_bytes, export.verified)
@@ -316,6 +359,23 @@ e este exportador escreve o que ele lê.
 No pacote de borda, sai junto:
 
 ```python
+from pathlib import Path
+
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
+from tempest_fastapi_sdk.modelops import edge_pipeline_from_pickle
+
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+edge_pipeline = edge_pipeline_from_pickle(Path("model.pkl"))
+model = RandomForestClassifier(n_estimators=20, random_state=0).fit(
+    X_train, y_train
+)
+
+
 package = edge_pipeline(model, X_train, "dist/risk", labels=y_train, compact=True)
 print([(r.kind, r.bytes) for r in package.manifest.runtimes])
 ```
@@ -458,7 +518,21 @@ Linha de largura errada vira **422**, não 500 — é erro do cliente.
 ### Trocar o modelo sem redeploy
 
 ```python
-from tempest_fastapi_sdk.modelops import RegistryModelSource
+from pathlib import Path
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import ArtifactRegistry
+from tempest_fastapi_sdk.modelops import (
+    OnnxPredictor,
+    RegistryModelSource,
+    make_prediction_router,
+)
+
+predictor = OnnxPredictor("model.onnx")
+registry = ArtifactRegistry(root=Path("artifacts"))
+app = FastAPI()
+
 
 source = RegistryModelSource(registry, "fraud-classifier", cache_dir="models/")
 app.include_router(make_prediction_router(predictor, source=source))
@@ -486,7 +560,19 @@ modelo". A pergunta seguinte é: **o que eu de fato publico, e como quem roda
 sabe o que recebeu.**
 
 ```python
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
 from tempest_fastapi_sdk.modelops import edge_pipeline
+
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+model = RandomForestClassifier(n_estimators=20, random_state=0).fit(
+    X_train, y_train
+)
+
 
 package = edge_pipeline(
     model,
@@ -524,7 +610,16 @@ Sem manifesto, isso tudo vive numa página de wiki que envelhece — e a falha
 confiança e errado.
 
 ```python
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+
 from tempest_fastapi_sdk.modelops import load_edge_package
+
+rows = X_test.tolist()
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+
 
 loaded = load_edge_package("dist/risk")
 result = loaded.predictor.predict(rows)
@@ -609,7 +704,21 @@ modelo mudou. São proxies, e a implementação diz isso em vez de fingir o
 contrário.
 
 ```python
-from tempest_fastapi_sdk.modelops import PredictionMonitor, baseline_from_samples
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+
+from tempest_fastapi_sdk.modelops import (
+    OnnxPredictor,
+    PredictionMonitor,
+    baseline_from_samples,
+)
+
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+predictor = OnnxPredictor("model.onnx")
+rows = X_test.tolist()
+
 
 baseline = baseline_from_samples(X_train, labels=y_train)
 monitor = PredictionMonitor(baseline=baseline)
@@ -648,6 +757,15 @@ modelo.
 
 ```python
 from pathlib import Path
+
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+
+baseline = X_train
+X_train, X_test, y_train, y_test = train_test_split(
+    *load_iris(return_X_y=True), random_state=0
+)
+
 
 Path("dist/baseline.json").write_text(baseline.model_dump_json())
 ```
@@ -688,7 +806,24 @@ levaria dias para reagir a uma mudança real.
 ### No HTTP e no Prometheus
 
 ```python
-from tempest_fastapi_sdk.modelops import PredictionMetrics
+from fastapi import FastAPI
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+
+from tempest_fastapi_sdk.modelops import (
+    PredictionMonitor,
+    OnnxPredictor,
+    PredictionMetrics,
+    make_prediction_router,
+)
+
+baseline, _, _, _ = train_test_split(  # a matriz de treino que serve de referência para a deriva
+    *load_iris(return_X_y=True), random_state=0
+)
+monitor = PredictionMonitor(baseline=baseline)
+predictor = OnnxPredictor("model.onnx")
+app = FastAPI()
+
 
 app.include_router(
     make_prediction_router(
@@ -1084,6 +1219,9 @@ o parâmetro existe:
 ```python
 from tempest_fastapi_sdk.modelops import rank
 
+profiles = []  # results collected from a previous benchmark run
+
+
 report = rank(
     profiles,
     weights={"latency_ms_p99": 0.7, "rss_peak_mb": 0.3},
@@ -1097,6 +1235,9 @@ O que sobra é o conjunto de escolhas defensáveis:
 
 ```python
 from tempest_fastapi_sdk.modelops import pareto_points
+
+profiles = []  # results collected from a previous benchmark run
+
 
 for point in pareto_points(profiles):
     if point.is_pareto:
@@ -1234,6 +1375,9 @@ modelo que carrega e devolve números errados. Quando isso acontecer, escolha
 você:
 
 ```python
+from tempest_fastapi_sdk.modelops import optimize_hf_onnx
+
+
 optimized = optimize_hf_onnx(
     "exports/minha-arquitetura",
     "exports/minha-arquitetura-o2",

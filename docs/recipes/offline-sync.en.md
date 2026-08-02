@@ -118,6 +118,8 @@ by `updated_at`, cursor-paginated, **including tombstones**:
 from datetime import datetime
 from uuid import UUID
 
+from src.db.repositories import AnalysisRepository
+
 
 async def pull_changes(
     repo: AnalysisRepository,
