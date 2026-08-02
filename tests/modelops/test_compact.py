@@ -215,6 +215,87 @@ class TestTreeModels:
         assert numpy.allclose(labels, model.predict(features[:50]), atol=1e-4)
 
 
+class TestRoutingRule:
+    def test_a_value_sitting_on_a_threshold_goes_where_sklearn_sends_it(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """The rule the iris forest exposed.
+
+        `sklearn.tree` casts its input to float32 before traversing, so a
+        threshold of 5.099999904632568 — a float32 value widened for
+        storage — and an input of 5.1 compare *equal* and go left.
+        Comparing in float64 sends that row right, changing one tree's vote
+        out of twenty: a probability off by exactly 0.05.
+        """
+        from sklearn.datasets import load_iris
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.model_selection import train_test_split
+
+        iris = load_iris()
+        features_train, _, target_train, _ = train_test_split(
+            iris.data,
+            iris.target,
+            test_size=0.3,
+            random_state=0,
+        )
+        model = RandomForestClassifier(
+            n_estimators=20,
+            max_depth=4,
+            random_state=0,
+        ).fit(features_train, target_train)
+
+        path = tmp_path / "iris.tmc"
+        export_sklearn_to_compact(model, features_train, path)
+
+        matched, difference = _agrees(model, path, features_train)
+        assert matched
+        assert difference < 1e-6
+
+    def test_the_boundary_rows_exist_in_this_dataset(self) -> None:
+        """Guard for the guard: a fixture that never hits a boundary proves
+        nothing, so this asserts the case is really there."""
+        from sklearn.datasets import load_iris
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.model_selection import train_test_split
+
+        iris = load_iris()
+        features_train, _, target_train, _ = train_test_split(
+            iris.data,
+            iris.target,
+            test_size=0.3,
+            random_state=0,
+        )
+        model = RandomForestClassifier(
+            n_estimators=20,
+            max_depth=4,
+            random_state=0,
+        ).fit(features_train, target_train)
+
+        def leaf(tree: Any, row: Any, *, cast: bool) -> int:
+            structure = tree.tree_
+            node = 0
+            while structure.children_left[node] != -1:
+                column = structure.feature[node]
+                value = numpy.float32(row[column]) if cast else float(row[column])
+                node = (
+                    structure.children_left[node]
+                    if value <= structure.threshold[node]
+                    else structure.children_right[node]
+                )
+            return int(node)
+
+        diverging = sum(
+            1
+            for row in features_train
+            if any(
+                leaf(tree, row, cast=True) != leaf(tree, row, cast=False)
+                for tree in model.estimators_
+            )
+        )
+        assert diverging > 0
+
+
 class TestPipelines:
     def test_standard_scaler_is_folded_in(
         self,

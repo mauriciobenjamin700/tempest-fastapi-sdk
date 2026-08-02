@@ -669,6 +669,14 @@ def _walk_trees(
 ) -> Any:
     """Average every tree's leaf values for every row.
 
+    **The comparison happens in float32**, because that is what
+    scikit-learn does: `sklearn.tree` casts its input to float32 before
+    traversing, so a threshold like 5.099999904632568 (a float32 value
+    widened for storage) and an input of 5.1 compare *equal* there and go
+    left. Comparing in float64 sends that row right instead. On a 20-tree
+    iris forest that single rule changed one tree's answer for one row —
+    caught by the export verification, which is why this format has one.
+
     Args:
         header (dict[str, Any]): The parsed header.
         arrays (dict[str, Any]): The decoded sections.
@@ -687,8 +695,9 @@ def _walk_trees(
     outputs = header["n_outputs"]
 
     totals = numpy.zeros((values.shape[0], outputs), dtype="float64")
+    routed = values.astype("float32")
     for index in range(values.shape[0]):
-        row = values[index]
+        row = routed[index]
         for tree in range(len(offsets) - 1):
             node = int(offsets[tree])
             while feature[node] >= 0:

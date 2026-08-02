@@ -5,6 +5,44 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.195.0] — 2026-08-02
+
+### Fixed
+
+- **The compact reader routed rows differently from scikit-learn when a
+  value sat exactly on a split threshold.** `sklearn.tree` casts its input
+  to float32 before traversing, so a threshold stored as
+  `5.099999904632568` — a float32 value widened for storage — and an input
+  of `5.1` compare **equal** there and go left. Comparing in float64 sends
+  that row right instead.
+
+  On a 20-tree iris forest that flipped one tree's vote for 2 of 105
+  training rows, moving a probability by exactly 0.05. The export
+  verification caught it and refused to write the file, which is the
+  behaviour that format has verification for — but the reader was wrong, so
+  the refusal was the symptom, not the bug.
+
+  Both decoders now compare in float32. Pinned by a test that asserts the
+  boundary rows exist in the dataset, so a fixture that stopped exercising
+  the case would fail rather than pass quietly.
+
+  Found while writing the beginner's first example for the docs: iris plus a
+  random forest is the most obvious thing a newcomer runs, and it did not
+  work.
+
+### Documentation
+
+- **A "Comece por aqui" opening for the modelops recipe**, in both
+  languages: one block that **runs as written** (dataset included with
+  scikit-learn) taking a model from `fit` to a published package to a
+  prediction, plus a "which case is mine?" table routing the reader to the
+  right section, plus a five-word glossary (ONNX, graph, quantise, drift,
+  baseline) defined in plain language at the point a newcomer meets them.
+
+  Every example on the page previously assumed `model`, `X_train` and
+  `y_train` already existed — nothing was copy-pasteable, which the project's
+  own docs standard requires.
+
 ## [0.194.0] — 2026-08-01
 
 ### Added
