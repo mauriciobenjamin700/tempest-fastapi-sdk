@@ -5735,7 +5735,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.196.0"
+version = "0.197.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -5791,6 +5791,7 @@ all = [
     { name = "taskiq" },
     { name = "taskiq-aio-pika" },
     { name = "tempestweb" },
+    { name = "websockets" },
 ]
 auth = [
     { name = "bcrypt" },
@@ -5915,6 +5916,9 @@ vision = [
 webpush = [
     { name = "cryptography" },
     { name = "pywebpush" },
+]
+websocket = [
+    { name = "websockets" },
 ]
 
 [package.dev-dependencies]
@@ -6077,8 +6081,10 @@ requires-dist = [
     { name = "trafilatura", marker = "extra == 'genai-rag'", specifier = ">=1.12.0" },
     { name = "transformers", marker = "extra == 'genai'", specifier = ">=4.44.0" },
     { name = "typer", specifier = ">=0.12.0" },
+    { name = "websockets", marker = "extra == 'all'", specifier = ">=13.0" },
+    { name = "websockets", marker = "extra == 'websocket'", specifier = ">=13.0" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "webpush", "metrics", "queue", "tasks", "admin", "admin-sql", "minio", "http", "openapi", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "admin", "admin-sql", "minio", "http", "openapi", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
 
 [package.metadata.requires-dev]
 dev = [
