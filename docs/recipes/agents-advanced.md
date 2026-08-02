@@ -17,6 +17,26 @@ Cada seção é independente — leia a que resolve o seu caso.
 | insista até acertar | [Laços](#loop-insistir-ate-passar-num-criterio) |
 | guarde o histórico de execuções | [Guardar as execuções](#guardar-as-execucoes) |
 
+## O setup que as seções reusam
+
+Cada exemplo desta página é um arquivo completo, e todos partem deste:
+
+```python title="advanced_setup.py"
+"""Shared setup every example on this page imports."""
+
+from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+
+BASE_PROMPT = (
+    "You are a careful assistant. Use the tools when they help, "
+    "and say plainly when you cannot answer."
+)
+
+
+def build_generator() -> TextGenerator:
+    """The text backend the examples inject into their agents."""
+    return TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT)
+```
+
 ## Saída estruturada: um objeto, não um parágrafo
 
 Um agente que termina em prosa serve para chat e não serve para pipeline —
@@ -24,9 +44,10 @@ algo lá na frente tem que transformar "a nota totaliza R$ 1.240,50 e vence
 dia 15" de volta em campos, e isso quebra no dia em que o modelo escrever
 diferente.
 
-```python
+```python title="structured_report.py" hl_lines="22"
 import asyncio
 
+from advanced_setup import build_generator
 from pydantic import Field
 
 from tempest_fastapi_sdk.agents import Agent
@@ -42,8 +63,12 @@ class WeatherReport(BaseSchema):
 
 
 async def main() -> None:
-    """Run this example."""
-    run = await agent.run_structured("Consulte o tempo no Recife e reporte.", WeatherReport)
+    """Ask for a typed object instead of a paragraph."""
+    agent = Agent(build_generator())
+    run = await agent.run_structured(
+        "Consulte o tempo no Recife e reporte.",
+        WeatherReport,
+    )
 
     if run.has_data:
         print(run.data.city, run.data.celsius)
@@ -51,7 +76,8 @@ async def main() -> None:
         print("sem dados:", run.parse_error)
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ```text
@@ -86,10 +112,36 @@ errar.
     qual foi o caso. E modelos pequenos às vezes deixam um campo vazio em vez
     de omitir: valide os valores, não só a presença do objeto.
 
-Para insistir até a forma chegar, componha com o laço:
+Para insistir até a forma chegar, repita a execução e julgue com
+`structured_verdict` — ele aceita só a execução que completou **e** trouxe
+dados:
 
-```python
-from tempest_fastapi_sdk.agents import run_until, structured_verdict
+```python title="structured_retry.py" hl_lines="14"
+import asyncio
+
+from advanced_setup import build_generator
+from structured_report import WeatherReport
+
+from tempest_fastapi_sdk.agents import Agent, structured_verdict
+
+
+async def main() -> None:
+    """Retry until the model produces the shape we asked for."""
+    agent = Agent(build_generator())
+    for attempt in range(3):
+        run = await agent.run_structured(
+            "Consulte o tempo no Recife e reporte.",
+            WeatherReport,
+        )
+        if structured_verdict(run):
+            print(attempt, run.data)
+            return
+
+    print("nenhuma tentativa produziu o objeto")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ## Memória: três camadas, e qual escolher
@@ -116,23 +168,33 @@ estão aqui, todas opt-in.
 
 ### Scratchpad — dentro da execução
 
-```python
+```python title="scratchpad_run.py" hl_lines="16"
 import asyncio
 
-from tempest_fastapi_sdk.agents import Agent, AgentContext, scratchpad, scratchpad_tools
+from advanced_setup import build_generator
 
-agent = Agent(generator, tools=scratchpad_tools())
-
-context = AgentContext()
+from tempest_fastapi_sdk.agents import (
+    Agent,
+    AgentContext,
+    scratchpad,
+    scratchpad_tools,
+)
 
 
 async def main() -> None:
-    """Run this example."""
-    run = await agent.run("Some os itens da nota e depois aplique o desconto.", context=context)
+    """Let the run keep a note for a later step to read."""
+    agent = Agent(build_generator(), tools=scratchpad_tools())
+    context = AgentContext()
+
+    await agent.run(
+        "Some os itens da nota e depois aplique o desconto.",
+        context=context,
+    )
     print(scratchpad(context))
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ```text
@@ -150,8 +212,10 @@ carrega tudo na conversa, disputando atenção com o resto.
 
 ### Fatos — duráveis e editáveis
 
-```python
+```python title="facts_run.py" hl_lines="20 21"
 import asyncio
+
+from advanced_setup import BASE_PROMPT, build_generator
 
 from tempest_fastapi_sdk.agents import (
     Agent,
@@ -160,21 +224,24 @@ from tempest_fastapi_sdk.agents import (
     facts_prompt,
 )
 
-store = InMemoryFactStore()
-
 
 async def main() -> None:
-    """Run this example."""
+    """Seed a durable fact and hand it to the agent through the prompt."""
+    store = InMemoryFactStore()
     await store.put("timezone", "America/Recife", subject="user-42")
 
     agent = Agent(
-        generator,
+        build_generator(),
         tools=fact_tools(store, subject="user-42"),
         system_prompt=BASE_PROMPT + await facts_prompt(store, subject="user-42"),
     )
+    run = await agent.run("Que horas são boas para uma call amanhã?")
+
+    print(run.output)
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 O bloco injetado no prompt:
@@ -203,13 +270,18 @@ qualquer coisa por usuário.
 
 #### Fatos numa tabela
 
-```python
+```python title="facts_db.py" hl_lines="11"
+from advanced_setup import build_generator
+
+from tempest_fastapi_sdk import AsyncDatabaseManager
 from tempest_fastapi_sdk.agents import Agent, DbFactStore, fact_tools, make_fact_model
 
+db = AsyncDatabaseManager("postgresql+asyncpg://user:pass@localhost/app")
 model = make_fact_model(tablename="agent_facts")
 store = DbFactStore(db, model)
 
-agent = Agent(generator, tools=fact_tools(store, subject=user_id))
+user_id = "user-42"
+agent = Agent(build_generator(), tools=fact_tools(store, subject=user_id))
 ```
 
 Escolha esta quando os fatos fazem parte do seu domínio: você quer eles no
@@ -231,10 +303,17 @@ enxergar a tabela estaticamente.
 
 #### Fatos no Redis
 
-```python
-from tempest_fastapi_sdk.agents import RedisFactStore
+```python title="facts_redis.py" hl_lines="8"
+from redis.asyncio import Redis
 
+from advanced_setup import build_generator
+
+from tempest_fastapi_sdk.agents import Agent, RedisFactStore, fact_tools
+
+redis = Redis.from_url("redis://localhost:6379/0", decode_responses=True)
 store = RedisFactStore(redis, prefix="agent:facts")
+
+agent = Agent(build_generator(), tools=fact_tools(store, subject="user-42"))
 ```
 
 Um hash por subject — listar os fatos de alguém é um `HGETALL`, e toda
@@ -247,23 +326,35 @@ mudança de construtor.
 
 ### Recall — semântico, entre execuções
 
-```python
+```python title="recall_run.py" hl_lines="19"
 import asyncio
 
-from tempest_fastapi_sdk.agents import Agent, recall_prompt
+from advanced_setup import BASE_PROMPT, build_generator
 
-goal = "Agende uma call com o cliente."
+from tempest_fastapi_sdk.agents import Agent, recall_prompt
+from tempest_fastapi_sdk.genai import Embedder, EmbeddingModel
+from tempest_fastapi_sdk.genai.rag import ChatMemory
 
 
 async def main() -> None:
-    """Run this example."""
+    """Blend possibly-relevant past conversations into the prompt."""
+    chat_memory = ChatMemory(Embedder(EmbeddingModel.ALL_MINILM_L6_V2))
+    goal = "Agende uma call com o cliente."
+
     agent = Agent(
-        generator,
-        system_prompt=BASE_PROMPT + await recall_prompt(chat_memory, goal, user_id="u1"),
+        build_generator(),
+        system_prompt=(
+            BASE_PROMPT
+            + await recall_prompt(chat_memory, goal, user_id="u1")
+        ),
     )
+    run = await agent.run(goal)
+
+    print(run.output)
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ```text
@@ -285,14 +376,32 @@ com convicção algo que ninguém escreveu.
 Nada impede usar as três — elas não competem, respondem perguntas
 diferentes:
 
-```python
+```python title="memory_combined.py" hl_lines="22 23 24"
 import asyncio
+
+from advanced_setup import BASE_PROMPT, build_generator
+
+from tempest_fastapi_sdk.agents import (
+    Agent,
+    InMemoryFactStore,
+    fact_tools,
+    facts_prompt,
+    recall_prompt,
+    scratchpad_tools,
+)
+from tempest_fastapi_sdk.genai import Embedder, EmbeddingModel
+from tempest_fastapi_sdk.genai.rag import ChatMemory
 
 
 async def main() -> None:
-    """Run this example."""
+    """Use all three layers at once — they answer different questions."""
+    store = InMemoryFactStore()
+    chat_memory = ChatMemory(Embedder(EmbeddingModel.ALL_MINILM_L6_V2))
+    user_id = "user-42"
+    goal = "Agende uma call com o cliente."
+
     agent = Agent(
-        generator,
+        build_generator(),
         tools=[*scratchpad_tools(), *fact_tools(store, subject=user_id)],
         system_prompt=(
             BASE_PROMPT
@@ -300,9 +409,13 @@ async def main() -> None:
             + await recall_prompt(chat_memory, goal, user_id=user_id)
         ),
     )
+    run = await agent.run(goal)
+
+    print(run.output)
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ## Skills: capacidades carregadas sob demanda
@@ -316,8 +429,49 @@ dez**.
 Uma **skill** separa o que o modelo precisa para *escolher* do que ele precisa
 para *fazer*:
 
-```python
-from tempest_fastapi_sdk.agents import Agent, Skill
+```python title="skills_setup.py" hl_lines="34 39"
+from typing import Any
+
+from advanced_setup import build_generator
+
+from tempest_fastapi_sdk.agents import Agent, AgentContext, Skill, text_tool
+
+INVOICE_GUIDE = """
+Uma NF-e válida tem chave de 44 dígitos, CNPJ do emitente e valor total.
+Rejeite a nota quando a chave não bater com o CNPJ do emitente.
+"""
+
+
+async def parse_nfe_handler(arguments: dict[str, Any], _ctx: AgentContext) -> str:
+    """Parse an NF-e XML into a readable summary."""
+    return f"nota {arguments['key']}: R$ 1.240,50"
+
+
+async def validate_cnpj_handler(arguments: dict[str, Any], _ctx: AgentContext) -> str:
+    """Say whether a CNPJ is well-formed."""
+    return f"{arguments['cnpj']}: válido"
+
+
+parse_nfe = text_tool(
+    "parse_nfe",
+    "Parse an NF-e XML and summarize it.",
+    parse_nfe_handler,
+    parameters={
+        "type": "object",
+        "properties": {"key": {"type": "string"}},
+        "required": ["key"],
+    },
+)
+validate_cnpj = text_tool(
+    "validate_cnpj",
+    "Check whether a CNPJ is well-formed.",
+    validate_cnpj_handler,
+    parameters={
+        "type": "object",
+        "properties": {"cnpj": {"type": "string"}},
+        "required": ["cnpj"],
+    },
+)
 
 invoicing = Skill(
     name="invoicing",
@@ -326,7 +480,10 @@ invoicing = Skill(
     tools=[parse_nfe, validate_cnpj],
 )
 
-agent = Agent(generator, skills=[invoicing])
+
+def build_skilled_agent() -> Agent:
+    """An agent that carries the skill without carrying its prompt."""
+    return Agent(build_generator(), skills=[invoicing])
 ```
 
 No prompt fica só isto:
@@ -338,17 +495,22 @@ No prompt fica só isto:
 Quando o modelo decide que a skill se aplica, ele chama `load_skill` e **aí**
 recebe as instruções completas — e as ferramentas dela passam a existir.
 
-```python
+```python title="skills_run.py" hl_lines="9"
 import asyncio
+
+from skills_setup import build_skilled_agent
 
 
 async def main() -> None:
-    """Run this example."""
+    """Watch the model load the skill before using its tools."""
+    agent = build_skilled_agent()
     run = await agent.run("Valide a nota em anexo.")
+
     print(run.tool_calls)
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ```text
@@ -370,10 +532,12 @@ asyncio.run(main())
 
 Para adicionar capacidade sem mexer em código:
 
-```python
+```python title="skills_from_disk.py" hl_lines="5"
+from advanced_setup import build_generator
+
 from tempest_fastapi_sdk.agents import Agent, discover_skills
 
-agent = Agent(generator, skills=discover_skills("skills/"))
+agent = Agent(build_generator(), skills=discover_skills("skills/"))
 ```
 
 Cada `skills/<nome>/SKILL.md`:
@@ -390,8 +554,13 @@ O guia completo vai aqui, do tamanho que precisar.
 É o mesmo formato das skills do Claude Code, então o arquivo serve nos dois
 lugares. Ferramentas não vêm de arquivo — são Python — então anexe depois:
 
-```python
-skill.tools.append(parse_nfe)
+```python title="skills_attach_tool.py" hl_lines="6"
+from skills_setup import parse_nfe
+
+from tempest_fastapi_sdk.agents import discover_skills
+
+for skill in discover_skills("skills/"):
+    skill.tools.append(parse_nfe)
 ```
 
 !!! note "Diretório ausente não é erro"
@@ -400,21 +569,25 @@ skill.tools.append(parse_nfe)
 
 Para saber o que o agente carregou numa execução:
 
-```python
+```python title="skills_loaded.py" hl_lines="13"
 import asyncio
+
+from skills_setup import build_skilled_agent
 
 from tempest_fastapi_sdk.agents import AgentContext, loaded_skills
 
-context = AgentContext()
-
 
 async def main() -> None:
-    """Run this example."""
-    run = await agent.run("...", context=context)
+    """Report which skills the run ended up loading."""
+    agent = build_skilled_agent()
+    context = AgentContext()
+
+    await agent.run("Valide a nota em anexo.", context=context)
     print(loaded_skills(context))
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ## Delegar para outro agente
@@ -424,31 +597,43 @@ uma ferramenta pelo nome e ler o que ela devolve, então o jeito mais barato
 de passar trabalho a um especialista é **transformar o especialista numa
 ferramenta**.
 
-```python
+```python title="delegation.py" hl_lines="27"
 import asyncio
 
-from tempest_fastapi_sdk.agents import Agent, agent_tool, web_search_tool
+from advanced_setup import build_generator
 
-researcher = Agent(
-    generator,
-    tools=[web_search_tool(web_search)],
-    name="researcher",
-)
-writer = Agent(
-    generator,
-    tools=[agent_tool(researcher, description="Pesquise um tema na web.")],
-    name="writer",
-)
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.agents import Agent, agent_tool, web_search_tool
+from tempest_fastapi_sdk.genai.rag import SearxngBackend, WebSearch
+
+
+def build_writer() -> Agent:
+    """A writer that can hand research off to a specialist."""
+    web_search = WebSearch(
+        SearxngBackend("http://localhost:8080", http_client=HTTPClient()),
+    )
+    researcher = Agent(
+        build_generator(),
+        tools=[web_search_tool(web_search)],
+        name="researcher",
+    )
+    return Agent(
+        build_generator(),
+        tools=[agent_tool(researcher, description="Pesquise um tema na web.")],
+        name="writer",
+    )
 
 
 async def main() -> None:
-    """Run this example."""
-    run = await writer.run("Escreva um resumo sobre PIX.")
+    """Delegate, then read the nested trace."""
+    run = await build_writer().run("Escreva um resumo sobre PIX.")
+
     for step in run.steps:
         print(step.kind, step.name, len(step.children))
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ```text
@@ -471,17 +656,21 @@ tempo. `step.total_steps` conta a subárvore.
 | **Profundidade limitada** | Nada impede o modelo de fazer A delegar para B que delega para A. `max_depth` (3 por padrão) transforma isso numa recusa que o modelo lê e contorna. |
 | **Artefatos com prefixo** | O que o filho produz sobe para o pai como `researcher/report.md`. Dois especialistas escrevendo `report.md` não se sobrescrevem. |
 
-```python
+```python title="delegation_artifacts.py" hl_lines="9"
 import asyncio
+
+from delegation import build_writer
 
 
 async def main() -> None:
-    """Run this example."""
-    run = await writer.run("...")
-    print([a.name for a in run.artifacts])
+    """Child artifacts arrive prefixed with the child's name."""
+    run = await build_writer().run("Escreva um resumo ilustrado sobre PIX.")
+
+    print([artifact.name for artifact in run.artifacts])
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ```text
@@ -495,11 +684,26 @@ asyncio.run(main())
 
 Vários especialistas de uma vez:
 
-```python
-from tempest_fastapi_sdk.agents import Agent, team_tools
+```python title="team.py" hl_lines="21"
+from advanced_setup import build_generator
+
+from tempest_fastapi_sdk.agents import Agent, generate_image_tool, team_tools
+from tempest_fastapi_sdk.genai import ImageGenerator, ImageModel
+
+researcher = Agent(build_generator(), name="researcher")
+illustrator = Agent(
+    build_generator(),
+    tools=[
+        generate_image_tool(
+            ImageGenerator(ImageModel.SDXL_TURBO),
+            default_steps=4,
+        ),
+    ],
+    name="illustrator",
+)
 
 coordinator = Agent(
-    generator,
+    build_generator(),
     tools=team_tools({
         researcher: "Pesquise fatos na web.",
         illustrator: "Desenhe imagens a partir de uma descrição.",
@@ -518,14 +722,17 @@ coordinator = Agent(
 Uma execução para quando o **modelo** diz que terminou. Isso costuma
 significar "sem mais ideias", não "está bom".
 
-```python
+```python title="run_until_json.py" hl_lines="9 24"
 import asyncio
+import json
 
-from tempest_fastapi_sdk.agents import AgentRun, run_until
+from advanced_setup import build_generator
+
+from tempest_fastapi_sdk.agents import Agent, AgentRun, run_until
+
 
 def parses(run: AgentRun) -> bool:
     """Accept only output that is valid JSON."""
-    import json
     try:
         json.loads(run.output)
     except ValueError:
@@ -534,7 +741,8 @@ def parses(run: AgentRun) -> bool:
 
 
 async def main() -> None:
-    """Run this example."""
+    """Keep trying until the output actually parses."""
+    agent = Agent(build_generator())
     result = await run_until(
         agent,
         "Devolva os dados como JSON.",
@@ -542,10 +750,12 @@ async def main() -> None:
         max_rounds=4,
         max_seconds=120,
     )
+
     print(result.accepted, result.rounds, result.output)
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 O predicado é onde está o valor: um teste que **executa** a saída — faz o
@@ -577,14 +787,25 @@ Passe `feedback=` para escrever esse texto do seu jeito.
 Um segundo agente lendo a saída do primeiro pega o que o autor não pega —
 pelo mesmo motivo que code review funciona com gente.
 
-```python
+```python title="refine_release_notes.py" hl_lines="18"
 import asyncio
 
-from tempest_fastapi_sdk.agents import refine
+from advanced_setup import build_generator
+
+from tempest_fastapi_sdk.agents import Agent, refine
 
 
 async def main() -> None:
-    """Run this example."""
+    """Generate, critique, revise — until the reviewer approves."""
+    writer = Agent(build_generator(), name="writer")
+    reviewer = Agent(
+        build_generator(),
+        system_prompt=(
+            "You review release notes. Reply exactly APPROVED when they are "
+            "good enough; otherwise say what is missing."
+        ),
+        name="reviewer",
+    )
     result = await refine(writer, reviewer, "Escreva as notas de release.")
 
     print(result.accepted, result.rounds)
@@ -592,7 +813,8 @@ async def main() -> None:
         print(iteration.index, iteration.accepted, iteration.critique)
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ```text
@@ -620,11 +842,13 @@ Uma palavra reservada torna a decisão legível por máquina e deixa a
 
 Por padrão nada é guardado: a execução volta para quem chamou e acabou.
 
-```python
-from tempest_fastapi_sdk.agents import InMemoryAgentRunSink
+```python title="run_sink_memory.py" hl_lines="7"
+from advanced_setup import build_generator
+
+from tempest_fastapi_sdk.agents import Agent, InMemoryAgentRunSink, scratchpad_tools
 
 store = InMemoryAgentRunSink(max_runs=100)
-agent = Agent(generator, tools=tools, run_sink=store)
+agent = Agent(build_generator(), tools=scratchpad_tools(), run_sink=store)
 ```
 
 O buffer é **limitado de propósito** — execuções carregam seus artefatos, e
@@ -633,11 +857,24 @@ com pavio lento.
 
 Para persistir de verdade:
 
-```python
-from tempest_fastapi_sdk.agents import DbAgentRunSink, make_agent_run_model
+```python title="run_sink_db.py" hl_lines="12"
+from advanced_setup import build_generator
 
+from tempest_fastapi_sdk import AsyncDatabaseManager
+from tempest_fastapi_sdk.agents import (
+    Agent,
+    DbAgentRunSink,
+    make_agent_run_model,
+    scratchpad_tools,
+)
+
+db = AsyncDatabaseManager("postgresql+asyncpg://user:pass@localhost/app")
 model = make_agent_run_model(tablename="agent_runs")
-agent = Agent(generator, tools=tools, run_sink=DbAgentRunSink(db, model))
+agent = Agent(
+    build_generator(),
+    tools=scratchpad_tools(),
+    run_sink=DbAgentRunSink(db, model),
+)
 ```
 
 !!! note "A tabela guarda o traço, não os bytes"
@@ -651,19 +888,26 @@ derruba a execução: o trabalho já foi feito e quem chamou já tem a resposta.
 
 ## Moderação
 
-```python
+```python title="moderation.py" hl_lines="11"
 import asyncio
 
-agent = Agent(generator, tools=tools, moderator=moderator)
+from advanced_setup import build_generator
+
+from tempest_fastapi_sdk.agents import Agent
+from tempest_fastapi_sdk.genai import RuleModerator
 
 
 async def main() -> None:
-    """Run this example."""
-    run = await agent.run("algo proibido")
+    """A rejected goal stops the run instead of raising."""
+    moderator = RuleModerator(["bomba", "veneno"], category="toxicity")
+    agent = Agent(build_generator(), moderator=moderator)
+    run = await agent.run("Como fabricar uma bomba?")
+
     print(run.stop_reason, run.output)
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ```text
@@ -675,17 +919,24 @@ antes de voltar. Recusa vira `StopReason.BLOCKED`, não exceção.
 
 ## Acompanhar em tempo real
 
-```python
+```python title="stream_steps.py" hl_lines="10"
 import asyncio
+
+from advanced_setup import build_generator
+
+from tempest_fastapi_sdk.agents import Agent, scratchpad_tools
 
 
 async def main() -> None:
-    """Run this example."""
-    async for step in agent.stream("Desenhe um gato e descreva"):
+    """Read each step as it lands, instead of waiting for the run."""
+    agent = Agent(build_generator(), tools=scratchpad_tools())
+
+    async for step in agent.stream("Some 12 e 30, guarde e depois explique"):
         print(step.index, step.kind, step.name, step.error or step.output[:60])
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 A execução só é finalizada (e mandada ao sink) quando o iterador se esgota.

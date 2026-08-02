@@ -24,7 +24,7 @@ from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies
 
 ## O teste mínimo
 
-```python
+```python title="test_agent.py"
 import pytest
 
 from tempest_fastapi_sdk.agents import Agent, AgentContext, tool
@@ -171,29 +171,54 @@ async def test_the_step_budget_stops_a_runaway_agent() -> None:
 `backend.specs_seen` guarda os nomes oferecidos em **cada** turno, que é como
 se prova o carregamento sob demanda:
 
-```python
+```python title="test_skills.py" hl_lines="24 25"
+import pytest
+
+from tempest_fastapi_sdk.agents import Agent, Skill
+from tempest_fastapi_sdk.agents.testing import (
+    ScriptedBackend,
+    replies,
+    replies_with_tool,
+)
+from test_agent import get_weather
+
+invoicing = Skill(
+    name="invoicing",
+    description="Ler e validar notas fiscais brasileiras (NF-e).",
+    instructions="O guia completo da NF-e vai aqui.",
+    tools=[get_weather],
+)
+
+
 @pytest.mark.asyncio
 async def test_skill_tools_are_hidden_until_loaded() -> None:
     """The skill's tools must not exist before load_skill runs."""
     backend = ScriptedBackend(
         [
             replies_with_tool("load_skill", {"name": "invoicing"}),
-            replies_with_tool("parse_nfe", {"text": "123"}),
+            replies_with_tool("get_weather", {"city": "Recife"}),
             replies("Pronto."),
         ],
     )
 
     run = await Agent(backend, skills=[invoicing]).run("leia a nota")
 
-    assert "parse_nfe" not in backend.specs_seen[0]
-    assert "parse_nfe" in backend.specs_seen[1]
+    assert run.succeeded
+    assert "get_weather" not in backend.specs_seen[0]
+    assert "get_weather" in backend.specs_seen[1]
 ```
 
 ## Testar que a memória chegou ao modelo
 
 `backend.system_prompts` guarda o prompt de sistema de cada turno:
 
-```python
+```python title="test_memory.py" hl_lines="18"
+import pytest
+
+from tempest_fastapi_sdk.agents import Agent, InMemoryFactStore, facts_prompt
+from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies
+
+
 @pytest.mark.asyncio
 async def test_facts_reach_the_model() -> None:
     """Stored facts must be injected, not merely available."""
@@ -212,7 +237,10 @@ async def test_facts_reach_the_model() -> None:
 
 ## Testar a queda do backend
 
-```python
+```python title="test_outage.py" hl_lines="12"
+import pytest
+
+from tempest_fastapi_sdk.agents import Agent, StopReason
 from tempest_fastapi_sdk.agents.testing import FailingBackend
 
 
@@ -231,8 +259,21 @@ controla.
 
 ## O script sobrou?
 
-```python
-assert backend.exhausted is True
+```python title="test_script_exhausted.py" hl_lines="14"
+import pytest
+
+from tempest_fastapi_sdk.agents import Agent
+from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies
+
+
+@pytest.mark.asyncio
+async def test_the_whole_script_was_used() -> None:
+    """Every scripted turn must actually run."""
+    backend = ScriptedBackend([replies("pronto")])
+
+    await Agent(backend).run("oi")
+
+    assert backend.exhausted is True
 ```
 
 Um teste que escreve cinco turnos e usa dois normalmente afirma menos do que o
@@ -244,11 +285,12 @@ Scripting não cobre uma pergunta: **o modelo escolhe a ferramenta certa?**
 Isso só um modelo responde. Mantenha esses testes separados e marcados, fora
 da suíte rápida:
 
-```python
+```python title="test_model_layer.py" hl_lines="12"
 import pytest
 
 from tempest_fastapi_sdk.agents import Agent, AgentBudget
-from tempest_fastapi_sdk.genai import TextGenerator
+from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+from test_agent import get_weather
 
 
 @pytest.mark.model
@@ -256,7 +298,7 @@ from tempest_fastapi_sdk.genai import TextGenerator
 async def test_a_real_model_picks_the_weather_tool() -> None:
     """The model must reach for the tool when the goal calls for it."""
     generator = TextGenerator(
-        "Qwen/Qwen2.5-0.5B-Instruct",
+        TextModel.QWEN2_5_0_5B_INSTRUCT,
         device="cpu",
         local_files_only=True,
     )
