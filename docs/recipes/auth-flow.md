@@ -154,6 +154,7 @@ uv run tempest db upgrade
 | POST | `/auth/signup` | `SignupSchema` → `SignupResponseSchema` | Cria user. Emite e-mail (modos A/B) **ou** devolve link no body (modo C). Se `AUTH_AUTO_ACTIVATE=True`, user nasce ativo e JWT pair volta direto (modo D). |
 | POST | `/auth/activate/{token}` | — → `ActivationResponseSchema` | Consome token + `is_active=True` + emite JWT pair. |
 | POST | `/auth/login` | `LoginSchema` → `LoginResponseSchema` | Email + senha → JWT pair. Erros genéricos (não enumera contas). |
+| GET | `/auth/me` *(v0.198.0+)* | — → `AuthUserSchema` | **Autenticado.** Devolve a conta dona do bearer token. Nunca serializa o hash da senha: o handler entrega o modelo inteiro e o `response_model` filtra. Troque o schema por um seu com `me_response_model=` pra expor colunas próprias. |
 | POST | `/auth/password-reset/request` | `PasswordResetRequestSchema` → `PasswordResetResponseSchema` | Sempre HTTP 202 + corpo genérico. Link via e-mail (A/B) ou no body (C). |
 | POST | `/auth/password-reset/confirm` | `PasswordResetConfirmSchema` → `LoginResponseSchema` | Consome token + grava nova senha + emite JWT pair. |
 | POST | `/auth/password-change` | `PasswordChangeSchema` → `204` | **Autenticado** (bearer token). Troca a própria senha: confirma a senha atual + grava a nova. Sem token de e-mail. |
@@ -1225,13 +1226,38 @@ from src.schemas import UserResponseSchema
 router: APIRouter = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/me")
-async def me(current: UserModel = Depends(get_current_user)) -> UserResponseSchema:
+@router.get("/profile")
+async def profile(current: UserModel = Depends(get_current_user)) -> UserResponseSchema:
     """Devolve o usuário dono do bearer token da requisição."""
     return UserResponseSchema.model_validate(current)
 ```
 
 `current` **é** o `UserModel` que o service resolveu — tipado, persistido, pronto pra uso. Token ausente ou inválido → `401 UnauthorizedException` antes do corpo da rota rodar.
+
+!!! tip "Pro `/me` puro, não escreva nada"
+    O router empacotado já monta `GET /auth/me` desde a v0.198.0, com
+    `AuthUserSchema` (as colunas que `BaseUserModel` garante) como
+    resposta. Só escreva o seu quando a rota fizer algo **além** de
+    devolver a conta — agregar contadores, juntar o perfil de outra
+    tabela. Se for só uma coluna extra na mesma tabela, subclasse o
+    schema em vez de reescrever a rota:
+
+    ```python
+    from tempest_fastapi_sdk import AuthUserSchema, make_auth_router
+
+
+    class UserResponseSchema(AuthUserSchema):
+        name: str | None = None
+
+
+    app.include_router(
+        make_auth_router(
+            auth_service,
+            session_factory=get_db,
+            me_response_model=UserResponseSchema,
+        )
+    )
+    ```
 
 ### 3. Auth opcional — `soft=True`
 

@@ -30,6 +30,7 @@ from uuid import UUID
 from pydantic import EmailStr, Field
 
 from tempest_fastapi_sdk.schemas.base import BaseSchema
+from tempest_fastapi_sdk.schemas.response import BaseResponseSchema
 
 
 class SignupSchema(BaseSchema):
@@ -479,6 +480,59 @@ class PasswordChangeSchema(BaseSchema):
     )
 
 
+class AuthUserSchema(BaseResponseSchema):
+    """The authenticated account, as returned by ``GET /auth/me``.
+
+    Covers exactly the columns
+    :class:`~tempest_fastapi_sdk.db.user_model.BaseUserModel`
+    guarantees, so it is safe as the default response model for any
+    project: ``id`` / ``is_active`` / ``created_at`` / ``updated_at``
+    come from :class:`BaseResponseSchema`, and ``email`` / ``is_admin``
+    / ``last_login_at`` are added here.
+
+    ``hashed_password`` is deliberately absent. FastAPI serializes the
+    handler's return value **through** the response model, so a column
+    the schema does not declare never reaches the wire — that is what
+    makes the default safe even though the handler hands over the whole
+    ORM instance.
+
+    A project whose user table carries extra fields (a display name, an
+    avatar, a tenant id) subclasses this and passes the subclass as
+    ``me_response_model`` to
+    :func:`tempest_fastapi_sdk.make_auth_router`::
+
+        class UserResponseSchema(AuthUserSchema):
+            name: str | None = None
+
+    Attributes:
+        email (str): The account's login identifier.
+        is_admin (bool): Whether the account may reach the admin site.
+        last_login_at (datetime | None): Timestamp of the most recent
+            successful login; ``None`` for an account that never
+            logged in.
+    """
+
+    email: EmailStr = Field(
+        title="Email",
+        description="The account's login identifier.",
+        examples=["person@example.com"],
+    )
+    is_admin: bool = Field(
+        title="Is Admin",
+        description="Whether the account may reach the admin site.",
+        examples=[False, True],
+    )
+    last_login_at: datetime | None = Field(
+        default=None,
+        title="Last Login At",
+        description=(
+            "Timestamp of the most recent successful login. ``None`` "
+            "for an account that has never logged in."
+        ),
+        examples=["2024-01-02T12:00:00Z", None],
+    )
+
+
 class ActivationToken(BaseSchema):
     """Service-level result of issuing an account-activation token.
 
@@ -907,6 +961,7 @@ class MFAVerifySchema(BaseSchema):
 __all__: list[str] = [
     "ActivationResponseSchema",
     "ActivationToken",
+    "AuthUserSchema",
     "EmailChangeConfirmSchema",
     "EmailChangeRequestSchema",
     "EmailChangeResponseSchema",

@@ -10,6 +10,7 @@ consumed by a frontend that owns the activation / reset UI:
 * ``POST /auth/signup`` — create user + maybe send activation
 * ``POST /auth/activate/{token}`` — consume activation + log in
 * ``POST /auth/login`` — email + password → JWT pair
+* ``GET /auth/me`` — the account behind the bearer token
 * ``POST /auth/refresh`` — exchange a refresh token for a new pair
 * ``POST /auth/logout`` — revoke a refresh token *(mounted only
   when a ``refresh_token_model`` is wired — DB-backed mode)*
@@ -43,12 +44,14 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Form, Request, Response, status
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 
 from tempest_fastapi_sdk.api.dependencies import make_jwt_user_dependency
 from tempest_fastapi_sdk.auth.locale import auth_page_message, negotiate_locale
 from tempest_fastapi_sdk.auth.page_renderer import render_auth_page
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationResponseSchema,
+    AuthUserSchema,
     EmailChangeConfirmSchema,
     EmailChangeRequestSchema,
     EmailChangeResponseSchema,
@@ -104,6 +107,7 @@ def make_auth_router(
     tags: list[str] | None = None,
     template_dir: str | None = None,
     recovery_code_model: type[BaseUserRecoveryCodeModel] | None = None,
+    me_response_model: type[BaseModel] | None = None,
     token_delivery: TokenDelivery | None = None,
     cookie_config: AuthCookieConfig | None = None,
 ) -> APIRouter:
@@ -128,6 +132,14 @@ def make_auth_router(
             ``password_reset_success.html`` /
             ``password_reset_error.html``. Only consulted when
             ``AuthSettings.AUTH_BACKEND_LINKS=True``.
+        me_response_model (type[BaseModel] | None): Response model for
+            ``GET /auth/me``. ``None`` (default) uses
+            :class:`~tempest_fastapi_sdk.auth.schemas.AuthUserSchema`,
+            which covers exactly the columns ``BaseUserModel``
+            guarantees. Pass a subclass to expose the extra columns your
+            user table carries — the endpoint hands the ORM instance to
+            FastAPI, so whatever the model does not declare is never
+            serialized.
         token_delivery (TokenDelivery | None): How login / refresh hand
             back the JWT pair — ``"bearer"`` (body only), ``"cookie"``
             (``HttpOnly`` cookies, body omits tokens) or ``"both"``
@@ -515,6 +527,43 @@ def make_auth_router(
             access_token=access,
             refresh_token=refresh,
         )
+
+    @router.get(
+        "/me",
+        response_model=me_response_model or AuthUserSchema,
+        summary="Return the authenticated account",
+        description=(
+            "Resolve the bearer ``access_token`` to the account that "
+            "owns it.\n\n"
+            "Two jobs in one endpoint: it tells the client **who** is "
+            "logged in without the client caching a profile, and it says "
+            "whether a stored token is **still valid** — a **401** is the "
+            "signal to call ``/refresh`` before sending the user back to "
+            "the login screen.\n\n"
+            "The response never carries the password hash. FastAPI "
+            "serializes through the response model, so only declared "
+            "fields reach the wire; a project that wants extra columns "
+            "subclasses ``AuthUserSchema`` and passes it as "
+            "``me_response_model``.\n\n"
+            "Returns **404** when the token is well-formed and unexpired "
+            "but the account behind it no longer exists."
+        ),
+    )
+    async def me(
+        user: BaseUserModel = Depends(current_user_dep),
+    ) -> BaseUserModel:
+        """Return the account owning the request's bearer token.
+
+        Args:
+            user (BaseUserModel): Resolved from the token by the shared
+                authenticated-user dependency.
+
+        Returns:
+            BaseUserModel: The account, serialized through
+            ``me_response_model`` (defaults to
+            :class:`~tempest_fastapi_sdk.auth.schemas.AuthUserSchema`).
+        """
+        return user
 
     @router.post(
         "/password-change",

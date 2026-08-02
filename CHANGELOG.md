@@ -5,6 +5,46 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.198.0] — 2026-08-02
+
+### Added
+
+- **`GET /auth/me`, mounted by `make_auth_router`.** Resolving the bearer
+  token to its account is the most generic thing an authenticated API
+  does, and the SDK made every project hand-write it — the auth recipe
+  literally shipped the snippet to copy. It is now part of the bundled
+  router: no wiring, no schema to define, no route to maintain.
+
+  The response model defaults to the new **`AuthUserSchema`**, which
+  covers exactly the columns `BaseUserModel` guarantees (`id`,
+  `is_active`, `created_at`, `updated_at`, `email`, `is_admin`,
+  `last_login_at`). The handler returns the ORM instance and lets
+  FastAPI serialize through the model, so `hashed_password` cannot reach
+  the wire even though the row carries it — a test asserts exactly that.
+
+  A project whose user table has extra columns subclasses the schema and
+  passes it as `me_response_model=`:
+
+  ```python
+  class UserResponseSchema(AuthUserSchema):
+      name: str | None = None
+
+
+  app.include_router(
+      make_auth_router(
+          auth_service,
+          session_factory=get_db,
+          me_response_model=UserResponseSchema,
+      )
+  )
+  ```
+
+  The endpoint reuses the router's existing authenticated-user
+  dependency, so it accepts the access-token cookie in the `cookie` /
+  `both` delivery modes with no extra configuration, and answers **401**
+  for a missing or invalid token and **404** when the token is valid but
+  the account is gone.
+
 ## [0.197.0] — 2026-08-02
 
 ### Added
