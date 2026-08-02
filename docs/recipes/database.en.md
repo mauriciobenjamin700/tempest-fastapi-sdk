@@ -112,12 +112,18 @@ The fix is a module that holds nothing but names:
 # src/db/configs/names.py
 """Table names for this project. Single source of truth."""
 
-USERS = "users"
-USER_TOKENS = "user_tokens"
-USER_REFRESH_TOKENS = "user_refresh_tokens"
-ORDERS = "orders"
-ORDER_ITEMS = "order_items"
+USER_TABLE_NAME = "users"
+USER_TOKEN_TABLE_NAME = "user_tokens"
+USER_REFRESH_TOKEN_TABLE_NAME = "user_refresh_tokens"
+ORDER_TABLE_NAME = "orders"
+ORDER_ITEM_TABLE_NAME = "order_items"
 ```
+
+The `_TABLE_NAME` suffix keeps the constant self-explanatory at the call
+site, far from this file: `ForeignKey(f"{USER_TABLE_NAME}.id")` says what
+that string is on its own. The prefix follows the model, in the singular
+(`UserTokenModel` → `USER_TOKEN_TABLE_NAME`), even when the value is
+plural.
 
 Every model imports from there, on both sides of the relationship:
 
@@ -127,11 +133,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import BaseModel
 
-from src.db.configs.names import USERS
+from src.db.configs.names import USER_TABLE_NAME
 
 
 class UserModel(BaseModel):
-    __tablename__ = USERS
+    __tablename__ = USER_TABLE_NAME
 
     email: Mapped[str] = mapped_column(unique=True)
 ```
@@ -145,14 +151,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from tempest_fastapi_sdk import BaseModel
 
-from src.db.configs.names import USER_TOKENS, USERS
+from src.db.configs.names import USER_TABLE_NAME, USER_TOKEN_TABLE_NAME
 
 
 class UserTokenModel(BaseModel):
-    __tablename__ = USER_TOKENS
+    __tablename__ = USER_TOKEN_TABLE_NAME
 
     user_id: Mapped[UUID] = mapped_column(
-        ForeignKey(f"{USERS}.id", ondelete="CASCADE"),
+        ForeignKey(f"{USER_TABLE_NAME}.id", ondelete="CASCADE"),
         index=True,
     )
 ```
@@ -206,19 +212,19 @@ through the same mechanism the base class uses:
 from pydantic import BaseModel
 from sqlalchemy.orm import declared_attr
 
-from src.db.configs.names import USERS
+from src.db.configs.names import USER_TABLE_NAME
 
 
 class UserModel(BaseModel):
     @declared_attr.directive
     def __tablename__(cls) -> str:  # noqa: N805
         """Pin the table name."""
-        return USERS
+        return USER_TABLE_NAME
 ```
 
 More verbose, and equivalent at runtime. Pick by the project's checker:
 with mypy (or no static checking in the editor), prefer
-`__tablename__ = USERS`, which reads more directly.
+`__tablename__ = USER_TABLE_NAME`, which reads more directly.
 
 ### Constraint naming convention
 
@@ -644,26 +650,35 @@ the relationship up front, in the same query. Every read method (`get`,
 
 ```python
 import asyncio
+from uuid import UUID
+
+from tempest_fastapi_sdk import BaseRepository
+
+from db_setup import db
+from src.db.models import UserModel
 
 
 async def main() -> None:
     """Run this example."""
-    # Load the user and its orders in a single round trip
-    user = await repository.get_by_id(user_id, with_=["orders"])
-    for order in user.orders:      # no lazy load, no MissingGreenlet
-        print(order.total)
+    user_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
+    async with db.get_session_context() as session:
+        repository = BaseRepository(session, model=UserModel)
+        # Load the user and its orders in a single round trip
+        user = await repository.get_by_id(user_id, with_=["orders"])
+        for order in user.orders:      # no lazy load, no MissingGreenlet
+            print(order.total)
 
-    # Several relationships + nested (dotted)
-    user = await repository.get_by_id(
-        user_id,
-        with_=["profile", "orders.items"],   # orders → and each order's items
-    )
+        # Several relationships + nested (dotted)
+        user = await repository.get_by_id(
+            user_id,
+            with_=["profile", "orders.items"],   # orders → and each order's items
+        )
 
-    # Works on collections too
-    users = await repository.list({"is_active": True}, with_=["orders"])
+        # Works on collections too
+        users = await repository.list({"is_active": True}, with_=["orders"])
 
 
-asyncio.run(main())
+    asyncio.run(main())
 ```
 
 Each path uses `selectinload`: N related rows cost **one** extra query
@@ -750,21 +765,31 @@ update:
 
 ```python
 import asyncio
+from uuid import UUID
+
+from tempest_fastapi_sdk import BaseRepository
+
+from db_setup import db
+from src.db.models import UserModel
 
 from tempest_fastapi_sdk import F
 
 
 async def main() -> None:
     """Run this example."""
-    # stock = stock - 1, in the database
-    await repository.bulk_update({"id": product_id}, {"stock": F("stock") - 1})
+    pid = product_id
+    product_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
+    async with db.get_session_context() as session:
+        repository = BaseRepository(session, model=UserModel)
+        # stock = stock - 1, in the database
+        await repository.bulk_update({"id": product_id}, {"stock": F("stock") - 1})
 
-    # arithmetic from either side and between columns
-    await repository.bulk_update({"id": pid}, {"stock": 100 - F("stock")})
-    await repository.bulk_update({"id": pid}, {"total": F("price") * F("qty")})
+        # arithmetic from either side and between columns
+        await repository.bulk_update({"id": pid}, {"stock": 100 - F("stock")})
+        await repository.bulk_update({"id": pid}, {"total": F("price") * F("qty")})
 
 
-asyncio.run(main())
+    asyncio.run(main())
 ```
 
 **`Q` — the `OR` / `NOT` the filter dict can't express.** The dict ANDs
@@ -773,24 +798,31 @@ everything; `Q` combines with `&` / `|` / `~` and enters via `where=`:
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import BaseRepository
+
+from db_setup import db
+from src.db.models import UserModel
+
 from tempest_fastapi_sdk import Q
 
 
 async def main() -> None:
     """Run this example."""
-    # status open OR pending
-    open_ = await repository.list(where=Q(status="open") | Q(status="pending"))
+    async with db.get_session_context() as session:
+        repository = BaseRepository(session, model=UserModel)
+        # status open OR pending
+        open_ = await repository.list(where=Q(status="open") | Q(status="pending"))
 
-    # active and NOT guest
-    active = await repository.list(where=Q(is_active=True) & ~Q(role="guest"))
+        # active and NOT guest
+        active = await repository.list(where=Q(is_active=True) & ~Q(role="guest"))
 
-    # combine with the dict (AND): stock >= 5 AND (open OR closed)
-    rows = await repository.list(
-        {"stock__gte": 5}, where=Q(status="open") | Q(status="closed")
-    )
+        # combine with the dict (AND): stock >= 5 AND (open OR closed)
+        rows = await repository.list(
+            {"stock__gte": 5}, where=Q(status="open") | Q(status="closed")
+        )
 
 
-asyncio.run(main())
+    asyncio.run(main())
 ```
 
 `Q` uses the same conventions as the filter dict (`name` ILIKE,
@@ -841,24 +873,37 @@ engine. A `None` value **always skips** the condition (a missing filter ≠
 
 ```python
 import asyncio
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
+from tempest_fastapi_sdk import BaseRepository
+
+from db_setup import db
+from src.db.models import UserModel
 
 
 async def main() -> None:
     """Run this example."""
-    # "active rows updated after the watermark" — timestamp precision
-    changed = await repository.list({
-        "is_active": True,
-        "updated_at__gt": watermark,
-    })
+    end = datetime(2026, 1, 31, tzinfo=timezone.utc)
+    selected_ids = [uuid4(), uuid4()]
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    watermark = datetime.now(timezone.utc) - timedelta(hours=1)
+    async with db.get_session_context() as session:
+        repository = BaseRepository(session, model=UserModel)
+        # "active rows updated after the watermark" — timestamp precision
+        changed = await repository.list({
+            "is_active": True,
+            "updated_at__gt": watermark,
+        })
 
-    # "created between two dates" — whole day
-    report = await repository.list({"start_in": start, "end_in": end})
+        # "created between two dates" — whole day
+        report = await repository.list({"start_in": start, "end_in": end})
 
-    # text search + membership in a set
-    hits = await repository.list({"name": "silva", "id": selected_ids})
+        # text search + membership in a set
+        hits = await repository.list({"name": "silva", "id": selected_ids})
 
 
-asyncio.run(main())
+    asyncio.run(main())
 ```
 
 !!! info "`start_in`/`end_in` vs `__gt`/`__lt`"
@@ -932,32 +977,41 @@ and those that **bypass** it (a single statement, no refresh).
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import BaseRepository
+
+from db_setup import db
+from src.db.models import UserModel
+
 
 async def main() -> None:
     """Run this example."""
-    # Keeps the UoW — attached, refreshed instances
-    created = await repository.add_all([m1, m2, m3])      # several INSERTs, 1 tx
-    updated = await repository.update_many([u1, u2])      # several UPDATEs, 1 tx
+    m1, m2, m3 = (UserModel(name=n, email=f"{n}@x.com") for n in "abc")
+    u1, u2 = created[0], created[1]
+    async with db.get_session_context() as session:
+        repository = BaseRepository(session, model=UserModel)
+        # Keeps the UoW — attached, refreshed instances
+        created = await repository.add_all([m1, m2, m3])      # several INSERTs, 1 tx
+        updated = await repository.update_many([u1, u2])      # several UPDATEs, 1 tx
 
-    # Bypasses the UoW — one statement, scales better (>= 50 rows)
-    n = await repository.bulk_create_values([
-        {"name": "A", "email": "a@x.com", "password_hash": "..."},
-        {"name": "B", "email": "b@x.com", "password_hash": "..."},
-    ])  # INSERT ... VALUES (...), (...) — returns row count
+        # Bypasses the UoW — one statement, scales better (>= 50 rows)
+        n = await repository.bulk_create_values([
+            {"name": "A", "email": "a@x.com", "password_hash": "..."},
+            {"name": "B", "email": "b@x.com", "password_hash": "..."},
+        ])  # INSERT ... VALUES (...), (...) — returns row count
 
-    n = await repository.bulk_update(
-        filters={"is_active": False},
-        values={"is_active": True},
-    )  # UPDATE ... WHERE — returns affected row count
+        n = await repository.bulk_update(
+            filters={"is_active": False},
+            values={"is_active": True},
+        )  # UPDATE ... WHERE — returns affected row count
 
-    n = await repository.bulk_upsert(
-        rows=[{"sku": "ABC", "price": 10}, {"sku": "DEF", "price": 20}],
-        conflict_columns=["sku"],          # requires a UNIQUE index
-        update_columns=["price"],          # None = update everything but PK + conflict
-    )  # INSERT ... ON CONFLICT DO UPDATE — Postgres and SQLite
+        n = await repository.bulk_upsert(
+            rows=[{"sku": "ABC", "price": 10}, {"sku": "DEF", "price": 20}],
+            conflict_columns=["sku"],          # requires a UNIQUE index
+            update_columns=["price"],          # None = update everything but PK + conflict
+        )  # INSERT ... ON CONFLICT DO UPDATE — Postgres and SQLite
 
 
-asyncio.run(main())
+    asyncio.run(main())
 ```
 
 !!! warning "`bulk_update` refuses an empty filter"
