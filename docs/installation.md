@@ -24,6 +24,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[admin-sql]` | `sqlglot` | console SQL do admin: `SqlShellService` + `SqlShellPolicy` (capacidades, tabelas permitidas/negadas, teto de linhas), análise real do statement, auditoria de toda tentativa |
 | `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils`, fluxo bundled `UserAuthService` + `make_auth_router` |
 | `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
+| `[websocket]` | `websockets` | Driver de protocolo do `make_websocket_router` — sem ele o handshake devolve 404 |
 | `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (com `render_template` + templates Jinja2) |
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | GenAI local (pesado): `TextGenerator`, `Embedder`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
 | `[genai-audio]` | `faster-whisper`, `coqui-tts` | STT (Whisper) + TTS (Coqui) |

@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.testclient import TestClient
 
 from tempest_fastapi_sdk import (
@@ -118,6 +118,47 @@ class TestWebSocketHub:
         assert delivered == 1
         assert hub.connection_count() == 1
 
+    async def test_send_many_delivers_a_distinct_payload_per_user(self) -> None:
+        hub = WebSocketHub()
+        user_a = uuid4()
+        user_b = uuid4()
+        ws_a = _FakeWebSocket()
+        ws_b = _FakeWebSocket()
+        await hub.register(user_a, ws_a)  # type: ignore[arg-type]
+        await hub.register(user_b, ws_b)  # type: ignore[arg-type]
+        delivered = await hub.send_many(
+            {
+                user_a: WSEnvelope(type="state", data={"sees": "a"}),
+                user_b: WSEnvelope(type="state", data={"sees": "b"}),
+            }
+        )
+        assert delivered == 2
+        assert ws_a.sent[0]["data"] == {"sees": "a"}
+        assert ws_b.sent[0]["data"] == {"sees": "b"}
+
+    async def test_send_many_skips_users_without_connections(self) -> None:
+        hub = WebSocketHub()
+        user = uuid4()
+        ws = _FakeWebSocket()
+        await hub.register(user, ws)  # type: ignore[arg-type]
+        delivered = await hub.send_many(
+            {
+                user: WSEnvelope(type="state", data={}),
+                uuid4(): WSEnvelope(type="state", data={}),
+            }
+        )
+        assert delivered == 1
+
+    async def test_send_many_evicts_dead_peers(self) -> None:
+        hub = WebSocketHub()
+        user = uuid4()
+        dead = _FakeWebSocket()
+        dead.dead = True
+        await hub.register(user, dead)  # type: ignore[arg-type]
+        delivered = await hub.send_many({user: WSEnvelope(type="state", data={})})
+        assert delivered == 0
+        assert hub.connection_count() == 0
+
     async def test_unregister_clears_topic_indexes(self) -> None:
         hub = WebSocketHub()
         user = uuid4()
@@ -139,8 +180,18 @@ def _build_app(
     *,
     hub: WebSocketHub,
     user_id: UUID | None,
+    settings: WebSocketSettings | None = None,
 ) -> FastAPI:
-    """Build a FastAPI app with the websocket router wired."""
+    """Build a FastAPI app with the websocket router wired.
+
+    Args:
+        hub (WebSocketHub): The hub the router registers into.
+        user_id (UUID | None): What the bearer resolver returns for
+            ``"valid-token"`` — ``None`` makes every handshake fail.
+        settings (WebSocketSettings | None): Heartbeat / size limits.
+            Defaults to heartbeats far enough out that they never fire
+            during a fast test.
+    """
 
     async def resolver(token: str) -> UUID | None:
         if token == "valid-token":
@@ -166,7 +217,7 @@ def _build_app(
                 ).model_dump()
             )
 
-    settings = WebSocketSettings(
+    effective = settings or WebSocketSettings(
         WS_HEARTBEAT_SECONDS=3600,  # disable heartbeats during fast tests
         WS_HEARTBEAT_TIMEOUT_SECONDS=3600,
     )
@@ -177,7 +228,7 @@ def _build_app(
             handler,
             hub=hub,
             bearer_resolver=resolver,
-            settings=settings,
+            settings=effective,
         )
     )
     return app
@@ -237,3 +288,112 @@ class TestWebSocketRouter:
             assert user_id in hub.online_users()
         # On close the router must unregister.
         assert hub.connection_count() == 0
+
+
+class TestFrameGuard:
+    """The router's own promises about inbound frames."""
+
+    def test_oversized_frame_closes_with_1009(self) -> None:
+        """A frame past ``WS_MAX_MESSAGE_BYTES`` never reaches the handler."""
+        user_id = uuid4()
+        hub = WebSocketHub()
+        app = _build_app(
+            hub=hub,
+            user_id=user_id,
+            settings=WebSocketSettings(
+                WS_HEARTBEAT_SECONDS=3600,
+                WS_HEARTBEAT_TIMEOUT_SECONDS=3600,
+                WS_MAX_MESSAGE_BYTES=64,
+            ),
+        )
+        with (
+            TestClient(app) as client,
+            client.websocket_connect("/ws?token=valid-token") as ws,
+        ):
+            ws.send_json({"type": "chat.message", "data": {"text": "x" * 500}})
+            with pytest.raises(WebSocketDisconnect) as excinfo:
+                ws.receive_json()
+        assert excinfo.value.code == 1009
+
+    def test_frame_within_the_cap_is_delivered(self) -> None:
+        """The cap rejects only what exceeds it."""
+        user_id = uuid4()
+        hub = WebSocketHub()
+        app = _build_app(
+            hub=hub,
+            user_id=user_id,
+            settings=WebSocketSettings(
+                WS_HEARTBEAT_SECONDS=3600,
+                WS_HEARTBEAT_TIMEOUT_SECONDS=3600,
+                WS_MAX_MESSAGE_BYTES=4096,
+            ),
+        )
+        with (
+            TestClient(app) as client,
+            client.websocket_connect("/ws?token=valid-token") as ws,
+        ):
+            ws.send_json({"type": "chat.message", "data": {"text": "hi"}})
+            received = ws.receive_json()
+        assert received["type"] == "echo"
+
+
+class TestHeartbeatTimeout:
+    """The 4408 eviction the module docstring promises."""
+
+    def test_silent_peer_is_closed_with_4408(self) -> None:
+        """A peer that never pongs loses its slot instead of keeping it."""
+        user_id = uuid4()
+        hub = WebSocketHub()
+        app = _build_app(
+            hub=hub,
+            user_id=user_id,
+            settings=WebSocketSettings(
+                WS_HEARTBEAT_SECONDS=1,
+                WS_HEARTBEAT_TIMEOUT_SECONDS=1,
+            ),
+        )
+        with (
+            TestClient(app) as client,
+            client.websocket_connect("/ws?token=valid-token") as ws,
+            pytest.raises(WebSocketDisconnect) as excinfo,
+        ):
+            while True:
+                ws.receive_json()
+        assert excinfo.value.code == 4408
+        assert hub.connection_count() == 0
+
+    def test_pong_keeps_the_socket_alive(self) -> None:
+        """Answering the ping resets the deadline, so pings keep coming."""
+        user_id = uuid4()
+        hub = WebSocketHub()
+        app = _build_app(
+            hub=hub,
+            user_id=user_id,
+            settings=WebSocketSettings(
+                WS_HEARTBEAT_SECONDS=1,
+                WS_HEARTBEAT_TIMEOUT_SECONDS=3,
+            ),
+        )
+        with (
+            TestClient(app) as client,
+            client.websocket_connect("/ws?token=valid-token") as ws,
+        ):
+            first = ws.receive_json()
+            ws.send_json({"type": "pong", "data": {}})
+            second = ws.receive_json()
+        assert first["type"] == "ping"
+        assert second["type"] == "ping"
+
+    def test_pong_is_swallowed_before_the_handler(self) -> None:
+        """A pong answers the router, so the handler never sees it."""
+        user_id = uuid4()
+        hub = WebSocketHub()
+        app = _build_app(hub=hub, user_id=user_id)
+        with (
+            TestClient(app) as client,
+            client.websocket_connect("/ws?token=valid-token") as ws,
+        ):
+            ws.send_json({"type": "pong", "data": {}})
+            ws.send_json({"type": "chat.message", "data": {}})
+            received = ws.receive_json()
+        assert received["data"]["received"] == "chat.message"

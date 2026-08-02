@@ -46,6 +46,8 @@ class WebSocketHub:
 
     * ``send_to(user_id, envelope)`` — every socket the user has
       open right now.
+    * ``send_many({user_id: envelope, ...})`` — a different frame
+      per user, dispatched concurrently.
     * ``broadcast(envelope, topic=...)`` — every subscriber of
       ``topic`` (or every connection when ``topic`` is omitted).
     * ``subscribe(connection_id, topic)`` /
@@ -184,6 +186,45 @@ class WebSocketHub:
         async with self._lock:
             targets = list(self._by_user.get(user_id, []))
         return await self._fan_out(targets, envelope)
+
+    async def send_many(self, envelopes: dict[UUID, WSEnvelope]) -> int:
+        """Deliver a **different** envelope to each user, concurrently.
+
+        :meth:`broadcast` sends one frame to everyone and
+        :meth:`send_to` serves a single user, which leaves the common
+        case of per-recipient payloads — a game's fog of war, a feed
+        personalized per subscriber — as N sequential ``await
+        send_to`` calls in the caller, each waiting on the previous
+        socket's write.
+
+        Here every user's sockets are dispatched in parallel via
+        ``asyncio.gather``, so the wall-clock cost is the slowest
+        socket rather than the sum of all of them. Dead connections
+        are evicted transparently, exactly as in :meth:`send_to`.
+
+        Args:
+            envelopes (dict[UUID, WSEnvelope]): Target user to the
+                frame that user should receive. Users with no live
+                connection are skipped silently.
+
+        Returns:
+            int: Total number of sockets that received their frame.
+        """
+        if not envelopes:
+            return 0
+        async with self._lock:
+            batches = [
+                (list(self._by_user.get(user_id, [])), envelope)
+                for user_id, envelope in envelopes.items()
+            ]
+        results = await asyncio.gather(
+            *(
+                self._fan_out(targets, envelope)
+                for targets, envelope in batches
+                if targets
+            ),
+        )
+        return sum(results)
 
     async def broadcast(
         self,

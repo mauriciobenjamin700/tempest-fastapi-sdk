@@ -24,14 +24,26 @@ every WebSocket endpoint needs to get right:
 The handler the caller passes only sees authenticated,
 ready-to-talk sockets — the boilerplate above is enforced before
 the first line of the handler runs.
+
+!!! warning "Install the ``[websocket]`` extra"
+    A bare ``uvicorn`` speaks no WebSocket protocol: the handshake
+    answers **404** and the reason (``No supported WebSocket library
+    detected``) only shows up in the server log. Worse, Starlette's
+    ``TestClient`` implements WS itself, so a whole test suite passes
+    while the real server rejects every connection. Install
+    ``tempest-fastapi-sdk[websocket]`` — it pulls ``websockets``,
+    which uvicorn auto-detects.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
+import json
+import time
+from collections.abc import Awaitable, Callable, MutableMapping
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
@@ -107,9 +119,11 @@ def make_websocket_router(
         await ws.accept(
             subprotocol=_negotiated_subprotocol(ws),
         )
+        state = _HeartbeatState(last_pong=time.monotonic())
+        _install_frame_guard(ws, settings=settings, state=state)
         connection = await hub.register(user_id, ws)
         heartbeat = asyncio.create_task(
-            _heartbeat_loop(ws, settings=settings),
+            _heartbeat_loop(ws, settings=settings, state=state),
         )
         try:
             await handler(ws, connection, hub)
@@ -157,17 +171,123 @@ def _negotiated_subprotocol(ws: WebSocket) -> str | None:
     return None
 
 
+@dataclass
+class _HeartbeatState:
+    """When this socket was last known to be alive.
+
+    Written by the receive guard on every inbound ``pong``, read by
+    the heartbeat loop to decide whether the peer went silent.
+
+    Attributes:
+        last_pong (float): ``time.monotonic()`` of the last ``pong``,
+            seeded with the accept time so a peer that never answers
+            is still evicted one timeout after connecting.
+    """
+
+    last_pong: float
+
+
+def _frame_size(message: MutableMapping[str, Any]) -> int:
+    """Return the byte length of an inbound ``websocket.receive`` frame.
+
+    Args:
+        message (MutableMapping[str, Any]): The raw ASGI message.
+
+    Returns:
+        int: Payload size in bytes — the text encoded as UTF-8, or the
+        binary payload as-is.
+    """
+    data = message.get("bytes")
+    if data is not None:
+        return len(data)
+    text = message.get("text")
+    if text is not None:
+        return len(text.encode("utf-8"))
+    return 0
+
+
+def _is_pong(message: MutableMapping[str, Any]) -> bool:
+    """Report whether a frame is the client's heartbeat reply.
+
+    Args:
+        message (MutableMapping[str, Any]): The raw ASGI message.
+
+    Returns:
+        bool: True for a JSON text frame whose ``type`` is ``"pong"``.
+        Anything unparseable is application data, not a heartbeat.
+    """
+    text = message.get("text")
+    if not text:
+        return False
+    with contextlib.suppress(ValueError, TypeError):
+        payload = json.loads(text)
+        return isinstance(payload, dict) and payload.get("type") == "pong"
+    return False
+
+
+def _install_frame_guard(
+    ws: WebSocket,
+    *,
+    settings: WebSocketSettings,
+    state: _HeartbeatState,
+) -> None:
+    """Wrap ``ws.receive`` so the router sees every inbound frame.
+
+    The handler owns the message loop, so this is the only place the
+    router can enforce two promises it makes on its own behalf:
+
+    * **``WS_MAX_MESSAGE_BYTES``** — an oversized frame closes the
+      socket with ``1009`` before the handler ever allocates it.
+    * **the heartbeat** — a ``{"type": "pong"}`` frame stamps
+      :attr:`_HeartbeatState.last_pong` and is swallowed, since it
+      answers the router's own ping and is not application data.
+
+    Every ``receive_text`` / ``receive_bytes`` / ``receive_json`` on
+    the socket funnels through ``receive``, so wrapping that single
+    method covers all of them.
+
+    Args:
+        ws (WebSocket): The accepted socket, mutated in place.
+        settings (WebSocketSettings): Supplies the size cap.
+        state (_HeartbeatState): Updated on each inbound pong.
+    """
+    original = ws.receive
+    max_bytes = settings.WS_MAX_MESSAGE_BYTES
+
+    async def guarded_receive() -> Any:
+        while True:
+            message = await original()
+            if message.get("type") != "websocket.receive":
+                return message
+            if _frame_size(message) > max_bytes:
+                with contextlib.suppress(Exception):
+                    await ws.close(code=status.WS_1009_MESSAGE_TOO_BIG)
+                raise WebSocketDisconnect(code=status.WS_1009_MESSAGE_TOO_BIG)
+            if _is_pong(message):
+                state.last_pong = time.monotonic()
+                continue
+            return message
+
+    ws.receive = guarded_receive  # type: ignore[method-assign]
+
+
 async def _heartbeat_loop(
     ws: WebSocket,
     *,
     settings: WebSocketSettings,
+    state: _HeartbeatState,
 ) -> None:
     """Periodically emit ``ping`` envelopes; close on missed ``pong`` deadline.
 
-    The client must reply to each ``ping`` with a ``pong`` envelope
-    of identical ``request_id``. We track the last seen pong and
-    drop the socket once the gap crosses
-    ``WS_HEARTBEAT_TIMEOUT_SECONDS``.
+    The client must reply to each ``ping`` with a ``{"type": "pong"}``
+    frame. :func:`_install_frame_guard` records when one arrives, and
+    this loop drops the socket with code ``4408`` once the gap crosses
+    ``WS_HEARTBEAT_TIMEOUT_SECONDS`` — otherwise a half-open peer,
+    which never raises on send, holds its hub slot forever.
+
+    The deadline is checked *before* the next ping rather than after,
+    so a peer that answered nothing is evicted one timeout after the
+    connection was accepted, not one timeout after the first ping.
 
     The loop is cancellation-safe — ``make_websocket_router``
     cancels it from the handler's ``finally`` block on exit; the
@@ -175,9 +295,14 @@ async def _heartbeat_loop(
     propagate.
     """
     interval = settings.WS_HEARTBEAT_SECONDS
+    timeout = settings.WS_HEARTBEAT_TIMEOUT_SECONDS
     while True:
         await asyncio.sleep(interval)
         if ws.application_state != WebSocketState.CONNECTED:
+            return
+        if time.monotonic() - state.last_pong > timeout:
+            with contextlib.suppress(Exception):
+                await ws.close(code=4408)
             return
         envelope = WSEnvelope(type="ping", data={}, request_id=None)
         try:

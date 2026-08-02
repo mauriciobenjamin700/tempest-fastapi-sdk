@@ -1,4 +1,15 @@
-"""Domain-specific exception subclasses for this service."""
+"""Domain-specific exception subclasses for this service.
+
+Every subclass declares its own ``code`` **in the class body**. Skipping
+it inherits the SDK's generic identifier (``"NOT_FOUND"``,
+``"CONFLICT"``, …), which no client can tell apart from any other
+failure carrying the same status — so the SDK warns with
+``InheritedErrorCodeWarning`` the moment such a class is created.
+
+``ItemNotFoundException`` below is the shape to copy: a docstring, a
+``code``, and an ``__init__`` that only builds ``message`` / ``details``.
+Delete it once your own exceptions land.
+"""
 
 from __future__ import annotations
 
@@ -6,5 +17,23 @@ from tempest_fastapi_sdk import AppException, NotFoundException
 
 __all__: list[str] = [
     "AppException",
+    "ItemNotFoundException",
     "NotFoundException",
 ]
+
+
+class ItemNotFoundException(NotFoundException):
+    """Raised when an item id matches no stored record."""
+
+    code = "ITEM_NOT_FOUND"
+
+    def __init__(self, item_id: str) -> None:
+        """Initialize the exception.
+
+        Args:
+            item_id (str): The id that was looked up and not found.
+        """
+        super().__init__(
+            message=f"Item {item_id} not found.",
+            details={"item_id": item_id},
+        )

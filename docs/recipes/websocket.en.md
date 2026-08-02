@@ -2,13 +2,24 @@
 
 Since v0.33.0 the SDK ships `make_websocket_router` + `WebSocketHub` — the bidirectional counterpart to SSE, with bearer auth at the handshake, automatic ping/pong heartbeats and a central registry for broadcast / per-user / topic-scoped delivery.
 
-!!! info "Do you need to install anything? WebSocket is built in"
-    `make_websocket_router`, `WebSocketHub`, `WebSocketConnection` and
-    `WSEnvelope` are part of the **core** — no extra of their own, they ship
-    with `tempest-fastapi-sdk` (they depend only on `starlette` / `fastapi`,
-    which you already have). There is no `[websocket]` extra. Only the
-    **bearer auth** example with `JWTUtils` needs the `[auth]` extra —
-    `uv add "tempest-fastapi-sdk[auth]"`.
+```bash
+uv add "tempest-fastapi-sdk[websocket]"
+```
+
+!!! danger "Without the extra the handshake 404s — and your suite still passes"
+    The router code is core (`starlette` / `fastapi`, which you already
+    have), but the **protocol** is not: a bare `uvicorn` speaks no
+    WebSocket. With no implementation installed the handshake answers
+    **404**, and the real reason (`No supported WebSocket library
+    detected`) only shows up in the server log — never in the response.
+
+    The trap: Starlette's `TestClient` implements WS itself, so **the
+    whole suite passes** while the real server rejects every connection.
+    The `[websocket]` extra pulls `websockets`, which uvicorn detects on
+    its own.
+
+    The **bearer auth** example with `JWTUtils` also needs `[auth]` —
+    `uv add "tempest-fastapi-sdk[auth,websocket]"`.
 
 ## What the router solves
 
@@ -27,7 +38,7 @@ FastAPI's bare WebSocket route gives you `await ws.receive_json()` / `await ws.s
 2. **[Bearer auth — query vs subprotocol](#bearer-auth)** — when to use each.
 3. **[JavaScript / browser client](#javascript-client)** — `new WebSocket(...)` with heartbeat + reconnect.
 4. **[Broadcast / send_to / topics](#broadcast)** — fan-out via `WebSocketHub`.
-5. **[Heartbeat and close codes](#heartbeat)** — `4401`/`4429` and how the client reacts.
+5. **[Heartbeat and close codes](#heartbeat)** — `1009`/`4401`/`4408`/`4429` and how the client reacts.
 6. **[Settings (`WebSocketSettings`)](#settings)** — flags + defaults.
 7. **[Trade-offs and when NOT to use](#trade-offs)** — single-process, multi-replica fan-out, SSE vs WS.
 
@@ -142,7 +153,7 @@ ws.addEventListener("open", () => {
 ws.addEventListener("message", (event) => {
   const envelope = JSON.parse(event.data);
 
-  // Heartbeat — reply to the server's ping (good practice; the pong is not yet enforced by the server)
+  // Heartbeat — mandatory: without the pong the server closes with 4408
   if (envelope.type === "ping") {
     ws.send(JSON.stringify({ type: "pong", data: {} }));
     return;
@@ -170,7 +181,7 @@ ws.addEventListener("close", (event) => {
 
 ## Broadcast
 
-`WebSocketHub` exposes three patterns:
+`WebSocketHub` exposes four patterns:
 
 ```python
 import asyncio
@@ -181,13 +192,21 @@ async def main() -> None:
     # 1. send_to — every socket the user has open (multi-tab)
     await hub.send_to(user_id, WSEnvelope(type="notification", data={"text": "..."}))
 
-    # 2. broadcast with topic — only subscribers of that topic
+    # 2. send_many — a DIFFERENT payload per user, dispatched in parallel
+    await hub.send_many(
+        {
+            player_a: WSEnvelope(type="duel.state", data={"hand": hand_a}),
+            player_b: WSEnvelope(type="duel.state", data={"hand": hand_b}),
+        }
+    )
+
+    # 3. broadcast with topic — only subscribers of that topic
     await hub.broadcast(
         WSEnvelope(type="order.paid", data={"id": str(order_id)}),
         topic=f"order:{order_id}",
     )
 
-    # 3. broadcast without topic — EVERYONE connected (use sparingly)
+    # 4. broadcast without topic — EVERYONE connected (use sparingly)
     await hub.broadcast(
         WSEnvelope(type="system.announcement", data={"text": "Server maintenance"}),
     )
@@ -195,6 +214,14 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+!!! tip "`send_many` exists because of hidden information"
+    When each recipient must see a different payload — fog of war in a
+    game, a personalized feed, per-contract pricing — `broadcast` does
+    not fit, and the alternative was one `await hub.send_to(...)` per
+    user, each waiting on the previous socket. `send_many` dispatches
+    them all with `asyncio.gather`: the cost is the slowest socket, not
+    the sum of all of them.
 
 Subscription lifecycle is owned by the handler:
 
@@ -226,15 +253,29 @@ Every `WS_HEARTBEAT_SECONDS` (default 30s) the SDK sends:
 
 The client **should** reply with `{"type": "pong", "data": {}}` — the pong is client → server traffic that resets load-balancer idle timers and keeps the connection healthy.
 
-!!! warning "Pong deadline is not enforced yet"
-    In this version the router only **sends** pings; it does not read inbound frames to measure the ping-to-pong gap, so it does **not** close the socket with `4408` nor enforce `WS_HEARTBEAT_TIMEOUT_SECONDS`. The same goes for the size limit: `WS_MAX_MESSAGE_BYTES` is defined in the settings but the router does **not** yet reject oversized frames with `1009`. Both are reserved for when enforcement lands — don't rely on them as a defense today.
+!!! warning "Replying `pong` is mandatory as of v0.197.0"
+    The router now measures the ping-to-pong gap and **closes with
+    `4408`** once it crosses `WS_HEARTBEAT_TIMEOUT_SECONDS`. Before that,
+    a half-open peer — which never makes a `send` fail — pinned its hub
+    slot forever, exactly what the docs claimed to prevent.
+
+    A client that does not answer `pong` is now dropped once per timeout.
+    `tempest-react-sdk` answers on its own (`respondToPing`, on by
+    default); any other client has to echo `{"type": "pong", "data": {}}`
+    when the ping arrives.
+
+The pong is consumed by the router: it does **not** reach your handler, because it answers the router's own ping rather than carrying application data.
+
+Frames larger than `WS_MAX_MESSAGE_BYTES` are rejected too — the socket closes with `1009` **before** the handler allocates the payload.
 
 Close codes the router emits:
 
 | Code | When |
 |---|---|
 | `1000` | Normal exit (handler returned, or client closed cleanly) |
+| `1009` | Inbound frame larger than `WS_MAX_MESSAGE_BYTES` |
 | `4401` | Invalid / expired / missing token at handshake |
+| `4408` | No `pong` within `WS_HEARTBEAT_TIMEOUT_SECONDS` |
 | `4429` | `WS_MAX_CONNECTIONS_PER_USER` exceeded — the **oldest** connection of the user is evicted |
 
 ---
@@ -255,9 +296,9 @@ class Settings(WebSocketSettings, BaseAppSettings):
 ```bash
 # .env
 WS_HEARTBEAT_SECONDS=30                # default
-WS_HEARTBEAT_TIMEOUT_SECONDS=60        # default — NOT enforced yet (see Heartbeat)
+WS_HEARTBEAT_TIMEOUT_SECONDS=60        # default — closes with 4408 when crossed
 WS_MAX_CONNECTIONS_PER_USER=5          # default
-WS_MAX_MESSAGE_BYTES=65536             # 64 KiB default — NOT enforced yet
+WS_MAX_MESSAGE_BYTES=65536             # 64 KiB default — closes with 1009 when crossed
 ```
 
 ---

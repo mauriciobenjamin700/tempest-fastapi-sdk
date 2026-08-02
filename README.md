@@ -108,6 +108,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[email]` | `aiosmtplib`, `jinja2` | `EmailUtils` + `render_template()` |
 | `[upload]` | `aiofiles`, `python-multipart` | `UploadUtils`, `LocalUploadStorage`, `MinIOUploadStorage` (when combined with `[minio]`) |
 | `[cache]` | `redis` | `AsyncRedisManager` |
+| `[websocket]` | `websockets` | Protocol driver for `make_websocket_router` |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher`, `WebPushSubscriptionService`, `BaseWebPushSubscriptionModel`, `make_web_push_router` |
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[queue]` | `faststream[rabbit]` | `MessageBroker` (typed FastStream facade) |

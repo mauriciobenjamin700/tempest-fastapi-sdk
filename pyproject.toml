@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.196.0"
+version = "0.197.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -58,6 +58,9 @@ upload = [
 ]
 cache = [
     "redis>=5.0.0",
+]
+websocket = [
+    "websockets>=13.0",
 ]
 webpush = [
     "pywebpush>=2.0.0",
@@ -182,6 +185,7 @@ all = [
     "aiofiles>=24.1.0",
     "python-multipart>=0.0.12",
     "redis>=5.0.0",
+    "websockets>=13.0",
     "pywebpush>=2.0.0",
     "cryptography>=42.0.0",
     "psutil>=6.0.0",

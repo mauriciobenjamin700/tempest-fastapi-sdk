@@ -5,6 +5,55 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.197.0] — 2026-08-02
+
+### Added
+
+- **`[websocket]` extra** — pulls `websockets`, the protocol driver a
+  bare `uvicorn` lacks. Without it the handshake answers **404** and the
+  reason (`No supported WebSocket library detected`) only reaches the
+  server log; worse, Starlette's `TestClient` implements WS itself, so a
+  full test suite passes while the deployed server rejects every
+  connection. `make_websocket_router`'s docstring and the recipe now say
+  so up front.
+
+- **`WebSocketHub.send_many({user_id: envelope, ...})`** — a different
+  frame per user, dispatched with `asyncio.gather`. `broadcast` sends one
+  payload to everyone and `send_to` serves one user, which left
+  per-recipient fan-out (fog of war in a game, a personalized feed) as N
+  sequential `send_to` calls, each waiting on the previous socket. The
+  cost is now the slowest socket, not the sum.
+
+### Fixed
+
+- **The heartbeat never closed a half-open peer.** `_heartbeat_loop` only
+  emitted pings: nothing read the `pong`, `WS_HEARTBEAT_TIMEOUT_SECONDS`
+  was dead configuration, and no socket was ever closed with `4408` —
+  while the module docstring promised exactly that. A peer that stopped
+  answering (and never fails a `send`) pinned its hub slot forever.
+
+  The router now records the last `pong` and closes with `4408` once the
+  gap crosses `WS_HEARTBEAT_TIMEOUT_SECONDS`. **Clients must reply**
+  `{"type": "pong", "data": {}}` to the router's ping; the frame is
+  consumed by the router and never reaches the handler.
+
+- **`WS_MAX_MESSAGE_BYTES` was announced and never applied.** The setting
+  documented "reject inbound frames larger than this", but the router
+  passed everything straight to the handler — an advertised defense that
+  did not exist, which is worse than none. Oversized frames now close the
+  socket with `1009` before the handler allocates the payload.
+
+  Both are enforced by wrapping `ws.receive` once at accept time: every
+  `receive_text` / `receive_bytes` / `receive_json` funnels through it,
+  so the handler keeps owning the message loop.
+
+- **The scaffolded `src/core/exceptions.py` taught the warned-about
+  pattern.** It only re-exported `AppException` / `NotFoundException`, so
+  the first subclass a reader wrote inherited a generic `code` and
+  tripped `InheritedErrorCodeWarning` on the first run. The template now
+  ships a worked `ItemNotFoundException` with `code = "ITEM_NOT_FOUND"`
+  and explains why the class body is where `code` belongs.
+
 ## [0.196.0] — 2026-08-02
 
 ### Added

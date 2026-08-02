@@ -24,6 +24,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[admin-sql]` | `sqlglot` | admin SQL console: `SqlShellService` + `SqlShellPolicy` (capabilities, allowed/denied tables, row cap), real statement parsing, every attempt audited |
 | `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils`, bundled `UserAuthService` + `make_auth_router` flow |
 | `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
+| `[websocket]` | `websockets` | Protocol driver for `make_websocket_router` — without it the handshake 404s |
 | `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (with `render_template` + Jinja2 templates) |
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | local (heavy) GenAI: `TextGenerator`, `Embedder`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
 | `[genai-audio]` | `faster-whisper`, `coqui-tts` | STT (Whisper) + TTS (Coqui) |
