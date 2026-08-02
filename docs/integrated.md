@@ -53,9 +53,15 @@ O produto muda pouco; cacheie a leitura e invalide na escrita.
 
 ```python
 # src/services/catalog.py
+
 from tempest_fastapi_sdk.cache import CacheInvalidator, cached
 
 from src.core.resources import cache
+
+
+async def load_price_from_db(sku: str) -> int:
+    """Read the price in cents straight from the database."""
+    return 1990
 
 
 @cached(cache, ttl=300, key_prefix="catalog:", namespace="products")
@@ -76,11 +82,14 @@ inseguro. Grave a linha do pedido **e** a linha de outbox juntas —
 
 ```python
 # src/services/orders.py
+
 from tempest_fastapi_sdk import BaseModel
-from tempest_fastapi_sdk.utils import CentsField    # (ilustrativo)
+from tempest_fastapi_sdk.utils import CentsField
 
 from src.core.resources import db
 from src.db.models import OrderModel, OutboxModel
+from src.db.repositories import OrderRepository
+from src.schemas import CheckoutSchema
 from src.services.catalog import get_product_cents
 
 
@@ -115,9 +124,14 @@ O usuário vem do JWT; payload inválido nunca chega aqui (422 automático).
 
 ```python
 # src/api/routers/checkout.py
+
 from fastapi import APIRouter, Depends
 
 from src.api.dependencies import current_user, get_order_service
+from src.db.models import UserModel
+from src.schemas import CheckoutSchema
+from src.services import OrderService
+
 
 router = APIRouter(prefix="/api/checkout")
 
@@ -159,8 +173,11 @@ empurra o status pro canal SSE do usuário.
 
 ```python
 # src/queue/consumers.py
+
 from src.core.resources import events, mq, tq
 from src.schemas.events import OrderPaid
+
+email = "ana@example.com"
 
 
 @tq.task
@@ -243,6 +260,16 @@ Na confirmação, o handler da seção 7 troca o `events.publish` cru por um ún
 
 ```python
 # src/queue/consumers.py
+
+from tempest_fastapi_sdk.webpush import WebPushDispatcher
+
+from src.core.settings import settings
+from src.queue import OrderPaid, mq
+from src.tasks import send_receipt
+
+notifications = WebPushDispatcher(settings)
+
+
 @mq.on("orders.paid")
 async def on_order_paid(event: OrderPaid) -> None:
     await send_receipt.enqueue(to=event.user_email, order_id=event.order_id)   # background
@@ -267,6 +294,20 @@ Quem está com o app aberto assina o canal por SSE. Uma linha resolve tudo:
 
 ```python
 # src/api/routers/notifications.py
+
+from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
+
+from tempest_fastapi_sdk.webpush import WebPushDispatcher
+
+from src.core.settings import settings
+from src.db.models import UserModel
+
+current_user = UserModel(name="Ana", email="ana@example.com")
+notifications = WebPushDispatcher(settings)
+router = APIRouter()
+
+
 @router.get("/notifications/stream")
 async def stream(user: UserModel = Depends(current_user)) -> StreamingResponse:
     return notifications.broker.response(str(user.id))
@@ -310,10 +351,15 @@ SSE é **core** (sem extra); Web Push precisa do extra:
 
 ```python
 # src/api/routers/feed.py
+
 from fastapi import APIRouter, Depends
 from starlette.responses import StreamingResponse
 
 from src.core.resources import events
+from src.db.models import UserModel
+
+current_user = UserModel(name="Ana", email="ana@example.com")
+
 
 router = APIRouter()
 

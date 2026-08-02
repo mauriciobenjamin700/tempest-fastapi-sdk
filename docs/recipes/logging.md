@@ -8,6 +8,17 @@ Nesta receita você configura logs JSON estruturados com correlação por reques
 from tempest_fastapi_sdk import LogUtils, configure_logging
 from tempest_fastapi_sdk.core import get_request_id
 
+from src.db.models import UserModel
+
+
+def risky() -> None:
+    """Blow up, so the log shows a real traceback."""
+    raise RuntimeError("boom")
+
+
+user = UserModel(name="Ana", email="ana@example.com")
+
+
 # Imperativo — chame uma vez durante o bootstrap.
 configure_logging(level="INFO", json_output=True)
 

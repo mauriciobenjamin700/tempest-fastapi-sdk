@@ -66,9 +66,12 @@ class RatingModel(BaseRatingModel):
 ```python
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.reviews import ReviewService
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.db.models import CommentModel, RatingModel
 
 
 def build_review_service(session: AsyncSession) -> ReviewService:
@@ -108,6 +111,11 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.reviews import make_reviews_router
+
+from src.api.dependencies.resources import db
+from src.api.dependencies.services import build_review_service
+
+sessionmaker = db.get_session_context
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:

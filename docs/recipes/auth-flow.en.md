@@ -863,6 +863,22 @@ Password reset follows the same pattern: GET renders an HTML form; POST (form-en
 **To override:** pass `template_dir` to `make_auth_router` and add files with the same filenames.
 
 ```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import UserAuthService, make_auth_router
+
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+auth_service = UserAuthService(
+    user_model=UserModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+)
+app = FastAPI()
+
+
 app.include_router(
     make_auth_router(
         auth_service,
@@ -925,6 +941,22 @@ AUTH_COOKIE_SAMESITE=lax         # "none" (+Secure) if the SPA is cross-site
 ```
 
 ```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import UserAuthService, make_auth_router
+
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+auth_service = UserAuthService(
+    user_model=UserModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+)
+app = FastAPI()
+
+
 app.include_router(make_auth_router(auth_service, session_factory=db.session_dependency))
 ```
 
@@ -1269,6 +1301,18 @@ async def profile(current: UserModel = Depends(get_current_user)) -> UserRespons
 For routes that work both authenticated **and** anonymous (e.g. a public feed that personalizes when logged in), use the `soft` variant — it returns `None` instead of raising:
 
 ```python
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.auth import get_current_user_or_none
+from src.db.models import UserModel
+from src.schemas import PostResponseSchema
+from src.services import FeedService
+
+feed_service = FeedService()
+
+router = APIRouter()
+
+
 @router.get("/feed")
 async def feed(
     current: UserModel | None = Depends(get_current_user_or_none),
@@ -1303,6 +1347,11 @@ from tempest_fastapi_sdk import (
 The detail that matters: each one **returns the user already narrowed** — non-`None`, with the concrete type preserved — so the rest of the function stops seeing `| None`:
 
 ```python
+from tempest_fastapi_sdk import require_admin
+
+from src.db.models import UserModel
+
+
 class ReportService:
     async def delete_all(self, current: UserModel | None) -> None:
         """Only an admin may purge reports."""

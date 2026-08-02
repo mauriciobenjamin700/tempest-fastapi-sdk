@@ -158,13 +158,31 @@ pede um `refresh_token` ao Google.
 
 ```python
 # src/api/routers/oauth.py (continuação)
-from fastapi import Request
+
+from fastapi import APIRouter, Request
+from fastapi.responses import RedirectResponse
+
 from tempest_fastapi_sdk import (
+    GoogleOAuthClient,
     OAuthTokens,
     OAuthUser,
     UnauthorizedException,
     clear_cookie,
+    set_cookie,
 )
+
+from src.api.routers.oauth import oauth_login
+from src.core.settings import settings
+
+STATE_COOKIE = "oauth_state"
+
+google = GoogleOAuthClient(
+    client_id=settings.GOOGLE_CLIENT_ID,
+    client_secret=settings.GOOGLE_CLIENT_SECRET,
+    redirect_uri=settings.GOOGLE_REDIRECT_URI,
+)
+
+router = APIRouter()
 
 
 @router.get("/callback")
@@ -339,7 +357,12 @@ Com `register_exception_handlers` montado, ela já sai no envelope canônico
 `{detail, code, details}`; declare na rota pro Swagger:
 
 ```python
+from fastapi import APIRouter, Request
+from fastapi.responses import RedirectResponse
+
 from tempest_fastapi_sdk import OAuthError, UnauthorizedException, error_responses
+
+router = APIRouter()
 
 
 @router.get(

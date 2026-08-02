@@ -140,31 +140,52 @@ dá `commit` — tudo num passo.
 ## Servir a URL — `file_url`
 
 ```python
-import asyncio
+from datetime import timedelta
+
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import BaseService, StoredFileServiceMixin
+
+from src.db.models import UserModel
+from src.db.repositories import UserRepository
+from src.schemas import UserResponseSchema
 
 
-async def main() -> None:
-    """Run this example."""
-    url = await self.file_url(user.profile_picture)            # 1h de validade
-    url = await self.file_url(user.profile_picture, expires=timedelta(minutes=5))
-
-
-asyncio.run(main())
+class UserService(
+    BaseService[UserRepository, UserResponseSchema],
+    StoredFileServiceMixin[UserModel],
+):
+    async def profile_picture_url(self, user: UserModel) -> str | None:
+        """Assina a chave guardada — 1h de validade por padrão."""
+        url = await self.file_url(user.profile_picture)
+        url = await self.file_url(user.profile_picture, expires=timedelta(minutes=5))
+        return url
 ```
 
 Devolve `None` quando a chave é vazia, então você pode jogar o resultado
 direto num campo do schema de resposta sem `if`:
 
 ```python
-import asyncio
+from datetime import timedelta
+
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import BaseService, StoredFileServiceMixin
+
+from src.db.models import UserModel
+from src.db.repositories import UserRepository
+from src.schemas import UserResponseSchema
 
 
-async def main() -> None:
-    """Run this example."""
-    response.profile_picture_url = await self.file_url(updated.profile_picture)
-
-
-asyncio.run(main())
+class UserService(
+    BaseService[UserRepository, UserResponseSchema],
+    StoredFileServiceMixin[UserModel],
+):
+    async def to_response(self, updated: UserModel) -> UserResponseSchema:
+        """Monta a resposta já com a URL assinada — sem ``if``."""
+        response = await self._map_to_response(updated)
+        response.profile_picture_url = await self.file_url(updated.profile_picture)
+        return response
 ```
 
 ## Uma página inteira — `file_urls` *(v0.133.0+)*
@@ -177,14 +198,25 @@ de candidatos, cada um com sua foto. Fazer isso num `for` com
 chave.
 
 ```python
-async def _load_profile_picture_from_users(
-    self, candidates: list[CandidateResponseSchema]
-) -> None:
-    """Preenche ``profile_picture_url`` de cada candidato numa tacada só."""
-    users = [c.user for c in candidates if c.user is not None]
-    urls = await self.file_urls([user.profile_picture for user in users])
-    for user in users:
-        user.profile_picture_url = urls.get(user.profile_picture)
+from tempest_fastapi_sdk import BaseService, StoredFileServiceMixin
+
+from src.db.models import CandidateModel
+from src.db.repositories import CandidateRepository
+from src.schemas import CandidateResponseSchema
+
+
+class CandidateService(
+    BaseService[CandidateRepository, CandidateResponseSchema],
+    StoredFileServiceMixin[CandidateModel],
+):
+    async def _load_profile_picture_from_users(
+        self, candidates: list[CandidateResponseSchema]
+    ) -> None:
+        """Preenche ``profile_picture_url`` de cada candidato numa tacada só."""
+        users = [c.user for c in candidates if c.user is not None]
+        urls = await self.file_urls([user.profile_picture for user in users])
+        for user in users:
+            user.profile_picture_url = urls.get(user.profile_picture)
 ```
 
 Chaves `None`/vazias são **descartadas** e duplicatas **deduplicadas**, então o
@@ -204,15 +236,24 @@ Chaves `None`/vazias são **descartadas** e duplicatas **deduplicadas**, então 
 ## Remover o arquivo — `clear_file`
 
 ```python
-import asyncio
+from datetime import timedelta
+
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import BaseService, StoredFileServiceMixin
+
+from src.db.models import UserModel
+from src.db.repositories import UserRepository
+from src.schemas import UserResponseSchema
 
 
-async def main() -> None:
-    """Run this example."""
-    updated = await self.clear_file(user, field="profile_picture")
-
-
-asyncio.run(main())
+class UserService(
+    BaseService[UserRepository, UserResponseSchema],
+    StoredFileServiceMixin[UserModel],
+):
+    async def remove_profile_picture(self, user: UserModel) -> UserModel:
+        """Apaga o objeto do storage e zera o campo."""
+        return await self.clear_file(user, field="profile_picture")
 ```
 
 Apaga o objeto do storage e zera o campo. Quando o campo já está vazio, é
@@ -223,16 +264,25 @@ um **no-op**: a entidade volta sem `commit` e sem chamar o storage.
 `field=` é só um argumento — o mesmo serviço cuida de quantos campos quiser:
 
 ```python
-import asyncio
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import BaseService, StoredFileServiceMixin
+
+from src.db.models import EventModel
+from src.db.repositories import EventRepository
+from src.schemas import EventResponseSchema
 
 
-async def main() -> None:
-    """Run this example."""
-    await self.set_file(event, cover, field="cover_image", subdir="events/covers")
-    await self.set_file(event, banner, field="banner_image", subdir="events/banners")
-
-
-asyncio.run(main())
+class EventService(
+    BaseService[EventRepository, EventResponseSchema],
+    StoredFileServiceMixin[EventModel],
+):
+    async def set_images(
+        self, event: EventModel, cover: UploadFile, banner: UploadFile
+    ) -> None:
+        """Dois campos de arquivo, um mixin só."""
+        await self.set_file(event, cover, field="cover_image", subdir="events/covers")
+        await self.set_file(event, banner, field="banner_image", subdir="events/banners")
 ```
 
 ## Recapitulando

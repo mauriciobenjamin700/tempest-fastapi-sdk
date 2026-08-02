@@ -56,7 +56,10 @@ fino para mapear linha → schema:
 
 ```python
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import AnalysisModel
 
 
 class AnalysisRepository(BaseRepository[AnalysisModel]):
@@ -72,6 +75,9 @@ O `id` é do cliente, então "upsert por id" não duplica em retry:
 
 ```python
 from uuid import UUID
+
+from src.db.models import AnalysisModel
+from src.db.repositories import AnalysisRepository
 
 
 async def upsert_analysis(
@@ -118,6 +124,8 @@ crescente de `updated_at`, paginado por cursor, **com os tombstones**:
 from datetime import datetime
 from uuid import UUID
 
+from src.db.repositories import AnalysisRepository
+
 
 async def pull_changes(
     repo: AnalysisRepository,
@@ -162,7 +170,14 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+
 from tempest_fastapi_sdk import SyncFilterSchema, SyncPaginationSchema
+
+from src.api.dependencies.auth import get_current_user_id
+from src.api.dependencies.repositories import get_analysis_repository
+from src.db.repositories import AnalysisRepository
+from src.schemas import AnalysisResponseSchema
+
 
 router = APIRouter(prefix="/api/analyses", tags=["sync"])
 
@@ -229,6 +244,15 @@ Esta é a parte que costuma dar bug. Siga à risca:
 
 ```python
 import asyncio
+from datetime import datetime, timedelta, timezone
+
+from src.db.repositories import AnalysisRepository
+
+repo = AnalysisRepository(session)
+
+watermark = datetime.now(timezone.utc) - timedelta(hours=1)
+
+session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:

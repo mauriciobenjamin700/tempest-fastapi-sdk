@@ -21,7 +21,16 @@ Contract change in `cursor_paginate`: it used to raise `ValueError` there. Code 
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.exceptions import ValidationException
+
+from src.db.models import UserModel
+
+filters = {"is_active": True}
+
+repo = BaseRepository(session, model=UserModel)
+
+session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -70,7 +79,16 @@ Before, the three JWTs `UserAuthService` mints with one secret verified identica
 You are affected if you **deliberately** sent a refresh token to a regular route:
 
 ```python
-from tempest_fastapi_sdk import REFRESH_TOKEN_TYPE, make_bearer_token_dependency
+from tempest_fastapi_sdk import (
+    JWTUtils,
+    REFRESH_TOKEN_TYPE,
+    make_bearer_token_dependency,
+)
+
+from src.core.settings import settings
+
+tokens = JWTUtils(settings)
+
 
 # Take that type again, on that one route:
 require_refresh = make_bearer_token_dependency(tokens, accepted_typ=(REFRESH_TOKEN_TYPE,))
@@ -94,6 +112,15 @@ The key went from `(method, path, key)` to `(caller, method, path, key)`, the ca
 If your client swaps credentials between the original request and the retry (a token rotation mid-backoff), the retry no longer hits the earlier entry. Point identity at something stable there:
 
 ```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import IdempotencyMiddleware, MemoryIdempotencyStore
+
+store = MemoryIdempotencyStore()
+
+app = FastAPI()
+
+
 app.add_middleware(
     IdempotencyMiddleware,
     store=store,

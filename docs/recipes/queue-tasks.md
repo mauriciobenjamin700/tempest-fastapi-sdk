@@ -20,11 +20,13 @@ Instale com `[queue]` (puxa `faststream[rabbit]`).
 
 ```python
 # src/queue/__init__.py
+
 from pydantic import BaseModel
 
 from tempest_fastapi_sdk.queue import MessageBroker
 
 from src.core.settings import settings
+from src.services.orders import mark_order_paid
 
 
 # Escolha o transporte por um construtor — sem importar faststream.
@@ -102,6 +104,9 @@ sobrescreva `handle`:
 ```python
 from tempest_fastapi_sdk.queue import Consumer
 
+from src.queue import OrderPaid, mq
+from src.services.orders import mark_order_paid
+
 
 class OrderPaidConsumer(Consumer):
     async def handle(self, event: OrderPaid) -> None:
@@ -116,6 +121,9 @@ mq.register(OrderPaidConsumer(channel="orders.paid", schema=OrderPaid))
 
 ```python
 from tempest_fastapi_sdk.queue import Consumer, subscribe
+
+from src.queue import OrderCancelled, OrderPaid, mq
+
 
 # OrderPaid / OrderCancelled definidos no bloco `src/queue/__init__.py` acima.
 
@@ -145,9 +153,12 @@ Instale com `[tasks]` (puxa `taskiq` + `taskiq-aio-pika`).
 
 ```python
 # src/tasks/__init__.py
+
 from tempest_fastapi_sdk.tasks import TaskQueue
 
 from src.core.settings import settings
+
+email = "ana@example.com"
 
 
 tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)
@@ -170,6 +181,12 @@ async def send_welcome(to: str, name: str) -> None:
 ```python
 import asyncio
 
+from src.db.models import UserModel
+from src.tasks import send_welcome
+
+user = UserModel(name="Ana", email=email)
+email = "ana@example.com"
+
 
 async def main() -> None:
     """Run this example."""
@@ -190,6 +207,14 @@ Lifespan igual ao do broker de mensagens:
 
 ```python
 # src/api/app.py
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from src.tasks import tq
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await tq.connect()
@@ -212,6 +237,8 @@ Simétrico aos consumidores: agrupe tarefas numa classe com `TaskDef`.
 import asyncio
 
 from tempest_fastapi_sdk.tasks import TaskDef, task_method
+
+from src.tasks import tq
 
 
 # Forma construtor — uma tarefa; nome no construtor, sobrescreve run:
@@ -264,7 +291,10 @@ Agendar é parte do mesmo `TaskQueue` — sem scheduler separado no seu código.
 
 ```python
 # src/tasks/__init__.py
+
 from tempest_fastapi_sdk.tasks import Cron, CronOffset, Weekday, daily, weekdays
+
+from src.tasks import tq
 
 
 # Legível, sem sintaxe cron:
@@ -304,6 +334,8 @@ async def heartbeat() -> None:
 ```python
 from datetime import timedelta
 
+from src.tasks import tq
+
 
 @tq.cron("*/5 * * * *")                        # string cron crua
 async def raw_cron() -> None:
@@ -323,6 +355,13 @@ async def warm_cache() -> None:
 Em dev / processo único, rode o scheduler dentro do app:
 
 ```python
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from src.tasks import tq
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await tq.connect()
@@ -366,6 +405,9 @@ Quando uma tarefa falha **sem retry configurado**, ou depois de esgotar os retri
 
 ```python
 from tempest_fastapi_sdk.tasks import DeadLetter, TaskQueue
+
+from src.queue import mq
+
 
 tq: TaskQueue = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/")
 
@@ -430,6 +472,9 @@ Pra um inventário "quais tasks existem", `task_inventory(tq)` devolve `list[Tas
 
 ```python
 from tempest_fastapi_sdk.tasks import task_inventory
+
+from src.tasks import tq
+
 
 for info in task_inventory(tq):
     print(info.name, info.schedule, info.retry_on_error, info.max_retries)

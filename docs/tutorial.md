@@ -389,6 +389,13 @@ class UserEmailAlreadyTakenError(ConflictException):
 Para códigos pontuais você não precisa de uma subclasse — passe-os ao construtor:
 
 ```python
+from uuid import UUID
+
+from tempest_fastapi_sdk import NotFoundException
+
+order_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
+
+
 raise NotFoundException(
     "Pedido não encontrado",
     code="ORDER_NOT_FOUND",
@@ -414,11 +421,15 @@ Para CRUD simples você não precisa de uma subclasse nenhuma — instancie `Bas
 
 ```python
 # anywhere a session is in scope
+
 import asyncio
 
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
+
+session = None  # provided by db.get_session_context() in your code
+
 
 repository = BaseRepository(session, model=UserModel)
 

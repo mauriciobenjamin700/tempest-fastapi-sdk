@@ -115,6 +115,12 @@ alternativa multipart quando presente.
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import EmailUtils
+
+from src.core.settings import settings
+
+mailer = EmailUtils(settings)
+
 
 async def main() -> None:
     """Run this example."""

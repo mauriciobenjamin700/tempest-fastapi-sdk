@@ -201,9 +201,22 @@ fica num cookie `HttpOnly` que o JavaScript não alcança.
 
 ```python
 # src/api/app.py
-from tempest_fastapi_sdk import make_auth_router
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import UserAuthService, make_auth_router
 
 from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel
+
+auth_service = UserAuthService(
+    user_model=UserModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+)
+app = FastAPI()
+
 
 app.include_router(
     make_auth_router(

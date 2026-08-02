@@ -198,7 +198,11 @@ replay offline) recebe a mesma resposta, sem criar tarefa duplicada.
 
 ```python
 # frontend: gera a chave uma vez, reusa em cada tentativa
+
 import asyncio
+
+from tempestweb.native import http
+
 
 key = http.generate_idempotency_key()
 
@@ -223,6 +227,7 @@ com `idempotency_key`):
 ```python
 import asyncio
 
+from tempestweb.native import http
 from tempestweb.native.http import RetryOptions
 
 

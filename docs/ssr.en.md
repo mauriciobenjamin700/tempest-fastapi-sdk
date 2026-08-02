@@ -77,6 +77,11 @@ generated from the classes above.
 ### The `Page` class
 
 ```python
+from tempestweb import Column, Text, Widget
+
+from tempest_fastapi_sdk.ssr import Page
+
+
 class HomePage(Page):
     user: str
 
@@ -99,6 +104,11 @@ content. It is the only required method.
 ### The `html_response` function
 
 ```python
+from tempestweb.server import html_response
+
+from src.web.pages import HomePage
+
+
 return html_response(HomePage(title="Home", user="Ana"), title="Home")
 ```
 
@@ -106,6 +116,10 @@ return html_response(HomePage(title="Home", user="Ana"), title="Home")
 Its signature:
 
 ```python
+from fastapi.responses import HTMLResponse
+from tempestweb import Widget
+
+
 def html_response(
     widget: Widget,
     *,
@@ -490,7 +504,12 @@ Before (stringly-typed) and after (clear and typed):
 Button(label="Save", attrs={"hx-post": "/save", "hx-swap": "outerHTML"})
 
 # after
+
+from tempestweb import Button
+
 from tempest_fastapi_sdk.ssr import htmx
+
+
 Button(label="Save", attrs=htmx(post="/save", swap="outerHTML"))
 ```
 
@@ -498,6 +517,9 @@ Each builder returns a `dict[str, str]`, so you merge freely with other
 builders and raw keys:
 
 ```python
+from tempestweb import Row, aria, htmx
+
+
 Row(
     tag="li",
     attrs={**htmx(delete="/tasks/1", swap="outerHTML"), **aria(label="Delete"), "id": "task-1"},

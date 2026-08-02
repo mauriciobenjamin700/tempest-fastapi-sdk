@@ -95,6 +95,19 @@ async def checkout_v2() -> dict[str, bool]:
 For a **kill-switch** on something legacy, invert the gate with `enabled=False` (the route answers only while the flag is off):
 
 ```python
+from fastapi import APIRouter, Depends
+
+from tempest_fastapi_sdk import (
+    EnvFeatureFlagBackend,
+    FeatureFlags,
+    make_flag_dependency,
+)
+
+flags = FeatureFlags(EnvFeatureFlagBackend())
+
+router = APIRouter()
+
+
 @router.get(
     "/legacy",
     dependencies=[

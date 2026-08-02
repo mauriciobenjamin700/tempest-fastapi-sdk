@@ -98,7 +98,11 @@ Um `Page` tipado declara seus dados como campos e implementa `body()`.
 Aqui um formulário HTMX (append no `<ul>`) e a lista:
 
 ```python
+from tempestweb import Button, Column, Text, Widget
+
 from tempest_fastapi_sdk.ssr import Page
+
+from src.web.widgets import task_widget
 
 
 class TasksPage(Page):
@@ -147,9 +151,15 @@ from contextlib import asynccontextmanager
 from uuid import UUID
 
 from fastapi import FastAPI, Form
+from tempestweb import Text
 
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.ssr import html_response, make_htmx_router
+
+from src.api.dependencies.resources import db
+from src.db.models import TaskModel
+from src.web.pages import TasksPage
+from src.web.widgets import task_widget
 
 
 @asynccontextmanager

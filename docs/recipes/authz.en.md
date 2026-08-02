@@ -16,6 +16,16 @@ per token:
 
 ```python
 # "does the token carry the orders:write permission?"
+
+from fastapi import Depends
+
+from tempest_fastapi_sdk import JWTUtils, make_permission_dependency
+
+from src.core.settings import settings
+
+tokens = JWTUtils(settings)
+
+
 Depends(make_permission_dependency(tokens, ["orders:write"]))
 ```
 
@@ -47,7 +57,16 @@ def only_owner_can_delete(user: UserModel, order: OrderModel) -> bool:
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.authz import has_perm
+
+from src.db.models import OrderModel, UserModel
+
+current_user = UserModel(name="Ana", email="ana@example.com")
+order = OrderModel(user_id=user.id, total=100)
+repository = BaseRepository(session, model=UserModel)
+user = UserModel(name="Ana", email="ana@example.com")
+session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -66,6 +85,12 @@ Or raise `ForbiddenException` directly on denial:
 import asyncio
 
 from tempest_fastapi_sdk.authz import check_permission
+
+from src.db.models import OrderModel, UserModel
+
+current_user = UserModel(name="Ana", email="ana@example.com")
+order = OrderModel(user_id=user.id, total=100)
+user = UserModel(name="Ana", email="ana@example.com")
 
 
 async def main() -> None:
@@ -137,6 +162,16 @@ The predicate can be `async` — useful when the decision needs the
 database:
 
 ```python
+from tempest_fastapi_sdk import permission
+
+from src.db.models import ProjectModel, UserModel
+from src.db.repositories import MembershipRepository
+
+membership_repo = MembershipRepository(session)
+
+session = None  # provided by db.get_session_context() in your code
+
+
 @permission("project.invite")
 async def is_project_member(user: UserModel, project: ProjectModel) -> bool:
     return await membership_repo.exists(
@@ -150,7 +185,15 @@ By default the superuser is `user.is_admin` and the static set comes
 from `user.permissions`. Both are injectable — build your own registry:
 
 ```python
+from tempest_fastapi_sdk import has_perm, permission
 from tempest_fastapi_sdk.authz import PermissionRegistry
+
+from src.db.models import OrderModel, UserModel
+from src.db.repositories import RoleRepository
+
+role_repo = RoleRepository(session)
+
+session = None  # provided by db.get_session_context() in your code
 
 
 async def perms_from_roles(user: UserModel) -> set[str]:
@@ -183,6 +226,11 @@ import asyncio
 
 from tempest_fastapi_sdk import BaseUserModel
 from tempest_fastapi_sdk.authz import PermissionMixin
+
+from src.db.models import OrderModel, UserModel
+
+order = OrderModel(user_id=user.id, total=100)
+user = UserModel(name="Ana", email="ana@example.com")
 
 
 class UserModel(BaseUserModel, PermissionMixin):

@@ -39,6 +39,9 @@ The console is **off by default** — without `sql_shell=`, the route does not
 exist.
 
 ```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import AsyncDatabaseManager, UserModelAuthBackend
 from tempest_fastapi_sdk.admin import (
     AdminSite,
     SqlCapability,
@@ -46,6 +49,19 @@ from tempest_fastapi_sdk.admin import (
     SqlShellService,
     make_admin_router,
 )
+
+from src.admin import site
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel
+from src.services.audit import record_sql_attempt
+
+auth_backend = UserModelAuthBackend(UserModel)
+
+console_db = AsyncDatabaseManager(settings.READONLY_DATABASE_URL)
+
+app = FastAPI()
+
 
 console = SqlShellService(
     console_db,                       # the restricted connection, not the app's
@@ -177,6 +193,13 @@ that" and "your SQL is wrong" lead to different fixes.
 ## Auditing
 
 ```python
+import logging
+
+from src.db.models import SqlAudit
+
+logger = logging.getLogger(__name__)
+
+
 async def record_sql_attempt(entry: SqlAudit) -> None:
     """Persist every console attempt, allowed or refused."""
     logger.warning(
@@ -213,7 +236,12 @@ The service does not depend on the page:
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.admin import SqlShellDenied, SqlShellService
+from tempest_fastapi_sdk.admin import SqlShellDenied, SqlShellPolicy, SqlShellService
+
+from src.api.dependencies.resources import db
+
+policy = SqlShellPolicy(allowed_tables=["users", "orders"])
+
 
 service = SqlShellService(db, policy=policy, dialect="postgres")
 

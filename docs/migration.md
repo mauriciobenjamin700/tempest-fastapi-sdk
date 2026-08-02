@@ -21,7 +21,16 @@ Mudança de contrato em `cursor_paginate`: ele levantava `ValueError` nesse caso
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.exceptions import ValidationException
+
+from src.db.models import UserModel
+
+filters = {"is_active": True}
+
+repo = BaseRepository(session, model=UserModel)
+
+session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -70,7 +79,16 @@ Antes, os três JWTs que o `UserAuthService` emite com o mesmo segredo verificav
 Você é afetado se **de propósito** mandava um refresh token para uma rota comum:
 
 ```python
-from tempest_fastapi_sdk import REFRESH_TOKEN_TYPE, make_bearer_token_dependency
+from tempest_fastapi_sdk import (
+    JWTUtils,
+    REFRESH_TOKEN_TYPE,
+    make_bearer_token_dependency,
+)
+
+from src.core.settings import settings
+
+tokens = JWTUtils(settings)
+
 
 # Volta a aceitar aquele tipo naquela rota específica:
 require_refresh = make_bearer_token_dependency(tokens, accepted_typ=(REFRESH_TOKEN_TYPE,))
@@ -94,6 +112,15 @@ A chave passou de `(method, path, key)` para `(chamador, method, path, key)`, co
 Se o seu cliente troca de credencial entre o pedido original e o retry (rotação de token no meio do backoff), o retry deixa de bater na entrada anterior. Nesse caso aponte a identidade para algo estável:
 
 ```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import IdempotencyMiddleware, MemoryIdempotencyStore
+
+store = MemoryIdempotencyStore()
+
+app = FastAPI()
+
+
 app.add_middleware(
     IdempotencyMiddleware,
     store=store,

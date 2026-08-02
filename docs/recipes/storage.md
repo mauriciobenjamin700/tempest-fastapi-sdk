@@ -247,7 +247,15 @@ Upload em lote usa `PutObjectItem`, que espelha os argumentos por-objeto de `put
 ```python
 import asyncio
 
-from tempest_fastapi_sdk import PutObjectItem
+from tempest_fastapi_sdk import AsyncMinIOClient, PutObjectItem
+
+from src.core.settings import settings
+
+storage = AsyncMinIOClient(settings)
+
+thumb_a = "thumbs/a.png"
+
+thumb_b = "thumbs/b.png"
 
 
 async def main() -> None:
@@ -288,6 +296,10 @@ async def list_files(prefix: str = "") -> list[str]:
 
 ```python
 import asyncio
+
+from tempest_fastapi_sdk import UploadUtils
+
+storage = UploadUtils(source="./uploads")
 
 
 async def main() -> None:

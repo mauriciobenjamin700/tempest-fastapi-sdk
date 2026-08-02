@@ -57,6 +57,9 @@ Valid input:
 After validation:
 
 ```python
+from src.schemas import CustomerCreateSchema
+
+
 CustomerCreateSchema(...).document  # "52998224725"
 CustomerCreateSchema(...).phone     # "5511988887777"
 ```
@@ -92,6 +95,16 @@ The normalizers strip masks before saving, so repository filters and unique cons
 
 ```python
 import asyncio
+
+from tempest_fastapi_sdk.utils import normalize_cpf_cnpj
+
+from src.db.repositories import CustomerRepository
+
+query = "529.982.247-25"
+
+repo = CustomerRepository(session)
+
+session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -234,6 +247,9 @@ validates on the way back, so whatever the `<select>` submits drops
 straight into your schema:
 
 ```python
+from tempest_fastapi_sdk.utils import city_choices, region_choices, uf_choices
+
+
 uf_choices()[0]          # ChoiceBR(value="AC", label="Acre")
 region_choices()[0]      # ChoiceBR(value="Norte", label="Norte")
 city_choices("sp")[0]    # ChoiceBR(value="Adamantina", label="Adamantina")
@@ -309,7 +325,10 @@ A naive datetime is tagged with UTC (not converted from local time) so it's pred
 `modify_dict` is the tiny utility that powers `BaseSchema.to_dict(exclude=..., include=...)` and `BaseModel.update_from_dict(...)`. Use it directly when you don't want to call into Pydantic round-trips:
 
 ```python
-from tempest_fastapi_sdk import LogUtils, modify_dict
+from tempest_fastapi_sdk import LogUtils, PasswordUtils, modify_dict
+
+passwords = PasswordUtils()
+
 
 log = LogUtils("app.users")
 

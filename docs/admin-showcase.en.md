@@ -204,13 +204,15 @@ for the writes it performs when `audit_model=` is set.
 
 ```python
 # src/api/app.py
+
 from fastapi import FastAPI
 
 from tempest_fastapi_sdk import UserModelAuthBackend, make_admin_router
 
 from src.admin.site import access_policy, site
 from src.core.settings import settings
-from src.db.connection import db  # your AsyncDatabaseManager
+from src.db.connection import db
+from src.db.models import User
 
 
 def create_app() -> FastAPI:
@@ -493,6 +495,7 @@ Step by step, what `require_admin` does on every stream request:
 
 ```python
 # src/api/routers/admin_stream.py
+
 from fastapi import APIRouter, Depends
 from starlette.responses import StreamingResponse
 
@@ -501,6 +504,9 @@ from tempest_fastapi_sdk import SSEBroker
 from src.api.dependencies.admin_stream import require_admin
 from src.api.dependencies.resources import get_broker
 from src.db.models import User
+
+STAFF_CHANNEL = "staff.alerts"
+
 
 router = APIRouter(prefix="/admin/notifications")
 
@@ -561,8 +567,10 @@ from tempest_fastapi_sdk import (
     make_web_push_router,
 )
 
+from src.api.app import app       # the app assembled in §4
 from src.api.dependencies import get_current_user_id, get_session
 from src.api.routers.admin_stream import router as admin_stream_router
+from src.core.settings import settings
 from src.db.models import WebPushSubscription
 
 broker = SSEBroker()   # the same singleton get_broker resolves

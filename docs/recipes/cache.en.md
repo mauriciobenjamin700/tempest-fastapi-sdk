@@ -67,9 +67,16 @@ Wire the health check on the canonical router with `make_health_router(checks={"
 `@cached(redis, ttl=..., key_prefix=...)` memoizes the result of an async function in Redis. Cache keys are derived from the function's `__qualname__` plus a SHA-256 of args/kwargs; pass `key_prefix=` to namespace entries. To invalidate **before** the TTL, use tags/namespace (below) rather than a prefix scan.
 
 ```python
+from typing import Any
+
 from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
 
 from src.core.settings import settings
+
+
+async def load_from_db(product_id: str) -> dict[str, Any]:
+    """Read the product straight from the database."""
+    return {"id": product_id}
 
 
 redis = AsyncRedisManager(settings.REDIS_URL)
@@ -106,6 +113,14 @@ from typing import Any
 
 from tempest_fastapi_sdk.cache import AsyncRedisManager, CacheInvalidator, cached
 
+from src.core.settings import settings
+
+
+async def load_profile(user_id: str) -> dict[str, Any]:
+    """Read the profile straight from the database."""
+    return {"id": user_id}
+
+
 redis = AsyncRedisManager(settings.REDIS_URL)
 
 
@@ -124,6 +139,19 @@ async def get_profile(*, user_id: int) -> dict[str, Any]:
 When the user changes, the mutating service drops only that user's entries:
 
 ```python
+from typing import Any
+
+from tempest_fastapi_sdk.cache import AsyncRedisManager, CacheInvalidator
+
+from src.core.settings import settings
+
+redis = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
+
+
+async def save_profile(user_id: str, data: dict[str, Any]) -> None:
+    """Persist the profile, then invalidate what it feeds."""
+
+
 async def update_profile(user_id: int, data: dict[str, Any]) -> None:
     """Update the profile and invalidate only that user's cache.
 
@@ -151,9 +179,13 @@ try/miss — it does it for you:
 
 ```python
 # src/services/catalog.py
-from tempest_fastapi_sdk.cache import cached
 
-from src.core.resources import redis      # AsyncRedisManager (singleton)
+from typing import Any
+
+from tempest_fastapi_sdk.cache import CacheInvalidator, cached
+
+from src.core.resources import redis
+from src.db.repositories import ProductRepository
 
 
 class CatalogService:
@@ -188,8 +220,14 @@ connection:
 
 ```python
 from tempest_fastapi_sdk.api import RateLimitMiddleware, RedisRateLimitStore
+from tempest_fastapi_sdk.cache import AsyncRedisManager
 from tempest_fastapi_sdk.sessions import RedisSessionStore
 from tempest_fastapi_sdk.sse import SSEBroker
+
+from src.core.settings import settings
+
+cache = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
+
 
 # after cache.connect() in the lifespan:
 rate_store = RedisRateLimitStore(cache.client)          # rate limiting
@@ -206,6 +244,20 @@ A lookup that always misses (a non-existent id probed in a loop) hits the
 DB every time. Cache the empty result with a short TTL:
 
 ```python
+from typing import Any
+
+from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
+
+from src.core.settings import settings
+from src.db.repositories import ProductRepository
+
+redis = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
+
+repo = ProductRepository(session)
+
+session = None  # provided by db.get_session_context() in your code
+
+
 @cached(redis, ttl=30, key_prefix="lookup:")   # short TTL for the negative
 async def find_user(email: str) -> dict[str, Any] | None:
     """Returns None on a miss — and that None is cached for 30s."""

@@ -268,21 +268,31 @@ the order became `SHIPPED`), it makes **one call** — it neither knows nor care
 that there are two channels underneath:
 
 ```python
-import asyncio
+from tempest_fastapi_sdk import BaseService
+
+from src.db.models import OrderModel
+from src.db.repositories import OrderRepository
+from src.schemas import OrderResponseSchema
+from src.services.notifications import NotificationService
 
 
-async def main() -> None:
-    """Run this example."""
-    await self.notifications.notify(
-        order.buyer_id,
-        event="order_shipped",
-        title="Order on its way",
-        body=f"Order {order.code} is out for delivery.",
-        data={"order_id": str(order.id), "status": order.status},
-    )
+class OrderService(BaseService[OrderRepository, OrderResponseSchema]):
+    def __init__(
+        self, repository: OrderRepository, notifications: NotificationService
+    ) -> None:
+        """Keep the repository and the notification service."""
+        super().__init__(repository)
+        self.notifications = notifications
 
-
-asyncio.run(main())
+    async def mark_shipped(self, order: OrderModel) -> None:
+        """After the domain transition, tell the buyer — a single call."""
+        await self.notifications.notify(
+            order.buyer_id,
+            event="order_shipped",
+            title="Order on its way",
+            body=f"Order {order.code} is out for delivery.",
+            data={"order_id": str(order.id), "status": order.status},
+        )
 ```
 
 What each argument does:
@@ -356,6 +366,7 @@ receive the SSE half. The endpoint is one line: `broker.response(str(user.id))`.
 
 ```python
 # src/api/routers/notifications.py
+
 from fastapi import APIRouter, Depends
 from starlette.responses import StreamingResponse
 
@@ -363,6 +374,8 @@ from tempest_fastapi_sdk import SSEBroker
 
 from src.api.dependencies.auth import get_current_user
 from src.api.dependencies.resources import get_broker
+from src.db.models import User
+
 
 router = APIRouter()
 

@@ -92,7 +92,20 @@ all shows up on the same `GET /metrics`.
 ```python
 import asyncio
 
-from tempest_fastapi_sdk import BusinessMetrics, make_prometheus_registry
+from tempest_fastapi_sdk import (
+    BaseRepository,
+    BusinessMetrics,
+    make_prometheus_registry,
+)
+
+from src.db.models import UserModel
+
+elapsed = 0.42
+
+repo = BaseRepository(session, model=UserModel)
+
+session = None  # provided by db.get_session_context() in your code
+
 
 registry = make_prometheus_registry()
 metrics = BusinessMetrics(registry, namespace="shop")

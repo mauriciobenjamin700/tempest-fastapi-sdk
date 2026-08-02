@@ -245,6 +245,16 @@ Every `BaseModel` instance gets:
 
 ```python
 # Serialize to a dict (handy in logs/tests)
+
+from typing import Any
+
+from src.db.models import UserModel
+from src.schemas import UserUpdateSchema
+
+payload = UserUpdateSchema(name="Ana Paula")
+user = UserModel(name="Ana", email="ana@example.com")
+
+
 data: dict[str, Any] = user.to_dict(exclude=["password_hash"])
 
 # Assign many fields at once, with a whitelist against mass-assignment
@@ -411,10 +421,15 @@ When you have no custom query, instantiate directly:
 
 ```python
 import asyncio
+from uuid import UUID
 
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
+
+session = None  # provided by db.get_session_context() in your code
+user_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
+
 
 repository = BaseRepository(session, model=UserModel)
 
@@ -557,6 +572,17 @@ raise 404; **collection** lookups return `[]`.
 
 ```python
 import asyncio
+from uuid import UUID, uuid4
+
+from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import UserModel
+
+id1, id2, id3 = uuid4(), uuid4(), uuid4()
+repository = BaseRepository(session, model=UserModel)
+user_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
+user_or_id = user_id
+session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -700,9 +726,15 @@ moments on the unit-of-work path:
 
 ```python
 from tempest_fastapi_sdk import RepositorySignal, on_signal
+from tempest_fastapi_sdk.cache import AsyncRedisManager
 from tempest_fastapi_sdk.db import connect, disconnect
 
+from src.core.settings import settings
 from src.db.models import UserModel
+from src.services.search import SearchIndex
+
+cache = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
+search_index = SearchIndex()
 
 
 # Decorator form
@@ -944,6 +976,15 @@ class ProductFilter(BasePaginationFilterSchema):
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import UserModel
+from src.schemas import ProductFilterSchema
+
+f = ProductFilterSchema(name="silva", page=1, page_size=20)
+repo = BaseRepository(session, model=UserModel)
+session = None  # provided by db.get_session_context() in your code
+
 
 async def main() -> None:
     """Run this example."""
@@ -1157,6 +1198,11 @@ it compares and stores as that tag:
 
 ```python
 from tempest_fastapi_sdk import Locale
+
+from src.db.models import UserModel
+
+user = UserModel(name="Ana", email="ana@example.com")
+
 
 user.locale = Locale.PT_BR          # stores "pt-BR"
 user.locale = "en-US"               # a raw string works too

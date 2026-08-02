@@ -46,12 +46,19 @@ auth = IntrospectionAuth(
 
 ```python
 # src/api/routers/animals.py
+
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
+from tempest_fastapi_sdk import IntrospectionAuth
+
 from src.api.dependencies.auth import auth
+from src.core.settings import settings
+
+service = IntrospectionAuth(userinfo_url=settings.IAGRO_USERINFO_URL)
+
 
 router = APIRouter(prefix="/api/animals", tags=["animals"])
 
@@ -101,6 +108,15 @@ o upstream rejeita recebe **401**; um usuário sem `famacha` no
 
 ```python
 import asyncio
+from typing import Any
+
+from tempest_fastapi_sdk import IntrospectionAuth
+
+from src.core.settings import settings
+
+auth = IntrospectionAuth(userinfo_url=settings.IAGRO_USERINFO_URL)
+
+credentials = "eyJhbGciOiJIUzI1NiJ9.token"
 
 
 async def main() -> None:
@@ -120,6 +136,15 @@ faz `UUID(str(claims["sub"]))`:
 
 ```python
 import asyncio
+from uuid import UUID
+
+from tempest_fastapi_sdk import IntrospectionAuth
+
+from src.core.settings import settings
+
+auth = IntrospectionAuth(userinfo_url=settings.IAGRO_USERINFO_URL)
+
+credentials = "eyJhbGciOiJIUzI1NiJ9.token"
 
 
 async def main() -> None:

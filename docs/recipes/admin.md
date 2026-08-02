@@ -130,6 +130,13 @@ Misture os dois estilos: registre à mão os modelos que precisam de config pró
 
 ```python
 # UserModel ganha config caprichada...
+
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import UserModel
+
+
 site.register(AdminModel(
     model=UserModel,
     list_display=[UserModel.email, UserModel.is_admin],
@@ -214,8 +221,15 @@ from tempest_fastapi_sdk import (
     AdminActionContext,
     AdminActionResult,
     AdminModel,
+    EmailUtils,
     admin_action,
 )
+
+from src.admin import site
+from src.core.settings import settings
+from src.db.models import UserModel
+
+mailer = EmailUtils(settings)
 
 
 @admin_action(label="Enviar boas-vindas")
@@ -258,6 +272,9 @@ salvo no storage e a **chave retornada** é gravada na coluna.
 ```python
 from tempest_fastapi_sdk import AdminModel
 from tempest_fastapi_sdk.utils import LocalUploadStorage
+
+from src.admin import site
+from src.db.models import DocumentModel
 
 
 site.register(AdminModel(
@@ -354,10 +371,17 @@ class AuditLog(BaseAuditLogModel):
 
 ```python
 # grave a trilha nas escritas (create/update/delete)
+
 import asyncio
 
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.db.audit import snapshot_model
+
+from src.db.models import AuditLog, OrderModel, UserModel
+
+current_user = UserModel(name="Ana", email="ana@example.com")
+session = None  # injected by the admin action context
+
 
 repo = BaseRepository(session, model=OrderModel, audit_model=AuditLog)
 
@@ -378,6 +402,13 @@ Então plugue o mesmo `audit_model` no admin:
 
 ```python
 # src/admin/site.py
+
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import AuditLog, OrderModel
+
+
 site.register(AdminModel(model=OrderModel, audit_model=AuditLog))
 ```
 
@@ -402,6 +433,13 @@ busca** (HTMX) que consulta o alvo sob demanda:
 
 ```python
 # src/admin/site.py
+
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import Company, Employee
+
+
 site.register(AdminModel(model=Company, search_fields=[Company.name]))
 site.register(
     AdminModel(model=Employee, autocomplete_fields=[Employee.company_id])
@@ -428,7 +466,12 @@ listar cada relação numa tabela, com link pro admin do filho e um botão
 
 ```python
 # src/admin/site.py
+
 from tempest_fastapi_sdk import AdminModel, Inline
+
+from src.admin import site
+from src.db.models import Member, Team
+
 
 site.register(
     AdminModel(
@@ -455,6 +498,12 @@ um formset: uma linha de inputs por filho existente + uma linha em branco
 pra adicionar mais uma.
 
 ```python
+from tempest_fastapi_sdk import AdminModel, Inline
+
+from src.admin import site
+from src.db.models import Member, Team
+
+
 site.register(
     AdminModel(
         model=Team,
@@ -497,10 +546,23 @@ onde `compute` é uma função async que recebe a sessão e devolve um de
 três tipos:
 
 ```python
-from tempest_fastapi_sdk import (
-    AdminSite, MetricCard, MetricValue, MetricTrend, MetricPartition,
-)
+from datetime import date, timedelta
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import (
+    AdminSite,
+    MetricCard,
+    MetricPartition,
+    MetricTrend,
+    MetricValue,
+)
+
+from src.db.repositories import OrderRepository
+
+last_week = this_week - timedelta(days=7)
+this_week = today - timedelta(days=7)
+today = date.today()
 
 
 async def orders_today(session: AsyncSession) -> MetricValue:
@@ -543,6 +605,12 @@ O admin já exporta a listagem (CSV/JSON). A contraparte: subir um CSV
 para **criar** registros em massa. Habilite com `can_import=True`:
 
 ```python
+from tempest_fastapi_sdk import AdminModel
+
+from src.admin import site
+from src.db.models import Product
+
+
 site.register(AdminModel(model=Product, can_import=True))
 ```
 
@@ -568,7 +636,21 @@ um "editor" que só mexe em conteúdo — passe um `access_policy` no
 `make_admin_router`:
 
 ```python
-from tempest_fastapi_sdk import AdminPermission, make_admin_router
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AdminModel,
+    AdminPermission,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+
+from src.admin import site
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import AuditLog, UserModel
+
+app = FastAPI()
 
 
 def policy(user: UserModel, admin: AdminModel, action: AdminPermission) -> bool:
@@ -621,6 +703,10 @@ prioridade>=3, mais antigos primeiro" toda vez, ele clica na aba:
 
 ```python
 from tempest_fastapi_sdk import AdminModel, Lens
+
+from src.admin import site
+from src.db.models import Ticket
+
 
 site.register(
     AdminModel(
@@ -690,7 +776,15 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError
+from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError, GoogleOAuthClient
+
+from src.core.settings import settings
+
+my_oauth_client = GoogleOAuthClient(
+    client_id=settings.GOOGLE_CLIENT_ID,
+    client_secret=settings.GOOGLE_CLIENT_SECRET,
+    redirect_uri=settings.GOOGLE_REDIRECT_URI,
+)
 
 
 class OAuthAdminBackend(AdminAuthBackend):

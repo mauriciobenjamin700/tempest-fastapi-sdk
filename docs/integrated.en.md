@@ -53,9 +53,15 @@ The product rarely changes; cache the read and invalidate on write.
 
 ```python
 # src/services/catalog.py
+
 from tempest_fastapi_sdk.cache import CacheInvalidator, cached
 
 from src.core.resources import cache
+
+
+async def load_price_from_db(sku: str) -> int:
+    """Read the price in cents straight from the database."""
+    return 1990
 
 
 @cached(cache, ttl=300, key_prefix="catalog:", namespace="products")
@@ -76,8 +82,11 @@ unsafe. Write the order row **and** the outbox row together —
 
 ```python
 # src/services/orders.py
+
 from src.core.resources import db
 from src.db.models import OrderModel, OutboxModel
+from src.db.repositories import OrderRepository
+from src.schemas import CheckoutSchema
 from src.services.catalog import get_product_cents
 
 
@@ -113,9 +122,14 @@ automatically).
 
 ```python
 # src/api/routers/checkout.py
+
 from fastapi import APIRouter, Depends
 
 from src.api.dependencies import current_user, get_order_service
+from src.db.models import UserModel
+from src.schemas import CheckoutSchema
+from src.services import OrderService
+
 
 router = APIRouter(prefix="/api/checkout")
 
@@ -157,8 +171,11 @@ request) and pushes the status to the user's SSE channel.
 
 ```python
 # src/queue/consumers.py
+
 from src.core.resources import events, mq, tq
 from src.schemas.events import OrderPaid
+
+email = "ana@example.com"
 
 
 @tq.task
@@ -242,6 +259,16 @@ On confirmation, section 7's handler swaps the raw `events.publish` for a single
 
 ```python
 # src/queue/consumers.py
+
+from tempest_fastapi_sdk.webpush import WebPushDispatcher
+
+from src.core.settings import settings
+from src.queue import OrderPaid, mq
+from src.tasks import send_receipt
+
+notifications = WebPushDispatcher(settings)
+
+
 @mq.on("orders.paid")
 async def on_order_paid(event: OrderPaid) -> None:
     await send_receipt.enqueue(to=event.user_email, order_id=event.order_id)   # background
@@ -266,6 +293,20 @@ all: `broker.response(channel)`.
 
 ```python
 # src/api/routers/notifications.py
+
+from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
+
+from tempest_fastapi_sdk.webpush import WebPushDispatcher
+
+from src.core.settings import settings
+from src.db.models import UserModel
+
+current_user = UserModel(name="Ana", email="ana@example.com")
+notifications = WebPushDispatcher(settings)
+router = APIRouter()
+
+
 @router.get("/notifications/stream")
 async def stream(user: UserModel = Depends(current_user)) -> StreamingResponse:
     return notifications.broker.response(str(user.id))
@@ -309,10 +350,15 @@ SSE is **core** (no extra); Web Push needs the extra:
 
 ```python
 # src/api/routers/feed.py
+
 from fastapi import APIRouter, Depends
 from starlette.responses import StreamingResponse
 
 from src.core.resources import events
+from src.db.models import UserModel
+
+current_user = UserModel(name="Ana", email="ana@example.com")
+
 
 router = APIRouter()
 

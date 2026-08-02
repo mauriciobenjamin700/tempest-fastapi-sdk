@@ -51,6 +51,8 @@ That's it — you inherit `id` / `is_active` / `created_at` / `updated_at` from 
 from tempest_fastapi_sdk import AsyncMinIOClient, BaseRepository
 from tempest_fastapi_sdk.artifacts import ArtifactRegistry
 
+from src.db.models import ModelVersion
+
 
 def build_registry(session, storage: AsyncMinIOClient) -> ArtifactRegistry[ModelVersion]:
     """Assemble the registry for the model-version table."""
@@ -62,6 +64,17 @@ The three operations:
 
 ```python
 import asyncio
+from uuid import UUID
+
+from tempest_fastapi_sdk import UploadUtils
+
+from src.db.repositories import build_registry
+
+registry = build_registry(session, UploadUtils(source="./uploads"))
+
+version_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
+
+session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -90,7 +103,10 @@ Both helpers return `(sha256, size)` **without loading the whole file into memor
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import UploadUtils
 from tempest_fastapi_sdk.artifacts import file_digest, object_digest
+
+storage = UploadUtils(source="./uploads")
 
 
 async def main() -> None:
@@ -112,11 +128,21 @@ asyncio.run(main())
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import UploadUtils
 from tempest_fastapi_sdk.artifacts import (
     ArtifactManifestEntry,
     build_manifest_entries,
     object_digest,
 )
+
+from src.db.models import ModelVersion
+from src.db.repositories import build_registry
+
+registry = build_registry(session, UploadUtils(source="./uploads"))
+
+storage = UploadUtils(source="./uploads")
+
+session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -139,6 +165,24 @@ Each `ArtifactManifestEntry` carries `name`, `version`, `file_key`, `sha256`, `s
 ```python
 from fastapi import APIRouter
 from pydantic import BaseModel
+
+from tempest_fastapi_sdk import UploadUtils
+from tempest_fastapi_sdk.artifacts import build_manifest_entries, object_digest
+
+from src.db.repositories import build_registry
+
+
+async def model_digest() -> tuple[str, int]:
+    """Return the (sha256, size) of the object behind the active version."""
+    return await object_digest(storage, "models", "detect/1.2.0.onnx")
+
+
+registry = build_registry(session, UploadUtils(source="./uploads"))
+
+storage = UploadUtils(source="./uploads")
+
+session = None  # provided by db.get_session_context() in your code
+
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -174,6 +218,10 @@ async def manifest() -> ModelManifest:
 from tempest_fastapi_sdk import AdminModel
 from tempest_fastapi_sdk.artifacts import make_activate_artifact_action
 
+from src.admin import site
+from src.db.models import ModelVersion
+
+
 activate = make_activate_artifact_action(label="Activate version")
 
 site.register(AdminModel(model=ModelVersion, actions=[activate.handler]))
@@ -189,8 +237,21 @@ Select **one** version in the list, choose "Activate version" — the panel flip
 Resolve the active version; if it exists, stream it from MinIO; otherwise serve the bundled on-disk file.
 
 ```python
+from fastapi import APIRouter
 from fastapi.responses import FileResponse
 from starlette.responses import StreamingResponse
+
+from tempest_fastapi_sdk import UploadUtils
+
+from src.db.repositories import build_registry
+
+registry = build_registry(session, UploadUtils(source="./uploads"))
+
+storage = UploadUtils(source="./uploads")
+
+session = None  # provided by db.get_session_context() in your code
+
+router = APIRouter()
 
 
 @router.get("/{name}.onnx", response_model=None)

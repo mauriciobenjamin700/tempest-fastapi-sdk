@@ -313,6 +313,9 @@ want to:
 ```python
 from tempest_fastapi_sdk import default_message_catalog, error_responses
 
+from src.core.exceptions import ServiceNotFoundException
+
+
 CATALOG = default_message_catalog().merge(
     {
         "pt-BR": {"SERVICE_NOT_FOUND": "Serviço não encontrado"},
@@ -333,6 +336,11 @@ example — the same fallback the runtime handler uses.
 ### Tweaking the description
 
 ```python
+from tempest_fastapi_sdk import error_responses
+
+from src.core.exceptions import CandidateAlreadyExistsException, ServiceFullException
+
+
 responses = error_responses(
     ServiceFullException,
     CandidateAlreadyExistsException,
@@ -401,6 +409,16 @@ An explicit `responses=` **wins** per status code, so a hand-written entry alway
 overrides the generated one:
 
 ```python
+from fastapi import APIRouter
+
+from tempest_fastapi_sdk import raises
+
+from src.core.exceptions import ServiceFullException, ServiceNotFoundException
+from src.schemas import CandidateResponseSchema
+
+router = APIRouter()
+
+
 @router.get("/x", responses={409: {"description": "handwritten"}})
 @raises(ServiceFullException, ServiceNotFoundException)
 async def read() -> CandidateResponseSchema:
