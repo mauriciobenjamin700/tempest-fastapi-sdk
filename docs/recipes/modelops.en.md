@@ -204,6 +204,84 @@ still answer "which file produced me".
 **It refuses what cannot predict** with a direct message, instead of letting
 the failure surface inside the converter.
 
+## No runtime at all: the compact format
+
+ONNX in the browser costs **25.6 MB of WebAssembly** (6.0 MB gzipped) before
+the first prediction. Against that, the model is noise: a 12-tree forest is
+20 KB.
+
+For an app whose only model is tabular, the runtime **is** the download. So
+there is a way out that drops the runtime instead of the model:
+
+```python
+from tempest_fastapi_sdk.modelops import export_sklearn_to_compact
+
+export = export_sklearn_to_compact(model, X_test, "dist/risk.tmc")
+print(export.kind, export.size_bytes, export.verified)
+```
+
+```text
+tree_ensemble 13124 True
+```
+
+A linear model is a dot product. A tree is a chain of comparisons. Both fit
+in **1.49 KB** of JavaScript — the reader lives in
+[`tempest-react-sdk/tabular`](https://mauriciobenjamin700.github.io/tempest-react-sdk/en/tabular/),
+and this exporter writes what it reads.
+
+In an edge package it travels alongside the graph:
+
+```python
+package = edge_pipeline(model, X_train, "dist/risk", labels=y_train, compact=True)
+print([(r.kind, r.bytes) for r in package.manifest.runtimes])
+```
+
+```text
+[('onnx', 19941), ('compact', 9608)]
+```
+
+The browser picks the route from the manifest.
+
+### What it covers, and what it refuses
+
+| Covers | Does not cover |
+| --- | --- |
+| Logistic, linear, ridge, SGD, linear SVC | Gradient boosting (sums contributions through a link) |
+| Tree, forest, extra-trees | MLP |
+| Their regressors | Any transform that is not `(x - offset) / scale` |
+| `StandardScaler` / `MinMaxScaler` in a Pipeline | Imputer, encoder, PCA |
+
+!!! danger "Refusing is the feature"
+    A format that silently ignored a Pipeline step would produce a model
+    that runs and answers wrongly — worse than an error. An estimator or
+    transform outside the coverage raises `UnsupportedEstimatorError`
+    **naming `export_sklearn_to_onnx`**, which covers everything this does
+    not.
+
+!!! check "Verified against scikit-learn, and nothing else counts"
+    Reimplementing another library's arithmetic is only defensible with the
+    comparison: the exporter runs the written file through the reference
+    decoder and compares against the estimator's own `predict` /
+    `predict_proba`. If they disagree it **does not write** — it raises with
+    the measured difference.
+
+    On the browser side, tests run against fixtures generated here alongside
+    scikit-learn's outputs: 7 families, identical labels, probabilities
+    matching to 5 decimals.
+
+### The file is data, never code
+
+The classic alternative is emitting JavaScript with the thresholds baked
+into `if` statements. That produces something the page has to evaluate — a
+strict CSP forbids it, and no reviewer reads it. Here the reader is fixed
+and audited; the model is arrays.
+
+Layout `TMC1`: the magic, a `uint32` header length, a JSON header, then the
+sections as typed arrays. The header is padded to a multiple of 8 bytes on
+purpose — a JavaScript `Float32Array` cannot view an unaligned offset, and
+without the padding the browser would have to copy every section instead of
+mapping it.
+
 ## Serving the model on the device
 
 Exporting produces the file. This is everything between that file and an

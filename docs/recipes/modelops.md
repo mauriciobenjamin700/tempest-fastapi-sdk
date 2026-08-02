@@ -203,6 +203,81 @@ meses ainda responde "qual arquivo me gerou".
 **Rejeita o que não prediz** com mensagem direta, em vez de deixar o erro
 aparecer lá no conversor.
 
+## Sem runtime nenhum: o formato compacto
+
+ONNX no navegador custa **25,6 MB de WebAssembly** (6,0 MB gzipped) antes da
+primeira predição. Contra isso, o modelo é ruído: floresta de 12 árvores são
+20 KB.
+
+Para um app cujo único modelo é tabular, o runtime **é** o download. Então
+existe uma saída que descarta o runtime em vez do modelo:
+
+```python
+from tempest_fastapi_sdk.modelops import export_sklearn_to_compact
+
+export = export_sklearn_to_compact(model, X_test, "dist/risk.tmc")
+print(export.kind, export.size_bytes, export.verified)
+```
+
+```text
+tree_ensemble 13124 True
+```
+
+Modelo linear é produto escalar. Árvore é comparação encadeada. Os dois cabem
+em **1,49 KB** de JavaScript — o leitor mora no
+[`tempest-react-sdk/tabular`](https://mauriciobenjamin700.github.io/tempest-react-sdk/tabular/),
+e este exportador escreve o que ele lê.
+
+No pacote de borda, sai junto:
+
+```python
+package = edge_pipeline(model, X_train, "dist/risk", labels=y_train, compact=True)
+print([(r.kind, r.bytes) for r in package.manifest.runtimes])
+```
+
+```text
+[('onnx', 19941), ('compact', 9608)]
+```
+
+O navegador escolhe a rota pelo manifesto.
+
+### O que cobre, e o que recusa
+
+| Cobre | Não cobre |
+| --- | --- |
+| Logística, linear, ridge, SGD, SVC linear | Gradient boosting (soma contribuições por link) |
+| Árvore, floresta, extra-trees | MLP |
+| Regressores dos mesmos | Qualquer transform que não seja `(x - offset) / escala` |
+| `StandardScaler` / `MinMaxScaler` em Pipeline | Imputer, encoder, PCA |
+
+!!! danger "Recusa é a feature"
+    Um formato que ignorasse silenciosamente um passo do Pipeline geraria um
+    modelo que roda e responde errado — pior que erro. Estimador ou
+    transform fora da cobertura levanta `UnsupportedEstimatorError`
+    **nomeando o `export_sklearn_to_onnx`**, que cobre tudo que este não
+    cobre.
+
+!!! check "Verificado contra o scikit-learn, e só isso vale"
+    Reimplementar a aritmética de outra biblioteca só é defensável com a
+    comparação: o exportador roda o arquivo escrito pelo decodificador de
+    referência e compara com `predict`/`predict_proba` do próprio estimador.
+    Discordou, **não grava** — levanta com a diferença medida.
+
+    Do lado do navegador, os testes rodam contra fixtures geradas aqui junto
+    das saídas do scikit-learn: 7 famílias, rótulos idênticos, probabilidades
+    batendo em 5 casas.
+
+### O arquivo é dado, nunca código
+
+A alternativa clássica é gerar JavaScript com os limiares embutidos em `if`.
+Isso produz algo que a página precisa avaliar — CSP estrita proíbe, e
+revisor nenhum lê. Aqui o leitor é fixo e auditado; o modelo são arrays.
+
+Layout `TMC1`: magic, `uint32` com o tamanho do header, header JSON e as
+seções em arrays tipados. O header é preenchido até múltiplo de 8 bytes de
+propósito — `Float32Array` no JavaScript não aceita offset desalinhado, e sem
+isso o navegador teria que copiar cada seção em vez de mapear.
+
 ## Servir o modelo na borda
 
 Exportar produz o arquivo. Isto é tudo entre o arquivo e uma resposta —

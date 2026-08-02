@@ -51,6 +51,21 @@ from tempest_fastapi_sdk.modelops.bench import (
 )
 from tempest_fastapi_sdk.modelops.bench import benchmark_onnx as benchmark_onnx
 from tempest_fastapi_sdk.modelops.bench import benchmark_torch as benchmark_torch
+from tempest_fastapi_sdk.modelops.compact import (
+    COMPACT_SCHEMA_VERSION as COMPACT_SCHEMA_VERSION,
+)
+from tempest_fastapi_sdk.modelops.compact import COMPACT_SUFFIX as COMPACT_SUFFIX
+from tempest_fastapi_sdk.modelops.compact import CompactExport as CompactExport
+from tempest_fastapi_sdk.modelops.compact import CompactKind as CompactKind
+from tempest_fastapi_sdk.modelops.compact import CompactTask as CompactTask
+from tempest_fastapi_sdk.modelops.compact import (
+    UnsupportedEstimatorError as UnsupportedEstimatorError,
+)
+from tempest_fastapi_sdk.modelops.compact import (
+    export_sklearn_to_compact as export_sklearn_to_compact,
+)
+from tempest_fastapi_sdk.modelops.compact import predict_compact as predict_compact
+from tempest_fastapi_sdk.modelops.compact import read_compact as read_compact
 from tempest_fastapi_sdk.modelops.edge import (
     BASELINE_FILENAME as BASELINE_FILENAME,
 )
@@ -67,6 +82,7 @@ from tempest_fastapi_sdk.modelops.edge import (
 from tempest_fastapi_sdk.modelops.edge import ModelFile as ModelFile
 from tempest_fastapi_sdk.modelops.edge import ModelInput as ModelInput
 from tempest_fastapi_sdk.modelops.edge import ModelOutput as ModelOutput
+from tempest_fastapi_sdk.modelops.edge import RuntimeArtifact as RuntimeArtifact
 from tempest_fastapi_sdk.modelops.edge import edge_pipeline as edge_pipeline
 from tempest_fastapi_sdk.modelops.edge import (
     load_edge_package as load_edge_package,
@@ -261,6 +277,8 @@ from tempest_fastapi_sdk.modelops.static import (
 
 __all__: list[str] = [
     "BASELINE_FILENAME",
+    "COMPACT_SCHEMA_VERSION",
+    "COMPACT_SUFFIX",
     "DEFAULT_BINS",
     "DEFAULT_COST_WEIGHTS",
     "DEFAULT_INTRA_OP_THREADS",
@@ -281,6 +299,9 @@ __all__: list[str] = [
     "BenchmarkProfile",
     "BenchmarkReport",
     "CalibrationMethod",
+    "CompactExport",
+    "CompactKind",
+    "CompactTask",
     "DriftReport",
     "DriftVerdict",
     "EdgeBundle",
@@ -326,11 +347,13 @@ __all__: list[str] = [
     "RaplEnergySampler",
     "RegistryModelSource",
     "RuntimeAggregate",
+    "RuntimeArtifact",
     "RuntimeSample",
     "SklearnExport",
     "StaticModelMetrics",
     "TensorDtype",
     "TensorSpec",
+    "UnsupportedEstimatorError",
     "analyze_model",
     "analyze_onnx",
     "analyze_ort",
@@ -346,6 +369,7 @@ __all__: list[str] = [
     "edge_pipeline",
     "edge_pipeline_from_pickle",
     "export_onnx_to_ort",
+    "export_sklearn_to_compact",
     "export_sklearn_to_onnx",
     "export_torch_to_onnx",
     "load_edge_package",
@@ -355,11 +379,13 @@ __all__: list[str] = [
     "optimize_onnx_graph",
     "pareto_points",
     "population_stability_index",
+    "predict_compact",
     "quantize_hf_bnb",
     "quantize_hf_onnx",
     "quantize_onnx_dynamic",
     "quantize_onnx_static",
     "rank",
+    "read_compact",
     "read_manifest",
     "resolve_cpu_energy_sampler",
     "resolve_power_sampler",

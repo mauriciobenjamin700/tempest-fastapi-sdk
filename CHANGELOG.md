@@ -5,6 +5,63 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.194.0] — 2026-08-01
+
+### Added
+
+- **`export_sklearn_to_compact` — a model format that needs no inference
+  runtime.** ONNX in a browser costs a 25.6 MB WebAssembly download (6.0 MB
+  gzipped) before the first prediction, while the model itself is 20 KB. For
+  an app whose only model is tabular, the runtime *is* the download — so
+  this format drops the runtime instead of the model. A linear model is a
+  dot product and a tree is a chain of comparisons; the reader in
+  `tempest-react-sdk/tabular` is **1.49 KB brotli**.
+
+  **Verified against scikit-learn, which is the only claim worth making about
+  a reimplementation of someone else's arithmetic**: the exporter decodes the
+  file it just wrote and compares with the estimator's own `predict` /
+  `predict_proba`, refusing to ship a file that disagrees. Measured across
+  seven families, the largest probability difference was 1.6e-05.
+
+  Covers linear models (logistic, linear, ridge, SGD, linear SVC), trees,
+  forests, extra-trees, their regressors, and `StandardScaler` /
+  `MinMaxScaler` folded from a Pipeline. Anything else — gradient boosting,
+  MLPs, PCA in the pipeline — raises `UnsupportedEstimatorError` naming the
+  ONNX route, because a format that silently dropped a step would produce a
+  model that runs and answers wrongly.
+
+  **The file is data, never code**: no generated JavaScript, no `eval`,
+  nothing a strict CSP forbids. `TMC1` is a magic, a JSON header padded to an
+  8-byte boundary (a JavaScript `Float32Array` cannot view an unaligned
+  offset) and typed-array sections. `read_compact` and `predict_compact` are
+  the reference decoder the browser's is checked against.
+
+- **`edge_pipeline(compact=True)` and `RuntimeArtifact`.** A package can now
+  carry the same model twice — ONNX for coverage, compact for size — and the
+  manifest's new `runtimes` list lets the consumer pick by what it can
+  actually run. `tempest-react-sdk` reads that list and defaults to compact
+  when present.
+
+  The option raises rather than silently writing only ONNX when the
+  estimator has no compact form: a package that quietly lacks the file the
+  app expects fails later, in a browser, on someone else's phone.
+
+### Fixed
+
+- **The reference guard read a stale build.** `tests/conftest.py` rebuilt the
+  docs when `docs/`, `mkdocs.yml` or the hooks changed — but `mkdocstrings`
+  renders the API reference from **docstrings**, so exporting a new symbol
+  changed the expected HTML without touching any watched input. The guard
+  then reported brand-new exports as undocumented. The package source now
+  counts as a docs input. Found by hitting it while adding the compact
+  format, not by review.
+
+- **The compact route returned `"0"` where ONNX returns `0`.** Two routes
+  over one model that disagree on the type of a label break the day someone
+  switches between them. The format now records scikit-learn's class dtype
+  and both readers hand back the same type. Found by the cross-language test,
+  not by review.
+
 ## [0.193.0] — 2026-08-01
 
 ### Added

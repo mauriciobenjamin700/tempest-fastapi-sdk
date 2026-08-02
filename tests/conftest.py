@@ -17,15 +17,23 @@ ROOT = Path(__file__).resolve().parent.parent
 def _newest_docs_input_mtime() -> float:
     """Return the mtime of the newest input a docs build depends on.
 
+    The package source counts as an input: ``mkdocstrings`` renders the
+    reference from docstrings, so exporting a new symbol changes the built
+    HTML without touching anything under ``docs/``. Leaving it out made the
+    reference guard read a stale page and report brand-new exports as
+    undocumented — a false failure that costs more than the rebuild.
+
     Returns:
         float: Epoch seconds of the most recently touched file among
-        ``mkdocs.yml``, ``docs/`` and ``mkdocs_hooks/``.
+        ``mkdocs.yml``, ``docs/``, ``mkdocs_hooks/`` and the package source.
     """
     newest = (ROOT / "mkdocs.yml").stat().st_mtime
     for directory in ("docs", "mkdocs_hooks"):
         for path in (ROOT / directory).rglob("*"):
             if path.is_file():
                 newest = max(newest, path.stat().st_mtime)
+    for path in (ROOT / "tempest_fastapi_sdk").rglob("*.py"):
+        newest = max(newest, path.stat().st_mtime)
     return newest
 
 

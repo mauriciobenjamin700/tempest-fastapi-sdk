@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict, Field
 
+from tempest_fastapi_sdk.modelops.compact import COMPACT_SUFFIX
 from tempest_fastapi_sdk.modelops.monitoring import (
     DEFAULT_BINS,
     FeatureBaseline,
@@ -214,6 +215,57 @@ class ModelOutput(BaseSchema):
     )
 
 
+class RuntimeArtifact(BaseSchema):
+    """One file in the package a runtime can load.
+
+    A package may carry the same model twice: as ONNX, which any runtime
+    reads but costs a 25.6 MB WebAssembly download in a browser, and as the
+    compact format, which needs no runtime but covers only linear models and
+    tree ensembles. Listing both lets the consumer pick by what it already
+    ships instead of the publisher deciding for it.
+
+    Attributes:
+        kind (str): ``"onnx"`` or ``"compact"``.
+        file (str): Filename inside the package directory.
+        bytes (int): Size on disk.
+        gzip_file (str | None): Pre-compressed copy, when one was written.
+        gzip_bytes (int | None): Its size.
+        sha256 (str): Digest of the file.
+    """
+
+    kind: str = Field(
+        title="Kind",
+        description="Which runtime reads this file.",
+        examples=["compact"],
+    )
+    file: str = Field(
+        title="File",
+        description="Filename inside the package directory.",
+        examples=["risk.tmc"],
+    )
+    bytes: int = Field(
+        default=0,
+        title="Bytes",
+        description="Size on disk.",
+        examples=[13_124],
+    )
+    gzip_file: str | None = Field(
+        default=None,
+        title="Gzip file",
+        description="Pre-compressed copy.",
+    )
+    gzip_bytes: int | None = Field(
+        default=None,
+        title="Gzip bytes",
+        description="Compressed size.",
+    )
+    sha256: str = Field(
+        default="",
+        title="SHA-256",
+        description="Digest of the file.",
+    )
+
+
 class ArtifactSource(BaseSchema):
     """Where the packaged model came from, when it came from somewhere.
 
@@ -291,6 +343,9 @@ class EdgeManifest(BaseSchema):
             estimator's own predictions. ``None`` means it was not checked
             — which is worth seeing rather than assuming.
         verification (ExportVerification | None): The numbers behind it.
+        runtimes (list[RuntimeArtifact]): Every file a runtime can load,
+            so a consumer picks the one it can run rather than the one the
+            publisher happened to write.
         source (ArtifactSource | None): Where the packaged model came
             from, when it was built from an existing artifact.
         baseline_file (str | None): Drift baseline filename.
@@ -355,6 +410,11 @@ class EdgeManifest(BaseSchema):
         title="Verification",
         description="The numbers behind the check.",
     )
+    runtimes: list[RuntimeArtifact] = Field(
+        default_factory=list,
+        title="Runtimes",
+        description="Every file in the package a runtime can load.",
+    )
     source: ArtifactSource | None = Field(
         default=None,
         title="Source",
@@ -409,6 +469,11 @@ class EdgePackage(BaseSchema):
         default=None,
         title="Baseline path",
         description="The drift baseline.",
+    )
+    compact_path: str | None = Field(
+        default=None,
+        title="Compact path",
+        description="The runtime-free .tmc form, when one was written.",
     )
     manifest_path: str = Field(
         title="Manifest path",
@@ -521,6 +586,7 @@ def edge_pipeline(
     baseline: bool = True,
     bins: int = DEFAULT_BINS,
     compress: bool = True,
+    compact: bool = False,
     dtype: TensorDtype = TensorDtype.FLOAT32,
     opset: int = DEFAULT_OPSET,
 ) -> EdgePackage:
@@ -581,6 +647,12 @@ def edge_pipeline(
         baseline (bool): Write the drift baseline.
         bins (int): Quantile bins per feature in the baseline.
         compress (bool): Also write a gzipped copy of the graph.
+        compact (bool): Also write the runtime-free ``.tmc`` form, for a
+            browser that would otherwise download a 25.6 MB WebAssembly
+            runtime to answer with a 13 KB forest. Raises when the
+            estimator has no compact representation, rather than quietly
+            shipping only ONNX — a package that silently lacks the file the
+            app expects fails at the worst moment.
         dtype (TensorDtype): Input element type.
         opset (int): Target ONNX opset.
 
@@ -640,9 +712,47 @@ def edge_pipeline(
         gzip_path = model_path.with_suffix(".onnx.gz")
         gzip_path.write_bytes(gzip.compress(model_path.read_bytes(), 6))
 
+    compact_path: Path | None = None
+    if compact:
+        from tempest_fastapi_sdk.modelops.compact import export_sklearn_to_compact
+
+        compact_path = directory / f"{name}{COMPACT_SUFFIX}"
+        export_sklearn_to_compact(
+            estimator,
+            samples if verify_samples is False else (verify_samples or samples),
+            compact_path,
+            feature_names=feature_names,
+        )
+
     digest = _digest(model_path)
     probe = OnnxPredictor(model_path, warmup=False)
     info = probe.info
+
+    runtimes = [
+        RuntimeArtifact(
+            kind="onnx",
+            file=model_path.name,
+            bytes=export.size_bytes,
+            gzip_file=gzip_path.name if gzip_path else None,
+            gzip_bytes=gzip_path.stat().st_size if gzip_path else None,
+            sha256=digest,
+        ),
+    ]
+    if compact_path is not None:
+        compact_gzip: Path | None = None
+        if compress:
+            compact_gzip = compact_path.with_suffix(f"{COMPACT_SUFFIX}.gz")
+            compact_gzip.write_bytes(gzip.compress(compact_path.read_bytes(), 6))
+        runtimes.append(
+            RuntimeArtifact(
+                kind="compact",
+                file=compact_path.name,
+                bytes=compact_path.stat().st_size,
+                gzip_file=compact_gzip.name if compact_gzip else None,
+                gzip_bytes=compact_gzip.stat().st_size if compact_gzip else None,
+                sha256=_digest(compact_path),
+            ),
+        )
 
     manifest = EdgeManifest(
         name=name,
@@ -674,6 +784,7 @@ def edge_pipeline(
             probability_output=info.proba_output,
             classes=_class_labels(estimator),
         ),
+        runtimes=runtimes,
         verified=None if verification is None else verification.passed,
         verification=verification,
         baseline_file=BASELINE_FILENAME if baseline_path else None,
@@ -689,6 +800,7 @@ def edge_pipeline(
         model_path=str(model_path),
         gzip_path=str(gzip_path) if gzip_path else None,
         baseline_path=str(baseline_path) if baseline_path else None,
+        compact_path=str(compact_path) if compact_path else None,
         manifest_path=str(manifest_path),
     )
 
@@ -826,6 +938,7 @@ __all__: list[str] = [
     "ModelFile",
     "ModelInput",
     "ModelOutput",
+    "RuntimeArtifact",
     "edge_pipeline",
     "load_edge_package",
     "read_manifest",

@@ -330,3 +330,72 @@ class TestVerificationGate:
 
         with pytest.raises(ValueError, match="does not reproduce"):
             edge_pipeline(model, features, tmp_path / "bad")
+
+
+class TestDualRuntimePackage:
+    def test_it_writes_both_forms_when_asked(
+        self,
+        tmp_path: Path,
+        classifier: Any,
+        training_data: tuple[Any, Any],
+    ) -> None:
+        """One package, two readers: ONNX for coverage, compact for size."""
+        features, target = training_data
+        package = edge_pipeline(
+            classifier,
+            features,
+            tmp_path / "dual",
+            name="risk",
+            labels=target,
+            compact=True,
+        )
+
+        kinds = [entry.kind for entry in package.manifest.runtimes]
+        assert kinds == ["onnx", "compact"]
+        assert package.compact_path is not None
+        assert Path(package.compact_path).exists()
+
+    def test_the_compact_form_is_the_smaller_one(
+        self,
+        tmp_path: Path,
+        classifier: Any,
+        training_data: tuple[Any, Any],
+    ) -> None:
+        features, _ = training_data
+        package = edge_pipeline(
+            classifier,
+            features,
+            tmp_path / "dual",
+            compact=True,
+        )
+        onnx, compact = package.manifest.runtimes
+        assert compact.bytes < onnx.bytes
+        assert compact.sha256 != onnx.sha256
+
+    def test_an_onnx_only_package_lists_one_runtime(
+        self,
+        package: Any,
+    ) -> None:
+        assert [entry.kind for entry in package.manifest.runtimes] == ["onnx"]
+        assert package.compact_path is None
+
+    def test_an_unsupported_estimator_refuses_rather_than_skipping(
+        self,
+        tmp_path: Path,
+        training_data: tuple[Any, Any],
+    ) -> None:
+        """A package silently missing the file the app expects fails later,
+        in the browser, on someone else's phone."""
+        from sklearn.neural_network import MLPClassifier
+
+        from tempest_fastapi_sdk.modelops.compact import UnsupportedEstimatorError
+
+        features, target = training_data
+        model = MLPClassifier(
+            hidden_layer_sizes=(8,), max_iter=200, random_state=0
+        ).fit(
+            features,
+            target,
+        )
+        with pytest.raises(UnsupportedEstimatorError):
+            edge_pipeline(model, features, tmp_path / "mlp", compact=True)
