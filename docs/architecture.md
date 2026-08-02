@@ -59,12 +59,19 @@ O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[Mode
     ├── schemas/                     # DTOs de request/response Pydantic v2
     ├── core/                        # settings.py + constants + exceptions + logging
     ├── db/ (opcional)
+    │   ├── configs/names.py         # nomes das tabelas, fonte única (opcional)
     │   ├── models/                  # modelos ORM SQLAlchemy
     │   └── repositories/            # camada de acesso a dados
     ├── utils/ (opcional)            # helpers stateless compartilhados
     ├── queue/ (opcional)            # consumers/publishers FastStream
     └── tasks/ (opcional)            # tarefas em background TaskIQ
 ```
+
+!!! tip "`db/configs/names.py` é opcional, mas evita uma classe de erro"
+    Guardar o nome de cada tabela numa constante faz o `__tablename__` e
+    a string da `ForeignKey` saírem do mesmo símbolo — renomear vira uma
+    linha, em vez de uma caça a strings espalhadas. Ver
+    [Banco de dados › Centralizando os nomes das tabelas](recipes/database.md#centralizando-os-nomes-das-tabelas).
 
 !!! warning "Regras inegociáveis"
 

@@ -59,12 +59,19 @@ The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.B
     ├── schemas/                     # Pydantic v2 request/response DTOs
     ├── core/                        # settings.py + constants + exceptions + logging
     ├── db/ (optional)
+    │   ├── configs/names.py         # table names, single source (optional)
     │   ├── models/                  # SQLAlchemy ORM models
     │   └── repositories/            # Data access layer
     ├── utils/ (optional)            # Shared stateless helpers
     ├── queue/ (optional)            # FastStream consumers/publishers
     └── tasks/ (optional)            # TaskIQ background tasks
 ```
+
+!!! tip "`db/configs/names.py` is optional, but rules out a class of error"
+    Holding each table name in a constant makes `__tablename__` and the
+    `ForeignKey` string come from the same symbol — renaming becomes one
+    line instead of a hunt for scattered strings. See
+    [Database › Centralizing table names](recipes/database.md#centralizing-table-names).
 
 !!! warning "Rules that are not negotiable"
 

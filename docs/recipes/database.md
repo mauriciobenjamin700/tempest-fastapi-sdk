@@ -70,6 +70,156 @@ Isso já cria a tabela `user` com **sete** colunas: as três suas
     `__tablename__ = "users"` explicitamente — a declaração explícita
     vence o automático.
 
+!!! tip "Fixar o nome não é só gosto"
+    `USER` é palavra reservada no SQL padrão. O SQLAlchemy sempre escreve
+    o identificador entre aspas, então a aplicação funciona — mas um
+    `SELECT * FROM user` digitado à mão no `psql` devolve o **usuário do
+    banco**, não a sua tabela, e sem erro nenhum. O plural (`users`)
+    evita a pegadinha e é a convenção que o próprio SDK assume nas
+    tabelas de token (`user_tokens`, `user_refresh_tokens`).
+
+### Centralizando os nomes das tabelas
+
+Um nome de tabela quase nunca aparece só uma vez. Ele está no
+`__tablename__` **e** volta como string em toda `ForeignKey` que aponta
+para ela:
+
+```python hl_lines="9 12"
+# src/db/models/user_token.py
+from uuid import UUID
+
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel
+
+
+class UserTokenModel(BaseModel):
+    __tablename__ = "user_tokens"
+
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+    )
+```
+
+Renomear `users` passa a depender de você lembrar de cada lugar em que a
+string aparece. E esquecer uma FK não estoura na hora: o SQLAlchemy só
+resolve o alvo quando monta os mapeamentos, então o erro chega na
+**subida da aplicação** — ou, pior, numa migração que aponta para uma
+tabela que não existe mais.
+
+A saída é um módulo que só guarda nomes:
+
+```python
+# src/db/configs/names.py
+"""Nomes das tabelas do projeto. Fonte única de verdade."""
+
+USERS = "users"
+USER_TOKENS = "user_tokens"
+USER_REFRESH_TOKENS = "user_refresh_tokens"
+ORDERS = "orders"
+ORDER_ITEMS = "order_items"
+```
+
+Cada modelo passa a importar dali, dos dois lados da relação:
+
+```python hl_lines="6 10"
+# src/db/models/user.py
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel
+
+from src.db.configs.names import USERS
+
+
+class UserModel(BaseModel):
+    __tablename__ = USERS
+
+    email: Mapped[str] = mapped_column(unique=True)
+```
+
+```python hl_lines="9 13 16"
+# src/db/models/user_token.py
+from uuid import UUID
+
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column
+
+from tempest_fastapi_sdk import BaseModel
+
+from src.db.configs.names import USER_TOKENS, USERS
+
+
+class UserTokenModel(BaseModel):
+    __tablename__ = USER_TOKENS
+
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey(f"{USERS}.id", ondelete="CASCADE"),
+        index=True,
+    )
+```
+
+O ganho aparece na hora de mexer. Renomear uma tabela vira **uma linha**
+em `names.py`. O "find usages" do editor encontra todo mundo que depende
+dela, porque virou símbolo em vez de string solta. E nenhuma
+`ForeignKey` consegue apontar para uma tabela que não existe mais sem que
+o import quebre antes.
+
+!!! tip "Por que `db/configs/` e não `core/constants.py`?"
+    Nome de tabela é detalhe do banco, e quem consome é `db/models/`.
+    Deixar em `db/` mantém a dependência dentro da própria camada, e o
+    módulo fica sem import nenhum do projeto — ele é só string. É isso
+    que garante que ele nunca participe de um ciclo: `models` importa
+    `configs`, e `configs` não importa ninguém.
+
+!!! check "Vale também para as tabelas do SDK"
+    Os modelos abstratos que o SDK entrega (`BaseUserModel`,
+    `BaseUserTokenModel`, `BaseUserRefreshTokenModel`,
+    `BaseWebPushSubscriptionModel`, `BaseOutboxModel`) deixam de propósito
+    o `__tablename__` e a FK para o projeto concreto declarar — justamente
+    para que os dois saiam do seu `names.py`, sob a sua convenção.
+
+### `__tablename__` explícito com o Pyright
+
+`BaseModel` declara `__tablename__` como um `@declared_attr.directive`,
+que é o mecanismo do SQLAlchemy 2.0 para derivar o nome a partir da
+classe. O mypy entende que uma subclasse sobrescreva isso com uma string
+e **não reclama** — é o checker que `tempest type` roda, então o gate
+padrão passa limpo.
+
+O Pyright é mais estrito: lê o atributo herdado como variável mutável de
+tipo invariante e acusa a atribuição.
+
+!!! warning "`reportIncompatibleVariableOverride` no Pyright/Pylance"
+    ```text
+    Type "Literal['users']" is not assignable to declared type
+    "_declared_directive[str]" (reportAssignmentType)
+    ```
+
+    Não é defeito no seu modelo: em tempo de execução a atribuição
+    funciona, e é a forma usada em toda esta documentação. É o Pyright
+    sendo mais rígido que o mypy sobre override de descritor.
+
+Se o seu editor roda Pyright e você quer o arquivo limpo, declare o nome
+pelo mesmo mecanismo da classe base:
+
+```python hl_lines="7 8"
+from sqlalchemy.orm import declared_attr
+
+from src.db.configs.names import USERS
+
+
+class UserModel(BaseModel):
+    @declared_attr.directive
+    def __tablename__(cls) -> str:  # noqa: N805
+        """Fixa o nome da tabela."""
+        return USERS
+```
+
+Mais verboso, e equivalente em runtime. Escolha pelo checker do projeto:
+com mypy (ou sem checagem estática no editor), prefira
+`__tablename__ = USERS`, que é mais direto de ler.
+
 ### Convenção de nomes de constraints
 
 `BaseModel.metadata` já vem configurado com `NAMING_CONVENTION`. Isso faz
