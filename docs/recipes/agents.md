@@ -32,12 +32,12 @@ uv add "tempest-fastapi-sdk[genai]"   # agents não precisa de extra; o modelo, 
 
 ## O primeiro agente
 
-```python hl_lines="25 28 35"
+```python title="agent_setup.py" hl_lines="27 33 41"
 import asyncio
 from typing import Any
 
 from tempest_fastapi_sdk.agents import Agent, AgentContext, text_tool
-from tempest_fastapi_sdk.genai import TextGenerator
+from tempest_fastapi_sdk.genai import TextGenerator, TextModel
 
 
 async def get_weather(arguments: dict[str, Any], _context: AgentContext) -> str:
@@ -45,7 +45,7 @@ async def get_weather(arguments: dict[str, Any], _context: AgentContext) -> str:
     return f"{arguments['city']}: 22 graus, céu limpo"
 
 
-tool = text_tool(
+weather_tool = text_tool(
     "get_weather",
     "Get the current weather for a city.",
     get_weather,
@@ -57,9 +57,14 @@ tool = text_tool(
 )
 
 
+def build_agent() -> Agent:
+    """Build the agent the rest of this page imports."""
+    return Agent(TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT), tools=[weather_tool])
+
+
 async def main() -> None:
-    """Run the agent once and print the output plus the step trace."""
-    agent = Agent(TextGenerator("Qwen/Qwen2.5-0.5B-Instruct"), tools=[tool])
+    """Run the agent once and print the answer plus the step trace."""
+    agent = build_agent()
     run = await agent.run("Qual o tempo no Recife? Use a ferramenta.")
 
     print(run.output)
@@ -67,7 +72,12 @@ async def main() -> None:
     print([(step.kind, step.name) for step in run.steps])
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```bash
+python agent_setup.py
 ```
 
 ```text
@@ -81,10 +91,17 @@ resultado e respondeu. Tudo isso num modelo de 0.5B rodando em CPU.
 
 !!! warning "`agent.run` é corrotina — precisa de contexto assíncrono"
     `await` fora de uma função `async` é `SyntaxError`. Por isso a chamada
-    mora em `async def main()` e o script termina com `asyncio.run(main())`
-    — e por isso todo exemplo desta página repete esse envelope. Num
-    endpoint FastAPI (`async def`) você já está em contexto assíncrono:
-    chame `await agent.run(...)` direto, sem `asyncio.run`.
+    mora em `async def main()` e o arquivo termina em
+    `asyncio.run(main())`. Num endpoint FastAPI (`async def`) você já está
+    em contexto assíncrono: chame `await agent.run(...)` direto, sem
+    `asyncio.run`.
+
+!!! info "Cada exemplo desta página é um arquivo que roda"
+    Salve o bloco acima como `agent_setup.py`. Os exemplos seguintes são
+    arquivos completos ao lado dele e importam o que já foi construído
+    (`from agent_setup import build_agent`) em vez de repetir trinta
+    linhas de setup — nada de trecho com nome solto que não existe em
+    lugar nenhum.
 
 !!! tip "A descrição da ferramenta é o que importa"
     O modelo escolhe pelo `description` — é o único texto que ele lê sobre a
@@ -92,18 +109,25 @@ resultado e respondeu. Tudo isso num modelo de 0.5B rodando em CPU.
 
 ## Sempre olhe o `stop_reason`
 
-```python
+```python title="stop_reason.py" hl_lines="11 12"
 import asyncio
+
+from agent_setup import build_agent
 
 
 async def main() -> None:
-    """Run this example."""
-    run = await agent.run("uma tarefa longa")
+    """Print the answer only when the model decided it was finished."""
+    agent = build_agent()
+    run = await agent.run("Compare o tempo em Recife, Olinda e Jaboatão.")
+
     if not run.succeeded:
-        print("truncado:", run.stop_reason)
+        print("truncado:", run.stop_reason, f"({run.seconds:.1f}s)")
+        return
+    print(run.output)
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 `succeeded` só é `True` quando o **modelo** decidiu que terminou. Os outros
@@ -125,14 +149,28 @@ motivos são o agente cortando a execução:
 
 ## Orçamento
 
-```python
-from tempest_fastapi_sdk.agents import Agent, AgentBudget
+```python title="budget.py" hl_lines="13"
+import asyncio
 
-agent = Agent(
-    generator,
-    tools=tools,
-    budget=AgentBudget(max_steps=8, max_seconds=90, max_tool_calls=5),
-)
+from agent_setup import weather_tool
+from tempest_fastapi_sdk.agents import Agent, AgentBudget
+from tempest_fastapi_sdk.genai import TextGenerator, TextModel
+
+
+async def main() -> None:
+    """Run the same agent under an explicit ceiling."""
+    agent = Agent(
+        TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT),
+        tools=[weather_tool],
+        budget=AgentBudget(max_steps=8, max_seconds=90, max_tool_calls=5),
+    )
+    run = await agent.run("Qual o tempo no Recife?")
+
+    print(run.stop_reason, f"{run.seconds:.1f}s", len(run.steps), "passos")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 Passos sozinhos **não** limitam uma execução: uma chamada de ferramenta pode
@@ -147,10 +185,13 @@ mesma coisa**, que divergem na primeira edição: o schema diz `city`, o
 handler lê `arguments["town"]`, e nada acusa até um modelo chamar a
 ferramenta. O decorator `@tool` elimina a duplicata.
 
-```python
+```python title="typed_tool_agent.py" hl_lines="17 18"
+import asyncio
+
 from pydantic import Field
 
-from tempest_fastapi_sdk.agents import AgentContext, tool
+from tempest_fastapi_sdk.agents import Agent, AgentContext, tool
+from tempest_fastapi_sdk.genai import TextGenerator, TextModel
 from tempest_fastapi_sdk.schemas import BaseSchema
 
 
@@ -165,6 +206,21 @@ class WeatherArgs(BaseSchema):
 async def get_weather(args: WeatherArgs, context: AgentContext) -> str:
     """Return the forecast for the requested city."""
     return f"{args.city}: 22 graus, {args.days}d"
+
+
+async def main() -> None:
+    """Hand the decorated tool to an agent and run it."""
+    agent = Agent(
+        TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT),
+        tools=[get_weather],
+    )
+    run = await agent.run("Qual a previsão de 3 dias para Olinda?")
+
+    print(run.output)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 O schema que o modelo vê é **gerado** do modelo Pydantic, e o handler recebe
@@ -186,17 +242,38 @@ modelo pedindo `days=500` é corrigido antes de você ver.
 
 Sem decorator (handler que é lambda, método ligado, ou vem de outro lugar):
 
-```python
-from tempest_fastapi_sdk.agents import typed_tool
+```python title="typed_tool_manual.py" hl_lines="19"
+from pydantic import Field
 
-built = typed_tool("get_weather", "Get the weather.", WeatherArgs, get_weather_impl)
+from tempest_fastapi_sdk.agents import AgentContext, AgentTool, typed_tool
+from tempest_fastapi_sdk.schemas import BaseSchema
+
+
+class WeatherArgs(BaseSchema):
+    """Arguments for the weather tool."""
+
+    city: str = Field(description="Cidade a consultar.")
+    days: int = Field(default=1, ge=1, le=7, description="Horizonte em dias.")
+
+
+async def get_weather_impl(args: WeatherArgs, context: AgentContext) -> str:
+    """Return the forecast — a plain function, no decorator involved."""
+    return f"{args.city}: 22 graus, {args.days}d"
+
+
+built: AgentTool = typed_tool(
+    "get_weather",
+    "Get the weather.",
+    WeatherArgs,
+    get_weather_impl,
+)
 ```
 
 ## Ferramentas sobre os modelos locais
 
 Aqui é onde o módulo encosta no resto do SDK:
 
-```python
+```python title="multimodal_setup.py" hl_lines="40"
 from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.agents import (
     Agent,
@@ -209,8 +286,12 @@ from tempest_fastapi_sdk.agents import (
 )
 from tempest_fastapi_sdk.genai import (
     Embedder,
+    EmbeddingModel,
     ImageGenerator,
+    ImageModel,
     TextGenerator,
+    TextModel,
+    VisionModel,
     VisionTextGenerator,
 )
 from tempest_fastapi_sdk.genai.audio import SpeechToText, TextToSpeech
@@ -221,30 +302,27 @@ from tempest_fastapi_sdk.genai.rag import (
     WebSearch,
 )
 
-generator = TextGenerator("Qwen/Qwen2.5-7B-Instruct")
-image_generator = ImageGenerator("stabilityai/sdxl-turbo")
-vision_generator = VisionTextGenerator("Qwen/Qwen2-VL-2B-Instruct")
-speech_to_text = SpeechToText("base")
-text_to_speech = TextToSpeech()
-retriever = Retriever(
-    Embedder("sentence-transformers/all-MiniLM-L6-v2"),
-    InMemoryVectorStore(),
-)
-web_search = WebSearch(
-    SearxngBackend("http://localhost:8080", http_client=HTTPClient()),
-)
 
-agent = Agent(
-    generator,
-    tools=[
-        generate_image_tool(image_generator, default_steps=4),
-        describe_image_tool(vision_generator),
-        transcribe_audio_tool(speech_to_text),
-        speak_tool(text_to_speech),
-        retrieve_tool(retriever),
-        web_search_tool(web_search),
-    ],
-)
+def build_multimodal_agent() -> Agent:
+    """Wire one agent over every local model the SDK can run."""
+    retriever = Retriever(
+        Embedder(EmbeddingModel.ALL_MINILM_L6_V2),
+        InMemoryVectorStore(),
+    )
+    web_search = WebSearch(
+        SearxngBackend("http://localhost:8080", http_client=HTTPClient()),
+    )
+    return Agent(
+        TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT),
+        tools=[
+            generate_image_tool(ImageGenerator(ImageModel.SDXL_TURBO), default_steps=4),
+            describe_image_tool(VisionTextGenerator(VisionModel.QWEN2_VL_2B_INSTRUCT)),
+            transcribe_audio_tool(SpeechToText("base")),
+            speak_tool(TextToSpeech()),
+            retrieve_tool(retriever),
+            web_search_tool(web_search),
+        ],
+    )
 ```
 
 !!! warning "Cada ferramenta puxa o seu extra"
@@ -272,22 +350,30 @@ agent = Agent(
 
 É aqui que os **artefatos nomeados** ganham sentido:
 
-```python
+```python title="draw_then_look.py" hl_lines="9 17"
 import asyncio
+
+from multimodal_setup import build_multimodal_agent
 
 
 async def main() -> None:
-    """Run this example."""
+    """Draw an image, then ask the vision model what it drew."""
+    agent = build_multimodal_agent()
     run = await agent.run(
         "Desenhe uma bicicleta vermelha como bike.png e depois me diga o que "
         "aparece na imagem que você criou.",
     )
+
     for step in run.steps:
         print(step.kind, step.name, step.artifacts)
-    print(run.artifact("bike.png").media_type)
+
+    bike = run.artifact("bike.png")
+    if bike is not None:
+        print(bike.media_type)
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ```text
@@ -316,26 +402,52 @@ se corrigir.
 
 ## Falha de ferramenta não derruba a execução
 
-```python
-from tempest_fastapi_sdk.agents import AgentToolError
+```python title="failing_tool.py" hl_lines="10 30"
+import asyncio
+from typing import Any
+
+from tempest_fastapi_sdk.agents import Agent, AgentContext, AgentToolError, text_tool
+from tempest_fastapi_sdk.genai import TextGenerator, TextModel
 
 
 async def save(arguments: dict[str, Any], _context: AgentContext) -> str:
     """Save something, or explain why it could not be saved."""
     raise AgentToolError("disco cheio")
+
+
+save_tool = text_tool(
+    "save_note",
+    "Save a note to disk.",
+    save,
+    parameters={
+        "type": "object",
+        "properties": {"text": {"type": "string"}},
+        "required": ["text"],
+    },
+)
+
+
+async def main() -> None:
+    """Show that a raising tool becomes an observation, not a crash."""
+    agent = Agent(TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT), tools=[save_tool])
+    run = await agent.run("Salve a nota 'comprar pão'.")
+
+    failed = [step for step in run.steps if step.error]
+    print(failed[0].error)
+    print(run.stop_reason, run.output)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 O passo fica marcado com `error`, e a mensagem volta **para o modelo** como
 observação. Ele costuma tentar outro caminho. Levantar a exceção para cima
 jogaria fora todo o trabalho anterior da execução.
 
-```python
-failed = [step for step in run.steps if step.error]
-print(failed[0].error)
-```
-
 ```text
 AgentToolError: disco cheio
+completed Não consegui salvar a nota: o disco está cheio.
 ```
 
 Qualquer exceção do handler é tratada igual — a diferença de usar
@@ -343,15 +455,19 @@ Qualquer exceção do handler é tratada igual — a diferença de usar
 
 ## Escrever a sua própria ferramenta
 
-```python
+```python title="report_tool.py" hl_lines="15 33"
+import asyncio
+from pathlib import Path
 from typing import Any
 
 from tempest_fastapi_sdk.agents import (
+    Agent,
     AgentArtifact,
     AgentContext,
     AgentTool,
     ToolResult,
 )
+from tempest_fastapi_sdk.genai import TextGenerator, TextModel
 
 
 async def render_report(
@@ -372,7 +488,7 @@ async def render_report(
     )
 
 
-tool = AgentTool(
+report_tool = AgentTool(
     name="render_report",
     description="Render a titled report the user can download.",
     parameters={
@@ -385,6 +501,21 @@ tool = AgentTool(
     },
     handler=render_report,
 )
+
+
+async def main() -> None:
+    """Run the agent and write the artifact it produced to disk."""
+    agent = Agent(TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT), tools=[report_tool])
+    run = await agent.run("Gere um relatório 'Vendas' resumindo o trimestre.")
+
+    report = run.artifact("report.md")
+    if report is not None:
+        Path("report.md").write_bytes(report.data)
+        print("escrito:", report.media_type, len(report.data), "bytes")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 O handler recebe **dois** argumentos: `arguments` (o que o modelo passou) e
@@ -397,20 +528,30 @@ há nada binário — ele é embrulhado num `ToolResult` automaticamente.
 
 ## Servir por HTTP
 
-```python
+```python title="app.py" hl_lines="11 15 19"
 from fastapi import FastAPI
 
+from agent_setup import weather_tool
 from tempest_fastapi_sdk.agents import (
     Agent,
     InMemoryAgentRunSink,
     make_agent_router,
 )
+from tempest_fastapi_sdk.genai import TextGenerator, TextModel
 
 store = InMemoryAgentRunSink(max_runs=50)
-agent = Agent(generator, tools=tools, run_sink=store)
+agent = Agent(
+    TextGenerator(TextModel.QWEN2_5_0_5B_INSTRUCT),
+    tools=[weather_tool],
+    run_sink=store,
+)
 
 app = FastAPI()
 app.include_router(make_agent_router(agent, run_store=store))
+```
+
+```bash
+uvicorn app:app --reload
 ```
 
 | Rota | O que faz |

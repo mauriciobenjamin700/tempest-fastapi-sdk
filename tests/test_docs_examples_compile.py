@@ -1,4 +1,5 @@
-"""Guard: every Python example in the docs must be a valid module.
+"""Guard: every Python example in the docs must be a valid module — and
+import only names the SDK actually exports.
 
 The failure this catches is `await` (or `async for` / `async with`) at module
 level. It reads fine on the page and it is a hard `SyntaxError` the moment a
@@ -18,12 +19,21 @@ skipped: only async-context errors fail the test.
 Uses `compile()`, not `ast.parse()`: the "await outside function" rule is
 enforced by the symtable pass, so `ast.parse("x = await f()")` succeeds and
 would make this guard silently vacuous.
+
+The second failure is a documented import of something that does not exist —
+a renamed export, a symbol that never shipped, a module path from an earlier
+layout. It costs a reader the same as a syntax error and is invisible to
+`mkdocs build`, so every `from tempest_fastapi_sdk… import X` in the docs is
+resolved against the installed package here.
 """
 
 from __future__ import annotations
 
+import ast
+import importlib
 import re
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -87,4 +97,67 @@ def _async_context_errors(path: Path) -> list[str]:
 def test_examples_have_no_module_level_await(path: Path) -> None:
     """Fail when a documented example awaits outside an async function."""
     problems: list[str] = _async_context_errors(path)
+    assert not problems, "\n".join(problems)
+
+
+def _sdk_import_targets(body: str) -> list[tuple[str, str]]:
+    """Collect the ``(module, symbol)`` pairs a block imports from the SDK.
+
+    Args:
+        body: The fence's Python source.
+
+    Returns:
+        One pair per imported name. Blocks that do not parse are skipped —
+        the syntax guard above already owns those.
+    """
+    try:
+        tree: ast.Module = ast.parse(body)
+    except SyntaxError:
+        return []
+    targets: list[tuple[str, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        module: str = node.module or ""
+        if not module.startswith("tempest_fastapi_sdk"):
+            continue
+        targets.extend((module, alias.name) for alias in node.names)
+    return targets
+
+
+def _missing_exports(path: Path) -> list[str]:
+    """Report documented imports the installed package cannot satisfy.
+
+    Args:
+        path: The Markdown file to scan.
+
+    Returns:
+        One message per unresolvable name. An ``ImportError`` from the
+        attribute lookup means the symbol exists but its optional extra is
+        absent (the SDK's lazy ``__getattr__`` raises with the install
+        command) — that is an environment gap, not a docs defect, so it is
+        ignored. Only ``AttributeError`` means the name is not there.
+    """
+    problems: list[str] = []
+    for match in FENCE_RE.finditer(path.read_text(encoding="utf-8")):
+        for module_name, symbol in _sdk_import_targets(match.group("body")):
+            try:
+                module: ModuleType = importlib.import_module(module_name)
+            except ImportError:
+                continue
+            try:
+                getattr(module, symbol)
+            except ImportError:
+                continue
+            except AttributeError:
+                problems.append(
+                    f"{path.relative_to(DOCS_ROOT)}: {module_name} has no {symbol!r}"
+                )
+    return problems
+
+
+@pytest.mark.parametrize("path", _markdown_files(), ids=lambda p: str(p.name))
+def test_examples_import_names_that_exist(path: Path) -> None:
+    """Fail when an example imports a symbol the SDK does not export."""
+    problems: list[str] = _missing_exports(path)
     assert not problems, "\n".join(problems)
