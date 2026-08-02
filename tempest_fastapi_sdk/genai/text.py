@@ -33,6 +33,7 @@ from tempest_fastapi_sdk.genai.schemas import (
     GenerationConfig,
     HardwareInfo,
     ModelDtype,
+    precision_kwarg,
 )
 from tempest_fastapi_sdk.genai.structured import (
     StructuredT,
@@ -402,7 +403,7 @@ class TextGenerator:
             )
             kwargs["device_map"] = "auto"
         else:
-            kwargs["torch_dtype"] = getattr(torch, self.dtype.value)
+            kwargs.update(precision_kwarg(getattr(torch, self.dtype.value)))
             kwargs["device_map"] = self.device if self.device != "cpu" else None
 
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(

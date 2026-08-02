@@ -21,7 +21,11 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai.hub import ModelRef
-from tempest_fastapi_sdk.genai.schemas import HardwareInfo, ModelDtype
+from tempest_fastapi_sdk.genai.schemas import (
+    HardwareInfo,
+    ModelDtype,
+    precision_kwarg,
+)
 from tempest_fastapi_sdk.genai.text import (
     _require_transformers,
     auto_dtype_name,
@@ -178,7 +182,7 @@ class Reranker:
         )
         self._model = transformers.AutoModelForSequenceClassification.from_pretrained(
             self.model_id,
-            torch_dtype=getattr(torch, self.dtype.value),
+            **precision_kwarg(getattr(torch, self.dtype.value)),
             **self.source.loader_kwargs(),
         )
         self._model = self._model.to(self.device if self.device != "cpu" else "cpu")

@@ -21,7 +21,11 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from tempest_fastapi_sdk.genai.hub import ModelRef
 from tempest_fastapi_sdk.genai.metrics import GenAIMetrics
-from tempest_fastapi_sdk.genai.schemas import HardwareInfo, ModelDtype
+from tempest_fastapi_sdk.genai.schemas import (
+    HardwareInfo,
+    ModelDtype,
+    precision_kwarg,
+)
 from tempest_fastapi_sdk.genai.text import auto_dtype_name, resolve_device
 from tempest_fastapi_sdk.genai.tracing import genai_span
 
@@ -396,7 +400,7 @@ class Embedder:
         )
         model = transformers.AutoModel.from_pretrained(
             self.model_id,
-            torch_dtype=getattr(torch, self.dtype.value),
+            **precision_kwarg(getattr(torch, self.dtype.value)),
             **self.source.loader_kwargs(),
         )
         self._model = model.to(self.device)

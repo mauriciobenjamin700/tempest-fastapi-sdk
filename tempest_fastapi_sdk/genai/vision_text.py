@@ -30,7 +30,12 @@ from pathlib import Path
 from typing import Any
 
 from tempest_fastapi_sdk.genai.hub import ModelRef
-from tempest_fastapi_sdk.genai.schemas import GenerationConfig, HardwareInfo, ModelDtype
+from tempest_fastapi_sdk.genai.schemas import (
+    GenerationConfig,
+    HardwareInfo,
+    ModelDtype,
+    precision_kwarg,
+)
 from tempest_fastapi_sdk.genai.text import (
     _require_transformers,
     auto_dtype_name,
@@ -210,7 +215,7 @@ class VisionTextGenerator:
             )
         self._model = auto_cls.from_pretrained(
             self.model_id,
-            torch_dtype=getattr(torch, self.dtype.value),
+            **precision_kwarg(getattr(torch, self.dtype.value)),
             device_map=self.device if self.device != "cpu" else None,
             **self.source.loader_kwargs(),
         )

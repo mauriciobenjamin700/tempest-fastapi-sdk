@@ -73,6 +73,20 @@ The default cache is `huggingface_hub`'s own:
     environment (or pass `hf_token=` to the loader) and the warning goes away
     with the limit — and it is mandatory for a *gated* model such as Llama.
 
+    **And it shows up even when the weights are already cached.** It is not
+    the download: with `local_files_only=False` (the default) the load still
+    reaches the Hub to resolve the revision, and that anonymous request is
+    what prints the warning. With `local_files_only=True` there is no request
+    at all — and no warning:
+
+    ```text
+    $ python app.py                          # default
+    Warning: You are sending unauthenticated requests to the HF Hub...
+
+    $ python app.py                          # local_files_only=True
+    (nothing)
+    ```
+
 **Changing `model_id` or `revision` is a different cache entry.** That is not
 a bug: they are different weights. If a second run downloaded again, one of
 those two changed — or the process's `HF_HOME` did.

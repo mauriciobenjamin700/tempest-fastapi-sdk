@@ -596,7 +596,9 @@ class TestLoadersForwardTheRef:
         recorder = _patch_transformers(monkeypatch, text)
         TextGenerator("org/name", device="cpu").load()
         for call in recorder:
-            assert set(call) <= {"model_id", "torch_dtype", "device_map"}
+            # The precision keyword is named for the installed transformers —
+            # `dtype` from 4.56 on, `torch_dtype` below it.
+            assert set(call) <= {"model_id", "dtype", "torch_dtype", "device_map"}
 
 
 class TestSpeechToTextMapsWhisperNames:

@@ -71,6 +71,19 @@ O cache padrão é o do `huggingface_hub`:
     (ou passe `hf_token=` no loader) e o aviso some junto com o limite —
     obrigatório para modelo *gated*, como o Llama.
 
+    **E ele aparece mesmo com o peso já em cache.** Não é download: com
+    `local_files_only=False` (o padrão), o load ainda bate no Hub pra
+    resolver a revisão, e é essa requisição anônima que dispara o aviso.
+    Com `local_files_only=True` não há requisição nenhuma — e o aviso some:
+
+    ```text
+    $ python app.py                          # padrão
+    Warning: You are sending unauthenticated requests to the HF Hub...
+
+    $ python app.py                          # local_files_only=True
+    (nada)
+    ```
+
 **Trocar o `model_id` ou a `revision` é um cache novo.** Não é bug: são pesos
 diferentes. Se a segunda execução voltou a baixar, foi um desses dois que
 mudou — ou o `HF_HOME` do processo.
