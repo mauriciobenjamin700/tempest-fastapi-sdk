@@ -474,6 +474,12 @@ O repo base te dá 20+ métodos de graça — veja a [tabela de referência](ref
 
 ```python
 # src/db/repositories/user.py  (continued)
+
+from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import UserModel
+
+
 class UserRepository(BaseRepository[UserModel]):
     # ... __init__ and mappers above ...
 
@@ -569,6 +575,14 @@ Os métodos que você **não** escreve — `get_by_id(user_id)`, `get_or_none(fi
 Quando o caso de uso precisa de um pipeline custom (joins, projeções, fan-out transacional), sobrescreva o método herdado. A assinatura continua a mesma, então o controller não percebe:
 
 ```python
+from typing import Any
+
+from tempest_fastapi_sdk import BaseService
+
+from src.db.repositories import UserRepository
+from src.schemas import UserResponseSchema
+
+
 class UserService(BaseService[UserRepository, UserResponseSchema]):
     # ... __init__ and overrides above ...
 
@@ -631,6 +645,12 @@ class UserController(BaseController[UserService, UserResponseSchema]):
 `get_by_id` / `list` / `paginate` / `count` não são redeclarados — `BaseController` já os expõe. Quando o dia da coordenação entre services chegar, sobrescreva o pass-through no lugar:
 
 ```python
+from tempest_fastapi_sdk import BaseController
+
+from src.schemas import UserCreateSchema, UserResponseSchema
+from src.services import UserService
+
+
 class UserController(BaseController[UserService, UserResponseSchema]):
     # ... methods above ...
 

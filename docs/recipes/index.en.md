@@ -55,7 +55,12 @@ Recipes: [Validated fields](fields.md), [Brazilian helpers](br-helpers.md).
 with `get_by_id`/`list`/`paginate`/`update`/`delete` ready.
 
 ```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from tempest_fastapi_sdk import BaseRepository, BaseService
+
+from src.db.models import UserModel
+from src.schemas import UserResponseSchema
 
 
 class UserRepository(BaseRepository[UserModel]):
@@ -83,7 +88,12 @@ from tempest_fastapi_sdk import BasePaginationFilterSchema, CursorPaginationFilt
 `register_exception_handlers(app)`.
 
 ```python
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import NotFoundException, register_exception_handlers
+
+app = FastAPI()
+
 
 register_exception_handlers(app)
 raise NotFoundException(message="user not found")   # -> standardized 404
@@ -111,6 +121,9 @@ Recipes: [Auth flow](auth-flow.md), [MFA](mfa.md),
 
 ```python
 from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
+
+from src.core.settings import settings
+
 
 redis = AsyncRedisManager(settings.REDIS_URL)
 
@@ -167,7 +180,14 @@ Structured logging + `/logs`, CPU/RAM/GPU metrics + Prometheus `/metrics`,
 request-id, OTel tracing, health + tool-spec.
 
 ```python
-from tempest_fastapi_sdk import make_health_router, RequestIDMiddleware
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import RequestIDMiddleware, make_health_router
+
+from src.api.dependencies.resources import db
+
+app = FastAPI()
+
 
 app.add_middleware(RequestIDMiddleware)
 app.include_router(make_health_router(checks={"db": db.health_check}))
@@ -182,7 +202,12 @@ Rate limit (sliding window), idempotency, CSRF, CORS, body-size limit,
 hardened static files.
 
 ```python
-from tempest_fastapi_sdk import RateLimitMiddleware, IdempotencyMiddleware
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import IdempotencyMiddleware, RateLimitMiddleware
+
+app = FastAPI()
+
 
 app.add_middleware(RateLimitMiddleware, store=..., max_requests=100, window_seconds=60)
 app.add_middleware(IdempotencyMiddleware, store=...)

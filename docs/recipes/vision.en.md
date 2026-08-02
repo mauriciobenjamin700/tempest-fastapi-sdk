@@ -59,11 +59,16 @@ Each `DetectionSchema` carries `class_id`, `class_name`, `confidence` and
 list):
 
 ```python
+from fastapi import APIRouter, UploadFile
+
 from tempest_fastapi_sdk.vision import (
     ClassificationSchema,
     Classifier,
     to_classification_schema,
 )
+
+router = APIRouter()
+
 
 classifier = Classifier("models/resnet.onnx", labels="imagenet")
 
@@ -86,11 +91,16 @@ per-pixel mask is omitted** from the JSON (rarely what an API wants; read
 it from `SegmentationResult.mask` when you need the pixels):
 
 ```python
+from fastapi import APIRouter, UploadFile
+
 from tempest_fastapi_sdk.vision import (
     SegmentationSchema,
     Segmenter,
     to_segmentation_schemas,
 )
+
+router = APIRouter()
+
 
 segmenter = Segmenter("models/yolov8n-seg.onnx", labels="coco")
 

@@ -114,7 +114,7 @@ e normaliza pra forma canônica. Chave inválida → `ValidationError` → 422.
 | Aleatória (EVP) | `123e4567-e89b-12d3-a456-426614174000` | mesmo, minúsculo (UUID) |
 
 ```python
-from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk import BaseSchema, CentsField
 from tempest_fastapi_sdk.utils import PixKeyField
 
 
@@ -207,6 +207,9 @@ que o SDK não traz? Monte a sua com o mesmo padrão — nada de mágica:
 from typing import Annotated
 
 from pydantic import Field
+
+from tempest_fastapi_sdk import BaseSchema
+
 
 # Quantidade em estoque: inteiro de 0 a 100000.
 StockField = Annotated[int, Field(ge=0, le=100_000)]

@@ -112,13 +112,16 @@ Turn on the `AUTH_MFA_ENABLED` flag and pass the `recovery_code_model` to the ro
 
 ```python
 # src/api/app.py
-from tempest_fastapi_sdk import (
-    AsyncDatabaseManager,
-    UserAuthService,
-    make_auth_router,
-)
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import AsyncDatabaseManager, UserAuthService, make_auth_router
+
 from src.core.settings import settings
-from src.db.models import UserModel, UserTokenModel, UserRecoveryCodeModel
+from src.db.models import UserModel, UserRecoveryCodeModel, UserTokenModel
+
+app = FastAPI()
+
 
 db = AsyncDatabaseManager(settings.DATABASE_URL)
 
@@ -265,6 +268,8 @@ If you mount your own endpoints (no `make_auth_router`), the six `UserAuthServic
 
 ```python
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import UserAuthService
 
 from src.db.models import UserModel, UserRecoveryCodeModel
 

@@ -12,6 +12,13 @@ strings. 🚀
 Without a decorator, the check becomes noise at the top of every function:
 
 ```python
+from uuid import UUID
+
+from tempest_fastapi_sdk import ForbiddenException, UnauthorizedException
+
+from src.db.models import UserModel
+
+
 async def delete_order(order_id: UUID, user: UserModel | None) -> None:
     if user is None:
         raise UnauthorizedException(message="Authentication required")
@@ -276,6 +283,8 @@ Nothing here depends on FastAPI. The same decorator works on a controller or a
 service, sync or `async`:
 
 ```python
+from uuid import UUID
+
 from tempest_fastapi_sdk import requires
 
 from src.api.guards import order_owner

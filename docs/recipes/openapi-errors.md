@@ -73,6 +73,10 @@ esconde o valor real de qualquer leitor estático:
 
 ```python
 # ⚠️ funciona, mas o `code` fica invisível para introspecção
+
+from tempest_fastapi_sdk import ConflictException
+
+
 class CategoryInUseException(ConflictException):
     """Categoria ainda referenciada por serviços."""
 
@@ -373,7 +377,10 @@ mesmos métodos — que expande a tag em `responses=` **antes** de construir a
 rota. Por isso o modelo chega em `components.schemas` como `$ref` de verdade.
 
 ```python
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
+
+router = APIRouter()
+
 
 app = FastAPI()
 app.include_router(router)   # o `responses` é preservado no include

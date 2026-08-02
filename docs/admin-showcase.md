@@ -259,6 +259,12 @@ sobre a base do SDK (igual ao padrão de auth):
 
 ```python
 # src/db/models.py  (junto dos modelos da §1)
+
+from uuid import UUID
+
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column
+
 from tempest_fastapi_sdk import BaseWebPushSubscriptionModel
 
 

@@ -384,7 +384,8 @@ OpenStreetMap Nominatim, for free. Injected `httpx` client, like OSRM:
 import asyncio
 
 import httpx
-from tempest_fastapi_sdk.geo import NominatimBackend
+
+from tempest_fastapi_sdk.geo import Coordinate, NominatimBackend
 
 
 async def main() -> None:

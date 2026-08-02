@@ -36,9 +36,14 @@ Mesmo código, só muda o construtor — `download(key)` faz proxy do objeto do
 bucket (sem cair em disco, sem carregar inteiro na memória):
 
 ```python
+from fastapi import APIRouter, Response
+
 from tempest_fastapi_sdk import AsyncMinIOClient, DownloadUtils
 
 from src.core.settings import settings
+
+router = APIRouter()
+
 
 minio = AsyncMinIOClient(**settings.minio_kwargs())
 downloads = DownloadUtils(minio)

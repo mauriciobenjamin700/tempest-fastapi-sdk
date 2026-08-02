@@ -204,6 +204,7 @@ Se o seu editor roda Pyright e você quer o arquivo limpo, declare o nome
 pelo mesmo mecanismo da classe base:
 
 ```python hl_lines="7 8"
+from pydantic import BaseModel
 from sqlalchemy.orm import declared_attr
 
 from src.db.configs.names import USERS
@@ -297,10 +298,14 @@ responsabilidade da camada de repository/service:
 
 ```python
 # src/api/dependencies/resources.py (continuação)
+
 from typing import Annotated
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.api.dependencies.resources import db
+
 
 SessionDep = Annotated[AsyncSession, Depends(db.session_dependency)]
 ```
@@ -353,6 +358,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 só `True`/`False` — perfeito para `/health`:
 
 ```python
+from fastapi import APIRouter
+
+from src.api.dependencies.resources import db
+
+router = APIRouter()
+
+
 @router.get("/health")
 async def health() -> dict[str, object]:
     """Liveness + database probe."""
@@ -1125,11 +1137,14 @@ quase nunca escreve a query de paginação à mão.
 
 ```python
 # src/db/repositories/user.py — método de conveniência
+
 from typing import Any
 
-from tempest_fastapi_sdk import BasePaginationSchema
+from tempest_fastapi_sdk import BasePaginationSchema, BaseRepository
 
+from src.db.models import UserModel
 from src.schemas import UserResponse
+
 
 UserPage = BasePaginationSchema[UserResponse]
 
@@ -1208,11 +1223,14 @@ aleatório. **Já está pronta** em `cursor_paginate` — ordena por
 
 ```python
 # src/db/repositories/user.py
+
 from typing import Any
 
-from tempest_fastapi_sdk import CursorPaginationSchema
+from tempest_fastapi_sdk import BaseRepository, CursorPaginationSchema
 
+from src.db.models import UserModel
 from src.schemas import UserResponse
+
 
 UserCursorPage = CursorPaginationSchema[UserResponse]
 
@@ -1377,7 +1395,12 @@ de data ordena cronologicamente e torna conflitos de merge óbvios.
 
 ```python
 # src/api/app.py — dentro do lifespan
+
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 
 from tempest_fastapi_sdk import AlembicHelper
 
@@ -1500,6 +1523,12 @@ para toda instrução acima de um limiar. Anexe uma vez no boot:
 
 ```python
 # src/api/app.py — depois de db.connect()
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk.db import SlowQueryLogger
 
 from src.api.dependencies.resources import db

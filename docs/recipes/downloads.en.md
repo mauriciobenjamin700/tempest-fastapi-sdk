@@ -36,9 +36,14 @@ Same code, only the constructor changes — `download(key)` proxies the object
 from the bucket (never lands on disk, never loads fully into memory):
 
 ```python
+from fastapi import APIRouter, Response
+
 from tempest_fastapi_sdk import AsyncMinIOClient, DownloadUtils
 
 from src.core.settings import settings
+
+router = APIRouter()
+
 
 minio = AsyncMinIOClient(**settings.minio_kwargs())
 downloads = DownloadUtils(minio)

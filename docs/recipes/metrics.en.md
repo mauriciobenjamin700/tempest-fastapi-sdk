@@ -158,6 +158,8 @@ async def system_metrics() -> dict[str, Any]:
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import MetricsUtils
+
 
 async def main() -> None:
     """Run this example."""

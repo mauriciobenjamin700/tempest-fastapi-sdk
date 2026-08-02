@@ -137,6 +137,9 @@ import logging
 
 from tempest_fastapi_sdk import SlowQueryLogger
 
+from src.api.dependencies.resources import db
+
+
 slow: SlowQueryLogger = SlowQueryLogger(
     db.engine,
     threshold_ms=50.0,

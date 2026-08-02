@@ -117,7 +117,14 @@ In the scaffold the directory comes from `LOG_DIR` (defaults to
 `make_logs_router` mounts `GET /logs`, which parses the on-disk JSON files and returns a paginated `BasePaginationSchema[LogEntrySchema]` (newest first).
 
 ```python
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import make_logs_router
+
+from src.core.settings import settings
+
+app = FastAPI()
+
 
 app.include_router(
     make_logs_router(log_dir="logs", token_secret=settings.TOKEN_SECRET),

@@ -85,11 +85,14 @@ usuário e o objeto e chama `check_permission` por você:
 ```python
 from uuid import UUID
 
-from fastapi import Depends
+from fastapi import APIRouter, Depends
 
 from tempest_fastapi_sdk.authz import make_permission_checker
 
 from src.api.dependencies import get_current_user, get_order_or_404
+
+router = APIRouter()
+
 
 require_delete = make_permission_checker(
     "order.delete",

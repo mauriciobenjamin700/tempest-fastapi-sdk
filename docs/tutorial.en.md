@@ -475,6 +475,12 @@ The base repo gives you 20+ methods for free — see the [reference table](../re
 
 ```python
 # src/db/repositories/user.py  (continued)
+
+from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import UserModel
+
+
 class UserRepository(BaseRepository[UserModel]):
     # ... __init__ and mappers above ...
 
@@ -570,6 +576,14 @@ The methods you do **not** write — `get_by_id(user_id)`, `get_or_none(filters)
 When the use case needs a custom pipeline (joins, projections, transactional fan-out), override the inherited method. The signature stays the same so the controller doesn't notice:
 
 ```python
+from typing import Any
+
+from tempest_fastapi_sdk import BaseService
+
+from src.db.repositories import UserRepository
+from src.schemas import UserResponseSchema
+
+
 class UserService(BaseService[UserRepository, UserResponseSchema]):
     # ... __init__ and overrides above ...
 
@@ -632,6 +646,12 @@ class UserController(BaseController[UserService, UserResponseSchema]):
 `get_by_id` / `list` / `paginate` / `count` are not redeclared — `BaseController` already exposes them. When the cross-service coordination day arrives, override the pass-through in place:
 
 ```python
+from tempest_fastapi_sdk import BaseController
+
+from src.schemas import UserCreateSchema, UserResponseSchema
+from src.services import UserService
+
+
 class UserController(BaseController[UserService, UserResponseSchema]):
     # ... methods above ...
 

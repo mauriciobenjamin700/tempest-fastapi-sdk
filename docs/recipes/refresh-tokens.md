@@ -95,8 +95,10 @@ Passe o model concreto pro `UserAuthService`. **Só isso** liga o modo DB-backed
 
 ```python
 # src/api/dependencies/services.py
+
 from tempest_fastapi_sdk import UserAuthService
 
+from src.core.settings import settings
 from src.db.models import UserModel, UserRefreshTokenModel, UserTokenModel
 
 

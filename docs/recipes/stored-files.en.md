@@ -64,6 +64,13 @@ The service inherits from **two** generic bases at once — this is composition
 by multiple inheritance, and each piece has a role:
 
 ```python
+from tempest_fastapi_sdk import BaseService, StoredFileServiceMixin
+
+from src.db.models import UserModel
+from src.db.repositories import UserRepository
+from src.schemas import UserResponseSchema
+
+
 class UserService(
     BaseService[UserRepository, UserResponseSchema],  # (1) state + CRUD
     StoredFileServiceMixin[UserModel],                # (2) file methods
@@ -101,6 +108,14 @@ class UserService(
 ## Swap the file — `set_file`
 
 ```python
+from uuid import UUID
+
+from fastapi import UploadFile
+
+from src.db.models import UserModel
+from src.schemas import UserResponseSchema
+
+
 async def update_profile_picture(
     self, user: UUID | UserModel, image: UploadFile
 ) -> UserResponseSchema:

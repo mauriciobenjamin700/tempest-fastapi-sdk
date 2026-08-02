@@ -131,6 +131,11 @@ UPLOAD_MAX_SIZE_BYTES=209715200
 ```
 
 ```python
+from tempest_fastapi_sdk import UploadUtils
+
+from src.core.settings import settings
+
+
 uploads = UploadUtils(
     settings.UPLOAD_DIR,
     allowed_extensions=settings.UPLOAD_ALLOWED_EXTENSIONS,

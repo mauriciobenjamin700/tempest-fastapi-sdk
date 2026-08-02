@@ -23,6 +23,13 @@ The header value is chosen **by the client**. On its own it identifies nobody: t
 So the middleware folds a digest of the request's credentials (`Authorization` / `Cookie`) into the key. An entry is only ever replayed to the credentials that created it.
 
 ```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import IdempotencyMiddleware, MemoryIdempotencyStore
+
+app = FastAPI()
+
+
 app.add_middleware(
     IdempotencyMiddleware,
     store=MemoryIdempotencyStore(),

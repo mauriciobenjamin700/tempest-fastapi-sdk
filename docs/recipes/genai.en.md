@@ -601,7 +601,8 @@ For semantic search, use `normalize=True` (unit vectors) + the
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.genai import cosine_similarity
+from tempest_fastapi_sdk.genai import Embedder, cosine_similarity
+
 
 emb = Embedder("sentence-transformers/all-MiniLM-L6-v2", normalize=True)
 

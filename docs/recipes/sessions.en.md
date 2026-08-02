@@ -179,6 +179,9 @@ from redis.asyncio import Redis
 
 from tempest_fastapi_sdk import RedisSessionStore
 
+from src.core.settings import settings
+
+
 session_store = RedisSessionStore(
     Redis.from_url(settings.REDIS_URL, decode_responses=True),
     prefix="myapp:",
@@ -206,6 +209,13 @@ Any class that implements the `SessionStore` protocol (5 async methods) plugs in
 `SessionMiddleware` runs **before** the routers, reads the cookie, resolves through the store, and populates `request.state.session`:
 
 ```python
+from fastapi import APIRouter, Depends
+
+from tempest_fastapi_sdk import Session, make_session_dependency
+
+router = APIRouter()
+
+
 @router.get("/profile")
 async def profile(session: Session = Depends(make_session_dependency(required=True))):
     return {"user_id": str(session.user_id), "data": session.data}
@@ -218,6 +228,13 @@ async def profile(session: Session = Depends(make_session_dependency(required=Tr
 Direct access (no dependency):
 
 ```python
+from fastapi import APIRouter, Request
+
+from tempest_fastapi_sdk import Session
+
+router = APIRouter()
+
+
 @router.get("/anything")
 async def handler(request: Request) -> dict:
     s: Session | None = request.state.session

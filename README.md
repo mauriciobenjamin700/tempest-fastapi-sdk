@@ -636,6 +636,12 @@ The base repo gives you 20+ methods for free — see the [reference table](#base
 
 ```python
 # src/db/repositories/user.py  (continued)
+
+from tempest_fastapi_sdk import BaseRepository
+
+from src.db.models import UserModel
+
+
 class UserRepository(BaseRepository[UserModel]):
     # ... __init__ and mappers above ...
 
@@ -731,6 +737,14 @@ The methods you do **not** write — `get_by_id(user_id)`, `get_or_none(filters)
 When the use case needs a custom pipeline (joins, projections, transactional fan-out), override the inherited method. The signature stays the same so the controller doesn't notice:
 
 ```python
+from typing import Any
+
+from tempest_fastapi_sdk import BaseService
+
+from src.db.repositories import UserRepository
+from src.schemas import UserResponseSchema
+
+
 class UserService(BaseService[UserRepository, UserResponseSchema]):
     # ... __init__ and overrides above ...
 
@@ -793,6 +807,12 @@ class UserController(BaseController[UserService, UserResponseSchema]):
 `get_by_id` / `list` / `paginate` / `count` are not redeclared — `BaseController` already exposes them. When the cross-service coordination day arrives, override the pass-through in place:
 
 ```python
+from tempest_fastapi_sdk import BaseController
+
+from src.schemas import UserCreateSchema, UserResponseSchema
+from src.services import UserService
+
+
 class UserController(BaseController[UserService, UserResponseSchema]):
     # ... methods above ...
 
@@ -1093,6 +1113,16 @@ get_current_user_or_none = make_jwt_user_dependency(tokens, load_user, soft=True
 
 ```python
 # Use in any route
+
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.auth import get_current_user
+from src.db.models import UserModel
+from src.schemas import UserResponseSchema
+
+router = APIRouter()
+
+
 @router.get("/me", response_model=UserResponseSchema)
 async def me(current: UserModel = Depends(get_current_user)) -> UserResponseSchema:
     return UserResponseSchema.model_validate(current)
@@ -1157,11 +1187,21 @@ avatar_storage = UploadUtils(
 
 ```python
 # src/api/routers/users.py (extension)
-from fastapi import UploadFile
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, UploadFile
+
+from tempest_fastapi_sdk import ForbiddenException
 
 from src.api.dependencies import get_user_controller
+from src.api.dependencies.auth import get_current_user
 from src.controllers.user import UserController
 from src.core.storage import avatar_storage
+from src.db.models import UserModel
+from src.schemas import UserResponseSchema
+
+router = APIRouter()
 
 
 @router.post("/{user_id}/avatar", response_model=UserResponseSchema)
@@ -1205,7 +1245,13 @@ class UserController:
 Local-disk uploads are best served by an upstream (nginx / Caddy) so FastAPI doesn't stream bytes. For dev:
 
 ```python
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+
+from src.core.settings import settings
+
+app = FastAPI()
+
 
 app.mount(
     "/static/uploads",
@@ -1217,6 +1263,11 @@ app.mount(
 Construct the public URL in the response schema:
 
 ```python
+from pydantic import EmailStr, field_validator
+
+from tempest_fastapi_sdk import BaseResponseSchema
+
+
 class UserResponseSchema(BaseResponseSchema):
     name: str
     email: EmailStr
@@ -1247,11 +1298,21 @@ invoice_files = DownloadUtils(f"{settings.UPLOAD_DIR}/invoices")  # local folder
 
 ```python
 # src/api/routers/invoices.py
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 
+from tempest_fastapi_sdk import ForbiddenException
+
 from src.api.dependencies import get_invoice_controller
+from src.api.dependencies.auth import get_current_user
 from src.controllers.invoice import InvoiceController
 from src.core.storage import invoice_files
+from src.db.models import UserModel
+
+router = APIRouter()
 
 
 @router.get("/{invoice_id}/file")
@@ -1277,10 +1338,18 @@ For payloads built on the fly — a generated report, an in-memory zip, decrypte
 
 ```python
 import io
+from uuid import UUID
 
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from src.api.dependencies.auth import get_current_user
+from src.api.dependencies.controllers import get_invoice_controller
+from src.controllers import InvoiceController
 from src.core.storage import invoice_files
+from src.db.models import UserModel
+
+router = APIRouter()
 
 
 @router.get("/{invoice_id}/receipt.csv")
@@ -1323,9 +1392,17 @@ mailer = EmailUtils(
 
 ```python
 # src/services/password_reset.py
-from datetime import timedelta
 
-from tempest_fastapi_sdk import EmailUtils, JWTUtils, NotFoundException
+from datetime import timedelta
+from uuid import UUID
+
+from tempest_fastapi_sdk import (
+    EmailUtils,
+    InvalidTokenException,
+    JWTUtils,
+    NotFoundException,
+    PasswordUtils,
+)
 
 from src.db.repositories import UserRepository
 
@@ -1440,9 +1517,17 @@ Generated file lands at `alembic/versions/2026_05_16_1432-ae12cd34_add_users_tab
 
 ```python
 # src/api/app.py — extend lifespan
+
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 
 from tempest_fastapi_sdk import AlembicHelper
+
+from src.api.dependencies.resources import db
+from src.core.settings import settings
 
 
 @asynccontextmanager
@@ -1812,7 +1897,11 @@ Pass `metadata=` when the project mixes the SDK `BaseModel.metadata` with a seco
 Build rows tersely with `ModelFactory` — declare the required-field defaults once, then override per test. A callable default (or `seq(...)`) receives the row index, so unique columns stay unique across `create_many`:
 
 ```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from tempest_fastapi_sdk.testing import ModelFactory, seq
+
+from src.db.models import UserModel
 
 
 async def test_factory(session: AsyncSession) -> None:
@@ -2001,7 +2090,14 @@ The scaffold reads the directory from `LOG_DIR` (defaults to `"logs"`; set it em
 `make_logs_router` mounts `GET /logs`, which parses the on-disk JSON files and returns a paginated `BasePaginationSchema[LogEntrySchema]` (newest first). It is gated by a shared-secret `X-Token` header — never expose it unauthenticated in production (the payload carries tracebacks and request metadata).
 
 ```python
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import make_logs_router
+
+from src.core.settings import settings
+
+app = FastAPI()
+
 
 app.include_router(
     make_logs_router(log_dir="logs", token_secret=settings.TOKEN_SECRET),
@@ -2366,7 +2462,18 @@ The cursor is opaque base64-url-safe JSON — clients never inspect it; they pas
 `AsyncRedisManager` wraps `redis.asyncio` with the same connect/disconnect/health-check surface as `AsyncDatabaseManager`. Install with `[cache]`.
 
 ```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import APIRouter, Depends, FastAPI
+from redis.asyncio import Redis
+
 from tempest_fastapi_sdk.cache import AsyncRedisManager
+
+from src.core.settings import settings
+
+router = APIRouter()
+
 
 cache = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
 
@@ -2382,8 +2489,6 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 # FastAPI dependency — yields the live client.
-from fastapi import Depends
-from redis.asyncio import Redis
 
 
 @router.get("/named")
@@ -2679,7 +2784,14 @@ Lifecycle controls mirror the broker manager: `connect()` / `disconnect()` / `li
 Install with `[metrics]`.
 
 ```python
+from typing import Any
+
+from fastapi import APIRouter
+
 from tempest_fastapi_sdk import MetricsUtils
+
+router = APIRouter()
+
 
 # Synchronous, blocking call
 snapshot = MetricsUtils.snapshot(disk_paths=["/", "/data"], cpu_interval=0.1)
@@ -2785,6 +2897,9 @@ require_users_write = make_permission_dependency(tokens, ["users:write"])
 
 ```python
 # src/api/routers/users.py
+
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
 
 from src.api.dependencies.auth import (
@@ -2792,6 +2907,9 @@ from src.api.dependencies.auth import (
     require_admin,
     require_users_write,
 )
+from src.db.models import UserModel
+from src.schemas import UserResponseSchema
+
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -2870,10 +2988,13 @@ Defaults: `ttl=300` seconds (`0` disables expiry), `serializer=json.dumps` / `de
 
 ```python
 # src/api/app.py
-from tempest_fastapi_sdk import (
-    make_health_router,
-    make_tool_spec_router,
-)
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import make_health_router, make_tool_spec_router
+
+from src.api.dependencies.resources import db
+from src.core.settings import settings
 
 
 def _tool_spec() -> dict[str, object]:
@@ -2925,9 +3046,13 @@ stripe = WebhookSignatureVerifier(
 
 ```python
 # src/api/routers/webhooks.py
+
+import json
+
 from fastapi import APIRouter, Depends
 
 from src.api.dependencies.webhooks import github
+
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -2945,6 +3070,9 @@ For providers that sign with an RSA private key (OpenPix/Woovi, Apple App Store,
 ```python
 from tempest_fastapi_sdk import RSAWebhookSignatureVerifier
 
+from src.core.settings import settings
+
+
 apple = RSAWebhookSignatureVerifier(
     settings.APPLE_PUBLIC_KEY_PEM,
     header_name="X-Apple-Signature",
@@ -2959,12 +3087,15 @@ Requires `cryptography` (bundled with the `[webpush]` extra); the import is defe
 `build_pagination_link_header` emits an RFC 8288 `Link` header with `first` / `prev` / `next` / `last` rels — pair it with (or use instead of) the `BasePaginationSchema` body wrapper for REST clients that expect GitHub-style headers. Existing query parameters on the base URL are preserved.
 
 ```python
-from fastapi import Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 
-from tempest_fastapi_sdk import (
-    BasePaginationSchema,
-    build_pagination_link_header,
-)
+from tempest_fastapi_sdk import BasePaginationSchema, build_pagination_link_header
+
+from src.api.dependencies.controllers import get_user_controller
+from src.controllers import UserController
+from src.schemas import UserFilterSchema, UserResponseSchema
+
+router = APIRouter()
 
 
 @router.get("", response_model=list[UserResponseSchema])
@@ -3000,6 +3131,9 @@ Tweak `page_param=` / `size_param=` when your service uses non-standard query pa
 
 ```python
 # src/api/app.py
+
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import RateLimitMiddleware
 
 
@@ -3035,6 +3169,8 @@ set, `fail_open=True` by default:
 
 ```python
 # src/api/app.py
+
+from fastapi import FastAPI
 from redis.asyncio import Redis
 
 from tempest_fastapi_sdk import (
@@ -3092,7 +3228,9 @@ class OutboxEventModel(BaseModel):
 
 ```python
 # src/db/repositories/outbox.py
+
 from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import BaseRepository
 
@@ -3125,7 +3263,9 @@ class OutboxRepository(BaseRepository[OutboxEventModel]):
 
 ```python
 # src/services/orders.py — produce side
+
 from src.db.models import OrderModel, OutboxEventModel
+from src.schemas import OrderCreateSchema, OrderResponseSchema
 
 
 class OrderService:

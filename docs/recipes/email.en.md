@@ -143,7 +143,13 @@ Autoescaping is on for `.html` / `.htm` / `.xml`.
 
 ```python
 # src/core/mailer.py
+
 import asyncio
+
+from tempest_fastapi_sdk import EmailUtils
+
+from src.core.settings import settings
+
 
 mailer = EmailUtils(
     host=settings.SMTP_HOST,

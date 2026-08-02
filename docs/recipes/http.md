@@ -126,6 +126,9 @@ Por padrão o `detail` do envelope é a mensagem literal da exceção (em inglê
 
 ```python
 # src/api/app.py
+
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import default_message_catalog, register_exception_handlers
 
 
@@ -262,6 +265,9 @@ require_users_write = make_permission_dependency(tokens, ["users:write"])
 
 ```python
 # src/api/routers/users.py
+
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
 
 from src.api.dependencies.auth import (
@@ -269,6 +275,9 @@ from src.api.dependencies.auth import (
     require_admin,
     require_users_write,
 )
+from src.db.models import UserModel
+from src.schemas import UserResponseSchema
+
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -301,6 +310,9 @@ async def update_perms(user_id: UUID) -> None:
 
 ```python
 # src/api/app.py
+
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import RateLimitMiddleware
 
 
@@ -356,6 +368,8 @@ O store padrão (`MemoryRateLimitStore`) conta **em processo** — correto para 
 
 ```python
 # src/api/app.py
+
+from fastapi import FastAPI
 from redis.asyncio import Redis
 
 from tempest_fastapi_sdk import (
@@ -438,6 +452,8 @@ com HTTP 413.
 **ETag + GET condicional (sempre ligado).** Toda resposta cacheável ganha um `ETag` forte (hash do corpo) e um `Cache-Control`. Quando o cliente manda um `If-None-Match` que bate, o middleware responde `304 Not Modified` sem corpo — o handler ainda roda, mas os bytes não vão pela rede.
 
 ```python
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import ResponseCacheMiddleware
 
 
@@ -450,10 +466,11 @@ def create_app() -> FastAPI:
 **Cache server-side (opt-in via `store=`).** Com um store ligado, uma resposta `GET`/`HEAD` cacheável é guardada por `ttl_seconds`; uma requisição igual depois é servida **sem rodar o handler** (`X-Cache: HIT`), e um `If-None-Match` que bate no ETag guardado ainda curto-circuita pro `304`.
 
 ```python
-from tempest_fastapi_sdk import (
-    RedisResponseCacheStore,
-    ResponseCacheMiddleware,
-)
+from typing import Any
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import RedisResponseCacheStore, ResponseCacheMiddleware
 
 
 def create_app(redis: Any) -> FastAPI:
@@ -479,10 +496,11 @@ Repare no que a chave **não** tem: quem pediu. Se `GET /api/me` de duas pessoas
 Por isso uma requisição que carrega `Authorization` ou `Cookie` **passa por fora do store compartilhado**. Ela continua ganhando `ETag` e `304` (que são por resposta, e seguros); só não entra num cache que outra pessoa pode ler.
 
 ```python
-from tempest_fastapi_sdk import (
-    RedisResponseCacheStore,
-    ResponseCacheMiddleware,
-)
+from typing import Any
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import RedisResponseCacheStore, ResponseCacheMiddleware
 
 
 def create_app(redis: Any) -> FastAPI:
@@ -530,9 +548,13 @@ stripe = WebhookSignatureVerifier(
 
 ```python
 # src/api/routers/webhooks.py
+
+import json
+
 from fastapi import APIRouter, Depends
 
 from src.api.dependencies.webhooks import github
+
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -548,6 +570,11 @@ Suporta encodings `hex` (default) e `base64`, qualquer algoritmo hashlib garanti
 A assinatura cobre **só o corpo**, então uma entrega capturada continua válida pra sempre — quem observar uma pode reenviar indefinidamente. Passe `timestamp_header=` pra também exigir um timestamp unix recente e recusar o que estiver fora da janela:
 
 ```python
+from tempest_fastapi_sdk import WebhookSignatureVerifier
+
+from src.core.settings import settings
+
+
 github = WebhookSignatureVerifier(
     settings.GITHUB_WEBHOOK_SECRET,
     header_name="X-Hub-Signature-256",
@@ -644,12 +671,15 @@ Cada entrega envia os headers `X-Webhook-Event`, `X-Webhook-Id` (uuid
 `build_pagination_link_header` emite um header `Link` RFC 8288 com os rels `first` / `prev` / `next` / `last` — combine-o com (ou use no lugar de) o wrapper de corpo `BasePaginationSchema` para clientes REST que esperam headers no estilo GitHub. Os query parameters existentes na URL base são preservados.
 
 ```python
-from fastapi import Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 
-from tempest_fastapi_sdk import (
-    BasePaginationSchema,
-    build_pagination_link_header,
-)
+from tempest_fastapi_sdk import BasePaginationSchema, build_pagination_link_header
+
+from src.api.dependencies.controllers import get_user_controller
+from src.controllers import UserController
+from src.schemas import UserFilterSchema, UserResponseSchema
+
+router = APIRouter()
 
 
 @router.get("", response_model=list[UserResponseSchema])
@@ -687,10 +717,13 @@ Ajuste `page_param=` / `size_param=` quando seu serviço usa nomes de query para
 
 ```python
 # src/api/app.py
-from tempest_fastapi_sdk import (
-    make_health_router,
-    make_tool_spec_router,
-)
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import make_health_router, make_tool_spec_router
+
+from src.api.dependencies.resources import db
+from src.core.settings import settings
 
 
 def _tool_spec() -> dict[str, object]:
@@ -975,6 +1008,16 @@ get_current_user_or_none = make_jwt_user_dependency(
 
 ```python
 # Use in any route
+
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.auth import get_current_user
+from src.db.models import UserModel
+from src.schemas import UserResponseSchema
+
+router = APIRouter()
+
+
 @router.get("/me", response_model=UserResponseSchema)
 async def me(current: UserModel = Depends(get_current_user)) -> UserResponseSchema:
     return UserResponseSchema.model_validate(current)
@@ -1022,11 +1065,21 @@ avatar_storage = UploadUtils(
 
 ```python
 # src/api/routers/users.py (extension)
-from fastapi import UploadFile
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, UploadFile
+
+from tempest_fastapi_sdk import ForbiddenException
 
 from src.api.dependencies import get_user_controller
+from src.api.dependencies.auth import get_current_user
 from src.controllers.user import UserController
 from src.core.storage import avatar_storage
+from src.db.models import UserModel
+from src.schemas import UserResponseSchema
+
+router = APIRouter()
 
 
 @router.post("/{user_id}/avatar", response_model=UserResponseSchema)
@@ -1070,7 +1123,13 @@ class UserController:
 Uploads em disco local são melhor servidos por um upstream (nginx / Caddy) para que o FastAPI não fique transmitindo bytes. Para dev:
 
 ```python
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+
+from src.core.settings import settings
+
+app = FastAPI()
+
 
 app.mount(
     "/static/uploads",
@@ -1082,6 +1141,11 @@ app.mount(
 Construa a URL pública no schema de resposta:
 
 ```python
+from pydantic import EmailStr, field_validator
+
+from tempest_fastapi_sdk import BaseResponseSchema
+
+
 class UserResponseSchema(BaseResponseSchema):
     name: str
     email: EmailStr
@@ -1112,11 +1176,21 @@ invoice_files = DownloadUtils(f"{settings.UPLOAD_DIR}/invoices")
 
 ```python
 # src/api/routers/invoices.py
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 
+from tempest_fastapi_sdk import ForbiddenException
+
 from src.api.dependencies import get_invoice_controller
+from src.api.dependencies.auth import get_current_user
 from src.controllers.invoice import InvoiceController
 from src.core.storage import invoice_files
+from src.db.models import UserModel
+
+router = APIRouter()
 
 
 @router.get("/{invoice_id}/file")
@@ -1142,10 +1216,18 @@ Para payloads construídos na hora — um relatório gerado, um zip em memória,
 
 ```python
 import io
+from uuid import UUID
 
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from src.api.dependencies.auth import get_current_user
+from src.api.dependencies.controllers import get_invoice_controller
+from src.controllers import InvoiceController
 from src.core.storage import invoice_files
+from src.db.models import UserModel
+
+router = APIRouter()
 
 
 @router.get("/{invoice_id}/receipt.csv")

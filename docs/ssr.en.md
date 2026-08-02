@@ -346,7 +346,12 @@ friendly and offline-capable. No CDN.
 Mount the router and flip `htmx=True`:
 
 ```python
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk.ssr import make_htmx_router
+
+app = FastAPI()
+
 
 app.include_router(make_htmx_router())  # serves GET /_ssr/htmx.js
 ```

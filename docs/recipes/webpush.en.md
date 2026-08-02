@@ -381,6 +381,8 @@ prefer the layers above in production apps; use this only as a shortcut:
 
 ```python
 # src/api/app.py
+
+from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import (
@@ -393,6 +395,8 @@ from src.api.dependencies import get_current_user_id, get_session
 from src.core.settings import settings
 from src.db.models import WebPushSubscriptionModel
 from src.db.repositories import WebPushSubscriptionRepository
+
+app = FastAPI()
 
 
 def _service(session: AsyncSession) -> WebPushSubscriptionService:

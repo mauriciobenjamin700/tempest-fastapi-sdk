@@ -23,6 +23,13 @@ O valor do header é escolhido **pelo cliente**. Sozinho, ele não identifica ni
 Por isso o middleware dobra um digest das credenciais da requisição (`Authorization` / `Cookie`) na chave. Uma entrada só é replicada pra credencial que a criou.
 
 ```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import IdempotencyMiddleware, MemoryIdempotencyStore
+
+app = FastAPI()
+
+
 app.add_middleware(
     IdempotencyMiddleware,
     store=MemoryIdempotencyStore(),

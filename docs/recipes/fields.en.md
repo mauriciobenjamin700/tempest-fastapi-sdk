@@ -115,7 +115,7 @@ field and normalizes to a canonical form. An invalid key →
 | Random (EVP) | `123e4567-e89b-12d3-a456-426614174000` | same, lowercased (UUID) |
 
 ```python
-from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk import BaseSchema, CentsField
 from tempest_fastapi_sdk.utils import PixKeyField
 
 
@@ -208,6 +208,9 @@ SDK doesn't ship? Build yours with the same pattern — no magic:
 from typing import Annotated
 
 from pydantic import Field
+
+from tempest_fastapi_sdk import BaseSchema
+
 
 # Stock quantity: integer from 0 to 100000.
 StockField = Annotated[int, Field(ge=0, le=100_000)]

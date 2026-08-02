@@ -120,6 +120,9 @@ Validation (size, extension, MIME, magic bytes, `content_validator`) is
 byte reaches the backend:
 
 ```python
+from tempest_fastapi_sdk import FileStoreUtils
+
+
 store = FileStoreUtils(
     "var/uploads",
     max_size_bytes=5 * 1024 * 1024,

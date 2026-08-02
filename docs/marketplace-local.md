@@ -330,6 +330,12 @@ seu `UserModel` (igual à [receita »](recipes/webpush.md)):
 
 ```python
 # src/db/models.py (junto com os modelos da seção 1)
+
+from uuid import UUID
+
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column
+
 from tempest_fastapi_sdk import BaseWebPushSubscriptionModel
 
 

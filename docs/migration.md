@@ -113,6 +113,10 @@ Em troca, a ordem das bases deixou de ser estilo e virou **regra dura**: como os
 ```python
 # docs-guard: skip — os dois primeiros exemplos são o erro que a seção descreve
 # ❌ quebra em tempo de import
+
+from tempest_fastapi_sdk import BaseAppSettings, DatabaseSettings, RedisSettings
+
+
 class Settings(DatabaseSettings, BaseAppSettings, RedisSettings): ...
 
 # ❌ também quebra
@@ -157,6 +161,10 @@ grep -rn "class Settings(" -A 12 src/core/settings.py
 A 0.92.0 adiciona o fluxo de **troca / re-verificação / recuperação de e-mail**. Para carregar o e-mail pendente até a confirmação, `BaseUserTokenModel` ganhou uma coluna nova:
 
 ```python
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+
 payload: Mapped[str | None] = mapped_column(String(320), nullable=True, default=None)
 ```
 

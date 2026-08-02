@@ -420,6 +420,9 @@ dtype, e o *warmup* — a primeira chamada paga alocação e seleção de kernel
 ### Com GPU
 
 ```python
+from tempest_fastapi_sdk.modelops import OnnxPredictor
+
+
 predictor = OnnxPredictor(
     "dist/classifier.onnx",
     providers=["CUDAExecutionProvider", "CPUExecutionProvider"],

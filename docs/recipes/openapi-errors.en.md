@@ -74,6 +74,10 @@ But it hides the real value from every static reader:
 
 ```python
 # ⚠️ works, but the `code` is invisible to introspection
+
+from tempest_fastapi_sdk import ConflictException
+
+
 class CategoryInUseException(ConflictException):
     """Category still referenced by services."""
 
@@ -376,7 +380,10 @@ constructed. That is why the model reaches `components.schemas` as a real
 `$ref`.
 
 ```python
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
+
+router = APIRouter()
+
 
 app = FastAPI()
 app.include_router(router)   # `responses` survives the include

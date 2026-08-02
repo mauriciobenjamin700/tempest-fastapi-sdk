@@ -330,6 +330,12 @@ concrete one with the FK to your `UserModel` (just like the
 
 ```python
 # src/db/models.py (alongside the section 1 models)
+
+from uuid import UUID
+
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column
+
 from tempest_fastapi_sdk import BaseWebPushSubscriptionModel
 
 

@@ -282,6 +282,9 @@ Mesma superfície, dois detalhes diferentes:
 ```python
 from tempest_fastapi_sdk import GitHubOAuthClient
 
+from src.core.settings import settings
+
+
 github: GitHubOAuthClient = GitHubOAuthClient(
     client_id=settings.GITHUB_CLIENT_ID,
     client_secret=settings.GITHUB_CLIENT_SECRET,
@@ -307,6 +310,9 @@ três endpoints do *discovery document*
 
 ```python
 from tempest_fastapi_sdk import OIDCProvider
+
+from src.core.settings import settings
+
 
 keycloak: OIDCProvider = OIDCProvider(
     client_id=settings.OIDC_CLIENT_ID,

@@ -105,6 +105,9 @@ palavras-chave:
 ### Deny ganha de allow
 
 ```python
+from tempest_fastapi_sdk.admin import SqlShellPolicy
+
+
 policy = SqlShellPolicy(
     allowed_tables={"users", "orders"},
     denied_tables={"users"},

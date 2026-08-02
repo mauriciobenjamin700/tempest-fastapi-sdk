@@ -149,6 +149,11 @@ TTL, the second call does **not** hit the upstream. A `401`/`403`
 **evicts** the token immediately. `cache_ttl_seconds=0` disables caching.
 
 ```python
+from tempest_fastapi_sdk import IntrospectionAuth
+
+from src.core.settings import settings
+
+
 auth = IntrospectionAuth(
     userinfo_url=settings.IAGRO_USERINFO_URL,
     cache_ttl_seconds=60,   # tolerate up to 60s of a revoked token
@@ -168,6 +173,11 @@ runtime (handy when the URL arrives late from the environment, or varies
 per tenant):
 
 ```python
+from tempest_fastapi_sdk import IntrospectionAuth
+
+from src.core.settings import settings
+
+
 auth = IntrospectionAuth(
     userinfo_url=lambda: settings.IAGRO_USERINFO_URL,
 )
@@ -178,6 +188,11 @@ auth = IntrospectionAuth(
 If your provider uses different names, tweak them:
 
 ```python
+from tempest_fastapi_sdk import IntrospectionAuth
+
+from src.core.settings import settings
+
+
 auth = IntrospectionAuth(
     userinfo_url=settings.IDP_USERINFO_URL,
     required_app="famacha",
@@ -194,6 +209,11 @@ your own — handy in tests or to share a pool / limits:
 
 ```python
 import httpx
+
+from tempest_fastapi_sdk import IntrospectionAuth
+
+from src.core.settings import settings
+
 
 client = httpx.AsyncClient(timeout=httpx.Timeout(5.0))
 auth = IntrospectionAuth(

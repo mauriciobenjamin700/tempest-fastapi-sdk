@@ -113,6 +113,10 @@ In exchange, base ordering stopped being style and became a **hard rule**: becau
 ```python
 # docs-guard: skip — the first two examples are the mistake this section describes
 # ❌ fails at import time
+
+from tempest_fastapi_sdk import BaseAppSettings, DatabaseSettings, RedisSettings
+
+
 class Settings(DatabaseSettings, BaseAppSettings, RedisSettings): ...
 
 # ❌ also fails
@@ -157,6 +161,10 @@ grep -rn "class Settings(" -A 12 src/core/settings.py
 0.92.0 adds the **email change / re-verification / recovery** flow. To carry the pending email until confirmation, `BaseUserTokenModel` gained a new column:
 
 ```python
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+
 payload: Mapped[str | None] = mapped_column(String(320), nullable=True, default=None)
 ```
 

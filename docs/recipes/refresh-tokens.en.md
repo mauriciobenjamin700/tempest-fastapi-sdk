@@ -95,8 +95,10 @@ Pass the concrete model to `UserAuthService`. **That alone** turns on DB-backed 
 
 ```python
 # src/api/dependencies/services.py
+
 from tempest_fastapi_sdk import UserAuthService
 
+from src.core.settings import settings
 from src.db.models import UserModel, UserRefreshTokenModel, UserTokenModel
 
 

@@ -50,14 +50,21 @@ uv add "tempest-fastapi-sdk[auth,email]>=0.89.0"
 
 ```python
 # src/api/app.py
+
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import (
     AsyncDatabaseManager,
     EmailUtils,
     UserAuthService,
     make_auth_router,
 )
+
 from src.core.settings import settings
 from src.db.models import UserModel, UserTokenModel
+
+app = FastAPI()
+
 
 db = AsyncDatabaseManager(settings.DATABASE_URL)
 

@@ -203,6 +203,7 @@ If your editor runs Pyright and you want the file clean, declare the name
 through the same mechanism the base class uses:
 
 ```python hl_lines="7 8"
+from pydantic import BaseModel
 from sqlalchemy.orm import declared_attr
 
 from src.db.configs.names import USERS
@@ -296,10 +297,14 @@ repository/service layer's responsibility:
 
 ```python
 # src/api/dependencies/resources.py (continued)
+
 from typing import Annotated
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.api.dependencies.resources import db
+
 
 SessionDep = Annotated[AsyncSession, Depends(db.session_dependency)]
 ```
@@ -352,6 +357,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 only `True`/`False` — perfect for `/health`:
 
 ```python
+from fastapi import APIRouter
+
+from src.api.dependencies.resources import db
+
+router = APIRouter()
+
+
 @router.get("/health")
 async def health() -> dict[str, object]:
     """Liveness + database probe."""
@@ -1125,11 +1137,14 @@ never write the pagination query by hand.
 
 ```python
 # src/db/repositories/user.py — convenience method
+
 from typing import Any
 
-from tempest_fastapi_sdk import BasePaginationSchema
+from tempest_fastapi_sdk import BasePaginationSchema, BaseRepository
 
+from src.db.models import UserModel
 from src.schemas import UserResponse
+
 
 UserPage = BasePaginationSchema[UserResponse]
 
@@ -1209,11 +1224,14 @@ access. It's **already built in** as `cursor_paginate` — it orders by
 
 ```python
 # src/db/repositories/user.py
+
 from typing import Any
 
-from tempest_fastapi_sdk import CursorPaginationSchema
+from tempest_fastapi_sdk import BaseRepository, CursorPaginationSchema
 
+from src.db.models import UserModel
 from src.schemas import UserResponse
+
 
 UserCursorPage = CursorPaginationSchema[UserResponse]
 
@@ -1377,7 +1395,12 @@ prefix orders files chronologically and makes merge conflicts obvious.
 
 ```python
 # src/api/app.py — inside the lifespan
+
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 
 from tempest_fastapi_sdk import AlembicHelper
 
@@ -1498,6 +1521,12 @@ every statement above a threshold. Attach it once at boot:
 
 ```python
 # src/api/app.py — after db.connect()
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk.db import SlowQueryLogger
 
 from src.api.dependencies.resources import db
