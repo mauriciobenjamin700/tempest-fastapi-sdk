@@ -64,6 +64,14 @@ One enum per task:
 | `MISTRAL_7B_INSTRUCT_V03` | 7B | ~15 GB | European multilingual, Apache-2.0. |
 | `LLAMA_3_1_8B_INSTRUCT` | 8B | ~16 GB | Gated: accept the licence and use a Hub token. |
 
+!!! info "Weights download once — then it is a disk cache"
+    The first call writes the gigabytes to `$HF_HOME/hub` (or
+    `~/.cache/huggingface/hub`); later runs read them from there, no network.
+    In a **container with no volume** that is lost on every restart. Pointing
+    the cache somewhere durable, pinning the revision, pre-downloading at
+    deploy time and running offline are all in
+    **[Model weights »](model-weights.md#where-the-weights-live-and-why-the-second-run-is-instant)**.
+
 !!! tip "Do not memorize VRAM — ask"
     `recommend()` measures the host and picks the precision that fits,
     from bf16 down to int4:

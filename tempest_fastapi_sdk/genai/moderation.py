@@ -143,8 +143,18 @@ class ClassifierModerator:
                 (case-insensitive); ``None`` flags any non-"neutral"/"ok" label.
             threshold (float): Minimum probability for a label to flag.
             device (str): ``"auto"`` / ``"cuda"`` / ``"mps"`` / ``"cpu"``.
-            cache_dir (str | None): Weight cache directory.
-            hf_token (str | None): Hub token for gated models.
+            cache_dir (str | None): Where the downloaded weights are
+                written and read back from. ``None`` uses the
+                ``huggingface_hub`` default — ``$HF_HOME/hub``, or
+                ``~/.cache/huggingface/hub`` when ``HF_HOME`` is unset —
+                which is why the second run of a script starts instantly
+                instead of downloading again. Point it at a mounted
+                volume when the process is a container, so the layer does
+                not re-download the model on every restart.
+            hf_token (str | None): Hub token for gated or private
+                repositories. ``None`` falls back to ``HF_TOKEN`` in the
+                environment; without either, anonymous downloads work but
+                are rate-limited (the Hub says so on stderr).
             revision (str | None): Branch, tag or commit sha to load;
                 ``None`` follows the moving Hub default.
             local_files_only (bool): Load from the cache without touching

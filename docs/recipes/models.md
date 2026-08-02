@@ -65,6 +65,13 @@ Um enum por tarefa:
 | `MISTRAL_7B_INSTRUCT_V03` | 7B | ~15 GB | Multilíngue europeu, Apache-2.0. |
 | `LLAMA_3_1_8B_INSTRUCT` | 8B | ~16 GB | Gated: exige aceitar a licença e token do Hub. |
 
+!!! info "O peso baixa uma vez — depois é cache em disco"
+    A primeira chamada escreve os GB em `$HF_HOME/hub` (ou
+    `~/.cache/huggingface/hub`); as execuções seguintes leem de lá, sem rede.
+    Num **container sem volume** isso se perde a cada restart. Como apontar o
+    cache, fixar a revisão, pré-baixar no deploy e rodar offline está em
+    **[Pesos de modelos »](model-weights.md#onde-os-pesos-ficam-e-por-que-a-2a-execucao-e-instantanea)**.
+
 !!! tip "Não decore VRAM — pergunte"
     `recommend()` mede a máquina e escolhe a precisão que cabe, de bf16
     até int4:

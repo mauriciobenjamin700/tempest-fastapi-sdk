@@ -86,6 +86,14 @@ The weather in Recife is 22 degrees, clear sky.
 [('model', 'chat'), ('tool', 'get_weather'), ('model', 'chat')]
 ```
 
+!!! info "Weights download once — then it is a disk cache"
+    The first call writes the gigabytes to `$HF_HOME/hub` (or
+    `~/.cache/huggingface/hub`); later runs read them from there, no network.
+    In a **container with no volume** that is lost on every restart. Pointing
+    the cache somewhere durable, pinning the revision, pre-downloading at
+    deploy time and running offline are all in
+    **[Model weights »](model-weights.md#where-the-weights-live-and-why-the-second-run-is-instant)**.
+
 Three steps: the model asked for the tool, the tool ran, the model read the
 result and answered. All of it on a 0.5B model running on CPU.
 
