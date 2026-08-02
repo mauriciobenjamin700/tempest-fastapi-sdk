@@ -185,6 +185,19 @@ ws.addEventListener("close", (event) => {
 
 ```python
 import asyncio
+from uuid import UUID, uuid4
+
+from tempest_fastapi_sdk import WSEnvelope, WebSocketHub
+
+hand_a, hand_b = ["7♣"], ["A♥"]
+
+hub = WebSocketHub(max_per_user=5)
+
+order_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
+
+player_a, player_b = uuid4(), uuid4()
+
+user_id = player_a
 
 
 async def main() -> None:
@@ -227,6 +240,12 @@ Subscription lifecycle is owned by the handler:
 
 ```python
 import asyncio
+
+from tempest_fastapi_sdk import WebSocketConnection, WebSocketHub
+
+connection: WebSocketConnection = ...  # handed to your handler
+
+hub = WebSocketHub(max_per_user=5)
 
 
 async def main() -> None:

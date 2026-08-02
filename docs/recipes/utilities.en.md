@@ -14,6 +14,9 @@ from datetime import datetime
 
 from tempest_fastapi_sdk import to_utc, utcnow
 
+some_naive_dt = datetime(2026, 8, 2, 10, 30)
+
+
 created_at: datetime = utcnow()                  # 2026-06-07T19:00:00+00:00
 normalized: datetime = to_utc(some_naive_dt)     # becomes aware/UTC
 ```
@@ -58,11 +61,16 @@ pair, **show the plaintext once** to the user, and persist only the hash
 (SHA-256). Verification is constant-time.
 
 ```python
+from datetime import datetime, timezone
+
 from tempest_fastapi_sdk import (
     generate_opaque_token,
     hash_opaque_token,
     verify_opaque_token,
 )
+
+submitted = datetime.now(timezone.utc)
+
 
 plaintext, token_hash = generate_opaque_token()   # show plaintext once; store token_hash
 # ... later, when the token comes back:

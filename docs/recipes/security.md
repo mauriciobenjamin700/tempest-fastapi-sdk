@@ -11,12 +11,22 @@ O construtor recebe um `backend` (qualquer objeto que case com o `Protocol` `Thr
 ```python
 from tempest_fastapi_sdk import (
     AttemptThrottle,
+    PasswordUtils,
     TooManyRequestsException,
     UnauthorizedException,
 )
 from tempest_fastapi_sdk.cache import AsyncRedisManager
 
 from src.core.settings import settings
+from src.db.models import User
+from src.db.repositories import UserRepository
+
+password_utils = PasswordUtils()
+
+users_repo = UserRepository(session)
+
+session = None  # provided by db.get_session_context() in your code
+
 
 cache = AsyncRedisManager(settings.REDIS_URL)
 throttle: AttemptThrottle
@@ -116,6 +126,7 @@ require_refresh = make_bearer_token_dependency(
     O hash é SHA-256 puro (`hashlib.sha256(plain).hexdigest()`) por design: tokens opacos têm 256 bits de entropia (já fora de alcance de força bruta), então pepper extra não adiciona segurança prática. Pra credenciais com baixa entropia (senha humana), use `PasswordUtils.hash` (bcrypt) — não os helpers desta seção.
 
 ```python
+from datetime import timedelta
 from uuid import UUID
 
 from tempest_fastapi_sdk import (
@@ -123,6 +134,14 @@ from tempest_fastapi_sdk import (
     hash_opaque_token,
     verify_opaque_token,
 )
+from tempest_fastapi_sdk.utils import utcnow
+
+from src.db.models import PasswordResetToken
+from src.db.repositories import UserTokenRepository
+
+reset_tokens_repo = UserTokenRepository(session)
+
+session = None  # provided by db.get_session_context() in your code
 
 
 async def issue_reset_token(user_id: UUID) -> str:
@@ -300,9 +319,15 @@ def logout(response: Response) -> None:
 `get_client_ip(request)` e `get_client_ip_from_scope(scope)` retornam o IP real do cliente atrás de proxies. Por design simples: a função aceita **um** nome de header confiável (`trusted_header=`) que sua infraestrutura sabe que só o edge proxy pode setar (típico: `"x-real-ip"` num Nginx, `"x-forwarded-for"` num ALB com cabeçalhos sanitizados). Sem `trusted_header=`, a função usa o peer address direto.
 
 ```python
-from fastapi import Request
+from fastapi import APIRouter, Request
 
-from tempest_fastapi_sdk import get_client_ip
+from tempest_fastapi_sdk import AttemptThrottle, get_client_ip
+
+from src.schemas import LoginIn, LoginOut
+
+throttle = AttemptThrottle(max_attempts=5, window_seconds=300)
+
+router = APIRouter()
 
 
 @router.post("/login")

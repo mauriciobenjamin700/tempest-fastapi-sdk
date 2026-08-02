@@ -109,6 +109,14 @@ devolve quantos eventos foram publicados:
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import OutboxRelay
+
+from src.api.dependencies.resources import db
+from src.db.models import OutboxModel
+from src.queue import mq
+
+relay = OutboxRelay(db, OutboxModel, publisher=mq.publish)
+
 
 async def main() -> None:
     """Run this example."""

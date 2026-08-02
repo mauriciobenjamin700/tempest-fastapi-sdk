@@ -105,7 +105,16 @@ Bundled flow: signup/activate/login/reset/**email change and recovery**/MFA
 + JWT deps (header/cookie/query).
 
 ```python
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import UserAuthService, make_auth_router
+
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel, UserTokenModel
+
+app = FastAPI()
+
 
 auth = UserAuthService(user_model=UserModel, token_model=UserTokenModel,
                        auth_settings=settings, jwt_settings=settings)
@@ -166,7 +175,16 @@ Recipes: [Queues and Tasks](queue-tasks.md), [Outbox](outbox.md).
 SSE (`EventStream`/`SSEBroker` with backpressure), WebSocket router, Web Push.
 
 ```python
+import asyncio
+
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import EventStream
+
+task = asyncio.current_task()
+
+app = FastAPI()
+
 
 @app.get("/events")
 async def events():
@@ -228,7 +246,12 @@ MinIO/S3 storage, presigned URLs.
 ```python
 import asyncio
 
+from fastapi import UploadFile
+
 from tempest_fastapi_sdk import FileStoreUtils
+
+upload_file: UploadFile = ...  # comes from the endpoint signature
+
 
 store = FileStoreUtils(source="./uploads")     # or an AsyncMinIOClient
 

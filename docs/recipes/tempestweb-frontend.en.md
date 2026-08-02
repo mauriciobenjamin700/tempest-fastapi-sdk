@@ -200,7 +200,11 @@ creating a duplicate task.
 
 ```python
 # frontend: generate the key once, reuse it across attempts
+
 import asyncio
+
+from tempestweb.native import http
+
 
 key = http.generate_idempotency_key()
 
@@ -225,6 +229,7 @@ backoff for safe requests (idempotent methods, or any method carrying an
 ```python
 import asyncio
 
+from tempestweb.native import http
 from tempestweb.native.http import RetryOptions
 
 

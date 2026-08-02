@@ -267,21 +267,31 @@ o pedido virou `SHIPPED`), ele faz **uma só chamada** — não sabe nem se impo
 que existem dois canais por baixo:
 
 ```python
-import asyncio
+from tempest_fastapi_sdk import BaseService
+
+from src.db.models import OrderModel
+from src.db.repositories import OrderRepository
+from src.schemas import OrderResponseSchema
+from src.services.notifications import NotificationService
 
 
-async def main() -> None:
-    """Run this example."""
-    await self.notifications.notify(
-        order.buyer_id,
-        event="order_shipped",
-        title="Pedido a caminho",
-        body=f"Pedido {order.code} saiu para entrega.",
-        data={"order_id": str(order.id), "status": order.status},
-    )
+class OrderService(BaseService[OrderRepository, OrderResponseSchema]):
+    def __init__(
+        self, repository: OrderRepository, notifications: NotificationService
+    ) -> None:
+        """Guarda o repositório e o serviço de notificação."""
+        super().__init__(repository)
+        self.notifications = notifications
 
-
-asyncio.run(main())
+    async def mark_shipped(self, order: OrderModel) -> None:
+        """Depois da transição de domínio, avisa o comprador — uma chamada só."""
+        await self.notifications.notify(
+            order.buyer_id,
+            event="order_shipped",
+            title="Pedido a caminho",
+            body=f"Pedido {order.code} saiu para entrega.",
+            data={"order_id": str(order.id), "status": order.status},
+        )
 ```
 
 O que cada argumento faz:

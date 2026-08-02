@@ -38,6 +38,9 @@ uv add "tempest-fastapi-sdk[admin,admin-sql]"
 O console é **desligado por padrão** — sem `sql_shell=`, a rota nem existe.
 
 ```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import AsyncDatabaseManager, UserModelAuthBackend
 from tempest_fastapi_sdk.admin import (
     AdminSite,
     SqlCapability,
@@ -45,6 +48,19 @@ from tempest_fastapi_sdk.admin import (
     SqlShellService,
     make_admin_router,
 )
+
+from src.admin import site
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel
+from src.services.audit import record_sql_attempt
+
+auth_backend = UserModelAuthBackend(db, UserModel)
+
+console_db = AsyncDatabaseManager(settings.READONLY_DATABASE_URL)
+
+app = FastAPI()
+
 
 console = SqlShellService(
     console_db,                       # a conexão restrita, não a do app
@@ -176,6 +192,13 @@ pode fazer isso" e "seu SQL está errado" levam a correções diferentes.
 ## Auditoria
 
 ```python
+import logging
+
+from src.db.models import SqlAudit
+
+logger = logging.getLogger(__name__)
+
+
 async def record_sql_attempt(entry: SqlAudit) -> None:
     """Persist every console attempt, allowed or refused."""
     logger.warning(
@@ -213,7 +236,12 @@ O serviço não depende da página:
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.admin import SqlShellDenied, SqlShellService
+from tempest_fastapi_sdk.admin import SqlShellDenied, SqlShellPolicy, SqlShellService
+
+from src.api.dependencies.resources import db
+
+policy = SqlShellPolicy(allowed_tables=["users", "orders"])
+
 
 service = SqlShellService(db, policy=policy, dialect="postgres")
 

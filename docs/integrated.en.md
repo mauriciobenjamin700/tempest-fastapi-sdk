@@ -53,9 +53,15 @@ The product rarely changes; cache the read and invalidate on write.
 
 ```python
 # src/services/catalog.py
+
 from tempest_fastapi_sdk.cache import CacheInvalidator, cached
 
 from src.core.resources import cache
+
+
+async def load_price_from_db(sku: str) -> int:
+    """Read the price in cents straight from the database."""
+    return 1990
 
 
 @cached(cache, ttl=300, key_prefix="catalog:", namespace="products")
@@ -165,8 +171,11 @@ request) and pushes the status to the user's SSE channel.
 
 ```python
 # src/queue/consumers.py
+
 from src.core.resources import events, mq, tq
 from src.schemas.events import OrderPaid
+
+email = "ana@example.com"
 
 
 @tq.task
@@ -250,6 +259,16 @@ On confirmation, section 7's handler swaps the raw `events.publish` for a single
 
 ```python
 # src/queue/consumers.py
+
+from tempest_fastapi_sdk.webpush import WebPushDispatcher
+
+from src.core.settings import settings
+from src.queue import OrderPaid, mq
+from src.tasks import send_receipt
+
+notifications = WebPushDispatcher(settings)
+
+
 @mq.on("orders.paid")
 async def on_order_paid(event: OrderPaid) -> None:
     await send_receipt.enqueue(to=event.user_email, order_id=event.order_id)   # background

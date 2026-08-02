@@ -83,6 +83,14 @@ Para este trecho de especificação:
 sai isto:
 
 ```python
+from datetime import datetime
+from uuid import UUID
+
+from pydantic import ConfigDict, EmailStr, Field
+
+from tempest_fastapi_sdk import BaseSchema
+
+
 class Customer(BaseSchema):
     """A billable customer account.
 
@@ -128,6 +136,11 @@ Cinco coisas acontecendo aí:
 ### `client.py`
 
 ```python
+from tempest_fastapi_sdk import HTTPClient
+
+from src.integrations.billing import Customer, CustomerStatus
+
+
 class TerceiroClient:
     """Client for Billing API (version 2.1.0)."""
 
@@ -183,6 +196,12 @@ E usando:
 
 ```python
 import asyncio
+
+from tempest_fastapi_sdk import HTTPClient
+
+from src.integrations.billing import CustomerStatus
+
+terceiro = HTTPClient(base_url="https://api.parceiro.com")
 
 
 async def main() -> None:

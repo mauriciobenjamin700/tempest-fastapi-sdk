@@ -84,6 +84,15 @@ application URL and keep no second variable just for backups. Without
 Restoring mirrors it — the format comes from the extension:
 
 ```python
+from pathlib import Path
+
+from tempest_fastapi_sdk import DatabaseBackup
+
+from src.core.settings import settings
+
+backup = DatabaseBackup(settings.DATABASE_URL)
+
+
 backup.restore(Path("backups/app_20260727-104500.dump"))
 ```
 

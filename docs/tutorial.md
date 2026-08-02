@@ -389,6 +389,13 @@ class UserEmailAlreadyTakenError(ConflictException):
 Para códigos pontuais você não precisa de uma subclasse — passe-os ao construtor:
 
 ```python
+from uuid import UUID
+
+from tempest_fastapi_sdk import NotFoundException
+
+order_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
+
+
 raise NotFoundException(
     "Pedido não encontrado",
     code="ORDER_NOT_FOUND",

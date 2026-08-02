@@ -32,61 +32,14 @@ from tests.test_docs_examples_compile import DOCS_ROOT, FENCE_RE, _markdown_file
 
 BUILTIN_NAMES: frozenset[str] = frozenset(dir(builtins))
 
-KNOWN_FRAGMENTED: frozenset[str] = frozenset(
-    {
-        # Delete a line when the page's examples become self-contained.
-        "docs/admin-showcase.en.md",
-        "docs/admin-showcase.md",
-        "docs/fullstack-web.en.md",
-        "docs/fullstack-web.md",
-        "docs/integrated.en.md",
-        "docs/integrated.md",
-        "docs/learning/marketplace/flows.en.md",
-        "docs/learning/marketplace/flows.md",
-        "docs/marketplace-local.en.md",
-        "docs/marketplace-local.md",
-        "docs/migration.en.md",
-        "docs/migration.md",
-        "docs/recipes/admin-sql-console.en.md",
-        "docs/recipes/admin-sql-console.md",
-        "docs/recipes/authz.en.md",
-        "docs/recipes/authz.md",
-        "docs/recipes/deploy-safety.en.md",
-        "docs/recipes/deploy-safety.md",
-        "docs/recipes/downloads.en.md",
-        "docs/recipes/downloads.md",
-        "docs/recipes/feature-flags.en.md",
-        "docs/recipes/feature-flags.md",
-        "docs/recipes/index.en.md",
-        "docs/recipes/index.md",
-        "docs/recipes/introspection-auth.en.md",
-        "docs/recipes/introspection-auth.md",
-        "docs/recipes/logging.en.md",
-        "docs/recipes/logging.md",
-        "docs/recipes/metrics.en.md",
-        "docs/recipes/metrics.md",
-        "docs/recipes/oauth.en.md",
-        "docs/recipes/oauth.md",
-        "docs/recipes/openapi-client.en.md",
-        "docs/recipes/openapi-client.md",
-        "docs/recipes/outbox.en.md",
-        "docs/recipes/outbox.md",
-        "docs/recipes/security.en.md",
-        "docs/recipes/security.md",
-        "docs/recipes/stored-files.en.md",
-        "docs/recipes/stored-files.md",
-        "docs/recipes/tempestweb-frontend.en.md",
-        "docs/recipes/tempestweb-frontend.md",
-        "docs/recipes/utilities.en.md",
-        "docs/recipes/utilities.md",
-        "docs/recipes/websocket.en.md",
-        "docs/recipes/websocket.md",
-        "docs/ssr.en.md",
-        "docs/ssr.md",
-        "docs/tutorial.en.md",
-        "docs/tutorial.md",
-    }
-)
+KNOWN_FRAGMENTED: frozenset[str] = frozenset()
+"""Pages allowed to keep fragmented examples — empty, and meant to stay so.
+
+It held 117 pages when the sweep started and shrank to nothing. A page
+listed here is exempt; a listed page that has become clean fails the test,
+so the list cannot outlive the debt it tracks. Add an entry only to land a
+page-sized rewrite in pieces, and delete it in the same PR that finishes.
+"""
 
 
 class _NameCollector(ast.NodeVisitor):

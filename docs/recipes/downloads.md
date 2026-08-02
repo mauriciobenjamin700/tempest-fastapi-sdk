@@ -72,6 +72,13 @@ No modo local, `file_response` dá controle direto e devolve um `FileResponse`
 transmitido em chunks pelo Starlette (suporta range requests):
 
 ```python
+from tempest_fastapi_sdk import DownloadUtils
+
+downloads = DownloadUtils("./uploads/invoices")
+
+name = "invoice-2026-01.pdf"
+
+
 return downloads.file_response(name, subdir="invoices", as_attachment=False)
 ```
 
@@ -93,7 +100,14 @@ um iterável sync ou um async-iterable:
 ```python
 from collections.abc import AsyncIterator
 
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
+
+from tempest_fastapi_sdk import DownloadUtils
+
+downloads = DownloadUtils("./uploads/invoices")
+
+router = APIRouter()
 
 
 @router.get("/report.csv")

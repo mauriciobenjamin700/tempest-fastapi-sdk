@@ -104,6 +104,11 @@ content. It is the only required method.
 ### The `html_response` function
 
 ```python
+from tempestweb.server import html_response
+
+from src.web.pages import HomePage
+
+
 return html_response(HomePage(title="Home", user="Ana"), title="Home")
 ```
 
@@ -512,6 +517,9 @@ Each builder returns a `dict[str, str]`, so you merge freely with other
 builders and raw keys:
 
 ```python
+from tempestweb import Row, aria, htmx
+
+
 Row(
     tag="li",
     attrs={**htmx(delete="/tasks/1", swap="outerHTML"), **aria(label="Delete"), "id": "task-1"},

@@ -428,6 +428,28 @@ mensagem nova de chat avisa o **destinatário**:
 
 ```python
 import asyncio
+from uuid import uuid4
+
+from tempest_fastapi_sdk.webpush import WebPushDispatcher
+
+from src.core.settings import settings
+from src.db.models import OrderModel, UserModel
+
+conversation_id = uuid4()
+
+notifications = WebPushDispatcher(settings)
+
+order = OrderModel(user_id=user.id, total=100)
+
+preview = "Ainda está disponível?"
+
+recipient_id = uuid4()
+
+seller_id = uuid4()
+
+sender_name = "Ana"
+
+user = UserModel(name="Ana", email="ana@example.com")
 
 
 async def main() -> None:
@@ -476,6 +498,11 @@ Web Push entra com o `make_web_push_router` pronto (`/api/push/subscribe` +
 
 ```python
 # src/api/app.py (adições ao create_app)
+
+from uuid import UUID
+
+from fastapi import Depends, FastAPI
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import StreamingResponse
 
 from tempest_fastapi_sdk import (
@@ -485,9 +512,13 @@ from tempest_fastapi_sdk import (
     make_web_push_router,
 )
 
+from src.api.dependencies.auth import get_current_user_id
+from src.api.dependencies.resources import get_session
 from src.core.resources import settings
-from src.services.chat import broker  # o mesmo SSEBroker do chat
 from src.db.models import WebPushSubscriptionModel
+from src.services.chat import broker
+
+app = FastAPI()
 
 
 def build_push_service(session: AsyncSession) -> WebPushSubscriptionService:

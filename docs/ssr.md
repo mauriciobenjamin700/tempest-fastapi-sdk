@@ -105,6 +105,11 @@ principal. É o único método obrigatório.
 ### A função `html_response`
 
 ```python
+from tempestweb.server import html_response
+
+from src.web.pages import HomePage
+
+
 return html_response(HomePage(title="Início", user="Ana"), title="Início")
 ```
 
@@ -513,6 +518,9 @@ Cada builder devolve um `dict[str, str]`, então você mescla livremente com
 outros builders e chaves cruas:
 
 ```python
+from tempestweb import Row, aria, htmx
+
+
 Row(
     tag="li",
     attrs={**htmx(delete="/tasks/1", swap="outerHTML"), **aria(label="Excluir"), "id": "task-1"},

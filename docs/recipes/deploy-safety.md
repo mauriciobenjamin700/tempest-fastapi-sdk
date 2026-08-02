@@ -84,6 +84,15 @@ arquivo sai em `backups/<db>_<AAAAMMDD-HHMMSS>.<ext>`.
 Restaurar é o espelho — o formato sai da extensão:
 
 ```python
+from pathlib import Path
+
+from tempest_fastapi_sdk import DatabaseBackup
+
+from src.core.settings import settings
+
+backup = DatabaseBackup(settings.DATABASE_URL)
+
+
 backup.restore(Path("backups/app_20260727-104500.dump"))
 ```
 

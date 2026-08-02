@@ -104,7 +104,16 @@ Fluxo bundled: signup/activate/login/reset/**troca e recuperação de
 e-mail**/MFA + deps JWT (header/cookie/query).
 
 ```python
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import UserAuthService, make_auth_router
+
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+from src.db.models import UserModel, UserTokenModel
+
+app = FastAPI()
+
 
 auth = UserAuthService(user_model=UserModel, token_model=UserTokenModel,
                        auth_settings=settings, jwt_settings=settings)
@@ -165,7 +174,16 @@ Receitas: [Fila e Tarefas](queue-tasks.md), [Outbox](outbox.md).
 SSE (`EventStream`/`SSEBroker` com backpressure), WebSocket router, Web Push.
 
 ```python
+import asyncio
+
+from fastapi import FastAPI
+
 from tempest_fastapi_sdk import EventStream
+
+task = asyncio.current_task()
+
+app = FastAPI()
+
 
 @app.get("/events")
 async def events():
@@ -227,7 +245,12 @@ storage MinIO/S3, presigned URLs.
 ```python
 import asyncio
 
+from fastapi import UploadFile
+
 from tempest_fastapi_sdk import FileStoreUtils
+
+upload_file: UploadFile = ...  # comes from the endpoint signature
+
 
 store = FileStoreUtils(source="./uploads")     # ou um AsyncMinIOClient
 

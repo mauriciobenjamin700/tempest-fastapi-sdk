@@ -142,31 +142,52 @@ stores the key and commits — in one step.
 ## Serve the URL — `file_url`
 
 ```python
-import asyncio
+from datetime import timedelta
+
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import BaseService, StoredFileServiceMixin
+
+from src.db.models import UserModel
+from src.db.repositories import UserRepository
+from src.schemas import UserResponseSchema
 
 
-async def main() -> None:
-    """Run this example."""
-    url = await self.file_url(user.profile_picture)            # 1h lifetime
-    url = await self.file_url(user.profile_picture, expires=timedelta(minutes=5))
-
-
-asyncio.run(main())
+class UserService(
+    BaseService[UserRepository, UserResponseSchema],
+    StoredFileServiceMixin[UserModel],
+):
+    async def profile_picture_url(self, user: UserModel) -> str | None:
+        """Sign the stored key — one hour by default."""
+        url = await self.file_url(user.profile_picture)
+        url = await self.file_url(user.profile_picture, expires=timedelta(minutes=5))
+        return url
 ```
 
 Returns `None` when the key is empty, so you can feed the result straight into
 a response-schema field without an `if`:
 
 ```python
-import asyncio
+from datetime import timedelta
+
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import BaseService, StoredFileServiceMixin
+
+from src.db.models import UserModel
+from src.db.repositories import UserRepository
+from src.schemas import UserResponseSchema
 
 
-async def main() -> None:
-    """Run this example."""
-    response.profile_picture_url = await self.file_url(updated.profile_picture)
-
-
-asyncio.run(main())
+class UserService(
+    BaseService[UserRepository, UserResponseSchema],
+    StoredFileServiceMixin[UserModel],
+):
+    async def to_response(self, updated: UserModel) -> UserResponseSchema:
+        """Build the response with the signed URL already in it — no ``if``."""
+        response = await self._map_to_response(updated)
+        response.profile_picture_url = await self.file_url(updated.profile_picture)
+        return response
 ```
 
 ## A whole page — `file_urls` *(v0.133.0+)*
@@ -179,14 +200,25 @@ runs in `asyncio.to_thread`). `file_urls` is the batch counterpart of
 key.
 
 ```python
-async def _load_profile_picture_from_users(
-    self, candidates: list[CandidateResponseSchema]
-) -> None:
-    """Fill each candidate's ``profile_picture_url`` in one shot."""
-    users = [c.user for c in candidates if c.user is not None]
-    urls = await self.file_urls([user.profile_picture for user in users])
-    for user in users:
-        user.profile_picture_url = urls.get(user.profile_picture)
+from tempest_fastapi_sdk import BaseService, StoredFileServiceMixin
+
+from src.db.models import CandidateModel
+from src.db.repositories import CandidateRepository
+from src.schemas import CandidateResponseSchema
+
+
+class CandidateService(
+    BaseService[CandidateRepository, CandidateResponseSchema],
+    StoredFileServiceMixin[CandidateModel],
+):
+    async def _load_profile_picture_from_users(
+        self, candidates: list[CandidateResponseSchema]
+    ) -> None:
+        """Fill each candidate's ``profile_picture_url`` in one shot."""
+        users = [c.user for c in candidates if c.user is not None]
+        urls = await self.file_urls([user.profile_picture for user in users])
+        for user in users:
+            user.profile_picture_url = urls.get(user.profile_picture)
 ```
 
 `None`/empty keys are **dropped** and duplicates are **collapsed**, so the
@@ -206,15 +238,24 @@ async def _load_profile_picture_from_users(
 ## Remove the file — `clear_file`
 
 ```python
-import asyncio
+from datetime import timedelta
+
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import BaseService, StoredFileServiceMixin
+
+from src.db.models import UserModel
+from src.db.repositories import UserRepository
+from src.schemas import UserResponseSchema
 
 
-async def main() -> None:
-    """Run this example."""
-    updated = await self.clear_file(user, field="profile_picture")
-
-
-asyncio.run(main())
+class UserService(
+    BaseService[UserRepository, UserResponseSchema],
+    StoredFileServiceMixin[UserModel],
+):
+    async def remove_profile_picture(self, user: UserModel) -> UserModel:
+        """Delete the object from storage and clear the column."""
+        return await self.clear_file(user, field="profile_picture")
 ```
 
 Deletes the storage object and nulls the field. When the field is already
@@ -226,16 +267,25 @@ touching storage.
 `field=` is just an argument — one service handles as many fields as you like:
 
 ```python
-import asyncio
+from fastapi import UploadFile
+
+from tempest_fastapi_sdk import BaseService, StoredFileServiceMixin
+
+from src.db.models import EventModel
+from src.db.repositories import EventRepository
+from src.schemas import EventResponseSchema
 
 
-async def main() -> None:
-    """Run this example."""
-    await self.set_file(event, cover, field="cover_image", subdir="events/covers")
-    await self.set_file(event, banner, field="banner_image", subdir="events/banners")
-
-
-asyncio.run(main())
+class EventService(
+    BaseService[EventRepository, EventResponseSchema],
+    StoredFileServiceMixin[EventModel],
+):
+    async def set_images(
+        self, event: EventModel, cover: UploadFile, banner: UploadFile
+    ) -> None:
+        """Two file columns, one mixin."""
+        await self.set_file(event, cover, field="cover_image", subdir="events/covers")
+        await self.set_file(event, banner, field="banner_image", subdir="events/banners")
 ```
 
 ## Recap

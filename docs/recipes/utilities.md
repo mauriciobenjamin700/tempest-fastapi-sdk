@@ -14,6 +14,9 @@ from datetime import datetime
 
 from tempest_fastapi_sdk import to_utc, utcnow
 
+some_naive_dt = datetime(2026, 8, 2, 10, 30)
+
+
 created_at: datetime = utcnow()                  # 2026-06-07T19:00:00+00:00
 normalized: datetime = to_utc(some_naive_dt)     # vira aware/UTC
 ```
@@ -58,11 +61,16 @@ Para API keys, tokens de reset/convite etc.: gere um par
 o hash (SHA-256). A verificação é constant-time.
 
 ```python
+from datetime import datetime, timezone
+
 from tempest_fastapi_sdk import (
     generate_opaque_token,
     hash_opaque_token,
     verify_opaque_token,
 )
+
+submitted = datetime.now(timezone.utc)
+
 
 plaintext, token_hash = generate_opaque_token()   # mostre plaintext 1x; salve token_hash
 # ... mais tarde, ao receber o token de volta:

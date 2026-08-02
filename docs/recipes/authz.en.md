@@ -16,6 +16,16 @@ per token:
 
 ```python
 # "does the token carry the orders:write permission?"
+
+from fastapi import Depends
+
+from tempest_fastapi_sdk import JWTUtils, make_permission_dependency
+
+from src.core.settings import settings
+
+tokens = JWTUtils(settings)
+
+
 Depends(make_permission_dependency(tokens, ["orders:write"]))
 ```
 
@@ -152,6 +162,16 @@ The predicate can be `async` — useful when the decision needs the
 database:
 
 ```python
+from tempest_fastapi_sdk import permission
+
+from src.db.models import ProjectModel, UserModel
+from src.db.repositories import MembershipRepository
+
+membership_repo = MembershipRepository(session)
+
+session = None  # provided by db.get_session_context() in your code
+
+
 @permission("project.invite")
 async def is_project_member(user: UserModel, project: ProjectModel) -> bool:
     return await membership_repo.exists(
@@ -165,7 +185,15 @@ By default the superuser is `user.is_admin` and the static set comes
 from `user.permissions`. Both are injectable — build your own registry:
 
 ```python
+from tempest_fastapi_sdk import has_perm, permission
 from tempest_fastapi_sdk.authz import PermissionRegistry
+
+from src.db.models import OrderModel, UserModel
+from src.db.repositories import RoleRepository
+
+role_repo = RoleRepository(session)
+
+session = None  # provided by db.get_session_context() in your code
 
 
 async def perms_from_roles(user: UserModel) -> set[str]:
