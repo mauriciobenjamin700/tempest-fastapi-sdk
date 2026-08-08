@@ -198,3 +198,36 @@ class TestBrokerWiring:
         mq._started = True
         await mq.publish("orders.paid", {"a": 1}, headers={"x-tenant": "acme"})
         assert seen["headers"]["x-tenant"] == "acme"
+
+
+class TestTransportCompatibility:
+    """``headers`` must not reach a transport that cannot take it.
+
+    Redis happens to accept ``headers`` while rejecting ``message_id``, so
+    the two keywords are guarded independently rather than behind one
+    "is this RabbitMQ?" branch — a transport allow-list would have been
+    wrong for exactly this case.
+    """
+
+    def test_redis_takes_headers_even_though_it_rejects_message_id(self) -> None:
+        from faststream.redis import RedisBroker
+
+        from tempest_fastapi_sdk.queue.broker import _publish_accepts
+
+        publish = RedisBroker("redis://x").publish
+        assert _publish_accepts(publish, "headers")
+        assert not _publish_accepts(publish, "message_id")
+
+    async def test_headers_are_omitted_on_a_transport_without_them(self) -> None:
+        from tempest_fastapi_sdk.queue import MessageBroker
+
+        seen: dict[str, Any] = {}
+
+        class _NoHeaders:
+            async def publish(self, message: Any, channel: Any) -> None:
+                seen["called"] = True
+
+        mq = MessageBroker(_NoHeaders())  # type: ignore[arg-type]
+        mq._started = True
+        await mq.publish("orders.paid", {"a": 1})
+        assert seen["called"] is True

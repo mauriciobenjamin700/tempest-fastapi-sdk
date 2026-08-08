@@ -17,6 +17,7 @@ publish with :meth:`publish`. The raw broker stays reachable at
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -94,6 +95,45 @@ def _require(module: str, extra: str) -> Any:
             f"This transport requires the optional [{extra}] extra. "
             f"Install with: pip install tempest-fastapi-sdk[{extra}]",
         ) from exc
+
+
+def _publish_accepts(publish: Any, name: str) -> bool:
+    """Whether a broker's ``publish`` takes ``name`` as a keyword.
+
+    The facade adds keywords of its own — ``message_id`` for
+    deduplication, ``headers`` for trace propagation — but FastStream's
+    ``publish`` signature differs per transport and most of them take no
+    ``**kwargs``. ``RedisBroker.publish`` has no ``message_id`` at all, so
+    sending one unconditionally turns **every** publish on that transport
+    into a ``TypeError``.
+
+    Args:
+        publish (Any): The bound ``broker.publish``.
+        name (str): The keyword the facade wants to add.
+
+    Returns:
+        bool: Whether it is safe to pass. A signature that cannot be
+        introspected answers ``False`` and logs once: dropping the
+        keyword costs a feature (deduplication, or a trace link), while
+        sending an unsupported one costs the publish itself.
+    """
+    try:
+        parameters = inspect.signature(publish).parameters
+    except (TypeError, ValueError):
+        logger.warning(
+            "Could not introspect %s.publish; not adding %r. Deduplication "
+            "and trace propagation need it, so pass it explicitly if the "
+            "transport supports it.",
+            type(publish).__name__,
+            name,
+        )
+        return False
+    if any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    ):
+        return True
+    return name in parameters
 
 
 def _with_prefetch(
@@ -410,8 +450,10 @@ class MessageBroker:
             raise RuntimeError(
                 "MessageBroker.connect() must be called before publishing.",
             )
-        options.setdefault("message_id", str(uuid4()))
-        options["headers"] = inject_context(dict(options.get("headers") or {}))
+        if _publish_accepts(self.broker.publish, "message_id"):
+            options.setdefault("message_id", str(uuid4()))
+        if _publish_accepts(self.broker.publish, "headers"):
+            options["headers"] = inject_context(dict(options.get("headers") or {}))
         return await self.broker.publish(message, channel_name(channel), **options)
 
     def dead_letter(

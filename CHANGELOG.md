@@ -17,7 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   left uninstrumented, and it is the hop where the causal link is lost.
 
   `publish()` injects the W3C `traceparent` and the current request id
-  into the message headers; `MessageBroker.enable_tracing()` opens a span
+  into the message headers **when the transport takes a `headers`
+  keyword** — checked independently of `message_id`, because Redis
+  accepts one and not the other, so a "is this RabbitMQ?" branch would
+  have been wrong; `MessageBroker.enable_tracing()` opens a span
   per consume carrying the messaging semantic conventions
   (`messaging.system`, `messaging.destination.name`,
   `messaging.operation`) and marks it as failed when the handler raises.
@@ -69,7 +72,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `MessageBroker.publish()` fills `message_id` with a fresh UUID when the
-  caller does not pass one. Without a stable id there is no key to
+  caller does not pass one **and the transport accepts the keyword**.
+  `RedisBroker.publish` has no `message_id` parameter and no `**kwargs`,
+  so sending one unconditionally would turn every publish on that
+  transport into a `TypeError`; the signature is introspected once and
+  the keyword is dropped where it does not fit. A signature that cannot
+  be read declines and logs — losing deduplication costs a feature,
+  sending an unsupported keyword costs the publish. Without a stable id there is no key to
   deduplicate on and a redelivery is indistinguishable from a new event.
   An explicit `message_id` is kept untouched, which is how you key
   deduplication on something the domain owns instead.

@@ -308,3 +308,61 @@ class TestPublishGeneratesAnId:
         mq._started = True
         await mq.publish("orders.paid", {"a": 1})
         assert seen["message_id"]
+
+
+class TestTransportCompatibility:
+    """The keyword must never reach a transport that cannot take it.
+
+    Every earlier test in this file drove either RabbitMQ or a fake whose
+    ``publish`` accepted ``**options`` — so an unconditional
+    ``message_id`` looked fine and would have turned every publish on
+    Redis into a ``TypeError``. These assert against the real signatures.
+    """
+
+    def test_rabbitmq_takes_message_id(self) -> None:
+        from faststream.rabbit import RabbitBroker
+
+        from tempest_fastapi_sdk.queue.broker import _publish_accepts
+
+        assert _publish_accepts(RabbitBroker("amqp://x").publish, "message_id")
+
+    def test_redis_does_not_take_message_id(self) -> None:
+        """The regression: RedisBroker.publish has no such keyword."""
+        from faststream.redis import RedisBroker
+
+        from tempest_fastapi_sdk.queue.broker import _publish_accepts
+
+        assert not _publish_accepts(RedisBroker("redis://x").publish, "message_id")
+
+    def test_a_var_keyword_publish_accepts_anything(self) -> None:
+        from tempest_fastapi_sdk.queue.broker import _publish_accepts
+
+        async def publish(message: Any, channel: Any, **options: Any) -> None: ...
+
+        assert _publish_accepts(publish, "message_id")
+
+    def test_an_unreadable_signature_declines(self) -> None:
+        """Losing dedup beats losing the publish."""
+        from tempest_fastapi_sdk.queue.broker import _publish_accepts
+
+        assert not _publish_accepts(object(), "message_id")
+
+    async def test_publish_omits_it_on_a_narrow_transport(self) -> None:
+        from tempest_fastapi_sdk.queue import MessageBroker
+
+        seen: dict[str, Any] = {}
+
+        class _NarrowBroker:
+            async def publish(
+                self,
+                message: Any,
+                channel: Any,
+                *,
+                correlation_id: str | None = None,
+            ) -> None:
+                seen["called"] = True
+
+        mq = MessageBroker(_NarrowBroker())  # type: ignore[arg-type]
+        mq._started = True
+        await mq.publish("orders.paid", {"a": 1})
+        assert seen["called"] is True
