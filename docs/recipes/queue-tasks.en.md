@@ -226,6 +226,73 @@ Ignoring it silently would produce a queue that **looks** configured and discard
 A bare `QueueSpec(name=...)` stays portable on any transport: it asks for nothing beyond the name.
 
 
+## Event-path reliability
+
+The consumer policy is `REJECT_ON_ERROR`. A handler that raises issues `basic.reject` with `requeue=False` — no loop, and **gone**. Three pieces close that, mirroring what `TaskQueue` already has.
+
+### Dead-letter: a failure becomes a record
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker
+from tempest_fastapi_sdk.tasks import DbDeadLetterSink
+
+
+def wire_dead_letter(mq: MessageBroker, sink: DbDeadLetterSink) -> None:
+    """Send every terminal consumer failure to the sink.
+
+    Args:
+        mq (MessageBroker): The broker, before connect().
+        sink (DbDeadLetterSink): Where the dead event is stored.
+    """
+    mq.dead_letter(sink, max_attempts=3)
+```
+
+The sink is the **same** protocol the task path uses, so `DbDeadLetterSink`, the admin panel and `make_requeue_action` work unchanged — a dead task and a dead event on one screen.
+
+The mapping is deliberate: `task_name` carries the **channel**, `task_id` the broker's message id, and `kwargs["body"]` the raw body.
+
+!!! tip "Reported once, not per attempt"
+    The sink fires only on the delivery that exhausts `max_attempts`, read from the `x-death` header. Alerting on every attempt turns one bad message into a stream of alerts.
+
+### Delayed retry, performed by the broker
+
+AMQP has no per-message delay. The portable way is a pair of queues: the main one sends the rejected message to a queue whose only job is to hold it, and that queue's TTL returns it to the main exchange when it expires.
+
+```python
+from tempest_fastapi_sdk.queue import ConsumerRetryPolicy, retry_queues
+
+topology = retry_queues(
+    "orders.paid",
+    ConsumerRetryPolicy(max_attempts=3, delay_ms=30_000),
+    retry_exchange="orders.retry",
+    main_exchange="orders",
+    dead_exchange="orders.dead",
+)
+```
+
+The **broker** does the waiting, so a worker restart in the meantime changes nothing. The alternative is the `rabbitmq_delayed_message_exchange` plugin, simpler to declare and **requiring the plugin** — unavailable on several managed offerings, including the free CloudAMQP tier.
+
+!!! warning "The topology alone retries forever"
+    AMQP counts redeliveries in `x-death` but will not stop on its own. What enforces `max_attempts` is the `dead_letter()` middleware. Declaring the topology without installing the middleware yields infinite retries — which is why they are documented together.
+
+### Metrics
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker, QueueMetrics
+
+
+def wire_metrics(mq: MessageBroker) -> None:
+    """Publish consume counts and durations on the shared /metrics.
+
+    Args:
+        mq (MessageBroker): The broker, before connect().
+    """
+    mq.enable_metrics(QueueMetrics())
+```
+
+Produces `queue_messages_total{channel,status}` and `queue_message_duration_seconds{channel}`. Without it the consumer failure rate is invisible — the message is rejected, the broker discards it, and nothing counts.
+
+
 ## Background tasks — `TaskQueue`
 
 A **task queue** takes slow work out of the request and hands it to a worker. TaskIQ does this but spreads the API across a broker, a scheduler, a schedule source and `.kiq()`. `TaskQueue` folds it all into one object with an obvious vocabulary.

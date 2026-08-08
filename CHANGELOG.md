@@ -5,6 +5,48 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.203.0] — 2026-08-08
+
+### Added
+
+- **Dead letters, delayed retry and metrics on the event path** (#126).
+  The consumer ack policy is `REJECT_ON_ERROR`: a handler that raises
+  issues `basic.reject` with `requeue=False`. That avoids a poison-message
+  loop and, on its own, means the message is **discarded** — no error
+  surface, no dead queue, no metric. `TaskQueue` solved this for background
+  tasks in v0.157/v0.158; `MessageBroker` had nothing equivalent, 5 public
+  symbols against 29.
+
+  `MessageBroker.dead_letter(sink, max_attempts=...)` hands every terminal
+  failure to the **same** `DeadLetterSink` protocol the task path uses, so
+  `DbDeadLetterSink`, the admin panel and `make_requeue_action` work
+  unchanged and a dead task and a dead event land on one screen. The
+  mapping is deliberate: `task_name` carries the channel, `task_id` the
+  broker's message id, `kwargs["body"]` the raw body. The sink fires once,
+  on the delivery that exhausts the budget — read from AMQP's `x-death`
+  header, so a consumer restart does not reset it. The exception is always
+  re-raised, so the broker still rejects and any dead-letter routing still
+  applies.
+
+  `retry_queues(channel, ConsumerRetryPolicy(...), ...)` builds the
+  delayed-retry topology out of `QueueSpec`: the main queue dead-letters
+  into a retry queue whose only job is to hold the message, and that
+  queue's TTL returns it to the main exchange when it expires. The
+  **broker** does the waiting, so a worker restart mid-delay changes
+  nothing — unlike an in-process retry loop, which dies with the pod. The
+  `rabbitmq_delayed_message_exchange` plugin is simpler and requires the
+  plugin installed, which several managed offerings (including the free
+  CloudAMQP tier) do not provide; this builds on stock AMQP instead.
+
+  `QueueMetrics` mirrors `TaskMetrics` on the shared registry:
+  `queue_messages_total{channel,status}` and
+  `queue_message_duration_seconds{channel}`, installed with
+  `enable_metrics()`.
+
+  **Documented together on purpose:** the topology alone retries forever,
+  because AMQP counts redeliveries but does not stop on them. What
+  enforces `max_attempts` is the dead-letter middleware.
+
 ## [0.202.0] — 2026-08-08
 
 ### Added
