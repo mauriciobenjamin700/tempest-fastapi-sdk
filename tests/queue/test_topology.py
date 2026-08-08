@@ -12,6 +12,7 @@ beyond a name stays portable.
 """
 
 import pytest
+from faststream.rabbit import ExchangeType
 
 from tempest_fastapi_sdk.queue import (
     DeadLetterSpec,
@@ -273,7 +274,14 @@ class TestBrokerIntegration:
         assert [exchange.name for exchange in recorder.declared] == ["dlx"]
 
     async def test_the_exchange_is_durable_and_topic(self) -> None:
-        """A transient DLX would vanish on restart, taking routing with it."""
+        """A transient DLX would vanish on restart, taking routing with it.
+
+        The type is asserted as the enum, not as its string value:
+        ``RabbitExchange(type="topic")`` stores the raw string and
+        FastStream then reads ``exchange.type.value`` when declaring, so a
+        string here is an ``AttributeError`` at ``connect()`` — which a
+        tolerant ``getattr(..., "value", ...)`` assertion would hide.
+        """
         mq = MessageBroker.rabbitmq(AMQP_URL)
         recorder = _RecordingRabbitBroker()
         object.__setattr__(mq, "broker", recorder)
@@ -282,7 +290,7 @@ class TestBrokerIntegration:
         await mq.declare_topology()
         declared = recorder.declared[0]
         assert declared.durable is True
-        assert str(getattr(declared.type, "value", declared.type)) == "topic"
+        assert declared.type is ExchangeType.TOPIC
 
 
 class _FakeNatsBroker:
