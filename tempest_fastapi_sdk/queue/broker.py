@@ -30,6 +30,7 @@ from tempest_fastapi_sdk.queue.topology import (
     detect_transport,
     resolve_channel,
 )
+from tempest_fastapi_sdk.queue.tracing import inject_context
 
 if TYPE_CHECKING:
     from faststream.broker.core.usecase import BrokerUsecase
@@ -410,6 +411,7 @@ class MessageBroker:
                 "MessageBroker.connect() must be called before publishing.",
             )
         options.setdefault("message_id", str(uuid4()))
+        options["headers"] = inject_context(dict(options.get("headers") or {}))
         return await self.broker.publish(message, channel_name(channel), **options)
 
     def dead_letter(
@@ -480,6 +482,26 @@ class MessageBroker:
         self.broker.add_middleware(
             make_dedup_middleware(store, ttl_seconds=ttl_seconds),
         )
+
+    def enable_tracing(self) -> None:
+        """Open a span per consumed message, linked to the publish.
+
+        :meth:`publish` already injects the trace context and the current
+        request id into the message headers; this is the other half —
+        each consume runs inside a span carrying the messaging semantic
+        conventions, **linked** to the publishing trace rather than
+        parented by it, and with the publisher's request id restored so
+        the worker's log lines carry it.
+
+        A no-op without the ``[otel]`` extra, and non-recording when the
+        extra is present but no provider was configured. Request-id
+        propagation works either way.
+
+        Call it **before** :meth:`connect`.
+        """
+        from tempest_fastapi_sdk.queue.tracing import make_tracing_middleware
+
+        self.broker.add_middleware(make_tracing_middleware())
 
     def enable_metrics(self, metrics: Any) -> None:
         """Publish consume counts and durations for every channel.

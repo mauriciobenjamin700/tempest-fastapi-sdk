@@ -349,6 +349,33 @@ Marcação em **duas fases**: a primeira entrega marca `in_flight` e roda; suces
 !!! warning "Entrega concorrente é rejeitada, não ackada"
     Se outro worker está com a claim, a cópia levanta `ConcurrentDeliveryError` e o broker rejeita. Ackar seria perigoso: o worker em voo ainda pode falhar, e a cópia que poderia retentar teria sumido.
 
+### Tracing e request id atravessando a fila
+
+A requisição abre um trace, publica um evento e responde 201 — e o consumidor que cobra o cartão, escreve no ledger e manda o e-mail aparecia como **três traces órfãos**, sem pai e sem relação entre si.
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker
+
+
+def wire_tracing(mq: MessageBroker) -> None:
+    """Abre um span por mensagem consumida, ligado ao publish.
+
+    Args:
+        mq (MessageBroker): O broker, antes do connect().
+    """
+    mq.enable_tracing()
+```
+
+O `publish()` já injeta o `traceparent` e o **request id** corrente nos headers; o `enable_tracing()` é a outra metade.
+
+!!! info "Link, não filho"
+    O span do consumidor referencia o do publish como **link**, não como pai. A semconv recomenda isso para consumo assíncrono, e o motivo é prático: o consumidor pode rodar minutos depois, e um span filho dessa duração esticaria o trace da requisição e tornaria a latência dela ilegível.
+
+!!! tip "O request id vale mais que o span no dia a dia"
+    O `RequestIDMiddleware` já põe o id em toda linha de log HTTP. Agora o worker adota o id do publisher enquanto processa, então `grep` sozinho correlaciona requisição e consumo — sem abrir o Jaeger.
+
+Sem o extra `[otel]` tudo isso é no-op; a propagação do request id funciona de qualquer jeito, porque não depende de OpenTelemetry.
+
 ## Tarefas em background — `TaskQueue`
 
 Uma **fila de tarefas** tira trabalho lento do request e joga num worker. O TaskIQ faz isso, mas espalha a API entre broker, scheduler, schedule source e `.kiq()`. `TaskQueue` dobra tudo num objeto só, com vocabulário óbvio.

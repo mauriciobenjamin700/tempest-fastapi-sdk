@@ -5,6 +5,35 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.206.0] — 2026-08-08
+
+### Added
+
+- **Trace and request-id propagation across the queue** (#129). A request
+  opened a trace, published an event and answered 201; the consumer that
+  charged the card, wrote the ledger and sent the mail showed up as three
+  orphan traces with no parent and no relation to each other. The SDK
+  traced FastAPI, SQLAlchemy, httpx and genai — the queue was the one hop
+  left uninstrumented, and it is the hop where the causal link is lost.
+
+  `publish()` injects the W3C `traceparent` and the current request id
+  into the message headers; `MessageBroker.enable_tracing()` opens a span
+  per consume carrying the messaging semantic conventions
+  (`messaging.system`, `messaging.destination.name`,
+  `messaging.operation`) and marks it as failed when the handler raises.
+
+  The publishing trace is attached as a **link**, not as a parent. The
+  convention recommends it for asynchronous consumption and the reason is
+  practical: a consumer can run minutes after the publish, and a child
+  span of that duration stretches the request's trace and makes its
+  latency unreadable.
+
+  The consumer also **adopts the publisher's request id** for the
+  duration of the handler, so the worker's log lines carry the id of the
+  request that caused them. That is worth more day to day than the span
+  — it makes `grep` enough to correlate — and it is the half that works
+  with no `[otel]` extra at all.
+
 ## [0.205.0] — 2026-08-08
 
 ### Added

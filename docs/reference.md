@@ -283,6 +283,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.queue.dedup.MemoryDedupStore
 ::: tempest_fastapi_sdk.queue.dedup.RedisDedupStore
 ::: tempest_fastapi_sdk.queue.dedup.ConcurrentDeliveryError
+::: tempest_fastapi_sdk.queue.tracing.consume_span
+::: tempest_fastapi_sdk.queue.tracing.inject_context
+::: tempest_fastapi_sdk.queue.tracing.extract_context
     options:
       show_root_toc_entry: false
       show_submodules: false

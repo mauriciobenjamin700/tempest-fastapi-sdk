@@ -350,6 +350,33 @@ def wire_dedup(mq: MessageBroker, redis: object) -> None:
 !!! warning "A concurrent delivery is rejected, not acknowledged"
     If another worker holds the claim, this copy raises `ConcurrentDeliveryError` and the broker rejects it. Acknowledging would be dangerous: the in-flight worker may still fail, and the copy that could have retried would be gone.
 
+### Tracing and request id across the queue
+
+The request opens a trace, publishes an event and answers 201 — and the consumer that charges the card, writes the ledger and sends the mail showed up as **three orphan traces**, with no parent and no relation to each other.
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker
+
+
+def wire_tracing(mq: MessageBroker) -> None:
+    """Open a span per consumed message, linked to the publish.
+
+    Args:
+        mq (MessageBroker): The broker, before connect().
+    """
+    mq.enable_tracing()
+```
+
+`publish()` already injects the `traceparent` and the current **request id** into the headers; `enable_tracing()` is the other half.
+
+!!! info "Link, not child"
+    The consumer's span references the publish as a **link**, not as a parent. The semantic conventions recommend that for asynchronous consumption, and the reason is practical: the consumer may run minutes later, and a child span of that duration would stretch the request's trace and make its latency unreadable.
+
+!!! tip "The request id is worth more than the span day to day"
+    `RequestIDMiddleware` already puts the id on every HTTP log line. The worker now adopts the publisher's id while processing, so `grep` alone correlates request and consumption — without opening Jaeger.
+
+Without the `[otel]` extra all of this is a no-op; request-id propagation works either way, because it does not depend on OpenTelemetry.
+
 ## Background tasks — `TaskQueue`
 
 A **task queue** takes slow work out of the request and hands it to a worker. TaskIQ does this but spreads the API across a broker, a scheduler, a schedule source and `.kiq()`. `TaskQueue` folds it all into one object with an obvious vocabulary.

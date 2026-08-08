@@ -37,6 +37,9 @@ from tempest_fastapi_sdk.queue.topology import Transport as Transport
 from tempest_fastapi_sdk.queue.topology import (
     UnsupportedTopologyError as UnsupportedTopologyError,
 )
+from tempest_fastapi_sdk.queue.tracing import consume_span as consume_span
+from tempest_fastapi_sdk.queue.tracing import extract_context as extract_context
+from tempest_fastapi_sdk.queue.tracing import inject_context as inject_context
 
 __all__: list[str] = [
     "AsyncBrokerManager",
@@ -56,7 +59,10 @@ __all__: list[str] = [
     "RetryTopology",
     "Transport",
     "UnsupportedTopologyError",
+    "consume_span",
     "delivery_attempt",
+    "extract_context",
+    "inject_context",
     "retry_queues",
     "subscribe",
 ]
