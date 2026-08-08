@@ -114,7 +114,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   applies.
 
   `retry_queues(channel, ConsumerRetryPolicy(...), ...)` builds the
-  delayed-retry topology out of `QueueSpec`: the main queue dead-letters
+  delayed-retry topology and `MessageBroker.declare_retry_topology()`
+  declares **and binds** it. Binding is not optional: a chain whose
+  queues are declared but not bound routes a rejected message into an
+  exchange with nothing behind it, where RabbitMQ drops it silently.
+  Measured against a real broker — with the bindings the message returns
+  on schedule (1.5s gaps for a 1.5s TTL), without them it is delivered
+  once and vanishes. The topology itself is built out of `QueueSpec`: the main queue dead-letters
   into a retry queue whose only job is to hold the message, and that
   queue's TTL returns it to the main exchange when it expires. The
   **broker** does the waiting, so a worker restart mid-delay changes
