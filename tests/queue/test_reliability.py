@@ -392,3 +392,132 @@ class TestQueueMetrics:
             )
             == 1.0
         )
+
+
+class TestDeclareRetryTopology:
+    """Declaring the queues is not the same as wiring them.
+
+    Verified against a real RabbitMQ: with the bindings the message comes
+    back on schedule, and without them it is delivered once and vanishes
+    into an exchange with nothing behind it. These tests pin that all
+    three queues are declared *and* bound, which is the part a
+    queues-only assertion would miss.
+    """
+
+    class _RabbitRecorder:
+        """Stand-in RabbitBroker recording declarations and bindings.
+
+        Named with ``Rabbit`` on purpose: ``detect_transport`` classifies
+        by class name, so a neutrally-named stand-in reads as ``UNKNOWN``
+        and the method under test refuses before doing anything.
+        """
+
+        def __init__(self) -> None:
+            """Start with nothing recorded."""
+            self.exchanges: list[Any] = []
+            self.queues: list[Any] = []
+            self.bindings: list[tuple[str, str, str]] = []
+
+        async def declare_exchange(self, exchange: Any) -> Any:
+            """Record an exchange declaration.
+
+            Returns:
+                Any: The exchange.
+            """
+            self.exchanges.append(exchange)
+            return exchange
+
+        async def declare_queue(self, queue: Any) -> Any:
+            """Record a queue declaration and hand back a bindable stub.
+
+            Returns:
+                Any: An object whose ``bind`` records the binding.
+            """
+            self.queues.append(queue)
+            recorder = self
+
+            class _Bound:
+                async def bind(self, exchange: str, *, routing_key: str) -> None:
+                    recorder.bindings.append((queue.name, exchange, routing_key))
+
+            return _Bound()
+
+    def _topology(self) -> Any:
+        """Build a retry topology for the tests.
+
+        Returns:
+            Any: The topology.
+        """
+        return retry_queues(
+            "orders.paid",
+            retry_exchange="orders.retry",
+            main_exchange="orders",
+            dead_exchange="orders.dead",
+        )
+
+    async def _declare(self) -> _RabbitRecorder:
+        """Run declare_retry_topology against the recorder.
+
+        Returns:
+            _RabbitRecorder: The recorder, after declaration.
+        """
+        from tempest_fastapi_sdk.queue import MessageBroker
+
+        mq = MessageBroker.rabbitmq("amqp://guest:guest@localhost:5672/")
+        recorder = self._RabbitRecorder()
+        object.__setattr__(mq, "broker", recorder)
+        await mq.declare_retry_topology(self._topology())
+        return recorder
+
+    async def test_all_three_queues_are_declared(self) -> None:
+        recorder = await self._declare()
+        assert [q.name for q in recorder.queues] == [
+            "orders.paid",
+            "orders.paid.retry",
+            "orders.paid.dead",
+        ]
+
+    async def test_all_three_exchanges_are_declared(self) -> None:
+        recorder = await self._declare()
+        assert [e.name for e in recorder.exchanges] == [
+            "orders",
+            "orders.retry",
+            "orders.dead",
+        ]
+
+    async def test_every_queue_is_bound(self) -> None:
+        """The step whose absence made the chain silently drop messages."""
+        recorder = await self._declare()
+        assert recorder.bindings == [
+            ("orders.paid", "orders", "orders.paid"),
+            ("orders.paid.retry", "orders.retry", "orders.paid"),
+            ("orders.paid.dead", "orders.dead", "orders.paid"),
+        ]
+
+    async def test_the_exchanges_are_durable_topics(self) -> None:
+        from faststream.rabbit import ExchangeType
+
+        recorder = await self._declare()
+        for exchange in recorder.exchanges:
+            assert exchange.durable is True
+            assert exchange.type is ExchangeType.TOPIC
+
+    async def test_a_transport_without_exchanges_is_refused(self) -> None:
+        """Declaring nothing and reporting success would be worse."""
+        from tempest_fastapi_sdk.queue import MessageBroker
+
+        class _Nats:
+            pass
+
+        mq = MessageBroker.rabbitmq("amqp://guest:guest@localhost:5672/")
+        object.__setattr__(mq, "broker", _Nats())
+        with pytest.raises(NotImplementedError, match="exchanges"):
+            await mq.declare_retry_topology(self._topology())
+
+    def test_the_topology_carries_its_exchange_names(self) -> None:
+        """Without them the object cannot declare itself."""
+        topology = self._topology()
+        assert topology.channel == "orders.paid"
+        assert topology.main_exchange == "orders"
+        assert topology.retry_exchange == "orders.retry"
+        assert topology.dead_exchange == "orders.dead"

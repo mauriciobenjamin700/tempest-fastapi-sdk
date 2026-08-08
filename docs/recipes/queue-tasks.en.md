@@ -261,14 +261,32 @@ AMQP has no per-message delay. The portable way is a pair of queues: the main on
 ```python
 from tempest_fastapi_sdk.queue import ConsumerRetryPolicy, retry_queues
 
-topology = retry_queues(
+from tempest_fastapi_sdk.queue import (
+    ConsumerRetryPolicy,
+    MessageBroker,
+    retry_queues,
+)
+
+TOPOLOGY = retry_queues(
     "orders.paid",
     ConsumerRetryPolicy(max_attempts=3, delay_ms=30_000),
     retry_exchange="orders.retry",
     main_exchange="orders",
     dead_exchange="orders.dead",
 )
+
+
+async def wire_retry(mq: MessageBroker) -> None:
+    """Declare and bind the three queues of the retry chain.
+
+    Args:
+        mq (MessageBroker): The broker, already connected.
+    """
+    await mq.declare_retry_topology(TOPOLOGY)
 ```
+
+!!! danger "Declaring without binding discards the message"
+    Declaring the queues is not enough: each has to be **bound** to its exchange. Without the bindings, a rejected message is routed into an exchange with nothing behind it — and RabbitMQ drops it silently. Measured against a real broker: with the bindings the message comes back on schedule (1.5s gaps for a 1.5s TTL); without them it is delivered once and vanishes. `declare_retry_topology()` does both.
 
 The **broker** does the waiting, so a worker restart in the meantime changes nothing. The alternative is the `rabbitmq_delayed_message_exchange` plugin, simpler to declare and **requiring the plugin** — unavailable on several managed offerings, including the free CloudAMQP tier.
 
