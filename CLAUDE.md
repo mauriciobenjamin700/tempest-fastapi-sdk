@@ -120,7 +120,40 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   hook so generated migrations ship `id`/`is_active`/
   `created_at`/`updated_at` first. `alembic.ini` ships with
   `sqlalchemy.url` empty — URL resolves at runtime from env /
-  settings / constructor.
+  settings / constructor. **Transactions (v0.200.0):**
+  `transaction(session)` / `savepoint(session)` (+ `repo.transaction()` /
+  `.savepoint()`), depth counter in `session.info` so **every repository on
+  that session joins the same block**; `commit()`/`flush()`/`rollback()` on
+  the repository (`commit()` degrades to flush inside a block, `rollback()`
+  inside one raises), `autocommit=False`. `enable_sqlite_savepoints` is
+  applied to every SQLite engine `AsyncDatabaseManager` builds — without it
+  `RELEASE SAVEPOINT` **commits** on pysqlite, so test and production
+  disagreed about atomicity. **Search (v0.200.0):** `search()` portable
+  (escaped ILIKE, AND across words, OR across columns) +
+  `full_text_search()` (`websearch_to_tsquery` + `ts_rank` + `setweight` on
+  PG, falls back elsewhere; `supports_full_text` reports which);
+  `search_condition()`/`full_text_condition()` return the clause and
+  `where=` now takes `WhereClause = Q | ColumnElement[bool]`, so a search
+  paginates through `paginate()`. Regconfig is inlined, not bound — asyncpg
+  cannot infer `regconfig` for a placeholder. **Enum columns (v0.200.0):**
+  `TempestEnum` via `BaseModel.type_annotation_map`, so `Mapped[MyEnum]`
+  stores the **value**, gets a `CHECK` on SQLite and an `_enum`-suffixed
+  native type on PG; `enum_column()` for `default`/`index`. **BREAKING** —
+  the previous default stored `.name`. **Enum migrations (v0.200.0):**
+  `op.replace_enum` (rename+recreate+cast inside the transaction, defaults
+  read from `information_schema` and restored, `value_map=` for renames,
+  reversible; SQLite rebuilds via `copy_from` because batch mode otherwise
+  carries the stale CHECK), `sync_enum_types` autogenerate hook (compares
+  `pg_enum` / the CHECK — autogenerate compares neither), and
+  `render_enum_types` (without it **every migration touching an enum column
+  failed on import**). Both wired into `env.py.template`. **Query plans
+  (v0.200.0):** `explain_queries(session)` / `repo.explain()` → typed
+  `ExplainReport`/`QueryPlan`; `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` on
+  PG, `EXPLAIN QUERY PLAN` on SQLite reported as `PLAN_ONLY` with `None`
+  metrics; **writes are never re-analyzed**; plans fetched at driver level
+  because `session.execute` applies the wrapped statement's result mapping.
+  Recipes: `transactions.md`, `text-search.md`, `enum-columns.md`,
+  `query-plans.md`.
 - **Standardized exceptions** (`AppException` + subclasses) +
   `register_exception_handlers`. **OpenAPI error docs (v0.160.0):**
   `ErrorResponseSchema` (the `{detail, code, details}` envelope as a

@@ -4,8 +4,8 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from sqlalchemy import text
-from sqlalchemy.engine import make_url
+from sqlalchemy import event, text
+from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -15,6 +15,49 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import Pool
 
 from tempest_fastapi_sdk.db.model import BaseModel
+
+
+def enable_sqlite_savepoints(engine: AsyncEngine) -> None:
+    """Make ``SAVEPOINT`` behave on SQLite the way it does on PostgreSQL.
+
+    The ``pysqlite`` driver that ``aiosqlite`` builds on opens
+    transactions implicitly and, by default, never emits a ``BEGIN``.
+    SQLite therefore sees the ``SAVEPOINT`` as the outermost transaction,
+    and the matching ``RELEASE SAVEPOINT`` **commits** it. The damage is
+    invisible on the failure path — a rollback to the savepoint still
+    works — and only shows up when a nested block exits *cleanly* and
+    the surrounding transaction is later rolled back: the supposedly
+    pending rows are already durable.
+
+    That is the difference between the SDK's production backend and its
+    test backend silently disagreeing about atomicity, so the manager
+    applies SQLAlchemy's documented remedy to every SQLite engine it
+    builds: turn off the driver's implicit transaction handling, then
+    emit ``BEGIN`` explicitly when SQLAlchemy starts a transaction.
+
+    Idempotent per engine — re-registering the same handlers is
+    harmless, and the listeners are attached to ``engine.sync_engine``
+    because the driver-level events fire there, not on the async facade.
+
+    Args:
+        engine (AsyncEngine): The SQLite engine to configure. Passing a
+            non-SQLite engine would break its transaction handling, so
+            callers building their own engine must gate on the backend.
+
+    Notes:
+        ``tests/db/test_transaction.py`` pins the RELEASE path, which is
+        the one that regressed silently before this existed.
+    """
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _disable_implicit_begin(dbapi_connection: Any, _record: Any) -> None:
+        """Stop the driver from managing transactions on its own."""
+        dbapi_connection.isolation_level = None
+
+    @event.listens_for(engine.sync_engine, "begin")
+    def _emit_explicit_begin(connection: Connection) -> None:
+        """Open a real transaction so SAVEPOINT nests inside one."""
+        connection.exec_driver_sql("BEGIN")
 
 
 class AsyncDatabaseManager:
@@ -155,6 +198,8 @@ class AsyncDatabaseManager:
             kwargs["poolclass"] = self._poolclass
 
         self._engine = create_async_engine(self._db_url, **kwargs)
+        if self.is_sqlite:
+            enable_sqlite_savepoints(self._engine)
         self._session_maker = async_sessionmaker(
             self._engine,
             expire_on_commit=False,

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
+from contextlib import AbstractAsyncContextManager
 from datetime import date, datetime
 from typing import Any, Generic, List, NoReturn, TypeVar, cast
 from uuid import UUID
@@ -20,11 +22,31 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
 from tempest_fastapi_sdk.db.audit import BaseAuditLogModel, snapshot_model
-from tempest_fastapi_sdk.db.expressions import F, Q, build_filter_condition
+from tempest_fastapi_sdk.db.explain import ExplainReport, explain_queries
+from tempest_fastapi_sdk.db.expressions import (
+    F,
+    Q,
+    WhereClause,
+    build_filter_condition,
+)
 from tempest_fastapi_sdk.db.model import BaseModel
+from tempest_fastapi_sdk.db.search import (
+    ColumnRef,
+    TextSearchLanguage,
+    TextSearchWeight,
+    TokenMatch,
+    full_text_rank,
+    like_search_condition,
+    supports_full_text,
+)
+from tempest_fastapi_sdk.db.search import (
+    full_text_condition as build_full_text_condition,
+)
 from tempest_fastapi_sdk.db.signals import RepositorySignal, emit, has_handlers
+from tempest_fastapi_sdk.db.transaction import in_transaction, savepoint, transaction
 from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
@@ -125,6 +147,7 @@ class BaseRepository(Generic[ModelType]):
         bulk_create_conflict_message: str | None = None,
         bulk_update_conflict_message: str | None = None,
         audit_model: type[BaseAuditLogModel] | None = None,
+        autocommit: bool = True,
     ) -> None:
         """Initialize the repository.
 
@@ -185,6 +208,15 @@ class BaseRepository(Generic[ModelType]):
             bulk_update_conflict_message (str | None): Message used
                 when ``update_many`` or ``bulk_update`` raises
                 ``IntegrityError``.
+            autocommit (bool): Whether a write method commits on its own.
+                ``True`` (the default) keeps the historical behavior —
+                ``add`` / ``update`` / ``delete`` each end in a
+                ``COMMIT``. ``False`` makes every write flush instead,
+                leaving the commit to an explicit :meth:`commit` or to a
+                :meth:`transaction` block; reach for it when a whole
+                repository belongs to a caller-owned unit of work. It
+                does **not** disable :meth:`commit` — an explicit call
+                still commits.
 
         Raises:
             TypeError: When ``model`` is not a subclass of
@@ -224,6 +256,166 @@ class BaseRepository(Generic[ModelType]):
             bulk_update_conflict_message or f"Conflict updating {name} batch"
         )
         self._audit_model: type[BaseAuditLogModel] | None = audit_model
+        self.autocommit: bool = autocommit
+
+    async def _commit(self) -> None:
+        """End a write method, committing only when this repository owns it.
+
+        The write methods call this instead of ``session.commit()`` so
+        one implementation decides, in one place, whether the statement
+        becomes durable now or joins a larger unit of work. It flushes —
+        making the rows visible to the rest of the transaction without
+        committing — in either of two cases:
+
+        * a :func:`~tempest_fastapi_sdk.db.transaction.transaction` block
+          is open on the session, so the block owns the single commit; or
+        * the repository was built with ``autocommit=False``, so the
+          caller owns it.
+
+        Otherwise it commits, which is the default single-write behavior.
+        """
+        if self.autocommit and not in_transaction(self.session):
+            await self.session.commit()
+            return
+        await self.session.flush()
+
+    async def _rollback_after_failure(self) -> None:
+        """Undo a failed write, unless an open block owns the rollback.
+
+        SQLAlchemy requires a rollback after a failed flush before the
+        session can be used again, which is why each write method calls
+        this in its error path. Inside a
+        :func:`~tempest_fastapi_sdk.db.transaction.transaction` block,
+        rolling back here would silently discard every earlier write in
+        the block while the caller is still holding it open — so the
+        rollback is left to the block, which performs it as the
+        exception propagates out.
+        """
+        if in_transaction(self.session):
+            return
+        await self.session.rollback()
+
+    async def commit(self) -> None:
+        """Commit the session's pending work.
+
+        Exists because the repository is the boundary that owns the
+        session: a service composing business rules should be able to
+        say "this is the durable point" without reaching for
+        ``repository.session`` and coupling itself to SQLAlchemy. It is
+        also more honest than the alternative it replaces — calling
+        ``update`` purely for its commit side effect.
+
+        Inside an open
+        :func:`~tempest_fastapi_sdk.db.transaction.transaction` block
+        this flushes instead, because committing there would break the
+        block's all-or-nothing guarantee. That makes the call safe to
+        leave in place when a caller later wraps the code in a block,
+        which a bare ``session.commit()`` is not.
+        """
+        if in_transaction(self.session):
+            await self.session.flush()
+            return
+        await self.session.commit()
+
+    async def flush(self) -> None:
+        """Send pending changes to the database without committing.
+
+        Use it to make a row visible to subsequent statements in the
+        same transaction — typically to read back a server-generated
+        primary key before inserting a child row that references it.
+
+        This forwards to the session unconditionally; it is the one
+        member of the transaction group with no branching of its own,
+        and it is kept for the same reason as :meth:`commit` — so
+        callers never need a reference to ``session``.
+        """
+        await self.session.flush()
+
+    async def rollback(self) -> None:
+        """Discard the session's pending, uncommitted work.
+
+        Raises:
+            RuntimeError: When a
+                :func:`~tempest_fastapi_sdk.db.transaction.transaction`
+                block is open. A rollback there would discard the whole
+                block — including writes made by other repositories
+                sharing the session — while the caller believes it is
+                undoing only its own step. Raise or let the exception
+                propagate to abort the block, or wrap the recoverable
+                part in :meth:`savepoint`.
+        """
+        if in_transaction(self.session):
+            raise RuntimeError(
+                "rollback() inside an open transaction() block would discard "
+                "the entire block, not just this repository's work. Let the "
+                "exception propagate to abort the block, or use savepoint() "
+                "for a step you intend to recover from.",
+            )
+        await self.session.rollback()
+
+    def transaction(self) -> AbstractAsyncContextManager[AsyncSession]:
+        """Group every write on this session into a single commit.
+
+        Sugar for
+        :func:`tempest_fastapi_sdk.db.transaction.transaction` bound to
+        this repository's session. Because the block is tracked on the
+        session — not on the repository — repositories that share the
+        session join the same block:
+
+        ```python
+        async with orders.transaction():
+            await orders.add(order)
+            await items.add_all(rows)   # different repository, same block
+        ```
+
+        Returns:
+            AbstractAsyncContextManager[AsyncSession]: The block; the
+            session is yielded so it can be bound with ``as``.
+        """
+        return transaction(self.session)
+
+    def explain(
+        self,
+        *,
+        analyze: bool = True,
+    ) -> AbstractAsyncContextManager[ExplainReport]:
+        """Capture the query plan of everything run inside the block.
+
+        Sugar for
+        :func:`tempest_fastapi_sdk.db.explain.explain_queries` bound to
+        this repository's session. A development tool — it re-runs each
+        captured ``SELECT`` to measure it, so it does not belong in a
+        hot request path:
+
+        ```python
+        async with repository.explain() as report:
+            await repository.paginate(filters={"status": "open"}, page=3)
+        print(report.report())
+        ```
+
+        Args:
+            analyze (bool): Whether ``SELECT`` statements may be executed
+                a second time to collect measured timings. Writes are
+                never re-executed regardless.
+
+        Returns:
+            AbstractAsyncContextManager[ExplainReport]: The block; the
+            report fills in on exit.
+        """
+        return explain_queries(self.session, analyze=analyze)
+
+    def savepoint(self) -> AbstractAsyncContextManager[AsyncSession]:
+        """Run a nested, individually revertible unit of work.
+
+        Sugar for :func:`tempest_fastapi_sdk.db.transaction.savepoint`
+        bound to this repository's session. Use it for a step whose
+        failure you intend to catch without losing the surrounding work.
+
+        Returns:
+            AbstractAsyncContextManager[AsyncSession]: The savepoint
+            block; the session is yielded so it can be bound with ``as``.
+        """
+        return savepoint(self.session)
 
     def _require_audit_model(self) -> type[BaseAuditLogModel]:
         """Return the configured audit model or raise.
@@ -284,22 +476,141 @@ class BaseRepository(Generic[ModelType]):
                 query = query.where(condition)
         return query
 
-    def _apply_where(self, query: Any, where: Q | None) -> Any:
-        """Apply a :class:`Q` tree to a query, if given.
+    def _apply_where(self, query: Any, where: WhereClause | None) -> Any:
+        """Apply a :class:`Q` tree or a ready-made clause to a query.
+
+        A :class:`Q` is resolved against ``self.model`` first; anything
+        else is already a bound SQLAlchemy clause and goes straight into
+        the ``WHERE``. That second path is what lets a search condition
+        from :mod:`tempest_fastapi_sdk.db.search` compose with the normal
+        read methods instead of needing its own pagination.
 
         Args:
             query: The SQLAlchemy query to mutate.
-            where (Q | None): The condition tree, or ``None``.
+            where (WhereClause | None): The condition tree, a resolved
+                clause, or ``None``.
 
         Returns:
             The query, with the resolved clause added when non-empty.
         """
         if where is None:
             return query
-        clause = where.resolve(self.model)
+        clause = where.resolve(self.model) if isinstance(where, Q) else where
         if clause is not None:
             query = query.where(clause)
         return query
+
+    @property
+    def dialect(self) -> str:
+        """Return the SQLAlchemy dialect name of the bound database.
+
+        Read at call time rather than cached at construction because the
+        same repository class runs against PostgreSQL in production and
+        SQLite under test, and the search layer branches on it.
+
+        Returns:
+            str: The dialect name (``"postgresql"``, ``"sqlite"``, …).
+        """
+        return self.session.get_bind().dialect.name
+
+    @property
+    def supports_full_text(self) -> bool:
+        """Whether the bound database can rank a full-text search.
+
+        Lets a caller tell a ranked result from an unranked one — on
+        SQLite :meth:`full_text_search` still returns the right rows, it
+        just cannot order them by relevance.
+
+        Returns:
+            bool: ``True`` when the backend has a full-text engine.
+        """
+        return supports_full_text(self.dialect)
+
+    def search_condition(
+        self,
+        term: str,
+        *,
+        fields: Sequence[ColumnRef],
+        token_match: TokenMatch = TokenMatch.ALL,
+    ) -> ColumnElement[bool] | None:
+        """Build a portable substring-search condition over ``fields``.
+
+        Identical on every backend: each whitespace-separated token is
+        matched case-insensitively against every listed column, with the
+        user's own ``%`` and ``_`` escaped so they match literally.
+
+        Returned rather than executed so it composes with the normal
+        reads — pass it as ``where=`` to :meth:`paginate` and the search
+        is paginated and counted like any other filter:
+
+        ```python
+        page = await repository.paginate(
+            where=repository.search_condition("joao", fields=["name", "email"]),
+            page=2,
+        )
+        ```
+
+        Args:
+            term (str): The raw search term.
+            fields (Sequence[ColumnRef]): Columns to search, by name or
+                as mapped attributes (``UserModel.name``).
+            token_match (TokenMatch): Whether every token must match
+                (default) or any single one is enough.
+
+        Returns:
+            ColumnElement[bool] | None: The condition, or ``None`` for a
+            blank term — passing that back as ``where=`` applies no
+            filter, so an empty search box lists everything.
+
+        Raises:
+            ValidationException: When ``fields`` is empty or names a
+                column the model does not have.
+        """
+        return like_search_condition(self.model, term, fields, token_match=token_match)
+
+    def full_text_condition(
+        self,
+        term: str,
+        *,
+        fields: Sequence[ColumnRef],
+        language: TextSearchLanguage = TextSearchLanguage.PORTUGUESE,
+        weights: Mapping[str, TextSearchWeight] | None = None,
+        token_match: TokenMatch = TokenMatch.ALL,
+    ) -> ColumnElement[bool] | None:
+        """Build a full-text condition, or the portable fallback.
+
+        On PostgreSQL this stems the term (so ``comprou`` finds
+        ``comprar``), drops stop words and accepts the search syntax
+        users already type — ``"exact phrase"``, ``-excluded``. On any
+        other backend it degrades to :meth:`search_condition`, which
+        finds the right rows without stemming or ranking.
+
+        Args:
+            term (str): The raw search term.
+            fields (Sequence[ColumnRef]): Columns to search.
+            language (TextSearchLanguage): Stemming configuration.
+            weights (Mapping[str, TextSearchWeight] | None): Per-column
+                weight for the relevance score, keyed by column name.
+                Pass the same mapping to :meth:`full_text_search`.
+            token_match (TokenMatch): Used only by the fallback path.
+
+        Returns:
+            ColumnElement[bool] | None: The condition, or ``None`` for a
+            blank term.
+
+        Raises:
+            ValidationException: When ``fields`` is empty or names a
+                column the model does not have.
+        """
+        return build_full_text_condition(
+            self.model,
+            term,
+            fields,
+            language=language,
+            weights=weights,
+            dialect=self.dialect,
+            token_match=token_match,
+        )
 
     def _resolve_order_column(self, order_by: str) -> Any:
         """Resolve ``order_by`` to a real column on the model.
@@ -404,7 +715,7 @@ class BaseRepository(Generic[ModelType]):
         filters: dict[str, Any],
         for_update: bool = False,
         with_: list[str] | None = None,
-        where: Q | None = None,
+        where: WhereClause | None = None,
     ) -> ModelType:
         """Return the single record matching ``filters``.
 
@@ -417,7 +728,7 @@ class BaseRepository(Generic[ModelType]):
                 ``["author", "comments.replies"]``). Avoids the
                 lazy-load ``MissingGreenlet`` error when accessing
                 relationships outside the session's async context.
-            where (Q | None): A :class:`Q` condition tree ANDed with
+            where (WhereClause | None): A :class:`Q` condition tree ANDed with
                 ``filters`` for ``OR`` / ``NOT`` logic the dict cannot
                 express.
 
@@ -442,7 +753,7 @@ class BaseRepository(Generic[ModelType]):
         filters: dict[str, Any],
         for_update: bool = False,
         with_: list[str] | None = None,
-        where: Q | None = None,
+        where: WhereClause | None = None,
     ) -> ModelType | None:
         """Return the single record matching ``filters`` or ``None``.
 
@@ -453,7 +764,7 @@ class BaseRepository(Generic[ModelType]):
             for_update (bool): Whether to acquire a row-level lock.
             with_ (list[str] | None): Relationship paths to eager-load;
                 see :meth:`get`.
-            where (Q | None): A :class:`Q` condition tree ANDed with
+            where (WhereClause | None): A :class:`Q` condition tree ANDed with
                 ``filters``.
 
         Returns:
@@ -540,7 +851,7 @@ class BaseRepository(Generic[ModelType]):
     async def exists(
         self,
         filters: dict[str, Any],
-        where: Q | None = None,
+        where: WhereClause | None = None,
     ) -> bool:
         """Return whether at least one row matches ``filters``.
 
@@ -549,7 +860,7 @@ class BaseRepository(Generic[ModelType]):
 
         Args:
             filters (dict[str, Any]): The filter conditions.
-            where (Q | None): A :class:`Q` condition tree ANDed with
+            where (WhereClause | None): A :class:`Q` condition tree ANDed with
                 ``filters``.
 
         Returns:
@@ -595,7 +906,7 @@ class BaseRepository(Generic[ModelType]):
         order_by: Any | None = None,
         ascending: bool = True,
         with_: list[str] | None = None,
-        where: Q | None = None,
+        where: WhereClause | None = None,
     ) -> ModelType | None:
         """Return the first matching row or ``None``.
 
@@ -609,7 +920,7 @@ class BaseRepository(Generic[ModelType]):
             ascending (bool): Whether to order ascending.
             with_ (list[str] | None): Relationship paths to eager-load;
                 see :meth:`get`.
-            where (Q | None): A :class:`Q` condition tree ANDed with
+            where (WhereClause | None): A :class:`Q` condition tree ANDed with
                 ``filters``.
 
         Returns:
@@ -637,7 +948,7 @@ class BaseRepository(Generic[ModelType]):
         order_by: Any | None = None,
         ascending: bool = True,
         with_: list[str] | None = None,
-        where: Q | None = None,
+        where: WhereClause | None = None,
     ) -> list[ModelType]:
         """Return every record matching ``filters``.
 
@@ -653,7 +964,7 @@ class BaseRepository(Generic[ModelType]):
             with_ (list[str] | None): Relationship paths to eager-load;
                 see :meth:`get`. Uses ``selectinload``, so N related
                 rows cost one extra query, not N.
-            where (Q | None): A :class:`Q` condition tree ANDed with
+            where (WhereClause | None): A :class:`Q` condition tree ANDed with
                 ``filters`` for ``OR`` / ``NOT`` logic (e.g.
                 ``Q(a=1) | Q(b=2)``).
 
@@ -679,6 +990,209 @@ class BaseRepository(Generic[ModelType]):
         result = await self.session.execute(query)
         return list(result.unique().scalars().all())
 
+    async def search(
+        self,
+        term: str,
+        *,
+        fields: Sequence[ColumnRef],
+        token_match: TokenMatch = TokenMatch.ALL,
+        filters: dict[str, Any] | None = None,
+        where: WhereClause | None = None,
+        order_by: Any | None = None,
+        ascending: bool = True,
+        with_: List[str] | None = None,
+        limit: int | None = None,
+    ) -> List[ModelType]:
+        """Return rows whose ``fields`` contain the search term.
+
+        The portable layer: same behavior on PostgreSQL and SQLite, no
+        index or extension required. Each whitespace-separated token is
+        matched case-insensitively against every listed column, and the
+        user's own ``%`` / ``_`` are escaped so they match literally.
+
+        Returns ``[]`` when nothing matches, per the SDK collection
+        convention. A blank term applies no text filter, so the result
+        is whatever ``filters`` / ``where`` alone select — an empty
+        search box lists rather than hides.
+
+        Args:
+            term (str): The raw search term.
+            fields (Sequence[ColumnRef]): Columns to search, by name or
+                as mapped attributes (``UserModel.name``).
+            token_match (TokenMatch): Whether every token must match
+                (default) or any single one is enough.
+            filters (dict[str, Any] | None): Extra conditions ANDed with
+                the search, using the usual filter conventions.
+            where (WhereClause | None): A further condition ANDed in.
+            order_by: A SQLAlchemy column expression. ``None`` keeps
+                insertion order — this layer has no relevance score to
+                order by; use :meth:`full_text_search` for that.
+            ascending (bool): Order direction; ignored without
+                ``order_by``.
+            with_ (List[str] | None): Relationship paths to eager-load.
+            limit (int | None): Cap on rows returned.
+
+        Returns:
+            List[ModelType]: The matching rows.
+
+        Raises:
+            ValidationException: When ``fields`` is empty or names a
+                column the model does not have.
+            ValueError: When a ``with_`` path names a non-relationship.
+        """
+        condition = like_search_condition(
+            self.model, term, fields, token_match=token_match
+        )
+        return await self._run_search(
+            condition,
+            rank=None,
+            filters=filters,
+            where=where,
+            order_by=order_by,
+            ascending=ascending,
+            with_=with_,
+            limit=limit,
+        )
+
+    async def full_text_search(
+        self,
+        term: str,
+        *,
+        fields: Sequence[ColumnRef],
+        language: TextSearchLanguage = TextSearchLanguage.PORTUGUESE,
+        weights: Mapping[str, TextSearchWeight] | None = None,
+        token_match: TokenMatch = TokenMatch.ALL,
+        filters: dict[str, Any] | None = None,
+        where: WhereClause | None = None,
+        order_by: Any | None = None,
+        ascending: bool = True,
+        with_: List[str] | None = None,
+        limit: int | None = None,
+    ) -> List[ModelType]:
+        """Return rows matching the term, ranked by relevance on PostgreSQL.
+
+        Stems the term against ``language`` (so ``comprou`` finds
+        ``comprar``), drops stop words, and accepts the syntax users
+        already type in a search box — ``"exact phrase"`` and
+        ``-excluded``. Results come back ordered by ``ts_rank``,
+        strongest first.
+
+        On a backend without full-text support this degrades to
+        :meth:`search`: the right rows, unranked and unstemmed. Read
+        :attr:`supports_full_text` when the caller needs to know which
+        of the two it got.
+
+        Args:
+            term (str): The raw search term.
+            fields (Sequence[ColumnRef]): Columns to search.
+            language (TextSearchLanguage): Stemming configuration.
+            weights (Mapping[str, TextSearchWeight] | None): Per-column
+                weight for the score, keyed by column name; columns left
+                out rank lowest. A term in a title outranking the same
+                term in a body is this parameter.
+            token_match (TokenMatch): Used only on the fallback path;
+                PostgreSQL already treats separate words as ``AND``.
+            filters (dict[str, Any] | None): Extra conditions ANDed in.
+            where (WhereClause | None): A further condition ANDed in.
+            order_by: An explicit ordering that **replaces** the
+                relevance ranking. Leave it ``None`` to rank.
+            ascending (bool): Direction for an explicit ``order_by``.
+            with_ (List[str] | None): Relationship paths to eager-load.
+            limit (int | None): Cap on rows returned.
+
+        Returns:
+            List[ModelType]: The matching rows, ranked where the backend
+            can rank them.
+
+        Raises:
+            ValidationException: When ``fields`` is empty or names a
+                column the model does not have.
+            ValueError: When a ``with_`` path names a non-relationship.
+        """
+        condition = build_full_text_condition(
+            self.model,
+            term,
+            fields,
+            language=language,
+            weights=weights,
+            dialect=self.dialect,
+            token_match=token_match,
+        )
+        rank = (
+            None
+            if order_by is not None
+            else full_text_rank(
+                self.model,
+                term,
+                fields,
+                language=language,
+                weights=weights,
+                dialect=self.dialect,
+            )
+        )
+        return await self._run_search(
+            condition,
+            rank=rank,
+            filters=filters,
+            where=where,
+            order_by=order_by,
+            ascending=ascending,
+            with_=with_,
+            limit=limit,
+        )
+
+    async def _run_search(
+        self,
+        condition: ColumnElement[bool] | None,
+        *,
+        rank: ColumnElement[Any] | None,
+        filters: dict[str, Any] | None,
+        where: WhereClause | None,
+        order_by: Any | None,
+        ascending: bool,
+        with_: List[str] | None,
+        limit: int | None,
+    ) -> List[ModelType]:
+        """Execute a search query built by :meth:`search` or its full-text peer.
+
+        Shared so both entry points assemble the query the same way and
+        only differ in the condition and the ordering they hand in.
+
+        Args:
+            condition (ColumnElement[bool] | None): The text condition,
+                or ``None`` for a blank term (no text filter applied).
+            rank (ColumnElement[Any] | None): Relevance expression to
+                order by, descending. ``None`` leaves ordering to
+                ``order_by``.
+            filters (dict[str, Any] | None): Extra filter conditions.
+            where (WhereClause | None): A further condition ANDed in.
+            order_by: Explicit ordering, applied when ``rank`` is
+                ``None``.
+            ascending (bool): Direction for ``order_by``.
+            with_ (List[str] | None): Relationship paths to eager-load.
+            limit (int | None): Cap on rows returned.
+
+        Returns:
+            List[ModelType]: The matching rows.
+        """
+        query = select(self.model)
+        if condition is not None:
+            query = query.where(condition)
+        if filters:
+            query = self._apply_filters(query, filters)
+        query = self._apply_where(query, where)
+        if with_:
+            query = query.options(*self._relationship_options(with_))
+        if rank is not None:
+            query = query.order_by(rank.desc())
+        elif order_by is not None:
+            query = query.order_by(order_by if ascending else order_by.desc())
+        if limit is not None:
+            query = query.limit(limit)
+
+        result = await self.session.execute(query)
+        return list(result.unique().scalars().all())
+
     async def paginate(
         self,
         filters: dict[str, Any] | None = None,
@@ -687,7 +1201,7 @@ class BaseRepository(Generic[ModelType]):
         page_size: int = 20,
         ascending: bool = True,
         query: Select[Any] | None = None,
-        where: Q | None = None,
+        where: WhereClause | None = None,
     ) -> dict[str, Any]:
         """Return a single page of records matching ``filters``.
 
@@ -706,7 +1220,7 @@ class BaseRepository(Generic[ModelType]):
                 when ``order_by`` is ``None``.
             query (Select[Any] | None): A pre-built ``Select``; if
                 ``None``, defaults to ``select(self.model)``.
-            where (Q | None): A :class:`Q` condition tree ANDed with
+            where (WhereClause | None): A :class:`Q` condition tree ANDed with
                 ``filters``; applied to both the page and its count.
 
         Returns:
@@ -962,12 +1476,12 @@ class BaseRepository(Generic[ModelType]):
         try:
             await self._emit_signal(RepositorySignal.PRE_SAVE, model)
             self.session.add(model)
-            await self.session.commit()
+            await self._commit()
             await self.session.refresh(model)
             await self._emit_signal(RepositorySignal.POST_SAVE, model)
             return model
         except IntegrityError as exc:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             logger.warning(
                 "IntegrityError on %s.add: %s", self.model.__name__, exc.orig
             )
@@ -975,7 +1489,7 @@ class BaseRepository(Generic[ModelType]):
                 message=self._create_conflict_message,
             ) from exc
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     async def add_all(self, models: List[ModelType]) -> List[ModelType]:
@@ -995,13 +1509,13 @@ class BaseRepository(Generic[ModelType]):
             for model in models:
                 await self._emit_signal(RepositorySignal.PRE_SAVE, model)
             self.session.add_all(models)
-            await self.session.commit()
+            await self._commit()
             for model in models:
                 await self.session.refresh(model)
                 await self._emit_signal(RepositorySignal.POST_SAVE, model)
             return models
         except IntegrityError as exc:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             logger.warning(
                 "IntegrityError on %s.add_all: %s", self.model.__name__, exc.orig
             )
@@ -1009,7 +1523,7 @@ class BaseRepository(Generic[ModelType]):
                 message=self._bulk_create_conflict_message,
             ) from exc
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     async def save_with_outbox(
@@ -1042,11 +1556,11 @@ class BaseRepository(Generic[ModelType]):
         try:
             self.session.add(model)
             self.session.add(event)
-            await self.session.commit()
+            await self._commit()
             await self.session.refresh(model)
             return model
         except IntegrityError as exc:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             logger.warning(
                 "IntegrityError on %s.save_with_outbox: %s",
                 self.model.__name__,
@@ -1056,7 +1570,7 @@ class BaseRepository(Generic[ModelType]):
                 message=self._create_conflict_message,
             ) from exc
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     @staticmethod
@@ -1108,11 +1622,11 @@ class BaseRepository(Generic[ModelType]):
             await self.session.flush()
             entry = audit_model.for_create(model, actor=actor, context=context)
             self.session.add(entry)
-            await self.session.commit()
+            await self._commit()
             await self.session.refresh(model)
             return model
         except IntegrityError as exc:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             logger.warning(
                 "IntegrityError on %s.add_audited: %s",
                 self.model.__name__,
@@ -1122,7 +1636,7 @@ class BaseRepository(Generic[ModelType]):
                 message=self._create_conflict_message,
             ) from exc
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     async def update_audited(
@@ -1161,11 +1675,11 @@ class BaseRepository(Generic[ModelType]):
                 context=context,
             )
             self.session.add(entry)
-            await self.session.commit()
+            await self._commit()
             await self.session.refresh(model)
             return model
         except IntegrityError as exc:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             logger.warning(
                 "IntegrityError on %s.update_audited: %s",
                 self.model.__name__,
@@ -1175,7 +1689,7 @@ class BaseRepository(Generic[ModelType]):
                 message=self._update_conflict_message,
             ) from exc
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     async def delete_audited(
@@ -1203,9 +1717,9 @@ class BaseRepository(Generic[ModelType]):
             entry = audit_model.for_delete(model, actor=actor, context=context)
             await self.session.delete(model)
             self.session.add(entry)
-            await self.session.commit()
+            await self._commit()
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     async def update(self, model: ModelType) -> ModelType:
@@ -1226,12 +1740,12 @@ class BaseRepository(Generic[ModelType]):
         """
         try:
             await self._emit_signal(RepositorySignal.PRE_SAVE, model)
-            await self.session.commit()
+            await self._commit()
             await self.session.refresh(model)
             await self._emit_signal(RepositorySignal.POST_SAVE, model)
             return model
         except IntegrityError as exc:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             logger.warning(
                 "IntegrityError on %s.update: %s", self.model.__name__, exc.orig
             )
@@ -1239,7 +1753,7 @@ class BaseRepository(Generic[ModelType]):
                 message=self._update_conflict_message,
             ) from exc
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     async def update_many(self, models: List[ModelType]) -> List[ModelType]:
@@ -1257,12 +1771,12 @@ class BaseRepository(Generic[ModelType]):
         try:
             for model in models:
                 await self._emit_signal(RepositorySignal.PRE_SAVE, model)
-            await self.session.commit()
+            await self._commit()
             for model in models:
                 await self._emit_signal(RepositorySignal.POST_SAVE, model)
             return models
         except IntegrityError as exc:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             logger.warning(
                 "IntegrityError on %s.update_many: %s",
                 self.model.__name__,
@@ -1272,7 +1786,7 @@ class BaseRepository(Generic[ModelType]):
                 message=self._bulk_update_conflict_message,
             ) from exc
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     async def bulk_update(
@@ -1318,10 +1832,10 @@ class BaseRepository(Generic[ModelType]):
             query = self._apply_filters(query, filters)
             query = query.values(**resolved_values)
             result = cast(CursorResult[Any], await self.session.execute(query))
-            await self.session.commit()
+            await self._commit()
             return result.rowcount or 0
         except IntegrityError as exc:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             logger.warning(
                 "IntegrityError on %s.bulk_update: %s",
                 self.model.__name__,
@@ -1331,7 +1845,7 @@ class BaseRepository(Generic[ModelType]):
                 message=self._bulk_update_conflict_message,
             ) from exc
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     async def bulk_create_values(
@@ -1362,10 +1876,10 @@ class BaseRepository(Generic[ModelType]):
         try:
             query = insert(self.model).values(rows)
             result = cast(CursorResult[Any], await self.session.execute(query))
-            await self.session.commit()
+            await self._commit()
             return result.rowcount or len(rows)
         except IntegrityError as exc:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             logger.warning(
                 "IntegrityError on %s.bulk_create_values: %s",
                 self.model.__name__,
@@ -1375,7 +1889,7 @@ class BaseRepository(Generic[ModelType]):
                 message=self._bulk_create_conflict_message,
             ) from exc
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     async def bulk_upsert(
@@ -1448,10 +1962,10 @@ class BaseRepository(Generic[ModelType]):
 
         try:
             result = cast(CursorResult[Any], await self.session.execute(stmt))
-            await self.session.commit()
+            await self._commit()
             return result.rowcount or len(rows)
         except IntegrityError as exc:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             logger.warning(
                 "IntegrityError on %s.bulk_upsert: %s",
                 self.model.__name__,
@@ -1461,7 +1975,7 @@ class BaseRepository(Generic[ModelType]):
                 message=self._bulk_create_conflict_message,
             ) from exc
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     async def delete(self, id: UUID) -> None:
@@ -1499,20 +2013,20 @@ class BaseRepository(Generic[ModelType]):
 
             if instance is not None:
                 self.session.expunge(instance)
-            await self.session.commit()
+            await self._commit()
 
             if instance is not None:
                 await self._emit_signal(RepositorySignal.POST_DELETE, instance)
         except AppException:
             raise
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     async def delete_many(
         self,
         filters: dict[str, Any],
-        where: Q | None = None,
+        where: WhereClause | None = None,
     ) -> int:
         """Delete every row matching ``filters``.
 
@@ -1523,7 +2037,7 @@ class BaseRepository(Generic[ModelType]):
         Args:
             filters (dict[str, Any]): The conditions identifying the
                 rows to delete.
-            where (Q | None): A :class:`Q` condition tree ANDed with
+            where (WhereClause | None): A :class:`Q` condition tree ANDed with
                 ``filters``.
 
         Returns:
@@ -1535,10 +2049,10 @@ class BaseRepository(Generic[ModelType]):
                 query = self._apply_filters(query, filters)
             query = self._apply_where(query, where)
             result = cast(CursorResult[Any], await self.session.execute(query))
-            await self.session.commit()
+            await self._commit()
             return result.rowcount or 0
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     async def delete_batch(self, ids: List[UUID]) -> int:
@@ -1553,10 +2067,10 @@ class BaseRepository(Generic[ModelType]):
         try:
             query = delete(self.model).where(self.model.id.in_(ids))
             result = cast(CursorResult[Any], await self.session.execute(query))
-            await self.session.commit()
+            await self._commit()
             return result.rowcount or 0
         except Exception:
-            await self.session.rollback()
+            await self._rollback_after_failure()
             raise
 
     async def soft_delete(self, id: UUID) -> ModelType:
@@ -1599,13 +2113,13 @@ class BaseRepository(Generic[ModelType]):
     async def count(
         self,
         filters: dict[str, Any] | None = None,
-        where: Q | None = None,
+        where: WhereClause | None = None,
     ) -> int:
         """Count the rows matching ``filters``.
 
         Args:
             filters (dict[str, Any] | None): The filter conditions.
-            where (Q | None): A :class:`Q` condition tree ANDed with
+            where (WhereClause | None): A :class:`Q` condition tree ANDed with
                 ``filters``.
 
         Returns:

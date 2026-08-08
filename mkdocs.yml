@@ -120,6 +120,7 @@ plugins:
               - Computer vision (ONNX): recipes/vision.md
               - Database: recipes/database.md
               - Downloads: recipes/downloads.md
+              - Enum columns (safe on both databases): recipes/enum-columns.md
               - Errors in OpenAPI (Swagger): recipes/openapi-errors.md
               - Feature flags: recipes/feature-flags.md
               - File in the service (mixin): recipes/stored-files.md
@@ -141,6 +142,7 @@ plugins:
               - Observability (tracing): recipes/observability.md
               - Offline-first sync (delta): recipes/offline-sync.md
               - Permission guards (@requires): recipes/permission-guards.md
+              - Query plans (EXPLAIN): recipes/query-plans.md
               - Queue & Tasks: recipes/queue-tasks.md
               - React SPA inside FastAPI: recipes/react-spa.md
               - Real-time: recipes/realtime.md
@@ -156,8 +158,10 @@ plugins:
               - System checks (check-config): recipes/system-checks.md
               - tempestweb frontend + SDK: recipes/tempestweb-frontend.md
               - Testing: recipes/testing.md
+              - Text search (LIKE + full-text): recipes/text-search.md
               - Transactional email: recipes/email.md
               - Transactional outbox: recipes/outbox.md
+              - Transactions (commit and savepoint): recipes/transactions.md
               - Typing (static + runtime): recipes/typing.md
               - Unified file store: recipes/file-store.md
               - Uploads (backends): recipes/uploads.md
@@ -351,12 +355,14 @@ nav:
       - Auth flow (signup/reset): recipes/auth-flow.md
       - "Auth por introspecção (resource server)": recipes/introspection-auth.md
       - Banco de dados: recipes/database.md
+      - "Busca textual (LIKE + full-text)": recipes/text-search.md
       - Cache: recipes/cache.md
       - Camada HTTP: recipes/http.md
       - "Campos validados (tipos prontos)": recipes/fields.md
       - "Chat (conversas + mensagens)": recipes/chat.md
       - CLI: recipes/cli.md
       - "Cliente de integração (OpenAPI)": recipes/openapi-client.md
+      - "Colunas de enum (seguras nos dois bancos)": recipes/enum-columns.md
       - "Comentários + avaliações": recipes/reviews.md
       - "Console SQL no admin": recipes/admin-sql-console.md
       - "Deploy seguro (migrations + shutdown)": recipes/deploy-safety.md
@@ -393,6 +399,7 @@ nav:
       - Painel admin: recipes/admin.md
       - "Permissões object-level": recipes/authz.md
       - "Pesos de modelos (ciclo no Hub)": recipes/model-weights.md
+      - "Planos de query (EXPLAIN)": recipes/query-plans.md
       - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md
       - Segurança: recipes/security.md
       - "Server-Sent Events (SSE)": recipes/sse.md
@@ -405,6 +412,7 @@ nav:
       - Tempo real: recipes/realtime.md
       - Testes: recipes/testing.md
       - "Tipagem (estático + runtime)": recipes/typing.md
+      - "Transações (commit e savepoint)": recipes/transactions.md
       - Uploads (backends): recipes/uploads.md
       - Utilitários: recipes/utilities.md
       - "Visão computacional (ONNX)": recipes/vision.md

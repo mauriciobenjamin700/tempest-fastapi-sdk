@@ -141,6 +141,31 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.audit.snapshot_model
 ::: tempest_fastapi_sdk.db.audit.diff_snapshots
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
+::: tempest_fastapi_sdk.db.connection.enable_sqlite_savepoints
+::: tempest_fastapi_sdk.db.transaction.transaction
+::: tempest_fastapi_sdk.db.transaction.savepoint
+::: tempest_fastapi_sdk.db.transaction.in_transaction
+::: tempest_fastapi_sdk.db.transaction.transaction_depth
+::: tempest_fastapi_sdk.db.search.TextSearchLanguage
+::: tempest_fastapi_sdk.db.search.TextSearchWeight
+::: tempest_fastapi_sdk.db.search.TokenMatch
+::: tempest_fastapi_sdk.db.search.like_search_condition
+::: tempest_fastapi_sdk.db.search.full_text_condition
+::: tempest_fastapi_sdk.db.search.full_text_rank
+::: tempest_fastapi_sdk.db.search.supports_full_text
+::: tempest_fastapi_sdk.db.enums.TempestEnum
+::: tempest_fastapi_sdk.db.enums.enum_column
+::: tempest_fastapi_sdk.db.enums.enum_values
+::: tempest_fastapi_sdk.db.enums.enum_type_name
+::: tempest_fastapi_sdk.db.enum_migrations.ReplaceEnumOp
+::: tempest_fastapi_sdk.db.enum_migrations.EnumColumnRef
+::: tempest_fastapi_sdk.db.enum_migrations.EnumTypeState
+::: tempest_fastapi_sdk.db.enum_migrations.render_enum_types
+::: tempest_fastapi_sdk.db.enum_migrations.sync_enum_types
+::: tempest_fastapi_sdk.db.explain.explain_queries
+::: tempest_fastapi_sdk.db.explain.ExplainReport
+::: tempest_fastapi_sdk.db.explain.QueryPlan
+::: tempest_fastapi_sdk.db.explain.ExplainDetail
 
 ---
 

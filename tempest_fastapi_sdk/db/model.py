@@ -1,8 +1,8 @@
 """Base SQLAlchemy ORM model with the canonical four columns."""
 
-import re
+import enum
 from datetime import datetime
-from typing import Any
+from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
 from sqlalchemy import TIMESTAMP, Boolean, MetaData, Uuid, func
@@ -15,8 +15,10 @@ from sqlalchemy.orm import (
     mapped_column,
 )
 
+from tempest_fastapi_sdk.db.enums import TempestEnum
 from tempest_fastapi_sdk.utils.datetime import utcnow
 from tempest_fastapi_sdk.utils.dict import modify_dict
+from tempest_fastapi_sdk.utils.naming import to_snake_case
 
 NAMING_CONVENTION: dict[str, str] = {
     "ix": "ix_%(column_0_label)s",
@@ -31,20 +33,6 @@ Constraint names become deterministic across machines and DB engines,
 so ``alembic revision --autogenerate`` only emits real schema diffs
 instead of churn from auto-generated identifiers.
 """
-
-_CAMEL_TO_SNAKE_RE = re.compile(r"(?<!^)(?=[A-Z])")
-
-
-def _to_snake_case(name: str) -> str:
-    """Convert ``CamelCase`` to ``snake_case``.
-
-    Args:
-        name (str): The class name to convert.
-
-    Returns:
-        str: The snake_case version.
-    """
-    return _CAMEL_TO_SNAKE_RE.sub("_", name).lower()
 
 
 class BaseModel(AsyncAttrs, DeclarativeBase):
@@ -84,6 +72,22 @@ class BaseModel(AsyncAttrs, DeclarativeBase):
     __abstract__ = True
 
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+    type_annotation_map: ClassVar[dict[Any, Any]] = {
+        enum.Enum: TempestEnum(),
+    }
+    """Default SQL type for every ``Mapped[SomeEnum]`` annotation.
+
+    Routes enum columns through :class:`~tempest_fastapi_sdk.db.enums.TempestEnum`
+    so they store the member **value**, gain a ``CHECK`` constraint on
+    backends without a native enum type, and get a collision-free type
+    name on PostgreSQL — see that class for why each default differs from
+    SQLAlchemy's.
+
+    A model that needs SQLAlchemy's stock behavior for one column can
+    still declare it explicitly with ``mapped_column(sqlalchemy.Enum(...))``;
+    an explicit type always wins over the annotation map.
+    """
 
     id: Mapped[UUID] = mapped_column(
         Uuid(),
@@ -135,7 +139,7 @@ class BaseModel(AsyncAttrs, DeclarativeBase):
             str: The table name.
         """
         name = cls.__name__.removesuffix("Model")
-        return _to_snake_case(name) if name else _to_snake_case(cls.__name__)
+        return to_snake_case(name) if name else to_snake_case(cls.__name__)
 
     def __repr__(self) -> str:
         """Render the row as ``ClassName(col=value, ...)``.
@@ -246,4 +250,5 @@ class BaseModel(AsyncAttrs, DeclarativeBase):
 __all__: list[str] = [
     "NAMING_CONVENTION",
     "BaseModel",
+    "to_snake_case",
 ]

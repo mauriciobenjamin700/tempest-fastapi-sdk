@@ -5,6 +5,148 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.200.0] — 2026-08-08
+
+### Added
+
+- **Transaction control on `BaseRepository`.** Every write method used to
+  end in an unconditional `COMMIT`, which is right for one statement and
+  wrong the moment a business rule spans two — `orders.add()` was already
+  durable when `items.add_all()` failed.
+
+  `transaction(session)` groups a block into a single commit, and the depth
+  counter lives in `session.info` rather than on the repository, so **every**
+  repository bound to that `AsyncSession` joins the same block. That is what
+  makes a service orchestrating several repositories work without threading
+  context between them. Nesting is re-entrant; only the outermost exit
+  commits.
+
+  The repository gained `commit()` / `flush()` / `rollback()` so a service
+  never has to reach for `session` — and so a durable point can be stated
+  outright instead of calling `update()` for its commit side effect.
+  `commit()` degrades to a flush inside an open block, which makes the call
+  safe to leave in place when someone later wraps the code; `rollback()`
+  inside a block raises `RuntimeError`, because it would discard other
+  repositories' work while the caller believes it is undoing its own step.
+  `autocommit=False` makes a whole repository explicit; it disables only the
+  implicit commit, never an explicit `commit()`.
+
+  `savepoint()` isolates a step you intend to recover from. **This exposed a
+  real backend divergence:** the `pysqlite` driver under `aiosqlite` opens
+  transactions implicitly and emits no `BEGIN`, so SQLite treats the
+  `SAVEPOINT` as the outermost transaction and its `RELEASE` becomes a
+  **commit** — a nested block that exits cleanly turned durable even when the
+  outer block was rolled back afterwards. Invisible on the failure path,
+  which is why an initial probe missed it. `AsyncDatabaseManager` now applies
+  SQLAlchemy's documented remedy to every SQLite engine it builds
+  (`enable_sqlite_savepoints`), and the RELEASE path is pinned by a test, so
+  the test backend and the production backend agree about atomicity.
+  Recipe: `docs/recipes/transactions.md`.
+
+- **Text search, portable and full-text.** Two layers. `search()` is
+  tokenized escaped `ILIKE` — identical on PostgreSQL and SQLite, no index,
+  no extension, no migration; words combine with `AND`, columns with `OR`,
+  and the user's own `%` / `_` are escaped so a term like `100%` searches
+  for the character instead of matching every row. `full_text_search()` uses
+  `to_tsvector` / `websearch_to_tsquery` / `ts_rank` on PostgreSQL —
+  stemming, stop words, the `"quoted phrase"` and `-excluded` syntax users
+  already type, per-field weighting through `TextSearchWeight`, results
+  ordered by relevance — and degrades to the portable layer elsewhere, with
+  `supports_full_text` telling the caller which one it got.
+
+  The condition builders (`search_condition()` / `full_text_condition()`)
+  return the clause instead of executing it, and `where=` now accepts a raw
+  SQLAlchemy clause as well as a `Q`, so a search paginates and counts
+  through the existing `paginate()` / `count()` rather than needing its own.
+  Column references accept either a name or the mapped attribute
+  (`ArticleModel.title`), and `TextSearchLanguage` / `TextSearchWeight` /
+  `TokenMatch` are enums — no magic strings at the call site.
+
+  The text-search configuration is inlined as a SQL literal rather than
+  bound as a parameter: asyncpg prepares statements server-side and
+  PostgreSQL cannot infer `regconfig` for an untyped placeholder, so the
+  parameterized form would have failed on the production driver while
+  passing every test here. Recipe: `docs/recipes/text-search.md`.
+
+- **Enum columns that are type-safe in the database, not just in Python.**
+  `Mapped[MyEnum]` on a `BaseModel` now routes through `TempestEnum`, which
+  changes three SQLAlchemy defaults that each cost real safety: it stores the
+  member **value** rather than its name (so a report or a sibling service
+  reads `in_progress`, not `IN_PROGRESS`), it emits a `CHECK` constraint on
+  backends without a native enum type (the stock default gives SQLite a bare
+  `VARCHAR`, so the test database accepts data production rejects), and it
+  names the PostgreSQL type `order_status_enum` instead of `orderstatus`,
+  which collides with a table or column of that name. `enum_column()` spells
+  the same thing out when the column needs `default` / `index` /
+  `server_default`. Recipe: `docs/recipes/enum-columns.md`.
+
+- **Alembic enum migrations that actually work.** Three separate gaps, all
+  closed. `sync_enum_types` detects a changed member list, which
+  autogenerate misses on both backends — PostgreSQL keeps the labels in
+  `pg_enum` and SQLite inside a `CHECK`, neither of which is compared, and
+  SQLite's `VARCHAR(n)` only moves when the *longest* value changes, so not
+  even `compare_type` notices. `op.replace_enum(...)` performs the change by
+  renaming the old type, creating the new one, casting every dependent
+  column and dropping the old — ordinary DDL that runs inside Alembic's
+  transaction, unlike the `ALTER TYPE ... ADD VALUE` everyone reaches for
+  first, which cannot run in a transaction block on older servers and can
+  neither remove nor reorder. Column defaults are read from
+  `information_schema` and restored after the cast, `value_map=` keeps rows
+  through a rename, and `reverse()` gives `downgrade` for free.
+
+  `render_enum_types` fixes the third gap: Alembic rendered `TempestEnum` as
+  a dotted path into this package in a file that imports only `alembic.op`
+  and `sqlalchemy as sa`, so **every migration touching an enum column
+  failed on import**. It now renders a plain `sa.Enum` with the values
+  spelled out, which also makes the migration a real snapshot. Both hooks
+  are wired into the generated `env.py`.
+
+  Detection is deliberately conservative: an enum the backend cannot report
+  on is skipped rather than diffed against a guess, since a wrong
+  `replace_enum` would drop values from live rows. Offline (`--sql`) mode on
+  PostgreSQL raises instead of silently emitting a script that loses the
+  column default.
+
+- **`explain_queries()` — query plans for a block of code.** Wrap the code,
+  get one plan per statement: `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` on
+  PostgreSQL with cost, measured time and actual-versus-estimated rows;
+  `EXPLAIN QUERY PLAN` on SQLite, reported honestly as
+  `ExplainDetail.PLAN_ONLY` with `total_cost` and `duration_ms` left `None`
+  rather than defaulted to zero. Statements are recorded during the block
+  and explained on exit, so the explaining never perturbs what is being
+  measured, and plans captured before a failure survive it.
+
+  **Writes are never re-executed.** `EXPLAIN ANALYZE` runs what it explains,
+  so only `SELECT` is analyzed; anything else — including an unrecognized
+  raw `text()`, classified as a write on purpose — is explained without
+  `ANALYZE`. Plans are fetched at the driver level because routing them
+  through `session.execute` applies the *wrapped* statement's result mapping
+  to the plan rows, handing a UUID processor an integer node id.
+  `report.slowest` falls back from measured time to planner cost so it still
+  answers "which one first?" on a backend that times nothing. Recipe:
+  `docs/recipes/query-plans.md`.
+
+### Changed
+
+- **BREAKING: `Mapped[SomeEnum]` now stores the member value, not its
+  name.** A column declared as `Mapped[OrderStatus]` on a `BaseModel`
+  previously wrote `IN_PROGRESS`; it now writes `in_progress`. Enums whose
+  members are spelled `OPEN = "OPEN"` are unaffected. If yours are not, the
+  existing rows hold the old spelling and need a data migration —
+  `op.replace_enum(..., value_map={"IN_PROGRESS": "in_progress"})` performs
+  exactly that. On SQLite the column also gains a `CHECK` constraint it did
+  not have, and on PostgreSQL the generated type name gains an `_enum`
+  suffix. A column that must keep the previous behavior can declare it
+  explicitly with `mapped_column(sqlalchemy.Enum(...))`, which always wins
+  over the annotation map.
+
+- `where=` on `get` / `get_or_none` / `first` / `list` / `paginate` /
+  `cursor_paginate` / `count` / `exists` / `delete_many` (and their
+  `TenantScopedRepository` counterparts) accepts `WhereClause`, which is
+  `Q | ColumnElement[bool]` — a `Q` still resolves lazily, and a ready-made
+  clause now flows straight through. Purely widening; existing calls are
+  unchanged.
+
 ## [0.199.0] — 2026-08-02
 
 ### Fixed

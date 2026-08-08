@@ -39,7 +39,7 @@ from sqlalchemy import CursorResult, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
-from tempest_fastapi_sdk.db.expressions import Q
+from tempest_fastapi_sdk.db.expressions import WhereClause
 from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.db.repository import BaseRepository
 from tempest_fastapi_sdk.exceptions.base import AppException
@@ -174,7 +174,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         filters: dict[str, Any],
         for_update: bool = False,
         with_: builtins.list[str] | None = None,
-        where: Q | None = None,
+        where: WhereClause | None = None,
     ) -> TenantModelType:
         """See :meth:`BaseRepository.get` — scoped to the tenant.
 
@@ -184,7 +184,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
             for_update (bool): Whether to lock the selected rows.
             with_ (builtins.list[str] | None): Relationship names to eager-
                 load.
-            where (Q | None): Extra filter narrowing the tenant-scoped query.
+            where (WhereClause | None): Extra filter narrowing the tenant-scoped query.
 
         Returns:
             TenantModelType: The row.
@@ -201,7 +201,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         filters: dict[str, Any],
         for_update: bool = False,
         with_: builtins.list[str] | None = None,
-        where: Q | None = None,
+        where: WhereClause | None = None,
     ) -> TenantModelType | None:
         """See :meth:`BaseRepository.get_or_none` — scoped to the tenant.
 
@@ -211,7 +211,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
             for_update (bool): Whether to lock the selected rows.
             with_ (builtins.list[str] | None): Relationship names to eager-
                 load.
-            where (Q | None): Extra filter narrowing the tenant-scoped query.
+            where (WhereClause | None): Extra filter narrowing the tenant-scoped query.
 
         Returns:
             TenantModelType | None: The row, or ``None`` when absent or owned
@@ -224,13 +224,15 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
             where=where,
         )
 
-    async def exists(self, filters: dict[str, Any], where: Q | None = None) -> bool:
+    async def exists(
+        self, filters: dict[str, Any], where: WhereClause | None = None
+    ) -> bool:
         """See :meth:`BaseRepository.exists` — scoped to the tenant.
 
         Args:
             filters (dict[str, Any]): Column filters applied on top of the
                 tenant scope.
-            where (Q | None): Extra filter narrowing the tenant-scoped query.
+            where (WhereClause | None): Extra filter narrowing the tenant-scoped query.
 
         Returns:
             bool: Whether any row matched.
@@ -243,7 +245,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         order_by: Any | None = None,
         ascending: bool = True,
         with_: builtins.list[str] | None = None,
-        where: Q | None = None,
+        where: WhereClause | None = None,
     ) -> TenantModelType | None:
         """See :meth:`BaseRepository.first` — scoped to the tenant.
 
@@ -255,7 +257,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
             ascending (bool): Whether to sort ascending.
             with_ (builtins.list[str] | None): Relationship names to eager-
                 load.
-            where (Q | None): Extra filter narrowing the tenant-scoped query.
+            where (WhereClause | None): Extra filter narrowing the tenant-scoped query.
 
         Returns:
             TenantModelType | None: The row, or ``None`` when absent or owned
@@ -275,7 +277,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         order_by: Any | None = None,
         ascending: bool = True,
         with_: builtins.list[str] | None = None,
-        where: Q | None = None,
+        where: WhereClause | None = None,
     ) -> builtins.list[TenantModelType]:
         """See :meth:`BaseRepository.list` — scoped to the tenant.
 
@@ -287,7 +289,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
             ascending (bool): Whether to sort ascending.
             with_ (builtins.list[str] | None): Relationship names to eager-
                 load.
-            where (Q | None): Extra filter narrowing the tenant-scoped query.
+            where (WhereClause | None): Extra filter narrowing the tenant-scoped query.
 
         Returns:
             builtins.list[TenantModelType]: Matching rows, scoped to the
@@ -302,14 +304,14 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         )
 
     async def count(
-        self, filters: dict[str, Any] | None = None, where: Q | None = None
+        self, filters: dict[str, Any] | None = None, where: WhereClause | None = None
     ) -> int:
         """See :meth:`BaseRepository.count` — scoped to the tenant.
 
         Args:
             filters (dict[str, Any] | None): Column filters applied on top of
                 the tenant scope.
-            where (Q | None): Extra filter narrowing the tenant-scoped query.
+            where (WhereClause | None): Extra filter narrowing the tenant-scoped query.
 
         Returns:
             int: How many rows matched.
@@ -324,7 +326,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         page_size: int = 20,
         ascending: bool = True,
         query: Any | None = None,
-        where: Q | None = None,
+        where: WhereClause | None = None,
     ) -> dict[str, Any]:
         """See :meth:`BaseRepository.paginate` — scoped to the tenant.
 
@@ -342,7 +344,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
             ascending (bool): Whether to sort ascending.
             query (Any | None): A pre-built query to scope; ``None`` starts a
                 fresh one.
-            where (Q | None): Extra filter narrowing the tenant-scoped query.
+            where (WhereClause | None): Extra filter narrowing the tenant-scoped query.
 
         Returns:
             dict[str, Any]: The pagination envelope.
@@ -396,7 +398,9 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
             query=query,
         )
 
-    async def delete_many(self, filters: dict[str, Any], where: Q | None = None) -> int:
+    async def delete_many(
+        self, filters: dict[str, Any], where: WhereClause | None = None
+    ) -> int:
         """See :meth:`BaseRepository.delete_many` — scoped to the tenant.
 
         Because the tenant predicate is always added, an empty
@@ -406,7 +410,7 @@ class TenantScopedRepository(BaseRepository[TenantModelType]):
         Args:
             filters (dict[str, Any]): Column filters applied on top of the
                 tenant scope.
-            where (Q | None): Extra filter narrowing the tenant-scoped query.
+            where (WhereClause | None): Extra filter narrowing the tenant-scoped query.
 
         Returns:
             int: How many rows matched.

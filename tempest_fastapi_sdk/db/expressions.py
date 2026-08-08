@@ -413,10 +413,22 @@ class Q:
         return not_(combined) if self.negated else combined
 
 
+WhereClause = Q | ColumnElement[bool]
+"""What a repository's ``where=`` accepts.
+
+Either a :class:`Q` tree, which resolves lazily against the repository's
+model, or a SQLAlchemy clause that is already bound to its columns. The
+second form is what lets a condition built elsewhere — a text search, a
+hand-written ``and_`` — flow into ``list`` / ``paginate`` /
+``cursor_paginate`` without being re-expressed as filter keywords.
+"""
+
+
 __all__: list[str] = [
     "COMPARISON_OPS",
     "F",
     "Q",
+    "WhereClause",
     "build_filter_condition",
     "escape_like",
 ]

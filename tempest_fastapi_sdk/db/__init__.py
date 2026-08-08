@@ -29,8 +29,36 @@ from tempest_fastapi_sdk.db.backup import (
 from tempest_fastapi_sdk.db.connection import (
     AsyncDatabaseManager as AsyncDatabaseManager,
 )
+from tempest_fastapi_sdk.db.connection import (
+    enable_sqlite_savepoints as enable_sqlite_savepoints,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
+    EnumColumnRef as EnumColumnRef,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
+    EnumTypeState as EnumTypeState,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
+    ReplaceEnumOp as ReplaceEnumOp,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
+    render_enum_types as render_enum_types,
+)
+from tempest_fastapi_sdk.db.enum_migrations import (
+    sync_enum_types as sync_enum_types,
+)
+from tempest_fastapi_sdk.db.enums import ENUM_TYPE_SUFFIX as ENUM_TYPE_SUFFIX
+from tempest_fastapi_sdk.db.enums import TempestEnum as TempestEnum
+from tempest_fastapi_sdk.db.enums import enum_column as enum_column
+from tempest_fastapi_sdk.db.enums import enum_type_name as enum_type_name
+from tempest_fastapi_sdk.db.enums import enum_values as enum_values
+from tempest_fastapi_sdk.db.explain import ExplainDetail as ExplainDetail
+from tempest_fastapi_sdk.db.explain import ExplainReport as ExplainReport
+from tempest_fastapi_sdk.db.explain import QueryPlan as QueryPlan
+from tempest_fastapi_sdk.db.explain import explain_queries as explain_queries
 from tempest_fastapi_sdk.db.expressions import F as F
 from tempest_fastapi_sdk.db.expressions import Q as Q
+from tempest_fastapi_sdk.db.expressions import WhereClause as WhereClause
 from tempest_fastapi_sdk.db.migrations import AlembicHelper as AlembicHelper
 from tempest_fastapi_sdk.db.migrations import (
     DestructiveMigrationError as DestructiveMigrationError,
@@ -41,10 +69,23 @@ from tempest_fastapi_sdk.db.mixins import MFAMixin as MFAMixin
 from tempest_fastapi_sdk.db.mixins import SoftDeleteMixin as SoftDeleteMixin
 from tempest_fastapi_sdk.db.model import NAMING_CONVENTION as NAMING_CONVENTION
 from tempest_fastapi_sdk.db.model import BaseModel as BaseModel
+from tempest_fastapi_sdk.db.model import to_snake_case as to_snake_case
 from tempest_fastapi_sdk.db.outbox import BaseOutboxModel as BaseOutboxModel
 from tempest_fastapi_sdk.db.outbox import OutboxRelay as OutboxRelay
 from tempest_fastapi_sdk.db.outbox import OutboxStatus as OutboxStatus
 from tempest_fastapi_sdk.db.repository import BaseRepository as BaseRepository
+from tempest_fastapi_sdk.db.search import ColumnRef as ColumnRef
+from tempest_fastapi_sdk.db.search import TextSearchLanguage as TextSearchLanguage
+from tempest_fastapi_sdk.db.search import TextSearchWeight as TextSearchWeight
+from tempest_fastapi_sdk.db.search import TokenMatch as TokenMatch
+from tempest_fastapi_sdk.db.search import (
+    full_text_condition as full_text_condition,
+)
+from tempest_fastapi_sdk.db.search import full_text_rank as full_text_rank
+from tempest_fastapi_sdk.db.search import (
+    like_search_condition as like_search_condition,
+)
+from tempest_fastapi_sdk.db.search import supports_full_text as supports_full_text
 from tempest_fastapi_sdk.db.signals import RepositorySignal as RepositorySignal
 from tempest_fastapi_sdk.db.signals import SignalHandler as SignalHandler
 from tempest_fastapi_sdk.db.signals import clear_signals as clear_signals
@@ -54,6 +95,12 @@ from tempest_fastapi_sdk.db.signals import on_signal as on_signal
 from tempest_fastapi_sdk.db.slow_query import SlowQueryLogger as SlowQueryLogger
 from tempest_fastapi_sdk.db.tenant import (
     TenantScopedRepository as TenantScopedRepository,
+)
+from tempest_fastapi_sdk.db.transaction import in_transaction as in_transaction
+from tempest_fastapi_sdk.db.transaction import savepoint as savepoint
+from tempest_fastapi_sdk.db.transaction import transaction as transaction
+from tempest_fastapi_sdk.db.transaction import (
+    transaction_depth as transaction_depth,
 )
 from tempest_fastapi_sdk.db.user_model import BaseUserModel as BaseUserModel
 from tempest_fastapi_sdk.db.user_recovery_code_model import (
@@ -84,6 +131,7 @@ from tempest_fastapi_sdk.db.webpush_subscription_model import (
 
 __all__: list[str] = [
     "BASE_COLUMN_ORDER",
+    "ENUM_TYPE_SUFFIX",
     "NAMING_CONVENTION",
     "AlembicHelper",
     "AsyncDatabaseManager",
@@ -99,32 +147,60 @@ __all__: list[str] = [
     "BaseUserRefreshTokenModel",
     "BaseUserTokenModel",
     "BaseWebPushSubscriptionModel",
+    "ColumnRef",
     "DatabaseBackup",
     "DestructiveMigrationError",
+    "EnumColumnRef",
+    "EnumTypeState",
+    "ExplainDetail",
+    "ExplainReport",
     "F",
     "LocaleColumnMixin",
     "MFAMixin",
     "OutboxRelay",
     "OutboxStatus",
     "Q",
+    "QueryPlan",
+    "ReplaceEnumOp",
     "RepositorySignal",
     "SignalHandler",
     "SlowQueryLogger",
     "SoftDeleteMixin",
+    "TempestEnum",
     "TenantScopedRepository",
+    "TextSearchLanguage",
+    "TextSearchWeight",
+    "TokenMatch",
     "UnsupportedBackupBackendError",
     "UserTokenPurpose",
+    "WhereClause",
     "backfill_non_nullable_defaults",
     "clear_signals",
     "compose_hooks",
     "connect",
     "diff_snapshots",
     "disconnect",
+    "enable_sqlite_savepoints",
+    "enum_column",
+    "enum_type_name",
+    "enum_values",
+    "explain_queries",
+    "full_text_condition",
+    "full_text_rank",
+    "in_transaction",
+    "like_search_condition",
     "make_user_recovery_code_model",
     "make_user_refresh_token_model",
     "make_user_token_model",
     "make_web_push_subscription_model",
     "on_signal",
+    "render_enum_types",
     "reorder_base_columns_first",
+    "savepoint",
     "snapshot_model",
+    "supports_full_text",
+    "sync_enum_types",
+    "to_snake_case",
+    "transaction",
+    "transaction_depth",
 ]
