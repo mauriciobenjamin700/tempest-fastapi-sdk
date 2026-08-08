@@ -260,14 +260,32 @@ O AMQP não tem atraso por mensagem. O jeito portátil é um par de filas: a pri
 ```python
 from tempest_fastapi_sdk.queue import ConsumerRetryPolicy, retry_queues
 
-topology = retry_queues(
+from tempest_fastapi_sdk.queue import (
+    ConsumerRetryPolicy,
+    MessageBroker,
+    retry_queues,
+)
+
+TOPOLOGY = retry_queues(
     "orders.paid",
     ConsumerRetryPolicy(max_attempts=3, delay_ms=30_000),
     retry_exchange="orders.retry",
     main_exchange="orders",
     dead_exchange="orders.dead",
 )
+
+
+async def wire_retry(mq: MessageBroker) -> None:
+    """Declara e liga as três filas da cadeia de retry.
+
+    Args:
+        mq (MessageBroker): O broker, já conectado.
+    """
+    await mq.declare_retry_topology(TOPOLOGY)
 ```
+
+!!! danger "Declarar sem ligar descarta a mensagem"
+    Só declarar as filas não basta: cada uma precisa estar **ligada** à sua exchange. Sem os bindings, a rejeitada é roteada para uma exchange sem nada atrás — e o RabbitMQ descarta em silêncio. Medido contra um broker real: com os bindings a mensagem volta pontualmente (intervalos de 1,5s para um TTL de 1,5s); sem eles, é entregue uma vez e some. `declare_retry_topology()` faz as duas coisas.
 
 Quem espera é o **broker**, então restart do worker no meio não muda nada. A alternativa é o plugin `rabbitmq_delayed_message_exchange`, mais simples de declarar e que **exige o plugin** — indisponível em várias ofertas gerenciadas, incluindo o plano free do CloudAMQP.
 
