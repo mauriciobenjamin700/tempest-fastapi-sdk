@@ -293,6 +293,32 @@ def wire_metrics(mq: MessageBroker) -> None:
 Produces `queue_messages_total{channel,status}` and `queue_message_duration_seconds{channel}`. Without it the consumer failure rate is invisible — the message is rejected, the broker discards it, and nothing counts.
 
 
+### Prefetch — how many messages stay in flight
+
+Uncapped, the broker delivers as fast as the consumer acks. Three consequences, all in production: a slow handler accumulates messages in process memory; the first replica to connect takes the batch and its siblings sit idle; and the unacked backlog is held in RAM until the pod is OOM-killed and the whole lot is redelivered.
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker
+
+mq = MessageBroker.rabbitmq("amqp://guest:guest@localhost:5672/", prefetch=32)
+
+
+@mq.on("reports.generate", prefetch=1)
+async def generate(request: dict[str, str]) -> None:
+    """Heavy handler: a low cap, without throttling its neighbours."""
+```
+
+The broker value applies to the connection; the consumer value overrides it for that consumer alone.
+
+!!! warning "There is no good default I could guess"
+    Current behaviour is **uncapped**, and this PR does not change that — it exposes the knob. Too small serializes consumption and destroys throughput; too large recreates the problem. The right number depends on your handler's latency, and fixing one without measuring would repeat the mistake `DEFAULT_INTRA_OP_THREADS` made in modelops before it was re-justified. Measure with a known-latency consumer before choosing.
+
+!!! info "Prefetch is not handler concurrency"
+    Prefetch caps how many messages the **broker delivers** unacked. How many coroutines run at once is a separate decision. Confusing the two is common: `prefetch=1` does not serialize the handler if the handler itself fans out.
+
+!!! check "Publisher confirms are already on"
+    FastStream's `Channel` defaults to `publisher_confirms=True`, so a publish lost to a broker restart is not silent. Pinned by a test.
+
 ## Background tasks — `TaskQueue`
 
 A **task queue** takes slow work out of the request and hands it to a worker. TaskIQ does this but spreads the API across a broker, a scheduler, a schedule source and `.kiq()`. `TaskQueue` folds it all into one object with an obvious vocabulary.

@@ -292,6 +292,32 @@ def wire_metrics(mq: MessageBroker) -> None:
 Gera `queue_messages_total{channel,status}` e `queue_message_duration_seconds{channel}`. Sem isso a taxa de falha do consumidor é invisível — a mensagem é rejeitada, o broker descarta, e nada conta.
 
 
+### Prefetch — quantas mensagens ficam em voo
+
+Sem limite, o broker entrega tão rápido quanto o consumidor acka. Três consequências, todas em produção: um handler lento acumula mensagens na memória do processo; a primeira réplica a conectar puxa o lote e as outras ficam ociosas; e o backlog não-ackado fica em RAM até o pod morrer por OOM, devolvendo tudo para a fila.
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker
+
+mq = MessageBroker.rabbitmq("amqp://guest:guest@localhost:5672/", prefetch=32)
+
+
+@mq.on("relatorios.gerar", prefetch=1)
+async def gerar(pedido: dict[str, str]) -> None:
+    """Handler pesado: teto baixo, sem estrangular os vizinhos."""
+```
+
+O valor do broker vale para a conexão; o do consumidor sobrescreve só para ele.
+
+!!! warning "Não existe default bom que eu possa chutar"
+    O comportamento atual é **sem limite**, e este PR não muda isso — expõe o botão. Valor pequeno demais serializa o consumo e derruba o throughput; grande demais recria o problema. O número certo depende da latência do seu handler, e fixar um sem medir seria o mesmo erro que o `DEFAULT_INTRA_OP_THREADS` do modelops cometeu antes de ser rejustificado. Meça com um consumidor de latência conhecida antes de escolher.
+
+!!! info "Prefetch não é concorrência do handler"
+    Prefetch limita quantas mensagens o **broker entrega** sem ack. Quantas corrotinas rodam ao mesmo tempo é outra coisa. Confundir os dois é comum: `prefetch=1` não serializa o handler se você mesmo dispara tarefas em paralelo dentro dele.
+
+!!! check "Publisher confirms já vêm ligados"
+    O `Channel` do FastStream tem `publisher_confirms=True` por padrão, então um publish perdido em restart do broker não passa silencioso. Está pinado por teste.
+
 ## Tarefas em background — `TaskQueue`
 
 Uma **fila de tarefas** tira trabalho lento do request e joga num worker. O TaskIQ faz isso, mas espalha a API entre broker, scheduler, schedule source e `.kiq()`. `TaskQueue` dobra tudo num objeto só, com vocabulário óbvio.

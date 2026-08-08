@@ -5,6 +5,45 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.204.0] — 2026-08-08
+
+### Added
+
+- **`prefetch` on the broker and per consumer** (#128). Nothing in the
+  facade capped how many unacknowledged messages RabbitMQ pushes, so the
+  broker delivered as fast as the consumer acked. That shows up three
+  ways, all in production: a slow handler accumulates messages in process
+  memory, the first replica to connect takes the batch and leaves its
+  siblings idle, and the unacked backlog sits in RAM until the pod is
+  OOM-killed and the whole lot is redelivered.
+
+  `MessageBroker.rabbitmq(url, prefetch=32)` caps the connection;
+  `@mq.on(channel, prefetch=1)` overrides it for one consumer, which is
+  what keeps a heavy handler from hoarding deliveries without throttling
+  the cheap ones beside it. FastStream carries `basic.qos` on a `Channel`
+  object rather than as a scalar, so the flat keyword is translated; an
+  explicit `channel` / `default_channel` always wins, because rebuilding
+  one the caller configured would drop the confirms and QoS they also set
+  on it.
+
+  **The default is unchanged — still uncapped.** Picking a number without
+  measuring is the mistake `DEFAULT_INTRA_OP_THREADS` made before it was
+  re-justified: too small serializes consumption, too large recreates the
+  problem, and the right value depends on the handler's latency. The knob
+  is exposed and documented; changing the default is a separate, measured
+  decision.
+
+### Fixed
+
+- **`MessageBroker.on()` and `.publisher()` shadowed FastStream's own
+  `channel=` keyword.** Both take the channel as their first parameter,
+  which made `mq.on("orders.paid", channel=Channel(...))` a
+  `TypeError: got multiple values for argument 'channel'` — so the raw
+  AMQP channel, the escape hatch for anything the facade does not expose,
+  was unreachable. The parameter is positional-only now. Calls that pass
+  the channel positionally — every documented form — are unaffected;
+  `mq.on(channel="orders.paid")` has to drop the keyword.
+
 ## [0.203.0] — 2026-08-08
 
 ### Added

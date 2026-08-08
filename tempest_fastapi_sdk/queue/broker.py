@@ -94,6 +94,43 @@ def _require(module: str, extra: str) -> Any:
         ) from exc
 
 
+def _with_prefetch(
+    options: dict[str, Any],
+    prefetch: Any,
+    key: str,
+) -> dict[str, Any]:
+    """Put a RabbitMQ ``Channel`` carrying ``prefetch`` under ``key``.
+
+    Prefetch is ``basic.qos`` and FastStream carries it on a ``Channel``
+    object, not as a scalar keyword — so the facade's flat ``prefetch=``
+    has to be translated. Kept as a function so the translation is
+    testable without reaching into FastStream's private broker state,
+    where the configured channel actually ends up.
+
+    An explicit ``channel`` / ``default_channel`` always wins: silently
+    rebuilding one the caller configured would drop everything else they
+    set on it (publisher confirms, channel number, global QoS).
+
+    Args:
+        options (dict[str, Any]): The keyword arguments being assembled.
+        prefetch (Any): The cap, or ``None`` to leave ``options`` alone.
+        key (str): ``"default_channel"`` for the broker, ``"channel"``
+            for a single subscriber.
+
+    Returns:
+        dict[str, Any]: The same mapping, mutated in place for the
+        caller's convenience.
+
+    Raises:
+        ImportError: When the ``[queue]`` extra is not installed.
+    """
+    if prefetch is None or key in options:
+        return options
+    rabbit = _require("faststream.rabbit", "queue")
+    options[key] = rabbit.Channel(prefetch_count=int(prefetch))
+    return options
+
+
 class MessageBroker:
     """Typed, transport-agnostic publish/subscribe over FastStream.
 
@@ -214,12 +251,23 @@ class MessageBroker:
             url (str): AMQP URL, e.g.
                 ``"amqp://guest:guest@localhost:5672/"``.
             **options (Any): Extra keyword arguments forwarded to
-                ``faststream.rabbit.RabbitBroker``.
+                ``faststream.rabbit.RabbitBroker``, plus two the facade
+                consumes itself: ``declare_topology`` (see
+                :meth:`__init__`) and ``prefetch``, which caps how many
+                unacknowledged messages the broker pushes to this
+                connection. Without a cap the broker delivers as fast as
+                the consumer acks: one slow handler accumulates messages
+                in process memory, one replica can take the whole batch
+                and leave its siblings idle, and an unacked backlog is
+                held in RAM until the worker is OOM-killed and the whole
+                lot is redelivered. Per-consumer overrides go on
+                :meth:`on`.
 
         Returns:
             MessageBroker: A facade around a ``RabbitBroker``.
         """
         declare_topology = bool(options.pop("declare_topology", True))
+        _with_prefetch(options, options.pop("prefetch", None), "default_channel")
         rabbit = _require("faststream.rabbit", "queue")
         return cls(
             rabbit.RabbitBroker(url, **options),
@@ -295,6 +343,7 @@ class MessageBroker:
     def on(
         self,
         channel: str | QueueSpec,
+        /,
         **options: Any,
     ) -> Callable[[Handler], Handler]:
         """Register the decorated async function as a consumer of ``channel``.
@@ -317,6 +366,7 @@ class MessageBroker:
         Returns:
             Callable[[Handler], Handler]: The subscriber decorator.
         """
+        _with_prefetch(options, options.pop("prefetch", None), "channel")
         return cast(
             "Callable[[Handler], Handler]",
             self.broker.subscriber(self._bind(channel), **options),
@@ -423,7 +473,7 @@ class MessageBroker:
             else:
                 self.broker.subscriber(bound, **sub.options)(sub.handler)
 
-    def publisher(self, channel: str | QueueSpec, **options: Any) -> Any:
+    def publisher(self, channel: str | QueueSpec, /, **options: Any) -> Any:
         """Return a reusable publisher bound to ``channel``.
 
         Useful to declare a typed outbound endpoint once and call it
