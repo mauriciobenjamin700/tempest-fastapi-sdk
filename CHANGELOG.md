@@ -74,7 +74,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   everywhere.
 
   `connect()` declares the dead-letter exchanges the registered specs
-  name, as durable topic exchanges. RabbitMQ accepts a queue pointing at
+  name, as durable topic exchanges — with the type passed as
+  `ExchangeType.TOPIC`, since FastStream reads `exchange.type.value` when
+  declaring and a bare `"topic"` string is an `AttributeError` at
+  startup. RabbitMQ accepts a queue pointing at
   an `x-dead-letter-exchange` that does not exist and then discards at
   routing time, so declaring it is what makes the setting mean anything.
   `MessageBroker.rabbitmq(url, declare_topology=False)` opts out where the
