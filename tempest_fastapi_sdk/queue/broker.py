@@ -355,6 +355,51 @@ class MessageBroker:
             )
         return await self.broker.publish(message, channel_name(channel), **options)
 
+    def dead_letter(
+        self,
+        sink: Any,
+        *,
+        max_attempts: int = 3,
+    ) -> None:
+        """Route terminally-failed consumes to ``sink``.
+
+        Without this, a handler that raises loses its message: the ack
+        policy rejects it and, unless the queue declares a dead-letter
+        exchange, the broker discards it with no error surface at all.
+
+        The sink is the **same**
+        :class:`~tempest_fastapi_sdk.tasks.DeadLetterSink` protocol the
+        task path uses, so `DbDeadLetterSink` and the admin panel work
+        unchanged and a dead task and a dead event share one screen.
+
+        Call it **before** :meth:`connect`.
+
+        Args:
+            sink (Any): Where dead events go.
+            max_attempts (int): Deliveries to allow before reporting.
+                Must match the
+                :class:`~tempest_fastapi_sdk.queue.ConsumerRetryPolicy`
+                used to build the retry topology, if any.
+        """
+        from tempest_fastapi_sdk.queue.reliability import (
+            make_dead_letter_middleware,
+        )
+
+        self.broker.add_middleware(
+            make_dead_letter_middleware(sink, max_attempts=max_attempts),
+        )
+
+    def enable_metrics(self, metrics: Any) -> None:
+        """Publish consume counts and durations for every channel.
+
+        Call it **before** :meth:`connect`.
+
+        Args:
+            metrics (Any): A
+                :class:`~tempest_fastapi_sdk.queue.QueueMetrics`.
+        """
+        self.broker.add_middleware(metrics.middleware())
+
     def register(self, consumer: Consumer) -> None:
         """Wire a class-based :class:`Consumer` onto this broker.
 

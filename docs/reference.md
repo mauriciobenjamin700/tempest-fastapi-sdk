@@ -273,6 +273,11 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.queue.topology.QueueType
 ::: tempest_fastapi_sdk.queue.topology.Transport
 ::: tempest_fastapi_sdk.queue.topology.UnsupportedTopologyError
+::: tempest_fastapi_sdk.queue.reliability.ConsumerRetryPolicy
+::: tempest_fastapi_sdk.queue.reliability.RetryTopology
+::: tempest_fastapi_sdk.queue.reliability.retry_queues
+::: tempest_fastapi_sdk.queue.reliability.delivery_attempt
+::: tempest_fastapi_sdk.queue.reliability.QueueMetrics
     options:
       show_root_toc_entry: false
       show_submodules: false
