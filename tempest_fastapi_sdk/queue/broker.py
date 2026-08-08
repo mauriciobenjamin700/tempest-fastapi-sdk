@@ -647,7 +647,11 @@ class MessageBroker:
         rabbit = _require("faststream.rabbit", "queue")
         for name in exchanges:
             await self.broker.declare_exchange(
-                rabbit.RabbitExchange(name, type="topic", durable=True),
+                rabbit.RabbitExchange(
+                    name,
+                    type=rabbit.ExchangeType.TOPIC,
+                    durable=True,
+                ),
             )
             logger.info("Declared dead-letter exchange %s", name)
         return exchanges
