@@ -21,6 +21,7 @@ import logging
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, TypeVar, cast
+from uuid import uuid4
 
 from tempest_fastapi_sdk.queue.topology import (
     QueueSpec,
@@ -390,7 +391,12 @@ class MessageBroker:
                 serialized to JSON; ``str`` / ``bytes`` are sent as-is.
             **options (Any): Extra transport-specific publish options
                 forwarded to FastStream (e.g. ``headers=``,
-                ``correlation_id=``).
+                ``correlation_id=``). ``message_id`` is filled with a
+                fresh UUID when absent — without a stable id there is no
+                key for :meth:`deduplicate` to work from, and a
+                redelivery is indistinguishable from a new event. Pass
+                your own to key deduplication on something the domain
+                owns.
 
         Returns:
             Any: Whatever the transport's publish returns (often ``None``;
@@ -403,6 +409,7 @@ class MessageBroker:
             raise RuntimeError(
                 "MessageBroker.connect() must be called before publishing.",
             )
+        options.setdefault("message_id", str(uuid4()))
         return await self.broker.publish(message, channel_name(channel), **options)
 
     def dead_letter(
@@ -437,6 +444,41 @@ class MessageBroker:
 
         self.broker.add_middleware(
             make_dead_letter_middleware(sink, max_attempts=max_attempts),
+        )
+
+    def deduplicate(
+        self,
+        store: Any,
+        *,
+        ttl_seconds: int = 86_400,
+    ) -> None:
+        """Run each message id at most once, across redeliveries.
+
+        The transport is at-least-once: a restart, a requeue or a lost
+        ack all redeliver. This claims the id before the handler runs and
+        marks it done after, so the second delivery is skipped.
+
+        **Not exactly-once.** The mark and the handler's effect are not
+        atomic; a crash between them leaves a claim that expires and the
+        message runs again. When the effect is a row keyed by something
+        the domain owns, an ``INSERT ... ON CONFLICT DO NOTHING`` is
+        idempotent with no extra moving part and is the better answer.
+
+        Call it **before** :meth:`connect`.
+
+        Args:
+            store (Any): A
+                :class:`~tempest_fastapi_sdk.queue.DedupStore` —
+                ``MemoryDedupStore`` for a single replica,
+                ``RedisDedupStore`` for more than one.
+            ttl_seconds (int): How long an id is remembered. Must outlive
+                the retry topology's total delay, or the last retry runs
+                as if the message were new.
+        """
+        from tempest_fastapi_sdk.queue.dedup import make_dedup_middleware
+
+        self.broker.add_middleware(
+            make_dedup_middleware(store, ttl_seconds=ttl_seconds),
         )
 
     def enable_metrics(self, metrics: Any) -> None:

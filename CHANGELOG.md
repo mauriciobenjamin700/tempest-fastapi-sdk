@@ -5,6 +5,46 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.205.0] — 2026-08-08
+
+### Added
+
+- **Consume-side deduplication** (#127). The facade has always said
+  delivery is at-least-once and handlers should be idempotent, and
+  offered nothing to make one. `MessageBroker.deduplicate(store, ...)`
+  runs each message id at most once across redeliveries, with
+  `MemoryDedupStore` for a single replica and `RedisDedupStore` for more
+  than one — where `claim` is a single `SET NX EX`, so the atomicity two
+  workers racing on the same id depend on comes from Redis rather than
+  from a lock of our own.
+
+  Marking is **two-phase**: the first delivery claims `in_flight` and
+  runs, success marks `done` and the next delivery is skipped, and a
+  **failure releases the key** so a retry actually retries. Without that
+  third step the feature would trade "processed twice" for "processed
+  never", which is worse than the problem it solves.
+
+  A delivery arriving while another worker holds the claim raises
+  `ConcurrentDeliveryError` so the broker rejects it. Acknowledging would
+  be the dangerous choice — the in-flight worker may still fail, and the
+  copy that could have retried would be gone.
+
+  **Documented as not exactly-once**, because it is not: the mark and the
+  handler's effect are not atomic, and a crash between them leaves a claim
+  that expires and a message that runs again. The docs say so, and say
+  that when the effect is a row keyed by something the domain owns,
+  `INSERT ... ON CONFLICT DO NOTHING` is idempotent with no extra moving
+  part and is the better answer. This middleware is for effects that are
+  not rows.
+
+### Changed
+
+- `MessageBroker.publish()` fills `message_id` with a fresh UUID when the
+  caller does not pass one. Without a stable id there is no key to
+  deduplicate on and a redelivery is indistinguishable from a new event.
+  An explicit `message_id` is kept untouched, which is how you key
+  deduplication on something the domain owns instead.
+
 ## [0.204.0] — 2026-08-08
 
 ### Added
