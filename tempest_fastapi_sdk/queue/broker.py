@@ -456,6 +456,61 @@ class MessageBroker:
             options["headers"] = inject_context(dict(options.get("headers") or {}))
         return await self.broker.publish(message, channel_name(channel), **options)
 
+    async def declare_retry_topology(self, topology: Any) -> None:
+        """Declare and **bind** the three queues of a retry chain.
+
+        Declaring the queues is not enough. Each one has to be bound to
+        its exchange, and a chain declared without the bindings routes a
+        rejected message into an exchange with nothing behind it — where
+        RabbitMQ drops it silently. Verified against a real broker: with
+        the bindings the message comes back on schedule, without them it
+        is delivered once and disappears.
+
+        Idempotent, like every AMQP declaration: re-declaring an exchange
+        or queue with the same properties is a no-op, and re-binding an
+        existing binding does nothing.
+
+        Call it after :meth:`connect`, since it needs a live channel.
+
+        Args:
+            topology (Any): The
+                :class:`~tempest_fastapi_sdk.queue.RetryTopology` built
+                by :func:`~tempest_fastapi_sdk.queue.retry_queues`.
+
+        Raises:
+            NotImplementedError: On a transport without exchanges. The
+                chain is AMQP-specific, and pretending otherwise would
+                declare nothing and report success.
+        """
+        if self.transport is not Transport.RABBITMQ:
+            raise NotImplementedError(
+                "A retry topology needs AMQP exchanges; the "
+                f"{self.transport.value} transport has none.",
+            )
+        rabbit = _require("faststream.rabbit", "queue")
+        pairs = (
+            (topology.main, topology.main_exchange),
+            (topology.retry, topology.retry_exchange),
+            (topology.dead, topology.dead_exchange),
+        )
+        for spec, exchange_name in pairs:
+            exchange = rabbit.RabbitExchange(
+                exchange_name,
+                type=rabbit.ExchangeType.TOPIC,
+                durable=True,
+            )
+            await self.broker.declare_exchange(exchange)
+            declared = await self.broker.declare_queue(
+                resolve_channel(spec, Transport.RABBITMQ),
+            )
+            await declared.bind(exchange_name, routing_key=topology.channel)
+            logger.info(
+                "Bound %s to %s (routing key %s)",
+                spec.name,
+                exchange_name,
+                topology.channel,
+            )
+
     def dead_letter(
         self,
         sink: Any,

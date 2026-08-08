@@ -96,6 +96,13 @@ class ConsumerRetryPolicy:
 class RetryTopology:
     """The three queues a retried channel needs.
 
+    Carries the exchange names as well as the queues, because the queues
+    alone are not a working topology: each has to be **bound** to its
+    exchange, and a chain declared without the bindings routes a rejected
+    message into an exchange with nothing behind it — where RabbitMQ
+    silently drops it. See
+    :meth:`~tempest_fastapi_sdk.queue.MessageBroker.declare_retry_topology`.
+
     Attributes:
         main (QueueSpec): What the consumer subscribes to. Dead-letters
             to the retry exchange when the handler rejects.
@@ -105,11 +112,19 @@ class RetryTopology:
             plugin.
         dead (QueueSpec): Terminal. Nothing routes out of it — it is read
             by a human, or by the admin panel.
+        channel (str): The routing key every binding uses.
+        main_exchange (str): Exchange the main queue is bound to.
+        retry_exchange (str): Exchange the retry queue is bound to.
+        dead_exchange (str): Exchange the dead queue is bound to.
     """
 
     main: QueueSpec
     retry: QueueSpec
     dead: QueueSpec
+    channel: str
+    main_exchange: str
+    retry_exchange: str
+    dead_exchange: str
 
 
 def retry_queues(
@@ -160,6 +175,10 @@ def retry_queues(
     """
     effective = policy or ConsumerRetryPolicy()
     return RetryTopology(
+        channel=channel,
+        main_exchange=main_exchange,
+        retry_exchange=retry_exchange,
+        dead_exchange=dead_exchange,
         main=QueueSpec(
             name=channel,
             dead_letter=DeadLetterSpec(exchange=retry_exchange),
@@ -176,6 +195,7 @@ def retry_queues(
         ),
         dead=QueueSpec(
             name=f"{channel}{DEAD_SUFFIX}",
+            dead_letter=None,
             queue_type=queue_type,
         ),
     )
