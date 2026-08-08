@@ -19,6 +19,7 @@ import inspect as _inspect
 import pkgutil
 from collections.abc import Iterable, Sequence
 from types import ModuleType
+from typing import TypeGuard
 
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Mapper
@@ -53,7 +54,7 @@ def _iter_modules(root: ModuleType) -> Iterable[ModuleType]:
             continue
 
 
-def _is_concrete_model(obj: object) -> bool:
+def _is_concrete_model(obj: object) -> TypeGuard[type[BaseModel]]:
     """Return ``True`` when ``obj`` is a concrete, mapped ``BaseModel``.
 
     A *mapped* class is exactly a concrete table — abstract bases
@@ -66,9 +67,15 @@ def _is_concrete_model(obj: object) -> bool:
     Args:
         obj (object): A candidate pulled from a module namespace.
 
+    Declared as a ``TypeGuard`` so the caller's ``obj`` narrows to
+    ``type[BaseModel]``; a plain ``bool`` leaves it as the ``type`` that
+    ``inspect.getmembers`` reports, and every attribute read afterwards
+    has to be re-asserted.
+
     Returns:
-        bool: ``True`` only for a class that subclasses ``BaseModel``
-        (but is not ``BaseModel`` itself) and is mapped by SQLAlchemy.
+        TypeGuard[type[BaseModel]]: ``True`` only for a class that
+        subclasses ``BaseModel`` (but is not ``BaseModel`` itself) and is
+        mapped by SQLAlchemy.
     """
     if not _inspect.isclass(obj) or not issubclass(obj, BaseModel):
         return False

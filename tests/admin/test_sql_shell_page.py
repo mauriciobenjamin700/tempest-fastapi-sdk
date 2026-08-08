@@ -147,6 +147,37 @@ class TestConsolePage:
         assert all(entry.principal for entry in audits)
 
 
+def _mounted_paths(app: FastAPI) -> set[str]:
+    """Collect every route path reachable from ``app``, mounts included.
+
+    Starlette 1.5 stopped flattening ``include_router`` into ``app.routes``
+    and keeps an ``_IncludedRouter`` entry instead, which holds the child
+    routes on ``original_router``. A flat ``route.path`` comprehension
+    therefore raises ``AttributeError`` on the container, and — worse for
+    a test asserting a path is *absent* — a comprehension that merely
+    skipped the container would pass while seeing no admin route at all.
+    Descending through both shapes keeps the assertion meaningful.
+
+    Args:
+        app (FastAPI): The application to inspect.
+
+    Returns:
+        set[str]: Every registered path.
+    """
+    paths: set[str] = set()
+    pending: list[object] = list(app.routes)
+    while pending:
+        route = pending.pop()
+        path = getattr(route, "path", None)
+        if isinstance(path, str):
+            paths.add(path)
+        nested = getattr(route, "original_router", None)
+        if nested is not None:
+            pending.append(nested)
+        pending.extend(getattr(route, "routes", []))
+    return paths
+
+
 class TestConsoleIsOptIn:
     @pytest.mark.asyncio
     async def test_no_route_without_a_service(self) -> None:
@@ -163,8 +194,7 @@ class TestConsoleIsOptIn:
                 cookie_secure=False,
             ),
         )
-        paths = {route.path for route in app.routes}  # type: ignore[attr-defined]
-        assert "/admin/sql" not in paths
+        assert "/admin/sql" not in _mounted_paths(app)
         await db.disconnect()
 
 

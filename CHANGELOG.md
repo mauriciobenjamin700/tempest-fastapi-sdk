@@ -5,6 +5,70 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.201.0] — 2026-08-08
+
+### Security
+
+- **Dependency audit: 31 known advisories across 8 packages, down to 1.**
+  Refreshing the lock cleared everything with a published fix. The
+  remaining one has none: `chromadb` PYSEC-2026-311, a pre-authentication
+  code-injection in the ChromaDB **server**'s collections endpoint when
+  `trust_remote_code` is set. The SDK's `ChromaVectorStore` uses
+  `chromadb.PersistentClient` — embedded, no HTTP server — so nothing the
+  SDK does reaches it; anyone running `chroma run` themselves is exposed
+  and has no version to move to.
+
+- **Lower bounds raised where the flaw is reachable.** A floor is what
+  actually protects a consumer, since the lock ships to nobody:
+
+  - `pydantic-settings>=2.14.2` (base dependency) — GHSA-4xgf-cpjx-pc3j,
+    `NestedSecretsSettingsSource` follows a symlink out of `secrets_dir`,
+    reading files outside it and bypassing `secrets_dir_max_size`. The SDK
+    never sets `secrets_dir`, but `BaseAppSettings` is a
+    `pydantic-settings` class consumers extend and configure.
+  - `cryptography>=50.0.0` (`[webpush]` and two more) — PYSEC-2026-3552,
+    a Bleichenbacher oracle in PKCS#7 `EnvelopedData` decryption. Not
+    reachable through the SDK, which uses the library only to verify
+    webhook RSA signatures; raised as hygiene on a cryptographic
+    dependency.
+  - `pillow>=12.3.0` (`[genai-image]`, `[vision]`, `[all]`) — fifteen
+    image-parsing advisories. Reachable here, because processing
+    third-party images is exactly what those extras are for.
+
+  `torch` was deliberately **left at `>=2.2.0`**. PYSEC-2025-194 is memory
+  corruption in `torch.jit.script`, local, and the SDK never calls it;
+  a `>=2.13` floor is the most expensive constraint in this project —
+  it cuts CUDA and platform combinations and forces multi-gigabyte wheels
+  — which an unreachable local flaw does not justify.
+
+### Fixed
+
+- **The binary tree-ensemble defect was blamed on the wrong package.** It
+  was recorded as a `skl2onnx` conversion bug: a binary tree classifier
+  exported to ONNX returned a decision score in `[-1, 1]` where a
+  probability was expected. Holding `skl2onnx` 1.20.0, scikit-learn 1.9.0
+  and `onnx` 1.22.0 byte-identical and moving only the runtime settles it
+  — the graph was always correct and **`onnxruntime`** evaluated it wrong:
+  maximum absolute error of **1.0** against `predict_proba` on 1.27.0,
+  **9.5e-08** on 1.28.0.
+
+  `onnxruntime` floors move to `>=1.28.0` so a normal install cannot hit
+  it. The export still checks the running version through the new
+  `BINARY_TREE_FIXED_IN_ONNXRUNTIME` constant, because a floor only binds
+  the resolver — an environment assembled around it would otherwise be
+  wrong in silence. The recipe and the covers list are corrected too;
+  attributing a defect to the wrong layer sends the next reader to the
+  wrong changelog.
+
+- `discover_models` narrowed through a `bool` predicate, so every
+  attribute read after it needed re-asserting once typeshed tightened
+  `inspect.getmembers`. `_is_concrete_model` is a `TypeGuard` now.
+
+### Changed
+
+- `mkdocs`-only: `pymdown-extensions>=11.0.1` (CVE-2026-67422). Docs
+  group, never resolved by a consumer.
+
 ## [0.200.0] — 2026-08-08
 
 ### Added

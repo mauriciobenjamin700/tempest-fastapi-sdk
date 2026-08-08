@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.200.0"
+version = "0.201.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -37,7 +37,7 @@ dependencies = [
     "fastapi>=0.118.0",
     "httpx>=0.28.0",
     "pydantic>=2.13.4",
-    "pydantic-settings>=2.6.0",
+    "pydantic-settings>=2.14.2",
     "sqlalchemy[asyncio]>=2.0.49",
     "typer>=0.12.0",
 ]
@@ -64,7 +64,7 @@ websocket = [
 ]
 webpush = [
     "pywebpush>=2.0.0",
-    "cryptography>=42.0.0",
+    "cryptography>=50.0.0",
 ]
 metrics = [
     "psutil>=6.0.0",
@@ -134,11 +134,11 @@ genai-structured = [
     "lm-format-enforcer>=0.10.0",
 ]
 genai-onnx = [
-    "onnxruntime>=1.18.0",
+    "onnxruntime>=1.28.0",
     "tokenizers>=0.20.0",
 ]
 genai-vlm = [
-    "pillow>=10.0.0",
+    "pillow>=12.3.0",
     "torchvision>=0.17.0",
 ]
 genai-hub = [
@@ -146,7 +146,7 @@ genai-hub = [
 ]
 genai-image = [
     "diffusers>=0.31.0",
-    "pillow>=10.0.0",
+    "pillow>=12.3.0",
 ]
 modelops = [
     "psutil>=6.0.0",
@@ -154,7 +154,7 @@ modelops = [
 ]
 modelops-onnx = [
     "onnx>=1.16.0",
-    "onnxruntime>=1.18.0",
+    "onnxruntime>=1.28.0",
 ]
 modelops-sklearn = [
     "skl2onnx>=1.16.0",
@@ -187,7 +187,7 @@ all = [
     "redis>=5.0.0",
     "websockets>=13.0",
     "pywebpush>=2.0.0",
-    "cryptography>=42.0.0",
+    "cryptography>=50.0.0",
     "psutil>=6.0.0",
     "nvidia-ml-py>=12.560.30",
     "faststream[rabbit]>=0.7.1",
@@ -265,7 +265,7 @@ dev = [
     "python-multipart>=0.0.12",
     "fakeredis>=2.20.0",
     "pywebpush>=2.0.0",
-    "cryptography>=42.0.0",
+    "cryptography>=50.0.0",
     "psutil>=6.0.0",
     "nvidia-ml-py>=12.560.30",
     "redis>=5.0.0",
@@ -273,8 +273,8 @@ dev = [
     "trafilatura>=1.12.0",
     "pymupdf>=1.24.0",
     "rank-bm25>=0.2.2",
-    "pillow>=10.0.0",
-    "onnxruntime>=1.18.0",
+    "pillow>=12.3.0",
+    "onnxruntime>=1.28.0",
     "onnx>=1.16.0",
     "onnxscript>=0.1.0",
     "tokenizers>=0.20.0",
@@ -300,7 +300,7 @@ docs = [
     "mkdocs>=1.6.0",
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.27.0",
-    "pymdown-extensions>=10.0",
+    "pymdown-extensions>=11.0.1",
     "mkdocs-include-markdown-plugin>=7.0.0",
     "mkdocs-static-i18n>=1.2",
 ]
@@ -309,6 +309,13 @@ docs = [
 line-length = 88
 target-version = "py311"
 src = [".", "tests"]
+# ruff 0.16 started formatting code blocks inside Markdown. Left off here:
+# the docs deliberately align trailing comments into columns for teaching,
+# which the formatter collapses, and enabling it would rewrite 104 pages in
+# a diff unrelated to whatever change turns it on. The blocks are not
+# unchecked -- tests/test_docs_examples_*.py parse every one of them and
+# assert they are self-contained and free of module-level await.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = [

@@ -646,9 +646,14 @@ que lê o mesmo arquivo no navegador.
 !!! danger "Export que não reproduz o estimador não passa"
     O pipeline verifica contra as predições do próprio estimador e
     **levanta** se discordarem. É o único desfecho que ele se recusa a
-    deixar passar quieto: existe defeito conhecido de conversor
-    (árvore + binário no skl2onnx 1.20) que gera um grafo que roda liso e
-    responde errado.
+    deixar passar quieto: um classificador de árvore **binário**
+    respondia errado — probabilidade vinha como score em `[-1, 1]` — e o
+    grafo rodava liso mesmo assim. Medindo com `skl2onnx` 1.20.0,
+    `sklearn` 1.9.0 e `onnx` 1.22.0 fixos, movendo só o runtime, o culpado
+    ficou claro: **`onnxruntime`**, não o conversor. Erro de 1.0 contra
+    `predict_proba` na 1.27.0, 9.5e-08 na 1.28.0. O SDK exige
+    `onnxruntime>=1.28`, e o export ainda avisa se encontrar um runtime
+    antigo instalado à força.
 
 ## O que otimizar de verdade (medido)
 

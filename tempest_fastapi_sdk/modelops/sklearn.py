@@ -32,6 +32,7 @@ without it.
 
 from __future__ import annotations
 
+from itertools import takewhile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -455,20 +456,65 @@ final step of a pipeline where importing every sklearn module to test
 """
 
 
+BINARY_TREE_FIXED_IN_ONNXRUNTIME: tuple[int, int] = (1, 28)
+"""First ``onnxruntime`` release that evaluates a binary tree ensemble right.
+
+Measured against the released wheels with every other package held fixed
+(``skl2onnx`` 1.20.0, scikit-learn 1.9.0, ``onnx`` 1.22.0): on
+``onnxruntime`` 1.27.0 the probability output of a binary
+``RandomForestClassifier`` comes back as ``[-1, 1]`` / ``[-0, 0]`` — a
+decision score — for a maximum absolute error of ``1.0`` against
+``predict_proba``; on 1.28.0 the same graph yields the correct
+probabilities, error ``9.5e-08``.
+
+That comparison also **relocates the defect**. It was previously recorded
+here as a ``skl2onnx`` conversion bug; since the converter, scikit-learn
+and ``onnx`` were byte-identical across the two runs, the graph was
+always right and the fault was in ``onnxruntime``'s ``ai.onnx.ml``
+TreeEnsemble evaluation. The SDK's floor moved to ``onnxruntime>=1.28``
+so a normal install cannot hit it; the runtime is still checked at call
+time, because a floor only binds the resolver and an environment assembled
+around it would otherwise fail silently.
+"""
+
+
+def _onnxruntime_version() -> tuple[int, int] | None:
+    """Return the installed ``onnxruntime`` major/minor, or ``None``.
+
+    Returns:
+        tuple[int, int] | None: The version pair, or ``None`` when
+        ``onnxruntime`` is not installed — in which case the caller
+        cannot know which behavior applies and warns, the safe direction.
+    """
+    try:
+        import onnxruntime
+    except ImportError:
+        return None
+
+    parts: list[int] = []
+    for chunk in onnxruntime.__version__.split(".")[:2]:
+        digits = "".join(takewhile(str.isdigit, chunk))
+        parts.append(int(digits) if digits else 0)
+    pair = [*parts, 0, 0][:2]
+    return (pair[0], pair[1])
+
+
 def _converter_warnings(estimator: Any) -> list[str]:
-    """Return known converter problems for this estimator.
+    """Return known export problems for this estimator on this install.
 
-    Currently one, and it is severe enough to be worth naming: with
-    ``skl2onnx`` 1.20 and scikit-learn 1.9, a **binary** tree-ensemble
-    classifier converts to a graph whose probability output is a decision
-    score in ``[-1, 1]`` rather than a probability in ``[0, 1]``, and the
-    predicted labels can disagree with the estimator on a significant
-    fraction of rows. Multi-class tree ensembles and linear models are
-    unaffected.
+    Currently one, and it is severe enough to be worth naming: a
+    **binary** tree-ensemble classifier exported to ONNX returns a
+    decision score in ``[-1, 1]`` where a probability in ``[0, 1]`` is
+    expected, and the predicted labels can disagree with the estimator on
+    a significant fraction of rows. Multi-class tree ensembles and linear
+    models are unaffected.
 
-    No `skl2onnx` option changes it — ``zipmap``, ``raw_scores`` and the
-    target opset were all tried. Surfacing it on the export is what turns
-    a silent wrong answer into something you see before shipping.
+    The fault is in ``onnxruntime`` rather than in the converter, and it
+    is fixed from :data:`BINARY_TREE_FIXED_IN_ONNXRUNTIME` onwards — so
+    the warning is raised only for an install that will actually hit it.
+    Keeping it version-gated matters in both directions: warning on a
+    fixed runtime trains people to ignore the warning, and staying silent
+    on an affected one ships a wrong answer.
 
     Args:
         estimator (Any): The fitted estimator or pipeline.
@@ -485,12 +531,15 @@ def _converter_warnings(estimator: Any) -> list[str]:
     classes = getattr(final, "classes_", None)
     if classes is None or len(classes) != 2:
         return []
+    version = _onnxruntime_version()
+    if version is not None and version >= BINARY_TREE_FIXED_IN_ONNXRUNTIME:
+        return []
     return [
-        "binary tree-ensemble classifiers are known to convert incorrectly "
-        "with skl2onnx 1.20 + scikit-learn 1.9: the probability output is a "
-        "decision score in [-1, 1] and predicted labels can disagree with "
-        "the estimator. Verify this export before shipping, and consider a "
-        "linear model or a multi-class formulation if it fails."
+        "binary tree-ensemble classifiers evaluate incorrectly on "
+        "onnxruntime < 1.28: the probability output is a decision score in "
+        "[-1, 1] and predicted labels can disagree with the estimator. "
+        "Upgrade onnxruntime, verify this export before shipping, or "
+        "consider a linear model or a multi-class formulation."
     ]
 
 
@@ -890,6 +939,7 @@ def _smallest_artifact(
 
 
 __all__: list[str] = [
+    "BINARY_TREE_FIXED_IN_ONNXRUNTIME",
     "DEFAULT_OPSET",
     "EdgeBundle",
     "EdgeStage",

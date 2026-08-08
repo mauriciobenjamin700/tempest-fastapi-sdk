@@ -652,9 +652,14 @@ which reads the same file in the browser.
 !!! danger "An export that does not reproduce the estimator does not pass"
     The pipeline verifies against the estimator's own predictions and
     **raises** when they disagree. It is the one outcome it refuses to let
-    through quietly: there are known converter defects (binary tree
-    ensembles on skl2onnx 1.20) that produce a graph which runs smoothly and
-    answers wrongly.
+    through quietly: a **binary** tree classifier used to answer wrongly —
+    the probability came back as a score in `[-1, 1]` — while the graph ran
+    smoothly regardless. Measured with `skl2onnx` 1.20.0, `sklearn` 1.9.0
+    and `onnx` 1.22.0 held fixed and only the runtime moving, the culprit
+    was clear: **`onnxruntime`**, not the converter. Error of 1.0 against
+    `predict_proba` on 1.27.0, 9.5e-08 on 1.28.0. The SDK requires
+    `onnxruntime>=1.28`, and the export still warns if it finds an older
+    runtime force-installed.
 
 ## What is actually worth optimising (measured)
 

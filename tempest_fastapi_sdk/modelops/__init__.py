@@ -248,6 +248,9 @@ from tempest_fastapi_sdk.modelops.serving import (
 from tempest_fastapi_sdk.modelops.serving import OnnxPredictor as OnnxPredictor
 from tempest_fastapi_sdk.modelops.serving import Prediction as Prediction
 from tempest_fastapi_sdk.modelops.serving import PredictorInfo as PredictorInfo
+from tempest_fastapi_sdk.modelops.sklearn import (
+    BINARY_TREE_FIXED_IN_ONNXRUNTIME as BINARY_TREE_FIXED_IN_ONNXRUNTIME,
+)
 from tempest_fastapi_sdk.modelops.sklearn import DEFAULT_OPSET as DEFAULT_OPSET
 from tempest_fastapi_sdk.modelops.sklearn import EdgeBundle as EdgeBundle
 from tempest_fastapi_sdk.modelops.sklearn import EdgeStage as EdgeStage
@@ -277,6 +280,7 @@ from tempest_fastapi_sdk.modelops.static import (
 
 __all__: list[str] = [
     "BASELINE_FILENAME",
+    "BINARY_TREE_FIXED_IN_ONNXRUNTIME",
     "COMPACT_SCHEMA_VERSION",
     "COMPACT_SUFFIX",
     "DEFAULT_BINS",

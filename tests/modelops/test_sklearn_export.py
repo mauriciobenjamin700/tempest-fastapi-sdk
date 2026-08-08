@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from tempest_fastapi_sdk.modelops import sklearn as sklearn_export
 from tempest_fastapi_sdk.modelops.sklearn import (
     DEFAULT_OPSET,
     TensorDtype,
@@ -254,12 +255,17 @@ class TestVerification:
 
 
 class TestKnownConverterDefect:
-    """The binary tree-ensemble defect must be visible, not silent.
+    """The binary tree-ensemble defect must be flagged on affected installs.
 
-    skl2onnx 1.20 + scikit-learn 1.9 convert a binary tree ensemble to a
-    graph whose probability output is a decision score in [-1, 1]. No
-    converter option changes it, so the export flags it and verification
-    catches it.
+    A binary tree ensemble used to come back as a decision score in
+    [-1, 1] instead of a probability. Holding skl2onnx 1.20.0,
+    scikit-learn 1.9.0 and onnx 1.22.0 fixed while moving only the
+    runtime showed the fault is onnxruntime's, not the converter's: 1.27.0
+    gives a maximum absolute error of 1.0 against ``predict_proba``,
+    1.28.0 gives 9.5e-08. The warning is therefore gated on the installed
+    runtime, and both sides of that boundary are pinned here — warning on
+    a fixed runtime would train people to ignore it, and silence on an
+    affected one would ship a wrong answer.
     """
 
     @pytest.fixture
@@ -281,27 +287,69 @@ class TestKnownConverterDefect:
         )
         return model, features
 
-    def test_the_export_warns(
+    def test_an_affected_runtime_is_warned_about(
         self,
         binary_forest: tuple[Any, Any],
         tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Below the fix, the export must say so."""
+        monkeypatch.setattr(
+            sklearn_export,
+            "_onnxruntime_version",
+            lambda: (1, 27),
+        )
         model, features = binary_forest
         export = export_sklearn_to_onnx(model, features[:10], tmp_path / "b.onnx")
         assert export.warnings
         assert export.needs_verification is True
         assert "binary tree-ensemble" in export.warnings[0]
 
-    def test_verification_catches_the_disagreement(
+    def test_a_fixed_runtime_is_not_warned_about(
+        self,
+        binary_forest: tuple[Any, Any],
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """At and above the fix, a warning would be noise."""
+        monkeypatch.setattr(
+            sklearn_export,
+            "_onnxruntime_version",
+            lambda: sklearn_export.BINARY_TREE_FIXED_IN_ONNXRUNTIME,
+        )
+        model, features = binary_forest
+        export = export_sklearn_to_onnx(model, features[:10], tmp_path / "b.onnx")
+        assert export.warnings == []
+
+    def test_an_unknown_runtime_is_warned_about(
+        self,
+        binary_forest: tuple[Any, Any],
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """No onnxruntime means no way to know — warn, the safe direction."""
+        monkeypatch.setattr(sklearn_export, "_onnxruntime_version", lambda: None)
+        model, features = binary_forest
+        export = export_sklearn_to_onnx(model, features[:10], tmp_path / "b.onnx")
+        assert export.warnings
+
+    def test_the_installed_runtime_produces_correct_probabilities(
         self,
         binary_forest: tuple[Any, Any],
         tmp_path: Path,
     ) -> None:
+        """Pins the actual behavior of whatever runtime is installed here.
+
+        Fails if the resolved onnxruntime regresses, or if the SDK's
+        recorded boundary stops matching reality in either direction.
+        """
         model, features = binary_forest
         export = export_sklearn_to_onnx(model, features[:10], tmp_path / "b.onnx")
         check = verify_sklearn_onnx(model, export.path, features)
-        assert check.passed is False
-        assert check.mismatched > 0
+        version = sklearn_export._onnxruntime_version()
+        assert version is not None
+        fixed = version >= sklearn_export.BINARY_TREE_FIXED_IN_ONNXRUNTIME
+        assert check.passed is fixed
 
     def test_a_multiclass_tree_is_not_warned_about(
         self,
