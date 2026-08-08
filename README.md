@@ -326,7 +326,7 @@ settings = Settings()
 
 ```python
 # src/api/app.py
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -346,7 +346,7 @@ db = AsyncDatabaseManager(settings.DATABASE_URL)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     """Connect on startup, dispose on shutdown."""
     await db.connect()
     try:
@@ -1551,7 +1551,7 @@ Generated file lands at `alembic/versions/2026_05_16_1432-ae12cd34_add_users_tab
 # src/api/app.py — extend lifespan
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -1563,7 +1563,7 @@ from src.core.settings import settings
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Run pending migrations before serving traffic.
     helper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
     await asyncio.to_thread(helper.upgrade)
@@ -1974,7 +1974,7 @@ async def test_factory(session: AsyncSession) -> None:
 
 ```python
 # src/api/app.py
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -2012,7 +2012,7 @@ require_token = make_token_dependency(settings.TOKEN_SECRET)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     await db.connect()
     await redis.connect()
     try:
@@ -2533,7 +2533,7 @@ The cursor is opaque base64-url-safe JSON — clients never inspect it; they pas
 `AsyncRedisManager` wraps `redis.asyncio` with the same connect/disconnect/health-check surface as `AsyncDatabaseManager`. Install with `[cache]`.
 
 ```python
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, Depends, FastAPI
@@ -2550,7 +2550,7 @@ cache = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     """Open the pool on startup, close it on shutdown."""
     await cache.connect()
     try:
@@ -2682,7 +2682,7 @@ Install with `[queue]` (pulls `faststream[rabbit]`).
 ```python
 # src/queue/__init__.py
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -2711,7 +2711,7 @@ async def handle_order_paid(event: OrderPaid) -> None:
 
 # src/api/app.py
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     """Connect the broker on startup, drain it on shutdown."""
     await mq.connect()
     try:
@@ -2736,7 +2736,7 @@ async def pay_order(order_id: str) -> dict[str, str]:
 ```python
 # src/tasks/__init__.py
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -2760,7 +2760,7 @@ async def send_welcome_email(to: str, name: str) -> None:
 
 # src/api/app.py
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     """Connect the task broker on startup, close it on shutdown."""
     await tq.connect()
     try:
@@ -2839,7 +2839,7 @@ Wire it into the app lifespan next to the broker manager:
 ```python
 # src/api/app.py
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -2852,7 +2852,7 @@ scheduler = AsyncTaskScheduler(tasks)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     await tasks.connect()
     await scheduler.connect()
     await scheduler.run_in_background()   # dev / single-process services

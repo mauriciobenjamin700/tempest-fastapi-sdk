@@ -43,7 +43,7 @@ Methods: `get` / `post` / `put` / `patch` / `delete` (plus a generic
 Pass a `RetryPolicy` and tune the breaker thresholds at construction:
 
 ```python
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -66,7 +66,7 @@ client = HTTPClient(
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Close the shared connection pool on shutdown."""
     yield
     await client.aclose()

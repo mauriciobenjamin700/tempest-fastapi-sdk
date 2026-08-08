@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
@@ -111,7 +111,7 @@ class AsyncRedisManager:
         return self._client
 
     @asynccontextmanager
-    async def get_client_context(self) -> AsyncIterator[Redis]:
+    async def get_client_context(self) -> AsyncGenerator[Redis, None]:
         """Yield the live client inside an ``async with`` block.
 
         The manager owns the lifecycle — exiting the context does

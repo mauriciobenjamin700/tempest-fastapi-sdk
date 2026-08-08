@@ -146,7 +146,7 @@ local); cada ação devolve só o **fragmento** (`document=False`) que o
 HTMX troca no lugar:
 
 ```python
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from uuid import UUID
 
@@ -163,7 +163,7 @@ from src.web.widgets import task_widget
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     await db.connect()
     await db.create_tables()
     yield

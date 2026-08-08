@@ -352,7 +352,7 @@ Abra e feche a engine junto com a aplicação:
 
 ```python
 # src/api/app.py
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -361,7 +361,7 @@ from src.api.dependencies.resources import db
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Open the database on startup, dispose it on shutdown."""
     await db.connect()
     yield
@@ -1497,7 +1497,7 @@ de data ordena cronologicamente e torna conflitos de merge óbvios.
 # src/api/app.py — dentro do lifespan
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -1509,7 +1509,7 @@ from src.core.settings import settings
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Run pending migrations, then serve."""
     helper = AlembicHelper("alembic.ini", db_url=settings.DATABASE_URL)
     await asyncio.to_thread(helper.upgrade)
@@ -1624,7 +1624,7 @@ para toda instrução acima de um limiar. Anexe uma vez no boot:
 ```python
 # src/api/app.py — depois de db.connect()
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -1635,7 +1635,7 @@ from src.api.dependencies.resources import db
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Connect, instrument slow queries, then serve."""
     await db.connect()
     slow = SlowQueryLogger(db.engine, threshold_ms=200.0)

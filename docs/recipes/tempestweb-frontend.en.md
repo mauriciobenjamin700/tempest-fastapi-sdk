@@ -38,7 +38,7 @@ POSTs, and the frontend build served by `make_web_app_router` (included
 **last**):
 
 ```python
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
@@ -76,7 +76,7 @@ db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     await db.connect()
     await db.create_tables()
     yield

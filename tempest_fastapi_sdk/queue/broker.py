@@ -18,7 +18,7 @@ publish with :meth:`publish`. The raw broker stays reachable at
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
@@ -330,7 +330,7 @@ class MessageBroker:
         self._started = False
 
     @asynccontextmanager
-    async def lifespan(self) -> AsyncIterator[MessageBroker]:
+    async def lifespan(self) -> AsyncGenerator[MessageBroker, None]:
         """Connect on entry, disconnect on exit — for scripts and tests.
 
         Long-lived apps should call :meth:`connect` / :meth:`disconnect`

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
@@ -306,7 +306,7 @@ class AsyncTaskScheduler:
         return self._loop_task
 
     @asynccontextmanager
-    async def lifespan(self) -> AsyncIterator[TaskiqScheduler]:
+    async def lifespan(self) -> AsyncGenerator[TaskiqScheduler, None]:
         """Yield the scheduler inside an ``async with`` block.
 
         Connects on entry, disconnects on exit. The in-process loop is

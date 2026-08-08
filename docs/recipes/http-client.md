@@ -42,7 +42,7 @@ devolvendo um `httpx.Response`.
 Passe um `RetryPolicy` e ajuste os limites do breaker na construção:
 
 ```python
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -65,7 +65,7 @@ client = HTTPClient(
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Fecha o connection pool compartilhado no shutdown."""
     yield
     await client.aclose()

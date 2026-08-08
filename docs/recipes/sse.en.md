@@ -117,7 +117,7 @@ for you.
     the `finally`. `on_disconnect=` replaces that boilerplate:
 
     ```python
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
     from tempest_fastapi_sdk import sse_response
 
     async def lifecycle_aware() -> AsyncIterator[bytes]:
@@ -467,6 +467,7 @@ sessions and feature flags use; no raw `redis.asyncio`:
 ```python
 # src/api/app.py
 import asyncio
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -480,7 +481,7 @@ cache = AsyncRedisManager(**settings.redis_kwargs())
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Connect Redis, wire the cross-worker broker, run its fan-out loop."""
     await cache.connect()
     broker = SSEBroker(redis=cache.client, channel_prefix="sse")
@@ -537,6 +538,7 @@ would get the message.
 
 ```python
 # src/api/app.py
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -561,7 +563,7 @@ async def _fan(evt: dict) -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await mq.connect()          # opens the connection and starts the subscriber
     app.state.broker = broker   # the same get_broker the endpoints use resolves this
     try:

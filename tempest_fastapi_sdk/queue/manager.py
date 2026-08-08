@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
@@ -129,7 +129,7 @@ class AsyncQueueManager:
         return await self.broker.publish(message, *args, **kwargs)
 
     @asynccontextmanager
-    async def lifespan(self) -> AsyncIterator[BrokerUsecase[Any, Any]]:
+    async def lifespan(self) -> AsyncGenerator[BrokerUsecase[Any, Any], None]:
         """Yield the broker inside an ``async with`` block.
 
         Connects on entry, disconnects on exit. Convenient for short

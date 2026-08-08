@@ -9,7 +9,7 @@ Bater no banco repetidamente para os mesmos dados caros custa latência e carga.
 
 ```python
 # src/api/app.py
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -22,7 +22,7 @@ cache = AsyncRedisManager(**settings.redis_kwargs())   # url + decode_responses
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await cache.connect()           # primeira chamada — sem isso, .client levanta RuntimeError
     try:
         yield

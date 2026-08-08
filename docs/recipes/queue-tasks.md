@@ -55,6 +55,7 @@ Ligue o ciclo de vida no lifespan do FastAPI e publique de qualquer lugar:
 
 ```python
 # src/api/app.py
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -63,7 +64,7 @@ from src.queue import mq, OrderPaid
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     await mq.connect()
     try:
         yield
@@ -208,6 +209,7 @@ Lifespan igual ao do broker de mensagens:
 ```python
 # src/api/app.py
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -216,7 +218,7 @@ from src.tasks import tq
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     await tq.connect()
     try:
         yield
@@ -355,6 +357,7 @@ async def warm_cache() -> None:
 Em dev / processo único, rode o scheduler dentro do app:
 
 ```python
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -363,7 +366,7 @@ from src.tasks import tq
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     await tq.connect()
     await tq.start_scheduler()     # dev / single-process
     try:

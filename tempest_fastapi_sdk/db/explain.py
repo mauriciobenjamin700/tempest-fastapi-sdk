@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Final
@@ -266,7 +266,7 @@ async def explain_queries(
     session: AsyncSession,
     *,
     analyze: bool = True,
-) -> AsyncIterator[ExplainReport]:
+) -> AsyncGenerator[ExplainReport, None]:
     """Record every statement the block runs, then explain each one.
 
     Intended for development and for a deliberate profiling run — it

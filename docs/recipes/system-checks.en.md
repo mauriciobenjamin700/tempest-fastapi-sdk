@@ -105,7 +105,7 @@ serve traffic:
 
 ```python
 from contextlib import asynccontextmanager
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 
 from fastapi import FastAPI
 
@@ -115,7 +115,7 @@ from src.core.settings import settings
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         run_system_checks(settings)   # raises on ERROR+
     except SystemCheckError as exc:

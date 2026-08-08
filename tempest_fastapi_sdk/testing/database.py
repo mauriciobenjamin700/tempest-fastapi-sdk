@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import (
@@ -99,7 +99,7 @@ async def test_database(
     database_url: str = "sqlite+aiosqlite:///:memory:",
     *,
     metadata: MetaData | None = None,
-) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+) -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
     """Yield a session factory backed by a freshly created database.
 
     Setup creates every table, teardown drops them and disposes the
@@ -128,7 +128,7 @@ async def test_session(
     database_url: str = "sqlite+aiosqlite:///:memory:",
     *,
     metadata: MetaData | None = None,
-) -> AsyncIterator[AsyncSession]:
+) -> AsyncGenerator[AsyncSession, None]:
     """Yield a single :class:`AsyncSession` backed by a fresh database.
 
     Convenience wrapper around :func:`test_database` for tests that

@@ -5,6 +5,55 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.201.1] — 2026-08-08
+
+### Fixed
+
+- **`@asynccontextmanager` functions annotated their return as
+  `AsyncIterator`, which typeshed now deprecates.** The upstream stub
+  gained a second overload and marks the `AsyncIterator` one
+  `@deprecated`: *"Annotating the return type as `-> AsyncIterator[Foo]`
+  with `@asynccontextmanager` is deprecated. Use `-> AsyncGenerator[Foo]`
+  instead."*
+
+  The reason is that `AsyncIterator` is too wide for what the decorator
+  needs. Anything with `__anext__` satisfies it, while
+  `asynccontextmanager` also calls `athrow` and `aclose` — it requires a
+  real generator, which is what `AsyncGenerator` says. Runtime behavior is
+  untouched; the cost is a strikethrough in Pylance today and a mypy error
+  once its vendored typeshed catches up (mypy 2.3.0 still ships the old
+  single signature, which is why `make check` was silent).
+
+  Corrected in eleven shipped modules — `transaction` / `savepoint`
+  (v0.200.0), `explain_queries` (v0.200.0), `AsyncRedisManager
+  .get_client_context`, the four `lifespan` helpers on `MessageBroker` /
+  `AsyncQueueManager` / `TaskQueue` / `AsyncTaskScheduler` /
+  `AsyncTaskBrokerManager`, and `test_database` / `test_session` — and in
+  the `tempest new` app template, which stamps the annotation into every
+  generated service.
+
+  The two-parameter `AsyncGenerator[T, None]` is used rather than the
+  one-parameter form. Both work here (the PEP 696 default lives in the
+  stub, so the short form subscripts fine on the supported 3.11 floor and
+  mypy accepts it), but the explicit send type does not depend on a
+  third-party checker implementing that default.
+
+  Untouched on purpose: `AsyncIterator` is still correct for the FastAPI
+  dependency generators (`client_dependency`, `broker_dependency`), for
+  real streams (`Agent.stream`, `AIChatPipeline`), and for the
+  `Callable[[], AsyncIterator[AsyncSession]]` parameters the routers
+  accept — none of those go through `asynccontextmanager`.
+
+### Changed
+
+- Documentation examples follow the same correction across 35 pages, and
+  ten `lifespan` examples in the queue/tasks and SSE recipes that carried
+  **no** return annotation now have one, which the repository's
+  typed-examples rule already required.
+
+- `ruff` no longer formats Markdown code blocks (`extend-exclude`); see
+  v0.201.0.
+
 ## [0.201.0] — 2026-08-08
 
 ### Security

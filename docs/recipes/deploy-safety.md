@@ -133,7 +133,7 @@ roda o shutdown do lifespan no `SIGTERM` — e é ele quem cuida do sinal):
 
 ```python
 from contextlib import asynccontextmanager
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 
 from fastapi import FastAPI
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -144,7 +144,7 @@ shutdown: GracefulShutdownMiddleware = GracefulShutdownMiddleware(drain_timeout=
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Drena as requests em voo no shutdown."""
     yield
     shutdown.begin_drain()

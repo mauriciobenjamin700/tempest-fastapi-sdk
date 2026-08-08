@@ -29,7 +29,7 @@ from without discarding the outer work, use :func:`savepoint`.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Final
 
@@ -76,7 +76,7 @@ def in_transaction(session: AsyncSession) -> bool:
 
 
 @asynccontextmanager
-async def transaction(session: AsyncSession) -> AsyncIterator[AsyncSession]:
+async def transaction(session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
     """Group every write on ``session`` into a single commit.
 
     While the block is open, repository writes flush instead of
@@ -122,7 +122,7 @@ async def transaction(session: AsyncSession) -> AsyncIterator[AsyncSession]:
 
 
 @asynccontextmanager
-async def savepoint(session: AsyncSession) -> AsyncIterator[AsyncSession]:
+async def savepoint(session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
     """Run a nested, individually revertible unit of work.
 
     Issues a real ``SAVEPOINT`` via ``session.begin_nested()``. A failure

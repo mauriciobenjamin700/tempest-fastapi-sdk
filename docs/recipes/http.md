@@ -27,7 +27,7 @@ Você vai montar aqui a superfície HTTP inteira de um serviço a partir dos pri
 
 ```python
 # src/api/app.py
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -60,7 +60,7 @@ require_token = make_token_dependency(settings.TOKEN_SECRET)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     await db.connect()
     await redis.connect()
     try:

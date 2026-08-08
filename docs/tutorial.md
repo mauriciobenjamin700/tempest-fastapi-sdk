@@ -165,7 +165,7 @@ def get_db() -> AsyncDatabaseManager:
 
 ```python
 # src/api/app.py
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -181,7 +181,7 @@ from src.api.routers import users
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     """Connect on startup, dispose on shutdown."""
     await db.connect()
     try:

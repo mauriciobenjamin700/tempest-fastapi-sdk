@@ -19,7 +19,7 @@ broker stays at :attr:`broker` for the worker CLI and escape hatches.
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Generic, ParamSpec, TypeVar
@@ -547,7 +547,7 @@ class TaskQueue:
             await self._scheduler.disconnect()
 
     @asynccontextmanager
-    async def lifespan(self) -> AsyncIterator[TaskQueue]:
+    async def lifespan(self) -> AsyncGenerator[TaskQueue, None]:
         """Connect on entry, disconnect on exit — for scripts and tests.
 
         Does **not** start the scheduler; call :meth:`start_scheduler`

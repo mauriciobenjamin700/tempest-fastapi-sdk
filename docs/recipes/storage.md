@@ -48,7 +48,7 @@ MINIO_DEFAULT_BUCKET=uploads
 
 ```python
 from contextlib import asynccontextmanager
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 
 from fastapi import FastAPI
 from tempest_fastapi_sdk import AsyncMinIOClient
@@ -62,7 +62,7 @@ storage = AsyncMinIOClient(**settings.minio_kwargs())
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     """Garante que o bucket padrão existe antes de servir tráfego."""
     await storage.ensure_bucket()
     yield
