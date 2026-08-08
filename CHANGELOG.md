@@ -5,6 +5,43 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.202.0] — 2026-08-08
+
+### Added
+
+- **`QueueSpec` — declarative queue topology on `MessageBroker`** (#125).
+  A channel was a plain string, which is the right default and is also
+  everything the facade could express. The properties that decide whether
+  a queue survives a broker restart, where a rejected message goes and how
+  long it lives are not part of a name — on RabbitMQ they live in the queue
+  declaration, and reaching them meant dropping to `broker.broker` and
+  losing the `Consumer` / `register()` layer built around it.
+
+  `QueueSpec(name=..., durable=..., dead_letter=..., message_ttl_ms=...,
+  max_priority=..., max_length=..., queue_type=...)` carries that as typed
+  data and is accepted anywhere a channel string is, so adoption is
+  per-channel. `DeadLetterSpec`, `QueueType` (classic/quorum) and
+  `UnsupportedTopologyError` come with it.
+
+  **A field the transport cannot express raises.** `dead_letter` on Kafka
+  is an error naming the field, not a silent drop — a dropped
+  `dead_letter` produces a queue that looks configured and discards every
+  failure, which is the defect the type exists to prevent. Same call as
+  `op.replace_enum` raising on an unsupported dialect. A bare
+  `QueueSpec(name=...)` asks for nothing beyond a name and stays portable
+  everywhere.
+
+  `connect()` declares the dead-letter exchanges the registered specs
+  name, as durable topic exchanges. RabbitMQ accepts a queue pointing at
+  an `x-dead-letter-exchange` that does not exist and then discards at
+  routing time, so declaring it is what makes the setting mean anything.
+  `MessageBroker.rabbitmq(url, declare_topology=False)` opts out where the
+  broker is managed and the application cannot declare.
+
+  Impossible combinations are refused at construction: `max_priority` on a
+  quorum queue raises at import, pointing at the line that wrote it, since
+  RabbitMQ implements priorities only for classic queues.
+
 ## [0.201.1] — 2026-08-08
 
 ### Fixed
