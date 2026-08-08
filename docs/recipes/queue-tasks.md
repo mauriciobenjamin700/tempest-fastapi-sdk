@@ -146,6 +146,85 @@ mq.register(OrdersConsumer())
     é a anotação visível do método. O `@mq.on(...)` (decorator em função)
     continua disponível — escolha o estilo que preferir.
 
+## Topologia da fila — `QueueSpec`
+
+O canal como string resolve a maioria dos casos. O que ele **não** expressa é justamente o que decide se a fila sobrevive a um restart, para onde vai uma mensagem rejeitada e quanto tempo ela vive. No RabbitMQ isso mora na declaração da fila, não no nome.
+
+`QueueSpec` carrega essa topologia como dado tipado, e é aceito em qualquer lugar onde a string era:
+
+```python
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.queue import DeadLetterSpec, MessageBroker, QueueSpec, QueueType
+
+mq = MessageBroker.rabbitmq("amqp://guest:guest@localhost:5672/")
+
+
+class OrderPaid(BaseModel):
+    order_id: str
+    amount_cents: int
+
+ORDERS_PAID = QueueSpec(
+    name="orders.paid",
+    dead_letter=DeadLetterSpec(exchange="dlx"),
+    message_ttl_ms=60_000,
+    queue_type=QueueType.QUORUM,
+)
+
+
+@mq.on(ORDERS_PAID)
+async def handle(event: OrderPaid) -> None:
+    """Consome de uma fila durável, quorum, com dead-letter."""
+```
+
+Traduz para os argumentos que o AMQP espera:
+
+```text
+{"x-queue-type": "quorum", "x-dead-letter-exchange": "dlx", "x-message-ttl": 60000}
+```
+
+!!! danger "Sem `dead_letter`, falha é descarte silencioso"
+    A política do consumidor é `REJECT_ON_ERROR`: handler que levanta faz `basic.reject` com `requeue=False`. Isso evita poison message em loop — mas **sem `x-dead-letter-exchange` o RabbitMQ joga a mensagem fora**. Sem erro, sem fila morta, sem métrica. É o motivo de `DeadLetterSpec` existir.
+
+### O exchange precisa existir
+
+O RabbitMQ aceita declarar uma fila apontando para um `x-dead-letter-exchange` que não existe — e aí descarta no roteamento, em silêncio. Por isso o `connect()` declara os exchanges nomeados pelos `QueueSpec` registrados, como `topic` durável:
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker
+
+
+async def startup(mq: MessageBroker) -> None:
+    """Sobe o broker; os DLX dos specs registrados são declarados aqui."""
+    await mq.connect()
+```
+
+Onde o broker é gerenciado e a aplicação não tem permissão de declarar, desligue e cuide da topologia fora:
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker
+
+mq = MessageBroker.rabbitmq(
+    "amqp://guest:guest@localhost:5672/",
+    declare_topology=False,
+)
+```
+
+### Campo que o transporte não expressa **levanta**
+
+`MessageBroker` é multi-transporte, e `dead_letter` / TTL / prioridade são AMQP. Pedir isso num broker que não tem o conceito não é ignorado:
+
+```text
+UnsupportedTopologyError: QueueSpec('orders.paid') sets dead_letter, which the
+kafka transport cannot express. Remove the field, or use a bare channel name
+and configure the topology outside the SDK.
+```
+
+Ignorar em silêncio produziria uma fila que **parece** configurada e descarta toda falha — exatamente o defeito que o `QueueSpec` existe para evitar. A escolha é a mesma do `op.replace_enum`, que levanta em dialeto não suportado em vez de emitir DDL que não faz nada.
+
+Um `QueueSpec(name=...)` sem mais nada continua portátil em qualquer transporte: ele não pede nada além do nome.
+
+
 ## Tarefas em background — `TaskQueue`
 
 Uma **fila de tarefas** tira trabalho lento do request e joga num worker. O TaskIQ faz isso, mas espalha a API entre broker, scheduler, schedule source e `.kiq()`. `TaskQueue` dobra tudo num objeto só, com vocabulário óbvio.

@@ -14,11 +14,23 @@ from tempest_fastapi_sdk.queue.consumer import Consumer as Consumer
 from tempest_fastapi_sdk.queue.consumer import subscribe as subscribe
 from tempest_fastapi_sdk.queue.manager import AsyncBrokerManager as AsyncBrokerManager
 from tempest_fastapi_sdk.queue.manager import AsyncQueueManager as AsyncQueueManager
+from tempest_fastapi_sdk.queue.topology import DeadLetterSpec as DeadLetterSpec
+from tempest_fastapi_sdk.queue.topology import QueueSpec as QueueSpec
+from tempest_fastapi_sdk.queue.topology import QueueType as QueueType
+from tempest_fastapi_sdk.queue.topology import Transport as Transport
+from tempest_fastapi_sdk.queue.topology import (
+    UnsupportedTopologyError as UnsupportedTopologyError,
+)
 
 __all__: list[str] = [
     "AsyncBrokerManager",
     "AsyncQueueManager",
     "Consumer",
+    "DeadLetterSpec",
     "MessageBroker",
+    "QueueSpec",
+    "QueueType",
+    "Transport",
+    "UnsupportedTopologyError",
     "subscribe",
 ]

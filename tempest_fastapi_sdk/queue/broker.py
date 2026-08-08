@@ -22,6 +22,14 @@ from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
+from tempest_fastapi_sdk.queue.topology import (
+    QueueSpec,
+    Transport,
+    channel_name,
+    detect_transport,
+    resolve_channel,
+)
+
 if TYPE_CHECKING:
     from faststream.broker.core.usecase import BrokerUsecase
 
@@ -126,7 +134,12 @@ class MessageBroker:
             doesn't wrap.
     """
 
-    def __init__(self, broker: BrokerUsecase[Any, Any]) -> None:
+    def __init__(
+        self,
+        broker: BrokerUsecase[Any, Any],
+        *,
+        declare_topology: bool = True,
+    ) -> None:
         """Wrap an already-constructed FastStream broker.
 
         Prefer the transport constructors (:meth:`rabbitmq`, :meth:`redis`,
@@ -135,9 +148,59 @@ class MessageBroker:
 
         Args:
             broker (BrokerUsecase[Any, Any]): A FastStream broker.
+            declare_topology (bool): Whether :meth:`connect` declares the
+                dead-letter exchanges named by the registered
+                :class:`~tempest_fastapi_sdk.queue.QueueSpec`. ``True``
+                makes a spec work with no infrastructure step, which is
+                what a small team wants. Set it to ``False`` where the
+                broker is managed and the application has no permission
+                to declare — the exchanges then have to exist already,
+                and a missing one fails at subscribe time.
         """
         self.broker: BrokerUsecase[Any, Any] = broker
         self._started: bool = False
+        self._declare_topology: bool = declare_topology
+        self._specs: dict[str, QueueSpec] = {}
+
+    @property
+    def transport(self) -> Transport:
+        """Return which transport this facade is wrapping.
+
+        Read from the broker class at call time, so it is correct for an
+        injected broker as well as for one built by a constructor.
+
+        Returns:
+            Transport: The detected transport.
+        """
+        return detect_transport(self.broker)
+
+    def _bind(self, channel: str | QueueSpec) -> Any:
+        """Record a spec and translate the channel for this transport.
+
+        Args:
+            channel (str | QueueSpec): A bare channel or a full spec.
+
+        Returns:
+            Any: What FastStream expects for this transport.
+
+        Raises:
+            UnsupportedTopologyError: When the spec sets a field the
+                transport cannot honor.
+        """
+        resolved = resolve_channel(channel, self.transport)
+        if isinstance(channel, QueueSpec):
+            self._specs[channel.name] = channel
+        return resolved
+
+    @property
+    def specs(self) -> dict[str, QueueSpec]:
+        """Return the topology declared through this broker, by channel.
+
+        Returns:
+            dict[str, QueueSpec]: A copy, so callers cannot mutate the
+            registry the declaration step reads.
+        """
+        return dict(self._specs)
 
     # ------------------------------------------------------------------
     # Transport constructors
@@ -156,8 +219,12 @@ class MessageBroker:
         Returns:
             MessageBroker: A facade around a ``RabbitBroker``.
         """
+        declare_topology = bool(options.pop("declare_topology", True))
         rabbit = _require("faststream.rabbit", "queue")
-        return cls(rabbit.RabbitBroker(url, **options))
+        return cls(
+            rabbit.RabbitBroker(url, **options),
+            declare_topology=declare_topology,
+        )
 
     @classmethod
     def redis(cls, url: str, **options: Any) -> MessageBroker:
@@ -171,8 +238,12 @@ class MessageBroker:
         Returns:
             MessageBroker: A facade around a ``RedisBroker``.
         """
+        declare_topology = bool(options.pop("declare_topology", True))
         redis = _require("faststream.redis", "queue")
-        return cls(redis.RedisBroker(url, **options))
+        return cls(
+            redis.RedisBroker(url, **options),
+            declare_topology=declare_topology,
+        )
 
     @classmethod
     def kafka(cls, *bootstrap_servers: str, **options: Any) -> MessageBroker:
@@ -186,13 +257,17 @@ class MessageBroker:
         Returns:
             MessageBroker: A facade around a ``KafkaBroker``.
         """
+        declare_topology = bool(options.pop("declare_topology", True))
         kafka = _require("faststream.kafka", "queue")
         servers: str | list[str] = (
             list(bootstrap_servers)
             if len(bootstrap_servers) != 1
             else bootstrap_servers[0]
         )
-        return cls(kafka.KafkaBroker(servers, **options))
+        return cls(
+            kafka.KafkaBroker(servers, **options),
+            declare_topology=declare_topology,
+        )
 
     @classmethod
     def nats(cls, servers: str | list[str], **options: Any) -> MessageBroker:
@@ -206,14 +281,22 @@ class MessageBroker:
         Returns:
             MessageBroker: A facade around a ``NatsBroker``.
         """
+        declare_topology = bool(options.pop("declare_topology", True))
         nats = _require("faststream.nats", "queue")
-        return cls(nats.NatsBroker(servers, **options))
+        return cls(
+            nats.NatsBroker(servers, **options),
+            declare_topology=declare_topology,
+        )
 
     # ------------------------------------------------------------------
     # Publish / subscribe
     # ------------------------------------------------------------------
 
-    def on(self, channel: str, **options: Any) -> Callable[[Handler], Handler]:
+    def on(
+        self,
+        channel: str | QueueSpec,
+        **options: Any,
+    ) -> Callable[[Handler], Handler]:
         """Register the decorated async function as a consumer of ``channel``.
 
         The handler's parameter type hint drives decoding — annotate it
@@ -236,20 +319,23 @@ class MessageBroker:
         """
         return cast(
             "Callable[[Handler], Handler]",
-            self.broker.subscriber(channel, **options),
+            self.broker.subscriber(self._bind(channel), **options),
         )
 
     async def publish(
         self,
-        channel: str,
+        channel: str | QueueSpec,
         message: Any,
         **options: Any,
     ) -> Any:
         """Publish ``message`` to ``channel``.
 
         Args:
-            channel (str): The destination channel. Maps to the
-                transport's queue / topic / subject positionally.
+            channel (str | QueueSpec): The destination channel, or the
+                :class:`~tempest_fastapi_sdk.queue.QueueSpec` declaring
+                it. Publishing only needs the name, so a spec here is
+                accepted for symmetry with :meth:`on` — the topology is
+                applied where the queue is declared, not per message.
             message (Any): The payload. A Pydantic model or ``dict`` is
                 serialized to JSON; ``str`` / ``bytes`` are sent as-is.
             **options (Any): Extra transport-specific publish options
@@ -267,7 +353,7 @@ class MessageBroker:
             raise RuntimeError(
                 "MessageBroker.connect() must be called before publishing.",
             )
-        return await self.broker.publish(message, channel, **options)
+        return await self.broker.publish(message, channel_name(channel), **options)
 
     def register(self, consumer: Consumer) -> None:
         """Wire a class-based :class:`Consumer` onto this broker.
@@ -285,13 +371,14 @@ class MessageBroker:
             consumer (Consumer): The consumer instance to register.
         """
         for sub in consumer.subscriptions():
+            bound = self._bind(sub.channel)
             if sub.schema is not None:
                 entry = _schema_entry(sub.handler, sub.schema)
-                self.broker.subscriber(sub.channel, **sub.options)(entry)
+                self.broker.subscriber(bound, **sub.options)(entry)
             else:
-                self.broker.subscriber(sub.channel, **sub.options)(sub.handler)
+                self.broker.subscriber(bound, **sub.options)(sub.handler)
 
-    def publisher(self, channel: str, **options: Any) -> Any:
+    def publisher(self, channel: str | QueueSpec, **options: Any) -> Any:
         """Return a reusable publisher bound to ``channel``.
 
         Useful to declare a typed outbound endpoint once and call it
@@ -305,7 +392,7 @@ class MessageBroker:
         Returns:
             Any: A FastStream publisher object bound to ``channel``.
         """
-        return self.broker.publisher(channel, **options)
+        return self.broker.publisher(self._bind(channel), **options)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -321,6 +408,48 @@ class MessageBroker:
             return
         await self.broker.start()
         self._started = True
+        if self._declare_topology:
+            await self.declare_topology()
+
+    async def declare_topology(self) -> list[str]:
+        """Declare the dead-letter exchanges the registered specs name.
+
+        A queue carrying ``x-dead-letter-exchange`` is declared happily
+        by RabbitMQ even when that exchange does not exist — and then
+        every rejected message is dropped at routing time, silently. The
+        exchange has to exist for the setting to mean anything, so
+        :meth:`connect` calls this unless the broker was built with
+        ``declare_topology=False``.
+
+        Idempotent: declaring an exchange that already exists with the
+        same properties is a no-op in AMQP. Only durable topic exchanges
+        are declared, which is what a dead-letter exchange should be —
+        a non-durable one would vanish on restart and take the routing
+        with it.
+
+        Returns:
+            list[str]: The exchange names declared, in sorted order.
+            Empty on a transport with no such concept, or when no spec
+            asked for dead-lettering.
+        """
+        if self.transport is not Transport.RABBITMQ:
+            return []
+        exchanges = sorted(
+            {
+                spec.dead_letter.exchange
+                for spec in self._specs.values()
+                if spec.dead_letter is not None
+            },
+        )
+        if not exchanges:
+            return []
+        rabbit = _require("faststream.rabbit", "queue")
+        for name in exchanges:
+            await self.broker.declare_exchange(
+                rabbit.RabbitExchange(name, type="topic", durable=True),
+            )
+            logger.info("Declared dead-letter exchange %s", name)
+        return exchanges
 
     async def disconnect(self) -> None:
         """Stop the broker and release its connections."""
