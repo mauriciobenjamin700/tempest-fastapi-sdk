@@ -366,6 +366,56 @@ def _hostile_document() -> dict[str, Any]:
                     "description": "Collides with `transaction` on one class name.",
                     "properties": {"id": {"type": "string"}},
                 },
+                "DecodedEmvPayloadWithVeryLongComponentName": {
+                    "type": "object",
+                    "description": (
+                        "Inline objects whose synthesized class name is long "
+                        "enough that the annotation alone overruns the line."
+                    ),
+                    "properties": {
+                        "merchantAccountInformationPixDetails": {
+                            "type": "object",
+                            "description": (
+                                "Optional on purpose: the `| None` makes the "
+                                "annotation splittable, which is the only case "
+                                "ruff format has a stable shape for."
+                            ),
+                            "properties": {"key": {"type": "string"}},
+                        },
+                        "additionalDataFieldTemplateEntries": {
+                            "type": "array",
+                            "description": (
+                                "Forces the annotation to break inside the "
+                                "brackets rather than be parenthesized."
+                            ),
+                            "items": {
+                                "type": "object",
+                                "properties": {"value": {"type": "string"}},
+                            },
+                        },
+                        "webhookDeliveryAttempts": {
+                            "type": "array",
+                            "items": {"type": "object"},
+                            "description": "Carries an example past the budget.",
+                            "example": [
+                                {
+                                    "OPENPIX:TRANSACTION_RECEIVED": {
+                                        "status": 200,
+                                        "time": "2025-01-01T00:00:00.000Z",
+                                    },
+                                    "isRetry": False,
+                                },
+                                {
+                                    "OPENPIX:TRANSACTION_RECEIVED": {
+                                        "status": 404,
+                                        "time": "2025-01-02T00:00:00.000Z",
+                                    },
+                                    "isRetry": True,
+                                },
+                            ],
+                        },
+                    },
+                },
                 "ChargeStatus": {
                     "type": "string",
                     "description": "Lifecycle state of the charge.",

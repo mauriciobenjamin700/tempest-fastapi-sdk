@@ -274,12 +274,33 @@ def _body_lines(operation: OperationIR) -> list[str]:
     if operation.response_annotation is None:
         lines.append("        return None")
     else:
-        lines.append(
-            f"        return _validate("
-            f"{operation.response_annotation}, response.json()"
-            f")"
-        )
+        lines.extend(_validate_lines(operation.response_annotation))
     return lines
+
+
+def _validate_lines(annotation: str) -> list[str]:
+    """Render the closing ``_validate`` call, split when it overruns.
+
+    Args:
+        annotation (str): The response type to validate against.
+
+    Returns:
+        list[str]: Source lines. The call goes across three lines once the
+        flat form passes the budget, which is the shape ``ruff format``
+        settles on.
+
+    The generator names an inline response schema after its whole path
+    (``GetApiV1CashbackFidelityBalanceByTaxIdResponse``), so this line runs
+    long on a real specification even though the code around it is short.
+    """
+    flat = f"        return _validate({annotation}, response.json())"
+    if len(flat) <= _MAX_LINE:
+        return [flat]
+    return [
+        "        return _validate(",
+        f"            {annotation}, response.json()",
+        "        )",
+    ]
 
 
 def _as_fstring(operation: OperationIR) -> str:

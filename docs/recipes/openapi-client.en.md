@@ -483,6 +483,42 @@ Summing up what the emitter guarantees for any text the spec carries:
 | An over-long description | Split into two or more adjacent literals |
 | An over-long enum value | Split the same way, and the member **name** is shortened — the value, never |
 
+### Long names and the line budget
+
+The generator **synthesizes** an inline schema's class name by concatenating
+the whole path — `PostApiV1DecodeEmvResponseEmvMerchantAccountInformationPix`.
+Nothing in the spec bounds that length, so the annotation alone can overrun
+before any argument is reached.
+
+This is not cosmetic. When the `name: Annotation = Field(` line overruns,
+`ruff format` wraps the assignment and **re-indents the arguments one level
+deeper** — and every string the emitter had split to fit column 88 comes out
+at 92. One defect, two symptoms.
+
+The emitter picks the same shape `ruff format` would, in the order it tries
+them:
+
+| Situation | Shape emitted |
+| --- | --- |
+| Head fits | `x: T = Field(` with arguments at 8 |
+| Head overruns, assignment fits | `x: T = (` / `Field(` with arguments at 12 |
+| Neither fits | Broken annotation, arguments back at 8 |
+| Annotation is a whole subscript | Breaks **inside** the brackets: `list[` / `Item` / `]` |
+
+Synthesized class names are capped at 55 characters. The binding constraint is
+not the `class` statement but the docstring's `Attributes:` entry: there the
+annotation composes around the name (`dict[str, Name] | None` costs another 18
+columns at an indent of 12) and `ruff format` breaks neither. Measured on the
+OpenPix specification: 6 of 358 names truncated, no new collision.
+
+!!! warning "One case has no solution, and the docs do not pretend otherwise"
+    A very long field name next to an annotation that is a **single
+    identifier** — `x: SomeLongClassName = Field(` — has no formatting that
+    fits. `ruff format` collapses it, because a bare identifier has nothing to
+    break on. Only a shorter name helps. Every annotation containing a union or
+    a subscript **does** have a stable shape, and that is the one the emitter
+    produces.
+
 ### Names and paths the spec gets wrong
 
 The same tests cover the other side — when the spec names something Python will

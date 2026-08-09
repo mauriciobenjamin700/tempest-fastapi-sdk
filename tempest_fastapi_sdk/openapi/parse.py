@@ -30,6 +30,9 @@ from tempest_fastapi_sdk.openapi.ir import (
 )
 from tempest_fastapi_sdk.openapi.loader import SpecError, deref
 from tempest_fastapi_sdk.openapi.naming import (
+    class_name as _class_name_for,
+)
+from tempest_fastapi_sdk.openapi.naming import (
     enum_member_name,
     field_name,
     method_name,
@@ -517,7 +520,9 @@ class _Parser:
             self.wire_to_class[wire_name] = rendered
             return rendered
 
-        class_name = unique(to_pascal(wire_name), self.taken_class_names, separator="")
+        class_name = unique(
+            _class_name_for(wire_name), self.taken_class_names, separator=""
+        )
         self.wire_to_class[wire_name] = class_name
         self.schemas[class_name] = self._build_schema(class_name, wire_name, schema)
         return class_name
@@ -533,7 +538,7 @@ class _Parser:
         Returns:
             str: The generated class name.
         """
-        class_name = unique(to_pascal(hint), self.taken_class_names, separator="")
+        class_name = unique(_class_name_for(hint), self.taken_class_names, separator="")
         self.schemas[class_name] = self._build_schema(class_name, hint, schema)
         return class_name
 
@@ -561,7 +566,7 @@ class _Parser:
         for existing in self.schemas.values():
             if (existing.kind, existing.enum_members) == signature:
                 return existing.name
-        class_name = unique(to_pascal(hint), self.taken_class_names, separator="")
+        class_name = unique(_class_name_for(hint), self.taken_class_names, separator="")
         self.schemas[class_name] = SchemaIR(
             name=class_name,
             wire_name=hint,
