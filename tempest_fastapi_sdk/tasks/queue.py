@@ -160,10 +160,18 @@ class TaskQueue:
         await send_welcome.enqueue(to=user.email, name=user.name)
 
     In production run the worker (and one scheduler) as separate
-    processes, pointing them at :attr:`broker` / :attr:`scheduler`::
+    processes. The TaskIQ CLI resolves ``module:attr`` with a plain
+    ``getattr``, so bind :attr:`broker` / :attr:`scheduler` to names of
+    their own — ``myapp.tasks:tq.broker`` raises ``AttributeError:
+    module 'myapp.tasks' has no attribute 'tq.broker'``::
 
-        taskiq worker    myapp.tasks:tq.broker
-        taskiq scheduler myapp.tasks:tq.scheduler
+        # myapp/tasks.py
+        broker = tq.broker
+        scheduler = tq.scheduler
+
+        # shell
+        taskiq worker    myapp.tasks:broker
+        taskiq scheduler myapp.tasks:scheduler
 
     Attributes:
         broker (AsyncBroker): The underlying TaskIQ broker (for the
@@ -306,6 +314,12 @@ class TaskQueue:
         Reads the definition's task bindings (constructor form or grouped
         ``@task_method`` methods) and registers each with the broker.
 
+        A binding's ``retry`` is rendered into labels here, exactly as
+        :meth:`task` does — TaskIQ's middleware reads
+        ``retry_on_error`` / ``max_retries``, so a ``RetryPolicy``
+        forwarded as a label would be ignored and the task would never
+        retry, silently.
+
         Args:
             definition (TaskDef): The task-definition instance.
 
@@ -331,7 +345,10 @@ class TaskQueue:
 
             _entry.__name__ = binding.key
             _entry.__qualname__ = f"{type(definition).__name__}.{binding.key}"
-            decorator = self.broker.task(task_name=binding.name, **binding.options)
+            options: dict[str, Any] = binding.options
+            if binding.retry is not None:
+                options = {**binding.retry.as_labels(), **options}
+            decorator = self.broker.task(task_name=binding.name, **options)
             wrapped[binding.key] = Task(decorator(_entry), bound)
         if grouped:
             return wrapped
@@ -401,7 +418,10 @@ class TaskQueue:
         """Return the underlying TaskIQ scheduler (for the CLI).
 
         Lazily built on first access. Point the standalone scheduler
-        process at it: ``taskiq scheduler myapp.tasks:tq.scheduler``.
+        process at it. The CLI resolves ``module:attr`` with a plain
+        ``getattr``, so bind it to a module-level name first —
+        ``scheduler = tq.scheduler``, then ``taskiq scheduler
+        myapp.tasks:scheduler``.
 
         Returns:
             Any: The ``taskiq.TaskiqScheduler`` instance.

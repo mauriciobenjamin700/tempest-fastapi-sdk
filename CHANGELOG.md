@@ -5,6 +5,75 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.209.0] — 2026-08-09
+
+### Fixed
+
+- **`prefetch` reaches the class-based consumer path.** `mq.on(channel,
+  prefetch=N)` translated the cap into the FastStream `Channel` that
+  carries `basic.qos`; `Consumer` / `@subscribe` did not, and FastStream
+  has no `prefetch` keyword — so the same knob that works on the
+  decorator raised `TypeError: RabbitRegistrator.subscriber() got an
+  unexpected keyword argument 'prefetch'` on the class path. A team that
+  had adopted `Consumer` could only cap a consumer by hand-building
+  `channel=Channel(prefetch_count=N)`, which is the FastStream detail the
+  facade exists to hide.
+
+  `subscribe(channel, prefetch=N)` and `Consumer(prefetch=N)` are now
+  named, typed keywords, and a class-level `prefetch` covers every
+  binding the consumer declares (a `@subscribe` naming its own wins):
+
+  ```python
+  class OrdersConsumer(Consumer):
+      prefetch = 32                      # every binding below
+
+      @subscribe("relatorios.gerar", prefetch=1)
+      async def gerar(self, pedido: Report) -> None: ...
+
+      @subscribe("orders.paid")
+      async def on_paid(self, event: OrderPaid) -> None: ...
+  ```
+
+  Verified against a real RabbitMQ, not against the local object:
+  `rabbitmqctl list_consumers queue_name prefetch_count` reports the caps
+  the class declared. Checking that the keyword was accepted would pass
+  for an implementation that swallowed it.
+
+- **The constructor-form `Consumer` forwards subscriber options.**
+  `@subscribe` took `**options` (so `exchange=` and friends reached
+  FastStream) while `Consumer.__init__` accepted only `channel` and
+  `schema` and registered `options={}`. Naming an exchange — or anything
+  else the transport takes — forced the grouped form or the decorator.
+  `Consumer(channel=..., schema=..., **options)` now forwards them, the
+  same passthrough `@subscribe` already had.
+
+- **`retry=` works on the class-based task path — it was silently
+  ignored.** `@tq.task(retry=RetryPolicy(...))` rendered the policy into
+  the `retry_on_error` / `max_retries` labels TaskIQ's middleware reads.
+  `@task_method(retry=...)` did not: the policy object went through
+  `**options` and landed as a `retry` label nothing looks at, so the task
+  **never retried** and nothing raised. Worse than the `prefetch` case
+  above, which at least failed loudly.
+
+  Measured against a real RabbitMQ with a `taskiq worker` process and a
+  task that always fails: the decorator path ran it twice, the class path
+  once. After the fix both run twice.
+
+  `retry` is now a named keyword on `task_method()` and `TaskDef`, plus a
+  class attribute covering every task the definition declares (a
+  `@task_method` naming its own wins), and `TaskQueue.register` renders
+  it into labels exactly as `task()` does. `TaskDef(name=..., **options)`
+  also forwards extra labels, which only `@task_method` could before.
+
+- **The documented `taskiq worker` / `taskiq scheduler` commands could
+  not start.** README, the queue recipe and three docstrings taught
+  `taskiq worker src.tasks:tq.broker` (and `…:tq.scheduler`,
+  `…:scheduler.scheduler`). TaskIQ's CLI resolves `module:attr` with a
+  plain `getattr`, so every dotted form raises `AttributeError: module
+  'src.tasks' has no attribute 'tq.broker'` before the worker starts.
+  The docs now bind the objects to module-level names
+  (`broker = tq.broker`) and point the CLI at those.
+
 ## [0.208.0] — 2026-08-08
 
 ### Added

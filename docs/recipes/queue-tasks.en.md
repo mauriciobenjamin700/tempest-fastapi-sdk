@@ -149,7 +149,32 @@ mq.register(OrdersConsumer())
 
 The channel may be a string or a [`QueueSpec`](#queue-topology-queuespec), exactly
 as in `@mq.on(...)` — declaring a dead-letter exchange or a quorum queue does not
-push you back to the decorator.
+push you back to the decorator. The same holds for the rest of what
+`@mq.on(...)` takes: [`prefetch=`](#prefetch-how-many-messages-stay-in-flight)
+and the transport's own options (`exchange=`, say) exist in both forms.
+
+```python
+from faststream.rabbit import RabbitExchange
+
+from tempest_fastapi_sdk.queue import Consumer, subscribe
+
+from src.queue import OrderCancelled, OrderPaid, mq
+
+
+class OrdersConsumer(Consumer):
+    """One cap for the whole class; one heavy method with its own."""
+
+    prefetch = 32
+
+    @subscribe("reports.generate", prefetch=1)
+    async def generate(self, event: OrderPaid) -> None: ...
+
+    @subscribe("orders.cancelled", exchange=RabbitExchange("events", durable=True))
+    async def on_cancelled(self, event: OrderCancelled) -> None: ...
+
+
+mq.register(OrdersConsumer())
+```
 
 ### Class-based publishers
 
@@ -415,6 +440,39 @@ async def generate(request: dict[str, str]) -> None:
 ```
 
 The broker value applies to the connection; the consumer value overrides it for that consumer alone.
+
+On the class path the knob is the same one, at three heights —
+constructor, class and method:
+
+```python
+from tempest_fastapi_sdk.queue import Consumer, subscribe
+
+from src.queue import OrderPaid, mq
+
+
+class ReportsConsumer(Consumer):
+    prefetch = 32                       # every binding this class declares
+
+    @subscribe("reports.generate", prefetch=1)
+    async def generate(self, event: OrderPaid) -> None:
+        """Heavy handler: the method's cap beats the class's."""
+
+
+class OrderPaidConsumer(Consumer):
+    async def handle(self, message: OrderPaid) -> None: ...
+
+
+mq.register(ReportsConsumer())
+mq.register(OrderPaidConsumer(channel="orders.paid", schema=OrderPaid, prefetch=8))
+```
+
+!!! note "Why `prefetch` is a named parameter rather than one more `**options`"
+    FastStream has no `prefetch` keyword — it carries `basic.qos` on a
+    `Channel` object. Forwarding the raw word raises
+    `TypeError: RabbitRegistrator.subscriber() got an unexpected keyword
+    argument 'prefetch'`, which is exactly what the class path did until
+    v0.209.0. Naming the parameter is what allows the translation — and
+    what the type checker sees.
 
 !!! warning "There is no good default I could guess"
     Current behaviour is **uncapped**, and this PR does not change that — it exposes the knob. Too small serializes consumption and destroys throughput; too large recreates the problem. The right number depends on your handler's latency, and fixing one without measuring would repeat the mistake `DEFAULT_INTRA_OP_THREADS` made in modelops before it was re-justified. Measure with a known-latency consumer before choosing.
@@ -820,17 +878,34 @@ for info in task_inventory(tq):
 
 ## Workers in production
 
-The worker and the scheduler are separate processes pointing at the raw objects `TaskQueue` exposes:
+The worker and the scheduler are separate processes pointing at the raw objects `TaskQueue` exposes. The TaskIQ CLI resolves `module:attribute` with a plain `getattr`, so **bind both to module-level names** — a dotted path does not resolve:
+
+```python
+# src/tasks.py — after registering the tasks
+from tempest_fastapi_sdk.tasks import TaskQueue
+
+tq: TaskQueue = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/")
+
+broker = tq.broker
+scheduler = tq.scheduler
+```
 
 ```bash
 # consumes and executes the tasks
-taskiq worker    src.tasks:tq.broker
+taskiq worker    src.tasks:broker
 
 # a single scheduler process for the whole cluster
-taskiq scheduler src.tasks:tq.scheduler
+taskiq scheduler src.tasks:scheduler
 ```
 
 `tq.broker` is the TaskIQ broker (it knows every registered task); `tq.scheduler` is the internal `TaskiqScheduler`.
+
+!!! warning "`src.tasks:tq.broker` does not work"
+    The CLI runs `getattr(module, "tq.broker")` and raises
+    `AttributeError: module 'src.tasks' has no attribute 'tq.broker'` —
+    the process never starts. The same holds for any dotted path
+    (`tq.scheduler`, `scheduler.scheduler`). Hence the `broker = tq.broker`
+    above.
 
 ## Transactional outbox
 

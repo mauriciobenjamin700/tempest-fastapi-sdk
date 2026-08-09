@@ -2781,7 +2781,7 @@ async def test_send_welcome_email() -> None:
     await send_welcome_email.run(to="a@b.com", name="Ana")
 ```
 
-`@tq.task` returns a typed `Task` with `enqueue()` (to a worker) and `run()` (inline, no broker). Periodic tasks live on the same object via `@tq.cron(...)` / `@tq.interval(...)`; `tq.broker` / `tq.scheduler` feed the standalone `taskiq worker` / `taskiq scheduler` CLIs. `TaskQueue.memory()` runs tasks synchronously in-process for tests.
+`@tq.task` returns a typed `Task` with `enqueue()` (to a worker) and `run()` (inline, no broker). Periodic tasks live on the same object via `@tq.cron(...)` / `@tq.interval(...)`; `tq.broker` / `tq.scheduler` feed the standalone `taskiq worker` / `taskiq scheduler` CLIs (bind them to module-level names — the CLI resolves `module:attribute` with a plain `getattr`, so `src.tasks:tq.broker` raises `AttributeError`). `TaskQueue.memory()` runs tasks synchronously in-process for tests.
 
 ### Periodic tasks scheduler recipe
 
@@ -2872,16 +2872,25 @@ Decorator surface:
 | `@scheduler.schedule([{...}, {...}])` | Raw TaskIQ schedule list — combine triggers, use one-shot `time`, etc. |
 | `scheduler.register(func, schedule=[...], task_name=...)` | Register without decorator syntax (third-party callables). |
 
-Production deployments with multiple workers should run the standalone scheduler CLI instead of `run_in_background()`, so only one scheduler is active across the cluster:
+Production deployments with multiple workers should run the standalone scheduler CLI instead of `run_in_background()`, so only one scheduler is active across the cluster. The TaskIQ CLI resolves `module:attribute` with a plain `getattr`, so bind the objects to module-level names first — a dotted path raises `AttributeError` and the process never starts:
 
-```bash
-taskiq scheduler src.tasks:scheduler.scheduler
+```python
+# src/tasks.py
+
+from taskiq_aio_pika import AioPikaBroker
+
+from tempest_fastapi_sdk.tasks import AsyncTaskBrokerManager, AsyncTaskScheduler
+
+broker = AioPikaBroker("amqp://guest:guest@localhost:5672/")   # the worker CLI target
+tasks = AsyncTaskBrokerManager(broker)
+scheduler = AsyncTaskScheduler(broker)
+
+taskiq_scheduler = scheduler.scheduler                         # the inner TaskiqScheduler
 ```
 
-(`scheduler.scheduler` is the inner `TaskiqScheduler` instance exposed on `AsyncTaskScheduler`.) The worker process stays the same:
-
 ```bash
-taskiq worker src.tasks:tasks.broker
+taskiq scheduler src.tasks:taskiq_scheduler
+taskiq worker    src.tasks:broker
 ```
 
 Lifecycle controls mirror the broker manager: `connect()` / `disconnect()` / `lifespan()` / `run_in_background()` / `health_check()` / `is_connected`.
@@ -4277,11 +4286,25 @@ Pair with `@cached(redis, ttl=..., key_prefix=...)` for function-level memoizati
 | `await health_check()` | `True` while started and (when applicable) the loop is alive. |
 | `is_connected` (property) | Read-only state. |
 
-Production deployments should run the standalone CLI instead of `run_in_background()`:
+Production deployments should run the standalone CLI instead of `run_in_background()`. Bind the broker and the scheduler to module-level names — the CLI resolves `module:attribute` with a plain `getattr`, so a dotted path raises `AttributeError`:
+
+```python
+# src/tasks.py
+
+from taskiq_aio_pika import AioPikaBroker
+
+from tempest_fastapi_sdk.tasks import AsyncTaskBrokerManager, AsyncTaskScheduler
+
+broker = AioPikaBroker("amqp://guest:guest@localhost:5672/")
+tasks = AsyncTaskBrokerManager(broker)
+scheduler = AsyncTaskScheduler(broker)
+
+taskiq_scheduler = scheduler.scheduler
+```
 
 ```bash
-taskiq worker src.tasks:tasks.broker
-taskiq scheduler src.tasks:scheduler.scheduler
+taskiq worker    src.tasks:broker
+taskiq scheduler src.tasks:taskiq_scheduler
 ```
 
 ### Error envelope

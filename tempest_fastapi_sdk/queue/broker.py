@@ -670,6 +670,11 @@ class MessageBroker:
         ``schema`` (the constructor form), that model drives decoding;
         otherwise the handler's own type hint does.
 
+        A binding's ``prefetch`` goes through the same translation
+        :meth:`on` applies — FastStream carries the cap on a ``Channel``
+        object and has no ``prefetch`` keyword, so forwarding it verbatim
+        raises ``TypeError`` instead of capping anything.
+
         Call it at import/startup time, before :meth:`connect`.
 
         Args:
@@ -677,11 +682,13 @@ class MessageBroker:
         """
         for sub in consumer.subscriptions():
             bound = self._bind(sub.channel)
-            if sub.schema is not None:
-                entry = _schema_entry(sub.handler, sub.schema)
-                self.broker.subscriber(bound, **sub.options)(entry)
-            else:
-                self.broker.subscriber(bound, **sub.options)(sub.handler)
+            options = _with_prefetch(dict(sub.options), sub.prefetch, "channel")
+            handler = (
+                _schema_entry(sub.handler, sub.schema)
+                if sub.schema is not None
+                else sub.handler
+            )
+            self.broker.subscriber(bound, **options)(handler)
 
     def publisher(self, channel: str | QueueSpec, /, **options: Any) -> Any:
         """Return a reusable publisher bound to ``channel``.

@@ -100,3 +100,102 @@ class TestGroupedForm:
         channels = sorted(s.channel for s in subs)
         assert channels == ["orders.cancelled", "orders.paid"]
         assert all(s.schema is None for s in subs)  # annotation drives decoding
+
+
+class TestSubscriberOptions:
+    """Options a consumer needs from FastStream must reach FastStream.
+
+    ``prefetch`` is asserted on the ``Channel`` the subscriber ends up
+    with, not on the keyword being accepted: FastStream has no
+    ``prefetch`` keyword, so an implementation that forwarded it verbatim
+    would raise ``TypeError`` and one that dropped it would still accept
+    the call.
+    """
+
+    @staticmethod
+    def _channel(mq: MessageBroker) -> object | None:
+        return getattr(mq.broker.subscribers[-1], "channel", None)
+
+    def test_prefetch_on_subscribe_becomes_a_channel(self) -> None:
+        class OrdersConsumer(Consumer):
+            @subscribe("orders.paid", prefetch=5)
+            async def on_paid(self, event: OrderPaid) -> None: ...
+
+        mq = MessageBroker(_raw())
+        mq.register(OrdersConsumer())
+        assert self._channel(mq).prefetch_count == 5
+
+    def test_prefetch_on_the_constructor_form(self) -> None:
+        class OrderPaidConsumer(Consumer):
+            async def handle(self, event: OrderPaid) -> None: ...
+
+        mq = MessageBroker(_raw())
+        mq.register(
+            OrderPaidConsumer(channel="orders.paid", schema=OrderPaid, prefetch=3),
+        )
+        assert self._channel(mq).prefetch_count == 3
+
+    def test_the_class_attribute_covers_every_binding(self) -> None:
+        class OrdersConsumer(Consumer):
+            prefetch = 7
+
+            @subscribe("orders.paid")
+            async def on_paid(self, event: OrderPaid) -> None: ...
+
+            @subscribe("orders.cancelled")
+            async def on_cancelled(self, event: OrderCancelled) -> None: ...
+
+        assert [s.prefetch for s in OrdersConsumer().subscriptions()] == [7, 7]
+
+    def test_subscribe_overrides_the_class_attribute(self) -> None:
+        """The slow handler gets its own cap without changing its peers."""
+
+        class OrdersConsumer(Consumer):
+            prefetch = 7
+
+            @subscribe("orders.paid", prefetch=1)
+            async def on_paid(self, event: OrderPaid) -> None: ...
+
+            @subscribe("orders.cancelled")
+            async def on_cancelled(self, event: OrderCancelled) -> None: ...
+
+        by_channel = {s.channel: s.prefetch for s in OrdersConsumer().subscriptions()}
+        assert by_channel == {"orders.paid": 1, "orders.cancelled": 7}
+
+    def test_no_prefetch_leaves_the_subscriber_alone(self) -> None:
+        class OrdersConsumer(Consumer):
+            @subscribe("orders.paid")
+            async def on_paid(self, event: OrderPaid) -> None: ...
+
+        mq = MessageBroker(_raw())
+        mq.register(OrdersConsumer())
+        assert self._channel(mq) is None
+
+    def test_constructor_form_forwards_subscriber_options(self) -> None:
+        """Without this, the constructor form could not name an exchange."""
+        from faststream.rabbit import RabbitExchange
+
+        class OrderPaidConsumer(Consumer):
+            async def handle(self, event: OrderPaid) -> None: ...
+
+        exchange = RabbitExchange("events", durable=True)
+        mq = MessageBroker(_raw())
+        mq.register(
+            OrderPaidConsumer(
+                channel="orders.paid",
+                schema=OrderPaid,
+                exchange=exchange,
+            ),
+        )
+        assert mq.broker.subscribers[-1].exchange == exchange
+
+    def test_constructor_options_are_not_shared_between_consumers(self) -> None:
+        """The empty default lives on the class; it must never be mutated."""
+
+        class OrderPaidConsumer(Consumer):
+            async def handle(self, event: OrderPaid) -> None: ...
+
+        OrderPaidConsumer(channel="a", schema=OrderPaid, exchange="events")
+        plain = OrderPaidConsumer(channel="b", schema=OrderPaid)
+        assert plain.subscriptions()[0].options == {}
+        assert Consumer.options == {}

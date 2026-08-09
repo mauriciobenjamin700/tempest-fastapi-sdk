@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from taskiq import InMemoryBroker
 
-from tempest_fastapi_sdk.tasks import Task, TaskDef, TaskQueue, task_method
+from tempest_fastapi_sdk.tasks import (
+    RetryPolicy,
+    Task,
+    TaskDef,
+    TaskQueue,
+    task_method,
+)
 
 
 class TestConstructorForm:
@@ -73,3 +79,98 @@ class TestGroupedForm:
 
         assert Grouped().is_grouped is True
         assert Single().is_grouped is False
+
+
+class TestRetryAndOptions:
+    """A ``RetryPolicy`` must become labels, not a label.
+
+    TaskIQ's retry middleware reads ``retry_on_error`` / ``max_retries``.
+    A policy object forwarded verbatim lands as a ``retry`` label nothing
+    looks at, so the task never retries — and nothing raises. Asserted on
+    the registered task's labels, next to the decorator path's, because
+    that is where the difference was invisible.
+    """
+
+    @staticmethod
+    def _labels(tq: TaskQueue, name: str) -> dict[str, object]:
+        return dict(tq.broker.find_task(name).labels)
+
+    def test_task_method_retry_matches_the_decorator(self) -> None:
+        tq = TaskQueue(InMemoryBroker())
+
+        @tq.task(name="fn:nightly", retry=RetryPolicy(max_retries=5))
+        async def nightly() -> None: ...
+
+        class Reports(TaskDef):
+            @task_method(name="cls:nightly", retry=RetryPolicy(max_retries=5))
+            async def nightly(self) -> None: ...
+
+        tq.register(Reports())
+        assert self._labels(tq, "cls:nightly") == self._labels(tq, "fn:nightly")
+        assert self._labels(tq, "cls:nightly")["max_retries"] == 5
+
+    def test_the_class_attribute_covers_every_task(self) -> None:
+        tq = TaskQueue(InMemoryBroker())
+
+        class Reports(TaskDef):
+            retry = RetryPolicy(max_retries=9)
+
+            @task_method(name="cls:nightly")
+            async def nightly(self) -> None: ...
+
+            @task_method(name="cls:weekly")
+            async def weekly(self) -> None: ...
+
+        tq.register(Reports())
+        assert self._labels(tq, "cls:nightly")["max_retries"] == 9
+        assert self._labels(tq, "cls:weekly")["max_retries"] == 9
+
+    def test_task_method_overrides_the_class_attribute(self) -> None:
+        tq = TaskQueue(InMemoryBroker())
+
+        class Reports(TaskDef):
+            retry = RetryPolicy(max_retries=9)
+
+            @task_method(name="cls:nightly", retry=RetryPolicy(max_retries=1))
+            async def nightly(self) -> None: ...
+
+            @task_method(name="cls:weekly")
+            async def weekly(self) -> None: ...
+
+        tq.register(Reports())
+        assert self._labels(tq, "cls:nightly")["max_retries"] == 1
+        assert self._labels(tq, "cls:weekly")["max_retries"] == 9
+
+    def test_constructor_form_takes_retry_and_labels(self) -> None:
+        tq = TaskQueue(InMemoryBroker())
+
+        class Nightly(TaskDef):
+            async def run(self) -> None: ...
+
+        tq.register(
+            Nightly(name="cls:ctor", retry=RetryPolicy(max_retries=4), priority=3),
+        )
+        assert self._labels(tq, "cls:ctor") == {
+            "retry_on_error": True,
+            "max_retries": 4,
+            "priority": 3,
+        }
+
+    def test_no_retry_leaves_the_labels_alone(self) -> None:
+        tq = TaskQueue(InMemoryBroker())
+
+        class Nightly(TaskDef):
+            async def run(self) -> None: ...
+
+        tq.register(Nightly(name="cls:plain"))
+        assert self._labels(tq, "cls:plain") == {}
+
+    def test_constructor_labels_are_not_shared_between_definitions(self) -> None:
+        """The empty default lives on the class; it must never be mutated."""
+
+        class Nightly(TaskDef):
+            async def run(self) -> None: ...
+
+        Nightly(name="a", priority=3)
+        assert Nightly(name="b").task_bindings()[0].options == {}
+        assert TaskDef.options == {}

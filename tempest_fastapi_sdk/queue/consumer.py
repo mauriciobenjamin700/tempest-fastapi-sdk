@@ -56,10 +56,13 @@ if TYPE_CHECKING:
 
 _CHANNEL_ATTR = "__tempest_channel__"
 _OPTIONS_ATTR = "__tempest_subscribe_options__"
+_PREFETCH_ATTR = "__tempest_prefetch__"
 
 
 def subscribe(
     channel: str | QueueSpec,
+    *,
+    prefetch: int | None = None,
     **options: Any,
 ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """Mark a :class:`Consumer` method as the handler for ``channel``.
@@ -72,6 +75,14 @@ def subscribe(
     Args:
         channel (str | QueueSpec): The channel this method consumes, or
             the ``QueueSpec`` declaring it along with its topology.
+        prefetch (int | None): Caps how many unacknowledged messages the
+            broker pushes to **this** handler, exactly as
+            :meth:`~tempest_fastapi_sdk.queue.MessageBroker.on` does.
+            Named rather than left to ``**options`` because FastStream
+            has no ``prefetch`` keyword — it carries the cap on a
+            ``Channel`` object, so forwarding it verbatim raises
+            ``TypeError``. Overrides :attr:`Consumer.prefetch`. RabbitMQ
+            only.
         **options (Any): Extra transport-specific subscriber options
             forwarded to FastStream (e.g. ``exchange=`` on RabbitMQ).
 
@@ -84,6 +95,7 @@ def subscribe(
     ) -> Callable[..., Awaitable[Any]]:
         setattr(method, _CHANNEL_ATTR, channel)
         setattr(method, _OPTIONS_ATTR, options)
+        setattr(method, _PREFETCH_ATTR, prefetch)
         return method
 
     return mark
@@ -103,12 +115,16 @@ class Subscription:
             the handler's own type hint is used.
         options (dict[str, Any]): Extra transport-specific subscriber
             options.
+        prefetch (int | None): Per-consumer unacknowledged-message cap,
+            kept apart from :attr:`options` because it is translated into
+            a FastStream ``Channel`` rather than forwarded as a keyword.
     """
 
     channel: str | QueueSpec
     handler: Callable[..., Awaitable[Any]]
     schema: type | None
     options: dict[str, Any]
+    prefetch: int | None = None
 
 
 class Consumer:
@@ -124,16 +140,26 @@ class Consumer:
             form, or the ``QueueSpec`` declaring it along with the
             topology it needs. Left ``None`` in the grouped form.
         schema (type | None): The payload model for the constructor form.
+        prefetch (int | None): Unacknowledged-message cap for every
+            binding this consumer declares. A :func:`subscribe` that
+            names its own ``prefetch`` overrides it for that channel.
+        options (dict[str, Any]): Subscriber options for the constructor
+            form. Never mutated, so the empty class-level default is safe
+            to share.
     """
 
     channel: str | QueueSpec | None = None
     schema: type | None = None
+    prefetch: int | None = None
+    options: dict[str, Any] = {}  # noqa: RUF012
 
     def __init__(
         self,
         *,
         channel: str | QueueSpec | None = None,
         schema: type | None = None,
+        prefetch: int | None = None,
+        **options: Any,
     ) -> None:
         """Configure the constructor form.
 
@@ -146,11 +172,25 @@ class Consumer:
                 validated into. Passing it here is the explicit,
                 no-magic path — it drives decoding instead of relying on
                 an annotation.
+            prefetch (int | None): Caps how many unacknowledged messages
+                the broker pushes to this consumer, the same knob
+                :meth:`~tempest_fastapi_sdk.queue.MessageBroker.on`
+                exposes. Applies to every binding the consumer declares,
+                including the grouped form's, unless a
+                :func:`subscribe` names its own. RabbitMQ only.
+            **options (Any): Extra transport-specific subscriber options
+                forwarded to FastStream (e.g. ``exchange=`` on RabbitMQ),
+                for the constructor form. The grouped form takes its own
+                on each :func:`subscribe`.
         """
         if channel is not None:
             self.channel = channel
         if schema is not None:
             self.schema = schema
+        if prefetch is not None:
+            self.prefetch = prefetch
+        if options:
+            self.options = options
 
     async def handle(self, message: Any) -> None:
         """Handle one message — override in the constructor form.
@@ -173,6 +213,8 @@ class Consumer:
 
         Grouped ``@subscribe`` methods take precedence; if none are
         present, the constructor form (``channel`` + ``handle``) is used.
+        A binding with no ``prefetch`` of its own inherits
+        :attr:`prefetch`.
 
         Returns:
             list[Subscription]: One entry per subscription.
@@ -188,12 +230,14 @@ class Consumer:
             attr = getattr(self, name)
             channel = getattr(attr, _CHANNEL_ATTR, None)
             if channel is not None:
+                prefetch = getattr(attr, _PREFETCH_ATTR, None)
                 grouped.append(
                     Subscription(
                         channel=channel,
                         handler=attr,
                         schema=None,
                         options=getattr(attr, _OPTIONS_ATTR, {}),
+                        prefetch=self.prefetch if prefetch is None else prefetch,
                     ),
                 )
         if grouped:
@@ -209,7 +253,8 @@ class Consumer:
                 channel=self.channel,
                 handler=self.handle,
                 schema=self.schema,
-                options={},
+                options=dict(self.options),
+                prefetch=self.prefetch,
             ),
         ]
 
