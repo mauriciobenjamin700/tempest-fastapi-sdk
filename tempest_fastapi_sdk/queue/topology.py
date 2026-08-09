@@ -85,21 +85,41 @@ class QueueType(BaseStrEnum):
             says so.
         QUORUM: Raft-replicated across nodes. Survives the loss of a node
             without the message loss classic mirroring can suffer, at the
-            cost of memory and of not supporting priorities or TTL on the
-            queue. Reach for it once losing a message matters more than
-            the extra resources.
+            cost of memory and of not supporting ``x-max-priority`` —
+            which is why combining it with :attr:`QueueSpec.max_priority`
+            raises. Message TTL **is** supported, so the delayed-retry
+            chain built by
+            :func:`~tempest_fastapi_sdk.queue.retry_queues` works on
+            quorum queues. Reach for it once losing a message matters
+            more than the extra resources.
     """
 
     CLASSIC = "classic"
     QUORUM = "quorum"
 
 
+_TRANSPORT_MARKERS: Final[tuple[tuple[str, Transport], ...]] = (
+    ("rabbit", Transport.RABBITMQ),
+    ("redis", Transport.REDIS),
+    ("kafka", Transport.KAFKA),
+    ("nats", Transport.NATS),
+)
+"""Substring of a FastStream broker class name, and what it identifies.
+
+``RabbitBroker`` is the one class whose name is not the transport's own,
+which is why the mapping is a table rather than a loop over the enum.
+"""
+
+
 class UnsupportedTopologyError(RuntimeError):
     """A :class:`QueueSpec` asks for something the transport cannot do.
 
-    Raised at subscribe/publish time — startup, not per message — so the
-    mismatch surfaces on the first run rather than as a queue that
-    quietly lacks the property you declared.
+    Raised where the queue is bound — :meth:`~MessageBroker.on`,
+    :meth:`~MessageBroker.publisher`, :meth:`~MessageBroker.register` —
+    which is startup, not per message, so the mismatch surfaces on the
+    first run rather than as a queue that quietly lacks the property you
+    declared. :meth:`~MessageBroker.publish` only reads the name, since
+    the topology belongs to the declaration and not to the message.
     """
 
 
@@ -213,13 +233,7 @@ def detect_transport(broker: Any) -> Transport:
         nothing beyond a name, the conservative direction.
     """
     name = type(broker).__name__.lower()
-    for transport in (
-        Transport.RABBITMQ,
-        Transport.REDIS,
-        Transport.KAFKA,
-        Transport.NATS,
-    ):
-        marker = "rabbit" if transport is Transport.RABBITMQ else transport.value
+    for marker, transport in _TRANSPORT_MARKERS:
         if marker in name:
             return transport
     return Transport.UNKNOWN
@@ -316,12 +330,11 @@ def to_rabbit_queue(spec: QueueSpec) -> Any:
     from tempest_fastapi_sdk.queue.broker import _require
 
     rabbit = _require("faststream.rabbit", "queue")
-    queue: Any = rabbit.RabbitQueue(
+    return rabbit.RabbitQueue(
         spec.name,
         durable=spec.durable,
         arguments=rabbit_arguments(spec),
     )
-    return queue
 
 
 def resolve_channel(channel: str | QueueSpec, transport: Transport) -> Any:

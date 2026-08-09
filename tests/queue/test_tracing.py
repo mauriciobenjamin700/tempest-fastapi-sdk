@@ -105,6 +105,25 @@ class TestRequestIdPropagation:
             raise ValueError("boom")
         assert get_request_id() is None
 
+    def test_it_is_dropped_even_when_closing_the_span_fails(self) -> None:
+        """A tracer failing on exit must not leak the id into the next message.
+
+        The worker task is reused across consumes, so a contextvar left
+        set labels an unrelated message with the previous request's id —
+        worse than no correlation at all, because it reads as real.
+        """
+
+        class _Exploding:
+            def __exit__(self, *_: Any) -> None:
+                raise RuntimeError("exporter died")
+
+        span = consume_span("orders.paid", {REQUEST_ID_HEADER: "req-7"})
+        span.__enter__()
+        span._cm = _Exploding()
+        with pytest.raises(RuntimeError, match="exporter died"):
+            span.__exit__(None, None, None)
+        assert get_request_id() is None
+
 
 class TestTraceContext:
     def test_a_traceparent_is_injected_inside_a_span(self, exporter: Any) -> None:

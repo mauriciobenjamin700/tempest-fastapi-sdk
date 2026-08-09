@@ -293,6 +293,9 @@ The **broker** does the waiting, so a worker restart in the meantime changes not
 !!! warning "The topology alone retries forever"
     AMQP counts redeliveries in `x-death` but will not stop on its own. What enforces `max_attempts` is the `dead_letter()` middleware. Declaring the topology without installing the middleware yields infinite retries — which is why they are documented together.
 
+??? info "How `x-death` is read (and why the `expired` entry does not count)"
+    RabbitMQ keeps **one entry per (queue, reason) pair**, and the retry chain dead-letters twice per round: `rejected` out of the main queue, and `expired` out of the waiting queue when its TTL fires. Summing every entry advances the counter by two per retry — with `max_attempts=3` the message was dropped after **two** runs. `delivery_attempt()` counts only failed deliveries, skipping `expired`.
+
 ### Metrics
 
 ```python
@@ -309,6 +312,8 @@ def wire_metrics(mq: MessageBroker) -> None:
 ```
 
 Produces `queue_messages_total{channel,status}` and `queue_message_duration_seconds{channel}`. Without it the consumer failure rate is invisible — the message is rejected, the broker discards it, and nothing counts.
+
+`status` is `ok`, `error` or `duplicate`. The last is a delivery `deduplicate()` rejected because a sibling worker held the claim: its own label, precisely so that deduplication doing its job does not inflate the error rate an alert is built on.
 
 
 ### Prefetch — how many messages stay in flight

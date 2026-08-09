@@ -5,6 +5,63 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.207.0] — 2026-08-08
+
+### Fixed
+
+- **The retry budget was spent in half the attempts.** `delivery_attempt()`
+  summed every `x-death` entry, but RabbitMQ keeps **one entry per (queue,
+  reason) pair** and the delayed-retry chain dead-letters a message twice
+  per round: `rejected` leaving the main queue, then `expired` leaving the
+  waiting queue when its TTL fires. The counter therefore advanced by two
+  per retry, so `ConsumerRetryPolicy(max_attempts=3)` gave up after the
+  second delivery. Entries whose reason is `expired` are now skipped — an
+  expiry is the waiting room emptying itself, not a delivery that failed.
+  An entry with no `reason` at all still counts, so a non-conforming
+  header keeps retries bounded rather than making them infinite.
+
+- **A concurrent delivery could dead-letter a message no handler ran.**
+  With `deduplicate()` and `dead_letter()` both installed, the
+  `ConcurrentDeliveryError` raised when a sibling worker holds the claim
+  was caught as an ordinary handler failure: it consumed an attempt and,
+  on the delivery that exhausted the budget, sent the message to the dead
+  queue. It is now re-raised untouched, so the copy is simply rejected and
+  offered again.
+
+- **Deduplication inflated the metric an alert is built on.** The same
+  `ConcurrentDeliveryError` counted as `queue_messages_total{status="error"}`.
+  It gets its own `duplicate` status, so a busy channel with healthy
+  handlers no longer pages on its own deduplication working.
+
+- **`consume_span` leaked the request id when closing the span failed.**
+  `clear_request_id` ran after the span's `__exit__` rather than in a
+  `finally`, so a tracer or exporter raising on exit left the contextvar
+  set. The worker task is reused across consumes, so the next message
+  would carry the previous request's id — worse than no correlation,
+  because it reads as real.
+
+- **`publish()` introspected the broker signature twice per message.**
+  `_publish_accepts` ran `inspect.signature` on every publish for both
+  `message_id` and `headers`, and the "logs once" warning in its docstring
+  was emitted per call. Answers are cached on the underlying function, so
+  the check happens once per process and the warning once per broker
+  class. The warning also named `method` instead of the broker, since
+  `type()` of a bound method is `method`.
+
+### Changed
+
+- `QueueType.QUORUM` documented itself as not supporting queue TTL, while
+  `retry_queues(queue_type=QueueType.QUORUM)` builds a retry queue that
+  needs exactly that. Quorum queues do support message TTL; the real gap
+  is `x-max-priority`, which is what `QueueSpec.__post_init__` already
+  refuses. `UnsupportedTopologyError` likewise claimed to be raised at
+  publish time — `publish()` only reads the channel name, since the
+  topology belongs to the declaration.
+
+- `MessageBroker.dead_letter()` and `.deduplicate()` took their defaults
+  from literals (`3`, `86_400`) that duplicated `DEFAULT_MAX_ATTEMPTS` and
+  `DEFAULT_DEDUP_TTL_SECONDS`, and were free to drift from them.
+
 ## [0.206.0] — 2026-08-08
 
 ### Added

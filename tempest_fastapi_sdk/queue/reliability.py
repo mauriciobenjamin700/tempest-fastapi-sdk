@@ -25,9 +25,11 @@ tasks:
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
+from tempest_fastapi_sdk.queue.dedup import ConcurrentDeliveryError
 from tempest_fastapi_sdk.queue.topology import (
     DeadLetterSpec,
     QueueSpec,
@@ -56,6 +58,13 @@ calls, which is why it is a parameter.
 
 DEFAULT_MAX_ATTEMPTS: Final[int] = 3
 """How many times a message is delivered before it is given up on."""
+
+EXPIRED_REASON: Final[str] = "expired"
+"""``x-death`` reason recorded when a message is dead-lettered by a TTL.
+
+The one reason that is **not** a failed delivery: it is the retry queue's
+waiting room emptying itself, which is how the delay is implemented.
+"""
 
 
 @dataclass(frozen=True)
@@ -209,6 +218,16 @@ def delivery_attempt(message: Any) -> int:
     readable without any state of our own — which matters, because a
     consumer restart must not reset the budget.
 
+    Entries whose ``reason`` is ``"expired"`` are skipped, and that is
+    load-bearing rather than a detail. RabbitMQ keeps **one entry per
+    (queue, reason) pair**, and the delayed-retry chain dead-letters a
+    message twice per round: once out of the main queue (``rejected``)
+    and once out of the retry queue when its TTL fires (``expired``).
+    Summing every entry therefore advanced the counter by two per retry,
+    so a ``max_attempts=3`` policy gave up after two deliveries. An
+    expiry is the waiting room emptying itself, not a delivery that
+    failed.
+
     Args:
         message (Any): The FastStream message being consumed.
 
@@ -224,10 +243,11 @@ def delivery_attempt(message: Any) -> int:
         return 1
     total = 0
     for entry in deaths:
-        if isinstance(entry, dict):
-            count = entry.get("count", 0)
-            if isinstance(count, int):
-                total += count
+        if not isinstance(entry, dict) or entry.get("reason") == EXPIRED_REASON:
+            continue
+        count = entry.get("count", 0)
+        if isinstance(count, int):
+            total += count
     return total + 1
 
 
@@ -276,6 +296,12 @@ def make_dead_letter_middleware(
     that exhausts ``max_attempts`` — not on every failed attempt, which
     would turn one bad message into a stream of alerts.
 
+    A :class:`~tempest_fastapi_sdk.queue.ConcurrentDeliveryError` is
+    re-raised untouched and does **not** consume the budget. It means a
+    sibling worker holds the claim on this id, so the copy is rejected to
+    be offered again — treating that as a terminal failure would
+    dead-letter a message no handler ever ran.
+
     The record handed over is the same
     :class:`~tempest_fastapi_sdk.tasks.DeadLetter` the task path uses, so
     every existing sink works unchanged and both kinds of failure share
@@ -313,11 +339,15 @@ def make_dead_letter_middleware(
                 Any: Whatever the handler returned.
 
             Raises:
+                ConcurrentDeliveryError: Re-raised without spending an
+                    attempt — a claim held elsewhere is not a failure.
                 BaseException: Always re-raised, so the ack policy still
                     rejects the message and the broker still routes it.
             """
             try:
                 return await call_next(msg)
+            except ConcurrentDeliveryError:
+                raise
             except Exception as exc:
                 if delivery_attempt(msg) >= max_attempts:
                     await sink(
@@ -341,8 +371,11 @@ class QueueMetrics:
     path and the task path graph the same way, on the same registry and
     the same ``/metrics`` endpoint:
 
-    * ``queue_messages_total{channel,status}`` — ``status`` is ``ok`` or
-      ``error``.
+    * ``queue_messages_total{channel,status}`` — ``status`` is ``ok``,
+      ``error``, or ``duplicate`` for a delivery
+      :meth:`~tempest_fastapi_sdk.queue.MessageBroker.deduplicate`
+      rejected because a sibling worker held the claim. Its own label
+      keeps a normal dedup outcome out of the error rate an alert reads.
     * ``queue_message_duration_seconds{channel}`` — handler wall time.
 
     Without this, the consumer failure rate is invisible: the message is
@@ -407,12 +440,13 @@ class QueueMetrics:
                 Raises:
                     BaseException: Re-raised unchanged after counting.
                 """
-                import time
-
                 channel = _message_channel(msg)
                 started = time.perf_counter()
                 try:
                     result = await call_next(msg)
+                except ConcurrentDeliveryError:
+                    metrics.consumed.labels(channel=channel, status="duplicate").inc()
+                    raise
                 except Exception:
                     metrics.consumed.labels(channel=channel, status="error").inc()
                     raise
@@ -431,6 +465,7 @@ __all__: list[str] = [
     "DEAD_SUFFIX",
     "DEFAULT_MAX_ATTEMPTS",
     "DEFAULT_RETRY_DELAY_MS",
+    "EXPIRED_REASON",
     "RETRY_SUFFIX",
     "ConsumerRetryPolicy",
     "QueueMetrics",

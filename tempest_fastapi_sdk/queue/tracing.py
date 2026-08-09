@@ -185,22 +185,30 @@ class consume_span:  # noqa: N801
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         """Close the span, recording a handler failure, and drop the id.
 
+        The request id is cleared in a ``finally``: a contextvar restored
+        on the way in and not reset on the way out leaks into whatever
+        the worker task runs next, which would label an unrelated message
+        with the previous message's request id — the exact confusion this
+        module exists to remove.
+
         Args:
             exc_type (Any): The exception class, when the block raised.
             exc (Any): The exception instance.
             tb (Any): The traceback.
         """
-        if self._cm is not None:
-            if exc is not None and self._span is not None:
-                self._span.record_exception(exc)
-                trace = _otel_trace()
-                if trace is not None:
-                    self._span.set_status(
-                        trace.Status(trace.StatusCode.ERROR, str(exc)),
-                    )
-            self._cm.__exit__(exc_type, exc, tb)
-        if self._token is not None:
-            clear_request_id(self._token)
+        try:
+            if self._cm is not None:
+                if exc is not None and self._span is not None:
+                    self._span.record_exception(exc)
+                    trace = _otel_trace()
+                    if trace is not None:
+                        self._span.set_status(
+                            trace.Status(trace.StatusCode.ERROR, str(exc)),
+                        )
+                self._cm.__exit__(exc_type, exc, tb)
+        finally:
+            if self._token is not None:
+                clear_request_id(self._token)
 
 
 def make_tracing_middleware() -> Any:

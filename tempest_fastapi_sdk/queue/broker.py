@@ -24,6 +24,14 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 from uuid import uuid4
 
+from tempest_fastapi_sdk.queue.dedup import (
+    DEFAULT_DEDUP_TTL_SECONDS,
+    make_dedup_middleware,
+)
+from tempest_fastapi_sdk.queue.reliability import (
+    DEFAULT_MAX_ATTEMPTS,
+    make_dead_letter_middleware,
+)
 from tempest_fastapi_sdk.queue.topology import (
     QueueSpec,
     Transport,
@@ -31,7 +39,7 @@ from tempest_fastapi_sdk.queue.topology import (
     detect_transport,
     resolve_channel,
 )
-from tempest_fastapi_sdk.queue.tracing import inject_context
+from tempest_fastapi_sdk.queue.tracing import inject_context, make_tracing_middleware
 
 if TYPE_CHECKING:
     from faststream.broker.core.usecase import BrokerUsecase
@@ -97,6 +105,10 @@ def _require(module: str, extra: str) -> Any:
         ) from exc
 
 
+_PUBLISH_KEYWORDS: dict[tuple[Any, str], bool] = {}
+"""Answers of :func:`_publish_accepts`, keyed by underlying function."""
+
+
 def _publish_accepts(publish: Any, name: str) -> bool:
     """Whether a broker's ``publish`` takes ``name`` as a keyword.
 
@@ -107,33 +119,45 @@ def _publish_accepts(publish: Any, name: str) -> bool:
     sending one unconditionally turns **every** publish on that transport
     into a ``TypeError``.
 
+    The answer is cached on the **underlying function** rather than on the
+    bound method, so every broker instance of a class shares one entry and
+    a signature is introspected once per process instead of twice per
+    published message — ``inspect.signature`` is far too expensive to sit
+    on a hot publish path, and the warning below would otherwise be
+    emitted per message rather than once.
+
     Args:
         publish (Any): The bound ``broker.publish``.
         name (str): The keyword the facade wants to add.
 
     Returns:
         bool: Whether it is safe to pass. A signature that cannot be
-        introspected answers ``False`` and logs once: dropping the
-        keyword costs a feature (deduplication, or a trace link), while
-        sending an unsupported one costs the publish itself.
+        introspected answers ``False``: dropping the keyword costs a
+        feature (deduplication, or a trace link), while sending an
+        unsupported one costs the publish itself.
     """
+    key = (getattr(publish, "__func__", publish), name)
+    cached = _PUBLISH_KEYWORDS.get(key)
+    if cached is not None:
+        return cached
     try:
         parameters = inspect.signature(publish).parameters
     except (TypeError, ValueError):
         logger.warning(
-            "Could not introspect %s.publish; not adding %r. Deduplication "
-            "and trace propagation need it, so pass it explicitly if the "
+            "Could not introspect %s; not adding %r. Deduplication and "
+            "trace propagation need it, so pass it explicitly if the "
             "transport supports it.",
-            type(publish).__name__,
+            getattr(publish, "__qualname__", repr(publish)),
             name,
         )
+        _PUBLISH_KEYWORDS[key] = False
         return False
-    if any(
+    accepts = name in parameters or any(
         parameter.kind is inspect.Parameter.VAR_KEYWORD
         for parameter in parameters.values()
-    ):
-        return True
-    return name in parameters
+    )
+    _PUBLISH_KEYWORDS[key] = accepts
+    return accepts
 
 
 def _with_prefetch(
@@ -515,7 +539,7 @@ class MessageBroker:
         self,
         sink: Any,
         *,
-        max_attempts: int = 3,
+        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     ) -> None:
         """Route terminally-failed consumes to ``sink``.
 
@@ -537,10 +561,6 @@ class MessageBroker:
                 :class:`~tempest_fastapi_sdk.queue.ConsumerRetryPolicy`
                 used to build the retry topology, if any.
         """
-        from tempest_fastapi_sdk.queue.reliability import (
-            make_dead_letter_middleware,
-        )
-
         self.broker.add_middleware(
             make_dead_letter_middleware(sink, max_attempts=max_attempts),
         )
@@ -549,7 +569,7 @@ class MessageBroker:
         self,
         store: Any,
         *,
-        ttl_seconds: int = 86_400,
+        ttl_seconds: int = DEFAULT_DEDUP_TTL_SECONDS,
     ) -> None:
         """Run each message id at most once, across redeliveries.
 
@@ -574,8 +594,6 @@ class MessageBroker:
                 the retry topology's total delay, or the last retry runs
                 as if the message were new.
         """
-        from tempest_fastapi_sdk.queue.dedup import make_dedup_middleware
-
         self.broker.add_middleware(
             make_dedup_middleware(store, ttl_seconds=ttl_seconds),
         )
@@ -596,8 +614,6 @@ class MessageBroker:
 
         Call it **before** :meth:`connect`.
         """
-        from tempest_fastapi_sdk.queue.tracing import make_tracing_middleware
-
         self.broker.add_middleware(make_tracing_middleware())
 
     def enable_metrics(self, metrics: Any) -> None:
