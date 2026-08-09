@@ -589,6 +589,102 @@ Details, OpenAPI coverage and limitations in the
 
 ---
 
+### PR description with AI — `tempest pr-prompt`
+
+The branch is finally green and the step everyone skips is left: writing the
+Pull Request description. Any assistant writes a good one — what it lacks are
+the two things that live in the repository: the **template** the team agreed on
+and the **diff** the branch actually produced.
+
+`tempest pr-prompt` assembles both into a single prompt and writes it to
+`stdout`, so it pipes straight into whichever assistant you run:
+
+```bash
+tempest pr-prompt                               # compares against main, prompt on stdout
+tempest pr-prompt develop                       # another base
+tempest pr-prompt | claude -p                   # pipe it into the assistant
+tempest pr-prompt --out pr_prompt.txt           # write a file to paste from
+```
+
+The prompt carries three blocks:
+
+1. **The PR template.** The repository's own wins — it is the contract that
+   project's reviewers read. These are looked up, in order:
+   `.github/pull_request_template.md`, `.github/PULL_REQUEST_TEMPLATE.md`,
+   `.github/PULL_REQUEST_TEMPLATE/pull_request_template.md`,
+   `.gitlab/merge_request_templates/default.md`, `docs/pull_request_template.md`,
+   `.pull_request_template.md` and `pull_request_template.md`. With none of
+   them, the SDK's bundled template is used.
+2. **The rules** that stop the model from returning the template with its
+   placeholders still in it: no undecided `Yes/No`, no `_italic instruction_`,
+   no section dropped, and no invented migration, env var or dependency that is
+   absent from the diff.
+3. **The branch context**: commit subjects, the `--name-status` list of changed
+   files, and an excerpt of each file's patch.
+
+!!! info "The diff is the one the forge shows"
+    Patches are read as `base...head` (three dots) — the merge-base diff, which
+    is what GitHub/GitLab display on the pull request. With two dots, every
+    commit that landed on `base` after your branch started would be attributed
+    to you.
+
+!!! info "What is complete and what is sampled"
+    The **commit** list and the **changed-file** list always go in whole — the
+    model always knows *what* changed. What is bounded are the **diff
+    excerpts**: by default the 10 files with the most changed lines, each cut
+    at 1500 characters. So what gets sampled is *how* it changed.
+
+Excerpts are bounded because the whole diff of a large branch does not fit in
+the context and is mostly noise (lock file, changelog, generated migration).
+Files enter **ordered by changed lines**, not alphabetically — otherwise the
+budget is spent on `.github/` and `CHANGELOG.md` before it reaches the file the
+PR is actually about:
+
+```bash
+tempest pr-prompt --full                        # every file, whole patch
+tempest pr-prompt --max-files 20                # 20 files with a patch (default: 10)
+tempest pr-prompt --max-files 0                 # file list only, no patch
+tempest pr-prompt --max-chars 4000              # more patch per file (default: 1500)
+```
+
+`--full` lifts both bounds at once — use it on a branch small enough to send
+whole. It **refuses** to run alongside `--max-files` / `--max-chars` (exit `2`):
+silently overriding a number you typed would be worse than complaining.
+
+!!! check "Nothing is dropped silently"
+    A truncated patch carries the `excerpt cut` mark, and the files left
+    without one become an explicit line in the prompt (`N more changed
+    file(s)…`). The model reads a partial context as partial instead of taking
+    the fragment for the whole change. The cut also respects line boundaries,
+    so half a diff line never survives — the model would read it as code that
+    does not exist.
+
+The summary (which template was picked, commit/file counts) goes to `stderr`,
+so the pipe stays clean:
+
+```text
+template: .github/pull_request_template.md
+7 commit(s), 12 changed file(s), 10 excerpt(s), 2 file(s) without a patch.
+```
+
+Other options:
+
+```bash
+tempest pr-prompt --head feat/other             # describe another branch, no checkout
+tempest pr-prompt --lang en                     # rules and bundled template in English
+tempest pr-prompt -t docs/my_template.md        # explicit template, wins over all
+tempest pr-prompt -p ../other-repo              # run against another repository
+```
+
+!!! tip "A missing base falls back to `origin/<base>`"
+    A fresh clone usually has no local `main`, only `origin/main`. When the base
+    does not resolve, the command tries `origin/<base>` before failing. When
+    neither exists it exits with code `2` naming the ref it could not find. When
+    the comparison holds no commit and no file, it exits `1` — almost always a
+    wrong base.
+
+---
+
 ### Quality gates
 
 The lint commands shell out to the project's tooling. They look for the executable on `PATH` first, and otherwise fall back to `uv run <tool>` so a project-local virtualenv works without manual activation.

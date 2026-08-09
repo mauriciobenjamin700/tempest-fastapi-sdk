@@ -587,6 +587,103 @@ Detalhes, cobertura de OpenAPI e limitações na receita
 
 ---
 
+### Descrição de PR com IA — `tempest pr-prompt`
+
+A branch ficou verde e falta a parte que todo mundo pula: escrever a descrição
+do Pull Request. Qualquer assistente escreve uma boa — o que falta pra ele são
+as duas coisas que moram no repositório: o **template** que o time combinou e o
+**diff** que a branch realmente produziu.
+
+`tempest pr-prompt` monta os dois num prompt só e joga em `stdout`, então ele
+pipa direto pra IA que você usa:
+
+```bash
+tempest pr-prompt                               # compara com main, prompt no stdout
+tempest pr-prompt develop                       # outra base
+tempest pr-prompt | claude -p                   # pipa direto pro assistente
+tempest pr-prompt --out pr_prompt.txt           # grava num arquivo pra colar
+```
+
+O prompt carrega três blocos:
+
+1. **O template do PR.** O do próprio repositório vence — é o contrato que os
+   revisores daquele projeto leem. São procurados, nessa ordem:
+   `.github/pull_request_template.md`, `.github/PULL_REQUEST_TEMPLATE.md`,
+   `.github/PULL_REQUEST_TEMPLATE/pull_request_template.md`,
+   `.gitlab/merge_request_templates/default.md`, `docs/pull_request_template.md`,
+   `.pull_request_template.md` e `pull_request_template.md`. Sem nenhum deles,
+   entra o template embutido do SDK.
+2. **As regras** que impedem a IA de devolver o template com os placeholders
+   dentro: nada de `Sim/Não` sem escolher, nada de `_texto em itálico_` de
+   instrução, nenhuma seção apagada, e nada de inventar migration, env var ou
+   dependência que não aparece no diff.
+3. **O contexto da branch**: assuntos dos commits, a lista `--name-status` dos
+   arquivos alterados e um trecho do patch de cada arquivo.
+
+!!! info "O diff é o mesmo que a forge mostra"
+    Os patches são lidos como `base...head` (três pontos) — o diff em relação
+    ao *merge-base*, que é o que o GitHub/GitLab exibe no PR. Com dois pontos,
+    todo commit que entrou na `base` depois que sua branch nasceu seria
+    atribuído a você.
+
+!!! info "O que é completo e o que é amostrado"
+    A lista de **commits** e a lista de **arquivos alterados** vão inteiras,
+    sempre — a IA sempre sabe *o que* mudou. O que é limitado são os **trechos
+    de diff**: por padrão os 10 arquivos com mais linhas alteradas, cada um
+    cortado em 1500 caracteres. Ou seja, o que é amostrado é *como* mudou.
+
+Os trechos são limitados porque o diff inteiro de uma branch grande não cabe
+no contexto e é quase todo ruído (lock file, changelog, migration gerada). Os
+arquivos entram **ordenados por linhas alteradas**, não em ordem alfabética —
+senão o orçamento vai embora em `.github/` e `CHANGELOG.md` antes de chegar no
+arquivo sobre o qual o PR é:
+
+```bash
+tempest pr-prompt --full                        # todos os arquivos, patch inteiro
+tempest pr-prompt --max-files 20                # 20 arquivos com patch (default: 10)
+tempest pr-prompt --max-files 0                 # só a lista de arquivos, sem patch
+tempest pr-prompt --max-chars 4000              # mais patch por arquivo (default: 1500)
+```
+
+`--full` levanta os dois limites de uma vez — use numa branch pequena o
+bastante pra mandar inteira. Ele **recusa** vir junto com `--max-files` /
+`--max-chars` (saída `2`): sobrescrever em silêncio um número que você digitou
+seria pior que reclamar.
+
+!!! check "Nada é cortado em silêncio"
+    Um patch truncado leva a marca `trecho cortado` e os arquivos que ficaram
+    sem trecho viram uma linha explícita no prompt (`Mais N arquivo(s)
+    alterado(s)…`). A IA lê um contexto parcial como parcial, em vez de tratar
+    o pedaço como a mudança inteira. O corte também respeita a quebra de linha,
+    pra não sobrar meia linha de diff — que a IA leria como código que não
+    existe.
+
+O resumo (template escolhido, contagem de commits/arquivos) sai em `stderr`,
+então o pipe continua limpo:
+
+```text
+template: .github/pull_request_template.md
+7 commit(s), 12 changed file(s), 10 excerpt(s), 2 file(s) without a patch.
+```
+
+Outras opções:
+
+```bash
+tempest pr-prompt --head feat/outra             # descreve outra branch, sem checkout
+tempest pr-prompt --lang en                     # regras e template embutido em inglês
+tempest pr-prompt -t docs/meu_template.md       # template explícito, vence todos
+tempest pr-prompt -p ../outro-repo              # roda contra outro repositório
+```
+
+!!! tip "Base inexistente vira `origin/<base>`"
+    Num clone recém-feito costuma não existir uma `main` local, só
+    `origin/main`. Quando a base não resolve, o comando tenta
+    `origin/<base>` antes de falhar. Se nem isso existir, ele sai com código
+    `2` e diz qual ref não encontrou. Quando a comparação não tem nem commit
+    nem arquivo, a saída é código `1` — quase sempre a base está errada.
+
+---
+
 ### Gates de qualidade
 
 Os comandos de lint chamam a ferramenta do projeto. Eles procuram o executável no `PATH` primeiro e, caso contrário, caem para `uv run <tool>` para que um virtualenv local do projeto funcione sem ativação manual.
