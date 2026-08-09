@@ -17,6 +17,18 @@ _WORD_BOUNDARY = re.compile(r"([a-z\d])([A-Z])")
 _NON_ALNUM = re.compile(r"[^0-9a-zA-Z]+")
 _LEADING_DIGITS = re.compile(r"^\d")
 
+MAX_ENUM_MEMBER: int = 72
+"""Longest enum member name the emitter can place inside the line budget.
+
+Derived, not chosen: the emitted assignment is ``    NAME = "value"`` and
+the budget is 88 columns, so 72 leaves 9 for a short value's literal — and
+any value too long for that has at least 8 characters, hence at least two
+non-empty pieces to split across adjacent literals. ``ruff format`` breaks
+neither an assignment target nor a string, and it joins a lone parenthesized
+literal back onto one line, so a name past this cap has no rendering that
+survives ``ruff format --check``.
+"""
+
 _SHADOWED_BUILTINS: frozenset[str] = frozenset(
     {
         "all",
@@ -144,11 +156,19 @@ def field_name(wire_name: str) -> str:
     Returns:
         str: The ``snake_case`` name, suffixed with ``_`` when it collides
         with a Python **keyword** (``class`` -> ``class_``, ``from`` ->
-        ``from_``). Builtins like ``id`` are kept verbatim — a model
-        attribute does not shadow the module namespace, and renaming them
-        would make every generated schema read worse.
+        ``from_``) and prefixed with ``field_`` when it would start with a
+        digit (``2fa`` -> ``field_2fa``), which is not a valid identifier.
+        Builtins like ``id`` are kept verbatim — a model attribute does not
+        shadow the module namespace, and renaming them would make every
+        generated schema read worse.
+
+    The digit prefix is ``field_`` rather than ``_``: a leading underscore
+    makes Pydantic treat the attribute as private, so the field would
+    vanish from the model instead of merely being renamed.
     """
     snake = to_snake(wire_name)
+    if _LEADING_DIGITS.match(snake):
+        return f"field_{snake}"
     if keyword.iskeyword(snake):
         return f"{snake}_"
     return snake
@@ -191,23 +211,34 @@ def enum_member_name(value: object) -> str:
         value (object): The raw enum value from the specification.
 
     Returns:
-        str: An ``UPPER_SNAKE_CASE`` member name. Values that cannot form
-        an identifier (``""``, ``"*"``) fall back to a readable stand-in,
-        and a leading digit is prefixed with ``VALUE_`` so ``"2xx"``
-        becomes ``VALUE_2XX``.
+        str: An ``UPPER_SNAKE_CASE`` member name, at most
+        :data:`MAX_ENUM_MEMBER` characters. Values that cannot form an
+        identifier (``""``, ``"*"``) fall back to a readable stand-in, and
+        a leading digit is prefixed with ``VALUE_`` so ``"2xx"`` becomes
+        ``VALUE_2XX``.
+
+    The truncation is not cosmetic. The member name is derived from the
+    value, so a provider spelling a status out in a sentence produces an
+    assignment whose **name alone** overruns the line budget, and
+    ``ruff format`` cannot break an assignment target. Collisions the cut
+    creates are resolved by :func:`unique` at the call site, and the value
+    itself is never truncated — only the Python name for it.
     """
     text = str(value)
     upper = to_snake(text).upper()
     if not upper or upper == "FIELD":
         return "EMPTY" if text == "" else "VALUE"
     if _LEADING_DIGITS.match(upper):
-        return f"VALUE_{upper}"
-    if keyword.iskeyword(upper.lower()):
-        return f"{upper}_"
+        upper = f"VALUE_{upper}"
+    elif keyword.iskeyword(upper.lower()):
+        upper = f"{upper}_"
+    if len(upper) > MAX_ENUM_MEMBER:
+        capped = upper[:MAX_ENUM_MEMBER]
+        upper = capped.rstrip("_") or capped
     return upper
 
 
-def unique(name: str, taken: set[str]) -> str:
+def unique(name: str, taken: set[str], *, separator: str = "_") -> str:
     """Return ``name`` made unique against ``taken``, and reserve it.
 
     Two different specification names can collapse onto one Python
@@ -219,20 +250,26 @@ def unique(name: str, taken: set[str]) -> str:
         name (str): The candidate identifier.
         taken (set[str]): Names already used in this scope. **Mutated** —
             the returned name is added.
+        separator (str): Text between the name and the counter. The
+            ``snake_case`` default is wrong for a class: ``Transaction_2``
+            is not CapWords and fails ``N801`` in the consumer's own lint
+            run, so class call sites pass ``""`` for ``Transaction2``.
 
     Returns:
-        str: ``name`` when free, otherwise ``name_2``, ``name_3``, …
+        str: ``name`` when free, otherwise ``name_2``, ``name_3``, … (or
+        ``name2``, ``name3``, … with an empty ``separator``).
     """
     candidate = name
     counter = 2
     while candidate in taken:
-        candidate = f"{name}_{counter}"
+        candidate = f"{name}{separator}{counter}"
         counter += 1
     taken.add(candidate)
     return candidate
 
 
 __all__: list[str] = [
+    "MAX_ENUM_MEMBER",
     "enum_member_name",
     "field_name",
     "is_shadowing_builtin",

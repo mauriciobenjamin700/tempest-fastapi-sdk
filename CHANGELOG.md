@@ -5,6 +5,81 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.211.0] — 2026-08-09
+
+### Fixed
+
+`tempest openapi-client` run against a real third-party specification
+produced a package that did not import, did not lint, and in one case
+silently changed what the specification said. Every case below is now a
+test in `tests/openapi/test_hostile_spec.py`, generated with
+`run_format=False` on purpose — the `ruff --fix` pass the command runs
+afterwards was hiding three of them, so they only ever reached a caller
+passing `--no-format`.
+
+- **A description with a quote, a newline or a backslash emitted a broken
+  literal.** The emitter double-quoted a value by interpolating it
+  **raw**, guarded by `"'" in repr(value)` — which matches `repr`'s own
+  delimiter, not an apostrophe in the text, so every quote-free string
+  took that path. A description carried over from a YAML block scalar
+  emitted an unterminated string and `schemas.py` did not import; one
+  containing `\b` or `\x41` changed value in silence. Text is now rendered
+  by a real literal writer, containers included, so a string nested in an
+  object `example` gets the same treatment.
+
+- **Quote style now matches what `ruff format` normalizes to.** Text
+  carrying more `"` than `'` comes out single-quoted. The project's rule
+  is double quotes, but `ruff format` prefers whichever escapes less, so
+  the double-quoted form was correct code that failed the consumer's
+  `ruff format --check` on their first run.
+
+- **`\#` in the spec's prose emitted a docstring that warns.** It is not
+  a Python escape — `W605`, and a `SyntaxWarning` from 3.12. The docstring
+  is now `r"""` when any of its prose carries a backslash, and the
+  decision is taken before wrapping, since the `r` costs a column on the
+  line already closest to the budget.
+
+- **An over-long description or enum value overran the line budget.**
+  `ruff format` never breaks a string, so the emitter has to split it —
+  into **two or more** adjacent literals, because a lone parenthesized
+  literal is joined straight back onto the long line. Concatenating the
+  emitted pieces reproduces the specification's wording character for
+  character. An enum **member name** is derived from the value, so a
+  provider spelling a status out in a sentence overran before the value
+  was reached at all; the name is now capped (the value never is).
+
+- **A summary longer than one line was left long.** Both emitters wrapped
+  only some of their prose, and `ruff format` does not rewrap a docstring.
+  Wrapped continuation lines also no longer hang one level deeper than the
+  `Attributes:` heading that follows them.
+
+- **`transaction` and `Transaction` in the same spec produced
+  `Transaction_2`**, which is not CapWords and fails the consumer's
+  `N801`. Class collisions now resolve to `Transaction2`; field
+  collisions keep `reference_2`.
+
+- **A property named `2fa` was emitted verbatim** and the module did not
+  parse. It becomes `field_2fa` with `alias="2fa"`. The prefix is
+  `field_`, not `_`: a leading underscore makes Pydantic treat the
+  attribute as **private**, so the field would vanish from the model
+  rather than merely be renamed.
+
+- **Path parameters and the path template did not have to agree.** Three
+  cases, each reported in the command summary rather than guessed at:
+  a `path` parameter the template never interpolates is now **dropped**
+  (the caller passed an identifier and the request dropped it on the
+  floor — the one failure mode the generator must not produce in
+  silence); a placeholder no parameter declares is **synthesized** as a
+  required `str` (the emitted path is an f-string, so skipping it left the
+  method referencing an undefined name); and path parameters are ordered
+  by their position in the **template**, since they are the generated
+  method's only positional arguments and a spec listing them out of order
+  handed a caller reading `/{a}/{b}` a signature spelled `(b, a)`.
+
+- **The path and every wire name now go through the literal writer too.**
+  Both come from the specification, and one carrying a quote or a
+  backslash emitted a module that does not parse.
+
 ## [0.210.0] — 2026-08-09
 
 ### Added

@@ -11,34 +11,17 @@ circuit breaker and auth headers, and tests can pass an
 from __future__ import annotations
 
 import re
-import textwrap
 
 from tempest_fastapi_sdk.openapi.ir import ClientIR, OperationIR, ParameterIR
-
-_MAX_LINE: int = 88
-"""Line budget matching the project's ruff configuration."""
-
-
-def _wrap(text: str, indent: str, first_prefix: str = "") -> list[str]:
-    """Wrap prose to the line budget.
-
-    Args:
-        text (str): The prose to wrap.
-        indent (str): Indentation for continuation lines.
-        first_prefix (str): Text prefixed to the first line.
-
-    Returns:
-        list[str]: Wrapped source lines.
-    """
-    wrapped = textwrap.wrap(
-        f"{first_prefix}{text}",
-        width=_MAX_LINE,
-        initial_indent=indent,
-        subsequent_indent=f"{indent}    ",
-        break_long_words=False,
-        break_on_hyphens=False,
-    )
-    return wrapped or [f"{indent}{first_prefix}{text}"]
+from tempest_fastapi_sdk.openapi.source import (
+    MAX_LINE as _MAX_LINE,
+)
+from tempest_fastapi_sdk.openapi.source import (
+    string_literal as _string_literal,
+)
+from tempest_fastapi_sdk.openapi.source import (
+    wrap as _wrap,
+)
 
 
 def _signature_lines(operation: OperationIR) -> list[str]:
@@ -85,7 +68,7 @@ def _signature_lines(operation: OperationIR) -> list[str]:
 
 
 def _docstring_lines(operation: OperationIR) -> list[str]:
-    """Render an operation's Google-style docstring.
+    r"""Render an operation's Google-style docstring.
 
     Args:
         operation (OperationIR): The operation to render.
@@ -93,14 +76,41 @@ def _docstring_lines(operation: OperationIR) -> list[str]:
     Returns:
         list[str]: Source lines for the docstring, always multi-line so
         the ``Args:`` / ``Returns:`` / ``Raises:`` sections have a home.
+        Prefixed ``r\"\"\"`` when any of the specification's prose carries a
+        backslash — ``\#`` is not a Python escape, so the plain form raised
+        ``W605`` and, from 3.12, a ``SyntaxWarning``. It survived review
+        because the generator's own ``ruff --fix`` pass adds the prefix
+        afterwards, which hides the defect from everyone except a caller
+        passing ``--no-format``.
+
+    The prose is rendered twice rather than patched after the fact: the
+    ``r`` costs a column on the line already closest to the budget, so a
+    summary that wrapped to exactly 88 characters would overrun.
     """
-    lines = [f'        """{operation.summary}']
+    lines = _render_docstring(operation, '"""')
+    if any("\\" in line for line in lines):
+        return _render_docstring(operation, 'r"""')
+    return lines
+
+
+def _render_docstring(operation: OperationIR, opening: str) -> list[str]:
+    """Render the docstring with a given opening delimiter.
+
+    Args:
+        operation (OperationIR): The operation to render.
+        opening (str): ``'\"\"\"'`` or ``'r\"\"\"'``.
+
+    Returns:
+        list[str]: Source lines, wrapped against the budget the delimiter
+        leaves.
+    """
+    lines = _wrap(operation.summary, "        ", opening, hanging=False)
     if operation.description:
         lines.append("")
         for paragraph in operation.description.split("\n\n"):
             collapsed = " ".join(paragraph.split())
             if collapsed:
-                lines.extend(_wrap(collapsed, "        "))
+                lines.extend(_wrap(collapsed, "        ", hanging=False))
                 lines.append("")
         while lines and not lines[-1]:
             lines.pop()
@@ -187,28 +197,35 @@ def _body_lines(operation: OperationIR) -> list[str]:
     Returns:
         list[str]: Source lines for the method body, up to and including
         the ``request`` call and the return.
+
+    The path and every wire name go through :func:`string_literal` rather
+    than being interpolated between bare quotes: both come from the
+    specification, and one carrying a quote or a backslash would emit a
+    module that does not parse. The ``f`` prefix is added only when the
+    template still holds a placeholder — after the parser's repair pass,
+    every remaining brace pair is one.
     """
     lines: list[str] = []
 
-    if operation.path_parameters:
-        lines.append(f'        path = f"{_as_fstring(operation)}"')
+    rendered_path = _as_fstring(operation)
+    if "{" in rendered_path:
+        lines.append(f"        path = f{_string_literal(rendered_path)}")
     else:
-        lines.append(f'        path = "{operation.path}"')
+        lines.append(f"        path = {_string_literal(operation.path)}")
 
     if operation.query_parameters:
         lines.append("        params: dict[str, Any] = {}")
         for parameter in operation.query_parameters:
+            key = _string_literal(parameter.wire_name)
             if parameter.required:
                 lines.append(
-                    f'        params["{parameter.wire_name}"] = '
-                    f"_param({parameter.name})"
+                    f"        params[{key}] = _param({parameter.name})",
                 )
             else:
                 lines.extend(
                     [
                         f"        if {parameter.name} is not None:",
-                        f'            params["{parameter.wire_name}"] = '
-                        f"_param({parameter.name})",
+                        f"            params[{key}] = _param({parameter.name})",
                     ]
                 )
 

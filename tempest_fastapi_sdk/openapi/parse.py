@@ -47,6 +47,9 @@ _HTTP_METHODS: tuple[str, ...] = (
     "trace",
 )
 
+_PLACEHOLDERS: re.Pattern[str] = re.compile(r"\{([^{}]+)\}")
+"""Every ``{name}`` an OpenAPI path template interpolates."""
+
 _FORMAT_TYPES: dict[str, str] = {
     "date-time": "datetime",
     "date": "date",
@@ -485,7 +488,7 @@ class _Parser:
             self.wire_to_class[wire_name] = rendered
             return rendered
 
-        class_name = unique(to_pascal(wire_name), self.taken_class_names)
+        class_name = unique(to_pascal(wire_name), self.taken_class_names, separator="")
         self.wire_to_class[wire_name] = class_name
         self.schemas[class_name] = self._build_schema(class_name, wire_name, schema)
         return class_name
@@ -501,7 +504,7 @@ class _Parser:
         Returns:
             str: The generated class name.
         """
-        class_name = unique(to_pascal(hint), self.taken_class_names)
+        class_name = unique(to_pascal(hint), self.taken_class_names, separator="")
         self.schemas[class_name] = self._build_schema(class_name, hint, schema)
         return class_name
 
@@ -529,7 +532,7 @@ class _Parser:
         for existing in self.schemas.values():
             if (existing.kind, existing.enum_members) == signature:
                 return existing.name
-        class_name = unique(to_pascal(hint), self.taken_class_names)
+        class_name = unique(to_pascal(hint), self.taken_class_names, separator="")
         self.schemas[class_name] = SchemaIR(
             name=class_name,
             wire_name=hint,
@@ -723,6 +726,7 @@ class _Parser:
         parameters = self._build_parameters(
             [*shared_parameters, *(operation.get("parameters") or [])],
             owner=to_pascal(name),
+            path=path,
         )
         body_annotation, body_required = self._build_body(
             operation, owner=to_pascal(name)
@@ -765,6 +769,7 @@ class _Parser:
         raw_parameters: list[Any],
         *,
         owner: str,
+        path: str,
     ) -> tuple[ParameterIR, ...]:
         """Build the path and query parameters of an operation.
 
@@ -772,6 +777,33 @@ class _Parser:
         generated method signature is valid Python; ``header`` and
         ``cookie`` parameters are skipped with a note, since the
         ``HTTPClient`` already owns default headers.
+
+        A ``path`` parameter whose placeholder is absent from ``path`` is
+        skipped with a note rather than emitted. Keeping it would put an
+        argument in the signature that the request never carries — the
+        caller passes an identifier and it is dropped on the floor, which
+        is the one failure mode the generator must not produce in silence.
+
+        The mirror case — a placeholder in ``path`` that no parameter
+        declares — is invalid OpenAPI and is repaired rather than skipped:
+        a required ``str`` parameter is synthesized, since the emitted path
+        is an f-string and dropping the argument would leave the generated
+        method referencing an undefined name.
+
+        Path parameters come out ordered by their **position in the
+        template**, not by their position in ``parameters``. They are the
+        only positional arguments of the generated method, so a
+        specification listing them out of order would hand a caller reading
+        ``/{a}/{b}`` a signature spelled ``(b, a)``.
+
+        Args:
+            raw_parameters (list[Any]): The operation's ``parameters``,
+                already merged with the path item's shared ones.
+            owner (str): PascalCase prefix for any inline schema this
+                parameter needs to name.
+            path (str): The path template the operation is bound to, used
+                to confirm each path parameter is actually interpolated,
+                and to order the ones that are.
         """
         path_params: list[ParameterIR] = []
         required_query: list[ParameterIR] = []
@@ -790,6 +822,13 @@ class _Parser:
                 self.note(
                     f"{location!r} parameter {wire_name!r} skipped (pass it via "
                     f"HTTPClient default_headers)"
+                )
+                continue
+            if location == "path" and f"{{{wire_name}}}" not in path:
+                self.note(
+                    f"path parameter {wire_name!r} of {path!r} is declared but "
+                    f"absent from the path template — skipped, since the value "
+                    f"would never reach the request"
                 )
                 continue
             schema = resolved.get("schema")
@@ -813,7 +852,55 @@ class _Parser:
             else:
                 optional_query.append(parameter)
 
+        path_params.extend(self._undeclared_path_params(path, path_params, used))
+        path_params.sort(key=lambda item: path.index(f"{{{item.wire_name}}}"))
         return (*path_params, *required_query, *optional_query)
+
+    def _undeclared_path_params(
+        self,
+        path: str,
+        declared: list[ParameterIR],
+        used: set[str],
+    ) -> list[ParameterIR]:
+        """Synthesize a parameter for every placeholder nothing declares.
+
+        Args:
+            path (str): The path template the operation is bound to.
+            declared (list[ParameterIR]): The path parameters built from the
+                specification's own ``parameters``.
+            used (set[str]): Python names already taken in this operation.
+                **Mutated** — each synthesized name is reserved.
+
+        Returns:
+            list[ParameterIR]: One required ``str`` parameter per
+            placeholder with no declaration, in template order.
+
+        OpenAPI requires every placeholder to be declared, so reaching this
+        means the specification is wrong. Skipping it is not an option: the
+        emitted path is an f-string, so the generated method would reference
+        a name that does not exist and the module would not import.
+        """
+        known = {parameter.wire_name for parameter in declared}
+        synthesized: list[ParameterIR] = []
+        for wire_name in _PLACEHOLDERS.findall(path):
+            if wire_name in known:
+                continue
+            known.add(wire_name)
+            self.note(
+                f"path {path!r} interpolates {wire_name!r}, which no parameter "
+                f"declares — generated as a required str"
+            )
+            synthesized.append(
+                ParameterIR(
+                    name=unique(field_name(wire_name), used),
+                    wire_name=wire_name,
+                    location="path",
+                    annotation="str",
+                    required=True,
+                    description=None,
+                )
+            )
+        return synthesized
 
     def _build_body(
         self,
