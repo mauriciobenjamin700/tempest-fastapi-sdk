@@ -5,6 +5,60 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.210.0] — 2026-08-09
+
+### Added
+
+- **`tempest pr-prompt` — the prompt that makes an AI write the PR
+  description.** The branch is green and the description is the step
+  everyone skips. Any assistant writes a good one; what it lacks are the
+  two things that live in the repository — the template the team agreed
+  on and the diff the branch produced. The command assembles both and
+  writes the prompt to stdout, so it pipes into whichever assistant the
+  user runs:
+
+  ```bash
+  tempest pr-prompt | claude -p
+  tempest pr-prompt develop --lang en --out pr_prompt.txt
+  ```
+
+  The **repository's own template wins** — `.github/pull_request_template.md`
+  and the other conventional spellings, GitLab's included — because it is
+  the contract that project's reviewers read; `--template` overrides it,
+  and a bundled PT-BR / EN-US template covers the repository that has
+  none. Around it go the rules that stop the model from returning the
+  template with its placeholders still in it (no undecided `Sim/Não`, no
+  italic instruction text, no section dropped, no invented migration or
+  env var), and the branch context: commit subjects, `--name-status` and
+  bounded patch excerpts.
+
+  Three decisions the shape depends on:
+
+  - Patches are read as **`base...head`** — the merge-base diff the forge
+    shows on the pull request. The two-dot form would attribute every
+    commit that landed on the base since the branch started to this PR.
+  - Files are excerpted **most-changed first**, not alphabetically:
+    `--max-files` spent in git's order goes to `.github/` and
+    `CHANGELOG.md` before reaching the file the PR is about.
+  - **Nothing is cut silently.** A truncated patch is marked, the files
+    left without an excerpt become a line in the prompt, and the cut
+    respects line boundaries — half a diff line reads as code that does
+    not exist.
+
+  Only the excerpts are bounded: the commit list and the changed-file
+  list always go in whole, so the model always knows *what* changed and
+  only *how* it changed is sampled. `--full` excerpts every file with its
+  whole patch, and refuses to run next to `--max-files` / `--max-chars`
+  rather than silently overriding a number the caller typed.
+
+  Public surface in `tempest_fastapi_sdk.cli.pr_prompt`:
+  `generate_pr_prompt`, `collect_context`, `build_prompt`,
+  `resolve_template`, `bundled_template`, `files_by_churn`,
+  `diff_excerpts`, `commit_subjects`, `changed_files`, `resolve_base`,
+  `current_branch`, `repository_name`, `repository_root`, plus
+  `PullRequestContext` / `ResolvedTemplate` / `DiffExcerpt` /
+  `PromptLanguage` / `GitError`. Recipe: `docs/recipes/cli.md`.
+
 ## [0.209.0] — 2026-08-09
 
 ### Fixed

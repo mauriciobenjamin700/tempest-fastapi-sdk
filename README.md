@@ -3860,6 +3860,18 @@ tempest generate --src --force                        # overwrite existing layer
 
 `--dockerfile` re-renders the multi-stage uv `Dockerfile` + `.dockerignore`; the `EXPOSE` / `SERVER_PORT` is read from the project's `.env` / `.env.example` (falling back to `8000`). `--src` reads the SDK extras pinned in `pyproject.toml` and writes only the layers that match — `[queue]` → `src/queue/` (FastStream broker + handlers), `[tasks]` → `src/tasks/` (TaskIQ broker + jobs). The source root (`src` or `app`) is auto-detected. It is idempotent: existing files are kept unless `--force` is passed. `tempest new --extras auth,queue` already scaffolds those layers — `generate --src` is for extras added after the project exists.
 
+#### PR description with AI — `tempest pr-prompt`
+
+```bash
+tempest pr-prompt                                     # prompt on stdout, compared against main
+tempest pr-prompt develop | claude -p                 # pipe it into your assistant
+tempest pr-prompt --out pr_prompt.txt --lang en       # write a file, English instructions
+tempest pr-prompt --max-files 20 --max-chars 4000     # more of the diff in the prompt
+tempest pr-prompt --full                              # every file, whole patch
+```
+
+Builds the prompt that makes an AI fill *this branch's* PR description: the pull-request template (the repository's own — `.github/pull_request_template.md` and the other conventional spellings — falling back to a bundled PT-BR / EN-US one), the rules that stop the model from returning the template with its placeholders still in it, and the branch context (commit subjects, changed files, bounded patch excerpts). Diffs are read as `base...head`, the merge-base diff the forge shows. The commit list and the changed-file list always go in whole — only the patch excerpts are bounded, **most-changed first**, and whatever `--max-files` / `--max-chars` leaves out is stated inside the prompt instead of dropped silently (`--full` lifts both bounds). Recipe: [CLI »](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/cli/).
+
 ### Admin site recipe
 
 Django-style management UI mounted under `/admin`. Operators sign in with a user row from the database (no separate admin password store) and browse every registered model from the browser, so the database port can stay closed on private networks. The panel is feature-complete (Django-admin parity): a list view with search / per-field filters / sortable columns, full CRUD (create / edit / delete), bulk actions, CSV/JSON export, FK-select widgets, a dashboard with live row counts + system metrics, optional TOTP MFA at login, an audit trail stamping `created_by` / `updated_by`, file/image upload fields, and in-place inline editing of 1-N children (`Inline(editable=True)`). The admin-panel evolution is complete.

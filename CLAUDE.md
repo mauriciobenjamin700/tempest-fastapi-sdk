@@ -650,6 +650,23 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   pull/cache-list/cache-rm`,
   plus quality gates (`lint`, `fix`, `format`, `fmt-check`, `type`,
   `test`, `check`), `openapi-errors`, `openapi-client`, `permissions`.
+  **`tempest pr-prompt` (v0.210.0)** — builds the prompt that makes an AI
+  fill this branch's PR description: the repository's own PR template
+  (`.github/pull_request_template.md` and the other conventional
+  spellings; `--template` overrides, bundled PT-BR/EN-US fallback), the
+  rules that stop the model from returning the placeholders, and the
+  branch context. Prompt on stdout (`| claude -p`), diagnostics on
+  stderr, `--out` writes a file. Diffs are `base...head` — the merge-base
+  diff the forge shows, since two dots would attribute the base's own
+  commits to the PR; excerpts go **most-changed first** (`--max-files`
+  spent alphabetically never reaches the file the PR is about); and every
+  bound is stated **inside** the prompt, cutting on line boundaries.
+  Commits and the changed-file list are **never** bounded — only the
+  patch excerpts are, and `--full` lifts both bounds (refusing to sit
+  next to an explicit `--max-files` / `--max-chars` instead of
+  overriding it in silence).
+  Missing base falls back to `origin/<base>`; an empty comparison exits
+  `1`. Recipe: `docs/recipes/cli.md`.
 
 The whole Tier S / Tier A / Tier B backlog that used to live here is
 **shipped**, and so is the five-item next-version plan that followed it
