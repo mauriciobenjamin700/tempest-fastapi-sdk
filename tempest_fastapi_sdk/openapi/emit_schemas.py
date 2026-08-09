@@ -30,6 +30,9 @@ from tempest_fastapi_sdk.openapi.source import (
     string_literal as _string_literal,
 )
 from tempest_fastapi_sdk.openapi.source import (
+    unsupported_comment as _unsupported_comment,
+)
+from tempest_fastapi_sdk.openapi.source import (
     wrap as _wrap,
 )
 
@@ -141,28 +144,32 @@ def _field_lines(field: FieldIR) -> list[str]:
     Returns:
         list[str]: Source lines. A field with no metadata and no default
         is emitted as a bare annotation rather than an empty
-        ``Field()`` call.
+        ``Field()`` call. When the specification carried something the
+        parser could not model, the lines are preceded by an
+        ``# openapi: unsupported`` comment naming the gap — otherwise the
+        reader sees an ``Any`` with no way to learn where it came from.
 
     Notes:
         When the default is the only thing to emit, it is written as a bare
         assignment rather than wrapped in an otherwise-empty ``Field()``
         call.
     """
+    marker = _unsupported_comment(field.unsupported, "    ")
     arguments = _field_arguments(field)
     if not arguments:
-        return [f"    {field.name}: {field.annotation}"]
+        return [*marker, f"    {field.name}: {field.annotation}"]
 
     if (
         len(arguments) == 1
         and field.default is not None
         and not field.default_is_factory
     ):
-        return [f"    {field.name}: {field.annotation} = {field.default}"]
+        return [*marker, f"    {field.name}: {field.annotation} = {field.default}"]
 
     single = f"    {field.name}: {field.annotation} = Field({', '.join(arguments)})"
     if len(single) <= _MAX_LINE:
-        return [single]
-    lines = [f"    {field.name}: {field.annotation} = Field("]
+        return [*marker, single]
+    lines = [*marker, f"    {field.name}: {field.annotation} = Field("]
     for argument in arguments:
         lines.extend(_argument_lines(argument, "        "))
     lines.append("    )")

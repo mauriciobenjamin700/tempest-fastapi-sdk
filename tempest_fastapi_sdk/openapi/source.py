@@ -179,10 +179,43 @@ def wrap(
     return wrapped or [f"{indent}{body}"]
 
 
+UNSUPPORTED_MARKER: str = "# openapi: unsupported"
+"""Prefix of the comment marking a construct the generator could not model.
+
+Greppable on purpose. A reader who opens the module months later and finds an
+``Any`` has no other way to learn why: the command's summary is terminal output
+that scrolled away, and regenerating to read it again needs the specification
+that produced it.
+"""
+
+
+def unsupported_comment(notes: tuple[str, ...], indent: str) -> list[str]:
+    """Render the ``# openapi: unsupported`` comments for one output line.
+
+    Args:
+        notes (tuple[str, ...]): Reasons collected while parsing the field,
+            parameter or operation this comment sits above.
+        indent (str): Leading whitespace of the line being marked.
+
+    Returns:
+        list[str]: One wrapped comment block per note, empty when there are
+        none. Comments go **above** the line rather than trailing it, so a
+        long reason wraps instead of overrunning the budget.
+    """
+    lines: list[str] = []
+    for note in notes:
+        wrapped = wrap(note, indent, f"{UNSUPPORTED_MARKER} — ", hanging=False)
+        lines.append(wrapped[0])
+        lines.extend(f"{indent}#   {line.strip()}" for line in wrapped[1:])
+    return lines
+
+
 __all__: list[str] = [
     "MAX_LINE",
+    "UNSUPPORTED_MARKER",
     "docstring_delimiter",
     "string_chunks",
     "string_literal",
+    "unsupported_comment",
     "wrap",
 ]

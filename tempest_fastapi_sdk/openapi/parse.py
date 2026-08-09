@@ -15,7 +15,8 @@ documented gap.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import replace
 from typing import Any
 
@@ -117,15 +118,43 @@ class _Parser:
         self.wire_to_class: dict[str, str] = {}
         self.notes: list[str] = []
         self.imports: set[str] = set()
+        self._sinks: list[list[str]] = []
 
     def note(self, message: str) -> None:
         """Record an unsupported construct, de-duplicated.
 
         Args:
             message (str): Human-readable description of the gap.
+
+        The message also reaches every open :meth:`capture` sink, each with
+        its own de-duplication. The summary's list must not repeat itself,
+        but two fields hitting the *same* gap both need marking — sharing
+        one de-duplicated list would mark only the first one.
         """
         if message not in self.notes:
             self.notes.append(message)
+        for sink in self._sinks:
+            if message not in sink:
+                sink.append(message)
+
+    @contextmanager
+    def capture(self) -> Iterator[list[str]]:
+        """Collect every note raised inside the block.
+
+        Yields:
+            list[str]: The notes, appended as they are raised. Read it
+            **after** the block exits.
+
+        Used to attach a gap to the specific field, parameter or operation
+        it came from, so the emitter can mark that line in the output
+        instead of leaving the reader with an unexplained ``Any``.
+        """
+        sink: list[str] = []
+        self._sinks.append(sink)
+        try:
+            yield sink
+        finally:
+            self._sinks.remove(sink)
 
     # -- type rendering ---------------------------------------------------
 
@@ -609,10 +638,11 @@ class _Parser:
         finished annotations by :func:`_resolve_dependencies`.
         """
         python_name = unique(field_name(wire_property), used_names)
-        annotation = self.render_type(
-            schema,
-            hint=f"{owner}{to_pascal(wire_property)}",
-        )
+        with self.capture() as gaps:
+            annotation = self.render_type(
+                schema,
+                hint=f"{owner}{to_pascal(wire_property)}",
+            )
 
         resolved = deref(self.document, schema) if "$ref" in schema else dict(schema)
         is_list = annotation.startswith("list[")
@@ -643,6 +673,7 @@ class _Parser:
             description=_clean_text(resolved.get("description")),
             examples=examples,
             constraints=_collect_constraints(resolved),
+            unsupported=tuple(gaps),
         )
 
     def _docstring_for(self, schema: Mapping[str, Any], class_name: str) -> str:
@@ -728,12 +759,13 @@ class _Parser:
             owner=to_pascal(name),
             path=path,
         )
-        body_annotation, body_required = self._build_body(
-            operation, owner=to_pascal(name)
-        )
-        response_annotation, success_status = self._build_response(
-            operation, owner=to_pascal(name)
-        )
+        with self.capture() as gaps:
+            body_annotation, body_required = self._build_body(
+                operation, owner=to_pascal(name)
+            )
+            response_annotation, success_status = self._build_response(
+                operation, owner=to_pascal(name)
+            )
 
         summary = _clean_text(operation.get("summary")) or _clean_text(
             operation.get("description")
@@ -762,6 +794,7 @@ class _Parser:
             response_annotation=response_annotation,
             success_status=success_status,
             error_statuses=self._error_statuses(operation),
+            unsupported=tuple(gaps),
         )
 
     def _build_parameters(
@@ -833,7 +866,10 @@ class _Parser:
                 continue
             schema = resolved.get("schema")
             schema = schema if isinstance(schema, dict) else {}
-            annotation = self.render_type(schema, hint=f"{owner}{to_pascal(wire_name)}")
+            with self.capture() as gaps:
+                annotation = self.render_type(
+                    schema, hint=f"{owner}{to_pascal(wire_name)}"
+                )
             required = bool(resolved.get("required")) or location == "path"
             if not required and not annotation.endswith("| None"):
                 annotation = f"{annotation} | None"
@@ -844,6 +880,7 @@ class _Parser:
                 annotation=annotation,
                 required=required,
                 description=_clean_text(resolved.get("description")),
+                unsupported=tuple(gaps),
             )
             if parameter.location == "path":
                 path_params.append(parameter)
@@ -886,10 +923,11 @@ class _Parser:
             if wire_name in known:
                 continue
             known.add(wire_name)
-            self.note(
-                f"path {path!r} interpolates {wire_name!r}, which no parameter "
-                f"declares — generated as a required str"
-            )
+            with self.capture() as gaps:
+                self.note(
+                    f"path {path!r} interpolates {wire_name!r}, which no parameter "
+                    f"declares — generated as a required str"
+                )
             synthesized.append(
                 ParameterIR(
                     name=unique(field_name(wire_name), used),
@@ -898,6 +936,7 @@ class _Parser:
                     annotation="str",
                     required=True,
                     description=None,
+                    unsupported=tuple(gaps),
                 )
             )
         return synthesized

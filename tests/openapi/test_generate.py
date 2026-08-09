@@ -714,3 +714,135 @@ class TestOpenapiClientCommand:
         )
         assert result.exit_code == 0
         assert not (destination / "client.py").exists()
+
+
+def _unsupported_document() -> dict[str, Any]:
+    """Build a specification carrying one gap of each markable kind.
+
+    Returns:
+        dict[str, Any]: The OpenAPI document — a `not` schema and an
+        `items`-less array (both field-level), a non-JSON request body and
+        an undeclared path placeholder (both operation-level).
+    """
+    return {
+        "openapi": "3.0.3",
+        "info": {"title": "Marked API", "version": "1.0.0"},
+        "paths": {
+            "/things/{thingId}": {
+                "post": {
+                    "operationId": "createThing",
+                    "summary": "Create a thing.",
+                    "requestBody": {
+                        "content": {
+                            "multipart/form-data": {"schema": {"type": "object"}}
+                        }
+                    },
+                    "responses": {"204": {"description": "ok"}},
+                }
+            }
+        },
+        "components": {
+            "schemas": {
+                "Thing": {
+                    "type": "object",
+                    "properties": {
+                        "weird": {"not": {"type": "string"}},
+                        "loose": {"type": "array"},
+                        "alsoWeird": {"not": {"type": "integer"}},
+                    },
+                }
+            }
+        },
+    }
+
+
+class TestUnsupportedMarker:
+    """A gap is marked in the file, not only in the terminal.
+
+    The command's summary scrolls away. Someone opening ``schemas.py``
+    months later and finding an ``Any`` needs the reason next to it, which
+    is what these tests pin — the marker was promised in the docs for
+    several releases while never being emitted at all.
+    """
+
+    @pytest.fixture
+    def generated(self, tmp_path: Path) -> Path:
+        """Generate the package without the formatting pass.
+
+        Args:
+            tmp_path (Path): pytest's per-test temporary directory.
+
+        Returns:
+            Path: The generated package directory.
+        """
+        spec = tmp_path / "marked.json"
+        spec.write_text(json.dumps(_unsupported_document()), encoding="utf-8")
+        result = generate_integration(
+            str(spec),
+            target=tmp_path,
+            name="marked",
+            out=tmp_path / "pkg" / "marked_gen",
+            run_format=False,
+        )
+        return result.written[0].parent
+
+    def test_field_gap_is_marked_above_the_field(self, generated: Path) -> None:
+        """The reason sits next to the ``Any`` it explains."""
+        schemas = (generated / "schemas.py").read_text(encoding="utf-8")
+        lines = schemas.splitlines()
+        index = next(i for i, line in enumerate(lines) if "weird: Any" in line)
+        assert "# openapi: unsupported" in lines[index - 1]
+        assert "no Python equivalent" in lines[index - 1]
+
+    def test_every_affected_field_is_marked(self, generated: Path) -> None:
+        """Two fields hitting a gap each get their own comment.
+
+        The summary de-duplicates; the markers must not, or only the first
+        field of a repeated gap would carry its reason.
+        """
+        schemas = (generated / "schemas.py").read_text(encoding="utf-8")
+        assert schemas.count("# openapi: unsupported") == 3
+
+    def test_operation_gap_is_marked_above_the_method(self, generated: Path) -> None:
+        """A non-JSON body and a synthesized path argument both show up.
+
+        The comments wrap, so each assertion picks a phrase that cannot
+        straddle a line break.
+        """
+        client = (generated / "client.py").read_text(encoding="utf-8")
+        head = client[: client.index("async def create_thing")]
+        assert head.count("# openapi: unsupported") == 2
+        assert "multipart/form-data" in head
+        assert "generated as a required str" in head
+
+    def test_marked_output_still_passes_ruff(self, generated: Path) -> None:
+        """A comment `ruff format` would move makes the file unstable."""
+        ruff = shutil.which("ruff")
+        if ruff is None:
+            pytest.skip("ruff not on PATH")
+        for arguments in (
+            [ruff, "check", "--isolated", "--select", "E,F,I,W,N", "."],
+            [ruff, "format", "--isolated", "--check", "."],
+        ):
+            completed = subprocess.run(
+                arguments,
+                cwd=generated,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert completed.returncode == 0, completed.stdout + completed.stderr
+
+    def test_clean_spec_emits_no_marker(
+        self, billing_spec_file: Path, tmp_path: Path
+    ) -> None:
+        """The marker only appears where something was actually lost."""
+        result = generate_integration(
+            str(billing_spec_file),
+            target=tmp_path,
+            name="billing",
+            out=tmp_path / "pkg" / "billing_gen",
+            run_format=False,
+        )
+        schemas = (result.written[0].parent / "schemas.py").read_text(encoding="utf-8")
+        assert "# openapi: unsupported" not in schemas

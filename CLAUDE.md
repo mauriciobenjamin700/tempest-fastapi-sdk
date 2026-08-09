@@ -636,10 +636,44 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `ruff check` + `ruff format --check` **before** the format pass
   (asserted against raw output), and an unchanged spec regenerates
   byte-identically. Unrepresentable constructs (`not`, external `$ref`,
-  Swagger 2.0, non-JSON bodies, header params) → `Any` + a
-  `# openapi: unsupported` marker + a line in the command summary —
-  never a silent wrong schema. YAML needs `[openapi]` (pyyaml); JSON
-  needs nothing.
+  Swagger 2.0, non-JSON bodies, header params) → a line in the command
+  summary stating what was done instead **plus** an
+  `# openapi: unsupported` comment above the affected field/method/
+  parameter (v0.212.0) — never a silent wrong schema. YAML needs
+  `[openapi]` (pyyaml); JSON needs nothing.
+  **Hostile text + wrong names (v0.211.0):** the spec's own prose used to
+  break the generated package — text was interpolated **raw** into a
+  double-quoted literal behind a guard (`"'" in repr(value)`) that matches
+  `repr`'s delimiter rather than an apostrophe, so every quote-free string
+  took that path (a YAML block scalar emitted an unterminated literal; `\b`
+  changed value in silence). `openapi/source.py` now owns literal writing
+  for both emitters and **mirrors `ruff format`**: quotes normalized by
+  escape count (single when the text has more `"` than `'`), long text split
+  into **two or more** adjacent literals (a lone parenthesized one is joined
+  straight back), `r"""` for prose carrying a backslash, enum member names
+  capped (the name derives from the value and `ruff format` breaks no
+  assignment target; the value is never truncated). Names: `Transaction2` not
+  `Transaction_2` (`N801`), `field_2fa` not `_2fa` (a leading underscore makes
+  it a Pydantic **private** attribute, so the field vanishes). Paths are
+  reconciled with the template — undeclared placeholder synthesized as a
+  required `str` (the path is an f-string; skipping it leaves an undefined
+  name), uninterpolated parameter dropped, order taken from the template.
+  Pinned in `tests/openapi/test_hostile_spec.py`, generated with
+  `run_format=False` **on purpose**: the command's own `ruff --fix` pass was
+  hiding three of these.
+  **Docs-audit fixes (v0.212.0):** the recipe had promised an
+  `# openapi: unsupported` marker for several releases while the package
+  emitted **zero** of them, and the CLI summary header hardcoded
+  `(rendered as Any, marked in the output)`, false for every skipped /
+  ignored / synthesized note. The marker now exists — `_Parser.capture()`
+  attributes each note to the field, parameter or operation that raised it
+  (`FieldIR`/`ParameterIR`/`OperationIR.unsupported`), and the emitters write
+  it **above** the line, never trailing, so a long reason wraps instead of
+  overrunning and `ruff format` has nothing to move. Sinks de-duplicate
+  independently of the summary: the summary must not repeat itself, but two
+  fields hitting the same gap both need marking. The header now states that
+  each line says what was generated instead. Found by auditing the docs
+  against the code — no test catches prose promising a feature.
 - **CLI** — `tempest new` (scaffolds layered service +
   docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
   `tempest generate --docker` (regen compose) / `--dockerfile`

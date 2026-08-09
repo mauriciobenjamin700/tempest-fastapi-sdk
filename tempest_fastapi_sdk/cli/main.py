@@ -1031,8 +1031,10 @@ def openapi_client_cmd(
     )
     if result.unsupported:
         typer.secho(
-            f"{len(result.unsupported)} construct(s) could not be modelled "
-            f"(rendered as Any, marked in the output):",
+            f"{len(result.unsupported)} construct(s) could not be modelled as "
+            f"written — each line says what was generated instead, and the "
+            f"ones with something to mark carry an `# openapi: unsupported` "
+            f"comment in the output:",
             fg="yellow",
         )
         for note in result.unsupported:

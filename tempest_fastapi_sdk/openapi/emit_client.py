@@ -20,6 +20,9 @@ from tempest_fastapi_sdk.openapi.source import (
     string_literal as _string_literal,
 )
 from tempest_fastapi_sdk.openapi.source import (
+    unsupported_comment as _unsupported_comment,
+)
+from tempest_fastapi_sdk.openapi.source import (
     wrap as _wrap,
 )
 
@@ -167,6 +170,29 @@ def _render_docstring(operation: OperationIR, opening: str) -> list[str]:
     )
     lines.append('        """')
     return lines
+
+
+def _operation_markers(operation: OperationIR) -> list[str]:
+    """Render the ``# openapi: unsupported`` comments above one method.
+
+    Args:
+        operation (OperationIR): The operation about to be emitted.
+
+    Returns:
+        list[str]: Comment lines, empty when nothing was lost. The
+        operation's own gaps come first (a non-JSON body, an unmodellable
+        response), then each parameter's, so a reader sees every reason the
+        signature differs from the specification before reading it.
+
+    The parameter comments sit here rather than inside the signature: a
+    comment between two arguments of a call is legal Python but
+    ``ruff format`` moves it, so the generated file would stop being
+    format-stable.
+    """
+    notes: list[str] = list(operation.unsupported)
+    for parameter in operation.parameters:
+        notes.extend(note for note in parameter.unsupported if note not in notes)
+    return _unsupported_comment(tuple(notes), "    ")
 
 
 def _parameter_doc(parameter: ParameterIR) -> list[str]:
@@ -528,6 +554,7 @@ def emit_client(client: ClientIR, *, schemas_module: str = "schemas") -> str:
     if not client.operations:
         lines.append("    # The specification declares no operations.")
     for operation in client.operations:
+        lines.extend(_operation_markers(operation))
         lines.extend(_signature_lines(operation))
         lines.extend(_docstring_lines(operation))
         lines.extend(_body_lines(operation))
