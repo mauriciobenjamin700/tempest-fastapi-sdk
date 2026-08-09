@@ -336,6 +336,37 @@ O valor do broker vale para a conexão; o do consumidor sobrescreve só para ele
 !!! check "Publisher confirms já vêm ligados"
     O `Channel` do FastStream tem `publisher_confirms=True` por padrão, então um publish perdido em restart do broker não passa silencioso. Está pinado por teste.
 
+### Idempotência no consumo
+
+A entrega é at-least-once: restart do worker, nack com requeue, ack perdido na rede. Redelivery não é caso raro, é o modo normal.
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker, RedisDedupStore
+
+
+def wire_dedup(mq: MessageBroker, redis: object) -> None:
+    """Roda cada message id no máximo uma vez.
+
+    Args:
+        mq (MessageBroker): O broker, antes do connect().
+        redis (object): Cliente async do Redis.
+    """
+    mq.deduplicate(RedisDedupStore(redis), ttl_seconds=86_400)
+```
+
+O `publish()` passou a gerar `message_id` quando você não passa — sem id estável não existe chave para deduplicar, e redelivery fica indistinguível de evento novo.
+
+Marcação em **duas fases**: a primeira entrega marca `in_flight` e roda; sucesso marca `done` e a próxima é pulada; **falha libera a chave**, para que o retry realmente retente. Sem a terceira parte, trocar "processa duas vezes" por "não processa nenhuma" seria pior que o problema original.
+
+!!! danger "Isto não é exactly-once — nada aqui é"
+    A marca e o efeito do handler não são atômicos. Crash entre os dois deixa uma chave `in_flight` que expira, e a mensagem roda de novo. É at-least-once com janela muito menor, não exactly-once.
+
+!!! tip "Quando o banco já resolve, use o banco"
+    Se o efeito do handler for uma linha com chave natural do domínio, `INSERT ... ON CONFLICT DO NOTHING` é idempotente **sem peça móvel nenhuma** — sem TTL para calibrar, sem segundo store para operar. Este middleware é para efeito que não é linha: e-mail, chamada a terceiro, publicação downstream.
+
+!!! warning "Entrega concorrente é rejeitada, não ackada"
+    Se outro worker está com a claim, a cópia levanta `ConcurrentDeliveryError` e o broker rejeita. Ackar seria perigoso: o worker em voo ainda pode falhar, e a cópia que poderia retentar teria sumido.
+
 ## Tarefas em background — `TaskQueue`
 
 Uma **fila de tarefas** tira trabalho lento do request e joga num worker. O TaskIQ faz isso, mas espalha a API entre broker, scheduler, schedule source e `.kiq()`. `TaskQueue` dobra tudo num objeto só, com vocabulário óbvio.

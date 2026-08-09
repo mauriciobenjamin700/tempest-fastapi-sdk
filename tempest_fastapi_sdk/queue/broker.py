@@ -17,10 +17,12 @@ publish with :meth:`publish`. The raw broker stays reachable at
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, TypeVar, cast
+from uuid import uuid4
 
 from tempest_fastapi_sdk.queue.topology import (
     QueueSpec,
@@ -92,6 +94,45 @@ def _require(module: str, extra: str) -> Any:
             f"This transport requires the optional [{extra}] extra. "
             f"Install with: pip install tempest-fastapi-sdk[{extra}]",
         ) from exc
+
+
+def _publish_accepts(publish: Any, name: str) -> bool:
+    """Whether a broker's ``publish`` takes ``name`` as a keyword.
+
+    The facade adds keywords of its own — ``message_id`` for
+    deduplication, ``headers`` for trace propagation — but FastStream's
+    ``publish`` signature differs per transport and most of them take no
+    ``**kwargs``. ``RedisBroker.publish`` has no ``message_id`` at all, so
+    sending one unconditionally turns **every** publish on that transport
+    into a ``TypeError``.
+
+    Args:
+        publish (Any): The bound ``broker.publish``.
+        name (str): The keyword the facade wants to add.
+
+    Returns:
+        bool: Whether it is safe to pass. A signature that cannot be
+        introspected answers ``False`` and logs once: dropping the
+        keyword costs a feature (deduplication, or a trace link), while
+        sending an unsupported one costs the publish itself.
+    """
+    try:
+        parameters = inspect.signature(publish).parameters
+    except (TypeError, ValueError):
+        logger.warning(
+            "Could not introspect %s.publish; not adding %r. Deduplication "
+            "and trace propagation need it, so pass it explicitly if the "
+            "transport supports it.",
+            type(publish).__name__,
+            name,
+        )
+        return False
+    if any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    ):
+        return True
+    return name in parameters
 
 
 def _with_prefetch(
@@ -390,7 +431,12 @@ class MessageBroker:
                 serialized to JSON; ``str`` / ``bytes`` are sent as-is.
             **options (Any): Extra transport-specific publish options
                 forwarded to FastStream (e.g. ``headers=``,
-                ``correlation_id=``).
+                ``correlation_id=``). ``message_id`` is filled with a
+                fresh UUID when absent — without a stable id there is no
+                key for :meth:`deduplicate` to work from, and a
+                redelivery is indistinguishable from a new event. Pass
+                your own to key deduplication on something the domain
+                owns.
 
         Returns:
             Any: Whatever the transport's publish returns (often ``None``;
@@ -403,6 +449,8 @@ class MessageBroker:
             raise RuntimeError(
                 "MessageBroker.connect() must be called before publishing.",
             )
+        if _publish_accepts(self.broker.publish, "message_id"):
+            options.setdefault("message_id", str(uuid4()))
         return await self.broker.publish(message, channel_name(channel), **options)
 
     async def declare_retry_topology(self, topology: Any) -> None:
@@ -492,6 +540,41 @@ class MessageBroker:
 
         self.broker.add_middleware(
             make_dead_letter_middleware(sink, max_attempts=max_attempts),
+        )
+
+    def deduplicate(
+        self,
+        store: Any,
+        *,
+        ttl_seconds: int = 86_400,
+    ) -> None:
+        """Run each message id at most once, across redeliveries.
+
+        The transport is at-least-once: a restart, a requeue or a lost
+        ack all redeliver. This claims the id before the handler runs and
+        marks it done after, so the second delivery is skipped.
+
+        **Not exactly-once.** The mark and the handler's effect are not
+        atomic; a crash between them leaves a claim that expires and the
+        message runs again. When the effect is a row keyed by something
+        the domain owns, an ``INSERT ... ON CONFLICT DO NOTHING`` is
+        idempotent with no extra moving part and is the better answer.
+
+        Call it **before** :meth:`connect`.
+
+        Args:
+            store (Any): A
+                :class:`~tempest_fastapi_sdk.queue.DedupStore` —
+                ``MemoryDedupStore`` for a single replica,
+                ``RedisDedupStore`` for more than one.
+            ttl_seconds (int): How long an id is remembered. Must outlive
+                the retry topology's total delay, or the last retry runs
+                as if the message were new.
+        """
+        from tempest_fastapi_sdk.queue.dedup import make_dedup_middleware
+
+        self.broker.add_middleware(
+            make_dedup_middleware(store, ttl_seconds=ttl_seconds),
         )
 
     def enable_metrics(self, metrics: Any) -> None:

@@ -337,6 +337,37 @@ The broker value applies to the connection; the consumer value overrides it for 
 !!! check "Publisher confirms are already on"
     FastStream's `Channel` defaults to `publisher_confirms=True`, so a publish lost to a broker restart is not silent. Pinned by a test.
 
+### Consume-side idempotency
+
+Delivery is at-least-once: worker restart, nack with requeue, an ack lost to the network. Redelivery is not a rare case, it is the normal mode.
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker, RedisDedupStore
+
+
+def wire_dedup(mq: MessageBroker, redis: object) -> None:
+    """Run each message id at most once.
+
+    Args:
+        mq (MessageBroker): The broker, before connect().
+        redis (object): An async Redis client.
+    """
+    mq.deduplicate(RedisDedupStore(redis), ttl_seconds=86_400)
+```
+
+`publish()` now generates a `message_id` when you do not pass one — without a stable id there is no key to deduplicate on, and a redelivery is indistinguishable from a new event.
+
+**Two-phase** marking: the first delivery marks `in_flight` and runs; success marks `done` and the next one is skipped; **a failure releases the key**, so a retry actually retries. Without that third part, trading "processed twice" for "processed never" would be worse than the original problem.
+
+!!! danger "This is not exactly-once — nothing here is"
+    The mark and the handler's effect are not atomic. A crash between them leaves an `in_flight` key that expires, and the message runs again. This is at-least-once with a much smaller window, not exactly-once.
+
+!!! tip "When the database already solves it, use the database"
+    If the handler's effect is a row keyed by something the domain owns, `INSERT ... ON CONFLICT DO NOTHING` is idempotent with **no extra moving part** — no TTL to tune, no second store to operate. This middleware is for effects that are not rows: an email, a third-party call, a downstream publish.
+
+!!! warning "A concurrent delivery is rejected, not acknowledged"
+    If another worker holds the claim, this copy raises `ConcurrentDeliveryError` and the broker rejects it. Acknowledging would be dangerous: the in-flight worker may still fail, and the copy that could have retried would be gone.
+
 ## Background tasks — `TaskQueue`
 
 A **task queue** takes slow work out of the request and hands it to a worker. TaskIQ does this but spreads the API across a broker, a scheduler, a schedule source and `.kiq()`. `TaskQueue` folds it all into one object with an obvious vocabulary.
