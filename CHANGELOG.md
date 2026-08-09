@@ -43,6 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MessageBroker.publisher()` is unchanged and still returns the raw
   object, which is what puts the channel in the generated AsyncAPI.
 
+  Class attributes are not the only way in: `channel` and `schema` are
+  also constructor parameters, on `Publisher` itself and on
+  `publisher_for`, where they override what the class declares. That is
+  what lets one subclass serve a channel only known at runtime — per
+  tenant, per environment — without a subclass per value. They are named
+  parameters rather than part of `**options`, so the type checker sees
+  them and a publish option sharing one of those names is not swallowed.
+
 - `Subscription` is now exported from `tempest_fastapi_sdk.queue`. It was
   already the documented return type of `Consumer.subscriptions()` and
   reachable only by importing the submodule.

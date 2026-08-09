@@ -186,7 +186,9 @@ Three things the loose call could not give you:
 - **The schema is enforced on the way out.** If the object is not an instance of the declared model, `publish` raises `TypeError` — the consumer is a process away and can only reject what already left.
 - **The topology is registered.** A `QueueSpec` on `channel` goes through the same binding `@mq.on(...)` uses, so a service that **only publishes** still declares the dead-letter exchange it names.
 
-For a channel only known at runtime, the constructor form:
+**Channel and schema need not be class attributes.** Both also go through
+`__init__` — useful when the channel is only known at runtime (per tenant,
+per environment) and you do not want a subclass per value:
 
 ```python
 from tempest_fastapi_sdk.queue import Publisher
@@ -195,6 +197,35 @@ from src.queue import OrderPaid, mq
 
 orders: Publisher[OrderPaid] = Publisher(mq, channel="orders.paid", schema=OrderPaid)
 ```
+
+`publisher_for` takes the same two, and they **win** over what the class
+declares:
+
+```python
+from tempest_fastapi_sdk.queue import Publisher
+
+from src.queue import OrderPaid, mq
+
+
+class TenantPublisher(Publisher[OrderPaid]):
+    schema = OrderPaid
+
+
+def publisher_for_tenant(tenant: str) -> Publisher[OrderPaid]:
+    """Return the publisher for that tenant's channel.
+
+    Args:
+        tenant (str): The tenant identifier.
+
+    Returns:
+        The publisher bound to `orders.paid.<tenant>`.
+    """
+    return mq.publisher_for(TenantPublisher, channel=f"orders.paid.{tenant}")
+```
+
+`channel` and `schema` are named parameters, not `**options` — so the type
+checker sees them and a publish option sharing one of those names is not
+swallowed.
 
 !!! warning "Not the same as `mq.publisher(channel)`"
     `mq.publisher(...)` returns FastStream's own publisher object — an escape hatch, useful mainly because it makes the channel show up in the generated AsyncAPI. `Publisher` goes through `mq.publish()`, so it keeps the `message_id` deduplication depends on and the `traceparent` / `x-request-id` headers tracing depends on. A publisher that bypassed those would look identical and silently break both.

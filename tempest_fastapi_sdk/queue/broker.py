@@ -673,6 +673,9 @@ class MessageBroker:
     def publisher_for(
         self,
         publisher: type[PublisherT],
+        *,
+        channel: str | QueueSpec | None = None,
+        schema: type | None = None,
         **options: Any,
     ) -> PublisherT:
         """Bind a class-based :class:`Publisher` to this broker.
@@ -692,8 +695,18 @@ class MessageBroker:
         every rejected message on the consuming side would be dropped at
         routing time, silently.
 
+        ``channel`` and ``schema`` are named rather than left to
+        ``**options`` so the type checker sees them and a publish option
+        that happens to share one of those names is not swallowed. They
+        override whatever the class declares, which is what lets one
+        ``Publisher`` subclass serve a channel only known at runtime —
+        per tenant, per environment — without a subclass per value.
+
         Args:
             publisher (type[PublisherT]): The ``Publisher`` subclass.
+            channel (str | QueueSpec | None): Overrides the class
+                attribute. Required when the class declares none.
+            schema (type | None): Overrides the class attribute.
             **options (Any): Default publish options for every message it
                 sends.
 
@@ -704,7 +717,7 @@ class MessageBroker:
             UnsupportedTopologyError: When the declared spec sets a field
                 the transport cannot honor.
         """
-        bound = publisher(self, **options)
+        bound = publisher(self, channel=channel, schema=schema, **options)
         channel = bound.channel
         if channel is not None:
             self._bind(channel)

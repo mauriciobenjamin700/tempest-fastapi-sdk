@@ -185,7 +185,9 @@ Três coisas que a chamada solta não dava:
 - **O schema é cobrado na saída.** Se o objeto não for instância do modelo declarado, `publish` levanta `TypeError` — o consumidor está a um processo de distância e só consegue rejeitar o que já saiu.
 - **A topologia é registrada.** Um `QueueSpec` no `channel` passa pelo mesmo binding do `@mq.on(...)`, então um serviço que **só publica** ainda declara a dead-letter exchange que ele nomeia.
 
-Para um canal só conhecido em runtime, a forma construtor:
+**Canal e schema não precisam ser atributos de classe.** Os dois também
+entram no `__init__` — útil quando o canal só é conhecido em runtime (por
+tenant, por ambiente) e você não quer uma subclasse por valor:
 
 ```python
 from tempest_fastapi_sdk.queue import Publisher
@@ -194,6 +196,35 @@ from src.queue import OrderPaid, mq
 
 orders: Publisher[OrderPaid] = Publisher(mq, channel="orders.paid", schema=OrderPaid)
 ```
+
+O `publisher_for` aceita os mesmos dois, e eles **vencem** o que a classe
+declara:
+
+```python
+from tempest_fastapi_sdk.queue import Publisher
+
+from src.queue import OrderPaid, mq
+
+
+class TenantPublisher(Publisher[OrderPaid]):
+    schema = OrderPaid
+
+
+def publisher_for_tenant(tenant: str) -> Publisher[OrderPaid]:
+    """Devolve o publicador do canal desse tenant.
+
+    Args:
+        tenant (str): O identificador do tenant.
+
+    Returns:
+        O publicador ligado a `orders.paid.<tenant>`.
+    """
+    return mq.publisher_for(TenantPublisher, channel=f"orders.paid.{tenant}")
+```
+
+`channel` e `schema` são parâmetros nomeados, não `**options` — para que o
+type-checker os enxergue e para que uma opção de publish com esse mesmo
+nome não seja engolida.
 
 !!! warning "Não confunda com `mq.publisher(canal)`"
     `mq.publisher(...)` devolve o objeto publisher do próprio FastStream — escape hatch, útil sobretudo porque faz o canal aparecer no AsyncAPI gerado. O `Publisher` passa por `mq.publish()`, então mantém o `message_id` de que a deduplicação depende e os headers `traceparent` / `x-request-id` de que o tracing depende. Um publicador que contornasse isso pareceria idêntico e quebraria os dois em silêncio.

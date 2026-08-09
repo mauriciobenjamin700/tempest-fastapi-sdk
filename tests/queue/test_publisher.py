@@ -119,6 +119,30 @@ class TestDeclaration:
         await orders.publish(OrderPaid(order_id="abc"))
         assert raw.published[0][1] == "orders.paid"
 
+    async def test_publisher_for_takes_the_channel_and_schema(self) -> None:
+        """One subclass can serve a channel only known at runtime.
+
+        Named parameters rather than ``**options``, so the type checker
+        sees them and a publish option sharing one of those names is not
+        swallowed.
+        """
+        mq, raw = await _connected()
+
+        class Bare(Publisher[OrderPaid]):
+            """Declares neither, so both must come from the call."""
+
+        orders = mq.publisher_for(Bare, channel="orders.paid", schema=OrderPaid)
+        await orders.publish(OrderPaid(order_id="abc"))
+        assert raw.published[0][1] == "orders.paid"
+        with pytest.raises(TypeError, match="publishes OrderPaid"):
+            await orders.publish(OrderCancelled(order_id="abc"))  # type: ignore[arg-type]
+
+    async def test_publisher_for_overrides_the_class_attribute(self) -> None:
+        mq, raw = await _connected()
+        orders = mq.publisher_for(OrderPaidPublisher, channel="orders.override")
+        await orders.publish(OrderPaid(order_id="abc"))
+        assert raw.published[0][1] == "orders.override"
+
     async def test_a_publisher_without_a_channel_is_refused(self) -> None:
         """Nowhere to publish is a startup error, not a runtime surprise."""
         mq, _ = await _connected()
