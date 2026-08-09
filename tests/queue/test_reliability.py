@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from tempest_fastapi_sdk.queue import (
+    ConcurrentDeliveryError,
     ConsumerRetryPolicy,
     QueueSpec,
     QueueType,
@@ -88,15 +89,25 @@ class _RecordingSink:
 
 
 def _deaths(count: int) -> dict[str, Any]:
-    """Build an ``x-death`` header recording ``count`` rejections.
+    """Build the ``x-death`` header the retry chain produces after N rounds.
+
+    Reproduces what RabbitMQ actually writes: **one entry per (queue,
+    reason) pair**, so a full retry round appends a rejection on the main
+    queue *and* an expiry on the retry queue. A helper that recorded only
+    the rejection would let a counter that sums every entry pass.
 
     Args:
-        count (int): How many times the message was dead-lettered.
+        count (int): How many retry rounds the message has been through.
 
     Returns:
         dict[str, Any]: The header table.
     """
-    return {"x-death": [{"count": count, "queue": "orders.paid"}]}
+    return {
+        "x-death": [
+            {"count": count, "queue": "orders.paid", "reason": "rejected"},
+            {"count": count, "queue": "orders.paid.retry", "reason": "expired"},
+        ],
+    }
 
 
 class TestPolicyValidation:
@@ -128,11 +139,31 @@ class TestDeliveryAttempt:
         """An unreadable header costs an attempt, never drops a message."""
         assert delivery_attempt(_Message(headers={"x-death": "garbage"})) == 1
 
-    def test_counts_accumulate_across_entries(self) -> None:
+    def test_counts_accumulate_across_rejection_entries(self) -> None:
         message = _Message(
-            headers={"x-death": [{"count": 1}, {"count": 2}]},
+            headers={
+                "x-death": [
+                    {"count": 1, "reason": "rejected"},
+                    {"count": 2, "reason": "rejected"},
+                ],
+            },
         )
         assert delivery_attempt(message) == 4
+
+    def test_an_expiry_is_not_a_failed_delivery(self) -> None:
+        """The retry queue's TTL hop must not spend an attempt.
+
+        The chain dead-letters twice per round — rejected out of the main
+        queue, expired out of the retry queue. Counting both halved the
+        effective budget: ``max_attempts=3`` gave up after two runs.
+        """
+        assert delivery_attempt(_Message(headers=_deaths(1))) == 2
+        assert delivery_attempt(_Message(headers=_deaths(2))) == 3
+
+    def test_an_entry_without_a_reason_still_counts(self) -> None:
+        """A hand-built header keeps counting, so retries stay bounded."""
+        message = _Message(headers={"x-death": [{"count": 2}]})
+        assert delivery_attempt(message) == 3
 
     def test_a_message_without_headers_is_handled(self) -> None:
         class Bare:
@@ -266,6 +297,25 @@ class TestDeadLetterMiddleware:
             await self._run(cls, _Message(headers=_deaths(2)))
         assert len(sink.received) == 1
 
+    async def test_a_concurrent_delivery_does_not_spend_the_budget(self) -> None:
+        """A claim held elsewhere is not a failure of this message.
+
+        ``deduplicate()`` rejects a duplicate so the broker offers it
+        again. Counting that as a terminal failure would dead-letter a
+        message no handler had run, on the delivery that happened to
+        collide with a sibling worker.
+        """
+        sink = _RecordingSink()
+        cls = make_dead_letter_middleware(sink, max_attempts=1)
+
+        async def call_next(_: Any) -> str:
+            raise ConcurrentDeliveryError("m-1 is already being processed")
+
+        message = _Message(headers=_deaths(5))
+        with pytest.raises(ConcurrentDeliveryError):
+            await _instantiate(cls, message).consume_scope(call_next, message)
+        assert sink.received == []
+
     async def test_the_exception_is_always_re_raised(self) -> None:
         """The broker must still reject; swallowing it would ack the bug."""
         sink = _RecordingSink()
@@ -366,6 +416,43 @@ class TestQueueMetrics:
                 {"channel": "orders.paid", "status": "error"},
             )
             == 1.0
+        )
+
+    async def test_a_duplicate_is_not_counted_as_an_error(self) -> None:
+        """A dedup rejection is a normal outcome, not a handler failure.
+
+        Folding it into ``status="error"`` inflates the very rate an
+        alert is built on, so a busy channel with healthy handlers would
+        page on its own deduplication working.
+        """
+        from prometheus_client import CollectorRegistry
+
+        from tempest_fastapi_sdk.queue import QueueMetrics
+
+        registry = CollectorRegistry()
+        metrics = QueueMetrics(registry)
+
+        async def call_next(_: Any) -> str:
+            raise ConcurrentDeliveryError("m-1 is already being processed")
+
+        message = _Message()
+        with pytest.raises(ConcurrentDeliveryError):
+            await _instantiate(metrics.middleware(), message).consume_scope(
+                call_next, message
+            )
+        assert (
+            registry.get_sample_value(
+                "queue_messages_total",
+                {"channel": "orders.paid", "status": "duplicate"},
+            )
+            == 1.0
+        )
+        assert (
+            registry.get_sample_value(
+                "queue_messages_total",
+                {"channel": "orders.paid", "status": "error"},
+            )
+            is None
         )
 
     async def test_duration_is_observed_even_on_failure(self) -> None:

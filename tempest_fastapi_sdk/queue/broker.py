@@ -24,6 +24,15 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 from uuid import uuid4
 
+from tempest_fastapi_sdk.queue.dedup import (
+    DEFAULT_DEDUP_TTL_SECONDS,
+    make_dedup_middleware,
+)
+from tempest_fastapi_sdk.queue.publisher import Publisher
+from tempest_fastapi_sdk.queue.reliability import (
+    DEFAULT_MAX_ATTEMPTS,
+    make_dead_letter_middleware,
+)
 from tempest_fastapi_sdk.queue.topology import (
     QueueSpec,
     Transport,
@@ -31,6 +40,7 @@ from tempest_fastapi_sdk.queue.topology import (
     detect_transport,
     resolve_channel,
 )
+from tempest_fastapi_sdk.queue.tracing import inject_context, make_tracing_middleware
 
 if TYPE_CHECKING:
     from faststream.broker.core.usecase import BrokerUsecase
@@ -41,6 +51,9 @@ logger = logging.getLogger("tempest_fastapi_sdk.queue")
 
 Handler = TypeVar("Handler", bound=Callable[..., Awaitable[Any]])
 """A message handler — an async callable taking the decoded message."""
+
+PublisherT = TypeVar("PublisherT", bound=Publisher[Any])
+"""A :class:`~tempest_fastapi_sdk.queue.Publisher` subclass being bound."""
 
 
 def _schema_entry(
@@ -96,6 +109,10 @@ def _require(module: str, extra: str) -> Any:
         ) from exc
 
 
+_PUBLISH_KEYWORDS: dict[tuple[Any, str], bool] = {}
+"""Answers of :func:`_publish_accepts`, keyed by underlying function."""
+
+
 def _publish_accepts(publish: Any, name: str) -> bool:
     """Whether a broker's ``publish`` takes ``name`` as a keyword.
 
@@ -106,33 +123,45 @@ def _publish_accepts(publish: Any, name: str) -> bool:
     sending one unconditionally turns **every** publish on that transport
     into a ``TypeError``.
 
+    The answer is cached on the **underlying function** rather than on the
+    bound method, so every broker instance of a class shares one entry and
+    a signature is introspected once per process instead of twice per
+    published message — ``inspect.signature`` is far too expensive to sit
+    on a hot publish path, and the warning below would otherwise be
+    emitted per message rather than once.
+
     Args:
         publish (Any): The bound ``broker.publish``.
         name (str): The keyword the facade wants to add.
 
     Returns:
         bool: Whether it is safe to pass. A signature that cannot be
-        introspected answers ``False`` and logs once: dropping the
-        keyword costs a feature (deduplication, or a trace link), while
-        sending an unsupported one costs the publish itself.
+        introspected answers ``False``: dropping the keyword costs a
+        feature (deduplication, or a trace link), while sending an
+        unsupported one costs the publish itself.
     """
+    key = (getattr(publish, "__func__", publish), name)
+    cached = _PUBLISH_KEYWORDS.get(key)
+    if cached is not None:
+        return cached
     try:
         parameters = inspect.signature(publish).parameters
     except (TypeError, ValueError):
         logger.warning(
-            "Could not introspect %s.publish; not adding %r. Deduplication "
-            "and trace propagation need it, so pass it explicitly if the "
+            "Could not introspect %s; not adding %r. Deduplication and "
+            "trace propagation need it, so pass it explicitly if the "
             "transport supports it.",
-            type(publish).__name__,
+            getattr(publish, "__qualname__", repr(publish)),
             name,
         )
+        _PUBLISH_KEYWORDS[key] = False
         return False
-    if any(
+    accepts = name in parameters or any(
         parameter.kind is inspect.Parameter.VAR_KEYWORD
         for parameter in parameters.values()
-    ):
-        return True
-    return name in parameters
+    )
+    _PUBLISH_KEYWORDS[key] = accepts
+    return accepts
 
 
 def _with_prefetch(
@@ -285,16 +314,21 @@ class MessageBroker:
     # ------------------------------------------------------------------
 
     @classmethod
-    def rabbitmq(cls, url: str, **options: Any) -> MessageBroker:
+    def rabbitmq(
+        cls,
+        url: str,
+        *,
+        declare_topology: bool = True,
+        prefetch: int | None = None,
+        **options: Any,
+    ) -> MessageBroker:
         """Build a RabbitMQ-backed broker (``[queue]`` extra).
 
         Args:
             url (str): AMQP URL, e.g.
                 ``"amqp://guest:guest@localhost:5672/"``.
-            **options (Any): Extra keyword arguments forwarded to
-                ``faststream.rabbit.RabbitBroker``, plus two the facade
-                consumes itself: ``declare_topology`` (see
-                :meth:`__init__`) and ``prefetch``, which caps how many
+            declare_topology (bool): See :meth:`__init__`.
+            prefetch (int | None): Caps how many
                 unacknowledged messages the broker pushes to this
                 connection. Without a cap the broker delivers as fast as
                 the consumer acks: one slow handler accumulates messages
@@ -303,12 +337,13 @@ class MessageBroker:
                 held in RAM until the worker is OOM-killed and the whole
                 lot is redelivered. Per-consumer overrides go on
                 :meth:`on`.
+            **options (Any): Extra keyword arguments forwarded to
+                ``faststream.rabbit.RabbitBroker``.
 
         Returns:
             MessageBroker: A facade around a ``RabbitBroker``.
         """
-        declare_topology = bool(options.pop("declare_topology", True))
-        _with_prefetch(options, options.pop("prefetch", None), "default_channel")
+        _with_prefetch(options, prefetch, "default_channel")
         rabbit = _require("faststream.rabbit", "queue")
         return cls(
             rabbit.RabbitBroker(url, **options),
@@ -316,18 +351,24 @@ class MessageBroker:
         )
 
     @classmethod
-    def redis(cls, url: str, **options: Any) -> MessageBroker:
+    def redis(
+        cls,
+        url: str,
+        *,
+        declare_topology: bool = True,
+        **options: Any,
+    ) -> MessageBroker:
         """Build a Redis-backed broker (``faststream[redis]``).
 
         Args:
             url (str): Redis URL, e.g. ``"redis://localhost:6379/0"``.
+            declare_topology (bool): See :meth:`__init__`.
             **options (Any): Extra keyword arguments forwarded to
                 ``faststream.redis.RedisBroker``.
 
         Returns:
             MessageBroker: A facade around a ``RedisBroker``.
         """
-        declare_topology = bool(options.pop("declare_topology", True))
         redis = _require("faststream.redis", "queue")
         return cls(
             redis.RedisBroker(url, **options),
@@ -335,18 +376,23 @@ class MessageBroker:
         )
 
     @classmethod
-    def kafka(cls, *bootstrap_servers: str, **options: Any) -> MessageBroker:
+    def kafka(
+        cls,
+        *bootstrap_servers: str,
+        declare_topology: bool = True,
+        **options: Any,
+    ) -> MessageBroker:
         """Build a Kafka-backed broker (``faststream[kafka]``).
 
         Args:
             *bootstrap_servers (str): One or more ``host:port`` seeds.
+            declare_topology (bool): See :meth:`__init__`.
             **options (Any): Extra keyword arguments forwarded to
                 ``faststream.kafka.KafkaBroker``.
 
         Returns:
             MessageBroker: A facade around a ``KafkaBroker``.
         """
-        declare_topology = bool(options.pop("declare_topology", True))
         kafka = _require("faststream.kafka", "queue")
         servers: str | list[str] = (
             list(bootstrap_servers)
@@ -359,18 +405,24 @@ class MessageBroker:
         )
 
     @classmethod
-    def nats(cls, servers: str | list[str], **options: Any) -> MessageBroker:
+    def nats(
+        cls,
+        servers: str | list[str],
+        *,
+        declare_topology: bool = True,
+        **options: Any,
+    ) -> MessageBroker:
         """Build a NATS-backed broker (``faststream[nats]``).
 
         Args:
             servers (str | list[str]): NATS server URL(s).
+            declare_topology (bool): See :meth:`__init__`.
             **options (Any): Extra keyword arguments forwarded to
                 ``faststream.nats.NatsBroker``.
 
         Returns:
             MessageBroker: A facade around a ``NatsBroker``.
         """
-        declare_topology = bool(options.pop("declare_topology", True))
         nats = _require("faststream.nats", "queue")
         return cls(
             nats.NatsBroker(servers, **options),
@@ -385,6 +437,8 @@ class MessageBroker:
         self,
         channel: str | QueueSpec,
         /,
+        *,
+        prefetch: int | None = None,
         **options: Any,
     ) -> Callable[[Handler], Handler]:
         """Register the decorated async function as a consumer of ``channel``.
@@ -401,13 +455,17 @@ class MessageBroker:
             channel (str): The logical channel to subscribe to. Maps to a
                 queue (RabbitMQ), topic (Kafka), subject (NATS) or channel
                 (Redis) under the hood.
+            prefetch (int | None): Caps how many unacknowledged
+                messages the broker pushes to **this consumer**,
+                overriding the connection-wide cap set on
+                :meth:`rabbitmq`. RabbitMQ only.
             **options (Any): Extra transport-specific subscriber options
                 forwarded to FastStream (e.g. ``exchange=`` on RabbitMQ).
 
         Returns:
             Callable[[Handler], Handler]: The subscriber decorator.
         """
-        _with_prefetch(options, options.pop("prefetch", None), "channel")
+        _with_prefetch(options, prefetch, "channel")
         return cast(
             "Callable[[Handler], Handler]",
             self.broker.subscriber(self._bind(channel), **options),
@@ -451,6 +509,8 @@ class MessageBroker:
             )
         if _publish_accepts(self.broker.publish, "message_id"):
             options.setdefault("message_id", str(uuid4()))
+        if _publish_accepts(self.broker.publish, "headers"):
+            options["headers"] = inject_context(dict(options.get("headers") or {}))
         return await self.broker.publish(message, channel_name(channel), **options)
 
     async def declare_retry_topology(self, topology: Any) -> None:
@@ -512,7 +572,7 @@ class MessageBroker:
         self,
         sink: Any,
         *,
-        max_attempts: int = 3,
+        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     ) -> None:
         """Route terminally-failed consumes to ``sink``.
 
@@ -534,10 +594,6 @@ class MessageBroker:
                 :class:`~tempest_fastapi_sdk.queue.ConsumerRetryPolicy`
                 used to build the retry topology, if any.
         """
-        from tempest_fastapi_sdk.queue.reliability import (
-            make_dead_letter_middleware,
-        )
-
         self.broker.add_middleware(
             make_dead_letter_middleware(sink, max_attempts=max_attempts),
         )
@@ -546,7 +602,7 @@ class MessageBroker:
         self,
         store: Any,
         *,
-        ttl_seconds: int = 86_400,
+        ttl_seconds: int = DEFAULT_DEDUP_TTL_SECONDS,
     ) -> None:
         """Run each message id at most once, across redeliveries.
 
@@ -571,11 +627,27 @@ class MessageBroker:
                 the retry topology's total delay, or the last retry runs
                 as if the message were new.
         """
-        from tempest_fastapi_sdk.queue.dedup import make_dedup_middleware
-
         self.broker.add_middleware(
             make_dedup_middleware(store, ttl_seconds=ttl_seconds),
         )
+
+    def enable_tracing(self) -> None:
+        """Open a span per consumed message, linked to the publish.
+
+        :meth:`publish` already injects the trace context and the current
+        request id into the message headers; this is the other half —
+        each consume runs inside a span carrying the messaging semantic
+        conventions, **linked** to the publishing trace rather than
+        parented by it, and with the publisher's request id restored so
+        the worker's log lines carry it.
+
+        A no-op without the ``[otel]`` extra, and non-recording when the
+        extra is present but no provider was configured. Request-id
+        propagation works either way.
+
+        Call it **before** :meth:`connect`.
+        """
+        self.broker.add_middleware(make_tracing_middleware())
 
     def enable_metrics(self, metrics: Any) -> None:
         """Publish consume counts and durations for every channel.
@@ -626,6 +698,59 @@ class MessageBroker:
             Any: A FastStream publisher object bound to ``channel``.
         """
         return self.broker.publisher(self._bind(channel), **options)
+
+    def publisher_for(
+        self,
+        publisher: type[PublisherT],
+        *,
+        channel: str | QueueSpec | None = None,
+        schema: type | None = None,
+        **options: Any,
+    ) -> PublisherT:
+        """Bind a class-based :class:`Publisher` to this broker.
+
+        The publish-side counterpart of :meth:`register`, and the reason
+        it takes a class rather than an instance: a
+        :class:`~tempest_fastapi_sdk.queue.Publisher` is useless until it
+        has a broker, so constructing it separately would only create a
+        window in which it exists and cannot publish.
+
+        The declared channel goes through the same binding
+        :meth:`on` uses, so a
+        :class:`~tempest_fastapi_sdk.queue.QueueSpec` is validated against
+        the transport **here**, at startup, and registered for
+        :meth:`declare_topology`. Without that, a service that only
+        publishes would name a dead-letter exchange nobody declares — and
+        every rejected message on the consuming side would be dropped at
+        routing time, silently.
+
+        ``channel`` and ``schema`` are named rather than left to
+        ``**options`` so the type checker sees them and a publish option
+        that happens to share one of those names is not swallowed. They
+        override whatever the class declares, which is what lets one
+        ``Publisher`` subclass serve a channel only known at runtime —
+        per tenant, per environment — without a subclass per value.
+
+        Args:
+            publisher (type[PublisherT]): The ``Publisher`` subclass.
+            channel (str | QueueSpec | None): Overrides the class
+                attribute. Required when the class declares none.
+            schema (type | None): Overrides the class attribute.
+            **options (Any): Default publish options for every message it
+                sends.
+
+        Returns:
+            PublisherT: The bound instance.
+
+        Raises:
+            UnsupportedTopologyError: When the declared spec sets a field
+                the transport cannot honor.
+        """
+        bound = publisher(self, channel=channel, schema=schema, **options)
+        channel = bound.channel
+        if channel is not None:
+            self._bind(channel)
+        return bound
 
     # ------------------------------------------------------------------
     # Lifecycle

@@ -39,6 +39,7 @@ from tempest_fastapi_sdk.queue.topology import (
 )
 
 AMQP_URL = "amqp://guest:guest@localhost:5672/"
+REDIS_URL = "redis://localhost:6379/0"
 
 
 class TestSpecValidation:
@@ -246,6 +247,31 @@ class TestBrokerIntegration:
 
     def test_declare_topology_is_on_by_default(self) -> None:
         assert MessageBroker.rabbitmq(AMQP_URL)._declare_topology is True
+
+    def test_every_constructor_names_declare_topology(self) -> None:
+        """It reached the facade through ``**options`` on three of four.
+
+        A keyword the facade consumes but does not name is invisible to
+        the type checker and absent from autocomplete, so the only way to
+        find it was to read the source. It was also undocumented on
+        ``redis``/``kafka``/``nats`` — a supported parameter nobody could
+        discover.
+        """
+        import inspect
+
+        for name in ("rabbitmq", "redis", "kafka", "nats"):
+            parameters = inspect.signature(getattr(MessageBroker, name)).parameters
+            assert "declare_topology" in parameters, name
+            assert parameters["declare_topology"].annotation == "bool", name
+            assert parameters["declare_topology"].kind is inspect.Parameter.KEYWORD_ONLY
+
+    def test_another_transport_takes_declare_topology(self) -> None:
+        """It was consumed by ``redis``/``kafka``/``nats`` and documented
+        by none of them."""
+        assert (
+            MessageBroker.redis(REDIS_URL, declare_topology=False)._declare_topology
+            is False
+        )
 
     async def test_declaring_on_a_transport_without_exchanges_is_a_noop(
         self,

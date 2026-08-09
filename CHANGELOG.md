@@ -5,6 +5,174 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.208.0] — 2026-08-08
+
+### Added
+
+- **`Publisher` — the class-based publish side of the queue.** `Consumer`
+  has let a team group handlers in a class since the facade shipped, and
+  the publish side had no equivalent: `await mq.publish("orders.paid", event)`
+  took the channel as a loose string and the payload as `Any`, so nothing
+  connected the two ends of what is, in practice, one contract.
+
+  ```python
+  class OrderPaidPublisher(Publisher[OrderPaid]):
+      channel = ORDERS_PAID
+      schema = OrderPaid
+
+  orders = mq.publisher_for(OrderPaidPublisher)
+  await orders.publish(OrderPaid(order_id="abc"))
+  ```
+
+  Three properties the loose call could not have. `Publisher[OrderPaid]`
+  makes `publish` **take an `OrderPaid`**, so the wrong model is a type
+  error rather than a message the consumer rejects in production. The
+  declared `schema` is **enforced on the way out** — the consumer is a
+  process away and can only reject what already left. And a `QueueSpec`
+  on `channel` goes through the same binding `on()` uses, so a service
+  that **only publishes** still registers the dead-letter exchange it
+  names; without that the queue carries `x-dead-letter-exchange` pointing
+  at an exchange nobody declared, and rejected messages are dropped at
+  routing time.
+
+  `Publisher.publish` deliberately goes through `MessageBroker.publish`
+  rather than FastStream's own publisher object, so it keeps the
+  `message_id` deduplication keys on and the `traceparent` /
+  `x-request-id` headers tracing rides. A publisher built on the raw
+  object would look identical and silently break both.
+  `MessageBroker.publisher()` is unchanged and still returns the raw
+  object, which is what puts the channel in the generated AsyncAPI.
+
+  Class attributes are not the only way in: `channel` and `schema` are
+  also constructor parameters, on `Publisher` itself and on
+  `publisher_for`, where they override what the class declares. That is
+  what lets one subclass serve a channel only known at runtime — per
+  tenant, per environment — without a subclass per value. They are named
+  parameters rather than part of `**options`, so the type checker sees
+  them and a publish option sharing one of those names is not swallowed.
+
+- `Subscription` is now exported from `tempest_fastapi_sdk.queue`. It was
+  already the documented return type of `Consumer.subscriptions()` and
+  reachable only by importing the submodule.
+
+### Fixed
+
+- **`MessageBroker` kept five keywords hidden in `**options`.** The four
+  transport constructors popped `declare_topology` out of the forwarded
+  keyword arguments, and `rabbitmq()` / `on()` popped `prefetch` — so a
+  parameter the facade consumes itself was invisible to the type checker,
+  absent from autocomplete, and findable only by reading the source. On
+  `redis()`, `kafka()` and `nats()` it was not even in the docstring: a
+  supported parameter nobody could discover. It also meant a future
+  FastStream keyword of the same name would be swallowed by the facade
+  instead of reaching the broker. All five are now named keyword-only
+  parameters. Source-compatible — they were already keyword-only in
+  practice.
+
+  This is the same defect the audit found on `publisher_for`, in the same
+  file, and the audit missed it — so `tests/test_kwargs_guard.py` now
+  walks the package with `ast` and fails on any function that reads a key
+  out of its own catch-all. The suite also asserts the guard fires on the
+  shape that shipped, because a guard that cannot fail is one nobody
+  should trust.
+
+- **The class-based path could not declare topology.** `Consumer.channel`,
+  `subscribe()` and `Subscription.channel` were typed `str`, while
+  `MessageBroker.register` binds them through the same code path as
+  `on()` — which has always accepted `str | QueueSpec`. Passing a spec
+  worked at runtime and failed the type checker, so anyone using classes
+  had to drop back to the decorator to get a dead-letter exchange or a
+  quorum queue. The annotations now match what the code does.
+
+## [0.207.0] — 2026-08-08
+
+### Fixed
+
+- **The retry budget was spent in half the attempts.** `delivery_attempt()`
+  summed every `x-death` entry, but RabbitMQ keeps **one entry per (queue,
+  reason) pair** and the delayed-retry chain dead-letters a message twice
+  per round: `rejected` leaving the main queue, then `expired` leaving the
+  waiting queue when its TTL fires. The counter therefore advanced by two
+  per retry, so `ConsumerRetryPolicy(max_attempts=3)` gave up after the
+  second delivery. Entries whose reason is `expired` are now skipped — an
+  expiry is the waiting room emptying itself, not a delivery that failed.
+  An entry with no `reason` at all still counts, so a non-conforming
+  header keeps retries bounded rather than making them infinite.
+
+- **A concurrent delivery could dead-letter a message no handler ran.**
+  With `deduplicate()` and `dead_letter()` both installed, the
+  `ConcurrentDeliveryError` raised when a sibling worker holds the claim
+  was caught as an ordinary handler failure: it consumed an attempt and,
+  on the delivery that exhausted the budget, sent the message to the dead
+  queue. It is now re-raised untouched, so the copy is simply rejected and
+  offered again.
+
+- **Deduplication inflated the metric an alert is built on.** The same
+  `ConcurrentDeliveryError` counted as `queue_messages_total{status="error"}`.
+  It gets its own `duplicate` status, so a busy channel with healthy
+  handlers no longer pages on its own deduplication working.
+
+- **`consume_span` leaked the request id when closing the span failed.**
+  `clear_request_id` ran after the span's `__exit__` rather than in a
+  `finally`, so a tracer or exporter raising on exit left the contextvar
+  set. The worker task is reused across consumes, so the next message
+  would carry the previous request's id — worse than no correlation,
+  because it reads as real.
+
+- **`publish()` introspected the broker signature twice per message.**
+  `_publish_accepts` ran `inspect.signature` on every publish for both
+  `message_id` and `headers`, and the "logs once" warning in its docstring
+  was emitted per call. Answers are cached on the underlying function, so
+  the check happens once per process and the warning once per broker
+  class. The warning also named `method` instead of the broker, since
+  `type()` of a bound method is `method`.
+
+### Changed
+
+- `QueueType.QUORUM` documented itself as not supporting queue TTL, while
+  `retry_queues(queue_type=QueueType.QUORUM)` builds a retry queue that
+  needs exactly that. Quorum queues do support message TTL; the real gap
+  is `x-max-priority`, which is what `QueueSpec.__post_init__` already
+  refuses. `UnsupportedTopologyError` likewise claimed to be raised at
+  publish time — `publish()` only reads the channel name, since the
+  topology belongs to the declaration.
+
+- `MessageBroker.dead_letter()` and `.deduplicate()` took their defaults
+  from literals (`3`, `86_400`) that duplicated `DEFAULT_MAX_ATTEMPTS` and
+  `DEFAULT_DEDUP_TTL_SECONDS`, and were free to drift from them.
+
+## [0.206.0] — 2026-08-08
+
+### Added
+
+- **Trace and request-id propagation across the queue** (#129). A request
+  opened a trace, published an event and answered 201; the consumer that
+  charged the card, wrote the ledger and sent the mail showed up as three
+  orphan traces with no parent and no relation to each other. The SDK
+  traced FastAPI, SQLAlchemy, httpx and genai — the queue was the one hop
+  left uninstrumented, and it is the hop where the causal link is lost.
+
+  `publish()` injects the W3C `traceparent` and the current request id
+  into the message headers **when the transport takes a `headers`
+  keyword** — checked independently of `message_id`, because Redis
+  accepts one and not the other, so a "is this RabbitMQ?" branch would
+  have been wrong; `MessageBroker.enable_tracing()` opens a span
+  per consume carrying the messaging semantic conventions
+  (`messaging.system`, `messaging.destination.name`,
+  `messaging.operation`) and marks it as failed when the handler raises.
+
+  The publishing trace is attached as a **link**, not as a parent. The
+  convention recommends it for asynchronous consumption and the reason is
+  practical: a consumer can run minutes after the publish, and a child
+  span of that duration stretches the request's trace and makes its
+  latency unreadable.
+
+  The consumer also **adopts the publisher's request id** for the
+  duration of the handler, so the worker's log lines carry the id of the
+  request that caused them. That is worth more day to day than the span
+  — it makes `grep` enough to correlate — and it is the half that works
+  with no `[otel]` extra at all.
+
 ## [0.205.0] — 2026-08-08
 
 ### Added

@@ -1,10 +1,20 @@
 name: CI
 
+# A stacked PR targets the branch below it, not `main`. With `main` as the
+# only base filter, every PR in a stack except the bottom one ran zero
+# checks -- five queue PRs (#131-#134) merged with nothing but a local
+# `make check` behind them, and a break would have surfaced on `main`
+# instead of on the PR that caused it. The base patterns below cover the
+# branch prefixes the project uses (see "Git" in CLAUDE.md).
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - "feat/**"
+      - "fix/**"
+      - "ref/**"
 
 permissions:
   contents: read

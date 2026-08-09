@@ -146,6 +146,89 @@ mq.register(OrdersConsumer())
     é a anotação visível do método. O `@mq.on(...)` (decorator em função)
     continua disponível — escolha o estilo que preferir.
 
+O canal pode ser uma string ou um [`QueueSpec`](#topologia-da-fila-queuespec),
+igual ao `@mq.on(...)` — declarar dead-letter ou fila quorum não te força de
+volta ao decorator.
+
+### Publicadores baseados em classe
+
+`Consumer` cobria o consumo; o publish continuava solto — `await mq.publish("orders.paid", event)`, com o canal como string qualquer e o payload tipado `Any`. Nada ligava as duas pontas de um contrato que, na prática, é **um** contrato.
+
+`Publisher` é essa metade. Carrega canal e modelo como atributos de classe, e o `publish` aceita exatamente o tipo declarado:
+
+```python
+from tempest_fastapi_sdk.queue import Publisher
+
+from src.queue import ORDERS_PAID, OrderPaid, mq
+
+
+class OrderPaidPublisher(Publisher[OrderPaid]):
+    channel = ORDERS_PAID
+    schema = OrderPaid
+
+
+orders = mq.publisher_for(OrderPaidPublisher)
+
+
+async def confirm_order(order_id: str) -> None:
+    """Anuncia que o pedido foi pago.
+
+    Args:
+        order_id (str): O pedido confirmado.
+    """
+    await orders.publish(OrderPaid(order_id=order_id))
+```
+
+Três coisas que a chamada solta não dava:
+
+- **O type-checker enxerga o payload.** `Publisher[OrderPaid]` faz o `publish` receber um `OrderPaid`; publicar o modelo errado vira rabisco vermelho no editor em vez de mensagem que o consumidor rejeita em produção.
+- **O schema é cobrado na saída.** Se o objeto não for instância do modelo declarado, `publish` levanta `TypeError` — o consumidor está a um processo de distância e só consegue rejeitar o que já saiu.
+- **A topologia é registrada.** Um `QueueSpec` no `channel` passa pelo mesmo binding do `@mq.on(...)`, então um serviço que **só publica** ainda declara a dead-letter exchange que ele nomeia.
+
+**Canal e schema não precisam ser atributos de classe.** Os dois também
+entram no `__init__` — útil quando o canal só é conhecido em runtime (por
+tenant, por ambiente) e você não quer uma subclasse por valor:
+
+```python
+from tempest_fastapi_sdk.queue import Publisher
+
+from src.queue import OrderPaid, mq
+
+orders: Publisher[OrderPaid] = Publisher(mq, channel="orders.paid", schema=OrderPaid)
+```
+
+O `publisher_for` aceita os mesmos dois, e eles **vencem** o que a classe
+declara:
+
+```python
+from tempest_fastapi_sdk.queue import Publisher
+
+from src.queue import OrderPaid, mq
+
+
+class TenantPublisher(Publisher[OrderPaid]):
+    schema = OrderPaid
+
+
+def publisher_for_tenant(tenant: str) -> Publisher[OrderPaid]:
+    """Devolve o publicador do canal desse tenant.
+
+    Args:
+        tenant (str): O identificador do tenant.
+
+    Returns:
+        O publicador ligado a `orders.paid.<tenant>`.
+    """
+    return mq.publisher_for(TenantPublisher, channel=f"orders.paid.{tenant}")
+```
+
+`channel` e `schema` são parâmetros nomeados, não `**options` — para que o
+type-checker os enxergue e para que uma opção de publish com esse mesmo
+nome não seja engolida.
+
+!!! warning "Não confunda com `mq.publisher(canal)`"
+    `mq.publisher(...)` devolve o objeto publisher do próprio FastStream — escape hatch, útil sobretudo porque faz o canal aparecer no AsyncAPI gerado. O `Publisher` passa por `mq.publish()`, então mantém o `message_id` de que a deduplicação depende e os headers `traceparent` / `x-request-id` de que o tracing depende. Um publicador que contornasse isso pareceria idêntico e quebraria os dois em silêncio.
+
 ## Topologia da fila — `QueueSpec`
 
 O canal como string resolve a maioria dos casos. O que ele **não** expressa é justamente o que decide se a fila sobrevive a um restart, para onde vai uma mensagem rejeitada e quanto tempo ela vive. No RabbitMQ isso mora na declaração da fila, não no nome.
@@ -292,6 +375,9 @@ Quem espera é o **broker**, então restart do worker no meio não muda nada. A 
 !!! warning "A topologia sozinha retenta para sempre"
     O AMQP conta redelivery no `x-death` mas não para sozinho. Quem enforce o `max_attempts` é o middleware do `dead_letter()`. Declarar a topologia sem instalar o middleware dá retry infinito — por isso os dois estão documentados juntos.
 
+??? info "Como o `x-death` é lido (e por que a entrada `expired` não conta)"
+    O RabbitMQ guarda **uma entrada por par (fila, motivo)**, e a cadeia de retry dead-letta duas vezes por rodada: `rejected` saindo da fila principal e `expired` saindo da fila de espera quando o TTL dispara. Somar todas as entradas avança o contador de dois em dois — com `max_attempts=3` a mensagem era descartada depois de **duas** execuções. `delivery_attempt()` conta só o que é entrega falha, ignorando `expired`.
+
 ### Métricas
 
 ```python
@@ -308,6 +394,8 @@ def wire_metrics(mq: MessageBroker) -> None:
 ```
 
 Gera `queue_messages_total{channel,status}` e `queue_message_duration_seconds{channel}`. Sem isso a taxa de falha do consumidor é invisível — a mensagem é rejeitada, o broker descarta, e nada conta.
+
+O `status` é `ok`, `error` ou `duplicate`. O último é a entrega que o `deduplicate()` rejeitou porque outro worker segurava a claim: rótulo próprio justamente para que a deduplicação funcionando não engorde a taxa de erro em que o alerta se apoia.
 
 
 ### Prefetch — quantas mensagens ficam em voo
@@ -366,6 +454,33 @@ Marcação em **duas fases**: a primeira entrega marca `in_flight` e roda; suces
 
 !!! warning "Entrega concorrente é rejeitada, não ackada"
     Se outro worker está com a claim, a cópia levanta `ConcurrentDeliveryError` e o broker rejeita. Ackar seria perigoso: o worker em voo ainda pode falhar, e a cópia que poderia retentar teria sumido.
+
+### Tracing e request id atravessando a fila
+
+A requisição abre um trace, publica um evento e responde 201 — e o consumidor que cobra o cartão, escreve no ledger e manda o e-mail aparecia como **três traces órfãos**, sem pai e sem relação entre si.
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker
+
+
+def wire_tracing(mq: MessageBroker) -> None:
+    """Abre um span por mensagem consumida, ligado ao publish.
+
+    Args:
+        mq (MessageBroker): O broker, antes do connect().
+    """
+    mq.enable_tracing()
+```
+
+O `publish()` já injeta o `traceparent` e o **request id** corrente nos headers; o `enable_tracing()` é a outra metade.
+
+!!! info "Link, não filho"
+    O span do consumidor referencia o do publish como **link**, não como pai. A semconv recomenda isso para consumo assíncrono, e o motivo é prático: o consumidor pode rodar minutos depois, e um span filho dessa duração esticaria o trace da requisição e tornaria a latência dela ilegível.
+
+!!! tip "O request id vale mais que o span no dia a dia"
+    O `RequestIDMiddleware` já põe o id em toda linha de log HTTP. Agora o worker adota o id do publisher enquanto processa, então `grep` sozinho correlaciona requisição e consumo — sem abrir o Jaeger.
+
+Sem o extra `[otel]` tudo isso é no-op; a propagação do request id funciona de qualquer jeito, porque não depende de OpenTelemetry.
 
 ## Tarefas em background — `TaskQueue`
 
