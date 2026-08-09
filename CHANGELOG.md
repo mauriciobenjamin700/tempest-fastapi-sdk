@@ -5,6 +5,52 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.212.0] — 2026-08-09
+
+Both entries below came from auditing the `openapi-client` recipe against
+the code rather than from a bug report. No test catches prose that promises
+a feature, which is exactly how one of them survived several releases.
+
+### Added
+
+- **`# openapi: unsupported` markers in the generated code.** The docs had
+  promised this comment for releases while the package emitted **zero** of
+  them — the only record of a gap was the command's summary, which is
+  terminal output that scrolls away. Someone opening `schemas.py` months
+  later and finding an `Any` had no way to learn why short of regenerating
+  from the same specification.
+
+  Now every gap is attributed to the field, parameter or operation that
+  raised it (`FieldIR` / `ParameterIR` / `OperationIR.unsupported`, filled
+  by a new `_Parser.capture()`), and the emitters write it above the
+  affected line:
+
+  ```python
+  # openapi: unsupported — `not` in ThingWeird rendered as Any (no Python
+  #   equivalent)
+  weird: Any | None = None
+  ```
+
+  Greppable on purpose: `grep -rn "openapi: unsupported" src/integrations/`
+  lists everything an integration lost. Two details are load-bearing — the
+  comment goes **above** the line rather than trailing it, so a long reason
+  wraps instead of overrunning the budget and `ruff format` has nothing to
+  move; and the per-target de-duplication is independent of the summary's,
+  because the summary must not repeat itself while two fields hitting the
+  same gap both need marking. A gap with nothing in the output to mark (a
+  dropped `header` parameter) stays summary-only.
+
+### Fixed
+
+- **The command summary's header claimed something false.** It hardcoded
+  `N construct(s) could not be modelled (rendered as Any, marked in the
+  output)`, but roughly half the notes describe a different treatment
+  entirely — a `header` parameter is skipped, a discriminator is ignored, a
+  path placeholder is synthesized. None of those becomes `Any`, and until
+  this release nothing was marked in the output at all. Each individual
+  note was always accurate; only the header lied. It now says each line
+  states what was generated instead.
+
 ## [0.211.0] — 2026-08-09
 
 ### Fixed

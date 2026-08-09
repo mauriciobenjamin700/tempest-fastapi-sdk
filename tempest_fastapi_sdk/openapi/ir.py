@@ -46,6 +46,12 @@ class FieldIR:
         constraints (dict[str, Any]): Pydantic ``Field`` constraints
             derived from the specification (``ge``, ``le``,
             ``min_length``, ``pattern``, …).
+        unsupported (tuple[str, ...]): Notes raised while rendering this
+            field's type — the reasons its annotation is not what the
+            specification described. The emitter writes each one above the
+            field as an ``# openapi: unsupported`` comment, so a reader who
+            opens the module months later can see why a field is ``Any``
+            without regenerating and re-reading the command's summary.
     """
 
     name: str
@@ -58,6 +64,7 @@ class FieldIR:
     description: str | None = None
     examples: tuple[Any, ...] = ()
     constraints: dict[str, Any] = field(default_factory=dict)
+    unsupported: tuple[str, ...] = ()
 
     @property
     def has_metadata(self) -> bool:
@@ -130,6 +137,10 @@ class ParameterIR:
             Path parameters are always required.
         description (str | None): Description from the specification, for
             the generated ``Args:`` section.
+        unsupported (tuple[str, ...]): Notes raised while rendering this
+            parameter — why its annotation is not what the specification
+            described, or that it was synthesized because the path template
+            interpolated a name nothing declared.
     """
 
     name: str
@@ -138,6 +149,7 @@ class ParameterIR:
     annotation: str
     required: bool
     description: str | None = None
+    unsupported: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +175,10 @@ class OperationIR:
         error_statuses (tuple[tuple[str, str], ...]): ``(status,
             description)`` pairs from the specification, rendered into the
             docstring so the caller sees what can fail.
+        unsupported (tuple[str, ...]): Notes raised while rendering this
+            operation's body and response — a non-JSON content type, or a
+            schema that could not be modelled. Emitted above the method as
+            ``# openapi: unsupported`` comments.
     """
 
     name: str
@@ -176,6 +192,7 @@ class OperationIR:
     response_annotation: str | None = None
     success_status: str = "200"
     error_statuses: tuple[tuple[str, str], ...] = ()
+    unsupported: tuple[str, ...] = ()
 
     @property
     def path_parameters(self) -> tuple[ParameterIR, ...]:

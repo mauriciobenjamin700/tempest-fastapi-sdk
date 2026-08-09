@@ -316,7 +316,7 @@ O que o gerador representa, declarado:
 | Corpo e resposta `application/json` | Schema gerado |
 | Resposta 204 / sem corpo | Retorno `None` |
 
-E o que **não** é representado — sempre com `Any` + nota no resumo do comando,
+E o que **não** é representado — sempre com uma linha no resumo do comando,
 nunca em silêncio:
 
 | Construção | Motivo |
@@ -329,21 +329,44 @@ nunca em silêncio:
 | `type` com múltiplos valores concretos | Não modelado |
 
 !!! danger "Nunca chuta"
-    O contrato do parser: o que ele não consegue representar vira `Any`, ganha
-    um comentário `# openapi: unsupported ...` e aparece no resumo do comando:
+    O contrato do parser: o que ele não consegue representar como a spec
+    escreveu vira uma linha no resumo, e **cada linha diz o que foi feito no
+    lugar** — virou `Any`, foi descartado, foi sintetizado:
 
     ```text
-    1 construct(s) could not be modelled (rendered as Any, marked in the output):
+    1 construct(s) could not be modelled as written — each line says what was
+    generated instead, and the ones with something to mark carry an
+    `# openapi: unsupported` comment in the output:
       - 'header' parameter 'X-Trace' skipped (pass it via HTTPClient default_headers)
     ```
 
     Um schema errado que **parece** certo é pior que uma lacuna documentada.
 
+!!! check "A lacuna fica marcada no arquivo, não só no terminal"
+    O resumo rola pra fora do terminal. Quem abrir `schemas.py` daqui a seis
+    meses e encontrar um `Any` precisa do motivo **ao lado**, então o gerador
+    escreve um comentário acima da linha afetada:
+
+    ```python
+    # openapi: unsupported — `not` in ThingWeird rendered as Any (no Python
+    #   equivalent)
+    weird: Any | None = None
+    ```
+
+    Vale para campo, para método (corpo `multipart`, resposta não modelada) e
+    para parâmetro sintetizado. É greppável de propósito:
+    `grep -rn "openapi: unsupported" src/integrations/` lista tudo que a
+    integração perdeu. Uma lacuna sem nada no arquivo para marcar — um
+    parâmetro de `header` descartado, por exemplo — continua só no resumo,
+    porque não existe linha para comentar.
+
 ## O código gerado passa nos seus gates
 
 O emissor produz código que passa `ruff check` e `ruff format --check` **antes**
-de qualquer passada de formatação — anotações completas, aspas duplas,
-docstrings Google em todo módulo/classe/método, imports na ordem do isort.
+de qualquer passada de formatação — anotações completas, docstrings Google em
+todo módulo/classe/método, imports na ordem do isort, e aspas no estilo que o
+`ruff format` normaliza (duplas, salvo o caso explicado
+[logo abaixo](#o-texto-da-spec-nao-quebra-o-modulo)).
 
 Isso é testado, não prometido: a suíte roda `ruff` contra a saída crua
 (`--no-format`). Vale a pena saber por quê — foi essa asserção que pegou um
@@ -363,25 +386,96 @@ apóstrofo, barra invertida, quebra de linha vinda de um bloco YAML, uma frase
 longa demais para caber na linha. Cada uma dessas já produziu um pacote que não
 importava, não passava no lint, ou mudava em silêncio o que a spec dizia.
 
+Veja num caso concreto. Esta propriedade tem quatro armadilhas ao mesmo tempo —
+aspas no `title`, `\#` na descrição, texto longo demais para a linha, e um nome
+de rede começando com dígito:
+
+```json
+{
+  "Charge": {
+    "type": "object",
+    "required": ["reference"],
+    "properties": {
+      "reference": {
+        "type": "string",
+        "title": "O \"identificador\" do pagador",
+        "description": "Codifique os caracteres (%, \\#, /) antes de enviar, porque o gateway rejeita a requisição e o erro devolvido não diz qual caractere causou."
+      },
+      "2fa": {"type": "boolean"}
+    }
+  }
+}
+```
+
+E sai isto — código que passa no `ruff check` e no `ruff format --check` sem
+nenhuma passada de formatação em cima:
+
+```python
+from pydantic import ConfigDict, Field
+
+from tempest_fastapi_sdk import BaseSchema
+
+
+class Charge(BaseSchema):
+    r"""Schema generated for Charge.
+
+    Attributes:
+        reference (str): Codifique os caracteres (%, \#, /) antes de enviar, porque o
+            gateway rejeita a requisição e o erro devolvido não diz qual caractere
+            causou.
+        field_2fa (bool | None): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    reference: str = Field(
+        title='O "identificador" do pagador',
+        description=(
+            "Codifique os caracteres (%, \\#, /) antes de enviar, porque o gateway "
+            "rejeita a requisição e o erro devolvido não diz qual caractere causou."
+        ),
+    )
+    field_2fa: bool | None = Field(alias="2fa", default=None)
+```
+
+Quatro decisões nessa saída, nenhuma óbvia:
+
+1. **A docstring virou `r"""`.** `\#` não é escape de Python: sem o `r`, isso é
+   `W605` no lint e `SyntaxWarning` a partir do 3.12.
+2. **O `title` saiu com aspas simples**, apesar da regra de aspas duplas do
+   projeto.
+3. **A `description` foi partida em dois literais adjacentes**, e não deixada
+   numa linha longa.
+4. **`2fa` virou `field_2fa`** com `alias="2fa"` — detalhado na
+   [seção seguinte](#nomes-e-paths-que-a-spec-erra).
+
+As duas do meio são a mesma causa, e vale entender:
+
+!!! info "Por que aspas simples, se a regra do projeto é aspas duplas"
+    Porque `ruff format` normaliza para o que **escapa menos**: texto com mais
+    `"` que `'` sai com aspas simples. Emitir `title="O \"identificador\"..."`
+    ali é código correto e legível — que falha o `ruff format --check` do
+    consumidor na primeira rodada dele. O gerador não briga com o formatador do
+    outro lado; ele reproduz a regra.
+
+!!! warning "`ruff format` nunca quebra uma string"
+    Uma `description` longa demais **sobrevive intacta** à passada de format e
+    estoura o `E501` de quem consome. Então o emissor parte — e parte em **dois
+    ou mais** pedaços, porque um literal solto entre parênteses o `ruff format`
+    junta de volta na linha longa. Partir em um pedaço não é partir.
+
+    O texto volta caractere a caractere: concatenar os literais emitidos devolve
+    a descrição original, espaços incluídos. Nada é resumido nem truncado.
+
+Resumindo o que o emissor garante para qualquer texto que a spec traga:
+
 | Na spec | No código gerado |
 | --- | --- |
 | Barra invertida (`\#`, `\b`, `\x41`) | Escapada no literal, e a docstring vira `r"""` |
 | Quebra de linha, tab, caractere de controle | `\n` / `\t` / `\xNN` no literal |
 | `"aspas"` no texto | Literal com aspas **simples** |
-| Descrição longa demais | Partida em literais adjacentes, sempre dois ou mais |
-| Valor de enum longo demais | Idem, e o **nome** do membro é truncado |
-
-!!! info "Por que aspas simples, se a regra do projeto é aspas duplas"
-    Porque `ruff format` normaliza para o que escapa menos: texto com mais `"`
-    que `'` sai com aspas simples. Emitir aspas duplas escapadas ali é código
-    correto que falha o `ruff format --check` do consumidor na primeira rodada.
-
-!!! warning "`ruff format` nunca quebra uma string"
-    É o que obriga o emissor a partir a descrição longa ele mesmo — e a partir
-    em **dois ou mais** pedaços, porque um literal solto entre parênteses o
-    `ruff format` junta de volta na linha longa. O texto volta caractere a
-    caractere: a concatenação dos literais emitidos é a descrição original,
-    espaços incluídos.
+| Descrição longa demais | Partida em dois ou mais literais adjacentes |
+| Valor de enum longo demais | Partido igual, e o **nome** do membro é encurtado — o valor, nunca |
 
 ### Nomes e paths que a spec erra
 
@@ -397,12 +491,29 @@ aceita, ou descreve um path que não fecha com os parâmetros que declara:
 | Parâmetros de path fora de ordem | Reordenados pela posição no template |
 
 !!! tip "As escolhas menos óbvias"
-    `_2fa` seria atributo **privado** do Pydantic — o campo sumiria do modelo em
-    vez de só mudar de nome. `Transaction_2` não é CapWords e falha o `N801` do
-    consumidor. Um parâmetro que a requisição nunca carrega é pior que a ausência
-    dele: quem chama passa um identificador e ele é jogado fora. E um placeholder
-    sem declaração **não** pode ser ignorado — o path é uma f-string, então o
-    módulo referenciaria um nome inexistente e nem importaria.
+    O prefixo é `field_`, e não `_`: sublinhado inicial faz o Pydantic tratar o
+    atributo como **privado**, então o campo sumiria do modelo em vez de só
+    mudar de nome. `Transaction_2` não é CapWords e falha o `N801` do
+    consumidor. Um parâmetro que a requisição nunca carrega é pior que a
+    ausência dele: quem chama passa um identificador e ele é jogado fora
+    silenciosamente. E um placeholder sem declaração **não** pode ser
+    ignorado — o path é uma f-string, então o módulo referenciaria um nome
+    inexistente e nem importaria.
+
+!!! danger "Toda correção dessas aparece no resumo"
+    Descartar um parâmetro e sintetizar outro são decisões sobre a assinatura
+    que **você** vai chamar, então elas saem no resumo do comando:
+
+    ```text
+    2 construct(s) could not be modelled (rendered as Any, marked in the output):
+      - path parameter 'expand' of '/accounts/{accountId}' is declared but absent
+        from the path template — skipped, since the value would never reach the request
+      - path '/receipts/{receiptId}' interpolates 'receiptId', which no parameter
+        declares — generated as a required str
+    ```
+
+    O parâmetro sintetizado também sai marcado no `client.py`, acima do método
+    — quem descartamos não sai, porque não sobrou linha para comentar.
 
 ## Recapitulando
 
@@ -416,4 +527,10 @@ aceita, ou descreve um path que não fecha com os parâmetros que declara:
    credenciais continuam seus, e `httpx.MockTransport` testa tudo sem rede.
 5. **`--force` regenera**, e como uma spec inalterada gera arquivo idêntico, o
    diff mostra exatamente o que o terceiro mudou.
-6. **O que não é suportado vira `Any` + nota**, nunca silêncio.
+6. **A prosa da spec não quebra o módulo** — aspas, `\#`, quebra de linha e
+   texto longo demais saem como literais válidos que passam no `ruff format
+   --check` do seu lado, com o texto intacto.
+7. **Nome ou path que a spec erra é corrigido, nunca chutado** — e a correção
+   sai no resumo do comando.
+8. **O que não é suportado vira uma linha no resumo** e um comentário
+   `# openapi: unsupported` no arquivo, nunca silêncio.
