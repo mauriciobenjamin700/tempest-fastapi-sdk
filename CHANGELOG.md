@@ -70,7 +70,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   practice.
 
   This is the same defect the audit found on `publisher_for`, in the same
-  file, and the audit missed it.
+  file, and the audit missed it — so `tests/test_kwargs_guard.py` now
+  walks the package with `ast` and fails on any function that reads a key
+  out of its own catch-all. The suite also asserts the guard fires on the
+  shape that shipped, because a guard that cannot fail is one nobody
+  should trust.
 
 - **The class-based path could not declare topology.** `Consumer.channel`,
   `subscribe()` and `Subscription.channel` were typed `str`, while

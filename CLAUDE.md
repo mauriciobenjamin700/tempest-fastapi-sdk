@@ -783,6 +783,22 @@ agrupamento por submódulo — ali o agrupamento é a informação.
   checked. **Prose is still unguarded**: a sentence promising a
   parameter that does not exist only fails this suite when an example
   passes it, so re-read the prose you write around a signature.
+- **`**kwargs` guard (v0.208.0).** `tests/test_kwargs_guard.py` (also in
+  `make check`) walks the package with `ast` and fails when a function
+  reads a key out of its **own** `**kwargs`/`**options` — `options.pop("x")`
+  makes `x` a real parameter the type checker cannot see, the docstring
+  stops describing, and an upstream parameter of that name will one day
+  collide with. The fix is always to promote it to a named keyword-only
+  parameter, which is source compatible. This shipped **five times** in
+  `MessageBroker` and survived a manual audit of that exact file, which is
+  why it is a test. It does **not** see the subtler form (splatting
+  `**options` into a callable whose named parameters absorb keys — how
+  `publisher_for` had it), since that needs the callee's signature
+  resolved. The suite also asserts the guard **fires** on the shape that
+  actually shipped: a guard that cannot fail is one nobody should trust.
+  Mark a line `# kwargs-guard: skip` only for a case that is genuinely not
+  this, with a docstring saying why. See "`**kwargs` is for passthrough
+  only" in the global `CLAUDE.md`.
 - **Regra: a documentação fica organizada e em ordem — e isso é
   testado.** Ver a seção "Regra de organização da documentação" acima;
   `tests/test_docs_organization.py` (roda no `make check`) é a
