@@ -148,7 +148,32 @@ mq.register(OrdersConsumer())
 
 O canal pode ser uma string ou um [`QueueSpec`](#topologia-da-fila-queuespec),
 igual ao `@mq.on(...)` — declarar dead-letter ou fila quorum não te força de
-volta ao decorator.
+volta ao decorator. O mesmo vale para o resto do que o `@mq.on(...)` aceita:
+[`prefetch=`](#prefetch-quantas-mensagens-ficam-em-voo) e as opções do
+transporte (`exchange=`, por exemplo) existem nas duas formas.
+
+```python
+from faststream.rabbit import RabbitExchange
+
+from tempest_fastapi_sdk.queue import Consumer, subscribe
+
+from src.queue import OrderCancelled, OrderPaid, mq
+
+
+class OrdersConsumer(Consumer):
+    """Um teto para a classe inteira; um método pesado com o seu."""
+
+    prefetch = 32
+
+    @subscribe("relatorios.gerar", prefetch=1)
+    async def gerar(self, event: OrderPaid) -> None: ...
+
+    @subscribe("orders.cancelled", exchange=RabbitExchange("events", durable=True))
+    async def on_cancelled(self, event: OrderCancelled) -> None: ...
+
+
+mq.register(OrdersConsumer())
+```
 
 ### Publicadores baseados em classe
 
@@ -414,6 +439,39 @@ async def gerar(pedido: dict[str, str]) -> None:
 ```
 
 O valor do broker vale para a conexão; o do consumidor sobrescreve só para ele.
+
+No caminho de classe o botão é o mesmo, em três alturas — construtor,
+classe e método:
+
+```python
+from tempest_fastapi_sdk.queue import Consumer, subscribe
+
+from src.queue import OrderPaid, mq
+
+
+class RelatoriosConsumer(Consumer):
+    prefetch = 32                       # vale para todo binding da classe
+
+    @subscribe("relatorios.gerar", prefetch=1)
+    async def gerar(self, event: OrderPaid) -> None:
+        """Handler pesado: o teto do método ganha do da classe."""
+
+
+class OrderPaidConsumer(Consumer):
+    async def handle(self, message: OrderPaid) -> None: ...
+
+
+mq.register(RelatoriosConsumer())
+mq.register(OrderPaidConsumer(channel="orders.paid", schema=OrderPaid, prefetch=8))
+```
+
+!!! note "Por que `prefetch` é um parâmetro nomeado, e não mais um `**options`"
+    O FastStream não tem keyword `prefetch` — ele carrega o `basic.qos`
+    num objeto `Channel`. Repassar a palavra crua levanta
+    `TypeError: RabbitRegistrator.subscriber() got an unexpected keyword
+    argument 'prefetch'`, que era exatamente o que acontecia no caminho
+    de classe até a v0.209.0. Nomear o parâmetro é o que permite traduzir
+    — e o que o type checker enxerga.
 
 !!! warning "Não existe default bom que eu possa chutar"
     O comportamento atual é **sem limite**, e este PR não muda isso — expõe o botão. Valor pequeno demais serializa o consumo e derruba o throughput; grande demais recria o problema. O número certo depende da latência do seu handler, e fixar um sem medir seria o mesmo erro que o `DEFAULT_INTRA_OP_THREADS` do modelops cometeu antes de ser rejustificado. Meça com um consumidor de latência conhecida antes de escolher.

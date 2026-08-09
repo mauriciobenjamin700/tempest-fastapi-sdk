@@ -5,6 +5,48 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.209.0] — 2026-08-09
+
+### Fixed
+
+- **`prefetch` reaches the class-based consumer path.** `mq.on(channel,
+  prefetch=N)` translated the cap into the FastStream `Channel` that
+  carries `basic.qos`; `Consumer` / `@subscribe` did not, and FastStream
+  has no `prefetch` keyword — so the same knob that works on the
+  decorator raised `TypeError: RabbitRegistrator.subscriber() got an
+  unexpected keyword argument 'prefetch'` on the class path. A team that
+  had adopted `Consumer` could only cap a consumer by hand-building
+  `channel=Channel(prefetch_count=N)`, which is the FastStream detail the
+  facade exists to hide.
+
+  `subscribe(channel, prefetch=N)` and `Consumer(prefetch=N)` are now
+  named, typed keywords, and a class-level `prefetch` covers every
+  binding the consumer declares (a `@subscribe` naming its own wins):
+
+  ```python
+  class OrdersConsumer(Consumer):
+      prefetch = 32                      # every binding below
+
+      @subscribe("relatorios.gerar", prefetch=1)
+      async def gerar(self, pedido: Report) -> None: ...
+
+      @subscribe("orders.paid")
+      async def on_paid(self, event: OrderPaid) -> None: ...
+  ```
+
+  Verified against a real RabbitMQ, not against the local object:
+  `rabbitmqctl list_consumers queue_name prefetch_count` reports the caps
+  the class declared. Checking that the keyword was accepted would pass
+  for an implementation that swallowed it.
+
+- **The constructor-form `Consumer` forwards subscriber options.**
+  `@subscribe` took `**options` (so `exchange=` and friends reached
+  FastStream) while `Consumer.__init__` accepted only `channel` and
+  `schema` and registered `options={}`. Naming an exchange — or anything
+  else the transport takes — forced the grouped form or the decorator.
+  `Consumer(channel=..., schema=..., **options)` now forwards them, the
+  same passthrough `@subscribe` already had.
+
 ## [0.208.0] — 2026-08-08
 
 ### Added

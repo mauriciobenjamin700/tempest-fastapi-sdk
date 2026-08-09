@@ -546,7 +546,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   would look identical and lose both. `Consumer`/`@subscribe`/
   `Subscription` also had `channel: str` while `register` bound
   `str | QueueSpec`, so the class path could not declare topology without
-  failing the type checker. **Cron without syntax**: `Cron`/`CronOffset`
+  failing the type checker. **Class-path parity (v0.209.0):** `prefetch`
+  is now a named keyword on `subscribe()` and `Consumer.__init__`, plus a
+  class attribute covering every binding (a `@subscribe` naming its own
+  wins) — `register` translates it into the FastStream `Channel` exactly
+  as `on()` does. FastStream has **no** `prefetch` keyword, so the class
+  path raised `TypeError` where the decorator worked. Found against a
+  real broker and pinned there: `rabbitmqctl list_consumers queue_name
+  prefetch_count` reports the caps. The constructor-form `Consumer` also
+  forwards `**options` (`exchange=` etc.) — it registered `options={}`
+  while `@subscribe` had taken them all along. **Cron without syntax**:
+  `Cron`/`CronOffset`
   (`BRASILIA` etc.)/`Weekday` enums + `daily`/`weekdays`/`every_n_minutes`/
   `weekly`/`monthly`/… builders (dependency-free). `AsyncBrokerManager`
   renamed to **`AsyncQueueManager`** (v0.94.0; old alias kept); legacy
