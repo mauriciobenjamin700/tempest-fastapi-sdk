@@ -225,6 +225,91 @@ Ignorar em silêncio produziria uma fila que **parece** configurada e descarta t
 Um `QueueSpec(name=...)` sem mais nada continua portátil em qualquer transporte: ele não pede nada além do nome.
 
 
+## Confiabilidade do caminho de eventos
+
+A política do consumidor é `REJECT_ON_ERROR`. Handler que levanta faz `basic.reject` com `requeue=False` — não entra em loop, e **some**. Três peças fecham isso, espelhando o que o `TaskQueue` já tem.
+
+### Dead-letter: falha vira registro
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker
+from tempest_fastapi_sdk.tasks import DbDeadLetterSink
+
+
+def wire_dead_letter(mq: MessageBroker, sink: DbDeadLetterSink) -> None:
+    """Manda toda falha terminal do consumidor para o sink.
+
+    Args:
+        mq (MessageBroker): O broker, antes do connect().
+        sink (DbDeadLetterSink): Onde o evento morto é gravado.
+    """
+    mq.dead_letter(sink, max_attempts=3)
+```
+
+O sink é o **mesmo** protocolo do caminho de tarefas, então `DbDeadLetterSink`, o painel do admin e o `make_requeue_action` funcionam sem mudança — tarefa morta e evento morto na mesma tela.
+
+O mapeamento é deliberado: `task_name` carrega o **canal**, `task_id` o message id do broker, e `kwargs["body"]` o corpo bruto.
+
+!!! tip "Reporta uma vez, não a cada tentativa"
+    O sink é chamado só na entrega que esgota o `max_attempts`, lido do header `x-death`. Alertar em toda tentativa transforma uma mensagem ruim num fluxo de alertas.
+
+### Retry com atraso, feito pelo broker
+
+O AMQP não tem atraso por mensagem. O jeito portátil é um par de filas: a principal manda a rejeitada para uma fila que só a segura, e o TTL dessa fila a devolve para a exchange principal ao expirar.
+
+```python
+from tempest_fastapi_sdk.queue import ConsumerRetryPolicy, retry_queues
+
+from tempest_fastapi_sdk.queue import (
+    ConsumerRetryPolicy,
+    MessageBroker,
+    retry_queues,
+)
+
+TOPOLOGY = retry_queues(
+    "orders.paid",
+    ConsumerRetryPolicy(max_attempts=3, delay_ms=30_000),
+    retry_exchange="orders.retry",
+    main_exchange="orders",
+    dead_exchange="orders.dead",
+)
+
+
+async def wire_retry(mq: MessageBroker) -> None:
+    """Declara e liga as três filas da cadeia de retry.
+
+    Args:
+        mq (MessageBroker): O broker, já conectado.
+    """
+    await mq.declare_retry_topology(TOPOLOGY)
+```
+
+!!! danger "Declarar sem ligar descarta a mensagem"
+    Só declarar as filas não basta: cada uma precisa estar **ligada** à sua exchange. Sem os bindings, a rejeitada é roteada para uma exchange sem nada atrás — e o RabbitMQ descarta em silêncio. Medido contra um broker real: com os bindings a mensagem volta pontualmente (intervalos de 1,5s para um TTL de 1,5s); sem eles, é entregue uma vez e some. `declare_retry_topology()` faz as duas coisas.
+
+Quem espera é o **broker**, então restart do worker no meio não muda nada. A alternativa é o plugin `rabbitmq_delayed_message_exchange`, mais simples de declarar e que **exige o plugin** — indisponível em várias ofertas gerenciadas, incluindo o plano free do CloudAMQP.
+
+!!! warning "A topologia sozinha retenta para sempre"
+    O AMQP conta redelivery no `x-death` mas não para sozinho. Quem enforce o `max_attempts` é o middleware do `dead_letter()`. Declarar a topologia sem instalar o middleware dá retry infinito — por isso os dois estão documentados juntos.
+
+### Métricas
+
+```python
+from tempest_fastapi_sdk.queue import MessageBroker, QueueMetrics
+
+
+def wire_metrics(mq: MessageBroker) -> None:
+    """Publica contagem e duração de consumo no /metrics compartilhado.
+
+    Args:
+        mq (MessageBroker): O broker, antes do connect().
+    """
+    mq.enable_metrics(QueueMetrics())
+```
+
+Gera `queue_messages_total{channel,status}` e `queue_message_duration_seconds{channel}`. Sem isso a taxa de falha do consumidor é invisível — a mensagem é rejeitada, o broker descarta, e nada conta.
+
+
 ## Tarefas em background — `TaskQueue`
 
 Uma **fila de tarefas** tira trabalho lento do request e joga num worker. O TaskIQ faz isso, mas espalha a API entre broker, scheduler, schedule source e `.kiq()`. `TaskQueue` dobra tudo num objeto só, com vocabulário óbvio.

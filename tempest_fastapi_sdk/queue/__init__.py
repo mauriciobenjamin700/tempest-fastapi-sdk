@@ -14,6 +14,15 @@ from tempest_fastapi_sdk.queue.consumer import Consumer as Consumer
 from tempest_fastapi_sdk.queue.consumer import subscribe as subscribe
 from tempest_fastapi_sdk.queue.manager import AsyncBrokerManager as AsyncBrokerManager
 from tempest_fastapi_sdk.queue.manager import AsyncQueueManager as AsyncQueueManager
+from tempest_fastapi_sdk.queue.reliability import (
+    ConsumerRetryPolicy as ConsumerRetryPolicy,
+)
+from tempest_fastapi_sdk.queue.reliability import QueueMetrics as QueueMetrics
+from tempest_fastapi_sdk.queue.reliability import RetryTopology as RetryTopology
+from tempest_fastapi_sdk.queue.reliability import (
+    delivery_attempt as delivery_attempt,
+)
+from tempest_fastapi_sdk.queue.reliability import retry_queues as retry_queues
 from tempest_fastapi_sdk.queue.topology import DeadLetterSpec as DeadLetterSpec
 from tempest_fastapi_sdk.queue.topology import QueueSpec as QueueSpec
 from tempest_fastapi_sdk.queue.topology import QueueType as QueueType
@@ -26,11 +35,16 @@ __all__: list[str] = [
     "AsyncBrokerManager",
     "AsyncQueueManager",
     "Consumer",
+    "ConsumerRetryPolicy",
     "DeadLetterSpec",
     "MessageBroker",
+    "QueueMetrics",
     "QueueSpec",
     "QueueType",
+    "RetryTopology",
     "Transport",
     "UnsupportedTopologyError",
+    "delivery_attempt",
+    "retry_queues",
     "subscribe",
 ]
