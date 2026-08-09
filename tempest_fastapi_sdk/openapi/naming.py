@@ -17,6 +17,24 @@ _WORD_BOUNDARY = re.compile(r"([a-z\d])([A-Z])")
 _NON_ALNUM = re.compile(r"[^0-9a-zA-Z]+")
 _LEADING_DIGITS = re.compile(r"^\d")
 
+MAX_CLASS_NAME: int = 55
+"""Longest class name the emitter can place inside the line budget.
+
+Derived from the widest line a class name reaches, which is **not** the
+``class`` statement but a docstring ``Attributes:`` entry: the wrapped form
+puts ``(<annotation>):`` at an indent of 12, and the annotation composes
+around the name — ``dict[str, <name>] | None`` adds 18 columns, leaving 55.
+``ruff format`` breaks neither one, since a class statement is a header and
+an ``Attributes:`` entry is prose inside a string.
+
+The bound is needed because the generator **synthesizes** these names for
+inline schemas by concatenating the whole path
+(``PostApiV1DecodeEmvResponseEmvMerchantAccountInformationPix``), so nothing
+in the specification limits their length. Measured against the OpenPix
+specification, this truncates 6 of 358 names and creates no new collision;
+the ones it does create are resolved by :func:`unique` like any other.
+"""
+
 MAX_ENUM_MEMBER: int = 72
 """Longest enum member name the emitter can place inside the line budget.
 
@@ -204,6 +222,26 @@ def method_name(operation_id: str | None, http_method: str, path: str) -> str:
     return "_".join(part for part in segments if part) or "call"
 
 
+def class_name(wire_name: str) -> str:
+    """Return the ``PascalCase`` class name for a schema.
+
+    Args:
+        wire_name (str): The ``components.schemas`` key, or the synthesized
+            hint for an inline schema.
+
+    Returns:
+        str: The name, at most :data:`MAX_CLASS_NAME` characters.
+
+    Collisions the cut creates are resolved by :func:`unique` at the call
+    site, exactly as they already were for two spellings colliding on one
+    identifier.
+    """
+    pascal = to_pascal(wire_name)
+    if len(pascal) <= MAX_CLASS_NAME:
+        return pascal
+    return pascal[:MAX_CLASS_NAME]
+
+
 def enum_member_name(value: object) -> str:
     """Return the member name for an enum value.
 
@@ -269,7 +307,9 @@ def unique(name: str, taken: set[str], *, separator: str = "_") -> str:
 
 
 __all__: list[str] = [
+    "MAX_CLASS_NAME",
     "MAX_ENUM_MEMBER",
+    "class_name",
     "enum_member_name",
     "field_name",
     "is_shadowing_builtin",

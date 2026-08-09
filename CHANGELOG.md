@@ -5,6 +5,64 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.213.0] — 2026-08-09
+
+### Fixed
+
+Generating against the **real OpenPix specification** (847 KB, 358 schemas,
+105 operations) — the one whose prose motivated v0.211.0 — produced output
+with 12 `E501` errors, 8 of which survived `ruff format`. The hostile-spec
+suite had not caught them because they need long *names*, and the names
+that overrun are the ones the generator **synthesizes itself**.
+
+- **The `name: Annotation = Field(` line was never measured.** Inline
+  schemas get a class name built by concatenating the whole path
+  (`PostApiV1DecodeEmvResponseEmvMerchantAccountInformationPix`), so the
+  annotation alone can overrun before any argument is reached. `ruff
+  format` then wraps the assignment and **re-indents the arguments one
+  level deeper** — so every string the emitter had pre-split to fit column
+  88 came out at 92. One defect, two symptoms, and the second one made the
+  first look like a splitting bug.
+
+  The emitter now picks the same shape `ruff format` would, in the same
+  order it tries them: the plain head while it fits, then the wrapped
+  assignment with arguments at 12, then a broken annotation with arguments
+  back at 8. A whole-subscript annotation (`list[Item]`) breaks **inside
+  its brackets** rather than being parenthesized, because that is the form
+  ruff keeps.
+
+- **`ruff format` joined split strings back together.** v0.211.0 forced
+  every split to yield at least two adjacent literals, on the reasoning
+  that a lone parenthesized literal is un-parenthesized. That is true only
+  when the collapsed line then *fits* — which is a line the emitter never
+  splits. On real enum values the forced second piece was joined back, so
+  the file failed `ruff format --check`. Splits are now exactly as deep as
+  the budget requires.
+
+- **A long `examples` list was never split.** The splitter gave up on
+  anything that was not a string, leaving a 229-character line. Lists and
+  dicts are now exploded only where they overrun, and the key prefix is
+  **measured** rather than glued on afterwards — checking the value alone
+  and prepending `"OPENPIX:…": ` afterwards left two lines over on the
+  first attempt.
+
+- **`return _validate(LongResponse, response.json())` was never
+  measured**, and inline response schemas are named after their path.
+
+- **Synthesized class names are capped** (`MAX_CLASS_NAME = 55`). The
+  binding constraint is not the `class` statement but a docstring
+  `Attributes:` entry, where the annotation composes around the name
+  (`dict[str, Name] | None` adds 18 columns at an indent of 12) and `ruff
+  format` breaks neither. Measured on the OpenPix specification: 6 of 358
+  names truncated, no new collision.
+
+**Known limit, stated rather than papered over.** A very long field name
+next to a long single-identifier annotation (`x: SomeLongClassName =
+Field(`) has no formatting that fits — `ruff format` collapses it, because
+a bare identifier has nothing to split. Only shorter names help. Every
+annotation with a union or a subscript in it does have a stable shape, and
+the emitter now produces it.
+
 ## [0.212.0] — 2026-08-09
 
 Both entries below came from auditing the `openapi-client` recipe against

@@ -477,6 +477,42 @@ Resumindo o que o emissor garante para qualquer texto que a spec traga:
 | Descrição longa demais | Partida em dois ou mais literais adjacentes |
 | Valor de enum longo demais | Partido igual, e o **nome** do membro é encurtado — o valor, nunca |
 
+### Nomes longos e o orçamento de linha
+
+O gerador **sintetiza** o nome de classe de um schema inline concatenando o
+caminho inteiro — `PostApiV1DecodeEmvResponseEmvMerchantAccountInformationPix`.
+Nada na spec limita esse tamanho, então a anotação sozinha pode estourar a
+linha antes de qualquer argumento.
+
+Isso não é cosmético. Quando a linha `nome: Anotação = Field(` estoura, o
+`ruff format` embrulha a atribuição e **reindenta os argumentos um nível mais
+fundo** — e cada string que o emissor tinha partido para caber em 88 sai com
+92. Um defeito, dois sintomas.
+
+O emissor escolhe a mesma forma que o `ruff format` escolheria, na mesma ordem
+em que ele tenta:
+
+| Situação | Forma emitida |
+| --- | --- |
+| Cabeçalho cabe | `x: T = Field(` com argumentos em 8 |
+| Cabeçalho estoura, atribuição cabe | `x: T = (` / `Field(` com argumentos em 12 |
+| Nenhum cabe | Anotação quebrada, argumentos de volta em 8 |
+| Anotação é um subscript inteiro | Quebra **dentro** dos colchetes: `list[` / `Item` / `]` |
+
+Nomes de classe sintetizados são limitados a 55 caracteres. O que aperta não é
+a linha do `class`, e sim a entrada do `Attributes:` na docstring: ali a
+anotação se compõe em volta do nome (`dict[str, Nome] | None` custa mais 18
+colunas num indent de 12) e o `ruff format` não quebra nem uma coisa nem
+outra. Medido na spec da OpenPix: 6 de 358 nomes truncados, nenhuma colisão
+nova.
+
+!!! warning "Um caso não tem solução, e a doc não finge que tem"
+    Nome de campo muito longo ao lado de uma anotação que é **um identificador
+    único** — `x: NomeDeClasseLongo = Field(` — não tem formatação que caiba. O
+    `ruff format` colapsa, porque um identificador solto não tem onde quebrar.
+    Só encurtar o nome resolve. Toda anotação que contenha uma união ou um
+    subscript **tem** forma estável, e é a que o emissor produz.
+
 ### Nomes e paths que a spec erra
 
 Os mesmos testes cobrem o outro lado — quando a spec nomeia algo que Python não

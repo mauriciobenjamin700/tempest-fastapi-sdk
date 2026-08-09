@@ -136,11 +136,19 @@ class TestLongArguments:
         expression = source.strip().removeprefix("description=").removesuffix(",")
         assert ast.literal_eval(expression) == HOSTILE_DESCRIPTION
 
-    def test_split_yields_at_least_two_literals(self) -> None:
-        """``ruff format`` joins a lone parenthesized literal back onto one line."""
-        text = "x" * 70
-        lines = _argument_lines(f'description="{text}"', "        ")
-        assert len([line for line in lines if line.strip().startswith('"')]) >= 2
+    def test_splits_only_as_far_as_the_budget_needs(self) -> None:
+        """One piece is a legitimate split.
+
+        This pinned the opposite invariant until a real specification
+        disproved it. Forcing a second piece made ``ruff format`` **join
+        them back**, which is the same failure as leaving the line long,
+        approached from the other side: a lone parenthesized literal is
+        un-parenthesized only when the collapsed line then fits, and a
+        collapsed line that fits is one the emitter never split.
+        """
+        lines = _argument_lines(f'description="{"x" * 70}"', "        ")
+        assert all(len(line) <= _MAX_LINE for line in lines)
+        assert len([line for line in lines if line.strip().startswith('"')]) == 1
 
     def test_short_argument_stays_on_one_line(self) -> None:
         """The split only happens when the flat form overruns."""

@@ -74,17 +74,13 @@ def string_literal(value: str) -> str:
     return quote + "".join(parts) + quote
 
 
-def string_chunks(text: str, budget: int, *, minimum: int = 1) -> list[str]:
+def string_chunks(text: str, budget: int) -> list[str]:
     """Split text so each piece renders as a literal within ``budget``.
 
     Args:
         text (str): The decoded text to split.
         budget (int): Line budget available to one rendered literal,
             quotes included.
-        minimum (int): Fewest pieces to return. Callers that emit the
-            pieces as a parenthesized run pass ``2``: ``ruff format``
-            removes the parentheses around a lone literal and puts the
-            long line back, so a split into one piece is not a split.
 
     Returns:
         list[str]: Pieces whose concatenation is ``text`` exactly —
@@ -95,6 +91,12 @@ def string_chunks(text: str, budget: int, *, minimum: int = 1) -> list[str]:
     The split is computed on the **decoded** text and each piece is
     re-rendered by the caller, because cutting the escaped literal could
     land between a backslash and the character it escapes.
+
+    One piece is a legitimate result. ``ruff format`` un-parenthesizes a
+    lone literal only when the collapsed line then fits — and a collapsed
+    line that fits is one the caller never split. Forcing a second piece to
+    guard against that made ``ruff format`` **join them back**, which is the
+    same failure from the other side.
     """
     chunks: list[str] = []
     remaining = text
@@ -108,11 +110,6 @@ def string_chunks(text: str, budget: int, *, minimum: int = 1) -> list[str]:
         chunks.append(remaining[:cut])
         remaining = remaining[cut:]
     chunks.append(remaining)
-
-    while len(chunks) < minimum and len(chunks[-1]) > 1:
-        last = chunks.pop()
-        middle = len(last) // 2
-        chunks.extend([last[:middle], last[middle:]])
     return chunks
 
 

@@ -661,6 +661,24 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   Pinned in `tests/openapi/test_hostile_spec.py`, generated with
   `run_format=False` **on purpose**: the command's own `ruff --fix` pass was
   hiding three of these.
+  **Line budget vs. synthesized names (v0.213.0):** generating against the
+  **real** OpenPix spec (847 KB, 358 schemas) gave 12 `E501`, 8 surviving
+  `ruff format` — the hostile suite missed them because they need long
+  *names*, and the ones that overrun are the names the generator builds
+  itself. The `name: Annotation = Field(` head was never measured; when it
+  overruns `ruff format` re-indents the arguments one level deeper, so every
+  pre-split string came out at 92. The emitter now mirrors ruff's shape order
+  (head / wrapped assignment at 12 / broken annotation at 8, and *inside the
+  brackets* for a whole subscript). v0.211.0's forced `minimum=2` split was
+  **wrong** — ruff joins a lone parenthesized literal back only when the
+  collapsed line fits, which is a line never split, so forcing a second piece
+  made ruff rejoin them; splits are now exactly as deep as the budget needs.
+  Also: long `examples` lists explode (key prefix **measured**, not glued on),
+  `return _validate(...)` is measured, and `MAX_CLASS_NAME = 55` caps
+  synthesized names — bound by the docstring `Attributes:` entry, not the
+  `class` statement (6 of 358 truncated on OpenPix, no new collision).
+  **Stated limit:** a long field name next to a single-identifier annotation
+  has no formatting that fits; only shorter names help.
   **Docs-audit fixes (v0.212.0):** the recipe had promised an
   `# openapi: unsupported` marker for several releases while the package
   emitted **zero** of them, and the CLI summary header hardcoded

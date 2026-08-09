@@ -153,26 +153,171 @@ def _field_lines(field: FieldIR) -> list[str]:
         When the default is the only thing to emit, it is written as a bare
         assignment rather than wrapped in an otherwise-empty ``Field()``
         call.
+
+        A long **annotation** is handled by :func:`_assignment_lines`, not
+        here. The generator synthesizes its own class names for inline
+        schemas by concatenating the path
+        (``PostApiV1DecodeEmvResponseEmvMerchantAccountInformationPix``), so
+        the annotation alone can overrun before any argument is reached.
     """
     marker = _unsupported_comment(field.unsupported, "    ")
     arguments = _field_arguments(field)
     if not arguments:
-        return [*marker, f"    {field.name}: {field.annotation}"]
+        return [*marker, *_bare_annotation_lines(field)]
 
     if (
         len(arguments) == 1
         and field.default is not None
         and not field.default_is_factory
     ):
-        return [*marker, f"    {field.name}: {field.annotation} = {field.default}"]
+        return [*marker, *_bare_annotation_lines(field, value=field.default)]
 
     single = f"    {field.name}: {field.annotation} = Field({', '.join(arguments)})"
     if len(single) <= _MAX_LINE:
         return [*marker, single]
-    lines = [*marker, f"    {field.name}: {field.annotation} = Field("]
+    return [*marker, *_assignment_lines(field.name, field.annotation, arguments)]
+
+
+def _bare_annotation_lines(field: FieldIR, *, value: str | None = None) -> list[str]:
+    """Render a field with no ``Field()`` call.
+
+    Args:
+        field (FieldIR): The field to render.
+        value (str | None): Rendered default, or ``None`` for a required
+            field that gets a bare annotation.
+
+    Returns:
+        list[str]: Source lines, with the annotation parenthesized when the
+        flat form overruns the budget.
+
+    ``ruff format`` does not rescue either form: it will not wrap the right
+    side of ``x: T = None`` (``None`` is a single atom, and the redundant
+    parentheses come straight back off), and a bare annotation has no right
+    side to wrap at all. It **does** preserve a parenthesized annotation
+    once nothing shorter fits, which is the only form that stays inside the
+    budget here.
+    """
+    suffix = "" if value is None else f" = {value}"
+    flat = f"    {field.name}: {field.annotation}{suffix}"
+    if len(flat) <= _MAX_LINE:
+        return [flat]
+    return _broken_annotation(field.name, field.annotation, suffix)
+
+
+def _whole_subscript(annotation: str) -> tuple[str, str] | None:
+    """Split an annotation that is one subscript covering its whole text.
+
+    Args:
+        annotation (str): The rendered type annotation.
+
+    Returns:
+        tuple[str, str] | None: ``(outer, inner)`` for ``list[Item]``, or
+        ``None`` when the annotation is anything else — a bare name, or a
+        union like ``list[Item] | None`` whose top level is not the
+        subscript.
+
+    ``ruff format`` breaks inside the brackets it already has rather than
+    adding parentheses, so ``list[VeryLongItem]`` becomes ``list[`` /
+    ``VeryLongItem`` / ``]``. Emitting the parenthesized form there is
+    stable Python that still fails ``ruff format --check``.
+    """
+    start = annotation.find("[")
+    if start <= 0 or not annotation.endswith("]"):
+        return None
+    depth = 0
+    for index, char in enumerate(annotation):
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+            if depth == 0 and index != len(annotation) - 1:
+                return None
+    if depth != 0:
+        return None
+    return annotation[:start], annotation[start + 1 : -1]
+
+
+def _broken_annotation(name: str, annotation: str, tail: str) -> list[str]:
+    """Render ``name: annotation`` across lines, followed by ``tail``.
+
+    Args:
+        name (str): The Python field name.
+        annotation (str): The rendered type annotation.
+        tail (str): Text closing the statement — ``" = Field("``,
+            ``" = None"``, or empty for a bare annotation.
+
+    Returns:
+        list[str]: Source lines in the shape ``ruff format`` settles on:
+        inside the brackets for a whole subscript, parenthesized otherwise.
+    """
+    subscript = _whole_subscript(annotation)
+    if subscript is not None:
+        outer, inner = subscript
+        return [f"    {name}: {outer}[", f"        {inner}", f"    ]{tail}"]
+    return [f"    {name}: (", f"        {annotation}", f"    ){tail}"]
+
+
+def _assignment_lines(name: str, annotation: str, arguments: list[str]) -> list[str]:
+    """Render ``name: annotation = Field(...)`` across lines.
+
+    Args:
+        name (str): The Python field name.
+        annotation (str): The rendered type annotation.
+        arguments (list[str]): Rendered ``name=value`` fragments.
+
+    Returns:
+        list[str]: Source lines, in whichever of three shapes ``ruff
+        format`` would settle on.
+
+    The shape matters because the emitter pre-splits long strings against a
+    known indentation, and two of these shapes indent the arguments
+    differently. Getting it wrong is not cosmetic: ``ruff format`` re-indents
+    the arguments one level deeper, every pre-split chunk gains four columns,
+    and lines the emitter had fitted to 88 come out at 92.
+
+    ``ruff format`` picks the first shape that fits, so the emitter has to
+    apply the same order or the file fails ``ruff format --check``:
+
+    1. ``x: T = Field(`` with arguments at 8.
+    2. ``x: T = (`` / ``Field(`` with arguments at 12, when the head still
+       overruns but the assignment's own line fits.
+    3. A parenthesized annotation with arguments back at 8, when neither
+       fits — the only shape left once the annotation alone is too long.
+    """
+    head = f"    {name}: {annotation} = Field("
+    if len(head) <= _MAX_LINE:
+        return [head, *_arguments_block(arguments, "        "), "    )"]
+
+    wrapped = f"    {name}: {annotation} = ("
+    if len(wrapped) <= _MAX_LINE:
+        return [
+            wrapped,
+            "        Field(",
+            *_arguments_block(arguments, "            "),
+            "        )",
+            "    )",
+        ]
+
+    return [
+        *_broken_annotation(name, annotation, " = Field("),
+        *_arguments_block(arguments, "        "),
+        "    )",
+    ]
+
+
+def _arguments_block(arguments: list[str], indent: str) -> list[str]:
+    """Render every ``Field`` argument at one indentation.
+
+    Args:
+        arguments (list[str]): Rendered ``name=value`` fragments.
+        indent (str): Leading whitespace for each argument.
+
+    Returns:
+        list[str]: Source lines, each argument split when it overruns.
+    """
+    lines: list[str] = []
     for argument in arguments:
-        lines.extend(_argument_lines(argument, "        "))
-    lines.append("    )")
+        lines.extend(_argument_lines(argument, indent))
     return lines
 
 
@@ -198,19 +343,78 @@ def _argument_lines(argument: str, indent: str) -> list[str]:
     if len(flat) <= _MAX_LINE:
         return [flat]
     name, separator, literal = argument.partition("=")
-    if not separator or literal[:1] not in {'"', "'"}:
+    if not separator:
         return [flat]
     try:
-        text = ast.literal_eval(literal)
+        value = ast.literal_eval(literal)
     except (SyntaxError, ValueError):
         return [flat]
-    if not isinstance(text, str):
+
+    if isinstance(value, str):
+        chunks = _string_chunks(value, _MAX_LINE - len(indent) - 4)
+        lines = [f"{indent}{name}=("]
+        lines.extend(f"{indent}    {_string_literal(chunk)}" for chunk in chunks)
+        lines.append(f"{indent}),")
+        return lines
+
+    if isinstance(value, list | dict):
+        body = _value_lines(value, indent, prefix=f"{name}=")
+        body[-1] = f"{body[-1]},"
+        return body
+
+    return [flat]
+
+
+def _value_lines(value: Any, indent: str, *, prefix: str = "") -> list[str]:
+    """Render a JSON value across lines, exploding it only where needed.
+
+    Args:
+        value (Any): A default or example value from the specification.
+        indent (str): Leading whitespace for the value's first line.
+        prefix (str): Text between the indent and the value on its first
+            line — a keyword (``examples=``) or a dict key (``"k": ``).
+
+    Returns:
+        list[str]: Source lines, the first carrying ``prefix`` and the
+        opening bracket, the last the closing one. A value whose flat form
+        fits comes back on one line, so only the containers that actually
+        overrun are exploded.
+
+    ``prefix`` is measured, not merely prepended. Rendering the value alone
+    and gluing the key on afterwards checks the wrong string: a dict entry
+    whose value fits on its own can still overrun once ``"OPENPIX:…": ``
+    sits in front of it, which is how two lines survived the first fix.
+
+    ``examples`` on a webhook field can carry a list of objects that renders
+    to a couple of hundred characters. ``ruff format`` would break it — a
+    container is not a string — so this only ever showed up under
+    ``--no-format``; the emitter still owes the caller output that lints
+    without a fixing pass.
+    """
+    flat = f"{indent}{prefix}{_literal(value)}"
+    if len(flat) <= _MAX_LINE:
         return [flat]
-    chunks = _string_chunks(text, _MAX_LINE - len(indent) - 4, minimum=2)
-    lines = [f"{indent}{name}=("]
-    lines.extend(f"{indent}    {_string_literal(chunk)}" for chunk in chunks)
-    lines.append(f"{indent}),")
-    return lines
+
+    inner = f"{indent}    "
+    if isinstance(value, list):
+        lines = [f"{indent}{prefix}["]
+        for item in value:
+            part = _value_lines(item, inner)
+            part[-1] = f"{part[-1]},"
+            lines.extend(part)
+        lines.append(f"{indent}]")
+        return lines
+
+    if isinstance(value, dict):
+        lines = [f"{indent}{prefix}{{"]
+        for key, item in value.items():
+            part = _value_lines(item, inner, prefix=f"{_literal(key)}: ")
+            part[-1] = f"{part[-1]},"
+            lines.extend(part)
+        lines.append(f"{indent}}}")
+        return lines
+
+    return [flat]
 
 
 def _model_lines(schema: SchemaIR) -> list[str]:
@@ -286,7 +490,7 @@ def _enum_lines(schema: SchemaIR) -> list[str]:
         if len(assignment) <= _MAX_LINE or not isinstance(value, str):
             lines.append(assignment)
             continue
-        chunks = _string_chunks(value, _MAX_LINE - 8, minimum=2)
+        chunks = _string_chunks(value, _MAX_LINE - 8)
         lines.append(f"    {member} = (")
         lines.extend(f"        {_string_literal(chunk)}" for chunk in chunks)
         lines.append("    )")
