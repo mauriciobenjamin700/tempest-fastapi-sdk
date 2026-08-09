@@ -555,8 +555,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   real broker and pinned there: `rabbitmqctl list_consumers queue_name
   prefetch_count` reports the caps. The constructor-form `Consumer` also
   forwards `**options` (`exchange=` etc.) — it registered `options={}`
-  while `@subscribe` had taken them all along. **Cron without syntax**:
-  `Cron`/`CronOffset`
+  while `@subscribe` had taken them all along. Same release, task side:
+  `@task_method(retry=RetryPolicy(...))` / `TaskDef(retry=)` were
+  **silently ignored** — the policy object rode `**options` into a `retry`
+  label TaskIQ never reads, so the task never retried and nothing raised
+  (a real worker ran the decorator task twice and the class task once).
+  `register` now renders it into labels like `task()` does, `retry` is a
+  class attribute too, and `TaskDef(**options)` forwards extra labels.
+  And the documented `taskiq worker src.tasks:tq.broker` **could not
+  start**: the CLI resolves `module:attr` with a plain `getattr`, so every
+  dotted form raised `AttributeError` — docs now bind `broker = tq.broker`
+  first. **Cron without syntax**: `Cron`/`CronOffset`
   (`BRASILIA` etc.)/`Weekday` enums + `daily`/`weekdays`/`every_n_minutes`/
   `weekly`/`monthly`/… builders (dependency-free). `AsyncBrokerManager`
   renamed to **`AsyncQueueManager`** (v0.94.0; old alias kept); legacy

@@ -878,17 +878,34 @@ for info in task_inventory(tq):
 
 ## Workers in production
 
-The worker and the scheduler are separate processes pointing at the raw objects `TaskQueue` exposes:
+The worker and the scheduler are separate processes pointing at the raw objects `TaskQueue` exposes. The TaskIQ CLI resolves `module:attribute` with a plain `getattr`, so **bind both to module-level names** — a dotted path does not resolve:
+
+```python
+# src/tasks.py — after registering the tasks
+from tempest_fastapi_sdk.tasks import TaskQueue
+
+tq: TaskQueue = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/")
+
+broker = tq.broker
+scheduler = tq.scheduler
+```
 
 ```bash
 # consumes and executes the tasks
-taskiq worker    src.tasks:tq.broker
+taskiq worker    src.tasks:broker
 
 # a single scheduler process for the whole cluster
-taskiq scheduler src.tasks:tq.scheduler
+taskiq scheduler src.tasks:scheduler
 ```
 
 `tq.broker` is the TaskIQ broker (it knows every registered task); `tq.scheduler` is the internal `TaskiqScheduler`.
+
+!!! warning "`src.tasks:tq.broker` does not work"
+    The CLI runs `getattr(module, "tq.broker")` and raises
+    `AttributeError: module 'src.tasks' has no attribute 'tq.broker'` —
+    the process never starts. The same holds for any dotted path
+    (`tq.scheduler`, `scheduler.scheduler`). Hence the `broker = tq.broker`
+    above.
 
 ## Transactional outbox
 

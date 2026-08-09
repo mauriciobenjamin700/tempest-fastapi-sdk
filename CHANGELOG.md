@@ -47,6 +47,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Consumer(channel=..., schema=..., **options)` now forwards them, the
   same passthrough `@subscribe` already had.
 
+- **`retry=` works on the class-based task path — it was silently
+  ignored.** `@tq.task(retry=RetryPolicy(...))` rendered the policy into
+  the `retry_on_error` / `max_retries` labels TaskIQ's middleware reads.
+  `@task_method(retry=...)` did not: the policy object went through
+  `**options` and landed as a `retry` label nothing looks at, so the task
+  **never retried** and nothing raised. Worse than the `prefetch` case
+  above, which at least failed loudly.
+
+  Measured against a real RabbitMQ with a `taskiq worker` process and a
+  task that always fails: the decorator path ran it twice, the class path
+  once. After the fix both run twice.
+
+  `retry` is now a named keyword on `task_method()` and `TaskDef`, plus a
+  class attribute covering every task the definition declares (a
+  `@task_method` naming its own wins), and `TaskQueue.register` renders
+  it into labels exactly as `task()` does. `TaskDef(name=..., **options)`
+  also forwards extra labels, which only `@task_method` could before.
+
+- **The documented `taskiq worker` / `taskiq scheduler` commands could
+  not start.** README, the queue recipe and three docstrings taught
+  `taskiq worker src.tasks:tq.broker` (and `…:tq.scheduler`,
+  `…:scheduler.scheduler`). TaskIQ's CLI resolves `module:attr` with a
+  plain `getattr`, so every dotted form raises `AttributeError: module
+  'src.tasks' has no attribute 'tq.broker'` before the worker starts.
+  The docs now bind the objects to module-level names
+  (`broker = tq.broker`) and point the CLI at those.
+
 ## [0.208.0] — 2026-08-08
 
 ### Added

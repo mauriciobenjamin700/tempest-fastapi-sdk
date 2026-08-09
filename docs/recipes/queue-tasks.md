@@ -879,17 +879,34 @@ for info in task_inventory(tq):
 
 ## Workers em produção
 
-O worker e o scheduler são processos separados apontando pros objetos crus expostos pelo `TaskQueue`:
+O worker e o scheduler são processos separados apontando pros objetos crus expostos pelo `TaskQueue`. A CLI do TaskIQ resolve `módulo:atributo` com um `getattr` simples, então **exponha os dois como nomes de módulo** — um caminho com ponto não é resolvido:
+
+```python
+# src/tasks.py — depois de registrar as tarefas
+from tempest_fastapi_sdk.tasks import TaskQueue
+
+tq: TaskQueue = TaskQueue.rabbitmq("amqp://guest:guest@localhost:5672/")
+
+broker = tq.broker
+scheduler = tq.scheduler
+```
 
 ```bash
 # consome e executa as tarefas
-taskiq worker    src.tasks:tq.broker
+taskiq worker    src.tasks:broker
 
 # um único processo de scheduler pro cluster inteiro
-taskiq scheduler src.tasks:tq.scheduler
+taskiq scheduler src.tasks:scheduler
 ```
 
 `tq.broker` é o broker TaskIQ (conhece todas as tarefas registradas); `tq.scheduler` é o `TaskiqScheduler` interno.
+
+!!! warning "`src.tasks:tq.broker` não funciona"
+    A CLI faz `getattr(module, "tq.broker")` e levanta
+    `AttributeError: module 'src.tasks' has no attribute 'tq.broker'` —
+    o processo nem sobe. Vale para qualquer caminho com ponto
+    (`tq.scheduler`, `scheduler.scheduler`). Daí o `broker = tq.broker`
+    acima.
 
 ## Outbox transacional
 

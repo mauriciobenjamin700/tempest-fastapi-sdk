@@ -38,7 +38,10 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from tempest_fastapi_sdk.tasks.observability import RetryPolicy
 
 _TASK_ATTR = "__tempest_task__"
 
@@ -67,6 +70,8 @@ def _marked_method_names(cls: type) -> list[str]:
 
 def task_method(
     name: str | None = None,
+    *,
+    retry: RetryPolicy | None = None,
     **options: Any,
 ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """Mark a :class:`TaskDef` method as a background task (grouped form).
@@ -74,6 +79,14 @@ def task_method(
     Args:
         name (str | None): Override the auto-generated ``module:function``
             task name.
+        retry (RetryPolicy | None): Per-task retry configuration, the same
+            keyword :meth:`~tempest_fastapi_sdk.tasks.TaskQueue.task`
+            takes. Named rather than left to ``**options`` because TaskIQ
+            reads labels, not objects: a ``RetryPolicy`` forwarded
+            verbatim lands as a ``retry`` label nothing looks at, and the
+            task silently never retries. Overrides :attr:`TaskDef.retry`.
+            Needs
+            :meth:`~tempest_fastapi_sdk.tasks.TaskQueue.enable_retries`.
         **options (Any): Extra TaskIQ labels / options forwarded to the
             task registration.
 
@@ -84,7 +97,11 @@ def task_method(
     def mark(
         method: Callable[..., Awaitable[Any]],
     ) -> Callable[..., Awaitable[Any]]:
-        setattr(method, _TASK_ATTR, {"name": name, "options": options})
+        setattr(
+            method,
+            _TASK_ATTR,
+            {"name": name, "retry": retry, "options": options},
+        )
         return method
 
     return mark
@@ -100,12 +117,16 @@ class TaskBinding:
         func (Callable[..., Awaitable[Any]]): The async callable to run.
         name (str | None): Explicit task name override, or ``None``.
         options (dict[str, Any]): Extra TaskIQ labels / options.
+        retry (RetryPolicy | None): Retry configuration, kept apart from
+            :attr:`options` because it is rendered into labels rather
+            than forwarded as one.
     """
 
     key: str
     func: Callable[..., Awaitable[Any]]
     name: str | None
     options: dict[str, Any] = field(default_factory=dict)
+    retry: RetryPolicy | None = None
 
 
 class TaskDef:
@@ -119,19 +140,45 @@ class TaskDef:
     Attributes:
         name (str | None): Task name for the constructor form; ``None``
             lets TaskIQ derive ``module:function``.
+        retry (RetryPolicy | None): Retry configuration for every task
+            this definition declares. A :func:`task_method` naming its
+            own overrides it for that task.
+        options (dict[str, Any]): Extra TaskIQ labels for the constructor
+            form. Never mutated, so the empty class-level default is safe
+            to share.
     """
 
     name: str | None = None
+    retry: RetryPolicy | None = None
+    options: dict[str, Any] = {}  # noqa: RUF012
 
-    def __init__(self, *, name: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        name: str | None = None,
+        retry: RetryPolicy | None = None,
+        **options: Any,
+    ) -> None:
         """Configure the constructor form.
 
         Args:
             name (str | None): Override the task name. Omit in the grouped
                 (``@task_method``) form.
+            retry (RetryPolicy | None): Retry configuration, the same
+                keyword ``@tq.task`` takes. Applies to every task this
+                definition declares, including the grouped form's, unless
+                a :func:`task_method` names its own. Needs
+                :meth:`~tempest_fastapi_sdk.tasks.TaskQueue.enable_retries`.
+            **options (Any): Extra TaskIQ labels / options for the
+                constructor form. The grouped form takes its own on each
+                :func:`task_method`.
         """
         if name is not None:
             self.name = name
+        if retry is not None:
+            self.retry = retry
+        if options:
+            self.options = options
 
     async def run(self, *args: Any, **kwargs: Any) -> Any:
         """Run the task — override in the constructor form.
@@ -156,7 +203,8 @@ class TaskDef:
         """Return every task this definition declares.
 
         Grouped ``@task_method`` methods take precedence; if none are
-        present, the constructor form (``run`` + ``name``) is used.
+        present, the constructor form (``run`` + ``name``) is used. A
+        binding with no ``retry`` of its own inherits :attr:`retry`.
 
         Returns:
             list[TaskBinding]: One entry per task.
@@ -171,11 +219,20 @@ class TaskDef:
                     func=method,
                     name=meta["name"],
                     options=meta["options"],
+                    retry=meta.get("retry") or self.retry,
                 ),
             )
         if grouped:
             return grouped
-        return [TaskBinding(key="run", func=self.run, name=self.name)]
+        return [
+            TaskBinding(
+                key="run",
+                func=self.run,
+                name=self.name,
+                options=dict(self.options),
+                retry=self.retry,
+            ),
+        ]
 
     @property
     def is_grouped(self) -> bool:

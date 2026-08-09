@@ -50,9 +50,11 @@ class AsyncTaskScheduler:
     them into the same broker used by
     :class:`AsyncTaskBrokerManager`, where the worker process consumes
     and runs them. For production deployments, prefer running the
-    standalone ``taskiq scheduler <module>:scheduler.scheduler`` CLI
-    process; :meth:`run_in_background` is convenient for development
-    and single-process services.
+    standalone ``taskiq scheduler <module>:<name>`` CLI process, where
+    ``<name>`` is a module-level binding of :attr:`scheduler` (the CLI
+    resolves the spec with a plain ``getattr``, so a dotted attribute
+    path raises ``AttributeError``); :meth:`run_in_background` is
+    convenient for development and single-process services.
 
     Typical usage::
 
@@ -276,9 +278,16 @@ class AsyncTaskScheduler:
 
         Suitable for development and single-process services. For
         production deployments with multiple workers, run the standalone
-        CLI instead so only one scheduler is active::
+        CLI instead so only one scheduler is active. Bind
+        :attr:`scheduler` to a module-level name — the CLI resolves
+        ``module:attr`` with a plain ``getattr``, so a dotted path
+        raises ``AttributeError``::
 
-            taskiq scheduler myapp.tasks:scheduler.scheduler
+            # myapp/tasks.py
+            taskiq_scheduler = scheduler.scheduler
+
+            # shell
+            taskiq scheduler myapp.tasks:taskiq_scheduler
 
         Returns:
             asyncio.Task[None]: The spawned task running
