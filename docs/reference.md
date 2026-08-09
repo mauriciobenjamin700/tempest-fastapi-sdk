@@ -268,6 +268,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ### `tempest_fastapi_sdk.queue`
 
 ::: tempest_fastapi_sdk.queue
+::: tempest_fastapi_sdk.queue.publisher.Publisher
+::: tempest_fastapi_sdk.queue.consumer.Subscription
 ::: tempest_fastapi_sdk.queue.topology.QueueSpec
 ::: tempest_fastapi_sdk.queue.topology.DeadLetterSpec
 ::: tempest_fastapi_sdk.queue.topology.QueueType

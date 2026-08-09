@@ -28,6 +28,7 @@ from tempest_fastapi_sdk.queue.dedup import (
     DEFAULT_DEDUP_TTL_SECONDS,
     make_dedup_middleware,
 )
+from tempest_fastapi_sdk.queue.publisher import Publisher
 from tempest_fastapi_sdk.queue.reliability import (
     DEFAULT_MAX_ATTEMPTS,
     make_dead_letter_middleware,
@@ -50,6 +51,9 @@ logger = logging.getLogger("tempest_fastapi_sdk.queue")
 
 Handler = TypeVar("Handler", bound=Callable[..., Awaitable[Any]])
 """A message handler — an async callable taking the decoded message."""
+
+PublisherT = TypeVar("PublisherT", bound=Publisher[Any])
+"""A :class:`~tempest_fastapi_sdk.queue.Publisher` subclass being bound."""
 
 
 def _schema_entry(
@@ -665,6 +669,46 @@ class MessageBroker:
             Any: A FastStream publisher object bound to ``channel``.
         """
         return self.broker.publisher(self._bind(channel), **options)
+
+    def publisher_for(
+        self,
+        publisher: type[PublisherT],
+        **options: Any,
+    ) -> PublisherT:
+        """Bind a class-based :class:`Publisher` to this broker.
+
+        The publish-side counterpart of :meth:`register`, and the reason
+        it takes a class rather than an instance: a
+        :class:`~tempest_fastapi_sdk.queue.Publisher` is useless until it
+        has a broker, so constructing it separately would only create a
+        window in which it exists and cannot publish.
+
+        The declared channel goes through the same binding
+        :meth:`on` uses, so a
+        :class:`~tempest_fastapi_sdk.queue.QueueSpec` is validated against
+        the transport **here**, at startup, and registered for
+        :meth:`declare_topology`. Without that, a service that only
+        publishes would name a dead-letter exchange nobody declares — and
+        every rejected message on the consuming side would be dropped at
+        routing time, silently.
+
+        Args:
+            publisher (type[PublisherT]): The ``Publisher`` subclass.
+            **options (Any): Default publish options for every message it
+                sends.
+
+        Returns:
+            PublisherT: The bound instance.
+
+        Raises:
+            UnsupportedTopologyError: When the declared spec sets a field
+                the transport cannot honor.
+        """
+        bound = publisher(self, **options)
+        channel = bound.channel
+        if channel is not None:
+            self._bind(channel)
+        return bound
 
     # ------------------------------------------------------------------
     # Lifecycle

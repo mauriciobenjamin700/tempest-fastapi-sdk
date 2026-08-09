@@ -11,6 +11,7 @@ broker (renamed from ``AsyncBrokerManager``, kept as a deprecated alias).
 
 from tempest_fastapi_sdk.queue.broker import MessageBroker as MessageBroker
 from tempest_fastapi_sdk.queue.consumer import Consumer as Consumer
+from tempest_fastapi_sdk.queue.consumer import Subscription as Subscription
 from tempest_fastapi_sdk.queue.consumer import subscribe as subscribe
 from tempest_fastapi_sdk.queue.dedup import (
     ConcurrentDeliveryError as ConcurrentDeliveryError,
@@ -21,6 +22,7 @@ from tempest_fastapi_sdk.queue.dedup import MemoryDedupStore as MemoryDedupStore
 from tempest_fastapi_sdk.queue.dedup import RedisDedupStore as RedisDedupStore
 from tempest_fastapi_sdk.queue.manager import AsyncBrokerManager as AsyncBrokerManager
 from tempest_fastapi_sdk.queue.manager import AsyncQueueManager as AsyncQueueManager
+from tempest_fastapi_sdk.queue.publisher import Publisher as Publisher
 from tempest_fastapi_sdk.queue.reliability import (
     ConsumerRetryPolicy as ConsumerRetryPolicy,
 )
@@ -52,11 +54,13 @@ __all__: list[str] = [
     "DedupStore",
     "MemoryDedupStore",
     "MessageBroker",
+    "Publisher",
     "QueueMetrics",
     "QueueSpec",
     "QueueType",
     "RedisDedupStore",
     "RetryTopology",
+    "Subscription",
     "Transport",
     "UnsupportedTopologyError",
     "consume_span",

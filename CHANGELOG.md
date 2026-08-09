@@ -5,6 +5,58 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.208.0] — 2026-08-08
+
+### Added
+
+- **`Publisher` — the class-based publish side of the queue.** `Consumer`
+  has let a team group handlers in a class since the facade shipped, and
+  the publish side had no equivalent: `await mq.publish("orders.paid", event)`
+  took the channel as a loose string and the payload as `Any`, so nothing
+  connected the two ends of what is, in practice, one contract.
+
+  ```python
+  class OrderPaidPublisher(Publisher[OrderPaid]):
+      channel = ORDERS_PAID
+      schema = OrderPaid
+
+  orders = mq.publisher_for(OrderPaidPublisher)
+  await orders.publish(OrderPaid(order_id="abc"))
+  ```
+
+  Three properties the loose call could not have. `Publisher[OrderPaid]`
+  makes `publish` **take an `OrderPaid`**, so the wrong model is a type
+  error rather than a message the consumer rejects in production. The
+  declared `schema` is **enforced on the way out** — the consumer is a
+  process away and can only reject what already left. And a `QueueSpec`
+  on `channel` goes through the same binding `on()` uses, so a service
+  that **only publishes** still registers the dead-letter exchange it
+  names; without that the queue carries `x-dead-letter-exchange` pointing
+  at an exchange nobody declared, and rejected messages are dropped at
+  routing time.
+
+  `Publisher.publish` deliberately goes through `MessageBroker.publish`
+  rather than FastStream's own publisher object, so it keeps the
+  `message_id` deduplication keys on and the `traceparent` /
+  `x-request-id` headers tracing rides. A publisher built on the raw
+  object would look identical and silently break both.
+  `MessageBroker.publisher()` is unchanged and still returns the raw
+  object, which is what puts the channel in the generated AsyncAPI.
+
+- `Subscription` is now exported from `tempest_fastapi_sdk.queue`. It was
+  already the documented return type of `Consumer.subscriptions()` and
+  reachable only by importing the submodule.
+
+### Fixed
+
+- **The class-based path could not declare topology.** `Consumer.channel`,
+  `subscribe()` and `Subscription.channel` were typed `str`, while
+  `MessageBroker.register` binds them through the same code path as
+  `on()` — which has always accepted `str | QueueSpec`. Passing a spec
+  worked at runtime and failed the type checker, so anyone using classes
+  had to drop back to the decorator to get a dead-letter exchange or a
+  quorum queue. The annotations now match what the code does.
+
 ## [0.207.0] — 2026-08-08
 
 ### Fixed

@@ -146,6 +146,58 @@ mq.register(OrdersConsumer())
     é a anotação visível do método. O `@mq.on(...)` (decorator em função)
     continua disponível — escolha o estilo que preferir.
 
+O canal pode ser uma string ou um [`QueueSpec`](#topologia-da-fila-queuespec),
+igual ao `@mq.on(...)` — declarar dead-letter ou fila quorum não te força de
+volta ao decorator.
+
+### Publicadores baseados em classe
+
+`Consumer` cobria o consumo; o publish continuava solto — `await mq.publish("orders.paid", event)`, com o canal como string qualquer e o payload tipado `Any`. Nada ligava as duas pontas de um contrato que, na prática, é **um** contrato.
+
+`Publisher` é essa metade. Carrega canal e modelo como atributos de classe, e o `publish` aceita exatamente o tipo declarado:
+
+```python
+from tempest_fastapi_sdk.queue import Publisher
+
+from src.queue import ORDERS_PAID, OrderPaid, mq
+
+
+class OrderPaidPublisher(Publisher[OrderPaid]):
+    channel = ORDERS_PAID
+    schema = OrderPaid
+
+
+orders = mq.publisher_for(OrderPaidPublisher)
+
+
+async def confirm_order(order_id: str) -> None:
+    """Anuncia que o pedido foi pago.
+
+    Args:
+        order_id (str): O pedido confirmado.
+    """
+    await orders.publish(OrderPaid(order_id=order_id))
+```
+
+Três coisas que a chamada solta não dava:
+
+- **O type-checker enxerga o payload.** `Publisher[OrderPaid]` faz o `publish` receber um `OrderPaid`; publicar o modelo errado vira rabisco vermelho no editor em vez de mensagem que o consumidor rejeita em produção.
+- **O schema é cobrado na saída.** Se o objeto não for instância do modelo declarado, `publish` levanta `TypeError` — o consumidor está a um processo de distância e só consegue rejeitar o que já saiu.
+- **A topologia é registrada.** Um `QueueSpec` no `channel` passa pelo mesmo binding do `@mq.on(...)`, então um serviço que **só publica** ainda declara a dead-letter exchange que ele nomeia.
+
+Para um canal só conhecido em runtime, a forma construtor:
+
+```python
+from tempest_fastapi_sdk.queue import Publisher
+
+from src.queue import OrderPaid, mq
+
+orders: Publisher[OrderPaid] = Publisher(mq, channel="orders.paid", schema=OrderPaid)
+```
+
+!!! warning "Não confunda com `mq.publisher(canal)`"
+    `mq.publisher(...)` devolve o objeto publisher do próprio FastStream — escape hatch, útil sobretudo porque faz o canal aparecer no AsyncAPI gerado. O `Publisher` passa por `mq.publish()`, então mantém o `message_id` de que a deduplicação depende e os headers `traceparent` / `x-request-id` de que o tracing depende. Um publicador que contornasse isso pareceria idêntico e quebraria os dois em silêncio.
+
 ## Topologia da fila — `QueueSpec`
 
 O canal como string resolve a maioria dos casos. O que ele **não** expressa é justamente o que decide se a fila sobrevive a um restart, para onde vai uma mensagem rejeitada e quanto tempo ela vive. No RabbitMQ isso mora na declaração da fila, não no nome.

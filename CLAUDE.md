@@ -534,7 +534,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   decorator and class-based styles**: `Consumer` + `@subscribe` +
   `MessageBroker.register` (constructor form takes explicit
   `channel`+`schema`, no magic); `TaskDef` + `@task_method` +
-  `TaskQueue.register`. **Cron without syntax**: `Cron`/`CronOffset`
+  `TaskQueue.register`. **Class-based publish (v0.208.0):**
+  `Publisher[T]` + `MessageBroker.publisher_for` — the symmetric half
+  `Consumer` never had. Declares `channel` (`str | QueueSpec`) + `schema`
+  as class attributes; `publish` **takes the declared type**, enforces the
+  schema on the way out (the consumer is a process away and can only
+  reject what already left), and registers a spec's topology so a
+  producer-only service still declares the DLX it names. Goes through
+  `MessageBroker.publish`, not FastStream's publisher object, so it keeps
+  the `message_id` dedup needs and the tracing headers — the raw object
+  would look identical and lose both. `Consumer`/`@subscribe`/
+  `Subscription` also had `channel: str` while `register` bound
+  `str | QueueSpec`, so the class path could not declare topology without
+  failing the type checker. **Cron without syntax**: `Cron`/`CronOffset`
   (`BRASILIA` etc.)/`Weekday` enums + `daily`/`weekdays`/`every_n_minutes`/
   `weekly`/`monthly`/… builders (dependency-free). `AsyncBrokerManager`
   renamed to **`AsyncQueueManager`** (v0.94.0; old alias kept); legacy
