@@ -314,16 +314,21 @@ class MessageBroker:
     # ------------------------------------------------------------------
 
     @classmethod
-    def rabbitmq(cls, url: str, **options: Any) -> MessageBroker:
+    def rabbitmq(
+        cls,
+        url: str,
+        *,
+        declare_topology: bool = True,
+        prefetch: int | None = None,
+        **options: Any,
+    ) -> MessageBroker:
         """Build a RabbitMQ-backed broker (``[queue]`` extra).
 
         Args:
             url (str): AMQP URL, e.g.
                 ``"amqp://guest:guest@localhost:5672/"``.
-            **options (Any): Extra keyword arguments forwarded to
-                ``faststream.rabbit.RabbitBroker``, plus two the facade
-                consumes itself: ``declare_topology`` (see
-                :meth:`__init__`) and ``prefetch``, which caps how many
+            declare_topology (bool): See :meth:`__init__`.
+            prefetch (int | None): Caps how many
                 unacknowledged messages the broker pushes to this
                 connection. Without a cap the broker delivers as fast as
                 the consumer acks: one slow handler accumulates messages
@@ -332,12 +337,13 @@ class MessageBroker:
                 held in RAM until the worker is OOM-killed and the whole
                 lot is redelivered. Per-consumer overrides go on
                 :meth:`on`.
+            **options (Any): Extra keyword arguments forwarded to
+                ``faststream.rabbit.RabbitBroker``.
 
         Returns:
             MessageBroker: A facade around a ``RabbitBroker``.
         """
-        declare_topology = bool(options.pop("declare_topology", True))
-        _with_prefetch(options, options.pop("prefetch", None), "default_channel")
+        _with_prefetch(options, prefetch, "default_channel")
         rabbit = _require("faststream.rabbit", "queue")
         return cls(
             rabbit.RabbitBroker(url, **options),
@@ -345,18 +351,24 @@ class MessageBroker:
         )
 
     @classmethod
-    def redis(cls, url: str, **options: Any) -> MessageBroker:
+    def redis(
+        cls,
+        url: str,
+        *,
+        declare_topology: bool = True,
+        **options: Any,
+    ) -> MessageBroker:
         """Build a Redis-backed broker (``faststream[redis]``).
 
         Args:
             url (str): Redis URL, e.g. ``"redis://localhost:6379/0"``.
+            declare_topology (bool): See :meth:`__init__`.
             **options (Any): Extra keyword arguments forwarded to
                 ``faststream.redis.RedisBroker``.
 
         Returns:
             MessageBroker: A facade around a ``RedisBroker``.
         """
-        declare_topology = bool(options.pop("declare_topology", True))
         redis = _require("faststream.redis", "queue")
         return cls(
             redis.RedisBroker(url, **options),
@@ -364,18 +376,23 @@ class MessageBroker:
         )
 
     @classmethod
-    def kafka(cls, *bootstrap_servers: str, **options: Any) -> MessageBroker:
+    def kafka(
+        cls,
+        *bootstrap_servers: str,
+        declare_topology: bool = True,
+        **options: Any,
+    ) -> MessageBroker:
         """Build a Kafka-backed broker (``faststream[kafka]``).
 
         Args:
             *bootstrap_servers (str): One or more ``host:port`` seeds.
+            declare_topology (bool): See :meth:`__init__`.
             **options (Any): Extra keyword arguments forwarded to
                 ``faststream.kafka.KafkaBroker``.
 
         Returns:
             MessageBroker: A facade around a ``KafkaBroker``.
         """
-        declare_topology = bool(options.pop("declare_topology", True))
         kafka = _require("faststream.kafka", "queue")
         servers: str | list[str] = (
             list(bootstrap_servers)
@@ -388,18 +405,24 @@ class MessageBroker:
         )
 
     @classmethod
-    def nats(cls, servers: str | list[str], **options: Any) -> MessageBroker:
+    def nats(
+        cls,
+        servers: str | list[str],
+        *,
+        declare_topology: bool = True,
+        **options: Any,
+    ) -> MessageBroker:
         """Build a NATS-backed broker (``faststream[nats]``).
 
         Args:
             servers (str | list[str]): NATS server URL(s).
+            declare_topology (bool): See :meth:`__init__`.
             **options (Any): Extra keyword arguments forwarded to
                 ``faststream.nats.NatsBroker``.
 
         Returns:
             MessageBroker: A facade around a ``NatsBroker``.
         """
-        declare_topology = bool(options.pop("declare_topology", True))
         nats = _require("faststream.nats", "queue")
         return cls(
             nats.NatsBroker(servers, **options),
@@ -414,6 +437,8 @@ class MessageBroker:
         self,
         channel: str | QueueSpec,
         /,
+        *,
+        prefetch: int | None = None,
         **options: Any,
     ) -> Callable[[Handler], Handler]:
         """Register the decorated async function as a consumer of ``channel``.
@@ -430,13 +455,17 @@ class MessageBroker:
             channel (str): The logical channel to subscribe to. Maps to a
                 queue (RabbitMQ), topic (Kafka), subject (NATS) or channel
                 (Redis) under the hood.
+            prefetch (int | None): Caps how many unacknowledged
+                messages the broker pushes to **this consumer**,
+                overriding the connection-wide cap set on
+                :meth:`rabbitmq`. RabbitMQ only.
             **options (Any): Extra transport-specific subscriber options
                 forwarded to FastStream (e.g. ``exchange=`` on RabbitMQ).
 
         Returns:
             Callable[[Handler], Handler]: The subscriber decorator.
         """
-        _with_prefetch(options, options.pop("prefetch", None), "channel")
+        _with_prefetch(options, prefetch, "channel")
         return cast(
             "Callable[[Handler], Handler]",
             self.broker.subscriber(self._bind(channel), **options),

@@ -57,6 +57,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`MessageBroker` kept five keywords hidden in `**options`.** The four
+  transport constructors popped `declare_topology` out of the forwarded
+  keyword arguments, and `rabbitmq()` / `on()` popped `prefetch` — so a
+  parameter the facade consumes itself was invisible to the type checker,
+  absent from autocomplete, and findable only by reading the source. On
+  `redis()`, `kafka()` and `nats()` it was not even in the docstring: a
+  supported parameter nobody could discover. It also meant a future
+  FastStream keyword of the same name would be swallowed by the facade
+  instead of reaching the broker. All five are now named keyword-only
+  parameters. Source-compatible — they were already keyword-only in
+  practice.
+
+  This is the same defect the audit found on `publisher_for`, in the same
+  file, and the audit missed it.
+
 - **The class-based path could not declare topology.** `Consumer.channel`,
   `subscribe()` and `Subscription.channel` were typed `str`, while
   `MessageBroker.register` binds them through the same code path as
