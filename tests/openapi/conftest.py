@@ -244,6 +244,163 @@ def _billing_document() -> dict[str, Any]:
     }
 
 
+HOSTILE_DESCRIPTION: str = (
+    'The payer\'s "reference" — encode the characters (%, \\#, /) before '
+    "sending it, because the gateway rejects the request otherwise and the "
+    "error it answers with does not say which character was at fault.\n"
+    "\tSecond line, indented with a tab."
+)
+"""A description carrying every construct a Python literal must escape.
+
+Taken from the shape a real specification uses: a block scalar spanning
+lines, an apostrophe, a pair of double quotes, a backslash that is not a
+Python escape, a tab, and enough prose to overrun the line budget.
+"""
+
+HOSTILE_ENUM_VALUE: str = (
+    "the-provider-spells-this-status-out-in-full-including-the-reason-"
+    "the-charge-was-refused"
+)
+"""An enum value long enough that ``MEMBER = "value"`` overruns the budget."""
+
+
+def _hostile_document() -> dict[str, Any]:
+    """Build a specification whose text and names attack the emitters.
+
+    Every construct here comes from a defect found generating against a
+    real specification: text needing escapes, prose past the line budget,
+    two component names colliding on one Python class, a path parameter
+    declared but never interpolated, a placeholder nothing declares, path
+    parameters listed out of template order, and a property whose wire
+    name starts with a digit.
+
+    Returns:
+        dict[str, Any]: The OpenAPI document.
+    """
+    return {
+        "openapi": "3.0.3",
+        "info": {"title": "Hostile API", "version": "1.0.0"},
+        "servers": [{"url": "https://api.hostile.example.com"}],
+        "paths": {
+            "/charges": {
+                "get": {
+                    "operationId": "listCharges",
+                    "summary": HOSTILE_DESCRIPTION,
+                    "description": "Lists charges. Escape (%, \\#, /) in filters.",
+                    "responses": {"204": {"description": "no content"}},
+                }
+            },
+            "/accounts/{accountId}/charges/{chargeId}": {
+                "get": {
+                    "operationId": "getAccountCharge",
+                    "summary": "Fetch one charge of one account.",
+                    "parameters": [
+                        {
+                            "name": "chargeId",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        },
+                        {
+                            "name": "accountId",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        },
+                        {
+                            "name": "expand",
+                            "in": "path",
+                            "required": True,
+                            "description": "Declared as a path parameter by "
+                            "mistake — the template never interpolates it.",
+                            "schema": {"type": "string"},
+                        },
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "ok",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "$ref": "#/components/schemas/transaction"
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/receipts/{receiptId}": {
+                "get": {
+                    "operationId": "getReceipt",
+                    "summary": "Fetch a receipt.",
+                    "responses": {"204": {"description": "no content"}},
+                }
+            },
+        },
+        "components": {
+            "schemas": {
+                "transaction": {
+                    "type": "object",
+                    "description": HOSTILE_DESCRIPTION,
+                    "required": ["reference"],
+                    "properties": {
+                        "reference": {
+                            "type": "string",
+                            "title": 'The "reference"',
+                            "description": HOSTILE_DESCRIPTION,
+                            "example": {
+                                "value": 'a "quoted" one',
+                                "escapes": ["\\#", "line\nbreak"],
+                            },
+                        },
+                        "2fa": {
+                            "type": "boolean",
+                            "description": "Wire name starting with a digit.",
+                        },
+                        "status": {"$ref": "#/components/schemas/ChargeStatus"},
+                    },
+                },
+                "Transaction": {
+                    "type": "object",
+                    "description": "Collides with `transaction` on one class name.",
+                    "properties": {"id": {"type": "string"}},
+                },
+                "ChargeStatus": {
+                    "type": "string",
+                    "description": "Lifecycle state of the charge.",
+                    "enum": ["paid", HOSTILE_ENUM_VALUE],
+                },
+            }
+        },
+    }
+
+
+@pytest.fixture
+def hostile_document() -> dict[str, Any]:
+    """The hostile specification as a ``dict``.
+
+    Returns:
+        dict[str, Any]: A fresh copy per test, so a test may mutate it.
+    """
+    return _hostile_document()
+
+
+@pytest.fixture
+def hostile_spec_file(tmp_path: Path) -> Path:
+    """The hostile specification written to a JSON file.
+
+    Args:
+        tmp_path (Path): pytest's per-test temporary directory.
+
+    Returns:
+        Path: Path to the written ``hostile.json``.
+    """
+    path = tmp_path / "hostile.json"
+    path.write_text(json.dumps(_hostile_document()), encoding="utf-8")
+    return path
+
+
 @pytest.fixture
 def billing_document() -> dict[str, Any]:
     """The packed billing specification as a ``dict``.

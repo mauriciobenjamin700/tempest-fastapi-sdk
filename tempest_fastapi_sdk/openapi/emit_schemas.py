@@ -11,18 +11,30 @@ changing or taking down their docs site.
 
 from __future__ import annotations
 
+import ast
 import re
-import textwrap
 from collections.abc import Mapping
 from typing import Any
 
 from tempest_fastapi_sdk.openapi.ir import FieldIR, SchemaIR, SpecIR
+from tempest_fastapi_sdk.openapi.source import (
+    MAX_LINE as _MAX_LINE,
+)
+from tempest_fastapi_sdk.openapi.source import (
+    docstring_delimiter as _delimiter,
+)
+from tempest_fastapi_sdk.openapi.source import (
+    string_chunks as _string_chunks,
+)
+from tempest_fastapi_sdk.openapi.source import (
+    string_literal as _string_literal,
+)
+from tempest_fastapi_sdk.openapi.source import (
+    wrap as _wrap,
+)
 
 _TYPING_IMPORTS: tuple[str, ...] = ("Annotated", "Any")
 _DATETIME_IMPORTS: tuple[str, ...] = ("date", "datetime", "time")
-
-_MAX_LINE: int = 88
-"""Line budget matching the project's ruff configuration."""
 
 
 def _literal(value: Any) -> str:
@@ -32,14 +44,21 @@ def _literal(value: Any) -> str:
         value (Any): A default or example value from the specification.
 
     Returns:
-        str: Source text. ``repr`` is exact for the JSON value subset, and
-        produces the double-quoted strings the project requires for every
-        value that has no embedded quote.
+        str: Source text. Strings go through :func:`_string_literal`; lists
+        and dicts are rebuilt element by element so the strings nested inside
+        an object example get the same treatment; every remaining value in
+        the JSON subset is exact under ``repr``.
     """
-    rendered = repr(value)
-    if isinstance(value, str) and "'" in rendered and '"' not in value:
-        return f'"{value}"'
-    return rendered
+    if isinstance(value, str):
+        return _string_literal(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(_literal(item) for item in value) + "]"
+    if isinstance(value, dict):
+        items = ", ".join(
+            f"{_literal(key)}: {_literal(item)}" for key, item in value.items()
+        )
+        return "{" + items + "}"
+    return repr(value)
 
 
 def _docstring_lines(summary: str, indent: str) -> list[str]:
@@ -50,39 +69,18 @@ def _docstring_lines(summary: str, indent: str) -> list[str]:
         indent (str): Leading whitespace for the docstring.
 
     Returns:
-        list[str]: Source lines, using the one-line form when it fits.
+        list[str]: Source lines, using the one-line form when it fits and
+        wrapping the summary otherwise. A specification is free to write a
+        two-sentence ``summary``; leaving it on one line put the overrun
+        inside a docstring, which ``ruff format`` does not rewrap.
     """
-    single = f'{indent}"""{summary}"""'
+    opening = _delimiter(summary)
+    single = f'{indent}{opening}{summary}"""'
     if len(single) <= _MAX_LINE:
         return [single]
-    lines = [f'{indent}"""{summary}']
+    lines = _wrap(summary, indent, opening, hanging=False)
     lines.append(f'{indent}"""')
     return lines
-
-
-def _wrap(text: str, indent: str, first_prefix: str = "") -> list[str]:
-    """Wrap prose to the line budget.
-
-    Args:
-        text (str): The prose to wrap.
-        indent (str): Indentation for continuation lines.
-        first_prefix (str): Text prefixed to the first line (e.g. an
-            ``Attributes:`` entry's ``"name (type): "``).
-
-    Returns:
-        list[str]: Wrapped source lines.
-    """
-    body = f"{first_prefix}{text}"
-    continuation = f"{indent}    "
-    wrapped = textwrap.wrap(
-        body,
-        width=_MAX_LINE,
-        initial_indent=indent,
-        subsequent_indent=continuation,
-        break_long_words=False,
-        break_on_hyphens=False,
-    )
-    return wrapped or [f"{indent}{body}"]
 
 
 def _attributes_section(schema: SchemaIR) -> list[str]:
@@ -165,8 +163,46 @@ def _field_lines(field: FieldIR) -> list[str]:
     if len(single) <= _MAX_LINE:
         return [single]
     lines = [f"    {field.name}: {field.annotation} = Field("]
-    lines.extend(f"        {argument}," for argument in arguments)
+    for argument in arguments:
+        lines.extend(_argument_lines(argument, "        "))
     lines.append("    )")
+    return lines
+
+
+def _argument_lines(argument: str, indent: str) -> list[str]:
+    """Render one ``Field`` keyword argument, split when it overruns the line.
+
+    Args:
+        argument (str): A rendered ``name=value`` fragment.
+        indent (str): Leading whitespace for the argument.
+
+    Returns:
+        list[str]: Source lines, ending with the trailing comma. A long
+        string value becomes a parenthesized run of **at least two**
+        adjacent literals — what a person writes, and what ``ruff format``
+        leaves alone, where it joins a lone parenthesized literal back onto
+        the long line.
+
+    ``ruff format`` never breaks a string, so a description long enough to
+    overrun the budget survives the format pass and fails the consumer's
+    own ``E501``.
+    """
+    flat = f"{indent}{argument},"
+    if len(flat) <= _MAX_LINE:
+        return [flat]
+    name, separator, literal = argument.partition("=")
+    if not separator or literal[:1] not in {'"', "'"}:
+        return [flat]
+    try:
+        text = ast.literal_eval(literal)
+    except (SyntaxError, ValueError):
+        return [flat]
+    if not isinstance(text, str):
+        return [flat]
+    chunks = _string_chunks(text, _MAX_LINE - len(indent) - 4, minimum=2)
+    lines = [f"{indent}{name}=("]
+    lines.extend(f"{indent}    {_string_literal(chunk)}" for chunk in chunks)
+    lines.append(f"{indent}),")
     return lines
 
 
@@ -189,7 +225,8 @@ def _model_lines(schema: SchemaIR) -> list[str]:
     docstring = f"{schema.docstring}"
     body = _attributes_section(schema)
     if body:
-        lines.append(f'    """{docstring}')
+        opening = _delimiter(docstring, *body)
+        lines.extend(_wrap(docstring, "    ", opening, hanging=False))
         lines.extend(body)
         lines.append('    """')
     else:
@@ -223,13 +260,29 @@ def _enum_lines(schema: SchemaIR) -> list[str]:
 
     Returns:
         list[str]: Source lines for the class.
+
+    A member whose flat assignment overruns the budget has its value split
+    into a parenthesized run of adjacent literals. The run always holds at
+    least two: ``ruff format`` drops the parentheses around a lone literal
+    and puts the long line straight back, which is why the first attempt at
+    this — a single parenthesized value — still failed
+    ``ruff format --check``. The member **name** is capped upstream in
+    :func:`~tempest_fastapi_sdk.openapi.naming.enum_member_name`, since a
+    long enough one overruns before the value is reached at all.
     """
     base = "BaseStrEnum" if schema.kind == "str_enum" else "BaseIntEnum"
     lines = [f"class {schema.name}({base}):"]
     lines.extend(_docstring_lines(schema.docstring, "    "))
     lines.append("")
     for member, value in schema.enum_members:
-        lines.append(f"    {member} = {_literal(value)}")
+        assignment = f"    {member} = {_literal(value)}"
+        if len(assignment) <= _MAX_LINE or not isinstance(value, str):
+            lines.append(assignment)
+            continue
+        chunks = _string_chunks(value, _MAX_LINE - 8, minimum=2)
+        lines.append(f"    {member} = (")
+        lines.extend(f"        {_string_literal(chunk)}" for chunk in chunks)
+        lines.append("    )")
     lines.append("")
     return lines
 

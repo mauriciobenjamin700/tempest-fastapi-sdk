@@ -357,6 +357,59 @@ noticed.
 So `--no-format` (or a machine with no `ruff` installed) still yields a usable
 package. The `ruff` pass the command runs by default is polish, not correctness.
 
+### The spec's text does not break the module
+
+The spec's prose ends up in the source: in a docstring, in a `title`, in a
+`description`, in an enum value. And the third party writes whatever they like
+there — quotes, an apostrophe, a backslash, a line break carried over from a
+YAML block, a sentence too long for the line. Each of those has produced a
+package that did not import, did not lint, or silently changed what the spec
+said.
+
+| In the spec | In the generated code |
+| --- | --- |
+| A backslash (`\#`, `\b`, `\x41`) | Escaped in the literal, and the docstring becomes `r"""` |
+| Line break, tab, control character | `\n` / `\t` / `\xNN` in the literal |
+| `"quotes"` in the text | A **single**-quoted literal |
+| An over-long description | Split into adjacent literals, always two or more |
+| An over-long enum value | The same, and the member **name** is capped |
+
+!!! info "Why single quotes, when the project's rule is double"
+    Because `ruff format` normalizes to whichever escapes less: text with more
+    `"` than `'` comes out single-quoted. Emitting escaped double quotes there
+    is correct code that fails the consumer's `ruff format --check` on its first
+    run.
+
+!!! warning "`ruff format` never breaks a string"
+    That is what forces the emitter to split a long description itself — and to
+    split it into **two or more** pieces, because a lone parenthesized literal
+    is joined straight back onto the long line. The text returns character for
+    character: concatenating the emitted literals reproduces the original
+    description, whitespace included.
+
+### Names and paths the spec gets wrong
+
+The same tests cover the other side — when the spec names something Python will
+not take, or describes a path that does not agree with the parameters it
+declares:
+
+| In the spec | In the generated code |
+| --- | --- |
+| A `2fa` property | `field_2fa` with `alias="2fa"` |
+| `transaction` and `Transaction` together | `Transaction` and `Transaction2` |
+| A `path` parameter the template never interpolates | Dropped, with a note |
+| A placeholder no parameter declares | Synthesized as a required `str`, with a note |
+| Path parameters out of order | Reordered by their position in the template |
+
+!!! tip "The less obvious choices"
+    `_2fa` would be a Pydantic **private** attribute — the field would vanish
+    from the model rather than merely be renamed. `Transaction_2` is not
+    CapWords and fails the consumer's `N801`. A parameter the request never
+    carries is worse than a missing one: the caller passes an identifier and it
+    is dropped on the floor. And an undeclared placeholder **cannot** be
+    skipped — the path is an f-string, so the module would reference a name that
+    does not exist and would not even import.
+
 ## Recap
 
 1. **`tempest openapi-client <spec> --name X`** generates `src/integrations/x/`

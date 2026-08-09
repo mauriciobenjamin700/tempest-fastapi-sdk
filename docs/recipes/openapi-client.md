@@ -355,6 +355,55 @@ Então `--no-format` (ou uma máquina sem `ruff` instalado) ainda entrega um
 pacote utilizável. A passada de `ruff` que o comando roda por padrão é polimento,
 não correção.
 
+### O texto da spec não quebra o módulo
+
+A prosa da spec vai parar no código-fonte: em docstring, em `title`, em
+`description`, em valor de enum. E o terceiro escreve o que quiser ali — aspas,
+apóstrofo, barra invertida, quebra de linha vinda de um bloco YAML, uma frase
+longa demais para caber na linha. Cada uma dessas já produziu um pacote que não
+importava, não passava no lint, ou mudava em silêncio o que a spec dizia.
+
+| Na spec | No código gerado |
+| --- | --- |
+| Barra invertida (`\#`, `\b`, `\x41`) | Escapada no literal, e a docstring vira `r"""` |
+| Quebra de linha, tab, caractere de controle | `\n` / `\t` / `\xNN` no literal |
+| `"aspas"` no texto | Literal com aspas **simples** |
+| Descrição longa demais | Partida em literais adjacentes, sempre dois ou mais |
+| Valor de enum longo demais | Idem, e o **nome** do membro é truncado |
+
+!!! info "Por que aspas simples, se a regra do projeto é aspas duplas"
+    Porque `ruff format` normaliza para o que escapa menos: texto com mais `"`
+    que `'` sai com aspas simples. Emitir aspas duplas escapadas ali é código
+    correto que falha o `ruff format --check` do consumidor na primeira rodada.
+
+!!! warning "`ruff format` nunca quebra uma string"
+    É o que obriga o emissor a partir a descrição longa ele mesmo — e a partir
+    em **dois ou mais** pedaços, porque um literal solto entre parênteses o
+    `ruff format` junta de volta na linha longa. O texto volta caractere a
+    caractere: a concatenação dos literais emitidos é a descrição original,
+    espaços incluídos.
+
+### Nomes e paths que a spec erra
+
+Os mesmos testes cobrem o outro lado — quando a spec nomeia algo que Python não
+aceita, ou descreve um path que não fecha com os parâmetros que declara:
+
+| Na spec | No código gerado |
+| --- | --- |
+| Propriedade `2fa` | `field_2fa` com `alias="2fa"` |
+| `transaction` e `Transaction` juntos | `Transaction` e `Transaction2` |
+| Parâmetro `path` que o template não interpola | Descartado, com nota |
+| Placeholder que nenhum parâmetro declara | Sintetizado como `str` obrigatório, com nota |
+| Parâmetros de path fora de ordem | Reordenados pela posição no template |
+
+!!! tip "As escolhas menos óbvias"
+    `_2fa` seria atributo **privado** do Pydantic — o campo sumiria do modelo em
+    vez de só mudar de nome. `Transaction_2` não é CapWords e falha o `N801` do
+    consumidor. Um parâmetro que a requisição nunca carrega é pior que a ausência
+    dele: quem chama passa um identificador e ele é jogado fora. E um placeholder
+    sem declaração **não** pode ser ignorado — o path é uma f-string, então o
+    módulo referenciaria um nome inexistente e nem importaria.
+
 ## Recapitulando
 
 1. **`tempest openapi-client <spec> --name X`** gera
