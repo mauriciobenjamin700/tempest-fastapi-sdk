@@ -390,6 +390,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Modelops (export, bench, quantização) »](modelops.md)** | `benchmark_onnx` (latência/RAM/GPU/energia), `export_onnx_to_ort`, `quantize_onnx_dynamic`, `quantize_hf_onnx`, `rank` + fronteira de Pareto, `tempest model` |
 | **[Multi-tenant »](multi-tenant.md)** | `TenantScopedRepository` — isolamento por `tenant_id` em toda query |
 | **[Observabilidade (tracing) »](observability.md)** | `setup_tracing` (OpenTelemetry), `SlowQueryLogger` |
+| **[OpenPix (Pix via Woovi) »](openpix.md)** | `OpenPixEnvironment`, `OpenPixEvent`, `make_openpix_webhook_dependency`, `to_cents` |
 | **[Outbox transacional »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — eventos confiáveis |
 | **[Painel admin »](admin.md)** | `AdminSite`, `AdminModel`, `make_admin_router`, `BaseUserModel` |
 | **[Permissões object-level »](authz.md)** | `permission` (decorator de regra), `has_perm` / `check_permission`, `PermissionRegistry`, `make_permission_checker`, `PermissionMixin` |

@@ -141,6 +141,7 @@ plugins:
               - Object-level permissions: recipes/authz.md
               - Observability (tracing): recipes/observability.md
               - Offline-first sync (delta): recipes/offline-sync.md
+              - OpenPix (Pix via Woovi): recipes/openpix.md
               - Permission guards (@requires): recipes/permission-guards.md
               - Query plans (EXPLAIN): recipes/query-plans.md
               - Queue & Tasks: recipes/queue-tasks.md
@@ -395,6 +396,7 @@ nav:
       - "Modelops (export, bench, quantização)": recipes/modelops.md
       - Multi-tenant: recipes/multi-tenant.md
       - "Observabilidade (tracing)": recipes/observability.md
+      - "OpenPix (Pix via Woovi)": recipes/openpix.md
       - Outbox transacional: recipes/outbox.md
       - Painel admin: recipes/admin.md
       - "Permissões object-level": recipes/authz.md
