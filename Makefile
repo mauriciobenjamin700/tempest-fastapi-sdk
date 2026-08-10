@@ -60,6 +60,9 @@ build: ## Build sdist + wheel into dist/
 	rm -rf dist
 	uv build
 
+openpix-regen: ## Regenerate the vendored OpenPix schemas + client from vendor/openpix-openapi.yaml
+	uv run python scripts/regen_openpix.py
+
 smoke: build ## Install the freshly built wheel in a clean venv and import the top-level surface
 	@rm -rf /tmp/$(PACKAGE)-smoke
 	uv venv --python $(PYTHON_VERSION) /tmp/$(PACKAGE)-smoke

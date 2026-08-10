@@ -692,29 +692,31 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   fields hitting the same gap both need marking. The header now states that
   each line says what was generated instead. Found by auditing the docs
   against the code — no test catches prose promising a feature.
-- **OpenPix (v0.214.0)** — `tempest_fastapi_sdk.openpix`, submodule import,
-  **no extra**. The thin typed layer over a *generated* integration, and
-  deliberately not a second copy of it: `tempest openapi-client` already turns
-  the OpenPix spec into 358 schemas + 105 operations, and those stay in the
-  consuming service. Supplies the four things the spec does not say —
-  `OpenPixEnvironment` (production `api.openpix.com.br` vs sandbox
-  `api.woovi-sandbox.com`, different domains, read from `servers`);
-  `to_cents`/`reais_to_cents`/`cents_to_reais` (the spec says *"Value in
-  cents"* then types it `number`, so a generated model yields `1990.0`;
-  `to_cents` **refuses a fraction** instead of rounding, and `reais_to_cents`
-  rounds half-up, which built-in `round` does not); `OpenPixEvent` (28 events
-  verbatim, the `OPENPIX:` prefix is **not** uniform and a test pins that);
-  and `make_openpix_webhook_dependency()` tying `RSAWebhookSignatureVerifier`
-  to the header + published key. `OpenPixWebhookEvent` is a frozen
-  **dataclass**, not a `BaseSchema` — `use_enum_values=True` would store the
-  event as a bare `str` and make the documented
-  `event.event is OpenPixEvent.X` **silently false on every delivery**.
-  Unknown event and non-JSON-but-verified body both stay 200 on purpose.
-  **The published key is RSA-1024** (verified on load): a valid signature
-  proves origin, it does **not** authorize moving money — re-read the charge
-  from the API and keep the handler idempotent. Key overridable +
-  `decode_public_key` for the base64 form the provider publishes. Recipe:
-  `docs/recipes/openpix.md`.
+- **Bundled integrations (v0.215.0)** — `tempest_fastapi_sdk.integrations.<kind>.<provider>`,
+  grouped by **what the provider does**, not by vendor. **`integrations.payment.openpix`**
+  ships the *whole* OpenPix API: 358 schemas + 105 operations generated from the
+  spec pinned at `vendor/openpix-openapi.yaml` and **checked in**, so no service
+  runs the generator. `scripts/regen_openpix.py` (`make openpix-regen`) is the
+  only way to produce them and a **drift test fails on any hand edit**;
+  `--name open_pix` is what yields `OpenPixClient` (not `Openpix…`), fed in at
+  generation so byte-identity holds. **Lazy via PEP 562** — 2 ms to import the
+  package, ~200 ms on the first generated name; a subprocess test asserts
+  `…openpix.schemas` stays out of `sys.modules` on import. The vendored spec is
+  build-time only, outside the wheel. Hand-written half: `OpenPixEnvironment`
+  (production/sandbox are different domains), `to_cents`/`reais_to_cents`/
+  `cents_to_reais` (spec says *"Value in cents"* then types it `number`;
+  `to_cents` **refuses a fraction**, `reais_to_cents` rounds half-up unlike
+  built-in `round`), `OpenPixEvent` (28 events, `OPENPIX:` prefix **not**
+  uniform, pinned by test), and `make_openpix_webhook_dependency()`.
+  `OpenPixWebhookEvent` is a frozen **dataclass** — `BaseSchema`'s
+  `use_enum_values=True` would make `event.event is OpenPixEvent.X` **silently
+  false on every delivery**. Unknown event and non-JSON-but-verified body stay
+  200 on purpose. **Key is RSA-1024** (verified on load): proves origin, does
+  **not** authorize moving money — re-read the charge, keep the handler
+  idempotent. Verifying needs `cryptography` (extra `[webpush]` or direct);
+  the module imports without it and fails at `verify()`, so the recipe says so.
+  **BREAKING in v0.215.0:** was `tempest_fastapi_sdk.openpix` in v0.214.0, no
+  shim (the old path lived hours). Recipe: `docs/recipes/openpix.md`.
 - **CLI** — `tempest new` (scaffolds layered service +
   docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
   `tempest generate --docker` (regen compose) / `--dockerfile`

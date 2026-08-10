@@ -5,6 +5,58 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.215.0] — 2026-08-09
+
+### Changed
+
+- **BREAKING — `tempest_fastapi_sdk.openpix` moved to
+  `tempest_fastapi_sdk.integrations.payment.openpix`.** Grouping third-party
+  clients by *what the provider does* keeps the top-level namespace clean and
+  gives the next provider an obvious home. No deprecation shim: the old path
+  existed for a matter of hours, in v0.214.0 alone, and a shim for it would be
+  the exact clutter the move is about. Update the import; nothing else about
+  the surface changed.
+
+### Added
+
+- **The whole OpenPix API now ships in the SDK.** v0.214.0 required every
+  service to run `tempest openapi-client` and keep the output; that meant the
+  same generation and the same hand-written layer maintained in every
+  repository. All 358 schemas and 105 operations are now checked in:
+
+  ```python
+  from tempest_fastapi_sdk.integrations.payment.openpix import (
+      Charge, OpenPixClient, OpenPixEnvironment,
+  )
+  ```
+
+  The generated half is produced by `scripts/regen_openpix.py` from the
+  specification pinned in `vendor/openpix-openapi.yaml` (`make
+  openpix-regen`), and **a test fails if the files on disk drift from what
+  that script produces** — checked-in generated code is only trustworthy if
+  hand edits are loud.
+
+  **Loaded lazily.** Building 358 Pydantic models costs the better part of a
+  second, and importing the package for `to_cents` should not pay it, so the
+  generated modules resolve through PEP 562. Measured: 2 ms to import the
+  package, ~200 ms on the first generated name, ~0.03 ms after. A test asserts
+  in a subprocess that importing the package leaves `…openpix.schemas` out of
+  `sys.modules`.
+
+  `vendor/openpix-openapi.yaml` is build-time input and stays out of the
+  wheel.
+
+### Fixed
+
+- **Generated clients no longer produce a `no-any-return` per operation.**
+  The emitted `_validate` helper was typed `-> Any`, and every generated
+  method returns its result — so a strict `mypy` run reported one error per
+  operation: **98** on the OpenPix specification, in the consumer's own gate.
+  It is now generic (`def _validate(annotation: type[_T], data: Any) -> _T`),
+  which is also more honest: the call really does return the annotation it was
+  given. Found by embedding the generated code inside the SDK, where `make
+  check` type-checks it.
+
 ## [0.214.0] — 2026-08-09
 
 ### Added
