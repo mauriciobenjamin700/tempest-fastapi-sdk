@@ -411,6 +411,20 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 
 ---
 
+## OpenPix
+
+### `tempest_fastapi_sdk.openpix`
+
+::: tempest_fastapi_sdk.openpix.environment.OpenPixEnvironment
+::: tempest_fastapi_sdk.openpix.events.OpenPixEvent
+::: tempest_fastapi_sdk.openpix.money.to_cents
+::: tempest_fastapi_sdk.openpix.money.reais_to_cents
+::: tempest_fastapi_sdk.openpix.money.cents_to_reais
+::: tempest_fastapi_sdk.openpix.webhooks.OpenPixWebhookEvent
+::: tempest_fastapi_sdk.openpix.webhooks.make_openpix_webhook_dependency
+::: tempest_fastapi_sdk.openpix.webhooks.webhook_verifier
+::: tempest_fastapi_sdk.openpix.webhooks.decode_public_key
+
 ## OpenAPI code generation
 
 ### `tempest_fastapi_sdk.openapi`

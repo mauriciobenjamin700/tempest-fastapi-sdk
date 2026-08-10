@@ -5,6 +5,66 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.214.0] — 2026-08-09
+
+### Added
+
+- **`tempest_fastapi_sdk.openpix` — the thin typed layer over a generated
+  OpenPix integration.** Submodule import, no extra, and deliberately **not**
+  a second copy of the generated package: `tempest openapi-client` already
+  turns the OpenPix specification into 358 schemas and 105 operations, and
+  those stay in the consuming service. Embedding them would double the SDK to
+  freeze a third party's spec into a release.
+
+  What it supplies is the four things the specification does not say, and that
+  every OpenPix integration re-derives by hand:
+
+  - **`OpenPixEnvironment`** — production is `api.openpix.com.br`, testing is
+    `api.woovi-sandbox.com`. Different domains; neither spells the other.
+    Both read from the spec's `servers` block.
+  - **`to_cents` / `reais_to_cents` / `cents_to_reais`** — the specification
+    says *"Value in cents of this charge"* and types the field `number`, so a
+    generated model hands you the float `1990.0`. `to_cents` narrows it
+    exactly and **refuses a fraction** rather than rounding: the field is
+    already cents, so a fraction means the caller passed reais, and rounding
+    would hide that behind a plausible number. `reais_to_cents` rounds
+    half-up, which is what money expects and *not* what the built-in `round`
+    does (`round(0.005 * 100)` is `0`).
+  - **`OpenPixEvent`** — all 28 webhook events, ported verbatim from
+    `WebhookEventEnum`. The `OPENPIX:` prefix is not uniform (charge and
+    dispute events carry it, the Pix-automatic family does not); a test pins
+    both so the next reader does not "fix" it.
+  - **`make_openpix_webhook_dependency()`** — the piece nobody had. The SDK
+    already shipped `RSAWebhookSignatureVerifier` and the spec already had the
+    events; nothing tied them to the header name and the public key. The
+    dependency verifies, decodes and yields a typed `OpenPixWebhookEvent`.
+
+  **Two behaviours chosen to keep a service up.** An unrecognized event does
+  not fail the request — OpenPix adds events, and a 500 on one you have never
+  seen turns their release into your outage. A non-JSON body that *verified*
+  is still delivered: it came from OpenPix, and rejecting it would discard a
+  delivery the provider considers sent.
+
+  `OpenPixWebhookEvent` is a frozen dataclass, not a `BaseSchema`. That is
+  load-bearing: `BaseSchema` sets `use_enum_values=True`, which stores the
+  event as a bare `str`, and the documented
+  `event.event is OpenPixEvent.CHARGE_COMPLETED` would then be **silently
+  false on every delivery**.
+
+  **Security, stated plainly.** OpenPix's published key is **RSA-1024**
+  (verified on load: 1024 bits, exponent 65537), below the 2048-bit floor NIST
+  has recommended since 2013. A valid signature is evidence the delivery came
+  from OpenPix — **not authorization to move money**. The recipe tells you to
+  re-read the charge from the API before acting on `CHARGE_COMPLETED`, and to
+  keep the handler idempotent, since the signature covers the body alone and a
+  captured delivery replays forever. The key is overridable
+  (`webhook_verifier(public_key_pem=...)`) so a rotation does not strand
+  consumers on an SDK release, and `decode_public_key` handles the base64 form
+  the provider actually publishes, checking the result is a PEM so a truncated
+  paste fails immediately rather than as a signature mismatch in production.
+
+  Recipe: `docs/recipes/openpix.md`.
+
 ## [0.213.0] — 2026-08-09
 
 ### Fixed

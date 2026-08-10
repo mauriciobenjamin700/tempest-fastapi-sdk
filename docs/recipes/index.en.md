@@ -385,6 +385,7 @@ come back here to plug in each capability as you need it.
 | **[Object-level permissions »](authz.md)** | `permission` (rule decorator), `has_perm` / `check_permission`, `PermissionRegistry`, `make_permission_checker`, `PermissionMixin` |
 | **[Observability (tracing) »](observability.md)** | `setup_tracing` (OpenTelemetry), `SlowQueryLogger` |
 | **[Offline-first sync (delta) »](offline-sync.md)** | `BaseRepository.changes_since`, `SyncFilterSchema`, `SyncPaginationSchema`, cursor deltas + soft-delete |
+| **[OpenPix (Pix via Woovi) »](openpix.md)** | `OpenPixEnvironment`, `OpenPixEvent`, `make_openpix_webhook_dependency`, `to_cents` |
 | **[Permission guards (@requires) »](permission-guards.md)** | `@requires` plus `(user) -> user` guards (with an optional `meta: dict[str, Any]` via `meta=` / `include_args=`), `TempestPermissionError`, `GuardContractWarning`, `tempest permissions --check` |
 | **[Query plans (EXPLAIN) »](query-plans.md)** | `explain_queries()` captures the block and explains on exit, `EXPLAIN ANALYZE` on PostgreSQL / `EXPLAIN QUERY PLAN` on SQLite, writes never re-executed, `report.slowest` |
 | **[Queue & Tasks »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, transactional outbox |
