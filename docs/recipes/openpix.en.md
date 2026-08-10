@@ -104,6 +104,21 @@ one. The SDK already had `RSAWebhookSignatureVerifier`; what was missing was
 tying the three facts together — which header, which key, and what the
 `event` string means.
 
+!!! warning "Verifying a signature needs `cryptography`"
+    The module **imports** on a minimal install, but `verify()` raises
+    `ImportError` on the first real delivery — in production, not at boot.
+    Install it up front:
+
+    ```bash
+    uv add cryptography
+    # or via the SDK extra that already ships it:
+    uv add "tempest-fastapi-sdk[webpush]"
+    ```
+
+    The `[webpush]` name has nothing to do with payments; it is simply the
+    extra that packages `cryptography` today. If all you want is to validate
+    OpenPix webhooks, installing `cryptography` directly is more honest.
+
 ```python
 from fastapi import APIRouter, Depends
 

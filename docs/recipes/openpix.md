@@ -103,6 +103,21 @@ A OpenPix assina cada entrega com a chave privada dela e publica a pública. O
 SDK já tinha o `RSAWebhookSignatureVerifier`; o que faltava era amarrar os
 três fatos — qual header, qual chave, o que a string `event` significa.
 
+!!! warning "Verificar assinatura precisa de `cryptography`"
+    O módulo **importa** numa instalação mínima, mas `verify()` levanta
+    `ImportError` na primeira entrega de verdade — em produção, não no boot.
+    Instale antes:
+
+    ```bash
+    uv add cryptography
+    # ou, pelo extra do SDK que já o traz:
+    uv add "tempest-fastapi-sdk[webpush]"
+    ```
+
+    O nome `[webpush]` não tem relação com pagamento; ele é só o extra que
+    empacota `cryptography` hoje. Se você só quer validar webhook da OpenPix,
+    instalar `cryptography` direto é mais honesto.
+
 ```python
 from fastapi import APIRouter, Depends
 
