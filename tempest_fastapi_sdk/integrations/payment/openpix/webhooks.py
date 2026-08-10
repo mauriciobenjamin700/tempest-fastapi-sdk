@@ -20,7 +20,7 @@ from fastapi import Request
 
 from tempest_fastapi_sdk.api.webhooks import RSAWebhookSignatureVerifier
 from tempest_fastapi_sdk.exceptions import UnauthorizedException
-from tempest_fastapi_sdk.openpix.events import OpenPixEvent
+from tempest_fastapi_sdk.integrations.payment.openpix.events import OpenPixEvent
 
 OPENPIX_WEBHOOK_SIGNATURE_HEADER: str = "x-webhook-signature"
 """Header carrying the base64 RSA signature over the raw request body."""

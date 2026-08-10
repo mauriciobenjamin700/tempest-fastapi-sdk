@@ -1,29 +1,57 @@
 # OpenPix (Pix via Woovi)
 
-A OpenPix publica uma especificação OpenAPI completa, e o SDK já sabe
-transformar isso em código:
+A OpenPix inteira já vem no SDK. Sem gerador para rodar, sem spec para baixar:
 
-```bash
-tempest openapi-client \
-    https://developers.openpix.com.br/en/redocusaurus/plugin-redoc-1.yaml \
-    --name openpix
+```python
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment.openpix import (
+    Charge,
+    OpenPixClient,
+    OpenPixEnvironment,
+)
+
+http: HTTPClient = HTTPClient(
+    base_url=OpenPixEnvironment.SANDBOX.base_url,
+    default_headers={"Authorization": "<seu AppID>"},
+)
+client: OpenPixClient = OpenPixClient(http)
 ```
 
-```text
-  + src/integrations/openpix/__init__.py
-  + src/integrations/openpix/client.py
-  + src/integrations/openpix/schemas.py
-358 schema(s), 105 operation(s).
-```
+São **358 schemas** e **105 operações**, mais as quatro coisas que a
+especificação não diz. 🚀
 
-Isso resolve os schemas e as chamadas. **Sobram quatro coisas que a
-especificação não diz**, e que toda integração OpenPix redescobre na mão. É
-o que `tempest_fastapi_sdk.openpix` entrega. 🚀
+## As duas metades
 
-!!! info "O módulo não duplica o pacote gerado"
-    Os 358 schemas ficam no seu serviço, gerados. O SDK não os embute — seria
-    dobrar o tamanho do pacote para congelar uma spec de terceiro numa
-    release. Aqui só mora a camada fina.
+O módulo tem uma metade gerada e uma escrita à mão, e vale saber qual é qual:
+
+| Metade | O que é | De onde vem |
+| --- | --- | --- |
+| **Gerada** | `OpenPixClient`, `DEFAULT_BASE_URL`, 358 classes de schema | A spec, verbatim |
+| **À mão** | `OpenPixEnvironment`, `OpenPixEvent`, webhook, helpers de dinheiro | O que a spec **não** diz |
+
+!!! info "A metade gerada é versionada, não escrita à mão"
+    `scripts/regen_openpix.py` produz `schemas.py` e `client.py` a partir da
+    spec fixada em `vendor/openpix-openapi.yaml`, e **um teste falha se os
+    arquivos em disco divergirem** do que o script produz. Editar à mão é como
+    código gerado versionado apodrece; aqui isso quebra a suíte.
+
+    Para atualizar quando a OpenPix mexer na API: troque o arquivo em
+    `vendor/`, rode `make openpix-regen`, e o diff mostra exatamente o que o
+    terceiro mudou.
+
+!!! note "Os 358 modelos carregam no primeiro uso, não no import"
+    Construir 358 modelos Pydantic custa perto de um segundo. Importar o
+    pacote só para usar `to_cents` não deveria pagar isso, então a metade
+    gerada resolve por [PEP 562](https://peps.python.org/pep-0562/).
+
+    Medido: **2 ms** para importar o pacote, ~200 ms no primeiro acesso a um
+    nome gerado, ~0,03 ms nos seguintes.
+
+!!! tip "Precisa de outra API que o SDK não traz?"
+    O `tempest openapi-client` continua existindo e é a ferramenta certa para
+    isso. Veja [Cliente de integração (OpenAPI)](openapi-client.md). O que mora
+    aqui são as integrações comuns o bastante para que todo serviço estivesse
+    rodando a mesma geração e mantendo a mesma camada à mão por cima.
 
 ## O que a spec não diz
 
@@ -34,10 +62,10 @@ domínio, não um subdomínio. Nenhum dos dois soletra o outro.
 
 ```python
 from tempest_fastapi_sdk import HTTPClient
-from tempest_fastapi_sdk.openpix import OpenPixEnvironment
+from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEnvironment
 
 from src.core.settings import settings
-from src.integrations.openpix import OpenpixClient
+from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixClient
 
 environment: OpenPixEnvironment = (
     OpenPixEnvironment.PRODUCTION
@@ -49,7 +77,7 @@ http: HTTPClient = HTTPClient(
     base_url=environment.base_url,
     default_headers={"Authorization": settings.OPENPIX_APP_ID},
 )
-openpix: OpenpixClient = OpenpixClient(http)
+openpix: OpenPixClient = OpenPixClient(http)
 ```
 
 ### 2. `value` é centavo, mas chega como float
@@ -63,7 +91,7 @@ você chega em `0.30000000000000004`. Centavo existe justamente para evitar
 isso, e a camada JSON desfaz.
 
 ```python
-from tempest_fastapi_sdk.openpix import cents_to_reais, reais_to_cents, to_cents
+from tempest_fastapi_sdk.integrations.payment.openpix import cents_to_reais, reais_to_cents, to_cents
 
 to_cents(1990.0)          # 1990  (int, exato)
 reais_to_cents("19.90")   # 1990
@@ -86,7 +114,7 @@ cents_to_reais(1990)      # Decimal("19.90")
 Portados literalmente do `WebhookEventEnum` da especificação:
 
 ```python
-from tempest_fastapi_sdk.openpix import OpenPixEvent
+from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEvent
 
 OpenPixEvent.CHARGE_COMPLETED.value    # "OPENPIX:CHARGE_COMPLETED"
 OpenPixEvent.PIX_AUTOMATIC_APPROVED.value  # "PIX_AUTOMATIC_APPROVED"
@@ -121,14 +149,14 @@ três fatos — qual header, qual chave, o que a string `event` significa.
 ```python
 from fastapi import APIRouter, Depends
 
-from tempest_fastapi_sdk.openpix import (
+from tempest_fastapi_sdk.integrations.payment.openpix import (
     OpenPixEvent,
     OpenPixWebhookEvent,
     make_openpix_webhook_dependency,
     to_cents,
 )
 
-from src.integrations.openpix.schemas import Charge
+from tempest_fastapi_sdk.integrations.payment.openpix import Charge
 
 router: APIRouter = APIRouter(prefix="/webhooks", tags=["webhooks"])
 verify = make_openpix_webhook_dependency()
@@ -193,7 +221,7 @@ A chave vem embutida, mas é sobrescrevível — uma constante fixa deixaria tod
 consumidor preso esperando release do SDK:
 
 ```python
-from tempest_fastapi_sdk.openpix import (
+from tempest_fastapi_sdk.integrations.payment.openpix import (
     decode_public_key,
     make_openpix_webhook_dependency,
     webhook_verifier,
@@ -223,14 +251,17 @@ sem isso, só lá na frente, como assinatura inválida numa entrega de verdade.
 
 ## Recapitulando
 
-1. **`tempest openapi-client <spec da OpenPix>`** gera os 358 schemas e as
-   105 operações no seu serviço.
-2. **`OpenPixEnvironment`** resolve produção vs sandbox — domínios diferentes.
-3. **`to_cents` / `reais_to_cents` / `cents_to_reais`** desfazem o float que a
+1. **Tudo já vem instalado** — `OpenPixClient`, 358 schemas, 105 operações.
+   Nenhum gerador para rodar.
+2. **A metade gerada é regenerável e testada contra drift** (`make
+   openpix-regen`); editar à mão quebra a suíte.
+3. **Carga preguiçosa**: 2 ms para importar, ~200 ms no primeiro nome gerado.
+4. **`OpenPixEnvironment`** resolve produção vs sandbox — domínios diferentes.
+5. **`to_cents` / `reais_to_cents` / `cents_to_reais`** desfazem o float que a
    spec impõe, e recusam fração em vez de arredondar escondido.
-4. **`OpenPixEvent`** traz os 28 eventos verbatim, prefixo irregular incluído.
-5. **`make_openpix_webhook_dependency()`** verifica, decodifica e entrega o
+6. **`OpenPixEvent`** traz os 28 eventos verbatim, prefixo irregular incluído.
+7. **`make_openpix_webhook_dependency()`** verifica, decodifica e entrega o
    evento tipado; evento novo e corpo não-JSON não derrubam a rota.
-6. **A chave é RSA-1024** — assinatura válida prova origem, não autoriza
+8. **A chave é RSA-1024** — assinatura válida prova origem, não autoriza
    movimentar dinheiro. Releia a cobrança pela API e mantenha o handler
    idempotente.

@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from fastapi import Depends, FastAPI
 
-from tempest_fastapi_sdk.openpix import (
+from tempest_fastapi_sdk.integrations.payment.openpix import (
     OPENPIX_WEBHOOK_PUBLIC_KEY,
     OPENPIX_WEBHOOK_SIGNATURE_HEADER,
     OpenPixEnvironment,
