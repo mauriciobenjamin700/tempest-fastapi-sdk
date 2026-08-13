@@ -1,0 +1,23 @@
+{#
+  One party block. Included with `party` and `role` in the context:
+      {% with party=doc.issuer, role="Emitente" %}{% include "_party.html" %}{% endwith %}
+#}
+<div class="party">
+  <div class="role">{{ role }}</div>
+  <div class="name">{{ party.name }}</div>
+  {% if party.document %}
+  <div class="line">CPF/CNPJ: {{ party.document | doc }}</div>
+  {% endif %}
+  {% if party.address %}
+  <div class="line">{{ party.address }}</div>
+  {% endif %}
+  {% if party.email %}
+  <div class="line">{{ party.email }}</div>
+  {% endif %}
+  {% if party.phone %}
+  <div class="line">{{ party.phone }}</div>
+  {% endif %}
+  {% for label, value in party.extra.items() %}
+  <div class="line">{{ label }}: {{ value }}</div>
+  {% endfor %}
+</div>

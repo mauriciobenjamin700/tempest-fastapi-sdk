@@ -496,6 +496,34 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `accepted=False` means nothing passed. **Fixed here:** the effective
   deadline was written to the run state but not back to the `AgentContext`,
   so delegation handed the child `None` and it ran to its own budget.
+- **PDF (v0.218.0, `[pdf]` extra = weasyprint + jinja2)** —
+  `tempest_fastapi_sdk.pdf`, submodule import. `PdfRenderer` (HTML string /
+  template / typed document; `asyncio.to_thread` + semaphore since layout is
+  CPU-bound), five bundled documents each with a Pydantic schema
+  (`Receipt`/`Quote`/`Report`/`Contract`/`VoucherDocument` + `Party`/
+  `Branding`/`LineItem`/`Clause`/`Signatory`/`ReportColumn`), BR filters
+  (`brl`/`extenso`/`data`/`data_extenso`/`doc`/`qtd` over `format_cents`/
+  `valor_por_extenso`/…), `make_pdf_router`, `tempest pdf list|schema|render`
+  (`--html` skips layout for browser preview). Project `template_dir` shadows
+  the bundled templates file by file, like `EmailUtils`.
+  **WeasyPrint** for CSS Paged Media (repeating header, `página X de Y`);
+  browser engines cost 150 MB in the image and `xhtml2pdf` would pin
+  `reportlab<5` on every consumer. **Totals are computed from the items**,
+  never accepted. **Same input → same bytes** across processes (no CreationDate
+  / no /ID unless asked) — pinned by test, it is what makes a document
+  hashable. **`AssetPolicy` denies every fetch by default** (`data:` excepted —
+  it fetches nothing); allowed dirs are checked on the *resolved* path so `../`
+  and symlinks do not escape, and `_fail_on_errors` aborts the render at the
+  first refusal rather than shipping an invoice with a hole where the logo was.
+  `logo_data_uri` accepts only `data:`; `accent_color`/`page_size`/`margin` are
+  shape-constrained because they land **inside the stylesheet**.
+  **Fixed while building:** the report's grand total was a `<tfoot>`
+  (`table-footer-group` → repeats), printing at the foot of page 2 above rows
+  that summed to something else; and a `ValidationError` raised inside the
+  router body escaped as **500** (FastAPI converts only the models it declared).
+  Needs Pango + fontconfig + a font at runtime — `tempest generate
+  --dockerfile` emits the apt line when the project pins the extra. Recipe:
+  `docs/recipes/pdf.md`.
 - **SSR** (`[ssr]` extra) — `tempest_fastapi_sdk.ssr`: typed Python
   pages rendered to HTML via `tempestweb`'s `render_to_html` /
   `render_document`. `Page` (typed `Component` base — `body()` +
@@ -764,6 +792,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tempest user create [--admin] / list`, `tempest secrets rotate`,
   `tempest model analyze/bench/optimize/quantize/export-ort/hardware/
   pull/cache-list/cache-rm`,
+  `tempest pdf list/schema/render`,
   plus quality gates (`lint`, `fix`, `format`, `fmt-check`, `type`,
   `test`, `check`), `openapi-errors`, `openapi-client`, `permissions`.
   **`tempest pr-prompt` (v0.210.0)** — builds the prompt that makes an AI

@@ -5,6 +5,94 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.218.0] — 2026-08-13
+
+### Added
+
+- **PDF generation from HTML templates** (`tempest_fastapi_sdk.pdf`, extra
+  `[pdf]` = `weasyprint` + `jinja2`). Every service eventually issues a
+  document, and what breaks is never the rendering: it is the printed total
+  disagreeing with its own lines, the amount in words being wrong, the table
+  header vanishing on page 2, the logo failing to load without anyone noticing.
+
+  `PdfRenderer` renders an HTML string, a template, or a **typed document**;
+  `make_pdf_router` serves them over HTTP; `tempest pdf list|schema|render`
+  drives them from a shell.
+
+  ```python
+  pdf: bytes = await PdfRenderer().render_document(
+      ReceiptDocument(
+          issue_date=date(2026, 8, 13),
+          issuer=Party(name="Acme LTDA", document="12345678000195"),
+          payer=Party(name="Ana Souza"),
+          amount_cents=125000,
+          reference="consultoria de julho/2026",
+      ),
+  )
+  ```
+
+  **Five bundled documents, each with a Pydantic schema**: `ReceiptDocument`,
+  `QuoteDocument`, `ReportDocument`, `ContractDocument`, `VoucherDocument`. The
+  schema is the reason bundling templates is worth anything — an HTML file
+  alone tells you nothing about the keys it needs, so the first missing field
+  shows up as a blank space in a signed document. Totals are **computed from
+  the items**, never accepted, and a discount above the subtotal is refused
+  rather than printed as a negative price.
+
+  **The engine is WeasyPrint**, for CSS Paged Media: repeating headers,
+  `página X de Y`, controlled page breaks. A browser-based renderer costs a
+  150 MB browser in the image; a pure-Python one cannot paginate a report and
+  would have pinned `reportlab<5` on every consumer. WeasyPrint's own
+  requirements are lower bounds only.
+
+  **Brazilian formatting is part of the module, not the templates**:
+  `format_cents`, `format_date`/`format_date_long`, `format_document`,
+  `format_quantity`, and `valor_por_extenso` — conventional on a *recibo*, and
+  exactly the thing that gets written from memory, wrongly. Every connector
+  case is pinned by test, including `um milhão de reais` versus `dois milhões
+  e quinhentos mil reais`.
+
+  **Same input, same bytes.** WeasyPrint writes no creation date and no
+  document identifier unless asked, so two renders of one payload are
+  byte-identical across processes — which is what makes a rendered document
+  hashable, cacheable and comparable in a test. Pinned, so an upstream change
+  surfaces as a failure.
+
+  Rendering is CPU-bound, so every call goes through a worker thread behind a
+  semaphore (`max_concurrent`, default 4) and the event loop never stalls.
+
+- **`AssetPolicy` — templates fetch nothing by default.** An HTML renderer
+  resolves URLs on the page's behalf, so a document carrying user data turns
+  `<img src>` into both a local-file read (`file:///etc/passwd`) and an SSRF
+  (`http://169.254.169.254/`). `data:` URIs always pass because they fetch
+  nothing; a local directory has to be named, and the check is on the
+  **resolved** path so neither `../` nor a symlink escapes it. Refusal is loud:
+  the fetcher carries `_fail_on_errors`, so the render aborts at the first
+  refusal instead of producing an invoice with a hole where the logo was.
+  `strict_assets=False` restores the lenient behavior and logs what it dropped.
+
+  `Branding.logo_data_uri` accepts only `data:` — a URL would be refused at
+  render time and silently produce a document with no logo. `accent_color`,
+  `page_size` and `margin` are shape-constrained because they are written into
+  the stylesheet, where a value carrying `;` or `}` could close the rule.
+
+- **`tempest generate --dockerfile` emits the system packages** when the
+  project pins `[pdf]`. WeasyPrint draws text through Pango and resolves fonts
+  through fontconfig; a `python:slim` image has neither, and the failure
+  appears at the first render rather than at build time. `fonts-dejavu-core` is
+  in the list because a container with no font lays the document out correctly
+  and draws every glyph as a box.
+
+  Recipe: `docs/recipes/pdf.md`.
+
+### Fixed
+
+- **The report's grand total no longer repeats on every page.** It was a
+  `<tfoot>`, which is `table-footer-group` and repeats by definition — so the
+  total printed at the foot of page 2 above rows that summed to something else.
+  It is now the last row of the body, still column-aligned, and a test reads
+  the text of each rendered page to hold it there.
+
 ## [0.217.0] — 2026-08-13
 
 ### Added

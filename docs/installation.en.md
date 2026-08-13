@@ -43,6 +43,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[modelops-onnx]` | `onnx`, `onnxruntime` | static analysis, ONNX benchmarking, `.onnx` → `.ort`, graph optimization and quantization — of raw graphs (`analyze_onnx`, `benchmark_onnx`, `export_onnx_to_ort`, `quantize_onnx_dynamic`) and of transformers exports (`optimize_hf_onnx`, `quantize_hf_onnx`) |
 | `[modelops-sklearn]` | `skl2onnx` | export scikit-learn models to ONNX for the edge: `export_sklearn_to_onnx`, `verify_sklearn_onnx`, `edge_bundle` |
 | `[otel]` | `opentelemetry-sdk`, OTLP exporter + FastAPI/SQLAlchemy/httpx instrumentations | OpenTelemetry instrumentation via `setup_tracing` |
+| `[pdf]` | `weasyprint`, `jinja2` | PDF generation from HTML templates: `PdfRenderer`, five bundled typed documents, `make_pdf_router`, `tempest pdf`. **Needs Pango + fontconfig on the system** — see the recipe |
 | `[postgres]` | `asyncpg` | PostgreSQL async driver for `postgresql+asyncpg://` URLs (production) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` |

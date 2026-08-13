@@ -171,6 +171,50 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+## PDF
+
+### `tempest_fastapi_sdk.pdf`
+
+::: tempest_fastapi_sdk.pdf.renderer.PdfRenderer
+::: tempest_fastapi_sdk.pdf.renderer.TemplateNotFound
+::: tempest_fastapi_sdk.pdf.renderer.bundled_document_names
+::: tempest_fastapi_sdk.pdf.renderer.document_schema
+::: tempest_fastapi_sdk.pdf.renderer.BUNDLED_TEMPLATE_DIR
+::: tempest_fastapi_sdk.pdf.renderer.DEFAULT_MAX_CONCURRENT_RENDERS
+::: tempest_fastapi_sdk.pdf.assets.AssetPolicy
+::: tempest_fastapi_sdk.pdf.assets.AssetRefused
+::: tempest_fastapi_sdk.pdf.assets.build_url_fetcher
+::: tempest_fastapi_sdk.pdf.assets.DEFAULT_MAX_ASSET_BYTES
+::: tempest_fastapi_sdk.pdf.assets.DEFAULT_REMOTE_TIMEOUT
+::: tempest_fastapi_sdk.pdf.documents.PdfDocument
+::: tempest_fastapi_sdk.pdf.documents.ReceiptDocument
+::: tempest_fastapi_sdk.pdf.documents.QuoteDocument
+::: tempest_fastapi_sdk.pdf.documents.ReportDocument
+::: tempest_fastapi_sdk.pdf.documents.ContractDocument
+::: tempest_fastapi_sdk.pdf.documents.VoucherDocument
+::: tempest_fastapi_sdk.pdf.documents.Party
+::: tempest_fastapi_sdk.pdf.documents.Branding
+::: tempest_fastapi_sdk.pdf.documents.LineItem
+::: tempest_fastapi_sdk.pdf.documents.Clause
+::: tempest_fastapi_sdk.pdf.documents.Signatory
+::: tempest_fastapi_sdk.pdf.documents.ReportColumn
+::: tempest_fastapi_sdk.pdf.documents.BUNDLED_DOCUMENTS
+::: tempest_fastapi_sdk.pdf.formatting.format_cents
+::: tempest_fastapi_sdk.pdf.formatting.format_date
+::: tempest_fastapi_sdk.pdf.formatting.format_date_long
+::: tempest_fastapi_sdk.pdf.formatting.format_document
+::: tempest_fastapi_sdk.pdf.formatting.format_quantity
+::: tempest_fastapi_sdk.pdf.formatting.valor_por_extenso
+::: tempest_fastapi_sdk.pdf.formatting.MAX_EXTENSO_CENTS
+::: tempest_fastapi_sdk.pdf.formatting.MONTHS_PT_BR
+::: tempest_fastapi_sdk.pdf.router.make_pdf_router
+::: tempest_fastapi_sdk.pdf.router.safe_filename
+::: tempest_fastapi_sdk.pdf.router.DocumentRequestSchema
+::: tempest_fastapi_sdk.pdf.router.DocumentListSchema
+::: tempest_fastapi_sdk.pdf.router.PDF_MEDIA_TYPE
+
+---
+
 ## Cache
 
 ::: tempest_fastapi_sdk.cache.redis_manager.AsyncRedisManager

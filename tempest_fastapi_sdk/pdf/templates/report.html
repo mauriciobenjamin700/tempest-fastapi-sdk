@@ -1,0 +1,69 @@
+{% extends "_base.html" %}
+
+{% block heading %}{{ doc.title or doc.heading }}{% endblock %}
+
+{% block subheading %}
+  {% if doc.subtitle %}<div class="muted">{{ doc.subtitle }}</div>{% endif %}
+{% endblock %}
+
+{% block header_meta %}
+  {% if doc.generated_at %}
+  <div class="muted">Gerado em {{ doc.generated_at | data }}</div>
+  {% endif %}
+  <div class="muted">{{ doc.rows | length }} registro(s)</div>
+{% endblock %}
+
+{% block content %}
+{% if not doc.rows %}
+<div class="empty">Nenhum registro no período.</div>
+{% else %}
+<table>
+  {# thead repeats on every page: display: table-header-group in the stylesheet. #}
+  <thead>
+    <tr>
+      {% for column in doc.columns %}
+      <th class="{{ column.align }}">{{ column.header }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in doc.rows %}
+    <tr>
+      {% for column in doc.columns %}
+      {# A missing key prints empty: a report is often assembled from
+         partial data, and failing the whole document over one absent
+         cell helps nobody. #}
+      <td class="{{ column.align }}">
+        {%- set value = row.get(column.key) -%}
+        {%- if value is none -%}
+        {%- elif column.money -%}{{ value | brl }}
+        {%- else -%}{{ value }}
+        {%- endif -%}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+    {% if doc.totals %}
+    {# The grand total is the last row of the body, not a <tfoot>. A
+       tfoot is `table-footer-group`, which repeats on every page — and a
+       total printed at the foot of page 2 does not match the rows above
+       it, which is worse than not printing it there at all. As a body
+       row it lands once, after the last record, and still lines up with
+       its columns. #}
+    <tr class="grand-total">
+      {% for column in doc.columns %}
+      <td class="{{ column.align }}">
+        {%- if loop.first and column.key not in doc.totals -%}Total
+        {%- elif column.key in doc.totals -%}
+          {%- if column.money -%}{{ doc.totals[column.key] | brl }}
+          {%- else -%}{{ doc.totals[column.key] }}
+          {%- endif -%}
+        {%- endif -%}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endif %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

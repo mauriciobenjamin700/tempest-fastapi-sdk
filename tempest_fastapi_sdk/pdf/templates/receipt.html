@@ -1,0 +1,45 @@
+{% extends "_base.html" %}
+
+{% block heading %}{{ doc.title or "Recibo" }}{% endblock %}
+
+{% block header_meta %}
+  {% if doc.number %}<div><strong>Nº {{ doc.number }}</strong></div>{% endif %}
+  <div class="muted">{{ doc.issue_date | data }}</div>
+{% endblock %}
+
+{% block content %}
+<p class="center" style="margin: 6mm 0;">
+  <span class="amount-box">{{ doc.amount_cents | brl }}</span>
+</p>
+
+<p style="text-align: justify;">
+  Recebi de <strong>{{ doc.payer.name }}</strong>{% if doc.payer.document %},
+  inscrito(a) no CPF/CNPJ sob o nº {{ doc.payer.document | doc }}{% endif %},
+  a importância de <strong>{{ doc.amount_cents | brl }}</strong>
+  ({{ doc.amount_cents | extenso }}),
+  referente a {{ doc.reference }}.
+</p>
+
+<p style="text-align: justify;">
+  Para clareza e documento, firmo o presente recibo, dando plena e geral
+  quitação do valor acima.
+</p>
+
+<div class="parties" style="margin-top: 6mm;">
+  {% with party=doc.issuer, role="Emitente" %}{% include "_party.html" %}{% endwith %}
+  {% with party=doc.payer, role="Pagador" %}{% include "_party.html" %}{% endwith %}
+</div>
+
+<p class="right" style="margin-top: 10mm;">
+  {% if doc.place %}{{ doc.place }}, {% endif %}{{ doc.issue_date | data_extenso }}.
+</p>
+
+<div class="signatures">
+  <div class="signature">
+    <div class="name">{{ doc.issuer.name }}</div>
+    {% if doc.issuer.document %}
+    <div class="small muted">{{ doc.issuer.document | doc }}</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

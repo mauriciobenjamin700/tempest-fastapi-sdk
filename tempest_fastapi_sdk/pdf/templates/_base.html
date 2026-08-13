@@ -1,0 +1,39 @@
+{#
+  Shared skeleton for the bundled documents.
+
+  The stylesheet is included rather than linked so a rendered document
+  needs no fetching at all — which is what lets the default asset policy
+  deny everything and still work.
+
+  Override any of these blocks from a template of the same name in the
+  project's own template_dir; it shadows the bundled one.
+#}
+<!DOCTYPE html>
+<html lang="{% block lang %}pt-BR{% endblock %}">
+<head>
+  <meta charset="utf-8">
+  <title>{% block doc_title %}{{ doc.title or "Documento" }}{% endblock %}</title>
+  <style>{% include "_styles.css" %}</style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  {% if doc.branding.footer_text %}
+  <div class="running-footer">{{ doc.branding.footer_text }}</div>
+  {% endif %}
+
+  {% block header %}
+  <div class="doc-header">
+    <div>
+      {% if doc.branding.logo_data_uri %}
+      <img class="logo" src="{{ doc.branding.logo_data_uri }}" alt="">
+      {% endif %}
+      <h1>{% block heading %}{{ doc.title or "Documento" }}{% endblock %}</h1>
+      {% block subheading %}{% endblock %}
+    </div>
+    <div class="meta">{% block header_meta %}{% endblock %}</div>
+  </div>
+  {% endblock %}
+
+  {% block content %}{% endblock %}
+</body>
+</html>

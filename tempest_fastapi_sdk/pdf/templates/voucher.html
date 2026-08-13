@@ -1,0 +1,86 @@
+{% extends "_base.html" %}
+
+{#
+  A short receipt or label. The header block of _base.html is replaced by
+  a compact one — a logo bar sized for A4 looks wrong on something meant
+  to be torn off or stuck to a box.
+#}
+{% block header %}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .voucher {
+    height: {{ doc.height }};
+    border: 1px dashed #9ca3af;
+    border-radius: 2mm;
+    padding: 6mm;
+    display: flex;
+    flex-direction: column;
+  }
+  .voucher .top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 5mm;
+  }
+  .voucher h1 {
+    font-size: 13pt;
+    margin: 0;
+  }
+  .voucher .qr {
+    width: 26mm;
+    height: 26mm;
+  }
+  .voucher .fields {
+    margin-top: 4mm;
+    flex: 1;
+  }
+  .voucher .field {
+    display: flex;
+    justify-content: space-between;
+    gap: 4mm;
+    padding: 1.2mm 0;
+    border-bottom: 1px dotted #d1d5db;
+  }
+  .voucher .field .label {
+    color: #6b7280;
+    font-size: 8.5pt;
+  }
+  .voucher .field .value {
+    font-weight: bold;
+    text-align: right;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="voucher">
+  <div class="top">
+    <div>
+      {% if doc.branding.logo_data_uri %}
+      <img class="logo" src="{{ doc.branding.logo_data_uri }}" alt="">
+      {% endif %}
+      <h1>{{ doc.title or doc.heading }}</h1>
+      {% if doc.subtitle %}
+      <div class="muted small">{{ doc.subtitle }}</div>
+      {% endif %}
+    </div>
+    {% if doc.qr_data_uri %}
+    <img class="qr" src="{{ doc.qr_data_uri }}" alt="">
+    {% endif %}
+  </div>
+
+  <div class="fields">
+    {% for label, value in doc.fields.items() %}
+    <div class="field">
+      <span class="label">{{ label }}</span>
+      <span class="value">{{ value }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if doc.note %}
+  <div class="small muted">{{ doc.note }}</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -142,6 +142,7 @@ plugins:
               - Observability (tracing): recipes/observability.md
               - Offline-first sync (delta): recipes/offline-sync.md
               - OpenPix (Pix via Woovi): recipes/openpix.md
+              - PDF generation: recipes/pdf.md
               - Permission guards (@requires): recipes/permission-guards.md
               - Query plans (EXPLAIN): recipes/query-plans.md
               - Queue & Tasks: recipes/queue-tasks.md
@@ -385,6 +386,7 @@ nav:
       - "Frontend tempestweb + SDK": recipes/tempestweb-frontend.md
       - "Geolocalização (distância + tempo)": recipes/geo.md
       - "Geração de imagem (local)": recipes/image-generation.md
+      - "Geração de PDF": recipes/pdf.md
       - "Guards de permissão (@requires)": recipes/permission-guards.md
       - Helpers brasileiros: recipes/br-helpers.md
       - "HTTP client (saída)": recipes/http-client.md

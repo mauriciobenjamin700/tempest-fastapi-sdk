@@ -1,0 +1,246 @@
+/* Shared styles for the bundled documents.
+ *
+ * Inlined into every document by _base.html rather than linked, so the
+ * default asset policy (which fetches nothing) is enough to render.
+ *
+ * The font stack names families only. A container without fonts renders
+ * every glyph as a box, so the deployment installs fonts-dejavu-core --
+ * see the recipe. DejaVu is named first because it is the one package
+ * a slim image reliably has once that line is added.
+ */
+
+@page {
+  size: {{ doc.branding.page_size }};
+  margin: {{ doc.branding.margin }};
+
+  /* The footer is a running *element*, not a CSS `content` string. Text
+   * inside a CSS string is not HTML, so an ampersand in the footer would
+   * come out as `&amp;` after autoescaping. As an element it is escaped
+   * once, correctly, like the rest of the document. */
+  @bottom-left {
+    content: element(running-footer);
+  }
+  @bottom-right {
+    content: "página " counter(page) " de " counter(pages);
+    font-size: 7.5pt;
+    color: #6b7280;
+  }
+}
+
+.running-footer {
+  position: running(running-footer);
+  font-size: 7.5pt;
+  color: #6b7280;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "DejaVu Sans", "Liberation Sans", Arial, sans-serif;
+  font-size: 10pt;
+  line-height: 1.45;
+  color: #111827;
+  margin: 0;
+}
+
+h1 {
+  font-size: 15pt;
+  letter-spacing: 0.04em;
+  margin: 0 0 2mm;
+  text-transform: uppercase;
+}
+
+h2 {
+  font-size: 11pt;
+  margin: 6mm 0 2mm;
+}
+
+.muted {
+  color: #6b7280;
+}
+
+.small {
+  font-size: 8.5pt;
+}
+
+.right {
+  text-align: right;
+}
+
+.center {
+  text-align: center;
+}
+
+/* --- document header ---------------------------------------------------- */
+
+.doc-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8mm;
+  border-bottom: 2px solid {{ doc.branding.accent_color }};
+  padding-bottom: 3mm;
+  margin-bottom: 5mm;
+}
+
+.doc-header .logo {
+  max-height: 18mm;
+  max-width: 45mm;
+}
+
+.doc-header .meta {
+  text-align: right;
+  font-size: 9pt;
+}
+
+/* --- party blocks ------------------------------------------------------- */
+
+.parties {
+  display: flex;
+  gap: 6mm;
+  margin-bottom: 5mm;
+}
+
+.party {
+  flex: 1;
+  border: 1px solid #e5e7eb;
+  border-radius: 1.5mm;
+  padding: 3mm;
+}
+
+.party .role {
+  font-size: 7.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: {{ doc.branding.accent_color }};
+  margin-bottom: 1mm;
+}
+
+.party .name {
+  font-weight: bold;
+}
+
+.party .line {
+  font-size: 8.5pt;
+  color: #374151;
+}
+
+/* --- tables ------------------------------------------------------------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+}
+
+thead {
+  display: table-header-group;
+}
+
+tfoot {
+  display: table-footer-group;
+}
+
+th {
+  background: {{ doc.branding.accent_color }};
+  color: #ffffff;
+  text-align: left;
+  padding: 2mm 2.5mm;
+  font-size: 8.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+td {
+  padding: 1.8mm 2.5mm;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+tbody tr:nth-child(even) td {
+  background: #f9fafb;
+}
+
+tr {
+  page-break-inside: avoid;
+}
+
+tbody tr.grand-total td {
+  background: transparent;
+  border-top: 1.5px solid {{ doc.branding.accent_color }};
+  border-bottom: none;
+  font-weight: bold;
+  padding-top: 2.5mm;
+}
+
+.totals {
+  margin-top: 4mm;
+  margin-left: auto;
+  width: 70mm;
+}
+
+.totals td {
+  border: none;
+  padding: 1mm 0;
+}
+
+.totals .grand td {
+  border-top: 1.5px solid {{ doc.branding.accent_color }};
+  font-weight: bold;
+  font-size: 11pt;
+  padding-top: 2mm;
+}
+
+/* --- signatures --------------------------------------------------------- */
+
+.signatures {
+  margin-top: 16mm;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10mm;
+  page-break-inside: avoid;
+}
+
+.signature {
+  /* Capped rather than `flex: 1`: a lone signatory would otherwise take
+     a rule spanning the whole page, which reads as a divider instead of
+     a place to sign. */
+  flex: 0 1 70mm;
+  max-width: 70mm;
+  text-align: center;
+  padding-top: 12mm;
+  border-top: 1px solid #111827;
+}
+
+.signature .name {
+  font-weight: bold;
+  font-size: 9.5pt;
+}
+
+/* --- callouts ----------------------------------------------------------- */
+
+.note {
+  margin-top: 5mm;
+  padding: 3mm;
+  background: #f9fafb;
+  border-left: 2.5mm solid {{ doc.branding.accent_color }};
+  font-size: 9pt;
+}
+
+.amount-box {
+  display: inline-block;
+  border: 1.5px solid {{ doc.branding.accent_color }};
+  border-radius: 1.5mm;
+  padding: 2.5mm 5mm;
+  font-size: 16pt;
+  font-weight: bold;
+}
+
+.empty {
+  padding: 10mm;
+  text-align: center;
+  color: #6b7280;
+  border: 1px dashed #d1d5db;
+  border-radius: 2mm;
+}

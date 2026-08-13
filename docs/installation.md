@@ -43,6 +43,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[modelops-onnx]` | `onnx`, `onnxruntime` | análise estática, benchmark ONNX, `.onnx` → `.ort`, otimização de grafo e quantização — de grafos crus (`analyze_onnx`, `benchmark_onnx`, `export_onnx_to_ort`, `quantize_onnx_dynamic`) e de exports transformers (`optimize_hf_onnx`, `quantize_hf_onnx`) |
 | `[modelops-sklearn]` | `skl2onnx` | exportar modelos scikit-learn para ONNX (borda): `export_sklearn_to_onnx`, `verify_sklearn_onnx`, `edge_bundle` |
 | `[otel]` | `opentelemetry-sdk`, exporter OTLP + instrumentações FastAPI/SQLAlchemy/httpx | instrumentação OpenTelemetry via `setup_tracing` |
+| `[pdf]` | `weasyprint`, `jinja2` | geração de PDF a partir de templates HTML: `PdfRenderer`, cinco documentos prontos com schema tipado, `make_pdf_router`, `tempest pdf`. **Exige Pango + fontconfig no sistema** — veja a receita |
 | `[postgres]` | `asyncpg` | driver async PostgreSQL para URLs `postgresql+asyncpg://` (produção) |
 | `[prometheus]` | `prometheus-client` | `PrometheusMiddleware`, `make_prometheus_router`, `make_prometheus_registry` |
 | `[queue]` | `faststream[rabbit]` | `AsyncBrokerManager` |

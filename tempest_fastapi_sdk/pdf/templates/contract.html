@@ -1,0 +1,54 @@
+{% extends "_base.html" %}
+
+{% block heading %}{{ doc.title or doc.heading }}{% endblock %}
+
+{% block content %}
+{% if doc.parties %}
+<div class="parties">
+  {% for party in doc.parties %}
+  {% with party=party, role="Parte " ~ loop.index %}{% include "_party.html" %}{% endwith %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if doc.preamble %}
+<p style="text-align: justify;">{{ doc.preamble }}</p>
+{% endif %}
+
+{% for clause in doc.clauses %}
+<div style="page-break-inside: avoid; margin-top: 5mm;">
+  {% if clause.title %}
+  <h2>CLÁUSULA {{ loop.index }}ª — {{ clause.title }}</h2>
+  {% else %}
+  <h2>CLÁUSULA {{ loop.index }}ª</h2>
+  {% endif %}
+  {# Blank lines start a new paragraph, so a clause body reads the way it
+     was typed instead of collapsing into one block. #}
+  {% for paragraph in clause.body.split("\n\n") %}
+  <p style="text-align: justify;">{{ paragraph }}</p>
+  {% endfor %}
+</div>
+{% endfor %}
+
+{% if doc.place or doc.signed_on %}
+<p class="right" style="margin-top: 10mm;">
+  {% if doc.place %}{{ doc.place }}{% endif %}{% if doc.place and doc.signed_on %}, {% endif %}{% if doc.signed_on %}{{ doc.signed_on | data_extenso }}{% endif %}.
+</p>
+{% endif %}
+
+{% if doc.signatories %}
+<div class="signatures">
+  {% for signatory in doc.signatories %}
+  <div class="signature">
+    <div class="name">{{ signatory.name }}</div>
+    {% if signatory.document %}
+    <div class="small muted">{{ signatory.document | doc }}</div>
+    {% endif %}
+    {% if signatory.role %}
+    <div class="small muted">{{ signatory.role }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

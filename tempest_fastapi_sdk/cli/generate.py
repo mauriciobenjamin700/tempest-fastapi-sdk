@@ -102,6 +102,45 @@ def _discover_extras(pyproject_text: str) -> str:
     return ",".join(part.strip() for part in captured.split(",") if part.strip())
 
 
+_SYSTEM_DEPS_PDF: str = """# WeasyPrint renders text through Pango and resolves fonts
+# through fontconfig, and a slim image ships neither -- the render raises an
+# OSError from cffi at the first render, not at build time. DejaVu is
+# here because a container with no font at all lays the document out
+# correctly and prints every glyph as a box.
+RUN apt-get update \\
+    && apt-get install -y --no-install-recommends \\
+        libpango-1.0-0 \\
+        libpangoft2-1.0-0 \\
+        libharfbuzz0b \\
+        fontconfig \\
+        fonts-dejavu-core \\
+    && rm -rf /var/lib/apt/lists/*
+
+"""
+"""System packages the ``[pdf]`` extra needs at runtime.
+
+Emitted into the final stage only when the project pins that extra, so a
+service that generates no documents keeps the smaller image.
+"""
+
+
+def _system_deps(extras: str) -> str:
+    """Build the Dockerfile stanza installing system packages.
+
+    Args:
+        extras (str): Comma-separated SDK extras pinned by the project.
+
+    Returns:
+        str: The stanza, or an empty string when no extra needs one — so
+        the rendered Dockerfile is byte-identical to what it was before
+        this existed.
+    """
+    pinned = {part.strip() for part in extras.split(",") if part.strip()}
+    if "pdf" in pinned or "all" in pinned:
+        return _SYSTEM_DEPS_PDF
+    return ""
+
+
 def regenerate_docker_compose(
     target: Path,
     *,
@@ -345,6 +384,7 @@ def regenerate_dockerfile(
     context: dict[str, str] = {
         "PROJECT_NAME": resolved_name,
         "PORT": str(_discover_port(target)),
+        "SYSTEM_DEPS": _system_deps(_discover_extras(pyproject_text)),
         **_spa_context(resolved_spa),
     }
 

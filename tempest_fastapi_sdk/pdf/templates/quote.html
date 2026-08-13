@@ -1,0 +1,69 @@
+{% extends "_base.html" %}
+
+{% block heading %}{{ doc.title or "Orçamento" }}{% endblock %}
+
+{% block header_meta %}
+  {% if doc.number %}<div><strong>Nº {{ doc.number }}</strong></div>{% endif %}
+  <div class="muted">Emitido em {{ doc.issue_date | data }}</div>
+  {% if doc.valid_until %}
+  <div class="muted">Válido até {{ doc.valid_until | data }}</div>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="parties">
+  {% with party=doc.issuer, role="Emitente" %}{% include "_party.html" %}{% endwith %}
+  {% with party=doc.customer, role="Cliente" %}{% include "_party.html" %}{% endwith %}
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Descrição</th>
+      <th class="right" style="width: 22mm;">Qtd.</th>
+      <th class="right" style="width: 28mm;">Unitário</th>
+      <th class="right" style="width: 30mm;">Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in doc.items %}
+    <tr>
+      <td>{{ item.description }}</td>
+      <td class="right">{{ item.quantity | qtd }}{% if item.unit %} {{ item.unit }}{% endif %}</td>
+      <td class="right">{{ item.unit_price_cents | brl }}</td>
+      <td class="right">{{ item.total_cents | brl }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<table class="totals">
+  <tr>
+    <td>Subtotal</td>
+    <td class="right">{{ doc.subtotal_cents | brl }}</td>
+  </tr>
+  {% if doc.discount_cents %}
+  <tr>
+    <td>Desconto</td>
+    <td class="right">-{{ doc.discount_cents | brl }}</td>
+  </tr>
+  {% endif %}
+  <tr class="grand">
+    <td>Total</td>
+    <td class="right">{{ doc.total_cents | brl }}</td>
+  </tr>
+</table>
+
+<p class="small muted" style="margin-top: 2mm;">
+  Total por extenso: {{ doc.total_cents | extenso }}.
+</p>
+
+{% if doc.payment_terms %}
+<h2>Condições de pagamento</h2>
+<p>{{ doc.payment_terms }}</p>
+{% endif %}
+
+{% if doc.notes %}
+<div class="note">{{ doc.notes }}</div>
+{% endif %}
+{% endblock %}

@@ -38,7 +38,7 @@ RUN uv sync --no-dev
 # ---- final ------------------------------------------------------------------
 FROM python:3.13-slim
 
-# Run as an unprivileged user. /app is owned by it so the app can write
+__SYSTEM_DEPS__# Run as an unprivileged user. /app is owned by it so the app can write
 # logs/ and the default SQLite app.db without root.
 RUN useradd --create-home --uid 1000 app
 
