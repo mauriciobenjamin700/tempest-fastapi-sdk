@@ -25,6 +25,7 @@ The schemas split into two groups:
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import EmailStr, Field
@@ -958,6 +959,198 @@ class MFAVerifySchema(BaseSchema):
     )
 
 
+class WebAuthnOptionsSchema(BaseSchema):
+    """Response body for both ``/auth/webauthn/*/begin`` endpoints.
+
+    Attributes:
+        challenge_id (str): Handle naming the server-side ceremony
+            state. Echo it back on the matching ``/complete`` call; it
+            is single-use, so a captured response cannot be replayed.
+        options (dict[str, Any]): The ``publicKey`` payload to hand
+            straight to ``navigator.credentials``. Passed through
+            verbatim — the shape is the browser's contract, not the
+            SDK's, so the SDK does not reshape it.
+    """
+
+    challenge_id: str = Field(
+        title="Ceremony handle",
+        description=(
+            "Names the server-side challenge for this ceremony. Send it "
+            "back on the ``/complete`` call. Single-use and short-lived "
+            "(``AUTH_WEBAUTHN_CHALLENGE_TTL_SECONDS``)."
+        ),
+        examples=["Rk9vYmFyQmF6UXV1eA"],
+    )
+    options: dict[str, Any] = Field(
+        title="WebAuthn options",
+        description=(
+            "The object the browser expects: pass ``options.publicKey`` "
+            "to ``navigator.credentials.create()`` (registration) or "
+            "``navigator.credentials.get()`` (login)."
+        ),
+        examples=[{"publicKey": {"challenge": "…", "rpId": "example.com"}}],
+    )
+
+
+class WebAuthnRegisterCompleteSchema(BaseSchema):
+    """Request body for ``POST /auth/webauthn/register/complete``.
+
+    Attributes:
+        challenge_id (str): Handle returned by the ``begin`` call.
+        credential (dict[str, Any]): The registration response, as
+            produced by the browser's WebAuthn JSON serialization.
+        name (str | None): Label for this authenticator.
+    """
+
+    challenge_id: str = Field(
+        min_length=1,
+        title="Ceremony handle",
+        description="The ``challenge_id`` returned by the begin call.",
+        examples=["Rk9vYmFyQmF6UXV1eA"],
+    )
+    credential: dict[str, Any] = Field(
+        title="Registration response",
+        description=(
+            "What ``navigator.credentials.create()`` returned, serialized "
+            "with ``PublicKeyCredential.toJSON()`` (or the equivalent "
+            "base64url encoding your client library produces)."
+        ),
+        examples=[{"id": "…", "rawId": "…", "type": "public-key", "response": {}}],
+    )
+    name: str | None = Field(
+        default=None,
+        max_length=120,
+        title="Authenticator label",
+        description=(
+            "Shown in the credential list so a person holding several "
+            "passkeys can tell them apart."
+        ),
+        examples=["YubiKey 5", "iPhone"],
+    )
+
+
+class WebAuthnAuthenticateBeginSchema(BaseSchema):
+    """Request body for ``POST /auth/webauthn/authenticate/begin``.
+
+    Attributes:
+        email (str | None): Narrows the ceremony to one account's
+            credentials. Omit it for the usernameless flow, where the
+            authenticator picks the account.
+    """
+
+    email: str | None = Field(
+        default=None,
+        title="Account email (optional)",
+        description=(
+            "Omit for the passwordless flow — the authenticator offers "
+            "the accounts it stores. Pass it to help an authenticator "
+            "that keeps no discoverable credential. An unknown address "
+            "yields a normal ceremony with an empty credential list, so "
+            "the endpoint cannot be used to enumerate accounts."
+        ),
+        examples=[None, "ana@example.com"],
+    )
+
+
+class WebAuthnAuthenticateCompleteSchema(BaseSchema):
+    """Request body for ``POST /auth/webauthn/authenticate/complete``.
+
+    Attributes:
+        challenge_id (str): Handle returned by the ``begin`` call.
+        credential (dict[str, Any]): The assertion, as produced by the
+            browser's WebAuthn JSON serialization.
+    """
+
+    challenge_id: str = Field(
+        min_length=1,
+        title="Ceremony handle",
+        description="The ``challenge_id`` returned by the begin call.",
+        examples=["Rk9vYmFyQmF6UXV1eA"],
+    )
+    credential: dict[str, Any] = Field(
+        title="Authentication response",
+        description=(
+            "What ``navigator.credentials.get()`` returned, serialized "
+            "with ``PublicKeyCredential.toJSON()``."
+        ),
+        examples=[{"id": "…", "rawId": "…", "type": "public-key", "response": {}}],
+    )
+
+
+class WebAuthnCredentialSchema(BaseSchema):
+    """One registered authenticator, as returned by the listing endpoint.
+
+    Attributes:
+        credential_id (str): Base64url credential ID — the value to pass
+            back when deleting this credential.
+        name (str | None): User-supplied label.
+        transports (str | None): Comma-separated transport hints.
+        aaguid (str | None): Authenticator model identifier, hex.
+        backed_up (bool): Whether the credential is synced.
+        created_at (datetime): Registration timestamp.
+        last_used_at (datetime | None): Last successful assertion.
+    """
+
+    credential_id: str = Field(
+        title="Credential ID (base64url)",
+        description="Identifies the credential in the delete endpoint.",
+        examples=["AQIDBAUGBwgJCgsMDQ4PEA"],
+    )
+    name: str | None = Field(
+        default=None,
+        title="Authenticator label",
+        description="User-supplied label, or ``null`` when unnamed.",
+        examples=["YubiKey 5", None],
+    )
+    transports: str | None = Field(
+        default=None,
+        title="Transport hints",
+        description="Comma-separated transports reported at registration.",
+        examples=["usb,nfc", "internal", None],
+    )
+    aaguid: str | None = Field(
+        default=None,
+        title="Authenticator model (AAGUID, hex)",
+        description="Informational — never use it for authorization.",
+        examples=["d8522d9f575b486688a9ba99fa02f35b"],
+    )
+    backed_up: bool = Field(
+        title="Backed up (synced passkey)",
+        description=(
+            "``True`` when the authenticator reported the credential as "
+            "backed up. A device-bound credential is lost with the "
+            "device; a synced one is not."
+        ),
+        examples=[True, False],
+    )
+    created_at: datetime = Field(
+        title="Registered at",
+        description="When the credential was registered.",
+        examples=["2026-08-13T12:00:00Z"],
+    )
+    last_used_at: datetime | None = Field(
+        default=None,
+        title="Last used at",
+        description="Last successful assertion, or ``null`` if never used.",
+        examples=["2026-08-13T18:30:00Z", None],
+    )
+
+
+class WebAuthnDeleteSchema(BaseSchema):
+    """Request body for ``POST /auth/webauthn/credentials/delete``.
+
+    Attributes:
+        credential_id (str): Base64url credential ID to remove.
+    """
+
+    credential_id: str = Field(
+        min_length=1,
+        title="Credential ID (base64url)",
+        description="The value the listing endpoint returned.",
+        examples=["AQIDBAUGBwgJCgsMDQ4PEA"],
+    )
+
+
 __all__: list[str] = [
     "ActivationResponseSchema",
     "ActivationToken",
@@ -982,4 +1175,5 @@ __all__: list[str] = [
     "PasswordResetToken",
     "SignupResponseSchema",
     "SignupSchema",
+    "WebAuthnAuthenticateBeginSchema",
 ]

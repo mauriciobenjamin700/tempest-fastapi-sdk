@@ -863,6 +863,20 @@ class AuthSettings(BaseAppSettings):
             login token. Default: ``300``.
         AUTH_MFA_VERIFY_WINDOW (int): TOTP clock-drift tolerance in 30s
             steps. Default: ``1``.
+        AUTH_WEBAUTHN_ENABLED (bool): Kill-switch enabling the WebAuthn /
+            passkey endpoints. Default: ``False``.
+        AUTH_WEBAUTHN_RP_ID (str): Domain the credential is bound to.
+            Default: ``""``.
+        AUTH_WEBAUTHN_RP_NAME (str): Product name shown by the browser.
+            Default: ``"Tempest"``.
+        AUTH_WEBAUTHN_ALLOWED_ORIGINS (list[str]): Exact origins allowed
+            to complete a ceremony. Default: ``[]`` (the ``fido2`` rule).
+        AUTH_WEBAUTHN_USER_VERIFICATION (str): Whether the authenticator
+            must verify the user. Default: ``"preferred"``.
+        AUTH_WEBAUTHN_RESIDENT_KEY (str): Whether the credential must be
+            discoverable. Default: ``"preferred"``.
+        AUTH_WEBAUTHN_CHALLENGE_TTL_SECONDS (int): Lifetime of the
+            between-request ceremony state. Default: ``300``.
     """
 
     AUTH_AUTO_ACTIVATE: bool = Field(
@@ -1315,6 +1329,101 @@ class AuthSettings(BaseAppSettings):
             "Higher values weaken security; ``0`` is strict."
         ),
         examples=[0, 1, 2],
+    )
+    AUTH_WEBAUTHN_ENABLED: bool = Field(
+        default=False,
+        title="WebAuthn / passkey endpoints kill-switch",
+        description=(
+            "When ``True``, ``make_auth_router`` mounts the "
+            "``/auth/webauthn/*`` endpoints. Requires a "
+            "``WebAuthnService`` passed as ``webauthn=`` and the "
+            "``[webauthn]`` extra. When ``False`` (default) the "
+            "endpoints do not exist."
+        ),
+        examples=[False, True],
+    )
+    AUTH_WEBAUTHN_RP_ID: str = Field(
+        default="",
+        title="Relying-party ID (the credential's domain)",
+        description=(
+            "Domain the credential is bound to — the whole phishing "
+            "resistance rests on it. Must be the site's origin domain "
+            "or a registrable suffix of it (``example.com`` covers "
+            "``app.example.com``; the reverse is invalid and the "
+            "browser refuses the ceremony). Use ``localhost`` in "
+            "development."
+        ),
+        examples=["example.com", "app.example.com", "localhost"],
+    )
+    AUTH_WEBAUTHN_RP_NAME: str = Field(
+        default="Tempest",
+        title="Relying-party display name",
+        description=(
+            "Product name shown by the browser and stored on the "
+            "authenticator next to the credential."
+        ),
+        examples=["Tempest", "Acme Inc."],
+    )
+    AUTH_WEBAUTHN_ALLOWED_ORIGINS: list[str] = Field(
+        default_factory=list,
+        title="Origins accepted during a ceremony",
+        description=(
+            "Exact origins allowed to complete a ceremony. Empty "
+            "(default) applies the ``fido2`` rule: ``https://`` plus "
+            "the relying-party ID and its subdomains. Set it when the "
+            "frontend runs somewhere that rule does not cover — a Vite "
+            "dev server on ``http://localhost:5173``, for instance. "
+            "Every entry here is a page allowed to spend the "
+            "credential, so keep the list exact."
+        ),
+        examples=[[], ["https://app.example.com", "http://localhost:5173"]],
+    )
+    AUTH_WEBAUTHN_USER_VERIFICATION: Literal[
+        "required",
+        "preferred",
+        "discouraged",
+    ] = Field(
+        default="preferred",
+        title="User-verification requirement",
+        description=(
+            "Whether the authenticator must verify the *user* (PIN, "
+            "biometric) and not merely their presence. ``required`` "
+            "makes a passkey a genuine two-factor login on its own; "
+            "``preferred`` (default) asks for it and accepts a key "
+            "that cannot do it; ``discouraged`` skips the prompt."
+        ),
+        examples=["preferred", "required", "discouraged"],
+    )
+    AUTH_WEBAUTHN_RESIDENT_KEY: Literal[
+        "required",
+        "preferred",
+        "discouraged",
+    ] = Field(
+        default="preferred",
+        title="Resident (discoverable) credential requirement",
+        description=(
+            "Whether the authenticator must store the credential so it "
+            "can be offered without the site naming an account — what "
+            "makes usernameless login possible. ``required`` consumes "
+            "one of a security key's limited credential slots; "
+            "``preferred`` (default) asks for it without failing when "
+            "the key cannot."
+        ),
+        examples=["preferred", "required", "discouraged"],
+    )
+    AUTH_WEBAUTHN_CHALLENGE_TTL_SECONDS: int = Field(
+        default=300,
+        ge=30,
+        le=900,
+        title="WebAuthn challenge TTL (seconds)",
+        description=(
+            "Lifetime of the server-side state between the *begin* and "
+            "*complete* halves of a ceremony. Defaults to 5 minutes — "
+            "long enough to find a security key, short enough that a "
+            "captured challenge goes stale. The state is single-use "
+            "regardless."
+        ),
+        examples=[120, 300, 600],
     )
     AUTH_TOKEN_DELIVERY: Literal["bearer", "cookie", "both"] = Field(
         default="bearer",

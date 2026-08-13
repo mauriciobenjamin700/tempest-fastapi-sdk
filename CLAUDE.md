@@ -86,7 +86,25 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`BaseUserRefreshTokenModel`, `make_user_refresh_token_model`,
   `refresh_token_model=` on `UserAuthService`) with rotation,
   family-wide reuse detection and `POST /auth/logout`
-  (`LogoutSchema`).
+  (`LogoutSchema`). **WebAuthn / passkeys (v0.217.0, extra `[webauthn]` =
+  `fido2`):** `WebAuthnService` (both ceremonies + list/delete),
+  `BaseWebAuthnCredentialModel`/`make_web_authn_credential_model`,
+  `Memory`/`RedisWebAuthnChallengeStore` (`GETDEL`, so single-use holds under
+  concurrency), six routes via `make_auth_router(webauthn=)` gated by
+  `AUTH_WEBAUTHN_ENABLED` (missing service raises at wiring, like
+  `recovery_code_model`). Beyond what `fido2` verifies the SDK checks the
+  **signature counter** (a stalled one is the spec's cloned-authenticator
+  signal; authenticators reporting `0` are exempt — for them it carries no
+  information), pops the challenge on use, keeps credential IDs unique per
+  *table*, and answers `authenticate_begin` identically for an unknown email
+  (otherwise it is an enumeration oracle). `AUTH_WEBAUTHN_RP_ID` is the
+  security boundary — changing it invalidates every credential;
+  `AUTH_WEBAUTHN_ALLOWED_ORIGINS` **replaces** the `fido2` default rule
+  rather than extending it. Passkey login deliberately skips the MFA
+  challenge. Tests drive real crypto through a software authenticator
+  (`tests/auth/webauthn_authenticator.py`) — a mocked verifier would assert
+  away exactly the properties worth testing. Recipe:
+  `docs/recipes/webauthn.md`.
 - **Permission guards (v0.167.0)** — `@requires(*guards, user_param=None)`
   (`tempest_fastapi_sdk.authz`, re-exported at the root) runs plain
   `(user) -> user | None` guards before a function body, at any layer, sync or
@@ -321,7 +339,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (v0.101):** `VectorStore` Protocol + `InMemoryVectorStore` +
   `PgVectorStore` (pgvector, reuses the service Postgres) + `Retriever`
   (`index`/`search`/`retrieve` tying `Embedder` → store → `build_context`);
-  `Chunk.score`. **Audio (v0.102, `[genai-audio]` = faster-whisper +
+  `Chunk.score`. **Chroma + chat memory (v0.108, `[genai-chroma]` =
+  chromadb):** `ChromaVectorStore` (ephemeral / persistent / injected client)
+  and `ChatMemory` — recency-aware per-user long-term memory over a Chroma
+  collection, `index()` embeds + upserts and evicts the oldest past a soft
+  per-user quota, `recall()` returns scored `MemoryHit`s over any
+  `SupportsEmbed`. Uses `PersistentClient` (embedded, no HTTP server), so the
+  `chromadb` server advisory PYSEC-2026-311 is not reachable through the SDK.
+  **Audio (v0.102, `[genai-audio]` = faster-whisper +
   coqui-tts):** `tempest_fastapi_sdk.genai.audio` — `SpeechToText`
   (faster-whisper transcribe → `Transcription`) + `TextToSpeech` (Coqui TTS
   synthesize → WAV bytes, XTTS voice cloning via `speaker_wav`), lazy +

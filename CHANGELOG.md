@@ -5,6 +5,90 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.217.0] — 2026-08-13
+
+### Added
+
+- **WebAuthn / passkeys** (`tempest_fastapi_sdk.auth.webauthn`, extra
+  `[webauthn]`). TOTP proves the user holds a shared secret, and a phishing
+  page that forwards the code in real time defeats it. WebAuthn binds the
+  assertion to the **origin** that asked for it, so a credential registered for
+  `app.example.com` produces nothing a page on `app-example.com` can use. That
+  property, not "passwordless", is why this shipped.
+
+  `WebAuthnService` runs both ceremonies — register begin/complete,
+  authenticate begin/complete — plus credential listing and removal.
+  `make_auth_router(webauthn=...)` mounts six routes when
+  `AUTH_WEBAUTHN_ENABLED` is on; enabling it without the service raises at
+  wiring time rather than 500-ing per request, matching how
+  `recovery_code_model` gates MFA.
+
+  ```python
+  webauthn = WebAuthnService(
+      user_model=UserModel,
+      credential_model=UserWebAuthnCredentialModel,
+      auth_settings=settings,
+  )
+  app.include_router(
+      make_auth_router(service, session_factory=db.session_dependency, webauthn=webauthn),
+  )
+  ```
+
+  `BaseWebAuthnCredentialModel` + `make_web_authn_credential_model` hold the
+  table. It stores public keys — unlike a password hash, a full leak of it
+  authenticates nobody. `credential_data` is kept as the opaque blob `fido2`
+  round-trips, so an upstream format change never needs a migration of parsed
+  columns.
+
+  **What the SDK checks beyond the library.** The signature counter: one that
+  did not advance since the last assertion is the spec's cloned-authenticator
+  signal, and `fido2` verifies the signature without tracking it. Authenticators
+  that always report `0` — most platform passkeys — are exempt, because for
+  them the counter carries no information. Also: the challenge is popped on use
+  (a captured response is spent), a credential ID is unique per *table* rather
+  than per account, an inactive account cannot log in, and deletion is scoped to
+  the owner so a foreign ID answers 404 exactly like one that does not exist.
+
+  **`authenticate_begin` never reveals whether an account exists.** An unknown
+  email produces a normal ceremony with an empty credential list; answering
+  differently would make the endpoint an enumeration oracle.
+
+  **Passkey login does not go through the MFA challenge**, deliberately: a
+  passkey with user verification already proves possession *and* a local factor,
+  which is what the second step exists for.
+
+- **`AUTH_WEBAUTHN_*` settings** — `ENABLED`, `RP_ID`, `RP_NAME`,
+  `ALLOWED_ORIGINS`, `USER_VERIFICATION`, `RESIDENT_KEY`,
+  `CHALLENGE_TTL_SECONDS`. `RP_ID` is the security boundary and an empty one is
+  refused at construction. `ALLOWED_ORIGINS` exists because the `fido2` default
+  (`https://<rp_id>` and subdomains) is right in production and wrong on a Vite
+  dev server; when set it replaces that rule entirely, so it is an explicit
+  decision rather than a silent relaxation.
+
+- **`MemoryWebAuthnChallengeStore` / `RedisWebAuthnChallengeStore`** for the
+  state between the two halves of a ceremony. The Redis one uses `GETDEL`, so
+  read-and-delete is one operation and two concurrent completions cannot both
+  find the state.
+
+- **A software authenticator in the test suite.** The tests drive `fido2`'s real
+  verification with genuine artifacts — attestation object, authenticator data,
+  ES256 signature — because the properties worth testing here (origin binding,
+  single-use challenge, advancing counter) are exactly the ones a mocked
+  verifier would assert away. It supports being wrong on purpose (replaying a
+  counter, signing for a lookalike origin) so the suite can assert the server
+  rejects it.
+
+  Recipe: `docs/recipes/webauthn.md`.
+
+### Changed
+
+- **New optional dependency `fido2>=2.0.0`** in the `[webauthn]` extra. It
+  declares `cryptography!=35,<52,>=2.6`; the upper bound is accepted because it
+  is confined to an optional extra and nothing in the base install resolves it,
+  and because WebAuthn is real engineering — CBOR, COSE keys, attestation
+  formats, signature verification — not a preset table the SDK should own. Same
+  criterion applied to `diffusers` in v0.177.0.
+
 ## [0.216.0] — 2026-08-13
 
 ### Added

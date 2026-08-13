@@ -80,6 +80,24 @@ from tempest_fastapi_sdk.auth.schemas import (
     SignupResponseSchema as SignupResponseSchema,
 )
 from tempest_fastapi_sdk.auth.schemas import SignupSchema as SignupSchema
+from tempest_fastapi_sdk.auth.schemas import (
+    WebAuthnAuthenticateBeginSchema as WebAuthnAuthenticateBeginSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
+    WebAuthnAuthenticateCompleteSchema as WebAuthnAuthenticateCompleteSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
+    WebAuthnCredentialSchema as WebAuthnCredentialSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
+    WebAuthnDeleteSchema as WebAuthnDeleteSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
+    WebAuthnOptionsSchema as WebAuthnOptionsSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
+    WebAuthnRegisterCompleteSchema as WebAuthnRegisterCompleteSchema,
+)
 from tempest_fastapi_sdk.auth.service import UserAuthService as UserAuthService
 from tempest_fastapi_sdk.auth.token_delivery import (
     AuthCookieConfig as AuthCookieConfig,
@@ -91,6 +109,16 @@ from tempest_fastapi_sdk.auth.token_delivery import (
 from tempest_fastapi_sdk.auth.token_delivery import (
     clear_auth_cookies as clear_auth_cookies,
 )
+from tempest_fastapi_sdk.auth.webauthn import (
+    MemoryWebAuthnChallengeStore as MemoryWebAuthnChallengeStore,
+)
+from tempest_fastapi_sdk.auth.webauthn import (
+    RedisWebAuthnChallengeStore as RedisWebAuthnChallengeStore,
+)
+from tempest_fastapi_sdk.auth.webauthn import (
+    WebAuthnChallengeStore as WebAuthnChallengeStore,
+)
+from tempest_fastapi_sdk.auth.webauthn import WebAuthnService as WebAuthnService
 
 __all__: list[str] = [
     "DEFAULT_AUTH_LOCALE",
@@ -113,16 +141,26 @@ __all__: list[str] = [
     "MFADisableSchema",
     "MFAEnrollResponseSchema",
     "MFAVerifySchema",
+    "MemoryWebAuthnChallengeStore",
     "PasswordChangeSchema",
     "PasswordResetConfirmSchema",
     "PasswordResetRequestSchema",
     "PasswordResetResponseSchema",
     "PasswordResetToken",
+    "RedisWebAuthnChallengeStore",
     "RefreshSchema",
     "SignupResponseSchema",
     "SignupSchema",
     "TokenDelivery",
     "UserAuthService",
+    "WebAuthnAuthenticateBeginSchema",
+    "WebAuthnAuthenticateCompleteSchema",
+    "WebAuthnChallengeStore",
+    "WebAuthnCredentialSchema",
+    "WebAuthnDeleteSchema",
+    "WebAuthnOptionsSchema",
+    "WebAuthnRegisterCompleteSchema",
+    "WebAuthnService",
     "apply_auth_cookies",
     "clear_auth_cookies",
     "format_expires_at",

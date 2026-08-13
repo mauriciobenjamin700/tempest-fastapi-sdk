@@ -170,6 +170,7 @@ plugins:
               - Validated fields (ready-made types): recipes/fields.md
               - Versioned artifacts (models): recipes/artifact-registry.md
               - Web Push: recipes/webpush.md
+              - WebAuthn / passkeys: recipes/webauthn.md
               - WebSocket router: recipes/websocket.md
             - Reference: reference.md
             - Learning projects:
@@ -212,6 +213,7 @@ plugins:
             Outbox transacional: Transactional outbox
             Email transacional: Transactional email
             Web Push: Web Push
+            WebAuthn / passkeys: WebAuthn / passkeys
             Logging: Logging
             "Login social (OAuth2/OIDC)": "Social login (OAuth2/OIDC)"
             Storage (MinIO/S3): Storage (MinIO/S3)
@@ -419,6 +421,7 @@ nav:
       - Utilitários: recipes/utilities.md
       - "Visão computacional (ONNX)": recipes/vision.md
       - Web Push: recipes/webpush.md
+      - WebAuthn / passkeys: recipes/webauthn.md
       - WebSocket router: recipes/websocket.md
   - Referência: reference.md
   - Projetos de aprendizado:

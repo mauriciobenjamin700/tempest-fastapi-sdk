@@ -70,6 +70,12 @@ from tempest_fastapi_sdk.auth.schemas import (
     RefreshSchema,
     SignupResponseSchema,
     SignupSchema,
+    WebAuthnAuthenticateBeginSchema,
+    WebAuthnAuthenticateCompleteSchema,
+    WebAuthnCredentialSchema,
+    WebAuthnDeleteSchema,
+    WebAuthnOptionsSchema,
+    WebAuthnRegisterCompleteSchema,
 )
 from tempest_fastapi_sdk.auth.token_delivery import (
     AuthCookieConfig,
@@ -93,9 +99,13 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from tempest_fastapi_sdk.auth.service import UserAuthService
+    from tempest_fastapi_sdk.auth.webauthn import WebAuthnService
     from tempest_fastapi_sdk.db.user_model import BaseUserModel
     from tempest_fastapi_sdk.db.user_recovery_code_model import (
         BaseUserRecoveryCodeModel,
+    )
+    from tempest_fastapi_sdk.db.user_webauthn_credential_model import (
+        BaseWebAuthnCredentialModel,
     )
 
 
@@ -110,6 +120,7 @@ def make_auth_router(
     me_response_model: type[BaseModel] | None = None,
     token_delivery: TokenDelivery | None = None,
     cookie_config: AuthCookieConfig | None = None,
+    webauthn: WebAuthnService | None = None,
 ) -> APIRouter:
     """Build the bundled auth router.
 
@@ -154,6 +165,11 @@ def make_auth_router(
             storing the one-time MFA recovery codes. ``None`` (default)
             falls back to the SDK's bundled model, built on demand — pass
             your own when the project owns that table.
+        webauthn (WebAuthnService | None): Configured
+            :class:`~tempest_fastapi_sdk.auth.webauthn.WebAuthnService`.
+            Required when ``AUTH_WEBAUTHN_ENABLED`` is on; it carries the
+            relying-party identity, the credential model and the challenge
+            store, none of which the router can infer.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -170,6 +186,9 @@ def make_auth_router(
         * **Backend-rendered HTML endpoints** are mounted only when
           ``AUTH_BACKEND_LINKS`` is on.
         * **MFA endpoints** are mounted only when ``AUTH_MFA_ENABLED`` is on.
+        * **WebAuthn endpoints** are mounted only when
+          ``AUTH_WEBAUTHN_ENABLED`` is on and a ``webauthn`` service is
+          passed.
 
         The refresh cookie is scoped to the auth base path rather than the
         site root, so it reaches the refresh and logout endpoints but is not
@@ -1399,7 +1418,307 @@ def make_auth_router(
                 refresh_token=refresh,
             )
 
+    # ------------------------------------------------------------------
+    # WebAuthn / passkeys
+    # ------------------------------------------------------------------
+
+    if auth_settings.AUTH_WEBAUTHN_ENABLED:
+        if webauthn is None:
+            raise RuntimeError(
+                "AUTH_WEBAUTHN_ENABLED=True requires a configured "
+                "WebAuthnService passed to make_auth_router(webauthn=...)."
+            )
+        service_webauthn: WebAuthnService = webauthn
+
+        @router.post(
+            "/webauthn/register/begin",
+            response_model=WebAuthnOptionsSchema,
+            summary="Start registering a passkey / security key",
+            description=(
+                "First half of the registration ceremony, for the "
+                "**currently authenticated** user (requires a valid "
+                "bearer ``access_token``).\n\n"
+                "Pass the returned ``options.publicKey`` to "
+                "``navigator.credentials.create()`` and post what it "
+                "returns to ``/webauthn/register/complete``, along with "
+                "the ``challenge_id`` from this response.\n\n"
+                "Credentials the account already holds are sent as "
+                "``excludeCredentials``, so registering the same "
+                "authenticator twice is refused by the device instead "
+                "of creating a duplicate nobody can tell apart."
+            ),
+        )
+        async def webauthn_register_begin(
+            session: AsyncSession = session_dep,
+            user: BaseUserModel = Depends(current_user_dep),
+        ) -> WebAuthnOptionsSchema:
+            """Return the creation options plus the ceremony handle.
+
+            Args:
+                session (AsyncSession): The request-scoped DB session.
+                user (BaseUserModel): The authenticated caller.
+
+            Returns:
+                WebAuthnOptionsSchema: Options for
+                ``navigator.credentials.create()`` and the
+                ``challenge_id`` to echo back.
+            """
+            options, challenge_id = await service_webauthn.register_begin(
+                session,
+                user=user,
+            )
+            return WebAuthnOptionsSchema(
+                challenge_id=challenge_id,
+                options=options,
+            )
+
+        @router.post(
+            "/webauthn/register/complete",
+            response_model=WebAuthnCredentialSchema,
+            summary="Finish registering a passkey / security key",
+            description=(
+                "Second half of the registration ceremony. Verifies the "
+                "attestation against the challenge issued by "
+                "``/webauthn/register/begin`` and stores the public "
+                "key.\n\n"
+                "The challenge is consumed here, so a captured response "
+                "cannot be replayed. A wrong, expired or already-used "
+                "``challenge_id`` returns **401**; an authenticator that "
+                "is already registered returns **422**."
+            ),
+        )
+        async def webauthn_register_complete(
+            payload: WebAuthnRegisterCompleteSchema,
+            session: AsyncSession = session_dep,
+            user: BaseUserModel = Depends(current_user_dep),
+        ) -> WebAuthnCredentialSchema:
+            """Verify the attestation and persist the credential.
+
+            Args:
+                payload (WebAuthnRegisterCompleteSchema): The ceremony
+                    handle, the browser's response and an optional label.
+                session (AsyncSession): The request-scoped DB session.
+                user (BaseUserModel): The authenticated caller.
+
+            Returns:
+                WebAuthnCredentialSchema: The stored credential.
+            """
+            record = await service_webauthn.register_complete(
+                session,
+                user=user,
+                challenge_id=payload.challenge_id,
+                response=payload.credential,
+                name=payload.name,
+            )
+            await session.commit()
+            return _credential_schema(record)
+
+        @router.post(
+            "/webauthn/authenticate/begin",
+            response_model=WebAuthnOptionsSchema,
+            summary="Start a passwordless login",
+            description=(
+                "First half of the login ceremony. Needs **no** bearer "
+                "token — this is how a session starts.\n\n"
+                "Omit ``email`` for the usernameless flow: the options "
+                "carry no credential list and the authenticator offers "
+                "the accounts it stores. Pass ``email`` to narrow the "
+                "ceremony to one account, which helps an authenticator "
+                "that keeps no discoverable credential.\n\n"
+                "An unknown address returns a normal ceremony with an "
+                "empty credential list — answering differently would "
+                "turn this endpoint into an account-enumeration oracle."
+            ),
+        )
+        async def webauthn_authenticate_begin(
+            payload: WebAuthnAuthenticateBeginSchema,
+            session: AsyncSession = session_dep,
+        ) -> WebAuthnOptionsSchema:
+            """Return the request options plus the ceremony handle.
+
+            Args:
+                payload (WebAuthnAuthenticateBeginSchema): Optional email
+                    narrowing the ceremony.
+                session (AsyncSession): The request-scoped DB session.
+
+            Returns:
+                WebAuthnOptionsSchema: Options for
+                ``navigator.credentials.get()`` and the ``challenge_id``
+                to echo back.
+            """
+            options, challenge_id = await service_webauthn.authenticate_begin(
+                session,
+                email=payload.email,
+            )
+            return WebAuthnOptionsSchema(
+                challenge_id=challenge_id,
+                options=options,
+            )
+
+        @router.post(
+            "/webauthn/authenticate/complete",
+            response_model=LoginResponseSchema,
+            summary="Complete a passwordless login (returns the JWT pair)",
+            description=(
+                "Second half of the login ceremony. Verifies the "
+                "assertion and returns the ``access_token`` + "
+                "``refresh_token`` pair.\n\n"
+                "A bad or replayed challenge, an unknown credential, a "
+                "failed signature, an authenticator whose signature "
+                "counter did not advance (the spec's cloned-device "
+                "signal) or an inactive account all return **401**.\n\n"
+                "MFA does not gate this endpoint: a passkey with user "
+                "verification already proves possession *and* a local "
+                "factor, which is what the second step exists for."
+            ),
+        )
+        async def webauthn_authenticate_complete(
+            payload: WebAuthnAuthenticateCompleteSchema,
+            session: AsyncSession = session_dep,
+        ) -> LoginResponseSchema:
+            """Verify the assertion and mint the token pair.
+
+            Args:
+                payload (WebAuthnAuthenticateCompleteSchema): The ceremony
+                    handle and the browser's assertion.
+                session (AsyncSession): The request-scoped DB session.
+
+            Returns:
+                LoginResponseSchema: The access + refresh token pair.
+            """
+            user = await service_webauthn.authenticate_complete(
+                session,
+                challenge_id=payload.challenge_id,
+                response=payload.credential,
+            )
+            access, refresh = await service.issue_token_pair(session, user)
+            await session.commit()
+            return LoginResponseSchema(
+                user_id=user.id,
+                access_token=access,
+                refresh_token=refresh,
+            )
+
+        @router.get(
+            "/webauthn/credentials",
+            response_model=list[WebAuthnCredentialSchema],
+            summary="List the current user's registered authenticators",
+            description=(
+                "Every passkey / security key the **currently "
+                "authenticated** user registered, oldest first. Returns "
+                "``200`` with an empty list when there are none.\n\n"
+                "``backed_up`` tells a device-bound credential (lost "
+                "with the device) from a synced one, which is what "
+                "decides whether the account still needs a recovery "
+                "path."
+            ),
+        )
+        async def webauthn_list_credentials(
+            session: AsyncSession = session_dep,
+            user: BaseUserModel = Depends(current_user_dep),
+        ) -> list[WebAuthnCredentialSchema]:
+            """Return the caller's registered credentials.
+
+            Args:
+                session (AsyncSession): The request-scoped DB session.
+                user (BaseUserModel): The authenticated caller.
+
+            Returns:
+                list[WebAuthnCredentialSchema]: The credentials, possibly
+                empty.
+            """
+            records = await service_webauthn.list_credentials(session, user=user)
+            return [_credential_schema(record) for record in records]
+
+        @router.post(
+            "/webauthn/credentials/delete",
+            status_code=status.HTTP_204_NO_CONTENT,
+            summary="Remove one of the current user's authenticators",
+            description=(
+                "Deletes a credential belonging to the **currently "
+                "authenticated** user. The lookup is scoped to the "
+                "caller, so an ID registered by somebody else answers "
+                "**404** exactly like one that does not exist.\n\n"
+                "Removing the last passkey leaves the account on its "
+                "other factors — the endpoint does not check that one "
+                "remains, because whether a password is still an "
+                "acceptable fallback is the application's decision."
+            ),
+        )
+        async def webauthn_delete_credential(
+            payload: WebAuthnDeleteSchema,
+            session: AsyncSession = session_dep,
+            user: BaseUserModel = Depends(current_user_dep),
+        ) -> None:
+            """Delete one of the caller's credentials.
+
+            Args:
+                payload (WebAuthnDeleteSchema): The credential to remove.
+                session (AsyncSession): The request-scoped DB session.
+                user (BaseUserModel): The authenticated caller.
+            """
+            await service_webauthn.delete_credential(
+                session,
+                user=user,
+                credential_id=_decode_credential_id(payload.credential_id),
+            )
+            await session.commit()
+
     return router
+
+
+def _decode_credential_id(value: str) -> bytes:
+    """Decode a base64url credential ID coming from a client.
+
+    Args:
+        value (str): Base64url text, with or without padding.
+
+    Returns:
+        bytes: The raw credential ID.
+
+    Raises:
+        ValidationException: When the text is not valid base64url. The
+            alternative — treating it as an unknown credential — would
+            answer 404 for a malformed request.
+    """
+    from base64 import urlsafe_b64decode
+    from binascii import Error as BinasciiError
+
+    padded = value + "=" * (-len(value) % 4)
+    try:
+        return urlsafe_b64decode(padded)
+    except (BinasciiError, ValueError) as exc:
+        raise ValidationException(
+            message="credential_id is not valid base64url",
+        ) from exc
+
+
+def _credential_schema(
+    record: BaseWebAuthnCredentialModel,
+) -> WebAuthnCredentialSchema:
+    """Render a stored credential for the API.
+
+    The raw credential ID is bytes; the API speaks base64url without
+    padding, matching what the browser's WebAuthn JSON serialization
+    produces, so a client can compare the two directly.
+
+    Args:
+        record (BaseWebAuthnCredentialModel): The stored credential.
+
+    Returns:
+        WebAuthnCredentialSchema: The response model.
+    """
+    from base64 import urlsafe_b64encode
+
+    return WebAuthnCredentialSchema(
+        credential_id=urlsafe_b64encode(record.credential_id).decode().rstrip("="),
+        name=record.name,
+        transports=record.transports,
+        aaguid=record.aaguid,
+        backed_up=record.backed_up,
+        created_at=record.created_at,
+        last_used_at=record.last_used_at,
+    )
 
 
 def _make_user_loader(

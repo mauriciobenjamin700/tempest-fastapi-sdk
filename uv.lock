@@ -1576,6 +1576,18 @@ rabbit = [
 ]
 
 [[package]]
+name = "fido2"
+version = "2.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ba/ea/6f08c354b7aeb8019249d46a86c2153f8218499cced4d21bf16b6d49fc16/fido2-2.2.1.tar.gz", hash = "sha256:85787428a94c3f8eaf72f0ff30afba983b559a1b1b795c93318c81b4ad4062c4", size = 327147, upload-time = "2026-06-29T17:41:11.927Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/84/198d99c3312557ef6121cf78c38281efe9b3bc88cba0e2c05446f38a024d/fido2-2.2.1-py3-none-any.whl", hash = "sha256:ed397da981b9ab133da6ead7309e41f924b566b749956129efe286fae097749f", size = 238354, upload-time = "2026-06-29T17:41:09.921Z" },
+]
+
+[[package]]
 name = "filelock"
 version = "3.32.2"
 source = { registry = "https://pypi.org/simple" }
@@ -5910,7 +5922,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.216.0"
+version = "0.217.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -5943,6 +5955,7 @@ all = [
     { name = "cryptography" },
     { name = "email-validator" },
     { name = "faststream", extra = ["rabbit"] },
+    { name = "fido2" },
     { name = "httpx" },
     { name = "itsdangerous" },
     { name = "jinja2" },
@@ -6088,6 +6101,9 @@ upload = [
 vision = [
     { name = "ort-vision-sdk" },
 ]
+webauthn = [
+    { name = "fido2" },
+]
 webpush = [
     { name = "cryptography" },
     { name = "pywebpush" },
@@ -6107,6 +6123,7 @@ dev = [
     { name = "email-validator" },
     { name = "fakeredis" },
     { name = "faststream", extra = ["rabbit"] },
+    { name = "fido2" },
     { name = "httpx" },
     { name = "itsdangerous" },
     { name = "jinja2" },
@@ -6181,6 +6198,8 @@ requires-dist = [
     { name = "faster-whisper", marker = "extra == 'genai-audio'", specifier = ">=1.0.0" },
     { name = "faststream", extras = ["rabbit"], marker = "extra == 'all'", specifier = ">=0.7.1" },
     { name = "faststream", extras = ["rabbit"], marker = "extra == 'queue'", specifier = ">=0.7.1" },
+    { name = "fido2", marker = "extra == 'all'", specifier = ">=2.0.0" },
+    { name = "fido2", marker = "extra == 'webauthn'", specifier = ">=2.0.0" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'all'", specifier = ">=0.28.0" },
     { name = "httpx", marker = "extra == 'genai-ollama'", specifier = ">=0.28.0" },
@@ -6260,7 +6279,7 @@ requires-dist = [
     { name = "websockets", marker = "extra == 'all'", specifier = ">=13.0" },
     { name = "websockets", marker = "extra == 'websocket'", specifier = ">=13.0" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "admin", "admin-sql", "minio", "http", "openapi", "prometheus", "mfa", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "admin", "admin-sql", "minio", "http", "openapi", "prometheus", "mfa", "webauthn", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -6273,6 +6292,7 @@ dev = [
     { name = "email-validator", specifier = ">=2.0.0" },
     { name = "fakeredis", specifier = ">=2.20.0" },
     { name = "faststream", extras = ["rabbit"], specifier = ">=0.7.1" },
+    { name = "fido2", specifier = ">=2.0.0" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "itsdangerous", specifier = ">=2.2.0" },
     { name = "jinja2", specifier = ">=3.1.0" },

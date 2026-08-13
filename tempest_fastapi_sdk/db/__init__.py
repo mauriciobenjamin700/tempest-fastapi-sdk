@@ -122,6 +122,12 @@ from tempest_fastapi_sdk.db.user_token_model import UserTokenPurpose as UserToke
 from tempest_fastapi_sdk.db.user_token_model import (
     make_user_token_model as make_user_token_model,
 )
+from tempest_fastapi_sdk.db.user_webauthn_credential_model import (
+    BaseWebAuthnCredentialModel as BaseWebAuthnCredentialModel,
+)
+from tempest_fastapi_sdk.db.user_webauthn_credential_model import (
+    make_web_authn_credential_model as make_web_authn_credential_model,
+)
 from tempest_fastapi_sdk.db.webpush_subscription_model import (
     BaseWebPushSubscriptionModel as BaseWebPushSubscriptionModel,
 )
@@ -146,6 +152,7 @@ __all__: list[str] = [
     "BaseUserRecoveryCodeModel",
     "BaseUserRefreshTokenModel",
     "BaseUserTokenModel",
+    "BaseWebAuthnCredentialModel",
     "BaseWebPushSubscriptionModel",
     "ColumnRef",
     "DatabaseBackup",
@@ -192,6 +199,7 @@ __all__: list[str] = [
     "make_user_recovery_code_model",
     "make_user_refresh_token_model",
     "make_user_token_model",
+    "make_web_authn_credential_model",
     "make_web_push_subscription_model",
     "on_signal",
     "render_enum_types",

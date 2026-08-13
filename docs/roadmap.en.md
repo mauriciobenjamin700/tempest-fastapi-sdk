@@ -76,7 +76,12 @@ are **done**; so is the self-hosted genai roadmap (v0.139–0.154 — tool calli
 structured output, VLM, reranker, hybrid search, ONNX embeddings, generation
 cache, token/context, vision router, metrics, moderation + pipeline
 integration). The candidates below came out of the 2026-07-24 overview
-analysis — a **future, unordered queue** (pulled by business pressure).
+analysis and are **all shipped too** — the last two, advanced rate limiting
+and WebAuthn, landed in v0.216.0 and v0.217.0.
+
+**The queue is empty.** The next theme comes from business pressure, not from
+this page. Keeping an aspirational item here just because the section would
+look short is exactly what the footer note forbids.
 
 ### ✅ GenAI hardening — transformers 5.x debt (shipped v0.155.0)
 
@@ -123,12 +128,16 @@ Delivered in slices, one release per slice:
   rejected request never spends the others' budget. `RateLimit-*` response
   headers. See the HTTP recipe (*Tolerating bursts: the token bucket*).
 
-### Modern auth — WebAuthn / passkeys
+### ✅ Modern auth — WebAuthn / passkeys (shipped v0.217.0)
 
-- **WebAuthn** register/authenticate (`fido2`) beyond TOTP — passwordless,
-  phishing-resistant login.
-- `BaseWebAuthnCredentialModel` + service, integrated with `UserAuthService` /
-  `make_auth_router`.
+`WebAuthnService` runs both ceremonies (registration and login) over `fido2`,
+`BaseWebAuthnCredentialModel` + `make_web_authn_credential_model` hold the
+public keys, and `make_auth_router(webauthn=...)` mounts the six routes when
+`AUTH_WEBAUTHN_ENABLED` is on. Beyond what the library verifies, the SDK
+refuses a signature counter that did not advance (the cloned-authenticator
+signal), spends the challenge on use, and never reveals whether an account
+exists in `begin`. Memory or Redis (`GETDEL`) challenge store. Extra
+`[webauthn]`. [Recipe »](recipes/webauthn.md)
 
 **Out of scope by decision:** OpenAI-compatible client (self-hosted focus),
 GraphQL/gRPC (REST by decision).

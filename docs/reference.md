@@ -118,6 +118,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.user_token_model.make_user_token_model
 ::: tempest_fastapi_sdk.db.user_recovery_code_model.BaseUserRecoveryCodeModel
 ::: tempest_fastapi_sdk.db.user_recovery_code_model.make_user_recovery_code_model
+::: tempest_fastapi_sdk.db.user_webauthn_credential_model.BaseWebAuthnCredentialModel
+::: tempest_fastapi_sdk.db.user_webauthn_credential_model.make_web_authn_credential_model
 ::: tempest_fastapi_sdk.db.repository.BaseRepository
 ::: tempest_fastapi_sdk.db.expressions.F
 ::: tempest_fastapi_sdk.db.expressions.Q
@@ -531,6 +533,17 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.auth.schemas.MFAConfirmSchema
 ::: tempest_fastapi_sdk.auth.schemas.MFAVerifySchema
 ::: tempest_fastapi_sdk.auth.schemas.MFADisableSchema
+::: tempest_fastapi_sdk.auth.webauthn.WebAuthnService
+::: tempest_fastapi_sdk.auth.webauthn.WebAuthnChallengeStore
+::: tempest_fastapi_sdk.auth.webauthn.MemoryWebAuthnChallengeStore
+::: tempest_fastapi_sdk.auth.webauthn.RedisWebAuthnChallengeStore
+::: tempest_fastapi_sdk.auth.webauthn.CHALLENGE_ID_BYTES
+::: tempest_fastapi_sdk.auth.schemas.WebAuthnOptionsSchema
+::: tempest_fastapi_sdk.auth.schemas.WebAuthnRegisterCompleteSchema
+::: tempest_fastapi_sdk.auth.schemas.WebAuthnAuthenticateBeginSchema
+::: tempest_fastapi_sdk.auth.schemas.WebAuthnAuthenticateCompleteSchema
+::: tempest_fastapi_sdk.auth.schemas.WebAuthnCredentialSchema
+::: tempest_fastapi_sdk.auth.schemas.WebAuthnDeleteSchema
 
 ### `tempest_fastapi_sdk.authz`
 
