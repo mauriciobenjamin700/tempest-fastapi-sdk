@@ -115,8 +115,14 @@ Tema entregue em fatias, uma release por fatia:
   condicional (`304`) sempre ligado + cache server-side opt-in
   (`ResponseCacheStore`/`Memory`/`Redis`), respeita `no-store`/`private`/
   `Set-Cookie`, chave por `vary=`. Ver a receita HTTP (*Cache de resposta HTTP*).
-- ⏳ **Rate-limit avançado** — token-bucket + quotas por-plano/principal
-  (hoje só sliding-window). Próxima fatia.
+- ✅ **Rate-limit avançado** — entregue na **v0.216.0**. `RateLimitRule`
+  (janela deslizante, ou token bucket quando `burst` é definido),
+  `StaticRateLimitPolicy` / `PlanRateLimitPolicy` (+ `plan_by_jwt_claim` /
+  `plan_by_header` / `key_by_plan_principal`) e `MemoryQuotaStore` /
+  `RedisQuotaStore`, que decidem a lista inteira antes de escrever qualquer
+  regra — requisição barrada não gasta o orçamento das outras. Headers
+  `RateLimit-*` na resposta. Ver a receita HTTP (*Rajada tolerada: token
+  bucket*).
 
 ### Auth moderno — WebAuthn / passkeys
 

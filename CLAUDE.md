@@ -190,7 +190,21 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   opt-in server-side cache via `ResponseCacheStore`/`Memory`/`Redis`; respects
   `no-store`/`private`/`Set-Cookie`, `vary=` key),
   `BodySizeLimitMiddleware`, hardened static files, CORS,
-  health + tool-spec routers.
+  health + tool-spec routers. **Quotas (v0.216.0):** `RateLimitRule`
+  (sliding window, or **token bucket** when `burst` is set),
+  `StaticRateLimitPolicy`/`PlanRateLimitPolicy` (+ `plan_by_jwt_claim`/
+  `plan_by_header`/`key_by_plan_principal`) and `MemoryQuotaStore`/
+  `RedisQuotaStore` on `RateLimitMiddleware(policy=, quota_store=)`. The
+  store decides **every** rule before writing any — a request barred by the
+  daily ceiling must not burn a per-minute token, and only one Lua script
+  makes that atomic across replicas. `PlanRateLimitPolicy` validates its
+  mapping at construction (each defect surfaces as *unlimited* traffic) but
+  an unknown plan *name* falls back to the default. Bucket key TTL is
+  `capacity / rate`, not the window: window-derived, a 10/min bucket with
+  `burst=1000` expired an hour before it filled and came back **full**.
+  `RateLimit-*` headers describe the tightest rule; `RateLimit-Reset` is
+  emitted only where it is known. `lupa` is a dev dep so `fakeredis` runs
+  the real Lua.
 - **Pagination** — offset + cursor.
 - **Settings mixins** — every `*Settings` carries
   `title`/`description`/`examples` on every field.

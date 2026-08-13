@@ -5,6 +5,76 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.216.0] — 2026-08-13
+
+### Added
+
+- **Token buckets and per-plan quotas** (`tempest_fastapi_sdk.api.middlewares.quota`).
+  The rate limiter answered one question — *did this key exceed N requests in
+  the last W seconds?* — and two shapes a paid API needs were not expressible:
+  a burst a well-behaved client is allowed to spend at once, and several
+  limits applied together (60/min under a 1000/day ceiling, per tier).
+
+  `RateLimitRule` describes one limit: a sliding window, or a **token bucket**
+  when `burst` is set, refilling `max_requests / window_seconds` tokens per
+  second up to `burst`. A `RateLimitPolicy` resolves which rules apply —
+  `StaticRateLimitPolicy` for a single tier, `PlanRateLimitPolicy` for a
+  mapping of plan to rules, fed by `plan_by_jwt_claim` / `plan_by_header`.
+
+  ```python
+  app.add_middleware(
+      RateLimitMiddleware,
+      policy=PlanRateLimitPolicy(
+          {
+              "free": [RateLimitRule(60, 60.0), RateLimitRule(1_000, 86_400.0)],
+              "pro": [RateLimitRule(600, 60.0, burst=100)],
+          },
+          resolve=plan_by_jwt_claim(jwt, "plan"),
+          default_plan="free",
+      ),
+  )
+  ```
+
+  **A rejected request spends nothing.** A caller blocked by the daily ceiling
+  must not burn a token from the per-minute limit, or the minute drains
+  without a single request served. `MemoryQuotaStore` decides every rule under
+  one lock before writing any; `RedisQuotaStore` does it inside **one** Lua
+  script, which is the only way the whole list is atomic across replicas — a
+  client-side loop over single-rule calls is not.
+
+  `PlanRateLimitPolicy` validates its configuration at construction (empty
+  mapping, `default_plan` outside it, a plan with no rules) because each of
+  those only surfaces in production as unlimited traffic. An unknown plan
+  *name* falls back to the default instead of raising: a request is the wrong
+  place to discover a typo, and the safe answer is to limit it.
+
+  `key_by_plan_principal` prefixes the resolved plan onto the principal key,
+  so an upgrade writes to fresh counters rather than inheriting exhausted
+  ones.
+
+- **`RateLimit-Limit` / `RateLimit-Remaining` / `RateLimit-Reset` headers** on
+  every response, describing the **tightest** rule — the number a client
+  should pace itself against. `RateLimit-Reset` is emitted only where it is
+  known (always in policy mode, only on 429 in single-window mode): the
+  sliding-window store reports no reset for an accepted request, and a guessed
+  number is worse than an absent header. Turn the whole set off with
+  `limit_headers=False`.
+
+- **`lupa` in the dev group**, so `fakeredis` executes Lua. The atomicity this
+  feature promises lives *inside* the Redis script; a fake that re-implements
+  its contract in Python asserts nothing about it. Both stores now run the
+  same behavioral suite, the Redis half against the real script.
+
+### Fixed
+
+- **A slow token bucket no longer refills for free.** The bucket key's TTL is
+  the time to fill the bucket (`capacity / rate`), not the rule's window. With
+  a window-derived TTL, a bucket refilling at 10 tokens/minute with
+  `burst=1000` — over an hour to fill — expired long before that, and the next
+  request found a full bucket. The in-process store has the same fix: it
+  records, per key, the instant its state stops differing from absent, and
+  sweeps against that instead of a fixed age.
+
 ## [0.215.0] — 2026-08-09
 
 ### Changed

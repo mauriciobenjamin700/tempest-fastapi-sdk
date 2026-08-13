@@ -115,8 +115,13 @@ Delivered in slices, one release per slice:
   GET (`304`) always on + opt-in server-side cache
   (`ResponseCacheStore`/`Memory`/`Redis`), respects `no-store`/`private`/
   `Set-Cookie`, keyed by `vary=`. See the HTTP recipe (*HTTP response cache*).
-- ⏳ **Advanced rate limiting** — token-bucket + per-plan/principal quotas
-  (today: sliding-window only). Next slice.
+- ✅ **Advanced rate limiting** — shipped in **v0.216.0**. `RateLimitRule`
+  (sliding window, or a token bucket when `burst` is set),
+  `StaticRateLimitPolicy` / `PlanRateLimitPolicy` (+ `plan_by_jwt_claim` /
+  `plan_by_header` / `key_by_plan_principal`) and `MemoryQuotaStore` /
+  `RedisQuotaStore`, which decide the whole list before writing any rule — a
+  rejected request never spends the others' budget. `RateLimit-*` response
+  headers. See the HTTP recipe (*Tolerating bursts: the token bucket*).
 
 ### Modern auth — WebAuthn / passkeys
 

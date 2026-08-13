@@ -465,6 +465,17 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_jwt_subject
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_jwt_claim
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_header
+::: tempest_fastapi_sdk.api.middlewares.quota.RateLimitRule
+::: tempest_fastapi_sdk.api.middlewares.quota.QuotaResult
+::: tempest_fastapi_sdk.api.middlewares.quota.QuotaStore
+::: tempest_fastapi_sdk.api.middlewares.quota.MemoryQuotaStore
+::: tempest_fastapi_sdk.api.middlewares.quota.RedisQuotaStore
+::: tempest_fastapi_sdk.api.middlewares.quota.RateLimitPolicy
+::: tempest_fastapi_sdk.api.middlewares.quota.PlanRateLimitPolicy
+::: tempest_fastapi_sdk.api.middlewares.quota.StaticRateLimitPolicy
+::: tempest_fastapi_sdk.api.middlewares.quota.plan_by_jwt_claim
+::: tempest_fastapi_sdk.api.middlewares.quota.plan_by_header
+::: tempest_fastapi_sdk.api.middlewares.quota.key_by_plan_principal
 ::: tempest_fastapi_sdk.utils.storage_backends.LocalUploadStorage
 ::: tempest_fastapi_sdk.utils.storage_backends.MinIOUploadStorage
 ::: tempest_fastapi_sdk.utils.http_client.HTTPClient

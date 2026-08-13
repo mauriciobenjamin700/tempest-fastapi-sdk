@@ -406,6 +406,169 @@ The sliding-window semantics are identical across both stores; only where the co
     `Depends(cache.client_dependency)`, or the `SSEBroker` built in the lifespan.
     Both need the `[cache]` extra (the `redis` package).
 
+### Tolerating bursts: the token bucket
+
+A sliding window answers one question: *did this key exceed N requests in the
+last W seconds?* A client that fires 20 requests at once and then idles for a
+minute is well-behaved on average — and a strict window rejects it anyway.
+
+A **token bucket** separates the two: the sustained rate (tokens refilled per
+second) and the burst it absorbs (bucket capacity). A `RateLimitRule` with
+`burst` is a token bucket; without it, it stays a sliding window.
+
+```python
+from tempest_fastapi_sdk import RateLimitRule
+
+# 10 req/s sustained (600 per minute), absorbing a burst of 100.
+rule = RateLimitRule(max_requests=600, window_seconds=60.0, burst=100)
+```
+
+Rules reach the middleware through a **policy**. For a single-tier service,
+`StaticRateLimitPolicy` applies one list to everyone:
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    RateLimitMiddleware,
+    RateLimitRule,
+    StaticRateLimitPolicy,
+)
+
+
+def create_app() -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        policy=StaticRateLimitPolicy(
+            [RateLimitRule(max_requests=600, window_seconds=60.0, burst=100)],
+        ),
+        exempt_paths=("/health/liveness", "/health/readiness"),
+    )
+    return app
+```
+
+!!! info "`policy=` and `store=` are alternatives"
+    `max_requests` / `window_seconds` / `store` describe **one** sliding
+    window. With `policy=` you pass a *list* of limits, and the counters live
+    in `quota_store=` (`MemoryQuotaStore` by default, `RedisQuotaStore` for
+    multi-replica). Passing both raises `ValueError` at construction —
+    honoring one would silently ignore the other.
+
+### Per-plan quotas
+
+One rule list per tier, resolved per request. A plan's rules are checked
+**together**: a per-minute limit stacked under a daily ceiling.
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    PlanRateLimitPolicy,
+    RateLimitMiddleware,
+    RateLimitRule,
+    key_by_jwt_subject,
+    key_by_plan_principal,
+    plan_by_jwt_claim,
+)
+
+from src.api.dependencies.resources import get_jwt_utils
+
+
+def create_app() -> FastAPI:
+    jwt = get_jwt_utils()
+    policy = PlanRateLimitPolicy(
+        {
+            "free": [
+                RateLimitRule(60, 60.0, scope="minute"),
+                RateLimitRule(1_000, 86_400.0, scope="day"),
+            ],
+            "pro": [
+                RateLimitRule(600, 60.0, burst=100, scope="minute"),
+                RateLimitRule(100_000, 86_400.0, scope="day"),
+            ],
+        },
+        resolve=plan_by_jwt_claim(jwt, "plan"),
+        default_plan="free",
+    )
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        policy=policy,
+        key_func=key_by_plan_principal(policy, key_by_jwt_subject(jwt)),
+    )
+    return app
+```
+
+Three decisions worth understanding:
+
+- **An unknown plan falls back to `default_plan`.** A tier the configuration
+  does not know must be limited, not served unlimited — and a request is the
+  wrong place to discover a typo. What *is* validated at construction: an
+  empty `plans`, a `default_plan` outside the mapping, and a plan with no
+  rules. All three would only show up in production as unlimited traffic.
+- **A rejection spends nothing.** A request blocked by the daily ceiling must
+  not burn a token from the per-minute limit — otherwise the minute drains
+  without a single request being served. Both stores decide every rule before
+  writing any of them; `RedisQuotaStore` does it inside **one** Lua script,
+  which is the only way to keep the whole list atomic.
+- **`key_by_plan_principal` prefixes the plan onto the key.** An upgrade
+  starts writing to fresh counters instead of inheriting the exhausted ones.
+  The price is that a caller who *chooses* their own plan (a client-supplied
+  header) could reset their counters by switching — pair it with a resolver
+  your edge controls.
+
+### `RateLimit-*` headers
+
+Every response carries `RateLimit-Limit` and `RateLimit-Remaining` (turn them
+off with `limit_headers=False`), describing the **tightest** rule — the one a
+client should pace itself against. `RateLimit-Reset` is emitted only when the
+number is known: always in policy mode, and only on 429 in single-window mode.
+The sliding-window store reports no reset for an accepted request, and a
+guessed number is worse than an absent header.
+
+### Multi-replica
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+from redis.asyncio import Redis
+
+from tempest_fastapi_sdk import (
+    RateLimitMiddleware,
+    RateLimitRule,
+    RedisQuotaStore,
+    StaticRateLimitPolicy,
+)
+
+from src.core.settings import settings
+
+
+def create_app() -> FastAPI:
+    redis: Redis = Redis.from_url(settings.REDIS_URL)
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        policy=StaticRateLimitPolicy(
+            [RateLimitRule(600, 60.0, burst=100)],
+        ),
+        quota_store=RedisQuotaStore(redis),             # ← shared across replicas
+    )
+    return app
+```
+
+A window rule becomes a sorted set of timestamps; a bucket rule becomes a hash
+holding `tokens` + `ts`. The bucket key's TTL covers the time to **fill the
+bucket**, not the window: a slow bucket with a large burst (10 tokens/minute,
+`burst=1000`) takes over an hour to fill, and expiring before that would hand
+back a full bucket for free. On a Redis error, `fail_open=True` (default)
+allows the request.
+
 
 ## Request body size limit (`BodySizeLimitMiddleware`)
 

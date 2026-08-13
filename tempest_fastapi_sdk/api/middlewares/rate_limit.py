@@ -13,6 +13,11 @@ Two axes are pluggable:
   (``sub`` claim), an arbitrary JWT claim (e.g. ``tenant_id``) or a
   header value (e.g. an API key), each falling back to the IP for
   anonymous traffic.
+* **Policy** — *which* limits apply. Passing ``policy=`` swaps the
+  single sliding window for a list of
+  :class:`~tempest_fastapi_sdk.api.middlewares.quota.RateLimitRule`
+  resolved per request, which is what token buckets and per-plan quotas
+  need. See :mod:`tempest_fastapi_sdk.api.middlewares.quota`.
 """
 
 from __future__ import annotations
@@ -31,6 +36,11 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
+from tempest_fastapi_sdk.api.middlewares.quota import (
+    MemoryQuotaStore,
+    QuotaStore,
+    RateLimitPolicy,
+)
 from tempest_fastapi_sdk.utils.client_ip import get_client_ip
 
 
@@ -424,7 +434,7 @@ def key_by_jwt_subject(
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Sliding-window rate limiter with pluggable store and key.
+    """Rate limiter with pluggable store, key and limit policy.
 
     Each unique key (by default the client IP) is allowed at most
     ``max_requests`` requests inside every ``window_seconds`` window.
@@ -436,6 +446,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     to share counters across replicas. Pass a ``key_func`` (e.g.
     :func:`key_by_jwt_subject`) to limit per authenticated principal
     instead of per IP.
+
+    **Token buckets and per-plan quotas.** ``max_requests`` /
+    ``window_seconds`` describe a single sliding window. Pass ``policy=``
+    (a :class:`~tempest_fastapi_sdk.api.middlewares.quota.RateLimitPolicy`)
+    to apply a *list* of limits resolved per request instead — a token
+    bucket, a per-minute limit stacked under a daily ceiling, or a
+    different list per plan. The two are alternatives: with ``policy=``
+    set, ``max_requests`` / ``window_seconds`` / ``store`` are unused,
+    and the counters live in ``quota_store``.
 
     **Running behind a proxy:** the default IP key is the direct
     transport peer, which is the *proxy* once a reverse proxy fronts the
@@ -459,8 +478,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         key_func: Callable[[Request], str] | None = None,
         trusted_ip_header: str | None = None,
         store: RateLimitStore | None = None,
+        policy: RateLimitPolicy | None = None,
+        quota_store: QuotaStore | None = None,
         exempt_paths: tuple[str, ...] = (),
         retry_after_header: bool = True,
+        limit_headers: bool = True,
         error_message: str = "Too many requests",
     ) -> None:
         """Initialize the middleware.
@@ -480,23 +502,53 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 falling back to the transport peer. ``None`` keys on the
                 transport peer only — correct only when the app is not
                 behind a proxy.
-            store (RateLimitStore | None): Counter backend. Defaults to
-                an in-process :class:`MemoryRateLimitStore`; pass
+            store (RateLimitStore | None): Counter backend for the
+                single-window mode. Defaults to an in-process
+                :class:`MemoryRateLimitStore`; pass
                 :class:`RedisRateLimitStore` for multi-replica deploys.
+                Unused when ``policy`` is set.
+            policy (RateLimitPolicy | None): Resolves a *list* of limits
+                per request — token buckets, stacked windows, per-plan
+                quotas. See
+                :class:`~tempest_fastapi_sdk.api.middlewares.quota.PlanRateLimitPolicy`
+                and
+                :class:`~tempest_fastapi_sdk.api.middlewares.quota.StaticRateLimitPolicy`.
+                ``None`` (default) keeps the single-window behavior.
+            quota_store (QuotaStore | None): Counter backend for the
+                policy mode. Defaults to an in-process
+                :class:`~tempest_fastapi_sdk.api.middlewares.quota.MemoryQuotaStore`;
+                pass
+                :class:`~tempest_fastapi_sdk.api.middlewares.quota.RedisQuotaStore`
+                for multi-replica deploys. Ignored without ``policy``.
             exempt_paths (tuple[str, ...]): Paths to skip entirely
                 (e.g. ``("/health/liveness", "/health/readiness")``).
             retry_after_header (bool): Whether to add a
                 ``Retry-After`` header on 429 responses.
+            limit_headers (bool): Whether to advertise the limit with
+                ``RateLimit-Limit`` / ``RateLimit-Remaining`` /
+                ``RateLimit-Reset``. ``RateLimit-Reset`` is emitted only
+                when its value is known: always in policy mode, and on
+                429 in single-window mode — the sliding-window store
+                does not report a reset for an accepted request, and a
+                guessed number is worse than an absent header.
             error_message (str): Body of the 429 response.
 
         Raises:
-            ValueError: If ``max_requests`` < 1 or ``window_seconds`` <= 0.
+            ValueError: If ``max_requests`` < 1, ``window_seconds`` <= 0,
+                or both ``policy`` and ``store`` are passed (the two
+                select different counter backends, so honoring one would
+                silently ignore the other).
         """
         super().__init__(app)
         if max_requests < 1:
             raise ValueError("max_requests must be >= 1")
         if window_seconds <= 0:
             raise ValueError("window_seconds must be > 0")
+        if policy is not None and store is not None:
+            raise ValueError(
+                "pass either store= (single-window mode) or policy= with "
+                "quota_store= (policy mode), not both",
+            )
         self.max_requests: int = max_requests
         self.window_seconds: float = window_seconds
         if key_func is not None:
@@ -506,9 +558,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 request,
                 trusted_header=trusted_ip_header,
             )
+        self._policy: RateLimitPolicy | None = policy
         self._store: RateLimitStore = store or MemoryRateLimitStore()
+        self._quota_store: QuotaStore = quota_store or MemoryQuotaStore()
         self._exempt: frozenset[str] = frozenset(exempt_paths)
         self._retry_after_header: bool = retry_after_header
+        self._limit_headers: bool = limit_headers
         self._error_message: str = error_message
 
     async def dispatch(
@@ -531,12 +586,34 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return exempt_response
 
         key = self._key_func(request)
-        result = await self._store.hit(key, self.max_requests, self.window_seconds)
+        if self._policy is not None:
+            quota = await self._quota_store.consume(
+                key,
+                self._policy.rules_for(request),
+            )
+            allowed = quota.allowed
+            retry_after = quota.retry_after
+            limit = quota.limit
+            remaining = quota.remaining
+            reset: int | None = quota.reset_seconds
+        else:
+            result = await self._store.hit(key, self.max_requests, self.window_seconds)
+            allowed = result.allowed
+            retry_after = result.retry_after
+            limit = self.max_requests
+            remaining = result.remaining
+            reset = None if allowed else result.retry_after
 
-        if not result.allowed:
-            headers: dict[str, str] = {}
+        headers: dict[str, str] = {}
+        if self._limit_headers:
+            headers["RateLimit-Limit"] = str(limit)
+            headers["RateLimit-Remaining"] = str(remaining)
+            if reset is not None:
+                headers["RateLimit-Reset"] = str(reset)
+
+        if not allowed:
             if self._retry_after_header:
-                headers["Retry-After"] = str(result.retry_after)
+                headers["Retry-After"] = str(retry_after)
             return Response(
                 content=self._error_message,
                 status_code=429,
@@ -545,6 +622,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
 
         response: Response = await call_next(request)
+        response.headers.update(headers)
         return response
 
 

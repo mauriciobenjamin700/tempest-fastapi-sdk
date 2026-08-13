@@ -406,6 +406,171 @@ A semântica de janela deslizante é idêntica nos dois stores; só muda onde os
     `Depends(cache.client_dependency)`, ou o `SSEBroker` montado no lifespan.
     Os dois precisam do extra `[cache]` (o pacote `redis`).
 
+### Rajada tolerada: token bucket
+
+A janela deslizante responde uma pergunta só: *essa chave passou de N
+requisições nos últimos W segundos?* Um cliente que dispara 20 requisições de
+uma vez e depois fica um minuto quieto é bem-comportado na média — e mesmo
+assim a janela estrita o rejeita.
+
+O **token bucket** separa as duas coisas: a taxa sustentada (tokens repostos
+por segundo) e a rajada que ele absorve (capacidade do balde). Uma
+`RateLimitRule` com `burst` vira token bucket; sem `burst`, continua janela
+deslizante.
+
+```python
+from tempest_fastapi_sdk import RateLimitRule
+
+# 10 req/s sustentadas (600 por minuto), absorvendo rajada de 100.
+rule = RateLimitRule(max_requests=600, window_seconds=60.0, burst=100)
+```
+
+Regras vão para o middleware através de uma **policy**. Para um serviço de
+tier único, `StaticRateLimitPolicy` aplica a mesma lista a todo mundo:
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    RateLimitMiddleware,
+    RateLimitRule,
+    StaticRateLimitPolicy,
+)
+
+
+def create_app() -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        policy=StaticRateLimitPolicy(
+            [RateLimitRule(max_requests=600, window_seconds=60.0, burst=100)],
+        ),
+        exempt_paths=("/health/liveness", "/health/readiness"),
+    )
+    return app
+```
+
+!!! info "`policy=` e `store=` são alternativas"
+    `max_requests` / `window_seconds` / `store` descrevem **uma** janela
+    deslizante. Com `policy=` você passa uma *lista* de limites, e os
+    contadores vivem em `quota_store=` (`MemoryQuotaStore` por padrão,
+    `RedisQuotaStore` para multi-réplica). Passar os dois levanta
+    `ValueError` na construção — honrar um significaria ignorar o outro em
+    silêncio.
+
+### Cotas por plano
+
+Uma lista de regras por tier, resolvida por requisição. As regras de um plano
+são checadas **juntas**: um limite por minuto embaixo de um teto diário.
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    PlanRateLimitPolicy,
+    RateLimitMiddleware,
+    RateLimitRule,
+    key_by_jwt_subject,
+    key_by_plan_principal,
+    plan_by_jwt_claim,
+)
+
+from src.api.dependencies.resources import get_jwt_utils
+
+
+def create_app() -> FastAPI:
+    jwt = get_jwt_utils()
+    policy = PlanRateLimitPolicy(
+        {
+            "free": [
+                RateLimitRule(60, 60.0, scope="minuto"),
+                RateLimitRule(1_000, 86_400.0, scope="dia"),
+            ],
+            "pro": [
+                RateLimitRule(600, 60.0, burst=100, scope="minuto"),
+                RateLimitRule(100_000, 86_400.0, scope="dia"),
+            ],
+        },
+        resolve=plan_by_jwt_claim(jwt, "plan"),
+        default_plan="free",
+    )
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        policy=policy,
+        key_func=key_by_plan_principal(policy, key_by_jwt_subject(jwt)),
+    )
+    return app
+```
+
+Três decisões que valem entender:
+
+- **Plano desconhecido cai no `default_plan`.** Um tier que a configuração não
+  conhece precisa ser limitado, não servido sem limite — e uma requisição é o
+  lugar errado para descobrir um erro de digitação. O que *é* validado na
+  construção: `plans` vazio, `default_plan` fora do mapa, e plano sem nenhuma
+  regra. Os três só apareceriam em produção como tráfego ilimitado.
+- **Rejeição não gasta nada.** Uma requisição barrada pelo teto diário não pode
+  queimar token do limite por minuto — senão o minuto drena sem uma única
+  requisição servida. Os dois stores decidem todas as regras antes de escrever
+  qualquer uma; o `RedisQuotaStore` faz isso dentro de **um** script Lua, que é
+  a única forma de manter a lista inteira atômica.
+- **`key_by_plan_principal` prefixa o plano na chave.** Quem sobe de tier passa
+  a escrever em contadores novos em vez de herdar os esgotados. O preço é que
+  quem *escolhe* o próprio plano (um header vindo do cliente) zeraria o
+  contador só trocando de valor — use com um resolver que a sua borda controla.
+
+### Headers `RateLimit-*`
+
+Toda resposta sai com `RateLimit-Limit` e `RateLimit-Remaining` (desligue com
+`limit_headers=False`), descrevendo a regra **mais apertada** — a que o cliente
+deve usar para se auto-regular. `RateLimit-Reset` só sai quando o número é
+conhecido: sempre no modo policy, e apenas no 429 no modo janela simples. O
+store de janela deslizante não reporta reset para requisição aceita, e um
+número chutado é pior que header ausente.
+
+### Multi-réplica
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+from redis.asyncio import Redis
+
+from tempest_fastapi_sdk import (
+    RateLimitMiddleware,
+    RateLimitRule,
+    RedisQuotaStore,
+    StaticRateLimitPolicy,
+)
+
+from src.core.settings import settings
+
+
+def create_app() -> FastAPI:
+    redis: Redis = Redis.from_url(settings.REDIS_URL)
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        policy=StaticRateLimitPolicy(
+            [RateLimitRule(600, 60.0, burst=100)],
+        ),
+        quota_store=RedisQuotaStore(redis),        # ← compartilhado entre réplicas
+    )
+    return app
+```
+
+Regra de janela vira sorted set de timestamps; regra de bucket vira um hash com
+`tokens` + `ts`. O TTL da chave de bucket cobre o tempo de **encher o balde**,
+não a janela: um bucket lento com rajada grande (10 tokens/minuto, `burst=1000`)
+leva mais de uma hora para encher, e expirar antes disso devolveria um balde
+cheio de graça. Em erro do Redis, `fail_open=True` (default) libera a
+requisição.
+
 
 ## Limite de tamanho do body (`BodySizeLimitMiddleware`)
 
