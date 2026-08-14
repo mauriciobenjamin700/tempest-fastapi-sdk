@@ -350,7 +350,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   abaixo de 40 px volta com `embedding` vazio em vez de vetor da ampliação.
   Vetor de rosto é **dado biométrico sensível** — a camada de cadastro
   persistente fica para entrega separada. Receita: `docs/recipes/faces.md`.
-- **Contagem automática de falantes (v0.222.0)** — `num_speakers="auto"` é o
+
+> A pilha de voz foi construída em quatro incrementos numerados 0.219.0-0.222.0,
+> mas **nenhum deles foi ao PyPI**: a corrida de contagem por requisição nasceu
+> na primeira, então publicá-los em ordem entregaria o defeito quatro vezes
+> antes da correção. Tudo saiu na **v0.223.0**, junto com o reconhecimento
+> facial. Os números intermediários não são instaláveis.
+
+- **Contagem automática de falantes (v0.223.0)** — `num_speakers="auto"` é o
   padrão do `SpeakerDiarizer`: `estimate_speaker_count` lê a contagem do maior
   salto espectral na matriz de afinidade dos turnos, e uma segunda passada
   re-agrupa para ela. **12/12 exato** num banco de 12 gravações com verdade por
@@ -361,14 +368,23 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   −0,080–0,166 para várias, e o corte fica no meio. É escala do modelo
   embarcado, não constante universal. Descartei um banco anterior por ser
   circular (a verdade vinha do próprio diarizador).
-- **Superfície de voz (v0.221.0)** — `make_voice_router` (`POST
+- **Contagem de falantes é argumento por chamada (v0.223.0)** —
+  `SpeakerDiarizer.diarize(audio, num_speakers=...)`. Antes o transcriber
+  escrevia no diarizador compartilhado antes de usá-lo, e duas requisições
+  simultâneas liam a última escrita: quem pediu 2 falantes recebia 5, sem erro.
+  Reproduzido (`[5, 5]` onde o esperado era `[2, 5]`) e fixado em
+  `tests/genai/audio/test_concurrency.py`. O `unload()` que a mesma linha
+  chamava saiu — derrubava ~46 MB debaixo de quem estava em voo — e o par
+  `set_config`/`process` do engine ficou sob lock, porque a contagem vive na
+  config dele.
+- **Superfície de voz (v0.223.0)** — `make_voice_router` (`POST
   /voice/transcribe` + `POST`/`GET`/`DELETE` `/voice/profiles`; listar e apagar
   são direito da pessoa, e a listagem **não** devolve o embedding) e
   `tempest voice models|diarize|transcribe` (`diarize` não carrega Whisper).
   `profiles=` sem `current_user_id=` levanta na montagem — id vindo do corpo
   deixaria qualquer um gravar biometria em conta alheia. Upload limitado
   (25 MiB) **durante** a leitura, não depois.
-- **Identificação de voz (v0.220.0)** — `VoiceEmbedder`,
+- **Identificação de voz (v0.223.0)** — `VoiceEmbedder`,
   `VoiceProfileService` (cadastrar/identificar/apagar), `BaseVoiceProfileModel`
   + `make_voice_profile_model`, e `ConversationTranscriber.transcribe(
   identify_with=, session=, user_ids=)` que nomeia a conversa inteira numa
@@ -381,7 +397,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   — não exemplo — porque apagar é direito incondicional (Art. 18, VI). Perfil
   de outro modelo nunca é comparado (`model_name` por linha, `stale_profiles()`
   acha quem recadastrar); cadastro abaixo de 3 s é recusado.
-- **Diarização (v0.219.0, `[genai-diarization]` = sherpa-onnx)** —
+- **Diarização (v0.223.0, `[genai-diarization]` = sherpa-onnx)** —
   `tempest_fastapi_sdk.genai.audio`: `SpeakerDiarizer` (quem falou quando),
   `ConversationTranscriber` (junta com o `SpeechToText` existente por
   sobreposição de tempo), `DiarizedTranscription`/`SpeakerTurn` com
