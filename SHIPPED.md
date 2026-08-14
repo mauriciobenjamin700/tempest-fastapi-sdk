@@ -336,6 +336,23 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (unit/`@model`/`@gpu`) + plans live under `planning/genai/`. **Fix:** `httpx`
   + `email-validator` are base deps so a minimal/`[genai]` install imports
   (v0.151.1).
+- **Diarização (v0.219.0, `[genai-diarization]` = sherpa-onnx)** —
+  `tempest_fastapi_sdk.genai.audio`: `SpeakerDiarizer` (quem falou quando),
+  `ConversationTranscriber` (junta com o `SpeechToText` existente por
+  sobreposição de tempo), `DiarizedTranscription`/`SpeakerTurn` com
+  `transcript()` e `by_speaker()`, `ensure_models()` (46 MB, fora do wheel,
+  honra `TEMPEST_VOICE_MODEL_DIR`). **sherpa-onnx e não pyannote**: 1
+  dependência contra 21 (torch/lightning/matplotlib/otel/SDK pago) e modelos
+  abertos contra pipeline gated no HuggingFace; RTF 0,125 em CPU. Transcreve a
+  gravação **uma vez** e atribui depois — trecho que atravessa troca de falante
+  cai em quem tem a maior parte, e fala fora de todo turno volta com
+  `speaker = -1` em vez de sumir. Limiar padrão **0,9** (não o 0,5 do
+  sherpa-onnx) por varredura em 3 gravações onde nenhum valor acerta as três;
+  passar `num_speakers` é a diferença entre certo e errado. Índices de falante
+  renumerados densos — o agrupamento devolvia `0,1,2,4,7,8,9`.
+  `sherpa-onnx-core` é declarado explicitamente: o sdist não declara a
+  dependência que os wheels declaram, e o uv lockava do sdist, deixando o
+  extra quebrado no primeiro uso.
 - **GenAI weight lifecycle (v0.176.0)** — `tempest_fastapi_sdk.genai.hub`,
   extra `[genai-hub]` (`huggingface-hub` alone; contained in `[genai]`, and
   the module imports with neither). `ModelRef` carries the weight identity

@@ -29,6 +29,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | local (heavy) GenAI: `TextGenerator`, `Embedder`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
 | `[genai-audio]` | `faster-whisper`, `coqui-tts` | STT (Whisper) + TTS (Coqui) |
 | `[genai-chroma]` | `chromadb` | Chroma vector store for RAG |
+| `[genai-diarization]` | `sherpa-onnx` | Speaker diarization (who spoke when) via `sherpa-onnx` on ONNX Runtime, no PyTorch: `SpeakerDiarizer`, `ConversationTranscriber`. Models (46 MB) fetched by `ensure_models()` |
 | `[genai-hub]` | `huggingface-hub` | weight lifecycle: `resolve_revision` (pin a sha), `download_model` (fetch before serving, with a disk preflight), `list_cached_models`/`remove_cached_model`, `tempest model pull`/`cache-list`/`cache-rm` |
 | `[genai-image]` | `diffusers`, `pillow` | local image generation: `ImageGenerator` (`generate` text→image, `edit` image→image), `ImageGenerationConfig`, `POST /image` route |
 | `[genai-ollama]` | `httpx` | Ollama backend: `OllamaGenerator`, `OllamaEmbedder` |

@@ -1490,6 +1490,118 @@ direto quando é síncrono — o mesmo código serve aos dois.
     do `await redis.connect()` no lifespan — antes disso, `.client` levanta
     `RuntimeError`. Precisa do extra `[cache]` (o pacote `redis`) além do `[genai]`.
 
+## Quem falou o quê: diarização
+
+Transcrever responde *o que foi dito*. Diarizar responde *quem disse* —
+recorta a gravação em turnos e agrupa as vozes. Junto, dá a ata de uma
+reunião ou o registro de uma ligação:
+
+```python
+# scripts/ata.py
+
+import asyncio
+
+from tempest_fastapi_sdk.genai.audio import (
+    ConversationTranscriber,
+    SpeakerDiarizer,
+    SpeechToText,
+)
+
+
+async def main() -> None:
+    """Transcribe a two-party call, attributing each line."""
+    transcriber = ConversationTranscriber(
+        stt=SpeechToText(model_size="small"),
+        diarizer=SpeakerDiarizer(num_speakers=2),
+    )
+    conversa = await transcriber.transcribe("ligacao.wav", language="pt")
+    print(conversa.transcript())
+    print(conversa.by_speaker())
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```text
+Falante 0: Bom dia, em que posso ajudar?
+Falante 1: Queria saber sobre a segunda via do boleto.
+```
+
+!!! info "Extra necessário"
+    ```bash
+    uv add "tempest-fastapi-sdk[genai-audio,genai-diarization]"
+    ```
+    `[genai-audio]` traz o Whisper (transcrição), `[genai-diarization]`
+    traz o `sherpa-onnx` (quem falou). Nenhum dos dois usa PyTorch.
+
+### Por que sherpa-onnx e não pyannote
+
+Medido, não suposto. O `pyannote.audio` 4.0.7 declara **21 dependências**
+de runtime — `torch>=2.8`, `lightning`, `matplotlib`, três pacotes de
+OpenTelemetry e um cliente da API paga do fornecedor — e o pipeline
+pré-treinado dele é **gated** no HuggingFace: o build do container precisa
+de token e de licença aceita na mão.
+
+O `sherpa-onnx` declara **uma** dependência, roda em ONNX Runtime sem
+PyTorch, e os modelos são abertos. Numa gravação de 57 s com 4 falantes
+separou os quatro com **RTF 0,125** em CPU — oito vezes mais rápido que
+tempo real.
+
+### Os modelos não vêm no wheel
+
+São 46 MB. Baixe uma vez, de preferência no build:
+
+```python
+from tempest_fastapi_sdk.genai.audio import ensure_models
+
+ensure_models()  # honra TEMPEST_VOICE_MODEL_DIR
+```
+
+Deixar para a primeira requisição faz um usuário pagar o download dentro
+do timeout dele.
+
+### Passe o número de falantes quando souber
+
+Esta é a parte frágil do pipeline, e vale dizer com números. Varrendo o
+limiar de agrupamento em três gravações de referência (contagem correta
+entre parênteses):
+
+| limiar | 4 falantes (zh) | 2 falantes (en) #1 | 2 falantes (en) #2 |
+| ------ | --------------- | ------------------ | ------------------ |
+| 0,5    | 7               | **2**              | 4                  |
+| 0,7    | 5               | **2**              | 4                  |
+| 0,9    | **4**           | 1                  | **2**              |
+| 1,1    | 1               | 1                  | **2**              |
+
+**Nenhum valor acerta os três.** O padrão do SDK é 0,9 — acerta dois, e
+erra juntando falantes em vez de estourar em sete. O padrão do próprio
+sherpa-onnx (0,5) deu sete grupos para quatro pessoas.
+
+Numa ligação de duas pontas, num atendimento, numa entrevista, você
+**sabe** quantas pessoas há:
+
+```python
+from tempest_fastapi_sdk.genai.audio import SpeakerDiarizer
+
+diarizer = SpeakerDiarizer(num_speakers=2)
+```
+
+Com isso o agrupamento para de adivinhar e a atribuição fica correta.
+
+### Como a atribuição funciona, e onde ela erra
+
+A gravação é transcrita **uma vez**, não uma vez por turno: entregar
+trechos de dois segundos ao Whisper joga fora o contexto que ele usa para
+decidir pontuação e grafia, e custa uma inferência por turno. Depois cada
+trecho transcrito vai para o turno com quem ele mais se sobrepõe no tempo.
+
+O preço dessa escolha: um trecho do Whisper pode **atravessar** uma troca
+de falante, e aí ele inteiro cai em quem detém a maior parte. Um turno que
+o diarizador descartou por ser curto demais ainda transcreve — e esse
+texto sai com `speaker = -1`, nunca some. Perder palavra caladamente é
+pior do que admitir que não se sabe quem falou.
+
 ## Recap
 
 - **`GenerationConfig`** — parâmetros de geração tipados e reutilizáveis

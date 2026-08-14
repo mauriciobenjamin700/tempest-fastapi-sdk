@@ -5,6 +5,74 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.219.0] — 2026-08-14
+
+### Added
+
+- **Speaker diarization — who spoke when** (`tempest_fastapi_sdk.genai.audio`,
+  extra `[genai-diarization]`). Transcription already answered *what was said*;
+  `SpeakerDiarizer` cuts a recording into turns and clusters the voices, and
+  `ConversationTranscriber` joins the two into a transcript attributed line by
+  line.
+
+  ```python
+  transcriber = ConversationTranscriber(
+      stt=SpeechToText(model_size="small"),
+      diarizer=SpeakerDiarizer(num_speakers=2),
+  )
+  conversation = await transcriber.transcribe("call.wav", language="pt")
+  print(conversation.transcript())     # "Falante 0: ...\nFalante 1: ..."
+  print(conversation.by_speaker())     # {0: "...", 1: "..."}
+  ```
+
+  **The engine is `sherpa-onnx`, measured against the alternative.**
+  `pyannote.audio` 4.0.7 declares 21 runtime dependencies — `torch>=2.8`,
+  `lightning`, `matplotlib`, three OpenTelemetry packages and a client for its
+  vendor's paid API — and its pretrained pipeline is gated on HuggingFace, so a
+  container build needs a token and a manually accepted licence. `sherpa-onnx`
+  declares one dependency, runs on ONNX Runtime with no PyTorch, and its models
+  are open. On a 57-second four-speaker recording it separated all four at RTF
+  0.125 on CPU.
+
+  **The recording is transcribed once, not once per turn**, then attributed by
+  timeline overlap. Handing Whisper two-second clips throws away the context it
+  uses for punctuation and costs an inference per turn. The cost of that choice
+  is stated rather than hidden: a Whisper span straddling a speaker change
+  lands wholly on whoever holds more of it, and speech the diarizer dropped as
+  too short comes back as `speaker = -1` instead of vanishing.
+
+  Models are not bundled — 46 MB does not belong in a wheel most services
+  install for other reasons. `ensure_models()` fetches them once, honoring
+  `TEMPEST_VOICE_MODEL_DIR` so a deployment can bake them into an image layer.
+
+- **`DiarizedTranscription` / `SpeakerTurn`** with `transcript()` (labelled
+  lines) and `by_speaker()` (everything one person said).
+
+### Changed
+
+- **The clustering threshold defaults to 0.9, not sherpa-onnx's 0.5.** Swept
+  over three reference recordings, no single value is correct on all of them:
+  0.5 produced seven clusters for four speakers, while 0.9 is right on two of
+  three and fails by *merging* rather than by inventing participants. The
+  measurement table is in the docstring and the recipe, and the docs say
+  plainly that passing `num_speakers` is the difference between right and
+  wrong, not an optimization.
+
+- **`sherpa-onnx-core` is declared explicitly in the extra.** `sherpa-onnx`
+  keeps its compiled libraries there and its wheels declare the dependency, but
+  its sdist metadata does not — and uv locks from the sdist, so `uv sync`
+  installed the wrapper alone and the first call died with
+  `ImportError: libonnxruntime.so: cannot open shared object file`. Naming it
+  is what makes the extra installable; it is not redundant.
+
+### Fixed
+
+- **Speaker indices are dense.** The clustering returns whatever its internal
+  bookkeeping produced — a four-speaker recording yielded `0, 1, 2, 4, 7, 8,
+  9`. Passed through, the gaps read as participants who were present and
+  silent, and `num_speakers` stopped matching the largest index. Turns are now
+  renumbered `0..n-1` in order of first appearance.
+
 ## [0.218.0] — 2026-08-13
 
 ### Added

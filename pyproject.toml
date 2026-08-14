@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.218.0"
+version = "0.219.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -130,6 +130,20 @@ genai-rag = [
 genai-audio = [
     "faster-whisper>=1.0.0",
     "coqui-tts>=0.24.0",
+]
+genai-diarization = [
+    "sherpa-onnx>=1.12.0",
+    # sherpa-onnx ships the Python wrapper and keeps the compiled
+    # libraries (including libonnxruntime.so) in sherpa-onnx-core. Its
+    # wheels declare that dependency but its sdist metadata does not,
+    # and uv locks from the sdist -- so `uv sync` installs the wrapper
+    # alone and the first call dies with
+    # `ImportError: libonnxruntime.so: cannot open shared object file`.
+    # Naming it here is what makes the extra installable; do not drop
+    # it as redundant. The version stays open because sherpa-onnx pins
+    # the exact match itself.
+    "sherpa-onnx-core",
+    "numpy>=1.24.0",
 ]
 genai-ollama = [
     "httpx>=0.28.0",
@@ -297,6 +311,8 @@ dev = [
     "prometheus-client>=0.20.0",
     "pyotp>=2.9.0",
     "fido2>=2.0.0",
+    "sherpa-onnx>=1.12.0",
+    "sherpa-onnx-core",
     "email-validator>=2.0.0",
     "opentelemetry-sdk>=1.27.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.27.0",
@@ -460,6 +476,8 @@ module = [
     "yaml.*",
     "weasyprint",
     "weasyprint.*",
+    "sherpa_onnx",
+    "sherpa_onnx.*",
 ]
 ignore_missing_imports = true
 
