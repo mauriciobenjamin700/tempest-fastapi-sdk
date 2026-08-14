@@ -1709,6 +1709,59 @@ Swapping the embedding model invalidates every enrolled profile: the vectors
 stop being comparable and people silently stop being recognised.
 `stale_profiles()` finds who needs re-enrolling.
 
+### Serving it over HTTP and from the shell
+
+```python
+# src/api/app.py
+
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk.genai.audio import make_voice_router
+
+from src.api.dependencies.auth import current_user_id
+from src.core.resources import db, profiles, transcriber
+
+
+def create_app() -> FastAPI:
+    """Mount the voice routes behind the service's own auth."""
+    app = FastAPI()
+    app.include_router(
+        make_voice_router(
+            session_factory=db.session_dependency,
+            transcriber=transcriber,
+            profiles=profiles,
+            current_user_id=current_user_id,
+            dependencies=[Depends(current_user_id)],
+        ),
+    )
+    return app
+```
+
+Four routes: `POST /voice/transcribe`, plus `POST` / `GET` / `DELETE`
+`/voice/profiles`.
+
+!!! warning "`current_user_id` is required alongside `profiles`"
+    Enrolling or erasing against a user id taken from the request **body**
+    would let anyone write biometric data into somebody else's account. The
+    router refuses that combination at wiring time — failing in production
+    would be too late.
+
+The listing and deletion routes are not a courtesy: they are the person's right
+over their own data. And the listing **does not return the embedding** — they
+need to know the profile exists, not to receive a copy of their own biometric
+template over HTTP.
+
+From the shell:
+
+```bash
+tempest voice models                        # fetch the models (do this at build)
+tempest voice diarize meeting.wav -n 2      # who spoke when
+tempest voice transcribe meeting.wav -n 2   # who said what
+```
+
+`diarize` never loads Whisper — it is the quick way to check the speaker count
+and threshold before paying for transcription.
+
 ## Recap
 
 - **`GenerationConfig`** — typed, reusable generation parameters instead

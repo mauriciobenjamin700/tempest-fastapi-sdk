@@ -336,6 +336,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (unit/`@model`/`@gpu`) + plans live under `planning/genai/`. **Fix:** `httpx`
   + `email-validator` are base deps so a minimal/`[genai]` install imports
   (v0.151.1).
+- **Superfície de voz (v0.221.0)** — `make_voice_router` (`POST
+  /voice/transcribe` + `POST`/`GET`/`DELETE` `/voice/profiles`; listar e apagar
+  são direito da pessoa, e a listagem **não** devolve o embedding) e
+  `tempest voice models|diarize|transcribe` (`diarize` não carrega Whisper).
+  `profiles=` sem `current_user_id=` levanta na montagem — id vindo do corpo
+  deixaria qualquer um gravar biometria em conta alheia. Upload limitado
+  (25 MiB) **durante** a leitura, não depois.
 - **Identificação de voz (v0.220.0)** — `VoiceEmbedder`,
   `VoiceProfileService` (cadastrar/identificar/apagar), `BaseVoiceProfileModel`
   + `make_voice_profile_model`, e `ConversationTranscriber.transcribe(

@@ -25,6 +25,7 @@ from tempest_fastapi_sdk.cli.model import model_app
 from tempest_fastapi_sdk.cli.pdf import pdf_app
 from tempest_fastapi_sdk.cli.secrets import secrets_app
 from tempest_fastapi_sdk.cli.user import user_app
+from tempest_fastapi_sdk.cli.voice import voice_app
 
 # Typer >= 0.13 vendors its own copy of Click under ``typer._click``, so a
 # raised usage error is a ``typer._click.exceptions.UsageError`` — NOT the
@@ -149,6 +150,7 @@ app.add_typer(user_app, name="user")
 app.add_typer(secrets_app, name="secrets")
 app.add_typer(model_app, name="model")
 app.add_typer(pdf_app, name="pdf")
+app.add_typer(voice_app, name="voice")
 
 
 def _print_version(value: bool) -> None:

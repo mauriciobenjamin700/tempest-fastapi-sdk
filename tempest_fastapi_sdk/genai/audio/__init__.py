@@ -47,6 +47,21 @@ from tempest_fastapi_sdk.genai.audio.profiles import pack_embedding as pack_embe
 from tempest_fastapi_sdk.genai.audio.profiles import (
     unpack_embedding as unpack_embedding,
 )
+from tempest_fastapi_sdk.genai.audio.router import (
+    DEFAULT_MAX_UPLOAD_BYTES as DEFAULT_MAX_UPLOAD_BYTES,
+)
+from tempest_fastapi_sdk.genai.audio.router import (
+    EnrollmentResponseSchema as EnrollmentResponseSchema,
+)
+from tempest_fastapi_sdk.genai.audio.router import (
+    ErasureResponseSchema as ErasureResponseSchema,
+)
+from tempest_fastapi_sdk.genai.audio.router import (
+    VoiceProfileSchema as VoiceProfileSchema,
+)
+from tempest_fastapi_sdk.genai.audio.router import (
+    make_voice_router as make_voice_router,
+)
 from tempest_fastapi_sdk.genai.audio.schemas import (
     DiarizedTranscription as DiarizedTranscription,
 )
@@ -81,6 +96,7 @@ from tempest_fastapi_sdk.genai.audio.voiceprint import (
 __all__: list[str] = [
     "DEFAULT_CLUSTERING_THRESHOLD",
     "DEFAULT_MATCH_THRESHOLD",
+    "DEFAULT_MAX_UPLOAD_BYTES",
     "DEFAULT_MODEL_NAME",
     "DIARIZATION_SAMPLE_RATE",
     "EMBEDDING_DIMENSIONS",
@@ -91,6 +107,8 @@ __all__: list[str] = [
     "ConversationTranscriber",
     "DiarizationModel",
     "DiarizedTranscription",
+    "EnrollmentResponseSchema",
+    "ErasureResponseSchema",
     "Language",
     "LanguagePreset",
     "SpeakerDiarizer",
@@ -101,11 +119,13 @@ __all__: list[str] = [
     "TranscriptionSegment",
     "VoiceEmbedder",
     "VoiceMatch",
+    "VoiceProfileSchema",
     "VoiceProfileService",
     "align_turns",
     "cosine_similarity",
     "default_cache_dir",
     "ensure_models",
+    "make_voice_router",
     "pack_embedding",
     "preset_for",
     "resolve_audio_device",

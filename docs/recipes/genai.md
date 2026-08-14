@@ -1712,6 +1712,57 @@ Trocar o modelo de embedding invalida todo perfil já cadastrado: os vetores
 deixam de ser comparáveis e as pessoas silenciosamente param de ser
 reconhecidas. `stale_profiles()` encontra quem precisa recadastrar.
 
+### Servindo por HTTP e pela linha de comando
+
+```python
+# src/api/app.py
+
+from fastapi import Depends, FastAPI
+
+from tempest_fastapi_sdk.genai.audio import make_voice_router
+
+from src.api.dependencies.auth import current_user_id
+from src.core.resources import db, perfis, transcriber
+
+
+def create_app() -> FastAPI:
+    """Mount the voice routes behind the service's own auth."""
+    app = FastAPI()
+    app.include_router(
+        make_voice_router(
+            session_factory=db.session_dependency,
+            transcriber=transcriber,
+            profiles=perfis,
+            current_user_id=current_user_id,
+            dependencies=[Depends(current_user_id)],
+        ),
+    )
+    return app
+```
+
+Quatro rotas: `POST /voice/transcribe`, e `POST` / `GET` / `DELETE`
+`/voice/profiles`.
+
+!!! warning "`current_user_id` é obrigatório junto de `profiles`"
+    Cadastrar ou apagar usando um id vindo do **corpo** da requisição deixaria
+    qualquer um gravar biometria na conta alheia. O router recusa essa
+    combinação na hora da montagem — falha em produção seria tarde demais.
+
+As rotas de listar e apagar não são cortesia: são o direito da pessoa sobre o
+próprio dado. E a listagem **não devolve o embedding** — ela precisa saber que
+o perfil existe, não receber uma cópia do próprio template biométrico por HTTP.
+
+Da linha de comando:
+
+```bash
+tempest voice models                        # baixa os modelos (faça no build)
+tempest voice diarize reuniao.wav -n 2      # quem falou quando
+tempest voice transcribe reuniao.wav -n 2   # quem disse o quê
+```
+
+`diarize` não carrega o Whisper — é o jeito rápido de conferir se a contagem de
+falantes e o limiar estão certos antes de pagar pela transcrição.
+
 ## Recap
 
 - **`GenerationConfig`** — parâmetros de geração tipados e reutilizáveis

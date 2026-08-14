@@ -5,6 +5,37 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.221.0] — 2026-08-14
+
+### Added
+
+- **`make_voice_router`** — opt-in FastAPI routes for the voice pipeline:
+  `POST /voice/transcribe` (upload a recording, get it back split by speaker)
+  plus `POST` / `GET` / `DELETE` `/voice/profiles`.
+
+  The listing and deletion routes exist because the person owns this data, not
+  as a convenience. And the listing **never returns the embedding**: they need
+  to know a profile exists, not to receive a copy of their own biometric
+  template over HTTP.
+
+- **`tempest voice models|diarize|transcribe`** — the same pipeline from a
+  shell. `diarize` never loads Whisper, which makes it the quick way to check
+  whether the speaker count and threshold are right before paying for
+  transcription. `models` fetches the weights, which belongs in a build step.
+
+### Changed
+
+- **`profiles=` without `current_user_id=` raises at wiring time.** Enrolling
+  or erasing against a user id taken from the request body would let any caller
+  write biometric data into somebody else's account. Failing when the app is
+  built is the only useful moment to fail — in production it is already
+  shipped.
+
+- **Uploads are bounded (25 MiB default) while reading, not after.** Audio is
+  held in memory to be decoded, so an unbounded upload exhausts the worker; and
+  measuring after reading the whole body means the oversized upload already
+  occupied the memory it was supposed to be denied.
+
 ## [0.220.0] — 2026-08-14
 
 ### Added
