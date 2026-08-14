@@ -122,6 +122,7 @@ plugins:
               - Downloads: recipes/downloads.md
               - Enum columns (safe on both databases): recipes/enum-columns.md
               - Errors in OpenAPI (Swagger): recipes/openapi-errors.md
+              - Face recognition: recipes/faces.md
               - Feature flags: recipes/feature-flags.md
               - File in the service (mixin): recipes/stored-files.md
               - Geolocation (distance + time): recipes/geo.md
@@ -406,6 +407,7 @@ nav:
       - "Permissões object-level": recipes/authz.md
       - "Pesos de modelos (ciclo no Hub)": recipes/model-weights.md
       - "Planos de query (EXPLAIN)": recipes/query-plans.md
+      - "Reconhecimento facial": recipes/faces.md
       - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md
       - Segurança: recipes/security.md
       - "Server-Sent Events (SSE)": recipes/sse.md

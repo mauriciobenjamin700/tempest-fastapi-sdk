@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.222.0"
+version = "0.223.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -143,6 +143,11 @@ genai-diarization = [
     # it as redundant. The version stays open because sherpa-onnx pins
     # the exact match itself.
     "sherpa-onnx-core",
+    "numpy>=1.24.0",
+]
+faces = [
+    "onnxruntime>=1.28",
+    "pillow>=10.0.0",
     "numpy>=1.24.0",
 ]
 genai-ollama = [

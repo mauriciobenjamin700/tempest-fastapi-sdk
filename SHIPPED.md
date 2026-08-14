@@ -336,6 +336,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (unit/`@model`/`@gpu`) + plans live under `planning/genai/`. **Fix:** `httpx`
   + `email-validator` are base deps so a minimal/`[genai]` install imports
   (v0.151.1).
+- **Reconhecimento facial (v0.223.0, extra `[faces]`)** —
+  `tempest_fastapi_sdk.faces`: `FaceRecognizer` (`detect` sem biometria /
+  `recognize` / `embed_face` que recusa entrada ruim), `compare_faces`,
+  `FaceDetector` (SCRFD decodificado à mão + NMS), `align_face` +
+  `similarity_transform` (Umeyama; `ARCFACE_TEMPLATE` portado e pinado),
+  packs `buffalo_s` 16 MB (padrão, medido) e `buffalo_l` 191 MB.
+  **Sem opencv, sem torch, sem biblioteca de sistema.** Folga medida: mesma
+  pessoa 0,877–0,962 contra máx 0,180 entre diferentes — limiar 0,45 no meio de
+  ~0,7, ao contrário da diarização, onde é apertado. `insightface` **medido e
+  rejeitado**: 558 MB em 24 pacotes e `opencv-python` ligando contra 5 libs GL.
+  Corrigido: recorte apertado 112×112 dava 0 faces (moldura de 20% → 1), e face
+  abaixo de 40 px volta com `embedding` vazio em vez de vetor da ampliação.
+  Vetor de rosto é **dado biométrico sensível** — a camada de cadastro
+  persistente fica para entrega separada. Receita: `docs/recipes/faces.md`.
 - **Contagem automática de falantes (v0.222.0)** — `num_speakers="auto"` é o
   padrão do `SpeakerDiarizer`: `estimate_speaker_count` lê a contagem do maior
   salto espectral na matriz de afinidade dos turnos, e uma segunda passada

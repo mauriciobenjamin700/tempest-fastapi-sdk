@@ -5,6 +5,71 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.223.0] — 2026-08-14
+
+### Added
+
+- **Face detection and recognition** (`tempest_fastapi_sdk.faces`, extra
+  `[faces]`). `FaceRecognizer` finds faces, aligns each one and turns it into a
+  comparable vector; `compare_faces` says whether two vectors are the same
+  person.
+
+  ```python
+  recognizer = FaceRecognizer()
+  faces = await recognizer.recognize("group.jpg")     # largest first
+  same = compare_faces(faces[0].embedding, faces[1].embedding)
+  ```
+
+  **Measured separation** on a six-person group photo with the default pack:
+  the same face across a re-encoded (0.962), rotated (0.952) and tightly
+  cropped (0.877) version, against a maximum of **0.180** across all fifteen
+  pairs of different people. The default threshold of 0.45 sits in the middle
+  of a gap of nearly 0.7, which makes it a safe default rather than a tuned one
+  — the opposite of the speaker-diarization case, and the docs say so because
+  the intuition does not transfer.
+
+  `detect()` returns boxes, scores and landmarks and **no vectors**, for the
+  questions that do not need biometrics: is there a face, how many people,
+  where to crop.
+
+  `embed_face()` is the enrolment shape and **refuses** an image with no face
+  or with only a tiny one. At enrolment a bad vector is not a bad answer, it is
+  a permanently wrong profile.
+
+- **Two model packs, defaulting to the small one.** Measured: `buffalo_s` is
+  16 MB and 15 ms against `buffalo_l` at 191 MB and 54 ms, and its separation
+  differs by 0.02 at either bound. Twelve times smaller for that is not a trade
+  worth refusing; the large pack is one keyword away for small, dim or turned
+  faces. Weights are fetched by `ensure_models()`, which belongs in a build
+  step.
+
+### Changed
+
+- **`insightface` was measured and rejected.** It packages this pipeline, and
+  it installs **558 MB across 24 packages** — and the `opencv-python` it
+  requires links against five GL libraries, so a slim container would need
+  system graphics libraries to recognise a face. Running the same ONNX models
+  directly costs `onnxruntime` + `numpy` + `pillow`, which the SDK already
+  carries, and no system libraries at all. The price is the SCRFD decoding and
+  the alignment transform, which are closed-form geometry rather than a long
+  tail of correctness.
+
+  Rejected before it: `facenet-pytorch` (pins `torch<2.3.0`, capping every
+  consumer), `deepface` (TensorFlow) and `face-recognition` (dlib, compiled).
+
+### Fixed
+
+- **A tight crop is detectable.** A 112×112 portrait whose face touches the
+  frame returned **zero** detections; the detector needs context around a face
+  and an already-tight crop has none to give. Every image now gets a 20% margin
+  before inference, and one below 320 px is upscaled first — measured to take
+  that case from zero faces to one, matching the original at 0.877.
+
+- **A face too small to embed says so** rather than returning a vector that
+  describes its own upscaling. Below 40 px on a side the face comes back with
+  an empty `embedding`, so a caller can tell "nobody recognisable" from "no
+  face at all".
+
 ## [0.222.0] — 2026-08-14
 
 ### Changed

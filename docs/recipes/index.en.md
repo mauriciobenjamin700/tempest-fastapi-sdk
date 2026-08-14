@@ -366,6 +366,7 @@ come back here to plug in each capability as you need it.
 | **[Downloads »](downloads.md)** | `DownloadUtils` — `file_response`, `stream`, `build_content_disposition`, path-traversal safe |
 | **[Enum columns (safe on both databases) »](enum-columns.md)** | `Mapped[MyEnum]` storing the `value`, native `ENUM` on PostgreSQL and a `CHECK` on SQLite, `enum_column()`, `op.replace_enum` + `sync_enum_types` for the migration autogenerate cannot see |
 | **[Errors in OpenAPI (Swagger) »](openapi-errors.md)** | `error_responses`, `@raises`, `TempestAPIRouter`, `ErrorResponseSchema`, `tempest openapi-errors --fix` |
+| **[Face recognition »](faces.md)** | `FaceRecognizer` (detect / embed / compare), `compare_faces`, 16 MB or 191 MB packs, no opencv and no torch |
 | **[Feature flags »](feature-flags.md)** | `FeatureFlags`, env/Redis/composite backends, `make_flag_dependency` |
 | **[File store (unified) »](file-store.md)** | `FileStoreUtils` — upload + download + presign over a single backend |
 | **[Geolocation (distance + travel time) »](geo.md)** | `haversine_km`, `estimate_travel`, `OSRMBackend`, `NominatimBackend`, `GeoPointMixin` / `GeoRepositoryMixin` |

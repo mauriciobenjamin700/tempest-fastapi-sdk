@@ -26,6 +26,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
 | `[websocket]` | `websockets` | Driver de protocolo do `make_websocket_router` — sem ele o handshake devolve 404 |
 | `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (com `render_template` + templates Jinja2) |
+| `[faces]` | `onnxruntime`, `pillow`, `numpy` | reconhecimento facial em ONNX Runtime, sem opencv e sem torch: `FaceRecognizer` (detectar/embutir/comparar), `compare_faces`. Modelos de 16 MB baixados por `ensure_models()`. **Nenhuma biblioteca de sistema** |
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | GenAI local (pesado): `TextGenerator`, `Embedder`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
 | `[genai-audio]` | `faster-whisper`, `coqui-tts` | STT (Whisper) + TTS (Coqui) |
 | `[genai-chroma]` | `chromadb` | vector store Chroma pro RAG |

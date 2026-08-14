@@ -26,6 +26,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
 | `[websocket]` | `websockets` | Protocol driver for `make_websocket_router` — without it the handshake 404s |
 | `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (with `render_template` + Jinja2 templates) |
+| `[faces]` | `onnxruntime`, `pillow`, `numpy` | Face recognition on ONNX Runtime, no opencv and no torch: `FaceRecognizer` (detect/embed/compare), `compare_faces`. 16 MB models fetched by `ensure_models()`. **No system libraries** |
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | local (heavy) GenAI: `TextGenerator`, `Embedder`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
 | `[genai-audio]` | `faster-whisper`, `coqui-tts` | STT (Whisper) + TTS (Coqui) |
 | `[genai-chroma]` | `chromadb` | Chroma vector store for RAG |
