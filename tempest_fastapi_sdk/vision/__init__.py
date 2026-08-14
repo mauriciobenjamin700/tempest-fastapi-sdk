@@ -26,21 +26,41 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.vision.mapping import (
-    to_classification_schema,
-    to_detection_schemas,
-    to_segmentation_schemas,
+    to_classification_schema as to_classification_schema,
+)
+from tempest_fastapi_sdk.vision.mapping import (
+    to_detection_schemas as to_detection_schemas,
+)
+from tempest_fastapi_sdk.vision.mapping import (
+    to_segmentation_schemas as to_segmentation_schemas,
 )
 from tempest_fastapi_sdk.vision.router import make_vision_router as make_vision_router
 from tempest_fastapi_sdk.vision.schemas import (
-    BoundingBoxSchema,
-    ClassificationSchema,
-    ClassProbabilitySchema,
-    DetectionSchema,
-    SegmentationSchema,
+    BoundingBoxSchema as BoundingBoxSchema,
+)
+from tempest_fastapi_sdk.vision.schemas import (
+    ClassificationSchema as ClassificationSchema,
+)
+from tempest_fastapi_sdk.vision.schemas import (
+    ClassProbabilitySchema as ClassProbabilitySchema,
+)
+from tempest_fastapi_sdk.vision.schemas import (
+    DetectionSchema as DetectionSchema,
+)
+from tempest_fastapi_sdk.vision.schemas import (
+    SegmentationSchema as SegmentationSchema,
 )
 
 if TYPE_CHECKING:
-    from ort_vision_sdk import Classifier, Detector, Segmenter
+    from ort_vision_sdk import (
+        Classifier as Classifier,
+    )
+    from ort_vision_sdk import (
+        Detector as Detector,
+    )
+    from ort_vision_sdk import (
+        Segmenter as Segmenter,
+    )
 
 _LAZY_EXPORTS: frozenset[str] = frozenset({"Classifier", "Detector", "Segmenter"})
 

@@ -7,9 +7,13 @@ conventions without forking the wire protocol. Install with the
 """
 
 from tempest_fastapi_sdk.storage.minio_client import (
-    AsyncMinIOClient,
-    ObjectStat,
-    PutObjectItem,
+    AsyncMinIOClient as AsyncMinIOClient,
+)
+from tempest_fastapi_sdk.storage.minio_client import (
+    ObjectStat as ObjectStat,
+)
+from tempest_fastapi_sdk.storage.minio_client import (
+    PutObjectItem as PutObjectItem,
 )
 
 __all__: list[str] = [

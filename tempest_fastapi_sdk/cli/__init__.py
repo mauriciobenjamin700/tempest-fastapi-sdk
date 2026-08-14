@@ -8,12 +8,18 @@ scaffolding (``tempest new``) and the quality gates the SDK expects
 """
 
 from tempest_fastapi_sdk.cli.config import (
-    DEFAULT_TYPING_STRICTNESS,
-    TempestConfig,
-    TypingStrictness,
-    load_tempest_config,
+    DEFAULT_TYPING_STRICTNESS as DEFAULT_TYPING_STRICTNESS,
 )
-from tempest_fastapi_sdk.cli.main import app
+from tempest_fastapi_sdk.cli.config import (
+    TempestConfig as TempestConfig,
+)
+from tempest_fastapi_sdk.cli.config import (
+    TypingStrictness as TypingStrictness,
+)
+from tempest_fastapi_sdk.cli.config import (
+    load_tempest_config as load_tempest_config,
+)
+from tempest_fastapi_sdk.cli.main import app as app
 
 __all__: list[str] = [
     "DEFAULT_TYPING_STRICTNESS",

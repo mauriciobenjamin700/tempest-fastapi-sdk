@@ -89,6 +89,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Recipe: `docs/recipes/pdf.md`.
 
+### Changed
+
+- **Every public re-export now uses the PEP 484 `from x import Y as Y` form.**
+  794 import lines across 17 `__init__.py` files were rewritten. Nothing
+  changes at runtime; what changes is that basedpyright and Pylance in strict
+  mode stop reporting "private import usage" when a consumer imports a
+  documented symbol — a diagnostic the SDK was putting in their editor.
+
+  The rule had been written in `CLAUDE.md` for months and was violated 794
+  times, which is why it now has `tests/test_reexport_guard.py`. Scope is the
+  names in `__all__`: a helper an `__init__.py` imports for its own use is not
+  a re-export, and aliasing it would say the opposite.
+
+- **`tests/test_vacuous_guard.py`** fails a test whose name or docstring claims
+  to have crossed a boundary — "across processes", "across replicas",
+  "survives a restart" — while the body stays in one process. That is the shape
+  that let this release's own determinism claim ship: the test compared two
+  renders inside a single process, where matching means nothing.
+
+  It deliberately does **not** police the vocabulary of guarantees. The first
+  draft flagged `deterministic` / `reproducible` / `idempotent` and hit 22
+  tests, of which roughly twenty were correct as written — idempotence is
+  `f(f(x)) == f(x)`, an in-process property, and one flagged test asserts
+  bcrypt is *non*-deterministic. A guard whose hits are mostly noise teaches
+  people to add skip markers.
+
 ### Fixed
 
 - **The report's grand total no longer repeats on every page.** It was a
