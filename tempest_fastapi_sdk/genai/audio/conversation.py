@@ -203,12 +203,8 @@ class ConversationTranscriber:
             ImportError: When the ``[genai-diarization]`` or
                 ``[genai-audio]`` extra is missing.
         """
-        if num_speakers is not None:
-            self.diarizer.num_speakers = num_speakers
-            self.diarizer.unload()
-
         turns, transcription = await asyncio.gather(
-            self.diarizer.diarize(audio),
+            self.diarizer.diarize(audio, num_speakers=num_speakers),
             self.stt.transcribe(audio, language=language, with_segments=True),
         )
         result = self._assemble(turns, transcription)

@@ -30,6 +30,7 @@ import hashlib
 import logging
 import os
 import tarfile
+import threading
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -40,6 +41,9 @@ from tempest_fastapi_sdk.genai.audio.schemas import SpeakerTurn
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    import numpy as np
+    import numpy.typing as npt
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -86,6 +90,36 @@ DEFAULT_MIN_DURATION_OFF: float = 0.5
 Below this the natural pauses inside one sentence would each start a new
 turn.
 """
+
+
+def _validate_mode(
+    num_speakers: int | Literal["auto"] | None,
+) -> int | Literal["auto"] | None:
+    """Check a speaker-count mode and hand it back.
+
+    Shared by the constructor and by the per-call override so a bad
+    value is refused in both places with the same message.
+
+    Args:
+        num_speakers (int | Literal["auto"] | None): The mode.
+
+    Returns:
+        int | Literal["auto"] | None: The same value, validated.
+
+    Raises:
+        ValueError: When it is neither a positive int, ``"auto"``, nor
+            ``None``. A typo must not fall through to threshold
+            clustering, which would answer plausibly and differently.
+    """
+    if isinstance(num_speakers, bool):
+        raise ValueError('num_speakers must be an int, "auto" or None, not a bool')
+    if isinstance(num_speakers, int) and num_speakers < 1:
+        raise ValueError("num_speakers must be >= 1 when set")
+    if isinstance(num_speakers, str) and num_speakers != "auto":
+        raise ValueError(
+            f'num_speakers must be an int, "auto" or None, got {num_speakers!r}',
+        )
+    return num_speakers
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,12 +349,7 @@ class SpeakerDiarizer:
         """
         if max_concurrent < 1:
             raise ValueError("max_concurrent must be >= 1")
-        if isinstance(num_speakers, int) and num_speakers < 1:
-            raise ValueError("num_speakers must be >= 1 when set")
-        if isinstance(num_speakers, str) and num_speakers != "auto":
-            raise ValueError(
-                f'num_speakers must be an int, "auto" or None, got {num_speakers!r}',
-            )
+        _validate_mode(num_speakers)
         self._segmentation_model = segmentation_model
         self._embedding_model = embedding_model
         self._cache_dir = cache_dir
@@ -336,6 +365,12 @@ class SpeakerDiarizer:
         self._extractor: Any | None = None
         self._segmentation_path: str = ""
         self._embedding_path: str = ""
+        # The engine carries its cluster count in its own config, so a
+        # per-call count means set_config immediately before process().
+        # Two worker threads doing that on one engine would interleave,
+        # so the pair is held under a lock rather than trusting
+        # max_concurrent to be 1.
+        self._engine_lock: threading.Lock = threading.Lock()
         self.max_speakers: int = max_speakers
         self._last_used: float = time.monotonic()
 
@@ -442,18 +477,30 @@ class SpeakerDiarizer:
         self.unload()
         return True
 
-    async def diarize(self, audio: str | Path | bytes) -> list[SpeakerTurn]:
+    async def diarize(
+        self,
+        audio: str | Path | bytes,
+        *,
+        num_speakers: int | Literal["auto"] | None = None,
+    ) -> list[SpeakerTurn]:
         """Split ``audio`` into speaker turns.
 
-        With ``num_speakers="auto"`` this runs twice: once to get the
-        turns, then again with the count estimated from their
-        embeddings. The second pass is what makes the estimate binding —
-        estimating a count and then not clustering to it would report a
-        number the output does not honour.
+        With the automatic mode this runs twice: once to get the turns,
+        then again with the count estimated from their embeddings. The
+        second pass is what makes the estimate binding — estimating a
+        count and then not clustering to it would report a number the
+        output does not honour.
 
         Args:
             audio (str | Path | bytes): A path to a readable audio file,
                 or its bytes.
+            num_speakers (int | Literal["auto"] | None): Override the
+                instance's setting **for this call only**. ``None``
+                (default) uses the instance's. Passed per call rather
+                than assigned to the object: two concurrent calls
+                wanting different counts would otherwise both see
+                whichever was written last, and the earlier caller would
+                silently get the other one's clustering.
 
         Returns:
             list[SpeakerTurn]: Turns in chronological order, each with a
@@ -462,10 +509,20 @@ class SpeakerDiarizer:
 
         Raises:
             ImportError: When the ``[genai-diarization]`` extra is absent.
+            ValueError: When ``num_speakers`` is neither a positive int,
+                ``"auto"``, nor ``None``.
         """
+        wanted = (
+            self.num_speakers
+            if num_speakers is None
+            else _validate_mode(
+                num_speakers,
+            )
+        )
         async with self._semaphore:
-            turns = await asyncio.to_thread(self._diarize_sync, audio)
-            if self.num_speakers == "auto" and len(turns) > 1:
+            fixed = wanted if isinstance(wanted, int) else None
+            turns = await asyncio.to_thread(self._diarize_sync, audio, fixed)
+            if wanted == "auto" and len(turns) > 1:
                 estimated = await asyncio.to_thread(
                     self._estimate_sync,
                     audio,
@@ -561,13 +618,14 @@ class SpeakerDiarizer:
             list[SpeakerTurn]: Turns in chronological order.
         """
         self.load()
-        if override is not None:
-            assert self._engine is not None
-            self._engine.set_config(self._make_config(override))
         samples = load_audio(audio, target_rate=DIARIZATION_SAMPLE_RATE)
         engine = self._engine
         assert engine is not None
-        result = engine.process(samples).sort_by_start_time()
+        with self._engine_lock:
+            engine.set_config(
+                self._make_config(override if override is not None else -1),
+            )
+            result = engine.process(samples).sort_by_start_time()
         return _renumber(
             [
                 SpeakerTurn(
@@ -604,7 +662,11 @@ def _renumber(turns: list[SpeakerTurn]) -> list[SpeakerTurn]:
     return renumbered
 
 
-def load_audio(audio: str | Path | bytes, *, target_rate: int) -> Any:
+def load_audio(
+    audio: str | Path | bytes,
+    *,
+    target_rate: int,
+) -> npt.NDArray[np.float32]:
     """Read audio into mono float32 samples at ``target_rate``.
 
     Accepts what the models need rather than what a file happens to be:
@@ -617,7 +679,7 @@ def load_audio(audio: str | Path | bytes, *, target_rate: int) -> Any:
         target_rate (int): Sample rate to produce.
 
     Returns:
-        Any: A 1-D ``numpy.ndarray`` of float32 in ``[-1, 1]``.
+        npt.NDArray[np.float32]: 1-D samples in ``[-1, 1]``.
 
     Raises:
         ImportError: When the ``[genai-diarization]`` extra is absent.
@@ -652,7 +714,11 @@ def load_audio(audio: str | Path | bytes, *, target_rate: int) -> Any:
     return samples
 
 
-def _decode_with_soundfile(audio: str | Path | bytes, *, target_rate: int) -> Any:
+def _decode_with_soundfile(
+    audio: str | Path | bytes,
+    *,
+    target_rate: int,
+) -> npt.NDArray[np.float32]:
     """Decode a non-WAV file through the STT extra's decoder.
 
     ``faster-whisper`` already depends on a full audio decoder, so a
@@ -664,7 +730,7 @@ def _decode_with_soundfile(audio: str | Path | bytes, *, target_rate: int) -> An
         target_rate (int): Sample rate to produce.
 
     Returns:
-        Any: Mono float32 samples.
+        npt.NDArray[np.float32]: Mono samples.
 
     Raises:
         ValueError: When no decoder is available for the format.
@@ -684,7 +750,11 @@ def _decode_with_soundfile(audio: str | Path | bytes, *, target_rate: int) -> An
     return decoded
 
 
-def _resample(samples: Any, source_rate: int, target_rate: int) -> Any:
+def _resample(
+    samples: npt.NDArray[np.float32],
+    source_rate: int,
+    target_rate: int,
+) -> npt.NDArray[np.float32]:
     """Resample mono samples by linear interpolation.
 
     Linear interpolation is not the best resampler, but the models
@@ -693,12 +763,12 @@ def _resample(samples: Any, source_rate: int, target_rate: int) -> Any:
     project that cares can hand in audio already at 16 kHz.
 
     Args:
-        samples (Any): 1-D float32 samples.
+        samples (npt.NDArray[np.float32]): 1-D samples.
         source_rate (int): Their current rate.
         target_rate (int): The rate to produce.
 
     Returns:
-        Any: Resampled samples.
+        npt.NDArray[np.float32]: Resampled samples.
     """
     import numpy as np
 

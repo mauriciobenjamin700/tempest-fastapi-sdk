@@ -13,10 +13,14 @@ onto the canonical template. No iteration, no optimiser.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    import numpy as np
+    import numpy.typing as npt
+    from PIL import Image
 
 FACE_SIZE: int = 112
 """Side of the aligned crop, in pixels.
@@ -45,7 +49,10 @@ leaving the code working. Pinned by test for that reason.
 """
 
 
-def similarity_transform(source: Any, target: Any) -> Any:
+def similarity_transform(
+    source: npt.NDArray[np.float64],
+    target: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]:
     """Fit the similarity transform carrying ``source`` onto ``target``.
 
     Umeyama's closed-form solution: centre both point sets, take the SVD
@@ -56,11 +63,12 @@ def similarity_transform(source: Any, target: Any) -> Any:
     somebody else.
 
     Args:
-        source (Any): ``(N, 2)`` points to move.
-        target (Any): ``(N, 2)`` points to move them onto.
+        source (npt.NDArray[np.float64]): ``(N, 2)`` points to move.
+        target (npt.NDArray[np.float64]): ``(N, 2)`` points to move them
+            onto.
 
     Returns:
-        Any: A ``(2, 3)`` affine matrix.
+        npt.NDArray[np.float64]: A ``(2, 3)`` affine matrix.
 
     Raises:
         ValueError: When the point sets differ in shape, or hold fewer
@@ -97,16 +105,19 @@ def similarity_transform(source: Any, target: Any) -> Any:
     return matrix
 
 
-def align_face(image: Any, landmarks: Sequence[Sequence[float]]) -> Any:
+def align_face(
+    image: Image.Image,
+    landmarks: Sequence[Sequence[float]],
+) -> Image.Image:
     """Warp a face into the recognizer's canonical 112x112 crop.
 
     Args:
-        image (Any): The full ``PIL.Image`` the face was found in.
+        image (Image.Image): The full image the face was found in.
         landmarks (Sequence[Sequence[float]]): Five ``(x, y)`` points in
             image coordinates.
 
     Returns:
-        Any: A ``PIL.Image`` of size ``112x112`` in RGB.
+        Image.Image: A ``112x112`` RGB image.
 
     Raises:
         ValueError: When ``landmarks`` does not hold exactly five points.

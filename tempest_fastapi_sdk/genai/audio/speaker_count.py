@@ -37,6 +37,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    import numpy as np
+    import numpy.typing as npt
+
 DEFAULT_MAX_SPEAKERS: int = 10
 """Largest speaker count the estimator will return.
 
@@ -157,14 +160,15 @@ def estimate_speaker_count(
     return int(np.argmax(gaps) + 1)
 
 
-def _is_one_voice(normalized: Any) -> bool:
+def _is_one_voice(normalized: npt.NDArray[np.float64]) -> bool:
     """Whether every turn is close enough to every other to be one person.
 
     Checked before the gap search because the gap search always finds a
     split, including in a recording that has none.
 
     Args:
-        normalized (Any): Unit-length embeddings, one row per turn.
+        normalized (npt.NDArray[np.float64]): Unit-length embeddings, one
+            row per turn.
 
     Returns:
         bool: ``True`` when the turns cohere as a single voice.

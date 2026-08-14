@@ -222,7 +222,7 @@ class VoiceEmbedder:
             ValueError: When the span is empty.
         """
         async with self._semaphore:
-            vector = await asyncio.to_thread(self._embed_sync, audio, start, end)
+            vector = await asyncio.to_thread(self._embed_sync, audio, start, end, None)
         self._last_used = time.monotonic()
         return vector
 
@@ -231,22 +231,41 @@ class VoiceEmbedder:
         audio: str | Path | bytes,
         start: float | None,
         end: float | None,
+        min_seconds: float | None,
     ) -> list[float]:
         """Run the extractor. Executes in a worker thread.
+
+        Takes ``min_seconds`` rather than leaving the length check to the
+        caller because the caller would have to decode the audio to
+        measure it, and decoding is the expensive half of this call —
+        a 30 s enrolment recording would be resampled twice for one
+        vector.
 
         Args:
             audio (str | Path | bytes): The recording.
             start (float | None): Span start in seconds.
             end (float | None): Span end in seconds.
+            min_seconds (float | None): Shortest accepted duration,
+                measured **before** the span is applied. ``None`` skips
+                the check.
 
         Returns:
             list[float]: The voiceprint.
 
         Raises:
-            ValueError: When the requested span holds no samples.
+            ValueError: When the requested span holds no samples, or the
+                recording is shorter than ``min_seconds``.
         """
         self.load()
         samples = load_audio(audio, target_rate=DIARIZATION_SAMPLE_RATE)
+        if min_seconds is not None:
+            duration = len(samples) / DIARIZATION_SAMPLE_RATE
+            if duration < min_seconds:
+                raise ValueError(
+                    f"enrollment needs at least {min_seconds:g}s of audio, got "
+                    f"{duration:.1f}s - a profile built from less matches almost "
+                    "anyone",
+                )
         if start is not None or end is not None:
             first = int((start or 0.0) * DIARIZATION_SAMPLE_RATE)
             last = (
@@ -279,9 +298,15 @@ class VoiceEmbedder:
         here rather than in :meth:`embed`, which legitimately runs on
         two-second turns.
 
+        The recording is decoded once: the measurement and the
+        extraction read the same pass, in the same worker thread, under
+        the same concurrency bound as :meth:`embed`.
+
         Args:
             audio (str | Path | bytes): The enrolment recording.
-            min_seconds (float): Shortest audio accepted.
+            min_seconds (float): Shortest audio accepted. Measured on the
+                decoded waveform, so a container claiming a longer
+                duration than it carries is still refused.
 
         Returns:
             list[float]: The voiceprint.
@@ -289,20 +314,18 @@ class VoiceEmbedder:
         Raises:
             ValueError: When the recording is shorter than
                 ``min_seconds``.
+            ImportError: When the ``[genai-diarization]`` extra is absent.
         """
-        samples = await asyncio.to_thread(
-            load_audio,
-            audio,
-            target_rate=DIARIZATION_SAMPLE_RATE,
-        )
-        duration = len(samples) / DIARIZATION_SAMPLE_RATE
-        if duration < min_seconds:
-            raise ValueError(
-                f"enrollment needs at least {min_seconds:g}s of audio, got "
-                f"{duration:.1f}s — a profile built from less matches almost "
-                "anyone",
+        async with self._semaphore:
+            vector = await asyncio.to_thread(
+                self._embed_sync,
+                audio,
+                None,
+                None,
+                min_seconds,
             )
-        return await self.embed(audio)
+        self._last_used = time.monotonic()
+        return vector
 
 
 __all__: list[str] = [

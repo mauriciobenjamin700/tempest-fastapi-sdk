@@ -1594,6 +1594,21 @@ negligible next to the segmentation that produced the turns.
     `num_speakers=None` returns to threshold-only clustering, the weakest
     option, kept for callers who want the previous behaviour.
 
+    When the count varies per request, pass it **per call** instead of
+    setting it on the object:
+
+    ```python
+    turns = await diarizer.diarize(audio, num_speakers=2)
+    ```
+
+    A diarizer is built once and shared by every request, so writing to it
+    affects the requests already in flight: two concurrent calls asking for 2
+    and 5 speakers both saw whichever was written last, and the one that asked
+    for 2 got 5 with no error anywhere. The per-call argument does not have
+    that problem, and
+    `ConversationTranscriber.transcribe(num_speakers=...)` forwards through
+    it.
+
 !!! warning "A monologue used to come back as a conversation"
     The spectral gap search **always** finds a split, including where there is
     none: a real six-turn dictation returned two speakers.

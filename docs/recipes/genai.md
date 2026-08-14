@@ -1599,6 +1599,20 @@ desprezível perto da segmentação que produziu os turnos.
     `num_speakers=None` volta ao agrupamento só por limiar, que é a opção mais
     fraca e existe para quem quer o comportamento antigo.
 
+    Quando a contagem varia por requisição, passe **por chamada** em vez de
+    ajustar o objeto:
+
+    ```python
+    turns = await diarizer.diarize(audio, num_speakers=2)
+    ```
+
+    Um diarizador é construído uma vez e compartilhado por todas as
+    requisições, então escrever nele afeta as que estão em voo: duas chamadas
+    simultâneas pedindo 2 e 5 falantes viam ambas a última escrita, e quem
+    pediu 2 recebia 5 sem erro nenhum. O argumento por chamada não tem esse
+    problema; `ConversationTranscriber.transcribe(num_speakers=...)` repassa
+    por esse caminho.
+
 !!! warning "Monólogo era reportado como conversa"
     A busca pelo maior salto espectral **sempre** acha uma divisão, inclusive
     onde não há: um ditado real de seis turnos voltava como dois falantes.

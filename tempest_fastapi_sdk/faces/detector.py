@@ -21,6 +21,10 @@ from tempest_fastapi_sdk.faces.schemas import BoundingBox, DetectedFace
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import numpy as np
+    import numpy.typing as npt
+    from PIL import Image
+
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 DETECT_SIZE: int = 640
@@ -155,11 +159,11 @@ class FaceDetector:
         self._session = None
         self._output_names = []
 
-    def detect(self, image: Any) -> list[DetectedFace]:
+    def detect(self, image: Image.Image) -> list[DetectedFace]:
         """Find every face in ``image``.
 
         Args:
-            image (Any): A ``PIL.Image``.
+            image (Image.Image): The image to search.
 
         Returns:
             list[DetectedFace]: Faces with boxes, scores and landmarks,
@@ -183,9 +187,9 @@ class FaceDetector:
             {session.get_inputs()[0].name: blob},
         )
 
-        boxes: list[Any] = []
-        landmarks: list[Any] = []
-        scores: list[Any] = []
+        boxes: list[npt.NDArray[np.float32]] = []
+        landmarks: list[npt.NDArray[np.float32]] = []
+        scores: list[npt.NDArray[np.float32]] = []
         for index, stride in enumerate(STRIDES):
             score = outputs[index].reshape(-1)
             keep = score >= self.score_threshold
@@ -230,7 +234,9 @@ class FaceDetector:
         return faces
 
 
-def _prepare(image: Any) -> tuple[Any, tuple[float, float], float]:
+def _prepare(
+    image: Image.Image,
+) -> tuple[Image.Image, tuple[float, float], float]:
     """Letterbox ``image`` into the detector's canvas.
 
     Small images are upscaled and every image gets a margin, because a
@@ -239,10 +245,10 @@ def _prepare(image: Any) -> tuple[Any, tuple[float, float], float]:
     come back with the canvas.
 
     Args:
-        image (Any): A ``PIL.Image``.
+        image (Image.Image): The image to fit onto the canvas.
 
     Returns:
-        tuple[Any, tuple[float, float], float]: The canvas, the pixel
+        tuple[Image.Image, tuple[float, float], float]: The canvas, the pixel
         offset the content was pasted at, and the scale applied to the
         original — so ``(point - offset) / scale`` returns to original
         coordinates.
@@ -275,14 +281,15 @@ def _prepare(image: Any) -> tuple[Any, tuple[float, float], float]:
     return canvas, (float(paste), float(paste)), upscale * fit
 
 
-def _anchor_centers(stride: int) -> Any:
+def _anchor_centers(stride: int) -> npt.NDArray[np.float32]:
     """Build the anchor centre for every prediction at one stride.
 
     Args:
         stride (int): The feature-map stride.
 
     Returns:
-        Any: An ``(N, 2)`` array of centres in canvas pixels, repeated
+        npt.NDArray[np.float32]: An ``(N, 2)`` array of centres in canvas
+        pixels, repeated
         per anchor so it lines up row-for-row with the model's output.
     """
     import numpy as np
@@ -293,15 +300,20 @@ def _anchor_centers(stride: int) -> Any:
     return np.repeat(centers.reshape(-1, 2), ANCHORS_PER_LOCATION, axis=0)
 
 
-def _distance_to_box(centers: Any, distances: Any) -> Any:
+def _distance_to_box(
+    centers: npt.NDArray[np.float32],
+    distances: npt.NDArray[np.float32],
+) -> npt.NDArray[np.float32]:
     """Turn edge distances into absolute boxes.
 
     Args:
-        centers (Any): ``(N, 2)`` anchor centres.
-        distances (Any): ``(N, 4)`` distances to left, top, right, bottom.
+        centers (npt.NDArray[np.float32]): ``(N, 2)`` anchor centres.
+        distances (npt.NDArray[np.float32]): ``(N, 4)`` distances to left,
+            top, right and bottom.
 
     Returns:
-        Any: ``(N, 4)`` boxes as left, top, right, bottom.
+        npt.NDArray[np.float32]: ``(N, 4)`` boxes as left, top, right,
+        bottom.
     """
     import numpy as np
 
@@ -316,15 +328,19 @@ def _distance_to_box(centers: Any, distances: Any) -> Any:
     )
 
 
-def _distance_to_landmarks(centers: Any, distances: Any) -> Any:
+def _distance_to_landmarks(
+    centers: npt.NDArray[np.float32],
+    distances: npt.NDArray[np.float32],
+) -> npt.NDArray[np.float32]:
     """Turn landmark offsets into absolute points.
 
     Args:
-        centers (Any): ``(N, 2)`` anchor centres.
-        distances (Any): ``(N, 10)`` alternating x and y offsets.
+        centers (npt.NDArray[np.float32]): ``(N, 2)`` anchor centres.
+        distances (npt.NDArray[np.float32]): ``(N, 10)`` alternating x and y
+            offsets.
 
     Returns:
-        Any: ``(N, 5, 2)`` landmark points.
+        npt.NDArray[np.float32]: ``(N, 5, 2)`` landmark points.
     """
     import numpy as np
 
@@ -335,12 +351,16 @@ def _distance_to_landmarks(centers: Any, distances: Any) -> Any:
     return np.stack(coordinates, axis=-1).reshape(-1, 5, 2)
 
 
-def _non_max_suppression(boxes: Any, scores: Any, threshold: float) -> list[int]:
+def _non_max_suppression(
+    boxes: npt.NDArray[np.float32],
+    scores: npt.NDArray[np.float32],
+    threshold: float,
+) -> list[int]:
     """Keep the best box among each cluster of overlapping ones.
 
     Args:
-        boxes (Any): ``(N, 4)`` boxes.
-        scores (Any): ``(N,)`` scores.
+        boxes (npt.NDArray[np.float32]): ``(N, 4)`` boxes.
+        scores (npt.NDArray[np.float32]): ``(N,)`` scores.
         threshold (float): Overlap above which a box is suppressed.
 
     Returns:

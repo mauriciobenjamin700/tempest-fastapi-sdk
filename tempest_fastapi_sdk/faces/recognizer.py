@@ -27,6 +27,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    from PIL import Image
+
     from tempest_fastapi_sdk.faces.models import FaceModelPack
 
 DEFAULT_MATCH_THRESHOLD: float = 0.45
@@ -255,14 +257,14 @@ class FaceRecognizer:
             )
         return largest.embedding
 
-    def _open(self, image: str | Path | bytes) -> Any:
+    def _open(self, image: str | Path | bytes) -> Image.Image:
         """Read an image from a path or bytes.
 
         Args:
             image (str | Path | bytes): The source.
 
         Returns:
-            Any: A ``PIL.Image``.
+            Image.Image: The decoded RGB image.
         """
         import io
 
@@ -309,11 +311,11 @@ class FaceRecognizer:
             )
         return embedded
 
-    def _embed_crop(self, crop: Any) -> list[float]:
+    def _embed_crop(self, crop: Image.Image) -> list[float]:
         """Run the recognizer on an aligned 112x112 crop.
 
         Args:
-            crop (Any): The aligned ``PIL.Image``.
+            crop (Image.Image): The aligned ``112x112`` crop.
 
         Returns:
             list[float]: The unit-length embedding.

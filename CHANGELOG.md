@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.223.0] — 2026-08-14
 
+The voice stack was built as four increments (0.219.0-0.222.0) and this
+release is the first of them to reach PyPI. They are kept as separate
+entries below because they document distinct pieces of work, but only
+this version exists as a package: the concurrency defect fixed here was
+introduced in 0.219.0, so publishing the increments in order would have
+shipped it four times before the fix.
+
 ### Added
 
 - **Face detection and recognition** (`tempest_fastapi_sdk.faces`, extra
@@ -57,6 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Rejected before it: `facenet-pytorch` (pins `torch<2.3.0`, capping every
   consumer), `deepface` (TensorFlow) and `face-recognition` (dlib, compiled).
 
+- **`faces` and the audio decode path carry their real types** instead of
+  `Any`: `Image.Image` for every image parameter and return, and
+  `npt.NDArray[...]` for the arrays. Verified load-bearing rather than
+  cosmetic — mypy now rejects `align_face("not-an-image", ...)` with
+  `incompatible type "str"; expected "Image"`, where `Any` accepted it.
+
 ### Fixed
 
 - **A tight crop is detectable.** A 112×112 portrait whose face touches the
@@ -70,7 +83,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an empty `embedding`, so a caller can tell "nobody recognisable" from "no
   face at all".
 
-## [0.222.0] — 2026-08-14
+- **Two concurrent transcriptions no longer read each other's speaker
+  count.** `ConversationTranscriber.transcribe(num_speakers=...)` assigned the
+  count onto the shared diarizer before using it, so two overlapping requests
+  both saw whichever was written last — the caller who asked for two speakers
+  was clustered into five, with no error anywhere. Reproduced, then pinned:
+  `tests/genai/audio/test_concurrency.py` asserts `[2, 5]` and returned
+  `[5, 5]` against the old code. The count is now a per-call argument,
+  `SpeakerDiarizer.diarize(audio, num_speakers=...)`, and the transcriber
+  passes it through instead of mutating the object.
+
+  The same path also called `diarizer.unload()` to make the new count take
+  effect, dropping ~46 MB of loaded models out from under any request running
+  beside it. It is gone; a test asserts it is never called.
+
+  The engine carries its cluster count in its own config, so `set_config` and
+  `process` are now held under a `threading.Lock`: two worker threads doing
+  that pair on one engine would interleave, which `max_concurrent > 1` makes
+  reachable.
+
+- **An enrolment recording is decoded once.**
+  `VoiceEmbedder.embed_for_enrollment` decoded the audio to measure its
+  duration and then decoded it again to embed it. Decoding is the expensive
+  half of that call, so a 30 s enrolment was resampled twice for one vector.
+  The length check moved into the worker that already has the samples.
+
+## [0.222.0] — 2026-08-14 (not published; folded into 0.223.0)
 
 ### Changed
 
@@ -127,7 +165,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   0.14 of margin on each side. It is a property of the bundled model's
   similarity scale, not a universal constant, and the docstring says so.
 
-## [0.221.0] — 2026-08-14
+## [0.221.0] — 2026-08-14 (not published; folded into 0.223.0)
 
 ### Added
 
@@ -158,7 +196,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   measuring after reading the whole body means the oversized upload already
   occupied the memory it was supposed to be denied.
 
-## [0.220.0] — 2026-08-14
+## [0.220.0] — 2026-08-14 (not published; folded into 0.223.0)
 
 ### Added
 
@@ -210,7 +248,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matches almost anyone, and unlike a bad match, a bad *profile* keeps being
   wrong until somebody deletes it.
 
-## [0.219.0] — 2026-08-14
+## [0.219.0] — 2026-08-14 (not published; folded into 0.223.0)
 
 ### Added
 
