@@ -1602,6 +1602,116 @@ o diarizador descartou por ser curto demais ainda transcreve — e esse
 texto sai com `speaker = -1`, nunca some. Perder palavra caladamente é
 pior do que admitir que não se sabe quem falou.
 
+### Reconhecer quem é: perfis de voz
+
+Diarização separa falante 0 de falante 1. Identificação diz que o falante 0
+**é a Ana**, casando a voz com um perfil cadastrado.
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import make_voice_profile_model
+from tempest_fastapi_sdk.genai.audio import VoiceProfileService
+
+from src.db.models import UserModel
+
+VoiceProfileModel = make_voice_profile_model(user_table="users")
+perfis = VoiceProfileService(profile_model=VoiceProfileModel)
+```
+
+Cadastro exige consentimento — não é opcional e não é configurável:
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import make_voice_profile_model
+from tempest_fastapi_sdk.genai.audio import (
+    ConversationTranscriber,
+    SpeechToText,
+    VoiceProfileService,
+)
+
+from src.db.models import UserModel
+
+perfis = VoiceProfileService(
+    profile_model=make_voice_profile_model(user_table="users"),
+)
+transcriber = ConversationTranscriber(stt=SpeechToText())
+
+
+async def cadastrar_voz(session: AsyncSession, usuario: UserModel) -> None:
+    """Enrol a user's voice after they consented to it."""
+    await perfis.enroll(
+        session,
+        user_id=usuario.id,
+        audio="cadastro.wav",
+        consent_reference="politica-biometria-v3",
+        label="cadastro no onboarding",
+    )
+```
+
+Depois, a transcrição já sai com nome:
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import make_voice_profile_model
+from tempest_fastapi_sdk.genai.audio import (
+    ConversationTranscriber,
+    SpeechToText,
+    VoiceProfileService,
+)
+
+from src.db.models import UserModel
+
+perfis = VoiceProfileService(
+    profile_model=make_voice_profile_model(user_table="users"),
+)
+transcriber = ConversationTranscriber(stt=SpeechToText())
+
+
+async def ata(session: AsyncSession, participantes: list[UserModel]) -> str:
+    """Transcribe a meeting with each line attributed to a person."""
+    conversa = await transcriber.transcribe(
+        "reuniao.wav",
+        identify_with=perfis,
+        session=session,
+        user_ids=[p.id for p in participantes],
+    )
+    return conversa.transcript()
+```
+
+!!! danger "Isso é dado biométrico"
+    Impressão vocal identifica uma pessoa como um template de digital. Pela
+    LGPD é **dado pessoal sensível** (Art. 5º, II), e o tratamento exige
+    consentimento **específico e destacado** para essa finalidade (Art. 11, I)
+    — termo de uso genérico não cobre.
+
+    Por isso `consent_reference` é obrigatório e um valor em branco levanta
+    `ConsentRequired`. O SDK guarda o vetor e o consentimento na mesma linha, e
+    **nunca grava o áudio**: o vetor não se reproduz de volta em som, o que faz
+    um vazamento dessa tabela custar muito menos que um vazamento das
+    gravações.
+
+    `forget_user()` existe como método, e não como exemplo na doc, porque
+    "apague meus dados biométricos" é direito incondicional (Art. 18, VI) e não
+    pode depender de cada projeto escrever o `WHERE` certo.
+
+!!! tip "Restrinja aos participantes"
+    `user_ids=[...]` transforma "quem no banco inteiro é essa voz" em "qual
+    destas cinco pessoas é". Mais rápido, e muito menos sujeito a colocar o
+    nome de um estranho numa linha.
+
+Medido com vozes reais: cadastrando a partir de um turno e identificando
+**outro** turno da mesma pessoa, a similaridade deu 0,687 e 0,734; um falante
+não cadastrado voltou `None`. O limiar padrão é 0,5 — suba para qualquer coisa
+que conceda acesso, porque aí o erro caro deixa de ser "não reconheceu" e passa
+a ser "reconheceu errado".
+
+Trocar o modelo de embedding invalida todo perfil já cadastrado: os vetores
+deixam de ser comparáveis e as pessoas silenciosamente param de ser
+reconhecidas. `stale_profiles()` encontra quem precisa recadastrar.
+
 ## Recap
 
 - **`GenerationConfig`** — parâmetros de geração tipados e reutilizáveis

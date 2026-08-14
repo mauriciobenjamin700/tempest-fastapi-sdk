@@ -35,6 +35,18 @@ from tempest_fastapi_sdk.genai.audio.diarization import ensure_models as ensure_
 from tempest_fastapi_sdk.genai.audio.language import Language as Language
 from tempest_fastapi_sdk.genai.audio.language import LanguagePreset as LanguagePreset
 from tempest_fastapi_sdk.genai.audio.language import preset_for as preset_for
+from tempest_fastapi_sdk.genai.audio.profiles import (
+    DEFAULT_MODEL_NAME as DEFAULT_MODEL_NAME,
+)
+from tempest_fastapi_sdk.genai.audio.profiles import ConsentRequired as ConsentRequired
+from tempest_fastapi_sdk.genai.audio.profiles import VoiceMatch as VoiceMatch
+from tempest_fastapi_sdk.genai.audio.profiles import (
+    VoiceProfileService as VoiceProfileService,
+)
+from tempest_fastapi_sdk.genai.audio.profiles import pack_embedding as pack_embedding
+from tempest_fastapi_sdk.genai.audio.profiles import (
+    unpack_embedding as unpack_embedding,
+)
 from tempest_fastapi_sdk.genai.audio.schemas import (
     DiarizedTranscription as DiarizedTranscription,
 )
@@ -52,12 +64,30 @@ from tempest_fastapi_sdk.genai.audio.stt import (
     resolve_audio_device as resolve_audio_device,
 )
 from tempest_fastapi_sdk.genai.audio.tts import TextToSpeech as TextToSpeech
+from tempest_fastapi_sdk.genai.audio.voiceprint import (
+    DEFAULT_MATCH_THRESHOLD as DEFAULT_MATCH_THRESHOLD,
+)
+from tempest_fastapi_sdk.genai.audio.voiceprint import (
+    EMBEDDING_DIMENSIONS as EMBEDDING_DIMENSIONS,
+)
+from tempest_fastapi_sdk.genai.audio.voiceprint import (
+    MIN_ENROLLMENT_SECONDS as MIN_ENROLLMENT_SECONDS,
+)
+from tempest_fastapi_sdk.genai.audio.voiceprint import VoiceEmbedder as VoiceEmbedder
+from tempest_fastapi_sdk.genai.audio.voiceprint import (
+    cosine_similarity as cosine_similarity,
+)
 
 __all__: list[str] = [
     "DEFAULT_CLUSTERING_THRESHOLD",
+    "DEFAULT_MATCH_THRESHOLD",
+    "DEFAULT_MODEL_NAME",
     "DIARIZATION_SAMPLE_RATE",
+    "EMBEDDING_DIMENSIONS",
     "EMBEDDING_MODEL",
+    "MIN_ENROLLMENT_SECONDS",
     "SEGMENTATION_MODEL",
+    "ConsentRequired",
     "ConversationTranscriber",
     "DiarizationModel",
     "DiarizedTranscription",
@@ -69,9 +99,15 @@ __all__: list[str] = [
     "TextToSpeech",
     "Transcription",
     "TranscriptionSegment",
+    "VoiceEmbedder",
+    "VoiceMatch",
+    "VoiceProfileService",
     "align_turns",
+    "cosine_similarity",
     "default_cache_dir",
     "ensure_models",
+    "pack_embedding",
     "preset_for",
     "resolve_audio_device",
+    "unpack_embedding",
 ]

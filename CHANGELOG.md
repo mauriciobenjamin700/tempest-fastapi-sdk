@@ -5,6 +5,58 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.220.0] — 2026-08-14
+
+### Added
+
+- **Voice identification — recognising *who* a speaker is**
+  (`tempest_fastapi_sdk.genai.audio`). Diarization separates speaker 0 from
+  speaker 1; this puts a name on them by matching against enrolled profiles.
+
+  `VoiceEmbedder` turns a recording into a voiceprint, `VoiceProfileService`
+  enrols, identifies and deletes, and `ConversationTranscriber.transcribe(
+  identify_with=..., session=..., user_ids=...)` labels a whole conversation in
+  one call.
+
+  Measured end to end with real voices: enrolling from one turn and identifying
+  a **different** turn by the same person scored 0.687 and 0.734, while an
+  unenrolled speaker returned `None`.
+
+  Identification runs **once per speaker cluster**, on that cluster's longest
+  turn — every turn of a cluster is the same voice by construction, so
+  embedding each would pay the model N times for one answer and could label two
+  turns of one person differently.
+
+- **`BaseVoiceProfileModel` + `make_voice_profile_model`** — the enrolled
+  voiceprint with its consent record. The raw audio is deliberately absent:
+  nothing here writes a recording, and the vector cannot be played back, so a
+  leak of this table costs far less than a leak of the enrolment clips.
+
+### Changed
+
+- **Enrolment refuses to run without recorded consent.** A voiceprint
+  identifies a person like a fingerprint template; under the LGPD it is
+  sensitive personal data (Art. 5, II) needing specific, highlighted consent
+  (Art. 11, I), which general terms of service do not provide. So
+  `consent_reference` is required, a blank one raises `ConsentRequired`, and
+  the evidence is stored on the same row as the vector rather than trusted to a
+  flag somewhere else. This is not configurable.
+
+- **`forget_user()` is a method, not an example.** Deleting biometric data is
+  an unconditional right (Art. 18, VI) and must not depend on each project
+  writing the `WHERE` clause correctly.
+
+- **A profile written by another embedding model is never compared.**
+  Similarity between vectors from different models is a number with no meaning,
+  and a meaningless number that looks like a score is worse than an error.
+  `model_name` is recorded per row and `stale_profiles()` finds the profiles a
+  model swap invalidated — otherwise those people silently stop being
+  recognised with nothing to indicate why.
+
+- **Enrolment refuses audio below 3 seconds.** A profile built from one word
+  matches almost anyone, and unlike a bad match, a bad *profile* keeps being
+  wrong until somebody deletes it.
+
 ## [0.219.0] — 2026-08-14
 
 ### Added

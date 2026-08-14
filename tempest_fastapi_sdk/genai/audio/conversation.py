@@ -29,8 +29,13 @@ from tempest_fastapi_sdk.genai.audio.schemas import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from typing import Any
+    from uuid import UUID
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
     from tempest_fastapi_sdk.genai.audio.language import Language
+    from tempest_fastapi_sdk.genai.audio.profiles import VoiceProfileService
     from tempest_fastapi_sdk.genai.audio.schemas import (
         Transcription,
         TranscriptionSegment,
@@ -159,6 +164,9 @@ class ConversationTranscriber:
         *,
         language: Language | str | None = None,
         num_speakers: int | None = None,
+        identify_with: VoiceProfileService | None = None,
+        session: AsyncSession | None = None,
+        user_ids: list[UUID] | None = None,
     ) -> DiarizedTranscription:
         """Transcribe ``audio`` and attribute each line to a speaker.
 
@@ -176,6 +184,15 @@ class ConversationTranscriber:
                 **Pass it whenever you can** — clustering by threshold
                 alone is the least reliable part of the pipeline; see
                 :data:`~tempest_fastapi_sdk.genai.audio.diarization.DEFAULT_CLUSTERING_THRESHOLD`.
+            identify_with (VoiceProfileService | None): Match each
+                speaker against enrolled voice profiles. Requires
+                ``session``. ``None`` leaves the turns anonymous.
+            session (AsyncSession | None): Database session for the
+                identification lookup.
+            user_ids (list[UUID] | None): Restrict identification to
+                these people — the meeting's participants, say. Far
+                cheaper than searching everyone, and far less likely to
+                put a stranger's name on a line.
 
         Returns:
             DiarizedTranscription: The conversation in order, with the
@@ -193,7 +210,86 @@ class ConversationTranscriber:
             self.diarizer.diarize(audio),
             self.stt.transcribe(audio, language=language, with_segments=True),
         )
-        return self._assemble(turns, transcription)
+        result = self._assemble(turns, transcription)
+        if identify_with is None:
+            return result
+        if session is None:
+            raise ValueError("identify_with needs a session to read profiles from")
+        return await self._identify(
+            result,
+            audio,
+            service=identify_with,
+            session=session,
+            user_ids=user_ids,
+        )
+
+    async def _identify(
+        self,
+        result: DiarizedTranscription,
+        audio: str | Path | bytes,
+        *,
+        service: VoiceProfileService,
+        session: AsyncSession,
+        user_ids: list[UUID] | None,
+    ) -> DiarizedTranscription:
+        """Attach enrolled identities to the diarized turns.
+
+        Identification runs **once per speaker cluster**, not once per
+        turn: every turn of one cluster is the same voice by
+        construction, so embedding each of them separately would pay the
+        model N times for one answer — and worse, could label two turns
+        of the same person differently.
+
+        The longest turn of each cluster is used, because a longer
+        sample makes a better voiceprint and the shortest turn in a
+        conversation is often a single word.
+
+        Args:
+            result (DiarizedTranscription): The anonymous transcription.
+            audio (str | Path | bytes): The recording.
+            service (VoiceProfileService): Where the profiles live.
+            session (AsyncSession): Database session.
+            user_ids (list[UUID] | None): Restrict the search.
+
+        Returns:
+            DiarizedTranscription: The same conversation with the turns
+            of recognised speakers carrying an id, a name and a score.
+        """
+        longest: dict[int, SpeakerTurn] = {}
+        for turn in result.turns:
+            if turn.speaker < 0:
+                continue
+            current = longest.get(turn.speaker)
+            if current is None or turn.duration > current.duration:
+                longest[turn.speaker] = turn
+
+        matches: dict[int, Any] = {}
+        for speaker, turn in longest.items():
+            match = await service.identify_audio(
+                session,
+                audio=audio,
+                start=turn.start,
+                end=turn.end,
+                user_ids=user_ids,
+            )
+            if match is not None:
+                matches[speaker] = match
+
+        if not matches:
+            return result
+
+        turns = [
+            turn.model_copy(
+                update={
+                    "speaker_id": str(matches[turn.speaker].user_id),
+                    "confidence": matches[turn.speaker].similarity,
+                },
+            )
+            if turn.speaker in matches
+            else turn
+            for turn in result.turns
+        ]
+        return result.model_copy(update={"turns": turns})
 
     def _assemble(
         self,

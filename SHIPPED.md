@@ -336,6 +336,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (unit/`@model`/`@gpu`) + plans live under `planning/genai/`. **Fix:** `httpx`
   + `email-validator` are base deps so a minimal/`[genai]` install imports
   (v0.151.1).
+- **Identificação de voz (v0.220.0)** — `VoiceEmbedder`,
+  `VoiceProfileService` (cadastrar/identificar/apagar), `BaseVoiceProfileModel`
+  + `make_voice_profile_model`, e `ConversationTranscriber.transcribe(
+  identify_with=, session=, user_ids=)` que nomeia a conversa inteira numa
+  chamada. Identifica **uma vez por cluster**, no turno mais longo dele.
+  Medido com voz real: cadastrando de um turno e identificando **outro** turno
+  da mesma pessoa, 0,687 e 0,734; falante não cadastrado volta `None`.
+  **Impressão vocal é dado biométrico** (LGPD Art. 5º, II): `consent_reference`
+  é obrigatório e em branco levanta `ConsentRequired`, o consentimento fica na
+  mesma linha do vetor, o áudio **nunca** é gravado, e `forget_user()` é método
+  — não exemplo — porque apagar é direito incondicional (Art. 18, VI). Perfil
+  de outro modelo nunca é comparado (`model_name` por linha, `stale_profiles()`
+  acha quem recadastrar); cadastro abaixo de 3 s é recusado.
 - **Diarização (v0.219.0, `[genai-diarization]` = sherpa-onnx)** —
   `tempest_fastapi_sdk.genai.audio`: `SpeakerDiarizer` (quem falou quando),
   `ConversationTranscriber` (junta com o `SpeechToText` existente por

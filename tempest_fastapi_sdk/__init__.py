@@ -659,6 +659,9 @@ from tempest_fastapi_sdk.db import (
     BaseUserTokenModel as BaseUserTokenModel,
 )
 from tempest_fastapi_sdk.db import (
+    BaseVoiceProfileModel as BaseVoiceProfileModel,
+)
+from tempest_fastapi_sdk.db import (
     BaseWebAuthnCredentialModel as BaseWebAuthnCredentialModel,
 )
 from tempest_fastapi_sdk.db import (
@@ -786,6 +789,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     make_user_token_model as make_user_token_model,
+)
+from tempest_fastapi_sdk.db import (
+    make_voice_profile_model as make_voice_profile_model,
 )
 from tempest_fastapi_sdk.db import (
     make_web_authn_credential_model as make_web_authn_credential_model,
@@ -1409,7 +1415,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.219.0"
+__version__: str = "0.220.0"
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
@@ -1485,6 +1491,7 @@ __all__: list[str] = [
     "BaseUserRecoveryCodeModel",
     "BaseUserRefreshTokenModel",
     "BaseUserTokenModel",
+    "BaseVoiceProfileModel",
     "BaseWebAuthnCredentialModel",
     "BaseWebPushSubscriptionModel",
     "BodySizeLimitMiddleware",
@@ -1823,6 +1830,7 @@ __all__: list[str] = [
     "make_user_recovery_code_model",
     "make_user_refresh_token_model",
     "make_user_token_model",
+    "make_voice_profile_model",
     "make_web_authn_credential_model",
     "make_web_push_router",
     "make_web_push_subscription_model",

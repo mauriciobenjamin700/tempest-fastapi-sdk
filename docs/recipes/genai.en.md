@@ -1599,6 +1599,116 @@ diarizer dropped as too short still transcribes — that text comes back
 with `speaker = -1` and is never lost. Dropping words silently is worse
 than admitting the speaker is unknown.
 
+### Recognising who it is: voice profiles
+
+Diarization separates speaker 0 from speaker 1. Identification says speaker 0
+**is Ana**, by matching the voice against an enrolled profile.
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import make_voice_profile_model
+from tempest_fastapi_sdk.genai.audio import VoiceProfileService
+
+from src.db.models import UserModel
+
+VoiceProfileModel = make_voice_profile_model(user_table="users")
+profiles = VoiceProfileService(profile_model=VoiceProfileModel)
+```
+
+Enrolment requires consent — not optional, not configurable:
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import make_voice_profile_model
+from tempest_fastapi_sdk.genai.audio import (
+    ConversationTranscriber,
+    SpeechToText,
+    VoiceProfileService,
+)
+
+from src.db.models import UserModel
+
+profiles = VoiceProfileService(
+    profile_model=make_voice_profile_model(user_table="users"),
+)
+transcriber = ConversationTranscriber(stt=SpeechToText())
+
+
+async def enrol_voice(session: AsyncSession, user: UserModel) -> None:
+    """Enrol a user's voice after they consented to it."""
+    await profiles.enroll(
+        session,
+        user_id=user.id,
+        audio="enrolment.wav",
+        consent_reference="biometrics-policy-v3",
+        label="onboarding",
+    )
+```
+
+After that the transcript comes out named:
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import make_voice_profile_model
+from tempest_fastapi_sdk.genai.audio import (
+    ConversationTranscriber,
+    SpeechToText,
+    VoiceProfileService,
+)
+
+from src.db.models import UserModel
+
+profiles = VoiceProfileService(
+    profile_model=make_voice_profile_model(user_table="users"),
+)
+transcriber = ConversationTranscriber(stt=SpeechToText())
+
+
+async def minutes(session: AsyncSession, participants: list[UserModel]) -> str:
+    """Transcribe a meeting with each line attributed to a person."""
+    conversation = await transcriber.transcribe(
+        "meeting.wav",
+        identify_with=profiles,
+        session=session,
+        user_ids=[p.id for p in participants],
+    )
+    return conversation.transcript()
+```
+
+!!! danger "This is biometric data"
+    A voiceprint identifies a person the way a fingerprint template does.
+    Under Brazil's LGPD it is **sensitive personal data** (Art. 5, II), and
+    processing it needs consent that is **specific and highlighted** for that
+    purpose (Art. 11, I) — general terms of service do not cover it.
+
+    So `consent_reference` is required and a blank one raises
+    `ConsentRequired`. The SDK stores the vector and the consent on the same
+    row, and **never writes the audio**: the vector cannot be played back,
+    which makes a leak of this table cost far less than a leak of the
+    recordings.
+
+    `forget_user()` is a method rather than an example in the docs, because
+    "delete my biometric data" is an unconditional right (Art. 18, VI) and must
+    not depend on each project getting the `WHERE` clause right.
+
+!!! tip "Restrict to the participants"
+    `user_ids=[...]` turns "who in the whole database is this voice" into
+    "which of these five people is it". Faster, and far less likely to put a
+    stranger's name on a line.
+
+Measured with real voices: enrolling from one turn and identifying a
+**different** turn by the same person scored 0.687 and 0.734; an unenrolled
+speaker came back `None`. The default threshold is 0.5 — raise it for anything
+that grants access, where the expensive error stops being "did not recognise"
+and becomes "recognised the wrong person".
+
+Swapping the embedding model invalidates every enrolled profile: the vectors
+stop being comparable and people silently stop being recognised.
+`stale_profiles()` finds who needs re-enrolling.
+
 ## Recap
 
 - **`GenerationConfig`** — typed, reusable generation parameters instead

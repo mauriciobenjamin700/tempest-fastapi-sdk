@@ -128,6 +128,12 @@ from tempest_fastapi_sdk.db.user_webauthn_credential_model import (
 from tempest_fastapi_sdk.db.user_webauthn_credential_model import (
     make_web_authn_credential_model as make_web_authn_credential_model,
 )
+from tempest_fastapi_sdk.db.voice_profile_model import (
+    BaseVoiceProfileModel as BaseVoiceProfileModel,
+)
+from tempest_fastapi_sdk.db.voice_profile_model import (
+    make_voice_profile_model as make_voice_profile_model,
+)
 from tempest_fastapi_sdk.db.webpush_subscription_model import (
     BaseWebPushSubscriptionModel as BaseWebPushSubscriptionModel,
 )
@@ -152,6 +158,7 @@ __all__: list[str] = [
     "BaseUserRecoveryCodeModel",
     "BaseUserRefreshTokenModel",
     "BaseUserTokenModel",
+    "BaseVoiceProfileModel",
     "BaseWebAuthnCredentialModel",
     "BaseWebPushSubscriptionModel",
     "ColumnRef",
@@ -199,6 +206,7 @@ __all__: list[str] = [
     "make_user_recovery_code_model",
     "make_user_refresh_token_model",
     "make_user_token_model",
+    "make_voice_profile_model",
     "make_web_authn_credential_model",
     "make_web_push_subscription_model",
     "on_signal",
