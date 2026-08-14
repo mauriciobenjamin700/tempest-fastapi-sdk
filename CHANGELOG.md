@@ -52,11 +52,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   case is pinned by test, including `um milhão de reais` versus `dois milhões
   e quinhentos mil reais`.
 
-  **Same input, same bytes.** WeasyPrint writes no creation date and no
-  document identifier unless asked, so two renders of one payload are
-  byte-identical across processes — which is what makes a rendered document
-  hashable, cacheable and comparable in a test. Pinned, so an upstream change
-  surfaces as a failure.
+  **Reproducible output needs `SOURCE_DATE_EPOCH`.** WeasyPrint writes no
+  creation date and no document identifier, but the embedded font subset stamps
+  a timestamp into its `head` table, so two renders seconds apart differ —
+  measured as three hashes across three runs of one container. Pinning
+  `SOURCE_DATE_EPOCH`, the convention `fontTools` honors, makes the output
+  byte-identical across processes; the test asserts that across a real process
+  boundary, because two renders inside one process match trivially. Even
+  pinned, the bytes depend on the font and WeasyPrint versions, so a hash does
+  not travel between images.
 
   Rendering is CPU-bound, so every call goes through a worker thread behind a
   semaphore (`max_concurrent`, default 4) and the event loop never stalls.

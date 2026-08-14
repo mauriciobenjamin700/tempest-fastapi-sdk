@@ -509,9 +509,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   **WeasyPrint** for CSS Paged Media (repeating header, `página X de Y`);
   browser engines cost 150 MB in the image and `xhtml2pdf` would pin
   `reportlab<5` on every consumer. **Totals are computed from the items**,
-  never accepted. **Same input → same bytes** across processes (no CreationDate
-  / no /ID unless asked) — pinned by test, it is what makes a document
-  hashable. **`AssetPolicy` denies every fetch by default** (`data:` excepted —
+  never accepted. **Reproducible only with `SOURCE_DATE_EPOCH`** — the PDF carries
+  no clock, but the embedded font subset stamps its `head` table, so runs
+  seconds apart differ (three hashes across three container runs). The first
+  version claimed determinism and "proved" it with two renders in **one
+  process**, which match trivially; the test now crosses a process boundary.
+  Even pinned, bytes depend on font + WeasyPrint versions, so a hash does not
+  travel between images. **`AssetPolicy` denies every fetch by default** (`data:` excepted —
   it fetches nothing); allowed dirs are checked on the *resolved* path so `../`
   and symlinks do not escape, and `_fail_on_errors` aborts the render at the
   first refusal rather than shipping an invoice with a hole where the logo was.

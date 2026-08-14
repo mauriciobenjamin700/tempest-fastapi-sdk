@@ -61,7 +61,9 @@ def _require_extra() -> None:
             "  It also needs Pango and fontconfig from the system — on "
             "Debian/Ubuntu:\n"
             "    apt-get install libpango-1.0-0 libpangoft2-1.0-0 "
-            "libharfbuzz0b fontconfig fonts-dejavu-core",
+            "libharfbuzz0b fontconfig fonts-dejavu-core\n"
+            "  Missing them shows up at the first render as "
+            "'cannot load library libgobject-2.0-0', not as a pango error.",
         )
 
 

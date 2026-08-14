@@ -1,14 +1,15 @@
 """Tests for ``PdfRenderer`` and the bundled documents.
 
 Every render here goes through WeasyPrint. That is deliberate: the
-properties worth holding — a PDF comes out, the same input gives the same
-bytes, a hostile field cannot reshape the page, a refused asset stops the
-render — are all properties of the real engine, and a stub would assert
-none of them.
+properties worth holding — a PDF comes out, a hostile field cannot
+reshape the page, a refused asset stops the render, the grand total lands
+on the last page only — are all properties of the real engine, and a stub
+would assert none of them.
 """
 
 from __future__ import annotations
 
+import os
 from datetime import date
 from pathlib import Path
 
@@ -123,25 +124,73 @@ class TestBundledDocuments:
             await PdfRenderer().render_document(PdfDocument())
 
 
-class TestDeterminism:
-    async def test_same_payload_gives_the_same_bytes(self) -> None:
-        """This is what makes a document hashable and cacheable.
+_REPRODUCIBILITY_SCRIPT: str = """
+import asyncio
+import hashlib
+import sys
+from datetime import date
 
-        WeasyPrint writes no creation date and no document identifier
-        unless asked; if that ever changes upstream, a rendered document
-        stops comparing equal to itself and this fails.
-        """
-        renderer = PdfRenderer()
-        first = await renderer.render_document(_receipt())
-        second = await renderer.render_document(_receipt())
-        assert first == second
+from tempest_fastapi_sdk.pdf import Party, PdfRenderer, ReceiptDocument
 
+document = ReceiptDocument(
+    issue_date=date(2026, 8, 13),
+    issuer=Party(name="Acme LTDA"),
+    payer=Party(name="Ana Souza"),
+    amount_cents=125000,
+    reference="consultoria",
+)
+pdf = asyncio.run(PdfRenderer().render_document(document))
+sys.stdout.write(hashlib.sha256(pdf).hexdigest())
+"""
+
+
+class TestReproducibility:
     async def test_different_payloads_differ(self) -> None:
-        """Determinism must not come from ignoring the input."""
+        """The obvious half: output must depend on the input."""
         renderer = PdfRenderer()
         first = await renderer.render_document(_receipt(amount_cents=1000))
         second = await renderer.render_document(_receipt(amount_cents=2000))
         assert first != second
+
+    def test_pinning_source_date_epoch_makes_runs_match(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Byte-identical output needs ``SOURCE_DATE_EPOCH`` pinned.
+
+        Run in **subprocesses** on purpose. Two renders inside one process
+        match trivially, which is how this shipped claiming determinism it
+        did not have: the embedded font subset stamps a timestamp into its
+        ``head`` table, so two renders seconds apart differ. Three runs of
+        one container produced three hashes.
+
+        A same-process assertion cannot see that, so the only honest test
+        is one that crosses a process boundary with a delay.
+        """
+        import subprocess
+        import sys
+        import time
+
+        script = tmp_path / "render.py"
+        script.write_text(_REPRODUCIBILITY_SCRIPT, encoding="utf-8")
+        env = {**os.environ, "SOURCE_DATE_EPOCH": "1700000000"}
+        digests: list[str] = []
+        for index in range(2):
+            if index:
+                time.sleep(1.1)
+            digests.append(
+                subprocess.run(
+                    [sys.executable, str(script)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                ).stdout.strip(),
+            )
+        assert digests[0] == digests[1], (
+            "SOURCE_DATE_EPOCH is pinned, so the font subset timestamp is "
+            "fixed and the two renders must be byte-identical"
+        )
 
 
 class TestEscaping:

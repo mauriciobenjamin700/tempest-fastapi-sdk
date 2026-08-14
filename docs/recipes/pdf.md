@@ -308,18 +308,37 @@ RUN apt-get update \
 `tempest generate --dockerfile` emite esse bloco automaticamente quando o
 projeto fixa o extra `[pdf]` no `pyproject.toml`.
 
-!!! warning "Sem fonte, tudo vira quadradinho"
-    `fonts-dejavu-core` não é opcional. Um container sem fonte nenhuma diagrama
-    o documento **corretamente** e desenha cada glifo como um retângulo — o
-    layout fica certo e o texto ilegível, que é a falha mais difícil de
+!!! note "Sobre a fonte"
+    Medido em `python:3.13-slim`: `fonts-dejavu-core` chega **junto** com os
+    pacotes do Pango, e o documento sai legível mesmo sem pedir a fonte
+    explicitamente. Ela continua na lista de propósito — é a garantia de que a
+    família nomeada na folha de estilo existe, e o custo é desprezível. Numa
+    base que não puxe fonte nenhuma (distroless, por exemplo), o layout sai
+    certo e cada glifo vira retângulo, que é a falha mais difícil de
     diagnosticar da lista.
 
-## Mesma entrada, mesmos bytes
+!!! info "O erro não fala em Pango"
+    Sem as bibliotecas, o import passa e a **primeira renderização** falha com
+    `OSError: cannot load library 'libgobject-2.0-0'` — o nome que aparece é
+    esse, não `pango`. Verificado em `python:3.13-slim`.
 
-Duas renderizações do mesmo payload produzem PDFs **byte a byte idênticos**,
-inclusive entre processos: o WeasyPrint não escreve data de criação nem
-identificador de documento a menos que você peça. Isso é o que torna um
-documento renderizado hashável, cacheável e comparável em teste.
+## Saída reproduzível (precisa de uma variável de ambiente)
+
+O WeasyPrint não escreve data de criação nem identificador de documento, então
+o PDF em si não carrega relógio. Mas a **fonte embutida** carrega: o subconjunto
+de fonte gerado pelo `fontTools` grava um timestamp na tabela `head`, e o
+checksum dela entra no arquivo. Duas renderizações do mesmo payload em segundos
+diferentes produzem bytes diferentes.
+
+Medido: três execuções do mesmo container, três hashes distintos; a diferença
+está no checksum da `head` da fonte, dentro do stream comprimido.
+
+O `fontTools` respeita a convenção `SOURCE_DATE_EPOCH` de builds reproduzíveis.
+Com ela fixa, a saída passa a ser byte a byte idêntica entre processos:
+
+```bash
+SOURCE_DATE_EPOCH=1700000000 python -m src.server
+```
 
 ```python
 import asyncio
@@ -329,13 +348,23 @@ from tempest_fastapi_sdk.pdf import PdfRenderer, ReceiptDocument
 
 
 async def digest(recibo: ReceiptDocument) -> str:
-    """Return a stable digest of the rendered receipt."""
+    """Hash a rendered receipt.
+
+    Só é estável entre processos com ``SOURCE_DATE_EPOCH`` fixa no ambiente.
+    """
     pdf: bytes = await PdfRenderer().render_document(recibo)
     return hashlib.sha256(pdf).hexdigest()
 ```
 
-Passar `metadata=` (por exemplo `{"pdf_identifier": True}`) abre mão disso, de
-propósito.
+!!! warning "Não compare hash entre máquinas"
+    Mesmo com `SOURCE_DATE_EPOCH`, o byte depende da **versão da fonte** e da
+    versão do WeasyPrint. Um hash calculado na CI não bate com o de produção se
+    as imagens diferirem. Para "esse documento é o mesmo que emiti antes",
+    guarde o hash junto do artefato — não recalcule em outro ambiente
+    esperando bater.
+
+Passar `metadata=` (por exemplo `{"pdf_identifier": True}`) abre mão da
+reprodutibilidade de propósito.
 
 ## Concorrência
 

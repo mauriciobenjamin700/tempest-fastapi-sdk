@@ -12,11 +12,15 @@ Two properties this module keeps, both testable:
 * **Rendering never blocks the loop.** Layout is CPU-bound and a long
   report takes hundreds of milliseconds, so every render goes through a
   worker thread behind a semaphore.
-* **Same input, same bytes.** WeasyPrint writes no creation date and no
-  document identifier unless asked, so two renders of one payload are
-  byte-identical — across processes. That is what makes a rendered
-  document hashable, cacheable and comparable in a test. Setting
-  ``metadata`` gives it up on purpose.
+* **Reproducible with ``SOURCE_DATE_EPOCH``.** WeasyPrint writes no
+  creation date and no document identifier, but the *embedded font
+  subset* carries a timestamp in its ``head`` table, so two renders
+  seconds apart differ. Pinning ``SOURCE_DATE_EPOCH`` — the
+  reproducible-build convention ``fontTools`` honors — makes the output
+  byte-identical across processes. Measured: without it, three runs of
+  one container gave three hashes. Even with it, the bytes still depend
+  on the font and WeasyPrint versions, so a hash does not travel between
+  images.
 """
 
 from __future__ import annotations
@@ -330,7 +334,10 @@ class PdfRenderer:
                 'pip install "tempest-fastapi-sdk[pdf]"\n'
                 "It also needs Pango and fontconfig from the system — on "
                 "Debian/Ubuntu: apt-get install libpango-1.0-0 "
-                "libpangoft2-1.0-0 libharfbuzz0b fontconfig fonts-dejavu-core",
+                "libpangoft2-1.0-0 libharfbuzz0b fontconfig fonts-dejavu-core\n"
+                "When those are missing the failure appears at the first "
+                "render, not here, and it names libgobject-2.0-0 rather than "
+                "pango.",
             ) from exc
         from weasyprint.urls import FatalURLFetchingError
 
