@@ -1556,35 +1556,56 @@ ensure_models()  # honors TEMPEST_VOICE_MODEL_DIR
 Leaving it to the first request makes one user pay the download inside
 their timeout.
 
-### Pass the speaker count when you know it
+### How many speakers? It works it out
 
-This is the fragile part of the pipeline, and it deserves numbers.
-Sweeping the clustering threshold over three reference recordings
-(correct count in brackets):
+Diarization has to answer two questions and only one is easy. *Where each turn
+starts and ends* comes from the segmentation model. *How many distinct voices
+there are* comes from no model — it has to be inferred from how the turns
+group, and it is the part that gets a transcript wrong in ways nobody notices:
+eight participants in a two-party call, or four people collapsed into one.
 
-| threshold | 4 speakers (zh) | 2 speakers (en) #1 | 2 speakers (en) #2 |
-| --------- | --------------- | ------------------ | ------------------ |
-| 0.5       | 7               | **2**              | 4                  |
-| 0.7       | 5               | **2**              | 4                  |
-| 0.9       | **4**           | 1                  | **2**              |
-| 1.1       | 1               | 1                  | **2**              |
+The default is `num_speakers="auto"`. Measured on a twelve-recording benchmark
+whose speaker count is correct **by construction** — turns cut from distinct
+recordings, so distinct people, rather than from the diarizer's own output:
 
-**No value is right on all three.** The SDK defaults to 0.9 — right on
-two, and its failure mode is merging speakers rather than exploding into
-seven. sherpa-onnx's own default (0.5) produced seven groups for four
-people.
+| method | exact | mean error |
+| --- | --- | --- |
+| threshold 0.5 | 4/10 | 1.90 |
+| threshold 0.7 | 8/10 | 0.40 |
+| threshold 0.9 | 8/10 | 0.20 |
+| **automatic** | **12/12** | **0.00** |
 
-On a two-party call, a support conversation, an interview, you **know**
-how many people are there:
+The automatic mode wins for a structural reason rather than a lucky constant: a
+threshold asks *how close is close enough*, an answer that moves with the
+microphone, the language and the room, while the spectral method asks *where
+does this affinity matrix naturally split*, which is a property of the
+recording itself.
 
-```python
-from tempest_fastapi_sdk.genai.audio import SpeakerDiarizer
+It costs a second pass — one embedding per turn plus an eigendecomposition —
+negligible next to the segmentation that produced the turns.
 
-diarizer = SpeakerDiarizer(num_speakers=2)
-```
+!!! tip "Know the count? Say so."
+    ```python
+    from tempest_fastapi_sdk.genai.audio import SpeakerDiarizer
 
-That stops the clustering from guessing, and the attribution comes out
-right.
+    diarizer = SpeakerDiarizer(num_speakers=2)
+    ```
+    On a two-party call you do. It is exact and skips the second pass.
+    `num_speakers=None` returns to threshold-only clustering, the weakest
+    option, kept for callers who want the previous behaviour.
+
+!!! warning "A monologue used to come back as a conversation"
+    The spectral gap search **always** finds a split, including where there is
+    none: a real six-turn dictation returned two speakers.
+
+    A single voice is *uniformly* similar to itself — even its most distant
+    pair of turns is close — while two voices produce pairs that are genuinely
+    far apart. Measured across the twelve recordings, the 10th percentile of
+    pairwise similarity was 0.490-0.667 for one speaker and -0.080-0.166 for
+    more than one; the veto sits in the middle of that gap.
+
+    That number is a property of the **bundled model's similarity scale**, not
+    a universal constant: swapping the model means re-measuring it.
 
 ### How attribution works, and where it fails
 

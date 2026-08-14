@@ -5,6 +5,63 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.222.0] — 2026-08-14
+
+### Changed
+
+- **`SpeakerDiarizer` estimates the speaker count by default**
+  (`num_speakers="auto"`). Naming the participants is no longer required to get
+  a correct split.
+
+  Diarization has to answer two questions and only one is easy: turn boundaries
+  come from the segmentation model, but *how many distinct voices* comes from
+  no model at all. Measured on a twelve-recording benchmark whose count is
+  correct **by construction** — turns cut from distinct recordings, rather than
+  from the diarizer's own output, which is the circular benchmark this work
+  started with and discarded:
+
+  | method | exact | mean error |
+  | --- | --- | --- |
+  | threshold 0.5 | 4/10 | 1.90 |
+  | threshold 0.7 | 8/10 | 0.40 |
+  | threshold 0.9 | 8/10 | 0.20 |
+  | **automatic** | **12/12** | **0.00** |
+
+  `num_speakers=<int>` remains exact and cheapest — it skips the second pass —
+  and stays the recommendation when the count is known. `num_speakers=None`
+  keeps threshold-only clustering, now documented as the weakest option.
+
+- **The clustering threshold is no longer the primary knob**, so v0.219.0's
+  "no threshold is right on all recordings" caveat is resolved rather than
+  documented: the estimate does not use one.
+
+### Added
+
+- **`estimate_speaker_count`** — spectral gap over the turn-embedding affinity
+  matrix. A threshold asks *how close is close enough*, whose answer moves with
+  the microphone, the language and the room; the gap asks *where does this
+  matrix split*, which is a property of the recording.
+
+- **`affinity_report`** — the eigenvalues, the gaps and the winning margin
+  behind an estimate. "It said four" is not something a person can act on;
+  two near-equal gaps mean the answer could as easily have been three, which is
+  the moment to pass the count explicitly.
+
+### Fixed
+
+- **A monologue is no longer reported as a conversation.** The gap search
+  always finds a split, including where there is none: a real six-turn
+  dictation came back as two speakers, which would turn a voice note into a
+  conversation.
+
+  A single voice is *uniformly* similar to itself — even its most distant pair
+  of turns is close — while two voices produce genuinely distant pairs.
+  Measured across the twelve recordings, the 10th percentile of pairwise
+  similarity was 0.490-0.667 for one speaker and -0.080-0.166 for more than
+  one, and `SOLO_COHESION_P10` sits in the middle of that gap with at least
+  0.14 of margin on each side. It is a property of the bundled model's
+  similarity scale, not a universal constant, and the docstring says so.
+
 ## [0.221.0] — 2026-08-14
 
 ### Added

@@ -74,6 +74,18 @@ from tempest_fastapi_sdk.genai.audio.schemas import (
 from tempest_fastapi_sdk.genai.audio.schemas import (
     TranscriptionSegment as TranscriptionSegment,
 )
+from tempest_fastapi_sdk.genai.audio.speaker_count import (
+    DEFAULT_AFFINITY_PERCENTILE as DEFAULT_AFFINITY_PERCENTILE,
+)
+from tempest_fastapi_sdk.genai.audio.speaker_count import (
+    DEFAULT_MAX_SPEAKERS as DEFAULT_MAX_SPEAKERS,
+)
+from tempest_fastapi_sdk.genai.audio.speaker_count import (
+    affinity_report as affinity_report,
+)
+from tempest_fastapi_sdk.genai.audio.speaker_count import (
+    estimate_speaker_count as estimate_speaker_count,
+)
 from tempest_fastapi_sdk.genai.audio.stt import SpeechToText as SpeechToText
 from tempest_fastapi_sdk.genai.audio.stt import (
     resolve_audio_device as resolve_audio_device,
@@ -94,8 +106,10 @@ from tempest_fastapi_sdk.genai.audio.voiceprint import (
 )
 
 __all__: list[str] = [
+    "DEFAULT_AFFINITY_PERCENTILE",
     "DEFAULT_CLUSTERING_THRESHOLD",
     "DEFAULT_MATCH_THRESHOLD",
+    "DEFAULT_MAX_SPEAKERS",
     "DEFAULT_MAX_UPLOAD_BYTES",
     "DEFAULT_MODEL_NAME",
     "DIARIZATION_SAMPLE_RATE",
@@ -121,10 +135,12 @@ __all__: list[str] = [
     "VoiceMatch",
     "VoiceProfileSchema",
     "VoiceProfileService",
+    "affinity_report",
     "align_turns",
     "cosine_similarity",
     "default_cache_dir",
     "ensure_models",
+    "estimate_speaker_count",
     "make_voice_router",
     "pack_embedding",
     "preset_for",

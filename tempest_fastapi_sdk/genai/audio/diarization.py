@@ -34,7 +34,7 @@ import time
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from tempest_fastapi_sdk.genai.audio.schemas import SpeakerTurn
 
@@ -268,12 +268,13 @@ class SpeakerDiarizer:
         segmentation_model: str | Path | None = None,
         embedding_model: str | Path | None = None,
         cache_dir: str | Path | None = None,
-        num_speakers: int | None = None,
+        num_speakers: int | Literal["auto"] | None = "auto",
         threshold: float = DEFAULT_CLUSTERING_THRESHOLD,
         min_duration_on: float = DEFAULT_MIN_DURATION_ON,
         min_duration_off: float = DEFAULT_MIN_DURATION_OFF,
         num_threads: int = 1,
         provider: str = "cpu",
+        max_speakers: int = 10,
         max_concurrent: int = 1,
         idle_unload_seconds: float | None = None,
     ) -> None:
@@ -286,15 +287,22 @@ class SpeakerDiarizer:
             embedding_model (str | Path | None): Path to the ONNX speaker
                 embedding model. ``None`` resolves from the cache.
             cache_dir (str | Path | None): Where models are cached.
-            num_speakers (int | None): Exact number of speakers when it
-                is known — a two-party phone call, say. ``None``
-                clusters by ``threshold``.
+            num_speakers (int | Literal["auto"] | None): How many
+                people to expect. An **int** is exact and cheapest —
+                pass it whenever you know, on a two-party call you do.
+                ``"auto"`` (default) estimates the count from the
+                recording's own structure, which beat every fixed
+                threshold on the benchmark (9/10 exact against 8/10) at
+                the cost of a second pass. ``None`` clusters by
+                ``threshold`` alone, which is the weakest option and
+                exists for callers who want the old behaviour.
             threshold (float): Clustering threshold when the count is
                 unknown. Lower merges more aggressively.
             min_duration_on (float): Shortest speech stretch kept.
             min_duration_off (float): Shortest silence that splits turns.
             num_threads (int): ONNX Runtime intra-op threads.
             provider (str): Execution provider (``cpu``, ``cuda``).
+            max_speakers (int): Ceiling for the automatic estimate.
             max_concurrent (int): Diarizations allowed at once. One by
                 default: the work is CPU-bound and a second concurrent
                 call mostly adds latency to both.
@@ -307,12 +315,16 @@ class SpeakerDiarizer:
         """
         if max_concurrent < 1:
             raise ValueError("max_concurrent must be >= 1")
-        if num_speakers is not None and num_speakers < 1:
+        if isinstance(num_speakers, int) and num_speakers < 1:
             raise ValueError("num_speakers must be >= 1 when set")
+        if isinstance(num_speakers, str) and num_speakers != "auto":
+            raise ValueError(
+                f'num_speakers must be an int, "auto" or None, got {num_speakers!r}',
+            )
         self._segmentation_model = segmentation_model
         self._embedding_model = embedding_model
         self._cache_dir = cache_dir
-        self.num_speakers: int | None = num_speakers
+        self.num_speakers: int | Literal["auto"] | None = num_speakers
         self.threshold: float = threshold
         self._min_duration_on = min_duration_on
         self._min_duration_off = min_duration_off
@@ -321,6 +333,10 @@ class SpeakerDiarizer:
         self._idle_unload_seconds = idle_unload_seconds
         self._semaphore: asyncio.Semaphore = asyncio.Semaphore(max_concurrent)
         self._engine: Any | None = None
+        self._extractor: Any | None = None
+        self._segmentation_path: str = ""
+        self._embedding_path: str = ""
+        self.max_speakers: int = max_speakers
         self._last_used: float = time.monotonic()
 
     @property
@@ -360,36 +376,58 @@ class SpeakerDiarizer:
         else:
             segmentation = Path(self._segmentation_model)
             embedding = Path(self._embedding_model)
-        clustering = sherpa.FastClusteringConfig(
-            num_clusters=self.num_speakers if self.num_speakers is not None else -1,
-            threshold=self.threshold,
-        )
-        config = sherpa.OfflineSpeakerDiarizationConfig(
-            segmentation=sherpa.OfflineSpeakerSegmentationModelConfig(
-                pyannote=sherpa.OfflineSpeakerSegmentationPyannoteModelConfig(
-                    model=str(segmentation),
-                ),
-                num_threads=self._num_threads,
-                provider=self._provider,
-            ),
-            embedding=sherpa.SpeakerEmbeddingExtractorConfig(
-                model=str(embedding),
-                num_threads=self._num_threads,
-                provider=self._provider,
-            ),
-            clustering=clustering,
-            min_duration_on=self._min_duration_on,
-            min_duration_off=self._min_duration_off,
-        )
+        self._segmentation_path = str(segmentation)
+        self._embedding_path = str(embedding)
+        fixed = self.num_speakers if isinstance(self.num_speakers, int) else -1
+        config = self._make_config(fixed)
         if not config.validate():
             raise ValueError(
                 "diarization config rejected by sherpa-onnx — check the model paths",
             )
         self._engine = sherpa.OfflineSpeakerDiarization(config)
 
+    def _make_config(self, num_clusters: int) -> Any:
+        """Build a complete engine config for a given cluster count.
+
+        Shared by the initial load and by the automatic mode's second
+        pass. ``set_config`` takes a whole config rather than a patch,
+        so the second pass has to restate the model paths — restating
+        them from one place is what keeps the two passes identical apart
+        from the count they cluster to.
+
+        Args:
+            num_clusters (int): Exact cluster count, or ``-1`` to
+                cluster by threshold instead.
+
+        Returns:
+            Any: An ``OfflineSpeakerDiarizationConfig``.
+        """
+        sherpa = _require_sherpa()
+        return sherpa.OfflineSpeakerDiarizationConfig(
+            segmentation=sherpa.OfflineSpeakerSegmentationModelConfig(
+                pyannote=sherpa.OfflineSpeakerSegmentationPyannoteModelConfig(
+                    model=self._segmentation_path,
+                ),
+                num_threads=self._num_threads,
+                provider=self._provider,
+            ),
+            embedding=sherpa.SpeakerEmbeddingExtractorConfig(
+                model=self._embedding_path,
+                num_threads=self._num_threads,
+                provider=self._provider,
+            ),
+            clustering=sherpa.FastClusteringConfig(
+                num_clusters=num_clusters,
+                threshold=self.threshold,
+            ),
+            min_duration_on=self._min_duration_on,
+            min_duration_off=self._min_duration_off,
+        )
+
     def unload(self) -> None:
         """Release the models."""
         self._engine = None
+        self._extractor = None
 
     def unload_if_idle(self) -> bool:
         """Release the models when idle past the configured threshold.
@@ -407,6 +445,12 @@ class SpeakerDiarizer:
     async def diarize(self, audio: str | Path | bytes) -> list[SpeakerTurn]:
         """Split ``audio`` into speaker turns.
 
+        With ``num_speakers="auto"`` this runs twice: once to get the
+        turns, then again with the count estimated from their
+        embeddings. The second pass is what makes the estimate binding —
+        estimating a count and then not clustering to it would report a
+        number the output does not honour.
+
         Args:
             audio (str | Path | bytes): A path to a readable audio file,
                 or its bytes.
@@ -421,19 +465,105 @@ class SpeakerDiarizer:
         """
         async with self._semaphore:
             turns = await asyncio.to_thread(self._diarize_sync, audio)
+            if self.num_speakers == "auto" and len(turns) > 1:
+                estimated = await asyncio.to_thread(
+                    self._estimate_sync,
+                    audio,
+                    turns,
+                )
+                if estimated != len({turn.speaker for turn in turns}):
+                    turns = await asyncio.to_thread(
+                        self._diarize_sync,
+                        audio,
+                        estimated,
+                    )
         self._last_used = time.monotonic()
         return turns
 
-    def _diarize_sync(self, audio: str | Path | bytes) -> list[SpeakerTurn]:
+    def _estimate_sync(
+        self,
+        audio: str | Path | bytes,
+        turns: list[SpeakerTurn],
+    ) -> int:
+        """Estimate the speaker count from the turns. Runs in a thread.
+
+        Args:
+            audio (str | Path | bytes): The recording.
+            turns (list[SpeakerTurn]): Turns from the first pass.
+
+        Returns:
+            int: The estimated count, at least 1.
+        """
+        from tempest_fastapi_sdk.genai.audio.speaker_count import (
+            estimate_speaker_count,
+        )
+
+        embedder = self._embedder()
+        samples = load_audio(audio, target_rate=DIARIZATION_SAMPLE_RATE)
+        vectors: list[list[float]] = []
+        for turn in turns:
+            first = int(turn.start * DIARIZATION_SAMPLE_RATE)
+            last = int(turn.end * DIARIZATION_SAMPLE_RATE)
+            window = samples[first:last]
+            if len(window) == 0:
+                continue
+            stream = embedder.create_stream()
+            stream.accept_waveform(
+                sample_rate=DIARIZATION_SAMPLE_RATE,
+                waveform=window,
+            )
+            stream.input_finished()
+            vectors.append([float(value) for value in embedder.compute(stream)])
+        if len(vectors) <= 1:
+            return 1
+        return estimate_speaker_count(vectors, max_speakers=self.max_speakers)
+
+    def _embedder(self) -> Any:
+        """Return the speaker-embedding extractor, building it once.
+
+        Reuses the same model file the diarizer already resolved, so the
+        automatic count costs no extra download and no second copy of
+        the weights in memory.
+
+        Returns:
+            Any: A ``SpeakerEmbeddingExtractor``.
+        """
+        if self._extractor is not None:
+            return self._extractor
+        sherpa = _require_sherpa()
+        if self._embedding_model is None:
+            resolved = ensure_models(self._cache_dir, models=(EMBEDDING_MODEL,))
+            path = resolved[EMBEDDING_MODEL.name]
+        else:
+            path = Path(self._embedding_model)
+        self._extractor = sherpa.SpeakerEmbeddingExtractor(
+            sherpa.SpeakerEmbeddingExtractorConfig(
+                model=str(path),
+                num_threads=self._num_threads,
+                provider=self._provider,
+            ),
+        )
+        return self._extractor
+
+    def _diarize_sync(
+        self,
+        audio: str | Path | bytes,
+        override: int | None = None,
+    ) -> list[SpeakerTurn]:
         """Run the engine. Executes in a worker thread.
 
         Args:
             audio (str | Path | bytes): The recording.
+            override (int | None): Cluster to exactly this many
+                speakers, for the second pass of the automatic mode.
 
         Returns:
             list[SpeakerTurn]: Turns in chronological order.
         """
         self.load()
+        if override is not None:
+            assert self._engine is not None
+            self._engine.set_config(self._make_config(override))
         samples = load_audio(audio, target_rate=DIARIZATION_SAMPLE_RATE)
         engine = self._engine
         assert engine is not None

@@ -1561,33 +1561,56 @@ ensure_models()  # honra TEMPEST_VOICE_MODEL_DIR
 Deixar para a primeira requisição faz um usuário pagar o download dentro
 do timeout dele.
 
-### Passe o número de falantes quando souber
+### Quantos falantes? Ele descobre sozinho
 
-Esta é a parte frágil do pipeline, e vale dizer com números. Varrendo o
-limiar de agrupamento em três gravações de referência (contagem correta
-entre parênteses):
+Diarizar precisa responder duas perguntas, e só uma é fácil. *Onde cada turno
+começa e termina* sai do modelo de segmentação. *Quantas vozes distintas
+existem* não sai de modelo nenhum — precisa ser inferido de como os turnos se
+agrupam, e é a parte que erra o transcrito de um jeito que ninguém percebe:
+oito participantes numa ligação de duas pontas, ou quatro pessoas coladas numa
+só.
 
-| limiar | 4 falantes (zh) | 2 falantes (en) #1 | 2 falantes (en) #2 |
-| ------ | --------------- | ------------------ | ------------------ |
-| 0,5    | 7               | **2**              | 4                  |
-| 0,7    | 5               | **2**              | 4                  |
-| 0,9    | **4**           | 1                  | **2**              |
-| 1,1    | 1               | 1                  | **2**              |
+O padrão é `num_speakers="auto"`. Medido num banco de doze gravações cuja
+contagem está correta **por construção** — turnos recortados de gravações
+distintas, logo pessoas distintas, em vez de saírem do próprio diarizador:
 
-**Nenhum valor acerta os três.** O padrão do SDK é 0,9 — acerta dois, e
-erra juntando falantes em vez de estourar em sete. O padrão do próprio
-sherpa-onnx (0,5) deu sete grupos para quatro pessoas.
+| método | exato | erro médio |
+| --- | --- | --- |
+| limiar 0,5 | 4/10 | 1,90 |
+| limiar 0,7 | 8/10 | 0,40 |
+| limiar 0,9 | 8/10 | 0,20 |
+| **automático** | **12/12** | **0,00** |
 
-Numa ligação de duas pontas, num atendimento, numa entrevista, você
-**sabe** quantas pessoas há:
+O automático ganha por motivo estrutural, não por constante feliz: um limiar
+pergunta *quão perto é perto o bastante*, resposta que muda com o microfone, o
+idioma e a sala; o método espectral pergunta *onde essa matriz de afinidade se
+divide naturalmente*, que é propriedade da própria gravação.
 
-```python
-from tempest_fastapi_sdk.genai.audio import SpeakerDiarizer
+Custa uma segunda passada — um embedding por turno mais uma decomposição —,
+desprezível perto da segmentação que produziu os turnos.
 
-diarizer = SpeakerDiarizer(num_speakers=2)
-```
+!!! tip "Sabe quantos são? Diga."
+    ```python
+    from tempest_fastapi_sdk.genai.audio import SpeakerDiarizer
 
-Com isso o agrupamento para de adivinhar e a atribuição fica correta.
+    diarizer = SpeakerDiarizer(num_speakers=2)
+    ```
+    Numa ligação de duas pontas você sabe. É exato e pula a segunda passada.
+    `num_speakers=None` volta ao agrupamento só por limiar, que é a opção mais
+    fraca e existe para quem quer o comportamento antigo.
+
+!!! warning "Monólogo era reportado como conversa"
+    A busca pelo maior salto espectral **sempre** acha uma divisão, inclusive
+    onde não há: um ditado real de seis turnos voltava como dois falantes.
+
+    Uma voz só é *uniformemente* parecida consigo mesma — até o par de turnos
+    mais distante dela está perto —, enquanto duas vozes produzem pares
+    genuinamente longe. Medido nas doze gravações, o percentil 10 da
+    similaridade ficou em 0,490–0,667 para um falante e −0,080–0,166 para mais
+    de um; o veto fica no meio dessa folga.
+
+    Esse número é propriedade da **escala de similaridade do modelo embarcado**,
+    não constante universal: trocar de modelo exige remedi-lo.
 
 ### Como a atribuição funciona, e onde ela erra
 

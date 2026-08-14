@@ -336,6 +336,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (unit/`@model`/`@gpu`) + plans live under `planning/genai/`. **Fix:** `httpx`
   + `email-validator` are base deps so a minimal/`[genai]` install imports
   (v0.151.1).
+- **Contagem automática de falantes (v0.222.0)** — `num_speakers="auto"` é o
+  padrão do `SpeakerDiarizer`: `estimate_speaker_count` lê a contagem do maior
+  salto espectral na matriz de afinidade dos turnos, e uma segunda passada
+  re-agrupa para ela. **12/12 exato** num banco de 12 gravações com verdade por
+  construção, contra 8/10 do melhor limiar fixo. `affinity_report` expõe
+  autovalores, saltos e margem. **Veto de monólogo** (`SOLO_COHESION_P10`): a
+  busca espectral sempre acha divisão, e um ditado real de 6 turnos voltava
+  como 2 falantes — percentil 10 da similaridade foi 0,490–0,667 para 1 voz e
+  −0,080–0,166 para várias, e o corte fica no meio. É escala do modelo
+  embarcado, não constante universal. Descartei um banco anterior por ser
+  circular (a verdade vinha do próprio diarizador).
 - **Superfície de voz (v0.221.0)** — `make_voice_router` (`POST
   /voice/transcribe` + `POST`/`GET`/`DELETE` `/voice/profiles`; listar e apagar
   são direito da pessoa, e a listagem **não** devolve o embedding) e

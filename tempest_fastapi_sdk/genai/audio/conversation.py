@@ -19,7 +19,7 @@ used, so a caller can see when attribution was close.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from tempest_fastapi_sdk.genai.audio.diarization import SpeakerDiarizer
 from tempest_fastapi_sdk.genai.audio.schemas import (
@@ -163,7 +163,7 @@ class ConversationTranscriber:
         audio: str | Path | bytes,
         *,
         language: Language | str | None = None,
-        num_speakers: int | None = None,
+        num_speakers: int | Literal["auto"] | None = None,
         identify_with: VoiceProfileService | None = None,
         session: AsyncSession | None = None,
         user_ids: list[UUID] | None = None,
@@ -180,10 +180,11 @@ class ConversationTranscriber:
             audio (str | Path | bytes): The recording.
             language (Language | str | None): Force a language instead of
                 detecting it.
-            num_speakers (int | None): Exact speaker count when known.
-                **Pass it whenever you can** — clustering by threshold
-                alone is the least reliable part of the pipeline; see
-                :data:`~tempest_fastapi_sdk.genai.audio.diarization.DEFAULT_CLUSTERING_THRESHOLD`.
+            num_speakers (int | Literal["auto"] | None): Override the
+                diarizer's setting for this call. ``None`` (default)
+                leaves it alone, which means the automatic estimate
+                unless the diarizer was built otherwise. An **int** is
+                exact and skips the second pass.
             identify_with (VoiceProfileService | None): Match each
                 speaker against enrolled voice profiles. Requires
                 ``session``. ``None`` leaves the turns anonymous.
