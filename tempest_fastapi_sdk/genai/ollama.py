@@ -399,6 +399,7 @@ class OllamaGenerator(_OllamaClientMixin):
         prompt: str,
         schema: type[StructuredT],
         *,
+        system: str | None = None,
         config: GenerationConfig | None = None,
         **kwargs: Any,
     ) -> StructuredT:
@@ -409,9 +410,27 @@ class OllamaGenerator(_OllamaClientMixin):
         instance of ``schema``. No ``[genai-structured]`` extra needed — the
         constraint lives in the daemon.
 
+        The request goes to ``/api/chat``, not ``/api/generate``. That is not
+        a style choice: on a harmony/reasoning model such as ``gpt-oss``,
+        ``/api/generate`` with a ``format`` constraint answers ``200 OK``
+        with a non-zero ``eval_count`` and an **empty** ``response`` — the
+        reply lands in a reasoning channel the endpoint does not surface.
+        Measured against ``gpt-oss:20b``: ``/api/generate`` without
+        ``format`` works, ``/api/generate`` with ``format`` returns empty,
+        ``/api/chat`` with ``format`` returns the JSON in
+        ``message.content``. Non-reasoning models behave the same on either
+        endpoint, so ``/api/chat`` is correct for both.
+
         Args:
-            prompt (str): The input text (instruct the model to answer as JSON).
+            prompt (str): The input text. With a schema in hand the model
+                does not need to be told to answer as JSON — the daemon
+                constrains the decoder.
             schema (type[StructuredT]): The Pydantic model to produce.
+            system (str | None): Instruction sent as its own system turn
+                ahead of ``prompt``. Prefer it over prefixing the
+                instruction to a long document: a several-thousand-token
+                ``prompt`` buries an instruction placed above it, and the
+                model answers about the document while ignoring the ask.
             config (GenerationConfig | None): Typed generation parameters.
             **kwargs (Any): Per-call generation overrides (win over ``config``).
 
@@ -419,18 +438,39 @@ class OllamaGenerator(_OllamaClientMixin):
             StructuredT: The validated instance.
 
         Raises:
-            ValueError: When the output carries no JSON object.
+            ValueError: When the daemon answers with no usable content, or
+                when the content carries no JSON object.
             pydantic.ValidationError: When the JSON fails ``schema`` validation.
         """
-        payload = self._request_payload(prompt, config, kwargs, stream=False)
-        payload["format"] = schema.model_json_schema()
-        response = await self._http().post(
-            f"{self.base_url}/api/generate",
-            json=payload,
-        )
-        response.raise_for_status()
-        data: dict[str, Any] = response.json()
-        return parse_structured(str(data.get("response", "")), schema)
+        messages: list[dict[str, Any]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "format": schema.model_json_schema(),
+        }
+        self._apply_common(payload, config, kwargs)
+
+        async with genai_span("generate_structured", self.model):
+            response = await self._http().post(
+                f"{self.base_url}/api/chat",
+                json=payload,
+            )
+            response.raise_for_status()
+            data: dict[str, Any] = response.json()
+            message: dict[str, Any] = data.get("message") or {}
+            content = str(message.get("content") or "")
+            if not content.strip():
+                raise ValueError(
+                    f"model {self.model} answered with no content "
+                    f"(eval_count={data.get('eval_count')}); check that the "
+                    "model supports constrained structured output",
+                )
+            return parse_structured(content, schema)
 
     async def chat_with_tools(
         self,

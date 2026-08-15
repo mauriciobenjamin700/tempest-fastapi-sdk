@@ -1177,6 +1177,30 @@ O `OllamaGenerator` manda o schema no campo `format` do daemon (o Ollama
 garante JSON schema-válido nativamente) e faz o parse na saída — **é a
 rota estruturada recomendada, sem biblioteca extra**.
 
+!!! warning "Instrução longa vai em `system=`, não colada no documento"
+    Passe a instrução em `generate_structured(documento, Schema,
+    system="...")`. Instrução concatenada acima de um documento longo é
+    ignorada: medido contra `gpt-oss:20b` lendo um edital de 24 mil
+    caracteres, **0 itens** extraídos com a instrução no mesmo turno e
+    **20 itens** com ela no turno `system`.
+
+??? info "Por que a chamada vai em `/api/chat` e não em `/api/generate`"
+    Num modelo de raciocínio (harmony, como o `gpt-oss`), o
+    `/api/generate` **com** `format` responde `200 OK` com `eval_count`
+    não-zero e `response` **vazio** — a resposta cai num canal de
+    raciocínio que aquele endpoint não expõe. Sem `format` funciona; com
+    `format`, não. O `/api/chat` devolve o JSON em `message.content`, e
+    modelos sem raciocínio se comportam igual nos dois. Desde a v0.224.0
+    a chamada usa `/api/chat`, e um conteúdo vazio levanta `ValueError`
+    em vez de devolver nada.
+
+!!! danger "Campo com `default` é campo que o modelo pode pular"
+    O Pydantic deixa campo com default fora de `required` no JSON schema,
+    e o decodificador constrangido do daemon então pode omiti-lo — e ele
+    omite justamente os que têm default. Em schema de extração, **nenhum
+    campo tem default**; a ausência se expressa no dado (`""`), nunca no
+    schema.
+
 !!! info "No backend local (transformers)"
     `TextGenerator.generate_structured(prompt, schema, constrained=True)`
     restringe a decodificação com o `lm-format-enforcer`

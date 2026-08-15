@@ -65,10 +65,14 @@ class TestOllamaStructured:
         captured: dict[str, object] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
+            captured["url"] = str(request.url)
             captured["body"] = json.loads(request.content)
             return httpx.Response(
                 200,
-                json={"response": '{"name": "Alice", "age": 30}', "done": True},
+                json={
+                    "message": {"content": '{"name": "Alice", "age": 30}'},
+                    "done": True,
+                },
             )
 
         client = HTTPClient(transport=httpx.MockTransport(handler))
@@ -77,5 +81,6 @@ class TestOllamaStructured:
         await client.aclose()
 
         assert result == Person(name="Alice", age=30)
+        assert captured["url"] == "http://127.0.0.1:11434/api/chat"
         body = captured["body"]
         assert body["format"] == Person.model_json_schema()  # type: ignore[index]

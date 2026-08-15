@@ -1175,6 +1175,29 @@ asyncio.run(main())
 enforces JSON-schema-valid output natively) and parses the reply — **this is
 the recommended structured route, no extra library**.
 
+!!! warning "A long instruction goes in `system=`, not glued to the document"
+    Pass it as `generate_structured(document, Schema, system="...")`. An
+    instruction concatenated above a long document is ignored: measured
+    against `gpt-oss:20b` reading a 24k-character tender, **0 items**
+    extracted with the instruction in the same turn and **20 items** with
+    it in its own system turn.
+
+??? info "Why the call goes to `/api/chat` and not `/api/generate`"
+    On a reasoning (harmony) model such as `gpt-oss`, `/api/generate`
+    **with** `format` answers `200 OK` with a non-zero `eval_count` and an
+    **empty** `response` — the reply lands in a reasoning channel that
+    endpoint does not surface. Without `format` it works; with `format` it
+    does not. `/api/chat` returns the JSON in `message.content`, and
+    non-reasoning models behave identically on either. Since v0.224.0 the
+    call uses `/api/chat`, and empty content raises `ValueError` instead of
+    returning nothing.
+
+!!! danger "A field with a `default` is a field the model may skip"
+    Pydantic leaves a defaulted field out of `required` in the JSON schema,
+    and the daemon's constrained decoder may then omit it — and it omits
+    exactly the defaulted ones. In an extraction schema, **no field has a
+    default**; absence is expressed in the data (`""`), never in the schema.
+
 !!! info "On the local backend (transformers)"
     `TextGenerator.generate_structured(prompt, schema, constrained=True)`
     constrains decoding with `lm-format-enforcer` (the `[genai-structured]`
