@@ -284,6 +284,78 @@ city_choices("sp")[0]    # ChoiceBR(value="Adamantina", label="Adamantina")
 - `UFField` / `CityNameField` for schema fields; `is_valid_*` / `normalize_*` for imperative validation in the service.
 
 
+## Money in real
+
+
+Two directions, both in `tempest_fastapi_sdk.utils`, no extra needed.
+
+**Reading** what a document printed, with `parse_currency_br`:
+
+```python
+from decimal import Decimal
+
+from tempest_fastapi_sdk.utils import parse_currency_br
+
+parse_currency_br("R$ 2.930,00")   # Decimal("2930.00")
+parse_currency_br("2.930,00")      # Decimal("2930.00")
+parse_currency_br("2,930.00")      # Decimal("2930.00") — US notation too
+parse_currency_br("-R$ 0,01")      # Decimal("-0.01")
+parse_currency_br("no price")      # None
+```
+
+Every service that ingests money written for humans needs this: a model
+transcribing a PDF, an imported CSV, a scraped page. Sending that value
+through `float` first is what silently moves the cent.
+
+!!! warning "`None` is not zero"
+    `None` means "the document printed no price"; `Decimal("0.00")` means
+    "the document printed R$ 0,00". Collapsing the two loses the difference
+    between a line with missing data and a line that is genuinely free.
+
+!!! note "The lone-dot rule"
+    The **last** separator present is the decimal one. The genuinely
+    ambiguous case is a dot followed by exactly three digits: `"2.930"` is
+    read as two thousand nine hundred and thirty, which is what the notation
+    means in the documents this parses.
+
+**Writing** for prose — a PDF, an e-mail, a page:
+
+```python
+from decimal import Decimal
+
+from tempest_fastapi_sdk.utils import (
+    format_currency_br,
+    format_percent_br,
+    format_quantity_br,
+    quantize_money,
+)
+
+format_currency_br(Decimal("484365.84"))                # "R$ 484.365,84"
+format_currency_br(Decimal("2930"), symbol=False)       # "2.930,00"
+format_currency_br(Decimal("-0.01"))                    # "-R$ 0,01"
+format_percent_br(Decimal("0.30"))                      # "30,00%"
+format_percent_br(Decimal("0.2999998"), places=5)       # "29,99998%"
+format_quantity_br(Decimal("1250"))                     # "1.250,00"
+quantize_money(Decimal("1.005"))                        # Decimal("1.01")
+```
+
+None of it goes through `locale`, which is process-global, depends on
+locales being generated in the container, and is not thread-safe.
+
+!!! info "`quantize_money` rounds half up"
+    Not `Decimal`'s default (banker's rounding). Brazilian accounting
+    practice rounds half **away from zero**, and matching it is what lets a
+    generated document reproduce a hand-built one cent for cent.
+
+!!! tip "A spreadsheet cell takes a number, not text"
+    These functions are for prose. In `.xlsx`, write the `Decimal` and let
+    the mask present it — see
+    [Spreadsheets](spreadsheets.en.md#numbers-not-strings).
+
+For amounts already stored as integer cents (the `CentsField` convention),
+`tempest_fastapi_sdk.pdf.format_cents` does the same and delegates here.
+
+
 ## Utility helpers (utcnow, to_utc, modify_dict)
 
 

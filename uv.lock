@@ -1580,6 +1580,15 @@ wheels = [
 ]
 
 [[package]]
+name = "et-xmlfile"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/38/af70d7ab1ae9d4da450eeec1fa3918940a5fafb9055e934af8d6eb0c2313/et_xmlfile-2.0.0.tar.gz", hash = "sha256:dab3f4764309081ce75662649be815c4c9081e88f0837825f90fd28317d4da54", size = 17234, upload-time = "2024-10-25T17:25:40.039Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c1/8b/5fe2cc11fee489817272089c4203e679c63b570a5aaeb18d852ae3cbba6a/et_xmlfile-2.0.0-py3-none-any.whl", hash = "sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa", size = 18059, upload-time = "2024-10-25T17:25:39.051Z" },
+]
+
+[[package]]
 name = "fakeredis"
 version = "2.37.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4009,6 +4018,18 @@ wheels = [
 ]
 
 [[package]]
+name = "openpyxl"
+version = "3.1.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "et-xmlfile" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3d/f9/88d94a75de065ea32619465d2f77b29a0469500e99012523b91cc4141cd1/openpyxl-3.1.5.tar.gz", hash = "sha256:cf0e3cf56142039133628b5acffe8ef0c12bc902d2aadd3e0fe5878dc08d1050", size = 186464, upload-time = "2024-06-28T14:03:44.161Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c0/da/977ded879c29cbd04de313843e76868e6e13408a94ed6b987245dc7c8506/openpyxl-3.1.5-py2.py3-none-any.whl", hash = "sha256:5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2", size = 250910, upload-time = "2024-06-28T14:03:41.161Z" },
+]
+
+[[package]]
 name = "opentelemetry-api"
 version = "1.44.0"
 source = { registry = "https://pypi.org/simple" }
@@ -5028,6 +5049,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f3/91/9c6ee907786a473bf81c5f53cf703ba0957b23ab84c264080fb5a450416f/pyparsing-3.3.2.tar.gz", hash = "sha256:c777f4d763f140633dcb6d8a3eda953bf7a214dc4eff598413c070bcdc117cbc", size = 6851574, upload-time = "2026-01-21T03:57:59.36Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/bd/c038d7cc38edc1aa5bf91ab8068b63d4308c66c4c8bb3cbba7dfbc049f9c/pyparsing-3.3.2-py3-none-any.whl", hash = "sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d", size = 122781, upload-time = "2026-01-21T03:57:55.912Z" },
+]
+
+[[package]]
+name = "pypdf"
+version = "6.16.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b6/5a/df92d1c1ef8806ca28f20f978ee059894868d93de797a7e2edebe7fe1a43/pypdf-6.16.1.tar.gz", hash = "sha256:c4d1b43ddae921387321cf63936cd16a7743b91d2da92f165c149a195c972ba9", size = 7003737, upload-time = "2026-08-14T12:24:04.531Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/a1/724b18d6757ab7253a8fecd3a430eb8d980ed26872ba16651e7b5ddfc63f/pypdf-6.16.1-py3-none-any.whl", hash = "sha256:63fec31c4092ae50b6729beedcb469055b60d20c834bde1c402df241f371f644", size = 382924, upload-time = "2026-08-14T12:24:02.854Z" },
 ]
 
 [[package]]
@@ -6106,7 +6136,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.228.0"
+version = "0.229.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -6147,6 +6177,7 @@ all = [
     { name = "minio" },
     { name = "nvidia-ml-py" },
     { name = "onnx" },
+    { name = "openpyxl" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-httpx" },
@@ -6157,6 +6188,7 @@ all = [
     { name = "psutil" },
     { name = "pyjwt" },
     { name = "pyotp" },
+    { name = "pypdf" },
     { name = "python-multipart" },
     { name = "pywebpush" },
     { name = "pyyaml" },
@@ -6275,6 +6307,9 @@ pdf = [
     { name = "jinja2" },
     { name = "weasyprint" },
 ]
+pdf-read = [
+    { name = "pypdf" },
+]
 postgres = [
     { name = "asyncpg" },
 ]
@@ -6283,6 +6318,9 @@ prometheus = [
 ]
 queue = [
     { name = "faststream", extra = ["rabbit"] },
+]
+spreadsheet = [
+    { name = "openpyxl" },
 ]
 sqlite = [
     { name = "aiosqlite" },
@@ -6334,6 +6372,7 @@ dev = [
     { name = "onnx" },
     { name = "onnxruntime" },
     { name = "onnxscript" },
+    { name = "openpyxl" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-httpx" },
@@ -6345,6 +6384,7 @@ dev = [
     { name = "pyjwt" },
     { name = "pymupdf" },
     { name = "pyotp" },
+    { name = "pypdf" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -6360,6 +6400,7 @@ dev = [
     { name = "tempestweb" },
     { name = "tokenizers" },
     { name = "trafilatura" },
+    { name = "types-openpyxl" },
     { name = "uvicorn" },
 ]
 docs = [
@@ -6429,6 +6470,8 @@ requires-dist = [
     { name = "onnxruntime", marker = "extra == 'faces'", specifier = ">=1.28" },
     { name = "onnxruntime", marker = "extra == 'genai-onnx'", specifier = ">=1.28.0" },
     { name = "onnxruntime", marker = "extra == 'modelops-onnx'", specifier = ">=1.28.0" },
+    { name = "openpyxl", marker = "extra == 'all'", specifier = ">=3.1.5" },
+    { name = "openpyxl", marker = "extra == 'spreadsheet'", specifier = ">=3.1.5" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "extra == 'all'", specifier = ">=1.27.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "extra == 'otel'", specifier = ">=1.27.0" },
     { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'all'", specifier = ">=0.48b0" },
@@ -6457,6 +6500,8 @@ requires-dist = [
     { name = "pymupdf", marker = "extra == 'genai-rag'", specifier = ">=1.24.0" },
     { name = "pyotp", marker = "extra == 'all'", specifier = ">=2.9.0" },
     { name = "pyotp", marker = "extra == 'mfa'", specifier = ">=2.9.0" },
+    { name = "pypdf", marker = "extra == 'all'", specifier = ">=5.0.0" },
+    { name = "pypdf", marker = "extra == 'pdf-read'", specifier = ">=5.0.0" },
     { name = "python-multipart", marker = "extra == 'admin'", specifier = ">=0.0.12" },
     { name = "python-multipart", marker = "extra == 'all'", specifier = ">=0.0.12" },
     { name = "python-multipart", marker = "extra == 'upload'", specifier = ">=0.0.12" },
@@ -6491,7 +6536,7 @@ requires-dist = [
     { name = "websockets", marker = "extra == 'all'", specifier = ">=13.0" },
     { name = "websockets", marker = "extra == 'websocket'", specifier = ">=13.0" },
 ]
-provides-extras = ["auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "admin", "admin-sql", "minio", "http", "openapi", "prometheus", "mfa", "webauthn", "pdf", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-diarization", "faces", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
+provides-extras = ["auth", "email", "upload", "cache", "websocket", "webpush", "metrics", "queue", "tasks", "admin", "admin-sql", "minio", "http", "openapi", "prometheus", "mfa", "webauthn", "pdf", "pdf-read", "spreadsheet", "vision", "genai", "genai-quant", "genai-rag", "genai-audio", "genai-diarization", "faces", "genai-ollama", "genai-chroma", "genai-structured", "genai-onnx", "genai-vlm", "genai-hub", "genai-image", "modelops", "modelops-onnx", "modelops-sklearn", "geo", "ssr", "sqlite", "postgres", "otel", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -6515,6 +6560,7 @@ dev = [
     { name = "onnx", specifier = ">=1.16.0" },
     { name = "onnxruntime", specifier = ">=1.28.0" },
     { name = "onnxscript", specifier = ">=0.1.0" },
+    { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.27.0" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.48b0" },
     { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.48b0" },
@@ -6526,6 +6572,7 @@ dev = [
     { name = "pyjwt", specifier = ">=2.12.1" },
     { name = "pymupdf", specifier = ">=1.24.0" },
     { name = "pyotp", specifier = ">=2.9.0" },
+    { name = "pypdf", specifier = ">=5.0.0" },
     { name = "pytest", specifier = ">=8.3.3" },
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
@@ -6541,6 +6588,7 @@ dev = [
     { name = "tempestweb", specifier = ">=0.64.0" },
     { name = "tokenizers", specifier = ">=0.20.0" },
     { name = "trafilatura", specifier = ">=1.12.0" },
+    { name = "types-openpyxl", specifier = ">=3.1.5" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 docs = [
@@ -6892,6 +6940,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ae/40/4a3db7990d1f62a53182aa96eaef57aeb2886a27f90a195bc66713565d31/typer-0.27.1.tar.gz", hash = "sha256:a79bef8469a79c45498e7b814ecf8d603cc7644e9acbd9e19cac0334240b18df", size = 203994, upload-time = "2026-08-03T14:41:03.438Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/43/89/9518bc0c3929bee36b3a4a8e3daddd6e03f92f9961c66d4983b837160543/typer-0.27.1-py3-none-any.whl", hash = "sha256:53150287edd11baeb4e4722c8e394fcdf8181c0ae89485cba8d25c778d5edd56", size = 122874, upload-time = "2026-08-03T14:41:04.391Z" },
+]
+
+[[package]]
+name = "types-openpyxl"
+version = "3.1.5.20260807"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cd/89/e81814aac1c6ec46ee0006b723254ae737faa68c1ac80a7c3b81b3aa9f22/types_openpyxl-3.1.5.20260807.tar.gz", hash = "sha256:1a0a42b125f8023d3ae83cc057e379d301a87f45e60b6160917824fef28ab015", size = 101740, upload-time = "2026-08-07T04:17:25.557Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/34/50/c7faba803c8a2e822ccc43a091c979cdbdc28e792e1eb0fb5ff172c81ee5/types_openpyxl-3.1.5.20260807-py3-none-any.whl", hash = "sha256:e64e9342cdac8a2d7b09f992d3606c532b75da43874f8107b6b5a122dc9d5681", size = 165826, upload-time = "2026-08-07T04:17:24.341Z" },
 ]
 
 [[package]]

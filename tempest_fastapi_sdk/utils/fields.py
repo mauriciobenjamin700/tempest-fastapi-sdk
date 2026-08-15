@@ -83,6 +83,34 @@ when an exact decimal with two fractional digits is the contract (e.g. a
 payment gateway payload).
 """
 
+DecimalRatioField = Annotated[Decimal, Field(ge=0, le=1)]
+"""Exact fraction in the inclusive range ``0..1``.
+
+The :class:`~decimal.Decimal` counterpart of :data:`RatioField`. Use it —
+never the float one — wherever the fraction multiplies money.
+``Decimal("0.28")`` is exactly twenty-eight percent; ``0.28`` is not, and
+the difference surfaces the moment it meets a :data:`PriceField`: Python
+raises ``TypeError`` on ``Decimal * float``, and the "fix" of casting one
+side is what moves the cent a bid is judged on.
+"""
+
+DecimalPercentField = Annotated[Decimal, Field(ge=0, le=100)]
+"""Exact percentage in the inclusive range ``0..100``.
+
+The :class:`~decimal.Decimal` counterpart of :data:`PercentField`, for the
+same reason as :data:`DecimalRatioField`. Divide by
+:data:`~tempest_fastapi_sdk.utils.currency.HUNDRED` to reach the ratio.
+"""
+
+SignedDecimalRatioField = Annotated[Decimal, Field(le=1)]
+"""Exact fraction, capped at ``1``, that may go below zero.
+
+For a *derived* share that can legitimately come out negative: a balancing
+line the premises left no slack for, or a closing difference a document
+must disclose rather than clamp to zero. Bounding it above but not below
+is deliberate — over 100% is a bug, under 0% is news.
+"""
+
 # --- Strings --------------------------------------------------------------
 
 NonEmptyStrField = Annotated[
@@ -123,6 +151,8 @@ plain ``str``.
 
 __all__: list[str] = [
     "CentsField",
+    "DecimalPercentField",
+    "DecimalRatioField",
     "HexColorField",
     "LatitudeField",
     "LocaleField",
@@ -137,5 +167,6 @@ __all__: list[str] = [
     "PriceField",
     "RatingField",
     "RatioField",
+    "SignedDecimalRatioField",
     "SlugField",
 ]

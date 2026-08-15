@@ -19,6 +19,12 @@ from tempest_fastapi_sdk.genai.rag import SupportsEmbed
 from tempest_fastapi_sdk.utils.http_client import HTTPClient
 
 
+class _CitySchema(BaseModel):
+    """Minimal structured-output target for the generate_structured tests."""
+
+    city: str
+
+
 class _Invoice(BaseModel):
     """Schema used by the structured-output tests."""
 
@@ -178,6 +184,92 @@ class TestOllamaGenerator:
         await client.aclose()
 
         assert captured["body"]["messages"][0]["images"] == ["<b64>"]
+
+    async def test_generate_structured_uses_chat_endpoint(self) -> None:
+        """The point of the fix: /api/generate answers empty on gpt-oss."""
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["url"] = str(request.url)
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={
+                    "message": {"role": "assistant", "content": '{"city": "Recife"}'},
+                    "done": True,
+                },
+            )
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator("gpt-oss:20b", http_client=client)
+        result = await gen.generate_structured("Onde fica o Marco Zero?", _CitySchema)
+        await client.aclose()
+
+        assert result.city == "Recife"
+        assert captured["url"] == "http://127.0.0.1:11434/api/chat"
+        assert captured["body"]["messages"] == [
+            {"role": "user", "content": "Onde fica o Marco Zero?"},
+        ]
+
+    async def test_generate_structured_puts_format_at_payload_root(self) -> None:
+        """``format`` nested inside ``options`` is ignored by the daemon."""
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"message": {"content": '{"city": "Olinda"}'}, "done": True},
+            )
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator("gpt-oss:20b", http_client=client)
+        await gen.generate_structured("x", _CitySchema, temperature=0.0)
+        await client.aclose()
+
+        assert captured["body"]["format"] == _CitySchema.model_json_schema()
+        assert "format" not in captured["body"]["options"]
+        assert captured["body"]["options"]["temperature"] == 0.0
+
+    async def test_generate_structured_sends_system_as_its_own_turn(self) -> None:
+        """An instruction concatenated to a long document gets ignored."""
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"message": {"content": '{"city": "Recife"}'}, "done": True},
+            )
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator("gpt-oss:20b", http_client=client)
+        await gen.generate_structured(
+            "<documento longo>",
+            _CitySchema,
+            system="Extraia a cidade.",
+        )
+        await client.aclose()
+
+        assert captured["body"]["messages"] == [
+            {"role": "system", "content": "Extraia a cidade."},
+            {"role": "user", "content": "<documento longo>"},
+        ]
+
+    async def test_generate_structured_raises_on_empty_content(self) -> None:
+        """A reply that went to the reasoning channel must not pass silently."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"message": {"content": ""}, "eval_count": 512, "done": True},
+            )
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator("gpt-oss:20b", http_client=client)
+        with pytest.raises(ValueError, match="no content"):
+            await gen.generate_structured("x", _CitySchema)
+        await client.aclose()
 
     async def test_chat_structured_puts_format_at_the_top_level(self) -> None:
         """Regression: `format` inside `options` is silently ignored."""

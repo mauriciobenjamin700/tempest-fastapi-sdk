@@ -5,6 +5,109 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.229.0] — 2026-08-15
+
+Everything here came out of building a real document service on the SDK
+(a public-procurement budget tool) and finding the same four gaps.
+
+### Added
+
+- **Spreadsheet generation** (`tempest_fastapi_sdk.spreadsheet`, extra
+  `[spreadsheet]`). The counterpart of `tempest_fastapi_sdk.pdf`: a PDF is what
+  you send when the numbers are final, an `.xlsx` is what you send when the
+  recipient has to sort, filter and re-total them.
+
+  ```python
+  workbook = new_workbook("Orçamento")
+  writer = SheetWriter(
+      workbook["Orçamento"],
+      columns=[
+          Column("Item", width=48, wrap=True),
+          Column("Valor", width=18, number_format=BR_CURRENCY_FORMAT),
+      ],
+  )
+  writer.title_block(["PREFEITURA MUNICIPAL", "Pregão 1/2026"])
+  writer.header_row()
+  writer.write_row(["Serviço de instalação", Decimal("2930.00")])
+  writer.total_row(["Total", Decimal("2930.00")])
+  data = workbook_to_bytes(workbook)
+  ```
+
+  `SheetWriter` owns the row cursor, so no call site tracks `(row, column)`
+  pairs — insert a line at the top and nothing below it has to be renumbered.
+  `Column` declares title, width, number format and alignment **once**, which
+  is what stops the format from drifting between the first row and the
+  thousandth.
+
+  The `BR_*` number formats embed the pt-BR language code (`[$R$-416]`). This
+  is not cosmetic: Excel resolves a plain `#,##0.00` with the locale of
+  *whoever opens the file*, so a workbook built in São Paulo renders
+  `1,234.56` on an en-US machine. The mask pins the convention inside the
+  document.
+
+  `SheetStyle` is plain data — hex colours and integer sizes, no `openpyxl`
+  objects — so a project's theme is definable, testable and comparable without
+  the extra installed. `new_workbook` also drops the stray `Sheet` tab that
+  `openpyxl` always creates.
+
+- **PDF text extraction** (`tempest_fastapi_sdk.pdf.extract_pdf_text` /
+  `extract_pdf_pages`, extra `[pdf-read]`). The inverse of the renderer, and
+  the first step of every "hand a document to a model" pipeline.
+
+  Text layer only, no OCR — and a scanned PDF returns `""` rather than a blank
+  document, because handing a model an empty prompt is how a confident answer
+  gets invented about a page nobody read. Page boundaries survive as markers,
+  so an extracted figure can cite where it came from, and truncation at
+  `max_chars` cuts at the last **complete** page and says so in the text.
+
+  It is a separate extra from `[pdf]` on purpose: rendering pulls WeasyPrint
+  plus Pango and fontconfig from the system, and a service that only reads
+  should carry none of that.
+
+- **Brazilian currency helpers** (`tempest_fastapi_sdk.utils.currency`, no
+  extra). `parse_currency_br` reads an amount as a document prints it
+  (`"R$ 2.930,00"`) back into an exact `Decimal`, accepting both separator
+  conventions; it returns `None` — not zero — when no digit is present, which
+  keeps "no price printed" distinguishable from "printed R$ 0,00".
+
+  `format_currency_br`, `format_percent_br`, `format_quantity_br` and
+  `quantize_money` render for prose without going through `locale` (which is
+  process-global, container-dependent and not thread-safe). Money is quantized
+  `ROUND_HALF_UP`, matching Brazilian accounting practice rather than
+  `Decimal`'s banker's rounding, which is what lets a generated document
+  reproduce a hand-built one cent for cent.
+
+- **Decimal ratio fields** — `DecimalRatioField` (`0..1`),
+  `DecimalPercentField` (`0..100`) and `SignedDecimalRatioField` (`<= 1`,
+  may go negative). The SDK shipped `RatioField` / `PercentField` annotated on
+  `float`, so `Decimal("0.28")` was silently coerced and the first
+  multiplication by a `PriceField` raised `TypeError` — or, once someone
+  "fixed" it with a cast, moved a cent. Use the decimal ones wherever the
+  fraction multiplies money.
+
+### Fixed
+
+- **`OllamaGenerator.generate_structured` returned an empty result on
+  reasoning models.** It posted to `/api/generate` with the schema in
+  `format`; on a harmony model such as `gpt-oss` the daemon answers `200 OK`
+  with a non-zero `eval_count` and an **empty** `response`, because the reply
+  lands in a reasoning channel that endpoint does not surface. Measured
+  against `gpt-oss:20b`: `/api/generate` without `format` works,
+  `/api/generate` with `format` returns empty, `/api/chat` with `format`
+  returns the JSON in `message.content`. The call now goes to `/api/chat`,
+  where non-reasoning models behave identically, and raises `ValueError`
+  instead of returning nothing when the content comes back empty.
+
+  It also takes a `system=` argument now. An instruction concatenated ahead of
+  a long document is ignored by the model — measured: 0 items extracted from a
+  24k-character tender with the instruction in the same turn, 20 items with it
+  in its own system turn.
+
+### Changed
+
+- `pdf.formatting.format_cents` now delegates to
+  `utils.currency.format_currency_br`. Same output (a test fixes the two
+  against each other across the sign boundary); one implementation.
 ## [0.228.0] — 2026-08-15
 
 ### Added

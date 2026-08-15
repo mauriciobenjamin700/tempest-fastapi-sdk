@@ -60,6 +60,21 @@ from tempest_fastapi_sdk.pdf.formatting import format_date_long as format_date_l
 from tempest_fastapi_sdk.pdf.formatting import format_document as format_document
 from tempest_fastapi_sdk.pdf.formatting import format_quantity as format_quantity
 from tempest_fastapi_sdk.pdf.formatting import valor_por_extenso as valor_por_extenso
+from tempest_fastapi_sdk.pdf.reader import (
+    DEFAULT_PAGE_MARKER as DEFAULT_PAGE_MARKER,
+)
+from tempest_fastapi_sdk.pdf.reader import (
+    DEFAULT_TRUNCATION_NOTICE as DEFAULT_TRUNCATION_NOTICE,
+)
+from tempest_fastapi_sdk.pdf.reader import (
+    PageText as PageText,
+)
+from tempest_fastapi_sdk.pdf.reader import (
+    extract_pdf_pages as extract_pdf_pages,
+)
+from tempest_fastapi_sdk.pdf.reader import (
+    extract_pdf_text as extract_pdf_text,
+)
 from tempest_fastapi_sdk.pdf.renderer import (
     BUNDLED_TEMPLATE_DIR as BUNDLED_TEMPLATE_DIR,
 )
@@ -85,7 +100,9 @@ __all__: list[str] = [
     "BUNDLED_TEMPLATE_DIR",
     "DEFAULT_MAX_ASSET_BYTES",
     "DEFAULT_MAX_CONCURRENT_RENDERS",
+    "DEFAULT_PAGE_MARKER",
     "DEFAULT_REMOTE_TIMEOUT",
+    "DEFAULT_TRUNCATION_NOTICE",
     "MAX_EXTENSO_CENTS",
     "MONTHS_PT_BR",
     "PDF_MEDIA_TYPE",
@@ -97,6 +114,7 @@ __all__: list[str] = [
     "DocumentListSchema",
     "DocumentRequestSchema",
     "LineItem",
+    "PageText",
     "Party",
     "PdfDocument",
     "PdfRenderer",
@@ -110,6 +128,8 @@ __all__: list[str] = [
     "build_url_fetcher",
     "bundled_document_names",
     "document_schema",
+    "extract_pdf_pages",
+    "extract_pdf_text",
     "format_cents",
     "format_date",
     "format_date_long",

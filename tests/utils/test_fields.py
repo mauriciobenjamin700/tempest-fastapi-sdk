@@ -10,6 +10,8 @@ from pydantic import BaseModel, ValidationError
 from tempest_fastapi_sdk import Locale
 from tempest_fastapi_sdk.utils import (
     CentsField,
+    DecimalPercentField,
+    DecimalRatioField,
     HexColorField,
     LatitudeField,
     LocaleField,
@@ -23,6 +25,7 @@ from tempest_fastapi_sdk.utils import (
     PositiveIntField,
     PriceField,
     RatioField,
+    SignedDecimalRatioField,
     SlugField,
 )
 
@@ -171,3 +174,59 @@ class TestLocaleField:
     def test_rejects_unknown(self, value: str) -> None:
         with pytest.raises(ValidationError):
             LocaleModel(locale=value)
+
+
+class DecimalRatioModel(BaseModel):
+    ratio: DecimalRatioField
+    percent: DecimalPercentField
+    signed: SignedDecimalRatioField
+
+
+class TestDecimalRatioFields:
+    def test_accepts_bounds(self) -> None:
+        model = DecimalRatioModel(
+            ratio=Decimal("1"),
+            percent=Decimal("100"),
+            signed=Decimal("1"),
+        )
+        assert model.ratio == Decimal("1")
+
+    def test_values_stay_decimal(self) -> None:
+        """The whole point: a float here poisons every product downstream."""
+        model = DecimalRatioModel(
+            ratio=Decimal("0.28"),
+            percent=Decimal("28"),
+            signed=Decimal("-0.01"),
+        )
+        assert isinstance(model.ratio, Decimal)
+        assert model.ratio * Decimal("484365.84") == Decimal("135622.4352")
+
+    @pytest.mark.parametrize("value", [Decimal("1.01"), Decimal("-0.01")])
+    def test_ratio_rejects_out_of_range(self, value: Decimal) -> None:
+        with pytest.raises(ValidationError):
+            DecimalRatioModel(
+                ratio=value,
+                percent=Decimal("0"),
+                signed=Decimal("0"),
+            )
+
+    def test_percent_rejects_above_hundred(self) -> None:
+        with pytest.raises(ValidationError):
+            DecimalRatioModel(
+                ratio=Decimal("0"),
+                percent=Decimal("100.01"),
+                signed=Decimal("0"),
+            )
+
+    def test_signed_allows_negative_but_caps_at_one(self) -> None:
+        assert DecimalRatioModel(
+            ratio=Decimal("0"),
+            percent=Decimal("0"),
+            signed=Decimal("-3.5"),
+        ).signed == Decimal("-3.5")
+        with pytest.raises(ValidationError):
+            DecimalRatioModel(
+                ratio=Decimal("0"),
+                percent=Decimal("0"),
+                signed=Decimal("1.5"),
+            )
