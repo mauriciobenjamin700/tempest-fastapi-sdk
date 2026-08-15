@@ -43,6 +43,7 @@ my_service/
 ├── docker-compose.yaml      # services keyed to the chosen extras
 ├── .gitignore
 ├── README.md
+├── CLAUDE.md                # project rules for AI agents and humans
 ├── src/
 │   ├── server.py            # uvicorn.run() + module-level FastAPI app
 │   ├── api/
@@ -56,10 +57,26 @@ my_service/
 │   ├── db/
 │   │   ├── models/
 │   │   └── repositories/
+│   ├── ui/                  # only with the [ssr] extra — pages/layout/components/styles
 │   └── utils/
 └── tests/
     └── test_smoke.py        # asserts /api/ and /health/liveness boot
 ```
+
+!!! tip "The generated `CLAUDE.md` is the project's contract"
+    Every new project ships with a `CLAUDE.md` pinning the rules that
+    keep services alike: the dependency direction between layers, the
+    **exact order** of the seven steps a new domain follows (schema →
+    model → repository → service → controller → provider → router), the
+    table of what **not** to reimplement because the SDK already ships
+    it, and a definition of done that ends in `tempest check`.
+
+    It exists for an AI agent to read before writing the first line — so
+    its examples are verified in the SDK's own CI:
+    `tests/cli/test_scaffold_runtime.py` writes the example domain into a
+    scaffolded project and runs it (POST 201, duplicate 409 with the
+    right `code`, paginated listing in the SDK envelope). A renamed
+    symbol breaks that test, not someone's project.
 
 The generated `pyproject.toml` pins the current SDK version (`tempest-fastapi-sdk[auth,admin]>=<version>` by default — change with `--extras`). The scaffolded `.env.example` uses the v0.8.0 settings naming (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), and `src/server.py` delegates to `tempest_fastapi_sdk.run_server` so uvicorn is imported lazily and tests can import the app without it. Validation rules: the project name must match `^[a-z][a-z0-9_]*$` and cannot collide with a Python keyword, so `tempest new Bad-Name` and `tempest new class` exit with code 2 before any file is written.
 
@@ -686,6 +703,32 @@ tempest pr-prompt -p ../other-repo              # run against another repository
 ---
 
 ### Quality gates
+
+!!! info "These commands come from `tempest-cli` (v0.226.0)"
+    The quality gate has nothing to do with FastAPI — it is `ruff`,
+    `mypy` and `pytest`. Since v0.226.0 it lives in its own package,
+    [`tempest-cli`](https://pypi.org/project/tempest-cli/), which the SDK
+    declares as a dependency and mounts on its CLI.
+
+    **Nothing changes for you**: `tempest check` is the same command,
+    with the same flags and the same `[tool.tempest] typing_strictness`.
+    What changes is that people **not** using FastAPI can now install
+    the gate alone:
+
+    ```bash
+    uv add --dev tempest-cli
+    tempest-cli check
+    ```
+
+    Why split it: reaching those four commands meant installing FastAPI,
+    SQLAlchemy, Alembic and Pydantic — 38.7 MB of dependencies and about
+    0.5 s of import time per invocation, measured, for commands that
+    touch none of it.
+
+    The two never diverge because there is one implementation: the SDK
+    calls `register_commands(app)` from `tempest_cli`. Importing
+    `tempest_fastapi_sdk.cli.lint` or `.pr_prompt` keeps working and
+    returns the same functions.
 
 The lint commands shell out to the project's tooling. They look for the executable on `PATH` first, and otherwise fall back to `uv run <tool>` so a project-local virtualenv works without manual activation.
 

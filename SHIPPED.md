@@ -96,7 +96,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   inside one raises), `autocommit=False`. `enable_sqlite_savepoints` is
   applied to every SQLite engine `AsyncDatabaseManager` builds — without it
   `RELEASE SAVEPOINT` **commits** on pysqlite, so test and production
-  disagreed about atomicity. **Search (v0.200.0):** `search()` portable
+  disagreed about atomicity. **SQLite concurrency (v0.227.0):** every
+  SQLite engine also opens in **WAL** with a 30 s busy timeout
+  (`sqlite_wal=` / `sqlite_busy_timeout=`, `DATABASE_SQLITE_WAL` /
+  `DATABASE_SQLITE_BUSY_TIMEOUT`, public `enable_sqlite_wal`), which is
+  what lets a web process and a `taskiq worker` share one file — measured
+  across two processes, the rollback journal fails the writer with
+  `database is locked` where WAL commits at once. **Search (v0.200.0):**
+  `search()` portable
   (escaped ILIKE, AND across words, OR across columns) +
   `full_text_search()` (`websearch_to_tsquery` + `ts_rank` + `setweight` on
   PG, falls back elsewhere; `supports_full_text` reports which);
@@ -123,7 +130,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   Recipes: `transactions.md`, `text-search.md`, `enum-columns.md`,
   `query-plans.md`.
 - **Standardized exceptions** (`AppException` + subclasses) +
-  `register_exception_handlers`. **OpenAPI error docs (v0.160.0):**
+  `register_exception_handlers`. **Factories (v0.227.0):**
+  `not_found_exception(code, subject=, field=, template=, ...)` and
+  `conflict_exception(...)` build the per-domain 404/409 that every
+  project hand-copies — the generated class accepts both
+  `(identifier)` and `(message=...)`, which is what keeps a
+  `BaseRepository` miss a 404 instead of a `TypeError`-driven 500.
+  **OpenAPI error docs (v0.160.0):**
   `ErrorResponseSchema` (the `{detail, code, details}` envelope as a
   schema), `error_responses(*exc_classes)` (class-introspected
   `responses=`; groups by status, codes in an `examples` selector since
@@ -318,7 +331,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`chat_with_tools`, chat-template `tools=`) closing the pipeline gap
   (v0.141); **structured output** `generate_structured` + `parse_structured`
   (Ollama `format=`, transformers `lm-format-enforcer` via
-  `[genai-structured]`) (v0.142); **`VisionTextGenerator`** local VLM
+  `[genai-structured]`) (v0.142) + **`chat_structured(messages, schema)`** on `OllamaGenerator`
+  (v0.225.0), which keeps the instruction in a `system` turn separate from
+  the document in `user` — measured to matter for schema adherence — and
+  posts `format` at the top level of `/api/chat`, where the daemon reads
+  it (a schema passed as a keyword to `chat()` lands in `options` and is
+  ignored silently, so an explicit `format=` now raises);
+  **`VisionTextGenerator`** local VLM
   (`[genai-vlm]`) (v0.143); RAG **`Reranker`** cross-encoder (v0.144) +
   **`HybridRetriever`** BM25+dense RRF (`reciprocal_rank_fusion`, `rank-bm25`
   in `[genai-rag]`) + `SupportsRetrieve` (v0.145/0.154); **`OnnxEmbedder`**
@@ -524,7 +543,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `accepted=False` means nothing passed. **Fixed here:** the effective
   deadline was written to the run state but not back to the `AgentContext`,
   so delegation handed the child `None` and it ran to its own budget.
-- **Planilhas (v0.224.0, `[spreadsheet]` extra = openpyxl)** —
+- **Planilhas (v0.229.0, `[spreadsheet]` extra = openpyxl)** —
   `tempest_fastapi_sdk.spreadsheet`. `SheetWriter` segura o cursor de linha
   (`title_block`/`header_row`/`group_row`/`write_row`/`total_row`/
   `blank_rows`, todos devolvendo a próxima linha livre; `apply_widths`,
@@ -539,7 +558,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   e sem corrida entre duas requisições). O gerador de um documento
   específico — que abas, que linhas, que regras — continua sendo do serviço;
   aqui está só a camada que todo gerador reescrevia.
-- **Leitura de PDF (v0.224.0, `[pdf-read]` extra = pypdf)** —
+- **Leitura de PDF (v0.229.0, `[pdf-read]` extra = pypdf)** —
   `extract_pdf_text` / `extract_pdf_pages` em `tempest_fastapi_sdk.pdf`, o
   inverso do renderer e o primeiro passo de todo pipeline "entrega o
   documento pro modelo". **Camada de texto apenas, sem OCR**: um PDF
@@ -589,6 +608,65 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
+- **Custom app shell (v0.225.0)** — `build_web_app(..., shell=...)` and
+  `make_web_app_router(..., shell=...)` replace the artifact's
+  `index.html`, the only part of the HTML an application owns (document
+  `lang`, description/Open Graph meta, favicon, CSP nonce). Accepts a
+  `str` (the document), a `Path` (read per request) or a callable invoked
+  per request — declaring a `Request` parameter or none. On the static
+  router the override answers the SPA fallback too. A `str` without `<`
+  is rejected as a path written where a document was expected.
+- **UI layer (v0.224.0, `[ssr]` extra)** — `tempest_fastapi_sdk.ui`, the
+  interface layer of a service, mirroring `src/ui/` one-to-one:
+  `ui.pages` (`Page`, moved here; `ssr.Page` re-exports it),
+  `ui.layout` (`Shell` landmarks, CSS `Grid`), `ui.components`
+  (`Card`, `Alert`, `DataTable` — columns/headers from the row schema —,
+  `Pagination` + `pagination_for(BasePaginationSchema)`, `EmptyState`,
+  `NavBar`, `ComponentClasses`, `component_stylesheet`), `ui.forms` and
+  `ui.css` (below), plus `app_stylesheet()` composing tokens + reset +
+  form + component rules. Components render class names, never inline
+  styles. `tempest new --extras "ssr"` (and `tempest generate --src`)
+  scaffolds the whole layer plus `api/routers/web.py`; the generated
+  project is import-tested and served in
+  `tests/cli/test_scaffold_runtime.py`.
+- **Scaffolded `CLAUDE.md` (v0.224.0)** — every project from `tempest
+  new` carries the rules that keep Tempest services alike: layer
+  dependency direction, the seven-step order for a new domain, raising
+  SDK exceptions (with `code` declared) instead of building responses,
+  the pagination envelope, the `ui` layer rules, a "do not reimplement"
+  table mapping intent to the SDK symbol, code conventions, commands and
+  a definition of done. Its examples are executed in CI
+  (`tests/cli/test_scaffold_runtime.py`): the document's own domain is
+  written into a scaffolded project and served, and every SDK symbol it
+  imports is resolved against the package.
+- **Forms from Pydantic schemas (v0.224.0)** — `tempest_fastapi_sdk.ui.forms`:
+  `form_for` / `form_spec_for` / `fields_for` / `render_form` generate an
+  accessible `<form>` from a schema (label bound by `for`, `aria-invalid`,
+  `aria-describedby`, native `minlength`/`max`/`step`/`pattern` from the
+  field metadata), and `parse_form` reads the submission back into the
+  schema — unchecked checkbox to `False`, absent key left out so the
+  default applies, empty optional to `None`, repeated keys and textarea
+  lines to `list`. `FormResult` carries per-field errors plus the raw
+  input, so re-rendering keeps what the reader typed. Overrides via
+  `json_schema_extra={"ui": {...}}`; nested models and binary fields
+  raise `UnsupportedFieldError` rather than rendering something that
+  cannot round-trip. Emits the elements through `tag`/`attrs`: measured,
+  `tempest_core`'s `Input` renders without a `name` and `Dropdown` /
+  `TextArea` render as empty `<div>`s under the HTML renderer
+  (`tests/ui/test_core_contract.py`).
+- **Typed CSS (v0.224.0)** — `tempest_fastapi_sdk.ui.css`: `Rule`
+  (typed `Style` and/or raw declarations, optional flex `layout=`),
+  `Media` (`min_width` / `max_width` / `dark` / `reduced_motion`),
+  `StyleSheet` (`to_css`, `merge`, `class_names`, `etag`, and a `cls()`
+  that raises on a class the sheet does not define), `ThemeTokens`
+  (adapts `tempest_core`'s `TokenSet` into CSS custom properties —
+  39 colour roles in light and dark, spacing, shape, typography, motion;
+  `breakpoint()` returns a number because a media query cannot read
+  `var()`), and `make_css_router` / `css_response` / `stylesheet_links`
+  serving the sheet rendered once with a strong `ETag` and `304`.
+  `html_response` gained `stylesheets=` and `head=`. Note: `Style`
+  validates colours as hex, so token references live in
+  `Rule.declarations`, not in `Style`.
 - **Geolocation (v0.104, `[geo]` extra = httpx)** — `tempest_fastapi_sdk.geo`,
   distance + travel-time between two points with no paid API. Two layers over
   shared schemas (`Coordinate`, `TravelEstimate`, `TravelMode` CAR/MOTORCYCLE/
@@ -654,7 +732,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   consumer, channel-first `publish(channel, message)`, `.broker` escape
   hatch) and `TaskQueue` (`.rabbitmq`/`.redis`/`.memory`, `@tq.task` →
   `Task.enqueue`/`.run`, folded `@tq.cron`/`@tq.interval` +
-  `start_scheduler`, `tq.broker`/`tq.scheduler` for the CLIs). **Both
+  `start_scheduler`, `tq.broker`/`tq.scheduler` for the CLIs).
+  **Jobs (v0.228.0):** `BaseJobModel` + `JobStore[JobT]` — a row per unit
+  of long work so the interface can say queued / running / done / failed,
+  with `enqueue`, a conditional-`UPDATE` `claim` (loser gets `None`),
+  `succeed`/`fail` that drop the payload, `list_recent`, `reclaim_stale`
+  (bounded by `max_attempts`) and `watch()` polling without holding a
+  session. The symmetric half of the outbox: message to publish vs work
+  to execute. **Worker lifespan (v0.227.0):** `@tq.on_startup` / `@tq.on_shutdown`
+  (zero-argument hooks, sync or async, `scope="worker"|"client"|"both"`,
+  worker by default) and `resources=[db, broker]` / `tq.use(...)` over
+  the `LifecycleResource` protocol — the worker had no `lifespan`, so
+  nothing opened or disposed the pool. **Both
   decorator and class-based styles**: `Consumer` + `@subscribe` +
   `MessageBroker.register` (constructor form takes explicit
   `channel`+`schema`, no magic); `TaskDef` + `@task_method` +
@@ -869,6 +958,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   overriding it in silence).
   Missing base falls back to `origin/<base>`; an empty comparison exits
   `1`. Recipe: `docs/recipes/cli.md`.
+
+- **Quality gate lives in `tempest-cli` (v0.226.0)** — `lint` / `fix` /
+  `format` / `fmt-check` / `type` / `test` / `check` / `pr-prompt` moved
+  to a framework-agnostic package (only runtime dep: `typer`). The SDK
+  depends on it and mounts the same commands via
+  `tempest_cli.main.register_commands(app)`, so `tempest check` is
+  unchanged and there is a single implementation. `[tool.tempest]` is now
+  read per owner: `typing_strictness` by the gate, `commands` by the SDK
+  (`load_project_commands()`); `TempestConfig` no longer carries
+  `commands`. `tempest_fastapi_sdk.cli.lint` / `.pr_prompt` remain as
+  re-exports. Reason, measured: reaching those commands here cost 38.7 MB
+  of dependencies and ~0.5 s of import per invocation.
 
 The whole Tier S / Tier A / Tier B backlog that used to live here is
 **shipped**, and so is the five-item next-version plan that followed it

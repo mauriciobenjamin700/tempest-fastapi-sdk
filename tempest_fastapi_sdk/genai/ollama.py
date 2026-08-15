@@ -472,6 +472,98 @@ class OllamaGenerator(_OllamaClientMixin):
                 )
             return parse_structured(content, schema)
 
+    async def chat_structured(
+        self,
+        messages: list[dict[str, Any]],
+        schema: type[StructuredT],
+        *,
+        config: GenerationConfig | None = None,
+        **kwargs: Any,
+    ) -> StructuredT:
+        """Generate a chat reply constrained to a Pydantic ``schema``.
+
+        The messages list is what makes a system instruction separable
+        from the payload being read, and that separation is measurable:
+        extracting fields from a long document with everything
+        concatenated into one prompt, the model starts answering *with*
+        passages of the document; with the instruction isolated in a
+        ``system`` turn, the schema is respected. It is the same reason
+        the chat API exists.
+
+        ``format`` is posted at the **top level** of the request body,
+        which is where the daemon reads it. Sending it inside ``options``
+        — what happens when a schema is passed as a keyword to
+        :meth:`chat` — is ignored silently: the call returns ``200`` with
+        free text, and the caller finds out at validation time, or worse,
+        at a parse that happens to succeed.
+
+        Args:
+            messages (list[dict[str, Any]]): Chat turns, each
+                ``{"role": ..., "content": ...}``. Put the instruction in
+                a ``system`` turn and the content being read in ``user``.
+            schema (type[StructuredT]): The Pydantic model to produce.
+            config (GenerationConfig | None): Typed generation parameters.
+            **kwargs (Any): Per-call generation overrides (win over
+                ``config``).
+
+        Returns:
+            StructuredT: The validated instance.
+
+        Raises:
+            TypeError: When ``format`` is passed as a keyword — the
+                schema argument is what sets it, and a keyword would be
+                dropped into ``options`` and ignored.
+            ValueError: When the reply carries no JSON object.
+            pydantic.ValidationError: When the JSON fails ``schema``
+                validation.
+
+        Example:
+            ```python
+            from pydantic import BaseModel
+
+            from tempest_fastapi_sdk.genai import OllamaGenerator
+
+
+            class Invoice(BaseModel):
+                number: str
+                total_cents: int
+
+
+            async def read(document: str) -> Invoice:
+                "Extract the invoice fields from a document."
+                generator = OllamaGenerator(model="gpt-oss:20b")
+                return await generator.chat_structured(
+                    [
+                        {"role": "system", "content": "Extract the invoice fields."},
+                        {"role": "user", "content": document},
+                    ],
+                    Invoice,
+                )
+            ```
+        """
+        if "format" in kwargs:
+            raise TypeError(
+                "chat_structured() sets `format` from the schema argument; "
+                "passing format= would be routed into `options` and ignored "
+                "by the daemon.",
+            )
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "format": schema.model_json_schema(),
+        }
+        self._apply_common(payload, config, kwargs)
+        async with genai_span("chat", self.model):
+            response = await self._http().post(
+                f"{self.base_url}/api/chat",
+                json=payload,
+            )
+            response.raise_for_status()
+            data: dict[str, Any] = response.json()
+            message: dict[str, Any] = data.get("message") or {}
+            return parse_structured(str(message.get("content", "")), schema)
+
     async def chat_with_tools(
         self,
         messages: list[dict[str, Any]],

@@ -6,7 +6,7 @@ import json
 
 import httpx
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from tempest_fastapi_sdk.genai import (
     GenerationConfig,
@@ -23,6 +23,13 @@ class _CitySchema(BaseModel):
     """Minimal structured-output target for the generate_structured tests."""
 
     city: str
+
+
+class _Invoice(BaseModel):
+    """Schema used by the structured-output tests."""
+
+    number: str
+    total_cents: int
 
 
 class TestBuildOptions:
@@ -262,6 +269,99 @@ class TestOllamaGenerator:
         gen = OllamaGenerator("gpt-oss:20b", http_client=client)
         with pytest.raises(ValueError, match="no content"):
             await gen.generate_structured("x", _CitySchema)
+        await client.aclose()
+
+    async def test_chat_structured_puts_format_at_the_top_level(self) -> None:
+        """Regression: `format` inside `options` is silently ignored."""
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["url"] = str(request.url)
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={
+                    "message": {
+                        "role": "assistant",
+                        "content": '{"number": "NF-1", "total_cents": 4990}',
+                    },
+                    "done": True,
+                },
+            )
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator("gpt-oss:20b", http_client=client)
+        messages = [
+            {"role": "system", "content": "Extract the invoice fields."},
+            {"role": "user", "content": "NF-1 — total R$ 49,90"},
+        ]
+        invoice = await gen.chat_structured(messages, _Invoice)
+        await client.aclose()
+
+        assert invoice == _Invoice(number="NF-1", total_cents=4990)
+        assert captured["url"] == "http://127.0.0.1:11434/api/chat"
+        body = captured["body"]
+        assert "format" in body
+        assert "format" not in body.get("options", {})
+        assert body["format"]["properties"].keys() == {"number", "total_cents"}
+        assert body["messages"][0]["role"] == "system"
+        assert body["stream"] is False
+
+    async def test_chat_structured_forwards_config_into_options(self) -> None:
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"message": {"content": '{"number": "x", "total_cents": 1}'}},
+            )
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator("gpt-oss:20b", http_client=client)
+        await gen.chat_structured(
+            [{"role": "user", "content": "x"}],
+            _Invoice,
+            config=GenerationConfig(temperature=0.0, seed=7),
+        )
+        await client.aclose()
+
+        body = captured["body"]
+        assert body["options"]["temperature"] == 0.0
+        assert body["options"]["seed"] == 7
+        assert "format" in body
+
+    async def test_chat_structured_rejects_a_format_keyword(self) -> None:
+        """The keyword would land in `options` and be dropped."""
+        gen = OllamaGenerator("gpt-oss:20b")
+        with pytest.raises(TypeError, match="sets `format` from the schema"):
+            await gen.chat_structured(
+                [{"role": "user", "content": "x"}],
+                _Invoice,
+                format=_Invoice.model_json_schema(),
+            )
+
+    async def test_chat_structured_rejects_a_reply_without_json(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"message": {"content": "desculpe, não"}})
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator("gpt-oss:20b", http_client=client)
+        with pytest.raises(ValueError):
+            await gen.chat_structured([{"role": "user", "content": "x"}], _Invoice)
+        await client.aclose()
+
+    async def test_chat_structured_propagates_schema_validation(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"message": {"content": '{"number": "x"}'}},
+            )
+
+        client = HTTPClient(transport=httpx.MockTransport(handler))
+        gen = OllamaGenerator("gpt-oss:20b", http_client=client)
+        with pytest.raises(ValidationError):
+            await gen.chat_structured([{"role": "user", "content": "x"}], _Invoice)
         await client.aclose()
 
     def test_satisfies_text_backend_protocol(self) -> None:

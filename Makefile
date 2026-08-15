@@ -77,6 +77,15 @@ smoke: build ## Install the freshly built wheel in a clean venv and import the t
 	/tmp/$(PACKAGE)-smoke/bin/python -c "from $(PACKAGE).ssr import Page, html_response, make_htmx_router, make_web_app_router, build_web_app, detect_build_mode, htmx, aria, data; \
 		assert htmx(post='/x') == {'hx-post': '/x'}, 'htmx builder broken'; \
 		print('SSR extra OK ·', Page.__name__, html_response.__name__, make_htmx_router.__name__, make_web_app_router.__name__, build_web_app.__name__, detect_build_mode.__name__, htmx.__name__, aria.__name__, data.__name__)"
+	/tmp/$(PACKAGE)-smoke/bin/python -c "from $(PACKAGE).ui import app_stylesheet; \
+		from $(PACKAGE).ui.components import Card, DataTable, NavBar, Pagination; \
+		from $(PACKAGE).ui.css import Rule, StyleSheet, ThemeTokens, make_css_router; \
+		from $(PACKAGE).ui.forms import form_for, form_stylesheet, parse_form; \
+		from $(PACKAGE).ui.layout import Grid, Shell; \
+		from $(PACKAGE).ui.pages import Page as UiPage; \
+		css = StyleSheet(rules=[Rule('.card', declarations={'padding': '16px'})]).to_css(); \
+		assert '.card' in css, 'stylesheet did not render'; \
+		print('UI layer OK ·', app_stylesheet.__name__, form_for.__name__, parse_form.__name__, UiPage.__name__)"
 	@rm -rf /tmp/$(PACKAGE)-smoke
 
 version: ## Print the version recorded in pyproject.toml and __init__.py

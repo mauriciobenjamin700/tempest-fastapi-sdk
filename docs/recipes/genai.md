@@ -1190,7 +1190,7 @@ rota estruturada recomendada, sem biblioteca extra**.
     não-zero e `response` **vazio** — a resposta cai num canal de
     raciocínio que aquele endpoint não expõe. Sem `format` funciona; com
     `format`, não. O `/api/chat` devolve o JSON em `message.content`, e
-    modelos sem raciocínio se comportam igual nos dois. Desde a v0.224.0
+    modelos sem raciocínio se comportam igual nos dois. Desde a v0.229.0
     a chamada usa `/api/chat`, e um conteúdo vazio levanta `ValueError`
     em vez de devolver nada.
 
@@ -1200,6 +1200,47 @@ rota estruturada recomendada, sem biblioteca extra**.
     omite justamente os que têm default. Em schema de extração, **nenhum
     campo tem default**; a ausência se expressa no dado (`""`), nunca no
     schema.
+
+!!! tip "Instrução separada do documento — `chat_structured`"
+    Extraindo campos de um documento longo, a instrução precisa ir num
+    turno `system` e o conteúdo num `user`. Concatenar tudo num prompt só
+    degrada a aderência ao schema de forma **medida**: o modelo passa a
+    "responder" trechos do documento.
+
+    ```python
+    import asyncio
+
+    from pydantic import BaseModel
+    from tempest_fastapi_sdk.genai import OllamaGenerator
+
+
+    class NotaFiscal(BaseModel):
+        numero: str
+        total_centavos: int
+
+
+    gen = OllamaGenerator("gpt-oss:20b")
+
+
+    async def main() -> None:
+        """Run this example."""
+        nota: NotaFiscal = await gen.chat_structured(
+            [
+                {"role": "system", "content": "Extraia os campos da nota."},
+                {"role": "user", "content": "NF-1 — total R$ 49,90"},
+            ],
+            NotaFiscal,
+        )
+
+
+    asyncio.run(main())
+    ```
+
+    O `format` vai no **top-level** do corpo, que é onde o daemon lê.
+    Passar o schema como keyword do `chat()` cai em `options`, e o Ollama
+    **ignora em silêncio**: volta `200 OK` com texto livre e o erro só
+    aparece no `ValidationError` — ou num parse que por acaso funciona.
+    Por isso `chat_structured` recusa um `format=` explícito.
 
 !!! info "No backend local (transformers)"
     `TextGenerator.generate_structured(prompt, schema, constrained=True)`

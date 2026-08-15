@@ -133,6 +133,8 @@ class TestMixinDefaults:
             "pool_size",
             "max_overflow",
             "pool_recycle",
+            "sqlite_wal",
+            "sqlite_busy_timeout",
         }
         manager = AsyncDatabaseManager(**kwargs)  # no connection opened
         assert manager is not None

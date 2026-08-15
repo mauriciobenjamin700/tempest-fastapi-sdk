@@ -19,9 +19,13 @@ flowchart LR
         Repository["🗄️ Repository\n(db/repositories/)"]
         Model["🧱 SQLAlchemy Model\n(db/models/)"]
     end
+    subgraph Interface
+        UI["🖼️ UI\n(ui/)"]
+    end
     DB[(PostgreSQL / SQLite)]
 
     Router -->|"Depends()"| Controller
+    Router -->|"loaded data"| UI
     Controller -->|orchestrates| Service
     Service -->|domain rules| Repository
     Repository -->|"SELECT/INSERT/UPDATE"| Model
@@ -38,6 +42,7 @@ flowchart LR
     | **Controller** | Coordination across multiple services, cross-cutting policy (audit log, outbox emit, downstream notify) | DB, request/response shape |
     | **Service** | Domain rules (uniqueness, derived state, transactional flow) | HTTP, SQLAlchemy types |
     | **Repository** | Raw async SQLAlchemy queries, CRUD + filter + pagination | Domain rules, HTTP |
+    | **UI** (when the service serves HTML) | Pages, components, forms and the stylesheet — *what it looks like* | DB, controllers, services, HTTP |
 
 The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.BaseRepository] subclass (or instance). The service **MUST** be a [`BaseService[RepositoryT, ResponseT]`][tempest_fastapi_sdk.BaseService] subclass. The controller **MUST** be a [`BaseController[ServiceT, ResponseT]`][tempest_fastapi_sdk.BaseController] subclass — even when every method is a pass-through, because the controller is the seam to add cross-service coordination later.
 
@@ -62,6 +67,11 @@ The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.B
     │   ├── configs/names.py         # table names, single source (optional)
     │   ├── models/                  # SQLAlchemy ORM models
     │   └── repositories/            # Data access layer
+    ├── ui/ (optional)               # interface layer — only with the [ssr] extra
+    │   ├── pages/                   # one class per screen
+    │   ├── layout/                  # the chrome every page inherits
+    │   ├── components/              # reusable pieces
+    │   └── styles.py                # the service's typed stylesheet
     ├── utils/ (optional)            # Shared stateless helpers
     ├── queue/ (optional)            # FastStream consumers/publishers
     └── tasks/ (optional)            # TaskIQ background tasks
@@ -81,6 +91,30 @@ The repository **MUST** be a [`BaseRepository[ModelType]`][tempest_fastapi_sdk.B
     - **Infra singletons (db / storage / mail) live in `dependencies/resources.py`**, built once (`db = AsyncDatabaseManager(**settings.database_kwargs())`) and reached through `get_db` / `get_session` / `get_storage` / `get_mailer` providers. `app.py` **imports** those resources for the lifespan and router wiring — it never builds them inline. This keeps `app.py` thin and gives a single owner of resource lifecycle.
     - Routers receive controllers (and sessions/resources) via `Depends`, never constructed inline.
     - Meta endpoints (`/health`, `/tool-spec`) live at the **root prefix**; business endpoints live under `/api/<domain>`.
+
+## The interface layer (`ui/`)
+
+When the service serves HTML — not only JSON — it gains a fifth layer,
+**beside** `controllers` and `services`. It exists only with the `[ssr]`
+extra; without it, do not create the empty package.
+
+| Layer | May import | Never imports |
+| --- | --- | --- |
+| `api/routers` | `controllers`, `ui`, `schemas` | `db` |
+| `ui` | `schemas`, other parts of `ui` | `controllers`, `services`, `db` |
+| `controllers` | `services`, `schemas` | `ui` |
+| `services` | `db/repositories`, `schemas` | `ui` |
+
+!!! warning "A page receives loaded data"
+    A page fetches **nothing**: the router loads through a controller and
+    passes the materialised result. An `await` inside `body()` means a
+    responsibility slipped a layer.
+
+`tempest new <service> --extras "ssr"` writes the whole layer, working
+(and `tempest generate --src` adds it to a project that already exists).
+Details in [UI layer](recipes/ui.md),
+[Forms from Pydantic schemas](recipes/ui-forms.md) and
+[Typed CSS](recipes/ui-css.md).
 
 ## Request lifecycle
 

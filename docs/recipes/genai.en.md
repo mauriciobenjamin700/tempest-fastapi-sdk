@@ -1188,7 +1188,7 @@ the recommended structured route, no extra library**.
     **empty** `response` — the reply lands in a reasoning channel that
     endpoint does not surface. Without `format` it works; with `format` it
     does not. `/api/chat` returns the JSON in `message.content`, and
-    non-reasoning models behave identically on either. Since v0.224.0 the
+    non-reasoning models behave identically on either. Since v0.229.0 the
     call uses `/api/chat`, and empty content raises `ValueError` instead of
     returning nothing.
 
@@ -1197,6 +1197,48 @@ the recommended structured route, no extra library**.
     and the daemon's constrained decoder may then omit it — and it omits
     exactly the defaulted ones. In an extraction schema, **no field has a
     default**; absence is expressed in the data (`""`), never in the schema.
+
+!!! tip "Instruction separated from the document — `chat_structured`"
+    Extracting fields from a long document, the instruction belongs in a
+    `system` turn and the content in a `user` one. Concatenating both
+    into a single prompt degrades schema adherence **measurably**: the
+    model starts answering *with* passages of the document.
+
+    ```python
+    import asyncio
+
+    from pydantic import BaseModel
+    from tempest_fastapi_sdk.genai import OllamaGenerator
+
+
+    class Invoice(BaseModel):
+        number: str
+        total_cents: int
+
+
+    gen = OllamaGenerator("gpt-oss:20b")
+
+
+    async def main() -> None:
+        """Run this example."""
+        invoice: Invoice = await gen.chat_structured(
+            [
+                {"role": "system", "content": "Extract the invoice fields."},
+                {"role": "user", "content": "NF-1 — total R$ 49.90"},
+            ],
+            Invoice,
+        )
+
+
+    asyncio.run(main())
+    ```
+
+    `format` goes at the **top level** of the body, which is where the
+    daemon reads it. Passing the schema as a keyword to `chat()` lands it
+    in `options`, and Ollama **ignores it silently**: `200 OK` with free
+    text, and the failure only shows up at the `ValidationError` — or at
+    a parse that happens to succeed. That is why `chat_structured`
+    rejects an explicit `format=`.
 
 !!! info "On the local backend (transformers)"
     `TextGenerator.generate_structured(prompt, schema, constrained=True)`

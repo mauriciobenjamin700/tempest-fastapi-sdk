@@ -257,12 +257,21 @@ Column(
 - A conversão `Style → CSS` é **byte-idêntica** entre o renderizador
   Python (SSR) e o cliente JS (WASM/server) — a mesma tela nos dois lados.
 
-!!! info "Prefira classes/`attrs` para folhas de estilo externas"
-    Para CSS de verdade (folhas externas, media queries), adicione
-    `attrs={"class": "card"}` e sirva seu `.css` como estático. O `Style`
-    inline é ótimo para layout local e componentes autocontidos.
+!!! info "Para seletor, `:hover` e media query, use a folha tipada"
+    O `Style` inline é ótimo para layout local e componentes
+    autocontidos, mas não expressa seletor, pseudo-classe nem media
+    query. Isso vive numa `StyleSheet` — CSS escrito em Python, servido
+    pelo próprio app com ETag: veja
+    **[CSS tipado (StyleSheet e tokens) »](recipes/ui-css.md)**.
 
 ## Componentes reutilizáveis
+
+!!! tip "O SDK já traz os componentes comuns"
+    `Card`, `Alert`, `DataTable`, `Pagination`, `EmptyState`, `NavBar`,
+    `Shell` e `Grid` vêm prontos em
+    **[Camada UI (páginas e componentes) »](recipes/ui.md)**, que também
+    define onde cada arquivo do seu `src/ui/` mora. O que segue é como
+    escrever um componente próprio.
 
 `Page` é um `Component`. Você pode extrair **qualquer** subárvore num
 `Component` tipado e reusar — a página fica declarativa e testável em
@@ -308,6 +317,14 @@ esses são só do `Page`). O renderizador expande cada `Component` pela sua
 `render()`, recursivamente.
 
 ## Formulários e inputs
+
+!!! tip "Não escreva o formulário na mão"
+    A partir da v0.224.0, `form_for(Schema, action=...)` gera o
+    formulário inteiro a partir do schema Pydantic, e `parse_form` lê a
+    submissão de volta com erro por campo e valores preservados. Veja
+    **[Formulários a partir de schemas Pydantic »](recipes/ui-forms.md)**.
+    O que segue é o caminho manual, para quando você quer controle total
+    da marcação.
 
 Não há widget de formulário dedicado — você compõe com `tag`/`attrs` e
 recebe o POST com o `Form` do FastAPI, como em qualquer rota.

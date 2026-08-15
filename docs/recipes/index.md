@@ -359,6 +359,8 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Busca textual (LIKE + full-text) »](text-search.md)** | `search()` portátil (ILIKE escapado, `AND` entre palavras), `full_text_search()` com `websearch_to_tsquery` + `ts_rank` no PostgreSQL, `TextSearchLanguage` / `TextSearchWeight` / `TokenMatch`, condições que entram em `where=` |
 | **[Cache »](cache.md)** | `AsyncRedisManager`, decorator `@cached`, `CacheInvalidator` (tag/namespace) |
 | **[Camada HTTP »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware`, `make_health_router`, dependências de JWT / role / permissão, verificador de assinatura de webhook, headers Link de paginação, router de tool-spec |
+| **[Camada UI (páginas e componentes) »](ui.md)** | a camada `src/ui/` (páginas, layout, componentes, estilos), `Page` + `shell()` herdado, `Card` / `Alert` / `DataTable` / `Pagination` / `EmptyState` / `NavBar`, `Shell` / `Grid`, scaffold via `tempest new --extras "ssr"` |
+| **[Camada UI (páginas e componentes) »](ui.md)** | a camada `src/ui/` (páginas, layout, componentes, estilos), `Page` + `shell()` herdado, `Card` / `Alert` / `DataTable` / `Pagination` / `EmptyState` / `NavBar`, `Shell` / `Grid`, scaffold via `tempest new --extras "ssr"` |
 | **[Campos validados (tipos prontos) »](fields.md)** | tipos Pydantic Annotated — `PositiveIntField` / `CentsField` / `PriceField` / `SlugField` / `HexColorField` / `CPFField` / `UFField` |
 | **[Chat (conversas + mensagens) »](chat.md)** | `ChatService`, `make_chat_router`, tabelas base + fan-out em tempo real via `SSEBroker` |
 | **[CLI »](cli.md)** | `tempest new` / `db` (+ `seed`) / `user` / `secrets rotate` / `lint` / `fix` / `format` / `type` / `test` / `check` |
@@ -366,6 +368,8 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Colunas de enum (seguras nos dois bancos) »](enum-columns.md)** | `Mapped[MeuEnum]` guardando o `value`, `ENUM` nativo no PostgreSQL e `CHECK` no SQLite, `enum_column()`, `op.replace_enum` + `sync_enum_types` para a migration que o autogenerate não vê |
 | **[Comentários + avaliações »](reviews.md)** | `ReviewService`, `make_reviews_router`, notas 0–5 estrelas com agregação, comentários encadeados |
 | **[Console SQL no admin »](admin-sql-console.md)** | `SqlShellService` + `SqlShellPolicy` (capacidades, tabelas permitidas/negadas, teto de linhas, `require_where`), análise real via `sqlglot`, auditoria de toda tentativa, página opt-in no admin |
+| **[CSS tipado (StyleSheet e tokens) »](ui-css.md)** | `StyleSheet` / `Rule` / `Media`, `ThemeTokens` (tokens do `tempest_core` como CSS variables, claro e escuro), `make_css_router` com ETag/304, `app_stylesheet`, `cls()` que rejeita classe inexistente |
+| **[CSS tipado (StyleSheet e tokens) »](ui-css.md)** | `StyleSheet` / `Rule` / `Media`, `ThemeTokens` (tokens do `tempest_core` como CSS variables, claro e escuro), `make_css_router` com ETag/304, `app_stylesheet`, `cls()` que rejeita classe inexistente |
 | **[Deploy seguro »](deploy-safety.md)** | `AlembicHelper.safe_upgrade` (barra DROPs), `GracefulShutdownMiddleware` |
 | **[Downloads »](downloads.md)** | `DownloadUtils` — `file_response`, `stream`, `build_content_disposition`, anti path-traversal |
 | **[Email transacional »](email.md)** | `EmailUtils` — SMTP, corpo texto/HTML, anexos, templates Jinja2 |
@@ -374,6 +378,8 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Feature flags »](feature-flags.md)** | `FeatureFlags`, backends env/Redis/composto, `make_flag_dependency` |
 | **[Fila e Tarefas »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, outbox transacional |
 | **[File store (unificado) »](file-store.md)** | `FileStoreUtils` — upload + download + presign sobre um backend só |
+| **[Formulários a partir de schemas Pydantic »](ui-forms.md)** | `form_for` / `form_spec_for` / `render_form`, `parse_form` + `FormResult` (erros por campo e valores preservados), mapeamento tipo → controle, `json_schema_extra={"ui": ...}`, `form_stylesheet` |
+| **[Formulários a partir de schemas Pydantic »](ui-forms.md)** | `form_for` / `form_spec_for` / `render_form`, `parse_form` + `FormResult` (erros por campo e valores preservados), mapeamento tipo → controle, `json_schema_extra={"ui": ...}`, `form_stylesheet` |
 | **[Frontend tempestweb + SDK »](tempestweb-frontend.md)** | Frontend tempestweb chamando o backend do SDK: `tempestweb.native.http`, `Idempotency-Key` + `IdempotencyMiddleware`, retry, mesma origem vs CORS |
 | **[Geolocalização (distância + tempo) »](geo.md)** | `haversine_km`, `estimate_travel`, `OSRMBackend`, `NominatimBackend`, `GeoPointMixin` / `GeoRepositoryMixin` |
 | **[Geração de imagem (local) »](image-generation.md)** | `ImageGenerator` (diffusers local — `generate` / `edit` img2img), `ImageGenerationConfig`, `GeneratedImage` com a seed que reproduz, `make_genai_router(image_generator=...)` → `POST /image` |
@@ -383,6 +389,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[HTTP client (saída) »](http-client.md)** | `HTTPClient` — httpx tipado com retry/backoff, circuit-breaker, X-Request-ID; `RetryPolicy`, `CircuitOpenError` |
 | **[IA generativa self-hosted »](genai.md)** | `probe_hardware` / `can_run`, `TextGenerator`, `Embedder`, RAG (web + PDF), áudio (STT/TTS), `make_genai_router` |
 | **[Idempotência »](idempotency.md)** | `IdempotencyMiddleware`, `MemoryIdempotencyStore` / `IdempotencyStore` (Redis) — replay seguro de POST/PUT/PATCH/DELETE |
+| **[Jobs (trabalho longo com status) »](jobs.md)** | `BaseJobModel` + `JobStore` — uma linha por unidade de trabalho, `claim`/`succeed`/`fail`, `watch` para a tela, `reclaim_stale` |
 | **[Logging »](logging.md)** | `LogUtils`, logging JSON estruturado, propagação de request-ID |
 | **[Login social (OAuth2/OIDC) »](oauth.md)** | `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `generate_oauth_state` |
 | **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | registrar comandos próprios na CLI `tempest` do projeto |

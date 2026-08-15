@@ -5,7 +5,7 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.224.0] — 2026-08-14
+## [0.229.0] — 2026-08-15
 
 Everything here came out of building a real document service on the SDK
 (a public-procurement budget tool) and finding the same four gaps.
@@ -108,6 +108,357 @@ Everything here came out of building a real document service on the SDK
 - `pdf.formatting.format_cents` now delegates to
   `utils.currency.format_currency_br`. Same output (a test fixes the two
   against each other across the sign boundary); one implementation.
+## [0.228.0] — 2026-08-15
+
+### Added
+
+- **`BaseJobModel` + `JobStore` — long work with a status the interface
+  can show.** A queue hands a call to a worker; it answers none of what
+  the person waiting is asking: has anything picked this up, is it
+  running, what did it produce, why did it stop. TaskIQ's result backend
+  is keyed by task id and holds a return value — what a screen needs is a
+  **row**. This is the symmetric half of the transactional outbox: that
+  one is a message to publish, this one is work to execute. Closes #151.
+
+  `BaseJobModel` is abstract — subclass it, pick a `__tablename__`, and
+  get `kind` / `status` / `params` / `payload` / `result_id` / `error` /
+  `attempts` / `max_attempts` / `started_at` / `finished_at` on top of
+  the usual `BaseModel` columns. `JobStore[JobT]` wraps it with
+  `enqueue`, `claim`, `succeed`, `fail`, `get`, `list_recent`,
+  `reclaim_stale` and `watch`, each in its own short transaction because
+  its callers are a request handler, a worker that grinds for minutes,
+  and a screen polling every couple of seconds.
+
+  Four decisions worth naming:
+
+  - **`claim` is a conditional `UPDATE`, not a read-then-write.** Two
+    workers racing for one id cannot both win; the loser gets `None`
+    rather than an error. Measured under a barrier that releases both
+    contenders together: the naive read-then-write shape does not hand
+    the job to both, it raises `sqlite3.OperationalError: database is
+    locked` — lock promotion, the one contention `busy_timeout` cannot
+    wait out (v0.227.0). The test asserting that is in the suite, so the
+    race test cannot pass against an implementation with no conditional
+    update.
+  - **`succeed` / `fail` drop the payload**, or the table of finished
+    jobs becomes a pile of documents.
+  - **`reclaim_stale()` frees the job whose worker died** — the failure a
+    queue cannot see, since the task is gone but the row is not. Bounded
+    by `max_attempts` so a job that kills its worker is closed as
+    `FAILED` (with `STALE_JOB_ERROR`) instead of readmitted forever. Two
+    disjoint `UPDATE`s and no `SELECT` first, for the same lock-promotion
+    reason.
+  - **`watch()` holds no session between ticks.** It is the
+    `while True: sleep; get` every application writes by hand, minus the
+    part that is easy to get wrong — a watcher holding its transaction
+    open is a watcher blocking the worker it is watching.
+
+  `JobNotFoundError` and `JobAlreadyFinishedError` are a `LookupError`
+  and a `RuntimeError`, not `AppException` subclasses: the store runs in
+  the worker as often as in a request, and a worker has no HTTP status to
+  answer with. Translate at the boundary with `not_found_exception(...)`.
+  New recipe: "Jobs (trabalho longo com status)" / "Jobs (long work with
+  status)".
+
+## [0.227.0] — 2026-08-15
+
+Three defects an application only meets on the day it grows a worker.
+
+### Added
+
+- **SQLite runs in WAL, with a 30-second busy timeout.** Web process and
+  `taskiq worker` on one `app.db` is where development SQLite stops
+  working: in the default rollback journal a reader and a writer exclude
+  each other. Measured across two processes, one holding a read
+  transaction open while the other inserts — `journal_mode=delete`: the
+  writer waits out the whole `busy_timeout` and fails with
+  `sqlite3.OperationalError: database is locked`; `journal_mode=wal`: it
+  commits immediately. `AsyncDatabaseManager` now applies both to every
+  SQLite engine it builds, tunable through `sqlite_wal=` /
+  `sqlite_busy_timeout=` and through `DATABASE_SQLITE_WAL` /
+  `DATABASE_SQLITE_BUSY_TIMEOUT` on `DatabaseSettings`, and ignored on
+  every other backend. `enable_sqlite_wal` is public for engines built by
+  hand. The docstring names the contention WAL does **not** fix — a
+  transaction that reads first and writes later, where promoting the lock
+  fails at once and no timeout applies. Closes #152.
+
+- **`TaskQueue.on_startup` / `on_shutdown` — the worker's lifespan.**
+  FastAPI's `lifespan` does not run in the worker, so there was nowhere
+  to open the database, the message broker or an HTTP client, and nowhere
+  to close them: the worker worked by accident on lazy connects and never
+  disposed its pool. Hooks take no arguments (TaskIQ's state stays
+  reachable at `queue.broker.state`), accept sync or async callables, and
+  register on TaskIQ's `WORKER_*` events by default so the web process —
+  which has its own lifespan — is left alone; `scope="client"` /
+  `"both"` covers the rest. For resources that already speak
+  `connect`/`disconnect`, `TaskQueue.rabbitmq(url, resources=[db,
+  broker])` (or `queue.use(db)`) does both ends in one line, opening left
+  to right and closing right to left. The new `LifecycleResource`
+  protocol is what `AsyncDatabaseManager`, `MessageBroker` and
+  `AsyncMinIOClient` already satisfy. The in-memory broker runs both
+  sides' events in one process, so worker hooks are testable without a
+  worker. Closes #153.
+
+- **`not_found_exception(...)` / `conflict_exception(...)`.** A
+  domain-identifiable 404 was ~30 lines differing from the next
+  aggregate's by three strings — and its signature carried a trap:
+  `BaseRepository` raises the configured class as
+  `exception_class(message=...)`, so the constructor one writes first
+  (taking the record id, because the id is what the caller holds) turns
+  **every repository miss into a `TypeError`** — a 500 where the 404
+  belongs. The factories return classes that accept both call shapes,
+  declare `code` in the class body (so `error_responses()` documents them
+  and `InheritedErrorCodeWarning` stays quiet), file the identifier under
+  a named `details` key, derive the class name from the code, and take
+  message templates so the wording stays in the project's language.
+  Closes #154.
+
+### Changed
+
+- **Floors raised: `tempest-cli>=0.3.0`, `tempestweb>=0.64.0`.**
+  `tempest-cli` 0.3.0 bundles `ruff`, so `tempest lint` / `fix` /
+  `format` / `fmt-check` run without a second install, and its tool
+  lookup no longer picks a dead pyenv shim. `tempestweb` 0.64.0 fixes
+  component keys derived from the caller's key — two fields of the same
+  kind on one screen were indistinguishable to the event router, so an
+  edit could apply to the wrong field.
+
+- **`tempestweb` and `tempest_core` type-check for real.** Both ship
+  `py.typed` as of `tempestweb` 0.64.0, so their `ignore_missing_imports`
+  overrides are gone from `pyproject.toml`; mypy now checks the SDK's
+  `ssr` and `ui` layers against the real signatures instead of `Any`.
+  Clean on the first run — 380 source files, no issues.
+
+- **The repository documents the constructor contract where it bites.**
+  `not_found_exception=`'s own docstring now states that the class is
+  instantiated as `exception_class(message=...)` and what happens when it
+  is not accepted, instead of leaving the note further up the class
+  docstring.
+
+## [0.226.0] — 2026-08-15
+
+### Changed
+
+- **The quality gate moved to its own package.** `ruff`, `mypy` and
+  `pytest` never had anything to do with FastAPI, but reaching
+  `tempest check` meant installing the whole SDK: 38.7 MB of required
+  dependencies (SQLAlchemy alone is 20.6 MB) and ~0.5 s of import time
+  per invocation — measured with `python -X importtime`, of which the
+  module doing the work accounts for 16 µs. Closes #150.
+
+  `lint`, `fix`, `format`, `fmt-check`, `type`, `test`, `check` and
+  `pr-prompt` now live in
+  [`tempest-cli`](https://pypi.org/project/tempest-cli/), a package whose
+  only runtime dependency is `typer`. The SDK declares it as a
+  dependency and mounts the same commands through
+  `tempest_cli.main.register_commands(app)` — **one implementation, two
+  CLIs**, so they cannot drift.
+
+  **Nothing changes for existing projects.** `tempest check` is the same
+  command with the same flags; `[tool.tempest] typing_strictness` is
+  read the same way; and `from tempest_fastapi_sdk.cli.lint import ...` /
+  `from tempest_fastapi_sdk.cli.pr_prompt import ...` keep resolving —
+  those modules re-export the shared implementation.
+
+  Whoever does not use FastAPI can now install the gate alone:
+
+  ```bash
+  uv add --dev tempest-cli
+  tempest-cli check
+  ```
+
+- **`[tool.tempest]` is now read by each key's owner.**
+  `typing_strictness` belongs to the gate and moved with it;
+  `commands` (the project management commands mounted under `tempest`)
+  is an SDK concept and stays here, read by the new
+  `tempest_fastapi_sdk.cli.config.load_project_commands()`. The table in
+  your `pyproject.toml` is unchanged — both keys keep working exactly as
+  before.
+
+  The one visible consequence: `TempestConfig` no longer carries a
+  `commands` attribute, since the shared config has no business knowing
+  about FastAPI management commands. Code reading
+  `load_tempest_config().commands` should call `load_project_commands()`
+  instead.
+
+- `tempest_fastapi_sdk.openapi` formats generated code through
+  `tempest_cli.resolve_tool("ruff")` — the same PATH / `uv run` lookup
+  the gate uses, promoted from a private helper rather than duplicated.
+
+## [0.225.0] — 2026-08-15
+
+### Added
+
+- **`OllamaGenerator.chat_structured(messages, schema)`** — structured
+  output from a **message list**, so the instruction stays in a `system`
+  turn and the content being read stays in `user`. Closes #148.
+
+  ```python
+  invoice = await generator.chat_structured(
+      [
+          {"role": "system", "content": "Extract the invoice fields."},
+          {"role": "user", "content": document},
+      ],
+      Invoice,
+  )
+  ```
+
+  Only `generate_structured(prompt, schema)` existed, and there was no
+  path through `chat()` to reach it: `chat()` routes every keyword into
+  `options`, and Ollama reads `format` at the **top level** — so a schema
+  passed to `chat()` is ignored silently, returning `200 OK` with free
+  text. `chat_structured` posts `format` where the daemon reads it, and
+  raises `TypeError` on an explicit `format=` keyword rather than letting
+  it be dropped.
+
+- **`build_web_app(..., shell=...)` and `make_web_app_router(...,
+  shell=...)`** — the app shell is the only part of the HTML an
+  application owns, and until now it was whatever `tempestweb build`
+  emitted: `lang="en"`, no description meta, no favicon, nowhere for a
+  CSP nonce. Closes #149.
+
+  ```python
+  app = build_web_app("dist/server", shell=my_shell)
+  ```
+
+  Accepts a `str` (the document), a `Path` (read from disk) or a callable
+  invoked **per request** — which is what makes a per-response nonce
+  possible; the callable may declare a `Request` parameter or none. On
+  the static router the override also answers the SPA fallback, so a deep
+  link renders the same document. A `str` carrying no `<` is rejected:
+  that is a path written where a document was expected, and it would
+  otherwise serve a blank page with no error anywhere.
+
+## [0.224.0] — 2026-08-15
+
+### Added
+
+- **`ui` layer** (`tempest_fastapi_sdk.ui`, extra `[ssr]`). An interface
+  layer that sits **beside** `controllers` / `services` / `schemas` in a
+  service, and mirrors it one-to-one in the SDK: `ui.pages` (one class
+  per screen), `ui.layout` (structural containers), `ui.components`
+  (reusable pieces), `ui.forms`, `ui.css`. It answers only "what does
+  this look like" — a page receives data a controller already loaded and
+  never performs I/O.
+
+  ```python
+  app.include_router(make_css_router(app_stylesheet()))
+
+
+  class HomePage(BasePage):
+      total: int
+
+      def body(self) -> Widget:
+          return Card(title="Vendas", children=[Text(content=f"{self.total}")])
+  ```
+
+  Bundled components: `Card`, `Alert`, `DataTable` (columns, headers and
+  cell text derived from the row schema), `Pagination` +
+  `pagination_for(BasePaginationSchema)`, `EmptyState`, `NavBar`;
+  layout: `Shell` (header/main/footer landmarks) and `Grid` (CSS grid,
+  auto-fitting without a media query). All of them render class names
+  rather than inline styles, so the whole look lives in one stylesheet.
+
+- **Forms generated from Pydantic schemas** (`tempest_fastapi_sdk.ui.forms`).
+  The schema that validates the request also describes the form.
+
+  ```python
+  result = await parse_form(SignupSchema, request)
+  if not result.ok:
+      return html_response(
+          form_for(SignupSchema, action="/signup",
+                   values=result.values, errors=result.errors),
+          title="Cadastro", status_code=422,
+      )
+  ```
+
+  `form_for` emits an accessible `<form>` — `<label for>` bound to the
+  control, `aria-invalid` on a failing field, `aria-describedby` pointing
+  at hint and message, and native `minlength` / `max` / `step` /
+  `pattern` derived from the field metadata. `parse_form` handles what
+  HTML expresses differently: an unchecked checkbox means `False`, a key
+  the body never carried stays out of the payload (so the schema default
+  applies and a required field reports `Field required` against itself),
+  an empty optional becomes `None`, and repeated keys or textarea lines
+  become a `list`. `FormResult` carries per-field errors plus the raw
+  input, so the re-render keeps what the reader typed with no extra
+  server-side state. `exclude=` + `extra=` keep server-owned values out
+  of the browser's reach. Per-field overrides through
+  `json_schema_extra={"ui": {...}}`; `form_spec_for` + `render_form`
+  expose the generated form as plain data to patch before rendering.
+
+  Nested models and binary fields raise `UnsupportedFieldError` rather
+  than rendering a control that cannot round-trip.
+
+- **Typed CSS** (`tempest_fastapi_sdk.ui.css`). `Rule` + `Media` +
+  `StyleSheet` cover what an inline `Style` cannot: selectors,
+  pseudo-classes and media queries.
+
+  ```python
+  sheet = StyleSheet(
+      theme=ThemeTokens(),
+      rules=[
+          Rule(".card", declarations={"background": theme.color("surface")}),
+          Media.min_width(768, [Rule(".card", declarations={"padding": "24px"})]),
+      ],
+  )
+  app.include_router(make_css_router(sheet))
+  ```
+
+  `ThemeTokens` adapts `tempest_core`'s `TokenSet` — the same one the
+  client renderer uses — into CSS custom properties: 39 colour roles in
+  light and dark (`prefers-color-scheme` **and** `[data-theme]`), plus
+  spacing, shape, typography and motion scales. `make_css_router`
+  renders the sheet once, at construction, and serves it with a
+  content-derived `ETag` (a matching `If-None-Match` gets a `304`).
+  `StyleSheet.cls("crad")` raises instead of silently rendering an
+  unstyled element, and `app_stylesheet()` composes tokens + reset +
+  form rules + component rules in one call.
+
+- `html_response` gained `stylesheets=` (rendered as
+  `<link rel="stylesheet">`) and `head=` (raw markup appended to the
+  document head).
+
+- `tempest new --extras "ssr"` and `tempest generate --src` now scaffold
+  the whole `src/ui/` layer (`styles.py`, `layout/base.py`,
+  `components/stat.py`, `pages/home.py`) plus `api/routers/web.py`.
+
+- **Every scaffolded project now ships a `CLAUDE.md`** — the rules an AI
+  agent (or a new teammate) must follow so services stay alike: the
+  dependency direction between layers, the exact seven-step order for a
+  new domain (schema → model → repository → service → controller →
+  provider → router), how to raise SDK exceptions instead of building
+  responses, the pagination envelope, the `ui` layer rules, a table of
+  what **not** to reimplement, the code conventions, the commands, and a
+  definition of done that ends in `tempest check`.
+
+  `tests/cli/test_scaffold_runtime.py` keeps it honest: it writes the
+  document's own example domain into a scaffolded project and runs it —
+  `POST` returns 201, a duplicate returns 409 carrying
+  `code="PRODUCT_NAME_TAKEN"`, and the paginated listing comes back as
+  `{items, total, page, page_size, pages}`. Every SDK symbol the
+  document imports is resolved against the package, so a rename fails
+  here rather than in someone's project.
+
+### Changed
+
+- `Page` moved from `tempest_fastapi_sdk.ssr.page` to
+  `tempest_fastapi_sdk.ui.pages`, where it sits next to the components,
+  layouts and forms a page is built from.
+  `from tempest_fastapi_sdk.ssr import Page` keeps working and returns
+  the very same class.
+
+### Notes
+
+- Measured, and pinned in `tests/ui/test_core_contract.py`: under the
+  `tempestweb` HTML renderer, `tempest_core`'s `Form` renders as a
+  `<div>`, `Input` renders **without a `name`** (so nothing is
+  submitted) and `Dropdown` / `TextArea` render as empty `<div>`s —
+  those widgets belong to the reactive client. `ui.forms` therefore
+  emits form elements through the documented `tag`/`attrs` escape hatch.
+- `Style` validates colours as hex literals, so a token reference
+  (`var(--t-color-primary)`) goes in `Rule.declarations`, never in
+  `Style`.
 
 ## [0.223.0] — 2026-08-14
 

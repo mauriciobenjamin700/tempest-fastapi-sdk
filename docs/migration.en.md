@@ -2,7 +2,7 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
-## 0.224.0 — Ollama structured output moves from `/api/generate` to `/api/chat`
+## 0.229.0 — Ollama structured output moves from `/api/generate` to `/api/chat`
 
 One change, and it only breaks **tests**, not runtime.
 

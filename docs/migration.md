@@ -2,7 +2,7 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
-## 0.224.0 — saída estruturada do Ollama sai de `/api/generate` para `/api/chat`
+## 0.229.0 — saída estruturada do Ollama sai de `/api/generate` para `/api/chat`
 
 Uma mudança, e ela só quebra **teste**, não runtime.
 

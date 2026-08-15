@@ -623,6 +623,71 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 !!! note "Testes sem broker"
     `TaskQueue.memory()` usa o broker in-memory do TaskIQ: `enqueue()` roda a tarefa **na hora, no mesmo processo**. Zero worker, zero conexão. `run()` funciona sempre, mesmo sem `connect()`.
 
+### Recursos do worker — `on_startup` / `on_shutdown`
+
+O `lifespan` do FastAPI **não roda no worker**. Sem ele, o processo do
+`taskiq worker` não tem onde abrir o banco, o broker de mensagens ou um
+cliente HTTP — e não tem onde fechá-los: funciona por acidente, na
+conexão preguiçosa da primeira consulta, e nunca dispõe o pool no
+encerramento.
+
+Os hooks são esse lugar:
+
+```python
+# src/tasks/__init__.py
+
+from tempest_fastapi_sdk.tasks import TaskQueue
+
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+
+tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)
+
+
+@tq.on_startup
+async def _open_resources() -> None:
+    """Abre o banco quando o worker sobe."""
+    await db.connect()
+
+
+@tq.on_shutdown
+async def _close_resources() -> None:
+    """Dispõe o pool quando o worker encerra."""
+    await db.disconnect()
+```
+
+Para o caso comum — recursos que já falam `connect` / `disconnect` — a
+mesma coisa cabe numa linha:
+
+```python
+# src/tasks/__init__.py
+
+from tempest_fastapi_sdk.tasks import TaskQueue
+
+from src.api.dependencies.resources import broker, db
+from src.core.settings import settings
+
+tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL, resources=[db, broker])
+```
+
+`AsyncDatabaseManager`, `MessageBroker` e `AsyncMinIOClient` satisfazem o
+protocolo `LifecycleResource`; qualquer objeto seu com os dois métodos
+também serve. São abertos da esquerda para a direita e fechados da
+direita para a esquerda, então quem depende de outro ainda o encontra
+vivo ao fechar. Depois da construção, `tq.use(db)` faz o mesmo.
+
+!!! info "Escopo: por padrão é o worker"
+    O hook é registrado no `WORKER_STARTUP` do TaskIQ, então **não**
+    dispara no processo web — que já tem o `lifespan` dele. Passe
+    `scope="client"` (ou `"both"`) quando quiser o contrário:
+    `@tq.on_startup(scope="both")`.
+
+!!! tip "Testável sem worker"
+    O broker in-memory roda os eventos dos **dois** lados no mesmo
+    processo, então `TaskQueue.memory(resources=[db])` executa os hooks
+    de worker em `connect()` / `disconnect()`. É como o teste dessa
+    seção verifica a ordem de abertura e fechamento.
+
 ### Tarefas baseadas em classe
 
 Simétrico aos consumidores: agrupe tarefas numa classe com `TaskDef`.

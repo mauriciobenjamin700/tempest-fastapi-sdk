@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from tempestweb.cli import build_artifact, scaffold_project
 
@@ -130,3 +130,108 @@ def test_build_web_app_hosts_server_build(builds: dict[str, Path]) -> None:
 def test_build_web_app_rejects_wasm_build(builds: dict[str, Path]) -> None:
     with pytest.raises(ValueError, match=r"wasm.*build"):
         build_web_app(builds["wasm"])
+
+
+def test_shell_string_replaces_the_generated_document(
+    builds: dict[str, Path],
+) -> None:
+    """The document an application owns is the one that ships."""
+    document = (
+        '<!doctype html><html lang="pt-BR"><head><title>meu</title></head></html>'
+    )
+    with _static_client(builds["wasm"], shell=document) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert response.text == document
+    assert response.headers["content-type"].startswith("text/html")
+    assert response.headers["cache-control"] == "no-cache"
+
+
+def test_shell_path_is_read_from_disk(
+    builds: dict[str, Path],
+    tmp_path: Path,
+) -> None:
+    custom = tmp_path / "shell.html"
+    custom.write_text('<html lang="pt-BR"><body>custom</body></html>', encoding="utf-8")
+    with _static_client(builds["wasm"], shell=custom) as client:
+        response = client.get("/")
+    assert "custom" in response.text
+
+
+def test_shell_callable_runs_per_request(builds: dict[str, Path]) -> None:
+    """What makes a per-response CSP nonce possible."""
+    seen: list[int] = []
+
+    def shell() -> str:
+        seen.append(len(seen))
+        return f'<html lang="pt-BR"><body>nonce-{len(seen)}</body></html>'
+
+    with _static_client(builds["wasm"], shell=shell) as client:
+        first = client.get("/")
+        second = client.get("/")
+    assert "nonce-1" in first.text
+    assert "nonce-2" in second.text
+
+
+def test_shell_callable_may_take_the_request(builds: dict[str, Path]) -> None:
+    def shell(request: Request) -> str:
+        return f'<html lang="pt-BR"><body>{request.url.path}</body></html>'
+
+    with _static_client(builds["wasm"], shell=shell) as client:
+        response = client.get("/deep/link")
+    assert "/deep/link" in response.text
+
+
+def test_shell_also_answers_the_spa_fallback(builds: dict[str, Path]) -> None:
+    document = '<html lang="pt-BR"><body>shell</body></html>'
+    with _static_client(builds["wasm"], shell=document) as client:
+        deep = client.get("/some/client/route")
+    assert deep.status_code == 200
+    assert deep.text == document
+
+
+def test_shell_does_not_shadow_a_real_asset(builds: dict[str, Path]) -> None:
+    with _static_client(builds["wasm"], shell="<html><body>x</body></html>") as client:
+        asset = client.get("/bootstrap.js")
+    assert asset.status_code == 200
+    assert "<body>x</body>" not in asset.text
+
+
+def test_shell_string_without_markup_is_rejected(builds: dict[str, Path]) -> None:
+    """A path written where a document was expected fails loudly."""
+    with pytest.raises(ValueError, match="the HTML document itself"):
+        make_web_app_router(builds["wasm"], shell="dist/index.html")
+    with pytest.raises(ValueError, match="the HTML document itself"):
+        build_web_app(builds["server"], shell="dist/index.html")
+
+
+def test_build_web_app_serves_a_custom_shell(builds: dict[str, Path]) -> None:
+    document = '<!doctype html><html lang="pt-BR"><body>server shell</body></html>'
+    app = build_web_app(builds["server"], shell=document)
+    with TestClient(app) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert response.text == document
+
+
+def test_build_web_app_shell_callable_sees_the_request(
+    builds: dict[str, Path],
+) -> None:
+    def shell(request: Request) -> str:
+        nonce = request.headers.get("x-nonce", "")
+        return (
+            f'<html lang="pt-BR"><head><script nonce="{nonce}"></script></head></html>'
+        )
+
+    app = build_web_app(builds["server"], shell=shell)
+    with TestClient(app) as client:
+        response = client.get("/", headers={"x-nonce": "abc123"})
+    assert 'nonce="abc123"' in response.text
+
+
+def test_default_shell_is_unchanged(builds: dict[str, Path]) -> None:
+    """Omitting `shell` keeps serving the artifact's own index.html."""
+    generated = (builds["wasm"] / "index.html").read_text(encoding="utf-8")
+    with _static_client(builds["wasm"]) as client:
+        response = client.get("/")
+    assert response.text == generated

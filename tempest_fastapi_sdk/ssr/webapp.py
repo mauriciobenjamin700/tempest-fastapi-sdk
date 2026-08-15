@@ -28,17 +28,29 @@ tempestweb CLI / CI flow.
 
 from __future__ import annotations
 
+import inspect
 import mimetypes
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, TypeAlias
 
-from fastapi import APIRouter, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
 BuildMode = Literal["wasm", "server"]
+
+ShellSource: TypeAlias = str | Path | Callable[[], str] | Callable[[Request], str]
+"""Where the app shell comes from when the generated one is overridden.
+
+* ``str`` — the HTML document itself.
+* ``Path`` — a file read from disk on every request.
+* callable — invoked per request, so the document can carry a value that
+  changes per response (a Content-Security-Policy nonce). It takes either
+  no argument or the :class:`~fastapi.Request`, whichever it declares.
+"""
 
 #: MIME types for extensions Python's ``mimetypes`` may not know, so a
 #: tempestweb build is served with the types browsers require (a wrong
@@ -103,6 +115,45 @@ def _media_type(path: Path) -> str | None:
     return guessed
 
 
+def _check_shell(shell: ShellSource) -> None:
+    """Reject a shell string that is obviously meant to be a path.
+
+    ``shell="dist/index.html"`` is a natural thing to write and would
+    otherwise be served as the literal document, producing a blank page
+    with no error anywhere. A string with no markup in it is treated as
+    that mistake.
+
+    Args:
+        shell (ShellSource): The shell override to validate.
+
+    Raises:
+        ValueError: When ``shell`` is a string carrying no ``<``.
+    """
+    if isinstance(shell, str) and "<" not in shell:
+        raise ValueError(
+            "shell as a str is the HTML document itself, not a path; "
+            f"pass Path({shell!r}) to read it from disk.",
+        )
+
+
+def _render_shell(shell: ShellSource, request: Request) -> str | Path:
+    """Resolve a shell override for one request.
+
+    Args:
+        shell (ShellSource): The configured override.
+        request (Request): The incoming request, handed to a callable
+            that declares a parameter.
+
+    Returns:
+        str | Path: The HTML document, or the path to read it from.
+    """
+    if isinstance(shell, (str, Path)):
+        return shell
+    if inspect.signature(shell).parameters:
+        return shell(request)  # type: ignore[call-arg]
+    return shell()  # type: ignore[call-arg]
+
+
 def _resolve_within(root: Path, resource: str) -> Path | None:
     """Resolve ``resource`` under ``root``, rejecting traversal escapes.
 
@@ -126,6 +177,7 @@ def make_web_app_router(
     asset_cache_control: str = "public, max-age=3600",
     security_headers: dict[str, str] | None = None,
     spa_fallback: bool = True,
+    shell: ShellSource | None = None,
 ) -> APIRouter:
     """Serve a static ``tempestweb`` (wasm) build as an ``APIRouter``.
 
@@ -150,13 +202,21 @@ def make_web_app_router(
             "nosniff"}``.
         spa_fallback (bool): When ``True`` (default), unmatched paths serve
             ``index.html``; when ``False`` they return ``404``.
+        shell (ShellSource | None): Replaces the artifact's
+            ``index.html`` — the only part of the document an application
+            owns, and where ``<html lang>``, meta tags, a favicon link or
+            a CSP nonce have to go. ``None`` (default) keeps the
+            generated shell. The override also answers the SPA fallback,
+            so a deep link renders the same document.
 
     Returns:
         APIRouter: A router serving the static build.
 
     Raises:
         ValueError: When ``directory`` is not a static (wasm) tempestweb
-            build. Use :func:`build_web_app` for a server build.
+            build (use :func:`build_web_app` for a server build), or when
+            ``shell`` is a string with no markup in it — that is a path
+            written where a document was expected.
     """
     root = Path(directory).resolve()
     mode = detect_build_mode(root)
@@ -165,6 +225,8 @@ def make_web_app_router(
             f"{root} is a {mode!r} build; make_web_app_router serves static "
             "(wasm) builds only — use build_web_app() for a server build"
         )
+    if shell is not None:
+        _check_shell(shell)
     headers = (
         dict(security_headers)
         if security_headers is not None
@@ -193,21 +255,51 @@ def make_web_app_router(
     router = APIRouter()
     index_path = root / _INDEX
 
+    def _shell_response(request: Request) -> Response:
+        """Serve the shell, generated or overridden.
+
+        Args:
+            request (Request): The incoming request, handed to a shell
+                callable that declares a parameter.
+
+        Returns:
+            Response: The shell document, always ``no-cache`` so a
+            redeploy (or a per-request nonce) is never served stale.
+        """
+        if shell is None:
+            return _file_response(index_path)
+        rendered = _render_shell(shell, request)
+        if isinstance(rendered, Path):
+            return _file_response(rendered)
+        response: Response = HTMLResponse(rendered)
+        response.headers["Cache-Control"] = "no-cache"
+        for header, value in headers.items():
+            response.headers.setdefault(header, value)
+        return response
+
     @router.get("/", name="tempestweb_index")
-    async def index() -> FileResponse:
-        """Serve the SPA shell (``index.html``)."""
-        return _file_response(index_path)
+    async def index(request: Request) -> Response:
+        """Serve the SPA shell (``index.html``, or the override).
+
+        Args:
+            request (Request): The incoming request.
+
+        Returns:
+            Response: The shell document.
+        """
+        return _shell_response(request)
 
     @router.get("/{resource:path}", name="tempestweb_asset")
-    async def asset(resource: str) -> FileResponse:
+    async def asset(resource: str, request: Request) -> Response:
         """Serve a build asset, or fall back to the SPA shell.
 
         Args:
             resource (str): The request path under the build root.
+            request (Request): The incoming request.
 
         Returns:
-            FileResponse: The requested file, or ``index.html`` when the
-            path does not resolve to a file and ``spa_fallback`` is on.
+            Response: The requested file, or the shell when the path does
+            not resolve to a file and ``spa_fallback`` is on.
 
         Raises:
             HTTPException: ``404`` when the path is missing (or escapes the
@@ -217,7 +309,7 @@ def make_web_app_router(
         if resolved is not None and resolved.is_file():
             return _file_response(resolved)
         if spa_fallback:
-            return _file_response(index_path)
+            return _shell_response(request)
         raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
 
     return router
@@ -227,6 +319,7 @@ def build_web_app(
     directory: str | Path,
     *,
     title: str | None = None,
+    shell: ShellSource | None = None,
 ) -> FastAPI:
     """Build a FastAPI app hosting a ``tempestweb`` **server** build.
 
@@ -240,17 +333,53 @@ def build_web_app(
     Args:
         directory (str | Path): The build directory (``dist/server``).
         title (str | None): OpenAPI title; defaults to the directory name.
+        shell (ShellSource | None): Replaces the artifact's
+            ``index.html``. The generated shell is what ``tempestweb
+            build`` emitted, so anything the application owns —
+            ``<html lang="pt-BR">``, ``<meta name="description">``, Open
+            Graph tags, a favicon link, a CSP nonce — has to enter here.
+            ``None`` (default) serves the generated file unchanged.
+
+            Whatever you supply must keep the script tag that boots the
+            client; the practical way to write one is to read the
+            generated ``index.html`` once and edit the head.
 
     Returns:
         FastAPI: The configured server app (owns ``/ws`` + ``/sse``).
 
     Raises:
-        ValueError: When ``directory`` is not a server tempestweb build.
-            Use :func:`make_web_app_router` for a static (wasm) build.
+        ValueError: When ``directory`` is not a server tempestweb build
+            (use :func:`make_web_app_router` for a static build), or when
+            ``shell`` is a string with no markup in it — that is a path
+            written where a document was expected.
 
     Notes:
         The tempestweb runtime is imported lazily because only the server
         build mode needs it; a wasm build must not pay for the import.
+
+    Example:
+        ```python
+        from pathlib import Path
+
+        from fastapi import Request
+
+        from tempest_fastapi_sdk.ssr import build_web_app
+
+        generated: str = (Path("dist/server") / "index.html").read_text()
+
+
+        def shell(request: Request) -> str:
+            "Serve the generated shell with the document language fixed."
+            nonce = getattr(request.state, "csp_nonce", "")
+            return generated.replace('<html lang="en">', '<html lang="pt-BR">').replace(
+                "<script",
+                f'<script nonce="{nonce}"',
+                1,
+            )
+
+
+        web = build_web_app("dist/server", shell=shell)
+        ```
     """
     root = Path(directory).resolve()
     mode = detect_build_mode(root)
@@ -259,6 +388,8 @@ def build_web_app(
             f"{root} is a {mode!r} build; build_web_app hosts server builds "
             "only — use make_web_app_router() for a static (wasm) build"
         )
+    if shell is not None:
+        _check_shell(shell)
 
     from fastapi.staticfiles import StaticFiles
     from tempestweb.cli.loader import load_app
@@ -270,15 +401,29 @@ def build_web_app(
     index_path = root / _INDEX
 
     @app.get("/", name="tempestweb_index")
-    async def index() -> FileResponse:
-        """Serve the app shell that mounts the client over WebSocket."""
-        return FileResponse(index_path, media_type="text/html")
+    async def index(request: Request) -> Response:
+        """Serve the app shell that mounts the client over WebSocket.
+
+        Args:
+            request (Request): The incoming request, handed to a shell
+                callable that declares a parameter.
+
+        Returns:
+            Response: The generated shell, or the override.
+        """
+        if shell is None:
+            return FileResponse(index_path, media_type="text/html")
+        rendered = _render_shell(shell, request)
+        if isinstance(rendered, Path):
+            return FileResponse(rendered, media_type="text/html")
+        return HTMLResponse(rendered)
 
     return app
 
 
 __all__: list[str] = [
     "BuildMode",
+    "ShellSource",
     "build_web_app",
     "detect_build_mode",
     "make_web_app_router",

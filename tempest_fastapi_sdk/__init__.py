@@ -758,6 +758,9 @@ from tempest_fastapi_sdk.db import (
     enable_sqlite_savepoints as enable_sqlite_savepoints,
 )
 from tempest_fastapi_sdk.db import (
+    enable_sqlite_wal as enable_sqlite_wal,
+)
+from tempest_fastapi_sdk.db import (
     enum_column as enum_column,
 )
 from tempest_fastapi_sdk.db import (
@@ -869,7 +872,13 @@ from tempest_fastapi_sdk.exceptions import (
     ValidationException as ValidationException,
 )
 from tempest_fastapi_sdk.exceptions import (
+    conflict_exception as conflict_exception,
+)
+from tempest_fastapi_sdk.exceptions import (
     default_message_catalog as default_message_catalog,
+)
+from tempest_fastapi_sdk.exceptions import (
+    not_found_exception as not_found_exception,
 )
 from tempest_fastapi_sdk.exceptions import (
     parse_accept_language as parse_accept_language,
@@ -1445,7 +1454,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.224.0"
+__version__: str = "0.229.0"
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
@@ -1794,6 +1803,7 @@ __all__: list[str] = [
     "coerce_flag",
     "compose_hooks",
     "configure_logging",
+    "conflict_exception",
     "declared_guards",
     "declared_raises",
     "decode_cursor",
@@ -1803,6 +1813,7 @@ __all__: list[str] = [
     "diff_snapshots",
     "discover_models",
     "enable_sqlite_savepoints",
+    "enable_sqlite_wal",
     "encode_cursor",
     "enum_column",
     "enum_type_name",
@@ -1885,6 +1896,7 @@ __all__: list[str] = [
     "normalize_phone_br",
     "normalize_pix_key",
     "normalize_uf",
+    "not_found_exception",
     "object_digest",
     "on_signal",
     "only_digits",

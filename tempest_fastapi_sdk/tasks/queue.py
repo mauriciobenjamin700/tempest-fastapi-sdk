@@ -19,10 +19,19 @@ broker stays at :attr:`broker` for the worker CLI and escape hatches.
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, Generic, ParamSpec, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Generic,
+    Literal,
+    ParamSpec,
+    Protocol,
+    TypeVar,
+    runtime_checkable,
+)
 
 from tempest_fastapi_sdk.tasks.observability import make_dead_letter_middleware
 
@@ -42,6 +51,38 @@ logger = logging.getLogger("tempest_fastapi_sdk.tasks")
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+LifecycleScope = Literal["worker", "client", "both"]
+"""Which process a lifecycle hook runs in.
+
+``"worker"`` is the ``taskiq worker`` process, ``"client"`` is whoever
+calls :meth:`TaskQueue.connect` (typically the web application's
+lifespan), ``"both"`` is either. ``TaskQueue.memory()`` runs both sides
+in one process, so a worker-scoped hook fires there as well.
+"""
+
+Hook = Callable[[], Awaitable[None] | None]
+"""A lifecycle callback taking no arguments. Sync or async."""
+
+
+@runtime_checkable
+class LifecycleResource(Protocol):
+    """Anything the queue can open on startup and close on shutdown.
+
+    :class:`~tempest_fastapi_sdk.db.AsyncDatabaseManager`,
+    :class:`~tempest_fastapi_sdk.queue.MessageBroker` and
+    :class:`~tempest_fastapi_sdk.storage.AsyncMinIOClient` all satisfy
+    it, which is what makes ``resources=[db, broker]`` work without the
+    SDK naming any of them.
+    """
+
+    async def connect(self) -> None:
+        """Open the resource."""
+        ...
+
+    async def disconnect(self) -> None:
+        """Close the resource."""
+        ...
 
 
 def _require_taskiq() -> Any:
@@ -178,7 +219,12 @@ class TaskQueue:
             worker CLI and escape hatches).
     """
 
-    def __init__(self, broker: AsyncBroker) -> None:
+    def __init__(
+        self,
+        broker: AsyncBroker,
+        *,
+        resources: Sequence[LifecycleResource] = (),
+    ) -> None:
         """Wrap an already-constructed TaskIQ broker.
 
         Prefer :meth:`rabbitmq` / :meth:`redis` / :meth:`memory`; use
@@ -186,22 +232,36 @@ class TaskQueue:
 
         Args:
             broker (AsyncBroker): A TaskIQ broker instance.
+            resources (Sequence[LifecycleResource]): Resources the
+                worker opens on startup and closes on shutdown, in
+                order — see :meth:`use`.
         """
         _require_taskiq()
         self.broker: AsyncBroker = broker
         self._started: bool = False
         self._scheduler: AsyncTaskScheduler | None = None
+        if resources:
+            self.use(*resources)
 
     # ------------------------------------------------------------------
     # Transport constructors
     # ------------------------------------------------------------------
 
     @classmethod
-    def rabbitmq(cls, url: str, **options: Any) -> TaskQueue:
+    def rabbitmq(
+        cls,
+        url: str,
+        *,
+        resources: Sequence[LifecycleResource] = (),
+        **options: Any,
+    ) -> TaskQueue:
         """Build a RabbitMQ-backed task queue (``[tasks]`` extra).
 
         Args:
             url (str): AMQP URL.
+            resources (Sequence[LifecycleResource]): Resources the
+                worker opens on startup and closes on shutdown — see
+                :meth:`use`.
             **options (Any): Extra keyword arguments forwarded to
                 ``taskiq_aio_pika.AioPikaBroker``.
 
@@ -220,14 +280,23 @@ class TaskQueue:
                 "RabbitMQ tasks require the optional [tasks] extra. "
                 "Install with: pip install tempest-fastapi-sdk[tasks]",
             ) from exc
-        return cls(AioPikaBroker(url, **options))
+        return cls(AioPikaBroker(url, **options), resources=resources)
 
     @classmethod
-    def redis(cls, url: str, **options: Any) -> TaskQueue:
+    def redis(
+        cls,
+        url: str,
+        *,
+        resources: Sequence[LifecycleResource] = (),
+        **options: Any,
+    ) -> TaskQueue:
         """Build a Redis-backed task queue (``taskiq-redis``).
 
         Args:
             url (str): Redis URL.
+            resources (Sequence[LifecycleResource]): Resources the
+                worker opens on startup and closes on shutdown — see
+                :meth:`use`.
             **options (Any): Extra keyword arguments forwarded to
                 ``taskiq_redis.RedisStreamBroker``.
 
@@ -245,20 +314,31 @@ class TaskQueue:
                 "Redis tasks require taskiq-redis. "
                 "Install with: pip install taskiq-redis",
             ) from exc
-        return cls(RedisStreamBroker(url, **options))
+        return cls(RedisStreamBroker(url, **options), resources=resources)
 
     @classmethod
-    def memory(cls) -> TaskQueue:
+    def memory(
+        cls,
+        *,
+        resources: Sequence[LifecycleResource] = (),
+    ) -> TaskQueue:
         """Build an in-memory task queue for tests.
 
         ``enqueue`` runs the task **synchronously in-process**, so tests
-        need no worker and no broker connection.
+        need no worker and no broker connection. The in-memory broker
+        runs the client **and** worker lifecycle events on
+        :meth:`connect`, so worker-scoped hooks fire here too — which is
+        what makes them testable without a worker process.
+
+        Args:
+            resources (Sequence[LifecycleResource]): Resources opened on
+                startup and closed on shutdown — see :meth:`use`.
 
         Returns:
             TaskQueue: A facade around ``taskiq.InMemoryBroker``.
         """
         taskiq = _require_taskiq()
-        return cls(taskiq.InMemoryBroker())
+        return cls(taskiq.InMemoryBroker(), resources=resources)
 
     # ------------------------------------------------------------------
     # Task registration
@@ -518,6 +598,151 @@ class TaskQueue:
         return wrap
 
     # ------------------------------------------------------------------
+    # Lifecycle hooks
+    # ------------------------------------------------------------------
+
+    def _register_hook(
+        self,
+        moment: Literal["startup", "shutdown"],
+        handler: Hook,
+        scope: LifecycleScope,
+    ) -> None:
+        """Attach a zero-argument callback to the broker's own events.
+
+        TaskIQ hands its event handlers the broker's ``TaskiqState``;
+        the SDK's hooks take nothing, because a hook that needs the
+        state can read ``queue.broker.state`` and one that does not
+        should not have to name a parameter it ignores.
+
+        Args:
+            moment (Literal["startup", "shutdown"]): Which end of the
+                process lifetime to attach to.
+            handler (Hook): The callback, sync or async.
+            scope (LifecycleScope): Which process runs it.
+        """
+        taskiq = _require_taskiq()
+        events = taskiq.TaskiqEvents
+        chosen: list[Any] = []
+        if scope in ("worker", "both"):
+            chosen.append(
+                events.WORKER_STARTUP if moment == "startup" else events.WORKER_SHUTDOWN
+            )
+        if scope in ("client", "both"):
+            chosen.append(
+                events.CLIENT_STARTUP if moment == "startup" else events.CLIENT_SHUTDOWN
+            )
+
+        def _ignore_state(_state: Any) -> Awaitable[None] | None:
+            """Drop TaskIQ's state argument and call the SDK hook."""
+            return handler()
+
+        for event in chosen:
+            self.broker.add_event_handler(event, _ignore_state)
+
+    def on_startup(
+        self,
+        handler: Hook | None = None,
+        *,
+        scope: LifecycleScope = "worker",
+    ) -> Any:
+        """Run a callback when the process this queue lives in starts.
+
+        The worker has no FastAPI ``lifespan``, so without this there is
+        nowhere to open the database, the message broker or an HTTP
+        client — and nowhere to close them either. This is that place::
+
+            queue = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)
+
+            @queue.on_startup
+            async def _open() -> None:
+                await db.connect()
+
+            @queue.on_shutdown
+            async def _close() -> None:
+                await db.disconnect()
+
+        For the common case of resources that already speak
+        ``connect`` / ``disconnect``, :meth:`use` does both in one line.
+
+        Args:
+            handler (Hook | None): The callback, when used as a bare
+                ``@queue.on_startup``. ``None`` when called with
+                arguments.
+            scope (LifecycleScope): Which process runs it. The default
+                ``"worker"`` deliberately leaves the web process alone —
+                it has its own lifespan — so a module imported by both
+                does not open the same resource twice.
+
+        Returns:
+            Any: The handler (bare form) or a decorator returning it.
+        """
+
+        def wrap(fn: Hook) -> Hook:
+            self._register_hook("startup", fn, scope)
+            return fn
+
+        if handler is not None:
+            return wrap(handler)
+        return wrap
+
+    def on_shutdown(
+        self,
+        handler: Hook | None = None,
+        *,
+        scope: LifecycleScope = "worker",
+    ) -> Any:
+        """Run a callback when the process this queue lives in stops.
+
+        The mirror of :meth:`on_startup`; see it for the example.
+
+        Args:
+            handler (Hook | None): The callback, when used as a bare
+                ``@queue.on_shutdown``. ``None`` when called with
+                arguments.
+            scope (LifecycleScope): Which process runs it.
+
+        Returns:
+            Any: The handler (bare form) or a decorator returning it.
+        """
+
+        def wrap(fn: Hook) -> Hook:
+            self._register_hook("shutdown", fn, scope)
+            return fn
+
+        if handler is not None:
+            return wrap(handler)
+        return wrap
+
+    def use(
+        self,
+        *resources: LifecycleResource,
+        scope: LifecycleScope = "worker",
+    ) -> None:
+        """Open resources when the process starts, close them when it stops.
+
+        The shortcut behind ``TaskQueue.rabbitmq(url, resources=[db,
+        broker])``. Anything with ``connect`` / ``disconnect`` fits —
+        :class:`~tempest_fastapi_sdk.db.AsyncDatabaseManager`,
+        :class:`~tempest_fastapi_sdk.queue.MessageBroker`,
+        :class:`~tempest_fastapi_sdk.storage.AsyncMinIOClient`::
+
+            queue = TaskQueue.rabbitmq(url, resources=[db, broker])
+
+        They are opened left to right and closed right to left, so a
+        resource that depends on an earlier one still has it while
+        closing.
+
+        Args:
+            *resources (LifecycleResource): The resources to manage.
+            scope (LifecycleScope): Which process manages them; see
+                :meth:`on_startup`.
+        """
+        for resource in resources:
+            self._register_hook("startup", resource.connect, scope)
+        for resource in reversed(resources):
+            self._register_hook("shutdown", resource.disconnect, scope)
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
@@ -601,6 +826,9 @@ class TaskQueue:
 
 
 __all__: list[str] = [
+    "Hook",
+    "LifecycleResource",
+    "LifecycleScope",
     "Task",
     "TaskQueue",
 ]

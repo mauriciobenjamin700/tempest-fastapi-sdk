@@ -1,0 +1,479 @@
+# CLAUDE.md — __PROJECT_NAME__
+
+Instructions for AI agents and humans working in this repository. They
+are **rules, not suggestions**: this service is built on
+[`tempest-fastapi-sdk`](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/),
+and the whole point of the SDK is that every Tempest service has the same
+shape. Code that ignores the shape costs the next person a rewrite.
+
+Pinned SDK requirement: `__SDK_DEP__`
+Extras enabled in this project: `__SDK_EXTRAS__`
+
+## Before you write anything
+
+1. **Check the SDK first.** Most of what a service needs already exists
+   there — repositories, pagination, auth, exceptions, cache, queues,
+   uploads, admin, HTML pages. Reimplementing it is the single most
+   common defect in a scaffolded project. The table under
+   [Do not reimplement](#do-not-reimplement-these) is the shortlist; the
+   [full docs](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/)
+   are the authority.
+2. **Follow the layer that owns the change.** Adding a query? That is a
+   repository. Adding a rule? A service. Adding an endpoint? A router.
+   Never two at once.
+3. **Type everything and docstring everything.** No exceptions, not even
+   for a two-line helper.
+
+## Layers
+
+```text
+src/
+├── api/routers/       # HTTP verbs, status codes, Depends. No business logic.
+├── api/dependencies/  # Depends providers + infra singletons (db, storage, mailer)
+├── controllers/       # Orchestration across services. No DB access.
+├── services/          # Business rules. Calls repositories.
+├── db/repositories/   # SQLAlchemy async queries. No business rules.
+├── db/models/         # ORM models
+├── schemas/           # Pydantic DTOs (request/response)
+├── core/              # settings, constants, exceptions, logging
+└── ui/ (with [ssr])   # pages, layout, components, styles — HTML only
+```
+
+The dependency direction is one-way, and it is the whole contract:
+
+| Layer | May import | Never imports |
+| --- | --- | --- |
+| `api/routers` | `controllers`, `schemas`, `ui` | `db`, `services` directly |
+| `ui` | `schemas`, other parts of `ui` | `controllers`, `services`, `db` |
+| `controllers` | `services`, `schemas` | `db`, `ui` |
+| `services` | `db/repositories`, `schemas` | HTTP types, `ui` |
+| `db/repositories` | `db/models`, `schemas` | business rules, HTTP |
+
+**A router that opens a session, or a service that builds an
+`HTTPException`, is a defect** — fix the layering, do not add a
+workaround.
+
+## Adding a feature: the exact order
+
+Every new domain follows these seven steps, in this order. Skipping one
+produces a service that looks unlike every other Tempest service.
+
+### 1. Schema (`src/schemas/`)
+
+```python
+from tempest_fastapi_sdk import BaseResponseSchema, BaseSchema
+
+
+class ProductCreateSchema(BaseSchema):
+    """Payload accepted when creating a product."""
+
+    name: str
+    price_cents: int
+
+
+class ProductResponseSchema(BaseResponseSchema):
+    """Product returned by the API."""
+
+    name: str
+    price_cents: int
+```
+
+### 2. Model (`src/db/models/`)
+
+```python
+from sqlalchemy.orm import Mapped, mapped_column
+from tempest_fastapi_sdk import BaseModel
+
+
+class ProductModel(BaseModel):
+    """Products table."""
+
+    __tablename__ = "products"
+
+    name: Mapped[str] = mapped_column(index=True)
+    price_cents: Mapped[int] = mapped_column(default=0)
+```
+
+`BaseModel` already provides `id`, `created_at` and `updated_at` — never
+redeclare them.
+
+### 3. Repository (`src/db/repositories/`)
+
+```python
+from sqlalchemy.ext.asyncio import AsyncSession
+from tempest_fastapi_sdk import BaseRepository
+
+from src.core.exceptions import ProductNotFoundError
+from src.db.models import ProductModel
+from src.schemas import ProductResponseSchema
+
+
+class ProductRepository(BaseRepository[ProductModel]):
+    """Data access for products."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Bind the repository to a session.
+
+        Args:
+            session (AsyncSession): The active async session.
+        """
+        super().__init__(
+            session,
+            model=ProductModel,
+            not_found_exception=ProductNotFoundError,
+            not_found_message="Produto não encontrado",
+        )
+
+    def map_to_response(self, instance: ProductModel) -> ProductResponseSchema:
+        """Map a row to its API response schema.
+
+        Args:
+            instance (ProductModel): The ORM row.
+
+        Returns:
+            ProductResponseSchema: The response schema.
+        """
+        return ProductResponseSchema.model_validate(instance)
+```
+
+`map_to_response` is the **one method every repository must implement** —
+the base class raises `NotImplementedError` otherwise, and the service
+layer calls it on every read.
+
+You inherit `add`, `get`, `get_by_id`, `get_or_none`, `first`, `list`,
+`paginate`, `cursor_paginate`, `update`, `delete`, `soft_delete`,
+`count`, `exists`, `search`, `full_text_search`, the `bulk_*` family and
+`transaction` / `savepoint`. **Write a new method only for a query those
+cannot express.**
+
+### 4. Service (`src/services/`)
+
+```python
+from tempest_fastapi_sdk import BaseService
+
+from src.core.exceptions import ProductNameTakenError
+from src.db.repositories import ProductRepository
+from src.schemas import ProductCreateSchema, ProductResponseSchema
+
+
+class ProductService(BaseService[ProductRepository, ProductResponseSchema]):
+    """Business rules for products."""
+
+    async def create(self, data: ProductCreateSchema) -> ProductResponseSchema:
+        """Create a product, rejecting a duplicate name.
+
+        Args:
+            data (ProductCreateSchema): The creation payload.
+
+        Returns:
+            ProductResponseSchema: The created product.
+
+        Raises:
+            ProductNameTakenError: When the name is already registered.
+        """
+        if await self.repository.exists({"name": data.name}):
+            raise ProductNameTakenError()
+        instance = self.repository.map_to_model(data.model_dump())
+        instance = await self.repository.add(instance)
+        return self.repository.map_to_response(instance)
+```
+
+`BaseService` already gives you `get_by_id`, `get_or_none`, `list`,
+`paginate`, `count`, `exists`, `update` and `delete`, each wired to
+`repository.map_to_response`. Override one only when a domain rule
+belongs in it; add a new method for a use case the base does not cover.
+
+### 5. Controller (`src/controllers/`)
+
+```python
+from tempest_fastapi_sdk import BaseController
+
+from src.schemas import ProductCreateSchema, ProductResponseSchema
+from src.services import ProductService
+
+
+class ProductController(BaseController[ProductService, ProductResponseSchema]):
+    """Coordination layer for products."""
+
+    async def create(self, data: ProductCreateSchema) -> ProductResponseSchema:
+        """Create a product.
+
+        Args:
+            data (ProductCreateSchema): The creation payload.
+
+        Returns:
+            ProductResponseSchema: The created product.
+        """
+        return await self.service.create(data)
+```
+
+Keep the controller **even when every method is a pass-through** — it is
+the seam where cross-service coordination lands later, and its presence
+keeps the import graph identical across services.
+
+### 6. Dependency provider (`src/api/dependencies/controllers.py`)
+
+```python
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.api.dependencies.resources import get_session
+from src.controllers import ProductController
+from src.db.repositories import ProductRepository
+from src.services import ProductService
+
+
+def get_product_controller(
+    session: AsyncSession = Depends(get_session),
+) -> ProductController:
+    """Build the product controller for one request.
+
+    Args:
+        session (AsyncSession): The request-scoped session.
+
+    Returns:
+        ProductController: A controller wired to that session.
+    """
+    return ProductController(ProductService(ProductRepository(session)))
+```
+
+### 7. Router (`src/api/routers/`)
+
+```python
+from fastapi import APIRouter, Depends, status
+
+from src.api.dependencies.controllers import get_product_controller
+from src.controllers import ProductController
+from src.schemas import ProductCreateSchema, ProductResponseSchema
+
+router: APIRouter = APIRouter(prefix="/products", tags=["products"])
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def create_product(
+    data: ProductCreateSchema,
+    controller: ProductController = Depends(get_product_controller),
+) -> ProductResponseSchema:
+    """Create a product.
+
+    Args:
+        data (ProductCreateSchema): The creation payload.
+        controller (ProductController): Injected controller.
+
+    Returns:
+        ProductResponseSchema: The created product.
+    """
+    return await controller.create(data)
+```
+
+Mount it in `src/api/routers/__init__.py`, then re-export the new symbols
+from every `__init__.py` you touched.
+
+## Errors: raise, never build a response
+
+The SDK's exception hierarchy is registered on the app by
+`register_exception_handlers(app)`. Raise a domain exception and the
+envelope, the status code and the OpenAPI entry come for free.
+
+```python
+from tempest_fastapi_sdk import ConflictException, NotFoundException
+
+
+class ProductNotFoundError(NotFoundException):
+    """Raised when a product id matches no stored record."""
+
+    code = "PRODUCT_NOT_FOUND"
+
+
+class ProductNameTakenError(ConflictException):
+    """Raised when a product name is already registered."""
+
+    code = "PRODUCT_NAME_TAKEN"
+```
+
+- **Always declare `code` in the class body.** Without it the exception
+  inherits the SDK's generic identifier (`"NOT_FOUND"`, `"CONFLICT"`),
+  which no client can tell apart from any other failure with the same
+  status — the SDK raises `InheritedErrorCodeWarning` when you forget.
+- **Never** raise `HTTPException` from a service or controller.
+- **Never** return `{"error": ...}` by hand.
+- A single-resource lookup that misses raises the `*NotFoundError`.
+  A collection that matches nothing returns `[]` — an empty list is a
+  successful result, not a 404. Do not define plural `*sNotFoundError`.
+
+## Pagination
+
+Use the SDK envelope; do not invent a page shape.
+
+```python
+from fastapi import APIRouter, Depends
+from tempest_fastapi_sdk import BasePaginationFilterSchema, BasePaginationSchema
+
+from src.api.dependencies.controllers import get_product_controller
+from src.controllers import ProductController
+from src.schemas import ProductResponseSchema
+
+router: APIRouter = APIRouter(prefix="/products", tags=["products"])
+
+
+@router.get("")
+async def list_products(
+    filters: BasePaginationFilterSchema = Depends(),
+    controller: ProductController = Depends(get_product_controller),
+) -> BasePaginationSchema[ProductResponseSchema]:
+    """List products, paginated.
+
+    Args:
+        filters (BasePaginationFilterSchema): Page, size and ordering.
+        controller (ProductController): Injected controller.
+
+    Returns:
+        BasePaginationSchema[ProductResponseSchema]: One page of products.
+    """
+    result = await controller.paginate(
+        filters=filters.get_conditions(),
+        order_by=filters.order_by,
+        page=filters.page,
+        page_size=filters.page_size,
+        ascending=filters.ascending,
+    )
+    return BasePaginationSchema[ProductResponseSchema](**result)
+```
+
+`controller.paginate` returns the plain mapping
+`{items, total, page, page_size, pages}` that the envelope accepts
+directly. Subclass `BasePaginationFilterSchema` to add domain filters —
+`get_conditions()` then carries them and the pagination keys stay
+separate.
+
+## The `ui` layer (only with the `[ssr]` extra)
+
+If this project serves HTML, it has `src/ui/` — a layer at the same level
+as `controllers` and `services`, answering only *what does this look
+like*.
+
+- **A page never performs I/O.** No `await` on a repository, service or
+  HTTP client inside `body()`. The router loads through the controller
+  and passes the data into the page's typed fields.
+- **One class per screen** in `ui/pages/`, each subclassing `BasePage`
+  from `ui/layout/`, which owns `shell()`.
+- **Forms come from schemas** — never hand-written `<input>` markup:
+
+  ```python
+  from fastapi import Request
+  from fastapi.responses import RedirectResponse, Response
+  from tempest_fastapi_sdk.ssr import html_response
+  from tempest_fastapi_sdk.ui.forms import form_for, parse_form
+
+  from src.schemas import ProductCreateSchema
+  from src.ui import CSS_PATH
+
+
+  async def create_product_form(request: Request) -> Response:
+      """Validate the submitted product form."""
+      result = await parse_form(ProductCreateSchema, request)
+      if not result.ok:
+          return html_response(
+              form_for(
+                  ProductCreateSchema,
+                  action="/products/new",
+                  values=result.values,
+                  errors=result.errors,
+              ),
+              title="Novo produto",
+              status_code=422,
+              stylesheets=[CSS_PATH],
+          )
+      return RedirectResponse("/products", status_code=303)
+  ```
+
+- **Styling is the typed sheet in `src/ui/styles.py`**, served by
+  `make_css_router(STYLESHEET, path=CSS_PATH)`. Reference design tokens
+  (`THEME.color("surface")`, `THEME.space("md")`) instead of hard-coding
+  colours, and add rules to `_OWN_RULES` rather than writing a `.css`
+  file.
+- **Use `Stack` for semantic markup** (`<select>`, `<table>`, `<ul>`) and
+  `Column`/`Row` only where a flex box is wanted.
+- Reuse the shipped components: `Card`, `Alert`, `DataTable`,
+  `Pagination`, `EmptyState`, `NavBar`, `Shell`, `Grid`.
+- HTML routes live in `api/routers/web.py` with
+  `include_in_schema=False`, so they never pollute the OpenAPI schema.
+
+## Do not reimplement these
+
+| You are about to write | Use instead |
+| --- | --- |
+| CRUD queries, filters, pagination | `BaseRepository` |
+| A page envelope for a listing | `BasePaginationSchema` / `BasePaginationFilterSchema` |
+| An error response body | `AppException` subclasses + `register_exception_handlers` |
+| Password hashing, JWT encode/decode | `PasswordUtils`, `JWTUtils` |
+| A signup/login/reset flow | `UserAuthService` + `make_auth_router` |
+| A health endpoint | `make_health_router` |
+| CORS, request ids, rate limiting | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware` |
+| Redis caching, cache invalidation | `AsyncRedisManager`, `@cached`, `CacheInvalidator` |
+| RabbitMQ publish/subscribe | `MessageBroker` (`[queue]`) |
+| Background jobs and cron | `TaskQueue` (`[tasks]`) |
+| File upload/download handling | `UploadUtils`, `DownloadUtils`, `FileStoreUtils` |
+| Sending email | `EmailUtils` |
+| A CRUD admin UI | `AdminSite` + `AdminModel` (`[admin]`) |
+| HTML pages, forms, CSS | `tempest_fastapi_sdk.ui` (`[ssr]`) |
+| CPF/CNPJ/CEP/phone validation | the SDK's Brazilian field types |
+| Alembic boilerplate | `AlembicHelper` and `tempest db` |
+
+If the SDK covers 90% of what you need, extend it in this project rather
+than forking the concept — and open an issue upstream for the missing
+10%.
+
+## Code conventions
+
+- **Double quotes** for every string.
+- **Full type annotations** on every function, method, parameter and
+  module-level variable — including `-> None`.
+- **Google-style docstrings in English** on every module, class, function
+  and method: description, `Args`, `Returns`, `Raises`.
+- **No explanatory inline comments.** The *why* belongs in the docstring.
+  Only machine-directed markers (`# noqa`, `# type: ignore`) stay inline.
+- **`async` by default** for anything doing I/O. SQLAlchemy 2.0 style
+  (`select()`), never `session.query()`.
+- **Re-export from every `__init__.py`** using `from x import Y as Y`
+  plus an explicit `__all__: list[str]`, and import from the package
+  level (`from src.schemas import ProductCreateSchema`), never from the
+  submodule.
+- Collections default to empty: `Field(default_factory=list)` in
+  schemas, `Query(default_factory=list)` for repeated query parameters.
+- Routers return schemas, never ORM models.
+
+## Commands
+
+```bash
+uv sync                     # install dependencies
+cp .env.example .env        # first run only
+uv run python main.py       # start the service on __HOST__:__PORT__
+
+tempest check               # lint + format check + mypy + pytest
+tempest lint                # ruff check
+tempest fmt                 # ruff format
+tempest type                # mypy
+tempest test                # pytest
+
+tempest db revision -m "add products"   # autogenerate a migration
+tempest db upgrade                      # apply migrations
+tempest generate --src                  # add layers for newly pinned extras
+tempest generate --docker               # regenerate docker-compose.yaml
+```
+
+**Run `tempest check` before declaring any task finished.** A change that
+does not pass it is not done.
+
+## Definition of done
+
+- [ ] The change lives in the layer that owns it.
+- [ ] Every new function, method and class is typed and documented.
+- [ ] New public symbols are re-exported from their `__init__.py` and
+      listed in `__all__`.
+- [ ] Domain errors raise SDK exceptions; collections return `[]`.
+- [ ] Tests cover the new behaviour (`pytest` + `pytest-asyncio`,
+      in-memory SQLite, external services mocked).
+- [ ] `tempest check` passes.
+- [ ] A schema, endpoint or env var changed? `README.md` and
+      `.env.example` were updated in the same commit.

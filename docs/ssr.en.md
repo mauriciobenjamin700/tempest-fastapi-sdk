@@ -257,12 +257,21 @@ Column(
   renderer (SSR) and the JS client (WASM/server) — the same screen on both
   sides.
 
-!!! info "Prefer classes/`attrs` for external stylesheets"
-    For real CSS (external sheets, media queries), add
-    `attrs={"class": "card"}` and serve your `.css` as static. Inline
-    `Style` is great for local layout and self-contained components.
+!!! info "For selectors, `:hover` and media queries, use the typed sheet"
+    Inline `Style` is great for local layout and self-contained
+    components, but it expresses no selector, pseudo-class or media
+    query. Those live in a `StyleSheet` — CSS written in Python, served
+    by the app itself with an ETag: see
+    **[Typed CSS (stylesheet and tokens) »](recipes/ui-css.md)**.
 
 ## Reusable components
+
+!!! tip "The SDK already ships the common components"
+    `Card`, `Alert`, `DataTable`, `Pagination`, `EmptyState`, `NavBar`,
+    `Shell` and `Grid` come ready in
+    **[UI layer (pages and components) »](recipes/ui.md)**, which also
+    defines where each file of your `src/ui/` lives. What follows is how
+    to write a component of your own.
 
 `Page` is a `Component`. You can extract **any** subtree into a typed
 `Component` and reuse it — the page stays declarative and testable in pieces.
@@ -307,6 +316,14 @@ belong to `Page`). The renderer expands each `Component` through its
 `render()`, recursively.
 
 ## Forms and inputs
+
+!!! tip "Do not hand-write the form"
+    Since v0.224.0, `form_for(Schema, action=...)` generates the whole
+    form from the Pydantic schema, and `parse_form` reads the submission
+    back with per-field errors and the input preserved. See
+    **[Forms from Pydantic schemas »](recipes/ui-forms.md)**. What
+    follows is the manual path, for when you want full control of the
+    markup.
 
 There is no dedicated form widget — you compose it with `tag`/`attrs` and
 receive the POST with FastAPI's `Form`, like any route.

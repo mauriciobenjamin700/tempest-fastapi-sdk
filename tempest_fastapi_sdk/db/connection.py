@@ -60,6 +60,57 @@ def enable_sqlite_savepoints(engine: AsyncEngine) -> None:
         connection.exec_driver_sql("BEGIN")
 
 
+def enable_sqlite_wal(engine: AsyncEngine) -> None:
+    """Put every connection of a SQLite engine in WAL mode.
+
+    In the default rollback journal a reader and a writer exclude each
+    other, so the moment an application grows a worker — web process and
+    ``taskiq worker`` on one ``app.db`` — the second one fails. Measured
+    across two processes, one holding a read transaction open while the
+    other inserts:
+
+    ==================  ==========================================
+    ``journal_mode``    Result for the writer
+    ==================  ==========================================
+    ``delete``          waits the whole ``busy_timeout``, then
+                        ``sqlite3.OperationalError: database is
+                        locked``
+    ``wal``             commits immediately
+    ==================  ==========================================
+
+    WAL is a property of the **database file**, not of the connection:
+    setting it once is enough, it survives the process, and every later
+    connection from any process opens the file already in WAL. Emitting
+    the pragma per connection is therefore idempotent, and it is done
+    per connection only so the very first connection of a brand-new file
+    switches it too. On an in-memory database the pragma is a no-op —
+    SQLite answers ``memory`` and keeps its own journal, without error.
+
+    Args:
+        engine (AsyncEngine): The SQLite engine to configure. Emitting
+            this pragma against another backend would fail, so callers
+            building their own engine must gate on the backend.
+
+    Notes:
+        WAL admits one writer at a time; the others queue (see
+        ``sqlite_busy_timeout``). What no amount of waiting fixes is a
+        transaction that **reads first and writes later** — promoting
+        the lock fails at once when another connection wrote in
+        between, and ``busy_timeout`` does not apply because there is
+        nothing to wait for. Claim the row, do the long work with no
+        session open, then persist.
+    """
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _set_wal(dbapi_connection: Any, _record: Any) -> None:
+        """Switch the file this connection just opened into WAL."""
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+        finally:
+            cursor.close()
+
+
 class AsyncDatabaseManager:
     """Manage the async SQLAlchemy engine and session lifecycle.
 
@@ -72,6 +123,11 @@ class AsyncDatabaseManager:
     Backend detection uses ``sqlalchemy.engine.make_url`` so URLs
     like ``sqlite+aiosqlite://...`` are matched precisely without
     relying on substring tricks.
+
+    SQLite engines are additionally put in WAL mode with a 30-second
+    busy timeout, which is what makes "web process plus worker on the
+    same file" work at all — see :func:`enable_sqlite_wal` for the
+    measurement and for the one contention WAL does **not** fix.
 
     Attributes:
         is_sqlite (bool): Whether the URL targets a SQLite backend.
@@ -91,6 +147,8 @@ class AsyncDatabaseManager:
         pool_recycle: int = 3600,
         connect_args: dict[str, Any] | None = None,
         poolclass: type[Pool] | None = None,
+        sqlite_wal: bool = True,
+        sqlite_busy_timeout: float = 30.0,
         **engine_kwargs: Any,
     ) -> None:
         """Initialize the manager (does not open connections yet).
@@ -112,11 +170,26 @@ class AsyncDatabaseManager:
             poolclass (type[Pool] | None): Override SQLAlchemy's
                 default pool class. Useful for tests
                 (``poolclass=NullPool``) or specialized topologies.
+            sqlite_wal (bool): Whether SQLite engines are put in WAL
+                mode (see :func:`enable_sqlite_wal`). Ignored on every
+                other backend. Turn it off only for a file on a
+                filesystem without working shared memory — WAL needs
+                ``mmap``, so some network mounts reject it.
+            sqlite_busy_timeout (float): Seconds a SQLite connection
+                waits for a lock held by another connection before
+                giving up with ``database is locked``. Forwarded to the
+                driver as ``connect_args["timeout"]``; the driver's own
+                default is 5 seconds, which is short for a worker that
+                writes in bursts. Ignored on every other backend, and
+                ignored here when ``connect_args`` already carries a
+                ``timeout``.
             **engine_kwargs: Any additional keyword arguments are
                 passed through to ``create_async_engine`` verbatim.
         """
         self._db_url: str = db_url
         self.is_sqlite: bool = make_url(db_url).get_backend_name() == "sqlite"
+        self._sqlite_wal: bool = sqlite_wal
+        self._sqlite_busy_timeout: float = sqlite_busy_timeout
         self._echo: bool = echo
         self._pool_size: int = pool_size
         self._max_overflow: int = max_overflow
@@ -186,6 +259,7 @@ class AsyncDatabaseManager:
 
         if self.is_sqlite:
             connect_args.setdefault("check_same_thread", False)
+            connect_args.setdefault("timeout", self._sqlite_busy_timeout)
         else:
             kwargs.setdefault("pool_pre_ping", True)
             kwargs.setdefault("pool_recycle", self._pool_recycle)
@@ -200,6 +274,8 @@ class AsyncDatabaseManager:
         self._engine = create_async_engine(self._db_url, **kwargs)
         if self.is_sqlite:
             enable_sqlite_savepoints(self._engine)
+            if self._sqlite_wal:
+                enable_sqlite_wal(self._engine)
         self._session_maker = async_sessionmaker(
             self._engine,
             expire_on_commit=False,
@@ -344,4 +420,5 @@ class AsyncDatabaseManager:
 
 __all__: list[str] = [
     "AsyncDatabaseManager",
+    "enable_sqlite_wal",
 ]

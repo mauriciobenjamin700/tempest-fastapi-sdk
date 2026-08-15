@@ -6110,6 +6110,19 @@ wheels = [
 ]
 
 [[package]]
+name = "tempest-cli"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ruff" },
+    { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/57/37/b29a19141ea0090d1dde26b3245102d24f877818ffa53c1e81cf2333c2cf/tempest_cli-0.3.0.tar.gz", hash = "sha256:e32d5c627fb621fa9d8e26526f001a31899f12f961ec418d0e8259034b420e80", size = 129659, upload-time = "2026-08-15T17:22:46.487Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/11/88/724c9bcbe12e92586a2e56c26d793f90cb7cb9ff417cfb39f28925a244d9/tempest_cli-0.3.0-py3-none-any.whl", hash = "sha256:d6d652decb225d081ccf74922feefabe39e11732668c2bf85bc77eb3d4f72a5e", size = 27181, upload-time = "2026-08-15T17:22:45.445Z" },
+]
+
+[[package]]
 name = "tempest-core"
 version = "0.11.0"
 source = { registry = "https://pypi.org/simple" }
@@ -6123,7 +6136,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.224.0"
+version = "0.229.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -6134,6 +6147,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "tempest-cli" },
     { name = "typer" },
 ]
 
@@ -6508,8 +6522,9 @@ requires-dist = [
     { name = "taskiq", marker = "extra == 'tasks'", specifier = ">=0.11.0" },
     { name = "taskiq-aio-pika", marker = "extra == 'all'", specifier = ">=0.4.0" },
     { name = "taskiq-aio-pika", marker = "extra == 'tasks'", specifier = ">=0.4.0" },
-    { name = "tempestweb", marker = "extra == 'all'", specifier = ">=0.60.0" },
-    { name = "tempestweb", marker = "extra == 'ssr'", specifier = ">=0.60.0" },
+    { name = "tempest-cli", specifier = ">=0.3.0" },
+    { name = "tempestweb", marker = "extra == 'all'", specifier = ">=0.64.0" },
+    { name = "tempestweb", marker = "extra == 'ssr'", specifier = ">=0.64.0" },
     { name = "tokenizers", marker = "extra == 'genai-onnx'", specifier = ">=0.20.0" },
     { name = "torch", marker = "extra == 'genai'", specifier = ">=2.2.0" },
     { name = "torchvision", marker = "extra == 'genai-vlm'", specifier = ">=0.17.0" },
@@ -6570,7 +6585,7 @@ dev = [
     { name = "sherpa-onnx-core" },
     { name = "taskiq", specifier = ">=0.11.0" },
     { name = "taskiq-aio-pika", specifier = ">=0.4.0" },
-    { name = "tempestweb", specifier = ">=0.60.0" },
+    { name = "tempestweb", specifier = ">=0.64.0" },
     { name = "tokenizers", specifier = ">=0.20.0" },
     { name = "trafilatura", specifier = ">=1.12.0" },
     { name = "types-openpyxl", specifier = ">=3.1.5" },
@@ -6587,14 +6602,14 @@ docs = [
 
 [[package]]
 name = "tempestweb"
-version = "0.61.1"
+version = "0.64.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tempest-core" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/74/5e/453520fe1ad4b7d3acb7ae36a60f4b8a5baf00d177f6150d6d40e970d67e/tempestweb-0.61.1.tar.gz", hash = "sha256:d8631a275fa66948873466169987bba56781fd7f310d5191d9ef51d65a991b31", size = 449031, upload-time = "2026-07-19T09:57:31.709Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/80/bd/f8624a217083f681e53863defe0c19ad091a5cf1240cb3dabd00df8b43e3/tempestweb-0.64.0.tar.gz", hash = "sha256:fd6f83a6e8825e95463839253dc53aa435878e3590e9d52e3d4a90b2ae6ca939", size = 480226, upload-time = "2026-08-15T16:34:18.708Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/14/7d/aa2da9d0ec0006dadcbd3aa9ba7ebcb5ec097c0a7374dabce8be9fe67a16/tempestweb-0.61.1-py3-none-any.whl", hash = "sha256:b395d6189f4ddd2fdcc46cac483cbb7dac95a1375f651550a16c2211b676cfb2", size = 481567, upload-time = "2026-07-19T09:57:30.12Z" },
+    { url = "https://files.pythonhosted.org/packages/30/c7/4c18ee702d17d0262deb0261bb77a1f78db4f3bccd41d3ae9a40ebcae421/tempestweb-0.64.0-py3-none-any.whl", hash = "sha256:51a08be81f4a154bca54d13623837e1f949558062e38269273f2fa7f1e6f18ac", size = 512073, upload-time = "2026-08-15T16:34:17.36Z" },
 ]
 
 [[package]]
