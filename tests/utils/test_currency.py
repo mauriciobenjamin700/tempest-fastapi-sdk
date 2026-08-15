@@ -7,6 +7,8 @@ from decimal import Decimal
 import pytest
 
 from tempest_fastapi_sdk.utils import (
+    CENT,
+    HUNDRED,
     format_currency_br,
     format_percent_br,
     format_quantity_br,
@@ -66,6 +68,22 @@ class TestParseCurrencyBR:
         parsed = parse_currency_br("R$ 0,10")
         assert parsed is not None
         assert parsed * 3 == Decimal("0.30")
+
+
+class TestConstants:
+    def test_cent_is_the_quantization_target(self) -> None:
+        assert Decimal("0.01") == CENT
+        assert (
+            quantize_money(Decimal("1.004")).as_tuple().exponent
+            == CENT.as_tuple().exponent
+        )
+
+    def test_cent_converts_integer_cents_exactly(self) -> None:
+        """``format_cents`` multiplies by this; a float here would round."""
+        assert Decimal(123456) * CENT == Decimal("1234.56")
+
+    def test_hundred_converts_ratio_to_percentage(self) -> None:
+        assert Decimal("0.2999998") * HUNDRED == Decimal("29.99998")
 
 
 class TestQuantizeMoney:
