@@ -725,6 +725,62 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.ssr.webapp.BuildMode
 ---
 
+## UI (páginas, componentes, formulários, CSS)
+
+### `tempest_fastapi_sdk.ui`
+
+::: tempest_fastapi_sdk.ui.stylesheet.app_stylesheet
+
+### `tempest_fastapi_sdk.ui.pages`
+
+::: tempest_fastapi_sdk.ui.pages.page.Page
+
+### `tempest_fastapi_sdk.ui.layout`
+
+::: tempest_fastapi_sdk.ui.layout.shell.Shell
+::: tempest_fastapi_sdk.ui.layout.grid.Grid
+
+### `tempest_fastapi_sdk.ui.components`
+
+::: tempest_fastapi_sdk.ui.components.card.Card
+::: tempest_fastapi_sdk.ui.components.alert.Alert
+::: tempest_fastapi_sdk.ui.components.table.DataTable
+::: tempest_fastapi_sdk.ui.components.pagination.Pagination
+::: tempest_fastapi_sdk.ui.components.pagination.pagination_for
+::: tempest_fastapi_sdk.ui.components.empty.EmptyState
+::: tempest_fastapi_sdk.ui.components.nav.NavBar
+::: tempest_fastapi_sdk.ui.components.nav.NavItem
+::: tempest_fastapi_sdk.ui.components.classes.ComponentClasses
+::: tempest_fastapi_sdk.ui.components.styles.component_stylesheet
+
+### `tempest_fastapi_sdk.ui.forms`
+
+::: tempest_fastapi_sdk.ui.forms.render.form_for
+::: tempest_fastapi_sdk.ui.forms.render.render_form
+::: tempest_fastapi_sdk.ui.forms.render.render_field
+::: tempest_fastapi_sdk.ui.forms.introspect.fields_for
+::: tempest_fastapi_sdk.ui.forms.introspect.form_spec_for
+::: tempest_fastapi_sdk.ui.forms.introspect.UnsupportedFieldError
+::: tempest_fastapi_sdk.ui.forms.parse.parse_form
+::: tempest_fastapi_sdk.ui.forms.parse.FormResult
+::: tempest_fastapi_sdk.ui.forms.spec.FormSpec
+::: tempest_fastapi_sdk.ui.forms.spec.FieldSpec
+::: tempest_fastapi_sdk.ui.forms.spec.SelectOption
+::: tempest_fastapi_sdk.ui.forms.spec.FormClasses
+::: tempest_fastapi_sdk.ui.forms.styles.form_stylesheet
+
+### `tempest_fastapi_sdk.ui.css`
+
+::: tempest_fastapi_sdk.ui.css.rules.Rule
+::: tempest_fastapi_sdk.ui.css.rules.Media
+::: tempest_fastapi_sdk.ui.css.rules.StyleSheet
+::: tempest_fastapi_sdk.ui.css.rules.cls
+::: tempest_fastapi_sdk.ui.css.tokens.ThemeTokens
+::: tempest_fastapi_sdk.ui.css.router.make_css_router
+::: tempest_fastapi_sdk.ui.css.router.css_response
+::: tempest_fastapi_sdk.ui.css.router.stylesheet_links
+---
+
 ## System checks
 
 ### `tempest_fastapi_sdk.checks`

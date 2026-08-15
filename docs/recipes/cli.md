@@ -43,6 +43,7 @@ my_service/
 ├── docker-compose.yaml      # serviços baseados nos extras escolhidos
 ├── .gitignore
 ├── README.md
+├── CLAUDE.md                # regras do projeto para agentes de IA e humanos
 ├── src/
 │   ├── server.py            # uvicorn.run() + app FastAPI no nível do módulo
 │   ├── api/
@@ -56,10 +57,26 @@ my_service/
 │   ├── db/
 │   │   ├── models/
 │   │   └── repositories/
+│   ├── ui/                  # só com o extra [ssr] — pages/layout/components/styles
 │   └── utils/
 └── tests/
     └── test_smoke.py        # garante que /api/ e /health/liveness sobem
 ```
+
+!!! tip "O `CLAUDE.md` gerado é o contrato do projeto"
+    Todo projeto novo nasce com um `CLAUDE.md` que fixa as regras que
+    mantêm os serviços parecidos entre si: a direção das dependências
+    entre camadas, a **ordem exata** dos sete passos de uma feature nova
+    (schema → model → repository → service → controller → provider →
+    router), a tabela do que **não** reimplementar porque o SDK já
+    entrega, e o "definition of done" que termina em `tempest check`.
+
+    Ele existe para um agente de IA ler antes de escrever a primeira
+    linha — e por isso os exemplos dele são verificados na CI do SDK:
+    `tests/cli/test_scaffold_runtime.py` escreve o domínio de exemplo
+    num projeto scaffoldado e o executa (POST 201, duplicado 409 com o
+    `code` certo, listagem paginada no envelope do SDK). Um símbolo
+    renomeado no SDK quebra o teste, não o projeto de quem usa.
 
 O `pyproject.toml` gerado fixa a versão atual do SDK (`tempest-fastapi-sdk[auth,admin]>=<versão>` por padrão — mude com `--extras`). O `.env.example` criado usa a nomenclatura de settings da v0.8.0 (`SERVER_HOST`/`SERVER_PORT`/`SERVER_DEBUG`/`SERVER_RELOAD`/`LOG_LEVEL`/…), e `src/server.py` delega a `tempest_fastapi_sdk.run_server` para que o uvicorn seja importado de forma preguiçosa e os testes possam importar o app sem ele. Regras de validação: o nome do projeto deve casar com `^[a-z][a-z0-9_]*$` e não pode colidir com uma palavra-chave do Python, então `tempest new Bad-Name` e `tempest new class` saem com código 2 antes de qualquer arquivo ser escrito.
 

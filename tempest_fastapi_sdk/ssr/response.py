@@ -14,9 +14,12 @@ rendered, mirroring how the ``[webpush]`` / ``[minio]`` extras behave.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from fastapi.responses import HTMLResponse
+
+from tempest_fastapi_sdk.ui.css.router import stylesheet_links
 
 if TYPE_CHECKING:
     from tempest_core import Widget
@@ -63,12 +66,14 @@ def html_response(
     htmx: bool = False,
     document: bool = True,
     lang: str = "pt-BR",
+    stylesheets: Sequence[str] = (),
+    head: str = "",
 ) -> HTMLResponse:
     """Render a widget tree and return it as a FastAPI ``HTMLResponse``.
 
     Args:
         widget (Widget): The component / widget tree to render. A
-            :class:`tempest_fastapi_sdk.ssr.Page` (or any
+            :class:`tempest_fastapi_sdk.ui.pages.Page` (or any
             ``tempest_core`` widget) is accepted; ``Component`` subtrees
             are expanded via their ``render()`` hook by the renderer.
         title (str | None): The document ``<title>``. Required when
@@ -86,6 +91,15 @@ def html_response(
             expects for partial swaps.
         lang (str): The document language attribute. Defaults to
             ``"pt-BR"``. Only used when ``document`` is ``True``.
+        stylesheets (Sequence[str]): URLs added to the document head as
+            ``<link rel="stylesheet">``, in order. Point them at the
+            path served by
+            :func:`tempest_fastapi_sdk.ui.css.make_css_router`. Ignored
+            for fragments.
+        head (str): Raw markup appended to the document head, for what
+            no argument covers (meta tags, preloads). It is inserted
+            **verbatim** — never build it from user input. Ignored for
+            fragments.
 
     Returns:
         An :class:`~fastapi.responses.HTMLResponse` with the rendered
@@ -104,12 +118,18 @@ def html_response(
                 "html_response(document=True) requires a `title`; "
                 "pass title=... or use document=False for a fragment.",
             )
-        head = _htmx_script_tag() if htmx else ""
+        head_markup = "".join(
+            (
+                stylesheet_links(*stylesheets),
+                _htmx_script_tag() if htmx else "",
+                head,
+            ),
+        )
         content = html_backend.render_document(  # type: ignore[attr-defined]
             widget,
             title=title,
             lang=lang,
-            head=head,
+            head=head_markup,
             htmx=False,
         )
     else:

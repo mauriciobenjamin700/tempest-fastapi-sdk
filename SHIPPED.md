@@ -564,6 +564,57 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
+- **UI layer (v0.224.0, `[ssr]` extra)** — `tempest_fastapi_sdk.ui`, the
+  interface layer of a service, mirroring `src/ui/` one-to-one:
+  `ui.pages` (`Page`, moved here; `ssr.Page` re-exports it),
+  `ui.layout` (`Shell` landmarks, CSS `Grid`), `ui.components`
+  (`Card`, `Alert`, `DataTable` — columns/headers from the row schema —,
+  `Pagination` + `pagination_for(BasePaginationSchema)`, `EmptyState`,
+  `NavBar`, `ComponentClasses`, `component_stylesheet`), `ui.forms` and
+  `ui.css` (below), plus `app_stylesheet()` composing tokens + reset +
+  form + component rules. Components render class names, never inline
+  styles. `tempest new --extras "ssr"` (and `tempest generate --src`)
+  scaffolds the whole layer plus `api/routers/web.py`; the generated
+  project is import-tested and served in
+  `tests/cli/test_scaffold_runtime.py`.
+- **Scaffolded `CLAUDE.md` (v0.224.0)** — every project from `tempest
+  new` carries the rules that keep Tempest services alike: layer
+  dependency direction, the seven-step order for a new domain, raising
+  SDK exceptions (with `code` declared) instead of building responses,
+  the pagination envelope, the `ui` layer rules, a "do not reimplement"
+  table mapping intent to the SDK symbol, code conventions, commands and
+  a definition of done. Its examples are executed in CI
+  (`tests/cli/test_scaffold_runtime.py`): the document's own domain is
+  written into a scaffolded project and served, and every SDK symbol it
+  imports is resolved against the package.
+- **Forms from Pydantic schemas (v0.224.0)** — `tempest_fastapi_sdk.ui.forms`:
+  `form_for` / `form_spec_for` / `fields_for` / `render_form` generate an
+  accessible `<form>` from a schema (label bound by `for`, `aria-invalid`,
+  `aria-describedby`, native `minlength`/`max`/`step`/`pattern` from the
+  field metadata), and `parse_form` reads the submission back into the
+  schema — unchecked checkbox to `False`, absent key left out so the
+  default applies, empty optional to `None`, repeated keys and textarea
+  lines to `list`. `FormResult` carries per-field errors plus the raw
+  input, so re-rendering keeps what the reader typed. Overrides via
+  `json_schema_extra={"ui": {...}}`; nested models and binary fields
+  raise `UnsupportedFieldError` rather than rendering something that
+  cannot round-trip. Emits the elements through `tag`/`attrs`: measured,
+  `tempest_core`'s `Input` renders without a `name` and `Dropdown` /
+  `TextArea` render as empty `<div>`s under the HTML renderer
+  (`tests/ui/test_core_contract.py`).
+- **Typed CSS (v0.224.0)** — `tempest_fastapi_sdk.ui.css`: `Rule`
+  (typed `Style` and/or raw declarations, optional flex `layout=`),
+  `Media` (`min_width` / `max_width` / `dark` / `reduced_motion`),
+  `StyleSheet` (`to_css`, `merge`, `class_names`, `etag`, and a `cls()`
+  that raises on a class the sheet does not define), `ThemeTokens`
+  (adapts `tempest_core`'s `TokenSet` into CSS custom properties —
+  39 colour roles in light and dark, spacing, shape, typography, motion;
+  `breakpoint()` returns a number because a media query cannot read
+  `var()`), and `make_css_router` / `css_response` / `stylesheet_links`
+  serving the sheet rendered once with a strong `ETag` and `304`.
+  `html_response` gained `stylesheets=` and `head=`. Note: `Style`
+  validates colours as hex, so token references live in
+  `Rule.declarations`, not in `Style`.
 - **Geolocation (v0.104, `[geo]` extra = httpx)** — `tempest_fastapi_sdk.geo`,
   distance + travel-time between two points with no paid API. Two layers over
   shared schemas (`Coordinate`, `TravelEstimate`, `TravelMode` CAR/MOTORCYCLE/

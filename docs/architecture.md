@@ -19,9 +19,13 @@ flowchart LR
         Repository["🗄️ Repository\n(db/repositories/)"]
         Model["🧱 Modelo SQLAlchemy\n(db/models/)"]
     end
+    subgraph Interface
+        UI["🖼️ UI\n(ui/)"]
+    end
     DB[(PostgreSQL / SQLite)]
 
     Router -->|"Depends()"| Controller
+    Router -->|"dados prontos"| UI
     Controller -->|orquestra| Service
     Service -->|regras de domínio| Repository
     Repository -->|"SELECT/INSERT/UPDATE"| Model
@@ -38,6 +42,7 @@ flowchart LR
     | **Controller** | Coordenação entre múltiplos services, política transversal (log de auditoria, emissão de outbox, notificação downstream) | DB, formato de request/response |
     | **Service** | Regras de domínio (unicidade, estado derivado, fluxo transacional) | HTTP, tipos do SQLAlchemy |
     | **Repository** | Queries SQLAlchemy async cruas, CRUD + filtro + paginação | Regras de domínio, HTTP |
+    | **UI** (quando o serviço entrega HTML) | Páginas, componentes, formulários e folha de estilo — *como isso aparece* | DB, controllers, services, HTTP |
 
 O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[ModelType]`][tempest_fastapi_sdk.BaseRepository]. O service **DEVE** ser uma subclasse de [`BaseService[RepositoryT, ResponseT]`][tempest_fastapi_sdk.BaseService]. O controller **DEVE** ser uma subclasse de [`BaseController[ServiceT, ResponseT]`][tempest_fastapi_sdk.BaseController] — mesmo quando todo método é um pass-through, porque o controller é a costura para adicionar coordenação entre services mais tarde.
 
@@ -62,6 +67,11 @@ O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[Mode
     │   ├── configs/names.py         # nomes das tabelas, fonte única (opcional)
     │   ├── models/                  # modelos ORM SQLAlchemy
     │   └── repositories/            # camada de acesso a dados
+    ├── ui/ (opcional)               # camada de interface — só com o extra [ssr]
+    │   ├── pages/                   # uma classe por tela
+    │   ├── layout/                  # o chrome que toda página herda
+    │   ├── components/              # peças reutilizáveis
+    │   └── styles.py                # a folha de estilo tipada do serviço
     ├── utils/ (opcional)            # helpers stateless compartilhados
     ├── queue/ (opcional)            # consumers/publishers FastStream
     └── tasks/ (opcional)            # tarefas em background TaskIQ
@@ -81,6 +91,31 @@ O repository **DEVE** ser uma subclasse (ou instância) de [`BaseRepository[Mode
     - **Singletons de infra (db / storage / mail) vivem em `dependencies/resources.py`**, construídos uma vez (`db = AsyncDatabaseManager(**settings.database_kwargs())`) e acessados via provedores `get_db` / `get_session` / `get_storage` / `get_mailer`. O `app.py` **importa** esses recursos para o lifespan e o wiring dos routers — não os constrói inline. Isso mantém o `app.py` magro e dá um único dono do ciclo de vida dos recursos.
     - Routers recebem controllers (e sessões/recursos) via `Depends`, nunca construídos inline.
     - Endpoints meta (`/health`, `/tool-spec`) ficam no **prefixo raiz**; endpoints de negócio ficam sob `/api/<domínio>`.
+
+## A camada de interface (`ui/`)
+
+Quando o serviço entrega HTML — e não só JSON —, ele ganha uma quinta
+camada, **no mesmo nível** de `controllers` e `services`. Ela existe
+só com o extra `[ssr]`; sem ele, não crie o pacote vazio.
+
+| Camada | Pode importar | Nunca importa |
+| --- | --- | --- |
+| `api/routers` | `controllers`, `ui`, `schemas` | `db` |
+| `ui` | `schemas`, outras partes de `ui` | `controllers`, `services`, `db` |
+| `controllers` | `services`, `schemas` | `ui` |
+| `services` | `db/repositories`, `schemas` | `ui` |
+
+!!! warning "A página recebe dados prontos"
+    Uma página **não** busca nada: o router carrega pelo controller e
+    passa o resultado já materializado. `await` dentro de `body()`
+    significa que uma responsabilidade escorregou de camada.
+
+`tempest new <serviço> --extras "ssr"` escreve a camada inteira
+funcionando (e `tempest generate --src` a adiciona a um projeto que já
+existe). Detalhes em
+[Camada UI](recipes/ui.md),
+[Formulários a partir de schemas Pydantic](recipes/ui-forms.md) e
+[CSS tipado](recipes/ui-css.md).
 
 ## Ciclo de vida da requisição
 

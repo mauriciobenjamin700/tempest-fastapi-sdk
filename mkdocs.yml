@@ -125,6 +125,7 @@ plugins:
               - Face recognition: recipes/faces.md
               - Feature flags: recipes/feature-flags.md
               - File in the service (mixin): recipes/stored-files.md
+              - Forms from Pydantic schemas: recipes/ui-forms.md
               - Geolocation (distance + time): recipes/geo.md
               - HTTP client (outbound): recipes/http-client.md
               - HTTP layer: recipes/http.md
@@ -165,7 +166,9 @@ plugins:
               - Transactional email: recipes/email.md
               - Transactional outbox: recipes/outbox.md
               - Transactions (commit and savepoint): recipes/transactions.md
+              - Typed CSS (stylesheet and tokens): recipes/ui-css.md
               - Typing (static + runtime): recipes/typing.md
+              - UI layer (pages and components): recipes/ui.md
               - Unified file store: recipes/file-store.md
               - Uploads (backends): recipes/uploads.md
               - Utilities: recipes/utilities.md
@@ -240,6 +243,9 @@ plugins:
             "Geolocalização (distância + tempo)": "Geolocation (distance + time)"
             "Server-Sent Events (SSE)": "Server-Sent Events (SSE)"
             "Tipagem (estático + runtime)": "Typing (static + runtime)"
+            "Camada UI (páginas e componentes)": "UI layer (pages and components)"
+            "CSS tipado (StyleSheet e tokens)": "Typed CSS (stylesheet and tokens)"
+            "Formulários a partir de schemas Pydantic": "Forms from Pydantic schemas"
             Referência: Reference
             "Projetos de aprendizado": Learning projects
             Marketplace: Marketplace
@@ -363,6 +369,7 @@ nav:
       - "Busca textual (LIKE + full-text)": recipes/text-search.md
       - Cache: recipes/cache.md
       - Camada HTTP: recipes/http.md
+      - "Camada UI (páginas e componentes)": recipes/ui.md
       - "Campos validados (tipos prontos)": recipes/fields.md
       - "Chat (conversas + mensagens)": recipes/chat.md
       - CLI: recipes/cli.md
@@ -370,6 +377,7 @@ nav:
       - "Colunas de enum (seguras nos dois bancos)": recipes/enum-columns.md
       - "Comentários + avaliações": recipes/reviews.md
       - "Console SQL no admin": recipes/admin-sql-console.md
+      - "CSS tipado (StyleSheet e tokens)": recipes/ui-css.md
       - "Deploy seguro (migrations + shutdown)": recipes/deploy-safety.md
       - Downloads: recipes/downloads.md
       - Email transacional: recipes/email.md
@@ -384,6 +392,7 @@ nav:
       - Feature flags: recipes/feature-flags.md
       - Fila e Tarefas: recipes/queue-tasks.md
       - "File store (unificado)": recipes/file-store.md
+      - "Formulários a partir de schemas Pydantic": recipes/ui-forms.md
       - "Frontend tempestweb + SDK": recipes/tempestweb-frontend.md
       - "Geolocalização (distância + tempo)": recipes/geo.md
       - "Geração de imagem (local)": recipes/image-generation.md

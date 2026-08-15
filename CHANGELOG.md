@@ -5,6 +5,137 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.224.0] — 2026-08-15
+
+### Added
+
+- **`ui` layer** (`tempest_fastapi_sdk.ui`, extra `[ssr]`). An interface
+  layer that sits **beside** `controllers` / `services` / `schemas` in a
+  service, and mirrors it one-to-one in the SDK: `ui.pages` (one class
+  per screen), `ui.layout` (structural containers), `ui.components`
+  (reusable pieces), `ui.forms`, `ui.css`. It answers only "what does
+  this look like" — a page receives data a controller already loaded and
+  never performs I/O.
+
+  ```python
+  app.include_router(make_css_router(app_stylesheet()))
+
+
+  class HomePage(BasePage):
+      total: int
+
+      def body(self) -> Widget:
+          return Card(title="Vendas", children=[Text(content=f"{self.total}")])
+  ```
+
+  Bundled components: `Card`, `Alert`, `DataTable` (columns, headers and
+  cell text derived from the row schema), `Pagination` +
+  `pagination_for(BasePaginationSchema)`, `EmptyState`, `NavBar`;
+  layout: `Shell` (header/main/footer landmarks) and `Grid` (CSS grid,
+  auto-fitting without a media query). All of them render class names
+  rather than inline styles, so the whole look lives in one stylesheet.
+
+- **Forms generated from Pydantic schemas** (`tempest_fastapi_sdk.ui.forms`).
+  The schema that validates the request also describes the form.
+
+  ```python
+  result = await parse_form(SignupSchema, request)
+  if not result.ok:
+      return html_response(
+          form_for(SignupSchema, action="/signup",
+                   values=result.values, errors=result.errors),
+          title="Cadastro", status_code=422,
+      )
+  ```
+
+  `form_for` emits an accessible `<form>` — `<label for>` bound to the
+  control, `aria-invalid` on a failing field, `aria-describedby` pointing
+  at hint and message, and native `minlength` / `max` / `step` /
+  `pattern` derived from the field metadata. `parse_form` handles what
+  HTML expresses differently: an unchecked checkbox means `False`, a key
+  the body never carried stays out of the payload (so the schema default
+  applies and a required field reports `Field required` against itself),
+  an empty optional becomes `None`, and repeated keys or textarea lines
+  become a `list`. `FormResult` carries per-field errors plus the raw
+  input, so the re-render keeps what the reader typed with no extra
+  server-side state. `exclude=` + `extra=` keep server-owned values out
+  of the browser's reach. Per-field overrides through
+  `json_schema_extra={"ui": {...}}`; `form_spec_for` + `render_form`
+  expose the generated form as plain data to patch before rendering.
+
+  Nested models and binary fields raise `UnsupportedFieldError` rather
+  than rendering a control that cannot round-trip.
+
+- **Typed CSS** (`tempest_fastapi_sdk.ui.css`). `Rule` + `Media` +
+  `StyleSheet` cover what an inline `Style` cannot: selectors,
+  pseudo-classes and media queries.
+
+  ```python
+  sheet = StyleSheet(
+      theme=ThemeTokens(),
+      rules=[
+          Rule(".card", declarations={"background": theme.color("surface")}),
+          Media.min_width(768, [Rule(".card", declarations={"padding": "24px"})]),
+      ],
+  )
+  app.include_router(make_css_router(sheet))
+  ```
+
+  `ThemeTokens` adapts `tempest_core`'s `TokenSet` — the same one the
+  client renderer uses — into CSS custom properties: 39 colour roles in
+  light and dark (`prefers-color-scheme` **and** `[data-theme]`), plus
+  spacing, shape, typography and motion scales. `make_css_router`
+  renders the sheet once, at construction, and serves it with a
+  content-derived `ETag` (a matching `If-None-Match` gets a `304`).
+  `StyleSheet.cls("crad")` raises instead of silently rendering an
+  unstyled element, and `app_stylesheet()` composes tokens + reset +
+  form rules + component rules in one call.
+
+- `html_response` gained `stylesheets=` (rendered as
+  `<link rel="stylesheet">`) and `head=` (raw markup appended to the
+  document head).
+
+- `tempest new --extras "ssr"` and `tempest generate --src` now scaffold
+  the whole `src/ui/` layer (`styles.py`, `layout/base.py`,
+  `components/stat.py`, `pages/home.py`) plus `api/routers/web.py`.
+
+- **Every scaffolded project now ships a `CLAUDE.md`** — the rules an AI
+  agent (or a new teammate) must follow so services stay alike: the
+  dependency direction between layers, the exact seven-step order for a
+  new domain (schema → model → repository → service → controller →
+  provider → router), how to raise SDK exceptions instead of building
+  responses, the pagination envelope, the `ui` layer rules, a table of
+  what **not** to reimplement, the code conventions, the commands, and a
+  definition of done that ends in `tempest check`.
+
+  `tests/cli/test_scaffold_runtime.py` keeps it honest: it writes the
+  document's own example domain into a scaffolded project and runs it —
+  `POST` returns 201, a duplicate returns 409 carrying
+  `code="PRODUCT_NAME_TAKEN"`, and the paginated listing comes back as
+  `{items, total, page, page_size, pages}`. Every SDK symbol the
+  document imports is resolved against the package, so a rename fails
+  here rather than in someone's project.
+
+### Changed
+
+- `Page` moved from `tempest_fastapi_sdk.ssr.page` to
+  `tempest_fastapi_sdk.ui.pages`, where it sits next to the components,
+  layouts and forms a page is built from.
+  `from tempest_fastapi_sdk.ssr import Page` keeps working and returns
+  the very same class.
+
+### Notes
+
+- Measured, and pinned in `tests/ui/test_core_contract.py`: under the
+  `tempestweb` HTML renderer, `tempest_core`'s `Form` renders as a
+  `<div>`, `Input` renders **without a `name`** (so nothing is
+  submitted) and `Dropdown` / `TextArea` render as empty `<div>`s —
+  those widgets belong to the reactive client. `ui.forms` therefore
+  emits form elements through the documented `tag`/`attrs` escape hatch.
+- `Style` validates colours as hex literals, so a token reference
+  (`var(--t-color-primary)`) goes in `Rule.declarations`, never in
+  `Style`.
+
 ## [0.223.0] — 2026-08-14
 
 The voice stack was built as four increments (0.219.0-0.222.0) and this

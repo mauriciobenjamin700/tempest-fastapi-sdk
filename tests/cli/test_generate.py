@@ -169,6 +169,25 @@ class TestGenerateSrc:
         handlers = (tmp_path / "src" / "queue" / "handlers.py").read_text()
         assert "from src.queue import broker" in handlers
 
+    def test_generates_the_ui_layer_for_the_ssr_extra(self, tmp_path: Path) -> None:
+        _seed_project(tmp_path, name="svc", extras="ssr")
+        (tmp_path / "src").mkdir()
+        result = runner.invoke(app, ["generate", "--src", "--path", str(tmp_path)])
+        assert result.exit_code == 0, result.stdout + result.stderr
+        for relative in (
+            "ui/__init__.py",
+            "ui/styles.py",
+            "ui/layout/base.py",
+            "ui/components/stat.py",
+            "ui/pages/home.py",
+            "api/routers/web.py",
+        ):
+            assert (tmp_path / "src").joinpath(*relative.split("/")).is_file()
+        assert (
+            "from src.ui.pages import HomePage"
+            in (tmp_path / "src" / "ui" / "__init__.py").read_text()
+        )
+
     def test_only_generates_layers_for_pinned_extras(self, tmp_path: Path) -> None:
         _seed_project(tmp_path, name="svc", extras="auth,queue")
         (tmp_path / "src").mkdir()
