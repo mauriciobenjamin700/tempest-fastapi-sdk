@@ -9,6 +9,9 @@ extraction.
 
 from __future__ import annotations
 
+import re
+
+import pytest
 import tempest_cli
 from typer.testing import CliRunner
 
@@ -17,6 +20,29 @@ from tempest_fastapi_sdk.cli import pr_prompt as sdk_pr_prompt
 from tempest_fastapi_sdk.cli.main import app
 
 runner = CliRunner()
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI escape sequences from rendered CLI output.
+
+    Typer renders help through Rich, and Rich colours an option name in
+    two runs — ``\\x1b[1;36m-\\x1b[0m\\x1b[1;36m-strictness\\x1b[0m`` — so
+    the literal substring ``--strictness`` is absent the moment colour is
+    on. Asserting on raw stdout therefore passes on a developer machine
+    and fails in CI: Rich reports ``is_terminal`` as true whenever
+    ``GITHUB_ACTIONS`` is set, with no workflow opting into colour. This
+    shipped exactly that way and broke the v0.226.0 release build.
+
+    Args:
+        text (str): Raw captured output, possibly carrying escapes.
+
+    Returns:
+        str: The same text with every SGR escape removed.
+    """
+    return _ANSI.sub("", text)
+
 
 MOVED_COMMANDS: frozenset[str] = frozenset(
     {"lint", "fix", "format", "fmt-check", "type", "test", "check", "pr-prompt"},
@@ -44,10 +70,20 @@ def test_sdk_commands_are_still_there_too() -> None:
     assert {"new", "generate", "openapi-errors", "permissions"} <= _command_names()
 
 
-def test_check_help_reaches_the_shared_implementation() -> None:
+def test_check_help_reaches_the_shared_implementation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The mounted ``check`` exposes the shared command's own options.
+
+    Runs with ``GITHUB_ACTIONS`` set so the help is rendered in colour
+    here too — the condition CI always runs under. Without it this test
+    would exercise a code path no CI machine takes.
+    """
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
     result = runner.invoke(app, ["check", "--help"])
     assert result.exit_code == 0
-    assert "--strictness" in result.stdout
+    assert "\x1b[" in result.stdout, "expected coloured output under GITHUB_ACTIONS"
+    assert "--strictness" in _plain(result.stdout)
 
 
 def test_runners_are_the_shared_ones_not_a_copy() -> None:
