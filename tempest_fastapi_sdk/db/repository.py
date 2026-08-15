@@ -179,7 +179,14 @@ class BaseRepository(Generic[ModelType]):
             not_found_exception (type[AppException]): Exception class
                 raised when single-record lookups miss. Defaults to
                 :class:`NotFoundException`; pass a domain-specific
-                subclass for richer 404 messages.
+                subclass for richer 404 messages. It is instantiated as
+                ``exception_class(message=...)``, so a class whose
+                ``__init__`` takes only the record id — the shape one
+                writes first, since the id is what the *caller* holds —
+                turns every miss into a ``TypeError``: a 500 where the
+                404 belongs, with nothing naming the cause.
+                :func:`~tempest_fastapi_sdk.not_found_exception` builds
+                a class that accepts both call shapes.
             conflict_exception (type[AppException]): Exception class
                 raised when a write hits ``IntegrityError``. Defaults to
                 :class:`ConflictException`; the per-operation kwargs

@@ -9,6 +9,24 @@ from tempest_fastapi_sdk.exceptions.base import (
 from tempest_fastapi_sdk.exceptions.conflict import (
     ConflictException as ConflictException,
 )
+from tempest_fastapi_sdk.exceptions.factories import (
+    DEFAULT_CONFLICT_TEMPLATE as DEFAULT_CONFLICT_TEMPLATE,
+)
+from tempest_fastapi_sdk.exceptions.factories import (
+    DEFAULT_CONFLICT_TEMPLATE_ANONYMOUS as DEFAULT_CONFLICT_TEMPLATE_ANONYMOUS,
+)
+from tempest_fastapi_sdk.exceptions.factories import (
+    DEFAULT_NOT_FOUND_TEMPLATE as DEFAULT_NOT_FOUND_TEMPLATE,
+)
+from tempest_fastapi_sdk.exceptions.factories import (
+    DEFAULT_NOT_FOUND_TEMPLATE_ANONYMOUS as DEFAULT_NOT_FOUND_TEMPLATE_ANONYMOUS,
+)
+from tempest_fastapi_sdk.exceptions.factories import (
+    conflict_exception as conflict_exception,
+)
+from tempest_fastapi_sdk.exceptions.factories import (
+    not_found_exception as not_found_exception,
+)
 from tempest_fastapi_sdk.exceptions.forbidden import (
     ForbiddenException as ForbiddenException,
 )
@@ -50,7 +68,11 @@ from tempest_fastapi_sdk.exceptions.validation import (
 )
 
 __all__: list[str] = [
+    "DEFAULT_CONFLICT_TEMPLATE",
+    "DEFAULT_CONFLICT_TEMPLATE_ANONYMOUS",
     "DEFAULT_LOCALE",
+    "DEFAULT_NOT_FOUND_TEMPLATE",
+    "DEFAULT_NOT_FOUND_TEMPLATE_ANONYMOUS",
     "AppException",
     "ConflictException",
     "ExpiredTokenException",
@@ -64,6 +86,8 @@ __all__: list[str] = [
     "TooManyRequestsException",
     "UnauthorizedException",
     "ValidationException",
+    "conflict_exception",
     "default_message_catalog",
+    "not_found_exception",
     "parse_accept_language",
 ]

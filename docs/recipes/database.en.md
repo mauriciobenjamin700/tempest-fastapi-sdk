@@ -404,9 +404,69 @@ async def health() -> dict[str, object]:
     attribute precisely so it doesn't leak through `repr()` or accidental
     logging.
 
+### SQLite with a worker: WAL and the busy timeout
+
+The day the application grows a worker, the development SQLite has
+**two processes** writing one file. In the default rollback journal
+(`delete`) a reader and a writer exclude each other, so the second one
+dies:
+
+```text
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) database is locked
+[SQL: INSERT INTO budget_drafts (...) VALUES (?, ?, ...)]
+```
+
+Measured across two processes — one holding a read transaction open
+while the other inserts:
+
+| `journal_mode` | What happens to the writer |
+| --- | --- |
+| `delete` | waits out the whole `busy_timeout`, then `database is locked` |
+| `wal` | commits immediately |
+
+So `AsyncDatabaseManager` opens every SQLite file in **WAL**, with a
+30-second `busy_timeout`. You don't have to ask:
+
+```python
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+# journal_mode = wal, busy_timeout = 30000 (ms)
+```
+
+Both are tunable, and ignored on every other backend:
+
+```python
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+db = AsyncDatabaseManager(
+    "sqlite+aiosqlite:///./app.db",
+    sqlite_wal=False,           # filesystems without working shared memory
+    sqlite_busy_timeout=5.0,    # seconds
+)
+```
+
+From the environment, through `DatabaseSettings`: `DATABASE_SQLITE_WAL`
+and `DATABASE_SQLITE_BUSY_TIMEOUT`.
+
+!!! info "WAL is a property of the file"
+    Turning it on once is enough: the mode outlives the process and every
+    later connection, from any process, opens the file already in WAL. On
+    a `:memory:` database the pragma is inert — SQLite answers `memory`
+    and carries on.
+
+!!! warning "What waiting does not fix"
+    WAL admits **one writer at a time**; the others wait out the
+    `busy_timeout`. What no timeout fixes is a transaction that **reads
+    first and writes later**: promoting the lock fails at once if another
+    connection wrote in between, and `busy_timeout` does not apply
+    because there is nothing to wait for. For long work: claim the row,
+    do the work with **no session open**, and only then persist.
+
 **Recap:** one `AsyncDatabaseManager` per app, in `resources.py`;
 `session_dependency` injects the per-request session; `connect`/`disconnect`
-in the lifespan; `health_check` + `db_url_safe` on `/health`.
+in the lifespan; `health_check` + `db_url_safe` on `/health`; on SQLite,
+WAL and the busy timeout ship on so web and worker can share the file.
 
 ---
 

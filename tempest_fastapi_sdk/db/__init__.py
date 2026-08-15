@@ -32,6 +32,9 @@ from tempest_fastapi_sdk.db.connection import (
 from tempest_fastapi_sdk.db.connection import (
     enable_sqlite_savepoints as enable_sqlite_savepoints,
 )
+from tempest_fastapi_sdk.db.connection import (
+    enable_sqlite_wal as enable_sqlite_wal,
+)
 from tempest_fastapi_sdk.db.enum_migrations import (
     EnumColumnRef as EnumColumnRef,
 )
@@ -195,6 +198,7 @@ __all__: list[str] = [
     "diff_snapshots",
     "disconnect",
     "enable_sqlite_savepoints",
+    "enable_sqlite_wal",
     "enum_column",
     "enum_type_name",
     "enum_values",

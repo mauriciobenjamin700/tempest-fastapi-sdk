@@ -5,6 +5,81 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.227.0] — 2026-08-15
+
+Three defects an application only meets on the day it grows a worker.
+
+### Added
+
+- **SQLite runs in WAL, with a 30-second busy timeout.** Web process and
+  `taskiq worker` on one `app.db` is where development SQLite stops
+  working: in the default rollback journal a reader and a writer exclude
+  each other. Measured across two processes, one holding a read
+  transaction open while the other inserts — `journal_mode=delete`: the
+  writer waits out the whole `busy_timeout` and fails with
+  `sqlite3.OperationalError: database is locked`; `journal_mode=wal`: it
+  commits immediately. `AsyncDatabaseManager` now applies both to every
+  SQLite engine it builds, tunable through `sqlite_wal=` /
+  `sqlite_busy_timeout=` and through `DATABASE_SQLITE_WAL` /
+  `DATABASE_SQLITE_BUSY_TIMEOUT` on `DatabaseSettings`, and ignored on
+  every other backend. `enable_sqlite_wal` is public for engines built by
+  hand. The docstring names the contention WAL does **not** fix — a
+  transaction that reads first and writes later, where promoting the lock
+  fails at once and no timeout applies. Closes #152.
+
+- **`TaskQueue.on_startup` / `on_shutdown` — the worker's lifespan.**
+  FastAPI's `lifespan` does not run in the worker, so there was nowhere
+  to open the database, the message broker or an HTTP client, and nowhere
+  to close them: the worker worked by accident on lazy connects and never
+  disposed its pool. Hooks take no arguments (TaskIQ's state stays
+  reachable at `queue.broker.state`), accept sync or async callables, and
+  register on TaskIQ's `WORKER_*` events by default so the web process —
+  which has its own lifespan — is left alone; `scope="client"` /
+  `"both"` covers the rest. For resources that already speak
+  `connect`/`disconnect`, `TaskQueue.rabbitmq(url, resources=[db,
+  broker])` (or `queue.use(db)`) does both ends in one line, opening left
+  to right and closing right to left. The new `LifecycleResource`
+  protocol is what `AsyncDatabaseManager`, `MessageBroker` and
+  `AsyncMinIOClient` already satisfy. The in-memory broker runs both
+  sides' events in one process, so worker hooks are testable without a
+  worker. Closes #153.
+
+- **`not_found_exception(...)` / `conflict_exception(...)`.** A
+  domain-identifiable 404 was ~30 lines differing from the next
+  aggregate's by three strings — and its signature carried a trap:
+  `BaseRepository` raises the configured class as
+  `exception_class(message=...)`, so the constructor one writes first
+  (taking the record id, because the id is what the caller holds) turns
+  **every repository miss into a `TypeError`** — a 500 where the 404
+  belongs. The factories return classes that accept both call shapes,
+  declare `code` in the class body (so `error_responses()` documents them
+  and `InheritedErrorCodeWarning` stays quiet), file the identifier under
+  a named `details` key, derive the class name from the code, and take
+  message templates so the wording stays in the project's language.
+  Closes #154.
+
+### Changed
+
+- **Floors raised: `tempest-cli>=0.3.0`, `tempestweb>=0.64.0`.**
+  `tempest-cli` 0.3.0 bundles `ruff`, so `tempest lint` / `fix` /
+  `format` / `fmt-check` run without a second install, and its tool
+  lookup no longer picks a dead pyenv shim. `tempestweb` 0.64.0 fixes
+  component keys derived from the caller's key — two fields of the same
+  kind on one screen were indistinguishable to the event router, so an
+  edit could apply to the wrong field.
+
+- **`tempestweb` and `tempest_core` type-check for real.** Both ship
+  `py.typed` as of `tempestweb` 0.64.0, so their `ignore_missing_imports`
+  overrides are gone from `pyproject.toml`; mypy now checks the SDK's
+  `ssr` and `ui` layers against the real signatures instead of `Any`.
+  Clean on the first run — 380 source files, no issues.
+
+- **The repository documents the constructor contract where it bites.**
+  `not_found_exception=`'s own docstring now states that the class is
+  instantiated as `exception_class(message=...)` and what happens when it
+  is not accepted, instead of leaving the note further up the class
+  docstring.
+
 ## [0.226.0] — 2026-08-15
 
 ### Changed

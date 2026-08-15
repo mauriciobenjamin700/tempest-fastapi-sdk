@@ -96,7 +96,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   inside one raises), `autocommit=False`. `enable_sqlite_savepoints` is
   applied to every SQLite engine `AsyncDatabaseManager` builds — without it
   `RELEASE SAVEPOINT` **commits** on pysqlite, so test and production
-  disagreed about atomicity. **Search (v0.200.0):** `search()` portable
+  disagreed about atomicity. **SQLite concurrency (v0.227.0):** every
+  SQLite engine also opens in **WAL** with a 30 s busy timeout
+  (`sqlite_wal=` / `sqlite_busy_timeout=`, `DATABASE_SQLITE_WAL` /
+  `DATABASE_SQLITE_BUSY_TIMEOUT`, public `enable_sqlite_wal`), which is
+  what lets a web process and a `taskiq worker` share one file — measured
+  across two processes, the rollback journal fails the writer with
+  `database is locked` where WAL commits at once. **Search (v0.200.0):**
+  `search()` portable
   (escaped ILIKE, AND across words, OR across columns) +
   `full_text_search()` (`websearch_to_tsquery` + `ts_rank` + `setweight` on
   PG, falls back elsewhere; `supports_full_text` reports which);
@@ -123,7 +130,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   Recipes: `transactions.md`, `text-search.md`, `enum-columns.md`,
   `query-plans.md`.
 - **Standardized exceptions** (`AppException` + subclasses) +
-  `register_exception_handlers`. **OpenAPI error docs (v0.160.0):**
+  `register_exception_handlers`. **Factories (v0.227.0):**
+  `not_found_exception(code, subject=, field=, template=, ...)` and
+  `conflict_exception(...)` build the per-domain 404/409 that every
+  project hand-copies — the generated class accepts both
+  `(identifier)` and `(message=...)`, which is what keeps a
+  `BaseRepository` miss a 404 instead of a `TypeError`-driven 500.
+  **OpenAPI error docs (v0.160.0):**
   `ErrorResponseSchema` (the `{detail, code, details}` envelope as a
   schema), `error_responses(*exc_classes)` (class-introspected
   `responses=`; groups by status, codes in an `examples` selector since
@@ -694,7 +707,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   consumer, channel-first `publish(channel, message)`, `.broker` escape
   hatch) and `TaskQueue` (`.rabbitmq`/`.redis`/`.memory`, `@tq.task` →
   `Task.enqueue`/`.run`, folded `@tq.cron`/`@tq.interval` +
-  `start_scheduler`, `tq.broker`/`tq.scheduler` for the CLIs). **Both
+  `start_scheduler`, `tq.broker`/`tq.scheduler` for the CLIs).
+  **Worker lifespan (v0.227.0):** `@tq.on_startup` / `@tq.on_shutdown`
+  (zero-argument hooks, sync or async, `scope="worker"|"client"|"both"`,
+  worker by default) and `resources=[db, broker]` / `tq.use(...)` over
+  the `LifecycleResource` protocol — the worker had no `lifespan`, so
+  nothing opened or disposed the pool. **Both
   decorator and class-based styles**: `Consumer` + `@subscribe` +
   `MessageBroker.register` (constructor form takes explicit
   `channel`+`schema`, no magic); `TaskDef` + `@task_method` +

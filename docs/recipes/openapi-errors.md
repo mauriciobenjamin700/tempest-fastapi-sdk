@@ -177,6 +177,77 @@ from tempest_fastapi_sdk import InheritedErrorCodeWarning
 warnings.filterwarnings("ignore", category=InheritedErrorCodeWarning)
 ```
 
+### A fábrica — `not_found_exception(...)` / `conflict_exception(...)`
+
+A classe acima tem ~30 linhas que só mudam em três strings, e a
+assinatura tem uma armadilha que não é adivinhável: o
+[`BaseRepository`][tempest_fastapi_sdk.BaseRepository] levanta a classe
+configurada como **`exception_class(message=...)`**. Um `__init__` que
+recebe só o id — que é o que qualquer um escreve primeiro, porque o id é
+o dado que o *chamador* tem — transforma **todo miss do repositório em
+`TypeError`**: um 500 onde deveria haver 404, sem nada apontando a causa.
+
+```pycon
+>>> class BudgetNotFoundException(NotFoundException):
+...     code: str = "BUDGET_NOT_FOUND"
+...     def __init__(self, budget_id: str) -> None:
+...         super().__init__(message=f"Orçamento {budget_id} não encontrado.")
+>>> BudgetNotFoundException(message="Não encontrado.")
+TypeError: __init__() got an unexpected keyword argument 'message'
+```
+
+A fábrica devolve uma classe correta nos dois sentidos:
+
+```python
+# src/core/exceptions.py
+from tempest_fastapi_sdk import not_found_exception
+
+BudgetNotFoundException = not_found_exception(
+    "BUDGET_NOT_FOUND",
+    subject="Orçamento",
+    field="budget_id",
+    template="{subject} {identifier} não encontrado.",
+    template_anonymous="{subject} não encontrado.",
+)
+```
+
+```pycon
+>>> BudgetNotFoundException("abc").detail
+'Orçamento abc não encontrado.'
+>>> BudgetNotFoundException("abc").details
+{'budget_id': 'abc'}
+>>> BudgetNotFoundException(message="Não encontrado.").detail
+'Não encontrado.'
+>>> BudgetNotFoundException.code, BudgetNotFoundException.__name__
+('BUDGET_NOT_FOUND', 'BudgetNotFoundException')
+```
+
+O `code` fica **no corpo da classe**, então `error_responses()` documenta
+a exception sem instanciá-la e o `InheritedErrorCodeWarning` não dispara.
+O nome da classe sai do `code`, para o traceback continuar legível.
+
+`conflict_exception(...)` é a gêmea de 409, pelo mesmo motivo — as
+fatias `create_conflict_exception` / `update_conflict_exception` do
+repositório instanciam do mesmo jeito:
+
+```python
+# src/core/exceptions.py
+from tempest_fastapi_sdk import conflict_exception
+
+EmailTakenException = conflict_exception(
+    "EMAIL_TAKEN",
+    subject="E-mail",
+    field="email",
+    template="{identifier} já está cadastrado.",
+)
+```
+
+!!! tip "Prefira a fábrica quando a classe é só forma"
+    Escreva a subclasse à mão quando o `__init__` precisa de lógica —
+    montar `details` com vários campos, escolher a mensagem por estado.
+    Quando é só "code + assunto + campo", a fábrica dá a mesma coisa sem
+    a armadilha.
+
 ## Passo 2 — `error_responses(*exceptions)`
 
 Agora o núcleo. Passe as classes, receba o dict que o `responses=` do FastAPI

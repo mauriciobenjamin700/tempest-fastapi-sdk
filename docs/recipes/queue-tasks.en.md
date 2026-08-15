@@ -623,6 +623,71 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 !!! note "Tests without a broker"
     `TaskQueue.memory()` uses TaskIQ's in-memory broker: `enqueue()` runs the task **immediately, in-process**. No worker, no connection. `run()` always works, even without `connect()`.
 
+### Worker resources — `on_startup` / `on_shutdown`
+
+FastAPI's `lifespan` **does not run in the worker**. Without it the
+`taskiq worker` process has nowhere to open the database, the message
+broker or an HTTP client — and nowhere to close them: it works by
+accident, on the lazy connect of the first query, and never disposes the
+pool on the way out.
+
+The hooks are that place:
+
+```python
+# src/tasks/__init__.py
+
+from tempest_fastapi_sdk.tasks import TaskQueue
+
+from src.api.dependencies.resources import db
+from src.core.settings import settings
+
+tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)
+
+
+@tq.on_startup
+async def _open_resources() -> None:
+    """Open the database when the worker starts."""
+    await db.connect()
+
+
+@tq.on_shutdown
+async def _close_resources() -> None:
+    """Dispose the pool when the worker stops."""
+    await db.disconnect()
+```
+
+For the common case — resources that already speak `connect` /
+`disconnect` — the same thing fits on one line:
+
+```python
+# src/tasks/__init__.py
+
+from tempest_fastapi_sdk.tasks import TaskQueue
+
+from src.api.dependencies.resources import broker, db
+from src.core.settings import settings
+
+tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL, resources=[db, broker])
+```
+
+`AsyncDatabaseManager`, `MessageBroker` and `AsyncMinIOClient` satisfy the
+`LifecycleResource` protocol; any object of yours with both methods does
+too. They are opened left to right and closed right to left, so one that
+depends on an earlier one still finds it alive while closing. After
+construction, `tq.use(db)` does the same.
+
+!!! info "Scope: the worker by default"
+    The hook is registered on TaskIQ's `WORKER_STARTUP`, so it does
+    **not** fire in the web process — which has its own `lifespan`. Pass
+    `scope="client"` (or `"both"`) when you want the opposite:
+    `@tq.on_startup(scope="both")`.
+
+!!! tip "Testable without a worker"
+    The in-memory broker runs **both** sides' events in one process, so
+    `TaskQueue.memory(resources=[db])` executes the worker hooks on
+    `connect()` / `disconnect()`. That is how this section's test checks
+    the open and close ordering.
+
 ### Class-based tasks
 
 Symmetric to consumers: group tasks in a class with `TaskDef`.

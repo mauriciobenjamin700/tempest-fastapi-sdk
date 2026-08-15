@@ -144,6 +144,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.audit.diff_snapshots
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_savepoints
+::: tempest_fastapi_sdk.db.connection.enable_sqlite_wal
 ::: tempest_fastapi_sdk.db.transaction.transaction
 ::: tempest_fastapi_sdk.db.transaction.savepoint
 ::: tempest_fastapi_sdk.db.transaction.in_transaction
@@ -314,6 +315,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.exceptions.base.InheritedErrorCodeWarning
 ::: tempest_fastapi_sdk.exceptions.not_found.NotFoundException
 ::: tempest_fastapi_sdk.exceptions.conflict.ConflictException
+::: tempest_fastapi_sdk.exceptions.factories.not_found_exception
+::: tempest_fastapi_sdk.exceptions.factories.conflict_exception
 ::: tempest_fastapi_sdk.exceptions.unauthorized.UnauthorizedException
 ::: tempest_fastapi_sdk.exceptions.forbidden.ForbiddenException
 ::: tempest_fastapi_sdk.exceptions.validation.ValidationException
@@ -381,6 +384,10 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
       members_order: source
       filters:
         - "!^_"
+
+::: tempest_fastapi_sdk.tasks.queue.LifecycleResource
+::: tempest_fastapi_sdk.tasks.queue.LifecycleScope
+::: tempest_fastapi_sdk.tasks.queue.Hook
 
 ---
 

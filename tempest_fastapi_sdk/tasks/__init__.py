@@ -85,6 +85,9 @@ from tempest_fastapi_sdk.tasks.observability import (
 from tempest_fastapi_sdk.tasks.oop import TaskBinding as TaskBinding
 from tempest_fastapi_sdk.tasks.oop import TaskDef as TaskDef
 from tempest_fastapi_sdk.tasks.oop import task_method as task_method
+from tempest_fastapi_sdk.tasks.queue import Hook as Hook
+from tempest_fastapi_sdk.tasks.queue import LifecycleResource as LifecycleResource
+from tempest_fastapi_sdk.tasks.queue import LifecycleScope as LifecycleScope
 from tempest_fastapi_sdk.tasks.queue import Task as Task
 from tempest_fastapi_sdk.tasks.queue import TaskQueue as TaskQueue
 from tempest_fastapi_sdk.tasks.scheduler import AsyncTaskScheduler as AsyncTaskScheduler
@@ -98,6 +101,9 @@ __all__: list[str] = [
     "DbDeadLetterSink",
     "DeadLetter",
     "DeadLetterSink",
+    "Hook",
+    "LifecycleResource",
+    "LifecycleScope",
     "RetryPolicy",
     "Task",
     "TaskBinding",

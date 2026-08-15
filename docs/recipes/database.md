@@ -403,9 +403,68 @@ async def health() -> dict[str, object]:
     `postgresql+asyncpg://***@host/db`. A URL crua fica num atributo
     privado justamente para não vazar em `repr()` ou log acidental.
 
+### SQLite com um worker: WAL e busy timeout
+
+No dia em que a aplicação ganha um worker, o SQLite de desenvolvimento
+passa a ter **dois processos** escrevendo no mesmo arquivo. No journal
+padrão (`delete`) um leitor e um escritor se excluem, então o segundo
+morre:
+
+```text
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) database is locked
+[SQL: INSERT INTO budget_drafts (...) VALUES (?, ?, ...)]
+```
+
+Medido entre dois processos — um segurando uma transação de leitura
+aberta enquanto o outro insere:
+
+| `journal_mode` | O que acontece com o escritor |
+| --- | --- |
+| `delete` | espera o `busy_timeout` inteiro e falha com `database is locked` |
+| `wal` | commita na hora |
+
+Por isso o `AsyncDatabaseManager` abre todo arquivo SQLite em **WAL**,
+com `busy_timeout` de 30 segundos. Não é preciso pedir:
+
+```python
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+# journal_mode = wal, busy_timeout = 30000 (ms)
+```
+
+Os dois são reguláveis, e ignorados em qualquer outro backend:
+
+```python
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+db = AsyncDatabaseManager(
+    "sqlite+aiosqlite:///./app.db",
+    sqlite_wal=False,           # sistemas de arquivos sem shared memory
+    sqlite_busy_timeout=5.0,    # segundos
+)
+```
+
+Pelo ambiente, via `DatabaseSettings`: `DATABASE_SQLITE_WAL` e
+`DATABASE_SQLITE_BUSY_TIMEOUT`.
+
+!!! info "WAL é propriedade do arquivo"
+    Basta ligar uma vez: o modo sobrevive ao processo e todo conexão
+    posterior, de qualquer processo, já abre o arquivo em WAL. Em banco
+    `:memory:` o pragma é inócuo — o SQLite responde `memory` e segue.
+
+!!! warning "O que esperar não conserta"
+    WAL admite **um escritor por vez**; os outros aguardam o
+    `busy_timeout`. O que timeout nenhum resolve é uma transação que
+    **lê primeiro e escreve depois**: promover o lock falha na hora se
+    outra conexão escreveu no meio, e o `busy_timeout` não se aplica
+    porque não há o que aguardar. Em trabalho longo: reivindique a
+    linha, faça o trabalho **sem sessão aberta**, e só então persista.
+
 **Recap:** um `AsyncDatabaseManager` por app, em `resources.py`;
 `session_dependency` injeta a sessão por request; `connect`/`disconnect`
-no lifespan; `health_check` + `db_url_safe` no `/health`.
+no lifespan; `health_check` + `db_url_safe` no `/health`; em SQLite, WAL
+e `busy_timeout` já vêm ligados para web e worker conviverem.
 
 ---
 

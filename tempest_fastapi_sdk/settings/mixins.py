@@ -148,6 +148,11 @@ class DatabaseSettings(BaseAppSettings):
             pool size under load. Default: ``20``.
         DATABASE_POOL_RECYCLE (int): Seconds before a pooled connection is
             recycled. Default: ``3600``.
+        DATABASE_SQLITE_WAL (bool): Put SQLite engines in WAL mode.
+            Ignored on other backends. Default: ``True``.
+        DATABASE_SQLITE_BUSY_TIMEOUT (float): Seconds a SQLite
+            connection waits on a lock before failing. Ignored on other
+            backends. Default: ``30.0``.
     """
 
     DATABASE_URL: str = Field(
@@ -193,6 +198,28 @@ class DatabaseSettings(BaseAppSettings):
         examples=[300, 1800, 3600],
     )
 
+    DATABASE_SQLITE_WAL: bool = Field(
+        default=True,
+        title="SQLite WAL mode",
+        description=(
+            "Put SQLite engines in WAL mode so a reader and a writer "
+            "stop excluding each other (web process plus worker on one "
+            "file). Ignored on other backends."
+        ),
+        examples=[True, False],
+    )
+    DATABASE_SQLITE_BUSY_TIMEOUT: float = Field(
+        default=30.0,
+        ge=0.0,
+        title="SQLite busy timeout (seconds)",
+        description=(
+            "Seconds a SQLite connection waits for a lock another "
+            "connection holds before failing with ``database is "
+            "locked``. Ignored on other backends."
+        ),
+        examples=[5.0, 30.0, 60.0],
+    )
+
     def database_kwargs(self) -> dict[str, Any]:
         """Map these settings onto :class:`AsyncDatabaseManager` kwargs.
 
@@ -206,6 +233,8 @@ class DatabaseSettings(BaseAppSettings):
             "pool_size": self.DATABASE_POOL_SIZE,
             "max_overflow": self.DATABASE_MAX_OVERFLOW,
             "pool_recycle": self.DATABASE_POOL_RECYCLE,
+            "sqlite_wal": self.DATABASE_SQLITE_WAL,
+            "sqlite_busy_timeout": self.DATABASE_SQLITE_BUSY_TIMEOUT,
         }
 
 
