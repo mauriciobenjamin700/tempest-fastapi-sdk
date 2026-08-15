@@ -6080,6 +6080,18 @@ wheels = [
 ]
 
 [[package]]
+name = "tempest-cli"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/78/95/3fdab90b5fee3e1b067b2fa6e52b53fcc61c187c88e6850f3bf97cef4982/tempest_cli-0.1.0.tar.gz", hash = "sha256:85547d63ab34e3d71c830ff30933471e2ed2f19a1b0674777c320e9d982f3990", size = 120976, upload-time = "2026-08-15T16:12:11.084Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f0/b9/ee776db191494185bfe4c94e0e154f63daa7f8dd9ba43b3c351afa7ce2cf/tempest_cli-0.1.0-py3-none-any.whl", hash = "sha256:2cafa6b00d69ec3d78889c74723492869e01ff7f0e789c0f2ef9b892307d04c9", size = 24868, upload-time = "2026-08-15T16:12:09.94Z" },
+]
+
+[[package]]
 name = "tempest-core"
 version = "0.11.0"
 source = { registry = "https://pypi.org/simple" }
@@ -6093,7 +6105,7 @@ wheels = [
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.225.0"
+version = "0.226.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -6104,6 +6116,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "tempest-cli" },
     { name = "typer" },
 ]
 
@@ -6463,6 +6476,7 @@ requires-dist = [
     { name = "taskiq", marker = "extra == 'tasks'", specifier = ">=0.11.0" },
     { name = "taskiq-aio-pika", marker = "extra == 'all'", specifier = ">=0.4.0" },
     { name = "taskiq-aio-pika", marker = "extra == 'tasks'", specifier = ">=0.4.0" },
+    { name = "tempest-cli", specifier = ">=0.1.0" },
     { name = "tempestweb", marker = "extra == 'all'", specifier = ">=0.60.0" },
     { name = "tempestweb", marker = "extra == 'ssr'", specifier = ">=0.60.0" },
     { name = "tokenizers", marker = "extra == 'genai-onnx'", specifier = ">=0.20.0" },

@@ -704,6 +704,32 @@ tempest pr-prompt -p ../other-repo              # run against another repository
 
 ### Quality gates
 
+!!! info "These commands come from `tempest-cli` (v0.226.0)"
+    The quality gate has nothing to do with FastAPI — it is `ruff`,
+    `mypy` and `pytest`. Since v0.226.0 it lives in its own package,
+    [`tempest-cli`](https://pypi.org/project/tempest-cli/), which the SDK
+    declares as a dependency and mounts on its CLI.
+
+    **Nothing changes for you**: `tempest check` is the same command,
+    with the same flags and the same `[tool.tempest] typing_strictness`.
+    What changes is that people **not** using FastAPI can now install
+    the gate alone:
+
+    ```bash
+    uv add --dev tempest-cli
+    tempest-cli check
+    ```
+
+    Why split it: reaching those four commands meant installing FastAPI,
+    SQLAlchemy, Alembic and Pydantic — 38.7 MB of dependencies and about
+    0.5 s of import time per invocation, measured, for commands that
+    touch none of it.
+
+    The two never diverge because there is one implementation: the SDK
+    calls `register_commands(app)` from `tempest_cli`. Importing
+    `tempest_fastapi_sdk.cli.lint` or `.pr_prompt` keeps working and
+    returns the same functions.
+
 The lint commands shell out to the project's tooling. They look for the executable on `PATH` first, and otherwise fall back to `uv run <tool>` so a project-local virtualenv works without manual activation.
 
 ```bash

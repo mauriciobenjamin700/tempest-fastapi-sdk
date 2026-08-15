@@ -10,7 +10,7 @@ import typer
 from typer.testing import CliRunner
 
 from tempest_fastapi_sdk.cli.commands import mount_project_commands
-from tempest_fastapi_sdk.cli.config import load_tempest_config
+from tempest_fastapi_sdk.cli.config import load_project_commands
 
 runner = CliRunner()
 
@@ -100,22 +100,19 @@ class TestConfigCommands:
         (tmp_path / "pyproject.toml").write_text(
             '[tool.tempest]\ncommands = "src.management"\n'
         )
-        config = load_tempest_config(tmp_path)
-        assert config.commands == ("src.management",)
+        assert load_project_commands(tmp_path) == ("src.management",)
 
     def test_list_value(self, tmp_path: Path) -> None:
         (tmp_path / "pyproject.toml").write_text(
             '[tool.tempest]\ncommands = ["a.cmds", "b.cmds"]\n'
         )
-        config = load_tempest_config(tmp_path)
-        assert config.commands == ("a.cmds", "b.cmds")
+        assert load_project_commands(tmp_path) == ("a.cmds", "b.cmds")
 
     def test_absent_is_empty(self, tmp_path: Path) -> None:
         (tmp_path / "pyproject.toml").write_text("[tool.tempest]\n")
-        config = load_tempest_config(tmp_path)
-        assert config.commands == ()
+        assert load_project_commands(tmp_path) == ()
 
     def test_invalid_value_raises(self, tmp_path: Path) -> None:
         (tmp_path / "pyproject.toml").write_text("[tool.tempest]\ncommands = 42\n")
         with pytest.raises(ValueError, match="invalid commands"):
-            load_tempest_config(tmp_path)
+            load_project_commands(tmp_path)

@@ -5,6 +5,56 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.226.0] — 2026-08-15
+
+### Changed
+
+- **The quality gate moved to its own package.** `ruff`, `mypy` and
+  `pytest` never had anything to do with FastAPI, but reaching
+  `tempest check` meant installing the whole SDK: 38.7 MB of required
+  dependencies (SQLAlchemy alone is 20.6 MB) and ~0.5 s of import time
+  per invocation — measured with `python -X importtime`, of which the
+  module doing the work accounts for 16 µs. Closes #150.
+
+  `lint`, `fix`, `format`, `fmt-check`, `type`, `test`, `check` and
+  `pr-prompt` now live in
+  [`tempest-cli`](https://pypi.org/project/tempest-cli/), a package whose
+  only runtime dependency is `typer`. The SDK declares it as a
+  dependency and mounts the same commands through
+  `tempest_cli.main.register_commands(app)` — **one implementation, two
+  CLIs**, so they cannot drift.
+
+  **Nothing changes for existing projects.** `tempest check` is the same
+  command with the same flags; `[tool.tempest] typing_strictness` is
+  read the same way; and `from tempest_fastapi_sdk.cli.lint import ...` /
+  `from tempest_fastapi_sdk.cli.pr_prompt import ...` keep resolving —
+  those modules re-export the shared implementation.
+
+  Whoever does not use FastAPI can now install the gate alone:
+
+  ```bash
+  uv add --dev tempest-cli
+  tempest-cli check
+  ```
+
+- **`[tool.tempest]` is now read by each key's owner.**
+  `typing_strictness` belongs to the gate and moved with it;
+  `commands` (the project management commands mounted under `tempest`)
+  is an SDK concept and stays here, read by the new
+  `tempest_fastapi_sdk.cli.config.load_project_commands()`. The table in
+  your `pyproject.toml` is unchanged — both keys keep working exactly as
+  before.
+
+  The one visible consequence: `TempestConfig` no longer carries a
+  `commands` attribute, since the shared config has no business knowing
+  about FastAPI management commands. Code reading
+  `load_tempest_config().commands` should call `load_project_commands()`
+  instead.
+
+- `tempest_fastapi_sdk.openapi` formats generated code through
+  `tempest_cli.resolve_tool("ruff")` — the same PATH / `uv run` lookup
+  the gate uses, promoted from a private helper rather than duplicated.
+
 ## [0.225.0] — 2026-08-15
 
 ### Added

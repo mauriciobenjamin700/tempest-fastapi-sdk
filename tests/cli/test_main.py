@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import ANY, patch
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
@@ -84,7 +84,8 @@ class TestFullHelpOnError:
         assert "Error:" in out
 
     def test_quality_gate_exit_code_still_propagates(self) -> None:
-        with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
+        """The gate lives in tempest-cli now; the exit code must still reach here."""
+        with patch("tempest_cli.main.lint_module") as fake:
             fake.run_ruff_check.return_value = 7
             result = runner.invoke(app, ["lint"])
         assert result.exit_code == 7
@@ -286,129 +287,6 @@ class TestNew:
         )
         assert result.exit_code == 0
         assert (tmp_path / "demo_svc" / "main.py").is_file()
-
-
-class TestLintCommands:
-    def test_lint_invokes_ruff_check(self) -> None:
-        with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
-            fake.run_ruff_check.return_value = 0
-            result = runner.invoke(app, ["lint", "src/"])
-        fake.run_ruff_check.assert_called_once_with("src/", config=ANY)
-        assert result.exit_code == 0
-
-    def test_lint_propagates_exit_code(self) -> None:
-        with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
-            fake.run_ruff_check.return_value = 7
-            result = runner.invoke(app, ["lint"])
-        assert result.exit_code == 7
-
-    def test_format_invokes_ruff_format_write(self) -> None:
-        with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
-            fake.run_ruff_format.return_value = 0
-            runner.invoke(app, ["format"])
-        fake.run_ruff_format.assert_called_once_with(".", check=False)
-
-    def test_fmt_check_invokes_ruff_format_check(self) -> None:
-        with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
-            fake.run_ruff_format.return_value = 0
-            runner.invoke(app, ["fmt-check"])
-        fake.run_ruff_format.assert_called_once_with(".", check=True)
-
-    def test_type_invokes_mypy(self) -> None:
-        with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
-            fake.run_mypy.return_value = 0
-            runner.invoke(app, ["type", "src/"])
-        fake.run_mypy.assert_called_once_with("src/", config=ANY)
-
-    def test_test_invokes_pytest_with_target(self) -> None:
-        with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
-            fake.run_pytest.return_value = 0
-            runner.invoke(app, ["test", "tests/cli"])
-        fake.run_pytest.assert_called_once_with("tests/cli")
-
-    def test_test_invokes_pytest_without_target(self) -> None:
-        with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
-            fake.run_pytest.return_value = 0
-            runner.invoke(app, ["test"])
-        fake.run_pytest.assert_called_once_with(None)
-
-    def test_check_invokes_full_check(self) -> None:
-        with patch("tempest_fastapi_sdk.cli.main.lint_module") as fake:
-            fake.run_full_check.return_value = 0
-            runner.invoke(app, ["check"])
-        fake.run_full_check.assert_called_once_with(".", config=ANY)
-
-
-class TestLintRunner:
-    def test_execute_returns_127_when_executable_missing(self) -> None:
-        from tempest_fastapi_sdk.cli import lint
-
-        with patch.object(lint.shutil, "which", return_value=None):
-            assert lint._execute("ruff", ["check"]) == 127
-
-    def test_execute_prefers_direct_executable(self) -> None:
-        from tempest_fastapi_sdk.cli import lint
-
-        with (
-            patch.object(lint.shutil, "which", side_effect=["/usr/bin/ruff", None]),
-            patch.object(lint.subprocess, "call", return_value=0) as call,
-        ):
-            assert lint._execute("ruff", ["check", "."]) == 0
-        call.assert_called_once_with(["/usr/bin/ruff", "check", "."])
-
-    def test_execute_falls_back_to_uv(self) -> None:
-        from tempest_fastapi_sdk.cli import lint
-
-        def fake_which(name: str) -> str | None:
-            return {"uv": "/usr/local/bin/uv"}.get(name)
-
-        with (
-            patch.object(lint.shutil, "which", side_effect=fake_which),
-            patch.object(lint.subprocess, "call", return_value=0) as call,
-        ):
-            assert lint._execute("ruff", ["format"]) == 0
-        call.assert_called_once_with(["/usr/local/bin/uv", "run", "ruff", "format"])
-
-    def test_full_check_stops_at_first_failure(self) -> None:
-        from tempest_fastapi_sdk.cli import lint
-
-        calls: list[tuple[str, list[str]]] = []
-
-        def fake_execute(executable: str, args: list[str]) -> int:
-            calls.append((executable, args))
-            return 5 if executable == "mypy" else 0
-
-        with patch.object(lint, "_execute", side_effect=fake_execute):
-            assert lint.run_full_check("src/") == 5
-        executed = [c[0] for c in calls]
-        assert executed == ["ruff", "ruff", "mypy"]
-
-    def test_fix_runs_format_even_when_check_fix_fails(self) -> None:
-        from tempest_fastapi_sdk.cli import lint
-
-        calls: list[list[str]] = []
-
-        def fake_execute(executable: str, args: list[str]) -> int:
-            calls.append(args)
-            # ``ruff check --fix`` exits non-zero on residual unfixable
-            # violations; ``ruff format`` still must run after it.
-            return 1 if args[0] == "check" else 0
-
-        with patch.object(lint, "_execute", side_effect=fake_execute):
-            code = lint.run_ruff_fix("src/")
-
-        assert [a[0] for a in calls] == ["check", "format"]
-        # Residual lint exit code is surfaced, but only after format ran.
-        assert code == 1
-
-    def test_fix_returns_format_code_when_check_clean(self) -> None:
-        from tempest_fastapi_sdk.cli import lint
-
-        def fake_execute(executable: str, args: list[str]) -> int:
-            return 0 if args[0] == "check" else 3
-
-        with patch.object(lint, "_execute", side_effect=fake_execute):
-            assert lint.run_ruff_fix("src/") == 3
 
 
 class TestScaffoldHelpers:

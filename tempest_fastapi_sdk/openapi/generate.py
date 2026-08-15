@@ -99,9 +99,9 @@ def _format_paths(paths: list[Path]) -> bool:
     """
     if not paths:
         return False
-    from tempest_fastapi_sdk.cli.lint import _resolve
+    from tempest_cli import resolve_tool
 
-    runner = _resolve("ruff")
+    runner = resolve_tool("ruff")
     if runner is None:
         return False
     arguments = [str(path) for path in paths]

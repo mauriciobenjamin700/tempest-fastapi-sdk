@@ -910,6 +910,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   Missing base falls back to `origin/<base>`; an empty comparison exits
   `1`. Recipe: `docs/recipes/cli.md`.
 
+- **Quality gate lives in `tempest-cli` (v0.226.0)** — `lint` / `fix` /
+  `format` / `fmt-check` / `type` / `test` / `check` / `pr-prompt` moved
+  to a framework-agnostic package (only runtime dep: `typer`). The SDK
+  depends on it and mounts the same commands via
+  `tempest_cli.main.register_commands(app)`, so `tempest check` is
+  unchanged and there is a single implementation. `[tool.tempest]` is now
+  read per owner: `typing_strictness` by the gate, `commands` by the SDK
+  (`load_project_commands()`); `TempestConfig` no longer carries
+  `commands`. `tempest_fastapi_sdk.cli.lint` / `.pr_prompt` remain as
+  re-exports. Reason, measured: reaching those commands here cost 38.7 MB
+  of dependencies and ~0.5 s of import per invocation.
+
 The whole Tier S / Tier A / Tier B backlog that used to live here is
 **shipped**, and so is the five-item next-version plan that followed it
 (rate-limit per principal, i18n error envelopes, `@cached`
