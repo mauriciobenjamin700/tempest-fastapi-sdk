@@ -2,6 +2,58 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.224.0 — Ollama structured output moves from `/api/generate` to `/api/chat`
+
+One change, and it only breaks **tests**, not runtime.
+
+### `generate_structured` now talks to `/api/chat`
+
+`OllamaGenerator.generate_structured` posted to `/api/generate` with the schema in the `format` field. That is broken on a reasoning model: against `gpt-oss:20b` the daemon answers `200 OK` with a non-zero `eval_count` and an **empty** `response`, because the reply lands in a channel that endpoint does not surface. On `/api/chat` the JSON arrives in `message.content`, and a non-reasoning model behaves identically on either.
+
+There is nothing to adjust at runtime — the call that returned junk (or nothing) now returns the instance. What breaks is **a test whose mock is pinned to the old endpoint**:
+
+```python
+import httpx
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.genai import OllamaGenerator
+from tempest_fastapi_sdk.utils import HTTPClient
+
+
+class Person(BaseModel):
+    name: str
+
+
+async def before() -> Person:
+    """A mock that matched /api/generate — it stops matching."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"response": '{"name": "Ana"}', "done": True})
+
+    client = HTTPClient(transport=httpx.MockTransport(handler))
+    gen = OllamaGenerator("llama3.2", http_client=client)
+    return await gen.generate_structured("Any person.", Person)
+
+
+async def after() -> Person:
+    """The reply now comes in message.content."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"message": {"content": '{"name": "Ana"}'}, "done": True},
+        )
+
+    client = HTTPClient(transport=httpx.MockTransport(handler))
+    gen = OllamaGenerator("llama3.2", http_client=client)
+    return await gen.generate_structured("Any person.", Person)
+```
+
+Two behaviour changes come with it:
+
+- **Empty content raises `ValueError`** instead of returning nothing. If you had a `try/except` treating an empty result as "the model said nothing", switch it to `except ValueError`.
+- **`system=` is a new optional parameter.** Use it for the instruction when `prompt` is a long document: an instruction glued above the document is ignored — measured, 0 items extracted against 20 with the instruction in its own `system` turn.
+
 ## 0.174.0 — crashes become 422s, and `order_by` is validated
 
 Robustness fixes. Each trades a crash for a correct answer; none requires a code change, but four change the status or the exception your service sees.

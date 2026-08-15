@@ -2,6 +2,58 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.224.0 — saída estruturada do Ollama sai de `/api/generate` para `/api/chat`
+
+Uma mudança, e ela só quebra **teste**, não runtime.
+
+### `generate_structured` agora fala com `/api/chat`
+
+`OllamaGenerator.generate_structured` postava em `/api/generate` com o schema no campo `format`. Isso está quebrado em modelo de raciocínio: contra o `gpt-oss:20b`, o daemon responde `200 OK` com `eval_count` não-zero e `response` **vazio**, porque a resposta cai num canal que aquele endpoint não expõe. Em `/api/chat` o JSON vem em `message.content`, e modelo sem raciocínio se comporta igual nos dois.
+
+Em runtime não há o que ajustar — a chamada que devolvia lixo (ou nada) passa a devolver a instância. O que quebra é **teste com mock preso ao endpoint antigo**:
+
+```python
+import httpx
+from pydantic import BaseModel
+
+from tempest_fastapi_sdk.genai import OllamaGenerator
+from tempest_fastapi_sdk.utils import HTTPClient
+
+
+class Pessoa(BaseModel):
+    nome: str
+
+
+async def antes() -> Pessoa:
+    """Mock que casava com /api/generate — para de casar."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"response": '{"nome": "Ana"}', "done": True})
+
+    client = HTTPClient(transport=httpx.MockTransport(handler))
+    gen = OllamaGenerator("llama3.2", http_client=client)
+    return await gen.generate_structured("Uma pessoa.", Pessoa)
+
+
+async def depois() -> Pessoa:
+    """A resposta agora vem em message.content."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"message": {"content": '{"nome": "Ana"}'}, "done": True},
+        )
+
+    client = HTTPClient(transport=httpx.MockTransport(handler))
+    gen = OllamaGenerator("llama3.2", http_client=client)
+    return await gen.generate_structured("Uma pessoa.", Pessoa)
+```
+
+Duas mudanças de comportamento acompanham:
+
+- **Conteúdo vazio levanta `ValueError`** em vez de devolver nada. Se você tinha `try/except` tratando resultado vazio como "modelo não respondeu", troque por `except ValueError`.
+- **`system=` é um parâmetro novo**, opcional. Use-o para a instrução quando o `prompt` for um documento longo: instrução colada acima do documento é ignorada — medido, 0 itens extraídos contra 20 com a instrução no turno `system`.
+
 ## 0.174.0 — erros que eram 500 viram 422, e o `order_by` é validado
 
 Correções de robustez. Todas trocam um crash por uma resposta correta; nenhuma exige mudança de código, mas quatro mudam o status ou a exceção que o seu serviço vê.

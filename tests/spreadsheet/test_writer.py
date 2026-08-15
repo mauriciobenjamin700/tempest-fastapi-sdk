@@ -184,6 +184,18 @@ class TestWriteRow:
         SheetWriter(sheet, COLUMNS).write_row(["Total", None, "=SUM(C1:C9)"])
         assert sheet.cell(row=1, column=3).value == "=SUM(C1:C9)"
 
+    def test_formula_survives_the_round_trip_as_a_formula(self) -> None:
+        """In memory any string survives; what matters is the written file."""
+        workbook = new_workbook("Dados")
+        SheetWriter(workbook["Dados"], COLUMNS).write_row(
+            ["Total", None, "=SUM(C1:C9)"],
+        )
+        reopened = openpyxl.load_workbook(BytesIO(workbook_to_bytes(workbook)))
+
+        cell = reopened["Dados"].cell(row=1, column=3)
+        assert cell.value == "=SUM(C1:C9)"
+        assert cell.data_type == "f"
+
     def test_dates_are_supported(self) -> None:
         columns = [Column("Data", number_format=BR_DATE_FORMAT)]
         workbook = new_workbook("Dados")
