@@ -5,6 +5,50 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.225.0] — 2026-08-15
+
+### Added
+
+- **`OllamaGenerator.chat_structured(messages, schema)`** — structured
+  output from a **message list**, so the instruction stays in a `system`
+  turn and the content being read stays in `user`. Closes #148.
+
+  ```python
+  invoice = await generator.chat_structured(
+      [
+          {"role": "system", "content": "Extract the invoice fields."},
+          {"role": "user", "content": document},
+      ],
+      Invoice,
+  )
+  ```
+
+  Only `generate_structured(prompt, schema)` existed, and there was no
+  path through `chat()` to reach it: `chat()` routes every keyword into
+  `options`, and Ollama reads `format` at the **top level** — so a schema
+  passed to `chat()` is ignored silently, returning `200 OK` with free
+  text. `chat_structured` posts `format` where the daemon reads it, and
+  raises `TypeError` on an explicit `format=` keyword rather than letting
+  it be dropped.
+
+- **`build_web_app(..., shell=...)` and `make_web_app_router(...,
+  shell=...)`** — the app shell is the only part of the HTML an
+  application owns, and until now it was whatever `tempestweb build`
+  emitted: `lang="en"`, no description meta, no favicon, nowhere for a
+  CSP nonce. Closes #149.
+
+  ```python
+  app = build_web_app("dist/server", shell=my_shell)
+  ```
+
+  Accepts a `str` (the document), a `Path` (read from disk) or a callable
+  invoked **per request** — which is what makes a per-response nonce
+  possible; the callable may declare a `Request` parameter or none. On
+  the static router the override also answers the SPA fallback, so a deep
+  link renders the same document. A `str` carrying no `<` is rejected:
+  that is a path written where a document was expected, and it would
+  otherwise serve a blank page with no error anywhere.
+
 ## [0.224.0] — 2026-08-15
 
 ### Added

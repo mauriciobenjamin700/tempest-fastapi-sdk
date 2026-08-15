@@ -379,6 +379,41 @@ Run it with `uvicorn app:app`. The browser opens `/`, connects to `/ws`,
 and every click runs the `view` **on the server** — the tree is diffed
 and sent back. `GET /api/health` still answers normally.
 
+!!! tip "The shell is the only part of the HTML an application owns"
+    The artifact's `index.html` comes out of `tempestweb build` with
+    `lang="en"`, no `<meta name="description">`, no favicon and nowhere
+    to put a CSP nonce. Pass `shell=` to serve your own:
+
+    ```python
+    from pathlib import Path
+
+    from fastapi import Request
+
+    from tempest_fastapi_sdk.ssr import build_web_app
+
+    generated: str = (Path("web/dist/server") / "index.html").read_text()
+
+
+    def shell(request: Request) -> str:
+        """Serve the generated shell with the language and nonce fixed."""
+        nonce = getattr(request.state, "csp_nonce", "")
+        return generated.replace('<html lang="en">', '<html lang="pt-BR">').replace(
+            "<script", f'<script nonce="{nonce}"', 1
+        )
+
+
+    app = build_web_app("web/dist/server", shell=shell)
+    ```
+
+    Three forms are accepted: a `str` (the document), a `Path` (read from
+    disk) or a callable — invoked **per request**, which is what makes a
+    per-response nonce possible. The callable may declare `Request` or no
+    parameter at all. The same applies to `make_web_app_router`, where
+    the shell also answers the SPA fallback.
+
+    A `str` with no `<` in it is rejected: that is a path written where a
+    document was expected, and it would serve a blank page silently.
+
 !!! info "Which mode?"
     - **WASM** — the client is self-contained (runs offline), the server
       is optional (just API + files). Heavier boot (downloads Pyodide).

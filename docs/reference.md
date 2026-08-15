@@ -723,6 +723,7 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
         - "!^_"
 
 ::: tempest_fastapi_sdk.ssr.webapp.BuildMode
+::: tempest_fastapi_sdk.ssr.webapp.ShellSource
 ---
 
 ## UI (páginas, componentes, formulários, CSS)

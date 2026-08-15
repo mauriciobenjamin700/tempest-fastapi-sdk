@@ -318,7 +318,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`chat_with_tools`, chat-template `tools=`) closing the pipeline gap
   (v0.141); **structured output** `generate_structured` + `parse_structured`
   (Ollama `format=`, transformers `lm-format-enforcer` via
-  `[genai-structured]`) (v0.142); **`VisionTextGenerator`** local VLM
+  `[genai-structured]`) (v0.142) + **`chat_structured(messages, schema)`** on `OllamaGenerator`
+  (v0.225.0), which keeps the instruction in a `system` turn separate from
+  the document in `user` — measured to matter for schema adherence — and
+  posts `format` at the top level of `/api/chat`, where the daemon reads
+  it (a schema passed as a keyword to `chat()` lands in `options` and is
+  ignored silently, so an explicit `format=` now raises);
+  **`VisionTextGenerator`** local VLM
   (`[genai-vlm]`) (v0.143); RAG **`Reranker`** cross-encoder (v0.144) +
   **`HybridRetriever`** BM25+dense RRF (`reciprocal_rank_fusion`, `rank-bm25`
   in `[genai-rag]`) + `SupportsRetrieve` (v0.145/0.154); **`OnnxEmbedder`**
@@ -564,6 +570,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
+- **Custom app shell (v0.225.0)** — `build_web_app(..., shell=...)` and
+  `make_web_app_router(..., shell=...)` replace the artifact's
+  `index.html`, the only part of the HTML an application owns (document
+  `lang`, description/Open Graph meta, favicon, CSP nonce). Accepts a
+  `str` (the document), a `Path` (read per request) or a callable invoked
+  per request — declaring a `Request` parameter or none. On the static
+  router the override answers the SPA fallback too. A `str` without `<`
+  is rejected as a path written where a document was expected.
 - **UI layer (v0.224.0, `[ssr]` extra)** — `tempest_fastapi_sdk.ui`, the
   interface layer of a service, mirroring `src/ui/` one-to-one:
   `ui.pages` (`Page`, moved here; `ssr.Page` re-exports it),

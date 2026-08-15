@@ -1177,6 +1177,47 @@ O `OllamaGenerator` manda o schema no campo `format` do daemon (o Ollama
 garante JSON schema-válido nativamente) e faz o parse na saída — **é a
 rota estruturada recomendada, sem biblioteca extra**.
 
+!!! tip "Instrução separada do documento — `chat_structured`"
+    Extraindo campos de um documento longo, a instrução precisa ir num
+    turno `system` e o conteúdo num `user`. Concatenar tudo num prompt só
+    degrada a aderência ao schema de forma **medida**: o modelo passa a
+    "responder" trechos do documento.
+
+    ```python
+    import asyncio
+
+    from pydantic import BaseModel
+    from tempest_fastapi_sdk.genai import OllamaGenerator
+
+
+    class NotaFiscal(BaseModel):
+        numero: str
+        total_centavos: int
+
+
+    gen = OllamaGenerator("gpt-oss:20b")
+
+
+    async def main() -> None:
+        """Run this example."""
+        nota: NotaFiscal = await gen.chat_structured(
+            [
+                {"role": "system", "content": "Extraia os campos da nota."},
+                {"role": "user", "content": "NF-1 — total R$ 49,90"},
+            ],
+            NotaFiscal,
+        )
+
+
+    asyncio.run(main())
+    ```
+
+    O `format` vai no **top-level** do corpo, que é onde o daemon lê.
+    Passar o schema como keyword do `chat()` cai em `options`, e o Ollama
+    **ignora em silêncio**: volta `200 OK` com texto livre e o erro só
+    aparece no `ValidationError` — ou num parse que por acaso funciona.
+    Por isso `chat_structured` recusa um `format=` explícito.
+
 !!! info "No backend local (transformers)"
     `TextGenerator.generate_structured(prompt, schema, constrained=True)`
     restringe a decodificação com o `lm-format-enforcer`
