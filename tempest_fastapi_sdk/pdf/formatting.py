@@ -10,11 +10,19 @@ Money is handled in **cents**, as integers, everywhere. The SDK already
 made that choice for payments (see ``to_cents`` in the OpenPix
 integration): a float cannot hold ``0.1 + 0.2`` and a document that
 prints a total off by a cent is worse than one that fails.
+
+The rendering itself lives in
+:mod:`tempest_fastapi_sdk.utils.currency`, which also parses amounts back
+out of printed text and formats :class:`~decimal.Decimal` values. Use that
+module directly when the amount is not already in integer cents.
 """
 
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
+
+from tempest_fastapi_sdk.utils.currency import CENT, format_currency_br
 
 MONTHS_PT_BR: tuple[str, ...] = (
     "janeiro",
@@ -108,11 +116,7 @@ def format_cents(cents: int, *, symbol: bool = True) -> str:
     Returns:
         str: The formatted amount, e.g. ``"R$ 1.234,56"``.
     """
-    sign = "-" if cents < 0 else ""
-    whole, remainder = divmod(abs(cents), 100)
-    grouped = f"{whole:,}".replace(",", ".")
-    body = f"{grouped},{remainder:02d}"
-    return f"{sign}R$ {body}" if symbol else f"{sign}{body}"
+    return format_currency_br(Decimal(cents) * CENT, symbol=symbol)
 
 
 def format_date(value: date | datetime) -> str:

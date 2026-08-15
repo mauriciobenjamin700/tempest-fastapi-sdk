@@ -57,6 +57,43 @@ class InvoiceSchema(BaseSchema):
     total: PriceField     # "9.99" -> Decimal("9.99"); "1.999" e "-1" rejeitados
 ```
 
+Para **razões e percentuais**, existe o par decimal de `RatioField` /
+`PercentField`:
+
+| Tipo | Regra | Quando |
+| --- | --- | --- |
+| `DecimalRatioField` | `Decimal` em `0..1` | Fração que multiplica dinheiro |
+| `DecimalPercentField` | `Decimal` em `0..100` | Percentual que multiplica dinheiro |
+| `SignedDecimalRatioField` | `Decimal` `<= 1` | Fração derivada que pode ficar negativa |
+
+```python
+from decimal import Decimal
+
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import DecimalRatioField, PriceField
+
+
+class QuoteSchema(BaseSchema):
+    reference: PriceField
+    discount: DecimalRatioField    # Decimal("0.28"), não 0.28
+
+    def proposal(self) -> Decimal:
+        """Return the reference amount minus the discount."""
+        return self.reference * (Decimal(1) - self.discount)
+```
+
+!!! danger "Não use `RatioField` quando a fração multiplica dinheiro"
+    `RatioField` e `PercentField` são anotados em `float`. `Decimal("0.28")`
+    vira `0.28`, o Pydantic aceita calado, e a primeira multiplicação por um
+    `PriceField` levanta `TypeError` — ou pior, alguém "conserta" com um
+    `float()` e o centavo se perde. Em orçamento de licitação, um centavo
+    desclassifica proposta.
+
+!!! note "Por que `SignedDecimalRatioField` tem teto mas não piso"
+    Ele é para uma fração **derivada**: a linha de saldo que as premissas não
+    deixaram folga, a diferença de fechamento que o documento precisa expor
+    em vez de zerar. Acima de 100% é bug; abaixo de 0% é notícia.
+
 ## Strings
 
 | Tipo | Regra |

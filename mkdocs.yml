@@ -156,6 +156,7 @@ plugins:
               - Server-Sent Events (SSE): recipes/sse.md
               - Server-side sessions: recipes/sessions.md
               - "Social login (OAuth2/OIDC)": recipes/oauth.md
+              - Spreadsheets (.xlsx): recipes/spreadsheets.md
               - SSR (typed pages): ssr.md
               - Storage (MinIO/S3): recipes/storage.md
               - System checks (check-config): recipes/system-checks.md
@@ -406,6 +407,7 @@ nav:
       - Painel admin: recipes/admin.md
       - "Permissões object-level": recipes/authz.md
       - "Pesos de modelos (ciclo no Hub)": recipes/model-weights.md
+      - "Planilhas (.xlsx)": recipes/spreadsheets.md
       - "Planos de query (EXPLAIN)": recipes/query-plans.md
       - "Reconhecimento facial": recipes/faces.md
       - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md

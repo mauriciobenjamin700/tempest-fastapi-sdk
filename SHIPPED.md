@@ -524,6 +524,31 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `accepted=False` means nothing passed. **Fixed here:** the effective
   deadline was written to the run state but not back to the `AgentContext`,
   so delegation handed the child `None` and it ran to its own budget.
+- **Planilhas (v0.224.0, `[spreadsheet]` extra = openpyxl)** —
+  `tempest_fastapi_sdk.spreadsheet`. `SheetWriter` segura o cursor de linha
+  (`title_block`/`header_row`/`group_row`/`write_row`/`total_row`/
+  `blank_rows`, todos devolvendo a próxima linha livre; `apply_widths`,
+  `freeze_below`); `Column` declara título, largura, máscara e alinhamento
+  **uma vez**, então o formato não diverge entre a primeira linha e a
+  milésima. As máscaras `BR_*` embutem o código de idioma `416`
+  (`[$R$-416]`), porque `#,##0.00` puro é resolvido com o locale de **quem
+  abre** — a mesma planilha lê `1.234,56` aqui e `1,234.56` num en-US.
+  `SheetStyle` é **dado puro** (hex + inteiros, zero objeto openpyxl), então
+  o tema é definível e testável sem o extra. `new_workbook` remove a aba
+  `Sheet` fantasma; `workbook_to_bytes` entrega bytes (sem arquivo temporário
+  e sem corrida entre duas requisições). O gerador de um documento
+  específico — que abas, que linhas, que regras — continua sendo do serviço;
+  aqui está só a camada que todo gerador reescrevia.
+- **Leitura de PDF (v0.224.0, `[pdf-read]` extra = pypdf)** —
+  `extract_pdf_text` / `extract_pdf_pages` em `tempest_fastapi_sdk.pdf`, o
+  inverso do renderer e o primeiro passo de todo pipeline "entrega o
+  documento pro modelo". **Camada de texto apenas, sem OCR**: um PDF
+  escaneado devolve `""` em vez de documento em branco, porque prompt vazio
+  é como um modelo inventa resposta confiante sobre página que ninguém leu.
+  Fronteira de página sobrevive como marcador (parametrizável), e o corte em
+  `max_chars` acontece na última página **completa** e se anuncia no texto.
+  Extra separado do `[pdf]` de propósito: renderizar puxa WeasyPrint mais
+  Pango e fontconfig do sistema, e quem só lê não deve carregar nada disso.
 - **PDF (v0.218.0, `[pdf]` extra = weasyprint + jinja2)** —
   `tempest_fastapi_sdk.pdf`, submodule import. `PdfRenderer` (HTML string /
   template / typed document; `asyncio.to_thread` + semaphore since layout is

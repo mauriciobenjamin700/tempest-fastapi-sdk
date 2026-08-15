@@ -276,6 +276,77 @@ city_choices("sp")[0]    # ChoiceBR(value="Adamantina", label="Adamantina")
 - `UFField` / `CityNameField` para campos de schema; `is_valid_*` / `normalize_*` para validação imperativa no service.
 
 
+## Dinheiro em real
+
+
+Duas direções, ambas em `tempest_fastapi_sdk.utils`, sem extra nenhum.
+
+**Ler** o que um documento imprimiu, com `parse_currency_br`:
+
+```python
+from decimal import Decimal
+
+from tempest_fastapi_sdk.utils import parse_currency_br
+
+parse_currency_br("R$ 2.930,00")   # Decimal("2930.00")
+parse_currency_br("2.930,00")      # Decimal("2930.00")
+parse_currency_br("2,930.00")      # Decimal("2930.00") — notação US também
+parse_currency_br("-R$ 0,01")      # Decimal("-0.01")
+parse_currency_br("sem valor")     # None
+```
+
+Todo serviço que ingere dinheiro escrito para humanos precisa disso: um
+modelo transcrevendo um PDF, um CSV importado, uma página raspada. Passar
+esse valor por `float` antes é o que move o centavo em silêncio.
+
+!!! warning "`None` não é zero"
+    `None` significa "o documento não imprimiu preço"; `Decimal("0.00")`
+    significa "o documento imprimiu R$ 0,00". Colapsar os dois é perder a
+    diferença entre linha sem dado e linha gratuita.
+
+!!! note "A regra do ponto sozinho"
+    O **último** separador presente é o decimal. O caso genuinamente ambíguo
+    é um ponto seguido de exatamente três dígitos: `"2.930"` é lido como dois
+    mil novecentos e trinta, que é o que a notação significa nos documentos
+    que isso lê.
+
+**Escrever** para prosa — PDF, e-mail, página:
+
+```python
+from decimal import Decimal
+
+from tempest_fastapi_sdk.utils import (
+    format_currency_br,
+    format_percent_br,
+    format_quantity_br,
+    quantize_money,
+)
+
+format_currency_br(Decimal("484365.84"))                # "R$ 484.365,84"
+format_currency_br(Decimal("2930"), symbol=False)       # "2.930,00"
+format_currency_br(Decimal("-0.01"))                    # "-R$ 0,01"
+format_percent_br(Decimal("0.30"))                      # "30,00%"
+format_percent_br(Decimal("0.2999998"), places=5)       # "29,99998%"
+format_quantity_br(Decimal("1250"))                     # "1.250,00"
+quantize_money(Decimal("1.005"))                        # Decimal("1.01")
+```
+
+Nada disso passa por `locale`, que é global do processo, depende de locales
+gerados no container e não é thread-safe.
+
+!!! info "`quantize_money` arredonda meio para cima"
+    Não é o padrão do `Decimal` (banker's rounding). A prática contábil
+    brasileira arredonda meio **para longe do zero**, e é isso que faz um
+    documento gerado reproduzir centavo por centavo um montado à mão.
+
+!!! tip "Célula de planilha recebe número, não texto"
+    Estas funções são para prosa. Em `.xlsx`, escreva o `Decimal` e deixe a
+    máscara apresentar — veja [Planilhas](spreadsheets.md#numeros-nao-strings).
+
+Para valores já guardados em centavos inteiros (a convenção `CentsField`),
+`tempest_fastapi_sdk.pdf.format_cents` faz o mesmo e delega para cá.
+
+
 ## Helpers utilitários (utcnow, to_utc, modify_dict)
 
 

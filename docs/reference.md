@@ -212,6 +212,33 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.pdf.router.DocumentRequestSchema
 ::: tempest_fastapi_sdk.pdf.router.DocumentListSchema
 ::: tempest_fastapi_sdk.pdf.router.PDF_MEDIA_TYPE
+::: tempest_fastapi_sdk.pdf.reader.extract_pdf_pages
+::: tempest_fastapi_sdk.pdf.reader.extract_pdf_text
+::: tempest_fastapi_sdk.pdf.reader.PageText
+::: tempest_fastapi_sdk.pdf.reader.DEFAULT_PAGE_MARKER
+::: tempest_fastapi_sdk.pdf.reader.DEFAULT_TRUNCATION_NOTICE
+
+---
+
+## Planilhas
+
+### `tempest_fastapi_sdk.spreadsheet`
+
+::: tempest_fastapi_sdk.spreadsheet.writer.SheetWriter
+::: tempest_fastapi_sdk.spreadsheet.writer.Column
+::: tempest_fastapi_sdk.spreadsheet.writer.CellValue
+::: tempest_fastapi_sdk.spreadsheet.writer.new_workbook
+::: tempest_fastapi_sdk.spreadsheet.writer.workbook_to_bytes
+::: tempest_fastapi_sdk.spreadsheet.styles.SheetStyle
+::: tempest_fastapi_sdk.spreadsheet.styles.DEFAULT_SHEET_STYLE
+::: tempest_fastapi_sdk.spreadsheet.formats.BR_CURRENCY_FORMAT
+::: tempest_fastapi_sdk.spreadsheet.formats.BR_CURRENCY_FORMAT_NO_SYMBOL
+::: tempest_fastapi_sdk.spreadsheet.formats.BR_QUANTITY_FORMAT
+::: tempest_fastapi_sdk.spreadsheet.formats.BR_INTEGER_FORMAT
+::: tempest_fastapi_sdk.spreadsheet.formats.BR_PERCENT_FORMAT
+::: tempest_fastapi_sdk.spreadsheet.formats.BR_DATE_FORMAT
+::: tempest_fastapi_sdk.spreadsheet.formats.BR_DATETIME_FORMAT
+::: tempest_fastapi_sdk.spreadsheet.formats.TEXT_FORMAT
 
 ---
 
@@ -779,6 +806,13 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.utils.locations.uf_choices
 ::: tempest_fastapi_sdk.utils.locations.region_choices
 ::: tempest_fastapi_sdk.utils.locations.city_choices
+::: tempest_fastapi_sdk.utils.currency.parse_currency_br
+::: tempest_fastapi_sdk.utils.currency.format_currency_br
+::: tempest_fastapi_sdk.utils.currency.format_percent_br
+::: tempest_fastapi_sdk.utils.currency.format_quantity_br
+::: tempest_fastapi_sdk.utils.currency.quantize_money
+::: tempest_fastapi_sdk.utils.currency.CENT
+::: tempest_fastapi_sdk.utils.currency.HUNDRED
 
 ## Web Push
 
