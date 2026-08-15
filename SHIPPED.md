@@ -708,7 +708,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   hatch) and `TaskQueue` (`.rabbitmq`/`.redis`/`.memory`, `@tq.task` →
   `Task.enqueue`/`.run`, folded `@tq.cron`/`@tq.interval` +
   `start_scheduler`, `tq.broker`/`tq.scheduler` for the CLIs).
-  **Worker lifespan (v0.227.0):** `@tq.on_startup` / `@tq.on_shutdown`
+  **Jobs (v0.228.0):** `BaseJobModel` + `JobStore[JobT]` — a row per unit
+  of long work so the interface can say queued / running / done / failed,
+  with `enqueue`, a conditional-`UPDATE` `claim` (loser gets `None`),
+  `succeed`/`fail` that drop the payload, `list_recent`, `reclaim_stale`
+  (bounded by `max_attempts`) and `watch()` polling without holding a
+  session. The symmetric half of the outbox: message to publish vs work
+  to execute. **Worker lifespan (v0.227.0):** `@tq.on_startup` / `@tq.on_shutdown`
   (zero-argument hooks, sync or async, `scope="worker"|"client"|"both"`,
   worker by default) and `resources=[db, broker]` / `tq.use(...)` over
   the `LifecycleResource` protocol — the worker had no `lifespan`, so

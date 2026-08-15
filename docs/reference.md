@@ -388,6 +388,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.tasks.queue.LifecycleResource
 ::: tempest_fastapi_sdk.tasks.queue.LifecycleScope
 ::: tempest_fastapi_sdk.tasks.queue.Hook
+::: tempest_fastapi_sdk.tasks.jobs.TERMINAL_JOB_STATUSES
+::: tempest_fastapi_sdk.tasks.jobs.STALE_JOB_ERROR
 
 ---
 

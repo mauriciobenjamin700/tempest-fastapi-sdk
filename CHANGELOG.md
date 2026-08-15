@@ -5,6 +5,58 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.228.0] — 2026-08-15
+
+### Added
+
+- **`BaseJobModel` + `JobStore` — long work with a status the interface
+  can show.** A queue hands a call to a worker; it answers none of what
+  the person waiting is asking: has anything picked this up, is it
+  running, what did it produce, why did it stop. TaskIQ's result backend
+  is keyed by task id and holds a return value — what a screen needs is a
+  **row**. This is the symmetric half of the transactional outbox: that
+  one is a message to publish, this one is work to execute. Closes #151.
+
+  `BaseJobModel` is abstract — subclass it, pick a `__tablename__`, and
+  get `kind` / `status` / `params` / `payload` / `result_id` / `error` /
+  `attempts` / `max_attempts` / `started_at` / `finished_at` on top of
+  the usual `BaseModel` columns. `JobStore[JobT]` wraps it with
+  `enqueue`, `claim`, `succeed`, `fail`, `get`, `list_recent`,
+  `reclaim_stale` and `watch`, each in its own short transaction because
+  its callers are a request handler, a worker that grinds for minutes,
+  and a screen polling every couple of seconds.
+
+  Four decisions worth naming:
+
+  - **`claim` is a conditional `UPDATE`, not a read-then-write.** Two
+    workers racing for one id cannot both win; the loser gets `None`
+    rather than an error. Measured under a barrier that releases both
+    contenders together: the naive read-then-write shape does not hand
+    the job to both, it raises `sqlite3.OperationalError: database is
+    locked` — lock promotion, the one contention `busy_timeout` cannot
+    wait out (v0.227.0). The test asserting that is in the suite, so the
+    race test cannot pass against an implementation with no conditional
+    update.
+  - **`succeed` / `fail` drop the payload**, or the table of finished
+    jobs becomes a pile of documents.
+  - **`reclaim_stale()` frees the job whose worker died** — the failure a
+    queue cannot see, since the task is gone but the row is not. Bounded
+    by `max_attempts` so a job that kills its worker is closed as
+    `FAILED` (with `STALE_JOB_ERROR`) instead of readmitted forever. Two
+    disjoint `UPDATE`s and no `SELECT` first, for the same lock-promotion
+    reason.
+  - **`watch()` holds no session between ticks.** It is the
+    `while True: sleep; get` every application writes by hand, minus the
+    part that is easy to get wrong — a watcher holding its transaction
+    open is a watcher blocking the worker it is watching.
+
+  `JobNotFoundError` and `JobAlreadyFinishedError` are a `LookupError`
+  and a `RuntimeError`, not `AppException` subclasses: the store runs in
+  the worker as often as in a request, and a worker has no HTTP status to
+  answer with. Translate at the boundary with `not_found_exception(...)`.
+  New recipe: "Jobs (trabalho longo com status)" / "Jobs (long work with
+  status)".
+
 ## [0.227.0] — 2026-08-15
 
 Three defects an application only meets on the day it grows a worker.

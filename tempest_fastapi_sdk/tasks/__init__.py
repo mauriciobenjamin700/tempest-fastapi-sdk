@@ -64,6 +64,20 @@ from tempest_fastapi_sdk.tasks.dead_letter import (
 from tempest_fastapi_sdk.tasks.dead_letter import (
     task_inventory as task_inventory,
 )
+from tempest_fastapi_sdk.tasks.jobs import (
+    STALE_JOB_ERROR as STALE_JOB_ERROR,
+)
+from tempest_fastapi_sdk.tasks.jobs import (
+    TERMINAL_JOB_STATUSES as TERMINAL_JOB_STATUSES,
+)
+from tempest_fastapi_sdk.tasks.jobs import BaseJobModel as BaseJobModel
+from tempest_fastapi_sdk.tasks.jobs import (
+    JobAlreadyFinishedError as JobAlreadyFinishedError,
+)
+from tempest_fastapi_sdk.tasks.jobs import JobNotFoundError as JobNotFoundError
+from tempest_fastapi_sdk.tasks.jobs import JobStatus as JobStatus
+from tempest_fastapi_sdk.tasks.jobs import JobStore as JobStore
+from tempest_fastapi_sdk.tasks.jobs import make_job_model as make_job_model
 from tempest_fastapi_sdk.tasks.manager import (
     AsyncTaskBrokerManager as AsyncTaskBrokerManager,
 )
@@ -93,15 +107,22 @@ from tempest_fastapi_sdk.tasks.queue import TaskQueue as TaskQueue
 from tempest_fastapi_sdk.tasks.scheduler import AsyncTaskScheduler as AsyncTaskScheduler
 
 __all__: list[str] = [
+    "STALE_JOB_ERROR",
+    "TERMINAL_JOB_STATUSES",
     "AsyncTaskBrokerManager",
     "AsyncTaskScheduler",
     "BaseDeadLetterModel",
+    "BaseJobModel",
     "Cron",
     "CronOffset",
     "DbDeadLetterSink",
     "DeadLetter",
     "DeadLetterSink",
     "Hook",
+    "JobAlreadyFinishedError",
+    "JobNotFoundError",
+    "JobStatus",
+    "JobStore",
     "LifecycleResource",
     "LifecycleScope",
     "RetryPolicy",
@@ -119,6 +140,7 @@ __all__: list[str] = [
     "make_dead_letter_admin_model",
     "make_dead_letter_middleware",
     "make_dead_letter_model",
+    "make_job_model",
     "make_requeue_action",
     "monthly",
     "task_inventory",

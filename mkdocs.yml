@@ -133,6 +133,7 @@ plugins:
               - "Image generation (local)": recipes/image-generation.md
               - Integration client (OpenAPI): recipes/openapi-client.md
               - Introspection auth (resource server): recipes/introspection-auth.md
+              - Jobs (long work with status): recipes/jobs.md
               - Logging: recipes/logging.md
               - Management commands (tempest <cmd>): recipes/management-commands.md
               - Metrics: recipes/metrics.md
@@ -226,6 +227,7 @@ plugins:
             Downloads: Downloads
             "File store (unificado)": "Unified file store"
             Idempotência: Idempotency
+            "Jobs (trabalho longo com status)": "Jobs (long work with status)"
             "Auth flow (signup/reset)": "Auth flow (signup/reset)"
             "MFA (TOTP / 2FA)": "MFA (TOTP / 2FA)"
             "Sessões server-side": "Server-side sessions"
@@ -402,6 +404,7 @@ nav:
       - "HTTP client (saída)": recipes/http-client.md
       - "IA generativa self-hosted": recipes/genai.md
       - Idempotência: recipes/idempotency.md
+      - "Jobs (trabalho longo com status)": recipes/jobs.md
       - Logging: recipes/logging.md
       - "Login social (OAuth2/OIDC)": recipes/oauth.md
       - "Management commands (tempest <cmd>)": recipes/management-commands.md
