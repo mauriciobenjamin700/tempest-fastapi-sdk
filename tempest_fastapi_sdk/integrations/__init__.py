@@ -13,6 +13,7 @@ imported by ``import tempest_fastapi_sdk``; reach for the provider you use.
 .. code-block:: python
 
     from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixClient
+    from tempest_fastapi_sdk.integrations.payment.stripe import StripeClient
 
 !!! info "Why not generate it in each service"
     `tempest openapi-client` still exists and is the right tool for an API

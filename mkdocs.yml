@@ -163,6 +163,7 @@ plugins:
               - Spreadsheets (.xlsx): recipes/spreadsheets.md
               - SSR (typed pages): ssr.md
               - Storage (MinIO/S3): recipes/storage.md
+              - Stripe (cards + subscriptions): recipes/stripe.md
               - System checks (check-config): recipes/system-checks.md
               - tempestweb frontend + SDK: recipes/tempestweb-frontend.md
               - Testing: recipes/testing.md
@@ -227,6 +228,7 @@ plugins:
             Logging: Logging
             "Login social (OAuth2/OIDC)": "Social login (OAuth2/OIDC)"
             Storage (MinIO/S3): Storage (MinIO/S3)
+            "Stripe (cartão + assinatura)": "Stripe (cards + subscriptions)"
             Uploads (backends): Uploads (backends)
             Downloads: Downloads
             "File store (unificado)": "Unified file store"
@@ -435,6 +437,7 @@ nav:
       - "SPA React no FastAPI": recipes/react-spa.md
       - "SSR (páginas tipadas)": ssr.md
       - Storage (MinIO/S3): recipes/storage.md
+      - "Stripe (cartão + assinatura)": recipes/stripe.md
       - Sync offline-first (delta): recipes/offline-sync.md
       - "System checks (check-config)": recipes/system-checks.md
       - Tempo real: recipes/realtime.md

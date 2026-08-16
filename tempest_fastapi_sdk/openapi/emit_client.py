@@ -230,6 +230,14 @@ def _body_lines(operation: OperationIR) -> list[str]:
     module that does not parse. The ``f`` prefix is added only when the
     template still holds a placeholder — after the parser's repair pass,
     every remaining brace pair is one.
+
+    The body reaches the wire as ``json=`` or as ``data=form_encode(...)``
+    depending on ``operation.body_encoding``, which the parser reads from
+    the specification's ``requestBody.content``. Emitting ``json=``
+    unconditionally is what made generated clients unusable against a
+    form-only API: Stripe declares
+    ``application/x-www-form-urlencoded`` on all 588 of its write
+    operations, so every generated write was rejected.
     """
     lines: list[str] = []
 
@@ -263,7 +271,10 @@ def _body_lines(operation: OperationIR) -> list[str]:
             lines.append("        payload = _dump(body)")
         else:
             lines.append("        payload = None if body is None else _dump(body)")
-        call_arguments.append("json=payload")
+        if operation.body_encoding == "form":
+            call_arguments.append("data=form_encode(payload)")
+        else:
+            call_arguments.append("json=payload")
 
     lines.append("        response = await self._client.request(")
     for argument in call_arguments:
@@ -360,6 +371,11 @@ def _import_block(client: ClientIR) -> list[str]:
     unconditionally because the emitted ``_param`` helper references all
     four in its body, not only when an annotation mentions them.
 
+    ``form_encode`` is decided from the operations rather than from the
+    annotations: it appears in call sites, never in a type, so scanning
+    the rendered annotations would never find it and the generated
+    module would fail on an undefined name.
+
     Args:
         client (ClientIR): The parsed client.
 
@@ -380,9 +396,12 @@ def _import_block(client: ClientIR) -> list[str]:
     pydantic_names = ["BaseModel", "TypeAdapter"]
     if _uses(rendered, "EmailStr"):
         pydantic_names.append("EmailStr")
+    sdk_names = ["HTTPClient"]
+    if any(operation.body_encoding == "form" for operation in client.operations):
+        sdk_names.append("form_encode")
     third_party: dict[str, list[str]] = {
         "pydantic": pydantic_names,
-        "tempest_fastapi_sdk": ["HTTPClient"],
+        "tempest_fastapi_sdk": sdk_names,
     }
 
     lines: list[str] = ["from __future__ import annotations", ""]

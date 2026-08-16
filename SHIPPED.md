@@ -105,6 +105,25 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   and FCM's `InvalidArgumentError` deliberately does **not** prune, because
   it covers malformed payloads too and pruning on it would wipe a fleet.
   Recipe: `docs/recipes/push.md`.
+- **Stripe (v0.232.0, no extra)** —
+  `tempest_fastapi_sdk.integrations.payment.stripe`. `StripeClient` over
+  `HTTPClient` with a generic `StripeResource` (create/retrieve/update/delete/
+  list + `auto_paginate`) across nine resources; `Idempotency-Key` on every
+  write; `stripe_http_client` pinning `Stripe-Version`; zero- and
+  three-decimal-aware money helpers; webhook verification over `t.body` with
+  a replay window, rotation support and a `sign_payload` for tests;
+  `StripeEvent` (265 types generated from the spec, drift-tested);
+  `StripeError` carrying type/code/decline_code/param/request_id; thin
+  response models with `extra="allow"`. Ships alongside two pieces of general
+  value: **`form_encode`** (bracket-notation flattening, public) and the
+  **generator reading the request body's media type** so form-only APIs emit
+  `data=form_encode(payload)`. Also fixes a parser bug where note sinks were
+  removed by equality, aborting any re-entrant spec.
+  **The client is hand-written on purpose**: generating Stripe's spec yields
+  3.3 MB of schemas costing 5.8 s / 492 MB RSS to import, and `/v1/prices`
+  alone reaches 864 of 1440 schemas, so no small subset exists. Measurements
+  and the fetch/regen steps live in `scripts/regen_stripe.py`. Recipe:
+  `docs/recipes/stripe.md`.
 - **Permission guards (v0.167.0)** — `@requires(*guards, user_param=None)`
   (`tempest_fastapi_sdk.authz`, re-exported at the root) runs plain
   `(user) -> user | None` guards before a function body, at any layer, sync or
