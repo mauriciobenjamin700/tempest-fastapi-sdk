@@ -7,6 +7,13 @@ surfaces the two errors the application actually handles:
 `WebPushError` (any other failure). Requires the `[webpush]` extra
 (`pywebpush` + `cryptography`).
 
+
+!!! tip "Got a mobile app too?"
+    This recipe covers the browser. If your product has a site **and**
+    an app, see [Push (web + mobile)](push.en.md): one service, one
+    table and one call for both. Nothing here changes — the `push`
+    module reuses this very dispatcher.
+
 !!! info "What this guide follows"
     The SDK ships the pieces (base table, dispatcher, service, schema); the
     project assembles them in the layered

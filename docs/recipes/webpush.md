@@ -7,6 +7,13 @@ trata: `WebPushGoneError` (HTTP 404/410 — apague a inscrição) e
 `WebPushError` (qualquer outra falha). Requer o extra `[webpush]`
 (`pywebpush` + `cryptography`).
 
+
+!!! tip "Tem app mobile também?"
+    Esta receita cobre o navegador. Se o produto tem site **e** app,
+    veja [Push (web + mobile)](push.md): um serviço, uma tabela e uma
+    chamada para os dois. Nada aqui muda — o módulo `push` reaproveita
+    este mesmo dispatcher.
+
 !!! info "O que este guia segue"
     O SDK entrega as peças (tabela base, dispatcher, serviço, schema); o
     projeto as monta na arquitetura em camadas

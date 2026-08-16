@@ -35,6 +35,12 @@ from tempest_fastapi_sdk.db.connection import (
 from tempest_fastapi_sdk.db.connection import (
     enable_sqlite_wal as enable_sqlite_wal,
 )
+from tempest_fastapi_sdk.db.device_token_model import (
+    BaseDeviceTokenModel as BaseDeviceTokenModel,
+)
+from tempest_fastapi_sdk.db.device_token_model import (
+    make_device_token_model as make_device_token_model,
+)
 from tempest_fastapi_sdk.db.enum_migrations import (
     EnumColumnRef as EnumColumnRef,
 )
@@ -154,6 +160,7 @@ __all__: list[str] = [
     "AuditMixin",
     "BackupToolMissingError",
     "BaseAuditLogModel",
+    "BaseDeviceTokenModel",
     "BaseModel",
     "BaseOutboxModel",
     "BaseRepository",
@@ -207,6 +214,7 @@ __all__: list[str] = [
     "full_text_rank",
     "in_transaction",
     "like_search_condition",
+    "make_device_token_model",
     "make_user_recovery_code_model",
     "make_user_refresh_token_model",
     "make_user_token_model",

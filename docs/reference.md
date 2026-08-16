@@ -667,6 +667,25 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.auth.schemas.WebAuthnCredentialSchema
 ::: tempest_fastapi_sdk.auth.schemas.WebAuthnDeleteSchema
 
+### `tempest_fastapi_sdk.push`
+
+::: tempest_fastapi_sdk.push.service.DeviceService
+::: tempest_fastapi_sdk.push.dispatcher.PushDispatcher
+::: tempest_fastapi_sdk.push.dispatcher.PushError
+::: tempest_fastapi_sdk.push.dispatcher.PushDeviceGoneError
+::: tempest_fastapi_sdk.push.transports.webpush.WebPushTransport
+::: tempest_fastapi_sdk.push.transports.fcm.FCMTransport
+::: tempest_fastapi_sdk.push.schemas.PushPlatform
+::: tempest_fastapi_sdk.push.schemas.PushDevice
+::: tempest_fastapi_sdk.push.schemas.PushPayloadSchema
+::: tempest_fastapi_sdk.push.schemas.DeviceRegistrationSchema
+::: tempest_fastapi_sdk.push.schemas.PushResult
+::: tempest_fastapi_sdk.push.schemas.PushFanoutResult
+::: tempest_fastapi_sdk.push.schemas.mask_push_token
+::: tempest_fastapi_sdk.push.router.make_push_router
+::: tempest_fastapi_sdk.db.device_token_model.BaseDeviceTokenModel
+::: tempest_fastapi_sdk.db.device_token_model.make_device_token_model
+
 ### `tempest_fastapi_sdk.authz`
 
 ::: tempest_fastapi_sdk.authz.permissions.PermissionRegistry

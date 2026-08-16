@@ -5,6 +5,79 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.231.0] — 2026-08-16
+
+### Added
+
+- **Unified push** (`tempest_fastapi_sdk.push`). The SDK shipped Web Push and
+  nothing for mobile, so a product with a site and an app carried two
+  notification APIs and a caller that had to know which kind of device it was
+  talking to. Now it says "notify this user" once.
+
+  ```python
+  from tempest_fastapi_sdk import (
+      BaseRepository,
+      DeviceService,
+      FCMTransport,
+      PushPayloadSchema,
+      WebPushTransport,
+  )
+
+  service: DeviceService[DeviceModel] = DeviceService(
+      BaseRepository(session, model=DeviceModel),
+      [WebPushTransport(dispatcher), FCMTransport(auth=firebase)],
+  )
+  result = await service.notify_user(user_id, PushPayloadSchema(title="Hi"))
+  ```
+
+  - `PushDispatcher` — a one-method `Protocol`, in the shape `UploadStorage`
+    uses for storage, so the service depends on the contract and a fake
+    transport in tests inherits nothing.
+  - `WebPushTransport` adapts the existing `WebPushDispatcher`;
+    `FCMTransport` delivers to iOS and Android through
+    `firebase_admin.messaging`, reusing the `[firebase]` extra and the
+    service account `FirebaseAuth` already loaded (`FCMTransport(auth=...)`,
+    via the new `FirebaseAuth.app` property).
+  - `BaseDeviceTokenModel` / `make_device_token_model` — one table for
+    browsers and phones: web rows keep `p256dh` / `auth`, mobile rows carry
+    the FCM registration token, `token` is unique and `last_seen_at` is
+    refreshed on every re-registration.
+  - `DeviceService` — idempotent registration (a handset that changes hands
+    moves to the new user), concurrent fan-out where **one device failing
+    never aborts the others**, and unified pruning: HTTP 404/410 on the web
+    and `UnregisteredError` / `SenderIdMismatchError` on FCM both delete the
+    row.
+  - `PushFanoutResult` reports `delivered` / `pruned` / `failed` / `skipped`.
+    `skipped` is not `pruned`: a web-only service keeps its iOS rows instead
+    of deleting devices it merely cannot reach yet.
+  - `make_push_router` — `POST /register`, `POST /unregister`, and the
+    existing `GET /vapid-public-key`.
+  - `PushSettings` joins `WebPushSettings` and `FirebaseSettings` and
+    resolves a real trap: both declare `enabled`, so composing them by hand
+    lets the MRO silently pick the Web Push one and a mobile-only service
+    reads `enabled is False` with FCM configured. It exposes `web_enabled` /
+    `mobile_enabled` and an `enabled` that means "can notify anyone".
+  - Device tokens never reach a log line or a response — `mask_push_token`
+    keeps a 12-character SHA-256 prefix, the same treatment `_mask_endpoint`
+    gave Web Push endpoints.
+
+  **Nothing breaks.** `tempest_fastapi_sdk.webpush` is untouched — same
+  module, same names, same behaviour — and `tests/webpush/` passes without a
+  single edit, which is what proves it.
+
+  Measured, not deduced (`firebase-admin` 7.5.0): `Message.token` is marked
+  deprecated in favour of `fid`, but the two encode **different wire fields**
+  (`{"token": ...}` vs `{"fid": ...}`), so an FCM registration token stays in
+  `token` and a test asserts the serialized message still carries it. Also
+  `APNSConfig`, not `ApnsConfig`.
+
+  One deliberate divergence from issue #157: FCM's `InvalidArgumentError` is
+  **not** treated as "device gone". FCM raises it both for a bad token and
+  for a malformed payload, and pruning on it would delete a user's whole
+  fleet the first time a notification body is wrong.
+
+  Recipe: [Push (web + mobile)](docs/recipes/push.md). Closes #157.
+
 ## [0.230.0] — 2026-08-16
 
 ### Added
