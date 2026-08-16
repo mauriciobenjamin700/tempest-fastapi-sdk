@@ -82,7 +82,8 @@ class WebPushSubscriptionSchema(BaseSchema):
     )
     expiration_time: int | None = Field(
         default=None,
-        alias="expirationTime",
+        validation_alias="expirationTime",
+        serialization_alias="expirationTime",
         title="Subscription expiration time",
         description=(
             "Optional expiration timestamp in milliseconds since epoch. "

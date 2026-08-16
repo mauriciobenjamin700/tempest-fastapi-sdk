@@ -222,7 +222,8 @@ class DeviceRegistrationSchema(BaseSchema):
     )
     expiration_time: int | None = Field(
         default=None,
-        alias="expirationTime",
+        validation_alias="expirationTime",
+        serialization_alias="expirationTime",
         title="Subscription expiration time",
         description="Browser ``expirationTime`` in milliseconds since epoch.",
         examples=[None, 1_800_000_000_000],

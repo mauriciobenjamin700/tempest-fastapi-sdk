@@ -290,6 +290,15 @@ São três formas de cobrar a mesma cobrança, e você escolhe pela interface:
 | `qr_code_image` | URL de um PNG do QR | Página simples, e-mail, PDF |
 | `payment_link_url` | Página de pagamento hospedada pela OpenPix | Quando não quer construir tela nenhuma |
 
+!!! tip "Construa pelo nome Python — o type-checker aceita"
+    Os campos gerados carregam o nome do fio em `validation_alias` +
+    `serialization_alias`, não em `alias`. A diferença não aparece em runtime,
+    e aparece no seu editor: com `alias`, o pyright renomeia o parâmetro e
+    rejeita `ChargePayload(correlation_id=...)` pedindo `correlationID`.
+    Medido com basedpyright: com a forma dividida, **0 erros** para o nome
+    Python, e `model_validate` / `model_dump(by_alias=True)` seguem falando a
+    grafia da OpenPix.
+
 !!! tip "`return_existing=True` deixa a chamada idempotente"
     Sem ele, um segundo POST com o mesmo `correlationID` é erro. Com ele, a
     OpenPix devolve a cobrança que já existe — que é o que você quer quando o

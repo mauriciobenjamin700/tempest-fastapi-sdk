@@ -961,3 +961,80 @@ class TestUnsupportedComment:
         assert all(len(line) <= MAX_LINE for line in lines), [
             line for line in lines if len(line) > MAX_LINE
         ]
+
+
+class TestAliasesKeepThePythonName:
+    """A wire alias must not rename the parameter a type-checker sees.
+
+    ``Field(alias="correlationID")`` does exactly that: pyright synthesizes
+    ``__init__(*, correlationID=...)`` and rejects the Python spelling with
+    *No parameter named "correlation_id"* — measured against the published
+    wheel, with ``populate_by_name=True`` already set, and again with
+    ``validate_by_name``, which does not change it either. Splitting the
+    alias in two keeps the Python name in the signature while both
+    directions still speak the wire spelling.
+    """
+
+    @pytest.fixture
+    def wire(self, tmp_path: Path) -> ModuleType:
+        """Generate and import a package with one aliased field.
+
+        Args:
+            tmp_path (Path): pytest's per-test temporary directory.
+
+        Returns:
+            ModuleType: The generated ``schemas`` module.
+        """
+        document: dict[str, Any] = {
+            "openapi": "3.1.0",
+            "info": {"title": "Wire", "version": "1"},
+            "paths": {},
+            "components": {
+                "schemas": {
+                    "Charge": {
+                        "type": "object",
+                        "required": ["correlationID"],
+                        "properties": {
+                            "correlationID": {"type": "string"},
+                            "value": {"type": "number"},
+                        },
+                    }
+                }
+            },
+        }
+        spec_file = tmp_path / "wire.json"
+        spec_file.write_text(json.dumps(document), encoding="utf-8")
+        generate_integration(
+            str(spec_file),
+            target=tmp_path,
+            name="wire",
+            out=tmp_path / "pkg" / "wire_gen",
+            run_format=False,
+        )
+        _load_package(tmp_path / "pkg" / "wire_gen", "wire_gen")
+        return importlib.import_module("wire_gen.schemas")
+
+    def test_the_field_carries_both_aliases_and_not_the_plain_one(
+        self, wire: ModuleType
+    ) -> None:
+        """``alias`` stays unset; the two directional aliases carry the name."""
+        field = wire.Charge.model_fields["correlation_id"]
+        assert field.validation_alias == "correlationID"
+        assert field.serialization_alias == "correlationID"
+        assert field.alias is None
+
+    def test_construction_by_python_name_works(self, wire: ModuleType) -> None:
+        """This is the call a type-checker has to accept."""
+        assert wire.Charge(correlation_id="order-1").correlation_id == "order-1"
+
+    def test_validation_still_reads_the_wire_name(self, wire: ModuleType) -> None:
+        """A response body arrives spelled the provider's way."""
+        parsed = wire.Charge.model_validate({"correlationID": "order-1", "value": 1990})
+        assert parsed.correlation_id == "order-1"
+
+    def test_serialization_still_writes_the_wire_name(self, wire: ModuleType) -> None:
+        """A request body has to leave spelled the provider's way."""
+        dumped = wire.Charge(correlation_id="order-1").model_dump(
+            by_alias=True, exclude_none=True
+        )
+        assert dumped == {"correlationID": "order-1"}

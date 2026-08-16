@@ -196,7 +196,18 @@ Guards ativos, todos dentro do `make check`: `test_docs_api_guard`,
 `test_docs_signature_guard`, `test_docs_organization`,
 `test_docs_examples_compile`, `test_docs_examples_names`,
 `test_reference_coverage`, `test_kwargs_guard`, `test_reexport_guard`,
-`test_vacuous_guard`.
+`test_vacuous_guard`, `test_alias_guard`.
+
+- **`Field(alias=...)` é defeito (v0.234.0).** Runtime não distingue
+  `alias` de `validation_alias`+`serialization_alias` quando
+  `populate_by_name=True` está setado; o **type-checker distingue**:
+  `alias` renomeia o parâmetro do `__init__` sintetizado, e o pyright
+  passa a rejeitar `ChargePayload(correlation_id=...)` exigindo
+  `correlationID`. Medido com basedpyright contra a wheel 0.233.0
+  publicada — e medido de novo com `validate_by_name`, que também não
+  resolve. mypy aceita as duas grafias, por isso shippou. Escreva o nome
+  do fio duas vezes (`validation_alias` para ler, `serialization_alias`
+  para escrever); `tests/test_alias_guard.py` falha se `alias=` voltar.
 
 ## Conventions specific to this repo
 

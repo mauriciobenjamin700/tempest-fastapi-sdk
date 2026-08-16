@@ -5,6 +5,37 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.234.0] — 2026-08-16
+
+### Fixed
+
+- **A generated model can be constructed with its Python field names
+  again — under a type-checker, not just at runtime.** Every aliased field
+  was emitted as `Field(alias="correlationID")`, and `alias` is the field
+  specifier that renames the parameter in the `__init__` a checker
+  synthesizes. Measured with basedpyright against the published 0.233.0
+  wheel:
+
+  ```python
+  ChargePayload(correlation_id="order-1", value=1990)
+  # error: No parameter named "correlation_id"
+  # error: Argument missing for parameter "correlationID"
+  ```
+
+  It ran fine — `populate_by_name=True` is set on every generated model —
+  so nothing failed until a consumer ran pyright, Pylance or basedpyright.
+  Measured again with `validate_by_name`, which does not change it either;
+  mypy accepts both spellings regardless, which is how it shipped.
+
+  The wire name is now written twice, as `validation_alias` (reading) and
+  `serialization_alias` (writing). All three directions are pinned by
+  tests: construction by Python name, validation from the provider's
+  spelling, and `model_dump(by_alias=True)` still emitting it. The same fix
+  applies to the two hand-written schemas that carried an alias
+  (`push`, `webpush`), and `tests/test_alias_guard.py` fails if a plain
+  `alias=` comes back — one keyword, indistinguishable at runtime, that
+  nothing else in the gate would notice.
+
 ## [0.233.0] — 2026-08-16
 
 ### Fixed

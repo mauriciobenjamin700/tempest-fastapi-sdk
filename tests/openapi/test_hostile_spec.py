@@ -344,7 +344,14 @@ class TestHostileGeneration:
         assert HOSTILE_ENUM_VALUE in values
 
     def test_digit_field_keeps_its_wire_name(self, generated: Path) -> None:
-        """The rename is invisible on the wire — the alias carries it."""
+        """The rename is invisible on the wire — the aliases carry it.
+
+        Both halves are asserted because they are emitted separately:
+        ``alias`` alone would rename the parameter a type-checker sees, so
+        the wire name lives in ``validation_alias`` (reading) and
+        ``serialization_alias`` (writing) instead.
+        """
         schemas = _import_generated(generated, "hostile_gen")
         model = _model_with_field(schemas, "field_2fa")
-        assert model.model_fields["field_2fa"].alias == "2fa"
+        assert model.model_fields["field_2fa"].validation_alias == "2fa"
+        assert model.model_fields["field_2fa"].serialization_alias == "2fa"

@@ -291,6 +291,15 @@ That is three ways to present the same charge, and the interface picks:
 | `qr_code_image` | URL of a PNG of the QR | Plain page, email, PDF |
 | `payment_link_url` | Payment page hosted by OpenPix | When you would rather build no screen at all |
 
+!!! tip "Construct with the Python name — the type-checker agrees"
+    Generated fields carry the wire name in `validation_alias` +
+    `serialization_alias`, not in `alias`. The difference does not show at
+    runtime, and does show in your editor: with `alias`, pyright renames the
+    parameter and rejects `ChargePayload(correlation_id=...)`, asking for
+    `correlationID`. Measured with basedpyright: with the split form, **0
+    errors** for the Python name, while `model_validate` and
+    `model_dump(by_alias=True)` keep speaking OpenPix's spelling.
+
 !!! tip "`return_existing=True` makes the call idempotent"
     Without it, a second POST with the same `correlationID` is an error. With
     it, OpenPix returns the charge that already exists — which is what you

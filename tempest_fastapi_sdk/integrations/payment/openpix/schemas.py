@@ -435,24 +435,28 @@ class AccountLimit(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     pix_day_limit: float | None = Field(
-        alias="pixDayLimit",
+        validation_alias="pixDayLimit",
+        serialization_alias="pixDayLimit",
         description="Pix day total limit in cents",
         default=None,
     )
     pix_night_limit: float | None = Field(
-        alias="pixNightLimit",
+        validation_alias="pixNightLimit",
+        serialization_alias="pixNightLimit",
         description="Pix night total limit in cents",
         default=None,
     )
     pix_out_same_holder_day_limit: float | None = Field(
-        alias="pixOutSameHolderDayLimit",
+        validation_alias="pixOutSameHolderDayLimit",
+        serialization_alias="pixOutSameHolderDayLimit",
         description=(
             "Pix outbound day limit for transfers between same-holder accounts (cents)"
         ),
         default=None,
     )
     pix_out_different_holder_day_limit: float | None = Field(
-        alias="pixOutDifferentHolderDayLimit",
+        validation_alias="pixOutDifferentHolderDayLimit",
+        serialization_alias="pixOutDifferentHolderDayLimit",
         description=(
             "Pix outbound day limit for transfers between different-holder accounts "
             "(cents)"
@@ -460,7 +464,8 @@ class AccountLimit(BaseSchema):
         default=None,
     )
     pix_out_same_holder_night_limit: float | None = Field(
-        alias="pixOutSameHolderNightLimit",
+        validation_alias="pixOutSameHolderNightLimit",
+        serialization_alias="pixOutSameHolderNightLimit",
         description=(
             "Pix outbound night limit for transfers between same-holder accounts "
             "(cents)"
@@ -468,7 +473,8 @@ class AccountLimit(BaseSchema):
         default=None,
     )
     pix_out_different_holder_night_limit: float | None = Field(
-        alias="pixOutDifferentHolderNightLimit",
+        validation_alias="pixOutDifferentHolderNightLimit",
+        serialization_alias="pixOutDifferentHolderNightLimit",
         description=(
             "Pix outbound night limit for transfers between different-holder accounts "
             "(cents)"
@@ -476,14 +482,16 @@ class AccountLimit(BaseSchema):
         default=None,
     )
     pix_in_same_holder_day_limit: float | None = Field(
-        alias="pixInSameHolderDayLimit",
+        validation_alias="pixInSameHolderDayLimit",
+        serialization_alias="pixInSameHolderDayLimit",
         description=(
             "Pix inbound day limit for transfers between same-holder accounts (cents)"
         ),
         default=None,
     )
     pix_in_different_holder_day_limit: float | None = Field(
-        alias="pixInDifferentHolderDayLimit",
+        validation_alias="pixInDifferentHolderDayLimit",
+        serialization_alias="pixInDifferentHolderDayLimit",
         description=(
             "Pix inbound day limit for transfers between different-holder accounts "
             "(cents)"
@@ -491,14 +499,16 @@ class AccountLimit(BaseSchema):
         default=None,
     )
     pix_in_same_holder_night_limit: float | None = Field(
-        alias="pixInSameHolderNightLimit",
+        validation_alias="pixInSameHolderNightLimit",
+        serialization_alias="pixInSameHolderNightLimit",
         description=(
             "Pix inbound night limit for transfers between same-holder accounts (cents)"
         ),
         default=None,
     )
     pix_in_different_holder_night_limit: float | None = Field(
-        alias="pixInDifferentHolderNightLimit",
+        validation_alias="pixInDifferentHolderNightLimit",
+        serialization_alias="pixInDifferentHolderNightLimit",
         description=(
             "Pix inbound night limit for transfers between different-holder accounts "
             "(cents)"
@@ -506,24 +516,28 @@ class AccountLimit(BaseSchema):
         default=None,
     )
     day_start_at: str | None = Field(
-        alias="dayStartAt",
+        validation_alias="dayStartAt",
+        serialization_alias="dayStartAt",
         description="Start time of the day window (HH:mm)",
         examples=["06:00"],
         default=None,
     )
     night_start_at: str | None = Field(
-        alias="nightStartAt",
+        validation_alias="nightStartAt",
+        serialization_alias="nightStartAt",
         description="Start time of the night window (HH:mm)",
         examples=["20:00"],
         default=None,
     )
     boleto_emission_limit: float | None = Field(
-        alias="boletoEmissionLimit",
+        validation_alias="boletoEmissionLimit",
+        serialization_alias="boletoEmissionLimit",
         description="Maximum number of boletos that can be emitted per day",
         default=None,
     )
     boleto_maximum_value_limit: float | None = Field(
-        alias="boletoMaximumValueLimit",
+        validation_alias="boletoMaximumValueLimit",
+        serialization_alias="boletoMaximumValueLimit",
         description="Maximum value (in cents) allowed per boleto emission",
         default=None,
     )
@@ -540,7 +554,8 @@ class AccountObjectPayload(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     client_id: str | None = Field(
-        alias="clientId",
+        validation_alias="clientId",
+        serialization_alias="clientId",
         description=(
             "The client ID from the company bank account that is related to this "
             "preregistration/company."
@@ -562,13 +577,23 @@ class AccountRegisterPayload(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     official_name: str = Field(
-        alias="officialName",
+        validation_alias="officialName",
+        serialization_alias="officialName",
         description="Official name of the company",
     )
-    trade_name: str = Field(alias="tradeName", description="Trade name of the company")
-    tax_id: str = Field(alias="taxID", description="Tax ID of the company")
+    trade_name: str = Field(
+        validation_alias="tradeName",
+        serialization_alias="tradeName",
+        description="Trade name of the company",
+    )
+    tax_id: str = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        description="Tax ID of the company",
+    )
     annual_revenue: float = Field(
-        alias="annualRevenue",
+        validation_alias="annualRevenue",
+        serialization_alias="annualRevenue",
         description="Annual revenue of the company",
     )
 
@@ -584,7 +609,8 @@ class AccountRegisterResponseTaxId(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     tax_id: str | None = Field(
-        alias="taxID",
+        validation_alias="taxID",
+        serialization_alias="taxID",
         description="The tax ID value",
         default=None,
     )
@@ -602,7 +628,8 @@ class AccountRegisterTaxId(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     tax_id: str | None = Field(
-        alias="taxID",
+        validation_alias="taxID",
+        serialization_alias="taxID",
         description="The tax ID value",
         default=None,
     )
@@ -629,7 +656,8 @@ class Application(BaseSchema):
 
     name: str | None = Field(description="Name of the application", default=None)
     is_active: bool | None = Field(
-        alias="isActive",
+        validation_alias="isActive",
+        serialization_alias="isActive",
         description="Whether the application is active",
         default=None,
     )
@@ -638,22 +666,26 @@ class Application(BaseSchema):
         default=None,
     )
     client_id: str | None = Field(
-        alias="clientId",
+        validation_alias="clientId",
+        serialization_alias="clientId",
         description="Client ID for authentication",
         default=None,
     )
     client_secret: str | None = Field(
-        alias="clientSecret",
+        validation_alias="clientSecret",
+        serialization_alias="clientSecret",
         description="Client secret for authentication",
         default=None,
     )
     app_id: str | None = Field(
-        alias="appID",
+        validation_alias="appID",
+        serialization_alias="appID",
         description="Unique application identifier",
         default=None,
     )
     company_bank_account: str | None = Field(
-        alias="companyBankAccount",
+        validation_alias="companyBankAccount",
+        serialization_alias="companyBankAccount",
         description="ID of the linked company bank account",
         default=None,
     )
@@ -673,7 +705,8 @@ class ApplicationDeletePayload(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     client_id: str | None = Field(
-        alias="clientId",
+        validation_alias="clientId",
+        serialization_alias="clientId",
         description="The client ID of the application to delete",
         default=None,
     )
@@ -716,7 +749,8 @@ class BoletoValidateError(BaseSchema):
 
     error: str | None = Field(description="Human readable error message.", default=None)
     error_code: str | None = Field(
-        alias="errorCode",
+        validation_alias="errorCode",
+        serialization_alias="errorCode",
         description=(
             "Machine readable error code, present for provider/business errors."
         ),
@@ -748,7 +782,12 @@ class BoletoValidatedInfoFinalBeneficiary(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     name: str | None = Field(examples=["WOOVI"], default=None)
-    tax_id: str | None = Field(alias="taxID", examples=["44720743000101"], default=None)
+    tax_id: str | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        examples=["44720743000101"],
+        default=None,
+    )
 
 
 class BoletoValidatedInfoIssuingEntity(BaseSchema):
@@ -786,7 +825,8 @@ class ChargePatchPayload(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     expires_date: str | None = Field(
-        alias="expiresDate",
+        validation_alias="expiresDate",
+        serialization_alias="expiresDate",
         description="Expiration date of the charge. Only in ISO 8601 format.",
         default=None,
     )
@@ -824,7 +864,8 @@ class ChargePayloadDiscountSettingsDiscountFixedDateItem(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     days_active: int | None = Field(
-        alias="daysActive",
+        validation_alias="daysActive",
+        serialization_alias="daysActive",
         description=(
             "Offset in days from charge creation. The discount is valid for payments "
             "up to and including this many days after the charge was created. On "
@@ -917,13 +958,15 @@ class ChargePayloadSplitsItem(BaseSchema):
 
     value: float = Field(description="how much value of that charge will be splitted")
     pix_key: str = Field(
-        alias="pixKey",
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
         description=(
             "the pixKey of the company bank account that will receive this split"
         ),
     )
     split_type: ChargePayloadSplitsItemSplitType | None = Field(
-        alias="splitType",
+        validation_alias="splitType",
+        serialization_alias="splitType",
         description=(
             "The type of the split. Each of these ones will be processed in specific "
             "way. [See "
@@ -966,12 +1009,14 @@ class ChargeRefund(BaseSchema):
     )
     status: ChargeRefundStatus | None = None
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Your correlation ID to keep track of this refund",
         default=None,
     )
     end_to_end_id: str | None = Field(
-        alias="endToEndId",
+        validation_alias="endToEndId",
+        serialization_alias="endToEndId",
         description="The endToEndId of this refund",
         default=None,
     )
@@ -991,7 +1036,8 @@ class ChargeRefundPayload(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     correlation_id: str = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Your correlation ID to keep track for this refund",
     )
     value: float | None = Field(
@@ -1018,22 +1064,26 @@ class Company(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     official_name: str | None = Field(
-        alias="officialName",
+        validation_alias="officialName",
+        serialization_alias="officialName",
         description="Official name of the company",
         default=None,
     )
     trade_name: str | None = Field(
-        alias="tradeName",
+        validation_alias="tradeName",
+        serialization_alias="tradeName",
         description="Trade name of the company",
         default=None,
     )
     tax_id: str | None = Field(
-        alias="taxID",
+        validation_alias="taxID",
+        serialization_alias="taxID",
         description="Tax ID of the company",
         default=None,
     )
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Correlation ID of the company",
         default=None,
     )
@@ -1065,14 +1115,16 @@ class CompanyBankAccountBalance(BaseSchema):
         default=None,
     )
     blocked_by_security: float | None = Field(
-        alias="blockedBySecurity",
+        validation_alias="blockedBySecurity",
+        serialization_alias="blockedBySecurity",
         description=(
             "Amount blocked due to security restrictions (e.g., PIX_OUT blocking)"
         ),
         default=None,
     )
     blocked_by_withdraw_safety: float | None = Field(
-        alias="blockedByWithdrawSafety",
+        validation_alias="blockedByWithdrawSafety",
+        serialization_alias="blockedByWithdrawSafety",
         description="Amount blocked as minimum balance reserve (withdraw safety value)",
         default=None,
     )
@@ -1160,7 +1212,11 @@ class CustomerTaxId(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    tax_id: str | None = Field(alias="taxID", default=None)
+    tax_id: str | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        default=None,
+    )
     type: str | None = None
 
 
@@ -1180,7 +1236,8 @@ class DeleteApiV1AccountByAccountIdResponse(BaseSchema):
         default=None,
     )
     account_id: str | None = Field(
-        alias="accountId",
+        validation_alias="accountId",
+        serialization_alias="accountId",
         description="ID of the Account",
         examples=["6290ccfd42831958a405debc"],
         default=None,
@@ -1202,7 +1259,8 @@ class DeleteApiV1AccountRegisterByIdResponse(BaseSchema):
         default=None,
     )
     account_register_id: str | None = Field(
-        alias="accountRegisterId",
+        validation_alias="accountRegisterId",
+        serialization_alias="accountRegisterId",
         examples=["12345678901234"],
         default=None,
     )
@@ -1260,7 +1318,8 @@ class DeleteApiV1SubaccountByIdResponse(BaseSchema):
 
     status: str | None = Field(examples=["OK"], default=None)
     pix_key: str | None = Field(
-        alias="pixKey",
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
         examples=["destination@test.com"],
         default=None,
     )
@@ -1305,26 +1364,37 @@ class Dispute(BaseSchema):
         default=None,
     )
     phone_number: str | None = Field(
-        alias="phoneNumber",
+        validation_alias="phoneNumber",
+        serialization_alias="phoneNumber",
         description="The phone number of the payer who created this dispute.",
         default=None,
     )
     value: float | None = Field(description="The value of the dispute.", default=None)
     dispute_reason: str | None = Field(
-        alias="disputeReason",
+        validation_alias="disputeReason",
+        serialization_alias="disputeReason",
         description="Reason provided to justify the dispute.",
         default=None,
     )
     end_to_end_id: str | None = Field(
-        alias="endToEndId",
+        validation_alias="endToEndId",
+        serialization_alias="endToEndId",
         description=(
             "The endToEndId of the dispute (Is the same of the endToEndId transaction "
             "related)."
         ),
         default=None,
     )
-    created_at: datetime | None = Field(alias="createdAt", default=None)
-    updated_at: datetime | None = Field(alias="updatedAt", default=None)
+    created_at: datetime | None = Field(
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
+        default=None,
+    )
+    updated_at: datetime | None = Field(
+        validation_alias="updatedAt",
+        serialization_alias="updatedAt",
+        default=None,
+    )
 
 
 class DisputePayload(BaseSchema):
@@ -1347,16 +1417,19 @@ class DisputePayload(BaseSchema):
     name: str = Field(description="The name of the payer who created this dispute.")
     email: str = Field(description="The Email of the payer who created this dispute.")
     phone_number: str = Field(
-        alias="phoneNumber",
+        validation_alias="phoneNumber",
+        serialization_alias="phoneNumber",
         description="The phone number of the payer who created this dispute.",
     )
     value: float = Field(description="The value of the dispute.")
     dispute_reason: str = Field(
-        alias="disputeReason",
+        validation_alias="disputeReason",
+        serialization_alias="disputeReason",
         description="Reason provided to justify the dispute.",
     )
     end_to_end_id: str = Field(
-        alias="endToEndId",
+        validation_alias="endToEndId",
+        serialization_alias="endToEndId",
         description=(
             "The endToEndId of the dispute (Is the same of the endToEndId transaction "
             "related)."
@@ -1425,14 +1498,16 @@ class FundsRecoveryPayload(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     transaction_end_to_end_id: str = Field(
-        alias="transactionEndToEndId",
+        validation_alias="transactionEndToEndId",
+        serialization_alias="transactionEndToEndId",
         description=(
             "The endToEndId of the Pix transaction sent from your account that you "
             "want to recover"
         ),
     )
     situation_type: FundsRecoverySituationType = Field(
-        alias="situationType",
+        validation_alias="situationType",
+        serialization_alias="situationType",
         description=(
             "The situation that motivated the funds recovery:\n  - `SCAM`: scam (e.g. "
             "fake sale, fake invoice, social engineering)\n  - `ACCOUNT_TAKEOVER`: "
@@ -1461,7 +1536,8 @@ class GetApiImageQrcodeBase64ByIdResponse(BaseSchema):
 
     success: bool | None = Field(examples=[True], default=None)
     image_base64: str | None = Field(
-        alias="imageBase64",
+        validation_alias="imageBase64",
+        serialization_alias="imageBase64",
         description="Base64 encoded PNG image with data URL format",
         examples=["data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."],
         default=None,
@@ -1478,7 +1554,12 @@ class GetApiV1AccountRegisterResponseTaxId(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    tax_id: str | None = Field(alias="taxID", examples=["12345678901234"], default=None)
+    tax_id: str | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        examples=["12345678901234"],
+        default=None,
+    )
     type: str | None = Field(examples=["BR_CNPJ"], default=None)
 
 
@@ -1530,10 +1611,26 @@ class GetApiV1CompanyResponseCompany(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    official_name: str | None = Field(alias="officialName", default=None)
-    trade_name: str | None = Field(alias="tradeName", default=None)
-    tax_id: str | None = Field(alias="taxID", default=None)
-    correlation_id: str | None = Field(alias="correlationID", default=None)
+    official_name: str | None = Field(
+        validation_alias="officialName",
+        serialization_alias="officialName",
+        default=None,
+    )
+    trade_name: str | None = Field(
+        validation_alias="tradeName",
+        serialization_alias="tradeName",
+        default=None,
+    )
+    tax_id: str | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        default=None,
+    )
+    correlation_id: str | None = Field(
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
+        default=None,
+    )
 
 
 class GetApiV1CustomerResponsePageInfoErrorsItemData(BaseSchema):
@@ -1577,18 +1674,21 @@ class GetApiV1DisputeByIdResponseDispute(BaseSchema):
         default=None,
     )
     phone_number: str | None = Field(
-        alias="phoneNumber",
+        validation_alias="phoneNumber",
+        serialization_alias="phoneNumber",
         description="The phone number of the payer who created this dispute.",
         default=None,
     )
     value: str | None = Field(description="The value of the dispute.", default=None)
     dispute_reason: str | None = Field(
-        alias="disputeReason",
+        validation_alias="disputeReason",
+        serialization_alias="disputeReason",
         description="Reason provided to justify the dispute.",
         default=None,
     )
     end_to_end_id: str | None = Field(
-        alias="endToEndId",
+        validation_alias="endToEndId",
+        serialization_alias="endToEndId",
         description=(
             "The endToEndId of the dispute (Is the same of the endToEndId transaction "
             "related)."
@@ -1631,26 +1731,37 @@ class GetApiV1DisputeResponseDisputesItem(BaseSchema):
         default=None,
     )
     phone_number: str | None = Field(
-        alias="phoneNumber",
+        validation_alias="phoneNumber",
+        serialization_alias="phoneNumber",
         description="The phone number of the payer who created this dispute.",
         default=None,
     )
     value: float | None = Field(description="The value of the dispute.", default=None)
     dispute_reason: str | None = Field(
-        alias="disputeReason",
+        validation_alias="disputeReason",
+        serialization_alias="disputeReason",
         description="Reason provided to justify the dispute.",
         default=None,
     )
     end_to_end_id: str | None = Field(
-        alias="endToEndId",
+        validation_alias="endToEndId",
+        serialization_alias="endToEndId",
         description=(
             "The endToEndId of the dispute (Is the same of the endToEndId transaction "
             "related)."
         ),
         default=None,
     )
-    created_at: datetime | None = Field(alias="createdAt", default=None)
-    updated_at: datetime | None = Field(alias="updatedAt", default=None)
+    created_at: datetime | None = Field(
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
+        default=None,
+    )
+    updated_at: datetime | None = Field(
+        validation_alias="updatedAt",
+        serialization_alias="updatedAt",
+        default=None,
+    )
     type: GetApiV1DisputeResponseDisputesItemType | None = Field(
         description="The type of the dispute",
         default=None,
@@ -1833,7 +1944,8 @@ class GetApiV1StatementResponseItem(BaseSchema):
         default=None,
     )
     transaction_id: str | None = Field(
-        alias="transactionId",
+        validation_alias="transactionId",
+        serialization_alias="transactionId",
         description="Transaction tracking ID",
         examples=["txn_123456789"],
         default=None,
@@ -1882,7 +1994,8 @@ class GetApiV1SubaccountByIdStatementResponseItem(BaseSchema):
     )
     operation_type: GetApiV1SubaccountByIdStatementResponseItemOperationTyp | None = (
         Field(
-            alias="operationType",
+            validation_alias="operationType",
+            serialization_alias="operationType",
             description=(
                 "| operationType           | Descrição                                 "
                 "        "
@@ -1928,9 +2041,17 @@ class GetApiV1SubaccountResponseSubaccountsItem(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     name: str | None = None
-    pix_key: str | None = Field(alias="pixKey", default=None)
+    pix_key: str | None = Field(
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
+        default=None,
+    )
     balance: float | None = None
-    withdraw_blocked: bool | None = Field(alias="withdrawBlocked", default=None)
+    withdraw_blocked: bool | None = Field(
+        validation_alias="withdrawBlocked",
+        serialization_alias="withdrawBlocked",
+        default=None,
+    )
 
 
 class GetApiV1TransactionResponsePageInfoErrorsItemData(BaseSchema):
@@ -2064,16 +2185,37 @@ class InstallmentCobrTriesItem(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    try_status: str | None = Field(alias="tryStatus", default=None)
-    finality_purpose: str | None = Field(alias="finalityPurpose", default=None)
-    reject_code: str | None = Field(alias="rejectCode", default=None)
-    value: float | None = None
-    requested_execution_date: datetime | None = Field(
-        alias="requestedExecutionDate",
+    try_status: str | None = Field(
+        validation_alias="tryStatus",
+        serialization_alias="tryStatus",
         default=None,
     )
-    created_at: datetime | None = Field(alias="createdAt", default=None)
-    updated_at: datetime | None = Field(alias="updatedAt", default=None)
+    finality_purpose: str | None = Field(
+        validation_alias="finalityPurpose",
+        serialization_alias="finalityPurpose",
+        default=None,
+    )
+    reject_code: str | None = Field(
+        validation_alias="rejectCode",
+        serialization_alias="rejectCode",
+        default=None,
+    )
+    value: float | None = None
+    requested_execution_date: datetime | None = Field(
+        validation_alias="requestedExecutionDate",
+        serialization_alias="requestedExecutionDate",
+        default=None,
+    )
+    created_at: datetime | None = Field(
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
+        default=None,
+    )
+    updated_at: datetime | None = Field(
+        validation_alias="updatedAt",
+        serialization_alias="updatedAt",
+        default=None,
+    )
 
 
 class KycOnboardingAccountRegisterRepresentativesItemTaxId(BaseSchema):
@@ -2086,7 +2228,12 @@ class KycOnboardingAccountRegisterRepresentativesItemTaxId(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    tax_id: str | None = Field(alias="taxID", examples=["XXXXXXXXXXX"], default=None)
+    tax_id: str | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        examples=["XXXXXXXXXXX"],
+        default=None,
+    )
     type: str | None = Field(examples=["BR:CPF"], default=None)
 
 
@@ -2100,7 +2247,12 @@ class KycOnboardingAccountRegisterTaxId(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    tax_id: str | None = Field(alias="taxID", examples=["XXXXXXXXXXXXXX"], default=None)
+    tax_id: str | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        examples=["XXXXXXXXXXXXXX"],
+        default=None,
+    )
     type: str | None = Field(examples=["BR:CNPJ"], default=None)
 
 
@@ -2115,7 +2267,8 @@ class KycOnboardingRepresentative(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     tax_id: str = Field(
-        alias="taxID",
+        validation_alias="taxID",
+        serialization_alias="taxID",
         description="CPF do representante (com ou sem mascara)",
     )
     name: str | None = Field(description="Nome do representante", default=None)
@@ -2169,7 +2322,8 @@ class PartnerApplicationPayload(BaseSchema):
         default=None,
     )
     is_active: bool | None = Field(
-        alias="isActive",
+        validation_alias="isActive",
+        serialization_alias="isActive",
         description="Current status of your application.",
         default=None,
     )
@@ -2181,12 +2335,14 @@ class PartnerApplicationPayload(BaseSchema):
         default=None,
     )
     client_id: str | None = Field(
-        alias="clientId",
+        validation_alias="clientId",
+        serialization_alias="clientId",
         description="The ID of this client application.",
         default=None,
     )
     client_secret: str | None = Field(
-        alias="clientSecret",
+        validation_alias="clientSecret",
+        serialization_alias="clientSecret",
         description="The secret of this client application.",
         default=None,
     )
@@ -2210,7 +2366,8 @@ class PartyAccount(BaseSchema):
     branch: str | None = Field(description="account branch", default=None)
     account: str | None = Field(description="account number", default=None)
     account_type: str | None = Field(
-        alias="accountType",
+        validation_alias="accountType",
+        serialization_alias="accountType",
         description="account type",
         default=None,
     )
@@ -2228,7 +2385,8 @@ class PartyHolder(BaseSchema):
 
     name: str | None = Field(description="holder name", default=None)
     name_friendly: str | None = Field(
-        alias="nameFriendly",
+        validation_alias="nameFriendly",
+        serialization_alias="nameFriendly",
         description="holder name friendly",
         default=None,
     )
@@ -2258,7 +2416,12 @@ class PartyTaxId(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    tax_id: str | None = Field(alias="taxID", description="taxID", default=None)
+    tax_id: str | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        description="taxID",
+        default=None,
+    )
     type: str | None = Field(description="taxID type", default=None)
 
 
@@ -2279,7 +2442,8 @@ class PatchApiV1ChargeByIdResponse(BaseSchema):
         default=None,
     )
     expires_date: str | None = Field(
-        alias="expiresDate",
+        validation_alias="expiresDate",
+        serialization_alias="expiresDate",
         description="new date to expire specfic charge",
         default=None,
     )
@@ -2294,7 +2458,7 @@ class PatchApiV1InvoiceIntegrationBody(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    is_active: bool = Field(alias="isActive")
+    is_active: bool = Field(validation_alias="isActive", serialization_alias="isActive")
 
 
 class PatchApiV1InvoiceIntegrationResponseIntegration(BaseSchema):
@@ -2312,7 +2476,11 @@ class PatchApiV1InvoiceIntegrationResponseIntegration(BaseSchema):
     id: str | None = None
     type: str | None = None
     status: str | None = None
-    is_active: bool | None = Field(alias="isActive", default=None)
+    is_active: bool | None = Field(
+        validation_alias="isActive",
+        serialization_alias="isActive",
+        default=None,
+    )
 
 
 class PayloadAccount(BaseSchema):
@@ -2326,11 +2494,16 @@ class PayloadAccount(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     account_id: str | None = Field(
-        alias="accountId",
+        validation_alias="accountId",
+        serialization_alias="accountId",
         description="ID of the Account",
         default=None,
     )
-    is_default: bool | None = Field(alias="isDefault", default=None)
+    is_default: bool | None = Field(
+        validation_alias="isDefault",
+        serialization_alias="isDefault",
+        default=None,
+    )
 
 
 class PaymentApprovePayload(BaseSchema):
@@ -2343,7 +2516,8 @@ class PaymentApprovePayload(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="the correlation ID of the payment to be approved",
         default=None,
     )
@@ -2360,7 +2534,11 @@ class PaymentBoletoFinalBeneficiary(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     name: str | None = None
-    tax_id: str | None = Field(alias="taxID", default=None)
+    tax_id: str | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        default=None,
+    )
 
 
 class PaymentBoletoIssuingEntity(BaseSchema):
@@ -2395,7 +2573,8 @@ class PaymentCreatePayloadBoleto(BaseSchema):
 
     type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
     boleto_barcode: str = Field(
-        alias="boletoBarcode",
+        validation_alias="boletoBarcode",
+        serialization_alias="boletoBarcode",
         description=(
             "the boleto barcode to be paid (44, 47 or 48 digits). The amount, due date "
             "and beneficiary are resolved from the validated boleto, so value and "
@@ -2403,11 +2582,13 @@ class PaymentCreatePayloadBoleto(BaseSchema):
         ),
     )
     correlation_id: str = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="a unique identifier for your payment",
     )
     source_account_id: str | None = Field(
-        alias="sourceAccountId",
+        validation_alias="sourceAccountId",
+        serialization_alias="sourceAccountId",
         description="optional source account ID to use for the payment",
         default=None,
     )
@@ -2435,7 +2616,8 @@ class PaymentCreatePayloadManualAccount(BaseSchema):
     account: str = Field(description="account number")
     branch: str = Field(description="branch number")
     account_type: str = Field(
-        alias="accountType",
+        validation_alias="accountType",
+        serialization_alias="accountType",
         description="type of the account (e.g., TRAN)",
     )
 
@@ -2451,7 +2633,11 @@ class PaymentCreatePayloadManualHolderTaxId(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     type: str = Field(description="type of the tax ID (e.g., BR:CNPJ)")
-    tax_id: str = Field(alias="taxID", description="tax ID number")
+    tax_id: str = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        description="tax ID number",
+    )
 
 
 class PaymentCreatePayloadPixKey(BaseSchema):
@@ -2476,19 +2662,23 @@ class PaymentCreatePayloadPixKey(BaseSchema):
     type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
     value: float = Field(description="value of the requested payment in cents")
     destination_alias: str = Field(
-        alias="destinationAlias",
+        validation_alias="destinationAlias",
+        serialization_alias="destinationAlias",
         description="the pix key the payment should be sent to",
     )
     destination_alias_type: PaymentCreatePayloadPixKeyDestinationAliasType = Field(
-        alias="destinationAliasType",
+        validation_alias="destinationAliasType",
+        serialization_alias="destinationAliasType",
         description="the type of the pix key the payment should be sent to",
     )
     correlation_id: str = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="a unique identifier for your payment",
     )
     pix_key_end_to_end_id: str | None = Field(
-        alias="pixKeyEndToEndId",
+        validation_alias="pixKeyEndToEndId",
+        serialization_alias="pixKeyEndToEndId",
         description=(
             "the end to end id of the pix key used for track pix key consultations"
         ),
@@ -2526,7 +2716,8 @@ class PaymentCreatePayloadQrCode(BaseSchema):
 
     type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
     qr_code: str = Field(
-        alias="qrCode",
+        validation_alias="qrCode",
+        serialization_alias="qrCode",
         description=(
             "the BR Code (Pix QR Code) string to be paid. The system will decode it "
             "and extract the destination and value automatically"
@@ -2540,11 +2731,13 @@ class PaymentCreatePayloadQrCode(BaseSchema):
         default=None,
     )
     correlation_id: str = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="a unique identifier for your payment",
     )
     source_account_id: str | None = Field(
-        alias="sourceAccountId",
+        validation_alias="sourceAccountId",
+        serialization_alias="sourceAccountId",
         description="optional source account ID to use for the payment",
         default=None,
     )
@@ -2577,12 +2770,14 @@ class PaymentDestination(BaseSchema):
         default=None,
     )
     tax_id: str | None = Field(
-        alias="taxID",
+        validation_alias="taxID",
+        serialization_alias="taxID",
         description="the tax id of the payment destination",
         default=None,
     )
     pix_key: str | None = Field(
-        alias="pixKey",
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
         description="the pix key of the payment destination",
         default=None,
     )
@@ -2613,7 +2808,11 @@ class PixKey(BaseSchema):
 
     key: str | None = None
     type: PixKeyType | None = None
-    is_default: bool | None = Field(alias="isDefault", default=None)
+    is_default: bool | None = Field(
+        validation_alias="isDefault",
+        serialization_alias="isDefault",
+        default=None,
+    )
 
 
 class PixKeyCheckOwner(BaseSchema):
@@ -2633,7 +2832,11 @@ class PixKeyCheckOwner(BaseSchema):
     branch: str | None = None
     psp: str | None = None
     name: str | None = None
-    tax_id: str | None = Field(alias="taxID", default=None)
+    tax_id: str | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        default=None,
+    )
 
 
 class PixKeyCreate(BaseSchema):
@@ -2662,10 +2865,26 @@ class PixKeyTokens(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     tokens: float | None = None
-    max_tokens: float | None = Field(alias="maxTokens", default=None)
-    next_refresh: str | None = Field(alias="nextRefresh", default=None)
-    tokens_after_refresh: float | None = Field(alias="tokensAfterRefresh", default=None)
-    refresh_rate: float | None = Field(alias="refreshRate", default=None)
+    max_tokens: float | None = Field(
+        validation_alias="maxTokens",
+        serialization_alias="maxTokens",
+        default=None,
+    )
+    next_refresh: str | None = Field(
+        validation_alias="nextRefresh",
+        serialization_alias="nextRefresh",
+        default=None,
+    )
+    tokens_after_refresh: float | None = Field(
+        validation_alias="tokensAfterRefresh",
+        serialization_alias="tokensAfterRefresh",
+        default=None,
+    )
+    refresh_rate: float | None = Field(
+        validation_alias="refreshRate",
+        serialization_alias="refreshRate",
+        default=None,
+    )
 
 
 class PixQrCode(BaseSchema):
@@ -2693,39 +2912,53 @@ class PixQrCode(BaseSchema):
     value: str | None = None
     comment: str | None = None
     br_code: str | None = Field(
-        alias="brCode",
+        validation_alias="brCode",
+        serialization_alias="brCode",
         description="EMV BRCode to be rendered as a Pix QRCode",
         default=None,
     )
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Your correlation ID to keep track of this pix qrcode",
         default=None,
     )
     payment_link_id: str | None = Field(
-        alias="paymentLinkID",
+        validation_alias="paymentLinkID",
+        serialization_alias="paymentLinkID",
         description=(
             "Payment Link ID, used on payment link and to retrieve qrcode image"
         ),
         default=None,
     )
     payment_link_url: Any | None = Field(
-        alias="paymentLinkUrl",
+        validation_alias="paymentLinkUrl",
+        serialization_alias="paymentLinkUrl",
         description="Payment Link URL to be shared with customers",
         default=None,
     )
     pix_key: str | None = Field(
-        alias="pixKey",
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
         description="The pix key that this qrcode is associated with",
         default=None,
     )
     qr_code_image: Any | None = Field(
-        alias="qrCodeImage",
+        validation_alias="qrCodeImage",
+        serialization_alias="qrCodeImage",
         description="QRCode image link URL",
         default=None,
     )
-    created_at: str | None = Field(alias="createdAt", default=None)
-    updated_at: str | None = Field(alias="updatedAt", default=None)
+    created_at: str | None = Field(
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
+        default=None,
+    )
+    updated_at: str | None = Field(
+        validation_alias="updatedAt",
+        serialization_alias="updatedAt",
+        default=None,
+    )
 
 
 class PixQrCodePayload(BaseSchema):
@@ -2743,7 +2976,8 @@ class PixQrCodePayload(BaseSchema):
 
     name: str = Field(description="Name of this pix qrcode")
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Your correlation ID to keep track of this qrcode",
         default=None,
     )
@@ -2756,7 +2990,8 @@ class PixQrCodePayload(BaseSchema):
         default=None,
     )
     pix_key: str | None = Field(
-        alias="pixKey",
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
         description="The pix key that this qrcode is associated with",
         default=None,
     )
@@ -2783,7 +3018,8 @@ class PostApiV1CashbackFidelityBody(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     tax_id: str | None = Field(
-        alias="taxID",
+        validation_alias="taxID",
+        serialization_alias="taxID",
         description="Customer taxID (CPF or CNPJ)",
         default=None,
     )
@@ -2872,7 +3108,11 @@ class PostApiV1DecodeEmvResponseEmvAdditionalDataFieldTemplat(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    reference_label: str | None = Field(alias="referenceLabel", default=None)
+    reference_label: str | None = Field(
+        validation_alias="referenceLabel",
+        serialization_alias="referenceLabel",
+        default=None,
+    )
 
 
 class PostApiV1DecodeEmvResponseEmvMerchantAccountInformation(BaseSchema):
@@ -2889,7 +3129,8 @@ class PostApiV1DecodeEmvResponseEmvMerchantAccountInformation(BaseSchema):
 
     gui: str | None = None
     pix_key: str | None = Field(
-        alias="pixKey",
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
         description="UUID or key when Pix key present",
         default=None,
     )
@@ -2898,7 +3139,8 @@ class PostApiV1DecodeEmvResponseEmvMerchantAccountInformation(BaseSchema):
         default=None,
     )
     additional_information: str | None = Field(
-        alias="additionalInformation",
+        validation_alias="additionalInformation",
+        serialization_alias="additionalInformation",
         default=None,
     )
 
@@ -2925,7 +3167,11 @@ class PostApiV1DecodeEmvResponseRecLocationPayloadCalendar(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    start_date: date | None = Field(alias="startDate", default=None)
+    start_date: date | None = Field(
+        validation_alias="startDate",
+        serialization_alias="startDate",
+        default=None,
+    )
     periodicity: str | None = None
 
 
@@ -2953,7 +3199,11 @@ class PostApiV1DecodeEmvResponseRecLocationPayloadReceiver(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     cnpj: str | None = None
-    participant_ispb: str | None = Field(alias="participantIspb", default=None)
+    participant_ispb: str | None = Field(
+        validation_alias="participantIspb",
+        serialization_alias="participantIspb",
+        default=None,
+    )
     name: str | None = None
 
 
@@ -2978,7 +3228,11 @@ class PostApiV1DecodeEmvResponseRecLocationPayloadValue(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    value_rec: str | None = Field(alias="valueRec", default=None)
+    value_rec: str | None = Field(
+        validation_alias="valueRec",
+        serialization_alias="valueRec",
+        default=None,
+    )
 
 
 class PostApiV1DisputeIdEvidenceBodyDocumentsItem(BaseSchema):
@@ -2994,7 +3248,8 @@ class PostApiV1DisputeIdEvidenceBodyDocumentsItem(BaseSchema):
 
     url: str | None = Field(description="Document url", min_length=1, default=None)
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Id used by the client",
         default=None,
     )
@@ -3019,7 +3274,8 @@ class PostApiV1DisputeIdEvidenceResponseDocumentsItem(BaseSchema):
         default=None,
     )
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Id used by the client",
         examples=["id123456789"],
         default=None,
@@ -3083,24 +3339,51 @@ class PostApiV1InvoiceIntegrationBody(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    city_service_code: str | None = Field(alias="cityServiceCode", default=None)
-    municipal_subscription: str | None = Field(
-        alias="municipalSubscription",
+    city_service_code: str | None = Field(
+        validation_alias="cityServiceCode",
+        serialization_alias="cityServiceCode",
         default=None,
     )
-    rps_number: str | None = Field(alias="rpsNumber", default=None)
-    special_tax: str | None = Field(alias="specialTax", default=None)
-    tax_regime: str | None = Field(alias="taxRegime", default=None)
+    municipal_subscription: str | None = Field(
+        validation_alias="municipalSubscription",
+        serialization_alias="municipalSubscription",
+        default=None,
+    )
+    rps_number: str | None = Field(
+        validation_alias="rpsNumber",
+        serialization_alias="rpsNumber",
+        default=None,
+    )
+    special_tax: str | None = Field(
+        validation_alias="specialTax",
+        serialization_alias="specialTax",
+        default=None,
+    )
+    tax_regime: str | None = Field(
+        validation_alias="taxRegime",
+        serialization_alias="taxRegime",
+        default=None,
+    )
     federal_tax_determination: str | None = Field(
-        alias="federalTaxDetermination",
+        validation_alias="federalTaxDetermination",
+        serialization_alias="federalTaxDetermination",
         default=None,
     )
     municipal_tax_determination: str | None = Field(
-        alias="municipalTaxDetermination",
+        validation_alias="municipalTaxDetermination",
+        serialization_alias="municipalTaxDetermination",
         default=None,
     )
-    is_portal_nacional: bool | None = Field(alias="isPortalNacional", default=None)
-    is_active: bool | None = Field(alias="isActive", default=None)
+    is_portal_nacional: bool | None = Field(
+        validation_alias="isPortalNacional",
+        serialization_alias="isPortalNacional",
+        default=None,
+    )
+    is_active: bool | None = Field(
+        validation_alias="isActive",
+        serialization_alias="isActive",
+        default=None,
+    )
 
 
 class PostApiV1InvoiceIntegrationCertificateBody(BaseSchema):
@@ -3155,26 +3438,57 @@ class PostApiV1InvoiceIntegrationResponseIntegrationMetadataN(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    nfeio_company_id: str | None = Field(alias="nfeioCompanyId", default=None)
-    city_service_code: str | None = Field(alias="cityServiceCode", default=None)
-    nbs: str | None = None
-    is_portal_nacional: bool | None = Field(alias="isPortalNacional", default=None)
-    municipal_subscription: str | None = Field(
-        alias="municipalSubscription",
+    nfeio_company_id: str | None = Field(
+        validation_alias="nfeioCompanyId",
+        serialization_alias="nfeioCompanyId",
         default=None,
     )
-    rps_number: str | None = Field(alias="rpsNumber", default=None)
-    special_tax: str | None = Field(alias="specialTax", default=None)
-    tax_regime: str | None = Field(alias="taxRegime", default=None)
+    city_service_code: str | None = Field(
+        validation_alias="cityServiceCode",
+        serialization_alias="cityServiceCode",
+        default=None,
+    )
+    nbs: str | None = None
+    is_portal_nacional: bool | None = Field(
+        validation_alias="isPortalNacional",
+        serialization_alias="isPortalNacional",
+        default=None,
+    )
+    municipal_subscription: str | None = Field(
+        validation_alias="municipalSubscription",
+        serialization_alias="municipalSubscription",
+        default=None,
+    )
+    rps_number: str | None = Field(
+        validation_alias="rpsNumber",
+        serialization_alias="rpsNumber",
+        default=None,
+    )
+    special_tax: str | None = Field(
+        validation_alias="specialTax",
+        serialization_alias="specialTax",
+        default=None,
+    )
+    tax_regime: str | None = Field(
+        validation_alias="taxRegime",
+        serialization_alias="taxRegime",
+        default=None,
+    )
     federal_tax_determination: str | None = Field(
-        alias="federalTaxDetermination",
+        validation_alias="federalTaxDetermination",
+        serialization_alias="federalTaxDetermination",
         default=None,
     )
     municipal_tax_determination: str | None = Field(
-        alias="municipalTaxDetermination",
+        validation_alias="municipalTaxDetermination",
+        serialization_alias="municipalTaxDetermination",
         default=None,
     )
-    legal_nature: str | None = Field(alias="legalNature", default=None)
+    legal_nature: str | None = Field(
+        validation_alias="legalNature",
+        serialization_alias="legalNature",
+        default=None,
+    )
 
 
 class PostApiV1InvoiceIntegrationTestResponseIntegration(BaseSchema):
@@ -3210,10 +3524,18 @@ class PostApiV1InvoiceResponseInvoiceCharge(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    correlation_id: str | None = Field(alias="correlationID", default=None)
+    correlation_id: str | None = Field(
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
+        default=None,
+    )
     value: float | None = None
     status: str | None = None
-    paid_at: datetime | None = Field(alias="paidAt", default=None)
+    paid_at: datetime | None = Field(
+        validation_alias="paidAt",
+        serialization_alias="paidAt",
+        default=None,
+    )
     date: datetime | None = None
 
 
@@ -3227,7 +3549,11 @@ class PostApiV1InvoiceResponseInvoiceCustomer(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    correlation_id: str | None = Field(alias="correlationID", default=None)
+    correlation_id: str | None = Field(
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
+        default=None,
+    )
     name: str | None = None
 
 
@@ -3280,7 +3606,8 @@ class PostApiV1PaymentBodyBoleto(BaseSchema):
 
     type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
     boleto_barcode: str = Field(
-        alias="boletoBarcode",
+        validation_alias="boletoBarcode",
+        serialization_alias="boletoBarcode",
         description=(
             "the boleto barcode to be paid (44, 47 or 48 digits). The amount, due date "
             "and beneficiary are resolved from the validated boleto, so value and "
@@ -3288,11 +3615,13 @@ class PostApiV1PaymentBodyBoleto(BaseSchema):
         ),
     )
     correlation_id: str = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="a unique identifier for your payment",
     )
     source_account_id: str | None = Field(
-        alias="sourceAccountId",
+        validation_alias="sourceAccountId",
+        serialization_alias="sourceAccountId",
         description="optional source account ID to use for the payment",
         default=None,
     )
@@ -3305,7 +3634,8 @@ class PostApiV1PaymentBodyBoleto(BaseSchema):
         default=None,
     )
     auto_approve: bool | None = Field(
-        alias="autoApprove",
+        validation_alias="autoApprove",
+        serialization_alias="autoApprove",
         description=(
             "When true, creates and approves the payment in a single call returning "
             "the enriched response. Defaults to false."
@@ -3328,7 +3658,8 @@ class PostApiV1PaymentBodyManualAccount(BaseSchema):
     account: str = Field(description="account number")
     branch: str = Field(description="branch number")
     account_type: str = Field(
-        alias="accountType",
+        validation_alias="accountType",
+        serialization_alias="accountType",
         description="type of the account (e.g., TRAN)",
     )
 
@@ -3344,7 +3675,11 @@ class PostApiV1PaymentBodyManualHolderTaxId(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     type: str = Field(description="type of the tax ID (e.g., BR:CNPJ)")
-    tax_id: str = Field(alias="taxID", description="tax ID number")
+    tax_id: str = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        description="tax ID number",
+    )
 
 
 class PostApiV1PaymentBodyPixKey(BaseSchema):
@@ -3371,19 +3706,23 @@ class PostApiV1PaymentBodyPixKey(BaseSchema):
     type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
     value: float = Field(description="value of the requested payment in cents")
     destination_alias: str = Field(
-        alias="destinationAlias",
+        validation_alias="destinationAlias",
+        serialization_alias="destinationAlias",
         description="the pix key the payment should be sent to",
     )
     destination_alias_type: PaymentCreatePayloadPixKeyDestinationAliasType = Field(
-        alias="destinationAliasType",
+        validation_alias="destinationAliasType",
+        serialization_alias="destinationAliasType",
         description="the type of the pix key the payment should be sent to",
     )
     correlation_id: str = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="a unique identifier for your payment",
     )
     pix_key_end_to_end_id: str | None = Field(
-        alias="pixKeyEndToEndId",
+        validation_alias="pixKeyEndToEndId",
+        serialization_alias="pixKeyEndToEndId",
         description=(
             "the end to end id of the pix key used for track pix key consultations"
         ),
@@ -3398,7 +3737,8 @@ class PostApiV1PaymentBodyPixKey(BaseSchema):
         default=None,
     )
     auto_approve: bool | None = Field(
-        alias="autoApprove",
+        validation_alias="autoApprove",
+        serialization_alias="autoApprove",
         description=(
             "When true, creates and approves the payment in a single call returning "
             "the enriched response. Defaults to false."
@@ -3431,7 +3771,8 @@ class PostApiV1PaymentBodyQrCode(BaseSchema):
 
     type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
     qr_code: str = Field(
-        alias="qrCode",
+        validation_alias="qrCode",
+        serialization_alias="qrCode",
         description=(
             "the BR Code (Pix QR Code) string to be paid. The system will decode it "
             "and extract the destination and value automatically"
@@ -3445,11 +3786,13 @@ class PostApiV1PaymentBodyQrCode(BaseSchema):
         default=None,
     )
     correlation_id: str = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="a unique identifier for your payment",
     )
     source_account_id: str | None = Field(
-        alias="sourceAccountId",
+        validation_alias="sourceAccountId",
+        serialization_alias="sourceAccountId",
         description="optional source account ID to use for the payment",
         default=None,
     )
@@ -3462,7 +3805,8 @@ class PostApiV1PaymentBodyQrCode(BaseSchema):
         default=None,
     )
     auto_approve: bool | None = Field(
-        alias="autoApprove",
+        validation_alias="autoApprove",
+        serialization_alias="autoApprove",
         description=(
             "When true, creates and approves the payment in a single call returning "
             "the enriched response. Defaults to false."
@@ -3480,7 +3824,11 @@ class PostApiV1PixKeysCheckBody(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    pix_key: str = Field(alias="pixKey", description="The Pix key to check")
+    pix_key: str = Field(
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
+        description="The Pix key to check",
+    )
 
 
 class PostApiV1StablecoinDepositApproveBody(BaseSchema):
@@ -3493,7 +3841,8 @@ class PostApiV1StablecoinDepositApproveBody(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     correlation_id: str = Field(
-        alias="correlationId",
+        validation_alias="correlationId",
+        serialization_alias="correlationId",
         description="The correlationId supplied when the deposit was created.",
         min_length=1,
     )
@@ -3516,12 +3865,14 @@ class PostApiV1StablecoinDepositApproveResponse(BaseSchema):
         default=None,
     )
     correlation_id: str | None = Field(
-        alias="correlationId",
+        validation_alias="correlationId",
+        serialization_alias="correlationId",
         examples=["my-unique-id"],
         default=None,
     )
     deposit_id: str | None = Field(
-        alias="depositId",
+        validation_alias="depositId",
+        serialization_alias="depositId",
         examples=["6650abc1234def567890aaaa"],
         default=None,
     )
@@ -3555,7 +3906,8 @@ class PostApiV1SubaccountByIdCreditResponse(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     pix_key: str | None = Field(
-        alias="pixKey",
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
         examples=["subaccount@test.com"],
         default=None,
     )
@@ -3595,7 +3947,8 @@ class PostApiV1SubaccountByIdDebitResponse(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     pix_key: str | None = Field(
-        alias="pixKey",
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
         examples=["subaccount@test.com"],
         default=None,
     )
@@ -3650,24 +4003,51 @@ class PutApiV1InvoiceIntegrationBody(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    city_service_code: str | None = Field(alias="cityServiceCode", default=None)
-    municipal_subscription: str | None = Field(
-        alias="municipalSubscription",
+    city_service_code: str | None = Field(
+        validation_alias="cityServiceCode",
+        serialization_alias="cityServiceCode",
         default=None,
     )
-    rps_number: str | None = Field(alias="rpsNumber", default=None)
-    special_tax: str | None = Field(alias="specialTax", default=None)
-    tax_regime: str | None = Field(alias="taxRegime", default=None)
-    legal_nature: str | None = Field(alias="legalNature", default=None)
+    municipal_subscription: str | None = Field(
+        validation_alias="municipalSubscription",
+        serialization_alias="municipalSubscription",
+        default=None,
+    )
+    rps_number: str | None = Field(
+        validation_alias="rpsNumber",
+        serialization_alias="rpsNumber",
+        default=None,
+    )
+    special_tax: str | None = Field(
+        validation_alias="specialTax",
+        serialization_alias="specialTax",
+        default=None,
+    )
+    tax_regime: str | None = Field(
+        validation_alias="taxRegime",
+        serialization_alias="taxRegime",
+        default=None,
+    )
+    legal_nature: str | None = Field(
+        validation_alias="legalNature",
+        serialization_alias="legalNature",
+        default=None,
+    )
     federal_tax_determination: str | None = Field(
-        alias="federalTaxDetermination",
+        validation_alias="federalTaxDetermination",
+        serialization_alias="federalTaxDetermination",
         default=None,
     )
     municipal_tax_determination: str | None = Field(
-        alias="municipalTaxDetermination",
+        validation_alias="municipalTaxDetermination",
+        serialization_alias="municipalTaxDetermination",
         default=None,
     )
-    is_portal_nacional: bool | None = Field(alias="isPortalNacional", default=None)
+    is_portal_nacional: bool | None = Field(
+        validation_alias="isPortalNacional",
+        serialization_alias="isPortalNacional",
+        default=None,
+    )
 
 
 class PutApiV1InvoiceIntegrationResponse(BaseSchema):
@@ -3697,12 +4077,14 @@ class Refund(BaseSchema):
     value: float | None = None
     status: RefundStatus | None = None
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Your correlation ID to keep track of this refund",
         default=None,
     )
     refund_id: str | None = Field(
-        alias="refundId",
+        validation_alias="refundId",
+        serialization_alias="refundId",
         description="Unique refund ID for this pix refund",
         default=None,
     )
@@ -3725,12 +4107,14 @@ class RefundPayload(BaseSchema):
 
     value: float | None = None
     transaction_end_to_end_id: str | None = Field(
-        alias="transactionEndToEndId",
+        validation_alias="transactionEndToEndId",
+        serialization_alias="transactionEndToEndId",
         description="Your transaction ID, or endToEnd ID, to keep track of this refund",
         default=None,
     )
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Your correlation ID, unique identifier refund",
         default=None,
     )
@@ -3785,7 +4169,8 @@ class StablecoinDepositListItem(BaseSchema):
         default=None,
     )
     correlation_id: str | None = Field(
-        alias="correlationId",
+        validation_alias="correlationId",
+        serialization_alias="correlationId",
         description="Idempotency identifier supplied at creation. May be absent.",
         examples=["my-unique-id"],
         default=None,
@@ -3796,24 +4181,28 @@ class StablecoinDepositListItem(BaseSchema):
         default=None,
     )
     input_amount: float | None = Field(
-        alias="inputAmount",
+        validation_alias="inputAmount",
+        serialization_alias="inputAmount",
         description="Amount deposited, in cents (BRL).",
         examples=[10000],
         default=None,
     )
     input_currency: str | None = Field(
-        alias="inputCurrency",
+        validation_alias="inputCurrency",
+        serialization_alias="inputCurrency",
         examples=["BRL"],
         default=None,
     )
     output_amount: float | None = Field(
-        alias="outputAmount",
+        validation_alias="outputAmount",
+        serialization_alias="outputAmount",
         description="Amount of stablecoin received. May be absent until quoted.",
         examples=[18.45],
         default=None,
     )
     output_currency: str | None = Field(
-        alias="outputCurrency",
+        validation_alias="outputCurrency",
+        serialization_alias="outputCurrency",
         examples=["USDT"],
         default=None,
     )
@@ -3823,7 +4212,8 @@ class StablecoinDepositListItem(BaseSchema):
         default=None,
     )
     created_at: str | None = Field(
-        alias="createdAt",
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
         examples=["2026-06-05T12:00:00.000Z"],
         default=None,
     )
@@ -3844,22 +4234,26 @@ class StablecoinDepositQuote(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     input_amount: float | None = Field(
-        alias="inputAmount",
+        validation_alias="inputAmount",
+        serialization_alias="inputAmount",
         examples=[10000],
         default=None,
     )
     input_currency: str | None = Field(
-        alias="inputCurrency",
+        validation_alias="inputCurrency",
+        serialization_alias="inputCurrency",
         examples=["BRL"],
         default=None,
     )
     output_amount: float | None = Field(
-        alias="outputAmount",
+        validation_alias="outputAmount",
+        serialization_alias="outputAmount",
         examples=[18.45],
         default=None,
     )
     output_currency: str | None = Field(
-        alias="outputCurrency",
+        validation_alias="outputCurrency",
+        serialization_alias="outputCurrency",
         examples=["USDT"],
         default=None,
     )
@@ -3906,7 +4300,8 @@ class StablecoinDepositRequest(BaseSchema):
         default=None,
     )
     sub_account_id: str | None = Field(
-        alias="subAccountId",
+        validation_alias="subAccountId",
+        serialization_alias="subAccountId",
         description=(
             "Stable subaccount id to use. Optional; resolved from the company when "
             "omitted."
@@ -3914,12 +4309,14 @@ class StablecoinDepositRequest(BaseSchema):
         default=None,
     )
     correlation_id: str | None = Field(
-        alias="correlationId",
+        validation_alias="correlationId",
+        serialization_alias="correlationId",
         description="Unique identifier for idempotency. Optional.",
         default=None,
     )
     destination_wallet_address: str | None = Field(
-        alias="destinationWalletAddress",
+        validation_alias="destinationWalletAddress",
+        serialization_alias="destinationWalletAddress",
         description="Explicit destination wallet address for the stablecoin. Optional.",
         default=None,
     )
@@ -3936,7 +4333,11 @@ class StablecoinSubAccountCreateError(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     error: str | None = None
-    correlation_id: str | None = Field(alias="correlationId", default=None)
+    correlation_id: str | None = Field(
+        validation_alias="correlationId",
+        serialization_alias="correlationId",
+        default=None,
+    )
 
 
 class StablecoinSubAccountCreateRequest(BaseSchema):
@@ -3951,12 +4352,14 @@ class StablecoinSubAccountCreateRequest(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     account_register_id: str = Field(
-        alias="accountRegisterId",
+        validation_alias="accountRegisterId",
+        serialization_alias="accountRegisterId",
         description="The account register id whose KYC data backs the KYB.",
         examples=["6650abc1234def567890aaaa"],
     )
     company_bank_account_id: str | None = Field(
-        alias="companyBankAccountId",
+        validation_alias="companyBankAccountId",
+        serialization_alias="companyBankAccountId",
         description=(
             "Company bank account to associate with the subaccount. Defaults to the "
             "company's default bank account when omitted."
@@ -3978,7 +4381,8 @@ class StablecoinSubAccountCreateResponse(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     sub_account_id: str | None = Field(
-        alias="subAccountId",
+        validation_alias="subAccountId",
+        serialization_alias="subAccountId",
         description="The provider subaccount id.",
         examples=["sub_01HZ..."],
         default=None,
@@ -3989,7 +4393,8 @@ class StablecoinSubAccountCreateResponse(BaseSchema):
         default=None,
     )
     correlation_id: str | None = Field(
-        alias="correlationId",
+        validation_alias="correlationId",
+        serialization_alias="correlationId",
         examples=["3f1a2b3c-4d5e-6f70-8a9b-0c1d2e3f4a5b"],
         default=None,
     )
@@ -4014,7 +4419,8 @@ class StablecoinSubAccountItem(BaseSchema):
         default=None,
     )
     sub_account_id: str | None = Field(
-        alias="subAccountId",
+        validation_alias="subAccountId",
+        serialization_alias="subAccountId",
         description="The provider subaccount id. May be absent until provisioned.",
         examples=["sub_01HZ..."],
         default=None,
@@ -4025,7 +4431,8 @@ class StablecoinSubAccountItem(BaseSchema):
         default=None,
     )
     created_at: str | None = Field(
-        alias="createdAt",
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
         examples=["2026-06-05T12:00:00.000Z"],
         default=None,
     )
@@ -4047,7 +4454,8 @@ class SubAccount(BaseSchema):
 
     name: str | None = Field(description="Name of the sub account", default=None)
     pix_key: str | None = Field(
-        alias="pixKey",
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
         description="The pix key for the sub account",
         default=None,
     )
@@ -4056,7 +4464,8 @@ class SubAccount(BaseSchema):
         default=None,
     )
     withdraw_blocked: bool | None = Field(
-        alias="withdrawBlocked",
+        validation_alias="withdrawBlocked",
+        serialization_alias="withdrawBlocked",
         description=(
             "Whether withdrawals are blocked for this sub account due to an invalid or "
             "restricted pix key"
@@ -4076,7 +4485,8 @@ class SubAccountPayload(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     pix_key: str | None = Field(
-        alias="pixKey",
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
         description="The pix key for the sub account",
         default=None,
     )
@@ -4101,23 +4511,28 @@ class SubAccountTransferPayload(BaseSchema):
 
     value: float = Field(description="The value of the transfer in cents")
     from_pix_key: str = Field(
-        alias="fromPixKey",
+        validation_alias="fromPixKey",
+        serialization_alias="fromPixKey",
         description="The transfer origin pix key",
     )
     from_pix_key_type: PaymentCreatePayloadPixKeyDestinationAliasType = Field(
-        alias="fromPixKeyType",
+        validation_alias="fromPixKeyType",
+        serialization_alias="fromPixKeyType",
         description="The transfer origin pix key type",
     )
     to_pix_key: str = Field(
-        alias="toPixKey",
+        validation_alias="toPixKey",
+        serialization_alias="toPixKey",
         description="The transfer destination pix key",
     )
     to_pix_key_type: PaymentCreatePayloadPixKeyDestinationAliasType = Field(
-        alias="toPixKeyType",
+        validation_alias="toPixKeyType",
+        serialization_alias="toPixKeyType",
         description="The transfer destination pix key type",
     )
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Your correlation ID to keep track of this transfer",
         default=None,
     )
@@ -4137,7 +4552,8 @@ class SubAccountTransferResponsePayloadDestinationSubaccount(BaseSchema):
 
     name: str | None = Field(description="Name of the subaccount", default=None)
     pix_key: str | None = Field(
-        alias="pixKey",
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
         description="The pix key for the subaccount",
         default=None,
     )
@@ -4161,7 +4577,8 @@ class SubAccountTransferResponsePayloadOriginSubaccount(BaseSchema):
 
     name: str | None = Field(description="Name of the subaccount", default=None)
     pix_key: str | None = Field(
-        alias="pixKey",
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
         description="The pix key for the subaccount",
         default=None,
     )
@@ -4249,7 +4666,8 @@ class SubscriptionPayloadPixRecurringOptions(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     retry_policy: SubscriptionPixRecurringOptionsRetryPolicy | None = Field(
-        alias="retryPolicy",
+        validation_alias="retryPolicy",
+        serialization_alias="retryPolicy",
         default=None,
     )
     journey: SubscriptionPixRecurringOptionsJourney | None = Field(
@@ -4257,7 +4675,8 @@ class SubscriptionPayloadPixRecurringOptions(BaseSchema):
         default=None,
     )
     minimum_value: float | None = Field(
-        alias="minimumValue",
+        validation_alias="minimumValue",
+        serialization_alias="minimumValue",
         description="Minimum value for each cobr",
         default=None,
     )
@@ -4283,7 +4702,8 @@ class SubscriptionPixRecurringOptions(BaseSchema):
         default=None,
     )
     retry_policy: SubscriptionPixRecurringOptionsRetryPolicy | None = Field(
-        alias="retryPolicy",
+        validation_alias="retryPolicy",
+        serialization_alias="retryPolicy",
         default=None,
     )
     journey: SubscriptionPixRecurringOptionsJourney | None = Field(
@@ -4304,7 +4724,8 @@ class TaxIdObjectPayload(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     tax_id: str | None = Field(
-        alias="taxID",
+        validation_alias="taxID",
+        serialization_alias="taxID",
         description=(
             "The tax identifier of your account holder. This should be a raw string "
             "with only digits."
@@ -4334,12 +4755,36 @@ class TokenBucketLog(BaseSchema):
     operation: TokenBucketLogOperation | None = None
     reason: str | None = None
     tokens: float | None = None
-    tokens_before: float | None = Field(alias="tokensBefore", default=None)
-    tokens_after: float | None = Field(alias="tokensAfter", default=None)
-    end_to_end_id: str | None = Field(alias="endToEndId", default=None)
-    pix_key: str | None = Field(alias="pixKey", default=None)
-    created_at: datetime | None = Field(alias="createdAt", default=None)
-    updated_at: datetime | None = Field(alias="updatedAt", default=None)
+    tokens_before: float | None = Field(
+        validation_alias="tokensBefore",
+        serialization_alias="tokensBefore",
+        default=None,
+    )
+    tokens_after: float | None = Field(
+        validation_alias="tokensAfter",
+        serialization_alias="tokensAfter",
+        default=None,
+    )
+    end_to_end_id: str | None = Field(
+        validation_alias="endToEndId",
+        serialization_alias="endToEndId",
+        default=None,
+    )
+    pix_key: str | None = Field(
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
+        default=None,
+    )
+    created_at: datetime | None = Field(
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
+        default=None,
+    )
+    updated_at: datetime | None = Field(
+        validation_alias="updatedAt",
+        serialization_alias="updatedAt",
+        default=None,
+    )
 
 
 class Transaction2(BaseSchema):
@@ -4364,12 +4809,14 @@ class Transaction2(BaseSchema):
         default=None,
     )
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="The correlation ID of the transaction",
         default=None,
     )
     destination_alias: str | None = Field(
-        alias="destinationAlias",
+        validation_alias="destinationAlias",
+        serialization_alias="destinationAlias",
         description="The pix key of the transaction",
         default=None,
     )
@@ -4389,7 +4836,8 @@ class TransactionWebhookSentItem(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     is_retry: bool | None = Field(
-        alias="isRetry",
+        validation_alias="isRetry",
+        serialization_alias="isRetry",
         description="Whether this webhook delivery was a retry",
         default=None,
     )
@@ -4414,19 +4862,22 @@ class TransferCreatePayload(BaseSchema):
         default=None,
     )
     from_pix_key: str | None = Field(
-        alias="fromPixKey",
+        validation_alias="fromPixKey",
+        serialization_alias="fromPixKey",
         description=(
             "the pix key of the account the value of the transfer will come out from"
         ),
         default=None,
     )
     to_pix_key: str | None = Field(
-        alias="toPixKey",
+        validation_alias="toPixKey",
+        serialization_alias="toPixKey",
         description="the pix key of the account the value of the transfer will go to",
         default=None,
     )
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="your correlation ID to keep track of this transfer",
         default=None,
     )
@@ -4449,7 +4900,8 @@ class TransferTransaction(BaseSchema):
     )
     time: str | None = Field(description="the time the transfer happened", default=None)
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="your correlation ID to keep track of this transfer",
         default=None,
     )
@@ -4548,9 +5000,21 @@ class Webhook(BaseSchema):
     )
     url: str | None = None
     authorization: str | None = None
-    is_active: bool | None = Field(alias="isActive", default=None)
-    created_at: str | None = Field(alias="createdAt", default=None)
-    updated_at: str | None = Field(alias="updatedAt", default=None)
+    is_active: bool | None = Field(
+        validation_alias="isActive",
+        serialization_alias="isActive",
+        default=None,
+    )
+    created_at: str | None = Field(
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
+        default=None,
+    )
+    updated_at: str | None = Field(
+        validation_alias="updatedAt",
+        serialization_alias="updatedAt",
+        default=None,
+    )
 
 
 class WebhookPayload(BaseSchema):
@@ -4642,7 +5106,11 @@ class WebhookPayload(BaseSchema):
     )
     url: str | None = None
     authorization: str | None = None
-    is_active: bool | None = Field(alias="isActive", default=None)
+    is_active: bool | None = Field(
+        validation_alias="isActive",
+        serialization_alias="isActive",
+        default=None,
+    )
 
 
 class WithdrawTransaction(BaseSchema):
@@ -4656,7 +5124,8 @@ class WithdrawTransaction(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     end_to_end_id: str | None = Field(
-        alias="endToEndId",
+        validation_alias="endToEndId",
+        serialization_alias="endToEndId",
         description="ID of the Withdraw Transaction",
         default=None,
     )
@@ -4677,22 +5146,29 @@ class AccountRegister(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     official_name: str | None = Field(
-        alias="officialName",
+        validation_alias="officialName",
+        serialization_alias="officialName",
         description="Official name of the company",
         default=None,
     )
     trade_name: str | None = Field(
-        alias="tradeName",
+        validation_alias="tradeName",
+        serialization_alias="tradeName",
         description="Trade name of the company",
         default=None,
     )
-    tax_id: AccountRegisterTaxId | None = Field(alias="taxID", default=None)
+    tax_id: AccountRegisterTaxId | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        default=None,
+    )
     status: str | None = Field(
         description="Status of the account registration",
         default=None,
     )
     annual_revenue: float | None = Field(
-        alias="annualRevenue",
+        validation_alias="annualRevenue",
+        serialization_alias="annualRevenue",
         description="Annual revenue of the company",
         default=None,
     )
@@ -4711,16 +5187,22 @@ class AccountRegisterResponse(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     official_name: str | None = Field(
-        alias="officialName",
+        validation_alias="officialName",
+        serialization_alias="officialName",
         description="Official name of the company",
         default=None,
     )
     trade_name: str | None = Field(
-        alias="tradeName",
+        validation_alias="tradeName",
+        serialization_alias="tradeName",
         description="Trade name of the company",
         default=None,
     )
-    tax_id: AccountRegisterResponseTaxId | None = Field(alias="taxID", default=None)
+    tax_id: AccountRegisterResponseTaxId | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        default=None,
+    )
     status: str | None = Field(
         description="Status of the account registration",
         default=None,
@@ -4738,7 +5220,8 @@ class ApplicationPayload(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     account_id: str | None = Field(
-        alias="accountId",
+        validation_alias="accountId",
+        serialization_alias="accountId",
         description="The ID of the company bank account",
         default=None,
     )
@@ -4770,23 +5253,27 @@ class BoletoValidatedInfo(BaseSchema):
         default=None,
     )
     expires_date: str | None = Field(
-        alias="expiresDate",
+        validation_alias="expiresDate",
+        serialization_alias="expiresDate",
         description="Due date (ISO 8601), when available.",
         examples=["2026-06-27T02:59:59.999Z"],
         default=None,
     )
     total_value: float = Field(
-        alias="totalValue",
+        validation_alias="totalValue",
+        serialization_alias="totalValue",
         description="Total amount to pay, in cents.",
         examples=[300],
     )
     issuing_entity: BoletoValidatedInfoIssuingEntity | None = Field(
-        alias="issuingEntity",
+        validation_alias="issuingEntity",
+        serialization_alias="issuingEntity",
         description="Issuing institution, when available.",
         default=None,
     )
     final_beneficiary: BoletoValidatedInfoFinalBeneficiary | None = Field(
-        alias="finalBeneficiary",
+        validation_alias="finalBeneficiary",
+        serialization_alias="finalBeneficiary",
         description="Final beneficiary, when available.",
         default=None,
     )
@@ -4819,7 +5306,8 @@ class ChargePayloadDiscountSettings(BaseSchema):
     )
     discount_fixed_date: list[ChargePayloadDiscountSettingsDiscountFixedDateItem] = (
         Field(
-            alias="discountFixedDate",
+            validation_alias="discountFixedDate",
+            serialization_alias="discountFixedDate",
             description=(
                 "Absolute discounts applied to charge. Required when `modality` is "
                 "`FIXED_VALUE_UNTIL_SPECIFIED_DATE` or "
@@ -4863,18 +5351,35 @@ class ChargePaymentMethodsPix(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     method: str | None = None
-    transaction_id: str | None = Field(alias="transactionID", default=None)
+    transaction_id: str | None = Field(
+        validation_alias="transactionID",
+        serialization_alias="transactionID",
+        default=None,
+    )
     identifier: str | None = None
     additional_info: list[ChargePaymentMethodsPixAdditionalInfoItem] = Field(
-        alias="additionalInfo",
+        validation_alias="additionalInfo",
+        serialization_alias="additionalInfo",
         default_factory=list,
     )
     fee: float | None = None
     value: float | None = None
     status: str | None = None
-    tx_id: str | None = Field(alias="txId", default=None)
-    br_code: str | None = Field(alias="brCode", default=None)
-    qr_code_image: str | None = Field(alias="qrCodeImage", default=None)
+    tx_id: str | None = Field(
+        validation_alias="txId",
+        serialization_alias="txId",
+        default=None,
+    )
+    br_code: str | None = Field(
+        validation_alias="brCode",
+        serialization_alias="brCode",
+        default=None,
+    )
+    qr_code_image: str | None = Field(
+        validation_alias="qrCodeImage",
+        serialization_alias="qrCodeImage",
+        default=None,
+    )
 
 
 class CompanyBankAccount(BaseSchema):
@@ -4895,31 +5400,40 @@ class CompanyBankAccount(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     account_id: str | None = Field(
-        alias="accountId",
+        validation_alias="accountId",
+        serialization_alias="accountId",
         description="ID of the Account",
         default=None,
     )
-    is_default: bool | None = Field(alias="isDefault", default=None)
+    is_default: bool | None = Field(
+        validation_alias="isDefault",
+        serialization_alias="isDefault",
+        default=None,
+    )
     balance: CompanyBankAccountBalance | None = None
     tax_id: str | None = Field(
-        alias="taxId",
+        validation_alias="taxId",
+        serialization_alias="taxId",
         description="Tax ID associated with the account",
         default=None,
     )
     official_name: str | None = Field(
-        alias="officialName",
+        validation_alias="officialName",
+        serialization_alias="officialName",
         description="Official name of the account holder",
         default=None,
     )
     trade_name: str | None = Field(
-        alias="tradeName",
+        validation_alias="tradeName",
+        serialization_alias="tradeName",
         description="Trade name of the account holder",
         default=None,
     )
     branch: str | None = Field(description="Bank branch number", default=None)
     account: str | None = Field(description="Bank account number", default=None)
     account_name: str | None = Field(
-        alias="accountName",
+        validation_alias="accountName",
+        serialization_alias="accountName",
         description="Name of the account",
         default=None,
     )
@@ -4945,7 +5459,11 @@ class CompanyObjectPayload(BaseSchema):
         description="The name of the company that is related to this preregistration.",
         default=None,
     )
-    tax_id: TaxIdObjectPayload | None = Field(alias="taxID", default=None)
+    tax_id: TaxIdObjectPayload | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        default=None,
+    )
 
 
 class CompanyResponse(BaseSchema):
@@ -4975,8 +5493,16 @@ class Customer(BaseSchema):
     name: str | None = None
     email: str | None = None
     phone: str | None = None
-    tax_id: CustomerTaxId | None = Field(alias="taxID", default=None)
-    correlation_id: str | None = Field(alias="correlationID", default=None)
+    tax_id: CustomerTaxId | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        default=None,
+    )
+    correlation_id: str | None = Field(
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
+        default=None,
+    )
     address: CustomerAddress | None = None
 
 
@@ -4996,7 +5522,11 @@ class CustomerPatchPayload(BaseSchema):
     name: str | None = None
     email: str | None = None
     phone: str | None = None
-    tax_id: str | None = Field(alias="taxID", default=None)
+    tax_id: str | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        default=None,
+    )
     address: CustomerPatchPayloadAddress | None = None
 
 
@@ -5019,8 +5549,16 @@ class CustomerPayload(BaseSchema):
     name: str
     email: str | None = None
     phone: str | None = None
-    tax_id: str | None = Field(alias="taxID", default=None)
-    correlation_id: str | None = Field(alias="correlationID", default=None)
+    tax_id: str | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        default=None,
+    )
+    correlation_id: str | None = Field(
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
+        default=None,
+    )
     address: CustomerPayloadAddress | None = None
 
 
@@ -5052,7 +5590,8 @@ class FraudMarkers(BaseSchema):
         default=None,
     )
     application_frauds: NumericWindow | None = Field(
-        alias="applicationFrauds",
+        validation_alias="applicationFrauds",
+        serialization_alias="applicationFrauds",
         description=(
             "Numeric window with 90 days, 12 months, and 60 months (values are numeric "
             "strings)."
@@ -5060,7 +5599,8 @@ class FraudMarkers(BaseSchema):
         default=None,
     )
     mule_accounts: NumericWindow | None = Field(
-        alias="muleAccounts",
+        validation_alias="muleAccounts",
+        serialization_alias="muleAccounts",
         description=(
             "Numeric window with 90 days, 12 months, and 60 months (values are numeric "
             "strings)."
@@ -5068,7 +5608,8 @@ class FraudMarkers(BaseSchema):
         default=None,
     )
     scammer_accounts: NumericWindow | None = Field(
-        alias="scammerAccounts",
+        validation_alias="scammerAccounts",
+        serialization_alias="scammerAccounts",
         description=(
             "Numeric window with 90 days, 12 months, and 60 months (values are numeric "
             "strings)."
@@ -5076,7 +5617,8 @@ class FraudMarkers(BaseSchema):
         default=None,
     )
     other_frauds: NumericWindow | None = Field(
-        alias="otherFrauds",
+        validation_alias="otherFrauds",
+        serialization_alias="otherFrauds",
         description=(
             "Numeric window with 90 days, 12 months, and 60 months (values are numeric "
             "strings)."
@@ -5084,7 +5626,8 @@ class FraudMarkers(BaseSchema):
         default=None,
     )
     unknown_frauds: NumericWindow | None = Field(
-        alias="unknownFrauds",
+        validation_alias="unknownFrauds",
+        serialization_alias="unknownFrauds",
         description=(
             "Numeric window with 90 days, 12 months, and 60 months (values are numeric "
             "strings)."
@@ -5092,7 +5635,8 @@ class FraudMarkers(BaseSchema):
         default=None,
     )
     total_fraud_transaction_amount: NumericWindow | None = Field(
-        alias="totalFraudTransactionAmount",
+        validation_alias="totalFraudTransactionAmount",
+        serialization_alias="totalFraudTransactionAmount",
         description=(
             "Numeric window with 90 days, 12 months, and 60 months (values are numeric "
             "strings)."
@@ -5100,7 +5644,8 @@ class FraudMarkers(BaseSchema):
         default=None,
     )
     distinct_fraud_reporters: NumericWindow | None = Field(
-        alias="distinctFraudReporters",
+        validation_alias="distinctFraudReporters",
+        serialization_alias="distinctFraudReporters",
         description=(
             "Numeric window with 90 days, 12 months, and 60 months (values are numeric "
             "strings)."
@@ -5138,7 +5683,8 @@ class FundsRecovery(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     dict_id: UUID | None = Field(
-        alias="dictId",
+        validation_alias="dictId",
+        serialization_alias="dictId",
         description=(
             "Unique identifier of the funds recovery. Use it as the `{id}` on the get "
             "and cancel endpoints."
@@ -5146,17 +5692,20 @@ class FundsRecovery(BaseSchema):
         default=None,
     )
     root_transaction_id: str | None = Field(
-        alias="rootTransactionId",
+        validation_alias="rootTransactionId",
+        serialization_alias="rootTransactionId",
         description="The endToEndId of the reported Pix transaction",
         default=None,
     )
     situation_type: FundsRecoverySituationType | None = Field(
-        alias="situationType",
+        validation_alias="situationType",
+        serialization_alias="situationType",
         description="The situation that motivated the funds recovery",
         default=None,
     )
     report_details: str | None = Field(
-        alias="reportDetails",
+        validation_alias="reportDetails",
+        serialization_alias="reportDetails",
         description="Detailed description of what happened",
         default=None,
     )
@@ -5172,12 +5721,14 @@ class FundsRecovery(BaseSchema):
         default=None,
     )
     reporter_participant: str | None = Field(
-        alias="reporterParticipant",
+        validation_alias="reporterParticipant",
+        serialization_alias="reporterParticipant",
         description="ISPB code of the institution that opened the funds recovery",
         default=None,
     )
     creation_time: str | None = Field(
-        alias="creationTime",
+        validation_alias="creationTime",
+        serialization_alias="creationTime",
         description=(
             "When the funds recovery was created on the Central Bank, in ISO 8601 "
             "format"
@@ -5185,7 +5736,8 @@ class FundsRecovery(BaseSchema):
         default=None,
     )
     last_modified: str | None = Field(
-        alias="lastModified",
+        validation_alias="lastModified",
+        serialization_alias="lastModified",
         description=(
             "Last time the funds recovery was modified on the Central Bank, in ISO "
             "8601 format"
@@ -5196,8 +5748,16 @@ class FundsRecovery(BaseSchema):
         description="Event history of the funds recovery, in chronological order",
         default_factory=list,
     )
-    created_at: str | None = Field(alias="createdAt", default=None)
-    updated_at: str | None = Field(alias="updatedAt", default=None)
+    created_at: str | None = Field(
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
+        default=None,
+    )
+    updated_at: str | None = Field(
+        validation_alias="updatedAt",
+        serialization_alias="updatedAt",
+        default=None,
+    )
 
 
 class GetApiV1AccountRegisterResponse(BaseSchema):
@@ -5215,23 +5775,27 @@ class GetApiV1AccountRegisterResponse(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     official_name: str | None = Field(
-        alias="officialName",
+        validation_alias="officialName",
+        serialization_alias="officialName",
         examples=["Company Official Name"],
         default=None,
     )
     trade_name: str | None = Field(
-        alias="tradeName",
+        validation_alias="tradeName",
+        serialization_alias="tradeName",
         examples=["Company Trade Name"],
         default=None,
     )
     type: str | None = Field(examples=["BAAS"], default=None)
     tax_id: GetApiV1AccountRegisterResponseTaxId | None = Field(
-        alias="taxID",
+        validation_alias="taxID",
+        serialization_alias="taxID",
         default=None,
     )
     status: str | None = Field(examples=["PENDING"], default=None)
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         examples=["6fe18d8e-5009-4f57-8f1d-5b084b6b83ac"],
         default=None,
     )
@@ -5402,7 +5966,11 @@ class GetApiV1QrcodeStaticByIdResponse(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    pix_qr_code: PixQrCode | None = Field(alias="pixQrCode", default=None)
+    pix_qr_code: PixQrCode | None = Field(
+        validation_alias="pixQrCode",
+        serialization_alias="pixQrCode",
+        default=None,
+    )
 
 
 class GetApiV1QrcodeStaticResponsePageInfoErrorsItem(BaseSchema):
@@ -5428,7 +5996,8 @@ class GetApiV1RefundByIdResponse(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     pix_transaction_refund: Refund | None = Field(
-        alias="pixTransactionRefund",
+        validation_alias="pixTransactionRefund",
+        serialization_alias="pixTransactionRefund",
         default=None,
     )
 
@@ -5464,38 +6033,49 @@ class GetApiV1StablecoinQuoteResponseQuote(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     base_price: float | None = Field(
-        alias="basePrice",
+        validation_alias="basePrice",
+        serialization_alias="basePrice",
         description="Exchange rate applied (BRL per stablecoin unit).",
         examples=[5.25],
         default=None,
     )
     input_amount: float | None = Field(
-        alias="inputAmount",
+        validation_alias="inputAmount",
+        serialization_alias="inputAmount",
         description="Input amount in BRL (currency unit, not cents).",
         examples=[100],
         default=None,
     )
     input_currency: str | None = Field(
-        alias="inputCurrency",
+        validation_alias="inputCurrency",
+        serialization_alias="inputCurrency",
         examples=["BRL"],
         default=None,
     )
     output_amount: float | None = Field(
-        alias="outputAmount",
+        validation_alias="outputAmount",
+        serialization_alias="outputAmount",
         description="Exact stablecoin amount the customer would receive.",
         examples=[19.04],
         default=None,
     )
     output_currency: str | None = Field(
-        alias="outputCurrency",
+        validation_alias="outputCurrency",
+        serialization_alias="outputCurrency",
         examples=["USDT"],
         default=None,
     )
     applied_fees: list[GetApiV1StablecoinQuoteResponseQuoteAppliedFeesItem] = Field(
-        alias="appliedFees",
+        validation_alias="appliedFees",
+        serialization_alias="appliedFees",
         default_factory=list,
     )
-    pair_name: str | None = Field(alias="pairName", examples=["BRL/USDT"], default=None)
+    pair_name: str | None = Field(
+        validation_alias="pairName",
+        serialization_alias="pairName",
+        examples=["BRL/USDT"],
+        default=None,
+    )
 
 
 class GetApiV1SubaccountByIdResponse(BaseSchema):
@@ -5507,7 +6087,11 @@ class GetApiV1SubaccountByIdResponse(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    sub_account: SubAccount | None = Field(alias="SubAccount", default=None)
+    sub_account: SubAccount | None = Field(
+        validation_alias="SubAccount",
+        serialization_alias="SubAccount",
+        default=None,
+    )
 
 
 class GetApiV1SubaccountResponsePageInfoErrorsItem(BaseSchema):
@@ -5577,14 +6161,21 @@ class InfractionReports(BaseSchema):
         examples=["2025-08-04T17:18:21.756Z"],
         default=None,
     )
-    open_reports: str | None = Field(alias="openReports", examples=["2"], default=None)
+    open_reports: str | None = Field(
+        validation_alias="openReports",
+        serialization_alias="openReports",
+        examples=["2"],
+        default=None,
+    )
     open_reports_distinct_reporters: str | None = Field(
-        alias="openReportsDistinctReporters",
+        validation_alias="openReportsDistinctReporters",
+        serialization_alias="openReportsDistinctReporters",
         examples=["1"],
         default=None,
     )
     rejected_reports: NumericWindow | None = Field(
-        alias="rejectedReports",
+        validation_alias="rejectedReports",
+        serialization_alias="rejectedReports",
         description=(
             "Numeric window with 90 days, 12 months, and 60 months (values are numeric "
             "strings)."
@@ -5614,19 +6205,55 @@ class InstallmentCobr(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    identifier_id: str | None = Field(alias="identifierId", default=None)
-    recurrency_id: str | None = Field(alias="recurrencyId", default=None)
-    installment_id: str | None = Field(alias="installmentId", default=None)
-    end_to_end_id: str | None = Field(alias="endToEndId", default=None)
-    reject_code: str | None = Field(alias="rejectCode", default=None)
+    identifier_id: str | None = Field(
+        validation_alias="identifierId",
+        serialization_alias="identifierId",
+        default=None,
+    )
+    recurrency_id: str | None = Field(
+        validation_alias="recurrencyId",
+        serialization_alias="recurrencyId",
+        default=None,
+    )
+    installment_id: str | None = Field(
+        validation_alias="installmentId",
+        serialization_alias="installmentId",
+        default=None,
+    )
+    end_to_end_id: str | None = Field(
+        validation_alias="endToEndId",
+        serialization_alias="endToEndId",
+        default=None,
+    )
+    reject_code: str | None = Field(
+        validation_alias="rejectCode",
+        serialization_alias="rejectCode",
+        default=None,
+    )
     status: str | None = None
     value: float | None = None
     tries: list[InstallmentCobrTriesItem] = Field(default_factory=list)
-    payment_date: str | None = Field(alias="paymentDate", default=None)
-    charge_date: str | None = Field(alias="chargeDate", default=None)
-    expiry_date: str | None = Field(alias="expiryDate", default=None)
+    payment_date: str | None = Field(
+        validation_alias="paymentDate",
+        serialization_alias="paymentDate",
+        default=None,
+    )
+    charge_date: str | None = Field(
+        validation_alias="chargeDate",
+        serialization_alias="chargeDate",
+        default=None,
+    )
+    expiry_date: str | None = Field(
+        validation_alias="expiryDate",
+        serialization_alias="expiryDate",
+        default=None,
+    )
     description: str | None = None
-    created_at: str | None = Field(alias="createdAt", default=None)
+    created_at: str | None = Field(
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
+        default=None,
+    )
 
 
 class KycOnboardingAccountRegisterRepresentativesItem(BaseSchema):
@@ -5642,7 +6269,8 @@ class KycOnboardingAccountRegisterRepresentativesItem(BaseSchema):
 
     name: str | None = Field(examples=["NOME_DO_SOCIO"], default=None)
     tax_id: KycOnboardingAccountRegisterRepresentativesItemTaxId | None = Field(
-        alias="taxID",
+        validation_alias="taxID",
+        serialization_alias="taxID",
         default=None,
     )
 
@@ -5664,11 +6292,13 @@ class KycOnboardingRequest(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     tax_id: str = Field(
-        alias="taxID",
+        validation_alias="taxID",
+        serialization_alias="taxID",
         description="CNPJ da empresa do merchant (com ou sem mascara)",
     )
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description=(
             "Identificador unico para idempotencia. Se nao informado, o CNPJ sera "
             "usado."
@@ -5676,7 +6306,8 @@ class KycOnboardingRequest(BaseSchema):
         default=None,
     )
     redirect_url: str | None = Field(
-        alias="redirectUrl",
+        validation_alias="redirectUrl",
+        serialization_alias="redirectUrl",
         description=(
             "URL para onde o merchant sera redirecionado apos concluir o "
             "onboarding.\nQuando informado, a pagina final do fluxo KYC redireciona "
@@ -5718,7 +6349,11 @@ class Party(BaseSchema):
     account: PartyAccount | None = None
     psp: PartyPsp | None = None
     holder: PartyHolder | None = None
-    tax_id: PartyTaxId | None = Field(alias="taxID", default=None)
+    tax_id: PartyTaxId | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        default=None,
+    )
 
 
 class PatchApiV1InvoiceIntegrationResponse(BaseSchema):
@@ -5748,21 +6383,25 @@ class PaymentBoleto(BaseSchema):
 
     barcode: str | None = Field(description="the boleto barcode", default=None)
     expires_date: str | None = Field(
-        alias="expiresDate",
+        validation_alias="expiresDate",
+        serialization_alias="expiresDate",
         description="due date (ISO 8601)",
         default=None,
     )
     total_value: float | None = Field(
-        alias="totalValue",
+        validation_alias="totalValue",
+        serialization_alias="totalValue",
         description="total amount to pay, in cents",
         default=None,
     )
     issuing_entity: PaymentBoletoIssuingEntity | None = Field(
-        alias="issuingEntity",
+        validation_alias="issuingEntity",
+        serialization_alias="issuingEntity",
         default=None,
     )
     final_beneficiary: PaymentBoletoFinalBeneficiary | None = Field(
-        alias="finalBeneficiary",
+        validation_alias="finalBeneficiary",
+        serialization_alias="finalBeneficiary",
         default=None,
     )
 
@@ -5778,7 +6417,10 @@ class PaymentCreatePayloadManualHolder(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     name: str = Field(description="name of the account holder")
-    tax_id: PaymentCreatePayloadManualHolderTaxId = Field(alias="taxID")
+    tax_id: PaymentCreatePayloadManualHolderTaxId = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+    )
 
 
 class PixKeyCheck(BaseSchema):
@@ -5793,9 +6435,17 @@ class PixKeyCheck(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    pix_key: str | None = Field(alias="pixKey", default=None)
+    pix_key: str | None = Field(
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
+        default=None,
+    )
     type: PixKeyType | None = None
-    pix_key_end_to_end_id: str | None = Field(alias="pixKeyEndToEndId", default=None)
+    pix_key_end_to_end_id: str | None = Field(
+        validation_alias="pixKeyEndToEndId",
+        serialization_alias="pixKeyEndToEndId",
+        default=None,
+    )
     owner: PixKeyCheckOwner | None = None
 
 
@@ -5863,7 +6513,8 @@ class PostApiV1DecodeEmvResponseCobLocationPayload(BaseSchema):
     debtor: PostApiV1DecodeEmvResponseCobLocationPayloadDebtor | None = None
     additional_info: list[PostApiV1DecodeEmvResponseCobLocationPayloadAdditionalI] = (
         Field(
-            alias="additionalInfo",
+            validation_alias="additionalInfo",
+            serialization_alias="additionalInfo",
             default_factory=list,
         )
     )
@@ -5900,39 +6551,65 @@ class PostApiV1DecodeEmvResponseEmv(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     payload_format_indicator: str | None = Field(
-        alias="payloadFormatIndicator",
+        validation_alias="payloadFormatIndicator",
+        serialization_alias="payloadFormatIndicator",
         default=None,
     )
     point_of_initiation_method: str | None = Field(
-        alias="pointOfInitiationMethod",
+        validation_alias="pointOfInitiationMethod",
+        serialization_alias="pointOfInitiationMethod",
         description='Present when EMV indicates a dynamic QR (e.g. "12")',
         default=None,
     )
     merchant_account_information_pix: (
         PostApiV1DecodeEmvResponseEmvMerchantAccountInformation | None
     ) = Field(
-        alias="merchantAccountInformationPix",
+        validation_alias="merchantAccountInformationPix",
+        serialization_alias="merchantAccountInformationPix",
         description='Parsed "26"/"00"... Pix merchant account info',
         default=None,
     )
     merchant_category_code: str | None = Field(
-        alias="merchantCategoryCode",
+        validation_alias="merchantCategoryCode",
+        serialization_alias="merchantCategoryCode",
         default=None,
     )
-    transaction_currency: str | None = Field(alias="transactionCurrency", default=None)
-    transaction_amount: str | None = Field(alias="transactionAmount", default=None)
-    country_code: str | None = Field(alias="countryCode", default=None)
-    merchant_name: str | None = Field(alias="merchantName", default=None)
-    merchant_city: str | None = Field(alias="merchantCity", default=None)
+    transaction_currency: str | None = Field(
+        validation_alias="transactionCurrency",
+        serialization_alias="transactionCurrency",
+        default=None,
+    )
+    transaction_amount: str | None = Field(
+        validation_alias="transactionAmount",
+        serialization_alias="transactionAmount",
+        default=None,
+    )
+    country_code: str | None = Field(
+        validation_alias="countryCode",
+        serialization_alias="countryCode",
+        default=None,
+    )
+    merchant_name: str | None = Field(
+        validation_alias="merchantName",
+        serialization_alias="merchantName",
+        default=None,
+    )
+    merchant_city: str | None = Field(
+        validation_alias="merchantCity",
+        serialization_alias="merchantCity",
+        default=None,
+    )
     additional_data_field_template: (
         PostApiV1DecodeEmvResponseEmvAdditionalDataFieldTemplat | None
     ) = Field(
-        alias="additionalDataFieldTemplate",
+        validation_alias="additionalDataFieldTemplate",
+        serialization_alias="additionalDataFieldTemplate",
         default=None,
     )
     unreserved_templates: PostApiV1DecodeEmvResponseEmvUnreservedTemplates | None = (
         Field(
-            alias="unreservedTemplates",
+            validation_alias="unreservedTemplates",
+            serialization_alias="unreservedTemplates",
             default=None,
         )
     )
@@ -6036,9 +6713,17 @@ class PostApiV1InvoiceResponseInvoice(BaseSchema):
     id: str | None = None
     value: float | None = None
     date: datetime | None = None
-    billing_date: datetime | None = Field(alias="billingDate", default=None)
+    billing_date: datetime | None = Field(
+        validation_alias="billingDate",
+        serialization_alias="billingDate",
+        default=None,
+    )
     status: str | None = None
-    status_raw: str | None = Field(alias="statusRaw", default=None)
+    status_raw: str | None = Field(
+        validation_alias="statusRaw",
+        serialization_alias="statusRaw",
+        default=None,
+    )
     customer: PostApiV1InvoiceResponseInvoiceCustomer | None = None
     charge: PostApiV1InvoiceResponseInvoiceCharge | None = None
 
@@ -6055,7 +6740,11 @@ class PostApiV1PartnerApplicationBody(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     application: PostApiV1PartnerApplicationBodyApplication | None = None
-    tax_id: TaxIdObjectPayload | None = Field(alias="taxID", default=None)
+    tax_id: TaxIdObjectPayload | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        default=None,
+    )
 
 
 class PostApiV1PartnerApplicationResponse(BaseSchema):
@@ -6079,7 +6768,10 @@ class PostApiV1PaymentBodyManualHolder(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     name: str = Field(description="name of the account holder")
-    tax_id: PostApiV1PaymentBodyManualHolderTaxId = Field(alias="taxID")
+    tax_id: PostApiV1PaymentBodyManualHolderTaxId = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+    )
 
 
 class PostApiV1QrcodeStaticResponse(BaseSchema):
@@ -6093,9 +6785,21 @@ class PostApiV1QrcodeStaticResponse(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    pix_qr_code: PixQrCode | None = Field(alias="pixQrCode", default=None)
-    correlation_id: str | None = Field(alias="correlationID", default=None)
-    br_code: str | None = Field(alias="brCode", default=None)
+    pix_qr_code: PixQrCode | None = Field(
+        validation_alias="pixQrCode",
+        serialization_alias="pixQrCode",
+        default=None,
+    )
+    correlation_id: str | None = Field(
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
+        default=None,
+    )
+    br_code: str | None = Field(
+        validation_alias="brCode",
+        serialization_alias="brCode",
+        default=None,
+    )
 
 
 class PostApiV1RefundResponse(BaseSchema):
@@ -6127,7 +6831,11 @@ class PostApiV1SubaccountResponse(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    sub_account: SubAccount | None = Field(alias="SubAccount", default=None)
+    sub_account: SubAccount | None = Field(
+        validation_alias="SubAccount",
+        serialization_alias="SubAccount",
+        default=None,
+    )
 
 
 class PostApiV1TransferResponse(BaseSchema):
@@ -6182,7 +6890,10 @@ class PreRegistrationObject(BaseSchema):
         description="A website that is related to this preregistration.",
         default=None,
     )
-    tax_id: TaxIdObjectPayload = Field(alias="taxID")
+    tax_id: TaxIdObjectPayload = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+    )
 
 
 class PreRegistrationObjectPayload(BaseSchema):
@@ -6203,7 +6914,11 @@ class PreRegistrationObjectPayload(BaseSchema):
         ),
         default=None,
     )
-    tax_id: TaxIdObjectPayload | None = Field(alias="taxID", default=None)
+    tax_id: TaxIdObjectPayload | None = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+        default=None,
+    )
 
 
 class PreRegistrationUserObject(BaseSchema):
@@ -6228,14 +6943,16 @@ class PreRegistrationUserObject(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     first_name: str = Field(
-        alias="firstName",
+        validation_alias="firstName",
+        serialization_alias="firstName",
         description=(
             "The user's first name.\nIf the pre registration has been approved, this "
             "will be turn the company's first user first name."
         ),
     )
     last_name: str = Field(
-        alias="lastName",
+        validation_alias="lastName",
+        serialization_alias="lastName",
         description=(
             "The user's last name.\nIf the pre registration has been approved, this "
             "will be turn the company's first user last name."
@@ -6257,7 +6974,10 @@ class PreRegistrationUserObject(BaseSchema):
             "[+][country code][local phone number]."
         ),
     )
-    tax_id: TaxIdObjectPayload = Field(alias="taxID")
+    tax_id: TaxIdObjectPayload = Field(
+        validation_alias="taxID",
+        serialization_alias="taxID",
+    )
 
 
 class StablecoinDepositGetResponse(BaseSchema):
@@ -6314,12 +7034,14 @@ class StablecoinDepositResponse(BaseSchema):
         default=None,
     )
     deposit_id: str | None = Field(
-        alias="depositId",
+        validation_alias="depositId",
+        serialization_alias="depositId",
         examples=["6650..."],
         default=None,
     )
     correlation_id: str | None = Field(
-        alias="correlationId",
+        validation_alias="correlationId",
+        serialization_alias="correlationId",
         examples=["my-unique-id"],
         default=None,
     )
@@ -6339,7 +7061,8 @@ class StablecoinSubAccountGetResponse(BaseSchema):
 
     status: str | None = Field(examples=["ok"], default=None)
     sub_account: StablecoinSubAccountItem | None = Field(
-        alias="subAccount",
+        validation_alias="subAccount",
+        serialization_alias="subAccount",
         default=None,
     )
 
@@ -6356,7 +7079,8 @@ class StablecoinSubAccountListResponse(BaseSchema):
 
     status: str | None = Field(examples=["ok"], default=None)
     sub_accounts: list[StablecoinSubAccountItem] = Field(
-        alias="subAccounts",
+        validation_alias="subAccounts",
+        serialization_alias="subAccounts",
         default_factory=list,
     )
 
@@ -6381,12 +7105,14 @@ class SubAccountTransferResponsePayload(BaseSchema):
     destination_subaccount: (
         SubAccountTransferResponsePayloadDestinationSubaccount | None
     ) = Field(
-        alias="destinationSubaccount",
+        validation_alias="destinationSubaccount",
+        serialization_alias="destinationSubaccount",
         description="The destination subaccount",
         default=None,
     )
     origin_subaccount: SubAccountTransferResponsePayloadOriginSubaccount | None = Field(
-        alias="originSubaccount",
+        validation_alias="originSubaccount",
+        serialization_alias="originSubaccount",
         description="The destination subaccount",
         default=None,
     )
@@ -6409,7 +7135,8 @@ class SubscriptionPayloadCustomer(BaseSchema):
     email: str | None = Field(description="Customer email", default=None)
     phone: str | None = Field(description="Customer phone", default=None)
     tax_id: str | None = Field(
-        alias="taxID",
+        validation_alias="taxID",
+        serialization_alias="taxID",
         description="Customer taxID (CPF or CNPJ)",
         default=None,
     )
@@ -6494,7 +7221,8 @@ class ChargePayload(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     correlation_id: str = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Your correlation ID to keep track of this charge",
     )
     value: float = Field(description="Value in cents of this charge")
@@ -6510,17 +7238,20 @@ class ChargePayload(BaseSchema):
         default=None,
     )
     expires_in: float | None = Field(
-        alias="expiresIn",
+        validation_alias="expiresIn",
+        serialization_alias="expiresIn",
         description="Expires the charge in seconds (minimum is 5 minutes)",
         default=None,
     )
     expires_date: str | None = Field(
-        alias="expiresDate",
+        validation_alias="expiresDate",
+        serialization_alias="expiresDate",
         description="Expiration date of the charge. Only in ISO 8601 format.",
         default=None,
     )
     due_date: str | None = Field(
-        alias="dueDate",
+        validation_alias="dueDate",
+        serialization_alias="dueDate",
         description=(
             "Due date for OVERDUE, BOLETO, or subscription charges in ISO 8601 format."
         ),
@@ -6538,7 +7269,8 @@ class ChargePayload(BaseSchema):
         default=None,
     )
     ensure_same_tax_id: bool | None = Field(
-        alias="ensureSameTaxID",
+        validation_alias="ensureSameTaxID",
+        serialization_alias="ensureSameTaxID",
         description=(
             "true to ensure that the payer taxID must be the same as the customer "
             "taxID."
@@ -6546,19 +7278,22 @@ class ChargePayload(BaseSchema):
         default=None,
     )
     fixed_location: bool | None = Field(
-        alias="fixedLocation",
+        validation_alias="fixedLocation",
+        serialization_alias="fixedLocation",
         description=(
             "true to fix the qrcode of the charge, same qrcode to all future charges."
         ),
         default=None,
     )
     payment_link_id: str | None = Field(
-        alias="paymentLinkID",
+        validation_alias="paymentLinkID",
+        serialization_alias="paymentLinkID",
         description="Payment Link ID, used to link charges to the same qrCode.",
         default=None,
     )
     days_for_due_date: float | None = Field(
-        alias="daysForDueDate",
+        validation_alias="daysForDueDate",
+        serialization_alias="daysForDueDate",
         description=(
             "Time in days until the charge hits the deadline so fines and interests "
             "start applying. This property is only considered for charges of type "
@@ -6567,7 +7302,8 @@ class ChargePayload(BaseSchema):
         default=None,
     )
     days_after_due_date: float | None = Field(
-        alias="daysAfterDueDate",
+        validation_alias="daysAfterDueDate",
+        serialization_alias="daysAfterDueDate",
         description=(
             "Time in days that a charge is still payable after the deadline. This "
             "property is only considered for charges of type OVERDUE"
@@ -6589,7 +7325,8 @@ class ChargePayload(BaseSchema):
         default=None,
     )
     discount_settings: ChargePayloadDiscountSettings | None = Field(
-        alias="discountSettings",
+        validation_alias="discountSettings",
+        serialization_alias="discountSettings",
         description=(
             "Discount settings for the charge. This property is only considered for "
             "charges of type OVERDUE.\n\n**How it interacts with `fines` and "
@@ -6617,17 +7354,20 @@ class ChargePayload(BaseSchema):
         default=None,
     )
     additional_info: list[ChargePayloadAdditionalInfoItem] = Field(
-        alias="additionalInfo",
+        validation_alias="additionalInfo",
+        serialization_alias="additionalInfo",
         description="Additional info of the charge",
         default_factory=list,
     )
     enable_cashback_percentage: bool | None = Field(
-        alias="enableCashbackPercentage",
+        validation_alias="enableCashbackPercentage",
+        serialization_alias="enableCashbackPercentage",
         description="true to enable cashback and false to disable.",
         default=None,
     )
     enable_cashback_exclusive_percentage: bool | None = Field(
-        alias="enableCashbackExclusivePercentage",
+        validation_alias="enableCashbackExclusivePercentage",
+        serialization_alias="enableCashbackExclusivePercentage",
         description="true to enable fidelity cashback and false to disable.",
         default=None,
     )
@@ -6683,8 +7423,16 @@ class GetApiV1AccountResponsePageInfo(BaseSchema):
     )
     skip: float | None = None
     limit: float | None = None
-    has_previous_page: bool | None = Field(alias="hasPreviousPage", default=None)
-    has_next_page: bool | None = Field(alias="hasNextPage", default=None)
+    has_previous_page: bool | None = Field(
+        validation_alias="hasPreviousPage",
+        serialization_alias="hasPreviousPage",
+        default=None,
+    )
+    has_next_page: bool | None = Field(
+        validation_alias="hasNextPage",
+        serialization_alias="hasNextPage",
+        default=None,
+    )
 
 
 class GetApiV1ChargeResponsePageInfo(BaseSchema):
@@ -6704,8 +7452,16 @@ class GetApiV1ChargeResponsePageInfo(BaseSchema):
     errors: list[GetApiV1ChargeResponsePageInfoErrorsItem] = Field(default_factory=list)
     skip: float | None = None
     limit: float | None = None
-    has_previous_page: bool | None = Field(alias="hasPreviousPage", default=None)
-    has_next_page: bool | None = Field(alias="hasNextPage", default=None)
+    has_previous_page: bool | None = Field(
+        validation_alias="hasPreviousPage",
+        serialization_alias="hasPreviousPage",
+        default=None,
+    )
+    has_next_page: bool | None = Field(
+        validation_alias="hasNextPage",
+        serialization_alias="hasNextPage",
+        default=None,
+    )
 
 
 class GetApiV1CustomerByIdResponse(BaseSchema):
@@ -6737,8 +7493,16 @@ class GetApiV1CustomerResponsePageInfo(BaseSchema):
     )
     skip: float | None = None
     limit: float | None = None
-    has_previous_page: bool | None = Field(alias="hasPreviousPage", default=None)
-    has_next_page: bool | None = Field(alias="hasNextPage", default=None)
+    has_previous_page: bool | None = Field(
+        validation_alias="hasPreviousPage",
+        serialization_alias="hasPreviousPage",
+        default=None,
+    )
+    has_next_page: bool | None = Field(
+        validation_alias="hasNextPage",
+        serialization_alias="hasNextPage",
+        default=None,
+    )
 
 
 class GetApiV1DisputeResponsePageInfo(BaseSchema):
@@ -6760,8 +7524,16 @@ class GetApiV1DisputeResponsePageInfo(BaseSchema):
     )
     skip: float | None = None
     limit: float | None = None
-    has_previous_page: bool | None = Field(alias="hasPreviousPage", default=None)
-    has_next_page: bool | None = Field(alias="hasNextPage", default=None)
+    has_previous_page: bool | None = Field(
+        validation_alias="hasPreviousPage",
+        serialization_alias="hasPreviousPage",
+        default=None,
+    )
+    has_next_page: bool | None = Field(
+        validation_alias="hasNextPage",
+        serialization_alias="hasNextPage",
+        default=None,
+    )
 
 
 class GetApiV1PartnerAffiliateResponseAffiliatesItem(BaseSchema):
@@ -6795,8 +7567,16 @@ class GetApiV1PartnerAffiliateResponsePageInfo(BaseSchema):
     )
     skip: float | None = None
     limit: float | None = None
-    has_previous_page: bool | None = Field(alias="hasPreviousPage", default=None)
-    has_next_page: bool | None = Field(alias="hasNextPage", default=None)
+    has_previous_page: bool | None = Field(
+        validation_alias="hasPreviousPage",
+        serialization_alias="hasPreviousPage",
+        default=None,
+    )
+    has_next_page: bool | None = Field(
+        validation_alias="hasNextPage",
+        serialization_alias="hasNextPage",
+        default=None,
+    )
 
 
 class GetApiV1PartnerCompanyByTaxIdResponsePreRegistration(BaseSchema):
@@ -6811,7 +7591,10 @@ class GetApiV1PartnerCompanyByTaxIdResponsePreRegistration(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    pre_registration: PreRegistrationObjectPayload = Field(alias="preRegistration")
+    pre_registration: PreRegistrationObjectPayload = Field(
+        validation_alias="preRegistration",
+        serialization_alias="preRegistration",
+    )
     user: PreRegistrationUserObject
     company: CompanyObjectPayload | None = None
     account: AccountObjectPayload | None = None
@@ -6836,8 +7619,16 @@ class GetApiV1PartnerCompanyResponsePageInfo(BaseSchema):
     )
     skip: float | None = None
     limit: float | None = None
-    has_previous_page: bool | None = Field(alias="hasPreviousPage", default=None)
-    has_next_page: bool | None = Field(alias="hasNextPage", default=None)
+    has_previous_page: bool | None = Field(
+        validation_alias="hasPreviousPage",
+        serialization_alias="hasPreviousPage",
+        default=None,
+    )
+    has_next_page: bool | None = Field(
+        validation_alias="hasNextPage",
+        serialization_alias="hasNextPage",
+        default=None,
+    )
 
 
 class GetApiV1PartnerCompanyResponsePreRegistrationsItem(BaseSchema):
@@ -6852,7 +7643,10 @@ class GetApiV1PartnerCompanyResponsePreRegistrationsItem(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    pre_registration: PreRegistrationObjectPayload = Field(alias="preRegistration")
+    pre_registration: PreRegistrationObjectPayload = Field(
+        validation_alias="preRegistration",
+        serialization_alias="preRegistration",
+    )
     user: PreRegistrationUserObject
     company: CompanyObjectPayload | None = None
     account: AccountObjectPayload | None = None
@@ -6877,8 +7671,16 @@ class GetApiV1PaymentResponsePageInfo(BaseSchema):
     )
     skip: float | None = None
     limit: float | None = None
-    has_previous_page: bool | None = Field(alias="hasPreviousPage", default=None)
-    has_next_page: bool | None = Field(alias="hasNextPage", default=None)
+    has_previous_page: bool | None = Field(
+        validation_alias="hasPreviousPage",
+        serialization_alias="hasPreviousPage",
+        default=None,
+    )
+    has_next_page: bool | None = Field(
+        validation_alias="hasNextPage",
+        serialization_alias="hasNextPage",
+        default=None,
+    )
 
 
 class GetApiV1PixKeysResponse(BaseSchema):
@@ -6891,7 +7693,11 @@ class GetApiV1PixKeysResponse(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    pix_keys: list[PixKey] = Field(alias="pixKeys", default_factory=list)
+    pix_keys: list[PixKey] = Field(
+        validation_alias="pixKeys",
+        serialization_alias="pixKeys",
+        default_factory=list,
+    )
     account: CompanyBankAccount | None = None
 
 
@@ -6914,8 +7720,16 @@ class GetApiV1PixKeysTokensLogsResponsePageInfo(BaseSchema):
     )
     skip: float | None = None
     limit: float | None = None
-    has_previous_page: bool | None = Field(alias="hasPreviousPage", default=None)
-    has_next_page: bool | None = Field(alias="hasNextPage", default=None)
+    has_previous_page: bool | None = Field(
+        validation_alias="hasPreviousPage",
+        serialization_alias="hasPreviousPage",
+        default=None,
+    )
+    has_next_page: bool | None = Field(
+        validation_alias="hasNextPage",
+        serialization_alias="hasNextPage",
+        default=None,
+    )
 
 
 class GetApiV1QrcodeStaticResponsePageInfo(BaseSchema):
@@ -6937,8 +7751,16 @@ class GetApiV1QrcodeStaticResponsePageInfo(BaseSchema):
     )
     skip: float | None = None
     limit: float | None = None
-    has_previous_page: bool | None = Field(alias="hasPreviousPage", default=None)
-    has_next_page: bool | None = Field(alias="hasNextPage", default=None)
+    has_previous_page: bool | None = Field(
+        validation_alias="hasPreviousPage",
+        serialization_alias="hasPreviousPage",
+        default=None,
+    )
+    has_next_page: bool | None = Field(
+        validation_alias="hasNextPage",
+        serialization_alias="hasNextPage",
+        default=None,
+    )
 
 
 class GetApiV1RefundResponsePageInfo(BaseSchema):
@@ -6958,8 +7780,16 @@ class GetApiV1RefundResponsePageInfo(BaseSchema):
     errors: list[GetApiV1RefundResponsePageInfoErrorsItem] = Field(default_factory=list)
     skip: float | None = None
     limit: float | None = None
-    has_previous_page: bool | None = Field(alias="hasPreviousPage", default=None)
-    has_next_page: bool | None = Field(alias="hasNextPage", default=None)
+    has_previous_page: bool | None = Field(
+        validation_alias="hasPreviousPage",
+        serialization_alias="hasPreviousPage",
+        default=None,
+    )
+    has_next_page: bool | None = Field(
+        validation_alias="hasNextPage",
+        serialization_alias="hasNextPage",
+        default=None,
+    )
 
 
 class GetApiV1StablecoinQuoteResponse(BaseSchema):
@@ -6993,8 +7823,16 @@ class GetApiV1SubaccountResponsePageInfo(BaseSchema):
     )
     skip: float | None = None
     limit: float | None = None
-    has_previous_page: bool | None = Field(alias="hasPreviousPage", default=None)
-    has_next_page: bool | None = Field(alias="hasNextPage", default=None)
+    has_previous_page: bool | None = Field(
+        validation_alias="hasPreviousPage",
+        serialization_alias="hasPreviousPage",
+        default=None,
+    )
+    has_next_page: bool | None = Field(
+        validation_alias="hasNextPage",
+        serialization_alias="hasNextPage",
+        default=None,
+    )
 
 
 class GetApiV1TransactionResponsePageInfo(BaseSchema):
@@ -7016,8 +7854,16 @@ class GetApiV1TransactionResponsePageInfo(BaseSchema):
     )
     skip: float | None = None
     limit: float | None = None
-    has_previous_page: bool | None = Field(alias="hasPreviousPage", default=None)
-    has_next_page: bool | None = Field(alias="hasNextPage", default=None)
+    has_previous_page: bool | None = Field(
+        validation_alias="hasPreviousPage",
+        serialization_alias="hasPreviousPage",
+        default=None,
+    )
+    has_next_page: bool | None = Field(
+        validation_alias="hasNextPage",
+        serialization_alias="hasNextPage",
+        default=None,
+    )
 
 
 class GetApiV1WebhookResponsePageInfo(BaseSchema):
@@ -7052,21 +7898,39 @@ class Installment(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     date_generate_charge: datetime | None = Field(
-        alias="dateGenerateCharge",
+        validation_alias="dateGenerateCharge",
+        serialization_alias="dateGenerateCharge",
         default=None,
     )
     expiration: float | None = None
-    installment_number: float | None = Field(alias="installmentNumber", default=None)
-    value: float | None = None
-    status: str | None = None
-    created_at: datetime | None = Field(alias="createdAt", default=None)
-    cobr: InstallmentCobr | None = None
-    payment_subscription_global_id: str | None = Field(
-        alias="paymentSubscriptionGlobalID",
+    installment_number: float | None = Field(
+        validation_alias="installmentNumber",
+        serialization_alias="installmentNumber",
         default=None,
     )
-    correlation_id: str | None = Field(alias="correlationID", default=None)
-    global_id: str | None = Field(alias="globalID", default=None)
+    value: float | None = None
+    status: str | None = None
+    created_at: datetime | None = Field(
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
+        default=None,
+    )
+    cobr: InstallmentCobr | None = None
+    payment_subscription_global_id: str | None = Field(
+        validation_alias="paymentSubscriptionGlobalID",
+        serialization_alias="paymentSubscriptionGlobalID",
+        default=None,
+    )
+    correlation_id: str | None = Field(
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
+        default=None,
+    )
+    global_id: str | None = Field(
+        validation_alias="globalID",
+        serialization_alias="globalID",
+        default=None,
+    )
 
 
 class KeyOrOwnerStatistics(BaseSchema):
@@ -7079,9 +7943,14 @@ class KeyOrOwnerStatistics(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    fraud_markers: FraudMarkers | None = Field(alias="fraudMarkers", default=None)
+    fraud_markers: FraudMarkers | None = Field(
+        validation_alias="fraudMarkers",
+        serialization_alias="fraudMarkers",
+        default=None,
+    )
     infraction_reports: InfractionReports | None = Field(
-        alias="infractionReports",
+        validation_alias="infractionReports",
+        serialization_alias="infractionReports",
         default=None,
     )
 
@@ -7103,21 +7972,25 @@ class KycOnboardingAccountRegister(BaseSchema):
 
     status: str | None = Field(examples=["PENDING"], default=None)
     official_name: str | None = Field(
-        alias="officialName",
+        validation_alias="officialName",
+        serialization_alias="officialName",
         examples=["RAZAO_SOCIAL_DA_EMPRESA"],
         default=None,
     )
     trade_name: str | None = Field(
-        alias="tradeName",
+        validation_alias="tradeName",
+        serialization_alias="tradeName",
         examples=["NOME_FANTASIA_DA_EMPRESA"],
         default=None,
     )
     tax_id: KycOnboardingAccountRegisterTaxId | None = Field(
-        alias="taxID",
+        validation_alias="taxID",
+        serialization_alias="taxID",
         default=None,
     )
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         examples=["my-unique-id"],
         default=None,
     )
@@ -7142,8 +8015,16 @@ class Pagination(BaseSchema):
     errors: list[PaginationErrorsItem] = Field(default_factory=list)
     skip: float | None = None
     limit: float | None = None
-    has_previous_page: bool | None = Field(alias="hasPreviousPage", default=None)
-    has_next_page: bool | None = Field(alias="hasNextPage", default=None)
+    has_previous_page: bool | None = Field(
+        validation_alias="hasPreviousPage",
+        serialization_alias="hasPreviousPage",
+        default=None,
+    )
+    has_next_page: bool | None = Field(
+        validation_alias="hasNextPage",
+        serialization_alias="hasNextPage",
+        default=None,
+    )
 
 
 class PatchApiV1CustomerByCorrelationIdResponse(BaseSchema):
@@ -7185,24 +8066,28 @@ class Payment(BaseSchema):
         default=None,
     )
     destination_alias: str | None = Field(
-        alias="destinationAlias",
+        validation_alias="destinationAlias",
+        serialization_alias="destinationAlias",
         description="the pix key the payment should be sent to",
         default=None,
     )
     destination_alias_type: PaymentCreatePayloadPixKeyDestinationAliasType | None = (
         Field(
-            alias="destinationAliasType",
+            validation_alias="destinationAliasType",
+            serialization_alias="destinationAliasType",
             description="the type of the pix key the payment should be sent to",
             default=None,
         )
     )
     qr_code: str | None = Field(
-        alias="qrCode",
+        validation_alias="qrCode",
+        serialization_alias="qrCode",
         description="the QR Code to be paid",
         default=None,
     )
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Your correlation ID to keep track of this payment",
         default=None,
     )
@@ -7211,7 +8096,8 @@ class Payment(BaseSchema):
         default=None,
     )
     source_account_id: str | None = Field(
-        alias="sourceAccountId",
+        validation_alias="sourceAccountId",
+        serialization_alias="sourceAccountId",
         description="the source account the payment was created from",
         default=None,
     )
@@ -7246,11 +8132,13 @@ class PaymentCreatePayloadManual(BaseSchema):
     type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
     value: float = Field(description="value of the requested payment in cents")
     correlation_id: str = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="a unique identifier for your payment",
     )
     pix_key_end_to_end_id: str | None = Field(
-        alias="pixKeyEndToEndId",
+        validation_alias="pixKeyEndToEndId",
+        serialization_alias="pixKeyEndToEndId",
         description=(
             "the end to end id of the pix key used for track pix key consultations"
         ),
@@ -7285,7 +8173,8 @@ class PaymentTransaction(BaseSchema):
         default=None,
     )
     end_to_end_id: str | None = Field(
-        alias="endToEndId",
+        validation_alias="endToEndId",
+        serialization_alias="endToEndId",
         description="endToEndId of the transaction generated by the payment",
         default=None,
     )
@@ -7294,12 +8183,21 @@ class PaymentTransaction(BaseSchema):
         default=None,
     )
     provider_rejected_reason: str | None = Field(
-        alias="providerRejectedReason",
+        validation_alias="providerRejectedReason",
+        serialization_alias="providerRejectedReason",
         description="providerRejectedReason",
         default=None,
     )
-    debit_party: Party | None = Field(alias="debitParty", default=None)
-    credit_party: Party | None = Field(alias="creditParty", default=None)
+    debit_party: Party | None = Field(
+        validation_alias="debitParty",
+        serialization_alias="debitParty",
+        default=None,
+    )
+    credit_party: Party | None = Field(
+        validation_alias="creditParty",
+        serialization_alias="creditParty",
+        default=None,
+    )
 
 
 class PixWithdrawTransaction(BaseSchema):
@@ -7320,10 +8218,26 @@ class PixWithdrawTransaction(BaseSchema):
 
     value: float | None = None
     time: str | None = None
-    end_to_end_id: str | None = Field(alias="endToEndID", default=None)
-    transaction_id: str | None = Field(alias="transactionID", default=None)
-    info_pagador: str | None = Field(alias="infoPagador", default=None)
-    end_to_end_id_2: str | None = Field(alias="endToEndId", default=None)
+    end_to_end_id: str | None = Field(
+        validation_alias="endToEndID",
+        serialization_alias="endToEndID",
+        default=None,
+    )
+    transaction_id: str | None = Field(
+        validation_alias="transactionID",
+        serialization_alias="transactionID",
+        default=None,
+    )
+    info_pagador: str | None = Field(
+        validation_alias="infoPagador",
+        serialization_alias="infoPagador",
+        default=None,
+    )
+    end_to_end_id_2: str | None = Field(
+        validation_alias="endToEndId",
+        serialization_alias="endToEndId",
+        default=None,
+    )
     payer: Customer | None = None
     type: str | None = None
 
@@ -7373,8 +8287,16 @@ class PostApiV1DecodeEmvResponseCobLocation(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    is_valid: bool | None = Field(alias="isValid", default=None)
-    location_errors: list[str] = Field(alias="locationErrors", default_factory=list)
+    is_valid: bool | None = Field(
+        validation_alias="isValid",
+        serialization_alias="isValid",
+        default=None,
+    )
+    location_errors: list[str] = Field(
+        validation_alias="locationErrors",
+        serialization_alias="locationErrors",
+        default_factory=list,
+    )
     payload: PostApiV1DecodeEmvResponseCobLocationPayload | None = None
     url: str | None = None
 
@@ -7403,8 +8325,16 @@ class PostApiV1DecodeEmvResponseRecLocationPayload(BaseSchema):
         default_factory=list,
     )
     calendar: PostApiV1DecodeEmvResponseRecLocationPayloadCalendar | None = None
-    id_rec: str | None = Field(alias="idRec", default=None)
-    retry_policy: str | None = Field(alias="retryPolicy", default=None)
+    id_rec: str | None = Field(
+        validation_alias="idRec",
+        serialization_alias="idRec",
+        default=None,
+    )
+    retry_policy: str | None = Field(
+        validation_alias="retryPolicy",
+        serialization_alias="retryPolicy",
+        default=None,
+    )
     receiver: PostApiV1DecodeEmvResponseRecLocationPayloadReceiver | None = None
     value: PostApiV1DecodeEmvResponseRecLocationPayloadValue | None = None
     link: PostApiV1DecodeEmvResponseRecLocationPayloadLink | None = None
@@ -7427,7 +8357,11 @@ class PostApiV1InvoiceIntegrationResponseIntegration(BaseSchema):
     id: str | None = None
     type: str | None = None
     status: str | None = None
-    is_active: bool | None = Field(alias="isActive", default=None)
+    is_active: bool | None = Field(
+        validation_alias="isActive",
+        serialization_alias="isActive",
+        default=None,
+    )
     metadata: PostApiV1InvoiceIntegrationResponseIntegrationMetadata | None = None
 
 
@@ -7464,11 +8398,13 @@ class PostApiV1PaymentBodyManual(BaseSchema):
     type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
     value: float = Field(description="value of the requested payment in cents")
     correlation_id: str = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="a unique identifier for your payment",
     )
     pix_key_end_to_end_id: str | None = Field(
-        alias="pixKeyEndToEndId",
+        validation_alias="pixKeyEndToEndId",
+        serialization_alias="pixKeyEndToEndId",
         description=(
             "the end to end id of the pix key used for track pix key consultations"
         ),
@@ -7482,7 +8418,8 @@ class PostApiV1PaymentBodyManual(BaseSchema):
         default=None,
     )
     auto_approve: bool | None = Field(
-        alias="autoApprove",
+        validation_alias="autoApprove",
+        serialization_alias="autoApprove",
         description=(
             "When true, creates and approves the payment in a single call returning "
             "the enriched response. Defaults to false."
@@ -7513,7 +8450,8 @@ class PreRegistrationPayloadObject(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     pre_registration: PreRegistrationObject | None = Field(
-        alias="preRegistration",
+        validation_alias="preRegistration",
+        serialization_alias="preRegistration",
         default=None,
     )
     user: PreRegistrationUserObject | None = None
@@ -7553,7 +8491,8 @@ class Subscription(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     global_id: str | None = Field(
-        alias="globalID",
+        validation_alias="globalID",
+        serialization_alias="globalID",
         description="The globalID of the subscription.",
         default=None,
     )
@@ -7564,7 +8503,8 @@ class Subscription(BaseSchema):
     name: str | None = Field(description="Name of the subscription", default=None)
     customer: Customer | None = None
     day_generate_charge: float | None = Field(
-        alias="dayGenerateCharge",
+        validation_alias="dayGenerateCharge",
+        serialization_alias="dayGenerateCharge",
         description="Day of the month that the charges will be generated",
         default=None,
     )
@@ -7585,7 +8525,8 @@ class Subscription(BaseSchema):
         default=None,
     )
     installments_count: float | None = Field(
-        alias="installmentsCount",
+        validation_alias="installmentsCount",
+        serialization_alias="installmentsCount",
         description=(
             "Total number of installments currently linked to the subscription. `null` "
             "when the subscription has no `dateEnd` (open-ended). Mirrors the GraphQL "
@@ -7593,24 +8534,32 @@ class Subscription(BaseSchema):
         ),
         default=None,
     )
-    is_active: bool | None = Field(alias="isActive", default=None)
+    is_active: bool | None = Field(
+        validation_alias="isActive",
+        serialization_alias="isActive",
+        default=None,
+    )
     status: ChargeStatus | None = None
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Your correlation ID to keep track of this subscription",
         default=None,
     )
     payment_link_url: str | None = Field(
-        alias="paymentLinkUrl",
+        validation_alias="paymentLinkUrl",
+        serialization_alias="paymentLinkUrl",
         description="Payment link to this subscription",
         default=None,
     )
     addtional_info: list[SubscriptionAddtionalInfoItem] = Field(
-        alias="addtionalInfo",
+        validation_alias="addtionalInfo",
+        serialization_alias="addtionalInfo",
         default_factory=list,
     )
     pix_recurring_options: SubscriptionPixRecurringOptions | None = Field(
-        alias="pixRecurringOptions",
+        validation_alias="pixRecurringOptions",
+        serialization_alias="pixRecurringOptions",
         description="Pix automatic options",
         default=None,
     )
@@ -7663,7 +8612,8 @@ class SubscriptionPayload(BaseSchema):
         default=None,
     )
     day_generate_charge: float | datetime | None = Field(
-        alias="dayGenerateCharge",
+        validation_alias="dayGenerateCharge",
+        serialization_alias="dayGenerateCharge",
         default=None,
     )
     frequency: SubscriptionFrequency | None = Field(
@@ -7680,31 +8630,37 @@ class SubscriptionPayload(BaseSchema):
     )
     type: SubscriptionPayloadType = Field(description="Type of the subscription")
     day_due: float | None = Field(
-        alias="dayDue",
+        validation_alias="dayDue",
+        serialization_alias="dayDue",
         description="Days that the charge will take to expire from the generation day.",
         ge=3,
         default=None,
     )
     installment_count: float | None = Field(
-        alias="installmentCount",
+        validation_alias="installmentCount",
+        serialization_alias="installmentCount",
         description="number of installments (optional)",
         default=None,
     )
     correlation_id: str = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Your correlation ID to keep track of this subscription",
     )
     additional_info: list[SubscriptionPayloadAdditionalInfoItem] = Field(
-        alias="additionalInfo",
+        validation_alias="additionalInfo",
+        serialization_alias="additionalInfo",
         default_factory=list,
     )
     pix_recurring_options: SubscriptionPayloadPixRecurringOptions | None = Field(
-        alias="pixRecurringOptions",
+        validation_alias="pixRecurringOptions",
+        serialization_alias="pixRecurringOptions",
         description="Pix automatic options",
         default=None,
     )
     charge_type: ChargeType | None = Field(
-        alias="chargeType",
+        validation_alias="chargeType",
+        serialization_alias="chargeType",
         description=(
             "Charge method used for each charge generated by the subscription "
             "(defaults to `DYNAMIC` when omitted):\n  - `DYNAMIC`: a standard Pix "
@@ -7765,35 +8721,41 @@ class Charge(BaseSchema):
     )
     comment: str | None = None
     br_code: str | None = Field(
-        alias="brCode",
+        validation_alias="brCode",
+        serialization_alias="brCode",
         description="EMV BRCode to be rendered as a QRCode",
         default=None,
     )
     status: ChargeStatus | None = None
     correlation_id: str | None = Field(
-        alias="correlationID",
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
         description="Your correlation ID to keep track of this charge",
         default=None,
     )
     payment_link_id: str | None = Field(
-        alias="paymentLinkID",
+        validation_alias="paymentLinkID",
+        serialization_alias="paymentLinkID",
         description=(
             "Payment Link ID, used on payment link and to retrieve qrcode image"
         ),
         default=None,
     )
     payment_link_url: Any | None = Field(
-        alias="paymentLinkUrl",
+        validation_alias="paymentLinkUrl",
+        serialization_alias="paymentLinkUrl",
         description="Payment Link URL to be shared with customers",
         default=None,
     )
     global_id: Any | None = Field(
-        alias="globalID",
+        validation_alias="globalID",
+        serialization_alias="globalID",
         description="External ID of this charge",
         default=None,
     )
     transaction_id: Any | None = Field(
-        alias="transactionID",
+        validation_alias="transactionID",
+        serialization_alias="transactionID",
         description=(
             "unique uuid used as the txid from Pix into the provider from your openpix "
             "account. This field link the charge with the transaction when paid."
@@ -7805,26 +8767,46 @@ class Charge(BaseSchema):
         default=None,
     )
     qr_code_image: Any | None = Field(
-        alias="qrCodeImage",
+        validation_alias="qrCodeImage",
+        serialization_alias="qrCodeImage",
         description="QRCode image link URL",
         default=None,
     )
     additional_info: list[ChargeAdditionalInfoItem] = Field(
-        alias="additionalInfo",
+        validation_alias="additionalInfo",
+        serialization_alias="additionalInfo",
         description="Additional info of the charge",
         default_factory=list,
     )
-    pix_key: str | None = Field(alias="pixKey", default=None)
-    created_at: str | None = Field(alias="createdAt", default=None)
-    updated_at: str | None = Field(alias="updatedAt", default=None)
-    expires_in: str | None = Field(alias="expiresIn", default=None)
+    pix_key: str | None = Field(
+        validation_alias="pixKey",
+        serialization_alias="pixKey",
+        default=None,
+    )
+    created_at: str | None = Field(
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
+        default=None,
+    )
+    updated_at: str | None = Field(
+        validation_alias="updatedAt",
+        serialization_alias="updatedAt",
+        default=None,
+    )
+    expires_in: str | None = Field(
+        validation_alias="expiresIn",
+        serialization_alias="expiresIn",
+        default=None,
+    )
     expires_date: str | None = Field(
-        alias="expiresDate",
+        validation_alias="expiresDate",
+        serialization_alias="expiresDate",
         description="Expiration date of the charge in ISO 8601 format.",
         default=None,
     )
     due_date: str | None = Field(
-        alias="dueDate",
+        validation_alias="dueDate",
+        serialization_alias="dueDate",
         description=(
             "Due date for OVERDUE, BOLETO, or subscription charges in ISO 8601 format."
         ),
@@ -7832,7 +8814,8 @@ class Charge(BaseSchema):
     )
     subscription: Subscription | None = None
     payment_methods: ChargePaymentMethods | None = Field(
-        alias="paymentMethods",
+        validation_alias="paymentMethods",
+        serialization_alias="paymentMethods",
         default=None,
     )
 
@@ -7849,7 +8832,8 @@ class GetApiV1AccountResponse(BaseSchema):
 
     accounts: list[CompanyBankAccount] = Field(default_factory=list)
     page_info: GetApiV1AccountResponsePageInfo | None = Field(
-        alias="pageInfo",
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
         default=None,
     )
 
@@ -7866,7 +8850,8 @@ class GetApiV1CustomerResponse(BaseSchema):
 
     customers: list[Customer] = Field(default_factory=list)
     page_info: GetApiV1CustomerResponsePageInfo | None = Field(
-        alias="pageInfo",
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
         default=None,
     )
 
@@ -7883,7 +8868,8 @@ class GetApiV1DisputeResponse(BaseSchema):
 
     disputes: list[GetApiV1DisputeResponseDisputesItem] = Field(default_factory=list)
     page_info: GetApiV1DisputeResponsePageInfo | None = Field(
-        alias="pageInfo",
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
         default=None,
     )
 
@@ -7914,7 +8900,8 @@ class GetApiV1PartnerAffiliateResponse(BaseSchema):
         default_factory=list,
     )
     page_info: GetApiV1PartnerAffiliateResponsePageInfo | None = Field(
-        alias="pageInfo",
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
         default=None,
     )
 
@@ -7931,7 +8918,8 @@ class GetApiV1PartnerCompanyByTaxIdResponse(BaseSchema):
 
     pre_registration: GetApiV1PartnerCompanyByTaxIdResponsePreRegistration | None = (
         Field(
-            alias="preRegistration",
+            validation_alias="preRegistration",
+            serialization_alias="preRegistration",
             default=None,
         )
     )
@@ -7950,11 +8938,13 @@ class GetApiV1PartnerCompanyResponse(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     pre_registrations: list[GetApiV1PartnerCompanyResponsePreRegistrationsItem] = Field(
-        alias="preRegistrations",
+        validation_alias="preRegistrations",
+        serialization_alias="preRegistrations",
         default_factory=list,
     )
     page_info: GetApiV1PartnerCompanyResponsePageInfo | None = Field(
-        alias="pageInfo",
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
         default=None,
     )
 
@@ -8000,7 +8990,8 @@ class GetApiV1PixKeysTokensLogsResponse(BaseSchema):
 
     logs: list[TokenBucketLog] = Field(default_factory=list)
     page_info: GetApiV1PixKeysTokensLogsResponsePageInfo | None = Field(
-        alias="pageInfo",
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
         default=None,
     )
 
@@ -8016,9 +9007,14 @@ class GetApiV1QrcodeStaticResponse(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    pix_qr_codes: list[PixQrCode] = Field(alias="pixQrCodes", default_factory=list)
+    pix_qr_codes: list[PixQrCode] = Field(
+        validation_alias="pixQrCodes",
+        serialization_alias="pixQrCodes",
+        default_factory=list,
+    )
     page_info: GetApiV1QrcodeStaticResponsePageInfo | None = Field(
-        alias="pageInfo",
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
         default=None,
     )
 
@@ -8035,7 +9031,8 @@ class GetApiV1RefundResponse(BaseSchema):
 
     refunds: list[Refund] = Field(default_factory=list)
     page_info: GetApiV1RefundResponsePageInfo | None = Field(
-        alias="pageInfo",
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
         default=None,
     )
 
@@ -8055,7 +9052,8 @@ class GetApiV1SubaccountResponse(BaseSchema):
         default_factory=list,
     )
     page_info: GetApiV1SubaccountResponsePageInfo | None = Field(
-        alias="pageInfo",
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
         default=None,
     )
 
@@ -8071,7 +9069,11 @@ class GetApiV1SubscriptionsByIdInstallmentsResponse(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     installments: list[Installment] = Field(default_factory=list)
-    page_info: Pagination | None = Field(alias="pageInfo", default=None)
+    page_info: Pagination | None = Field(
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
+        default=None,
+    )
 
 
 class GetApiV1SubscriptionsByIdResponse(BaseSchema):
@@ -8095,7 +9097,11 @@ class GetApiV1SubscriptionsResponse(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     subscriptions: list[Subscription] = Field(default_factory=list)
-    page_info: Pagination | None = Field(alias="pageInfo", default=None)
+    page_info: Pagination | None = Field(
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
+        default=None,
+    )
 
 
 class GetApiV1WebhookResponse(BaseSchema):
@@ -8110,7 +9116,8 @@ class GetApiV1WebhookResponse(BaseSchema):
 
     webhooks: list[Webhook] = Field(default_factory=list)
     page_info: GetApiV1WebhookResponsePageInfo | None = Field(
-        alias="pageInfo",
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
         default=None,
     )
 
@@ -8135,11 +9142,13 @@ class PixKeyFraudValidationData(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     key_statistics: KeyOrOwnerStatistics | None = Field(
-        alias="keyStatistics",
+        validation_alias="keyStatistics",
+        serialization_alias="keyStatistics",
         default=None,
     )
     owner_statistics: KeyOrOwnerStatistics | None = Field(
-        alias="ownerStatistics",
+        validation_alias="ownerStatistics",
+        serialization_alias="ownerStatistics",
         default=None,
     )
 
@@ -8169,8 +9178,16 @@ class PostApiV1DecodeEmvResponseRecLocation(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    is_valid: bool | None = Field(alias="isValid", default=None)
-    location_errors: list[str] = Field(alias="locationErrors", default_factory=list)
+    is_valid: bool | None = Field(
+        validation_alias="isValid",
+        serialization_alias="isValid",
+        default=None,
+    )
+    location_errors: list[str] = Field(
+        validation_alias="locationErrors",
+        serialization_alias="locationErrors",
+        default_factory=list,
+    )
     payload: PostApiV1DecodeEmvResponseRecLocationPayload | None = None
     url: str | None = None
 
@@ -8200,12 +9217,14 @@ class PostApiV1KycOnboardingResponse(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     link_onboarding: str | None = Field(
-        alias="linkOnboarding",
+        validation_alias="linkOnboarding",
+        serialization_alias="linkOnboarding",
         examples=["https://kyc.woovi.com/onboarding/QWNjb3VudFJlZ2lzdGVyOjY5..."],
         default=None,
     )
     redirect_url: str | None = Field(
-        alias="redirectUrl",
+        validation_alias="redirectUrl",
+        serialization_alias="redirectUrl",
         description=(
             "URL para redirecionamento pos-onboarding (echo do valor enviado na "
             "criacao do link)."
@@ -8214,7 +9233,8 @@ class PostApiV1KycOnboardingResponse(BaseSchema):
         default=None,
     )
     account_register: KycOnboardingAccountRegister | None = Field(
-        alias="accountRegister",
+        validation_alias="accountRegister",
+        serialization_alias="accountRegister",
         default=None,
     )
 
@@ -8288,7 +9308,8 @@ class GetApiV1ChargeResponse(BaseSchema):
 
     charges: list[Charge] = Field(default_factory=list)
     page_info: GetApiV1ChargeResponsePageInfo | None = Field(
-        alias="pageInfo",
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
         default=None,
     )
 
@@ -8307,7 +9328,8 @@ class GetApiV1PaymentResponse(BaseSchema):
     status: str | None = None
     payments: list[GetApiV1PaymentResponsePaymentsItem] = Field(default_factory=list)
     page_info: GetApiV1PaymentResponsePageInfo | None = Field(
-        alias="pageInfo",
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
         default=None,
     )
 
@@ -8336,8 +9358,16 @@ class PostApiV1ChargeResponse(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     charge: Charge | None = None
-    correlation_id: str | None = Field(alias="correlationID", default=None)
-    br_code: str | None = Field(alias="brCode", default=None)
+    correlation_id: str | None = Field(
+        validation_alias="correlationID",
+        serialization_alias="correlationID",
+        default=None,
+    )
+    br_code: str | None = Field(
+        validation_alias="brCode",
+        serialization_alias="brCode",
+        default=None,
+    )
 
 
 class PostApiV1DecodeEmvResponse(BaseSchema):
@@ -8355,7 +9385,8 @@ class PostApiV1DecodeEmvResponse(BaseSchema):
 
     emv: PostApiV1DecodeEmvResponseEmv | None = None
     cob_location: PostApiV1DecodeEmvResponseCobLocation | None = Field(
-        alias="cobLocation",
+        validation_alias="cobLocation",
+        serialization_alias="cobLocation",
         description=(
             "Resolved COB (charge) location details when the EMV points to a COB "
             "endpoint"
@@ -8363,7 +9394,8 @@ class PostApiV1DecodeEmvResponse(BaseSchema):
         default=None,
     )
     rec_location: PostApiV1DecodeEmvResponseRecLocation | None = Field(
-        alias="recLocation",
+        validation_alias="recLocation",
+        serialization_alias="recLocation",
         description=(
             "Resolved REC (request for payment) location details when EMV points to a "
             "REC endpoint"
@@ -8400,10 +9432,26 @@ class Transaction(BaseSchema):
     charge: Charge | None = None
     value: float | None = None
     time: str | None = None
-    end_to_end_id: str | None = Field(alias="endToEndID", default=None)
-    transaction_id: str | None = Field(alias="transactionID", default=None)
-    info_pagador: str | None = Field(alias="infoPagador", default=None)
-    end_to_end_id_2: str | None = Field(alias="endToEndId", default=None)
+    end_to_end_id: str | None = Field(
+        validation_alias="endToEndID",
+        serialization_alias="endToEndID",
+        default=None,
+    )
+    transaction_id: str | None = Field(
+        validation_alias="transactionID",
+        serialization_alias="transactionID",
+        default=None,
+    )
+    info_pagador: str | None = Field(
+        validation_alias="infoPagador",
+        serialization_alias="infoPagador",
+        default=None,
+    )
+    end_to_end_id_2: str | None = Field(
+        validation_alias="endToEndId",
+        serialization_alias="endToEndId",
+        default=None,
+    )
     customer: Customer | None = None
     withdraw: PixWithdrawTransaction | None = None
     payer: Customer | None = None
@@ -8416,13 +9464,19 @@ class Transaction(BaseSchema):
         default=None,
     )
     global_id: Any | None = Field(
-        alias="globalID",
+        validation_alias="globalID",
+        serialization_alias="globalID",
         description="External ID of this transaction",
         default=None,
     )
-    pix_qr_code: PixQrCode | None = Field(alias="pixQrCode", default=None)
+    pix_qr_code: PixQrCode | None = Field(
+        validation_alias="pixQrCode",
+        serialization_alias="pixQrCode",
+        default=None,
+    )
     webhook_sent: list[TransactionWebhookSentItem] = Field(
-        alias="webhookSent",
+        validation_alias="webhookSent",
+        serialization_alias="webhookSent",
         description=(
             "List of webhook delivery attempts for this transaction, sorted by most "
             "recent first. Each item contains the event name as key with status and "
@@ -8475,7 +9529,8 @@ class GetApiV1TransactionResponse(BaseSchema):
     status: str | None = None
     transactions: list[Transaction] = Field(default_factory=list)
     page_info: GetApiV1TransactionResponsePageInfo | None = Field(
-        alias="pageInfo",
+        validation_alias="pageInfo",
+        serialization_alias="pageInfo",
         default=None,
     )
 

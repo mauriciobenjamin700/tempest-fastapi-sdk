@@ -114,10 +114,23 @@ def _field_arguments(field: FieldIR) -> list[str]:
     Returns:
         list[str]: Rendered ``name=value`` fragments, ordered so the most
         useful metadata reads first.
+
+    The wire name is emitted as ``validation_alias`` **plus**
+    ``serialization_alias``, never as the single ``alias``. The three do the
+    same thing at runtime here, but ``alias`` renames the parameter in the
+    ``__init__`` a type-checker synthesizes: pyright then rejects
+    ``ChargePayload(correlation_id=...)`` with *No parameter named
+    "correlation_id"* and demands the wire spelling instead. Measured against
+    the published wheel, with ``populate_by_name=True`` already set on the
+    model — and measured again with ``validate_by_name``, which does not fix
+    it either. The split form keeps the Python name in the signature while
+    validation still accepts the wire spelling and
+    ``model_dump(by_alias=True)`` still emits it.
     """
     arguments: list[str] = []
     if field.alias is not None:
-        arguments.append(f"alias={_literal(field.alias)}")
+        arguments.append(f"validation_alias={_literal(field.alias)}")
+        arguments.append(f"serialization_alias={_literal(field.alias)}")
     if field.title:
         arguments.append(f"title={_literal(field.title)}")
     if field.description:

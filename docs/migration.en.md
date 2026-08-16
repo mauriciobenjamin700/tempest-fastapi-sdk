@@ -2,6 +2,33 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.234.0 — a generated model is built with its Python names, and the type-checker agrees
+
+Nothing changes at runtime. What changes is what pyright accepts.
+
+### Construct with the field name, not the alias
+
+Fields carrying a wire name moved from `Field(alias=...)` to
+`Field(validation_alias=..., serialization_alias=...)`. Runtime is identical —
+the models already set `populate_by_name=True`, so both spellings always
+validated. What changes is the parameter a type-checker sees:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import ChargePayload
+
+# before: it ran, but pyright reported "No parameter named correlation_id"
+# now: both accept it
+payload = ChargePayload(correlation_id="order-1", value=1990)
+```
+
+If your code used the alias purely to silence the checker
+(`ChargePayload(correlationID="order-1")`), it **still runs** — validation takes
+the alias — but the checker now objects. Switch to the Python name.
+
+Reading and writing are unchanged: `model_validate({"correlationID": ...})`
+still accepts the provider's spelling, and `model_dump(by_alias=True)` still
+emits it.
+
 ## 0.233.0 — two generated OpenPix enums were renamed
 
 One change, and it only breaks code importing the two payment enums by name.

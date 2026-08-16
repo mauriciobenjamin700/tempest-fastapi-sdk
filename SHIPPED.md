@@ -1012,7 +1012,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   accepted it either way). Recipes: `docs/recipes/openpix.md` (architecture,
   charge, webhook + API read-back, reconciliation, refunds) and
   `docs/recipes/openpix-subscriptions.md` (plans live in your database,
-  `RECURRENT` vs `PIX_RECURRING`, instalments, cancellation).
+  `RECURRENT` vs `PIX_RECURRING`, instalments, cancellation). **v0.234.0**
+  fixed the third defect of the same family, found by type-checking the
+  published wheel: every aliased field used `Field(alias=...)`, which renames
+  the parameter in the synthesized `__init__`, so pyright rejected
+  `ChargePayload(correlation_id=...)` and demanded the wire spelling. The wire
+  name is now written as `validation_alias` + `serialization_alias`
+  (`tests/test_alias_guard.py` keeps `alias=` from returning), which leaves
+  runtime untouched and clears both basedpyright and mypy.
 - **CLI** — `tempest new` (scaffolds layered service +
   docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
   `tempest generate --docker` (regen compose) / `--dockerfile`

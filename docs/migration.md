@@ -2,6 +2,34 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.234.0 — modelo gerado se constrói pelo nome Python, e o type-checker aceita
+
+Nada muda em runtime. Muda o que o pyright aceita.
+
+### Construa pelo nome do campo, não pelo alias
+
+Os campos com nome de fio passaram de `Field(alias=...)` para
+`Field(validation_alias=..., serialization_alias=...)`. O runtime é o mesmo — os
+modelos já tinham `populate_by_name=True`, então as duas grafias sempre
+validaram. O que muda é o parâmetro que um type-checker enxerga:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import ChargePayload
+
+# antes: rodava, mas o pyright acusava "No parameter named correlation_id"
+# agora: aceito pelos dois
+payload = ChargePayload(correlation_id="pedido-1", value=1990)
+```
+
+Se o seu código escrevia pelo alias só para calar o checker
+(`ChargePayload(correlationID="pedido-1")`), ele **continua rodando** — a
+validação aceita o alias — mas agora é o checker que reclama. Troque pelo nome
+Python.
+
+Leitura e escrita não mudaram: `model_validate({"correlationID": ...})` continua
+aceitando a grafia do fornecedor, e `model_dump(by_alias=True)` continua
+emitindo ela.
+
 ## 0.233.0 — dois enums gerados da OpenPix mudaram de nome
 
 Uma mudança, e ela só quebra quem importava os dois enums de pagamento pelo nome.
