@@ -41,6 +41,7 @@ from regen_openpix import (  # noqa: E402
     GENERATED_FILES,
     PACKAGE_DIR,
     SPEC_PATH,
+    expected_exports,
     regenerate,
 )
 
@@ -104,6 +105,39 @@ class TestGeneratedFilesAreNotStale:
         )
 
 
+class TestExportsFollowTheGeneratedModules:
+    """``__all__`` lists every generated name, and stays that way.
+
+    A name missing from ``__all__`` still imports at runtime — the lazy
+    ``__getattr__`` finds it — so nothing fails until a consumer runs a
+    strict type-checker and gets *"X is not exported from module"*. That is
+    exactly how it shipped, and it is why the list is generated rather than
+    curated.
+    """
+
+    def test_all_matches_the_generated_modules(self, freshly_generated: Path) -> None:
+        """The checked-in list is what regeneration would produce.
+
+        Args:
+            freshly_generated (Path): The regenerated output.
+
+        Order is compared too, not just membership: the block is written in
+        the order ruff's ``RUF022`` demands, and a plain alphabetical sort
+        fails that lint on a file the generator owns.
+        """
+        from tempest_fastapi_sdk.integrations.payment.openpix import __all__ as exported
+
+        expected = expected_exports(freshly_generated, PACKAGE_DIR / "__init__.py")
+        assert list(exported) == expected
+
+    def test_every_generated_schema_is_exported(self) -> None:
+        """Nothing generated is reachable only through the submodule."""
+        from tempest_fastapi_sdk.integrations.payment.openpix import __all__ as exported
+        from tempest_fastapi_sdk.integrations.payment.openpix import schemas
+
+        assert not set(schemas.__all__) - set(exported)
+
+
 class TestGeneratedSurface:
     """What the generated half actually carries, pinned."""
 
@@ -121,7 +155,7 @@ class TestGeneratedSurface:
         assert OpenPixClient.__name__ == "OpenPixClient"
 
     def test_carries_the_whole_specification(self) -> None:
-        """358 schemas and 105 operations — the point of embedding it."""
+        """373 schemas and 105 operations — the point of embedding it."""
         from tempest_fastapi_sdk.integrations.payment.openpix import client, schemas
 
         operations = [
@@ -130,7 +164,7 @@ class TestGeneratedSurface:
             if not name.startswith("_")
             and callable(getattr(client.OpenPixClient, name))
         ]
-        assert len(schemas.__all__) == 358
+        assert len(schemas.__all__) == 373
         assert len(operations) == 105
 
     def test_production_base_url_is_the_default(self) -> None:
@@ -144,7 +178,7 @@ class TestGeneratedSurface:
 
 
 class TestLazyLoading:
-    """The 358 models load on first use, not on import."""
+    """The 373 models load on first use, not on import."""
 
     def test_importing_the_package_does_not_load_the_schemas(self) -> None:
         """Someone importing this for ``to_cents`` should not pay for them.

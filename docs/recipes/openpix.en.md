@@ -1,274 +1,726 @@
 # OpenPix (Pix via Woovi)
 
-The whole of OpenPix ships with the SDK. No generator to run, no spec to
-download:
+This recipe builds a service that **opens a Pix charge, finds out when it was
+paid, and releases the order** — with the same layered architecture the rest
+of the SDK uses, and without writing a single HTTP call by hand.
 
-```python
-from tempest_fastapi_sdk import HTTPClient
-from tempest_fastapi_sdk.integrations.payment.openpix import (
-    Charge,
-    OpenPixClient,
-    OpenPixEnvironment,
-)
+By the end you will have:
 
-http: HTTPClient = HTTPClient(
-    base_url=OpenPixEnvironment.SANDBOX.base_url,
-    default_headers={"Authorization": "<your AppID>"},
-)
-client: OpenPixClient = OpenPixClient(http)
+- a `POST /api/checkout` returning the BR Code for the app to draw the QR;
+- a `POST /webhooks/openpix` receiving the payment notification **already
+  verified**;
+- a read-back through the API before releasing anything;
+- a reconciliation job for the charges the webhook never delivered.
+
+Subscriptions and plans (monthly billing, Pix Automático) live in the recipe
+next door: [OpenPix (subscriptions and plans)](openpix-subscriptions.md).
+
+## What already ships in the package
+
+Installing the SDK gives you the whole of OpenPix: **373 schemas** and **105
+operations** generated from the specification, plus the four things the
+specification does not say (environments, webhook events, signature
+verification, and cents).
+
+```bash
+uv add "tempest-fastapi-sdk[http]"
+uv add cryptography
 ```
 
-That is **358 schemas** and **105 operations**, plus the four things the
-specification does not say. 🚀
+`[http]` brings `HTTPClient`, the transport the generated client rides on.
+`cryptography` is what verifies the webhook signature — without it the module
+imports fine and only fails on the first real delivery, in production.
 
-## The two halves
+!!! tip "Need another API the SDK does not bundle?"
+    This module exists because OpenPix is common enough that every service was
+    generating the same client. For any other API the generator is still the
+    right tool: see [Integration client (OpenAPI)](openapi-client.md).
 
-The module has a generated half and a hand-written one, and it is worth
-knowing which is which:
-
-| Half | What | Where from |
-| --- | --- | --- |
-| **Generated** | `OpenPixClient`, `DEFAULT_BASE_URL`, 358 schema classes | The spec, verbatim |
-| **Hand-written** | `OpenPixEnvironment`, `OpenPixEvent`, the webhook, the money helpers | What the spec does **not** say |
-
-!!! info "The generated half is checked in, not hand-written"
-    `scripts/regen_openpix.py` produces `schemas.py` and `client.py` from the
-    specification pinned in `vendor/openpix-openapi.yaml`, and **a test fails
-    if the files on disk drift** from what that script produces. Editing them
-    by hand is how checked-in generated code rots; here it breaks the suite.
-
-    To refresh when OpenPix changes the API: swap the file in `vendor/`, run
-    `make openpix-regen`, and the diff shows exactly what the third party
-    changed.
-
-!!! note "The 358 models load on first use, not on import"
-    Building 358 Pydantic models costs the better part of a second. Importing
-    the package just to use `to_cents` should not pay that, so the generated
-    half resolves through [PEP 562](https://peps.python.org/pep-0562/).
-
-    Measured: **2 ms** to import the package, ~200 ms on the first access to a
-    generated name, ~0.03 ms after that.
-
-!!! tip "Need another API the SDK does not ship?"
-    `tempest openapi-client` still exists and is the right tool for that. See
-    [Integration client (OpenAPI)](openapi-client.md). What lives here are the
-    integrations common enough that every service was running the same
-    generation and maintaining the same hand-written layer on top.
-
-## What the spec does not say
-
-### 1. The two environments are different domains
-
-Production is `api.openpix.com.br`. Testing is `api.woovi-sandbox.com` — a
-different domain, not a subdomain. Neither one spells the other.
+## Configuration
 
 ```python
-from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk import BaseAppSettings
 from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEnvironment
 
-from src.core.settings import settings
+
+class Settings(BaseAppSettings):
+    """Service settings."""
+
+    OPENPIX_APP_ID: str = ""
+    OPENPIX_ENVIRONMENT: str = "sandbox"
+
+    @property
+    def openpix_environment(self) -> OpenPixEnvironment:
+        """Resolve the configured environment.
+
+        Returns:
+            OpenPixEnvironment: Production when `OPENPIX_ENVIRONMENT` is
+            `production`, sandbox otherwise.
+        """
+        if self.OPENPIX_ENVIRONMENT == "production":
+            return OpenPixEnvironment.PRODUCTION
+        return OpenPixEnvironment.SANDBOX
+
+
+settings = Settings()
+```
+
+!!! warning "The two environments are different domains"
+    Production is `api.openpix.com.br`. Testing is `api.woovi-sandbox.com` — a
+    different domain, not a subdomain. Neither spells the other, and an AppID
+    from one is worthless in the other. That is why `OpenPixEnvironment`
+    exists instead of a string in `.env`.
+
+## The suggested architecture
+
+OpenPix enters through the service layer, behind a dependency. No router
+builds a payload, no service opens an `HTTPClient`.
+
+```text
+src/
+├── core/
+│   └── settings.py              # OPENPIX_APP_ID + environment
+├── api/
+│   ├── dependencies/
+│   │   └── payments.py          # builds HTTPClient -> OpenPixClient -> service
+│   └── routers/
+│       ├── checkout.py          # POST /api/checkout        (JSON, in the schema)
+│       └── webhooks.py          # POST /webhooks/openpix    (include_in_schema=False)
+├── controllers/
+│   └── checkout.py              # orchestrates order + charge
+├── services/
+│   ├── openpix.py               # charge rules: open, confirm, refund
+│   └── orders.py                # your order, which knows nothing about Pix
+└── db/
+    ├── models/order.py          # order status + correlation_id
+    └── repositories/order.py
+```
+
+| Layer | May import | Never imports |
+| --- | --- | --- |
+| `api/routers` | `controllers`, `schemas` | `OpenPixClient`, `db` |
+| `controllers` | `services`, `schemas` | `OpenPixClient` |
+| `services` | `OpenPixClient`, `db/repositories` | `fastapi` |
+| `api/dependencies` | everything above, to wire it | — |
+
+Three decisions worth spelling out:
+
+1. **There is one `HTTPClient`, created in the lifespan.** It carries the
+   connection pool, the retry policy and a per-host circuit breaker. Building
+   one per request throws all three away and opens a fresh socket on every
+   checkout.
+2. **`correlationID` is your primary key on the OpenPix side.** Use the order
+   id, not a fresh UUID: it is what ties the webhook, the read-back and the
+   refund to a row in your database.
+3. **The webhook lives in its own router**, outside the OpenAPI schema. It is
+   not part of your public API, and it authenticates with a signature, not
+   with your session token.
+
+### The dependency
+
+```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
+
+from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixClient
 
-environment: OpenPixEnvironment = (
-    OpenPixEnvironment.PRODUCTION
-    if settings.ENVIRONMENT == "production"
-    else OpenPixEnvironment.SANDBOX
-)
+from src.core.settings import settings
+from src.services.openpix import OpenPixService
 
-http: HTTPClient = HTTPClient(
-    base_url=environment.base_url,
-    default_headers={"Authorization": settings.OPENPIX_APP_ID},
-)
-openpix: OpenPixClient = OpenPixClient(http)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Open one HTTP client for the whole process and close it on shutdown.
+
+    Args:
+        app (FastAPI): The application, where the client is kept.
+
+    Yields:
+        None: While the application serves requests.
+    """
+    http: HTTPClient = HTTPClient(
+        base_url=settings.openpix_environment.base_url,
+        default_headers={"Authorization": settings.OPENPIX_APP_ID},
+        timeout=15.0,
+    )
+    app.state.openpix = OpenPixClient(http)
+    try:
+        yield
+    finally:
+        await http.aclose()
+
+
+def get_openpix_service(request: Request) -> OpenPixService:
+    """Hand the route a ready charge service.
+
+    Args:
+        request (Request): The current request.
+
+    Returns:
+        OpenPixService: The service, over the lifespan's client.
+    """
+    return OpenPixService(request.app.state.openpix)
 ```
 
-### 2. `value` is cents, but arrives as a float
+!!! info "The AppID goes in the raw `Authorization` header"
+    No `Bearer`, no `Basic`. It is the string the OpenPix dashboard shows, and
+    it is account-wide. `default_headers` puts it on every request the client
+    makes.
 
-The specification says, in so many words, *"Value in cents of this charge"* —
-and then types the field `number`. The generated model therefore validates
-`1990` into the float `1990.0`.
-
-Money that has been through a float is money that can be wrong: add a few of
-them and you get `0.30000000000000004`. Cents exist to avoid exactly that,
-and the JSON layer undoes it.
+## Flow 1 — open the charge
 
 ```python
-from tempest_fastapi_sdk.integrations.payment.openpix import cents_to_reais, reais_to_cents, to_cents
+from tempest_fastapi_sdk.integrations.payment.openpix import (
+    Charge,
+    ChargePayload,
+    CustomerPayload,
+    OpenPixClient,
+    reais_to_cents,
+)
 
-to_cents(1990.0)          # 1990  (int, exact)
-reais_to_cents("19.90")   # 1990
-cents_to_reais(1990)      # Decimal("19.90")
+
+class OpenPixService:
+    """Pix charge rules."""
+
+    def __init__(self, client: OpenPixClient) -> None:
+        """Store the generated client.
+
+        Args:
+            client (OpenPixClient): The OpenPix client.
+        """
+        self.client: OpenPixClient = client
+
+    async def open_charge(
+        self,
+        *,
+        reference: str,
+        amount_brl: str,
+        customer_name: str,
+        customer_email: str,
+    ) -> Charge:
+        """Open a Pix charge for an order.
+
+        Args:
+            reference (str): The order id, used as the `correlationID`.
+            amount_brl (str): Amount in reais, as text ("19.90").
+            customer_name (str): The payer's name.
+            customer_email (str): The payer's email.
+
+        Returns:
+            Charge: The created charge, carrying the BR Code for the QR.
+
+        Raises:
+            ValueError: If the response comes back without the charge.
+        """
+        response = await self.client.post_api_v1_charge(
+            body=ChargePayload(
+                correlation_id=reference,
+                value=reais_to_cents(amount_brl),
+                comment=f"Order {reference}",
+                customer=CustomerPayload(
+                    name=customer_name,
+                    email=customer_email,
+                ),
+                expires_in=3600,
+            ),
+            return_existing=True,
+        )
+        if response.charge is None:
+            raise ValueError(f"OpenPix returned no charge for {reference}")
+        return response.charge
 ```
 
-!!! warning "`to_cents` refuses a fraction on purpose"
-    `to_cents(19.9)` raises `ValueError`. The field **already is** cents, so a
-    fraction means the caller is treating a reais amount as one. Rounding
-    silently would hide that mistake behind a plausible number.
-
-!!! tip "`reais_to_cents` rounds half-up"
-    That is what a person expects from money (`0.005` → `1` cent) and it is
-    **not** what the built-in `round` does: it rounds half to even, so
-    `round(0.005 * 100)` gives `0`.
-
-### 3. The 28 webhook events
-
-Ported verbatim from the specification's `WebhookEventEnum`:
+The router only forwards and picks what the app needs:
 
 ```python
-from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEvent
+from typing import Any
 
-OpenPixEvent.CHARGE_COMPLETED.value        # "OPENPIX:CHARGE_COMPLETED"
-OpenPixEvent.PIX_AUTOMATIC_APPROVED.value  # "PIX_AUTOMATIC_APPROVED"
+from fastapi import APIRouter, Depends
+
+from src.api.dependencies.payments import get_openpix_service
+from src.services.openpix import OpenPixService
+
+router: APIRouter = APIRouter(prefix="/api", tags=["checkout"])
+
+
+@router.post("/checkout")
+async def checkout(
+    service: OpenPixService = Depends(get_openpix_service),
+) -> dict[str, Any]:
+    """Open the order's charge and return what the app draws.
+
+    Args:
+        service (OpenPixService): The charge service.
+
+    Returns:
+        The BR Code, the QR image and the payment link.
+    """
+    charge = await service.open_charge(
+        reference="order-1",
+        amount_brl="19.90",
+        customer_name="Ana",
+        customer_email="ana@example.com",
+    )
+    return {
+        "br_code": charge.br_code,
+        "qr_code_image": charge.qr_code_image,
+        "payment_link_url": charge.payment_link_url,
+        "status": charge.status,
+    }
 ```
 
-!!! note "The prefix is not uniform, and that is OpenPix's doing"
-    Charge, transaction, movement and dispute events carry the `OPENPIX:`
-    namespace. The Pix-automatic and account-register families do **not**. It
-    reads like a transcription slip; it is not — which is why a test pins both
-    cases.
+Run against the API, the route answers:
 
-### 4. How to validate the webhook
+```json
+{
+  "br_code": "00020101021226830014BR.GOV.BCB.PIX...",
+  "qr_code_image": "https://api.openpix.com.br/openpix/charge/brcode/image/x.png",
+  "payment_link_url": "https://openpix.com.br/pay/order-1",
+  "status": "ACTIVE"
+}
+```
 
-OpenPix signs every delivery with its private key and publishes the public
-one. The SDK already had `RSAWebhookSignatureVerifier`; what was missing was
-tying the three facts together — which header, which key, and what the
-`event` string means.
+That is three ways to present the same charge, and the interface picks:
 
-!!! warning "Verifying a signature needs `cryptography`"
-    The module **imports** on a minimal install, but `verify()` raises
-    `ImportError` on the first real delivery — in production, not at boot.
-    Install it up front:
+| Field | What it is | When to use it |
+| --- | --- | --- |
+| `br_code` | The Pix EMV string | Your own app: draw the QR and offer copy-paste |
+| `qr_code_image` | URL of a PNG of the QR | Plain page, email, PDF |
+| `payment_link_url` | Payment page hosted by OpenPix | When you would rather build no screen at all |
 
-    ```bash
-    uv add cryptography
-    # or via the SDK extra that already ships it:
-    uv add "tempest-fastapi-sdk[webpush]"
-    ```
+!!! tip "`return_existing=True` makes the call idempotent"
+    Without it, a second POST with the same `correlationID` is an error. With
+    it, OpenPix returns the charge that already exists — which is what you
+    want when the user taps "pay" twice or the app retries.
 
-    The `[webpush]` name has nothing to do with payments; it is simply the
-    extra that packages `cryptography` today. If all you want is to validate
-    OpenPix webhooks, installing `cryptography` directly is more honest.
+!!! note "`expires_in` is in seconds, five minutes minimum"
+    OpenPix defaults to a long-lived charge. If your order holds stock, close
+    that window: `expires_in=3600` expires in an hour and the charge leaves
+    "awaiting payment" on its own.
+
+## Flow 2 — find out whether it was paid
+
+There are three paths, and they are not alternatives: they play different
+roles.
+
+| Path | What it is | Role |
+| --- | --- | --- |
+| `CHARGE_COMPLETED` webhook | OpenPix tells you | **Notice.** Fast, but it arrives over the open internet |
+| `get_api_v1_charge_by_id` | You ask | **Fact.** This is what authorizes releasing |
+| `get_api_v1_charge(status=...)` | You sweep | **Safety net.** Catches what the webhook lost |
+
+The rule that sums it up: **the webhook notifies, the API confirms.**
+
+### The webhook, verified
 
 ```python
 from fastapi import APIRouter, Depends
 
 from tempest_fastapi_sdk.integrations.payment.openpix import (
+    Charge,
     OpenPixEvent,
     OpenPixWebhookEvent,
     make_openpix_webhook_dependency,
-    to_cents,
 )
 
-from tempest_fastapi_sdk.integrations.payment.openpix import Charge
+from src.api.dependencies.payments import get_openpix_service
+from src.services.openpix import OpenPixService
 
-router: APIRouter = APIRouter(prefix="/webhooks", tags=["webhooks"])
+router: APIRouter = APIRouter(prefix="/webhooks", include_in_schema=False)
 verify = make_openpix_webhook_dependency()
 
 
 @router.post("/openpix")
 async def receive_openpix(
     event: OpenPixWebhookEvent = Depends(verify),
+    service: OpenPixService = Depends(get_openpix_service),
 ) -> dict[str, str]:
-    """Receive an already-verified OpenPix delivery.
+    """Take a verified delivery and confirm it before releasing.
 
     Args:
         event (OpenPixWebhookEvent): The verified, decoded delivery.
+        service (OpenPixService): The charge service.
 
     Returns:
-        An acknowledgement so OpenPix stops redelivering.
+        An acknowledgement, so OpenPix stops redelivering.
     """
-    if event.event is OpenPixEvent.CHARGE_COMPLETED:
-        charge: Charge = Charge.model_validate(event.payload["charge"])
-        cents: int = to_cents(charge.value)
-        print(charge.correlation_id, cents)
-    return {"status": "ok"}
+    if event.event is not OpenPixEvent.CHARGE_COMPLETED:
+        return {"status": "ignored", "event": event.event_name}
+
+    charge = Charge.model_validate(event.payload["charge"])
+    reference = charge.correlation_id or ""
+    if not await service.is_paid(reference):
+        return {"status": "not-settled"}
+
+    await service.release(reference)
+    return {"status": "released"}
 ```
 
-The dependency verifies the signature, decodes the body and hands you the
-resolved event. `event.payload` stays the raw dict — the generated schemas
-live in your service, so you validate only the branch you care about.
+The dependency does three things before the route body runs: it checks the RSA
+signature in the `x-webhook-signature` header, decodes the JSON, and resolves
+the `event` string into an `OpenPixEvent` member. What is left in
+`event.payload` is the raw dict — you validate only the branch you care about.
 
-## The security part, unsoftened
+Measured with that router running (test key, signed body):
 
-!!! danger "OpenPix's key is RSA-1024"
-    Checked by loading it into `cryptography`: 1024 bits, exponent 65537.
-    That is **below the 2048-bit floor** NIST has recommended since 2013, and
-    it caps what the signature can prove.
+| Delivery | Response |
+| --- | --- |
+| No signature header | **401** |
+| Valid signature, `OPENPIX:CHARGE_COMPLETED` | 200 `{"status": "released"}` |
+| The same delivery again | 200 `{"status": "duplicate"}` |
+| An event this SDK does not know | 200 `{"status": "ignored", "event": "..."}` |
 
-    **Treat a valid signature as evidence the delivery came from OpenPix, not
-    as authorization to move money.** Before acting on a `CHARGE_COMPLETED`,
-    re-read the charge from the API:
+!!! danger "OpenPix's public key is RSA-1024"
+    Verified by loading it into `cryptography`: 1024 bits, exponent 65537 —
+    **below the 2048-bit floor** NIST has recommended since 2013. That caps
+    what the signature can prove.
 
-    ```python
-    if event.event is OpenPixEvent.CHARGE_COMPLETED:
-        confirmed = await openpix.get_api_v1_charge_by_id(
-            id=event.payload["charge"]["correlationID"]
-        )
-        if confirmed.charge.status == "COMPLETED":
-            await release_order(...)
-    ```
+    Treat a valid signature as evidence the delivery came from OpenPix, **not
+    as authorization to move money**. What authorizes is the read-back through
+    the API — exactly the `service.is_paid` above. Nothing here raises the
+    key's strength; the mitigation is not trusting it beyond what it is.
 
-    The signature is a filter against inbound noise. The API read is the
-    fact. Nothing here raises the key's strength — the mitigation is not
-    trusting it beyond what it is.
-
-!!! warning "Replay"
+!!! warning "Replay and repeat delivery"
     The signature covers the body and nothing else, so a captured delivery
-    stays valid forever. Treat your handler as **idempotent** — key off the
-    charge's `correlationID` and ignore what you already processed. See
-    [Idempotency](idempotency.md).
+    stays valid forever — and OpenPix itself redelivers when it does not get a
+    200. Treat the handler as **idempotent**: key on `correlationID` and
+    ignore what you already processed. See [Idempotency](idempotency.md).
 
-### If OpenPix rotates the key
+### The confirmation
 
-The key ships embedded, but is overridable — a hard constant would strand
-every consumer waiting on an SDK release:
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import ChargeStatus
+
+
+async def is_paid(self, reference: str) -> bool:
+    """Ask the API whether the charge is settled.
+
+    Args:
+        reference (str): The charge's `correlationID`.
+
+    Returns:
+        bool: `True` only when OpenPix answers `COMPLETED`.
+    """
+    response = await self.client.get_api_v1_charge_by_id(id=reference)
+    charge = response.charge
+    return charge is not None and charge.status == ChargeStatus.COMPLETED
+```
+
+!!! warning "Compare `status` with `==`, never with `is`"
+    The generated models inherit `BaseSchema`, which sets
+    `use_enum_values=True`: the field arrives as a `str`, not as an enum
+    member. Measured: `charge.status == ChargeStatus.COMPLETED` is `True`,
+    `charge.status is ChargeStatus.COMPLETED` is **`False`** — on every
+    delivery, silently. `ChargeStatus` is a `str` enum, so `==` works with the
+    member **and** with the literal string.
+
+    The three values are `ACTIVE`, `COMPLETED` and `EXPIRED`.
+
+### Reconciliation
+
+A webhook is a network call: one delivery will be lost. A periodic job sweeps
+what fell behind — note that it lists what is **still open** on the OpenPix
+side, to be crossed against what your database believes is open:
+
+```python
+from datetime import UTC, datetime, timedelta
+
+from tempest_fastapi_sdk.integrations.payment.openpix import ChargeStatus, OpenPixClient
+
+
+async def sweep_pending(client: OpenPixClient) -> list[str]:
+    """List the charges still open in the last 24 hours.
+
+    Args:
+        client (OpenPixClient): The OpenPix client.
+
+    Returns:
+        The `correlationID`s still awaiting payment.
+    """
+    now = datetime.now(UTC)
+    response = await client.get_api_v1_charge(
+        start=now - timedelta(days=1),
+        end=now,
+        status=ChargeStatus.ACTIVE,
+    )
+    return [charge.correlation_id or "" for charge in response.charges]
+```
+
+Every order your database holds as "awaiting" that does **not** appear in that
+list ended some other way: it was either paid (and the webhook was lost) or it
+expired. Read each one with `get_api_v1_charge_by_id` and close the case.
+
+!!! note "The listing has no pagination in the specification"
+    `GET /api/v1/charge` accepts `start`, `end`, `status`, `customer` and
+    `subscription` — and nothing else. The response carries `page_info`, but
+    the specification declares no `skip`/`limit`, so the generated client does
+    not expose them. For wide windows, sweep in smaller time slices.
+
+## Flow 3 — change the deadline, or give up
 
 ```python
 from tempest_fastapi_sdk.integrations.payment.openpix import (
-    decode_public_key,
+    ChargePatchPayload,
+    OpenPixClient,
+)
+
+
+async def extend(client: OpenPixClient, reference: str, until: str) -> None:
+    """Push out the expiration of an open charge.
+
+    Args:
+        client (OpenPixClient): The OpenPix client.
+        reference (str): The charge's `correlationID`.
+        until (str): New expiration date, ISO 8601.
+    """
+    await client.patch_api_v1_charge_by_id(
+        id=reference,
+        body=ChargePatchPayload(expires_date=until),
+    )
+
+
+async def cancel(client: OpenPixClient, reference: str) -> None:
+    """Cancel a charge that will not be paid.
+
+    Args:
+        client (OpenPixClient): The OpenPix client.
+        reference (str): The charge's `correlationID`.
+    """
+    await client.delete_api_v1_charge_by_id(id=reference)
+```
+
+`patch` only touches the expiration — it is the single field
+`ChargePatchPayload` has. To change the amount, open another charge.
+
+## Flow 4 — refund
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import (
+    ChargeRefundPayload,
+    OpenPixClient,
+    reais_to_cents,
+)
+
+
+async def refund(
+    client: OpenPixClient,
+    *,
+    reference: str,
+    refund_reference: str,
+    amount_brl: str,
+) -> None:
+    """Give the money back for a paid charge.
+
+    Args:
+        client (OpenPixClient): The OpenPix client.
+        reference (str): The paid charge's `correlationID`.
+        refund_reference (str): Your key for this refund.
+        amount_brl (str): How much to return, in reais.
+    """
+    await client.post_api_v1_charge_by_id_refund(
+        id=reference,
+        body=ChargeRefundPayload(
+            correlation_id=refund_reference,
+            value=reais_to_cents(amount_brl),
+            comment="Order cancelled",
+        ),
+    )
+```
+
+A refund has its own `correlationID` — it is a record of yours, separate from
+the charge. `get_api_v1_charge_by_id_refund` lists a charge's refunds, and the
+amount is optional: omit it and OpenPix returns the full value.
+
+## Money: whole cents, not floats
+
+The specification says, in those words, *"Value in cents of this charge"* — and
+then types the field `number`. The generated model therefore validates `1990`
+into the float `1990.0`. Money that has been through a float is money that can
+be wrong: add a few of them and you get `0.30000000000000004`.
+
+```python
+from decimal import Decimal
+
+from tempest_fastapi_sdk.integrations.payment.openpix import (
+    cents_to_reais,
+    reais_to_cents,
+    to_cents,
+)
+
+assert reais_to_cents("19.90") == 1990
+assert to_cents(1990.0) == 1990
+assert cents_to_reais(1990) == Decimal("19.90")
+```
+
+- **`reais_to_cents`** is what you use when *creating*: it takes reais and
+  returns cents. It rounds half-up (`0.005` -> `1`), which is what a person
+  expects from money and **not** what the built-in `round` does — that rounds
+  half to even, and `round(0.005 * 100)` gives `0`.
+- **`to_cents`** is what you use when *reading*: it narrows the float the API
+  returned into an exact `int`. It **refuses a fraction on purpose** —
+  `to_cents(19.9)` raises `ValueError`, because the field is already in cents
+  and a fraction means someone is treating reais as cents. Rounding silently
+  would hide that behind a plausible number.
+- **`cents_to_reais`** returns a `Decimal`, so the value stays exact all the
+  way to the formatting call.
+
+## Registering the webhook with OpenPix
+
+You can register it in the dashboard, or through the API — which keeps the
+address versioned alongside the deploy:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import (
+    OpenPixClient,
+    PostApiV1WebhookBody,
+    WebhookEventEnum,
+    WebhookPayload,
+)
+
+
+async def register_webhook(client: OpenPixClient, url: str) -> None:
+    """Subscribe the charge-paid event to a URL.
+
+    Args:
+        client (OpenPixClient): The OpenPix client.
+        url (str): The public address of `POST /webhooks/openpix`.
+    """
+    await client.post_api_v1_webhook(
+        body=PostApiV1WebhookBody(
+            webhook=WebhookPayload(
+                name="charge-paid",
+                event=WebhookEventEnum.OPENPIX_CHARGE_COMPLETED,
+                url=url,
+                is_active=True,
+            )
+        )
+    )
+```
+
+!!! note "The event prefix is not uniform, and that is OpenPix's doing"
+    `OpenPixEvent` carries all 28 events verbatim. Charge, transaction,
+    movement and dispute carry the `OPENPIX:` namespace
+    (`OpenPixEvent.CHARGE_COMPLETED.value == "OPENPIX:CHARGE_COMPLETED"`). The
+    Pix-automatic and account-register families do **not**
+    (`OpenPixEvent.PIX_AUTOMATIC_APPROVED.value == "PIX_AUTOMATIC_APPROVED"`).
+    It looks like a transcription slip; it is not — and that is why a test
+    pins both cases.
+
+## Testing without the network
+
+The client takes its transport by injection, so an `httpx.MockTransport`
+exercises the whole flow without leaving the machine:
+
+```python
+import httpx
+
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment.openpix import (
+    ChargePayload,
+    OpenPixClient,
+)
+
+seen: list[httpx.Request] = []
+
+
+def handler(request: httpx.Request) -> httpx.Response:
+    """Record the request and answer with a canned charge.
+
+    Args:
+        request (httpx.Request): The request that would go out.
+
+    Returns:
+        httpx.Response: The canned response.
+    """
+    seen.append(request)
+    return httpx.Response(
+        200,
+        json={
+            "charge": {"status": "ACTIVE", "correlationID": "order-1", "value": 1990},
+            "correlationID": "order-1",
+            "brCode": "00020101021226830014BR.GOV.BCB.PIX...",
+        },
+    )
+
+
+async def test_charge_carries_the_customer() -> None:
+    """The customer data reaches the request body."""
+    http = HTTPClient(
+        base_url="https://api.woovi-sandbox.com",
+        transport=httpx.MockTransport(handler),
+    )
+    client = OpenPixClient(http)
+
+    await client.post_api_v1_charge(
+        body=ChargePayload(correlation_id="order-1", value=1990)
+    )
+
+    assert seen[-1].url.path == "/api/v1/charge"
+```
+
+For the webhook, inject a verifier over a test key pair instead of OpenPix's
+key:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import (
     make_openpix_webhook_dependency,
     webhook_verifier,
 )
 
-rotated = decode_public_key("LS0tLS1CRUdJTiBQVUJMSUMgS0VZ...")
 verify = make_openpix_webhook_dependency(
-    verifier=webhook_verifier(public_key_pem=rotated)
+    verifier=webhook_verifier(public_key_pem="-----BEGIN PUBLIC KEY-----\n...")
 )
 ```
 
-OpenPix publishes the key base64-encoded, not as PEM. `decode_public_key`
-decodes it and **checks the result really is a PEM** — without that, a
-truncated paste would fail much later, as an invalid signature on a real
-delivery.
+## The module's two halves
 
-## Two decisions that keep your service up
+It is worth knowing which part came from where, because they are maintained
+differently:
 
-!!! check "An unknown event does not fail the request"
-    OpenPix adds events. A service that 500s on one it has never seen turns
-    the provider's release into its own outage. The name stays in
-    `event.event_name` and `event.event` is left `None`.
+| Half | What it is | Where it comes from |
+| --- | --- | --- |
+| **Generated** | `OpenPixClient`, `DEFAULT_BASE_URL`, 373 schema classes | The spec, verbatim |
+| **Hand-written** | `OpenPixEnvironment`, `OpenPixEvent`, the webhook, the money helpers | What the spec does **not** say |
 
-!!! check "A non-JSON body that verified is still delivered"
-    If it verified, it came from OpenPix. Rejecting it would discard a
-    delivery the provider considers sent. `payload` stays empty and `body`
-    carries the bytes.
+!!! info "The generated half is checked in, not written by hand"
+    `scripts/regen_openpix.py` produces `schemas.py` and `client.py` from the
+    specification pinned in `vendor/openpix-openapi.yaml`, and **a test fails
+    if the files on disk drift** from what the script produces. To update when
+    OpenPix changes the API: swap the file in `vendor/`, run `make
+    openpix-regen`, and the diff shows exactly what the third party changed.
+
+!!! note "The models load on first use, not on import"
+    Building 373 Pydantic models costs the better part of a second. Importing
+    the package just for `to_cents` should not pay that, so the generated half
+    resolves through [PEP 562](https://peps.python.org/pep-0562/).
+
+    Measured on this machine (Python 3.11, with `tempest_fastapi_sdk` already
+    imported): **~11 ms** to import the subpackage, **~150 ms** on the first
+    access to a generated name, **~0.02 ms** after that. The numbers move with
+    the machine; what does not move is the ratio between them — code that only
+    calls `to_cents` never pays the 150 ms.
 
 ## Recap
 
-1. **It all ships installed** — `OpenPixClient`, 358 schemas, 105 operations.
-   No generator to run.
-2. **The generated half is regenerable and drift-tested** (`make
-   openpix-regen`); editing it by hand breaks the suite.
-3. **Lazy loading**: 2 ms to import, ~200 ms on the first generated name.
-4. **`OpenPixEnvironment`** resolves production vs sandbox — different
-   domains.
-5. **`to_cents` / `reais_to_cents` / `cents_to_reais`** undo the float the
-   spec forces, and refuse a fraction rather than round it away.
-6. **`OpenPixEvent`** carries the 28 events verbatim, irregular prefix
-   included.
-7. **`make_openpix_webhook_dependency()`** verifies, decodes and hands over
-   the typed event; a new event and a non-JSON body do not take the route
-   down.
-8. **The key is RSA-1024** — a valid signature proves origin, it does not
-   authorize moving money. Re-read the charge from the API and keep the
-   handler idempotent.
+1. **One `HTTPClient` per process**, created in the lifespan, with the AppID in
+   `default_headers` and the base URL from `OpenPixEnvironment`.
+2. **`correlationID` is your order id** — it is what ties creation, webhook,
+   read-back and refund together.
+3. **Opening the charge** is `post_api_v1_charge` with `return_existing=True`;
+   the response carries `br_code`, `qr_code_image` and `payment_link_url`, and
+   the interface picks between them.
+4. **The webhook notifies, the API confirms.**
+   `make_openpix_webhook_dependency()` verifies and hands over the typed
+   event; `get_api_v1_charge_by_id` is what authorizes releasing — OpenPix's
+   key is RSA-1024.
+5. **The handler is idempotent**, because the same delivery arrives more than
+   once.
+6. **A reconciliation job** sweeps `status=ACTIVE` and closes what the webhook
+   lost.
+7. **Money in whole cents**: `reais_to_cents` to create, `to_cents` to read,
+   `cents_to_reais` to display.
+8. **Compare `status` with `==`**, never with `is` — the field arrives as a
+   `str`.

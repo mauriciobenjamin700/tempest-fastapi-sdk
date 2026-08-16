@@ -207,14 +207,23 @@ class GetApiV1TransactionType(BaseStrEnum):
     REVERSAL = "REVERSAL"
 
 
-class PaymentDestinationAliasType(BaseStrEnum):
-    """Allowed values for PaymentDestinationAliasType."""
+class PaymentCreatePayloadPixKeyDestinationAliasType(BaseStrEnum):
+    """Allowed values for PaymentCreatePayloadPixKeyDestinationAliasType."""
 
     CPF = "CPF"
     CNPJ = "CNPJ"
     EMAIL = "EMAIL"
     PHONE = "PHONE"
     RANDOM = "RANDOM"
+
+
+class PaymentCreatePayloadPixKeyType(BaseStrEnum):
+    """Allowed values for PaymentCreatePayloadPixKeyType."""
+
+    PIX_KEY = "PIX_KEY"
+    QR_CODE = "QR_CODE"
+    MANUAL = "MANUAL"
+    BOLETO = "BOLETO"
 
 
 class PaymentStatus(BaseStrEnum):
@@ -224,15 +233,6 @@ class PaymentStatus(BaseStrEnum):
     FAILED = "FAILED"
     CONFIRMED = "CONFIRMED"
     DENIED = "DENIED"
-
-
-class PaymentType(BaseStrEnum):
-    """Allowed values for PaymentType."""
-
-    PIX_KEY = "PIX_KEY"
-    QR_CODE = "QR_CODE"
-    MANUAL = "MANUAL"
-    BOLETO = "BOLETO"
 
 
 class PixKeyCreateType(BaseStrEnum):
@@ -1126,13 +1126,28 @@ class CustomerPatchPayloadAddress(BaseSchema):
     country: str | None = None
 
 
-class CustomerPayload(BaseSchema):
-    """Customer field is not required. However, if you decide to send it, you must send
-    at least one of the following combinations, name + taxID or name + email or name +
-    phone.
+class CustomerPayloadAddress(BaseSchema):
+    """Schema generated for CustomerPayloadAddress.
+
+    Attributes:
+        zipcode (str | None): Undocumented in the spec.
+        street (str | None): Undocumented in the spec.
+        number (str | None): Undocumented in the spec.
+        neighborhood (str | None): Undocumented in the spec.
+        city (str | None): Undocumented in the spec.
+        state (str | None): Undocumented in the spec.
+        complement (str | None): Undocumented in the spec.
+        country (str | None): Undocumented in the spec.
     """
 
-    # The specification declares no properties.
+    zipcode: str | None = None
+    street: str | None = None
+    number: str | None = None
+    neighborhood: str | None = None
+    city: str | None = None
+    state: str | None = None
+    complement: str | None = None
+    country: str | None = None
 
 
 class CustomerTaxId(BaseSchema):
@@ -2360,10 +2375,187 @@ class PaymentBoletoIssuingEntity(BaseSchema):
     name: str | None = None
 
 
-class PaymentCreatePayload(BaseSchema):
-    """Schema generated for PaymentCreatePayload."""
+class PaymentCreatePayloadBoleto(BaseSchema):
+    """Boleto.
 
-    # The specification declares no properties.
+    Attributes:
+        type (PaymentCreatePayloadPixKeyType): type of the payment
+        boleto_barcode (str): the boleto barcode to be paid (44, 47 or 48 digits). The
+            amount, due date and beneficiary are resolved from the validated boleto, so
+            value and destination are not sent in the body
+        correlation_id (str): a unique identifier for your payment
+        source_account_id (str | None): optional source account ID to use for the
+            payment
+        comment (str | None): the comment that will be sent alongside your payment
+        metadata (dict[str, Any] | None): additional metadata for the payment (max 30
+            keys)
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
+    boleto_barcode: str = Field(
+        alias="boletoBarcode",
+        description=(
+            "the boleto barcode to be paid (44, 47 or 48 digits). The amount, due date "
+            "and beneficiary are resolved from the validated boleto, so value and "
+            "destination are not sent in the body"
+        ),
+    )
+    correlation_id: str = Field(
+        alias="correlationID",
+        description="a unique identifier for your payment",
+    )
+    source_account_id: str | None = Field(
+        alias="sourceAccountId",
+        description="optional source account ID to use for the payment",
+        default=None,
+    )
+    comment: str | None = Field(
+        description="the comment that will be sent alongside your payment",
+        default=None,
+    )
+    metadata: dict[str, Any] | None = Field(
+        description="additional metadata for the payment (max 30 keys)",
+        default=None,
+    )
+
+
+class PaymentCreatePayloadManualAccount(BaseSchema):
+    """Schema generated for PaymentCreatePayloadManualAccount.
+
+    Attributes:
+        account (str): account number
+        branch (str): branch number
+        account_type (str): type of the account (e.g., TRAN)
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    account: str = Field(description="account number")
+    branch: str = Field(description="branch number")
+    account_type: str = Field(
+        alias="accountType",
+        description="type of the account (e.g., TRAN)",
+    )
+
+
+class PaymentCreatePayloadManualHolderTaxId(BaseSchema):
+    """Schema generated for PaymentCreatePayloadManualHolderTaxId.
+
+    Attributes:
+        type (str): type of the tax ID (e.g., BR:CNPJ)
+        tax_id (str): tax ID number
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: str = Field(description="type of the tax ID (e.g., BR:CNPJ)")
+    tax_id: str = Field(alias="taxID", description="tax ID number")
+
+
+class PaymentCreatePayloadPixKey(BaseSchema):
+    """Pix key.
+
+    Attributes:
+        type (PaymentCreatePayloadPixKeyType): type of the payment
+        value (float): value of the requested payment in cents
+        destination_alias (str): the pix key the payment should be sent to
+        destination_alias_type (PaymentCreatePayloadPixKeyDestinationAliasType): the
+            type of the pix key the payment should be sent to
+        correlation_id (str): a unique identifier for your payment
+        pix_key_end_to_end_id (str | None): the end to end id of the pix key used for
+            track pix key consultations
+        comment (str | None): the comment that will be sent alongside your payment
+        metadata (dict[str, Any] | None): additional metadata for the payment (max 30
+            keys)
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
+    value: float = Field(description="value of the requested payment in cents")
+    destination_alias: str = Field(
+        alias="destinationAlias",
+        description="the pix key the payment should be sent to",
+    )
+    destination_alias_type: PaymentCreatePayloadPixKeyDestinationAliasType = Field(
+        alias="destinationAliasType",
+        description="the type of the pix key the payment should be sent to",
+    )
+    correlation_id: str = Field(
+        alias="correlationID",
+        description="a unique identifier for your payment",
+    )
+    pix_key_end_to_end_id: str | None = Field(
+        alias="pixKeyEndToEndId",
+        description=(
+            "the end to end id of the pix key used for track pix key consultations"
+        ),
+        default=None,
+    )
+    comment: str | None = Field(
+        description="the comment that will be sent alongside your payment",
+        default=None,
+    )
+    metadata: dict[str, Any] | None = Field(
+        description="additional metadata for the payment (max 30 keys)",
+        default=None,
+    )
+
+
+class PaymentCreatePayloadQrCode(BaseSchema):
+    """QR Code.
+
+    Attributes:
+        type (PaymentCreatePayloadPixKeyType): type of the payment
+        qr_code (str): the BR Code (Pix QR Code) string to be paid. The system will
+            decode it and extract the destination and value automatically
+        value (float | None): optional value in cents. Use this to override the value
+            extracted from the QR Code, or to set a value for QR Codes without a fixed
+            amount
+        correlation_id (str): a unique identifier for your payment
+        source_account_id (str | None): optional source account ID to use for the
+            payment
+        comment (str | None): the comment that will be sent alongside your payment
+        metadata (dict[str, Any] | None): additional metadata for the payment (max 30
+            keys)
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
+    qr_code: str = Field(
+        alias="qrCode",
+        description=(
+            "the BR Code (Pix QR Code) string to be paid. The system will decode it "
+            "and extract the destination and value automatically"
+        ),
+    )
+    value: float | None = Field(
+        description=(
+            "optional value in cents. Use this to override the value extracted from "
+            "the QR Code, or to set a value for QR Codes without a fixed amount"
+        ),
+        default=None,
+    )
+    correlation_id: str = Field(
+        alias="correlationID",
+        description="a unique identifier for your payment",
+    )
+    source_account_id: str | None = Field(
+        alias="sourceAccountId",
+        description="optional source account ID to use for the payment",
+        default=None,
+    )
+    comment: str | None = Field(
+        description="the comment that will be sent alongside your payment",
+        default=None,
+    )
+    metadata: dict[str, Any] | None = Field(
+        description="additional metadata for the payment (max 30 keys)",
+        default=None,
+    )
 
 
 class PaymentDestination(BaseSchema):
@@ -3066,16 +3258,209 @@ class PostApiV1PartnerApplicationBodyApplication(BaseSchema):
     )
 
 
-class PostApiV1PaymentBody(BaseSchema):
-    """Schema generated for PostApiV1PaymentBody.
+class PostApiV1PaymentBodyBoleto(BaseSchema):
+    """Boleto.
 
     Attributes:
+        type (PaymentCreatePayloadPixKeyType): type of the payment
+        boleto_barcode (str): the boleto barcode to be paid (44, 47 or 48 digits). The
+            amount, due date and beneficiary are resolved from the validated boleto, so
+            value and destination are not sent in the body
+        correlation_id (str): a unique identifier for your payment
+        source_account_id (str | None): optional source account ID to use for the
+            payment
+        comment (str | None): the comment that will be sent alongside your payment
+        metadata (dict[str, Any] | None): additional metadata for the payment (max 30
+            keys)
         auto_approve (bool | None): When true, creates and approves the payment in a
             single call returning the enriched response. Defaults to false.
     """
 
     model_config = ConfigDict(populate_by_name=True)
 
+    type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
+    boleto_barcode: str = Field(
+        alias="boletoBarcode",
+        description=(
+            "the boleto barcode to be paid (44, 47 or 48 digits). The amount, due date "
+            "and beneficiary are resolved from the validated boleto, so value and "
+            "destination are not sent in the body"
+        ),
+    )
+    correlation_id: str = Field(
+        alias="correlationID",
+        description="a unique identifier for your payment",
+    )
+    source_account_id: str | None = Field(
+        alias="sourceAccountId",
+        description="optional source account ID to use for the payment",
+        default=None,
+    )
+    comment: str | None = Field(
+        description="the comment that will be sent alongside your payment",
+        default=None,
+    )
+    metadata: dict[str, Any] | None = Field(
+        description="additional metadata for the payment (max 30 keys)",
+        default=None,
+    )
+    auto_approve: bool | None = Field(
+        alias="autoApprove",
+        description=(
+            "When true, creates and approves the payment in a single call returning "
+            "the enriched response. Defaults to false."
+        ),
+        default=None,
+    )
+
+
+class PostApiV1PaymentBodyManualAccount(BaseSchema):
+    """Schema generated for PostApiV1PaymentBodyManualAccount.
+
+    Attributes:
+        account (str): account number
+        branch (str): branch number
+        account_type (str): type of the account (e.g., TRAN)
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    account: str = Field(description="account number")
+    branch: str = Field(description="branch number")
+    account_type: str = Field(
+        alias="accountType",
+        description="type of the account (e.g., TRAN)",
+    )
+
+
+class PostApiV1PaymentBodyManualHolderTaxId(BaseSchema):
+    """Schema generated for PostApiV1PaymentBodyManualHolderTaxId.
+
+    Attributes:
+        type (str): type of the tax ID (e.g., BR:CNPJ)
+        tax_id (str): tax ID number
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: str = Field(description="type of the tax ID (e.g., BR:CNPJ)")
+    tax_id: str = Field(alias="taxID", description="tax ID number")
+
+
+class PostApiV1PaymentBodyPixKey(BaseSchema):
+    """Pix key.
+
+    Attributes:
+        type (PaymentCreatePayloadPixKeyType): type of the payment
+        value (float): value of the requested payment in cents
+        destination_alias (str): the pix key the payment should be sent to
+        destination_alias_type (PaymentCreatePayloadPixKeyDestinationAliasType): the
+            type of the pix key the payment should be sent to
+        correlation_id (str): a unique identifier for your payment
+        pix_key_end_to_end_id (str | None): the end to end id of the pix key used for
+            track pix key consultations
+        comment (str | None): the comment that will be sent alongside your payment
+        metadata (dict[str, Any] | None): additional metadata for the payment (max 30
+            keys)
+        auto_approve (bool | None): When true, creates and approves the payment in a
+            single call returning the enriched response. Defaults to false.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
+    value: float = Field(description="value of the requested payment in cents")
+    destination_alias: str = Field(
+        alias="destinationAlias",
+        description="the pix key the payment should be sent to",
+    )
+    destination_alias_type: PaymentCreatePayloadPixKeyDestinationAliasType = Field(
+        alias="destinationAliasType",
+        description="the type of the pix key the payment should be sent to",
+    )
+    correlation_id: str = Field(
+        alias="correlationID",
+        description="a unique identifier for your payment",
+    )
+    pix_key_end_to_end_id: str | None = Field(
+        alias="pixKeyEndToEndId",
+        description=(
+            "the end to end id of the pix key used for track pix key consultations"
+        ),
+        default=None,
+    )
+    comment: str | None = Field(
+        description="the comment that will be sent alongside your payment",
+        default=None,
+    )
+    metadata: dict[str, Any] | None = Field(
+        description="additional metadata for the payment (max 30 keys)",
+        default=None,
+    )
+    auto_approve: bool | None = Field(
+        alias="autoApprove",
+        description=(
+            "When true, creates and approves the payment in a single call returning "
+            "the enriched response. Defaults to false."
+        ),
+        default=None,
+    )
+
+
+class PostApiV1PaymentBodyQrCode(BaseSchema):
+    """QR Code.
+
+    Attributes:
+        type (PaymentCreatePayloadPixKeyType): type of the payment
+        qr_code (str): the BR Code (Pix QR Code) string to be paid. The system will
+            decode it and extract the destination and value automatically
+        value (float | None): optional value in cents. Use this to override the value
+            extracted from the QR Code, or to set a value for QR Codes without a fixed
+            amount
+        correlation_id (str): a unique identifier for your payment
+        source_account_id (str | None): optional source account ID to use for the
+            payment
+        comment (str | None): the comment that will be sent alongside your payment
+        metadata (dict[str, Any] | None): additional metadata for the payment (max 30
+            keys)
+        auto_approve (bool | None): When true, creates and approves the payment in a
+            single call returning the enriched response. Defaults to false.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
+    qr_code: str = Field(
+        alias="qrCode",
+        description=(
+            "the BR Code (Pix QR Code) string to be paid. The system will decode it "
+            "and extract the destination and value automatically"
+        ),
+    )
+    value: float | None = Field(
+        description=(
+            "optional value in cents. Use this to override the value extracted from "
+            "the QR Code, or to set a value for QR Codes without a fixed amount"
+        ),
+        default=None,
+    )
+    correlation_id: str = Field(
+        alias="correlationID",
+        description="a unique identifier for your payment",
+    )
+    source_account_id: str | None = Field(
+        alias="sourceAccountId",
+        description="optional source account ID to use for the payment",
+        default=None,
+    )
+    comment: str | None = Field(
+        description="the comment that will be sent alongside your payment",
+        default=None,
+    )
+    metadata: dict[str, Any] | None = Field(
+        description="additional metadata for the payment (max 30 keys)",
+        default=None,
+    )
     auto_approve: bool | None = Field(
         alias="autoApprove",
         description=(
@@ -3704,11 +4089,11 @@ class SubAccountTransferPayload(BaseSchema):
     Attributes:
         value (float): The value of the transfer in cents
         from_pix_key (str): The transfer origin pix key
-        from_pix_key_type (PaymentDestinationAliasType): The transfer origin pix key
-            type
+        from_pix_key_type (PaymentCreatePayloadPixKeyDestinationAliasType): The transfer
+            origin pix key type
         to_pix_key (str): The transfer destination pix key
-        to_pix_key_type (PaymentDestinationAliasType): The transfer destination pix key
-            type
+        to_pix_key_type (PaymentCreatePayloadPixKeyDestinationAliasType): The transfer
+            destination pix key type
         correlation_id (str | None): Your correlation ID to keep track of this transfer
     """
 
@@ -3719,7 +4104,7 @@ class SubAccountTransferPayload(BaseSchema):
         alias="fromPixKey",
         description="The transfer origin pix key",
     )
-    from_pix_key_type: PaymentDestinationAliasType = Field(
+    from_pix_key_type: PaymentCreatePayloadPixKeyDestinationAliasType = Field(
         alias="fromPixKeyType",
         description="The transfer origin pix key type",
     )
@@ -3727,7 +4112,7 @@ class SubAccountTransferPayload(BaseSchema):
         alias="toPixKey",
         description="The transfer destination pix key",
     )
-    to_pix_key_type: PaymentDestinationAliasType = Field(
+    to_pix_key_type: PaymentCreatePayloadPixKeyDestinationAliasType = Field(
         alias="toPixKeyType",
         description="The transfer destination pix key type",
     )
@@ -4615,6 +5000,30 @@ class CustomerPatchPayload(BaseSchema):
     address: CustomerPatchPayloadAddress | None = None
 
 
+class CustomerPayload(BaseSchema):
+    """Customer field is not required. However, if you decide to send it, you must send
+    at least one of the following combinations, name + taxID or name + email or name +
+    phone.
+
+    Attributes:
+        name (str): Undocumented in the spec.
+        email (str | None): Undocumented in the spec.
+        phone (str | None): Undocumented in the spec.
+        tax_id (str | None): Undocumented in the spec.
+        correlation_id (str | None): Undocumented in the spec.
+        address (CustomerPayloadAddress | None): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    email: str | None = None
+    phone: str | None = None
+    tax_id: str | None = Field(alias="taxID", default=None)
+    correlation_id: str | None = Field(alias="correlationID", default=None)
+    address: CustomerPayloadAddress | None = None
+
+
 class FraudMarkers(BaseSchema):
     """Schema generated for FraudMarkers.
 
@@ -5358,6 +5767,20 @@ class PaymentBoleto(BaseSchema):
     )
 
 
+class PaymentCreatePayloadManualHolder(BaseSchema):
+    """Schema generated for PaymentCreatePayloadManualHolder.
+
+    Attributes:
+        name (str): name of the account holder
+        tax_id (PaymentCreatePayloadManualHolderTaxId): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str = Field(description="name of the account holder")
+    tax_id: PaymentCreatePayloadManualHolderTaxId = Field(alias="taxID")
+
+
 class PixKeyCheck(BaseSchema):
     """Schema generated for PixKeyCheck.
 
@@ -5643,6 +6066,20 @@ class PostApiV1PartnerApplicationResponse(BaseSchema):
     """
 
     application: PartnerApplicationPayload | None = None
+
+
+class PostApiV1PaymentBodyManualHolder(BaseSchema):
+    """Schema generated for PostApiV1PaymentBodyManualHolder.
+
+    Attributes:
+        name (str): name of the account holder
+        tax_id (PostApiV1PaymentBodyManualHolderTaxId): Undocumented in the spec.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str = Field(description="name of the account holder")
+    tax_id: PostApiV1PaymentBodyManualHolderTaxId = Field(alias="taxID")
 
 
 class PostApiV1QrcodeStaticResponse(BaseSchema):
@@ -6089,6 +6526,9 @@ class ChargePayload(BaseSchema):
         ),
         default=None,
     )
+    # openapi: unsupported — oneOf in 'CustomerPayload' merged into one model — every
+    #   variant's properties are accepted together, so 'exactly one variant' is not
+    #   enforced
     customer: CustomerPayload | None = Field(
         description=(
             "Customer field is not required. However, if you decide to send it, you "
@@ -6720,11 +7160,11 @@ class Payment(BaseSchema):
     """Schema generated for Payment.
 
     Attributes:
-        type (PaymentType | None): type of the payment
+        type (PaymentCreatePayloadPixKeyType | None): type of the payment
         value (float | None): value of the requested payment in cents
         destination_alias (str | None): the pix key the payment should be sent to
-        destination_alias_type (PaymentDestinationAliasType | None): the type of the pix
-            key the payment should be sent to
+        destination_alias_type (PaymentCreatePayloadPixKeyDestinationAliasType | None):
+            the type of the pix key the payment should be sent to
         qr_code (str | None): the QR Code to be paid
         correlation_id (str | None): Your correlation ID to keep track of this payment
         comment (str | None): the comment that will be sent alongside your payment
@@ -6736,7 +7176,10 @@ class Payment(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    type: PaymentType | None = Field(description="type of the payment", default=None)
+    type: PaymentCreatePayloadPixKeyType | None = Field(
+        description="type of the payment",
+        default=None,
+    )
     value: float | None = Field(
         description="value of the requested payment in cents",
         default=None,
@@ -6746,10 +7189,12 @@ class Payment(BaseSchema):
         description="the pix key the payment should be sent to",
         default=None,
     )
-    destination_alias_type: PaymentDestinationAliasType | None = Field(
-        alias="destinationAliasType",
-        description="the type of the pix key the payment should be sent to",
-        default=None,
+    destination_alias_type: PaymentCreatePayloadPixKeyDestinationAliasType | None = (
+        Field(
+            alias="destinationAliasType",
+            description="the type of the pix key the payment should be sent to",
+            default=None,
+        )
     )
     qr_code: str | None = Field(
         alias="qrCode",
@@ -6776,6 +7221,46 @@ class Payment(BaseSchema):
             "present for boleto payments (type BOLETO), resolved from the validated "
             "boleto"
         ),
+        default=None,
+    )
+
+
+class PaymentCreatePayloadManual(BaseSchema):
+    """Manual.
+
+    Attributes:
+        type (PaymentCreatePayloadPixKeyType): type of the payment
+        value (float): value of the requested payment in cents
+        correlation_id (str): a unique identifier for your payment
+        pix_key_end_to_end_id (str | None): the end to end id of the pix key used for
+            track pix key consultations
+        psp (str): the PSP (Payment Service Provider) identifier
+        holder (PaymentCreatePayloadManualHolder): Undocumented in the spec.
+        account (PaymentCreatePayloadManualAccount): Undocumented in the spec.
+        metadata (dict[str, Any] | None): additional metadata for the payment (max 30
+            keys)
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
+    value: float = Field(description="value of the requested payment in cents")
+    correlation_id: str = Field(
+        alias="correlationID",
+        description="a unique identifier for your payment",
+    )
+    pix_key_end_to_end_id: str | None = Field(
+        alias="pixKeyEndToEndId",
+        description=(
+            "the end to end id of the pix key used for track pix key consultations"
+        ),
+        default=None,
+    )
+    psp: str = Field(description="the PSP (Payment Service Provider) identifier")
+    holder: PaymentCreatePayloadManualHolder
+    account: PaymentCreatePayloadManualAccount
+    metadata: dict[str, Any] | None = Field(
+        description="additional metadata for the payment (max 30 keys)",
         default=None,
     )
 
@@ -6954,6 +7439,56 @@ class PostApiV1InvoiceResponse(BaseSchema):
     """
 
     invoice: PostApiV1InvoiceResponseInvoice | None = None
+
+
+class PostApiV1PaymentBodyManual(BaseSchema):
+    """Manual.
+
+    Attributes:
+        type (PaymentCreatePayloadPixKeyType): type of the payment
+        value (float): value of the requested payment in cents
+        correlation_id (str): a unique identifier for your payment
+        pix_key_end_to_end_id (str | None): the end to end id of the pix key used for
+            track pix key consultations
+        psp (str): the PSP (Payment Service Provider) identifier
+        holder (PostApiV1PaymentBodyManualHolder): Undocumented in the spec.
+        account (PostApiV1PaymentBodyManualAccount): Undocumented in the spec.
+        metadata (dict[str, Any] | None): additional metadata for the payment (max 30
+            keys)
+        auto_approve (bool | None): When true, creates and approves the payment in a
+            single call returning the enriched response. Defaults to false.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
+    value: float = Field(description="value of the requested payment in cents")
+    correlation_id: str = Field(
+        alias="correlationID",
+        description="a unique identifier for your payment",
+    )
+    pix_key_end_to_end_id: str | None = Field(
+        alias="pixKeyEndToEndId",
+        description=(
+            "the end to end id of the pix key used for track pix key consultations"
+        ),
+        default=None,
+    )
+    psp: str = Field(description="the PSP (Payment Service Provider) identifier")
+    holder: PostApiV1PaymentBodyManualHolder
+    account: PostApiV1PaymentBodyManualAccount
+    metadata: dict[str, Any] | None = Field(
+        description="additional metadata for the payment (max 30 keys)",
+        default=None,
+    )
+    auto_approve: bool | None = Field(
+        alias="autoApprove",
+        description=(
+            "When true, creates and approves the payment in a single call returning "
+            "the enriched response. Defaults to false."
+        ),
+        default=None,
+    )
 
 
 class PostApiV1SubaccountByIdWithdrawResponse(BaseSchema):
@@ -7580,6 +8115,15 @@ class GetApiV1WebhookResponse(BaseSchema):
     )
 
 
+PaymentCreatePayload = (
+    PaymentCreatePayloadPixKey
+    | PaymentCreatePayloadQrCode
+    | PaymentCreatePayloadManual
+    | PaymentCreatePayloadBoleto
+)
+"""Schema generated for PaymentCreatePayload."""
+
+
 class PixKeyFraudValidationData(BaseSchema):
     """Schema generated for PixKeyFraudValidationData.
 
@@ -7687,6 +8231,15 @@ class PostApiV1PaymentApproveResponse(BaseSchema):
     payment: Payment | None = None
     transaction: PaymentTransaction | None = None
     destination: PaymentDestination | None = None
+
+
+PostApiV1PaymentBody = (
+    PostApiV1PaymentBodyPixKey
+    | PostApiV1PaymentBodyQrCode
+    | PostApiV1PaymentBodyManual
+    | PostApiV1PaymentBodyBoleto
+)
+"""Request body of PostApiV1PaymentBody, one variant per shape."""
 
 
 class PostApiV1PaymentResponse(BaseSchema):
@@ -7979,6 +8532,7 @@ __all__: list[str] = [
     "CustomerPatchPayload",
     "CustomerPatchPayloadAddress",
     "CustomerPayload",
+    "CustomerPayloadAddress",
     "CustomerTaxId",
     "DeleteApiV1AccountByAccountIdResponse",
     "DeleteApiV1AccountRegisterByIdResponse",
@@ -8132,11 +8686,18 @@ __all__: list[str] = [
     "PaymentBoletoFinalBeneficiary",
     "PaymentBoletoIssuingEntity",
     "PaymentCreatePayload",
+    "PaymentCreatePayloadBoleto",
+    "PaymentCreatePayloadManual",
+    "PaymentCreatePayloadManualAccount",
+    "PaymentCreatePayloadManualHolder",
+    "PaymentCreatePayloadManualHolderTaxId",
+    "PaymentCreatePayloadPixKey",
+    "PaymentCreatePayloadPixKeyDestinationAliasType",
+    "PaymentCreatePayloadPixKeyType",
+    "PaymentCreatePayloadQrCode",
     "PaymentDestination",
-    "PaymentDestinationAliasType",
     "PaymentStatus",
     "PaymentTransaction",
-    "PaymentType",
     "PixKey",
     "PixKeyCheck",
     "PixKeyCheckOwner",
@@ -8208,6 +8769,13 @@ __all__: list[str] = [
     "PostApiV1PartnerApplicationResponse",
     "PostApiV1PaymentApproveResponse",
     "PostApiV1PaymentBody",
+    "PostApiV1PaymentBodyBoleto",
+    "PostApiV1PaymentBodyManual",
+    "PostApiV1PaymentBodyManualAccount",
+    "PostApiV1PaymentBodyManualHolder",
+    "PostApiV1PaymentBodyManualHolderTaxId",
+    "PostApiV1PaymentBodyPixKey",
+    "PostApiV1PaymentBodyQrCode",
     "PostApiV1PaymentResponse",
     "PostApiV1PixKeysCheckBody",
     "PostApiV1QrcodeStaticResponse",

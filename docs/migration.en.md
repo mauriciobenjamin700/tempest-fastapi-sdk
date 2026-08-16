@@ -2,6 +2,35 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.233.0 — two generated OpenPix enums were renamed
+
+One change, and it only breaks code importing the two payment enums by name.
+
+### `PaymentType` and `PaymentDestinationAliasType` were renamed
+
+The generator now emits the variants of `PaymentCreatePayload` (a `oneOf` with four shapes: Pix key, QR Code, Manual, Boleto), and those are what register the enums first. The name now comes from the variant:
+
+| Before | Now |
+| --- | --- |
+| `PaymentType` | `PaymentCreatePayloadPixKeyType` |
+| `PaymentDestinationAliasType` | `PaymentCreatePayloadPixKeyDestinationAliasType` |
+
+Same members, same values — only the class name changed:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import (
+    PaymentCreatePayloadPixKeyType,
+)
+
+assert PaymentCreatePayloadPixKeyType.PIX_KEY.value == "PIX_KEY"
+```
+
+If you compared the value instead of importing the class (`payment.type == "PIX_KEY"`), there is nothing to do.
+
+### What did **not** break
+
+`PaymentCreatePayload` and `PostApiV1PaymentBody` are still importable: they became union aliases over the variants, so an annotation like `body: PostApiV1PaymentBody` stays valid. What changed is that they now carry the payment's fields — before they were models with **no properties at all**, and `extra="ignore"` silently dropped everything you passed.
+
 ## 0.229.0 — Ollama structured output moves from `/api/generate` to `/api/chat`
 
 One change, and it only breaks **tests**, not runtime.

@@ -389,7 +389,8 @@ come back here to plug in each capability as you need it.
 | **[Object-level permissions »](authz.md)** | `permission` (rule decorator), `has_perm` / `check_permission`, `PermissionRegistry`, `make_permission_checker`, `PermissionMixin` |
 | **[Observability (tracing) »](observability.md)** | `setup_tracing` (OpenTelemetry), `SlowQueryLogger` |
 | **[Offline-first sync (delta) »](offline-sync.md)** | `BaseRepository.changes_since`, `SyncFilterSchema`, `SyncPaginationSchema`, cursor deltas + soft-delete |
-| **[OpenPix (Pix via Woovi) »](openpix.md)** | `OpenPixEnvironment`, `OpenPixEvent`, `make_openpix_webhook_dependency`, `to_cents` |
+| **[OpenPix (Pix via Woovi) »](openpix.md)** | Layered architecture, opening a charge, verified webhook + API read-back, reconciliation, refunds, `OpenPixEnvironment`, `to_cents` |
+| **[OpenPix (subscriptions and plans) »](openpix-subscriptions.md)** | `SubscriptionPayload`, `RECURRENT` vs `PIX_RECURRING` (Pix Automático), lifecycle and instalments, the plan that lives in your database |
 | **[PDF generation »](pdf.md)** | `PdfRenderer`, five bundled documents (receipt/quote/report/contract/voucher) with Pydantic schemas, `make_pdf_router`, `tempest pdf render`, asset policy |
 | **[Permission guards (@requires) »](permission-guards.md)** | `@requires` plus `(user) -> user` guards (with an optional `meta: dict[str, Any]` via `meta=` / `include_args=`), `TempestPermissionError`, `GuardContractWarning`, `tempest permissions --check` |
 | **[Push (web + mobile) »](push.md)** | `DeviceService`, `PushDispatcher`, `WebPushTransport` / `FCMTransport`, `BaseDeviceTokenModel`, `make_push_router` — one call for browsers and phones, with unified pruning of dead devices |

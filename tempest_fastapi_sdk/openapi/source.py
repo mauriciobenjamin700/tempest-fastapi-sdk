@@ -198,10 +198,16 @@ def unsupported_comment(notes: tuple[str, ...], indent: str) -> list[str]:
         list[str]: One wrapped comment block per note, empty when there are
         none. Comments go **above** the line rather than trailing it, so a
         long reason wraps instead of overrunning the budget.
+
+    Wrapping is ``hanging=True`` because each continuation line is re-emitted
+    with a ``"#   "`` prefix — four characters, the same width the hanging
+    indent reserves. Wrapping flat instead let a long note overrun the budget
+    by exactly those four characters, which surfaces as ``E501`` in the
+    consumer's own lint run, on a line nobody wrote by hand.
     """
     lines: list[str] = []
     for note in notes:
-        wrapped = wrap(note, indent, f"{UNSUPPORTED_MARKER} — ", hanging=False)
+        wrapped = wrap(note, indent, f"{UNSUPPORTED_MARKER} — ", hanging=True)
         lines.append(wrapped[0])
         lines.extend(f"{indent}#   {line.strip()}" for line in wrapped[1:])
     return lines

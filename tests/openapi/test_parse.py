@@ -714,3 +714,232 @@ class TestEmptyDocument:
         spec = parse_spec(document, client_name="t")
         assert spec.schemas == ()
         assert len(spec.client.operations) == 1
+
+
+class TestCombinatorComponents:
+    """A component whose top level is ``oneOf`` keeps its data.
+
+    Before this, such a component became a class with no fields, and
+    ``BaseSchema``'s ``extra="ignore"`` then dropped everything a caller
+    passed to it — a charge went out with ``"customer": {}`` and no error
+    anywhere. Each test below fails on that shape.
+    """
+
+    def test_untitled_object_variants_merge_into_one_model(self) -> None:
+        """The same payload described three times is one model."""
+        document = _spec(
+            CustomerPayload={
+                "description": "name plus one of taxID, email or phone.",
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "required": ["name", "taxID"],
+                        "properties": {
+                            "name": {"type": "string"},
+                            "taxID": {"type": "string"},
+                        },
+                    },
+                    {
+                        "type": "object",
+                        "required": ["name", "email"],
+                        "properties": {
+                            "name": {"type": "string"},
+                            "email": {"type": "string"},
+                        },
+                    },
+                ],
+            }
+        )
+        spec = parse_spec(document, client_name="t")
+        merged = _schema(spec, "CustomerPayload")
+        assert merged.kind == "model"
+        assert [f.name for f in merged.fields] == ["name", "tax_id", "email"]
+
+    def test_merged_required_is_the_intersection(self) -> None:
+        """Only what every variant demands stays required.
+
+        The union would demand fields a caller can never satisfy together:
+        ``taxID`` belongs to one variant and ``email`` to another, so
+        requiring both leaves no valid payload at all.
+        """
+        document = _spec(
+            CustomerPayload={
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "required": ["name", "taxID"],
+                        "properties": {
+                            "name": {"type": "string"},
+                            "taxID": {"type": "string"},
+                        },
+                    },
+                    {
+                        "type": "object",
+                        "required": ["name", "email"],
+                        "properties": {
+                            "name": {"type": "string"},
+                            "email": {"type": "string"},
+                        },
+                    },
+                ],
+            }
+        )
+        spec = parse_spec(document, client_name="t")
+        fields = _schema(spec, "CustomerPayload").fields
+        required = {f.name for f in fields if f.required}
+        assert required == {"name"}
+
+    def test_titled_variants_become_a_union_alias(self) -> None:
+        """A real sum type keeps its variants apart, named by their title."""
+        document = _spec(
+            PaymentCreatePayload={
+                "oneOf": [
+                    {
+                        "title": "Pix key",
+                        "type": "object",
+                        "required": ["destinationAlias"],
+                        "properties": {"destinationAlias": {"type": "string"}},
+                    },
+                    {
+                        "title": "QR Code",
+                        "type": "object",
+                        "required": ["qrCode"],
+                        "properties": {"qrCode": {"type": "string"}},
+                    },
+                ],
+            }
+        )
+        spec = parse_spec(document, client_name="t")
+        alias = _schema(spec, "PaymentCreatePayload")
+        assert alias.kind == "alias"
+        assert alias.alias_target == (
+            "PaymentCreatePayloadPixKey | PaymentCreatePayloadQrCode"
+        )
+        assert {s.name for s in spec.schemas} == {
+            "PaymentCreatePayload",
+            "PaymentCreatePayloadPixKey",
+            "PaymentCreatePayloadQrCode",
+        }
+
+    def test_the_alias_is_emitted_after_its_variants(self) -> None:
+        """``A | B`` is evaluated on import, so it must follow A and B."""
+        document = _spec(
+            Sum={
+                "oneOf": [
+                    {
+                        "title": "One",
+                        "type": "object",
+                        "properties": {"a": {"type": "string"}},
+                    },
+                    {
+                        "title": "Two",
+                        "type": "object",
+                        "properties": {"b": {"type": "string"}},
+                    },
+                ]
+            }
+        )
+        spec = parse_spec(document, client_name="t")
+        names = [s.name for s in spec.schemas]
+        assert names.index("SumOne") < names.index("Sum")
+        assert names.index("SumTwo") < names.index("Sum")
+
+    def test_all_of_over_a_union_is_distributed(self) -> None:
+        """``allOf: [sum type, {flag}]`` gives every variant the flag.
+
+        A flat merge asks the union for ``properties``, finds none, and the
+        body collapses to the flag alone — which is how OpenPix's payment
+        endpoint became unable to express a payment.
+        """
+        document = _spec(
+            PaymentCreatePayload={
+                "oneOf": [
+                    {
+                        "title": "Pix key",
+                        "type": "object",
+                        "required": ["destinationAlias"],
+                        "properties": {"destinationAlias": {"type": "string"}},
+                    },
+                    {
+                        "title": "QR Code",
+                        "type": "object",
+                        "required": ["qrCode"],
+                        "properties": {"qrCode": {"type": "string"}},
+                    },
+                ],
+            },
+            PaymentBody={
+                "type": "object",
+                "allOf": [
+                    {"$ref": "#/components/schemas/PaymentCreatePayload"},
+                    {
+                        "type": "object",
+                        "properties": {"autoApprove": {"type": "boolean"}},
+                    },
+                ],
+            },
+        )
+        spec = parse_spec(document, client_name="t")
+        body = _schema(spec, "PaymentBody")
+        assert body.kind == "alias"
+        assert body.alias_target == "PaymentBodyPixKey | PaymentBodyQrCode"
+        pix_key = _schema(spec, "PaymentBodyPixKey")
+        assert [f.name for f in pix_key.fields] == ["destination_alias", "auto_approve"]
+
+    def test_a_self_referencing_union_does_not_recurse_forever(self) -> None:
+        """A component that unions itself renders as ``Any``, with a note."""
+        document = _spec(
+            Loop={
+                "oneOf": [
+                    {"title": "Self", "$ref": "#/components/schemas/Loop"},
+                    {
+                        "title": "Leaf",
+                        "type": "object",
+                        "properties": {"a": {"type": "string"}},
+                    },
+                ]
+            }
+        )
+        spec = parse_spec(document, client_name="t")
+        assert any("self-referencing" in note for note in spec.unsupported)
+
+
+class TestTaggedUnionComponents:
+    """A discriminated union component stays inline rather than aliased.
+
+    ``Annotated[A | B, Field(discriminator="kind")]`` carries a ``|``
+    **inside** brackets, and the emitter wraps a long alias by splitting on
+    that character. Naming it would emit code the formatter then rewrites,
+    so the tag wins and the name is dropped.
+    """
+
+    def test_a_discriminated_union_is_not_given_an_alias(self) -> None:
+        """The field renders the tagged union directly."""
+        document = _spec(
+            Cat={
+                "type": "object",
+                "required": ["kind"],
+                "properties": {"kind": {"type": "string"}, "meow": {"type": "string"}},
+            },
+            Dog={
+                "type": "object",
+                "required": ["kind"],
+                "properties": {"kind": {"type": "string"}, "bark": {"type": "string"}},
+            },
+            Pet={
+                "oneOf": [
+                    {"$ref": "#/components/schemas/Cat"},
+                    {"$ref": "#/components/schemas/Dog"},
+                ],
+                "discriminator": {"propertyName": "kind"},
+            },
+            Owner={
+                "type": "object",
+                "properties": {"pet": {"$ref": "#/components/schemas/Pet"}},
+            },
+        )
+        spec = parse_spec(document, client_name="t")
+        assert not [schema for schema in spec.schemas if schema.kind == "alias"]
+        assert _field_annotation(spec, "Owner", "pet") == (
+            'Annotated[Cat | Dog, Field(discriminator="kind")] | None'
+        )

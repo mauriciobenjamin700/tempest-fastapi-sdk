@@ -981,8 +981,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   runs the generator. `scripts/regen_openpix.py` (`make openpix-regen`) is the
   only way to produce them and a **drift test fails on any hand edit**;
   `--name open_pix` is what yields `OpenPixClient` (not `Openpix…`), fed in at
-  generation so byte-identity holds. **Lazy via PEP 562** — 2 ms to import the
-  package, ~200 ms on the first generated name; a subprocess test asserts
+  generation so byte-identity holds. **Lazy via PEP 562** — ~11 ms to import the
+  subpackage, ~150 ms on the first generated name (Python 3.11, parent package
+  already imported); a subprocess test asserts
   `…openpix.schemas` stays out of `sys.modules` on import. The vendored spec is
   build-time only, outside the wheel. Hand-written half: `OpenPixEnvironment`
   (production/sandbox are different domains), `to_cents`/`reais_to_cents`/
@@ -998,7 +999,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   idempotent. Verifying needs `cryptography` (extra `[webpush]` or direct);
   the module imports without it and fails at `verify()`, so the recipe says so.
   **BREAKING in v0.215.0:** was `tempest_fastapi_sdk.openpix` in v0.214.0, no
-  shim (the old path lived hours). Recipe: `docs/recipes/openpix.md`.
+  shim (the old path lived hours). **v0.233.0** raised it to **373 schemas**
+  and fixed two defects that had shipped since v0.214.0: a component whose top
+  level is `oneOf` became a class with **no fields**, and `extra="ignore"` then
+  dropped the caller's data (a charge went out with `"customer": {}`, no error
+  anywhere), while `allOf: [<oneOf>, {flag}]` collapsed the payment body to the
+  `autoApprove` flag alone. Untitled object variants now merge into one model
+  (required = intersection); titled ones become a class each under a union
+  alias. The package's `__all__` is now **generated** and lists every schema —
+  measured with basedpyright, the `TYPE_CHECKING` wildcard made names visible
+  but not re-exported, so consumers got *"X is not exported from module"* (mypy
+  accepted it either way). Recipes: `docs/recipes/openpix.md` (architecture,
+  charge, webhook + API read-back, reconciliation, refunds) and
+  `docs/recipes/openpix-subscriptions.md` (plans live in your database,
+  `RECURRENT` vs `PIX_RECURRING`, instalments, cancellation).
 - **CLI** — `tempest new` (scaffolds layered service +
   docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
   `tempest generate --docker` (regen compose) / `--dockerfile`

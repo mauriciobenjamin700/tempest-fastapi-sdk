@@ -19,6 +19,7 @@ import pytest
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from fastapi import Depends, FastAPI
+from pydantic import ValidationError
 
 from tempest_fastapi_sdk.integrations.payment.openpix import (
     OPENPIX_WEBHOOK_PUBLIC_KEY,
@@ -303,3 +304,86 @@ class TestWebhookDependency:
         assert verifier.header_name == "x-webhook-signature"
         assert verifier.algorithm == "sha256"
         assert verifier.public_key_pem == OPENPIX_WEBHOOK_PUBLIC_KEY.encode("utf-8")
+
+
+class TestChargePayloadCarriesTheCustomer:
+    """The charge that leaves actually carries who is paying.
+
+    Pinned on the real generated models, not on a synthetic spec: the
+    defect shipped here. `CustomerPayload` is a top-level `oneOf` in the
+    specification, the parser only flattened `allOf`, and the emitted class
+    had no fields — so `BaseSchema`'s `extra="ignore"` dropped every
+    customer field and the charge went out with `"customer": {}`. Static
+    checks all passed; only the serialized body shows it.
+    """
+
+    def test_the_customer_fields_survive_serialization(self) -> None:
+        """`model_dump` carries name, email and taxID."""
+        from tempest_fastapi_sdk.integrations.payment.openpix import (
+            ChargePayload,
+            CustomerPayload,
+        )
+
+        payload = ChargePayload(
+            correlation_id="order-1",
+            value=1990,
+            customer=CustomerPayload(
+                name="Ana",
+                email="ana@example.com",
+                tax_id="11111111111",
+            ),
+        )
+
+        dumped = payload.model_dump(by_alias=True, exclude_none=True)
+
+        assert dumped["customer"] == {
+            "name": "Ana",
+            "email": "ana@example.com",
+            "taxID": "11111111111",
+        }
+
+    def test_only_the_shared_field_is_required(self) -> None:
+        """Every variant demands `name`; the rest belong to one variant each.
+
+        Requiring the union of them would leave no satisfiable payload:
+        `taxID` comes from one variant and `email` from another.
+        """
+        from tempest_fastapi_sdk.integrations.payment.openpix import CustomerPayload
+
+        by_email = CustomerPayload(name="Ana", email="ana@example.com")
+
+        assert by_email.model_dump(by_alias=True, exclude_none=True) == {
+            "name": "Ana",
+            "email": "ana@example.com",
+        }
+        with pytest.raises(ValidationError):
+            CustomerPayload(email="ana@example.com")
+
+    def test_the_payment_body_can_express_a_payment(self) -> None:
+        """`allOf: [<oneOf>, {autoApprove}]` keeps the variant's own fields.
+
+        Flattening asked the union for `properties`, found none, and left a
+        body carrying only `autoApprove` — the endpoint could not describe
+        any payment at all.
+        """
+        from tempest_fastapi_sdk.integrations.payment.openpix import (
+            PostApiV1PaymentBodyPixKey,
+        )
+
+        body = PostApiV1PaymentBodyPixKey(
+            type="PIX_KEY",
+            value=1990,
+            destination_alias="ana@example.com",
+            destination_alias_type="EMAIL",
+            correlation_id="payment-1",
+            auto_approve=True,
+        )
+
+        assert body.model_dump(by_alias=True, exclude_none=True) == {
+            "type": "PIX_KEY",
+            "value": 1990.0,
+            "destinationAlias": "ana@example.com",
+            "destinationAliasType": "EMAIL",
+            "correlationID": "payment-1",
+            "autoApprove": True,
+        }

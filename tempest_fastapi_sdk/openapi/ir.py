@@ -16,8 +16,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-SchemaKind = Literal["model", "str_enum", "int_enum"]
-"""What a :class:`SchemaIR` renders as."""
+SchemaKind = Literal["model", "str_enum", "int_enum", "alias"]
+"""What a :class:`SchemaIR` renders as.
+
+``alias`` is a module-level union assignment rather than a class. A
+component whose top level is a ``oneOf`` of genuinely different shapes has
+no single class to be, but dropping the name would leave the caller with
+nothing to annotate and would remove a name the previous generation
+exported.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +99,8 @@ class SchemaIR:
             Empty for enums.
         enum_members (tuple[tuple[str, Any], ...]): ``(member_name,
             value)`` pairs. Empty for models.
+        alias_target (str): The rendered annotation an ``alias`` assigns —
+            ``"A | B | C"``. Empty for every other kind.
         dependencies (frozenset[str]): Names of other generated classes
             this one references, used to order the output.
         unsupported (tuple[str, ...]): Human-readable notes about
@@ -105,6 +114,7 @@ class SchemaIR:
     docstring: str
     fields: tuple[FieldIR, ...] = ()
     enum_members: tuple[tuple[str, Any], ...] = ()
+    alias_target: str = ""
     dependencies: frozenset[str] = frozenset()
     unsupported: tuple[str, ...] = ()
 

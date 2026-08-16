@@ -13,6 +13,7 @@ import re
 
 import pytest
 import tempest_cli
+from typer import rich_utils
 from typer.testing import CliRunner
 
 from tempest_fastapi_sdk.cli import lint as sdk_lint
@@ -75,11 +76,19 @@ def test_check_help_reaches_the_shared_implementation(
 ) -> None:
     """The mounted ``check`` exposes the shared command's own options.
 
-    Runs with ``GITHUB_ACTIONS`` set so the help is rendered in colour
-    here too — the condition CI always runs under. Without it this test
-    would exercise a code path no CI machine takes.
+    Runs with colour forced on, the condition CI always runs under.
+    Without it this test would exercise a code path no CI machine takes.
+
+    The environment variable alone does not do it: Typer reads
+    ``GITHUB_ACTIONS`` **once**, into the module constant
+    ``rich_utils.FORCE_TERMINAL``, when ``typer.rich_utils`` is first
+    imported. Any earlier test that invokes a Typer app imports it first,
+    with the variable unset, and the help then renders plain — so this
+    test passed alone and failed inside ``pytest tests/cli``. Patching the
+    constant makes the outcome the same in both.
     """
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setattr(rich_utils, "FORCE_TERMINAL", True)
     result = runner.invoke(app, ["check", "--help"])
     assert result.exit_code == 0
     assert "\x1b[" in result.stdout, "expected coloured output under GITHUB_ACTIONS"

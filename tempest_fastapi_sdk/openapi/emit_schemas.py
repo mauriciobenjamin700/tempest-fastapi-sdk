@@ -463,6 +463,34 @@ def _model_lines(schema: SchemaIR) -> list[str]:
     return lines
 
 
+def _alias_lines(schema: SchemaIR) -> list[str]:
+    """Render one union alias assignment.
+
+    Args:
+        schema (SchemaIR): The alias to render.
+
+    Returns:
+        list[str]: Source lines for the assignment and its docstring.
+
+    The output mirrors what ``ruff format`` produces: one line while it
+    fits in the line budget, otherwise parenthesized with the ``|`` leading
+    each continuation. Emitting the wrapped form unconditionally would make
+    generation with ``run_format=False`` differ from generation with it,
+    and the drift test compares bytes.
+    """
+    flat = f"{schema.name} = {schema.alias_target}"
+    if len(flat) <= _MAX_LINE:
+        lines = [flat]
+    else:
+        members = [member.strip() for member in schema.alias_target.split("|")]
+        lines = [f"{schema.name} = (", f"    {members[0]}"]
+        lines.extend(f"    | {member}" for member in members[1:])
+        lines.append(")")
+    lines.extend(_docstring_lines(schema.docstring, ""))
+    lines.append("")
+    return lines
+
+
 def _enum_lines(schema: SchemaIR) -> list[str]:
     """Render one enum class.
 
@@ -510,7 +538,10 @@ def _collect_imports(spec: SpecIR) -> list[str]:
         without a fixing pass.
     """
     rendered = "\n".join(
-        f"{field.annotation}" for schema in spec.schemas for field in schema.fields
+        [
+            *(f.annotation for schema in spec.schemas for f in schema.fields),
+            *(s.alias_target for s in spec.schemas if s.alias_target),
+        ]
     )
     needs_field = any(_field_arguments(f) for s in spec.schemas for f in s.fields)
     needs_config = any(s.needs_populate_by_name for s in spec.schemas)
@@ -629,12 +660,18 @@ def emit_schemas(spec: SpecIR, *, title: str) -> str:
     lines = [*header, *_collect_imports(spec)]
 
     for schema in spec.schemas:
-        lines.extend(
-            _enum_lines(schema) if schema.kind != "model" else _model_lines(schema)
-        )
+        if schema.kind == "alias":
+            lines.extend(_alias_lines(schema))
+        elif schema.kind == "model":
+            lines.extend(_model_lines(schema))
+        else:
+            lines.extend(_enum_lines(schema))
         lines.append("")
 
-    if spec.cyclic:
+    rebuildable = sorted(
+        spec.cyclic & {s.name for s in spec.schemas if s.kind == "model"}
+    )
+    if rebuildable:
         lines.extend(
             [
                 "# These models reference each other, so their forward",
@@ -642,7 +679,7 @@ def emit_schemas(spec: SpecIR, *, title: str) -> str:
                 "# created. Rebuilding here completes them at import time.",
             ]
         )
-        for name in sorted(spec.cyclic):
+        for name in rebuildable:
             lines.append(f"{name}.model_rebuild()")
         lines.append("")
 

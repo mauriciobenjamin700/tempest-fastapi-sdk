@@ -15,7 +15,7 @@ documented gap.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace
 from typing import Any
@@ -113,6 +113,12 @@ class _Parser:
         Args:
             document (Mapping[str, Any]): The loaded OpenAPI document.
             client_name (str): Base name for the generated client class.
+
+        ``_resolving`` holds the components whose annotation is currently
+        being rendered. A component that gets a class reserves its name
+        before recursing, but one rendered as a union has no name to
+        reserve until the union is built — so a self-referencing union
+        would re-enter :meth:`ensure_component` forever without this.
         """
         self.document: Mapping[str, Any] = document
         self.client_name: str = client_name
@@ -122,6 +128,7 @@ class _Parser:
         self.notes: list[str] = []
         self.imports: set[str] = set()
         self._sinks: list[list[str]] = []
+        self._resolving: set[str] = set()
 
     def note(self, message: str) -> None:
         """Record an unsupported construct, de-duplicated.
@@ -360,7 +367,10 @@ class _Parser:
             if member.get("type") == "null":
                 nullable = True
                 continue
-            annotation = self._render_type(member, hint=f"{hint}Variant{index + 1}")
+            annotation = self._render_type(
+                member,
+                hint=self._variant_hint(member, hint=hint, index=index),
+            )
             if annotation not in rendered:
                 rendered.append(annotation)
         if not rendered:
@@ -414,6 +424,233 @@ class _Parser:
             return None
         return field_name(property_name)
 
+    def _variant_hint(
+        self,
+        member: Mapping[str, Any],
+        *,
+        hint: str,
+        index: int,
+    ) -> str:
+        """Name one member of a union.
+
+        Args:
+            member (Mapping[str, Any]): The member schema.
+            hint (str): Name of the union itself.
+            index (int): Position of the member, zero-based.
+
+        Returns:
+            str: ``"PaymentCreatePayloadQrCode"`` when the member carries a
+            ``title``, ``"PaymentCreatePayloadVariant2"`` otherwise. A
+            title is the only name the specification gives a variant, and
+            ``Variant2`` tells a caller nothing about which shape to build.
+        """
+        title = member.get("title")
+        if isinstance(title, str) and title.strip():
+            return f"{hint}{_class_name_for(title)}"
+        return f"{hint}Variant{index + 1}"
+
+    def _component_from_combinator(
+        self,
+        wire_name: str,
+        schema: Mapping[str, Any],
+        members: list[Any],
+        combinator: str,
+    ) -> str:
+        """Register a component whose top level is ``oneOf`` or ``anyOf``.
+
+        Args:
+            wire_name (str): The ``components.schemas`` key.
+            schema (Mapping[str, Any]): The component's schema.
+            members (list[Any]): The combinator's member schemas.
+            combinator (str): ``"oneOf"`` or ``"anyOf"``.
+
+        Returns:
+            str: The generated name — a model when the variants merge, a
+            union alias when they stay apart. Either way the component
+            keeps a name callers can import and annotate with.
+
+        Two shapes, because specifications use the same construct for two
+        different things. **Untitled object variants** are almost always one
+        payload described several times over — OpenPix spells "name plus one
+        of taxID, email or phone" as three near-identical objects — so they
+        merge into a single model carrying every property, required only
+        where every variant requires it. **Titled variants, or a
+        discriminator**, are a real sum type (``PIX_KEY`` vs ``QR_CODE`` vs
+        ``MANUAL``): each becomes its own class and the component name
+        becomes a union alias over them.
+
+        Before this existed the component became a class with **no fields**,
+        and ``BaseSchema``'s ``extra="ignore"`` then dropped everything a
+        caller passed — a charge went out with ``"customer": {}`` and no
+        error anywhere.
+        """
+        if wire_name in self._resolving:
+            self.note(
+                f"self-referencing {combinator} in component {wire_name!r} "
+                f"rendered as Any"
+            )
+            return "Any"
+
+        resolved = [
+            deref(self.document, member)
+            for member in members
+            if isinstance(member, dict)
+        ]
+        objects = [
+            member for member in resolved if isinstance(member.get("properties"), dict)
+        ]
+        titled = any(
+            isinstance(member.get("title"), str) and member["title"].strip()
+            for member in resolved
+        )
+        tagged = isinstance(schema.get("discriminator"), dict)
+
+        if objects and len(objects) == len(resolved) and not titled and not tagged:
+            merged = self._merge_variants(resolved, hint=wire_name)
+            description = schema.get("description")
+            if isinstance(description, str):
+                merged["description"] = description
+            name = unique(
+                _class_name_for(wire_name), self.taken_class_names, separator=""
+            )
+            self.wire_to_class[wire_name] = name
+            self.schemas[name] = self._build_schema(name, wire_name, merged)
+            self.note(
+                f"{combinator} in {wire_name!r} merged into one model — every "
+                f"variant's properties are accepted together, so "
+                f"'exactly one variant' is not enforced"
+            )
+            return name
+
+        name = unique(_class_name_for(wire_name), self.taken_class_names, separator="")
+        self._resolving.add(wire_name)
+        try:
+            annotation = self._render_union(
+                members,
+                combinator,
+                hint=wire_name,
+                discriminator=schema.get("discriminator"),
+            )
+        finally:
+            self._resolving.discard(wire_name)
+        if not _is_aliasable(annotation):
+            self.taken_class_names.discard(name)
+            self.wire_to_class[wire_name] = annotation
+            return annotation
+        self.wire_to_class[wire_name] = name
+        self.schemas[name] = SchemaIR(
+            name=name,
+            wire_name=wire_name,
+            kind="alias",
+            docstring=self._docstring_for(schema, name),
+            alias_target=annotation,
+        )
+        return name
+
+    def _merge_variants(
+        self,
+        members: Sequence[Mapping[str, Any]],
+        *,
+        hint: str,
+    ) -> dict[str, Any]:
+        """Merge ``oneOf``/``anyOf`` object variants into one schema.
+
+        Args:
+            members (Sequence[Mapping[str, Any]]): The resolved members.
+            hint (str): Name used for notes.
+
+        Returns:
+            dict[str, Any]: One object schema whose ``properties`` are the
+            union of every variant's and whose ``required`` is their
+            **intersection**. Union of required would demand fields that only
+            one variant asks for, and the caller could then satisfy no
+            variant at all; the intersection is what every variant agrees on.
+        """
+        merged: dict[str, Any] = {"type": "object", "properties": {}, "required": []}
+        required_sets: list[set[str]] = []
+        for member in members:
+            resolved: Mapping[str, Any] = member
+            nested = resolved.get("allOf")
+            if isinstance(nested, list) and nested:
+                resolved = self._flatten_all_of(nested, hint=hint)
+            properties = resolved.get("properties")
+            if isinstance(properties, dict):
+                merged["properties"].update(properties)
+            required = resolved.get("required")
+            required_sets.append(
+                {str(item) for item in required}
+                if isinstance(required, list)
+                else set()
+            )
+        if required_sets:
+            merged["required"] = sorted(set.intersection(*required_sets))
+        return merged
+
+    def _distribute_all_of(
+        self,
+        members: list[Any],
+        *,
+        hint: str,
+    ) -> dict[str, Any] | None:
+        """Push an ``allOf`` down into a member that is a union.
+
+        Args:
+            members (list[Any]): The ``allOf`` entries.
+            hint (str): Name used for notes.
+
+        Returns:
+            dict[str, Any] | None: ``{"oneOf": [...]}`` where each entry is
+            one variant combined with every other ``allOf`` member, or
+            ``None`` when no member is a union and the plain merge applies.
+
+        ``allOf: [PaymentCreatePayload, {autoApprove}]`` — a sum type
+        narrowed by a flag — is how OpenPix declares its payment body. A
+        flat merge asks the union for ``properties``, a union has none, and
+        the body collapses to the single ``autoApprove`` flag: the request
+        that endpoint exists for becomes unrepresentable. Distributing keeps
+        each variant whole and gives every one of them the flag.
+
+        Only the first union member is distributed over. Two of them would
+        be a cartesian product of variants, which no specification here
+        does, and a silent explosion is worse than a note.
+        """
+        resolved: list[Any] = [
+            deref(self.document, member) if isinstance(member, dict) else member
+            for member in members
+        ]
+        for index, member in enumerate(resolved):
+            if not isinstance(member, dict):
+                continue
+            for combinator in ("oneOf", "anyOf"):
+                variants = member.get(combinator)
+                if not (isinstance(variants, list) and variants):
+                    continue
+                others = [
+                    other for position, other in enumerate(members) if position != index
+                ]
+                if any(
+                    isinstance(rest, dict)
+                    and any(key in rest for key in ("oneOf", "anyOf"))
+                    for position, rest in enumerate(resolved)
+                    if position != index
+                ):
+                    self.note(
+                        f"allOf in {hint} combines two unions — only the first "
+                        f"is expanded, the rest render as their own annotation"
+                    )
+                combined: list[Any] = []
+                for variant in variants:
+                    if not isinstance(variant, dict):
+                        continue
+                    entry: dict[str, Any] = {"allOf": [variant, *others]}
+                    title = variant.get("title")
+                    if isinstance(title, str) and title.strip():
+                        entry["title"] = title
+                    combined.append(entry)
+                if combined:
+                    return {combinator: combined}
+        return None
+
     def _flatten_all_of(
         self,
         members: list[Any],
@@ -430,8 +667,14 @@ class _Parser:
             dict[str, Any]: One schema whose ``properties`` and
             ``required`` are the union of every member's. Later members
             win on a property collision, matching how OpenAPI authors use
-            ``allOf`` to specialize a base.
+            ``allOf`` to specialize a base. When one member is itself a
+            ``oneOf``/``anyOf``, the result is that combinator instead —
+            see :meth:`_distribute_all_of`.
         """
+        distributed = self._distribute_all_of(members, hint=hint)
+        if distributed is not None:
+            return distributed
+
         merged: dict[str, Any] = {"type": "object", "properties": {}, "required": []}
         for member in members:
             if not isinstance(member, dict):
@@ -525,6 +768,22 @@ class _Parser:
         base_type = self._base_type(schema)
         has_properties = isinstance(schema.get("properties"), dict)
         is_composed = any(key in schema for key in ("allOf", "oneOf", "anyOf"))
+
+        if not has_properties:
+            effective: Mapping[str, Any] = schema
+            all_of = schema.get("allOf")
+            if isinstance(all_of, list) and all_of:
+                effective = self._flatten_all_of(all_of, hint=wire_name)
+            for combinator in ("oneOf", "anyOf"):
+                members = effective.get(combinator)
+                if isinstance(members, list) and members:
+                    return self._component_from_combinator(
+                        wire_name,
+                        effective,
+                        members,
+                        combinator,
+                    )
+
         if base_type not in (None, "object") and not has_properties and not is_composed:
             rendered = self.render_type(schema, hint=wire_name)
             self.note(
@@ -1003,11 +1262,45 @@ class _Parser:
                 f"application/x-www-form-urlencoded are modelled"
             )
             return None, True, "json"
+        hint = f"{owner}Body"
+        annotation = self.render_type(schema, hint=hint)
         return (
-            self.render_type(schema, hint=f"{owner}Body"),
+            self._name_body_union(annotation, hint=hint),
             bool(resolved.get("required", False)),
             encoding,
         )
+
+    def _name_body_union(self, annotation: str, *, hint: str) -> str:
+        """Give a request body that renders as a union a name of its own.
+
+        Args:
+            annotation (str): The rendered body annotation.
+            hint (str): The name the body would have had as a class.
+
+        Returns:
+            str: The alias name, or ``annotation`` unchanged when it is not a
+            union of generated classes.
+
+        A four-variant union spelled out in the signature also lands in the
+        method's ``Args:`` section, where it wraps across lines — and a
+        wrapped ``name (type):`` pair is one griffe cannot parse, which fails
+        the documentation build in strict mode. It also reads worse: the
+        caller wants one name to import.
+        """
+        if not _is_aliasable(annotation):
+            return annotation
+        members = [member.strip() for member in annotation.split("|")]
+        if not all(member in self.schemas for member in members):
+            return annotation
+        name = unique(_class_name_for(hint), self.taken_class_names, separator="")
+        self.schemas[name] = SchemaIR(
+            name=name,
+            wire_name=hint,
+            kind="alias",
+            docstring=f"Request body of {hint}, one variant per shape.",
+            alias_target=annotation,
+        )
+        return name
 
     def _build_response(
         self,
@@ -1060,6 +1353,22 @@ class _Parser:
                 description = _clean_text(entry.get("description")) or ""
             collected.append((text, description.splitlines()[0] if description else ""))
         return tuple(collected)
+
+
+def _is_aliasable(annotation: str) -> bool:
+    """Report whether an annotation can be emitted as a union alias.
+
+    Args:
+        annotation (str): A rendered annotation.
+
+    Returns:
+        bool: ``True`` for a plain ``A | B`` union. ``False`` for anything
+        else, including a tagged union — ``Annotated[A | B,
+        Field(discriminator="kind")]`` carries a ``|`` that is **inside**
+        brackets, and the emitter's line wrapping splits on that character.
+        The union is still rendered inline; it just does not get a name.
+    """
+    return "|" in annotation and "Annotated[" not in annotation
 
 
 def _json_content_schema(content: Mapping[str, Any]) -> Mapping[str, Any] | None:
@@ -1217,8 +1526,11 @@ def _resolve_dependencies(
     resolved: dict[str, SchemaIR] = {}
     for name, schema in schemas.items():
         found: set[str] = set()
-        for schema_field in schema.fields:
-            for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", schema_field.annotation):
+        annotations = [f.annotation for f in schema.fields]
+        if schema.alias_target:
+            annotations.append(schema.alias_target)
+        for annotation in annotations:
+            for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", annotation):
                 if token in names:
                     found.add(token)
         resolved[name] = replace(schema, dependencies=frozenset(found))
@@ -1230,10 +1542,14 @@ def _order_schemas(
 ) -> tuple[tuple[SchemaIR, ...], frozenset[str]]:
     """Order classes so each follows its dependencies, and report cycles.
 
-    Enums come first (they never depend on anything), then models in
-    dependency order. Classes in a cycle are appended in name order and
-    reported, so the emitter can close the module with the
+    Enums come first (they never depend on anything), then models and
+    union aliases in dependency order. Classes in a cycle are appended in
+    name order and reported, so the emitter can close the module with the
     ``model_rebuild()`` calls their forward references need.
+
+    An alias is ordered like a model, not like an enum: ``A | B`` is
+    evaluated when the module executes, so it has to follow the classes it
+    names — emitting it with the enums would raise ``NameError`` on import.
 
     Args:
         schemas (Mapping[str, SchemaIR]): Every generated class by name.
@@ -1242,8 +1558,8 @@ def _order_schemas(
         tuple[tuple[SchemaIR, ...], frozenset[str]]: The ordered classes
         and the names taking part in a cycle.
     """
-    enums = [s for s in schemas.values() if s.kind != "model"]
-    models = {s.name: s for s in schemas.values() if s.kind == "model"}
+    enums = [s for s in schemas.values() if s.kind in ("str_enum", "int_enum")]
+    models = {s.name: s for s in schemas.values() if s.kind in ("model", "alias")}
 
     ordered: list[SchemaIR] = sorted(enums, key=lambda s: s.name)
     emitted: set[str] = {s.name for s in ordered}

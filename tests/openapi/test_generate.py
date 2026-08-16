@@ -24,6 +24,7 @@ from tempest_fastapi_sdk.openapi.generate import (
     suggest_client_class,
 )
 from tempest_fastapi_sdk.openapi.loader import SpecError
+from tempest_fastapi_sdk.openapi.source import MAX_LINE, unsupported_comment
 
 
 def _load_package(directory: Path, package: str) -> ModuleType:
@@ -846,3 +847,117 @@ class TestUnsupportedMarker:
         )
         schemas = (result.written[0].parent / "schemas.py").read_text(encoding="utf-8")
         assert "# openapi: unsupported" not in schemas
+
+
+class TestUnionComponentsRoundTrip:
+    """A ``oneOf`` component survives generation, import and serialization.
+
+    The unit tests pin the parser's decision; this one pins the outcome a
+    consumer sees. The shape that shipped — an empty model plus
+    ``extra="ignore"`` — passes every static check and drops the data at
+    runtime, so the assertion that matters is on the serialized body.
+    """
+
+    @pytest.fixture
+    def orders(self, tmp_path: Path) -> ModuleType:
+        """Generate and import a package whose payload is a ``oneOf``.
+
+        Args:
+            tmp_path (Path): pytest's per-test temporary directory.
+
+        Returns:
+            ModuleType: The generated ``schemas`` module.
+        """
+        document: dict[str, Any] = {
+            "openapi": "3.1.0",
+            "info": {"title": "Orders", "version": "1"},
+            "paths": {},
+            "components": {
+                "schemas": {
+                    "BuyerPayload": {
+                        "description": "name plus one of taxID or email.",
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "required": ["name", "taxID"],
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "taxID": {"type": "string"},
+                                },
+                            },
+                            {
+                                "type": "object",
+                                "required": ["name", "email"],
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "email": {"type": "string"},
+                                },
+                            },
+                        ],
+                    },
+                    "OrderPayload": {
+                        "type": "object",
+                        "required": ["reference"],
+                        "properties": {
+                            "reference": {"type": "string"},
+                            "buyer": {"$ref": "#/components/schemas/BuyerPayload"},
+                        },
+                    },
+                }
+            },
+        }
+        spec_file = tmp_path / "orders.json"
+        spec_file.write_text(json.dumps(document), encoding="utf-8")
+        generate_integration(
+            str(spec_file),
+            target=tmp_path,
+            name="orders",
+            out=tmp_path / "pkg" / "orders_gen",
+            run_format=False,
+        )
+        _load_package(tmp_path / "pkg" / "orders_gen", "orders_gen")
+        return importlib.import_module("orders_gen.schemas")
+
+    def test_the_payload_reaches_the_wire(self, orders: ModuleType) -> None:
+        """``model_dump`` carries the buyer instead of an empty object."""
+        payload = orders.OrderPayload(
+            reference="order-1",
+            buyer=orders.BuyerPayload(name="Ana", taxID="11111111111"),
+        )
+        assert payload.model_dump(by_alias=True, exclude_none=True) == {
+            "reference": "order-1",
+            "buyer": {"name": "Ana", "taxID": "11111111111"},
+        }
+
+    def test_the_variant_fields_are_optional(self, orders: ModuleType) -> None:
+        """Either combination validates; only ``name`` is demanded."""
+        by_email = orders.BuyerPayload(name="Ana", email="ana@example.com")
+        assert by_email.model_dump(by_alias=True, exclude_none=True) == {
+            "name": "Ana",
+            "email": "ana@example.com",
+        }
+
+
+class TestUnsupportedComment:
+    """The generated marker comment stays inside the line budget.
+
+    It wraps with a four-character ``"#   "`` prefix on continuation lines,
+    so wrapping has to reserve those four characters. When it did not, a long
+    enough note produced generated code that failed ``E501`` — in the
+    consumer's own lint run, on a line nobody wrote by hand.
+    """
+
+    def test_a_long_note_wraps_within_the_budget(self) -> None:
+        """Every emitted line fits, however long the note is."""
+        note = (
+            "oneOf in 'CustomerPayload' merged into one model — every variant's "
+            "properties are accepted together, so 'exactly one variant' is not "
+            "enforced and the caller can send a combination no variant allows"
+        )
+
+        lines = unsupported_comment((note,), "    ")
+
+        assert lines
+        assert all(len(line) <= MAX_LINE for line in lines), [
+            line for line in lines if len(line) > MAX_LINE
+        ]
