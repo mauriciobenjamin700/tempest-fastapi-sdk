@@ -403,6 +403,37 @@ async def health() -> dict[str, object]:
     `postgresql+asyncpg://***@host/db`. A URL crua fica num atributo
     privado justamente para não vazar em `repr()` ou log acidental.
 
+### Fora de um request
+
+Nem todo consumidor tem uma requisição onde pendurar o `Depends`. Uma
+ferramenta de agente, uma task TaskIQ, um consumer FastStream e um script de
+manutenção rodam fora do ciclo HTTP — e todos usam `get_session_context()`,
+que abre a sessão, **confirma** ao sair e faz rollback no erro:
+
+```python
+# src/tasks/cleanup.py
+from src.api.dependencies.resources import db
+from src.db.repositories import UserRepository
+
+
+async def count_inactive_users() -> int:
+    """Count the users that were deactivated."""
+    async with db.get_session_context() as session:
+        repository = UserRepository(session)
+        return len(await repository.list(filters={"is_active": False}))
+```
+
+A regra é abrir o mais tarde possível e fechar o quanto antes: um processo que
+segura a sessão enquanto espera outra coisa — um modelo gerando tokens, uma API
+externa respondendo — ocupa uma conexão do pool sem usá-la.
+
+!!! tip "Ferramenta de agente é o caso mais delicado"
+    Uma execução de agente atravessa vários passos e pode levar minutos.
+    [Agentes de IA (banco de dados) »](agents-db.md) mostra por que a sessão é
+    aberta **dentro** de cada ferramenta, o que o commit automático significa
+    para uma ferramenta que escreve, e por que dois `AsyncDatabaseManager` no
+    mesmo processo são dois pools.
+
 ### SQLite com um worker: WAL e busy timeout
 
 No dia em que a aplicação ganha um worker, o SQLite de desenvolvimento

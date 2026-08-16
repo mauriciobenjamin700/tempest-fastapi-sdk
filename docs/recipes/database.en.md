@@ -404,6 +404,38 @@ async def health() -> dict[str, object]:
     attribute precisely so it doesn't leak through `repr()` or accidental
     logging.
 
+### Outside a request
+
+Not every consumer has a request to hang `Depends` off. An agent tool, a TaskIQ
+task, a FastStream consumer and a maintenance script all run outside the HTTP
+cycle — and they all use `get_session_context()`, which opens the session,
+**commits** on exit and rolls back on error:
+
+```python
+# src/tasks/cleanup.py
+from src.api.dependencies.resources import db
+from src.db.repositories import UserRepository
+
+
+async def count_inactive_users() -> int:
+    """Count the users that were deactivated."""
+    async with db.get_session_context() as session:
+        repository = UserRepository(session)
+        return len(await repository.list(filters={"is_active": False}))
+```
+
+The rule is to open as late as possible and close as early as possible: a
+process holding the session while it waits on something else — a model
+generating tokens, an external API replying — occupies a pool connection
+without using it.
+
+!!! tip "An agent tool is the trickiest case"
+    An agent run spans several steps and can take minutes.
+    [AI agents (database) »](agents-db.md) shows why the session is opened
+    **inside** each tool, what the automatic commit means for a tool that
+    writes, and why two `AsyncDatabaseManager` instances in one process are two
+    pools.
+
 ### SQLite with a worker: WAL and the busy timeout
 
 The day the application grows a worker, the development SQLite has
