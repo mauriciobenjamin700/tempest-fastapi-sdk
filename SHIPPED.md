@@ -55,6 +55,33 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (`tests/auth/webauthn_authenticator.py`) — a mocked verifier would assert
   away exactly the properties worth testing. Recipe:
   `docs/recipes/webauthn.md`.
+- **Firebase ID token verification (v0.230.0, extra `[firebase]` =
+  `firebase-admin`)** — for services whose clients sign in with Firebase and
+  arrive with an ID token. `FirebaseAuth` owns the idempotent
+  `get_app()`/`except ValueError` init (two instances with the same
+  `app_name` share one app; distinct names talk to distinct projects),
+  verifies off the event loop via `asyncio.to_thread`, and takes the
+  credential from inline JSON, a service-account file, or the environment's
+  default credential, in that order. `FirebaseIdentity` is a frozen dataclass
+  (`uid`, `email`, `email_verified`, `phone_number`, `provider`, full
+  `claims`); `FirebaseUserResolver[UserT]` is the seam from a uid to the
+  project's user, since the SDK does not own that rule. Dependencies:
+  `get_identity` / `get_uid` (strict) and `get_optional_identity` (soft,
+  `None`). Every failure carries its own `code` —
+  `FIREBASE_TOKEN_MISSING` / `_INVALID` / `_EXPIRED` / `_REVOKED`,
+  `FIREBASE_UNAVAILABLE`, and `FIREBASE_USER_DISABLED` at **403** (the caller
+  proved who they are), which is also the one failure the soft variant still
+  raises. The `except` ordering is load-bearing: on `firebase-admin` 7.5.0
+  `ExpiredIdTokenError` and `RevokedIdTokenError` are subclasses of
+  `InvalidIdTokenError` (measured), so catching the parent first would
+  collapse three codes into one — a parametrized test pins it. The extra is
+  heavy (33 packages, 52 MB measured) and deliberately **out of `[all]`**;
+  the import is lazy, so only construction needs it. Tests run offline: a
+  locally generated RSA service account plus a patch on the real
+  `verify_id_token`, and one test feeds a non-JWT to the genuine verifier,
+  which rejects it structurally before any network call. Config:
+  `FirebaseSettings` (`FIREBASE_PROJECT_ID`, `FIREBASE_CREDENTIALS_PATH`,
+  `FIREBASE_CREDENTIALS_JSON`). Recipe: `docs/recipes/firebase-auth.md`.
 - **Permission guards (v0.167.0)** — `@requires(*guards, user_param=None)`
   (`tempest_fastapi_sdk.authz`, re-exported at the root) runs plain
   `(user) -> user | None` guards before a function body, at any layer, sync or

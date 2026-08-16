@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.229.0"
+version = "0.230.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -107,6 +107,16 @@ mfa = [
 ]
 webauthn = [
     "fido2>=2.0.0",
+]
+firebase = [
+    # Verifying a Firebase ID token has a long correctness tail (certificate
+    # rotation, iss/aud/sub, revocation, tenants), so this is the official
+    # Google package rather than a reimplementation. It is heavy -- it pulls
+    # grpcio, protobuf, google-api-core, google-auth and the Firestore /
+    # Storage clients, 33 packages measured on firebase-admin 7.5.0 -- which
+    # is why it is an opt-in extra, is imported lazily at FirebaseAuth
+    # construction time, and stays out of [all].
+    "firebase-admin>=7.0.0",
 ]
 pdf = [
     "weasyprint>=66.0",
@@ -332,6 +342,7 @@ dev = [
     "prometheus-client>=0.20.0",
     "pyotp>=2.9.0",
     "fido2>=2.0.0",
+    "firebase-admin>=7.0.0",
     "sherpa-onnx>=1.12.0",
     "sherpa-onnx-core",
     "email-validator>=2.0.0",
@@ -432,6 +443,8 @@ module = [
     "aiofiles",
     "pywebpush",
     "pywebpush.*",
+    "firebase_admin",
+    "firebase_admin.*",
     "pynvml",
     "pynvml.*",
     "psutil",

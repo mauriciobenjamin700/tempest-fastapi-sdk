@@ -364,6 +364,9 @@ from tempest_fastapi_sdk.auth import (
     DEFAULT_AUTH_LOCALE as DEFAULT_AUTH_LOCALE,
 )
 from tempest_fastapi_sdk.auth import (
+    DEFAULT_FIREBASE_APP_NAME as DEFAULT_FIREBASE_APP_NAME,
+)
+from tempest_fastapi_sdk.auth import (
     SUPPORTED_LOCALES as SUPPORTED_LOCALES,
 )
 from tempest_fastapi_sdk.auth import (
@@ -395,6 +398,36 @@ from tempest_fastapi_sdk.auth import (
 )
 from tempest_fastapi_sdk.auth import (
     EmailVerificationToken as EmailVerificationToken,
+)
+from tempest_fastapi_sdk.auth import (
+    FirebaseAuth as FirebaseAuth,
+)
+from tempest_fastapi_sdk.auth import (
+    FirebaseCredentialError as FirebaseCredentialError,
+)
+from tempest_fastapi_sdk.auth import (
+    FirebaseIdentity as FirebaseIdentity,
+)
+from tempest_fastapi_sdk.auth import (
+    FirebaseTokenExpiredError as FirebaseTokenExpiredError,
+)
+from tempest_fastapi_sdk.auth import (
+    FirebaseTokenInvalidError as FirebaseTokenInvalidError,
+)
+from tempest_fastapi_sdk.auth import (
+    FirebaseTokenMissingError as FirebaseTokenMissingError,
+)
+from tempest_fastapi_sdk.auth import (
+    FirebaseTokenRevokedError as FirebaseTokenRevokedError,
+)
+from tempest_fastapi_sdk.auth import (
+    FirebaseUnavailableError as FirebaseUnavailableError,
+)
+from tempest_fastapi_sdk.auth import (
+    FirebaseUserDisabledError as FirebaseUserDisabledError,
+)
+from tempest_fastapi_sdk.auth import (
+    FirebaseUserResolver as FirebaseUserResolver,
 )
 from tempest_fastapi_sdk.auth import (
     IntrospectionAuth as IntrospectionAuth,
@@ -1010,6 +1043,9 @@ from tempest_fastapi_sdk.settings import (
     EmailSettings as EmailSettings,
 )
 from tempest_fastapi_sdk.settings import (
+    FirebaseSettings as FirebaseSettings,
+)
+from tempest_fastapi_sdk.settings import (
     GenAISettings as GenAISettings,
 )
 from tempest_fastapi_sdk.settings import (
@@ -1454,7 +1490,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.229.0"
+__version__: str = "0.230.0"
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
@@ -1473,6 +1509,7 @@ __all__: list[str] = [
     "DEFAULT_AUTH_LOCALE",
     "DEFAULT_DOCUMENT_CACHE_CONTROL",
     "DEFAULT_EXCLUDED_PREFIXES",
+    "DEFAULT_FIREBASE_APP_NAME",
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_LOCALE",
     "DEFAULT_MAX_RECORDS_PER_FILE",
@@ -1588,6 +1625,17 @@ __all__: list[str] = [
     "FieldRef",
     "FileStoreUtils",
     "FileTooLargeException",
+    "FirebaseAuth",
+    "FirebaseCredentialError",
+    "FirebaseIdentity",
+    "FirebaseSettings",
+    "FirebaseTokenExpiredError",
+    "FirebaseTokenInvalidError",
+    "FirebaseTokenMissingError",
+    "FirebaseTokenRevokedError",
+    "FirebaseUnavailableError",
+    "FirebaseUserDisabledError",
+    "FirebaseUserResolver",
     "ForbiddenException",
     "GPUMetrics",
     "GenAISettings",

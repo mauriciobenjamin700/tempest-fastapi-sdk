@@ -125,6 +125,7 @@ plugins:
               - Face recognition: recipes/faces.md
               - Feature flags: recipes/feature-flags.md
               - File in the service (mixin): recipes/stored-files.md
+              - "Firebase auth (ID token)": recipes/firebase-auth.md
               - Forms from Pydantic schemas: recipes/ui-forms.md
               - Geolocation (distance + time): recipes/geo.md
               - HTTP client (outbound): recipes/http-client.md
@@ -230,6 +231,7 @@ plugins:
             Idempotência: Idempotency
             "Jobs (trabalho longo com status)": "Jobs (long work with status)"
             "Auth flow (signup/reset)": "Auth flow (signup/reset)"
+            "Auth Firebase (ID token)": "Firebase auth (ID token)"
             "MFA (TOTP / 2FA)": "MFA (TOTP / 2FA)"
             "Sessões server-side": "Server-side sessions"
             Métricas: Metrics
@@ -366,6 +368,7 @@ nav:
       - "Arquivo no serviço (mixin)": recipes/stored-files.md
       - "Artefatos versionados (modelos)": recipes/artifact-registry.md
       - Audit trail: recipes/audit-trail.md
+      - "Auth Firebase (ID token)": recipes/firebase-auth.md
       - Auth flow (signup/reset): recipes/auth-flow.md
       - "Auth por introspecção (resource server)": recipes/introspection-auth.md
       - Banco de dados: recipes/database.md

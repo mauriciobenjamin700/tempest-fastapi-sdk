@@ -5,6 +5,79 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.230.0] — 2026-08-16
+
+### Added
+
+- **Firebase ID token verification** (`tempest_fastapi_sdk.auth`, extra
+  `[firebase]`). For the shape the SDK did not cover yet: the client signs in
+  with Firebase and the API receives an ID token it has to prove is genuine.
+
+  ```python
+  from fastapi import APIRouter, Depends
+
+  from tempest_fastapi_sdk import FirebaseAuth, FirebaseIdentity
+
+  firebase = FirebaseAuth(credentials_path="credentials.json")
+  router = APIRouter()
+
+
+  @router.get("/me")
+  async def me(
+      identity: FirebaseIdentity = Depends(firebase.get_identity),
+  ) -> dict[str, str]:
+      """Return the verified caller."""
+      return {"uid": identity.uid, "email": identity.email or ""}
+  ```
+
+  - `FirebaseAuth` owns the idempotent app initialization every service
+    otherwise re-implements: `firebase_admin.initialize_app()` raises
+    `ValueError` on the second call, so two instances with the same
+    `app_name` now share one app, and distinct names talk to distinct
+    projects. Verification runs in `asyncio.to_thread`, since Google's
+    verifier is synchronous.
+  - The credential comes from `credentials_json` (inline, for deployments
+    without a mounted volume), `credentials_path`, or the environment's
+    application-default credential — in that order. Configuration failures
+    raise `FirebaseCredentialError` (a `RuntimeError`, not an
+    `AppException`, because it happens at construction).
+  - `FirebaseIdentity` is a frozen dataclass (`uid`, `email`,
+    `email_verified`, `phone_number`, `provider`, plus the full `claims`),
+    so handlers never receive a raw `dict[str, Any]`.
+  - Dependencies: `get_identity` and `get_uid` (strict),
+    `get_optional_identity` (soft — `None` instead of raising, pairs with
+    `require_authenticated`).
+  - `FirebaseUserResolver[UserT]` maps a verified identity onto the
+    project's own user object; a resolver answering `None` is a 401, not an
+    empty response.
+  - Each failure gets its own `code`: `FIREBASE_TOKEN_MISSING`,
+    `FIREBASE_TOKEN_INVALID`, `FIREBASE_TOKEN_EXPIRED`,
+    `FIREBASE_TOKEN_REVOKED`, `FIREBASE_UNAVAILABLE`, and
+    `FIREBASE_USER_DISABLED` at **403** — the caller proved who they are, so
+    it is the one failure the soft variant still raises.
+  - `FirebaseSettings` (`FIREBASE_PROJECT_ID`, `FIREBASE_CREDENTIALS_PATH`,
+    `FIREBASE_CREDENTIALS_JSON`) + `firebase_kwargs()`, which drops empty
+    values instead of forwarding an empty path.
+
+  Measured, not deduced: on `firebase-admin` 7.5.0, `ExpiredIdTokenError`
+  and `RevokedIdTokenError` are **subclasses** of `InvalidIdTokenError`, so
+  the `except` ordering is what keeps the three codes distinct — a
+  parametrized test pins it. A clean venv with the extra installs **33
+  packages, 52 MB**, which is why `[firebase]` stays out of `[all]` and the
+  import is lazy: `import tempest_fastapi_sdk` and
+  `from tempest_fastapi_sdk.auth import FirebaseAuth` both work without it,
+  and only construction raises `ImportError` naming the extra.
+
+  The suite runs offline — a locally generated RSA key builds a syntactically
+  valid service account (`initialize_app` never contacts Google), and
+  `verify_id_token` is patched on the real `firebase_admin.auth` module so
+  the mapping is exercised against the genuine exception classes. One test
+  patches nothing and feeds a non-JWT to the real verifier, which rejects it
+  structurally before any network call.
+
+  Recipe: [Auth Firebase (ID token)](docs/recipes/firebase-auth.md).
+  Closes #155.
+
 ## [0.229.0] — 2026-08-15
 
 Everything here came out of building a real document service on the SDK

@@ -629,6 +629,17 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 
 ::: tempest_fastapi_sdk.auth.service.UserAuthService
 ::: tempest_fastapi_sdk.auth.introspection.IntrospectionAuth
+::: tempest_fastapi_sdk.auth.firebase.FirebaseAuth
+::: tempest_fastapi_sdk.auth.firebase.FirebaseIdentity
+::: tempest_fastapi_sdk.auth.firebase.FirebaseUserResolver
+::: tempest_fastapi_sdk.auth.firebase.FirebaseCredentialError
+::: tempest_fastapi_sdk.auth.firebase.FirebaseTokenMissingError
+::: tempest_fastapi_sdk.auth.firebase.FirebaseTokenInvalidError
+::: tempest_fastapi_sdk.auth.firebase.FirebaseTokenExpiredError
+::: tempest_fastapi_sdk.auth.firebase.FirebaseTokenRevokedError
+::: tempest_fastapi_sdk.auth.firebase.FirebaseUserDisabledError
+::: tempest_fastapi_sdk.auth.firebase.FirebaseUnavailableError
+::: tempest_fastapi_sdk.auth.firebase.DEFAULT_FIREBASE_APP_NAME
 ::: tempest_fastapi_sdk.auth.router.make_auth_router
 ::: tempest_fastapi_sdk.auth.schemas.SignupSchema
 ::: tempest_fastapi_sdk.auth.schemas.SignupResponseSchema
