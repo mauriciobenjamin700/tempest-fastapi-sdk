@@ -151,13 +151,27 @@ class _Parser:
         Used to attach a gap to the specific field, parameter or operation
         it came from, so the emitter can mark that line in the output
         instead of leaving the reader with an unexplained ``Any``.
+
+        Removal is **by identity**, scanning from the end. Parsing is
+        re-entrant — rendering a field's type resolves a ``$ref``, which
+        builds that component, whose own fields open their own captures —
+        so several sinks are open at once. ``list.remove`` compares by
+        equality, and two sinks that have collected nothing are both
+        ``[]``, hence equal: the inner block would drop the *outer* sink
+        and the outer block would then die with
+        ``ValueError: list.remove(x): x not in list``. That is not
+        hypothetical — it is what parsing Stripe's specification hit,
+        aborting generation entirely.
         """
         sink: list[str] = []
         self._sinks.append(sink)
         try:
             yield sink
         finally:
-            self._sinks.remove(sink)
+            for index in range(len(self._sinks) - 1, -1, -1):
+                if self._sinks[index] is sink:
+                    del self._sinks[index]
+                    break
 
     # -- type rendering ---------------------------------------------------
 
@@ -765,7 +779,7 @@ class _Parser:
             path=path,
         )
         with self.capture() as gaps:
-            body_annotation, body_required = self._build_body(
+            body_annotation, body_required, body_encoding = self._build_body(
                 operation, owner=to_pascal(name)
             )
             response_annotation, success_status = self._build_response(
@@ -796,6 +810,7 @@ class _Parser:
             parameters=parameters,
             body_annotation=body_annotation,
             body_required=body_required,
+            body_encoding=body_encoding,
             response_annotation=response_annotation,
             success_status=success_status,
             error_statuses=self._error_statuses(operation),
@@ -951,25 +966,47 @@ class _Parser:
         operation: Mapping[str, Any],
         *,
         owner: str,
-    ) -> tuple[str | None, bool]:
-        """Return the request body annotation and whether it is required."""
+    ) -> tuple[str | None, bool, str]:
+        """Return the body annotation, whether it is required, and its encoding.
+
+        Args:
+            operation (Mapping[str, Any]): The operation object.
+            owner (str): PascalCase name used to hint inline schemas.
+
+        Returns:
+            tuple[str | None, bool, str]: Annotation (``None`` when the
+            operation takes no modelled body), required flag, and
+            ``"json"`` or ``"form"``.
+
+        JSON wins when the operation offers both, since it is the richer
+        encoding. Form is not a fallback for "we could not model it": it is
+        the only encoding some APIs accept — every write in Stripe's API is
+        ``application/x-www-form-urlencoded`` — and treating it as JSON
+        produced a client whose every write failed.
+        """
         body = operation.get("requestBody")
         if not isinstance(body, dict):
-            return None, True
+            return None, True, "json"
         resolved = deref(self.document, body)
         content = resolved.get("content")
         if not isinstance(content, dict) or not content:
-            return None, True
+            return None, True, "json"
         schema = _json_content_schema(content)
+        encoding = "json"
+        if schema is None:
+            schema = _form_content_schema(content)
+            encoding = "form"
         if schema is None:
             self.note(
                 f"request body of {owner} uses "
-                f"{', '.join(sorted(content))} — only application/json is modelled"
+                f"{', '.join(sorted(content))} — only application/json and "
+                f"application/x-www-form-urlencoded are modelled"
             )
-            return None, True
+            return None, True, "json"
         return (
             self.render_type(schema, hint=f"{owner}Body"),
             bool(resolved.get("required", False)),
+            encoding,
         )
 
     def _build_response(
@@ -1046,6 +1083,26 @@ def _json_content_schema(content: Mapping[str, Any]) -> Mapping[str, Any] | None
             return schema
         return {}
     return None
+
+
+def _form_content_schema(content: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """Return the form-encoded media-type schema from a ``content`` mapping.
+
+    Args:
+        content (Mapping[str, Any]): An OpenAPI ``content`` object.
+
+    Returns:
+        Mapping[str, Any] | None: The schema under
+        ``application/x-www-form-urlencoded``, or ``None`` when the
+        operation does not offer it. ``multipart/form-data`` is
+        deliberately excluded — it carries file parts, which need a
+        different call shape than a flattened field mapping.
+    """
+    entry = content.get("application/x-www-form-urlencoded")
+    if not isinstance(entry, dict):
+        return None
+    schema = entry.get("schema")
+    return schema if isinstance(schema, dict) else {}
 
 
 def _clean_text(value: object) -> str | None:

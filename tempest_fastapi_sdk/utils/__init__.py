@@ -101,6 +101,7 @@ from tempest_fastapi_sdk.utils.fields import (
     SlugField as SlugField,
 )
 from tempest_fastapi_sdk.utils.file_store import FileStoreUtils as FileStoreUtils
+from tempest_fastapi_sdk.utils.forms import form_encode as form_encode
 from tempest_fastapi_sdk.utils.http_client import (
     REQUEST_ID_HEADER as REQUEST_ID_HEADER,
 )
@@ -409,6 +410,7 @@ __all__: list[str] = [
     "cities_by_uf",
     "city_choices",
     "detect_pix_key_type",
+    "form_encode",
     "format_currency_br",
     "format_percent_br",
     "format_quantity_br",

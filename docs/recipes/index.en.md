@@ -408,6 +408,7 @@ come back here to plug in each capability as you need it.
 | **[SSR (typed pages) »](../ssr.md)** | `Page`, `html_response`, `make_htmx_router`, hosting a `tempestweb` build |
 | **[Storage (MinIO/S3) »](storage.md)** | `AsyncMinIOClient`, `MinIOUploadStorage`, `presigned_get_url` / `presigned_put_url`, `list_objects` |
 | **[Stored file (service mixin) »](stored-files.md)** | `StoredFileServiceMixin` — `set_file` / `replace` / `clear_file` over `UploadUtils` |
+| **[Stripe (cards + subscriptions) »](stripe.md)** | `StripeClient`, `stripe_http_client`, `to_minor_units` / `from_minor_units`, `make_stripe_webhook_dependency`, `StripeEvent` — form-encoded writes, idempotency by default, zero-decimal currencies |
 | **[System checks (check-config) »](system-checks.md)** | `run_system_checks`, `@check`, `CheckMessage`, `tempest check-config` — validate settings before serving |
 | **[tempestweb frontend + SDK »](tempestweb-frontend.md)** | tempestweb frontend calling the SDK backend: `tempestweb.native.http`, `Idempotency-Key` + `IdempotencyMiddleware`, retry, same origin vs CORS |
 | **[Testing »](testing.md)** | `test_session`, `test_database`, in-memory SQLite, pytest fixtures |

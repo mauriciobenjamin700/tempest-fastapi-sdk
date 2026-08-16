@@ -1391,6 +1391,9 @@ from tempest_fastapi_sdk.utils import (
     detect_pix_key_type as detect_pix_key_type,
 )
 from tempest_fastapi_sdk.utils import (
+    form_encode as form_encode,
+)
+from tempest_fastapi_sdk.utils import (
     format_currency_br as format_currency_br,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1538,7 +1541,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.231.0"
+__version__: str = "0.232.0"
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
@@ -1931,6 +1934,7 @@ __all__: list[str] = [
     "error_responses",
     "explain_queries",
     "file_digest",
+    "form_encode",
     "format_currency_br",
     "format_expires_at",
     "format_percent_br",

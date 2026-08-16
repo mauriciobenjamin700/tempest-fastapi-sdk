@@ -168,6 +168,12 @@ class OperationIR:
         body_annotation (str | None): Type of the request body, or
             ``None`` when the operation takes none.
         body_required (bool): Whether the body is mandatory.
+        body_encoding (str): How the body reaches the wire —
+            ``"json"`` for a JSON media type, ``"form"`` for
+            ``application/x-www-form-urlencoded``. The emitter picks
+            ``json=`` or ``data=`` from this; guessing JSON is what made
+            the generator unusable against a form-only API like Stripe,
+            whose every write is form-encoded.
         response_annotation (str | None): Type of the success response, or
             ``None`` when the operation returns no content.
         success_status (str): The documented success status code, used in
@@ -189,6 +195,7 @@ class OperationIR:
     parameters: tuple[ParameterIR, ...] = ()
     body_annotation: str | None = None
     body_required: bool = True
+    body_encoding: str = "json"
     response_annotation: str | None = None
     success_status: str = "200"
     error_statuses: tuple[tuple[str, str], ...] = ()

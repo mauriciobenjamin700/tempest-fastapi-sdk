@@ -415,6 +415,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[SPA React no FastAPI »](react-spa.md)** | `make_spa_router` — servir o build do Vite pelo mesmo processo, com history fallback |
 | **[SSR (páginas tipadas) »](../ssr.md)** | `Page`, `html_response`, `make_htmx_router`, hospedar um build do `tempestweb` |
 | **[Storage (MinIO/S3) »](storage.md)** | `AsyncMinIOClient`, `MinIOUploadStorage`, `presigned_get_url` / `presigned_put_url`, `list_objects` |
+| **[Stripe (cartão + assinatura) »](stripe.md)** | `StripeClient`, `stripe_http_client`, `to_minor_units` / `from_minor_units`, `make_stripe_webhook_dependency`, `StripeEvent` — escrita form-encoded, idempotência por padrão, moeda de zero decimais |
 | **[Sync offline-first (delta) »](offline-sync.md)** | `BaseRepository.changes_since`, `SyncFilterSchema`, `SyncPaginationSchema`, deltas por cursor + soft-delete |
 | **[System checks (check-config) »](system-checks.md)** | `run_system_checks`, `@check`, `CheckMessage`, `tempest check-config` — validar settings antes de servir |
 | **[Tempo real »](realtime.md)** | Visão geral — quando escolher SSE, WebSocket ou Web Push |

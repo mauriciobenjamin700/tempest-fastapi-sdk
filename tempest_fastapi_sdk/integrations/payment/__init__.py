@@ -9,7 +9,14 @@ in prose instead of in the schema.
 Available:
 
 - **`openpix`** — OpenPix / Woovi (Pix). 358 schemas, 105 operations,
-  webhook signature verification, and exact-cents helpers.
+  webhook signature verification, and exact-cents helpers. Generated from
+  the provider's specification.
+- **`stripe`** — Stripe (cards, subscriptions, Checkout). A typed client
+  with idempotent writes, webhook verification over the payload Stripe
+  really signs, zero-decimal-aware money, and the 265 event types as an
+  enum. Hand-written on purpose: generating Stripe's specification costs
+  3.3 MB of schemas and 492 MB of RSS at import, measured — see
+  ``scripts/regen_stripe.py``.
 
 .. code-block:: python
 
@@ -30,5 +37,6 @@ first use, not on import.
 """
 
 from tempest_fastapi_sdk.integrations.payment import openpix as openpix
+from tempest_fastapi_sdk.integrations.payment import stripe as stripe
 
-__all__: list[str] = ["openpix"]
+__all__: list[str] = ["openpix", "stripe"]

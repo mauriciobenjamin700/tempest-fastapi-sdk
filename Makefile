@@ -7,7 +7,7 @@ PACKAGE := tempest_fastapi_sdk
 PYTHON_VERSION := 3.11
 
 .DEFAULT_GOAL := help
-.PHONY: help install sync clean test test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
+.PHONY: help install sync clean stripe-regen stripe-fetch test test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -62,6 +62,12 @@ build: ## Build sdist + wheel into dist/
 
 openpix-regen: ## Regenerate the vendored OpenPix schemas + client from vendor/openpix-openapi.yaml
 	uv run python scripts/regen_openpix.py
+
+stripe-regen: ## Regenerate Stripe's event enum from vendor/stripe-api-facts.yaml (offline)
+	uv run python scripts/regen_stripe.py
+
+stripe-fetch: ## Refresh vendor/stripe-api-facts.yaml from Stripe's published spec (network)
+	uv run python scripts/regen_stripe.py --fetch
 
 smoke: build ## Install the freshly built wheel in a clean venv and import the top-level surface
 	@rm -rf /tmp/$(PACKAGE)-smoke

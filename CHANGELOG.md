@@ -5,6 +5,86 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.232.0] — 2026-08-16
+
+### Added
+
+- **Stripe integration** (`tempest_fastapi_sdk.integrations.payment.stripe`),
+  no extra required.
+
+  ```python
+  from tempest_fastapi_sdk.integrations.payment.stripe import (
+      StripeClient,
+      stripe_http_client,
+      to_minor_units,
+  )
+
+  client = StripeClient(stripe_http_client("sk_test_..."))
+  intent = await client.payment_intents.create(
+      {
+          "amount": to_minor_units("199.90", "brl"),
+          "currency": "brl",
+          "metadata": {"order_id": "1042"},
+      }
+  )
+  ```
+
+  - `StripeClient` over the SDK's `HTTPClient`, with a generic
+    `StripeResource` covering create / retrieve / update / delete / list
+    plus `auto_paginate` for nine resources (customers, payment intents,
+    refunds, products, prices, subscriptions, invoices, Checkout sessions,
+    events). Every write carries an `Idempotency-Key` — a retried charge
+    without one bills the customer twice.
+  - `stripe_http_client` pins `Stripe-Version`, so an account upgraded in
+    the dashboard cannot silently change response shapes under a service
+    that never changed.
+  - Money that respects **zero-decimal** and **three-decimal** currencies:
+    `to_minor_units` / `from_minor_units` / `currency_exponent`. ¥1050 is
+    `1050`, not `105000`.
+  - Webhook verification over the payload Stripe actually signs
+    (`f"{t}.{body}"`, not the body), with a replay window, secret
+    rotation, and `sign_payload` so tests do not re-derive it wrongly. An
+    unknown event type never fails the route.
+  - `StripeEvent` — 265 event types, generated from the specification
+    (`make stripe-fetch` / `make stripe-regen`) with a drift test.
+  - `StripeError` surfacing `type` / `code` / `decline_code` / `param` /
+    `request_id`, instead of a bare status.
+
+- **`form_encode`** (`tempest_fastapi_sdk.form_encode`) — flattens a
+  nested payload into the bracket notation form-encoded APIs read
+  (`metadata[user_id]=42`, `items[0][price]=price_123`). Booleans go out
+  lower-case, `None` is dropped rather than sent empty (an empty string
+  *clears* a field on these APIs), `Decimal` keeps its exact text.
+
+- **The OpenAPI generator now reads the request body's media type.** An
+  operation declaring `application/x-www-form-urlencoded` emits
+  `data=form_encode(payload)`; JSON operations are unchanged. Before this,
+  a client generated against Stripe had **100% of its writes rejected** —
+  all 588 of them declare form encoding and none declares JSON.
+
+### Fixed
+
+- **The OpenAPI parser aborted on re-entrant specifications.** Note sinks
+  were removed from the stack **by equality**, and two sinks that have
+  collected nothing are both `[]` — so a nested parse (a field's type
+  resolving a `$ref`, whose component's fields open their own sinks)
+  removed the wrong one and the outer block died with
+  `ValueError: list.remove(x): x not in list`. Removal is now by identity.
+  Parsing Stripe's specification is what surfaced it; the regression test
+  fails on the previous code.
+
+### Notes
+
+The Stripe client is **hand-written**, unlike OpenPix, and the reason is
+measured on the `2026-07-29.dahlia` specification: generating the full
+surface produces a `schemas.py` of 3.3 MB / 81k lines whose import costs
+**5.8 s and 492 MB of RSS**, and slicing by resource does not help because
+`/v1/prices` alone reaches 864 of the 1440 component schemas. What still
+comes from the specification — API version, base URL, the event list —
+comes through `scripts/regen_stripe.py`, which also records the numbers.
+
+Closes #156.
+
 ## [0.231.0] — 2026-08-16
 
 ### Added
