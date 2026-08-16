@@ -526,8 +526,15 @@ if __name__ == "__main__":
 ```
 
 O handler recebe **dois** argumentos: `arguments` (o que o modelo passou) e
-`context` (os artefatos da execução). Devolver `str` também vale, quando não
-há nada binário — ele é embrulhado num `ToolResult` automaticamente.
+`context` (os artefatos da execução, mais o que a sua aplicação semear nele).
+Devolver `str` também vale, quando não há nada binário — ele é embrulhado num
+`ToolResult` automaticamente.
+
+!!! tip "Ferramenta que consulta o banco de dados?"
+    É o que quase todo mundo escreve primeiro, e a sessão **não** chega por
+    `Depends` — o agente não vive dentro de uma requisição.
+    [Agentes de IA (banco de dados) »](agents-db.md) mostra o padrão inteiro,
+    e é lá que o parâmetro `context` é destrinchado.
 
 !!! tip "Já tem ferramentas do `AIChatPipeline`?"
     `AgentTool.from_tool(tool)` adapta as ferramentas de um só argumento do

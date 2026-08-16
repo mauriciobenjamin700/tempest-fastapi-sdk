@@ -526,8 +526,15 @@ if __name__ == "__main__":
 ```
 
 The handler takes **two** arguments: `arguments` (what the model passed) and
-`context` (the run's artifacts). Returning a plain `str` works too when
-there is nothing binary — it is wrapped into a `ToolResult` for you.
+`context` (the run's artifacts, plus whatever your application seeds into it).
+Returning a plain `str` works too when there is nothing binary — it is wrapped
+into a `ToolResult` for you.
+
+!!! tip "A tool that queries the database?"
+    That is what almost everyone writes first, and the session does **not**
+    arrive through `Depends` — the agent does not live inside a request.
+    [AI agents (database) »](agents-db.md) shows the whole pattern, and it is
+    where the `context` parameter is unpacked.
 
 !!! tip "Already have `AIChatPipeline` tools?"
     `AgentTool.from_tool(tool)` adapts the chat pipeline's single-argument

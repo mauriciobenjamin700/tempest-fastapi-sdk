@@ -102,6 +102,7 @@ plugins:
               - Admin SQL console: recipes/admin-sql-console.md
               - AI agents: recipes/agents.md
               - AI agents (advanced): recipes/agents-advanced.md
+              - AI agents (database): recipes/agents-db.md
               - AI agents (testing): recipes/agents-testing.md
               - Audit trail: recipes/audit-trail.md
               - Auth flow (signup/reset): recipes/auth-flow.md
@@ -370,6 +371,7 @@ nav:
       - recipes/index.md
       - "Agentes de IA": recipes/agents.md
       - "Agentes de IA (avançado)": recipes/agents-advanced.md
+      - "Agentes de IA (banco de dados)": recipes/agents-db.md
       - "Agentes de IA (testes)": recipes/agents-testing.md
       - "Arquivo no serviço (mixin)": recipes/stored-files.md
       - "Artefatos versionados (modelos)": recipes/artifact-registry.md
