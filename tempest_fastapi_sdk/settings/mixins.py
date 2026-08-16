@@ -881,6 +881,64 @@ class FirebaseSettings(BaseAppSettings):
         return bool(self.FIREBASE_CREDENTIALS_JSON or self.FIREBASE_CREDENTIALS_PATH)
 
 
+class PushSettings(WebPushSettings, FirebaseSettings):
+    """Every variable a service delivering to browsers *and* phones needs.
+
+    Composing :class:`WebPushSettings` and :class:`FirebaseSettings`
+    by hand works, but it hides a trap: both declare an ``enabled``
+    property, so the MRO silently picks the Web Push one and a
+    mobile-only service reads ``enabled is False`` while FCM is perfectly
+    configured. This class exists to make that explicit — ``enabled``
+    answers "can this service push at all", and the two halves are
+    readable separately through :attr:`web_enabled` and
+    :attr:`mobile_enabled`.
+
+    Attributes:
+        VAPID_PUBLIC_KEY (str): Inherited from :class:`WebPushSettings`.
+        VAPID_PRIVATE_KEY (str): Inherited from :class:`WebPushSettings`.
+        VAPID_SUBJECT (str): Inherited from :class:`WebPushSettings`.
+        WEBPUSH_DEFAULT_TTL_SECONDS (int): Inherited from
+            :class:`WebPushSettings`.
+        FIREBASE_PROJECT_ID (str): Inherited from
+            :class:`FirebaseSettings`.
+        FIREBASE_CREDENTIALS_PATH (str): Inherited from
+            :class:`FirebaseSettings`.
+        FIREBASE_CREDENTIALS_JSON (str): Inherited from
+            :class:`FirebaseSettings`.
+    """
+
+    @property
+    def web_enabled(self) -> bool:
+        """Whether Web Push dispatch is configured.
+
+        Returns:
+            bool: ``True`` when a VAPID private key is set.
+        """
+        return bool(self.VAPID_PRIVATE_KEY)
+
+    @property
+    def mobile_enabled(self) -> bool:
+        """Whether an explicit Firebase service account is configured.
+
+        ``False`` does not mean FCM is impossible — an
+        application-default credential still works. It means this process
+        was not handed one explicitly.
+
+        Returns:
+            bool: ``True`` when a credentials path or inline JSON is set.
+        """
+        return bool(self.FIREBASE_CREDENTIALS_JSON or self.FIREBASE_CREDENTIALS_PATH)
+
+    @property
+    def enabled(self) -> bool:
+        """Whether the service can push to at least one platform.
+
+        Returns:
+            bool: ``True`` when either half is configured.
+        """
+        return self.web_enabled or self.mobile_enabled
+
+
 class TaskIQSettings(BaseAppSettings):
     """TaskIQ broker / result backend configuration.
 
@@ -2024,6 +2082,7 @@ __all__: list[str] = [
     "JWTSettings",
     "LogSettings",
     "MinIOSettings",
+    "PushSettings",
     "RabbitMQSettings",
     "RedisSettings",
     "ServerSettings",

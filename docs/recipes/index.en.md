@@ -392,6 +392,7 @@ come back here to plug in each capability as you need it.
 | **[OpenPix (Pix via Woovi) »](openpix.md)** | `OpenPixEnvironment`, `OpenPixEvent`, `make_openpix_webhook_dependency`, `to_cents` |
 | **[PDF generation »](pdf.md)** | `PdfRenderer`, five bundled documents (receipt/quote/report/contract/voucher) with Pydantic schemas, `make_pdf_router`, `tempest pdf render`, asset policy |
 | **[Permission guards (@requires) »](permission-guards.md)** | `@requires` plus `(user) -> user` guards (with an optional `meta: dict[str, Any]` via `meta=` / `include_args=`), `TempestPermissionError`, `GuardContractWarning`, `tempest permissions --check` |
+| **[Push (web + mobile) »](push.md)** | `DeviceService`, `PushDispatcher`, `WebPushTransport` / `FCMTransport`, `BaseDeviceTokenModel`, `make_push_router` — one call for browsers and phones, with unified pruning of dead devices |
 | **[Query plans (EXPLAIN) »](query-plans.md)** | `explain_queries()` captures the block and explains on exit, `EXPLAIN ANALYZE` on PostgreSQL / `EXPLAIN QUERY PLAN` on SQLite, writes never re-executed, `report.slowest` |
 | **[Queue & Tasks »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, transactional outbox |
 | **[React SPA on FastAPI »](react-spa.md)** | `make_spa_router` — serve the Vite build from the same process, with history fallback |

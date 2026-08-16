@@ -82,6 +82,29 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   which rejects it structurally before any network call. Config:
   `FirebaseSettings` (`FIREBASE_PROJECT_ID`, `FIREBASE_CREDENTIALS_PATH`,
   `FIREBASE_CREDENTIALS_JSON`). Recipe: `docs/recipes/firebase-auth.md`.
+- **Unified push, web + mobile (v0.231.0)** — `tempest_fastapi_sdk.push`.
+  `PushDispatcher` is a one-method `Protocol` (the `UploadStorage` shape);
+  `WebPushTransport` adapts the existing VAPID dispatcher and `FCMTransport`
+  delivers to iOS/Android through `firebase_admin.messaging`, reusing the
+  `[firebase]` extra and the service account `FirebaseAuth` loaded
+  (`FCMTransport(auth=...)` via the new `FirebaseAuth.app`).
+  `BaseDeviceTokenModel` holds browsers and phones in one table;
+  `DeviceService` registers idempotently by token (a handset that changes
+  hands moves to the new user), fans out concurrently, and prunes on one rule
+  with two vocabularies — 404/410 on the web, `UnregisteredError` /
+  `SenderIdMismatchError` on FCM. `PushFanoutResult` separates `delivered` /
+  `pruned` / `failed` / `skipped`, and `skipped` never deletes: a web-only
+  service keeps its iOS rows. `make_push_router` exposes register/unregister
+  plus the VAPID key; `PushSettings` resolves the `enabled` collision between
+  `WebPushSettings` and `FirebaseSettings`. Tokens are masked everywhere
+  (`mask_push_token`). **`webpush` is untouched** — the VAPID code stays
+  there (moving it would create an import cycle between the two packages) and
+  `tests/webpush/` passes with zero edits. Two measured details:
+  `Message.token` is deprecated in favour of `fid` on firebase-admin 7.5.0
+  but they are different wire fields, so registration tokens stay in `token`;
+  and FCM's `InvalidArgumentError` deliberately does **not** prune, because
+  it covers malformed payloads too and pruning on it would wipe a fleet.
+  Recipe: `docs/recipes/push.md`.
 - **Permission guards (v0.167.0)** — `@requires(*guards, user_param=None)`
   (`tempest_fastapi_sdk.authz`, re-exported at the root) runs plain
   `(user) -> user | None` guards before a function body, at any layer, sync or

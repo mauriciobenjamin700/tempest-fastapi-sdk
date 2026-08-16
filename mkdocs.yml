@@ -148,6 +148,7 @@ plugins:
               - OpenPix (Pix via Woovi): recipes/openpix.md
               - PDF generation: recipes/pdf.md
               - Permission guards (@requires): recipes/permission-guards.md
+              - "Push (web + mobile)": recipes/push.md
               - Query plans (EXPLAIN): recipes/query-plans.md
               - Queue & Tasks: recipes/queue-tasks.md
               - React SPA inside FastAPI: recipes/react-spa.md
@@ -221,6 +222,7 @@ plugins:
             Outbox transacional: Transactional outbox
             Email transacional: Transactional email
             Web Push: Web Push
+            "Push (web + mobile)": "Push (web + mobile)"
             WebAuthn / passkeys: WebAuthn / passkeys
             Logging: Logging
             "Login social (OAuth2/OIDC)": "Social login (OAuth2/OIDC)"
@@ -424,6 +426,7 @@ nav:
       - "Pesos de modelos (ciclo no Hub)": recipes/model-weights.md
       - "Planilhas (.xlsx)": recipes/spreadsheets.md
       - "Planos de query (EXPLAIN)": recipes/query-plans.md
+      - "Push (web + mobile)": recipes/push.md
       - "Reconhecimento facial": recipes/faces.md
       - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md
       - Segurança: recipes/security.md

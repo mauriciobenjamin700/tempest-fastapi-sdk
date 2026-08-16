@@ -328,6 +328,19 @@ class FirebaseAuth:
         self._auth: Any = firebase_auth
         self._app: Any = self._get_or_create_app(firebase_admin, firebase_credentials)
 
+    @property
+    def app(self) -> Any:
+        """Return the initialized ``firebase_admin.App`` this instance uses.
+
+        Exposed so other Firebase-backed features reuse one loaded service
+        account instead of initializing a second app — the FCM transport in
+        :mod:`tempest_fastapi_sdk.push` is the first consumer.
+
+        Returns:
+            Any: The ``firebase_admin.App`` bound to :attr:`app_name`.
+        """
+        return self._app
+
     def _build_credential(self, firebase_credentials: Any) -> Any:
         """Build the ``firebase_admin`` credential from the configuration.
 

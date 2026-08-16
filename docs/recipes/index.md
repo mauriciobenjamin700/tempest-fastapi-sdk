@@ -406,6 +406,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Pesos de modelos (ciclo no Hub) »](model-weights.md)** | `ModelRef` (`revision` / `local_files_only` / `trust_remote_code`), `resolve_revision`, `download_model` com preflight de disco, `list_cached_models` / `remove_cached_model`, `tempest model pull` / `cache-list` / `cache-rm` |
 | **[Planilhas (.xlsx) »](spreadsheets.md)** | `SheetWriter` (cursor de linha), `Column` (largura/máscara/alinhamento), `SheetStyle` como dado puro, formatos `BR_*` fixados em pt-BR, `new_workbook` / `workbook_to_bytes` |
 | **[Planos de query (EXPLAIN) »](query-plans.md)** | `explain_queries()` captura o bloco e explica na saída, `EXPLAIN ANALYZE` no PostgreSQL / `EXPLAIN QUERY PLAN` no SQLite, escrita nunca reexecutada, `report.slowest` |
+| **[Push (web + mobile) »](push.md)** | `DeviceService`, `PushDispatcher`, `WebPushTransport` / `FCMTransport`, `BaseDeviceTokenModel`, `make_push_router` — uma chamada para navegador e celular, com poda unificada do aparelho morto |
 | **[Reconhecimento facial »](faces.md)** | `FaceRecognizer` (detectar / embutir / comparar), `compare_faces`, packs de 16 MB ou 191 MB, sem opencv e sem torch |
 | **[Refresh tokens (rotação/revogação) »](refresh-tokens.md)** | `BaseUserRefreshTokenModel`, `make_user_refresh_token_model`, `issue_token_pair`, rotação + detecção de reuso por família |
 | **[Segurança »](security.md)** | `AttemptThrottle`, helpers de token opaco, `HardenedStaticFiles`, headers de segurança |
