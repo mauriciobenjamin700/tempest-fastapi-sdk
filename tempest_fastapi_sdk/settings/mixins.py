@@ -794,6 +794,93 @@ class WebPushSettings(BaseAppSettings):
         return bool(self.VAPID_PRIVATE_KEY)
 
 
+class FirebaseSettings(BaseAppSettings):
+    """Firebase Admin credentials for ID token verification.
+
+    Mirrors the constructor arguments of
+    :class:`tempest_fastapi_sdk.auth.FirebaseAuth`.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    ``FIREBASE_CREDENTIALS_JSON`` and ``FIREBASE_CREDENTIALS_PATH``
+    describe the same service account through different channels: the
+    file is the usual local shape, the inline JSON is what a deployment
+    without a mounted volume injects. When both are set the inline JSON
+    wins, matching :class:`~tempest_fastapi_sdk.auth.FirebaseAuth`.
+    Leaving both empty falls back to the environment's
+    application-default credential.
+
+    Attributes:
+        FIREBASE_PROJECT_ID (str): Firebase project id. Optional when the
+            service account already carries it. Default: ``""``.
+        FIREBASE_CREDENTIALS_PATH (str): Path to a service-account JSON
+            file. Default: ``""``.
+        FIREBASE_CREDENTIALS_JSON (str): The service-account JSON inline.
+            Default: ``""``.
+    """
+
+    FIREBASE_PROJECT_ID: str = Field(
+        default="",
+        title="Firebase project id",
+        description=(
+            "Firebase project the ID tokens are issued for. Optional when "
+            "the service account already carries it."
+        ),
+        examples=["", "my-app-3f21c"],
+    )
+    FIREBASE_CREDENTIALS_PATH: str = Field(
+        default="",
+        title="Service account file",
+        description="Filesystem path to the service-account JSON file.",
+        examples=["", "credentials.json", "/run/secrets/firebase.json"],
+    )
+    FIREBASE_CREDENTIALS_JSON: str = Field(
+        default="",
+        title="Service account JSON (inline)",
+        description=(
+            "The service-account JSON itself, for deployments that inject "
+            "it as an environment variable instead of mounting a file."
+        ),
+        examples=["", '{"type": "service_account", "project_id": "..."}'],
+    )
+
+    def firebase_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto :class:`FirebaseAuth` kwargs.
+
+        Empty strings are dropped rather than forwarded, so an unset
+        variable leaves the corresponding constructor default in place
+        instead of configuring an empty path.
+
+        Returns:
+            dict[str, Any]: Keyword arguments ready to splat into
+            ``FirebaseAuth(**settings.firebase_kwargs())``.
+        """
+        kwargs: dict[str, Any] = {}
+        if self.FIREBASE_CREDENTIALS_JSON:
+            kwargs["credentials_json"] = self.FIREBASE_CREDENTIALS_JSON
+        if self.FIREBASE_CREDENTIALS_PATH:
+            kwargs["credentials_path"] = self.FIREBASE_CREDENTIALS_PATH
+        if self.FIREBASE_PROJECT_ID:
+            kwargs["project_id"] = self.FIREBASE_PROJECT_ID
+        return kwargs
+
+    @property
+    def enabled(self) -> bool:
+        """Whether an explicit Firebase service account is configured.
+
+        ``False`` does **not** mean verification is impossible: an
+        application-default credential (``GOOGLE_APPLICATION_CREDENTIALS``
+        or the metadata server on Google infrastructure) still works.
+        Use this to gate wiring in projects that must run without
+        Firebase at all.
+
+        Returns:
+            bool: ``True`` when a credentials path or inline JSON is set.
+        """
+        return bool(self.FIREBASE_CREDENTIALS_JSON or self.FIREBASE_CREDENTIALS_PATH)
+
+
 class TaskIQSettings(BaseAppSettings):
     """TaskIQ broker / result backend configuration.
 
@@ -1932,6 +2019,7 @@ __all__: list[str] = [
     "CORSSettings",
     "DatabaseSettings",
     "EmailSettings",
+    "FirebaseSettings",
     "GenAISettings",
     "JWTSettings",
     "LogSettings",

@@ -14,6 +14,39 @@ re-export form combined with ``__all__`` so every type-checker
 a "private import usage" / "is not exported" diagnostic.
 """
 
+from tempest_fastapi_sdk.auth.firebase import (
+    DEFAULT_FIREBASE_APP_NAME as DEFAULT_FIREBASE_APP_NAME,
+)
+from tempest_fastapi_sdk.auth.firebase import (
+    FirebaseAuth as FirebaseAuth,
+)
+from tempest_fastapi_sdk.auth.firebase import (
+    FirebaseCredentialError as FirebaseCredentialError,
+)
+from tempest_fastapi_sdk.auth.firebase import (
+    FirebaseIdentity as FirebaseIdentity,
+)
+from tempest_fastapi_sdk.auth.firebase import (
+    FirebaseTokenExpiredError as FirebaseTokenExpiredError,
+)
+from tempest_fastapi_sdk.auth.firebase import (
+    FirebaseTokenInvalidError as FirebaseTokenInvalidError,
+)
+from tempest_fastapi_sdk.auth.firebase import (
+    FirebaseTokenMissingError as FirebaseTokenMissingError,
+)
+from tempest_fastapi_sdk.auth.firebase import (
+    FirebaseTokenRevokedError as FirebaseTokenRevokedError,
+)
+from tempest_fastapi_sdk.auth.firebase import (
+    FirebaseUnavailableError as FirebaseUnavailableError,
+)
+from tempest_fastapi_sdk.auth.firebase import (
+    FirebaseUserDisabledError as FirebaseUserDisabledError,
+)
+from tempest_fastapi_sdk.auth.firebase import (
+    FirebaseUserResolver as FirebaseUserResolver,
+)
 from tempest_fastapi_sdk.auth.guards import require_active as require_active
 from tempest_fastapi_sdk.auth.guards import require_admin as require_admin
 from tempest_fastapi_sdk.auth.guards import (
@@ -122,6 +155,7 @@ from tempest_fastapi_sdk.auth.webauthn import WebAuthnService as WebAuthnService
 
 __all__: list[str] = [
     "DEFAULT_AUTH_LOCALE",
+    "DEFAULT_FIREBASE_APP_NAME",
     "SUPPORTED_LOCALES",
     "ActivationResponseSchema",
     "ActivationToken",
@@ -133,6 +167,16 @@ __all__: list[str] = [
     "EmailChangeToken",
     "EmailRecoveryRequestSchema",
     "EmailVerificationToken",
+    "FirebaseAuth",
+    "FirebaseCredentialError",
+    "FirebaseIdentity",
+    "FirebaseTokenExpiredError",
+    "FirebaseTokenInvalidError",
+    "FirebaseTokenMissingError",
+    "FirebaseTokenRevokedError",
+    "FirebaseUnavailableError",
+    "FirebaseUserDisabledError",
+    "FirebaseUserResolver",
     "IntrospectionAuth",
     "LoginResponseSchema",
     "LoginSchema",

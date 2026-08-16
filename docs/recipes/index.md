@@ -353,6 +353,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Arquivo no serviço (mixin) »](stored-files.md)** | `StoredFileServiceMixin` — `set_file` / `replace` / `clear_file` sobre `UploadUtils` |
 | **[Artefatos versionados (modelos) »](artifact-registry.md)** | `ArtifactRegistry`, `ArtifactVersionMixin`, `build_manifest_entries`, `file_digest` — versão ativa sem redeploy |
 | **[Audit trail »](audit-trail.md)** | `BaseAuditLogModel`, `add_audited` / `update_audited` / `delete_audited`, `snapshot_model` / `diff_snapshots` |
+| **[Auth Firebase (ID token) »](firebase-auth.md)** | `FirebaseAuth`, `FirebaseIdentity`, `FirebaseUserResolver` — verificar o ID token que o app mobile manda, inicialização idempotente, um `code` por falha, extra `[firebase]` |
 | **[Auth flow (signup/reset) »](auth-flow.md)** | `UserAuthService`, `make_auth_router` — signup / ativação / login / reset de senha, entrega de token (bearer/cookie/ambos), `BaseUserModel` |
 | **[Auth por introspecção (resource server) »](introspection-auth.md)** | `IntrospectionAuth` — validar bearer opaco perguntando ao provedor de identidade upstream |
 | **[Banco de dados »](database.md)** | `BaseModel`, `AsyncDatabaseManager`, `BaseRepository` (CRUD + filtros + bulk), paginação offset/cursor, mixins, `AlembicHelper`, `SlowQueryLogger` |

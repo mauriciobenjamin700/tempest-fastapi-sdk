@@ -27,6 +27,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[websocket]` | `websockets` | Protocol driver for `make_websocket_router` — without it the handshake 404s |
 | `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (with `render_template` + Jinja2 templates) |
 | `[faces]` | `onnxruntime`, `pillow`, `numpy` | Face recognition on ONNX Runtime, no opencv and no torch: `FaceRecognizer` (detect/embed/compare), `compare_faces`. 16 MB models fetched by `ensure_models()`. **No system libraries** |
+| `[firebase]` | `firebase-admin` | Firebase ID token verification: `FirebaseAuth` (idempotent init, `get_identity` / `get_uid` / `get_optional_identity`), `FirebaseIdentity`, `FirebaseUserResolver`, `FirebaseSettings`. Heavy — 33 packages, 52 MB measured on `firebase-admin` 7.5.0 — and therefore **out of `[all]`** |
 | `[genai]` | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` | local (heavy) GenAI: `TextGenerator`, `Embedder`, `AIChatPipeline`, `make_genai_router` via HuggingFace/torch |
 | `[genai-audio]` | `faster-whisper`, `coqui-tts` | STT (Whisper) + TTS (Coqui) |
 | `[genai-chroma]` | `chromadb` | Chroma vector store for RAG |

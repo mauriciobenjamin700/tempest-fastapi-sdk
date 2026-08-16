@@ -16,6 +16,7 @@ from tempest_fastapi_sdk.settings.mixins import AuthSettings as AuthSettings
 from tempest_fastapi_sdk.settings.mixins import CORSSettings as CORSSettings
 from tempest_fastapi_sdk.settings.mixins import DatabaseSettings as DatabaseSettings
 from tempest_fastapi_sdk.settings.mixins import EmailSettings as EmailSettings
+from tempest_fastapi_sdk.settings.mixins import FirebaseSettings as FirebaseSettings
 from tempest_fastapi_sdk.settings.mixins import GenAISettings as GenAISettings
 from tempest_fastapi_sdk.settings.mixins import JWTSettings as JWTSettings
 from tempest_fastapi_sdk.settings.mixins import LogSettings as LogSettings
@@ -37,6 +38,7 @@ __all__: list[str] = [
     "CORSSettings",
     "DatabaseSettings",
     "EmailSettings",
+    "FirebaseSettings",
     "GenAISettings",
     "JWTSettings",
     "LogSettings",
