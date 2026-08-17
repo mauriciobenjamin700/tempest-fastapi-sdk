@@ -66,6 +66,12 @@ theme:
 hooks:
   - mkdocs_hooks/llmstxt.py
 
+# docs/CLAUDE.md são instruções de agente sobre como escrever a documentação,
+# não uma página do site. Fica em docs/ para o Claude Code carregá-lo ao abrir
+# arquivo de lá, e sai do build — sem espelho .en.md e sem entrada no nav.
+exclude_docs: |
+  CLAUDE.md
+
 plugins:
   - search:
       separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'

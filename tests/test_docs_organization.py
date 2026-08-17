@@ -144,6 +144,27 @@ def en_nav(config_text: str) -> list[Any]:
     return _yaml_block(config_text, " " * 10 + "nav:")
 
 
+def _page_paths(docs: Path) -> list[Path]:
+    """Return every default-language page file on disk, in path order.
+
+    ``docs/CLAUDE.md`` is excluded: it lives in the docs tree so Claude Code
+    loads it when a file there is opened, but it is agent instruction rather
+    than a page — ``mkdocs.yml`` drops it from the build via ``exclude_docs``,
+    so it deliberately has no ``.en.md`` mirror and no ``nav`` entry.
+
+    Args:
+        docs (Path): The ``docs/`` directory.
+
+    Returns:
+        list[Path]: Every ``*.md`` that is a real page in the default language.
+    """
+    return [
+        path
+        for path in sorted(docs.rglob("*.md"))
+        if not path.name.endswith(".en.md") and path.name != "CLAUDE.md"
+    ]
+
+
 def _pages(entry: Any, out: list[str]) -> None:
     """Collect every ``.md`` path reachable from a nav fragment.
 
@@ -332,9 +353,8 @@ class TestBilingualMirrors:
         docs = ROOT / "docs"
         missing = sorted(
             str(path.relative_to(docs))
-            for path in docs.rglob("*.md")
-            if not path.name.endswith(".en.md")
-            and not path.with_name(f"{path.stem}.en.md").exists()
+            for path in _page_paths(docs)
+            if not path.with_name(f"{path.stem}.en.md").exists()
         )
         assert not missing, f"pages with no .en.md mirror: {missing}"
 
@@ -353,11 +373,7 @@ class TestEveryPageIsReachable:
         pages: list[str] = []
         _pages(pt_nav, pages)
         docs = ROOT / "docs"
-        on_disk = {
-            str(path.relative_to(docs))
-            for path in docs.rglob("*.md")
-            if not path.name.endswith(".en.md")
-        }
+        on_disk = {str(path.relative_to(docs)) for path in _page_paths(docs)}
         assert not on_disk - set(pages), (
             f"pages absent from the PT nav: {sorted(on_disk - set(pages))}"
         )
@@ -366,11 +382,7 @@ class TestEveryPageIsReachable:
         pages: list[str] = []
         _pages(en_nav, pages)
         docs = ROOT / "docs"
-        on_disk = {
-            str(path.relative_to(docs))
-            for path in docs.rglob("*.md")
-            if not path.name.endswith(".en.md")
-        }
+        on_disk = {str(path.relative_to(docs)) for path in _page_paths(docs)}
         assert not on_disk - set(pages), (
             f"pages absent from the EN nav: {sorted(on_disk - set(pages))}"
         )

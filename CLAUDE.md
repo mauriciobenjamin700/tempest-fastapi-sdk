@@ -14,8 +14,9 @@ regra:
   que shippou, o comando que mediu, o número que apareceu.
 
 Regras de área vivem no `CLAUDE.md` do diretório e são carregadas só quando
-você abre arquivo de lá: [`tests/CLAUDE.md`](tests/CLAUDE.md) (suíte, guards,
-fixtures) e
+você abre arquivo de lá: [`tests/CLAUDE.md`](tests/CLAUDE.md) (suíte, roster de
+guards, fixtures), [`docs/CLAUDE.md`](docs/CLAUDE.md) (bilíngue, dois navs,
+ordem, estilo tiangolo) e
 [`tempest_fastapi_sdk/integrations/CLAUDE.md`](tempest_fastapi_sdk/integrations/CLAUDE.md)
 (código gerado, drift, armadilhas de API de terceiro). Fluxos executáveis são
 skill/agente em `.claude/`: `/release` corta a release, o agente
@@ -38,36 +39,18 @@ Duas consequências estruturais:
   `docs/` e a referência de API refletem a forma nova **antes** da tag
   `vX.Y.Z`.
 
-## Release flow
+## Release
 
-```bash
-# 1. bump version
-sed -i 's/version = "X.Y.Z"/version = "X.Y.Z+1"/' pyproject.toml
-sed -i 's/__version__: str = "X.Y.Z"/__version__: str = "X.Y.Z+1"/' tempest_fastapi_sdk/__init__.py
+`make release VERSION=X.Y.Z SUBJECT="<assunto>"` é a autoridade: recusa árvore
+suja e CHANGELOG sem entrada, bumpa os dois arquivos de versão, roda o gate
+inteiro (`check` + `docs-build` + `smoke`), commita e cria a tag. O push fica
+manual. A ordem em volta — CHANGELOG, docs, auditoria de prosa, confirmação
+antes do push — está na skill `/release`.
 
-# 2. CHANGELOG entry under ## [X.Y.Z+1] — YYYY-MM-DD (Keep a Changelog format)
-
-# 3. update relevant docs/recipes/*.md (and the .en.md mirror)
-
-# 4. gate
-UV_PYTHON=3.11 make check                 # ruff + mypy + 661+ tests
-UV_PYTHON=3.11 uv run --group docs mkdocs build --strict
-UV_PYTHON=3.11 make smoke                 # import-test the wheel
-
-# 5. commit + tag + push
-git add -A && git commit -m "feat: vX.Y.Z+1 — <subject>"
-git tag vX.Y.Z+1
-git push origin main && git push origin vX.Y.Z+1
-```
-
-CI na tag roda `release-pypi.yml` (trusted publishing, sem token), depois
-`docs.yml` redeploya o Pages. Não empurre tag com docs vermelhas.
-
-**Docs-only pula tudo isso.** Tocou só `docs/`, `README.md` ou prosa de
-`CLAUDE.md`/`LESSONS.md` (zero delta em `tempest_fastapi_sdk/**`)? Sem bump,
-sem CHANGELOG, sem tag — commit `docs: <subject>` direto na `main` (rebase
-em `origin/main` primeiro se atrasado). Gate é
-`uv run --group docs mkdocs build --strict` +
+**Docs-only pula tudo isso.** Tocou só `docs/`, `README.md`, `SHIPPED.md` ou
+prosa de `CLAUDE.md`/`LESSONS.md` (zero delta em `tempest_fastapi_sdk/**`)? Sem
+bump, sem CHANGELOG, sem tag — commit `docs: <subject>` direto na `main`
+(rebase em `origin/main` primeiro se atrasado). Gate é `make docs-build` +
 `pytest tests/test_docs_api_guard.py tests/test_docs_organization.py`; o
 `make check` completo é desnecessário porque nenhum Python mudou. Edição de
 docstring que muda assinatura ou comportamento **não** é docs-only.
@@ -79,19 +62,15 @@ saiu de um comando que rodou. Não de leitura de código, não de como a
 biblioteca "deve" se comportar. Rodou, viu a saída, escreveu.
 
 Nenhum guard lê prosa — por isso este é o defeito que mais escapa aqui.
-Três afirmações falsas shipparam juntas na v0.218.0; ver
-[`LESSONS.md`](LESSONS.md).
+Três afirmações falsas shipparam juntas na v0.218.0:
+[`LESSONS.md`](LESSONS.md#prosa-deduzida-shippa-errada-v02180).
 
 Na prática:
 
 - **Propriedade que atravessa processo, máquina ou container é testada
-  atravessando.** Duas chamadas no mesmo processo não medem nada sobre o
-  que sobrevive a ele. `tests/test_vacuous_guard.py` falha quando o nome ou
-  a docstring afirma ter cruzado ("across processes", "survives a restart")
-  e o corpo não sai do lugar.
-- **Afirmação sobre ambiente é feita no ambiente.** Container, imagem slim,
-  pacote de sistema, versão de dependência: construa e rode. `docker build`
-  custa minutos; a frase errada fica anos.
+  atravessando** — e afirmação sobre ambiente (container, imagem slim, pacote
+  de sistema) é feita construindo e rodando o ambiente. `docker build` custa
+  minutos; a frase errada fica anos.
 - **Declare o escopo junto da afirmação.** "Byte a byte idêntico" quase
   nunca é verdade sem qualificação — diga sob quais condições, e o que
   continua variando.
@@ -112,23 +91,9 @@ hora:
    resolvida", "é julgamento de redação"), para o próximo leitor não achar
    que a checagem existe.
 
-Guards ativos, todos dentro do `make check`:
-
-| Guard | Cobre | Ponto cego |
-| --- | --- | --- |
-| `test_docs_api_guard` | bloco `python` de doc parseia; nome de `__all__` resolve | prosa (roadmap/covers driftando) |
-| `test_docs_signature_guard` | exemplo casa com assinatura real; import resolve; versão do snippet ≤ `pyproject.toml` | símbolo usado sem import; prosa |
-| `test_docs_organization` | espelho `.en.md`, dois navs, ordem alfabética, índice de receitas | — |
-| `test_docs_examples_compile` / `_names` | exemplos completos compilam e usam nomes reais | — |
-| `test_reference_coverage` | símbolo público tem stub em `docs/reference.md` | — |
-| `test_kwargs_guard` | função lê chave do **próprio** `**kwargs` | splat em callable que absorve a chave |
-| `test_reexport_guard` | `from x import Y as Y` + `__all__` em `__init__.py` | — |
-| `test_vacuous_guard` | teste afirma cruzar processo/réplica e não cruza | — |
-| `test_alias_guard` | `Field(alias=...)` voltando | — |
-
-Marcadores de escape: `# docs-guard: skip` (fragmento não-parseável de
-propósito), `# kwargs-guard: skip` (caso que genuinamente não é isso, com
-docstring dizendo por quê).
+O roster dos guards, o que cada um cobre e o ponto cego de cada um estão em
+[`tests/CLAUDE.md`](tests/CLAUDE.md) — junto do código que você edita ao
+mexer neles. Todos rodam dentro do `make check`.
 
 ## Convenções deste repo
 
@@ -136,25 +101,16 @@ docstring dizendo por quê).
   `docs/`, `tempest_fastapi_sdk/cli/_templates/*.tmpl` tem anotação
   completa (parâmetros + retorno). API untyped "estilo Django mágico" foi
   rejeitada explicitamente.
-- **Docs bilíngues.** Toda página vive duas vezes: `docs/<page>.md` (PT-BR,
-  default) e `docs/<page>.en.md` (EN-US), cada uma no `nav:` da sua língua
-  (o de topo e o do locale `en` dentro do plugin `i18n`), em posição
-  alfabética pelo rótulo visível. Receita nova entra também na tabela de
-  `docs/recipes/index.md` + `.en.md`. Espelho faltando é defeito
-  estrutural, não polimento. Autoridade:
+- **Docs bilíngues e ordenadas.** Toda página vive duas vezes
+  (`docs/<page>.md` + `docs/<page>.en.md`), nos dois `nav:`, em ordem
+  alfabética — espelho faltando é defeito estrutural. As regras completas, o
+  que fica fora da ordem de propósito e a tabela do README ficam em
+  [`docs/CLAUDE.md`](docs/CLAUDE.md); a autoridade é
   `tests/test_docs_organization.py`.
-- **Fora da ordem alfabética, de propósito:** abas de topo (`Início →
-  Instalação → Arquitetura → Tutorial → …`), `learning/`, a trilha
-  `getting-started/` e o tour da landing de receitas seguem ordem
-  **didática**. Mesma disciplina fora do nav: tabela de módulos do README,
-  tabela de extras (com `[all]` por último, catch-all) e os grupos de
-  `docs/reference.md` (com `## Superfície de topo` fixa no início, e
-  agrupamento por submódulo nos blocos `###` — ali o agrupamento é a
-  informação).
 - **`Field(alias=...)` é defeito** (v0.234.0). Escreva o nome do fio duas
   vezes: `validation_alias` para ler, `serialization_alias` para escrever.
-  mypy aceita `alias`, pyright/basedpyright não — ver
-  [`LESSONS.md`](LESSONS.md).
+  mypy aceita `alias`, pyright/basedpyright não —
+  [`LESSONS.md`](LESSONS.md#fieldalias-quebra-o-consumidor-não-o-runtime-v02340).
 - **Re-export explícito em todo `__init__.py`.** Todo símbolo público usa
   **as duas** formas: `from x import Y as Y` (PEP 484) **e** `__all__`.
   Consumidores rodam mypy/pyright/pylance/basedpyright em strictness

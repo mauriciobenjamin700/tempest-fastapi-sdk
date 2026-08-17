@@ -20,7 +20,9 @@ como código gerado versionado apodrece.
 
 Ao mexer no gerador:
 
-- **O codegen espelha o formatter.** Teste com `run_format=False`: o `ruff`
+- **O codegen espelha o formatter.** O gerador mora fora deste diretório
+  (`tempest_fastapi_sdk/openapi/generate.py` + `scripts/regen_openpix.py`), mas
+  a regra vale ao mexer nele: teste com `run_format=False`, porque o `ruff`
   normaliza aspas por escape, nunca quebra string longa e junta literal
   solto, então gerador validado só com formatação ligada esconde o que ele de
   fato emite.
@@ -31,28 +33,24 @@ Ao mexer no gerador:
 
 ## `__all__` é obrigatório, e wildcard não é re-export
 
-O pacote OpenPix resolve 373 nomes gerados de forma lazy (PEP 562
-`__getattr__`) e os expõe ao type-checker com `from ...schemas import *` sob
-`TYPE_CHECKING`. **Isso não exporta nada.** Medido com basedpyright contra a
-wheel 0.232.0: `from ...openpix import ChargePayload` no consumidor recebeu
-*"ChargePayload" is not exported from module*. mypy aceitou, e foi por isso
-que shippou.
+Superfície gerada é resolvida de forma lazy (PEP 562 `__getattr__`) e exposta
+ao type-checker com `from ...schemas import *` sob `TYPE_CHECKING` — **isso não
+exporta nada** para o consumidor
+([medição](../../LESSONS.md#wildcard-não-é-re-export-v02320)).
 
-Para superfície gerada, `__all__` é a única forma disponível de re-export — e
-é suficiente. Ele é **gerado** por `scripts/regen_openpix.py` e pinado pelo
-drift test; símbolo novo entra pelo gerador, não editando `__init__.py`.
+O que fazer aqui: `__all__` é a única forma disponível, e é suficiente. Ele é
+**gerado** por `scripts/regen_openpix.py` e pinado pelo drift test — símbolo
+novo entra pelo gerador, nunca editando `__init__.py` na mão.
 
 Fora da metade gerada, vale a regra da raiz: `from x import Y as Y` **e**
 `__all__`, as duas formas.
 
 ## `Field(alias=...)` é defeito
 
-Runtime não distingue `alias` de `validation_alias`+`serialization_alias` com
-`populate_by_name=True`; o pyright distingue — `alias` renomeia o parâmetro do
-`__init__` sintetizado e passa a exigir `correlationID` em vez de
-`correlation_id`. Escreva o nome do fio duas vezes. `tests/test_alias_guard.py`
-falha se `alias=` voltar. Detalhe da medição:
-[`../../LESSONS.md`](../../LESSONS.md).
+Escreva o nome do fio duas vezes: `validation_alias` para ler,
+`serialization_alias` para escrever. `tests/test_alias_guard.py` falha se
+`alias=` voltar; a medição que motivou o guard está em
+[`LESSONS.md`](../../LESSONS.md#fieldalias-quebra-o-consumidor-não-o-runtime-v02340).
 
 ## Armadilhas de API de terceiro já pagas
 
