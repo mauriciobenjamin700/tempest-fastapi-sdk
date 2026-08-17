@@ -129,7 +129,13 @@ from tempest_fastapi_sdk.genai.structured import (
     build_prefix_allowed_tokens_fn as build_prefix_allowed_tokens_fn,
 )
 from tempest_fastapi_sdk.genai.structured import (
+    extract_json_list as extract_json_list,
+)
+from tempest_fastapi_sdk.genai.structured import (
     parse_structured as parse_structured,
+)
+from tempest_fastapi_sdk.genai.structured import (
+    parse_structured_list as parse_structured_list,
 )
 from tempest_fastapi_sdk.genai.text import (
     TextBackend as TextBackend,
@@ -219,6 +225,7 @@ __all__: list[str] = [
     "describe_model",
     "download_model",
     "estimate_model_bytes",
+    "extract_json_list",
     "fetch_num_params",
     "genai_span",
     "is_deterministic",
@@ -229,6 +236,7 @@ __all__: list[str] = [
     "make_model_cards",
     "model_disk_bytes",
     "parse_structured",
+    "parse_structured_list",
     "probe_hardware",
     "recommend",
     "remove_cached_model",

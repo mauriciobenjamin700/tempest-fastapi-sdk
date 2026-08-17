@@ -1,10 +1,15 @@
 """Schema-constrained structured output for the genai backends.
 
-Turns a free-text completion into a validated Pydantic instance. Two layers:
+Turns a free-text completion into a validated Pydantic instance. Three
+layers:
 
-* :func:`parse_structured` — extract a JSON object out of a model completion
-  (tolerating Markdown fences and surrounding prose) and validate it against a
-  Pydantic schema. Pure, no optional dependency.
+* :func:`parse_structured` — extract a JSON **object** out of a model
+  completion (tolerating Markdown fences and surrounding prose) and validate
+  it against a Pydantic schema. Pure, no optional dependency.
+* :func:`extract_json_list` / :func:`parse_structured_list` — the same for a
+  JSON **array**, which is what a prompt asking for "a list of items"
+  actually returns. ``extract_json_list`` answers "is there a list in here?"
+  without raising, so a caller can retry the generation instead of failing.
 * :func:`build_prefix_allowed_tokens_fn` — build a ``transformers``
   ``prefix_allowed_tokens_fn`` from a schema via ``lm-format-enforcer`` so the
   local :class:`~tempest_fastapi_sdk.genai.text.TextGenerator` can only emit
@@ -14,6 +19,11 @@ Turns a free-text completion into a validated Pydantic instance. Two layers:
 The Ollama path needs neither helper's constraint machinery — the daemon
 accepts a ``format`` JSON schema directly — but both paths finish with
 :func:`parse_structured`.
+
+Extraction scans for a **balanced** span rather than slicing to the last
+closing bracket. A model that appends one stray ``}`` or ``]`` after an
+otherwise perfect payload used to break the parse, and retrying reproduced
+the same slice because the defect was in the cut, not in the model.
 """
 
 from __future__ import annotations
@@ -22,11 +32,21 @@ import json
 import re
 from typing import Any, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 StructuredT = TypeVar("StructuredT", bound=BaseModel)
 
 _FENCE_RE: re.Pattern[str] = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
+
+# A fenced block anywhere in the completion, not only wrapping the whole of
+# it. ``_FENCE_RE`` is anchored, so it misses the common shape where a model
+# writes a sentence, then the fence, then a closing sentence.
+_FENCED_BLOCK_RE: re.Pattern[str] = re.compile(
+    r"```(?:json)?\s*(.*?)\s*```",
+    re.DOTALL | re.IGNORECASE,
+)
+
+_CLOSERS: dict[str, str] = {"{": "}", "[": "]"}
 
 
 def _require_lmfe() -> Any:
@@ -132,11 +152,106 @@ def _token_enforcer_tokenizer_data(tokenizer: Any) -> Any:
         return TokenEnforcerTokenizerData(regular, decode_fn, tokenizer.eos_token_id)
 
 
-def _extract_json(text: str) -> Any:
-    """Pull a JSON value out of a model completion.
+def _unfence(text: str) -> str:
+    """Strip the Markdown fence a model wrapped its payload in.
 
-    Tolerates Markdown code fences and prose around the object: tries the whole
-    stripped string first, then falls back to the first ``{`` … last ``}`` span.
+    Handles both shapes seen in practice: the fence wrapping the whole
+    completion (what ``_FENCE_RE`` matches, anchored) and a fence buried
+    between two sentences of prose (what ``_FENCED_BLOCK_RE`` finds).
+
+    Args:
+        text (str): The raw completion.
+
+    Returns:
+        str: The completion with the fence removed, stripped of surrounding
+        whitespace. Returns the input unchanged when there is no fence.
+    """
+    stripped = _FENCE_RE.sub("", text.strip())
+    block = _FENCED_BLOCK_RE.search(stripped)
+    return block.group(1) if block else stripped
+
+
+def _balanced_span(text: str, opener: str) -> str | None:
+    """Isolate the first balanced ``opener`` … closer span in ``text``.
+
+    Counts depth instead of slicing to the last closing bracket, which is
+    what makes a stray trailing bracket survivable: ``[{"a": 1}]]`` yields
+    ``[{"a": 1}]`` rather than failing to decode. A non-greedy regex would
+    not do either, because it stops at the first closer and so truncates any
+    payload containing a nested array or object.
+
+    Characters inside a JSON string are skipped (escapes included), so a
+    bracket in a value — ``{"label": "urgent [sic]"}`` — does not throw the
+    count off.
+
+    Args:
+        text (str): The text to scan.
+        opener (str): ``"{"`` or ``"["``.
+
+    Returns:
+        str | None: The balanced span, or ``None`` when ``opener`` never
+        appears or is never closed (a completion truncated at the token
+        ceiling, typically).
+    """
+    closer = _CLOSERS[opener]
+    start = text.find(opener)
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escaped = False
+
+    for index in range(start, len(text)):
+        char = text[index]
+
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+
+    return None
+
+
+def _decode_span(text: str, opener: str) -> Any | None:
+    """Decode the first balanced ``opener`` span, or ``None`` if undecodable.
+
+    Args:
+        text (str): The already-unfenced completion.
+        opener (str): ``"{"`` or ``"["``.
+
+    Returns:
+        Any | None: The decoded JSON value, or ``None`` when no balanced span
+        exists or the span is not valid JSON.
+    """
+    span = _balanced_span(text, opener)
+    if span is None:
+        return None
+    try:
+        return json.loads(span)
+    except ValueError:
+        return None
+
+
+def _extract_json(text: str) -> Any:
+    """Pull a JSON object out of a model completion.
+
+    Tolerates Markdown code fences and prose around the object: tries the
+    whole unfenced string first, then falls back to the first balanced
+    ``{`` … ``}`` span.
 
     Args:
         text (str): The raw completion.
@@ -147,21 +262,17 @@ def _extract_json(text: str) -> Any:
     Raises:
         ValueError: When no JSON object can be decoded.
     """
-    stripped = _FENCE_RE.sub("", text.strip())
+    unfenced = _unfence(text)
     try:
-        return json.loads(stripped)
+        return json.loads(unfenced)
     except ValueError:
         pass
-    start = stripped.find("{")
-    end = stripped.rfind("}")
-    if start != -1 and end > start:
-        try:
-            return json.loads(stripped[start : end + 1])
-        except ValueError as exc:
-            raise ValueError(
-                "could not parse a JSON object from the model output",
-            ) from exc
-    raise ValueError("no JSON object found in the model output")
+    if "{" not in unfenced:
+        raise ValueError("no JSON object found in the model output")
+    decoded = _decode_span(unfenced, "{")
+    if decoded is None:
+        raise ValueError("could not parse a JSON object from the model output")
+    return decoded
 
 
 def parse_structured(text: str, schema: type[StructuredT]) -> StructuredT:
@@ -181,7 +292,89 @@ def parse_structured(text: str, schema: type[StructuredT]) -> StructuredT:
     return schema.model_validate(_extract_json(text))
 
 
+def extract_json_list(text: str) -> list[Any] | None:
+    """Pull a JSON array out of a model completion, without raising.
+
+    A prompt asking for "a list of items" comes back as an array, and the
+    ways it arrives malformed differ from an object: a fence the prompt asked
+    the model not to add, a sentence before the payload, one stray ``]`` at
+    the end. This tolerates all three.
+
+    Returning ``None`` instead of raising is the point: it is the signal to
+    **retry the generation**, which is a different response from "the model
+    answered, and the answer was an empty list". A caller that cannot tell
+    those apart either retries a valid empty result or gives up on a
+    recoverable formatting slip.
+
+    Args:
+        text (str): The raw model completion.
+
+    Returns:
+        list[Any] | None: The decoded list, or ``None`` when the completion
+        holds no decodable array (no array at all, malformed JSON, or a valid
+        JSON value that is not a list).
+
+    Example:
+
+        >>> extract_json_list('Here you go:\\n```json\\n[{"a": 1}]\\n```')
+        [{'a': 1}]
+        >>> extract_json_list("not a list") is None
+        True
+    """
+    unfenced = _unfence(text)
+    try:
+        whole = json.loads(unfenced)
+    except ValueError:
+        whole = None
+    if isinstance(whole, list):
+        return whole
+
+    decoded = _decode_span(unfenced, "[")
+    return decoded if isinstance(decoded, list) else None
+
+
+def parse_structured_list(
+    text: str,
+    schema: type[StructuredT],
+    *,
+    skip_invalid: bool = False,
+) -> list[StructuredT]:
+    """Parse a model completion into a list of ``schema`` instances.
+
+    Args:
+        text (str): The raw model completion (may contain fences / prose).
+        schema (type[StructuredT]): The Pydantic model each item must satisfy.
+        skip_invalid (bool): Drop items that fail validation instead of
+            raising. Use it when one bad item out of ten is worth keeping the
+            other nine — a suggestion list, for instance — and leave it off
+            when the caller needs all-or-nothing.
+
+    Returns:
+        list[StructuredT]: The validated items, in the order the model
+        produced them.
+
+    Raises:
+        ValueError: When no JSON array is present in ``text``.
+        pydantic.ValidationError: When an item does not satisfy ``schema``
+            and ``skip_invalid`` is False.
+    """
+    items = extract_json_list(text)
+    if items is None:
+        raise ValueError("no JSON array found in the model output")
+
+    parsed: list[StructuredT] = []
+    for item in items:
+        try:
+            parsed.append(schema.model_validate(item))
+        except ValidationError:
+            if not skip_invalid:
+                raise
+    return parsed
+
+
 __all__: list[str] = [
     "build_prefix_allowed_tokens_fn",
+    "extract_json_list",
     "parse_structured",
+    "parse_structured_list",
 ]

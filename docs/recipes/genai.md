@@ -883,6 +883,79 @@ asyncio.run(main())
 Aceita caminho ou `bytes`. `device`/`compute_type` resolvem sozinhos
 (`float16` na GPU, `int8` na CPU).
 
+#### Transcrever mais rápido em CPU
+
+Os quatro parâmetros abaixo mexem em **como** o decode é agendado, não em
+quais pesos rodam — mesmo modelo, mesma precisão:
+
+```python
+from tempest_fastapi_sdk.genai.audio import SpeechToText
+
+stt = SpeechToText(
+    "large-v3-turbo",
+    device="cpu",
+    compute_type="int8",
+    batch_size=8,                      # decodifica 8 trechos de fala em paralelo
+    cpu_threads=0,                     # 0 = CTranslate2 decide (intra_threads)
+    num_workers=1,                     # traduções paralelas no mesmo modelo
+    condition_on_previous_text=False,  # desligue junto com batch_size
+)
+```
+
+- **`batch_size`** troca o `WhisperModel.transcribe()` sequencial pelo
+  `BatchedInferencePipeline` do faster-whisper. Exige `vad_filter=True` (é
+  o VAD que corta o áudio nos trechos que viram um batch) — passar um sem
+  o outro levanta `ValueError` na construção, não na primeira
+  transcrição. Custo: pico de memória proporcional ao valor.
+- **`cpu_threads`** / **`num_workers`** são o `intra_threads` /
+  `inter_threads` do CTranslate2. `num_workers` só importa quando várias
+  chamadas concorrentes dividem a mesma instância.
+- **`condition_on_previous_text`** entrega a cada janela o texto da
+  anterior como contexto. O default é `True`, que é o do próprio
+  faster-whisper — mantido para uma atualização do SDK não mudar
+  transcrição de ninguém em silêncio. Desligue ao usar `batch_size`: ele
+  serializa trechos que decodificariam em paralelo, e é o caminho pelo
+  qual um trecho ruim contamina os seguintes (o loop de repetição).
+
+!!! tip "Áudio longo não precisa parecer travado"
+    O faster-whisper devolve um gerador, então uma reunião de uma hora
+    passa minutos sem sinal nenhum. `on_progress` recebe
+    `(segundos_prontos, segundos_totais)` conforme o decode anda:
+
+    ```python
+    import asyncio
+    import logging
+
+    from tempest_fastapi_sdk.genai.audio import SpeechToText
+
+    logger = logging.getLogger(__name__)
+    stt = SpeechToText("base", device="cpu")
+
+
+    async def main() -> None:
+        """Run this example."""
+
+        def progresso(pronto: float, total: float) -> None:
+            """Log how far the decode got."""
+            logger.info("transcrito %.1fs de %.1fs", pronto, total)
+
+        await stt.transcribe("reuniao.wav", on_progress=progresso)
+
+
+    asyncio.run(main())
+    ```
+
+    O callback roda **na worker thread**, não no event loop: não toque em
+    corotina lá dentro sem `loop.call_soon_threadsafe`.
+
+!!! info "Uma instância compartilhada carrega o modelo uma vez só"
+    `load()` é protegido por um `threading.Lock`, e não pelo semáforo de
+    concorrência — o semáforo admite `max_concurrent` chamadas por
+    definição, então duas delas chegando numa instância fria construíam
+    duas cópias do modelo (corrigido na v0.235.0). Continue
+    compartilhando uma instância entre requisições: é o que economiza o
+    carregamento.
+
 ### Gerar voz (TTS)
 
 `TextToSpeech` sintetiza com **Coqui TTS** (WAV). Mesma disciplina
@@ -1255,6 +1328,54 @@ rota estruturada recomendada, sem biblioteca extra**.
     `parse_structured(texto, schema)` extrai o JSON de uma saída crua
     (tolera cercas markdown e texto ao redor) e valida contra o schema —
     útil pra reaproveitar em qualquer saída de modelo.
+
+#### Quando a resposta é uma **lista**
+
+Prompt que pede "extraia as tarefas deste texto" volta com um array, não
+com um objeto. `parse_structured` procura `{`…`}` e não serve; use o par
+de lista:
+
+```python
+from pydantic import BaseModel
+from tempest_fastapi_sdk.genai import extract_json_list, parse_structured_list
+
+
+class Tarefa(BaseModel):
+    titulo: str
+    prazo: str | None = None
+
+
+bruto = 'Claro! Aqui vão: [{"titulo": "revisar contrato"}]'
+
+tarefas: list[Tarefa] = parse_structured_list(bruto, Tarefa)
+# -> [Tarefa(titulo="revisar contrato", prazo=None)]
+
+cru: list | None = extract_json_list(bruto)
+# -> [{"titulo": "revisar contrato"}]
+```
+
+Cerca markdown ao redor do array (o ```` ```json ```` que o modelo
+adiciona mesmo quando o prompt pede que não) é tolerada do mesmo jeito,
+esteja ela envolvendo a resposta inteira ou enterrada entre duas frases.
+
+- **`parse_structured_list(texto, schema)`** valida cada item e levanta
+  como o `parse_structured`. `skip_invalid=True` descarta o item ruim e
+  devolve os demais — o que se quer numa lista de sugestões, onde perder
+  as nove boas por causa de uma malformada é o pior resultado.
+- **`extract_json_list(texto)`** devolve a lista crua, ou `None` quando
+  não há array decodificável. **`None` é o sinal de "tente gerar de
+  novo"**, e é diferente de `[]`, que é "o modelo respondeu, e a resposta
+  é nenhum item". Quem confunde os dois ou repete uma chamada que já deu
+  certo, ou desiste de um erro de formatação recuperável.
+
+!!! info "Colchete sobrando não quebra mais o parse"
+    A extração conta profundidade em vez de cortar até o último `]`/`}`.
+    Antes da v0.235.0, um `]` a mais no fim transformava uma resposta perfeita em
+    `ValueError`, e as tentativas seguintes reproduziam o mesmo corte,
+    porque o defeito
+    estava no recorte e não na geração. Regex não-guloso não resolveria:
+    ele para no primeiro `]` e trunca qualquer item com lista aninhada
+    dentro.
 
 ### Moderação de conteúdo
 

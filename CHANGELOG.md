@@ -5,6 +5,85 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.235.0] — 2026-08-17
+
+### Fixed
+
+- **A cold `SpeechToText` shared by two callers now builds one model, not
+  two.** `load()` was `if self.is_loaded: return` followed by the
+  constructor — idempotent from one thread, and it is called from
+  `_transcribe_sync`, which runs on a worker thread. The only thing
+  between two callers was `asyncio.Semaphore(max_concurrent)`, which
+  admits `max_concurrent` of them by construction. Measured with two
+  threads against a counting stub: **two** `WhisperModel` constructions,
+  not one. `self._model` keeps only the last one written, so the loser's
+  copy stays referenced by nothing the class can reach and its weights sit
+  in the process for as long as the garbage collector has not run.
+
+  The guard is a `threading.Lock`, because the callers to exclude are
+  threads. The `is_loaded` test lives inside it rather than being repeated
+  outside as a fast path — one uncontended acquire measured at ~157 ns
+  (CPython 3.11, 2M iterations) against a transcription measured in
+  seconds, and double-checked locking is the shape this bug already hid in
+  once. `unload()` takes the same lock and now also clears the batched
+  pipeline, which holds the model and would otherwise keep it alive.
+
+  `tests/genai/audio/test_stt_loading.py` reproduces it: restore the
+  pre-fix `load()` and the constructor count asserts `2 == 1`.
+
+- **A stray trailing bracket no longer breaks structured extraction.**
+  `_extract_json` sliced from the first `{` to the **last** `}`. One extra
+  `}` after an otherwise perfect payload made `json.loads` reject a
+  decodable answer, and retrying reproduced it exactly, because the defect
+  was in the cut and not in the generation. (The shape comes from a
+  downstream service that hit it against DeepSeek; this release does not
+  measure how often a given model produces it.) Extraction now scans for a balanced span, skipping brackets
+  inside string values. A non-greedy regex was not the fix: it stops at
+  the first closer and truncates any payload containing a nested object or
+  array.
+
+### Added
+
+- **`extract_json_list` and `parse_structured_list`
+  (`tempest_fastapi_sdk.genai`)** — the array counterparts of
+  `parse_structured`, which looks for an object and so does not serve a
+  prompt asking for "a list of items". `parse_structured_list` validates
+  each item, with `skip_invalid=True` to drop one malformed entry instead
+  of losing the other nine. `extract_json_list` returns the raw list, or
+  `None` when there is no decodable array — a signal deliberately distinct
+  from `[]`: `None` means "generate it again", `[]` means "the model
+  answered, and the answer is no items". A caller that cannot tell them
+  apart either retries a call that succeeded or gives up on a recoverable
+  formatting slip.
+
+- **`SpeechToText(batch_size=...)`** — decodes VAD-detected speech spans
+  in parallel through faster-whisper's `BatchedInferencePipeline` instead
+  of one after another. Same model, same weights, same precision; only the
+  scheduling of the decode changes, at the cost of peak memory
+  proportional to the value. Requires `vad_filter=True` (the VAD produces
+  the spans a batch is made of) and raises `ValueError` at construction
+  when it is off, rather than at the first transcription.
+
+- **`SpeechToText(cpu_threads=..., num_workers=...)`** — CTranslate2's
+  `intra_threads` and `inter_threads`, previously not reachable through
+  the SDK. Defaults (`0`, `1`) are faster-whisper's own, so nothing
+  changes for callers who do not set them.
+
+- **`SpeechToText(condition_on_previous_text=...)`** — feeds each window
+  the previous window's text as context. Defaults to `True`, which is
+  faster-whisper's own default, so upgrading does not silently change
+  anybody's transcripts. Turning it off is what you want alongside
+  `batch_size`: it serializes spans that would otherwise decode in
+  parallel, and it is the documented path by which one bad span
+  contaminates the ones after it.
+
+- **`SpeechToText.transcribe(on_progress=...)`** — called with
+  `(seconds_done, total_seconds)` as the decode advances. faster-whisper
+  returns a generator, so without it a long file spends minutes
+  indistinguishable from a hang. It runs on the worker thread, which the
+  docstring says, so a callback touching the event loop needs
+  `loop.call_soon_threadsafe`.
+
 ## [0.234.0] — 2026-08-16
 
 ### Fixed

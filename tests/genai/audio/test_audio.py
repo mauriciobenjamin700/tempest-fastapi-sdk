@@ -105,6 +105,7 @@ class TestSpeechToText:
             "language": "pt",
             "beam_size": 8,
             "vad_filter": False,
+            "condition_on_previous_text": True,
         }
         assert result.text == "olá"
         assert result.language == "pt"
@@ -118,6 +119,61 @@ class TestSpeechToText:
         await stt.transcribe("clip.wav", beam_size=1, vad_filter=False)
         assert stt._model.calls[0]["beam_size"] == 1
         assert stt._model.calls[0]["vad_filter"] is False
+
+    async def test_condition_on_previous_text_is_forwarded_when_off(self) -> None:
+        """Turning it off reaches faster-whisper, it is not just stored."""
+        stt = SpeechToText(device="cpu", condition_on_previous_text=False)
+        stt._model = _FakeWhisperModel()
+        await stt.transcribe("clip.wav")
+        assert stt._model.calls[0]["condition_on_previous_text"] is False
+
+    async def test_batch_size_reaches_the_batched_pipeline(self) -> None:
+        """With ``batch_size`` set, the pipeline decodes — not the model.
+
+        The batched path is a different object with a different call
+        signature; asserting on the model would pass while the batch size
+        went nowhere.
+        """
+        stt = SpeechToText(device="cpu", batch_size=4)
+        pipeline = _FakeWhisperModel()
+        stt._model = _FakeWhisperModel()
+        stt._pipeline = pipeline
+
+        await stt.transcribe("clip.wav")
+
+        assert pipeline.calls[0]["batch_size"] == 4
+        assert stt._model.calls == []
+
+    def test_batch_size_without_vad_is_refused(self) -> None:
+        """Batching consumes VAD spans, so the pair is checked up front.
+
+        Raising at construction rather than on the first transcription is
+        the point: the second failure arrives inside a worker, minutes
+        later, with the audio already uploaded.
+        """
+        with pytest.raises(ValueError, match="vad_filter"):
+            SpeechToText(device="cpu", batch_size=8, vad_filter=False)
+
+    def test_batch_size_must_be_positive(self) -> None:
+        with pytest.raises(ValueError, match="batch_size"):
+            SpeechToText(device="cpu", batch_size=0)
+
+    async def test_on_progress_is_called_per_segment(self) -> None:
+        """The callback sees each segment end against the total duration."""
+        stt = SpeechToText(device="cpu")
+        stt._model = _FakeWhisperModel()
+        seen: list[tuple[float, float]] = []
+
+        await stt.transcribe("clip.wav", on_progress=lambda a, b: seen.append((a, b)))
+
+        assert seen == [(1.0, 3.5)]
+
+    async def test_transcribe_without_on_progress_still_works(self) -> None:
+        """The callback is optional; omitting it changes nothing."""
+        stt = SpeechToText(device="cpu")
+        stt._model = _FakeWhisperModel()
+        result = await stt.transcribe("clip.wav")
+        assert result.text == "olá"
 
     def test_bad_concurrency(self) -> None:
         with pytest.raises(ValueError):
