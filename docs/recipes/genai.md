@@ -1575,6 +1575,115 @@ classificador local (ex. `unitary/toxic-bert`) via transformers (`[genai]`),
 lazy, com `flagged_labels`/`threshold`. Qualidade PT-BR de modelos de
 toxicidade varia — trate o classificador como best-effort e mantenha o
 `RuleModerator` como base.
+### Contabilidade de uso por usuário (tabela)
+
+O `GenAIMetrics` acima responde "como está a frota agora". Ele **não**
+responde "qual conta queimou o orçamento no mês passado": a série é por
+processo, zera no deploy, e não tem dimensão de usuário — acrescentar uma
+tornaria a cardinalidade inviável.
+
+Para essa pergunta a forma é outra: **uma linha por chamada paga**, numa
+tabela que você consulta com SQL comum.
+
+```python
+# src/services/ai_usage.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai import AIUsageStore, BaseAIUsageModel, TokenUsage
+
+
+class AIUsageModel(BaseAIUsageModel):
+    """Uma chamada de IA cobrada desta aplicação."""
+
+    __tablename__ = "ai_usage"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: AIUsageStore[AIUsageModel] = AIUsageStore(
+    db,
+    model=AIUsageModel,
+    price_input_per_1k=0.00014,
+    price_output_per_1k=0.00028,
+)
+
+
+async def registrar(user_id: UUID, usage: TokenUsage | None) -> None:
+    """Grava o consumo de uma chamada.
+
+    Args:
+        user_id (UUID): Quem pagou.
+        usage (TokenUsage | None): O que o provedor reportou.
+    """
+    await store.record(subject_id=user_id, service="summary", usage=usage)
+```
+
+E as agregações que uma tela de admin desenha:
+
+```python
+# src/services/ai_usage.py
+from datetime import timedelta
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai import (
+    AIUsageStore,
+    BaseAIUsageModel,
+    ServiceUsage,
+    SubjectUsage,
+    UsageTotals,
+)
+
+
+class AIUsageModel(BaseAIUsageModel):
+    """Uma chamada de IA cobrada desta aplicação."""
+
+    __tablename__ = "ai_usage"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: AIUsageStore[AIUsageModel] = AIUsageStore(db, model=AIUsageModel)
+
+
+async def painel() -> tuple[UsageTotals, list[ServiceUsage], list[SubjectUsage]]:
+    """Lê o que a tela de admin mostra.
+
+    Returns:
+        tuple[UsageTotals, list[ServiceUsage], list[SubjectUsage]]: Totais,
+        distribuição por serviço e quem mais gastou.
+    """
+    janela = timedelta(days=14)
+    return (
+        await store.totals(janela),
+        await store.by_service(janela),
+        await store.top_subjects(janela, limit=20),
+    )
+```
+
+!!! danger "Chamada sem preço do provedor não vira linha"
+    `record(usage=None)` grava **nada**. "O provedor não disse" é diferente
+    de "a chamada foi de graça": uma linha zerada contaria para o total de
+    chamadas e para "usuários ativos" sem contribuir token nenhum, o que é
+    pior do que não contar. `TokenUsage(0, 0, 0)` também não grava — é o
+    que um atalho que nunca chamou o modelo produz.
+
+!!! info "O preço nunca é gravado"
+    O custo é calculado a partir dos tokens na hora da leitura, então
+    corrigir o preço conserta o histórico inteiro — sem reprocessar nada,
+    sem linhas discordando sobre quanto valia um token.
+
+!!! warning "Custo não vem arredondado"
+    Qualquer precisão fixa erra em alguma escala: preço de token vive perto
+    de `0.0001` por 1000, então arredondar para centavos zera quase toda
+    chamada isolada, enquanto um total mensal quer centavos. A formatação
+    fica na borda, que sabe qual dos dois está mostrando. `cost is None`
+    significa "não mostre custo", nunca zero.
+
+!!! tip "Inferência local se registra por duração"
+    `record_duration(subject_id=..., seconds=...)` é para modelo que roda
+    no seu hardware: não há conta de token, o que se consome é relógio.
+    Essas linhas ficam com `service=NULL` e são excluídas das somas de
+    token, para não virarem uma fatia de 0% em todo gráfico.
+
 ### Métricas de inferência (Prometheus)
 
 `GenAIMetrics` empacota os contadores + histograma que todo serviço de

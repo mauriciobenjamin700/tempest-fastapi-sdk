@@ -176,6 +176,13 @@ from tempest_fastapi_sdk.genai.tokens import (
 from tempest_fastapi_sdk.genai.tracing import (
     genai_span as genai_span,
 )
+from tempest_fastapi_sdk.genai.usage import AIUsageStore as AIUsageStore
+from tempest_fastapi_sdk.genai.usage import BaseAIUsageModel as BaseAIUsageModel
+from tempest_fastapi_sdk.genai.usage import DailyUsage as DailyUsage
+from tempest_fastapi_sdk.genai.usage import ServiceUsage as ServiceUsage
+from tempest_fastapi_sdk.genai.usage import SubjectUsage as SubjectUsage
+from tempest_fastapi_sdk.genai.usage import UsageTotals as UsageTotals
+from tempest_fastapi_sdk.genai.usage import make_ai_usage_model as make_ai_usage_model
 from tempest_fastapi_sdk.genai.vision_text import (
     VisionTextGenerator as VisionTextGenerator,
 )
@@ -185,13 +192,16 @@ __all__: list[str] = [
     "DEFAULT_OPENAI_URL",
     "AIChatPipeline",
     "AIChatResult",
+    "AIUsageStore",
     "AsyncEmbeddingCache",
     "AsyncGenerationCache",
+    "BaseAIUsageModel",
     "BatchScheduler",
     "CachedModel",
     "CachedRevision",
     "CapacityReport",
     "ClassifierModerator",
+    "DailyUsage",
     "Embedder",
     "EmbeddingCache",
     "EmbeddingModel",
@@ -222,14 +232,17 @@ __all__: list[str] = [
     "RedisGenerationCache",
     "RerankerModel",
     "RuleModerator",
+    "ServiceUsage",
     "SpeechToTextModel",
     "StructuredFormatError",
+    "SubjectUsage",
     "TextBackend",
     "TextGenerator",
     "TextModel",
     "TextToSpeechModel",
     "TokenUsage",
     "Tool",
+    "UsageTotals",
     "VisionModel",
     "VisionTextGenerator",
     "auto_dtype_name",
@@ -251,6 +264,7 @@ __all__: list[str] = [
     "is_deterministic",
     "list_cached_models",
     "make_ai_chat_router",
+    "make_ai_usage_model",
     "make_genai_router",
     "make_generation_key",
     "make_model_cards",

@@ -1573,6 +1573,115 @@ runs a local classifier (e.g. `unitary/toxic-bert`) over transformers
 (`[genai]`), lazy, with `flagged_labels` / `threshold`. PT-BR toxicity-model
 quality varies — treat the classifier as best-effort and keep `RuleModerator`
 as the baseline.
+### Per-user usage accounting (a table)
+
+`GenAIMetrics` above answers "how is the fleet doing right now". It does
+**not** answer "which account burned the budget last month": the series is
+per-process, resets on deploy, and carries no user dimension — adding one
+would make the cardinality unusable.
+
+That question wants the other shape: **one row per paid call**, in a table
+you query with ordinary SQL.
+
+```python
+# src/services/ai_usage.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai import AIUsageStore, BaseAIUsageModel, TokenUsage
+
+
+class AIUsageModel(BaseAIUsageModel):
+    """One billed AI call in this application."""
+
+    __tablename__ = "ai_usage"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: AIUsageStore[AIUsageModel] = AIUsageStore(
+    db,
+    model=AIUsageModel,
+    price_input_per_1k=0.00014,
+    price_output_per_1k=0.00028,
+)
+
+
+async def record(user_id: UUID, usage: TokenUsage | None) -> None:
+    """Store what one call consumed.
+
+    Args:
+        user_id (UUID): Who pays for it.
+        usage (TokenUsage | None): What the provider reported.
+    """
+    await store.record(subject_id=user_id, service="summary", usage=usage)
+```
+
+And the aggregations an admin screen draws:
+
+```python
+# src/services/ai_usage.py
+from datetime import timedelta
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai import (
+    AIUsageStore,
+    BaseAIUsageModel,
+    ServiceUsage,
+    SubjectUsage,
+    UsageTotals,
+)
+
+
+class AIUsageModel(BaseAIUsageModel):
+    """One billed AI call in this application."""
+
+    __tablename__ = "ai_usage"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: AIUsageStore[AIUsageModel] = AIUsageStore(db, model=AIUsageModel)
+
+
+async def dashboard() -> tuple[UsageTotals, list[ServiceUsage], list[SubjectUsage]]:
+    """Read what the admin screen shows.
+
+    Returns:
+        tuple[UsageTotals, list[ServiceUsage], list[SubjectUsage]]: Totals,
+        the per-service split, and who spent the most.
+    """
+    window = timedelta(days=14)
+    return (
+        await store.totals(window),
+        await store.by_service(window),
+        await store.top_subjects(window, limit=20),
+    )
+```
+
+!!! danger "A call the provider did not price writes no row"
+    `record(usage=None)` stores **nothing**. "The provider did not say" is
+    not "the call was free": a zeroed row would count toward the call count
+    and toward "active users" while contributing no tokens, which is worse
+    than not counting it. `TokenUsage(0, 0, 0)` writes nothing either — it
+    is what a short-circuit that never reached the model produces.
+
+!!! info "The price is never stored"
+    Cost is computed from the tokens at read time, so correcting a price
+    fixes the whole history — no reprocessing, and no rows disagreeing
+    about what a token was worth.
+
+!!! warning "Cost comes back unrounded"
+    Any fixed precision is wrong at some scale: token prices live around
+    `0.0001` per 1000, so rounding to cents reports zero for nearly every
+    single call, while a monthly total wants cents. Formatting stays at the
+    boundary, which knows which of the two it is showing. `cost is None`
+    means "show no cost", never zero.
+
+!!! tip "Local inference is recorded by duration"
+    `record_duration(subject_id=..., seconds=...)` is for a model running
+    on your own hardware: there is no token bill, what it consumes is
+    wall-clock. Those rows carry `service=NULL` and are excluded from token
+    sums, so they never become a 0% slice on every chart.
+
 ### Inference metrics (Prometheus)
 
 `GenAIMetrics` bundles the counters + histogram every inference service ends up

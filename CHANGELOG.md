@@ -5,6 +5,47 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.238.0] — 2026-08-17
+
+### Added
+
+- **Per-subject AI usage accounting (`tempest_fastapi_sdk.genai`)** —
+  `BaseAIUsageModel`, `AIUsageStore`, and the `UsageTotals` / `ServiceUsage`
+  / `DailyUsage` / `SubjectUsage` result types. `GenAIMetrics` already
+  publishes token counters to Prometheus, which answers "how is the fleet
+  doing right now"; it cannot answer "which account burned the budget last
+  month", because the series is per-process, resets on deploy, and carries
+  no user dimension — adding one would make the cardinality unusable. This
+  is the other shape: one row per paid call, queried with ordinary SQL.
+
+  `record` stores a call, `record_duration` stores local inference (which
+  costs wall-clock rather than tokens), and `totals` / `by_service` /
+  `per_day` / `top_subjects` are the aggregations an admin screen draws.
+  Each opens its own short session, like `JobStore` — the recording call
+  runs inside a worker as often as inside a request.
+
+  Three decisions each pinned by a test:
+
+  - **A call the provider did not price writes no row.** `usage=None` means
+    the response carried no usage, which is not the same as a free call; a
+    zeroed row would count toward the call count and the active-user count
+    while contributing nothing. `TokenUsage(0, 0, 0)` writes nothing
+    either — it is what a short-circuit that never reached the model looks
+    like.
+  - **The price is never stored.** Cost is computed from the tokens at read
+    time, so correcting a price fixes the whole history instead of leaving
+    old rows priced with a number nobody remembers setting.
+  - **Cost comes back unrounded.** Any fixed precision is wrong at some
+    scale: token prices live around `0.0001` per 1000, so rounding to cents
+    reports zero for nearly every single call, while a monthly total wants
+    cents. Formatting stays at the boundary. (Found by a test: the first
+    implementation rounded to four decimals and reported `0.0004` for a
+    real `0.00042`.)
+
+  Duration rows carry `service=NULL` and are excluded from token sums and
+  per-service shares, so local inference never becomes a 0% slice on every
+  chart.
+
 ## [0.237.0] — 2026-08-17
 
 ### Added
