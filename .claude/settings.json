@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make check)",
+      "Bash(make ci)",
+      "Bash(make test)",
+      "Bash(make lint)",
+      "Bash(make fmt)",
+      "Bash(make fmt-check)",
+      "Bash(make type)",
+      "Bash(make build)",
+      "Bash(make smoke)",
+      "Bash(make version)",
+      "Bash(make openpix-regen)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv run ruff:*)",
+      "Bash(uv run mypy:*)",
+      "Bash(uv run python:*)",
+      "Bash(uv run mkdocs build:*)",
+      "Bash(uv run --group docs mkdocs build:*)",
+      "Bash(uv build:*)",
+      "Bash(uv lock:*)",
+      "Bash(uv sync:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git ls-files:*)"
+    ]
+  }
+}
