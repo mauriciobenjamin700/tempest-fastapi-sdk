@@ -621,6 +621,7 @@ Next: [AI agents (advanced)](agents-advanced.md) — typed structured output,
 the three memory layers, skills loaded on demand, delegation between agents,
 and loops that keep going until a check passes.
 
-See also: [Self-hosted generative AI](genai.md) for the models themselves,
-[Image generation](image-generation.md) and
+See also: [AI agents (architecture)](agents-architecture.md) for where each piece
+lives in a real service, [Self-hosted generative AI](genai.md) for the models
+themselves, [Image generation](image-generation.md) and
 [Model weights](model-weights.md) to pin what the agent uses.

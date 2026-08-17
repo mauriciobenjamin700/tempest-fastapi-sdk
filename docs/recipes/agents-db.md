@@ -444,6 +444,7 @@ Próximo passo: [Agentes de IA (avançado)](agents-advanced.md) para memória
 durável, skills e delegação; [Agentes de IA (testes)](agents-testing.md) para
 testar a ferramenta sem subir modelo nenhum.
 
-Veja também: [Banco de dados](database.md) para repositórios, paginação e
-migrações; [Tarefas em background](queue-tasks.md) para o outro consumidor que
-não tem requisição.
+Veja também: [Agentes de IA (arquitetura)](agents-architecture.md) para onde
+cada peça mora quando o serviço passa de uma ferramenta só; [Banco de
+dados](database.md) para repositórios, paginação e migrações; [Tarefas em
+background](queue-tasks.md) para o outro consumidor que não tem requisição.

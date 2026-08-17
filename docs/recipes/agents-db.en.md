@@ -445,5 +445,7 @@ Next step: [AI agents (advanced)](agents-advanced.md) for durable memory,
 skills and delegation; [AI agents (testing)](agents-testing.md) to test the
 tool without loading a model at all.
 
-See also: [Database](database.md) for repositories, pagination and migrations;
-[Background tasks](queue-tasks.md) for the other consumer that has no request.
+See also: [AI agents (architecture)](agents-architecture.md) for where each piece
+lives once the service outgrows a single tool; [Database](database.md) for
+repositories, pagination and migrations; [Background tasks](queue-tasks.md) for
+the other consumer that has no request.
