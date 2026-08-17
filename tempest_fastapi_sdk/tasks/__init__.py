@@ -118,12 +118,23 @@ from tempest_fastapi_sdk.tasks.queue import LifecycleScope as LifecycleScope
 from tempest_fastapi_sdk.tasks.queue import Task as Task
 from tempest_fastapi_sdk.tasks.queue import TaskQueue as TaskQueue
 from tempest_fastapi_sdk.tasks.scheduler import AsyncTaskScheduler as AsyncTaskScheduler
+from tempest_fastapi_sdk.tasks.stages import (
+    RUNNING_STAGE_STATUSES as RUNNING_STAGE_STATUSES,
+)
+from tempest_fastapi_sdk.tasks.stages import (
+    TERMINAL_STAGE_STATUSES as TERMINAL_STAGE_STATUSES,
+)
+from tempest_fastapi_sdk.tasks.stages import StageColumns as StageColumns
+from tempest_fastapi_sdk.tasks.stages import StageMap as StageMap
+from tempest_fastapi_sdk.tasks.stages import StageStatus as StageStatus
 
 __all__: list[str] = [
     "CANCELLABLE_JOB_STATUSES",
     "DEFAULT_POLL_SECONDS",
+    "RUNNING_STAGE_STATUSES",
     "STALE_JOB_ERROR",
     "TERMINAL_JOB_STATUSES",
+    "TERMINAL_STAGE_STATUSES",
     "AsyncTaskBrokerManager",
     "AsyncTaskScheduler",
     "BaseDeadLetterModel",
@@ -142,7 +153,10 @@ __all__: list[str] = [
     "LifecycleResource",
     "LifecycleScope",
     "RetryPolicy",
+    "StageColumns",
     "StageInterruptedError",
+    "StageMap",
+    "StageStatus",
     "Task",
     "TaskBinding",
     "TaskDef",

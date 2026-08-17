@@ -409,6 +409,102 @@ async def executar(job_id: UUID) -> None:
     mas nada deu errado. Uma tela que destaca `failed` deve deixar este em
     paz, e um alerta que dispara em falha não deve tocar.
 
+## 8. Vários estágios no próprio registro
+
+O `JobStore` acima dá ao trabalho longo uma linha própria. É a forma certa
+quando o trabalho **é** a coisa — uma exportação, uma importação, um lote.
+É a forma errada quando o trabalho **decora um registro que a tela já está
+mostrando**: um documento que é transcrito, depois resumido, depois
+minerado por sugestões. Ali a tela já busca o documento, e uma segunda
+tabela vira uma segunda consulta e um join para desenhar uma página.
+
+A alternativa são colunas de status no próprio registro — `status_resumo`,
+`erro_resumo`, uma trinca por estágio. Funciona, e apodrece de um jeito
+específico: cada estágio ganha a própria cópia de "marca rodando" e "marca
+falhou", uma correção precisa ser aplicada N vezes, e um estágio copiado
+que ficou com o nome de coluna do vizinho **compila, importa e reporta o
+estado do vizinho**.
+
+`StageMap` é essa tabela escrita uma vez só.
+
+```python
+# src/core/stages.py
+from tempest_fastapi_sdk.tasks import StageMap, StageStatus
+
+STAGES: StageMap = StageMap(
+    ["transcription", "summary", "suggestions"],
+    prefix="doc_",
+)
+```
+
+Isso resolve `doc_status_summary`, `doc_error_summary` e
+`doc_result_summary`. Os templates são configuráveis, porque nomenclatura
+de coluna é convenção da casa e não algo que uma biblioteca impõe.
+
+```python
+# src/tasks/summarize.py
+from typing import Any
+
+from tempest_fastapi_sdk.tasks import StageMap, StageStatus
+
+STAGES: StageMap = StageMap(["summary"], prefix="doc_")
+
+
+async def resumir(texto: str) -> str:
+    """Trabalho longo.
+
+    Args:
+        texto (str): O texto a resumir.
+
+    Returns:
+        str: O resumo.
+    """
+    return texto[:100]
+
+
+async def executar(documento: Any) -> None:
+    """Roda o estágio e grava só se ainda for o dono dele.
+
+    Args:
+        documento (Any): O registro, recém-lido do banco.
+    """
+    STAGES.mark(documento, "summary", StageStatus.RUNNING)
+    resumo: str = await resumir("um texto longo")
+
+    if STAGES.owns(documento, "summary", StageStatus.RUNNING):
+        STAGES.mark(documento, "summary", StageStatus.DONE, result=resumo)
+```
+
+!!! danger "`owns` é checagem de posse, não de cancelamento"
+    "Este estágio não é mais meu" cobre **duas** coisas: o usuário
+    cancelou, e uma execução mais nova reiniciou o estágio. Nos dois casos
+    a execução velha não deve gravar — uma ressuscitaria trabalho que
+    mandaram parar, a outra sobrescreveria um resultado mais fresco.
+
+    Releia o registro do banco antes de chamar. Um objeto carregado antes
+    do trabalho começar ainda tem o status antigo e responderia `True`
+    aconteça o que acontecer.
+
+!!! tip "Cancelar é parcial de propósito"
+    `STAGES.cancel(documento)` devolve `(cancelados, ignorados)`. Estágio
+    que já terminou entra em `ignorados`, não levanta: uma tela que faz
+    polling vai rotineiramente pedir o cancelamento de algo que concluiu um
+    instante atrás.
+
+    Não há cascata, e não precisa: se cada estágio só enfileira o seguinte
+    ao terminar bem, cancelar o primeiro faz o segundo nunca existir.
+
+!!! info "Marcar sem `result` não apaga o anterior"
+    Cancelar uma regeneração preserva o resumo antigo — ele ainda é a
+    melhor resposta disponível. Apagá-lo faria cancelar ser estritamente
+    pior do que nunca ter pedido.
+
+!!! warning "O mapa não declara coluna nenhuma"
+    Os `mapped_column` são seus. Migrations, tipos e índices ficam onde o
+    leitor espera; o mapa só concorda com a nomenclatura. Ele recusa na
+    construção dois estágios que resolvam para a mesma coluna, que é o bug
+    de copiar-e-colar que nada mais na pilha notaria.
+
 ## Erros
 
 | Exceção | Quando |

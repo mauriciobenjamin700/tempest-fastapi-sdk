@@ -116,10 +116,20 @@ release: ## Bump versions, run every gate, commit and tag. Usage: make release V
 	@echo "Bumping pyproject.toml and $(PACKAGE)/__init__.py to $(VERSION)"
 	sed -i -E 's/^version = "[^"]+"/version = "$(VERSION)"/' pyproject.toml
 	sed -i -E 's/^__version__: str = "[^"]+"/__version__: str = "$(VERSION)"/' $(PACKAGE)/__init__.py
+# The sed above invalidates uv.lock, which records this package's own
+# version. `make check` refreshes it as a side effect -- `uv run` re-locks
+# before it runs anything, measured -- but it was never staged, so every
+# tagged commit shipped a lock one version behind its pyproject: v0.236.0,
+# v0.237.0 and v0.238.0 all drifted. Staging it is the whole fix.
+#
+# No guard covers this, deliberately: any test asserting the two agree runs
+# under `uv run`, which repairs the lock on disk before the test can read
+# it, so the guard could never fail. Measured by corrupting the lock and
+# watching a bare `uv run python -c pass` put it back.
 	$(MAKE) check
 	$(MAKE) docs-build
 	$(MAKE) smoke
-	git add pyproject.toml $(PACKAGE)/__init__.py
+	git add pyproject.toml $(PACKAGE)/__init__.py uv.lock
 	@if [ -n "$(SUBJECT)" ]; then \
 		git commit -m "feat: v$(VERSION) — $(SUBJECT)"; \
 	else \

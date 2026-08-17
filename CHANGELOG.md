@@ -5,6 +5,58 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.239.0] — 2026-08-17
+
+### Added
+
+- **`StageMap` / `StageStatus` (`tempest_fastapi_sdk.tasks`)** — several
+  independent stages tracked on the record itself, rather than in their own
+  job rows. `JobStore` is right when the work *is* the thing; it is the
+  wrong shape when the work decorates a record the interface already
+  fetches, because a second table then means a second query and a join to
+  render one page.
+
+  Status columns on the record are the usual answer, and they rot in a
+  specific way: each stage grows its own copy of "set running" and "mark
+  failed", a fix has to land N times, and a copy-pasted stage that kept a
+  neighbour's column name compiles, imports, and reports the neighbour's
+  state. `StageMap` is that table written once — declare the stages and the
+  naming convention, and it resolves the columns and performs the
+  transitions.
+
+  What it deliberately does **not** do: declare columns (the project writes
+  its own `mapped_column`, so migrations and types stay where a reader
+  expects them), touch a database (every operation is a pure mutation, so
+  the transitions test without one), or hold preconditions (whether a stage
+  may start is domain logic).
+
+  - **`owns(record, stage, expected)`** is the check before writing a
+    result, and it is about ownership rather than cancellation: a status
+    that is no longer `expected` covers both the user cancelling and a
+    newer run having restarted the stage, and writing is wrong in both.
+  - **`cancel` is partial and idempotent**, returning
+    `(cancelled, ignored)` — a screen polling for status routinely asks to
+    cancel something that finished a moment ago.
+  - **Marking without a `result` keeps the previous one**, so cancelling a
+    regeneration preserves the answer already there instead of making
+    cancellation worse than never asking.
+  - **Two stages resolving to the same column is refused at construction**,
+    and an `error=` paired with a non-failure status is refused too.
+
+### Fixed
+
+- **`make release` now stages `uv.lock`.** Bumping seds `pyproject.toml`,
+  which invalidates the lock's record of this package's own version.
+  `make check` refreshes it as a side effect — `uv run` re-locks before
+  running anything — but nothing staged it, so every tagged commit since
+  the release target was rewritten shipped a lock one version behind its
+  pyproject: v0.236.0, v0.237.0 and v0.238.0 all drifted.
+
+  No guard covers it, and the Makefile says why: any test asserting the two
+  agree runs under `uv run`, which repairs the lock on disk before the test
+  can read it, so the guard could never fail. Measured by corrupting the
+  lock and watching a bare `uv run python -c pass` put it back.
+
 ## [0.238.0] — 2026-08-17
 
 ### Added

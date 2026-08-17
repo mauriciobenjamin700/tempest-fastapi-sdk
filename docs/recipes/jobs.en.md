@@ -412,6 +412,104 @@ async def run(job_id: UUID) -> None:
     should leave this one alone, and an alert that pages on failures should
     not fire.
 
+## 8. Several stages on the record itself
+
+`JobStore` above gives long work its own row. That is right when the work
+**is** the thing — an export, an import, a batch. It is the wrong shape
+when the work **decorates a record the interface is already showing**: a
+document that gets transcribed, then summarized, then mined for
+suggestions. There the screen already fetches the document, and a second
+table means a second query and a join to render one page.
+
+The alternative is status columns on the record — `summary_status`,
+`summary_error`, one triple per stage. That works, and it rots in a
+specific way: each stage grows its own copy of "set running" and "mark
+failed", a fix has to land N times, and a copy-pasted stage that kept a
+neighbour's column name **compiles, imports, and reports the neighbour's
+state**.
+
+`StageMap` is that table written once.
+
+```python
+# src/core/stages.py
+from tempest_fastapi_sdk.tasks import StageMap, StageStatus
+
+STAGES: StageMap = StageMap(
+    ["transcription", "summary", "suggestions"],
+    prefix="doc_",
+)
+```
+
+That resolves `doc_status_summary`, `doc_error_summary` and
+`doc_result_summary`. The templates are configurable, because column naming
+is a house convention rather than something a library imposes.
+
+```python
+# src/tasks/summarize.py
+from typing import Any
+
+from tempest_fastapi_sdk.tasks import StageMap, StageStatus
+
+STAGES: StageMap = StageMap(["summary"], prefix="doc_")
+
+
+async def summarize(text: str) -> str:
+    """Long work.
+
+    Args:
+        text (str): The text to summarize.
+
+    Returns:
+        str: The summary.
+    """
+    return text[:100]
+
+
+async def run(document: Any) -> None:
+    """Run the stage, writing only if it is still ours.
+
+    Args:
+        document (Any): The record, freshly read from the database.
+    """
+    STAGES.mark(document, "summary", StageStatus.RUNNING)
+    summary: str = await summarize("a long text")
+
+    if STAGES.owns(document, "summary", StageStatus.RUNNING):
+        STAGES.mark(document, "summary", StageStatus.DONE, result=summary)
+```
+
+!!! danger "`owns` is an ownership check, not a cancellation check"
+    "This stage is no longer mine" covers **two** things: the user
+    cancelled, and a newer run restarted the stage. In both cases the old
+    run must not write — one would resurrect work that was stopped, the
+    other would clobber a fresher result.
+
+    Re-read the record from the database before calling it. An object
+    loaded before the work started still holds the old status and would
+    answer `True` no matter what happened meanwhile.
+
+!!! tip "Cancelling is deliberately partial"
+    `STAGES.cancel(document)` returns `(cancelled, ignored)`. A stage that
+    already finished lands in `ignored` rather than raising: a screen
+    polling for status will routinely ask to cancel something that
+    completed a moment ago.
+
+    There is no cascade, and none is needed: if each stage only enqueues
+    the next on success, cancelling the first means the second never
+    exists.
+
+!!! info "Marking without a `result` does not erase the previous one"
+    Cancelling a regeneration keeps the old summary — it is still the best
+    answer available. Wiping it would make cancelling strictly worse than
+    never asking.
+
+!!! warning "The map declares no columns"
+    The `mapped_column` declarations are yours. Migrations, types and
+    indexes stay where a reader expects them; the map only agrees with you
+    on the naming. It refuses at construction when two stages would resolve
+    to the same column — the copy-paste bug nothing else in the stack would
+    notice.
+
 ## Errors
 
 | Exception | When |
