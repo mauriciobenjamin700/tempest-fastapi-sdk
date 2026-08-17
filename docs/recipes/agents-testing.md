@@ -17,6 +17,12 @@ agentes.
 from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies
 ```
 
+!!! abstract "O mesmo backend serve para estudar o laço"
+    `ScriptedBackend` guarda o que o agente mandou em cada chamada
+    (`system_prompts`, `prompts`, `specs_seen`), então ele não serve só para
+    afirmar: serve para **ver**. É com ele que [Agentes: como funcionam por
+    dentro](agents-concepts.md) mostra a transcrição turno a turno.
+
 !!! info "Sem modelo, sem rede, sem extra"
     `tempest_fastapi_sdk.agents.testing` importa sem nenhuma dependência
     opcional. Um teste que sobe um modelo de verdade é lento, instável e

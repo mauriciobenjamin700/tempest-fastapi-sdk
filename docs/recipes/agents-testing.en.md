@@ -15,6 +15,12 @@ These are the same helpers the SDK's own suite uses across 200+ agent tests.
 from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies
 ```
 
+!!! abstract "The same backend is how you study the loop"
+    `ScriptedBackend` keeps what the agent sent on every call
+    (`system_prompts`, `prompts`, `specs_seen`), so it is not only for
+    asserting: it is for **seeing**. It is what [Agents: how they work
+    inside](agents-concepts.md) uses to show the turn-by-turn transcript.
+
 !!! info "No model, no network, no extra"
     `tempest_fastapi_sdk.agents.testing` imports with no optional
     dependency. A test that boots a real model is slow, flaky and tests the

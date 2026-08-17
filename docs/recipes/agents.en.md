@@ -24,7 +24,14 @@ uv add "tempest-fastapi-sdk[genai]"   # agents needs no extra; the model does
     optional [genai] extra.` The same holds for `[genai-image]`,
     `[genai-audio]` and `[genai-rag]` in the sections below.
 
-!!! tip "This page is the basic track"
+!!! abstract "Want the mechanism before the code?"
+    [Agents: how they work inside](agents-concepts.md) shows the loop with the
+    literal transcript the model receives on each turn, the vocabulary (step,
+    observation, artifact, budget) and the criterion for choosing between a
+    tool, a skill, delegation and a loop. This page assumes the mechanism;
+    that one explains it.
+
+
     Read it in order: it builds an agent from nothing up to serving it over
     HTTP. When you are done, [AI agents (advanced)](agents-advanced.md)
     covers structured output, memory, skills, delegation between agents and
@@ -96,6 +103,14 @@ The weather in Recife is 22 degrees, clear sky.
 
 Three steps: the model asked for the tool, the tool ran, the model read the
 result and answered. All of it on a 0.5B model running on CPU.
+
+What happened underneath: the agent sent the model the `system_prompt` plus
+your goal, alongside the list of tools. The model **executed nothing** — it
+returned a request (`get_weather`, `{"city": "Recife"}`). The agent ran the
+handler, appended the output to the conversation as a `tool` message and asked
+again; that time the model answered without asking for anything else, and the
+loop closed as `completed`. The literal transcript of those two calls is in
+[how they work inside](agents-concepts.md#what-the-model-sees-on-each-turn).
 
 !!! warning "`agent.run` is a coroutine — it needs an async context"
     `await` outside an `async` function is a `SyntaxError`. That is why the
@@ -183,6 +198,13 @@ if __name__ == "__main__":
 Steps alone do **not** bound a run: one tool call can hang, and the agent
 sits there without burning a single step. That is why wall-clock is checked
 too, and why `max_seconds` has a default (120s) rather than being optional.
+
+The budget exists because the loop's natural stopping condition — "the model
+decided it was done" — is exactly what a confused model does not meet.
+Measured with a model that never stops asking for a tool and `max_steps=4`:
+the run ends `max_steps`, `succeeded=False`, and `output` **empty**, because
+it never got around to writing text. Details in
+[why the budget exists](agents-concepts.md#why-the-budget-exists).
 
 ## Pydantic-typed tools
 

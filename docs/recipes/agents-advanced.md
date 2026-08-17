@@ -8,6 +8,13 @@ até um critério passar.
 
 Cada seção é independente — leia a que resolve o seu caso.
 
+!!! abstract "O mecanismo por trás destas peças"
+    Skills, delegação e memória são todas respostas ao mesmo fato: **cada volta
+    do laço reenvia o histórico inteiro ao modelo**, então tudo que está no
+    prompt custa em toda chamada. [Agentes: como funcionam por
+    dentro](agents-concepts.md) mede esse crescimento e dá a tabela de quando
+    usar ferramenta, skill, delegação ou laço.
+
 | Quero que o agente… | Vá para |
 | --- | --- |
 | devolva um objeto, não um parágrafo | [Saída estruturada](#saida-estruturada-um-objeto-nao-um-paragrafo) |

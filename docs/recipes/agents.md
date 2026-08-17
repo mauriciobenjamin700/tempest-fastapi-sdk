@@ -24,7 +24,14 @@ uv add "tempest-fastapi-sdk[genai]"   # agents não precisa de extra; o modelo, 
     extra.` Vale o mesmo para `[genai-image]`, `[genai-audio]` e
     `[genai-rag]` nas seções seguintes.
 
-!!! tip "Esta página é a trilha básica"
+!!! abstract "Quer entender o mecanismo antes do código?"
+    [Agentes: como funcionam por dentro](agents-concepts.md) mostra o laço com
+    a transcrição literal que o modelo recebe em cada volta, o vocabulário
+    (passo, observação, artefato, orçamento) e o critério para escolher entre
+    ferramenta, skill, delegação e laço. Esta página assume o mecanismo; aquela
+    o explica.
+
+
     Leia na ordem: ela constrói um agente do zero até servi-lo por HTTP.
     Quando terminar, [Agentes de IA (avançado)](agents-advanced.md) cobre
     saída estruturada, memória, skills, delegação entre agentes e laços
@@ -95,6 +102,14 @@ The weather in Recife is 22 degrees, clear sky.
 
 Três passos: o modelo pediu a ferramenta, a ferramenta rodou, o modelo leu o
 resultado e respondeu. Tudo isso num modelo de 0.5B rodando em CPU.
+
+O que aconteceu por baixo: o agente mandou ao modelo o `system_prompt` mais o
+seu objetivo, junto da lista de ferramentas. O modelo **não executou nada** —
+devolveu um pedido (`get_weather`, `{"city": "Recife"}`). O agente rodou o
+handler, anexou a saída à conversa como mensagem de papel `tool` e perguntou de
+novo; dessa vez o modelo respondeu sem pedir mais nada, e o laço fechou em
+`completed`. A transcrição literal dessas duas chamadas está em
+[como funcionam por dentro](agents-concepts.md#o-que-o-modelo-ve-em-cada-volta).
 
 !!! warning "`agent.run` é corrotina — precisa de contexto assíncrono"
     `await` fora de uma função `async` é `SyntaxError`. Por isso a chamada
@@ -184,6 +199,13 @@ Passos sozinhos **não** limitam uma execução: uma chamada de ferramenta pode
 travar, e aí o agente fica parado sem estourar passo nenhum. Por isso o
 relógio também é verificado, e por isso `max_seconds` tem default (120s) em
 vez de ser opcional.
+
+O orçamento existe porque o critério de parada natural do laço — "o modelo
+decidiu que acabou" — é justamente o que um modelo confuso não cumpre. Medido
+com um modelo que nunca para de pedir ferramenta e `max_steps=4`: a execução
+termina em `max_steps`, com `succeeded=False` e `output` **vazio**, porque ele
+nunca chegou a escrever texto. Detalhes em
+[por que existe orçamento](agents-concepts.md#por-que-existe-orcamento).
 
 ## Ferramentas tipadas com Pydantic
 

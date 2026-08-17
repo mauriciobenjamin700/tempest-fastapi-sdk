@@ -8,6 +8,13 @@ passes.
 
 Each section stands alone — read the one that solves your case.
 
+!!! abstract "The mechanism behind these pieces"
+    Skills, delegation and memory are all answers to the same fact: **every
+    turn of the loop resends the whole history to the model**, so everything in
+    the prompt costs on every call. [Agents: how they work
+    inside](agents-concepts.md) measures that growth and gives the table for
+    when to reach for a tool, a skill, delegation or a loop.
+
 | I want the agent to… | Go to |
 | --- | --- |
 | return an object, not a paragraph | [Structured output](#structured-output-an-object-not-a-paragraph) |
