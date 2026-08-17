@@ -96,6 +96,12 @@ from tempest_fastapi_sdk.genai.ollama import (
 from tempest_fastapi_sdk.genai.ollama import OllamaEmbedder as OllamaEmbedder
 from tempest_fastapi_sdk.genai.ollama import OllamaGenerator as OllamaGenerator
 from tempest_fastapi_sdk.genai.onnx_embed import OnnxEmbedder as OnnxEmbedder
+from tempest_fastapi_sdk.genai.openai_compat import (
+    DEFAULT_OPENAI_URL as DEFAULT_OPENAI_URL,
+)
+from tempest_fastapi_sdk.genai.openai_compat import (
+    OpenAICompatGenerator as OpenAICompatGenerator,
+)
 from tempest_fastapi_sdk.genai.pipeline import AIChatPipeline as AIChatPipeline
 from tempest_fastapi_sdk.genai.pipeline import AIChatResult as AIChatResult
 from tempest_fastapi_sdk.genai.pipeline import Tool as Tool
@@ -126,10 +132,16 @@ from tempest_fastapi_sdk.genai.schemas import (
     ModelDtype as ModelDtype,
 )
 from tempest_fastapi_sdk.genai.structured import (
+    StructuredFormatError as StructuredFormatError,
+)
+from tempest_fastapi_sdk.genai.structured import (
     build_prefix_allowed_tokens_fn as build_prefix_allowed_tokens_fn,
 )
 from tempest_fastapi_sdk.genai.structured import (
     extract_json_list as extract_json_list,
+)
+from tempest_fastapi_sdk.genai.structured import (
+    generate_structured_list as generate_structured_list,
 )
 from tempest_fastapi_sdk.genai.structured import (
     parse_structured as parse_structured,
@@ -150,6 +162,9 @@ from tempest_fastapi_sdk.genai.text import (
     resolve_device as resolve_device,
 )
 from tempest_fastapi_sdk.genai.tokens import (
+    TokenUsage as TokenUsage,
+)
+from tempest_fastapi_sdk.genai.tokens import (
     count_message_tokens as count_message_tokens,
 )
 from tempest_fastapi_sdk.genai.tokens import (
@@ -167,6 +182,7 @@ from tempest_fastapi_sdk.genai.vision_text import (
 
 __all__: list[str] = [
     "DEFAULT_OLLAMA_URL",
+    "DEFAULT_OPENAI_URL",
     "AIChatPipeline",
     "AIChatResult",
     "AsyncEmbeddingCache",
@@ -201,15 +217,18 @@ __all__: list[str] = [
     "OllamaEmbedder",
     "OllamaGenerator",
     "OnnxEmbedder",
+    "OpenAICompatGenerator",
     "RedisEmbeddingCache",
     "RedisGenerationCache",
     "RerankerModel",
     "RuleModerator",
     "SpeechToTextModel",
+    "StructuredFormatError",
     "TextBackend",
     "TextGenerator",
     "TextModel",
     "TextToSpeechModel",
+    "TokenUsage",
     "Tool",
     "VisionModel",
     "VisionTextGenerator",
@@ -228,6 +247,7 @@ __all__: list[str] = [
     "extract_json_list",
     "fetch_num_params",
     "genai_span",
+    "generate_structured_list",
     "is_deterministic",
     "list_cached_models",
     "make_ai_chat_router",

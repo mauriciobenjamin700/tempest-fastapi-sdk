@@ -153,6 +153,109 @@ fp32 em CPU.
     — ele descarrega o modelo só quando passou do tempo ocioso, sem mágica
     de background thread. `unload()` libera na hora.
 
+## Backend hospedado (DeepSeek, Groq, OpenRouter, vLLM...)
+
+Nem todo serviço quer carregar peso: às vezes a conta que importa é a de
+**custo por token**, não a de RAM. O formato `/chat/completions` da OpenAI
+virou o denominador comum — DeepSeek, Groq, Together, OpenRouter, Mistral,
+o servidor do vLLM, a rota OpenAI do TGI e a Azure falam todos ele — então
+um cliente só alcança todos, trocando `base_url` e `model`.
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OpenAICompatGenerator
+
+gen = OpenAICompatGenerator(
+    "deepseek-chat",
+    api_key="sk-...",                        # nunca hardcoded: leia das settings
+    base_url="https://api.deepseek.com",
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    texto: str = await gen.generate("Explique PIX em uma frase.")
+    print(texto)
+
+
+asyncio.run(main())
+```
+
+Satisfaz o `TextBackend`, então entra no `make_genai_router` e no
+`AIChatPipeline` no lugar do `TextGenerator` ou do `OllamaGenerator`, sem
+mais nenhuma mudança. Chave vazia levanta `ValueError` **na construção** —
+o erro é de configuração, e aparece onde a configuração é lida, não num
+401 lá dentro do primeiro job em background.
+
+### Quanto custou a chamada
+
+`generate_with_usage` devolve o texto **e** o consumo que o próprio
+provedor reportou. É esse número que é cobrado, então é ele que vale
+guardar quando você precisa de contabilidade por usuário — não uma
+recontagem local com outro tokenizer:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OpenAICompatGenerator, TokenUsage
+
+gen = OpenAICompatGenerator("deepseek-chat", api_key="sk-...")
+
+
+async def main() -> None:
+    """Run this example."""
+    texto: str
+    uso: TokenUsage | None = None
+    texto, uso = await gen.generate_with_usage("Resuma isto.", system="Seja breve.")
+    if uso is not None:
+        print(uso.input_tokens, uso.output_tokens, uso.total_tokens)
+
+
+asyncio.run(main())
+```
+
+`TokenUsage` soma com `+`, para um trabalho feito de várias chamadas (um
+resumo por map-reduce é N chamadas de pedaço mais uma de redução, e o que
+se quer registrar é o trabalho, não cada perna).
+
+!!! warning "`None` não é zero"
+    `uso is None` significa "o provedor não disse", e é diferente de um
+    consumo zerado, que afirmaria que a chamada foi de graça. Quem persiste
+    uso não deve gravar linha nesse caso.
+
+!!! info "`total` vem do provedor, não da soma"
+    Provedor nenhum é obrigado a cobrar `entrada + saída`: desconto de
+    prefixo em cache aparece exatamente assim. O total reportado é a
+    autoridade; a soma só entra quando o campo não veio.
+
+### Campo específico de um provedor: `extra_body`
+
+O formato é comum, as extensões não. `extra_body` é mesclado no corpo de
+toda requisição, **por baixo** dos campos calculados — então não dá para
+redirecionar a chamada para outro modelo por acidente.
+
+```python
+from tempest_fastapi_sdk.genai import OpenAICompatGenerator
+
+gen = OpenAICompatGenerator(
+    "deepseek-chat",
+    api_key="sk-...",
+    base_url="https://api.deepseek.com",
+    extra_body={"thinking": {"type": "disabled"}},
+)
+```
+
+!!! danger "Modelo híbrido de raciocínio devolve conteúdo vazio"
+    Esse `thinking` não é enfeite. Um modelo híbrido com raciocínio
+    **ligado por padrão** gasta o `max_tokens` na cadeia oculta antes do
+    conteúdo real — cobrada como saída normal —, então um orçamento
+    dimensionado para a resposta estoura ali e o `content` volta vazio.
+    Relatado por um serviço que bateu nisso contra a DeepSeek; este repo
+    não reproduz contra provedor de verdade.
+    Desligar é mais barato e sem risco, não perda de qualidade, quando
+    você só quer o resultado.
+
 ## Backend Ollama
 
 O `TextGenerator` carrega os pesos do HuggingFace com `torch` no seu
@@ -1367,6 +1470,68 @@ esteja ela envolvendo a resposta inteira ou enterrada entre duas frases.
   novo"**, e é diferente de `[]`, que é "o modelo respondeu, e a resposta
   é nenhum item". Quem confunde os dois ou repete uma chamada que já deu
   certo, ou desiste de um erro de formatação recuperável.
+
+#### Tentar de novo quando o modelo erra o formato
+
+`generate_structured_list` junta as duas metades: gera, extrai, e se não
+veio array, **gera de novo com temperatura maior**.
+
+```python
+import asyncio
+
+from pydantic import BaseModel
+from tempest_fastapi_sdk.genai import (
+    OpenAICompatGenerator,
+    StructuredFormatError,
+    generate_structured_list,
+)
+
+
+class Tarefa(BaseModel):
+    titulo: str
+
+
+gen = OpenAICompatGenerator("deepseek-chat", api_key="sk-...")
+
+
+async def main() -> None:
+    """Run this example."""
+    try:
+        tarefas: list[Tarefa] = await generate_structured_list(
+            gen,
+            "Extraia as tarefas. Responda só com um array JSON.",
+            Tarefa,
+            max_attempts=3,
+            temperature_step=0.2,
+        )
+    except StructuredFormatError as exc:
+        print(f"desisti apos {exc.attempts} tentativas: {exc.last_output}")
+    else:
+        print(len(tarefas))
+
+
+asyncio.run(main())
+```
+
+!!! tip "Por que a temperatura sobe"
+    Repetir a chamada na mesma temperatura quase não adianta: decodificação
+    greedy é determinística, então a tentativa 2 reproduz a 1 token a
+    token, e o retry gasta uma chamada para receber a mesma saída inútil. A
+    1ª tentativa é greedy (é o tiro único mais confiável) e cada retry soma
+    `temperature_step`, dando ao sampling chance real de sair do estado
+    ruim.
+
+!!! warning "Item ruim não gasta tentativa"
+    Só falha **estrutural** (nenhum array na saída) consome uma tentativa.
+    Um array que parseia com um item malformado é tratado por
+    `skip_invalid=True`, que descarta o item e devolve o resto — perder
+    nove sugestões boas por causa de uma errada seria o pior resultado.
+
+    Pelo mesmo motivo, **`[]` é sucesso**: o modelo respondeu, e a resposta
+    é nenhum item. Tentar de novo aí é regerar uma pergunta já respondida.
+
+Aceita qualquer backend com `generate(prompt, config=...)` — o
+`TextGenerator` local, o `OllamaGenerator` e o `OpenAICompatGenerator`.
 
 !!! info "Colchete sobrando não quebra mais o parse"
     A extração conta profundidade em vez de cortar até o último `]`/`}`.

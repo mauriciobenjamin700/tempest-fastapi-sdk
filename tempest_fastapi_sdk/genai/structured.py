@@ -30,11 +30,35 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+if TYPE_CHECKING:
+    from tempest_fastapi_sdk.genai.schemas import GenerationConfig
+
 StructuredT = TypeVar("StructuredT", bound=BaseModel)
+
+
+class SupportsGenerate(Protocol):
+    """The one method :func:`generate_structured_list` needs from a backend.
+
+    Narrower than
+    :class:`~tempest_fastapi_sdk.genai.text.TextBackend` on purpose: this
+    module is imported *by* ``text``, so depending on the full protocol
+    would close an import cycle. Every backend in the SDK satisfies it.
+    """
+
+    async def generate(
+        self,
+        prompt: str,
+        *,
+        config: GenerationConfig | None = ...,
+        **kwargs: Any,
+    ) -> str:
+        """Return a completion for ``prompt``."""
+        ...
+
 
 _FENCE_RE: re.Pattern[str] = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
 
@@ -372,9 +396,132 @@ def parse_structured_list(
     return parsed
 
 
+class StructuredFormatError(ValueError):
+    """The model never produced a usable JSON array within the attempt budget.
+
+    Subclasses ``ValueError`` so code already catching that keeps working.
+
+    Attributes:
+        attempts (int): How many generations were spent.
+        last_output (str): The final raw completion, truncated, so the log
+            line says what the model actually wrote instead of only that it
+            was wrong.
+    """
+
+    def __init__(self, attempts: int, last_output: str) -> None:
+        """Build the error.
+
+        Args:
+            attempts (int): Generations spent.
+            last_output (str): The final raw completion.
+        """
+        self.attempts = attempts
+        self.last_output = last_output[:500]
+        super().__init__(
+            f"no JSON array after {attempts} attempt(s); "
+            f"last output began: {self.last_output!r}",
+        )
+
+
+async def generate_structured_list(
+    backend: SupportsGenerate,
+    prompt: str,
+    schema: type[StructuredT],
+    *,
+    config: GenerationConfig | None = None,
+    max_attempts: int = 3,
+    temperature_step: float = 0.2,
+    skip_invalid: bool = True,
+) -> list[StructuredT]:
+    """Generate a list of ``schema`` items, retrying on unusable output.
+
+    Retrying a failed generation at the **same** temperature is close to
+    pointless: greedy decoding is deterministic, so attempt two reproduces
+    attempt one. Each retry therefore adds ``temperature_step``, giving
+    sampling a real chance to leave the bad state. The first attempt stays
+    greedy, because it is the most reliable one.
+
+    Only a **structural** failure costs an attempt — no array in the output
+    at all. An array that parses but holds one malformed item is not a
+    formatting failure, so it is handled by ``skip_invalid`` rather than by
+    burning a generation.
+
+    Args:
+        backend (SupportsGenerate): Anything with
+            ``async generate(prompt, *, config=...) -> str`` — the local
+            ``TextGenerator``, ``OllamaGenerator``, or
+            ``OpenAICompatGenerator``.
+        prompt (str): The prompt, which should ask for a JSON array.
+        schema (type[StructuredT]): The Pydantic model each item must match.
+        config (GenerationConfig | None): Base parameters. Its
+            ``temperature`` is replaced per attempt; everything else is kept.
+        max_attempts (int): Generations to spend before giving up.
+        temperature_step (float): Added per retry (attempt 1 at ``0.0``,
+            attempt 2 at ``temperature_step``, and so on).
+        skip_invalid (bool): Drop items that fail validation instead of
+            raising.
+
+    Returns:
+        list[StructuredT]: The validated items. An **empty list is a
+        success** — the model answered, and the answer is no items.
+
+    Raises:
+        StructuredFormatError: No attempt produced a decodable array.
+        ValueError: When ``max_attempts`` is below 1.
+        pydantic.ValidationError: When an item fails validation and
+            ``skip_invalid`` is False.
+    """
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be at least 1")
+
+    raw = ""
+    for attempt in range(max_attempts):
+        attempt_config = _config_at_temperature(config, temperature_step * attempt)
+        raw = await backend.generate(prompt, config=attempt_config)
+        items = extract_json_list(raw)
+        if items is None:
+            continue
+        parsed: list[StructuredT] = []
+        for item in items:
+            try:
+                parsed.append(schema.model_validate(item))
+            except ValidationError:
+                if not skip_invalid:
+                    raise
+        return parsed
+
+    raise StructuredFormatError(max_attempts, raw)
+
+
+def _config_at_temperature(
+    config: GenerationConfig | None,
+    temperature: float,
+) -> GenerationConfig:
+    """Copy ``config`` with ``temperature`` replaced.
+
+    Copied rather than mutated because a caller's config is commonly built
+    once and shared across calls; raising its temperature in place would
+    leak this retry into every other use of that object.
+
+    Args:
+        config (GenerationConfig | None): The base config, or ``None``.
+        temperature (float): The temperature for this attempt.
+
+    Returns:
+        GenerationConfig: A config carrying the requested temperature.
+    """
+    from tempest_fastapi_sdk.genai.schemas import GenerationConfig as _Config
+
+    if config is None:
+        return _Config(temperature=temperature)
+    return config.model_copy(update={"temperature": temperature})
+
+
 __all__: list[str] = [
+    "StructuredFormatError",
     "build_prefix_allowed_tokens_fn",
     "extract_json_list",
+    "generate_structured_list",
     "parse_structured",
     "parse_structured_list",
 ]

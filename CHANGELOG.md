@@ -5,6 +5,68 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.236.0] — 2026-08-17
+
+### Added
+
+- **`OpenAICompatGenerator` (`tempest_fastapi_sdk.genai`)** — text
+  generation against any `/chat/completions` endpoint. The wire format is
+  the common denominator — DeepSeek, Groq, Together, OpenRouter, Mistral,
+  vLLM's server, TGI's OpenAI route and Azure all document an
+  OpenAI-compatible one — so a single client reaches them by swapping
+  `base_url` and `model`. That list is what those providers advertise, not
+  a matrix this repo runs: the tests drive an `httpx.MockTransport` and pin
+  the request built and the response read, not any live provider. It satisfies `TextBackend` —
+  whose own docstring names "a hosted API" as the case it exists to be
+  filled with — so it drops into `make_genai_router` and `AIChatPipeline`
+  beside the local `TextGenerator` and the `OllamaGenerator`. Until now the
+  SDK could only talk to a local daemon or local weights.
+
+  Built on the SDK's `HTTPClient`, so every call gets retry with backoff, a
+  per-host circuit-breaker and `X-Request-ID` propagation. No vendor SDK:
+  this is one POST with a bearer token, and a wrapper would bring its own
+  bounds and buy nothing. An empty `api_key` raises at construction rather
+  than deferring to a 401 from inside the first background job.
+
+  `extra_body` carries provider extensions without a branch per vendor, and
+  is merged **under** the computed fields so it cannot redirect a call to
+  another model. The case it was built for, reported by a downstream
+  service against DeepSeek and not reproduced in this repo: a hybrid
+  reasoning model with thinking on by default spends `max_tokens` on the
+  hidden chain before the real content, so a budget sized for the answer is
+  exhausted there and the completion comes back empty —
+  `extra_body={"thinking": {"type": "disabled"}}` turns it off.
+
+- **`TokenUsage` (`tempest_fastapi_sdk.genai`)** — what a call cost, as the
+  provider reported it. `OpenAICompatGenerator.generate_with_usage` /
+  `chat_with_usage` return it alongside the text; plain `generate` still
+  returns a bare `str`, because that is what the protocol declares —
+  exposing usage is an addition, not a change. `GenAIMetrics` already
+  observed tokens for Prometheus, but that is per-process and ephemeral;
+  this is the value you can persist for per-user accounting.
+
+  Two decisions worth knowing: `total_tokens` is carried from the response
+  rather than recomputed, because no provider is obliged to bill
+  `input + output` (cached-prefix discounts show up exactly that way); and
+  a response with no `usage` yields `None`, never a zeroed usage — "the
+  provider did not say" is a different statement from "the call was free".
+  `__add__` sums a job made of several calls.
+
+- **`generate_structured_list` + `StructuredFormatError`
+  (`tempest_fastapi_sdk.genai`)** — generate a list of schema items,
+  retrying when the output holds no usable array. Retrying at the same
+  temperature is close to pointless, since greedy decoding is
+  deterministic and attempt two reproduces attempt one; the first attempt
+  stays greedy and each retry adds `temperature_step`.
+
+  Only a **structural** failure spends an attempt. An array that parses
+  with one malformed item is handled by `skip_invalid` instead, and `[]` is
+  a success — the model answered, and the answer is no items — so neither
+  burns a generation. `StructuredFormatError` subclasses `ValueError` and
+  carries the last raw completion, so the log says what the model wrote
+  rather than only that it was wrong. Takes any backend exposing
+  `generate(prompt, config=...)`.
+
 ## [0.235.0] — 2026-08-17
 
 ### Fixed
