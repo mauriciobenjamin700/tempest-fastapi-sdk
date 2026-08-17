@@ -48,9 +48,21 @@ _SDK_ROOT = "tempest_fastapi_sdk"
 
 
 def _doc_files() -> list[pathlib.Path]:
-    """Return every Markdown file whose code blocks are under guard."""
-    files = [_ROOT / "CLAUDE.md", _ROOT / "README.md"]
+    """Return every Markdown file whose code blocks are under guard.
+
+    Covers the area-scoped ``CLAUDE.md`` files, ``LESSONS.md`` and the
+    ``.claude/`` skill and agent definitions too — an example that moved out of
+    the root file keeps the same obligation to match a real signature.
+    """
+    files = [
+        _ROOT / "CLAUDE.md",
+        _ROOT / "README.md",
+        _ROOT / "LESSONS.md",
+        _ROOT / "tests" / "CLAUDE.md",
+        _ROOT / "tempest_fastapi_sdk" / "integrations" / "CLAUDE.md",
+    ]
     files.extend(sorted((_ROOT / "docs").rglob("*.md")))
+    files.extend(sorted((_ROOT / ".claude").rglob("*.md")))
     return [f for f in files if f.exists()]
 
 

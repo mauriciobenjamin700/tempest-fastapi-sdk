@@ -1,31 +1,39 @@
 {
+  "env": {
+    "UV_PYTHON": "3.11"
+  },
   "permissions": {
     "allow": [
       "Bash(make check)",
       "Bash(make ci)",
       "Bash(make test)",
+      "Bash(make test-model)",
       "Bash(make lint)",
       "Bash(make fmt)",
       "Bash(make fmt-check)",
       "Bash(make type)",
       "Bash(make build)",
       "Bash(make smoke)",
+      "Bash(make docs-build)",
       "Bash(make version)",
       "Bash(make openpix-regen)",
       "Bash(uv run pytest:*)",
       "Bash(uv run ruff:*)",
       "Bash(uv run mypy:*)",
-      "Bash(uv run python:*)",
-      "Bash(uv run mkdocs build:*)",
+      "Bash(uv run python -c:*)",
+      "Bash(uv run python scripts/:*)",
       "Bash(uv run --group docs mkdocs build:*)",
       "Bash(uv build:*)",
       "Bash(uv lock:*)",
       "Bash(uv sync:*)",
+      "Bash(uv pip install --refresh:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git show:*)",
-      "Bash(git ls-files:*)"
+      "Bash(git ls-files:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)"
     ]
   }
 }

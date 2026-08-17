@@ -26,5 +26,4 @@ logs/
 site/
 
 # Claude Code: project config is versioned; only per-machine overrides are not
-.claude/settings.local.json
 .claude/*.local.json

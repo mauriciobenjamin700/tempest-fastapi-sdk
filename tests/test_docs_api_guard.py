@@ -38,8 +38,21 @@ _BLOCK_RE = re.compile(r"```(?:python|py)\n(.*?)```", re.DOTALL)
 
 
 def _doc_files() -> list[pathlib.Path]:
-    files = [_ROOT / "CLAUDE.md", _ROOT / "README.md"]
+    """Return every Markdown file whose code blocks are under guard.
+
+    Includes the area-scoped ``CLAUDE.md`` files, ``LESSONS.md`` and the
+    ``.claude/`` skill and agent definitions: rules moved out of the root file
+    into those, so their examples and symbol references need the same check.
+    """
+    files = [
+        _ROOT / "CLAUDE.md",
+        _ROOT / "README.md",
+        _ROOT / "LESSONS.md",
+        _ROOT / "tests" / "CLAUDE.md",
+        _ROOT / "tempest_fastapi_sdk" / "integrations" / "CLAUDE.md",
+    ]
     files.extend(sorted((_ROOT / "docs").rglob("*.md")))
+    files.extend(sorted((_ROOT / ".claude").rglob("*.md")))
     return [f for f in files if f.exists()]
 
 

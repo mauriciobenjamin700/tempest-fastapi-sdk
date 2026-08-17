@@ -277,10 +277,18 @@ tempest = "tempest_fastapi_sdk.cli.main:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.sdist]
+# Agent configuration is not source of the distribution. Un-ignoring .claude/
+# in git made it eligible for the sdist; measured, it added 33.7 kB of skill,
+# agent and settings files to the published tarball.
+exclude = [".claude"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["tempest_fastapi_sdk"]
 # Directory-scoped CLAUDE.md files are agent instructions, not runtime payload.
 # The CLI scaffold template (CLAUDE.md.tmpl) is not matched and still ships.
+# tests/test_wheel_payload.py pins the whole non-.py payload, so an exclude
+# that grows too broad fails there instead of silently dropping an asset.
 exclude = ["**/CLAUDE.md"]
 
 [tool.hatch.build.targets.wheel.force-include]
