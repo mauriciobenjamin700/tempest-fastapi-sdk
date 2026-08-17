@@ -5,6 +5,52 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.237.0] — 2026-08-17
+
+### Added
+
+- **Cancelling a job that is already running
+  (`tempest_fastapi_sdk.tasks`)** — `JobStatus.CANCELLED`,
+  `JobStore.cancel` / `is_cancelled` / `cancellation_watch`, and
+  `run_cancellable` + `StageInterruptedError`. The queue could start long
+  work and report on it; it could not stop it. Nothing in TaskIQ — or in
+  any broker the SDK speaks — offers "kill the task with this id", so this
+  is cooperative: the request side writes `CANCELLED` and answers
+  immediately, and the worker reads that at checkpoints and gives up.
+
+  `run_cancellable` is the checkpoint that runs **during** the work rather
+  than between steps. It races the coroutine against the predicate on an
+  interval and, when the predicate says stop, cancels the coroutine for
+  real — an in-flight request is aborted and the worker is free within the
+  poll interval, rather than finishing a call whose result nobody wants.
+  Verified by asserting the wrapped coroutine received `CancelledError`,
+  not merely that the wrapper stopped waiting: remove the cancel and three
+  tests fail.
+
+  Details that each cost somebody a discovery:
+
+  - **`cancel` is idempotent.** Nothing to stop answers `None` instead of
+    raising — an unknown id, or a job already done, failed or cancelled. A
+    double-click, or a click that races the job finishing on its own, is
+    not an error.
+  - **A failing predicate does not discard the work.** The predicate
+    usually reads a database; treating an unreachable one as "cancelled"
+    would throw away good work during exactly the incident where redoing
+    it costs the most. The round is skipped and the next one retries.
+  - **`succeed` refuses to land on top of a cancellation**, raising the new
+    `JobCancelledError` — a subclass of `JobAlreadyFinishedError`, so
+    existing handlers keep working, and a distinct type because the two
+    mean opposite things: the parent says your concurrency is wrong, this
+    one says the system did what it was told.
+  - **`CANCELLED` is terminal but is not a failure.** It joins
+    `TERMINAL_JOB_STATUSES` — the poll stops, the payload is dropped — but
+    an interface highlighting `FAILED` should leave it alone, and an alert
+    that pages on failures should not fire.
+  - **It only works on genuinely cancellable awaitables.** Work handed to
+    `asyncio.to_thread` is not: cancelling the coroutine abandons the
+    wrapper while the thread runs to completion, still holding the CPU.
+    The docstring says so, and says what to do instead.
+
 ## [0.236.0] — 2026-08-17
 
 ### Added

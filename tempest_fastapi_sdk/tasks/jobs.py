@@ -60,7 +60,7 @@ from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.utils.datetime import utcnow
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -76,18 +76,29 @@ class JobStatus(StrEnum):
     * ``RUNNING`` — a worker claimed it (see :meth:`JobStore.claim`).
     * ``DONE`` — finished; ``result_id`` points at what it produced.
     * ``FAILED`` — stopped; ``error`` says why, in the user's language.
+    * ``CANCELLED`` — the user asked it to stop (see
+      :meth:`JobStore.cancel`). Terminal like the two above, but **not** a
+      failure: nothing went wrong, so an interface that highlights
+      ``FAILED`` should leave this one alone, and an alert that pages on
+      failures should not fire.
     """
 
     QUEUED = "queued"
     RUNNING = "running"
     DONE = "done"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 TERMINAL_JOB_STATUSES: frozenset[str] = frozenset(
-    {JobStatus.DONE.value, JobStatus.FAILED.value},
+    {JobStatus.DONE.value, JobStatus.FAILED.value, JobStatus.CANCELLED.value},
 )
 """Statuses a job never leaves: the poll stops, the payload is gone."""
+
+CANCELLABLE_JOB_STATUSES: frozenset[str] = frozenset(
+    {JobStatus.QUEUED.value, JobStatus.RUNNING.value},
+)
+"""Statuses with work left to stop — what :meth:`JobStore.cancel` accepts."""
 
 STALE_JOB_ERROR: str = (
     "The worker stopped responding while this job was running, "
@@ -120,6 +131,21 @@ class JobAlreadyFinishedError(RuntimeError):
     the same row means two workers believe they own the job, or one
     worker ran the same job twice. Silently overwriting the first
     outcome would erase the evidence.
+    """
+
+
+class JobCancelledError(JobAlreadyFinishedError):
+    """Raised when finishing a job the user cancelled meanwhile.
+
+    A subclass so existing ``except JobAlreadyFinishedError`` keeps
+    working, and a separate type because the two mean opposite things: a
+    plain ``JobAlreadyFinishedError`` says something is wrong with your
+    concurrency, while this one says the system did exactly what it was
+    told. A worker that races past its last cancellation checkpoint and
+    calls ``succeed`` should log this and move on, not alert.
+
+    The write is refused either way — a cancelled job never gets a result
+    written over it.
     """
 
 
@@ -503,6 +529,10 @@ class JobStore(Generic[JobT]):
             )
             if result.rowcount == 0:
                 job = await self._require(session, job_id)
+                if job.status == JobStatus.CANCELLED.value:
+                    raise JobCancelledError(
+                        f"job {job_id} was cancelled while it was running",
+                    )
                 raise JobAlreadyFinishedError(
                     f"job {job_id} is already {job.status}",
                 )
@@ -555,6 +585,107 @@ class JobStore(Generic[JobT]):
             result_id=None,
             error=reason,
         )
+
+    async def cancel(self, job_id: UUID, *, reason: str | None = None) -> JobT | None:
+        """Ask a queued or running job to stop.
+
+        This writes ``CANCELLED`` and returns; it does **not** reach into
+        the worker. There is no portable way to kill a coroutine running in
+        another process, so cancellation is cooperative: the worker reads
+        this status at checkpoints and gives up
+        (:func:`~tempest_fastapi_sdk.tasks.run_cancellable`). The screen can
+        therefore reflect the cancellation immediately, while the work
+        behind it takes a few seconds more to actually stop.
+
+        **Idempotent.** Cancelling something that is not running answers
+        ``None`` rather than raising — a user double-clicking, or clicking
+        just as the job finished on its own, is not an error. That makes
+        ``None`` mean "there was nothing to stop", covering an unknown id,
+        a job already done, already failed, or already cancelled.
+
+        Args:
+            job_id (UUID): The job to cancel.
+            reason (str | None): Stored in ``error`` for the screen. Not a
+                failure message — say who asked, not what broke.
+
+        Returns:
+            JobT | None: The cancelled job, or ``None`` when it was not
+            cancellable.
+        """
+        async with self._db.get_session_context() as session:
+            result = cast(
+                "CursorResult[Any]",
+                await session.execute(
+                    update(self._model)
+                    .where(
+                        self._model.id == job_id,
+                        self._model.status.in_(sorted(CANCELLABLE_JOB_STATUSES)),
+                    )
+                    .values(
+                        status=JobStatus.CANCELLED.value,
+                        error=reason,
+                        payload=None,
+                        finished_at=utcnow(),
+                    ),
+                ),
+            )
+            if result.rowcount == 0:
+                return None
+            return await self._require(session, job_id)
+
+    async def is_cancelled(self, job_id: UUID) -> bool:
+        """Has this job been cancelled?
+
+        Reads in a **fresh session** on purpose. The worker's own session
+        is inside a transaction that started before the cancel was
+        committed, so asking it would serve the pre-cancel snapshot — the
+        exact opposite of what a checkpoint needs.
+
+        Args:
+            job_id (UUID): The job to check.
+
+        Returns:
+            bool: ``True`` when the row says ``CANCELLED``. A job that no
+            longer exists answers ``True``: there is nothing left to
+            produce a result for, so stopping is the right move.
+        """
+        async with self._db.get_session_context() as session:
+            status = (
+                await session.execute(
+                    select(self._model.status).where(self._model.id == job_id),
+                )
+            ).scalar_one_or_none()
+        if status is None:
+            return True
+        return bool(status == JobStatus.CANCELLED.value)
+
+    def cancellation_watch(self, job_id: UUID) -> Callable[[], Awaitable[bool]]:
+        """Build the predicate :func:`run_cancellable` polls.
+
+        Args:
+            job_id (UUID): The job to watch.
+
+        Returns:
+            Callable[[], Awaitable[bool]]: A no-argument coroutine
+            answering :meth:`is_cancelled`.
+
+        Example:
+
+            >>> await run_cancellable(
+            ...     transcribe(audio),
+            ...     interrupted=store.cancellation_watch(job.id),
+            ... )
+        """
+
+        async def _cancelled() -> bool:
+            """Answer whether the watched job was cancelled.
+
+            Returns:
+                bool: ``True`` when the job is cancelled or gone.
+            """
+            return await self.is_cancelled(job_id)
+
+        return _cancelled
 
     async def list_recent(
         self,

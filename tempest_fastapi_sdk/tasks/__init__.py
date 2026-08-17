@@ -10,6 +10,15 @@ the older lifecycle-only wrappers, kept for backward compatibility. The
 functions) have no third-party dependency and import without the extra.
 """
 
+from tempest_fastapi_sdk.tasks.cancellation import (
+    DEFAULT_POLL_SECONDS as DEFAULT_POLL_SECONDS,
+)
+from tempest_fastapi_sdk.tasks.cancellation import (
+    StageInterruptedError as StageInterruptedError,
+)
+from tempest_fastapi_sdk.tasks.cancellation import (
+    run_cancellable as run_cancellable,
+)
 from tempest_fastapi_sdk.tasks.cron import (
     Cron as Cron,
 )
@@ -65,6 +74,9 @@ from tempest_fastapi_sdk.tasks.dead_letter import (
     task_inventory as task_inventory,
 )
 from tempest_fastapi_sdk.tasks.jobs import (
+    CANCELLABLE_JOB_STATUSES as CANCELLABLE_JOB_STATUSES,
+)
+from tempest_fastapi_sdk.tasks.jobs import (
     STALE_JOB_ERROR as STALE_JOB_ERROR,
 )
 from tempest_fastapi_sdk.tasks.jobs import (
@@ -74,6 +86,7 @@ from tempest_fastapi_sdk.tasks.jobs import BaseJobModel as BaseJobModel
 from tempest_fastapi_sdk.tasks.jobs import (
     JobAlreadyFinishedError as JobAlreadyFinishedError,
 )
+from tempest_fastapi_sdk.tasks.jobs import JobCancelledError as JobCancelledError
 from tempest_fastapi_sdk.tasks.jobs import JobNotFoundError as JobNotFoundError
 from tempest_fastapi_sdk.tasks.jobs import JobStatus as JobStatus
 from tempest_fastapi_sdk.tasks.jobs import JobStore as JobStore
@@ -107,6 +120,8 @@ from tempest_fastapi_sdk.tasks.queue import TaskQueue as TaskQueue
 from tempest_fastapi_sdk.tasks.scheduler import AsyncTaskScheduler as AsyncTaskScheduler
 
 __all__: list[str] = [
+    "CANCELLABLE_JOB_STATUSES",
+    "DEFAULT_POLL_SECONDS",
     "STALE_JOB_ERROR",
     "TERMINAL_JOB_STATUSES",
     "AsyncTaskBrokerManager",
@@ -120,12 +135,14 @@ __all__: list[str] = [
     "DeadLetterSink",
     "Hook",
     "JobAlreadyFinishedError",
+    "JobCancelledError",
     "JobNotFoundError",
     "JobStatus",
     "JobStore",
     "LifecycleResource",
     "LifecycleScope",
     "RetryPolicy",
+    "StageInterruptedError",
     "Task",
     "TaskBinding",
     "TaskDef",
@@ -143,6 +160,7 @@ __all__: list[str] = [
     "make_job_model",
     "make_requeue_action",
     "monthly",
+    "run_cancellable",
     "task_inventory",
     "task_method",
     "weekdays",

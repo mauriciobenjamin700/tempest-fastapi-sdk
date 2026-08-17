@@ -281,12 +281,145 @@ async def dashboard() -> tuple[list[JobModel], list[JobModel]]:
 Returns `[]` when nothing matches — "no jobs yet" is a successful
 answer, not a 404.
 
+## 7. Cancelling
+
+The user clicked "cancel". Nothing in TaskIQ — or in any broker the SDK
+speaks — offers "kill the task with this id": once it is running inside the
+worker process, only that process can stop it. So cancellation is
+**cooperative**: the request writes `cancelled` and answers immediately; the
+worker reads that status at agreed checkpoints and gives up.
+
+```python
+# src/services/extraction.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStore
+
+
+class JobModel(BaseJobModel):
+    """A unit of long-running work in this application."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+
+
+async def cancel(job_id: UUID) -> bool:
+    """Ask the job to stop.
+
+    Args:
+        job_id (UUID): The job to cancel.
+
+    Returns:
+        bool: True when there was something to stop.
+    """
+    job: JobModel | None = await store.cancel(job_id, reason="cancelled by the user")
+    return job is not None
+```
+
+!!! tip "Idempotent on purpose"
+    `cancel()` returns `None` — rather than raising — when there is nothing
+    to stop: an unknown id, a job already done, already failed, or already
+    cancelled. Double-clicking, or clicking just as the job finished on its
+    own, is not an error.
+
+### The worker gives up
+
+`run_cancellable` is the checkpoint that runs **during** the work rather
+than between steps. It races the coroutine against a predicate polled on an
+interval, and when the predicate says stop, the coroutine is cancelled for
+real — an in-flight HTTP request is aborted and the worker is free within
+the poll interval, instead of finishing a call whose result nobody wants.
+
+```python
+# src/tasks/extract.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import (
+    BaseJobModel,
+    JobStore,
+    StageInterruptedError,
+    run_cancellable,
+)
+
+
+class JobModel(BaseJobModel):
+    """A unit of long-running work in this application."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+
+
+async def summarize(text: str) -> str:
+    """Genuinely long work (a network call, cancellable).
+
+    Args:
+        text (str): The text to summarize.
+
+    Returns:
+        str: The summary.
+    """
+    return text[:100]
+
+
+async def run(job_id: UUID) -> None:
+    """Run the job, giving up if it is cancelled midway.
+
+    Args:
+        job_id (UUID): The job to run.
+    """
+    job: JobModel | None = await store.claim(job_id)
+    if job is None:
+        return
+
+    try:
+        summary: str = await run_cancellable(
+            summarize("a long text"),
+            interrupted=store.cancellation_watch(job_id),
+        )
+    except StageInterruptedError:
+        return
+
+    await store.succeed(job_id)
+    print(summary)
+```
+
+!!! danger "Only works on genuinely cancellable awaits"
+    Work handed to `asyncio.to_thread` is **not** cancellable: cancelling
+    the coroutine abandons the wrapper while the thread runs on to
+    completion, still holding the CPU and still competing with the next
+    job. For that shape — local inference, say — check between steps, and
+    check again before writing the result.
+
+!!! info "`succeed` refuses to land on top of a cancellation"
+    A worker that raced past its last checkpoint still cannot overwrite the
+    row: `succeed()`/`fail()` raise `JobCancelledError`, a subclass of
+    `JobAlreadyFinishedError`. The two are distinct on purpose — a plain
+    `JobAlreadyFinishedError` says two workers believe the job is theirs,
+    while this one says the system did exactly what it was told. Log it and
+    move on; do not alert.
+
+!!! warning "`cancelled` is terminal, but it is not a failure"
+    It joins `TERMINAL_JOB_STATUSES` (the poll stops, the `payload` is
+    dropped), but nothing went wrong. An interface that highlights `failed`
+    should leave this one alone, and an alert that pages on failures should
+    not fire.
+
 ## Errors
 
 | Exception | When |
 | --- | --- |
 | `JobNotFoundError` | the id does not exist (`get`, `succeed`, `fail`, `watch`) |
 | `JobAlreadyFinishedError` | closing a job that is already terminal — two workers believe it is theirs |
+| `JobCancelledError` | closing a job the user cancelled midway; a subclass of the above, so a worker can tell "we did as told" from "the concurrency is wrong" |
+| `StageInterruptedError` | `run_cancellable` saw the cancellation; not a failure, the handler just returns |
 
 They are `LookupError` / `RuntimeError`, not `AppException`: the store
 runs in the worker as often as in a request, and a worker has no HTTP
@@ -297,4 +430,6 @@ status to answer with. Translate at the boundary with
 the row before the task leaves; `claim` separates "queued" from
 "running" and is safe under contention; `succeed`/`fail` close the row
 and drop the payload; `watch` is the poll with no session left hanging;
-`reclaim_stale` frees what a dead worker left stuck.
+`reclaim_stale` frees what a dead worker left stuck; `cancel` +
+`run_cancellable` stop work already running, cooperatively, because
+there is no other way.
