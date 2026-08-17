@@ -4536,16 +4536,17 @@ The pipeline (`.github/workflows/release-pypi.yml`) does three things:
 ### Cutting a release
 
 ```bash
-make release VERSION=0.2.0
+make release VERSION=0.2.0 SUBJECT="assunto da release"
 ```
 
 This single target:
 
 1. Refuses to run if the working tree is dirty.
-2. Bumps `pyproject.toml` and `tempest_fastapi_sdk/__init__.py` to the requested version.
-3. Runs `make check` (lint + format + mypy + tests) so a broken commit never gets tagged.
-4. Commits the bump as `chore: release v0.2.0` and creates the `v0.2.0` tag locally.
-5. Prints the two `git push` commands you still need to run — pushing is left manual on purpose so you can review the commit one last time.
+2. Refuses to run if `CHANGELOG.md` has no `## [0.2.0]` entry — write it first.
+3. Bumps `pyproject.toml` and `tempest_fastapi_sdk/__init__.py` to the requested version.
+4. Runs the whole gate — `make check` (lint + format + mypy + tests), `make docs-build` (mkdocs `--strict`) and `make smoke` (imports the built wheel in a clean venv) — so a broken commit never gets tagged.
+5. Commits the bump as `feat: v0.2.0 — assunto da release` and creates the `v0.2.0` tag locally. Without `SUBJECT` the message falls back to `chore: release v0.2.0`.
+6. Prints the two `git push` commands you still need to run — pushing is left manual on purpose so you can review the commit one last time.
 
 ```bash
 # Review then push

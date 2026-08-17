@@ -113,12 +113,14 @@ Add `!` after the prefix for breaking changes (`feat!: drop class-attr config`).
 
 ## Release (maintainer)
 
-`make release VERSION=X.Y.Z` bumps the version locations, runs every gate, creates the commit + tag and tells you what to push:
+`make release VERSION=X.Y.Z SUBJECT="subject"` bumps the version locations, runs every gate (`check` + `docs-build` + `smoke`), creates the commit + tag and tells you what to push:
 
 ```bash
-make release VERSION=0.20.0
+make release VERSION=0.20.0 SUBJECT="release subject"
 git push origin main
 git push origin v0.20.0
 ```
+
+The target **refuses** to run on a dirty tree or without a `## [0.20.0]` entry in `CHANGELOG.md` — write the changelog first. Without `SUBJECT` the commit message falls back to the generic `chore: release v0.20.0` instead of the `feat: vX.Y.Z — subject` this project uses.
 
 The PyPI publish workflow fires on the `vX.Y.Z` tag push (trusted publishing — no API token in the repository).

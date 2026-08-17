@@ -106,17 +106,26 @@ tag: ## Tag the current commit with the project version (no push)
 	@VER=$$(grep -E '^version =' pyproject.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/'); \
 		git tag "v$$VER" && echo "Tagged v$$VER (run \`git push origin v$$VER\` when ready)"
 
-release: ## Bump versions, commit, tag and push. Usage: make release VERSION=0.2.0
-	@test -n "$(VERSION)" || (echo "Usage: make release VERSION=0.2.0"; exit 1)
+release: ## Bump versions, run every gate, commit and tag. Usage: make release VERSION=0.2.0 SUBJECT="assunto"
+	@test -n "$(VERSION)" || (echo 'Usage: make release VERSION=0.2.0 SUBJECT="assunto"'; exit 1)
 	@if [ -n "$$(git status --porcelain)" ]; then \
 		echo "Working tree dirty. Commit or stash first."; exit 1; \
 	fi
+	@grep -q '^## \[$(VERSION)\]' CHANGELOG.md || \
+		(echo "CHANGELOG.md has no '## [$(VERSION)]' entry. Write it before releasing."; exit 1)
 	@echo "Bumping pyproject.toml and $(PACKAGE)/__init__.py to $(VERSION)"
 	sed -i -E 's/^version = "[^"]+"/version = "$(VERSION)"/' pyproject.toml
 	sed -i -E 's/^__version__: str = "[^"]+"/__version__: str = "$(VERSION)"/' $(PACKAGE)/__init__.py
 	$(MAKE) check
+	$(MAKE) docs-build
+	$(MAKE) smoke
 	git add pyproject.toml $(PACKAGE)/__init__.py
-	git commit -m "chore: release v$(VERSION)"
+	@if [ -n "$(SUBJECT)" ]; then \
+		git commit -m "feat: v$(VERSION) — $(SUBJECT)"; \
+	else \
+		echo "No SUBJECT given; using the generic message."; \
+		git commit -m "chore: release v$(VERSION)"; \
+	fi
 	git tag "v$(VERSION)"
 	@echo
 	@echo "Ready to push. Review with \`git show v$(VERSION)\` then:"

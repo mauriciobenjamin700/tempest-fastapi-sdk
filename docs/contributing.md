@@ -113,12 +113,14 @@ Adicione `!` após o prefixo para mudanças que quebram compatibilidade (`feat!:
 
 ## Release (mantenedor)
 
-`make release VERSION=X.Y.Z` faz o bump nas localizações da versão, roda todos os gates, cria o commit + tag e diz o que você deve dar push:
+`make release VERSION=X.Y.Z SUBJECT="assunto"` faz o bump nas localizações da versão, roda todos os gates (`check` + `docs-build` + `smoke`), cria o commit + tag e diz o que você deve dar push:
 
 ```bash
-make release VERSION=0.20.0
+make release VERSION=0.20.0 SUBJECT="assunto da release"
 git push origin main
 git push origin v0.20.0
 ```
+
+O target **recusa** rodar com a árvore suja ou sem a entrada `## [0.20.0]` no `CHANGELOG.md` — escreva o changelog antes. Sem `SUBJECT`, a mensagem do commit cai no genérico `chore: release v0.20.0` em vez do `feat: vX.Y.Z — assunto` que o projeto usa.
 
 O workflow de publicação no PyPI dispara no push da tag `vX.Y.Z` (publicação confiável — sem token de API no repositório).
