@@ -1025,7 +1025,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `tempest generate --docker` (regen compose) / `--dockerfile`
   (regen Dockerfile + .dockerignore) / `--src` (extra source layers),
   `tempest db init/revision/upgrade/downgrade/current/history/seed`,
-  `tempest user create [--admin] / list`, `tempest secrets rotate`,
+  `tempest user create [--admin] [--set col=value] / list / promote /
+  revoke` (**`--set` (v0.240.0)** seeds the columns a concrete
+  `UserModel` adds: validated against the mapped columns, converted to
+  the column type, `email`/`hashed_password`/`is_admin` refused in
+  favor of their own flags; a required column with no default is
+  prompted for on a TTY and is an exit-2 error without one),
+  `tempest secrets rotate`,
   `tempest model analyze/bench/optimize/quantize/export-ort/hardware/
   pull/cache-list/cache-rm`,
   `tempest pdf list/schema/render`,

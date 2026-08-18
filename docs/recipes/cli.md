@@ -444,6 +444,10 @@ tempest user create --email admin@local --admin
 # Modelo customizado fora do layout scaffoldado — DEVE ser subclasse de BaseUserModel
 tempest user create --email x@y --password pass-12-chars --model myapp.models.user:UserModel
 
+# Colunas que o SEU UserModel adiciona — repetível, uma por coluna
+tempest user create --email ana@example.com --password senha-forte-12 \
+    --set display_name=Ana --set locale=pt-BR
+
 # Promove/rebaixa um usuário existente (liga/desliga is_admin)
 tempest user promote --email ana@example.com    # vira admin
 tempest user revoke  --email ana@example.com    # volta a ser comum
@@ -452,6 +456,31 @@ tempest user revoke  --email ana@example.com    # volta a ser comum
 tempest user list                                # todos
 tempest user list --admin                        # só admins
 ```
+
+!!! tip "`UserModel` com coluna própria obrigatória: use `--set`"
+    O `create` preenche `email`, `hashed_password`, `is_admin` e
+    `is_active`. Toda **outra** coluna do seu `UserModel` entra por
+    `--set <coluna>=<valor>`, validada contra as colunas mapeadas e
+    convertida pro tipo da coluna (bool, int, float, `Decimal`, UUID,
+    ISO-8601 de data/hora, enum pelo valor e JSON).
+
+    ```bash
+    tempest user create -e novato@example.com -p 'senha-forte-12' --no-admin
+    # error: UserModel requires a value for: display_name.
+    #        Pass each one as --set <column>=<value>.
+    ```
+
+    Coluna `NOT NULL` sem default que você não passou é **perguntada** num
+    terminal interativo (uma pergunta por coluna) e vira erro com código 2
+    numa execução sem TTY — em vez do `IntegrityError` cru que o banco
+    levantava. Chave desconhecida também sai com 2, listando as colunas
+    aceitas; `--set email=` / `--set hashed_password=` / `--set is_admin=`
+    são recusadas apontando a flag dona (`--email`, `--password`,
+    `--admin/--no-admin`).
+
+    Insert recusado pelo banco (email duplicado, quase sempre) sai com
+    código 1 e a mensagem do banco — `error: could not insert user: …` —
+    em vez de traceback.
 
 !!! tip "Sem `--admin`/`--no-admin`, o create pergunta"
     Quando você **não** passa nem `--admin` nem `--no-admin` num
