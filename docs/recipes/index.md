@@ -348,6 +348,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | Tema | Cobre |
 | --- | --- |
 | **[Agentes de IA »](agents.md)** | `Agent` (objetivo → traço + artefatos), `AgentBudget` (passos/tempo/chamadas), `AgentTool` + ferramentas prontas sobre imagem/visão/áudio/RAG, `InMemoryAgentRunSink` / `DbAgentRunSink`, `make_agent_router` |
+| **[Agentes de IA (arquitetura) »](agents-architecture.md)** | como organizar um serviço com agentes: a camada `ai` ao lado de `services`, `runtime` com um gerador por processo, `tools` separado de `agents`, `views` e `policy`, o controller que semeia a identidade, e quando trocar um agente por skills |
 | **[Agentes de IA (avançado) »](agents-advanced.md)** | saída estruturada tipada (`run_structured`), três camadas de memória (`scratchpad_tools` / `fact_tools` / `recall_prompt`), `Skill` sob demanda, `agent_tool` para delegação, `run_until` / `refine` |
 | **[Agentes de IA (banco de dados) »](agents-db.md)** | ferramenta que consulta o banco: `db.get_session_context()` por chamada, convenção `from_session`, um `AsyncDatabaseManager` por processo, e o que `AgentContext` carrega (`state` com quem pergunta, `artifacts`, `deadline`) |
 | **[Agentes de IA (conceitos) »](agents-concepts.md)** | o laço passo a passo, a transcrição que o modelo recebe em cada volta, o vocabulário (passo, observação, artefato, orçamento, `stop_reason`), por que o contexto cresce e o que isso custa, e quando usar ferramenta, skill, delegação ou laço |

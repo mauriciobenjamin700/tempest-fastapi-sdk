@@ -622,6 +622,7 @@ estruturada tipada, as três camadas de memória, skills carregadas sob
 demanda, delegação entre agentes e laços que insistem até passar num
 critério.
 
-Veja também: [IA generativa self-hosted](genai.md) para os modelos em si,
-[Geração de imagem](image-generation.md) e
+Veja também: [Agentes de IA (arquitetura)](agents-architecture.md) para onde
+cada peça mora num serviço de verdade, [IA generativa self-hosted](genai.md)
+para os modelos em si, [Geração de imagem](image-generation.md) e
 [Pesos de modelos](model-weights.md) para fixar o que o agente usa.
