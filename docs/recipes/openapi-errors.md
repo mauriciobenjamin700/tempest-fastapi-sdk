@@ -218,9 +218,19 @@ BudgetNotFoundException = not_found_exception(
 {'budget_id': 'abc'}
 >>> BudgetNotFoundException(message="Não encontrado.").detail
 'Não encontrado.'
+>>> BudgetNotFoundException(message="Não encontrado.").message
+'Não encontrado.'
+>>> BudgetNotFoundException.message
+'Orçamento não encontrado.'
 >>> BudgetNotFoundException.code, BudgetNotFoundException.__name__
 ('BUDGET_NOT_FOUND', 'BudgetNotFoundException')
 ```
+
+Na **instância**, `message` e `detail` respondem a mesma coisa: o que o
+raise site escreveu, caindo pro default da classe quando ele não passou
+nada. Quem loga ou renderiza uma exception capturada
+(`except AppException as exc: ... exc.message`) reporta a mensagem real, e
+`error_responses()` continua lendo o default pela **classe**.
 
 O `code` fica **no corpo da classe**, então `error_responses()` documenta
 a exception sem instanciá-la e o `InheritedErrorCodeWarning` não dispara.

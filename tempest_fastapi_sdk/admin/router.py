@@ -29,6 +29,7 @@ from fastapi import (
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from sqlalchemy import JSON, or_, select
 from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.exc import NoInspectionAvailable
 from starlette.concurrency import run_in_threadpool
 
 from tempest_fastapi_sdk.admin.actions import AdminActionContext
@@ -322,6 +323,37 @@ def make_admin_router(
                 headers={"location": f"{prefix}/login"},
             )
         return principal
+
+    async def _reload_expired(
+        db_session: AsyncSession,
+        *instances: Any,
+    ) -> None:
+        """Reload rows a failed write expired, before rendering reads them.
+
+        A rollback expires every object in the identity map, not only the
+        row that failed: SQLAlchemy's
+        ``SessionTransaction._restore_snapshot`` expires all states
+        unconditionally, so ``expire_on_commit=False`` does not cover it.
+        The error pages still render the signed-in principal (and, for the
+        inline formset, the parent row), and reading an expired column
+        from async code emits sync IO, which surfaces as
+        ``MissingGreenlet``. Awaiting the reload here keeps that IO inside
+        the greenlet SQLAlchemy needs.
+
+        Args:
+            db_session (AsyncSession): The live DB session.
+            *instances (Any): Rows the caller is about to render. Values
+                that are not persistent ORM instances are skipped.
+        """
+        for instance in instances:
+            if instance is None:
+                continue
+            try:
+                state = sa_inspect(instance)
+            except NoInspectionAvailable:
+                continue
+            if state.persistent and state.expired:
+                await db_session.refresh(instance)
 
     def _render(
         request: Request,
@@ -1507,6 +1539,8 @@ def make_admin_router(
                     continue
                 created += 1
             result = {"created": created, "errors": row_errors}
+            if row_errors:
+                await _reload_expired(db_session, principal)
 
         status_code = status.HTTP_400_BAD_REQUEST if form_error else status.HTTP_200_OK
         return _render(
@@ -1563,6 +1597,7 @@ def make_admin_router(
                 saved = await repository.add(instance)
             except AppException as exc:
                 form_error = exc.message
+                await _reload_expired(db_session, principal)
             else:
                 identity = getattr(saved, admin.identity_field)
                 return RedirectResponse(
@@ -2104,6 +2139,7 @@ def make_admin_router(
                 await repository.update(instance)
             except AppException as exc:
                 form_error = exc.message
+                await _reload_expired(db_session, principal)
             else:
                 return RedirectResponse(
                     url=f"{prefix}/m/{slug}/{identity}",
@@ -2267,6 +2303,7 @@ def make_admin_router(
                 error_rows.append((key, values, {}))
 
         if error_rows or form_error:
+            await _reload_expired(db_session, principal, parent)
             return await _detail_response(
                 request,
                 parent_admin,

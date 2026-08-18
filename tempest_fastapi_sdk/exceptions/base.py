@@ -89,6 +89,10 @@ class AppException(HTTPException):
     Instance attributes:
         status_code (int): The status code attached to this instance.
         code (str): The error code attached to this instance.
+        message (str): The message attached to this instance — the one
+            passed to the constructor, falling back to the class-level
+            default. Kept in sync with ``detail`` so a caught exception
+            reports what was raised, not the class default.
         details (dict[str, Any]): Free-form context attached to the
             response payload.
         message_key (str | None): Catalog key used to localize the
@@ -197,9 +201,10 @@ class AppException(HTTPException):
             status_code if status_code is not None else cls.status_code
         )
         self.details: dict[str, Any] = details or {}
+        self.message: str = message or cls.message
         super().__init__(
             status_code=effective_status,
-            detail=message or cls.message,
+            detail=self.message,
             headers=headers,
         )
 
