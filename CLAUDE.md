@@ -107,6 +107,13 @@ mexer neles. Todos rodam dentro do `make check`.
   que fica fora da ordem de propósito e a tabela do README ficam em
   [`docs/CLAUDE.md`](docs/CLAUDE.md); a autoridade é
   `tests/test_docs_organization.py`.
+- **Render depois de escrita que pode falhar recarrega o que lê** (v0.240.0).
+  O `rollback` expira **todo** o identity map, não a linha rejeitada, e ler
+  coluna expirada em contexto async é `MissingGreenlet`. `expire_on_commit`
+  não cobre — ele mora no caminho de commit. Sem guard (exige resolver o
+  template); a reprodução por caminho está em
+  `tests/admin/test_form_error_rollback.py` —
+  [`LESSONS.md`](LESSONS.md#o-rollback-expira-a-sessão-inteira-não-a-linha-que-falhou-v02400).
 - **`Field(alias=...)` é defeito** (v0.234.0). Escreva o nome do fio duas
   vezes: `validation_alias` para ler, `serialization_alias` para escrever.
   mypy aceita `alias`, pyright/basedpyright não —

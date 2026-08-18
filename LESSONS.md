@@ -67,6 +67,50 @@ submódulo privado. mypy aceitou — daí ter shippado. A correção é `__all__
 gerado por `scripts/regen_openpix.py` e pinado por
 `tests/integrations/payment/openpix/test_generated_drift.py`.
 
+## O rollback expira a sessão inteira, não a linha que falhou (v0.240.0)
+
+Todo POST de escrita do admin cujo save falhava respondia **500**, não o
+form com o erro. O que quebrou não foi a linha rejeitada: foi o
+`principal`, carregado no começo do request e não tocado pela escrita. O
+`rollback` que o repositório faz depois do `IntegrityError` expira **todos**
+os estados do identity map, e o `getattr(principal, "email", None)` que o
+header renderiza virou IO síncrono dentro de contexto async —
+`MissingGreenlet`.
+
+O primeiro palpite (`expire_on_commit=False`) não fecha nada, e vale
+registrar por quê: em `sqlalchemy/orm/session.py` (2.0.51) o teste de
+`expire_on_commit` está em `_remove_snapshot` (linha 1138), o caminho de
+**commit**; o rollback passa por `_restore_snapshot`, que expira tudo sem
+condição (linha 1126).
+
+Consequência prática: **view que renderiza depois de uma escrita que pode
+falhar recarrega, no `await`, tudo o que a página vai ler** — o principal,
+a linha pai do formset inline. Sem guard: saber o que o template toca exige
+resolver o template, e o `access_policy` do consumidor é código de fora.
+O que existe é reprodução por caminho em
+`tests/admin/test_form_error_rollback.py` (create, edit, import CSV,
+formset inline) — neutralize os quatro reloads e os quatro falham com
+`MissingGreenlet`. O policy de acesso faz parte da reprodução de propósito:
+uma policy que lê `principal.is_admin` é a segunda coisa que o objeto
+expirado quebra.
+
+## `exc.message` mentia quando o raise site passava mensagem (v0.240.0)
+
+`AppException.__init__` gravava a mensagem recebida só em `detail`. `message`
+continuava sendo o atributo **de classe**, então
+`ConflictException(message="Conflict creating Widget").message` respondia
+`"Resource conflict"`. Quem lê `exc.message` de uma exception capturada —
+o banner de erro do admin, a página de ativação/reset do fluxo de auth —
+reportava o default genérico: `Invalid token` no lugar de
+`token expired` / `token already used`, que é o que o serviço tinha
+levantado.
+
+A resposta JSON nunca esteve errada, porque o handler usa `detail`. É o que
+manteve isso vivo: o caminho testado era o certo, e o atributo com o nome
+mais óbvio era o errado. Guard: nenhum — é leitura de atributo em código de
+consumidor. O que tem é o par de testes em
+`tests/exceptions/test_exceptions.py` fixando instância **e** classe.
+
 ## Prosa é o ponto cego dos guards
 
 Nenhum guard lê prosa. Consequências concretas:

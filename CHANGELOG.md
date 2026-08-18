@@ -5,6 +5,83 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.240.0] — 2026-08-18
+
+### Added
+
+- **`tempest user create --set <column>=<value>`** — the columns a concrete
+  `UserModel` adds are now seedable from the CLI. `create` only ever wrote
+  `email`, `hashed_password`, `is_admin` and `is_active`, so a model that
+  adds one required column of its own — the shape the admin recipe teaches,
+  `class UserModel(BaseUserModel)` with columns for the domain — could not
+  be seeded at all: the insert went out with `NULL` in the new column and
+  the database refused it. Measured against a model adding
+  `display_name: Mapped[str] = mapped_column(String(64), nullable=False)`,
+  the pre-fix command exited 1 with an uncaught `ConflictException` reading
+  `could not insert user: (sqlite3.IntegrityError) NOT NULL constraint
+  failed: cli_rich_users.display_name`.
+
+  `--set` is repeatable and validated before anything opens a connection:
+  an unknown key exits 2 listing the model's accepted columns, and
+  `email` / `hashed_password` / `is_admin` are refused by name, pointing at
+  the flag that owns them (a second spelling of the same value would
+  otherwise win or lose depending on merge order, and a password in
+  `--set` would skip the length check and land in shell history). Values
+  are converted to the column's Python type — `bool`, `int`, `float`,
+  `Decimal`, `UUID`, ISO-8601 `date`/`time`/`datetime`, enums by value then
+  by member name (matching how `TempestEnum` stores them), and JSON for
+  `JSON` columns — and a value the type rejects exits 2 naming the column
+  and the reason.
+
+  A required column with no default that `--set` did not cover is
+  **prompted for** when stdin is a terminal, one prompt per column,
+  following what the `--admin`/`--no-admin` prompt already does; without a
+  TTY the run exits 2 listing every column the insert would have sent as
+  `NULL`. Closes #163.
+
+### Fixed
+
+- **A rejected write in the admin re-renders the page instead of answering
+  500.** Every create/edit whose save failed died in the error path — the
+  one the operator needs — with `MissingGreenlet`. The save rolls the
+  session back, and a rollback expires **every** object in the identity
+  map, including the signed-in principal, loaded before the write and not
+  touched by it; the error page then read `principal.email` to render the
+  header, which is sync IO from async code.
+
+  `expire_on_commit=False` does not cover this, which is worth writing down
+  because it is the obvious first guess:
+  `SessionTransaction._restore_snapshot` (SQLAlchemy 2.0.51,
+  `orm/session.py:1126`) expires all states unconditionally, while the
+  `expire_on_commit` test lives in `_remove_snapshot`, the commit path
+  (same file, line 1138). The
+  four write views that render after a failure now reload what the page
+  reads — the principal, plus the parent row for the inline formset —
+  awaiting the load so it happens inside the greenlet SQLAlchemy requires.
+
+  Reproduced end to end in `tests/admin/test_form_error_rollback.py`
+  against a unique constraint: create, edit, CSV import and the inline
+  formset each answered `500` before and answer `400` with the message in
+  the form after; neutralize the four reloads and all four tests fail with
+  `MissingGreenlet`. The inline and import paths were never reported, and
+  were broken the same way. The access policy is part of the reproduction
+  on purpose: a policy that reads a principal column (`principal.is_admin`)
+  is the second thing the expired object breaks. Closes #164.
+
+- **`exc.message` reports the message that was raised.** `AppException`
+  assigned the constructor's message to `detail` only, so `message` fell
+  through to the class attribute: `ConflictException(message="Conflict
+  creating Widget").message` answered `"Resource conflict"`. Every caller
+  reading it off a caught exception reported the generic default — the
+  admin form banner showed `Resource conflict` for every integrity error
+  instead of naming the model, and the auth flow's activation / password
+  reset pages rendered `reason` as `Invalid token` where the service had
+  raised `InvalidTokenException(message="token expired")` or
+  `"token already used"`. The instance
+  attribute is now set from the same value as `detail`; reading `message`
+  off the **class** is unchanged, which is what `error_responses()` does to
+  build OpenAPI examples.
+
 ## [0.239.0] — 2026-08-17
 
 ### Added

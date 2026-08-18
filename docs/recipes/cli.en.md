@@ -313,6 +313,10 @@ tempest user create --email admin@local --admin
 # Custom model outside the scaffolded layout — MUST be a BaseUserModel subclass
 tempest user create --email x@y --password pass-12-chars --model myapp.models.user:UserModel
 
+# Columns YOUR UserModel adds — repeatable, one per column
+tempest user create --email ana@example.com --password strong-pass-12 \
+    --set display_name=Ana --set locale=pt-BR
+
 # Promote / demote an existing user (toggles is_admin)
 tempest user promote --email ana@example.com    # becomes admin
 tempest user revoke  --email ana@example.com    # back to a regular account
@@ -321,6 +325,32 @@ tempest user revoke  --email ana@example.com    # back to a regular account
 tempest user list                                # everyone
 tempest user list --admin                        # admins only
 ```
+
+!!! tip "A `UserModel` with a required column of its own: use `--set`"
+    `create` fills `email`, `hashed_password`, `is_admin` and
+    `is_active`. Every **other** column of your `UserModel` goes in via
+    `--set <column>=<value>`, validated against the mapped columns and
+    converted to the column type (bool, int, float, `Decimal`, UUID,
+    ISO-8601 date/time, enum by value, and JSON).
+
+    ```bash
+    tempest user create -e newbie@example.com -p 'strong-pass-12' --no-admin
+    # error: UserModel requires a value for: display_name.
+    #        Pass each one as --set <column>=<value>.
+    ```
+
+    A `NOT NULL` column with no default that you did not pass is
+    **prompted for** in an interactive terminal (one prompt per column)
+    and becomes an exit-code-2 error without a TTY — instead of the raw
+    `IntegrityError` the database used to raise. An unknown key also
+    exits 2, listing the accepted columns; `--set email=` /
+    `--set hashed_password=` / `--set is_admin=` are refused, pointing at
+    the flag that owns them (`--email`, `--password`,
+    `--admin/--no-admin`).
+
+    An insert the database refuses (a duplicate email, most often) exits
+    with code 1 and the database's own message —
+    `error: could not insert user: …` — instead of a traceback.
 
 !!! tip "Without `--admin`/`--no-admin`, create asks"
     When you pass **neither** `--admin` nor `--no-admin` in an

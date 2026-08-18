@@ -218,9 +218,19 @@ BudgetNotFoundException = not_found_exception(
 {'budget_id': 'abc'}
 >>> BudgetNotFoundException(message="Not found.").detail
 'Not found.'
+>>> BudgetNotFoundException(message="Not found.").message
+'Not found.'
+>>> BudgetNotFoundException.message
+'Budget not found.'
 >>> BudgetNotFoundException.code, BudgetNotFoundException.__name__
 ('BUDGET_NOT_FOUND', 'BudgetNotFoundException')
 ```
+
+On an **instance**, `message` and `detail` answer the same thing: what the
+raise site wrote, falling back to the class default when it wrote nothing.
+Code that logs or renders a caught exception
+(`except AppException as exc: ... exc.message`) reports the real message,
+while `error_responses()` still reads the default off the **class**.
 
 `code` lands **in the class body**, so `error_responses()` documents the
 exception without instantiating it and `InheritedErrorCodeWarning` never

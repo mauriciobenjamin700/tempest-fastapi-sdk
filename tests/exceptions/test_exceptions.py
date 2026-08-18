@@ -44,6 +44,24 @@ class TestAppException:
         assert exc.detail == "boom"
         assert exc.details == {"step": "x"}
 
+    def test_message_attribute_reports_the_raised_message(self) -> None:
+        """``exc.message`` must answer what was raised, not the default.
+
+        Only ``detail`` used to carry the constructor's message, so
+        ``exc.message`` fell through to the class attribute. Every caller
+        that logs or renders ``exc.message`` -- the admin form error
+        banner, the auth audit ``reason`` -- reported the generic default
+        instead of the specific message the raise site wrote.
+        """
+        exc = ConflictException(message="Conflict creating Widget")
+        assert exc.message == "Conflict creating Widget"
+        assert exc.detail == "Conflict creating Widget"
+
+    def test_message_attribute_falls_back_to_the_class_default(self) -> None:
+        exc = ConflictException()
+        assert exc.message == "Resource conflict"
+        assert ConflictException.message == "Resource conflict"
+
 
 class TestSubclasses:
     @pytest.mark.parametrize(
