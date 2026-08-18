@@ -181,6 +181,7 @@ plugins:
               - Transactional email: recipes/email.md
               - Transactional outbox: recipes/outbox.md
               - Transactions (commit and savepoint): recipes/transactions.md
+              - "Transcription pipeline (audio → summary)": recipes/transcription-pipeline.md
               - Typed CSS (stylesheet and tokens): recipes/ui-css.md
               - Typing (static + runtime): recipes/typing.md
               - UI layer (pages and components): recipes/ui.md
@@ -442,6 +443,7 @@ nav:
       - Painel admin: recipes/admin.md
       - "Permissões object-level": recipes/authz.md
       - "Pesos de modelos (ciclo no Hub)": recipes/model-weights.md
+      - "Pipeline de transcrição (áudio → resumo)": recipes/transcription-pipeline.md
       - "Planilhas (.xlsx)": recipes/spreadsheets.md
       - "Planos de query (EXPLAIN)": recipes/query-plans.md
       - "Push (web + mobile)": recipes/push.md

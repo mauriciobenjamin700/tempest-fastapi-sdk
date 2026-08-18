@@ -533,6 +533,7 @@ come back here to plug in each capability as you need it.
 | **[Transactional email »](email.md)** | `EmailUtils` — SMTP, text/HTML body, attachments, Jinja2 templates |
 | **[Transactional outbox »](outbox.md)** | `BaseOutboxModel`, `OutboxRelay`, `save_with_outbox` — reliable events |
 | **[Transactions (commit and savepoint) »](transactions.md)** | session-shared `transaction()`, `commit()` / `flush()` / `rollback()` on the repository, `autocommit=False`, `savepoint()` for the recoverable step |
+| **[Transcription pipeline (audio → summary) »](transcription-pipeline.md)** | the three stages stitched together: `StageMap` on the record itself, cancelling a running transcription from inside `on_progress`, `generate_with_usage` + `AIUsageStore` to know who paid, `generate_structured_list` for the stage that returns a list |
 | **[Typed CSS (stylesheet and tokens) »](ui-css.md)** | `StyleSheet` / `Rule` / `Media`, `ThemeTokens` (`tempest_core` tokens as CSS variables, light and dark), `make_css_router` with ETag/304, `app_stylesheet`, a `cls()` that rejects an unknown class |
 | **[Typing (static + runtime) »](typing.md)** | `strict_types` / `typed` / `require_annotations`, `[tool.tempest] typing_strictness` knob, ruff `ANN` |
 | **[UI layer (pages and components) »](ui.md)** | the `src/ui/` layer (pages, layout, components, styles), `Page` + inherited `shell()`, `Card` / `Alert` / `DataTable` / `Pagination` / `EmptyState` / `NavBar`, `Shell` / `Grid`, scaffolding with `tempest new --extras "ssr"` |
