@@ -308,6 +308,119 @@ asyncio.run(main())
 
 Recipe: [Self-hosted generative AI](genai.md).
 
+### Long work, with status and cancellable
+
+`JobStore` gives the work a row the screen reads; `run_cancellable` actually
+interrupts it when the user gives up. `StageMap` covers the case where the
+stages decorate a record the screen already fetches.
+
+```python
+import asyncio
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import (
+    BaseJobModel,
+    JobStore,
+    StageInterruptedError,
+    run_cancellable,
+)
+
+
+class JobModel(BaseJobModel):
+    """A unit of long-running work."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+
+
+async def transcribe(path: str) -> str:
+    """Long, cancellable work (async I/O).
+
+    Args:
+        path (str): The file to process.
+
+    Returns:
+        str: The text.
+    """
+    await asyncio.sleep(0)
+    return path
+
+
+async def run(job_id: UUID) -> None:
+    """Run the job, giving up if it is cancelled midway.
+
+    Args:
+        job_id (UUID): The job to run.
+    """
+    if await store.claim(job_id) is None:
+        return
+    try:
+        text: str = await run_cancellable(
+            transcribe("audio.wav"),
+            interrupted=store.cancellation_watch(job_id),
+        )
+    except StageInterruptedError:
+        return
+    await store.succeed(job_id)
+    print(text)
+```
+
+Recipe: [Jobs (long work with status)](jobs.md).
+
+### Hosted AI, and what it cost
+
+`OpenAICompatGenerator` speaks any `/chat/completions` (DeepSeek, Groq,
+OpenRouter, vLLM, Azure); `AIUsageStore` keeps one row per paid call, for
+the "which account spent what" question.
+
+```python
+import asyncio
+from uuid import uuid4
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai import (
+    AIUsageStore,
+    BaseAIUsageModel,
+    OpenAICompatGenerator,
+    TokenUsage,
+)
+
+
+class AIUsageModel(BaseAIUsageModel):
+    """One billed AI call."""
+
+    __tablename__ = "ai_usage"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+gen = OpenAICompatGenerator(
+    "deepseek-chat",
+    api_key="sk-...",
+    base_url="https://api.deepseek.com",
+)
+store: AIUsageStore[AIUsageModel] = AIUsageStore(
+    db, model=AIUsageModel, price_input_per_1k=0.00014
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    text: str
+    usage: TokenUsage | None
+    text, usage = await gen.generate_with_usage("Summarize this.")
+    await store.record(subject_id=uuid4(), service="summary", usage=usage)
+    print(text)
+
+
+asyncio.run(main())
+```
+
+Recipe: [Self-hosted generative AI](genai.md).
+
 ### Admin panel
 
 `AdminSite` + `AdminModel` + `make_admin_router` (Jinja+HTMX, themes,
@@ -381,7 +494,7 @@ come back here to plug in each capability as you need it.
 | **[Image generation (local) »](image-generation.md)** | `ImageGenerator` (local diffusers — `generate` / `edit` img2img), `ImageGenerationConfig`, `GeneratedImage` carrying the reproducing seed, `make_genai_router(image_generator=...)` → `POST /image` |
 | **[Integration client (OpenAPI) »](openapi-client.md)** | `tempest openapi-client` — Pydantic schemas + a typed client from a third party's spec |
 | **[Introspection auth (resource server) »](introspection-auth.md)** | `IntrospectionAuth` — validate an opaque bearer by asking the upstream identity provider |
-| **[Jobs (long work with status) »](jobs.md)** | `BaseJobModel` + `JobStore` — one row per unit of work, `claim`/`succeed`/`fail`, `watch` for the screen, `reclaim_stale` |
+| **[Jobs (long work with status) »](jobs.md)** | `BaseJobModel` + `JobStore` — one row per unit of work, `claim`/`succeed`/`fail`, `watch` for the screen, `reclaim_stale`; cooperative cancellation (`cancel` + `run_cancellable`); `StageMap` for several stages on the record itself |
 | **[Logging »](logging.md)** | `LogUtils`, structured JSON logging, request-ID propagation |
 | **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | register your own commands on the project's `tempest` CLI |
 | **[Metrics »](metrics.md)** | `MetricsUtils` — CPU / RAM / disk / GPU snapshots |
@@ -404,7 +517,7 @@ come back here to plug in each capability as you need it.
 | **[Refresh tokens (rotation/revocation) »](refresh-tokens.md)** | `BaseUserRefreshTokenModel`, `make_user_refresh_token_model`, `issue_token_pair`, rotation + family reuse detection |
 | **[Safe deploys »](deploy-safety.md)** | `AlembicHelper.safe_upgrade` (blocks DROPs), `GracefulShutdownMiddleware` |
 | **[Security »](security.md)** | `AttemptThrottle`, opaque-token helpers, `HardenedStaticFiles`, security headers |
-| **[Self-hosted generative AI »](genai.md)** | `probe_hardware` / `can_run`, `TextGenerator`, `Embedder`, RAG (web + PDF), audio (STT/TTS), `make_genai_router` |
+| **[Self-hosted generative AI »](genai.md)** | `probe_hardware` / `can_run`, `TextGenerator`, `Embedder`, RAG (web + PDF), audio (STT/TTS + batching), `make_genai_router`; hosted backend (`OpenAICompatGenerator`, any `/chat/completions`) with `TokenUsage`; list output (`parse_structured_list`, retry at a rising temperature); per-user usage accounting (`AIUsageStore`) |
 | **[Server-Sent Events (SSE) »](sse.md)** | `EventStream`, `sse_response`, `ServerSentEvent`, `SSEBroker` (per-channel fan-out, Redis bridge) |
 | **[Server-side sessions »](sessions.md)** | `SessionMiddleware`, `SessionAuth`, `make_session_router`, `MemorySessionStore` / `RedisSessionStore` |
 | **[Social login (OAuth2/OIDC) »](oauth.md)** | `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `generate_oauth_state` |

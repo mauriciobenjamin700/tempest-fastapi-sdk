@@ -200,7 +200,11 @@ import asyncio
 
 from tempest_fastapi_sdk.genai import OpenAICompatGenerator, TokenUsage
 
-gen = OpenAICompatGenerator("deepseek-chat", api_key="sk-...")
+gen = OpenAICompatGenerator(
+    "deepseek-chat",
+    api_key="sk-...",
+    base_url="https://api.deepseek.com",
+)
 
 
 async def main() -> None:
@@ -1491,7 +1495,11 @@ class Tarefa(BaseModel):
     titulo: str
 
 
-gen = OpenAICompatGenerator("deepseek-chat", api_key="sk-...")
+gen = OpenAICompatGenerator(
+    "deepseek-chat",
+    api_key="sk-...",
+    base_url="https://api.deepseek.com",
+)
 
 
 async def main() -> None:

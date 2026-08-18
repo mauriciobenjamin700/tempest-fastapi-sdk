@@ -307,6 +307,119 @@ asyncio.run(main())
 
 Receita: [IA generativa self-hosted](genai.md).
 
+### Trabalho longo, com status e cancelável
+
+`JobStore` dá ao trabalho uma linha que a tela lê; `run_cancellable` o
+interrompe de verdade quando o usuário desiste. `StageMap` cobre o caso em
+que os estágios decoram um registro que a tela já busca.
+
+```python
+import asyncio
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import (
+    BaseJobModel,
+    JobStore,
+    StageInterruptedError,
+    run_cancellable,
+)
+
+
+class JobModel(BaseJobModel):
+    """Uma unidade de trabalho longo."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+
+
+async def transcrever(caminho: str) -> str:
+    """Trabalho longo e cancelável (I/O assíncrono).
+
+    Args:
+        caminho (str): O arquivo a processar.
+
+    Returns:
+        str: O texto.
+    """
+    await asyncio.sleep(0)
+    return caminho
+
+
+async def executar(job_id: UUID) -> None:
+    """Roda o job, desistindo se cancelarem no meio.
+
+    Args:
+        job_id (UUID): O job a executar.
+    """
+    if await store.claim(job_id) is None:
+        return
+    try:
+        texto: str = await run_cancellable(
+            transcrever("audio.wav"),
+            interrupted=store.cancellation_watch(job_id),
+        )
+    except StageInterruptedError:
+        return
+    await store.succeed(job_id)
+    print(texto)
+```
+
+Receita: [Jobs (trabalho longo com status)](jobs.md).
+
+### IA hospedada, e quanto ela custou
+
+`OpenAICompatGenerator` fala qualquer `/chat/completions` (DeepSeek, Groq,
+OpenRouter, vLLM, Azure); `AIUsageStore` guarda uma linha por chamada paga,
+para a pergunta "qual conta gastou o quê".
+
+```python
+import asyncio
+from uuid import uuid4
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.genai import (
+    AIUsageStore,
+    BaseAIUsageModel,
+    OpenAICompatGenerator,
+    TokenUsage,
+)
+
+
+class AIUsageModel(BaseAIUsageModel):
+    """Uma chamada de IA cobrada."""
+
+    __tablename__ = "ai_usage"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+gen = OpenAICompatGenerator(
+    "deepseek-chat",
+    api_key="sk-...",
+    base_url="https://api.deepseek.com",
+)
+store: AIUsageStore[AIUsageModel] = AIUsageStore(
+    db, model=AIUsageModel, price_input_per_1k=0.00014
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    texto: str
+    uso: TokenUsage | None
+    texto, uso = await gen.generate_with_usage("Resuma isto.")
+    await store.record(subject_id=uuid4(), service="summary", usage=uso)
+    print(texto)
+
+
+asyncio.run(main())
+```
+
+Receita: [IA generativa self-hosted](genai.md).
+
 ### Painel admin
 
 `AdminSite` + `AdminModel` + `make_admin_router` (Jinja+HTMX, temas,
@@ -391,9 +504,9 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Guards de permissão (@requires) »](permission-guards.md)** | `@requires` + guards `(user) -> user` (com `meta: dict[str, Any]` opcional via `meta=` / `include_args=`), `TempestPermissionError`, `GuardContractWarning`, `tempest permissions --check` |
 | **[Helpers brasileiros »](br-helpers.md)** | validação + normalização de CPF / CNPJ / CEP / telefone |
 | **[HTTP client (saída) »](http-client.md)** | `HTTPClient` — httpx tipado com retry/backoff, circuit-breaker, X-Request-ID; `RetryPolicy`, `CircuitOpenError` |
-| **[IA generativa self-hosted »](genai.md)** | `probe_hardware` / `can_run`, `TextGenerator`, `Embedder`, RAG (web + PDF), áudio (STT/TTS), `make_genai_router` |
+| **[IA generativa self-hosted »](genai.md)** | `probe_hardware` / `can_run`, `TextGenerator`, `Embedder`, RAG (web + PDF), áudio (STT/TTS + batching), `make_genai_router`; backend hospedado (`OpenAICompatGenerator`, qualquer `/chat/completions`) com `TokenUsage`; saída em lista (`parse_structured_list`, retry com temperatura); contabilidade de uso por usuário (`AIUsageStore`) |
 | **[Idempotência »](idempotency.md)** | `IdempotencyMiddleware`, `MemoryIdempotencyStore` / `IdempotencyStore` (Redis) — replay seguro de POST/PUT/PATCH/DELETE |
-| **[Jobs (trabalho longo com status) »](jobs.md)** | `BaseJobModel` + `JobStore` — uma linha por unidade de trabalho, `claim`/`succeed`/`fail`, `watch` para a tela, `reclaim_stale` |
+| **[Jobs (trabalho longo com status) »](jobs.md)** | `BaseJobModel` + `JobStore` — uma linha por unidade de trabalho, `claim`/`succeed`/`fail`, `watch` para a tela, `reclaim_stale`; cancelamento cooperativo (`cancel` + `run_cancellable`); `StageMap` para vários estágios no próprio registro |
 | **[Logging »](logging.md)** | `LogUtils`, logging JSON estruturado, propagação de request-ID |
 | **[Login social (OAuth2/OIDC) »](oauth.md)** | `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `generate_oauth_state` |
 | **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | registrar comandos próprios na CLI `tempest` do projeto |
