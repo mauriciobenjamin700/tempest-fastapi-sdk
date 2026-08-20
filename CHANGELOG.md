@@ -5,6 +5,46 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.241.0] — 2026-08-20
+
+### Changed
+
+- **`[tool.pydantic-mypy] init_typed = true`** — in the SDK's own
+  `pyproject.toml` and in the `pyproject.toml` written by `tempest new`.
+  Declaring `plugins = ["pydantic.mypy"]` and nothing else type-checks **no
+  argument of any model constructor**: the plugin runs and synthesizes one
+  keyword-only parameter per field, but `init_typed` defaults to `False`, so
+  each of those parameters is annotated `Any`. Measured with mypy 2.3.0 and
+  pydantic 2.13.4 against a two-field `BaseSchema` subclass, before the
+  setting existed here:
+
+  ```text
+  note: Revealed type is "def (__pydantic_self__: Probe, *,
+    name: Any, age: Any, **kwargs: Any)"
+  Success: no issues found in 1 source file
+  ```
+
+  The file passing that check contained `Probe(name="x", age="doze")`. With
+  the setting on, the same file reports `error: Argument "age" to "Probe"
+  has incompatible type "str"; expected "int"  [arg-type]`, and the
+  revealed signature carries the real annotations. Pyright and Pylance load
+  no plugin — they read the annotations directly and always flagged these
+  call sites — so until now the editor and the gate disagreed and the gate
+  was the one that was wrong.
+
+  Turning it on cost no fixes here: `mypy tempest_fastapi_sdk` reports
+  `Success: no issues found in 409 source files` with `init_typed` enabled.
+  The caveat is real but wanted in a service — the setting refuses input
+  pydantic would coerce, so a `Decimal` field handed `"1.5"` is now an
+  `arg-type` error even though the value still builds as `Decimal('1.5')`
+  at runtime. Documented next to the setting in the typing recipe.
+
+  A service scaffolded before this release needs the block pasted into its
+  own `pyproject.toml`: mypy reads plugin config **only** from the config
+  file, so `tempest check` cannot layer it the way it layers `--strict`.
+  Guard: `tests/test_pydantic_mypy_guard.py` fails when either config
+  declares the plugin without the setting. Closes #166.
+
 ## [0.240.0] — 2026-08-18
 
 ### Added

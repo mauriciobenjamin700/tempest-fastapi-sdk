@@ -66,6 +66,14 @@ python_version = "3.11"
 strict = true
 plugins = ["pydantic.mypy"]
 
+# Without `init_typed`, the pydantic plugin types every model constructor
+# argument as `Any`, so a `str` handed to an `int` field type-checks clean.
+# Turning it on makes the annotation the contract, at the cost of refusing
+# input pydantic would coerce ("1.5" for a `Decimal` field).
+[tool.pydantic-mypy]
+init_typed = true
+warn_required_dynamic_aliases = true
+
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 disallow_untyped_defs = false
