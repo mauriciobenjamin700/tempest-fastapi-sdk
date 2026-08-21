@@ -24,7 +24,7 @@ As duas formas existem no SDK e resolvem problemas diferentes:
 | Forma | Quando | Receita |
 | --- | --- | --- |
 | `JobStore` — uma linha por unidade de trabalho | o trabalho **é** a coisa: uma exportação, uma importação, um lote noturno | [Jobs](jobs.md) |
-| `StageMap` — colunas de status no registro | o trabalho **decora** um registro que a tela já está mostrando | [Jobs §8](jobs.md#8-varios-estagios-no-proprio-registro) |
+| `StageMap` — colunas de status no registro | o trabalho **decora** um registro que a tela já está mostrando | [Jobs §9](jobs.md#9-varios-estagios-no-proprio-registro) |
 
 Um áudio transcrito é o segundo caso. A tela abre o documento de qualquer
 jeito; uma tabela de jobs à parte vira uma segunda consulta e um join para
