@@ -1428,6 +1428,68 @@ the recommended structured route, no extra library**.
     transformers 4.x **and 5.x** (validated on Qwen2.5-3B). `constrained=False`
     stays available for best-effort parsing without the extra.
 
+    Since v0.242.0 it also exposes `chat_structured(messages, schema)`, the
+    **same** call the daemon answers: a service that reads documents types
+    against `StructuredTextBackend` and runs on either without a line
+    changing at the call site. The instruction/document split matters here
+    too — the tokenizer's chat template is applied before generating.
+
+    ```python
+    import asyncio
+    import threading
+
+    from pydantic import BaseModel
+    from tempest_fastapi_sdk.genai import StructuredTextBackend, TextGenerator
+
+
+    class Invoice(BaseModel):
+        number: str
+        total_cents: int
+
+
+    async def read(backend: StructuredTextBackend) -> Invoice:
+        """Read the invoice with any structured backend.
+
+        Args:
+            backend (StructuredTextBackend): Ollama daemon or local model.
+
+        Returns:
+            Invoice: The extracted fields.
+        """
+        return await backend.chat_structured(
+            [
+                {"role": "system", "content": "Extract the invoice fields."},
+                {"role": "user", "content": "INV-1 — total $49.90"},
+            ],
+            Invoice,
+        )
+
+
+    async def main() -> None:
+        """Run this example."""
+        stop = threading.Event()
+        local = TextGenerator("Qwen/Qwen2.5-3B-Instruct")
+        invoice: Invoice = await local.chat_structured(
+            [{"role": "user", "content": "INV-1 — total $49.90"}],
+            Invoice,
+            stop_event=stop,
+        )
+        del invoice
+
+
+    asyncio.run(main())
+    ```
+
+!!! warning "Cancelling the local model needs `stop_event`"
+    Local generation runs in a thread, and a thread cannot be cancelled
+    from outside: abandoning the coroutine leaves the GPU producing a reply
+    nobody will read. The `stop_event` is how the decision gets in —
+    transformers asks its stopping criteria after every token. Pass the
+    same event to
+    [`run_cancellable`](jobs.en.md#8-progress-the-bar-that-does-not-lie),
+    which sets it on cancellation. On the daemon this is unnecessary:
+    aborting the HTTP request stops the generation.
+
 !!! tip "Just the parse"
     `parse_structured(text, schema)` pulls the JSON out of a raw completion
     (tolerating Markdown fences and surrounding prose) and validates it against

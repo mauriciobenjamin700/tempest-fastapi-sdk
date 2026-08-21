@@ -112,6 +112,10 @@ from tempest_fastapi_sdk.tasks.observability import (
 from tempest_fastapi_sdk.tasks.oop import TaskBinding as TaskBinding
 from tempest_fastapi_sdk.tasks.oop import TaskDef as TaskDef
 from tempest_fastapi_sdk.tasks.oop import task_method as task_method
+from tempest_fastapi_sdk.tasks.progress import Phase as Phase
+from tempest_fastapi_sdk.tasks.progress import PhasePlan as PhasePlan
+from tempest_fastapi_sdk.tasks.progress import ProgressSink as ProgressSink
+from tempest_fastapi_sdk.tasks.progress import ProgressTracker as ProgressTracker
 from tempest_fastapi_sdk.tasks.queue import Hook as Hook
 from tempest_fastapi_sdk.tasks.queue import LifecycleResource as LifecycleResource
 from tempest_fastapi_sdk.tasks.queue import LifecycleScope as LifecycleScope
@@ -152,6 +156,10 @@ __all__: list[str] = [
     "JobStore",
     "LifecycleResource",
     "LifecycleScope",
+    "Phase",
+    "PhasePlan",
+    "ProgressSink",
+    "ProgressTracker",
     "RetryPolicy",
     "StageColumns",
     "StageInterruptedError",

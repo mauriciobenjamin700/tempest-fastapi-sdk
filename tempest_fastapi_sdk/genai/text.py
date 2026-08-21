@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, Protocol, runtime_checkable
@@ -110,6 +111,90 @@ def _parse_tool_calls(text: str) -> tuple[str, list[dict[str, Any]]]:
         if call is not None:
             return "", [call]
     return text, []
+
+
+def _stop_criteria(transformers: Any, stop_event: threading.Event) -> Any:
+    """Build a stopping criterion that watches a thread event.
+
+    ``model.generate`` is a blocking call inside a worker thread, and
+    Python cannot interrupt a thread from outside. What it does do is ask
+    its stopping criteria after every token — so an event checked there is
+    the only way a decision made on the event loop reaches a generation
+    already in flight.
+
+    Args:
+        transformers (Any): The imported ``transformers`` module.
+        stop_event (threading.Event): Set to stop decoding.
+
+    Returns:
+        Any: A ``StoppingCriteriaList`` to pass to ``model.generate``.
+    """
+
+    class _EventCriteria(transformers.StoppingCriteria):  # type: ignore[misc]
+        """Stops decoding once the event is set."""
+
+        def __call__(self, input_ids: Any, scores: Any, **kwargs: Any) -> bool:
+            """Answer whether decoding should stop now.
+
+            Args:
+                input_ids (Any): Tokens produced so far; unused.
+                scores (Any): Current logits; unused.
+                **kwargs (Any): Whatever transformers passes along.
+
+            Returns:
+                bool: ``True`` once the event is set.
+            """
+            return stop_event.is_set()
+
+    return transformers.StoppingCriteriaList([_EventCriteria()])
+
+
+class GenerationStoppedError(RuntimeError):
+    """Raised when a generation was stopped through its ``stop_event``.
+
+    Local generation runs in a worker thread, and a thread cannot be
+    cancelled from outside — so cancelling the awaiting coroutine leaves
+    the GPU producing tokens for a reply nobody will read. The
+    ``stop_event`` is how the decision reaches the thread, and this is
+    what the thread raises once it has honoured it: the work stopped
+    because it was told to, not because it went wrong.
+    """
+
+
+@runtime_checkable
+class StructuredTextBackend(Protocol):
+    """A backend that answers with a validated schema instead of prose.
+
+    Both :class:`TextGenerator` and
+    :class:`~tempest_fastapi_sdk.genai.ollama.OllamaGenerator` implement
+    it, which is the point: a service that reads documents into schemas
+    can be typed against this and run on a local model or on a daemon
+    without a line changing at the call site. The messages list rather
+    than a prompt string is part of the contract — extraction quality
+    depends on the instruction sitting in its own ``system`` turn.
+    """
+
+    async def chat_structured(
+        self,
+        messages: list[dict[str, Any]],
+        schema: type[StructuredT],
+        *,
+        config: GenerationConfig | None = ...,
+        **kwargs: Any,
+    ) -> StructuredT:
+        """Return a reply validated against ``schema``.
+
+        Args:
+            messages (list[dict[str, Any]]): Chat turns, each
+                ``{"role": ..., "content": ...}``.
+            schema (type[StructuredT]): The Pydantic model to produce.
+            config (GenerationConfig | None): Generation parameters.
+            **kwargs (Any): Extra generation parameters.
+
+        Returns:
+            StructuredT: The validated instance.
+        """
+        ...
 
 
 @runtime_checkable
@@ -519,18 +604,28 @@ class TextGenerator:
         prompt: str,
         config: GenerationConfig | None,
         overrides: dict[str, Any],
+        stop_event: threading.Event | None = None,
     ) -> str:
-        """Run blocking generation and return the completion text."""
+        """Run blocking generation and return the completion text.
+
+        Raises:
+            GenerationStoppedError: When ``stop_event`` was set while the
+                model was decoding.
+        """
         self.load()
         _torch, transformers = _require_transformers()
         seed, stop = self._resolve_control(overrides, config)
         if seed is not None:
             transformers.set_seed(seed)
         inputs = self._tokenizer(prompt, return_tensors="pt").to(self._model.device)
-        output = self._model.generate(
-            **inputs,
-            **self._assemble_kwargs(overrides, config, stop, self._tokenizer),
-        )
+        gen_kwargs = self._assemble_kwargs(overrides, config, stop, self._tokenizer)
+        if stop_event is not None:
+            gen_kwargs["stopping_criteria"] = _stop_criteria(transformers, stop_event)
+        output = self._model.generate(**inputs, **gen_kwargs)
+        if stop_event is not None and stop_event.is_set():
+            raise GenerationStoppedError(
+                f"generation with {self.model_id} was stopped",
+            )
         text = self._tokenizer.decode(
             output[0][inputs["input_ids"].shape[1] :],
             skip_special_tokens=True,
@@ -573,23 +668,33 @@ class TextGenerator:
         prompt: str,
         *,
         config: GenerationConfig | None = None,
+        stop_event: threading.Event | None = None,
         **kwargs: Any,
     ) -> str:
         """Generate a completion for ``prompt``.
 
         Runs the blocking model in a worker thread so the event loop stays
-        free.
+        free — which is also why stopping it needs ``stop_event``:
+        cancelling the coroutine that awaits this leaves the thread
+        decoding, and the GPU busy, for a reply nobody will read.
 
         Args:
             prompt (str): The input text.
             config (GenerationConfig | None): Typed generation parameters;
                 its set fields layer over the defaults.
+            stop_event (threading.Event | None): Set it to stop decoding
+                at the next token. Pair it with
+                :func:`~tempest_fastapi_sdk.tasks.run_cancellable`, which
+                sets it for you when the work is cancelled.
             **kwargs (Any): Generation overrides (``max_new_tokens``,
                 ``temperature``, ``top_p``, …) forwarded to
                 ``model.generate``; these win over ``config``.
 
         Returns:
             str: The generated text (prompt stripped).
+
+        Raises:
+            GenerationStoppedError: When ``stop_event`` was set mid-flight.
         """
         return await self._tracked(
             "generate",
@@ -599,7 +704,7 @@ class TextGenerator:
                 prompt,
                 self._key_params(config, kwargs),
                 lambda: asyncio.to_thread(
-                    self._generate_sync, prompt, config, dict(kwargs)
+                    self._generate_sync, prompt, config, dict(kwargs), stop_event
                 ),
             ),
         )
@@ -627,6 +732,7 @@ class TextGenerator:
         messages: list[dict[str, str]],
         *,
         config: GenerationConfig | None = None,
+        stop_event: threading.Event | None = None,
         **kwargs: Any,
     ) -> str:
         """Generate a reply for a chat ``messages`` list.
@@ -639,10 +745,15 @@ class TextGenerator:
             messages (list[dict[str, str]]): Chat turns, each
                 ``{"role": ..., "content": ...}``.
             config (GenerationConfig | None): Typed generation parameters.
+            stop_event (threading.Event | None): Set it to stop decoding
+                at the next token.
             **kwargs (Any): Generation overrides (win over ``config``).
 
         Returns:
             str: The assistant reply.
+
+        Raises:
+            GenerationStoppedError: When ``stop_event`` was set mid-flight.
         """
         cache_prompt = json.dumps(messages, sort_keys=True, default=str)
         return await self._tracked(
@@ -653,7 +764,7 @@ class TextGenerator:
                 cache_prompt,
                 self._key_params(config, kwargs),
                 lambda: asyncio.to_thread(
-                    self._chat_sync, messages, config, dict(kwargs)
+                    self._chat_sync, messages, config, dict(kwargs), stop_event
                 ),
             ),
         )
@@ -663,15 +774,32 @@ class TextGenerator:
         messages: list[dict[str, str]],
         config: GenerationConfig | None,
         overrides: dict[str, Any],
+        stop_event: threading.Event | None = None,
     ) -> str:
         """Blocking chat generation via the tokenizer chat template."""
         self.load()
-        prompt = self._tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
+        prompt = self._chat_prompt(messages)
+        return self._generate_sync(prompt, config, overrides, stop_event)
+
+    def _chat_prompt(  # pragma: no cover - needs torch + a real model
+        self,
+        messages: list[dict[str, Any]],
+    ) -> str:
+        """Render chat turns into the model's own prompt format.
+
+        Args:
+            messages (list[dict[str, Any]]): The chat turns.
+
+        Returns:
+            str: The rendered prompt, ready for generation.
+        """
+        return str(
+            self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            ),
         )
-        return self._generate_sync(prompt, config, overrides)
 
     async def chat_with_tools(
         self,
@@ -738,6 +866,7 @@ class TextGenerator:
         *,
         config: GenerationConfig | None = None,
         constrained: bool = True,
+        stop_event: threading.Event | None = None,
         **kwargs: Any,
     ) -> StructuredT:
         """Generate a completion constrained to a Pydantic ``schema``.
@@ -755,6 +884,8 @@ class TextGenerator:
             config (GenerationConfig | None): Typed generation parameters.
             constrained (bool): Enforce the schema during decoding (needs the
                 ``[genai-structured]`` extra) or only parse afterwards.
+            stop_event (threading.Event | None): Set it to stop decoding at
+                the next token.
             **kwargs (Any): Generation overrides (win over ``config``).
 
         Returns:
@@ -764,6 +895,7 @@ class TextGenerator:
             ImportError: When ``constrained`` is ``True`` and the
                 ``[genai-structured]`` extra is missing.
             ValueError: When the output carries no JSON object.
+            GenerationStoppedError: When ``stop_event`` was set mid-flight.
             pydantic.ValidationError: When the JSON fails ``schema`` validation.
         """
         return await asyncio.to_thread(
@@ -773,6 +905,89 @@ class TextGenerator:
             config,
             kwargs,
             constrained,
+            stop_event,
+        )
+
+    async def chat_structured(
+        self,
+        messages: list[dict[str, Any]],
+        schema: type[StructuredT],
+        *,
+        config: GenerationConfig | None = None,
+        constrained: bool = True,
+        stop_event: threading.Event | None = None,
+        **kwargs: Any,
+    ) -> StructuredT:
+        """Generate a chat reply constrained to a Pydantic ``schema``.
+
+        The same call
+        :meth:`~tempest_fastapi_sdk.genai.ollama.OllamaGenerator.chat_structured`
+        answers, so a service that reads documents into schemas runs on a
+        local model or on a daemon without a line changing at the call
+        site — see :class:`StructuredTextBackend`. The turns matter:
+        concatenating a long instruction ahead of a long document makes a
+        model start answering *with* the document, while the same
+        instruction in its own ``system`` turn is respected. Sharing that
+        contract across backends is what makes the two swappable in
+        practice rather than only in type.
+
+        Where the two differ is how the schema is enforced. The daemon
+        takes a JSON schema and constrains decoding itself; here the
+        constraint is a ``lm-format-enforcer`` token filter
+        (``[genai-structured]`` extra), and both paths end in the same
+        :func:`~tempest_fastapi_sdk.genai.structured.parse_structured`.
+
+        Args:
+            messages (list[dict[str, Any]]): Chat turns, each
+                ``{"role": ..., "content": ...}``. Put the instruction in
+                a ``system`` turn and the content being read in ``user``.
+            schema (type[StructuredT]): The Pydantic model to produce.
+            config (GenerationConfig | None): Typed generation parameters.
+            constrained (bool): Enforce the schema during decoding (needs
+                the ``[genai-structured]`` extra) or only parse afterwards.
+            stop_event (threading.Event | None): Set it to stop decoding at
+                the next token.
+            **kwargs (Any): Generation overrides (win over ``config``).
+
+        Returns:
+            StructuredT: The validated instance.
+
+        Raises:
+            ImportError: When ``constrained`` is ``True`` and the
+                ``[genai-structured]`` extra is missing.
+            ValueError: When the output carries no JSON object.
+            GenerationStoppedError: When ``stop_event`` was set mid-flight.
+            pydantic.ValidationError: When the JSON fails ``schema``
+                validation.
+        """
+        return await asyncio.to_thread(
+            self._chat_structured_sync,
+            messages,
+            schema,
+            config,
+            kwargs,
+            constrained,
+            stop_event,
+        )
+
+    def _chat_structured_sync(  # pragma: no cover - needs torch + a real model
+        self,
+        messages: list[dict[str, Any]],
+        schema: type[StructuredT],
+        config: GenerationConfig | None,
+        overrides: dict[str, Any],
+        constrained: bool,
+        stop_event: threading.Event | None = None,
+    ) -> StructuredT:
+        """Blocking schema-constrained chat generation."""
+        self.load()
+        return self._generate_structured_sync(
+            self._chat_prompt(messages),
+            schema,
+            config,
+            overrides,
+            constrained,
+            stop_event,
         )
 
     def _generate_structured_sync(  # pragma: no cover - needs torch + a real model
@@ -782,6 +997,7 @@ class TextGenerator:
         config: GenerationConfig | None,
         overrides: dict[str, Any],
         constrained: bool,
+        stop_event: threading.Event | None = None,
     ) -> StructuredT:
         """Blocking schema-constrained generation."""
         self.load()
@@ -791,7 +1007,7 @@ class TextGenerator:
                 self._tokenizer,
                 schema,
             )
-        text = self._generate_sync(prompt, config, call_overrides)
+        text = self._generate_sync(prompt, config, call_overrides, stop_event)
         return parse_structured(text, schema)
 
     async def stream(  # pragma: no cover - needs torch + a real model
@@ -827,8 +1043,6 @@ class TextGenerator:
             **inputs,
             "streamer": streamer,
         }
-
-        import threading
 
         thread = threading.Thread(target=self._model.generate, kwargs=gen_kwargs)
         thread.start()

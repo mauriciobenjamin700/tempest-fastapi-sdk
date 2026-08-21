@@ -412,7 +412,167 @@ async def run(job_id: UUID) -> None:
     should leave this one alone, and an alert that pages on failures should
     not fire.
 
-## 8. Several stages on the record itself
+## 8. Progress: the bar that does not lie
+
+A status answers "is it done yet?". It does not answer "how much longer?"
+— and that is the question of whoever has been watching the screen for a
+minute and a half.
+
+There are two dishonest ways to answer. A bar that crawls on a timer tells
+a story unrelated to the work. A bar that jumps 0 to 100 when the work
+ends is a spinner wearing a percentage.
+
+The third way is to measure. Run the real work over real inputs, take the
+median of each phase, and declare what you measured:
+
+```python
+# src/tasks/plan.py
+from tempest_fastapi_sdk.tasks import PhasePlan
+
+PLAN: PhasePlan = PhasePlan.from_seconds(
+    {"pdf": 1.0, "table": 30.0, "reading": 19.0},
+    per_kilochar={"table": 0.5, "reading": 0.2},
+)
+```
+
+The medians are the weights: a phase that takes half the time takes half
+the bar. `per_kilochar` is the slope fitted against input size — with it,
+a call over 40,000 characters is not paced like one over 4,000.
+
+The worker then runs each phase through the `ProgressTracker`:
+
+```python
+# src/tasks/extract.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import (
+    BaseJobModel,
+    JobStore,
+    PhasePlan,
+    ProgressTracker,
+    StageInterruptedError,
+)
+
+
+class JobModel(BaseJobModel):
+    """One unit of long work in this application."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+PLAN: PhasePlan = PhasePlan.from_seconds({"table": 30.0, "reading": 19.0})
+
+
+async def read_table(text: str) -> str:
+    """Call the model to transcribe the table.
+
+    Args:
+        text (str): The pages carrying the table.
+
+    Returns:
+        str: The model's reply.
+    """
+    return text
+
+
+async def read_document(job_id: UUID, text: str) -> None:
+    """Read a document, reporting the progress of each phase.
+
+    Args:
+        job_id (UUID): The claimed job.
+        text (str): The already-extracted document.
+    """
+    tracker = ProgressTracker(store, job_id, plan=PLAN)
+    try:
+        table = await tracker.run("table", read_table(text), size=len(text))
+    except StageInterruptedError:
+        return
+    await store.succeed(job_id, result_id=None)
+    del table
+```
+
+Every tick writes `progress` and `stage` on the row, and a phase never
+fills: the interpolation stops at 95% of its span, because "the table call
+is done" is something only the table call finishing can say.
+
+!!! tip "One poll answers both questions"
+    The tick that writes progress is the one that asks whether the user
+    cancelled — same row, same interval. Asking twice would double the
+    traffic to say the same thing.
+
+!!! info "A real count beats the interpolation"
+    When the phase can count — pages extracted out of pages total — use
+    `await tracker.report("pdf", done=read / total)`. A measured number
+    beats an estimate, and only it may reach the phase ceiling.
+
+!!! warning "A local model runs in a thread"
+    Cancelling the coroutine does not stop a thread. For
+    [`TextGenerator`](genai.en.md), pass the same
+    `threading.Event` on both sides — `tracker.run(..., stop_event=event)`
+    and `chat_structured(..., stop_event=event)` — and the decision
+    reaches a model already decoding. Without it, the screen says
+    "cancelled" while the GPU keeps generating.
+
+On the screen side, ask `watch` to emit on progress changes too, or the
+bar will not move:
+
+```python
+# src/ui/pages/extraction.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStatus, JobStore
+
+
+class JobModel(BaseJobModel):
+    """One unit of long work in this application."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+
+
+async def follow(job_id: UUID) -> list[tuple[str, float]]:
+    """Follow a reading to the end, frame by frame.
+
+    Args:
+        job_id (UUID): The job to follow.
+
+    Returns:
+        list[tuple[str, float]]: Each phase and the percentage at that moment.
+    """
+    frames: list[tuple[str, float]] = []
+    async for job in store.watch(
+        job_id,
+        interval=2.0,
+        emit_on=("status", "progress", "stage"),
+    ):
+        frames.append((job.stage, job.progress))
+    return frames
+
+
+async def in_flight() -> list[JobModel]:
+    """List what the progress strip shows.
+
+    Returns:
+        list[JobModel]: The queued jobs and the running ones.
+    """
+    return await store.list_recent(
+        kind="extract",
+        statuses=(JobStatus.QUEUED, JobStatus.RUNNING),
+    )
+```
+
+Plural `statuses` is what a progress screen actually asks: "queued or
+running" is one question, and asking it as two queries makes the two
+halves disagree the moment a worker claims a job between them.
+
+## 9. Several stages on the record itself
 
 `JobStore` above gives long work its own row. That is right when the work
 **is** the thing — an export, an import, a batch. It is the wrong shape
@@ -530,4 +690,6 @@ the row before the task leaves; `claim` separates "queued" from
 and drop the payload; `watch` is the poll with no session left hanging;
 `reclaim_stale` frees what a dead worker left stuck; `cancel` +
 `run_cancellable` stop work already running, cooperatively, because
-there is no other way.
+there is no other way. `PhasePlan` + `ProgressTracker` turn measured phases into the
+percentage the row carries, and `watch(emit_on=...)` is what makes the
+bar move between two status changes.

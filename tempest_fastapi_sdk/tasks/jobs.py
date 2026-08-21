@@ -30,6 +30,12 @@ Three details in here each cost somebody a discovery:
 * **A job whose worker died stays ``RUNNING`` forever** unless something
   readmits it — that is :meth:`JobStore.reclaim_stale`, bounded by
   ``max_attempts`` so a job that kills its worker cannot loop.
+
+A status answers "is it done yet"; it does not answer "how much longer".
+That is :attr:`BaseJobModel.progress` and :attr:`BaseJobModel.stage`,
+written by :meth:`JobStore.report_progress` — and the way to write them
+without inventing a number is
+:class:`~tempest_fastapi_sdk.tasks.ProgressTracker`.
 """
 
 from __future__ import annotations
@@ -46,6 +52,7 @@ from sqlalchemy import (
     JSON,
     TIMESTAMP,
     CursorResult,
+    Float,
     Integer,
     LargeBinary,
     String,
@@ -60,7 +67,7 @@ from tempest_fastapi_sdk.db.model import BaseModel
 from tempest_fastapi_sdk.utils.datetime import utcnow
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable
+    from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -182,6 +189,14 @@ class BaseJobModel(BaseModel):
             claimed; ``None`` while queued.
         finished_at (datetime | None): When it reached ``DONE`` or
             ``FAILED``.
+        stage (str): Which part of the work is running, as the work names
+            it. Free text, because only the work knows its own parts.
+        progress (float): How much of the work is done, ``0.0`` to
+            ``1.0``. Advanced by :meth:`JobStore.report_progress`, which
+            refuses to move it backwards, and set to ``1.0`` by
+            :meth:`JobStore.succeed`. A job that stopped keeps the value
+            it had reached — the bar freezes where the work did, which is
+            the honest picture of a reading that died at 40%.
     """
 
     __abstract__ = True
@@ -198,6 +213,18 @@ class BaseJobModel(BaseModel):
         default=JobStatus.QUEUED.value,
         index=True,
         doc="Lifecycle status (JobStatus value).",
+    )
+    stage: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="",
+        doc="Which part of the work is running, named by the work itself.",
+    )
+    progress: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=0.0,
+        doc="Completed fraction, 0.0 to 1.0.",
     )
     params: Mapped[dict[str, Any]] = mapped_column(
         JSON,
@@ -486,6 +513,59 @@ class JobStore(Generic[JobT]):
                 return None
             return await self._require(session, job_id)
 
+    async def report_progress(
+        self,
+        job_id: UUID,
+        *,
+        progress: float,
+        stage: str | None = None,
+    ) -> bool:
+        """Move a running job's progress bar forward.
+
+        One conditional ``UPDATE``, no read first — the same shape as
+        :meth:`claim`, and for the same reason: a tick that reads the row
+        and writes it back is a lock promotion, which on SQLite fails
+        outright against the interface writing at the same moment.
+
+        **The bar cannot go backwards.** The ``progress <`` clause is in
+        the statement rather than in the caller, because the caller is
+        exactly who cannot enforce it: two ticks can be in flight at once,
+        and the one that arrives second is not the one that measured
+        second. A refused write is not an error — it is the row already
+        being further along than this tick believed.
+
+        A job that is not ``RUNNING`` is not written either. Progress on a
+        cancelled job would repaint a bar the user already stopped.
+
+        Args:
+            job_id (UUID): The job to advance.
+            progress (float): Completed fraction, clamped to ``[0, 1]``.
+            stage (str | None): Which part of the work is running.
+                ``None`` leaves the stage as it is.
+
+        Returns:
+            bool: Whether the row moved — ``False`` when the job is no
+            longer running, or was already further along.
+        """
+        value = min(max(progress, 0.0), 1.0)
+        values: dict[str, Any] = {"progress": value}
+        if stage is not None:
+            values["stage"] = stage
+        async with self._db.get_session_context() as session:
+            result = cast(
+                "CursorResult[Any]",
+                await session.execute(
+                    update(self._model)
+                    .where(
+                        self._model.id == job_id,
+                        self._model.status == JobStatus.RUNNING.value,
+                        self._model.progress < value,
+                    )
+                    .values(**values),
+                ),
+            )
+        return bool(result.rowcount)
+
     async def _finish(
         self,
         job_id: UUID,
@@ -524,6 +604,7 @@ class JobStore(Generic[JobT]):
                         error=error,
                         payload=None,
                         finished_at=utcnow(),
+                        **({"progress": 1.0} if status is JobStatus.DONE else {}),
                     ),
                 ),
             )
@@ -692,6 +773,7 @@ class JobStore(Generic[JobT]):
         *,
         kind: str | None = None,
         status: JobStatus | str | None = None,
+        statuses: Sequence[JobStatus | str] | None = None,
         limit: int = 20,
     ) -> list[JobT]:
         """Return the most recently requested jobs, newest first.
@@ -699,25 +781,40 @@ class JobStore(Generic[JobT]):
         Returns an empty list when nothing matches — "no jobs yet" is a
         successful answer, not a 404.
 
+        ``statuses`` is what a screen showing work in flight actually
+        needs: "queued or running" is one question, and asking it as two
+        queries makes the two halves disagree the moment a worker claims a
+        job between them.
+
         Args:
             kind (str | None): Restrict to one kind of work.
             status (JobStatus | str | None): Restrict to one status.
+            statuses (Sequence[JobStatus | str] | None): Restrict to any
+                of several statuses.
             limit (int): Maximum rows. Defaults to ``20``.
 
         Returns:
             list[JobT]: The matching jobs, newest first.
 
         Raises:
-            ValueError: If ``limit`` is not positive.
+            ValueError: If ``limit`` is not positive, or if both
+                ``status`` and ``statuses`` are given — one of them would
+                silently win.
         """
         if limit <= 0:
             raise ValueError("limit must be positive")
+        if status is not None and statuses is not None:
+            raise ValueError("pass status or statuses, not both")
         async with self._db.get_session_context() as session:
             stmt = select(self._model)
             if kind is not None:
                 stmt = stmt.where(self._model.kind == kind)
             if status is not None:
                 stmt = stmt.where(self._model.status == str(status))
+            if statuses is not None:
+                stmt = stmt.where(
+                    self._model.status.in_([str(value) for value in statuses]),
+                )
             stmt = stmt.order_by(self._model.created_at.desc()).limit(limit)
             return list((await session.execute(stmt)).scalars().all())
 
@@ -802,8 +899,9 @@ class JobStore(Generic[JobT]):
         *,
         interval: float = 2.0,
         timeout: float | None = None,
+        emit_on: Sequence[str] = ("status",),
     ) -> AsyncIterator[JobT]:
-        """Yield the job on every status change until it is terminal.
+        """Yield the job whenever a watched field changes, until it is terminal.
 
         This replaces the ``while True: sleep; get`` every application
         writes by hand — including the part that is easy to get wrong:
@@ -811,38 +909,61 @@ class JobStore(Generic[JobT]):
         its own, so a worker writing to the same database is never
         blocked by the screen watching it.
 
-        The current status is yielded immediately, so a caller that
+        The current state is yielded immediately, so a caller that
         subscribes after the job already finished still gets exactly one
         value and the loop ends.
 
+        ``emit_on`` is what makes this usable for a progress bar. Watching
+        only the status yields three times for a whole reading — claimed,
+        finished, and nothing in between — so a screen driven by it shows a
+        bar that never moves. Add ``"progress"`` and every tick the worker
+        wrote comes through.
+
         Example:
-            >>> async for job in store.watch(job_id, interval=2.0):
-            ...     await session.render(job.status)
+            >>> async for job in store.watch(
+            ...     job_id,
+            ...     interval=2.0,
+            ...     emit_on=("status", "progress", "stage"),
+            ... ):
+            ...     await session.render(job.status, job.progress)
 
         Args:
             job_id (UUID): The job to follow.
             interval (float): Seconds between polls. Defaults to ``2.0``.
             timeout (float | None): Give up after this many seconds.
                 ``None`` — the default — waits for a terminal status.
+            emit_on (Sequence[str]): Column names whose change triggers a
+                yield. Defaults to ``("status",)``.
 
         Yields:
-            JobT: The job, each time its status differs from the last
-            value yielded.
+            JobT: The job, each time one of the watched fields differs
+            from the last value yielded.
 
         Raises:
             JobNotFoundError: When no row has that id.
             TimeoutError: When ``timeout`` elapses with the job still
                 running or queued.
-            ValueError: If ``interval`` is not positive.
+            ValueError: If ``interval`` is not positive, or if ``emit_on``
+                is empty or names a column the model does not have.
         """
         if interval <= 0:
             raise ValueError("interval must be positive")
+        watched = tuple(emit_on)
+        if not watched:
+            raise ValueError("emit_on must name at least one column")
+        unknown = [name for name in watched if not hasattr(self._model, name)]
+        if unknown:
+            raise ValueError(
+                f"emit_on names no column of {self._model.__name__}: "
+                f"{', '.join(sorted(unknown))}",
+            )
         deadline = None if timeout is None else monotonic() + timeout
-        last_status: str | None = None
+        last: tuple[Any, ...] | None = None
         while True:
             job = await self.get(job_id)
-            if job.status != last_status:
-                last_status = job.status
+            current = tuple(getattr(job, name) for name in watched)
+            if current != last:
+                last = current
                 yield job
             if job.is_terminal:
                 return

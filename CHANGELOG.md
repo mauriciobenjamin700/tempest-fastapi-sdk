@@ -5,6 +5,84 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.242.0] — 2026-08-21
+
+### Added
+
+- **`BaseJobModel.progress` + `BaseJobModel.stage`, and
+  `JobStore.report_progress(job_id, progress=..., stage=...)`** — the
+  column a progress bar reads and the one conditional `UPDATE` that moves
+  it. A status answers "is it done yet?"; it never answered "how much
+  longer?", which is the question of whoever has been watching a screen
+  for a minute and a half.
+
+    The statement carries its own guard rails, because the caller cannot:
+    `WHERE status = 'running' AND progress < :value`. Two ticks can be in
+    flight at once and the one that arrives second is not the one that
+    measured second, so the bar can only move forward; and a cancelled job
+    is never repainted. No read before the write — the same shape as
+    `claim`, for the same SQLite lock-promotion reason.
+
+    `succeed()` sets `progress = 1.0`. `fail()` and `cancel()` leave it
+    where it stopped: a reading that died at 40% shows 40%.
+
+    **Migration:** two columns on every table that subclasses
+    `BaseJobModel` (`ALTER TABLE <jobs> ADD COLUMN stage VARCHAR(64) NOT
+    NULL DEFAULT ''` / `ADD COLUMN progress FLOAT NOT NULL DEFAULT 0`).
+
+- **`PhasePlan` + `Phase` + `ProgressTracker`
+  (`tempest_fastapi_sdk.tasks`)** — measured phases turned into the number
+  on the row. The two dishonest bars are well known: one that crawls on a
+  timer tells a story unrelated to the work, and one that jumps 0 → 100 at
+  the end is a spinner wearing a percentage. This is the third way — the
+  caller measures its phases, declares them, and the tracker interpolates
+  inside the phase that is running while pinning the boundaries to real
+  events.
+
+    ```python
+    PLAN = PhasePlan.from_seconds({"pdf": 1.0, "table": 36.0, "reading": 23.0})
+    tracker = ProgressTracker(store, job.id, plan=PLAN)
+    table = await tracker.run("table", backend.chat_structured(msgs, Schema))
+    ```
+
+    Medians are the weights, so re-measuring is editing numbers rather
+    than recomputing shares. A phase never fills — interpolation stops at
+    `ceiling_margin` (0.95) of its span — and `tracker.report(phase,
+    done=...)` overrides it when the work can actually count. The tick
+    that writes progress is the same tick `run_cancellable` uses to ask
+    about cancellation: same row, same interval, one query each way.
+
+- **`JobStore.list_recent(statuses=...)`** — "queued or running" is one
+  question. Asking it as two calls makes the two halves disagree the
+  moment a worker claims a job between them. Passing both `status` and
+  `statuses` raises `ValueError` instead of letting one win silently.
+
+- **`JobStore.watch(emit_on=...)`** — watching only the status yields
+  three times for a whole reading (claimed, finished, nothing in
+  between), so a bar driven by it never moves. `emit_on=("status",
+  "progress", "stage")` yields on every tick the worker wrote. Default is
+  unchanged, and an unknown column name raises instead of never firing.
+
+- **`TextGenerator.chat_structured(messages, schema)` + the
+  `StructuredTextBackend` protocol** — the local transformers backend now
+  answers the same structured call as `OllamaGenerator`, so a service that
+  reads documents into schemas types against the protocol and runs on
+  either without a line changing at the call site. Both classes are
+  verified against the runtime-checkable protocol in
+  `tests/genai/test_structured_parity.py`.
+
+- **`stop_event` on local generation and on `run_cancellable`** — a thread
+  cannot be cancelled from outside, so cancelling the coroutine that
+  awaits `asyncio.to_thread(...)` left the GPU decoding a reply nobody
+  would read. `generate`, `chat`, `generate_structured` and
+  `chat_structured` accept a `threading.Event` wired to a transformers
+  stopping criterion (asked after every token), and `run_cancellable` sets
+  it before cancelling the task. Measured both ways in
+  `tests/genai/test_structured_parity.py`: with the event the thread
+  observes the stop and returns early; without it the thread runs to
+  completion after the await is abandoned. A stopped generation raises the
+  new `GenerationStoppedError`.
+
 ## [0.241.0] — 2026-08-20
 
 ### Changed
