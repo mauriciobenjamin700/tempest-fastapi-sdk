@@ -27,6 +27,7 @@ Todos rodam dentro do `make check`.
 | `test_reexport_guard` | `from x import Y as Y` + `__all__` em `__init__.py` | — |
 | `test_vacuous_guard` | teste afirma cruzar processo/réplica e não cruza | — |
 | `test_alias_guard` | `Field(alias=...)` voltando | — |
+| `test_pydantic_mypy_guard` | `plugins = ["pydantic.mypy"]` sem `init_typed = true` (aqui e no template do `tempest new`) | serviço já scaffoldado, que nenhum arquivo daqui alcança |
 | `test_agent_docs_guard` | roster desta tabela bate com o disco; link e caminho citado em arquivo de agente existem | conteúdo da prosa |
 | `test_version_agreement` | `pyproject.toml` e `__version__` concordam | — |
 | `test_wheel_payload` | payload não-`.py` da wheel é exatamente a allowlist | — |

@@ -285,6 +285,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   SDK and `tempest new` templates (ANN401 off — `Any` is valid); a
   `[tool.tempest] typing_strictness` knob (`lenient`/`standard`/`strict`,
   `--strictness` override) layered onto `tempest lint`/`fix`/`type`/`check`.
+  **`[tool.pydantic-mypy] init_typed = true` (v0.241.0)** in the SDK's own
+  `pyproject.toml` and in the `tempest new` template: the plugin alone types
+  every model constructor argument `Any`, so no schema construction was
+  checked at all. Guard: `tests/test_pydantic_mypy_guard.py`. A service
+  scaffolded before v0.241.0 needs the block pasted in by hand — mypy reads
+  plugin config only from the config file, so `tempest check` cannot layer it
+  the way it layers `--strict`.
 - **Vision** (`[vision]` extra) — `tempest_fastapi_sdk.vision` wrapping
   `ort-vision-sdk`: lazy `Detector`/`Classifier`/`Segmenter` + prediction
   schemas + `to_detection_schemas`/`to_classification_schema`/

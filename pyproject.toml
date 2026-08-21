@@ -447,6 +447,13 @@ warn_unreachable = true
 strict_equality = true
 plugins = ["pydantic.mypy"]
 
+# `init_typed` makes the plugin type each model constructor argument with the
+# field's annotation instead of `Any`; without it no schema construction in
+# this package is checked at all.
+[tool.pydantic-mypy]
+init_typed = true
+warn_required_dynamic_aliases = true
+
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 disallow_untyped_defs = false

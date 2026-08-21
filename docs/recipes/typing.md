@@ -45,6 +45,78 @@ def soma(a, b):        # falta tipo em a, b e no retorno
 #       ANN201 Missing return type annotation for public function `soma`
 ```
 
+## O plugin do pydantic só checa construtor com `init_typed`
+
+`plugins = ["pydantic.mypy"]` sozinho **não checa argumento nenhum** de
+construtor de modelo. O plugin roda — é ele que sintetiza um parâmetro
+keyword-only por campo — mas `init_typed` nasce `False`, então cada um
+desses parâmetros sai anotado `Any`:
+
+```python
+from typing import reveal_type
+
+from tempest_fastapi_sdk.schemas import BaseSchema
+
+
+class Probe(BaseSchema):
+    """A schema with two typed fields."""
+
+    name: str
+    age: int
+
+
+reveal_type(Probe.__init__)
+Probe(name="x", age="doze")
+```
+
+Com o plugin declarado e mais nada (mypy 2.3.0, pydantic 2.13.4):
+
+```text
+note: Revealed type is "def (__pydantic_self__: Probe, *, name: Any, age: Any, **kwargs: Any)"
+Success: no issues found in 1 source file
+```
+
+Ligar é um bloco no `pyproject.toml`:
+
+```toml
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_typed = true
+warn_required_dynamic_aliases = true
+```
+
+O mesmo arquivo, depois:
+
+```text
+note: Revealed type is "def (__pydantic_self__: Probe, *, name: str, age: int, **kwargs: Any)"
+error: Argument "age" to "Probe" has incompatible type "str"; expected "int"  [arg-type]
+```
+
+Pylance e pyright não carregam plugin nenhum — leem a anotação direto e
+sempre marcaram essas chamadas. Sem o setting, o editor e a CI discordam, e
+quem está errado é a CI.
+
+!!! check "Projeto novo já nasce com isso"
+    O `tempest new` escreve o bloco desde a v0.241.0, e o próprio SDK passou
+    a usá-lo: ligar não custou correção nenhuma nos 409 arquivos do pacote —
+    é uma classe de erro que nunca foi reportada, não um backlog.
+
+!!! warning "Serviço scaffoldado antes da v0.241.0"
+    Cole o bloco no `pyproject.toml` do serviço à mão. O `tempest check` não
+    tem como ligar por você: mypy lê config de plugin **só** do arquivo de
+    config, e não expõe flag de linha de comando equivalente.
+
+!!! note "O que o `init_typed` passa a recusar"
+    Entrada que o pydantic **coagiria** em runtime. Um campo `Decimal`
+    recebendo `"1.5"` vira `error: Argument "amount" ... incompatible type
+    "str"; expected "Decimal"` no mypy, enquanto em runtime o valor continua
+    construindo como `Decimal('1.5')`. Em serviço isso é o ponto — a
+    anotação vira o contrato, e quem quer coagir escreve
+    `Decimal("1.5")` no call site. Em biblioteca de construtor público,
+    decida caso a caso.
+
 ## Configurar o rigor da tipagem (`[tool.tempest]`)
 
 Quão rigorosos os gates são é um knob no `pyproject.toml`. Um único

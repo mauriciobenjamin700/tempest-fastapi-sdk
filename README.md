@@ -3555,7 +3555,17 @@ tempest check                    # uses the configured level
 tempest check --strictness strict  # override for this run
 ```
 
-`ANN401` (forbid `Any`) is never enabled at any level. Projects scaffolded by `tempest new` ship this configured. See the [Typing recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/typing/) for the full guide.
+`ANN401` (forbid `Any`) is never enabled at any level. Projects scaffolded by `tempest new` ship this configured.
+
+One setting is easy to miss and worth checking in an older service: `plugins = ["pydantic.mypy"]` alone types **every** model constructor argument as `Any`, so a `str` handed to an `int` field passes `tempest check` clean. `tempest new` writes the fix as of v0.241.0 — paste it into services scaffolded before that, since mypy reads plugin config only from the config file:
+
+```toml
+[tool.pydantic-mypy]
+init_typed = true
+warn_required_dynamic_aliases = true
+```
+
+See the [Typing recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/typing/) for the full guide, including what `init_typed` starts refusing.
 
 ### Hardened static files + cookie helpers recipe
 

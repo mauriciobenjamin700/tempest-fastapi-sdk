@@ -44,6 +44,78 @@ def add(a, b):         # missing types on a, b and the return
 #       ANN201 Missing return type annotation for public function `add`
 ```
 
+## The pydantic plugin only checks constructors with `init_typed`
+
+`plugins = ["pydantic.mypy"]` on its own checks **no argument** of any model
+constructor. The plugin does run — it is what synthesizes one keyword-only
+parameter per field — but `init_typed` defaults to `False`, so every one of
+those parameters comes out annotated `Any`:
+
+```python
+from typing import reveal_type
+
+from tempest_fastapi_sdk.schemas import BaseSchema
+
+
+class Probe(BaseSchema):
+    """A schema with two typed fields."""
+
+    name: str
+    age: int
+
+
+reveal_type(Probe.__init__)
+Probe(name="x", age="doze")
+```
+
+With the plugin declared and nothing else (mypy 2.3.0, pydantic 2.13.4):
+
+```text
+note: Revealed type is "def (__pydantic_self__: Probe, *, name: Any, age: Any, **kwargs: Any)"
+Success: no issues found in 1 source file
+```
+
+Turning it on is one block in `pyproject.toml`:
+
+```toml
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_typed = true
+warn_required_dynamic_aliases = true
+```
+
+The same file, afterwards:
+
+```text
+note: Revealed type is "def (__pydantic_self__: Probe, *, name: str, age: int, **kwargs: Any)"
+error: Argument "age" to "Probe" has incompatible type "str"; expected "int"  [arg-type]
+```
+
+Pylance and pyright load no plugin at all — they read the annotations
+directly and always flagged these call sites. Without the setting your
+editor and your CI disagree, and CI is the one that is wrong.
+
+!!! check "New projects ship it"
+    `tempest new` writes the block as of v0.241.0, and the SDK itself now
+    uses it: turning it on cost zero fixes across the package's 409 source
+    files — it is a class of error that was never reported, not a backlog.
+
+!!! warning "Service scaffolded before v0.241.0"
+    Paste the block into your service's `pyproject.toml` by hand.
+    `tempest check` cannot turn it on for you: mypy reads plugin config
+    **only** from the config file, and exposes no command-line flag for it.
+
+!!! note "What `init_typed` starts refusing"
+    Input pydantic **would** coerce at runtime. A `Decimal` field handed
+    `"1.5"` becomes `error: Argument "amount" ... incompatible type "str";
+    expected "Decimal"` under mypy, while at runtime the value still builds
+    as `Decimal('1.5')`. In a service that is the point — the annotation
+    becomes the contract, and callers who want the coercion write
+    `Decimal("1.5")` at the call site. In a library with public
+    constructors, decide case by case.
+
 ## Configure typing strictness (`[tool.tempest]`)
 
 How strict the gates are is a knob in `pyproject.toml`. One field
