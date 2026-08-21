@@ -413,6 +413,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   posts `format` at the top level of `/api/chat`, where the daemon reads
   it (a schema passed as a keyword to `chat()` lands in `options` and is
   ignored silently, so an explicit `format=` now raises);
+  **backend parity (v0.242.0):** the same `chat_structured(messages, schema)`
+  on `TextGenerator`, plus the runtime-checkable `StructuredTextBackend`
+  protocol both satisfy, so a document-reading service swaps daemon for
+  local weights without touching the call site; local generation takes a
+  `stop_event` (a transformers stopping criterion, asked every token)
+  because cancelling the coroutine that awaits a thread stops nothing —
+  measured both ways, and `run_cancellable(stop_event=...)` sets it;
   **`VisionTextGenerator`** local VLM
   (`[genai-vlm]`) (v0.143); RAG **`Reranker`** cross-encoder (v0.144) +
   **`HybridRetriever`** BM25+dense RRF (`reciprocal_rank_fusion`, `rank-bm25`
@@ -815,7 +822,13 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `succeed`/`fail` that drop the payload, `list_recent`, `reclaim_stale`
   (bounded by `max_attempts`) and `watch()` polling without holding a
   session. The symmetric half of the outbox: message to publish vs work
-  to execute. **Worker lifespan (v0.227.0):** `@tq.on_startup` / `@tq.on_shutdown`
+  to execute. **Progress (v0.242.0):** `progress` + `stage` columns,
+  `report_progress()` as a conditional `UPDATE` that cannot rewind the bar
+  or repaint a cancelled job, `list_recent(statuses=...)` for the one
+  "queued or running" query, `watch(emit_on=...)` so a bar moves between
+  status changes, and `PhasePlan` + `ProgressTracker` — measured phase
+  weights interpolated inside the running phase, never filling it, with
+  the progress tick doubling as the cancellation check. **Worker lifespan (v0.227.0):** `@tq.on_startup` / `@tq.on_shutdown`
   (zero-argument hooks, sync or async, `scope="worker"|"client"|"both"`,
   worker by default) and `resources=[db, broker]` / `tq.use(...)` over
   the `LifecycleResource` protocol — the worker had no `lifespan`, so

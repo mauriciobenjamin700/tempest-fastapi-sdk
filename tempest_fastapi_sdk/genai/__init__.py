@@ -150,6 +150,12 @@ from tempest_fastapi_sdk.genai.structured import (
     parse_structured_list as parse_structured_list,
 )
 from tempest_fastapi_sdk.genai.text import (
+    GenerationStoppedError as GenerationStoppedError,
+)
+from tempest_fastapi_sdk.genai.text import (
+    StructuredTextBackend as StructuredTextBackend,
+)
+from tempest_fastapi_sdk.genai.text import (
     TextBackend as TextBackend,
 )
 from tempest_fastapi_sdk.genai.text import (
@@ -210,6 +216,7 @@ __all__: list[str] = [
     "GeneratedImage",
     "GenerationCache",
     "GenerationConfig",
+    "GenerationStoppedError",
     "HardwareInfo",
     "ImageGenerationConfig",
     "ImageGenerator",
@@ -235,6 +242,7 @@ __all__: list[str] = [
     "ServiceUsage",
     "SpeechToTextModel",
     "StructuredFormatError",
+    "StructuredTextBackend",
     "SubjectUsage",
     "TextBackend",
     "TextGenerator",

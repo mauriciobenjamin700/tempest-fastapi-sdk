@@ -24,7 +24,7 @@ Both shapes exist in the SDK and solve different problems:
 | Shape | When | Recipe |
 | --- | --- | --- |
 | `JobStore` — one row per unit of work | the work **is** the thing: an export, an import, a nightly batch | [Jobs](jobs.md) |
-| `StageMap` — status columns on the record | the work **decorates** a record the screen is already showing | [Jobs §8](jobs.md#8-several-stages-on-the-record-itself) |
+| `StageMap` — status columns on the record | the work **decorates** a record the screen is already showing | [Jobs §9](jobs.en.md#9-several-stages-on-the-record-itself) |
 
 A transcribed audio file is the second case. The screen opens the document
 either way; a separate jobs table becomes a second query and a join to

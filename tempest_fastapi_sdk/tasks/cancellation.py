@@ -32,6 +32,15 @@ the wrapper while the thread runs on to completion, still holding the CPU
 and still competing with the next job. For that shape, check between steps
 instead, and check again before writing the result.
 
+``stop_event`` is the exception that proves it. A thread cannot be
+cancelled, but it can be *asked*, and some libraries offer the hook: local
+generation checks its stopping criteria after every token, so an event set
+here reaches a model already decoding
+(:meth:`~tempest_fastapi_sdk.genai.TextGenerator.chat_structured` takes the
+same event). The event is set before the coroutine is cancelled, so the
+thread starts winding down at the moment the decision is made rather than
+whenever it happens to finish.
+
 That last check matters even with this helper, and it is a check of
 **ownership**, not of cancellation: "this stage is no longer mine" covers
 being cancelled *and* being restarted by a second run in the meantime. In
@@ -50,6 +59,7 @@ import logging
 from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
+    import threading
     from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
@@ -84,17 +94,23 @@ async def run_cancellable(
     *,
     interrupted: Callable[[], Awaitable[bool]],
     poll_seconds: float = DEFAULT_POLL_SECONDS,
+    stop_event: threading.Event | None = None,
 ) -> ResultT:
     """Run ``work``, aborting it as soon as ``interrupted()`` says to.
 
     Args:
         work (Awaitable[ResultT]): The coroutine doing the long work. It
             must be genuinely cancellable — async I/O, not a
-            ``to_thread`` wrapper (see the module docstring).
+            ``to_thread`` wrapper (see the module docstring) — unless it
+            honours ``stop_event``.
         interrupted (Callable[[], Awaitable[bool]]): Polled between checks;
             ``True`` means stop. Usually
             :meth:`~tempest_fastapi_sdk.tasks.JobStore.cancellation_watch`.
         poll_seconds (float): Seconds between checks.
+        stop_event (threading.Event | None): Set before the coroutine is
+            cancelled, so work running in a thread that watches this event
+            stops too. Without it, a thread keeps going after the await is
+            abandoned.
 
     Returns:
         ResultT: Whatever ``work`` returned, when it finished first.
@@ -116,6 +132,12 @@ async def run_cancellable(
         raise ValueError("poll_seconds must be positive")
 
     task = asyncio.ensure_future(work)
+
+    def stop_the_thread() -> None:
+        """Tell work running in a thread to wind down."""
+        if stop_event is not None:
+            stop_event.set()
+
     try:
         while True:
             done, _pending = await asyncio.wait({task}, timeout=poll_seconds)
@@ -138,11 +160,13 @@ async def run_cancellable(
                 continue
 
             if should_stop:
+                stop_the_thread()
                 raise StageInterruptedError
     finally:
         # Covers both ways of leaving without the result: the raise above,
         # and the worker itself being shut down mid-poll.
         if not task.done():
+            stop_the_thread()
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task

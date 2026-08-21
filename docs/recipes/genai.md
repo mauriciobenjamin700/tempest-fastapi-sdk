@@ -1431,6 +1431,68 @@ rota estruturada recomendada, sem biblioteca extra**.
     Qwen2.5-3B). O `constrained=False` continua disponível pra best-effort
     sem o extra.
 
+    Desde a v0.242.0 ele também expõe `chat_structured(messages, schema)`,
+    a **mesma** chamada do daemon: o serviço que lê documentos tipa contra
+    `StructuredTextBackend` e roda nos dois sem mudar uma linha no call
+    site. A separação instrução/documento vale igual aqui — o template de
+    chat do tokenizer é aplicado antes de gerar.
+
+    ```python
+    import asyncio
+    import threading
+
+    from pydantic import BaseModel
+    from tempest_fastapi_sdk.genai import StructuredTextBackend, TextGenerator
+
+
+    class NotaFiscal(BaseModel):
+        numero: str
+        total_centavos: int
+
+
+    async def ler(backend: StructuredTextBackend) -> NotaFiscal:
+        """Lê a nota com qualquer backend estruturado.
+
+        Args:
+            backend (StructuredTextBackend): Daemon Ollama ou modelo local.
+
+        Returns:
+            NotaFiscal: Os campos extraídos.
+        """
+        return await backend.chat_structured(
+            [
+                {"role": "system", "content": "Extraia os campos da nota."},
+                {"role": "user", "content": "NF-1 — total R$ 49,90"},
+            ],
+            NotaFiscal,
+        )
+
+
+    async def main() -> None:
+        """Run this example."""
+        parar = threading.Event()
+        local = TextGenerator("Qwen/Qwen2.5-3B-Instruct")
+        nota: NotaFiscal = await local.chat_structured(
+            [{"role": "user", "content": "NF-1 — total R$ 49,90"}],
+            NotaFiscal,
+            stop_event=parar,
+        )
+        del nota
+
+
+    asyncio.run(main())
+    ```
+
+!!! warning "Cancelar o modelo local exige `stop_event`"
+    A geração local roda numa thread, e thread não se cancela de fora:
+    abandonar a corotina deixa a GPU produzindo uma resposta que ninguém
+    vai ler. O `stop_event` é como a decisão chega lá dentro — os critérios
+    de parada do transformers são consultados a cada token. Passe o mesmo
+    evento para
+    [`run_cancellable`](jobs.md#8-progresso-a-barra-que-nao-mente), que o
+    aciona ao cancelar. No daemon isso não é preciso: abortar a requisição
+    HTTP já para a geração.
+
 !!! tip "Só o parse"
     `parse_structured(texto, schema)` extrai o JSON de uma saída crua
     (tolera cercas markdown e texto ao redor) e valida contra o schema —

@@ -409,7 +409,168 @@ async def executar(job_id: UUID) -> None:
     mas nada deu errado. Uma tela que destaca `failed` deve deixar este em
     paz, e um alerta que dispara em falha não deve tocar.
 
-## 8. Vários estágios no próprio registro
+## 8. Progresso: a barra que não mente
+
+O status responde "já terminou?". Ele não responde "quanto falta?" — e é
+essa a pergunta de quem está olhando a tela há um minuto e meio.
+
+Há dois jeitos desonestos de responder. Uma barra que anda no relógio
+conta uma história que não tem relação com o trabalho. Uma barra que pula
+de 0 a 100 quando o trabalho acaba é um spinner vestido de porcentagem.
+
+O terceiro jeito é medir. Rode o trabalho real sobre entradas reais, tire
+a mediana de cada fase, e declare o que mediu:
+
+```python
+# src/tasks/plan.py
+from tempest_fastapi_sdk.tasks import PhasePlan
+
+PLAN: PhasePlan = PhasePlan.from_seconds(
+    {"pdf": 1.0, "table": 30.0, "reading": 19.0},
+    per_kilochar={"table": 0.5, "reading": 0.2},
+)
+```
+
+As medianas são os pesos: a fase que leva metade do tempo ocupa metade da
+barra. `per_kilochar` é a inclinação ajustada contra o tamanho da entrada
+— com ela, uma chamada sobre 40.000 caracteres não é cronometrada como
+uma sobre 4.000.
+
+O worker então roda cada fase pelo `ProgressTracker`:
+
+```python
+# src/tasks/extract.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import (
+    BaseJobModel,
+    JobStore,
+    PhasePlan,
+    ProgressTracker,
+    StageInterruptedError,
+)
+
+
+class JobModel(BaseJobModel):
+    """Uma unidade de trabalho longo desta aplicação."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+PLAN: PhasePlan = PhasePlan.from_seconds({"table": 30.0, "reading": 19.0})
+
+
+async def ler_tabela(texto: str) -> str:
+    """Chama o modelo para transcrever a tabela.
+
+    Args:
+        texto (str): As páginas que carregam a tabela.
+
+    Returns:
+        str: A resposta do modelo.
+    """
+    return texto
+
+
+async def ler_documento(job_id: UUID, texto: str) -> None:
+    """Lê um documento reportando o progresso de cada fase.
+
+    Args:
+        job_id (UUID): O job reivindicado.
+        texto (str): O documento já extraído.
+    """
+    tracker = ProgressTracker(store, job_id, plan=PLAN)
+    try:
+        tabela = await tracker.run("table", ler_tabela(texto), size=len(texto))
+    except StageInterruptedError:
+        return
+    await store.succeed(job_id, result_id=None)
+    del tabela
+```
+
+Cada tick escreve `progress` e `stage` na linha, e a fase nunca enche:
+a interpolação para em 95% do trecho dela, porque "a chamada da tabela
+acabou" é coisa que só a chamada da tabela terminando pode dizer.
+
+!!! tip "Um poll responde às duas perguntas"
+    O tick que escreve o progresso é o mesmo que pergunta se o usuário
+    cancelou — é a mesma linha, no mesmo intervalo. Perguntar duas vezes
+    dobraria o tráfego para dizer o mesmo.
+
+!!! info "Contador real ganha da interpolação"
+    Quando a fase sabe contar — páginas extraídas de páginas totais —
+    use `await tracker.report("pdf", done=lidas / total)`. Um número
+    medido vence uma estimativa, e só ele pode encostar no teto da fase.
+
+!!! warning "Modelo local roda numa thread"
+    Cancelar a corotina não para uma thread. Para
+    [`TextGenerator`](genai.md), passe o mesmo
+    `threading.Event` nos dois lados — `tracker.run(..., stop_event=evento)`
+    e `chat_structured(..., stop_event=evento)` — e a decisão alcança um
+    modelo que já está decodificando. Sem isso, a tela mostra
+    "cancelado" enquanto a GPU continua gerando.
+
+Do lado da tela, peça para o `watch` emitir também em mudança de
+progresso, senão a barra não anda:
+
+```python
+# src/ui/pages/extraction.py
+from uuid import UUID
+
+from tempest_fastapi_sdk.db import AsyncDatabaseManager
+from tempest_fastapi_sdk.tasks import BaseJobModel, JobStatus, JobStore
+
+
+class JobModel(BaseJobModel):
+    """Uma unidade de trabalho longo desta aplicação."""
+
+    __tablename__ = "jobs"
+
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///./app.db")
+store: JobStore[JobModel] = JobStore(db, model=JobModel)
+
+
+async def acompanhar(job_id: UUID) -> list[tuple[str, float]]:
+    """Segue uma leitura até o fim, quadro a quadro.
+
+    Args:
+        job_id (UUID): O job a seguir.
+
+    Returns:
+        list[tuple[str, float]]: Cada fase e o percentual naquele instante.
+    """
+    quadros: list[tuple[str, float]] = []
+    async for job in store.watch(
+        job_id,
+        interval=2.0,
+        emit_on=("status", "progress", "stage"),
+    ):
+        quadros.append((job.stage, job.progress))
+    return quadros
+
+
+async def em_andamento() -> list[JobModel]:
+    """Lista o que a faixa de progresso mostra.
+
+    Returns:
+        list[JobModel]: Os jobs na fila e os que estão rodando.
+    """
+    return await store.list_recent(
+        kind="extract",
+        statuses=(JobStatus.QUEUED, JobStatus.RUNNING),
+    )
+```
+
+`statuses` no plural é o que uma tela de acompanhamento de fato pergunta:
+"na fila ou rodando" é uma pergunta só, e fazê-la em duas consultas deixa
+as duas metades discordarem no instante em que um worker reivindica um
+job entre elas.
+
+## 9. Vários estágios no próprio registro
 
 O `JobStore` acima dá ao trabalho longo uma linha própria. É a forma certa
 quando o trabalho **é** a coisa — uma exportação, uma importação, um lote.
@@ -524,4 +685,6 @@ linha antes de a task sair; `claim` separa "na fila" de "rodando" e é
 seguro sob disputa; `succeed`/`fail` fecham e apagam o `payload`;
 `watch` é o polling sem sessão pendurada; `reclaim_stale` devolve o que
 um worker morto deixou preso; `cancel` + `run_cancellable` param o que
-está rodando, de forma cooperativa, porque não existe outra.
+está rodando, de forma cooperativa, porque não existe outra. `PhasePlan` + `ProgressTracker` transformam fases medidas na
+porcentagem que a linha carrega, e `watch(emit_on=...)` é o que faz
+a barra andar entre duas mudanças de status.
