@@ -330,7 +330,7 @@ WS_MAX_MESSAGE_BYTES=65536             # 64 KiB default — closes with 1009 whe
 **Single-process by design.** `WebSocketHub` keeps state in the process's memory. For a multi-replica deployment:
 
 - **Option 1 — Sticky sessions**: the load balancer routes the same client to the same replica every time. Works, but you give up balancing.
-- **Option 2 — Pub/sub fan-out** (future v0.34+): an HTTP handler publishes to a Redis pub/sub / RabbitMQ topic, and each hub replica re-emits to its local sockets. Identical surface, transparent plumbing. **Not shipped yet** — for v0.33.0 use Option 1, or run a single replica of the WS service behind a separate HTTP balancer.
+- **Option 2 — Pub/sub fan-out** (not implemented yet): an HTTP handler publishes to a Redis pub/sub / RabbitMQ topic, and each hub replica re-emits to its local sockets. Identical surface, transparent plumbing. **Not shipped yet**, with no date — use Option 1, or run a single replica of the WS service behind a separate HTTP balancer.
 
 **When to prefer SSE over WebSocket:**
 

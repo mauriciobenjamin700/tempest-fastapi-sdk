@@ -51,7 +51,7 @@ http_request_duration_seconds_bucket{le="0.005",method="GET",path="/api/users"} 
 http_requests_in_progress{method="GET"} 2.0
 ```
 
-Default buckets (`DEFAULT_LATENCY_BUCKETS`) cover 5ms → 30s — fits typical APIs. Override with `PrometheusMiddleware(registry=..., latency_buckets=(0.001, 0.005, 0.025, 0.1, 0.5, 2, 10))` when your workload is more granular.
+Default buckets (`DEFAULT_LATENCY_BUCKETS`) cover 5ms → 10s — fits typical APIs. Override with `PrometheusMiddleware(registry=..., latency_buckets=(0.001, 0.005, 0.025, 0.1, 0.5, 2, 10))` when your workload is more granular.
 
 !!! tip "Path normalization"
     The `path` label uses the route template (`/api/users/{user_id}`), not the concrete path, so cardinality doesn't explode with unique UUIDs. That comes from FastAPI/Starlette — no config needed on your end.

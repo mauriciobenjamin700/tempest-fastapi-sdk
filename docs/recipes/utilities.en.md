@@ -61,21 +61,19 @@ pair, **show the plaintext once** to the user, and persist only the hash
 (SHA-256). Verification is constant-time.
 
 ```python
-from datetime import datetime, timezone
-
 from tempest_fastapi_sdk import (
     generate_opaque_token,
     hash_opaque_token,
     verify_opaque_token,
 )
 
-submitted = datetime.now(timezone.utc)
-
-
 plaintext, token_hash = generate_opaque_token()   # show plaintext once; store token_hash
-# ... later, when the token comes back:
+
+# ... later, when the client sends the token back:
+submitted: str = plaintext                        # what arrived on the request
 ok: bool = verify_opaque_token(submitted, token_hash)
-# hash_opaque_token(x) to re-hash on demand
+
+rehashed: str = hash_opaque_token(submitted)      # to re-hash on demand
 ```
 
 !!! tip "Why opaque, not JWT"

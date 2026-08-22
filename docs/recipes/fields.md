@@ -116,8 +116,11 @@ class CategorySchema(BaseSchema):
 ## Locale
 
 `LocaleField` é o par do `UFField` para idioma: um `Annotated[Locale, ...]`
-que **normaliza a entrada** e devolve um membro do enum
-[`Locale`](../reference.md). Aceita variação de caixa/separador
+que **normaliza a entrada** para a forma canônica do enum
+[`Locale`](../reference.md). Sob `BaseSchema` o atributo populado é a `str`
+canônica, não o membro — `BaseSchema` liga `use_enum_values=True`, então
+`"pt_BR"` entra e `"pt-BR"` sai, e `isinstance(valor, Locale)` é `False`.
+Num `pydantic.BaseModel` puro, sem essa config, você recebe o membro. Aceita variação de caixa/separador
 (`"pt_BR"`, `"PT-BR"`) e o subtag primário (`"pt"` → `Locale.PT_BR`); uma
 tag fora do enum vira `422`.
 

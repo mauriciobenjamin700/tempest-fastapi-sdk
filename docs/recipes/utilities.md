@@ -61,21 +61,19 @@ Para API keys, tokens de reset/convite etc.: gere um par
 o hash (SHA-256). A verificação é constant-time.
 
 ```python
-from datetime import datetime, timezone
-
 from tempest_fastapi_sdk import (
     generate_opaque_token,
     hash_opaque_token,
     verify_opaque_token,
 )
 
-submitted = datetime.now(timezone.utc)
-
-
 plaintext, token_hash = generate_opaque_token()   # mostre plaintext 1x; salve token_hash
-# ... mais tarde, ao receber o token de volta:
+
+# ... mais tarde, quando o cliente devolve o token:
+submitted: str = plaintext                        # o que chegou na requisição
 ok: bool = verify_opaque_token(submitted, token_hash)
-# hash_opaque_token(x) para re-hashear sob demanda
+
+rehashed: str = hash_opaque_token(submitted)      # para re-hashear sob demanda
 ```
 
 !!! tip "Por que opaco e não JWT"

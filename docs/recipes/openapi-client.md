@@ -503,7 +503,7 @@ Nomes de classe sintetizados são limitados a 55 caracteres. O que aperta não �
 a linha do `class`, e sim a entrada do `Attributes:` na docstring: ali a
 anotação se compõe em volta do nome (`dict[str, Nome] | None` custa mais 18
 colunas num indent de 12) e o `ruff format` não quebra nem uma coisa nem
-outra. Medido na spec da OpenPix: 6 de 358 nomes truncados, nenhuma colisão
+outra. Medido na spec da OpenPix vendorizada: 8 de 373 nomes truncados, nenhuma colisão
 nova.
 
 !!! warning "Um caso não tem solução, e a doc não finge que tem"

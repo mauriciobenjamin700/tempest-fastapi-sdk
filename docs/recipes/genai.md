@@ -773,8 +773,16 @@ asyncio.run(main())
 
 O pooling é a **média ponderada pela attention mask** dos embeddings de
 token (não uma média ingênua sobre padding), então os vetores batem com os
-do `Embedder` torch (cosseno ≈ 1.0 pro mesmo modelo). Exporte o modelo com
-`optimum` (`optimum-cli export onnx ...`) e aponte `model_path` pro `.onnx`.
+do `Embedder` torch (cosseno ≈ 1.0 pro mesmo modelo). Exporte o modelo em ambiente descartável — `optimum` **não** é dependência
+deste pacote, porque ela prende `transformers<4.58` no lock de quem instalar:
+
+```bash
+uvx --from "optimum[onnxruntime]" optimum-cli export onnx \
+    --model sentence-transformers/all-MiniLM-L6-v2 \
+    --task feature-extraction exports/minilm
+```
+
+Depois aponte `model_path` para o `.onnx` gerado.
 
 ### Batch de inferência concorrente
 

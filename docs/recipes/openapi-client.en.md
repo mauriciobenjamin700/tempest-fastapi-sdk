@@ -509,7 +509,7 @@ Synthesized class names are capped at 55 characters. The binding constraint is
 not the `class` statement but the docstring's `Attributes:` entry: there the
 annotation composes around the name (`dict[str, Name] | None` costs another 18
 columns at an indent of 12) and `ruff format` breaks neither. Measured on the
-OpenPix specification: 6 of 358 names truncated, no new collision.
+vendored OpenPix specification: 8 of 373 names truncated, no new collision.
 
 !!! warning "One case has no solution, and the docs do not pretend otherwise"
     A very long field name next to an annotation that is a **single

@@ -36,7 +36,7 @@ sao_paulo = Coordinate(latitude=-23.5505, longitude=-46.6333)
 rio = Coordinate(latitude=-22.9068, longitude=-43.1729)
 
 km: float = haversine_km(sao_paulo, rio)
-print(round(km, 1))  # ~360.0
+print(round(km, 1))  # 360.7
 ```
 
 ## Offline estimate (distance + time per mode)
@@ -60,7 +60,7 @@ destination = Coordinate(latitude=-23.5015, longitude=-46.6553)
 by_car: TravelEstimate = estimate_travel(origin, destination, TravelMode.CAR)
 by_bus: TravelEstimate = estimate_travel(origin, destination, TravelMode.BUS)
 
-print(by_car.distance_km, by_car.duration_minutes)   # e.g. 8.2 9.8
+print(by_car.distance_km, by_car.duration_minutes)   # 7.659817427032203 9.191780912438643
 print(by_bus.duration_minutes)                        # larger (bus stops)
 print(by_car.source)                                  # "heuristic"
 ```

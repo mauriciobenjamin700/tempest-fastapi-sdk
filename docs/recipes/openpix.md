@@ -377,7 +377,7 @@ Medido com esse router de pé (chave de teste, corpo assinado):
 | --- | --- |
 | Sem o header de assinatura | **401** |
 | Assinatura válida, `OPENPIX:CHARGE_COMPLETED` | 200 `{"status": "released"}` |
-| A mesma entrega de novo | 200 `{"status": "duplicate"}` |
+| A mesma entrega de novo | 200 `{"status": "released"}` — este router **não** deduplica; ver abaixo |
 | Evento que este SDK não conhece | 200 `{"status": "ignored", "event": "..."}` |
 
 !!! danger "A chave pública da OpenPix é RSA-1024"

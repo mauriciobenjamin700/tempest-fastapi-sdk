@@ -297,9 +297,11 @@ async def list_files(prefix: str = "") -> list[str]:
 ```python
 import asyncio
 
-from tempest_fastapi_sdk import UploadUtils
+from tempest_fastapi_sdk import AsyncMinIOClient
 
-storage = UploadUtils(source="./uploads")
+from src.core.settings import settings
+
+storage = AsyncMinIOClient(**settings.minio_kwargs())
 
 
 async def main() -> None:

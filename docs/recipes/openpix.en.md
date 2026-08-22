@@ -379,7 +379,7 @@ Measured with that router running (test key, signed body):
 | --- | --- |
 | No signature header | **401** |
 | Valid signature, `OPENPIX:CHARGE_COMPLETED` | 200 `{"status": "released"}` |
-| The same delivery again | 200 `{"status": "duplicate"}` |
+| The same delivery again | 200 `{"status": "released"}` — this router does **not** deduplicate; see below |
 | An event this SDK does not know | 200 `{"status": "ignored", "event": "..."}` |
 
 !!! danger "OpenPix's public key is RSA-1024"
