@@ -39,6 +39,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
+    from tempest_core import Theme
 
 BuildMode = Literal["wasm", "server"]
 
@@ -320,6 +321,7 @@ def build_web_app(
     *,
     title: str | None = None,
     shell: ShellSource | None = None,
+    theme: Theme | None = None,
 ) -> FastAPI:
     """Build a FastAPI app hosting a ``tempestweb`` **server** build.
 
@@ -396,7 +398,12 @@ def build_web_app(
     from tempestweb.server import create_app
 
     loaded = load_app(root / "app.py")
-    app: FastAPI = create_app(loaded.make_state, loaded.view, title=title or root.name)
+    app: FastAPI = create_app(
+        loaded.make_state,
+        loaded.view,
+        title=title or root.name,
+        theme=theme,
+    )
     app.mount("/static", StaticFiles(directory=str(root / "static")), name="static")
     index_path = root / _INDEX
 

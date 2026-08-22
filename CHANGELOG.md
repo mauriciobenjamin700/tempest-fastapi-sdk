@@ -5,6 +5,28 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.243.0] — 2026-08-21
+
+### Added
+
+- **`build_web_app(..., theme=...)`** — a Mode B app can finally ship its own
+  palette. The theme is forwarded to every session's ``App``, which is the
+  half a stylesheet cannot cover: components resolve their colors in
+  **Python**, so a filled button carries its fill as an inline style, and a
+  page that rebranded only its CSS custom properties kept rendering
+  baseline-purple buttons over a rebranded background. Needs tempestweb
+  0.66.0, where the session and `create_app` learned the same argument;
+  the floor moves accordingly.
+
+    A full rebrand is both halves, and the docstring says so: this one for
+    what components resolve, and `tempestweb.html.theme_css(theme)` in the
+    shell head for what the base stylesheet paints.
+
+### Changed
+
+- **Floor: `tempestweb>=0.66.0`** (was `0.64.0`), across the `ssr`, `admin`
+  and `all` extras.
+
 ## [0.242.0] — 2026-08-21
 
 ### Added
