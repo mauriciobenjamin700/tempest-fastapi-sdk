@@ -2072,6 +2072,81 @@ class GenAISettings(BaseAppSettings):
     )
 
 
+class OpenPixSettings(BaseAppSettings):
+    """OpenPix / Woovi credentials and environment.
+
+    Every other integration with a credential ships a mixin like this one;
+    OpenPix did not, so a service repeated the AppID field and the base-URL
+    lookup by hand. :meth:`openpix_kwargs` closes that, and it also hides the
+    one thing about this API that is easy to get wrong: the AppID travels in
+    ``Authorization`` **raw**, with no ``Bearer`` prefix.
+
+    The environment is a string here rather than
+    :class:`~tempest_fastapi_sdk.integrations.payment.openpix.OpenPixEnvironment`
+    on purpose: settings must not pull the integrations namespace, which is
+    lazy so ``import tempest_fastapi_sdk`` never pays for 373 generated names.
+    :meth:`openpix_kwargs` imports the enum when it runs, so the base URL still
+    has a single source of truth.
+
+    Deliberately no ``enabled`` property, unlike the push mixins: three of them
+    already define one, and a service that takes Pix **and** sends push would
+    inherit a collision. Check ``bool(settings.OPENPIX_APP_ID)`` instead.
+
+    Each attribute below is also the name of the environment variable that sets
+    it (matched case-sensitively, no prefix).
+
+    Attributes:
+        OPENPIX_APP_ID (str): The AppID issued by OpenPix/Woovi, sent raw in
+            ``Authorization``. Default: ``""`` (calls will be rejected).
+        OPENPIX_ENVIRONMENT (Literal["production", "sandbox"]): Which API to
+            talk to. Default: ``"sandbox"`` — pointing at production by
+            accident charges real money, while pointing at sandbox by accident
+            fails loudly.
+    """
+
+    OPENPIX_APP_ID: str = Field(
+        default="",
+        title="OpenPix AppID",
+        description=(
+            "AppID issued by OpenPix/Woovi. Sent raw in the ``Authorization`` "
+            "header — no ``Bearer`` prefix."
+        ),
+        examples=["", "Q2xpZW50X0lkX2E1…"],
+    )
+    OPENPIX_ENVIRONMENT: Literal["production", "sandbox"] = Field(
+        default="sandbox",
+        title="OpenPix environment",
+        description=(
+            "Which API to talk to. Sandbox by default: charging real money by "
+            "accident is worse than failing against the test host."
+        ),
+        examples=["sandbox", "production"],
+    )
+
+    def openpix_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto the ``HTTPClient`` the client wraps.
+
+        :class:`~tempest_fastapi_sdk.integrations.payment.openpix.OpenPixClient`
+        takes an already-configured ``HTTPClient`` and reads its credentials
+        from ``default_headers``, so this returns what that client needs::
+
+            client = OpenPixClient(HTTPClient(**settings.openpix_kwargs()))
+
+        Returns:
+            dict[str, Any]: ``base_url`` resolved from the environment, plus
+            the ``Authorization`` header carrying the AppID.
+        """
+        from tempest_fastapi_sdk.integrations.payment.openpix.environment import (
+            OpenPixEnvironment,
+        )
+
+        environment = OpenPixEnvironment(self.OPENPIX_ENVIRONMENT)
+        return {
+            "base_url": environment.base_url,
+            "default_headers": {"Authorization": self.OPENPIX_APP_ID},
+        }
+
+
 __all__: list[str] = [
     "AuthSettings",
     "CORSSettings",
@@ -2082,6 +2157,7 @@ __all__: list[str] = [
     "JWTSettings",
     "LogSettings",
     "MinIOSettings",
+    "OpenPixSettings",
     "PushSettings",
     "RabbitMQSettings",
     "RedisSettings",

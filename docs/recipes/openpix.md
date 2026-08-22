@@ -39,31 +39,26 @@ importa normalmente e só falha na primeira entrega de verdade, em produção.
 ## Configuração
 
 ```python
-from tempest_fastapi_sdk import BaseAppSettings
-from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEnvironment
+from tempest_fastapi_sdk import OpenPixSettings
 
 
-class Settings(BaseAppSettings):
+class Settings(OpenPixSettings):
     """Settings do serviço."""
-
-    OPENPIX_APP_ID: str = ""
-    OPENPIX_ENVIRONMENT: str = "sandbox"
-
-    @property
-    def openpix_environment(self) -> OpenPixEnvironment:
-        """Resolve o ambiente configurado.
-
-        Returns:
-            OpenPixEnvironment: Produção quando `OPENPIX_ENVIRONMENT` é
-            `production`, sandbox em qualquer outro caso.
-        """
-        if self.OPENPIX_ENVIRONMENT == "production":
-            return OpenPixEnvironment.PRODUCTION
-        return OpenPixEnvironment.SANDBOX
 
 
 settings = Settings()
 ```
+
+`OpenPixSettings` traz `OPENPIX_APP_ID` e `OPENPIX_ENVIRONMENT`, e
+`settings.openpix_kwargs()` devolve o que o `HTTPClient` precisa — a base URL
+resolvida e o header de autorização. Sandbox é o default: apontar para produção
+sem querer cobra dinheiro de verdade, apontar para sandbox sem querer falha
+barulhento.
+
+!!! tip "`OPENPIX_ENVIRONMENT` só aceita dois valores"
+    `production` ou `sandbox`, validados no load. `prod` — o typo plausível —
+    é `ValidationError` na subida do serviço, não uma cobrança no ambiente
+    errado.
 
 !!! warning "Os dois ambientes são domínios diferentes"
     Produção é `api.openpix.com.br`. Testes é `api.woovi-sandbox.com` — outro
@@ -140,11 +135,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     Yields:
         None: Enquanto a aplicação serve requisições.
     """
-    http: HTTPClient = HTTPClient(
-        base_url=settings.openpix_environment.base_url,
-        default_headers={"Authorization": settings.OPENPIX_APP_ID},
-        timeout=15.0,
-    )
+    http: HTTPClient = HTTPClient(**settings.openpix_kwargs(), timeout=15.0)
     app.state.openpix = OpenPixClient(http)
     try:
         yield
