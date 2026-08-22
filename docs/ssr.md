@@ -707,49 +707,33 @@ marca: Theme = Theme.from_seed(Color(r=39, g=58, b=79), mode=ThemeMode.SYSTEM)
 app.mount("/", build_web_app("dist/server", theme=marca))
 ```
 
-Do outro lado, no `app.py` do artefato, a `view` lê a paleta como
-`app.theme` e **passa pro widget** — é isso que fecha o circuito:
+Pronto: os componentes que a `view` constrói resolvem a cor contra essa
+paleta, sem mudar nenhum call site.
 
 ```python
-from dataclasses import dataclass
-
-from tempest_core import App, Button, Widget
-from tempest_core.variants import Variant
+from tempest_core import App, Widget
+from tempestweb.components import filled_button
 
 
-@dataclass
-class State:
-    """Estado da aplicação."""
-
-    value: int = 0
-
-
-def make_state() -> State:
-    """Constrói o estado inicial."""
-    return State()
-
-
-def view(app: App[State]) -> Widget:
-    """Renderiza um botão sólido tingido pela paleta da sessão."""
-    return Button(
-        label="Comprar",
-        variant=Variant.SOLID,
-        color_scheme="primary",
-        theme=app.theme,
-        key="buy",
-    )
+def view(app: App[object]) -> Widget:
+    """Renderiza um botão que segue a paleta da sessão."""
+    return filled_button("Comprar", key="buy")
 ```
 
-!!! warning "O widget não herda o tema sozinho"
-    `App.theme` é um valor que a `view` **lê**, não algo injetado na
-    árvore. Todo widget tem um campo `theme` próprio, com default no
-    baseline Material — e os helpers de `tempestweb.components`
-    (`filled_button` e companhia) **não** repassam `app.theme`. Uma view
-    feita só deles renderiza o roxo baseline com qualquer tema que a
-    sessão carregue. Passe `theme=app.theme` no widget.
+!!! info "Por que o piso é `tempestweb>=0.67.0`"
+    O componente resolve a cor na **construção** e a assa num `style`
+    inline — rebrandar só as custom properties não alcança isso. O que
+    conecta a paleta ao componente é o `tempest-core` 0.12.0, que instala
+    o tema em volta da chamada da `view`; a `tempestweb` 0.67.0 é onde
+    esse piso entra. Com `tempestweb` 0.66.0 o `theme=` é aceito e a
+    página pinta baseline em silêncio.
+
+!!! tip "Um `theme=` explícito no widget ainda vence"
+    O tema da sessão é o piso, não a gaiola: passar `theme=` direto num
+    widget sobrepõe a paleta ambiente naquele ponto da árvore.
 
 !!! tip "Rebrand completo são as duas metades"
-    `theme=` cobre o que o widget resolve em Python. Para o que a
+    `theme=` cobre o que o componente resolve em Python. Para o que a
     stylesheet base pinta, injete `tempestweb.html.theme_css(theme)` no
     `<head>` do shell, via `shell=`.
 
@@ -766,8 +750,8 @@ def view(app: App[State]) -> Widget:
 - **`make_web_app_router(dir)`** — serve um build **wasm** (SPA estática)
   com history fallback; inclua por último. **`build_web_app(dir)`** —
   hospeda um build **server** (WebSocket/SSE) como sub-app pra montar;
-  `theme=` entrega a paleta ao `App` de cada sessão, e a `view` a repassa
-  ao widget como `theme=app.theme`.
+  `theme=` entrega a paleta ao `App` de cada sessão, e os componentes que a
+  `view` constrói resolvem contra ela (piso `tempestweb>=0.67.0`).
   **`detect_build_mode(dir)`** distingue os dois.
 - Tudo mora no extra `[ssr]` (`uv add "tempest-fastapi-sdk[ssr]"`),
   carregado sob demanda — `import tempest_fastapi_sdk` nunca exige o extra.

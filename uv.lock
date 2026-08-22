@@ -6366,19 +6366,19 @@ wheels = [
 
 [[package]]
 name = "tempest-core"
-version = "0.11.0"
+version = "0.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3f/ad/9f7a2e79ea485cda58129f7804f53d729371fac013340f83e1bfbd53a48f/tempest_core-0.11.0.tar.gz", hash = "sha256:185446c7df85e8afe9867eff44f5c7bd7bc4fe6d9d387f1eb31edc564b8ba702", size = 281252, upload-time = "2026-07-09T17:35:55.167Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/98/c1/28d180625a49ca2ecadd72173d80732ba43ef5493f67c3d89111ba522278/tempest_core-0.12.0.tar.gz", hash = "sha256:98f8863e2ddec541f9644fecfc81701ca196f9aa13f8c141d7a14fb98877da00", size = 444757, upload-time = "2026-08-22T02:02:53.568Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a9/89/dd6fdd59ff221f2ae12ce8424e19306330d22a4fcd3535c8a2d8712917df/tempest_core-0.11.0-py3-none-any.whl", hash = "sha256:49def8eb57110da620c0b3adb7016a5fc8e284db4bd95e47bcedd023350e4fc8", size = 195231, upload-time = "2026-07-09T17:35:53.707Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/8f/9864ed15e54e14b9ad117caa20df2d5461bb05b229dfab2ab85187061f89/tempest_core-0.12.0-py3-none-any.whl", hash = "sha256:69c65ed21da7c0c572ff143e4bfd3ba4dfb58b3e4c1c05a2090860721d4e512b", size = 196275, upload-time = "2026-08-22T02:02:52.045Z" },
 ]
 
 [[package]]
 name = "tempest-fastapi-sdk"
-version = "0.243.0"
+version = "0.244.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -6770,8 +6770,8 @@ requires-dist = [
     { name = "taskiq-aio-pika", marker = "extra == 'all'", specifier = ">=0.4.0" },
     { name = "taskiq-aio-pika", marker = "extra == 'tasks'", specifier = ">=0.4.0" },
     { name = "tempest-cli", specifier = ">=0.3.0" },
-    { name = "tempestweb", marker = "extra == 'all'", specifier = ">=0.66.0" },
-    { name = "tempestweb", marker = "extra == 'ssr'", specifier = ">=0.66.0" },
+    { name = "tempestweb", marker = "extra == 'all'", specifier = ">=0.67.0" },
+    { name = "tempestweb", marker = "extra == 'ssr'", specifier = ">=0.67.0" },
     { name = "tokenizers", marker = "extra == 'genai-onnx'", specifier = ">=0.20.0" },
     { name = "torch", marker = "extra == 'genai'", specifier = ">=2.2.0" },
     { name = "torchvision", marker = "extra == 'genai-vlm'", specifier = ">=0.17.0" },
@@ -6833,7 +6833,7 @@ dev = [
     { name = "sherpa-onnx-core" },
     { name = "taskiq", specifier = ">=0.11.0" },
     { name = "taskiq-aio-pika", specifier = ">=0.4.0" },
-    { name = "tempestweb", specifier = ">=0.66.0" },
+    { name = "tempestweb", specifier = ">=0.67.0" },
     { name = "tokenizers", specifier = ">=0.20.0" },
     { name = "trafilatura", specifier = ">=1.12.0" },
     { name = "types-openpyxl", specifier = ">=3.1.5" },
@@ -6850,14 +6850,14 @@ docs = [
 
 [[package]]
 name = "tempestweb"
-version = "0.66.0"
+version = "0.67.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tempest-core" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/da/56/73111fcb4cd57730d5af6579526b54f3c86697e2bcdfe56ecdbfdee6de34/tempestweb-0.66.0.tar.gz", hash = "sha256:608f8e35a2a6ab73e363251ded460168fba1b7c1bb2ae51aa6eca12afa7a40df", size = 490567, upload-time = "2026-08-22T00:34:13.439Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/4f/1420dd0d9762bd6a0908b59c8766146ebecc4a3f3ddec1435f3989f09bf3/tempestweb-0.67.0.tar.gz", hash = "sha256:8406f9a6bfbfb7431dc3200f7806ea8655b21906b8f2d2b9704f4f8333be491a", size = 490759, upload-time = "2026-08-22T02:06:30.543Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/74/34/7a98bf3ecc505f95a729be4c3845cdd8f8540de569d39e83d34146705d99/tempestweb-0.66.0-py3-none-any.whl", hash = "sha256:45e9e952fd1aeb4b3f4814707a2a820cde0b1c1c5ac804cf187228d0914c5c78", size = 521124, upload-time = "2026-08-22T00:34:11.337Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/d9/b7ec043588b05255602bb91e1168c7ea9e0f5a80eb9879bccb9f410d28cf/tempestweb-0.67.0-py3-none-any.whl", hash = "sha256:abb893537a95b4525175c551749ea5eacb316aa9cdba12d540613fb74c8fe4cf", size = 521125, upload-time = "2026-08-22T02:06:28.847Z" },
 ]
 
 [[package]]
