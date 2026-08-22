@@ -381,6 +381,158 @@ renderer = PdfRenderer(max_concurrent=8)
 The default is 4. More workers than cores turns latency into queueing, not
 throughput.
 
+## Reading a PDF back
+
+Writing is half of it. The other half is reading — the first step of every
+pipeline that hands a PDF to a model: an invoice to classify, a contract to
+summarize, a tender to transcribe.
+
+This lives in a **separate** extra, `[pdf-read]`, which pulls only `pypdf`:
+
+```bash
+uv add "tempest-fastapi-sdk[pdf-read]"
+```
+
+Separate on purpose. Rendering pulls WeasyPrint plus Pango and fontconfig from
+the system; a service that only reads should carry none of that.
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import extract_pdf_text
+
+data: bytes = Path("invoice.pdf").read_bytes()
+text: str = extract_pdf_text(data)
+print(text)
+```
+
+For a three-page PDF the output comes out marked:
+
+```text
+=== PAGE 1 ===
+Recibo 001
+Valor: R$ 1.234,56
+
+=== PAGE 2 ===
+Page two
+Signature
+
+=== PAGE 3 ===
+Page three
+Attachment
+```
+
+The marker is not decoration: it gives the model something to cite when you
+ask where a value came from. Match it to the language of the surrounding
+prompt with `page_marker=`:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import extract_pdf_text
+
+data: bytes = Path("invoice.pdf").read_bytes()
+text: str = extract_pdf_text(data, page_marker="=== PÁGINA {page} ===")
+```
+
+### Page by page
+
+When you want to decide per page instead of receiving one blob,
+`extract_pdf_pages` returns `(number, text)` tuples, numbered from **one**:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import PageText, extract_pdf_pages
+
+data: bytes = Path("invoice.pdf").read_bytes()
+pages: list[PageText] = extract_pdf_pages(data)
+for number, text in pages:
+    print(number, text[:40])
+```
+
+```text
+1 Recibo 001
+Valor: R$ 1.234,56
+2 Page two
+Signature
+3 Page three
+Attachment
+```
+
+### Cutting without lying
+
+`max_chars` bounds the extracted text and **announces** the cut:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import extract_pdf_text
+
+data: bytes = Path("invoice.pdf").read_bytes()
+text: str = extract_pdf_text(data, max_chars=60)
+```
+
+The last line becomes:
+
+```text
+=== DOCUMENT TRUNCATED AFTER PAGE 1 OF 3 ===
+```
+
+!!! warning "`max_chars` is not a ceiling on the returned string"
+    The truncation notice and the page markers are added **on top** of the
+    limit. Measured: `max_chars=60` on a 3-page PDF returned 92 characters. If
+    you need a hard ceiling to fit a context window, measure the returned
+    string — do not read the parameter as a total.
+
+    Worse at the low end: the cut lands on a page boundary, so a `max_chars`
+    smaller than the first page returns **only the notice**, without a line of
+    the document. Measured on a 1-page PDF carrying 45 characters of text: any
+    `max_chars` between 5 and 40 returns exactly
+    `"\n=== DOCUMENT TRUNCATED AFTER PAGE 0 OF 1 ===\n"` — 46 characters,
+    above the requested limit, naming a page 0 that does not exist.
+
+    So sizing by `max_chars` without checking the output is how an empty
+    document reaches a model. Treat a result with no page-1 marker as "did not
+    fit", and either raise the limit or split the document with
+    `extract_pdf_pages`.
+
+A silent cut is the dangerous one: the model answers about the half it was
+shown, with no sign that a half is missing. Override the sentence with
+`truncation_notice=` when your prompt is in another language.
+
+!!! danger "Text layer only — there is no OCR here"
+    A PDF produced by a word processor carries its text. A PDF that is a scan
+    carries page images and nothing else. For that one `extract_pdf_text`
+    returns an **empty string**, and `extract_pdf_pages` returns one entry per
+    page with empty text — measured: a one-page blank PDF gives `[(1, "")]`
+    and `""`.
+
+    Handing a model an empty prompt is how a confident answer gets invented
+    about a page nobody read. Check for it explicitly:
+
+    ```python
+    from pathlib import Path
+
+    from tempest_fastapi_sdk.pdf import extract_pdf_text
+
+    data: bytes = Path("invoice.pdf").read_bytes()
+    text: str = extract_pdf_text(data)
+    if not text:
+        raise ValueError("PDF has no text layer — it is probably a scan")
+    ```
+
+    Route those files to an OCR path.
+
+!!! info "Without the extra, the error says what to install"
+    Without `pypdf` the call raises `ImportError` carrying the full
+    instruction:
+
+    ```text
+    pypdf is required to read PDFs. Install the extra:
+    pip install "tempest-fastapi-sdk[pdf-read]"
+    ```
+
 ## Recap
 
 - `PdfRenderer` renders HTML, a template, or a typed document; always `async`.
@@ -393,6 +545,9 @@ throughput.
 - `tempest pdf render --html` is the fast loop for adjusting a template.
 - The asset default **denies everything**; opening it is an explicit decision.
 - The container needs Pango + fontconfig + a font.
+- `extract_pdf_text` / `extract_pdf_pages` read one back, in the separate
+  `[pdf-read]` extra. **Text layer only**: a scan returns `""`, and checking
+  for that is on you.
 
 Next: [Transactional email](email.md) to send the document as an attachment, or
 [Versioned artifacts](artifact-registry.md) if you need to keep every issued

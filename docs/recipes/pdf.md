@@ -379,6 +379,158 @@ renderer = PdfRenderer(max_concurrent=8)
 
 O padrão é 4. Mais workers que núcleos vira fila, não vazão.
 
+## Lendo um PDF de volta
+
+Escrever é metade. A outra é ler — o primeiro passo de todo pipeline que
+entrega um PDF para um modelo: uma nota para classificar, um contrato para
+resumir, um edital para transcrever.
+
+Isso mora num extra **separado**, `[pdf-read]`, que traz só `pypdf`:
+
+```bash
+uv add "tempest-fastapi-sdk[pdf-read]"
+```
+
+Separado de propósito. Renderizar puxa WeasyPrint mais Pango e fontconfig do
+sistema; um serviço que só lê não deve carregar nada disso.
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import extract_pdf_text
+
+dados: bytes = Path("nota.pdf").read_bytes()
+texto: str = extract_pdf_text(dados)
+print(texto)
+```
+
+Para um PDF de três páginas, a saída sai marcada:
+
+```text
+=== PAGE 1 ===
+Recibo 001
+Valor: R$ 1.234,56
+
+=== PAGE 2 ===
+Página dois
+Assinatura
+
+=== PAGE 3 ===
+Página três
+Anexo
+```
+
+O marcador não é enfeite: é o que dá ao modelo algo para citar quando você
+pergunta de onde veio um valor. Troque pelo idioma do resto do prompt com
+`page_marker=`:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import extract_pdf_text
+
+dados: bytes = Path("nota.pdf").read_bytes()
+texto: str = extract_pdf_text(dados, page_marker="=== PÁGINA {page} ===")
+```
+
+### Página por página
+
+Quando você quer decidir por página em vez de receber um texto só,
+`extract_pdf_pages` devolve tuplas `(número, texto)` com numeração
+**começando em 1**:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import PageText, extract_pdf_pages
+
+dados: bytes = Path("nota.pdf").read_bytes()
+paginas: list[PageText] = extract_pdf_pages(dados)
+for numero, texto in paginas:
+    print(numero, texto[:40])
+```
+
+```text
+1 Recibo 001
+Valor: R$ 1.234,56
+2 Página dois
+Assinatura
+3 Página três
+Anexo
+```
+
+### Cortar sem mentir
+
+`max_chars` limita o texto extraído e **anuncia** o corte:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.pdf import extract_pdf_text
+
+dados: bytes = Path("nota.pdf").read_bytes()
+texto: str = extract_pdf_text(dados, max_chars=60)
+```
+
+A última linha passa a ser:
+
+```text
+=== DOCUMENT TRUNCATED AFTER PAGE 1 OF 3 ===
+```
+
+!!! warning "`max_chars` não é um teto da string devolvida"
+    O aviso de truncamento e os marcadores de página entram **por cima** do
+    limite. Medido: `max_chars=60` num PDF de 3 páginas devolveu 92
+    caracteres. Se você precisa de um teto duro para caber numa janela de
+    contexto, meça a string devolvida — não confie no parâmetro como total.
+
+    Pior no limite baixo: o corte acontece em fronteira de página, então um
+    `max_chars` menor que a primeira página devolve **só o aviso**, sem uma
+    linha do documento. Medido num PDF de 1 página com 45 caracteres de texto:
+    qualquer `max_chars` entre 5 e 40 devolve exatamente
+    `"\n=== DOCUMENT TRUNCATED AFTER PAGE 0 OF 1 ===\n"` — 46 caracteres,
+    acima do limite pedido, e com "página 0", que não existe.
+
+    Ou seja: dimensionar por `max_chars` sem checar a saída é como se entrega
+    documento vazio a um modelo. Trate resultado sem o marcador da página 1
+    como "não caber", e suba o limite ou parta o documento por
+    `extract_pdf_pages`.
+
+O corte silencioso é o perigoso: o modelo responde sobre a metade que viu, sem
+sinal de que existe outra metade. Sobrescreva a frase com
+`truncation_notice=` se o seu prompt está em outro idioma.
+
+!!! danger "Camada de texto apenas — não há OCR aqui"
+    Um PDF que saiu de um editor carrega o texto dele. Um PDF que é uma
+    digitalização carrega imagem de página e mais nada. Nesse caso
+    `extract_pdf_text` devolve **string vazia**, e `extract_pdf_pages` devolve
+    uma entrada por página com texto vazio — medido: um PDF de uma página em
+    branco dá `[(1, "")]` e `""`.
+
+    Entregar prompt vazio a um modelo é como se inventa uma resposta confiante
+    sobre uma página que ninguém leu. Checar é explícito:
+
+    ```python
+    from pathlib import Path
+
+    from tempest_fastapi_sdk.pdf import extract_pdf_text
+
+    dados: bytes = Path("nota.pdf").read_bytes()
+    texto: str = extract_pdf_text(dados)
+    if not texto:
+        raise ValueError("PDF sem camada de texto — provavelmente é uma digitalização")
+    ```
+
+    Roteie esses arquivos para um caminho de OCR.
+
+!!! info "Sem o extra, o erro diz o que instalar"
+    Sem `pypdf`, a chamada levanta `ImportError` com a instrução completa:
+
+    ```text
+    pypdf is required to read PDFs. Install the extra:
+    pip install "tempest-fastapi-sdk[pdf-read]"
+    ```
+
 ## Recap
 
 - `PdfRenderer` renderiza HTML, template ou documento tipado; sempre `async`.
@@ -391,6 +543,9 @@ O padrão é 4. Mais workers que núcleos vira fila, não vazão.
 - `tempest pdf render --html` é o laço rápido para ajustar template.
 - O padrão de assets **nega tudo**; abrir é decisão explícita.
 - Container precisa de Pango + fontconfig + uma fonte.
+- `extract_pdf_text` / `extract_pdf_pages` leem de volta, no extra separado
+  `[pdf-read]`. **Camada de texto apenas**: digitalização devolve `""`, e
+  checar isso é por sua conta.
 
 Próximo: [E-mail transacional](email.md) para mandar o documento por anexo, ou
 [Artefatos versionados](artifact-registry.md) se você precisa guardar cada
