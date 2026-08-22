@@ -5,6 +5,51 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.244.0] — 2026-08-22
+
+### Changed
+
+- **Floor: `tempestweb>=0.67.0`** (was `0.66.0`), nos extras `ssr`, `all` e
+  `dev`. A v0.243.0 escolheu o piso pela versão em que `create_app(theme=...)`
+  passou a **aceitar** o argumento. Aceitar não é pintar: o componente resolve
+  a cor na construção e a assa num `style` inline, e o que liga a paleta da
+  sessão ao componente é o `tempest-core` 0.12.0, que instala o tema em volta
+  da chamada da `view`. A `tempestweb` 0.66.0 pina `tempest-core>=0.11.0`; a
+  0.67.0 pina `>=0.12.0`. Com o piso antigo, `build_web_app(theme=...)` podia
+  resolver para uma combinação válida em que a página pintava baseline em
+  silêncio.
+
+  Medido nas duas pontas, com a mesma seed vermelha:
+
+  | tempest-core | `filled_button` numa sessão com tema | resultado |
+  | --- | --- | --- |
+  | 0.11.0 | `rgb(88,71,133)` | baseline, tema ignorado |
+  | 0.12.0 | `rgb(191,13,13)` | `primary` da paleta |
+
+- **`uv.lock` atualizado para o que está publicado**: `tempestweb` 0.78.0 e
+  `tempest-core` 0.14.0 (eram 0.66.0 e 0.11.0). O piso **não** sobe junto: fica
+  em `>=0.67.0`, que é a menor versão em que o comportamento documentado
+  acontece. Subir o piso até 0.78.0 obrigaria todo consumidor a atualizar sem o
+  SDK precisar de nada de 0.68–0.78. Piso é o mínimo que funciona; lock é o que
+  a CI exercita.
+
+  Salto de 12 minors medido, não deduzido: suíte inteira verde
+  (6144 passed), `mypy` e `ruff` limpos, e a afirmação da doc re-medida nas duas
+  pontas — `tempest-core` 0.12.0 (o piso) e 0.14.0 (o atual) resolvem um
+  `filled_button` para o `primary` da paleta, e um `theme=` explícito no widget
+  vence nos dois.
+
+### Fixed
+
+- **A doc do `theme=` descrevia um workaround que nunca foi necessário.** A
+  v0.243.0 documentou que a `view` precisava repassar o tema ao widget
+  (`Button(..., theme=app.theme)`) e que os helpers de
+  `tempestweb.components` não repassavam. Isso valia para o `tempest-core`
+  0.11.0, que era o que estava instalado quando a afirmação foi medida — e
+  nunca valeu para o piso que a release entregava. Docstring, as quatro
+  receitas e o README passam a descrever o comportamento real: nenhuma
+  mudança de call site, e um `theme=` explícito num widget ainda vence.
+
 ## [0.243.0] — 2026-08-21
 
 ### Added
@@ -17,15 +62,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   0.66.0, where the session and `create_app` learned the same argument; the
   floor moves accordingly.
 
-    Measured, so the scope is explicit: a widget follows the palette only
-    where `view` passes it down — `Button(label=..., variant=Variant.SOLID,
-    color_scheme="primary", theme=app.theme)`. Every widget defaults to the
-    baseline theme, and the `tempestweb.components` helpers (`filled_button`
-    and friends) do **not** forward `app.theme`, so a view built only from
-    them renders baseline-purple whatever theme the session carries. A full
-    rebrand is both halves: this argument plus
-    `tempestweb.html.theme_css(theme)` in the shell head for what the base
-    stylesheet paints.
+    A escopo desta entrada foi corrigido na 0.244.0: o parágrafo original
+    dizia que a `view` precisava repassar o tema ao widget. Isso descrevia o
+    `tempest-core` 0.11.0; a partir do 0.12.0 — piso da `tempestweb` 0.67.0 —
+    os componentes que a `view` constrói resolvem contra a paleta sem mudança
+    de call site. Um rebrand completo continua sendo as duas metades: este
+    argumento mais `tempestweb.html.theme_css(theme)` no head do shell, para
+    o que a folha base pinta.
 
 ### Changed
 

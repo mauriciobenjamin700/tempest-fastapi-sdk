@@ -429,12 +429,12 @@ and sent back. `GET /api/health` still answers normally.
     app = build_web_app("web/dist/server", theme=brand)
     ```
 
-    A widget does **not** inherit the theme on its own: every widget owns
-    a `theme` field defaulting to the Material baseline, so the `view`
-    has to forward it (`Button(..., theme=app.theme)`). The
-    `tempestweb.components` helpers (`filled_button` and friends) do not.
-    The full recipe, with both halves of a rebrand, is in
-    [SSR](ssr.en.md#the-apps-palette-theme).
+    The components the `view` builds resolve their colours against that
+    palette on their own — the build installs the theme around the `view`
+    call. This needs `tempestweb>=0.67.0`: that is the floor which reaches
+    `tempest-core` 0.12.0, where the connection lives. A `theme=` passed
+    straight to a widget still wins. The full recipe, with both halves of
+    a rebrand, is in [SSR](ssr.en.md#the-apps-palette-theme).
 
 !!! info "Which mode?"
     - **WASM** — the client is self-contained (runs offline), the server

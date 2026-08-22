@@ -428,12 +428,12 @@ volta. `GET /api/health` continua respondendo normalmente.
     app = build_web_app("web/dist/server", theme=marca)
     ```
 
-    O widget **não** herda o tema sozinho: todo widget tem um campo
-    `theme` próprio com default no baseline Material, então a `view`
-    precisa repassar (`Button(..., theme=app.theme)`). Os helpers de
-    `tempestweb.components` (`filled_button` e companhia) não repassam.
-    A receita completa, com as duas metades do rebrand, está em
-    [SSR](ssr.md#a-paleta-do-app-theme).
+    Os componentes que a `view` constrói resolvem a cor contra essa
+    paleta sozinhos — o build instala o tema em volta da chamada da
+    `view`. Isso exige `tempestweb>=0.67.0`: é o piso que alcança o
+    `tempest-core` 0.12.0, onde a ligação existe. Um `theme=` passado
+    direto num widget ainda vence. A receita completa, com as duas
+    metades do rebrand, está em [SSR](ssr.md#a-paleta-do-app-theme).
 
 !!! info "Qual modo escolher?"
     - **WASM** — o cliente é autônomo (roda offline), o servidor é
