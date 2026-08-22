@@ -1,9 +1,12 @@
 """Tests for tempest_fastapi_sdk.settings.mixins."""
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 from pydantic_settings import SettingsConfigDict
 
 from tempest_fastapi_sdk import (
@@ -13,6 +16,7 @@ from tempest_fastapi_sdk import (
     EmailSettings,
     JWTSettings,
     LogSettings,
+    OpenPixSettings,
     RabbitMQSettings,
     RedisSettings,
     ServerSettings,
@@ -26,6 +30,7 @@ from tempest_fastapi_sdk import (
 class Composed(
     ServerSettings,
     LogSettings,
+    OpenPixSettings,
     DatabaseSettings,
     RedisSettings,
     RabbitMQSettings,
@@ -354,3 +359,85 @@ class TestEnvFilePriority:
             """No mixins — nothing to precede."""
 
         assert Settings.model_config["extra"] == "ignore"
+
+
+class TestOpenPixSettings:
+    """`OpenPixSettings` — the mixin OpenPix was missing.
+
+    Every other credentialed integration ships one, so a service repeated the
+    AppID field and the base-URL lookup by hand. What needs pinning here is not
+    the two fields but the two decisions around them: the safe default, and the
+    fact that settings must not drag the lazy integrations namespace along.
+    """
+
+    def test_the_default_environment_is_sandbox(self) -> None:
+        """Pointing at production by accident charges real money."""
+        settings = OpenPixSettings()
+
+        assert settings.OPENPIX_ENVIRONMENT == "sandbox"
+
+    def test_kwargs_carry_the_sandbox_url_and_the_raw_app_id(self) -> None:
+        """The AppID goes in ``Authorization`` with no ``Bearer`` prefix.
+
+        That is the detail the recipe needed an admonition for, and the reason
+        this helper exists rather than leaving the header to the call site.
+        """
+        settings = OpenPixSettings(OPENPIX_APP_ID="abc123")
+
+        assert settings.openpix_kwargs() == {
+            "base_url": "https://api.woovi-sandbox.com",
+            "default_headers": {"Authorization": "abc123"},
+        }
+
+    def test_production_resolves_the_production_host(self) -> None:
+        """The other half of the switch."""
+        settings = OpenPixSettings(
+            OPENPIX_APP_ID="abc123", OPENPIX_ENVIRONMENT="production"
+        )
+
+        assert settings.openpix_kwargs()["base_url"] == "https://api.openpix.com.br"
+
+    def test_an_unknown_environment_is_refused(self) -> None:
+        """``"prod"`` is the plausible typo; failing at load beats at checkout."""
+        with pytest.raises(ValidationError):
+            OpenPixSettings(OPENPIX_ENVIRONMENT="prod")  # type: ignore[arg-type]
+
+    def test_the_base_urls_come_from_the_enum_not_a_copy(self) -> None:
+        """No second source of truth for the hosts.
+
+        The field is a ``Literal`` so settings need not import the integrations
+        namespace, which makes it tempting to paste the two URLs here. This
+        fails if anyone does: the values have to keep matching the enum.
+        """
+        from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEnvironment
+
+        for environment in OpenPixEnvironment:
+            settings = OpenPixSettings(
+                OPENPIX_APP_ID="x",
+                OPENPIX_ENVIRONMENT=environment.value,  # type: ignore[arg-type]
+            )
+
+            assert settings.openpix_kwargs()["base_url"] == environment.base_url
+
+    def test_importing_the_settings_does_not_load_the_integration(self) -> None:
+        """The reason the field is a ``Literal``.
+
+        ``tempest_fastapi_sdk.integrations`` is lazy so ``import
+        tempest_fastapi_sdk`` never pays for 373 generated names. A module-level
+        import of ``OpenPixEnvironment`` in ``settings`` would undo that for
+        every consumer, including the ones that never touch payments.
+        """
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import sys\n"
+                    "from tempest_fastapi_sdk import OpenPixSettings\n"
+                    "OpenPixSettings()\n"
+                    "loaded = [m for m in sys.modules if 'integrations' in m]\n"
+                    "assert loaded == [], loaded\n"
+                ),
+            ],
+            check=True,
+        )

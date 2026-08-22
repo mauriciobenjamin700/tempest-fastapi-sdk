@@ -39,31 +39,26 @@ imports fine and only fails on the first real delivery, in production.
 ## Configuration
 
 ```python
-from tempest_fastapi_sdk import BaseAppSettings
-from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixEnvironment
+from tempest_fastapi_sdk import OpenPixSettings
 
 
-class Settings(BaseAppSettings):
+class Settings(OpenPixSettings):
     """Service settings."""
-
-    OPENPIX_APP_ID: str = ""
-    OPENPIX_ENVIRONMENT: str = "sandbox"
-
-    @property
-    def openpix_environment(self) -> OpenPixEnvironment:
-        """Resolve the configured environment.
-
-        Returns:
-            OpenPixEnvironment: Production when `OPENPIX_ENVIRONMENT` is
-            `production`, sandbox otherwise.
-        """
-        if self.OPENPIX_ENVIRONMENT == "production":
-            return OpenPixEnvironment.PRODUCTION
-        return OpenPixEnvironment.SANDBOX
 
 
 settings = Settings()
 ```
+
+`OpenPixSettings` carries `OPENPIX_APP_ID` and `OPENPIX_ENVIRONMENT`, and
+`settings.openpix_kwargs()` returns what the `HTTPClient` needs — the resolved
+base URL and the authorization header. Sandbox is the default: pointing at
+production by accident charges real money, pointing at sandbox by accident
+fails loudly.
+
+!!! tip "`OPENPIX_ENVIRONMENT` takes exactly two values"
+    `production` or `sandbox`, validated at load. `prod` — the plausible typo —
+    is a `ValidationError` at startup, not a charge against the wrong
+    environment.
 
 !!! warning "The two environments are different domains"
     Production is `api.openpix.com.br`. Testing is `api.woovi-sandbox.com` — a
@@ -142,9 +137,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         None: While the application serves requests.
     """
     http: HTTPClient = HTTPClient(
-        base_url=settings.openpix_environment.base_url,
-        default_headers={"Authorization": settings.OPENPIX_APP_ID},
-        timeout=15.0,
+        **settings.openpix_kwargs(), timeout=15.0
     )
     app.state.openpix = OpenPixClient(http)
     try:
