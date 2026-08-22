@@ -19,8 +19,14 @@ guards, fixtures), [`docs/CLAUDE.md`](docs/CLAUDE.md) (bilíngue, dois navs,
 ordem, estilo tiangolo) e
 [`tempest_fastapi_sdk/integrations/CLAUDE.md`](tempest_fastapi_sdk/integrations/CLAUDE.md)
 (código gerado, drift, armadilhas de API de terceiro). Fluxos executáveis são
-skill/agente em `.claude/`: `/release` corta a release, o agente
-`docs-prose-auditor` audita prosa contra código.
+skill/agente em `.claude/`: `/release` corta a release; os agentes são
+`root-cause-planner` (plano que ataca a raiz — checa `SHIPPED.md` antes de
+planejar), `code-quality-reviewer` (o que os guards não leem),
+`architecture-guardian` (layout flat, re-export, espelho bilíngue, extra
+lazy), `ui-design-reviewer` (componente, tokens, responsividade),
+`browser-validator` (pixel em browser real, via MCP) e
+`docs-prose-auditor` (prosa contra código). Todos são read-only: relatam,
+não editam.
 
 ## O que isto é
 
