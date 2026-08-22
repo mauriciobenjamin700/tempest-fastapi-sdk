@@ -691,6 +691,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
+- **OpenPix settings (v0.245.0)** — `OpenPixSettings` carries
+  `OPENPIX_APP_ID` and `OPENPIX_ENVIRONMENT`, and `openpix_kwargs()` returns the
+  `HTTPClient` keywords the client wraps: base URL resolved from the
+  environment, plus the AppID in `Authorization` **raw** (no `Bearer`). Sandbox
+  is the default, and the field is a `Literal`, so `prod` fails at load instead
+  of charging the wrong environment. The field is a string rather than
+  `OpenPixEnvironment` so `settings` never drags the lazy `integrations`
+  namespace in — the enum is imported inside the method, keeping one source of
+  truth for the hosts.
 - **App palette (v0.243.0, floor `tempestweb>=0.67.0` from v0.244.0)** —
   `build_web_app(..., theme=...)` hands a `tempest_core.Theme` to every
   session's `App`. This is the half CSS cannot reach: a themed component
