@@ -367,12 +367,17 @@ service/controller that holds the `WebPushSubscriptionService`:
 ```python
 import asyncio
 
-from tempest_fastapi_sdk.webpush import WebPushSubscriptionService
+from tempest_fastapi_sdk.webpush import (
+    WebPushDispatcher,
+    WebPushSubscriptionService,
+)
 
+from src.core.settings import settings
 from src.db.models import UserModel
 from src.db.repositories import WebPushSubscriptionRepository
 
-service = WebPushSubscriptionService(subscriptions_repo)
+dispatcher = WebPushDispatcher(**settings.webpush_kwargs())
+service = WebPushSubscriptionService(subscriptions_repo, dispatcher)
 
 user = UserModel(name="Ana", email="ana@example.com")
 
@@ -456,7 +461,7 @@ from tempest_fastapi_sdk.webpush import WebPushDispatcher
 from src.core.settings import settings
 from src.db.repositories import WebPushSubscriptionRepository
 
-dispatcher = WebPushDispatcher(settings)
+dispatcher = WebPushDispatcher(**settings.webpush_kwargs())
 
 subscriptions_repo = WebPushSubscriptionRepository(session)
 
@@ -495,7 +500,7 @@ from tempest_fastapi_sdk.webpush import (
 from src.core.settings import settings
 from src.db.repositories import WebPushSubscriptionRepository
 
-dispatcher = WebPushDispatcher(settings)
+dispatcher = WebPushDispatcher(**settings.webpush_kwargs())
 
 subscriptions_repo = WebPushSubscriptionRepository(session)
 

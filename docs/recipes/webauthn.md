@@ -130,7 +130,7 @@ from src.db.models import UserModel, UserTokenModel, UserWebAuthnCredentialModel
 
 
 def create_app() -> FastAPI:
-    db = AsyncDatabaseManager(url=settings.DATABASE_URL)
+    db = AsyncDatabaseManager(db_url=settings.DATABASE_URL)
     service = UserAuthService(
         user_model=UserModel,
         token_model=UserTokenModel,

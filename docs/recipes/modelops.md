@@ -365,12 +365,11 @@ from sklearn.datasets import load_iris
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
-from tempest_fastapi_sdk.modelops import edge_pipeline_from_pickle
+from tempest_fastapi_sdk.modelops import edge_pipeline
 
 X_train, X_test, y_train, y_test = train_test_split(
     *load_iris(return_X_y=True), random_state=0
 )
-edge_pipeline = edge_pipeline_from_pickle(Path("model.pkl"))
 model = RandomForestClassifier(n_estimators=20, random_state=0).fit(
     X_train, y_train
 )

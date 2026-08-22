@@ -215,6 +215,74 @@ def test_doc_calls_respect_positional_arity() -> None:
     )
 
 
+#: First-parameter names that are the instance, not an argument a caller passes.
+#: Pydantic names it ``__pydantic_self__`` so a model can still declare a field
+#: called ``self``; reading it as required makes every settings example look
+#: broken.
+_SELF_NAMES: frozenset[str] = frozenset({"self", "cls", "__pydantic_self__"})
+
+
+def test_doc_calls_supply_required_arguments() -> None:
+    """No doc example omits an argument the signature requires.
+
+    The sibling arity check looks for *too many* positionals and is blind to
+    the opposite, which is the one readers hit: a call that leaves out a
+    parameter with no default. ``AttemptThrottle(max_attempts=5,
+    window_seconds=300)`` reads fine, passes every other guard, and raises
+    ``TypeError: missing 1 required positional argument: 'backend'`` on the
+    first run.
+
+    That blindness is not hypothetical. It let a documented example ship
+    broken in seventeen places, across recipes and complete examples, in both
+    languages — every one of them a constructor handed a settings object where
+    the signature wanted unpacked keywords, or a function called with another
+    function's arguments.
+
+    Skipped for a call that splats (``f(**kwargs)`` / ``f(*args)``): the
+    contents are unknowable statically, and refusing to guess beats accusing a
+    correct example. Pydantic models are checked too — a required field with no
+    default raises ``ValidationError`` rather than ``TypeError``, which is the
+    same broken example with a different traceback.
+    """
+    failures: list[str] = []
+    for path, index, tree in _blocks():
+        for node, name, obj in _sdk_calls(tree):
+            signature = _signature(obj)
+            if signature is None:
+                continue
+            if any(isinstance(arg, ast.Starred) for arg in node.args):
+                continue
+            if any(keyword.arg is None for keyword in node.keywords):
+                continue
+            given = {keyword.arg for keyword in node.keywords}
+            missing: list[str] = []
+            filled_positionally = 0
+            for parameter in signature.parameters.values():
+                if parameter.name in _SELF_NAMES or parameter.kind in (
+                    inspect.Parameter.VAR_POSITIONAL,
+                    inspect.Parameter.VAR_KEYWORD,
+                ):
+                    continue
+                if parameter.kind in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                ):
+                    supplied = (
+                        filled_positionally < len(node.args) or parameter.name in given
+                    )
+                    filled_positionally += 1
+                else:
+                    supplied = parameter.name in given
+                if not supplied and parameter.default is inspect.Parameter.empty:
+                    missing.append(parameter.name)
+            if missing:
+                failures.append(
+                    f"{path.relative_to(_ROOT)} block #{index} line {node.lineno}: "
+                    f"{name}() requires {missing}, which the example omits"
+                )
+    assert not failures, "doc examples omit required arguments:\n" + "\n".join(failures)
+
+
 _FLOOR_RE = re.compile(r"tempest-fastapi-sdk\[[^\]]*\]>=(\d+)\.(\d+)\.(\d+)")
 
 
