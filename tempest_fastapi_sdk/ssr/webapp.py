@@ -345,6 +345,19 @@ def build_web_app(
             Whatever you supply must keep the script tag that boots the
             client; the practical way to write one is to read the
             generated ``index.html`` once and edit the head.
+        theme (Theme | None): The palette handed to each session's
+            ``App``, which ``view`` reads back as ``app.theme``. This is
+            the half CSS cannot reach: a widget bakes its resolved colors
+            into an inline ``style``, so rebranding custom properties
+            alone leaves those at the Material baseline. A widget follows
+            the palette only where ``view`` passes it down —
+            ``Button(label=..., variant=Variant.SOLID,
+            color_scheme="primary", theme=app.theme)`` — because every
+            widget defaults to the baseline theme, and the
+            ``tempestweb.components`` helpers do not forward ``app.theme``
+            for you. ``None`` (default) keeps the baseline. Pair this with
+            ``tempestweb.html.theme_css(theme)`` in the shell head, which
+            covers what the base stylesheet paints.
 
     Returns:
         FastAPI: The configured server app (owns ``/ws`` + ``/sse``).

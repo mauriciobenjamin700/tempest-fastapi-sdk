@@ -107,6 +107,14 @@ mexer neles. Todos rodam dentro do `make check`.
   que fica fora da ordem de propósito e a tabela do README ficam em
   [`docs/CLAUDE.md`](docs/CLAUDE.md); a autoridade é
   `tests/test_docs_organization.py`.
+- **Citar a doc de uma dependência não é medir** (v0.243.0). A afirmação
+  falsa que shippou com `build_web_app(theme=...)` veio quase literal da
+  docstring do `create_app` do tempestweb — prosa de upstream lê como
+  autoridade, e o mecanismo estava certo enquanto o efeito não acontecia.
+  Quando a frase é sobre o que o **nosso** usuário vê, o comando roda do
+  nosso lado da fronteira, com o call site que a doc recomenda. Sem guard
+  (nenhum teste lê prosa) —
+  [`LESSONS.md`](LESSONS.md#a-docstring-do-upstream-não-é-medição-v02430).
 - **Render depois de escrita que pode falhar recarrega o que lê** (v0.240.0).
   O `rollback` expira **todo** o identity map, não a linha rejeitada, e ler
   coluna expirada em contexto async é `MissingGreenlet`. `expire_on_commit`

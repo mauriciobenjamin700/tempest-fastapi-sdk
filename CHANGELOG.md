@@ -9,23 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`build_web_app(..., theme=...)`** — a Mode B app can finally ship its own
-  palette. The theme is forwarded to every session's ``App``, which is the
-  half a stylesheet cannot cover: components resolve their colors in
-  **Python**, so a filled button carries its fill as an inline style, and a
-  page that rebranded only its CSS custom properties kept rendering
-  baseline-purple buttons over a rebranded background. Needs tempestweb
-  0.66.0, where the session and `create_app` learned the same argument;
-  the floor moves accordingly.
+- **`build_web_app(..., theme=...)`** — a Mode B app can ship its own palette.
+  The theme is forwarded to every session's `App`, where `view` reads it back
+  as `app.theme`. This is the half a stylesheet cannot cover: a widget bakes
+  its resolved colors into an inline `style`, so rebranding only the CSS
+  custom properties leaves those at the Material baseline. Needs tempestweb
+  0.66.0, where the session and `create_app` learned the same argument; the
+  floor moves accordingly.
 
-    A full rebrand is both halves, and the docstring says so: this one for
-    what components resolve, and `tempestweb.html.theme_css(theme)` in the
-    shell head for what the base stylesheet paints.
+    Measured, so the scope is explicit: a widget follows the palette only
+    where `view` passes it down — `Button(label=..., variant=Variant.SOLID,
+    color_scheme="primary", theme=app.theme)`. Every widget defaults to the
+    baseline theme, and the `tempestweb.components` helpers (`filled_button`
+    and friends) do **not** forward `app.theme`, so a view built only from
+    them renders baseline-purple whatever theme the session carries. A full
+    rebrand is both halves: this argument plus
+    `tempestweb.html.theme_css(theme)` in the shell head for what the base
+    stylesheet paints.
 
 ### Changed
 
-- **Floor: `tempestweb>=0.66.0`** (was `0.64.0`), across the `ssr`, `admin`
-  and `all` extras.
+- **Floor: `tempestweb>=0.66.0`** (was `0.64.0`), across the `ssr`, `all`
+  and `dev` extras — the three that carry it.
 
 ## [0.242.0] — 2026-08-21
 

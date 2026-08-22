@@ -414,6 +414,28 @@ and sent back. `GET /api/health` still answers normally.
     A `str` with no `<` in it is rejected: that is a path written where a
     document was expected, and it would serve a blank page silently.
 
+!!! tip "The application's palette enters here too"
+    `theme=` hands a `Theme` to every session's `App`, and the `view`
+    reads it back as `app.theme`:
+
+    ```python
+    from tempest_core import Theme, ThemeMode
+    from tempest_core.style import Color
+
+    from tempest_fastapi_sdk.ssr import build_web_app
+
+    brand: Theme = Theme.from_seed(Color(r=39, g=58, b=79), mode=ThemeMode.SYSTEM)
+
+    app = build_web_app("web/dist/server", theme=brand)
+    ```
+
+    A widget does **not** inherit the theme on its own: every widget owns
+    a `theme` field defaulting to the Material baseline, so the `view`
+    has to forward it (`Button(..., theme=app.theme)`). The
+    `tempestweb.components` helpers (`filled_button` and friends) do not.
+    The full recipe, with both halves of a rebrand, is in
+    [SSR](ssr.en.md#the-apps-palette-theme).
+
 !!! info "Which mode?"
     - **WASM** — the client is self-contained (runs offline), the server
       is optional (just API + files). Heavier boot (downloads Pyodide).

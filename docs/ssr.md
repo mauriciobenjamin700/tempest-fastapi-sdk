@@ -685,6 +685,74 @@ app.mount("/", build_web_app("dist/server"))
 `/` — a mesma fiação que o `server.py` gerado faz, in-process. Dá pra
 rodar direto com uvicorn também.
 
+#### A paleta do app (`theme=`)
+
+Cor chega numa tela tempestweb por dois caminhos independentes, e um deles
+o CSS não alcança: um widget assa a cor que resolveu num `style` **inline**.
+Rebrandar só as custom properties deixa esses fills no baseline Material.
+
+`theme=` entrega a paleta ao `App` de cada sessão:
+
+```python
+from fastapi import FastAPI
+from tempest_core import Theme, ThemeMode
+from tempest_core.style import Color
+
+from tempest_fastapi_sdk.ssr import build_web_app
+
+app = FastAPI()
+
+marca: Theme = Theme.from_seed(Color(r=39, g=58, b=79), mode=ThemeMode.SYSTEM)
+
+app.mount("/", build_web_app("dist/server", theme=marca))
+```
+
+Do outro lado, no `app.py` do artefato, a `view` lê a paleta como
+`app.theme` e **passa pro widget** — é isso que fecha o circuito:
+
+```python
+from dataclasses import dataclass
+
+from tempest_core import App, Button, Widget
+from tempest_core.variants import Variant
+
+
+@dataclass
+class State:
+    """Estado da aplicação."""
+
+    value: int = 0
+
+
+def make_state() -> State:
+    """Constrói o estado inicial."""
+    return State()
+
+
+def view(app: App[State]) -> Widget:
+    """Renderiza um botão sólido tingido pela paleta da sessão."""
+    return Button(
+        label="Comprar",
+        variant=Variant.SOLID,
+        color_scheme="primary",
+        theme=app.theme,
+        key="buy",
+    )
+```
+
+!!! warning "O widget não herda o tema sozinho"
+    `App.theme` é um valor que a `view` **lê**, não algo injetado na
+    árvore. Todo widget tem um campo `theme` próprio, com default no
+    baseline Material — e os helpers de `tempestweb.components`
+    (`filled_button` e companhia) **não** repassam `app.theme`. Uma view
+    feita só deles renderiza o roxo baseline com qualquer tema que a
+    sessão carregue. Passe `theme=app.theme` no widget.
+
+!!! tip "Rebrand completo são as duas metades"
+    `theme=` cobre o que o widget resolve em Python. Para o que a
+    stylesheet base pinta, injete `tempestweb.html.theme_css(theme)` no
+    `<head>` do shell, via `shell=`.
+
 ## Recap
 
 - **`Page`** — componente tipado; declare campos, implemente `body()`,
@@ -697,7 +765,9 @@ rodar direto com uvicorn também.
   localmente em `GET /_ssr/htmx.js`; combine com `htmx=True`.
 - **`make_web_app_router(dir)`** — serve um build **wasm** (SPA estática)
   com history fallback; inclua por último. **`build_web_app(dir)`** —
-  hospeda um build **server** (WebSocket/SSE) como sub-app pra montar.
+  hospeda um build **server** (WebSocket/SSE) como sub-app pra montar;
+  `theme=` entrega a paleta ao `App` de cada sessão, e a `view` a repassa
+  ao widget como `theme=app.theme`.
   **`detect_build_mode(dir)`** distingue os dois.
 - Tudo mora no extra `[ssr]` (`uv add "tempest-fastapi-sdk[ssr]"`),
   carregado sob demanda — `import tempest_fastapi_sdk` nunca exige o extra.

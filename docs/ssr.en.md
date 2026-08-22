@@ -685,6 +685,76 @@ contract), wires the tempestweb server engine via
 shell at `/` — the same wiring the generated `server.py` does, in-process.
 You can also run it directly with uvicorn.
 
+#### The app's palette (`theme=`)
+
+Colour reaches a tempestweb screen by two independent paths, and CSS
+cannot reach one of them: a widget bakes the colour it resolved into an
+**inline** `style`. Rebranding only the custom properties leaves those
+fills at the Material baseline.
+
+`theme=` hands the palette to every session's `App`:
+
+```python
+from fastapi import FastAPI
+from tempest_core import Theme, ThemeMode
+from tempest_core.style import Color
+
+from tempest_fastapi_sdk.ssr import build_web_app
+
+app = FastAPI()
+
+brand: Theme = Theme.from_seed(Color(r=39, g=58, b=79), mode=ThemeMode.SYSTEM)
+
+app.mount("/", build_web_app("dist/server", theme=brand))
+```
+
+On the other side, in the artifact's `app.py`, the `view` reads the
+palette as `app.theme` and **passes it to the widget** — that is what
+closes the loop:
+
+```python
+from dataclasses import dataclass
+
+from tempest_core import App, Button, Widget
+from tempest_core.variants import Variant
+
+
+@dataclass
+class State:
+    """Application state."""
+
+    value: int = 0
+
+
+def make_state() -> State:
+    """Build the initial state."""
+    return State()
+
+
+def view(app: App[State]) -> Widget:
+    """Render a solid button tinted by the session's palette."""
+    return Button(
+        label="Buy",
+        variant=Variant.SOLID,
+        color_scheme="primary",
+        theme=app.theme,
+        key="buy",
+    )
+```
+
+!!! warning "A widget does not inherit the theme on its own"
+    `App.theme` is a value the `view` **reads**, not something injected
+    into the tree. Every widget owns a `theme` field defaulting to the
+    Material baseline — and the `tempestweb.components` helpers
+    (`filled_button` and friends) do **not** forward `app.theme`. A view
+    built only from them renders baseline purple whatever theme the
+    session carries. Pass `theme=app.theme` to the widget.
+
+!!! tip "A full rebrand is both halves"
+    `theme=` covers what the widget resolves in Python. For what the base
+    stylesheet paints, inject `tempestweb.html.theme_css(theme)` into the
+    shell's `<head>` via `shell=`.
+
 ## Recap
 
 - **`Page`** — typed component; declare fields, implement `body()`,
@@ -697,7 +767,9 @@ You can also run it directly with uvicorn.
   at `GET /_ssr/htmx.js`; combine with `htmx=True`.
 - **`make_web_app_router(dir)`** — serves a **wasm** (static SPA) build
   with a history fallback; include it last. **`build_web_app(dir)`** —
-  hosts a **server** (WebSocket/SSE) build as a mountable sub-app.
+  hosts a **server** (WebSocket/SSE) build as a mountable sub-app;
+  `theme=` hands the palette to every session's `App`, and the `view`
+  forwards it to the widget as `theme=app.theme`.
   **`detect_build_mode(dir)`** tells them apart.
 - Everything lives in the `[ssr]` extra
   (`uv add "tempest-fastapi-sdk[ssr]"`), loaded on demand —

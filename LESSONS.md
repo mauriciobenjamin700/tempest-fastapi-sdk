@@ -30,6 +30,48 @@ Outro caso da mesma família: errei o 500-vs-422 do router de PDF porque
 deduzi que o FastAPI converteria um `ValidationError` levantado dentro do
 corpo da rota. Ele não converte.
 
+## A docstring do upstream não é medição (v0.243.0)
+
+`build_web_app(..., theme=...)` shippou com CHANGELOG e docstring afirmando
+que a paleta passava a valer para os componentes — "um filled button carrega
+o fill como style inline, então rebrandar só as custom properties deixava o
+botão roxo". A frase estava certa sobre o **mecanismo** e errada sobre o
+**efeito**. Ninguém deduziu do nada: ela foi herdada quase literal da
+docstring do `create_app` do tempestweb, que é o que faz ela passar batido —
+prosa do upstream lê como autoridade, não como suposição.
+
+Medido (`tempest_core` puro, sem SDK e sem servidor no meio):
+
+| view | tema | fill resolvido |
+| --- | --- | --- |
+| `filled_button("Comprar")` | seed vermelha | `rgb(88,71,133)` — baseline, inalterado |
+| `Button(..., theme=app.theme)` | seed vermelha | `rgb(191,13,13)` = `primary` do tema |
+
+O forwarding do SDK estava correto em cada salto (`create_app` →
+`TempestWebServer._theme` → `AppSession` → `App`). O que falta é o último:
+`App.theme` é, por design, valor que a `view` **lê** — não é injetado na
+árvore. Todo widget tem campo `theme` próprio com default baseline, e os
+helpers de `tempestweb.components` não repassam `app.theme`. Logo uma view
+feita só deles renderiza baseline com qualquer tema — exatamente o bug que a
+entrega dizia corrigir. Reportado em tempestweb#80.
+
+Os três testes que shipparam junto não pegariam nada disso: dois afirmavam
+`"theme" in inspect.signature(...)` — um deles da assinatura de um pacote de
+terceiro — e o terceiro conferia `Theme.from_seed`. Todos passam com o
+forwarding removido. `tests/ssr/test_web_app_theme.py` hoje abre uma sessão
+WebSocket real sobre um build server real e lê a cor do primeiro frame de
+patch; verifiquei que ele falha quando `theme=theme` sai de
+`tempest_fastapi_sdk/ssr/webapp.py`.
+
+Sem guard: nenhum teste lê prosa, e "esta frase saiu de um comando?" não é
+decidível por máquina. O que dá para automatizar já existe — o que sobra é a
+pergunta na revisão do diff.
+
+**A regra que faltava:** citar a doc de uma dependência não é medir. Quando a
+afirmação é sobre o que o *nosso* usuário vai ver, o comando roda no nosso
+lado da fronteira, com o nosso call site — inclusive o helper que a doc
+recomenda.
+
 ## Regra sem guard sobrevive violada
 
 - **`**kwargs`**: o defeito shippou **cinco vezes** em `MessageBroker` e
