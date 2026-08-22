@@ -30,47 +30,56 @@ Outro caso da mesma família: errei o 500-vs-422 do router de PDF porque
 deduzi que o FastAPI converteria um `ValidationError` levantado dentro do
 corpo da rota. Ele não converte.
 
-## A docstring do upstream não é medição (v0.243.0)
+## Medir no lock não é medir no piso (v0.243.0 → v0.244.0)
 
-`build_web_app(..., theme=...)` shippou com CHANGELOG e docstring afirmando
-que a paleta passava a valer para os componentes — "um filled button carrega
-o fill como style inline, então rebrandar só as custom properties deixava o
-botão roxo". A frase estava certa sobre o **mecanismo** e errada sobre o
-**efeito**. Ninguém deduziu do nada: ela foi herdada quase literal da
-docstring do `create_app` do tempestweb, que é o que faz ela passar batido —
-prosa do upstream lê como autoridade, não como suposição.
+A mesma afirmação saiu errada **duas vezes seguidas**, e a segunda foi medida.
 
-Medido (`tempest_core` puro, sem SDK e sem servidor no meio):
+A v0.243.0 shippou `build_web_app(..., theme=...)` dizendo que a paleta passava
+a valer para os componentes. A frase veio quase literal da docstring do
+`create_app` do tempestweb — prosa de upstream lê como autoridade, não como
+suposição. Rodei e ela era falsa: `filled_button` numa sessão com tema vermelho
+resolvia `rgb(88,71,133)`, o roxo baseline.
 
-| view | tema | fill resolvido |
+Então "corrigi": documentei que a `view` precisava repassar (`Button(...,
+theme=app.theme)`) e que os helpers de `tempestweb.components` não repassavam.
+Medido, escrito nas quatro receitas, no CHANGELOG, na docstring, numa lição
+aqui, e numa issue aberta no repo do tempestweb. **Também errado.**
+
+O `tempest-core` 0.12.0 já tinha resolvido na raiz, no dia anterior:
+`current_theme()` / `use_theme()` num `ContextVar`, com `App._build` instalando
+o tema em volta da chamada da view e os 46 campos de componente passando a ter
+default `current_theme`. Sem mudança de call site, sem mudança de assinatura. E
+a `tempestweb` 0.67.0 já pinava esse piso.
+
+O que eu media era o meu `.venv`, resolvido por um lock que trazia
+`tempest-core 0.11.0` — porque o piso que a própria release declarava era
+`tempestweb>=0.66.0`, e a 0.66.0 pina `tempest-core>=0.11.0`:
+
+| ambiente | `filled_button` numa sessão com tema | |
 | --- | --- | --- |
-| `filled_button("Comprar")` | seed vermelha | `rgb(88,71,133)` — baseline, inalterado |
-| `Button(..., theme=app.theme)` | seed vermelha | `rgb(191,13,13)` = `primary` do tema |
+| lock local (core 0.11.0) | `rgb(88,71,133)` | o que eu medi |
+| piso real do ecossistema (core 0.12.0) | `rgb(191,13,13)` | o que o usuário vê |
 
-O forwarding do SDK estava correto em cada salto (`create_app` →
-`TempestWebServer._theme` → `AppSession` → `App`). O que falta é o último:
-`App.theme` é, por design, valor que a `view` **lê** — não é injetado na
-árvore. Todo widget tem campo `theme` próprio com default baseline, e os
-helpers de `tempestweb.components` não repassam `app.theme`. Logo uma view
-feita só deles renderiza baseline com qualquer tema — exatamente o bug que a
-entrega dizia corrigir. Reportado em tempestweb#80.
+Então a medição estava certa sobre um ambiente que ninguém deveria ter, e o
+piso errado era o defeito de verdade — corrigido na 0.244.0 para
+`tempestweb>=0.67.0`.
 
-Os três testes que shipparam junto não pegariam nada disso: dois afirmavam
-`"theme" in inspect.signature(...)` — um deles da assinatura de um pacote de
-terceiro — e o terceiro conferia `Theme.from_seed`. Todos passam com o
-forwarding removido. `tests/ssr/test_web_app_theme.py` hoje abre uma sessão
-WebSocket real sobre um build server real e lê a cor do primeiro frame de
-patch; verifiquei que ele falha quando `theme=theme` sai de
-`tempest_fastapi_sdk/ssr/webapp.py`.
+**A regra:** medição é tão boa quanto o ambiente onde rodou, e o ambiente que
+importa é o que as **nossas próprias constraints** produzem, não o `.venv` que
+está na mesa. Ao afirmar algo sobre comportamento de dependência: resolva o
+piso que a gente declara, meça lá, e meça na versão atual. Se as duas
+divergem, ou o piso está errado ou a frase precisa dizer de qual versão fala.
 
-Sem guard: nenhum teste lê prosa, e "esta frase saiu de um comando?" não é
-decidível por máquina. O que dá para automatizar já existe — o que sobra é a
-pergunta na revisão do diff.
+Corolário que já vale duas vezes aqui: **issue aberta não é trabalho
+pendente**, e agora também **issue que eu abro não é defeito confirmado**.
+Antes de relatar upstream, conferir o CHANGELOG da dependência na versão que o
+nosso piso alcança — o `tempest-core` 0.12.0 tinha a correção documentada em
+prosa clara, publicada antes de eu abrir a issue. Fechada como inválida em
+tempestweb#80.
 
-**A regra que faltava:** citar a doc de uma dependência não é medir. Quando a
-afirmação é sobre o que o *nosso* usuário vai ver, o comando roda no nosso
-lado da fronteira, com o nosso call site — inclusive o helper que a doc
-recomenda.
+Sem guard: nenhum teste lê prosa, e nenhum resolve "esta frase vale no piso?".
+O que dá para automatizar é o piso em si — um teste que instale o piso
+declarado e exercite o caminho seria o guard real, e não existe.
 
 ## Regra sem guard sobrevive violada
 

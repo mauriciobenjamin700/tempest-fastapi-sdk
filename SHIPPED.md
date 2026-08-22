@@ -691,6 +691,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
+- **App palette (v0.243.0, floor `tempestweb>=0.67.0` from v0.244.0)** —
+  `build_web_app(..., theme=...)` hands a `tempest_core.Theme` to every
+  session's `App`. This is the half CSS cannot reach: a themed component
+  resolves its colors at construction and bakes them into an inline
+  `style`, so rebranding the custom properties alone leaves those at the
+  Material baseline. The build installs the palette around the `view`
+  call, so every component the view constructs resolves against it with
+  no call-site change; a `theme=` passed straight to a widget still wins.
+  Needs the floor above — `tempestweb` 0.66.0 accepts the argument and
+  paints baseline, because the connection lives in `tempest-core` 0.12.0.
+  Measured at both ends (core 0.12.0 and 0.14.0): a red-seeded palette
+  resolves a filled button to the scheme's `primary`, not the baseline
+  violet. Pair it with `tempestweb.html.theme_css(theme)` in the shell
+  head for what the base stylesheet paints.
 - **Custom app shell (v0.225.0)** — `build_web_app(..., shell=...)` and
   `make_web_app_router(..., shell=...)` replace the artifact's
   `index.html`, the only part of the HTML an application owns (document
