@@ -26,6 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | 0.11.0 | `rgb(88,71,133)` | baseline, tema ignorado |
   | 0.12.0 | `rgb(191,13,13)` | `primary` da paleta |
 
+- **`uv.lock` atualizado para o que está publicado**: `tempestweb` 0.78.0 e
+  `tempest-core` 0.14.0 (eram 0.66.0 e 0.11.0). O piso **não** sobe junto: fica
+  em `>=0.67.0`, que é a menor versão em que o comportamento documentado
+  acontece. Subir o piso até 0.78.0 obrigaria todo consumidor a atualizar sem o
+  SDK precisar de nada de 0.68–0.78. Piso é o mínimo que funciona; lock é o que
+  a CI exercita.
+
+  Salto de 12 minors medido, não deduzido: suíte inteira verde
+  (6144 passed), `mypy` e `ruff` limpos, e a afirmação da doc re-medida nas duas
+  pontas — `tempest-core` 0.12.0 (o piso) e 0.14.0 (o atual) resolvem um
+  `filled_button` para o `primary` da paleta, e um `theme=` explícito no widget
+  vence nos dois.
+
 ### Fixed
 
 - **A doc do `theme=` descrevia um workaround que nunca foi necessário.** A
