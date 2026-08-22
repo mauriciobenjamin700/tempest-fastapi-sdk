@@ -5,6 +5,40 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.245.0] — 2026-08-22
+
+### Added
+
+- **`OpenPixSettings`** — o mixin que a única integração de pagamento embutida
+  não tinha. O SDK ships 20 classes de settings, cada capacidade com credencial
+  ganhando a sua mais um helper `*_kwargs()`; OpenPix ficou de fora, então a
+  receita ensinava a reescrever `OPENPIX_APP_ID` e a resolução de base URL à
+  mão, com um `if` que aceitava qualquer typo como "sandbox".
+
+  Traz `OPENPIX_APP_ID` e `OPENPIX_ENVIRONMENT`, e
+  `settings.openpix_kwargs()` devolve `base_url` mais o header de autorização:
+
+  ```python
+  client = OpenPixClient(HTTPClient(**settings.openpix_kwargs()))
+  ```
+
+  Isso também tira do call site do usuário a pegadinha que a receita precisava
+  de um admonition para avisar: o AppID vai em `Authorization` **cru**, sem
+  prefixo `Bearer`.
+
+  Duas decisões de desenho, ambas com teste:
+
+  - **Sandbox é o default.** Apontar para produção sem querer cobra dinheiro de
+    verdade; apontar para sandbox sem querer falha barulhento. E o campo é
+    `Literal["production", "sandbox"]`, então `prod` é `ValidationError` na
+    subida do serviço, não uma cobrança no ambiente errado.
+  - **O campo é string, não o enum.** `settings` não pode importar o namespace
+    `integrations`, que é lazy para `import tempest_fastapi_sdk` não pagar por
+    373 nomes gerados. `openpix_kwargs()` importa `OpenPixEnvironment` na
+    chamada, então a base URL continua com fonte única — há teste que percorre
+    o enum e compara, para uma cópia dos hosts não passar. Medido: importar o
+    SDK e a classe carrega **zero** módulo de `integrations`.
+
 ## [0.243.0] — 2026-08-21
 
 ### Added

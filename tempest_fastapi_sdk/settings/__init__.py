@@ -21,6 +21,7 @@ from tempest_fastapi_sdk.settings.mixins import GenAISettings as GenAISettings
 from tempest_fastapi_sdk.settings.mixins import JWTSettings as JWTSettings
 from tempest_fastapi_sdk.settings.mixins import LogSettings as LogSettings
 from tempest_fastapi_sdk.settings.mixins import MinIOSettings as MinIOSettings
+from tempest_fastapi_sdk.settings.mixins import OpenPixSettings as OpenPixSettings
 from tempest_fastapi_sdk.settings.mixins import PushSettings as PushSettings
 from tempest_fastapi_sdk.settings.mixins import RabbitMQSettings as RabbitMQSettings
 from tempest_fastapi_sdk.settings.mixins import RedisSettings as RedisSettings
@@ -44,6 +45,7 @@ __all__: list[str] = [
     "JWTSettings",
     "LogSettings",
     "MinIOSettings",
+    "OpenPixSettings",
     "PushSettings",
     "RabbitMQSettings",
     "RedisSettings",

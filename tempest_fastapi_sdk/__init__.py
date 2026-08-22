@@ -1103,6 +1103,9 @@ from tempest_fastapi_sdk.settings import (
     MinIOSettings as MinIOSettings,
 )
 from tempest_fastapi_sdk.settings import (
+    OpenPixSettings as OpenPixSettings,
+)
+from tempest_fastapi_sdk.settings import (
     PushSettings as PushSettings,
 )
 from tempest_fastapi_sdk.settings import (
@@ -1541,7 +1544,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.243.0"
+__version__: str = "0.245.0"
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
@@ -1757,6 +1760,7 @@ __all__: list[str] = [
     "OAuthUser",
     "OIDCProvider",
     "ObjectStat",
+    "OpenPixSettings",
     "OrderRef",
     "OutboxRelay",
     "OutboxStatus",
