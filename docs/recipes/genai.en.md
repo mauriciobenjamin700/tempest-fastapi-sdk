@@ -555,6 +555,7 @@ maintaining) an entire inference microservice. `AIChatPipeline` does it
 ```python
 import asyncio
 
+from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.genai import (
     AIChatPipeline,
     OllamaEmbedder,
@@ -583,7 +584,7 @@ weather_tool = Tool(
 pipeline = AIChatPipeline(
     OllamaGenerator("llama3.2"),
     memory=ChatMemory(OllamaEmbedder("nomic-embed-text")),
-    web_search=WebSearch(SearxngBackend("http://localhost:8080")),
+    web_search=WebSearch(SearxngBackend("http://localhost:8080", http_client=HTTPClient())),
     tools=[weather_tool],
     base_system_prompt="You are a concise assistant. Answer in English.",
 )

@@ -251,7 +251,7 @@ from tempest_fastapi_sdk import AsyncMinIOClient, PutObjectItem
 
 from src.core.settings import settings
 
-storage = AsyncMinIOClient(settings)
+storage = AsyncMinIOClient(**settings.minio_kwargs())
 
 thumb_a = "thumbs/a.png"
 

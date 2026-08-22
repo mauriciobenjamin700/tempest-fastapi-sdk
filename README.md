@@ -2758,7 +2758,7 @@ from tempest_fastapi_sdk.tasks import TaskQueue
 
 from src.core.settings import settings
 
-email_utils = EmailUtils(settings)
+email_utils = EmailUtils(**settings.email_kwargs())
 app = FastAPI()
 
 
@@ -3716,7 +3716,8 @@ from tempest_fastapi_sdk import AttemptThrottle, get_client_ip
 
 from src.schemas import LoginIn, LoginOut
 
-throttle = AttemptThrottle(max_attempts=5, window_seconds=300)
+# Built in the app lifespan: `cache.client` raises until `connect()` runs.
+throttle: AttemptThrottle | None = None
 router = APIRouter()
 
 

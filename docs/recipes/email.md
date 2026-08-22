@@ -119,7 +119,7 @@ from tempest_fastapi_sdk import EmailUtils
 
 from src.core.settings import settings
 
-mailer = EmailUtils(settings)
+mailer = EmailUtils(**settings.email_kwargs())
 
 
 async def main() -> None:
