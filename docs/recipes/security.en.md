@@ -327,7 +327,8 @@ from tempest_fastapi_sdk import AttemptThrottle, get_client_ip
 
 from src.schemas import LoginIn, LoginOut
 
-throttle = AttemptThrottle(max_attempts=5, window_seconds=300)
+# Built in the app lifespan: `cache.client` raises until `connect()` runs.
+throttle: AttemptThrottle | None = None
 
 router = APIRouter()
 

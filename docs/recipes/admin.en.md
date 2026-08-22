@@ -246,7 +246,7 @@ from src.admin import site
 from src.core.settings import settings
 from src.db.models import UserModel
 
-mailer = EmailUtils(settings)
+mailer = EmailUtils(**settings.email_kwargs())
 
 
 @admin_action(label="Send welcome")

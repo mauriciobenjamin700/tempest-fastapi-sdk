@@ -208,10 +208,11 @@ from tempest_fastapi_sdk import UserAuthService, make_auth_router
 
 from src.api.dependencies.resources import db
 from src.core.settings import settings
-from src.db.models import UserModel
+from src.db.models import UserModel, UserTokenModel
 
 auth_service = UserAuthService(
     user_model=UserModel,
+    token_model=UserTokenModel,
     auth_settings=settings,
     jwt_settings=settings,
 )

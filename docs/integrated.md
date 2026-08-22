@@ -267,7 +267,7 @@ from src.core.settings import settings
 from src.queue import OrderPaid, mq
 from src.tasks import send_receipt
 
-notifications = WebPushDispatcher(settings)
+notifications = WebPushDispatcher(**settings.webpush_kwargs())
 
 
 @mq.on("orders.paid")
@@ -304,7 +304,7 @@ from src.core.settings import settings
 from src.db.models import UserModel
 
 current_user = UserModel(name="Ana", email="ana@example.com")
-notifications = WebPushDispatcher(settings)
+notifications = WebPushDispatcher(**settings.webpush_kwargs())
 router = APIRouter()
 
 

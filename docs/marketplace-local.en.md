@@ -437,7 +437,7 @@ from src.db.models import OrderModel, UserModel
 
 conversation_id = uuid4()
 
-notifications = WebPushDispatcher(settings)
+notifications = WebPushDispatcher(**settings.webpush_kwargs())
 
 order = OrderModel(user_id=user.id, total=100)
 
