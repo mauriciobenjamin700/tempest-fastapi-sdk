@@ -253,12 +253,25 @@ def scaffold(
         raise typer.Exit(1)
     target.mkdir(parents=True, exist_ok=True)
 
+    from tempest_fastapi_sdk.cli.generate import (
+        _spa_context,
+        _system_deps,
+        detect_spa_dir,
+    )
+
     context: dict[str, str] = {
         "PROJECT_NAME": resolved_name,
         "HOST": bind_host,
         "PORT": str(bind_port),
         "SDK_DEP": _build_sdk_dep(extras),
         "SDK_EXTRAS": extras,
+        # The Dockerfile and .dockerignore templates are shared with
+        # `tempest generate dockerfile`, which fills these in. Scaffolding
+        # left them out, so every new project shipped `__SPA_STAGE__` and
+        # friends verbatim and `docker build` died on the first line that
+        # carried one -- before any layer was built.
+        "SYSTEM_DEPS": _system_deps(extras),
+        **_spa_context(detect_spa_dir(target)),
     }
 
     root = _templates_root()
