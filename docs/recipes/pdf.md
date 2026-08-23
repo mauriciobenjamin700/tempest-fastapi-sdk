@@ -478,23 +478,44 @@ A última linha passa a ser:
 === DOCUMENT TRUNCATED AFTER PAGE 1 OF 3 ===
 ```
 
-!!! warning "`max_chars` não é um teto da string devolvida"
-    O aviso de truncamento e os marcadores de página entram **por cima** do
-    limite. Medido: `max_chars=60` num PDF de 3 páginas devolveu 92
-    caracteres. Se você precisa de um teto duro para caber numa janela de
-    contexto, meça a string devolvida — não confie no parâmetro como total.
+!!! check "`max_chars` é teto duro, e sempre volta texto (v0.252.0)"
+    Três coisas mudaram, porque as três estavam erradas:
 
-    Pior no limite baixo: o corte acontece em fronteira de página, então um
-    `max_chars` menor que a primeira página devolve **só o aviso**, sem uma
-    linha do documento. Medido num PDF de 1 página com 45 caracteres de texto:
-    qualquer `max_chars` entre 5 e 40 devolve exatamente
-    `"\n=== DOCUMENT TRUNCATED AFTER PAGE 0 OF 1 ===\n"` — 46 caracteres,
-    acima do limite pedido, e com "página 0", que não existe.
+    | Antes | Agora |
+    | --- | --- |
+    | aviso e marcadores entravam **por cima** do limite (`max_chars=40` → 46 chars) | o resultado **nunca** passa de `max_chars` |
+    | `max_chars` menor que a página 1 devolvia **só o aviso** | volta texto do documento, cortado dentro da página |
+    | aviso dizia `PAGE 0`, página que não existe | a menor página citada é 1 |
 
-    Ou seja: dimensionar por `max_chars` sem checar a saída é como se entrega
-    documento vazio a um modelo. Trate resultado sem o marcador da página 1
-    como "não caber", e suba o limite ou parta o documento por
-    `extract_pdf_pages`.
+    A ordem de preferência é: páginas inteiras enquanto couberem; se nem a
+    primeira couber, corte dentro dela com
+    `=== PAGE 1 OF 3 TRUNCATED MID-PAGE ===`; e se o orçamento não couber um
+    aviso deixando ao menos **um terço** para texto, o orçamento inteiro vai
+    para o texto — sem aviso e sem marcador de página, porque anotação que
+    engole o conteúdo é o defeito que isto conserta.
+
+    O aviso descreve o corte que **de fato** aconteceu, não o caminho que o
+    código tomou: `MID-PAGE` só aparece quando o texto devolvido é prefixo
+    estrito da página. Se a página 1 inteira couber, a linha é
+    `=== DOCUMENT TRUNCATED AFTER PAGE 1 OF 3 ===` — medido num documento de
+    3 páginas, `max_chars=120` devolve 106 caracteres nessa forma. E no
+    orçamento que segura a página mas não esse aviso (100, no mesmo
+    documento, onde a forma de fronteira precisa de 106), o corte tira um
+    caractere para o `MID-PAGE` ficar verdadeiro: 58 dos 59 caracteres da
+    página 1 com aviso valem mais que os 59 com as páginas 2 e 3 sumindo em
+    silêncio.
+
+    Medido numa página de 239 caracteres: até `max_chars=60` a resposta é
+    texto puro do tamanho exato do orçamento; em `max_chars=61` o aviso passa
+    a caber e a resposta traz 20 caracteres de documento mais o aviso; daí
+    para cima o texto só cresce. O degrau para baixo acontece **uma vez** —
+    no orçamento em que o aviso passa a caber — e é o preço de saber que
+    falta metade. Um teste fixa isso: em nenhum outro ponto entre 1 e 300 um
+    orçamento maior devolve menos documento.
+
+    Se o seu fluxo dependia do comportamento antigo (retorno sempre em número
+    inteiro de páginas), use `extract_pdf_pages` e monte você mesmo: ele
+    devolve página por página, sem teto.
 
 O corte silencioso é o perigoso: o modelo responde sobre a metade que viu, sem
 sinal de que existe outra metade. Sobrescreva a frase com
