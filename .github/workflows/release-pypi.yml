@@ -29,11 +29,25 @@ jobs:
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           PYPROJECT_VERSION=$(python -c "import tomllib; print(tomllib.loads(open('pyproject.toml','rb').read().decode())['project']['version'])")
           PACKAGE_VERSION=$(python -c "import re; print(re.search(r'__version__:\s*str\s*=\s*\"([^\"]+)\"', open('tempest_fastapi_sdk/__init__.py').read()).group(1))")
+          LOCK_VERSION=$(python -c "import re; print(re.search(r'name = \"tempest-fastapi-sdk\"\nversion = \"([^\"]+)\"', open('uv.lock').read()).group(1))")
           echo "Tag:        $TAG_VERSION"
           echo "pyproject:  $PYPROJECT_VERSION"
           echo "__version__: $PACKAGE_VERSION"
+          echo "uv.lock:    $LOCK_VERSION"
           if [ "$TAG_VERSION" != "$PYPROJECT_VERSION" ] || [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
             echo "Version mismatch — bump pyproject.toml AND tempest_fastapi_sdk/__init__.py to match the tag before retagging."
+            exit 1
+          fi
+          # uv.lock records this package's own version. It drifted a version
+          # behind the pyproject in v0.236.0, v0.237.0, v0.238.0 and v0.247.0,
+          # and nothing here noticed: the lock is not part of the wheel, so the
+          # release stayed green while the tag shipped an inconsistent tree.
+          # Checked at the tag because this is the one moment the answer is
+          # fixed -- `uv run` rewrites the file on disk before any test could
+          # read it, which is why the local guard reads `git show HEAD:uv.lock`
+          # instead (tests/test_lock_version_guard.py).
+          if [ "$TAG_VERSION" != "$LOCK_VERSION" ]; then
+            echo "uv.lock records $LOCK_VERSION but the tag is $TAG_VERSION — run \`uv lock\`, commit the lock, and move the tag."
             exit 1
           fi
 

@@ -2,6 +2,61 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.251.0 — a assinatura de webhook do Mercado Pago passa a seguir o algoritmo do provedor
+
+Quebra quem passava `manifest_template=` ou desempacotava o retorno de
+`parse_signature_header`. Se você só chama `verify_signature`, **nada muda no
+seu código** — só passam a verificar entregas que antes eram rejeitadas.
+
+### O manifesto omite par ausente, e por isso não é mais template
+
+A implementação anterior renderizava
+`"id:{data_id};request-id:{request_id};ts:{ts};"`. O validador oficial do
+Mercado Pago (`mercadopago/sdk-nodejs`, `src/utils/webhook/index.ts`, commit
+`99857f33`) **omite** o par cujo valor é ausente. Uma entrega sem `data.id`
+assina `request-id:...;ts:...;`, e o template fixo assinava
+`id:;request-id:...;ts:...;` — hash diferente, verificação falhando sempre.
+
+```python
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import build_manifest
+
+# antes: DEFAULT_MANIFEST_TEMPLATE + str.format
+# agora: a regra, exportada
+build_manifest(data_id="", request_id="req-1", timestamp="1771891200")
+# "request-id:req-1;ts:1771891200;"
+```
+
+`DEFAULT_MANIFEST_TEMPLATE` e o parâmetro `manifest_template=` foram
+**removidos**: existiam porque o algoritmo era desconhecido, e um template não
+consegue expressar a regra de omissão. Se você havia medido um manifesto
+diferente e passava o seu, compare com `build_manifest` e abra uma issue se
+ainda divergir.
+
+### `parse_signature_header` devolve um objeto, não uma tupla
+
+```python
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import parse_signature_header
+
+# antes
+# timestamp, digest = parse_signature_header(header)
+
+# agora
+parsed = parse_signature_header("ts=1771891200,v1=abc123")
+parsed.timestamp        # "1771891200"
+parsed.digest()         # "abc123" — a primeira versão suportada
+parsed.hashes           # {"v1": "abc123"} — o header pode carregar v1 e v2
+```
+
+### O que passou a existir
+
+- `versions=` em `verify_signature`, default `("v1",)`. Uma migração do
+  provedor para `v2` vira `versions=("v2", "v1")`, sem esperar release.
+- `tolerance_seconds=` (e `now=`, para teste), que é o que faz o `ts` do
+  manifesto trabalhar contra replay. Continua opt-in, como no upstream.
+- Chave de header case-insensitive, valor só-espaço tratado como ausente, e
+  `ts` não-numérico rejeitado como header malformado — três regras do
+  upstream que faltavam.
+
 ## 0.234.0 — modelo gerado se constrói pelo nome Python, e o type-checker aceita
 
 Nada muda em runtime. Muda o que o pyright aceita.
