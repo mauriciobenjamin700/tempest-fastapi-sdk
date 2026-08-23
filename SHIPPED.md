@@ -691,6 +691,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
+- **Assinatura de webhook do Mercado Pago portada do provedor (v0.251.0)** —
+  `build_manifest`, `SignatureHeader`, `DEFAULT_SIGNATURE_VERSIONS`, mais
+  `versions=` e `tolerance_seconds=` em `verify_signature`. O manifesto omite
+  par ausente (era template fixo, e por isso **nenhuma** entrega sem `data.id`
+  verificava), chave de header é case-insensitive, valor só-espaço é ausente,
+  `ts` não-numérico é rejeitado. Portado de `mercadopago/sdk-nodejs` commit
+  `99857f33`, com digests conferidos contra `openssl`. Falta uma entrega real.
+  Receita: `docs/recipes/mercado-pago.md`.
+- **Guard de versão do `uv.lock` (v0.251.0)** —
+  `tests/test_lock_version_guard.py` lê `git show HEAD:uv.lock`, porque
+  `uv run` conserta o arquivo em disco antes de qualquer teste ler; o workflow
+  de release compara a tag com as três versões. Fecha o drift que shippou em
+  v0.236.0, v0.237.0, v0.238.0 e v0.247.0.
 - **QR do Pix tipado (v0.250.0)** — `PixPayment`, `PixPointOfInteraction`,
   `PixTransactionData`, `create_pix_payment`, `get_pix_payment`,
   `parse_pix_payment`. Fecha o buraco que a v0.249.0 apenas documentou: a

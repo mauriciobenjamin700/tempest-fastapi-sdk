@@ -299,23 +299,80 @@ def notification_is_authentic(
         signature_header=signature,
         data_id=data_id,
         request_id=request_id,
+        tolerance_seconds=300.0,
     )
 ```
 
-!!! danger "This part has not been measured against the provider yet"
-    The vendored specification **does not describe** the webhook signature:
-    there is no `webhooks` section and no notification security scheme, and
-    `grep -c "x-signature" vendor/mercadopago-openapi.yaml` returns `0`.
+The algorithm is **ported from Mercado Pago's own validator**
+(`mercadopago/sdk-nodejs`, `src/utils/webhook/index.ts`, commit `99857f33`) —
+the module their documentation points integrators at. The vendored
+specification describes none of it: `grep -c "x-signature"
+vendor/mercadopago-openapi.yaml` returns `0`.
 
-    What is tested is the HMAC: signing and verifying agree, and tampering
-    with the `data_id`, the timestamp or the secret breaks verification.
-    What is **not** tested is whether the manifest we sign is byte-for-byte
-    the one Mercado Pago signs.
+The signed manifest **omits absent pairs**. It is not a fixed template:
 
-    Before this guards money in production, run **one** real notification
-    through `verify_signature` and confirm it is accepted. If it is
-    rejected, the manifest is what needs to change — pass yours through
-    `manifest_template=`, and open an issue so the default can be fixed.
+```text
+everything present   id:<data.id>;request-id:<x-request-id>;ts:<ts>;
+no data.id           request-id:<x-request-id>;ts:<ts>;
+neither one          ts:<ts>;
+```
+
+!!! warning "This was a defect until v0.250.0"
+    Until then this module rendered a fixed template, so a delivery without
+    `data.id` signed `id:;request-id:...;ts:...;` — and no such delivery ever
+    verified. If you treated the rejection as "invalid notification", you were
+    dropping legitimate ones.
+
+`build_manifest` is exported so you can inspect what would be signed:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import build_manifest
+
+
+def manifest_of_delivery(data_id: str, request_id: str, ts: str) -> str:
+    """Show the exact string the signature covers.
+
+    Args:
+        data_id (str): The ``data.id`` query parameter, empty when absent.
+        request_id (str): The ``x-request-id`` header, empty when absent.
+        ts (str): The ``ts`` component of ``x-signature``.
+
+    Returns:
+        str: The manifest, with absent pairs left out.
+    """
+    return build_manifest(data_id=data_id, request_id=request_id, timestamp=ts)
+```
+
+!!! tip "Turn the tolerance window on"
+    Without `tolerance_seconds`, a delivery captured off the wire verifies
+    forever: the signature covers a timestamp nobody checks. Upstream leaves
+    the window opt-in and so do we, but `300.0` is what makes the manifest's
+    `ts` do any work. The unit of `ts` is read by magnitude — the provider's
+    own artifacts disagree between seconds and milliseconds, and
+    [their issue #458](https://github.com/mercadopago/sdk-nodejs/issues/458)
+    was exactly that confusion.
+
+!!! info "A `v2` migration needs no release"
+    The header can carry more than one hash (`ts=..,v1=..,v2=..`). The verifier
+    uses the first version you accept, so `versions=("v2", "v1")` adopts a new
+    one before this package changes. The default is `("v1",)` — failing closed
+    is the right behaviour for a version the provider has not sent yet.
+
+!!! danger "Still not measured against a live delivery"
+    Ported from the provider's implementation is not the same as verified
+    against a notification the provider sent. What is measured: the manifests,
+    byte for byte, against the rules upstream encodes; and the digests,
+    against vectors computed with `openssl dgst -sha256 -hmac`, a different
+    HMAC implementation than Python's.
+
+    What is still unmeasured: whether the live deliveries follow their own
+    SDK. Run **one** real notification through `verify_signature` before this
+    guards money, and open an issue if it is rejected.
+
+!!! warning "QR Code notifications are not signed"
+    Upstream states it outright: those deliveries carry no signature and will
+    always fail. Do not route QR Code through here — gate that path some other
+    way.
 
 ## Recap
 
@@ -325,5 +382,8 @@ def notification_is_authentic(
 - `x_idempotency_key` is a per-call argument, never a default header.
 - The generated `Payment` drops the Pix QR silently; use
   `create_pix_payment` / `parse_pix_payment`, or the Orders API.
-- Webhook verification is implemented and tested as an HMAC, but the
-  manifest is still waiting on a real notification to be confirmed.
+- Webhook verification is ported from the provider's validator, with the
+  manifest omitting absent pairs and digests checked against `openssl`;
+  only a live delivery is still missing. Turn `tolerance_seconds` on.
+- QR Code notifications are not signed — do not run them through
+  `verify_signature`.

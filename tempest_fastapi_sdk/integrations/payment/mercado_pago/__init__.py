@@ -51,10 +51,14 @@ Two halves, and it is worth knowing which is which:
     already have. Details in
     :mod:`~tempest_fastapi_sdk.integrations.payment.mercado_pago.pix`.
 
-!!! danger "The webhook signature is not measured yet"
-    The vendored specification does not describe it. See
+!!! danger "The webhook signature is ported, not yet seen live"
+    The vendored specification does not describe it, so the algorithm comes
+    from Mercado Pago's own validator (``mercadopago/sdk-nodejs``, commit
+    ``99857f33``) and every rule is pinned by a test. What remains unmeasured
+    is a real delivery. See
     :mod:`~tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks`
-    for exactly what is verified and what is still assumed.
+    for what is verified and what is still assumed — and note that QR Code
+    notifications are not signed at all.
 
 !!! note "The schemas load on first use, not on import"
     Building the models is the expensive part, and importing this package
@@ -104,7 +108,7 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
     parse_pix_payment as parse_pix_payment,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
-    DEFAULT_MANIFEST_TEMPLATE as DEFAULT_MANIFEST_TEMPLATE,
+    DEFAULT_SIGNATURE_VERSIONS as DEFAULT_SIGNATURE_VERSIONS,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
     MERCADO_PAGO_REQUEST_ID_HEADER as MERCADO_PAGO_REQUEST_ID_HEADER,
@@ -114,6 +118,12 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
     MercadoPagoWebhookEvent as MercadoPagoWebhookEvent,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
+    SignatureHeader as SignatureHeader,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
+    build_manifest as build_manifest,
 )
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
     parse_signature_header as parse_signature_header,
@@ -131,7 +141,7 @@ if TYPE_CHECKING:
 
 _HAND_WRITTEN: tuple[str, ...] = (
     "DEFAULT_BASE_URL",
-    "DEFAULT_MANIFEST_TEMPLATE",
+    "DEFAULT_SIGNATURE_VERSIONS",
     "MERCADO_PAGO_REQUEST_ID_HEADER",
     "MERCADO_PAGO_SIGNATURE_HEADER",
     "PAYMENTS_PATH",
@@ -140,6 +150,8 @@ _HAND_WRITTEN: tuple[str, ...] = (
     "PixPayment",
     "PixPointOfInteraction",
     "PixTransactionData",
+    "SignatureHeader",
+    "build_manifest",
     "create_pix_payment",
     "format_amount",
     "from_cents",
@@ -230,7 +242,7 @@ def __dir__() -> list[str]:
 
 __all__: list[str] = [
     "DEFAULT_BASE_URL",
-    "DEFAULT_MANIFEST_TEMPLATE",
+    "DEFAULT_SIGNATURE_VERSIONS",
     "MERCADO_PAGO_REQUEST_ID_HEADER",
     "MERCADO_PAGO_SIGNATURE_HEADER",
     "PAYMENTS_PATH",
@@ -510,6 +522,7 @@ __all__: list[str] = [
     "SearchStoresResponse",
     "SearchSubscriptionPlansCriteria",
     "SendMessageRequest",
+    "SignatureHeader",
     "Store",
     "StoreBusinessHours",
     "StoreBusinessHoursMondayItem",
@@ -564,6 +577,7 @@ __all__: list[str] = [
     "WebhookNotificationData",
     "WebhookNotificationType",
     "WebhookSignatureHeader",
+    "build_manifest",
     "create_pix_payment",
     "format_amount",
     "from_cents",

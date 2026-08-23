@@ -5,6 +5,78 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.251.0] — 2026-08-23
+
+### Fixed
+
+- **A assinatura de webhook do Mercado Pago passa a seguir o algoritmo do
+  provedor, e um caminho inteiro de notificação deixa de ser rejeitado.** A
+  especificação vendorizada não descreve a assinatura
+  (`grep -c "x-signature"` devolve `0`), então o algoritmo agora é **portado do
+  validador oficial** — `mercadopago/sdk-nodejs`,
+  `src/utils/webhook/index.ts`, commit `99857f33` de 2026-08-03, o módulo para
+  o qual a documentação do provedor aponta o integrador.
+
+  O defeito principal: **o manifesto omite par ausente**, e nós rendereizávamos
+  um template fixo. Entrega sem `data.id` assina `request-id:...;ts:...;` do
+  lado do provedor e assinava `id:;request-id:...;ts:...;` do nosso — hash
+  diferente, verificação falhando **sempre**, para toda notificação sem
+  `data.id`. Quem tratava a rejeição como notificação inválida estava
+  descartando notificação legítima.
+
+  Quatro regras do upstream que também faltavam: chave do header é
+  case-insensitive (`TS=`, `V1=`); valor só-espaço é valor ausente, o que muda
+  quais pares entram no manifesto; `ts` não-numérico é header malformado; e o
+  header pode carregar mais de uma versão de hash.
+
+  Digests conferidos contra vetores calculados com `openssl dgst -sha256
+  -hmac` — outra implementação de HMAC que não a do Python — e os três casos
+  de manifesto fixados byte a byte. **Continua sem medição contra entrega
+  real:** portado da implementação do provedor não é o mesmo que verificado
+  contra notificação que ele mandou.
+
+- **`uv.lock` fora de versão passa a ser pegável.** A v0.247.0 shippou com o
+  lock em `0.246.0` (como v0.236.0, v0.237.0 e v0.238.0 antes dela) e nada
+  reclamou. O Makefile documentava que nenhum guard era possível, porque
+  `uv run` reescreve o lock em disco antes de qualquer teste ler. Medido hoje,
+  e é verdade:
+
+  ```bash
+  sed -i '0,/^version = "0.250.0"$/s//version = "0.1.0"/' uv.lock
+  uv run python -c "pass"
+  grep -A2 '^name = "tempest-fastapi-sdk"' uv.lock | grep version   # 0.250.0
+  ```
+
+  Guard possível, então, lendo o **commit** em vez do disco:
+  `tests/test_lock_version_guard.py` usa `git show HEAD:uv.lock`, que é
+  exatamente o conteúdo que uma tag entrega e que `uv run` não alcança. O
+  workflow de release passou a comparar a tag com as **três** versões
+  (`pyproject.toml`, `__init__.py`, `uv.lock`), não só com duas.
+
+### Changed
+
+- **Breaking:** `DEFAULT_MANIFEST_TEMPLATE` e o parâmetro
+  `manifest_template=` foram removidos — existiam porque o algoritmo era
+  desconhecido, e template não expressa a regra de omissão. No lugar,
+  `build_manifest(data_id=..., request_id=..., timestamp=...)`.
+- **Breaking:** `parse_signature_header` devolve `SignatureHeader`
+  (`.timestamp`, `.hashes`, `.digest(versions)`) em vez de
+  `tuple[str, str]`, porque um header pode carregar `v1` **e** `v2`.
+- `verify_signature` ganha `versions=` (default `("v1",)`, então versão nova
+  falha fechada), `tolerance_seconds=` para janela anti-replay e `now=` para
+  teste. Migração para `v2` deixa de exigir release.
+
+  Guia de migração: `docs/migration.md`, seção 0.251.0.
+
+### Added
+
+- **`SignatureHeader`, `build_manifest` e `DEFAULT_SIGNATURE_VERSIONS`**
+  exportados no namespace do Mercado Pago. `build_manifest` existe para o
+  integrador conferir a string exata que a assinatura cobre.
+- Documentado que **notificação de QR Code não é assinada** — o upstream diz
+  isso explicitamente, e passar essas entregas por `verify_signature` falha
+  sempre.
+
 ## [0.250.0] — 2026-08-23
 
 ### Added
