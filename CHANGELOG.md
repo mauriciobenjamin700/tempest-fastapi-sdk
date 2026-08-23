@@ -254,6 +254,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sobrescrever. Receita `docs/recipes/pdf.md` reescrita: o bloco que
   documentava o teto furado virou a tabela antes/depois.
 
+- **`BatchScheduler` deixa de quebrar um lote que já estava inteiro na fila**
+  ([#176]). O loop cronometrava **toda** retirada, inclusive a de item já
+  enfileirado: cada tentativa passava por `asyncio.wait_for` com o que
+  restava da janela de `max_wait_ms`. Sob carga, a janela de 20 ms queimava
+  entre duas retiradas e o lote saía partido — perda de throughput
+  exatamente sob a carga que batching existe para atacar.
+
+  Era isso que fazia `test_coalesces_concurrent_submits` falhar na suíte
+  completa e passar isolado. Reproduzido sem tocar no teste, pondo o event
+  loop sob carga (uma task que bloqueia em fatias de 5 ms), com os cinco
+  itens já na fila:
+
+  ```text
+  antes:  batches: [[0, 1, 2], [3, 4]]   batch count: 2
+  depois: batches: [[0, 1, 2, 3, 4]]     batch count: 1
+  ```
+
+  A correção é ler primeiro o que já está lá: `get_nowait()` em laço, e a
+  espera cronometrada só quando a fila esvazia de fato. Item que já chegou
+  não depende mais de o agendador ganhar a vez dentro da janela.
+
+  A hipótese de "teste frágil" foi descartada por medição: a asserção
+  quebrada mostrava dois lotes de itens **todos já enfileirados**, que é o
+  defeito que o teste existe para pegar. Guard novo
+  `test_queued_items_coalesce_under_loop_load` fixa o caso com a carga
+  embutida, e falha com `assert 2 == 1` na forma anterior.
+
+[#176]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/176
 [#186]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/186
 [#187]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/187
 [#188]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/188
