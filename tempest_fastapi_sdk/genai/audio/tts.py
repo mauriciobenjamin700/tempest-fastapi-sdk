@@ -26,20 +26,31 @@ if TYPE_CHECKING:
 
 
 def _require_tts() -> Any:
-    """Import Coqui ``TTS`` or raise a helpful error.
+    """Import Coqui ``TTS``, keeping the reason the import failed.
 
     Returns:
         Any: The ``TTS.api.TTS`` class.
 
     Raises:
-        ImportError: When the ``[genai-audio]`` extra is missing.
+        ImportError: When Coqui TTS cannot be imported. The original
+            message is quoted, because it is the one that names the fix.
+
+    ``except ImportError`` catches far more than a missing extra: a missing
+    torchaudio, a missing torchcodec and an incompatible transformers all
+    arrive here carrying the sentence that says what to install. Replacing
+    it with "install [genai-audio]" answered every one of them with the one
+    instruction that cannot help — the extra is already installed. That cost
+    a consumer a diagnosis, so the original message is quoted instead.
     """
     try:
         from TTS.api import TTS
     except ImportError as exc:
         raise ImportError(
-            "Text-to-speech requires the optional [genai-audio] extra. "
-            "Install with: pip install tempest-fastapi-sdk[genai-audio]",
+            f"Text-to-speech could not import Coqui TTS: {exc}. "
+            "The [genai-audio] extra installs coqui-tts together with torch, "
+            "torchaudio, torchcodec and transformers<5; if any of those is "
+            "missing or mismatched in this environment, reinstall the extra: "
+            "pip install 'tempest-fastapi-sdk[genai-audio]'",
         ) from exc
     return TTS
 
@@ -56,6 +67,15 @@ class TextToSpeech:
     Attributes:
         model_name (str): The Coqui model id.
         device (str): Resolved device (``cuda`` / ``cpu``).
+
+    On a server, set ``COQUI_TOS_AGREED=1`` before the first synthesis. The
+    default model (XTTS v2) is licence-gated, and read in coqui-tts 0.27.5,
+    ``ModelManager.tos_agreed`` accepts only a ``tos_agreed.txt`` beside the
+    weights or that variable set to the **string** ``"1"``; otherwise
+    ``ask_tos`` calls :func:`input`. Synthesis runs in
+    ``asyncio.to_thread``, where there is no tty to answer it, so a fresh
+    install has nothing to type into. ``COQUI_TOS_AGREED=true`` does not
+    count — the comparison is against ``"1"``.
     """
 
     def __init__(

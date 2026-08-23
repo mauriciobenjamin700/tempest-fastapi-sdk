@@ -971,6 +971,41 @@ Interpretar e gerar voz no seu hardware — sem API externa. Requer o extra
 `[genai-audio]` (faster-whisper + Coqui TTS); as engines importam
 preguiçosamente.
 
+!!! warning "Na v0.252.0 o extra passou a trazer o runtime do Coqui"
+    O `coqui-tts` deixa torch, torchaudio e torchcodec atrás dos extras dele
+    (`[cpu]`, `[cuda]`, `[codec]`), então até a v0.251.0 instalar
+    `[genai-audio]` dava um TTS que **não importava**. Medido com coqui-tts
+    0.27.5 e torch 2.13.0:
+
+    ```text
+    ModuleNotFoundError: No module named 'torchaudio'
+    ```
+
+    E com o torchaudio no lugar, um resolve novo trazia transformers 5.x, que
+    removeu o símbolo que `TTS.api` importa de forma eager:
+
+    ```text
+    ImportError: cannot import name 'isin_mps_friendly' from 'transformers.pytorch_utils'
+    ```
+
+    Medido: `isin_mps_friendly` existe na transformers 5.0.0 e desaparece da
+    5.1.0 em diante. Agora `[genai-audio]` declara `torch>=2.2`,
+    `torchaudio>=2.2`, `torchcodec>=0.8` e `transformers<5` — o teto fica
+    confinado a este extra. Quem fixava esses quatro pins à mão pode removê-los.
+
+!!! danger "XTTS v2 pede aceite de licença, e num servidor não há quem responda"
+    O model default do `TextToSpeech` é licence-gated. Lido no coqui-tts
+    0.27.5, `ModelManager.tos_agreed` aceita só um `tos_agreed.txt` ao lado dos
+    pesos **ou** `COQUI_TOS_AGREED` igual à string `"1"`; sem isso, `ask_tos`
+    chama `input()`. A síntese roda em `asyncio.to_thread`, onde não existe
+    tty para responder — então exporte antes do primeiro `synthesize`:
+
+    ```bash
+    export COQUI_TOS_AGREED=1
+    ```
+
+    `COQUI_TOS_AGREED=true` não vale: a comparação é com `"1"`.
+
 ### Interpretar áudio (STT)
 
 `SpeechToText` transcreve com **faster-whisper** (Whisper via CTranslate2,

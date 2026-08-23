@@ -9,6 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **O extra `[genai-audio]` passa a declarar o runtime que o código importa,
+  e o guard de import para de apagar o diagnóstico** ([#191]). `coqui-tts`
+  deixa torch, torchaudio e torchcodec atrás dos extras dele (`[cpu]`,
+  `[cuda]`, `[codec]`), então instalar `[genai-audio]` dava um TTS que não
+  importava. Medido no próprio repo, com `uv sync --all-extras` (coqui-tts
+  0.27.5, torch 2.13.0):
+
+  ```text
+  >>> import TTS.api
+  ModuleNotFoundError: No module named 'torchaudio'
+  ```
+
+  Com torchaudio e torchcodec instalados, o resolve trazia transformers
+  5.14.1 e o import morria mais adiante, porque `TTS.api` carrega a camada
+  Tortoise de forma eager:
+
+  ```text
+  ImportError: cannot import name 'isin_mps_friendly' from 'transformers.pytorch_utils'
+  ```
+
+  Medido nas duas pontas: `isin_mps_friendly` **existe** na transformers
+  5.0.0 e **não existe** da 5.1.0 em diante; com `transformers 4.57.6` o
+  `import TTS.api` volta a passar. O extra agora declara `torch>=2.2.0`,
+  `torchaudio>=2.2.0`, `torchcodec>=0.8.0` e `transformers<5` — o teto fica
+  confinado a este extra, como o `httpx<1.0.0` do `[genai-image]`. Consumidor
+  que fixava esses quatro pins à mão pode removê-los.
+
+  O guard piorava o diagnóstico: `except ImportError` pega **qualquer** falha
+  do import, e as três causas acima chegavam nele com a mensagem que nomeia a
+  correção. Trocar por "instale `[genai-audio]`" respondia todas elas com a
+  única instrução que não resolve — o extra já estava instalado. Agora a
+  mensagem original é citada:
+
+  ```text
+  ImportError: Text-to-speech could not import Coqui TTS: No module named
+  'torchaudio'. The [genai-audio] extra installs coqui-tts together with
+  torch, torchaudio, torchcodec and transformers<5; ...
+  ```
+
+  `_require_faster_whisper` recebeu a mesma forma.
+
+  Dois pontos menores no mesmo caminho: `resolve_audio_device("auto")` tratava
+  torch ausente como "sem GPU" e caía para CPU **em silêncio** — máquina com
+  GPU transcrevia na CPU e a lentidão parecia ser do faster-whisper; agora sai
+  `logger.warning` nomeando a causa. E a docstring de `TextToSpeech` passa a
+  dizer que o XTTS v2 é licence-gated: lido no coqui-tts 0.27.5,
+  `ModelManager.tos_agreed` aceita só `tos_agreed.txt` ao lado dos pesos ou
+  `COQUI_TOS_AGREED` igual à **string** `"1"`, e sem isso `ask_tos` chama
+  `input()` — dentro de `asyncio.to_thread`, onde não há tty.
+
+  Guards novos em `tests/genai/audio/test_audio_runtime_extra.py`: um lê
+  `[project.optional-dependencies]` e exige os cinco pacotes declarados, um
+  exige que o teto de transformers continue lá, e dois provam que a mensagem
+  do upstream sobrevive ao re-raise nos dois guards. Mais um em
+  `tests/genai/audio/test_audio.py` para o warning do device.
+
 - **A revogação de família no reuso de refresh token deixa de ser descartada
   pelo rollback da request** ([#186]). `_lookup_refresh_record` detectava o
   replay, chamava `_revoke_family` e levantava `InvalidTokenException` — mas a
@@ -259,6 +315,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#188]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/188
 [#189]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/189
 [#180]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/180
+[#191]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/191
 [#175]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/175
 
 ## [0.251.0] — 2026-08-23

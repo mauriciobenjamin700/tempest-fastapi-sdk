@@ -151,6 +151,21 @@ genai-rag = [
 genai-audio = [
     "faster-whisper>=1.0.0",
     "coqui-tts>=0.24.0",
+    # coqui-tts keeps its own runtime behind its extras ([cpu]/[cuda]/[codec]),
+    # so installing it alone gives a TTS that refuses to import. Measured with
+    # coqui-tts 0.27.5 and torch 2.13.0: without torchaudio, `import TTS.api`
+    # dies with `ModuleNotFoundError: No module named 'torchaudio'`, and
+    # TTS/__init__.py makes torchcodec mandatory once torch >= 2.9.
+    "torch>=2.2.0",
+    "torchaudio>=2.2.0",
+    "torchcodec>=0.8.0",
+    # `import TTS.api` eagerly loads TTS.tts.layers.tortoise.autoregressive,
+    # which does `from transformers.pytorch_utils import isin_mps_friendly`.
+    # Measured: that symbol is present in transformers 5.0.0 and gone from
+    # 5.1.0 on, so any fresh resolve breaks the import. The upper bound is
+    # confined to this extra, and 5.0.0 is not carved out because it is the
+    # only 5.x that would work.
+    "transformers<5",
 ]
 genai-diarization = [
     "sherpa-onnx>=1.12.0",

@@ -37,6 +37,30 @@ class TestResolvers:
         monkeypatch.setattr(builtins, "__import__", no_torch)
         assert resolve_audio_device("auto") == "cpu"
 
+    def test_auto_without_torch_says_so(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A missing torch and a missing GPU are not the same answer.
+
+        Folding them together transcribed on the CPU of a GPU machine with no
+        sign at all, and the slowdown read as faster-whisper being slow
+        (issue #191).
+        """
+        real_import = builtins.__import__
+
+        def no_torch(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name == "torch" or name.startswith("torch."):
+                raise ImportError("no module named torch")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", no_torch)
+        with caplog.at_level("WARNING"):
+            assert resolve_audio_device("auto") == "cpu"
+
+        assert "torch is not installed" in caplog.text
+
     def test_auto_with_a_cuda_gpu_is_cuda(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
