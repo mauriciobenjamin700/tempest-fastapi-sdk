@@ -211,10 +211,13 @@ def make_jwt_user_dependency(
        ``cookie_name`` is set, falls back to that cookie).
     2. Decodes / verifies the JWT with ``tokens``.
     3. Pulls the user identifier from the configured ``subject_claim``.
-    4. Awaits ``user_loader(<id>)`` and returns whatever it yields.
+    4. Awaits ``user_loader(<id>)`` and returns the user it yields.
 
     ``user_loader`` is the single seam where the service maps
-    ``payload[subject_claim]`` to an actual user.
+    ``payload[subject_claim]`` to an actual user. **Returning ``None``
+    from it refuses the request**: with ``soft=False`` that is an
+    :class:`UnauthorizedException`, the same answer an absent subject gets.
+    In soft mode it stays ``None``, which is what the flag is for.
 
     **Session sharing.** When ``session_dependency`` is given, the
     returned dependency declares it as a sub-dependency and calls the
@@ -240,12 +243,14 @@ def make_jwt_user_dependency(
             callable that receives the subject (typically the user id
             as a string) and returns the loaded user. When
             ``session_dependency`` is set it is called as
-            ``user_loader(subject, session)``. Raise
+            ``user_loader(subject, session)``. Returning ``None``
+            refuses the request when ``soft`` is ``False``; raising
             :class:`UnauthorizedException` or
-            :class:`NotFoundException` from inside the loader when the
-            user no longer exists.
+            :class:`NotFoundException` from inside the loader still works
+            and lets you choose the message.
         soft (bool): When ``True``, return ``None`` instead of
-            raising on missing/invalid tokens.
+            raising on a missing or invalid token, and when the loader
+            declines the subject.
         bearer_scheme (HTTPBearer | None): Override the bearer scheme.
         cookie_name (str | None): When set, fall back to this cookie for
             the access token when the ``Authorization`` header is absent.
@@ -281,6 +286,31 @@ def make_jwt_user_dependency(
         error_message=error_message,
     )
 
+    def _resolved(user: Any) -> Any:
+        """Apply the ``soft`` rule to whatever the loader returned.
+
+        Args:
+            user (Any): The loader's return value.
+
+        Returns:
+            Any: The user, or ``None`` in soft mode.
+
+        Raises:
+            UnauthorizedException: When the loader declined the subject
+                and ``soft`` is ``False``.
+
+        The loader is documented as the seam where a service refuses a
+        subject — deactivated account, id that no longer resolves, malformed
+        subject. Returning ``None`` there used to reach the handler as
+        ``None``, so the route answered 200 with a user the loader had
+        rejected, and deactivating an account had no effect until the access
+        token expired. A declined subject is the same outcome as an absent
+        one, so it gets the same answer.
+        """
+        if user is None and not soft:
+            raise UnauthorizedException(message=error_message)
+        return user
+
     if session_dependency is None:
 
         async def _current_user_owns_session(
@@ -293,7 +323,7 @@ def make_jwt_user_dependency(
                 if soft:
                     return None
                 raise UnauthorizedException(message=error_message)
-            return await user_loader(subject)
+            return _resolved(await user_loader(subject))
 
         dependency = _current_user_owns_session
 
@@ -310,7 +340,7 @@ def make_jwt_user_dependency(
                 if soft:
                     return None
                 raise UnauthorizedException(message=error_message)
-            return await user_loader(subject, session)
+            return _resolved(await user_loader(subject, session))
 
         dependency = _current_user_shared_session
 
