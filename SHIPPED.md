@@ -691,6 +691,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
+- **QR do Pix tipado (v0.250.0)** — `PixPayment`, `PixPointOfInteraction`,
+  `PixTransactionData`, `create_pix_payment`, `get_pix_payment`,
+  `parse_pix_payment`. Fecha o buraco que a v0.249.0 apenas documentou: a
+  especificação não declara `point_of_interaction` no pagamento e o
+  `BaseSchema` é `extra="ignore"`, então o `Payment` gerado descartava o QR na
+  validação, em silêncio. Campos portados do SDK Node oficial (commit
+  `c2d3c6ae`) e fixados por teste; `financial_institution` aceita `int` ou
+  `str` por divergência medida entre as fontes; propriedades `qr_code` /
+  `qr_code_base64` / `ticket_url` são None-safe. Não importa os schemas
+  gerados, então ler um QR não paga os 0,76 s de construção deles. Receita:
+  `docs/recipes/mercado-pago.md`.
 - **Mercado Pago (v0.249.0)** — `integrations/payment/mercado_pago`: 324
   schemas e 143 operações geradas da OpenAPI oficial do provedor
   (`mercadopago/openapi`, Apache-2.0, commit `73bc0e49`), mais

@@ -5,6 +5,61 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.250.0] — 2026-08-23
+
+### Added
+
+- **O QR do Pix deixa de ser descartado em silêncio** —
+  `tempest_fastapi_sdk.integrations.payment.mercado_pago` ganha `PixPayment`,
+  `PixPointOfInteraction`, `PixTransactionData`, `create_pix_payment`,
+  `get_pix_payment`, `parse_pix_payment` e `PAYMENTS_PATH`.
+
+  ```python
+  payment = await create_pix_payment(
+      http,
+      body={"transaction_amount": 19.9, "payment_method_id": "pix",
+            "payer": {"email": "comprador@example.com"}},
+      idempotency_key=uuid.uuid4(),
+  )
+  payment.qr_code          # o copia-e-cola
+  payment.qr_code_base64   # PNG em base64
+  ```
+
+  O defeito que isto corrige, medido: a especificação vendorizada não declara
+  `point_of_interaction` no recurso de pagamento — `grep -c` devolve `2`, e as
+  duas ocorrências são o corpo de **requisição** do transaction intent de
+  Payouts, onde o objeto tem só `type`. Como o `BaseSchema` é
+  `extra="ignore"`, o `Payment` gerado descartava na validação o objeto que a
+  API devolve: o QR chegava no corpo HTTP e sumia no modelo, sem erro e sem
+  log. Reproduzido em teste nos dois sentidos — o corpo carrega o QR, o
+  `Payment` validado não, e `QR_CODE not in payment.model_dump_json()`.
+
+  `create_pix_payment` faz a **mesma** requisição que
+  `MercadoPagoClient.create_payment`, mesmos headers e mesma serialização; só
+  o modelo de resposta difere. `PixPayment` é uma **vista**: id, status,
+  valor, expiração e o objeto do QR, sem importar os schemas gerados — ler um
+  QR não paga os 0,76 s de construir os 324 modelos. Verificado que o
+  lazy-loading continua intacto após a mudança.
+
+  Nomes e tipos de campo são portados do SDK Node oficial do provedor
+  (`mercadopago/sdk-nodejs`, `src/clients/payment/commonTypes.ts`, commit
+  `c2d3c6ae` de 2026-07-27), porque a especificação não os descreve. O
+  conjunto de campos está fixado por teste, então drift upstream falha em vez
+  de divergir calado.
+
+  `financial_institution` aceita `int` **ou** `str` por divergência medida
+  entre as duas fontes: o SDK Node tipa `number`, a especificação tipa
+  `string` na API de Orders. Levantar `ValidationError` ali perderia o
+  pagamento inteiro por um campo que ninguém reconcilia. `e2e_id` **não**
+  entrou: a especificação o declara na API de Orders e o SDK Node não o tem
+  em `TransactionData`, então prometê-lo aqui seria inventar nome de fio.
+
+### Fixed
+
+- **`openpix-regen` e `mercadopago-regen` entram no `.PHONY`** do Makefile.
+  Inofensivo hoje — não existe arquivo com esses nomes — e inconsistente com
+  todos os outros alvos.
+
 ## [0.249.0] — 2026-08-23
 
 ### Added

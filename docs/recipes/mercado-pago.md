@@ -161,15 +161,98 @@ async def cobrar_pix(client: MercadoPagoClient) -> str | None:
     serviço no escopo do PCI DSS. Use o SDK JavaScript ou mobile do Mercado
     Pago para obter o token, e mande só o token para o seu backend.
 
-## O QR do Pix não está onde você espera
+## O QR do Pix, e o motivo de ele desaparecer
 
-Para mostrar o copia-e-cola e a imagem do QR, use a **API de Orders**:
+O `create_payment` gerado devolve o `Payment` que a especificação declara — e
+a especificação **não** declara `point_of_interaction`, que é exatamente onde
+o copia-e-cola e a imagem do QR chegam. Como o `BaseSchema` do SDK é
+`extra="ignore"`, o objeto é descartado na validação: o QR chega no corpo
+HTTP e some no modelo, sem erro e sem log.
+
+Por isso existe `create_pix_payment`, que faz a **mesma** requisição e
+devolve um modelo que tem onde guardar o QR:
+
+```python
+import uuid
+
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+    DEFAULT_BASE_URL,
+    PixPayment,
+    create_pix_payment,
+)
+
+
+async def cobrar_pix_com_qr(access_token: str) -> PixPayment:
+    """Charge over Pix and keep the QR the generated model drops.
+
+    Args:
+        access_token (str): The Mercado Pago access token.
+
+    Returns:
+        PixPayment: The pending payment, carrying ``qr_code`` and
+        ``qr_code_base64``.
+    """
+    http: HTTPClient = HTTPClient(
+        base_url=DEFAULT_BASE_URL,
+        default_headers={"Authorization": f"Bearer {access_token}"},
+    )
+    return await create_pix_payment(
+        http,
+        body={
+            "transaction_amount": 19.9,
+            "payment_method_id": "pix",
+            "payer": {"email": "comprador@example.com"},
+            "external_reference": "pedido-1042",
+        },
+        idempotency_key=uuid.uuid4(),
+    )
+```
+
+O que o `PixPayment` devolvido carrega:
+
+```text
+payment.qr_code         "00020126580014br.gov.bcb.pix0136..."   o copia-e-cola
+payment.qr_code_base64  "iVBORw0KGgoAAAANSUhEUg..."             PNG, para <img src="data:...">
+payment.ticket_url      "https://www.mercadopago.com.br/..."    página que já desenha o QR
+payment.status          "pending"                               até o pagador pagar
+```
+
+As três são propriedades **None-safe**: pagamento de cartão, ou Pix já pago,
+devolve `None` em vez de estourar — é a forma como o provedor responde
+depois da liquidação.
+
+!!! tip "Já tem o corpo em mãos? Use `parse_pix_payment`"
+    Um webhook manda você buscar o pagamento; se você já chamou pelo cliente
+    gerado e guardou o JSON cru, `parse_pix_payment(payload)` monta o mesmo
+    `PixPayment` sem repetir a requisição. Para reler pelo id existe
+    `get_pix_payment(http, payment_id)`.
+
+!!! info "De onde vêm esses nomes de campo"
+    Não da especificação, que os omite: do SDK Node oficial do Mercado Pago
+    (`mercadopago/sdk-nodejs`, `src/clients/payment/commonTypes.ts`, commit
+    `c2d3c6ae`), onde `PointOfInteraction` e `TransactionData` estão
+    modelados. O conjunto de campos é fixado por teste, então uma mudança lá
+    aparece aqui como falha e não como valor que sumiu.
+
+!!! note "`PixPayment` é uma vista, não um substituto"
+    Para tudo que a especificação declara, use o `Payment` gerado. O
+    `PixPayment` carrega só o que um fluxo Pix lê — id, status, valor,
+    expiração — mais o objeto do QR. Ele não importa os schemas gerados, de
+    propósito: ler um QR não paga os 0,76 s que construir os 324 modelos
+    custa.
+
+### A rota alternativa: Orders API
+
+A especificação modela o QR num lugar só, `OrderTransactionPayment`, da API
+de Orders — lá `qr_code`, `qr_code_base64`, `digitable_line` e `e2e_id` são
+declarados de verdade:
 
 ```python
 from tempest_fastapi_sdk.integrations.payment.mercado_pago import MercadoPagoClient
 
 
-async def qr_do_pix(client: MercadoPagoClient, order_id: str) -> object:
+async def qr_do_pedido(client: MercadoPagoClient, order_id: str) -> object:
     """Read the Pix QR data of an order.
 
     Args:
@@ -183,16 +266,10 @@ async def qr_do_pix(client: MercadoPagoClient, order_id: str) -> object:
     return await client.get_order(order_id)
 ```
 
-!!! info "Por que Orders e não `/v1/payments`"
-    Medido na especificação: `qr_code`, `qr_code_base64`, `digitable_line` e
-    `e2e_id` aparecem em **um único schema**, `OrderTransactionPayment`. O
-    schema `Payment` não declara `point_of_interaction` — só
-    `transaction_details`, com `external_resource_url`.
-
-    Como o `BaseSchema` do SDK é `extra="ignore"`, um Pix criado por
-    `/v1/payments` teria o `point_of_interaction` que a API devolve
-    **descartado na validação**, sem erro: o QR chega no corpo e some no
-    modelo.
+Use Orders quando a integração é nova — é a recomendação do próprio
+provedor, e o caminho tipado direto pela especificação. Use
+`create_pix_payment` quando a cobrança já roda em `/v1/payments` e trocar de
+API não está em discussão.
 
 ## Verificando o webhook
 
@@ -243,6 +320,7 @@ def notificacao_e_autentica(
 - Dinheiro em reais; converta na fronteira com `to_cents` / `from_cents`.
 - Pix e boleto são server-side; cartão exige tokenização no cliente.
 - `x_idempotency_key` é argumento por chamada, nunca header default.
-- O QR do Pix vive na API de Orders, não em `/v1/payments`.
+- O `Payment` gerado descarta o QR do Pix em silêncio; use
+  `create_pix_payment` / `parse_pix_payment`, ou a API de Orders.
 - A verificação de webhook está implementada e testada como HMAC, mas o
   manifesto ainda espera uma notificação real para ser confirmado.
