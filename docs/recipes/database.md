@@ -1775,6 +1775,26 @@ lifespan transforma queries lentas em linhas de log acionáveis, com
 
 ---
 
+## Recap
+
+- `BaseModel` traz `id`, `is_active`, `created_at` e `updated_at`; você declara
+  só as colunas do seu domínio, e o hook do Alembic mantém essa ordem nas
+  migrações geradas.
+- Um `AsyncDatabaseManager` por aplicação, em `resources.py` — não um por
+  request.
+- `BaseRepository` serve instanciado para CRUD puro e subclassificado quando
+  aparece query própria; filtro é um dict com convenção previsível, e `None`
+  pula em vez de virar `IS NULL` por acidente.
+- Operação em lote tem duas famílias: a que devolve instância (`add_all`,
+  `update_many`) e a que não devolve, mas é uma ida ao banco.
+- Mixin entra quando o domínio pede: soft-delete e auditoria custam coluna e
+  filtro implícito.
+- Paginação tem duas formas com propósitos diferentes: `paginate` para navegar
+  por página, `cursor_paginate` para lista que cresce enquanto o usuário lê.
+- Migração é `init` uma vez, `revision --autogenerate` por mudança, `upgrade`
+  no deploy — e `SlowQueryLogger` no `engine` mostra a query lenta com
+  `EXPLAIN` antes do usuário reclamar.
+
 ## Próximos passos
 
 Esta página cobriu o núcleo. Os recursos avançados de banco têm receitas

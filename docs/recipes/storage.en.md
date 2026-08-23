@@ -318,6 +318,20 @@ asyncio.run(main())
 - When you need operations **outside** the listed surface (SSE-KMS, S3 v2 ACLs, bucket replication). Use `storage.client.<method>` directly — `minio-py` stays accessible.
 - For huge resumable uploads (> 5 GiB) — `minio-py` does multipart automatically but doesn't support `tus` or resume. Consider `tus.io` separately.
 
+## Recap
+
+- `AsyncMinIOClient` is an async facade over the official `minio` package,
+  behind the `[minio]` extra: buckets, objects and presigned URLs — what a
+  FastAPI service usually needs.
+- Configuration comes from the settings mixin, and the client is built in
+  `create_app()`'s `lifespan` — one instance per process, not one per request.
+- A presigned URL is how you hand over a private file without streaming the
+  bytes through your own process.
+- Anything outside the facade is not blocked: call `storage.client.<method>` and
+  use `minio-py` directly, instead of waiting for the facade to grow.
+- To switch between local disk and MinIO by configuration, the pluggable upload
+  backend is the road — this facade is for a service that already chose MinIO.
+
 ## What's next
 
 - The pluggable upload backend `MinIOUploadStorage` shipped in v0.24.0 — for the upload pipeline that switches between local disk and MinIO/S3 via a settings flag, see the [uploads recipe](uploads.en.md).

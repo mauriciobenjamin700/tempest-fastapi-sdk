@@ -301,7 +301,7 @@ async def charge(client: VendorClient) -> None:
 | --- | --- |
 | `<spec>` (argument) | URL (`http(s)://`) or path of the specification |
 | `--name` / `-n` | Integration name — becomes the directory and the class prefix. Defaults to a slug of `info.title` |
-| `--out` / `-o` | Destination. Defaults to `<src\|app>/integrations/<name>/` |
+| `--out` / `-o` | Destination. Defaults to ``<src|app>/integrations/<name>/`` |
 | `--header` / `-H` | Header for fetching the spec (`"Authorization: Bearer ..."`). Repeatable |
 | `--path` / `-p` | Project root used to resolve the default destination |
 | `--schemas-only` | Do not generate `client.py` |
@@ -349,7 +349,7 @@ What the generator represents, stated:
 | Construct | Handling |
 | --- | --- |
 | `type: object` + `properties` | Class inheriting `BaseSchema` |
-| `required` | Field with no default; absent → `X \| None = None` |
+| `required` | Field with no default; absent → ``X | None = None`` |
 | `string`/`integer`/`number`/`boolean` | `str`/`int`/`float`/`bool` |
 | `format: date-time`/`date`/`time` | `datetime`/`date`/`time` |
 | `format: uuid`/`email`/`binary`/`decimal` | `UUID`/`EmailStr`/`bytes`/`Decimal` |
@@ -357,8 +357,8 @@ What the generator represents, stated:
 | String / integer `enum` | Subclass of `BaseStrEnum` / `BaseIntEnum` |
 | Internal `$ref` | Reference to the generated class, dependency-ordered |
 | `allOf` | Flattened into a single model |
-| `oneOf` / `anyOf` | `A \| B`; with `discriminator`, `Annotated[..., Field(discriminator=...)]` |
-| `nullable: true` (3.0) / `type: [x, "null"]` (3.1) | `X \| None` |
+| `oneOf` / `anyOf` | ``A | B``; with `discriminator`, `Annotated[..., Field(discriminator=...)]` |
+| `nullable: true` (3.0) / `type: [x, "null"]` (3.1) | ``X | None`` |
 | `additionalProperties` | `dict[str, T]` |
 | `minLength` / `maximum` / `pattern` / `minItems` / … | `Field` constraints |
 | Recursive / mutually recursive | Deferred annotations + `model_rebuild()` at the end of the module |

@@ -794,13 +794,16 @@ Todo comando retorna o exit code da ferramenta subjacente, então `tempest check
 
 ---
 
-## Próximos passos
+## Recap
 
-**Recap:** o `tempest` cobre o ciclo inteiro — do scaffold (`new`),
+O `tempest` cobre o ciclo inteiro — do scaffold (`new`),
 passando pela infra (`generate --docker` / `--dockerfile` / `--src`),
 migrações (`db`), usuários (`user`) e segredos (`secrets`), até os gates
-de qualidade (`lint` / `fix` / `type` / `test` / `check`). Depois de gerar
-o serviço, siga para as receitas relacionadas:
+de qualidade (`lint` / `fix` / `type` / `test` / `check`).
+
+## Próximos passos
+
+Depois de gerar o serviço, siga para as receitas relacionadas:
 
 - [Banco de dados »](database.md) — `BaseRepository`, sessões async e o
   fluxo de migrações por trás do `tempest db`.

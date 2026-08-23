@@ -206,7 +206,7 @@ Code generation from an OpenAPI specification:
 
 | Feature | Status | Where |
 |---------|--------|-------|
-| **`tempest openapi-client <spec>`** | ✅ v0.161 | Point it at the spec (URL or file, JSON or YAML) and get `<src\|app>/integrations/<name>/` with `schemas.py` + `client.py`. The end of transcribing a third party's documentation by hand. `--name`/`--out`/`--header`/`--schemas-only`/`--force`/`--no-format`. [Reference »](recipes/openapi-client.md) |
+| **`tempest openapi-client <spec>`** | ✅ v0.161 | Point it at the spec (URL or file, JSON or YAML) and get ``<src|app>/integrations/<name>/`` with `schemas.py` + `client.py`. The end of transcribing a third party's documentation by hand. `--name`/`--out`/`--header`/`--schemas-only`/`--force`/`--no-format`. [Reference »](recipes/openapi-client.md) |
 | **Schemas with metadata** | ✅ v0.161 | One `BaseSchema` class per component, with the **spec's** `title`/`description`/`examples` on every `Field` — the generated module is the integration's documentation. Python names + the wire name as `alias` + `populate_by_name`; reserved words resolved (`class` → `class_`); optional collections as empty lists; enums as `BaseStrEnum`/`BaseIntEnum`; `allOf` flattened; recursion via `model_rebuild()`. Nothing is invented where the spec documents nothing. [Reference »](recipes/openapi-client.md#schemaspy) |
 | **Typed HTTP client** | ✅ v0.161 | One `async` method per operation, over an **injected** `HTTPClient` — retry/backoff/circuit-breaker/credentials stay with the caller, and `httpx.MockTransport` tests the whole integration offline. Typed path/query params, validated body and response, full Google docstrings. [Reference »](recipes/openapi-client.md#clientpy) |
 | **Output that passes your gates** | ✅ v0.161 | The emitted code passes `ruff check` + `ruff format --check` **before** the formatting pass (tested against the raw output), so `--no-format` or a machine without ruff still yields a usable package. Regenerating an unchanged spec produces a byte-for-byte identical file, so the `git diff` of a `--force` is the integration's changelog. |
@@ -379,7 +379,7 @@ Django-style `F` / `Q` wrappers over SQLAlchemy, wired into
 | Feature | Status | Where |
 |---------|--------|-------|
 | **`F` (column expression)** | ✅ v0.111 | `F("stock") - 1` computes in the database in one statement — atomic update, no race. Arithmetic from either side and between columns; resolved in `bulk_update`. [Recipe »](recipes/database.md) |
-| **`Q` (composable conditions)** | ✅ v0.111 | `Q(status="open") \| Q(...)`, `&`, `~` for the `OR`/`NOT` the filter dict can't express; same conventions (`field__gte`, `name` ILIKE, iterable → `IN`). `where=` on `list`/`first`/`get`/`get_or_none`/`count`/`exists`/`paginate`/`delete_many`. [Recipe »](recipes/database.md) |
+| **`Q` (composable conditions)** | ✅ v0.111 | ``Q(status="open") | Q(...)``, `&`, `~` for the `OR`/`NOT` the filter dict can't express; same conventions (`field__gte`, `name` ILIKE, iterable → `IN`). `where=` on `list`/`first`/`get`/`get_or_none`/`count`/`exists`/`paginate`/`delete_many`. [Recipe »](recipes/database.md) |
 
 ## Shipped in v0.110.0
 

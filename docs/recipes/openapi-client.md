@@ -298,7 +298,7 @@ async def cobrar(client: TerceiroClient) -> None:
 | --- | --- |
 | `<spec>` (argumento) | URL (`http(s)://`) ou caminho da especificação |
 | `--name` / `-n` | Nome da integração — vira o diretório e o prefixo da classe. Default: `info.title` slugificado |
-| `--out` / `-o` | Destino. Default: `<src\|app>/integrations/<name>/` |
+| `--out` / `-o` | Destino. Default: ``<src|app>/integrations/<name>/`` |
 | `--header` / `-H` | Header para baixar a spec (`"Authorization: Bearer ..."`). Repetível |
 | `--path` / `-p` | Raiz do projeto usada para resolver o destino default |
 | `--schemas-only` | Não gerar `client.py` |
@@ -345,7 +345,7 @@ O que o gerador representa, declarado:
 | Construção | Tratamento |
 | --- | --- |
 | `type: object` + `properties` | Classe herdando `BaseSchema` |
-| `required` | Campo sem default; ausente → `X \| None = None` |
+| `required` | Campo sem default; ausente → ``X | None = None`` |
 | `string`/`integer`/`number`/`boolean` | `str`/`int`/`float`/`bool` |
 | `format: date-time`/`date`/`time` | `datetime`/`date`/`time` |
 | `format: uuid`/`email`/`binary`/`decimal` | `UUID`/`EmailStr`/`bytes`/`Decimal` |
@@ -353,8 +353,8 @@ O que o gerador representa, declarado:
 | `enum` de strings / inteiros | Subclasse de `BaseStrEnum` / `BaseIntEnum` |
 | `$ref` interno | Referência à classe gerada, ordenada por dependência |
 | `allOf` | Achatado num único modelo |
-| `oneOf` / `anyOf` | `A \| B`; com `discriminator`, `Annotated[..., Field(discriminator=...)]` |
-| `nullable: true` (3.0) / `type: [x, "null"]` (3.1) | `X \| None` |
+| `oneOf` / `anyOf` | ``A | B``; com `discriminator`, `Annotated[..., Field(discriminator=...)]` |
+| `nullable: true` (3.0) / `type: [x, "null"]` (3.1) | ``X | None`` |
 | `additionalProperties` | `dict[str, T]` |
 | `minLength` / `maximum` / `pattern` / `minItems` / … | Constraints no `Field` |
 | Recursivo / mutuamente recursivo | Anotações adiadas + `model_rebuild()` no fim do módulo |

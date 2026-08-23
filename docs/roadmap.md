@@ -207,7 +207,7 @@ Geração de código a partir de uma especificação OpenAPI:
 
 | Feature | Status | Onde |
 |---------|--------|------|
-| **`tempest openapi-client <spec>`** | ✅ v0.161 | Aponte para a spec (URL ou arquivo, JSON ou YAML) e receba `<src\|app>/integrations/<name>/` com `schemas.py` + `client.py`. Fim da transcrição manual de documentação de terceiro. `--name`/`--out`/`--header`/`--schemas-only`/`--force`/`--no-format`. [Referência »](recipes/openapi-client.md) |
+| **`tempest openapi-client <spec>`** | ✅ v0.161 | Aponte para a spec (URL ou arquivo, JSON ou YAML) e receba ``<src|app>/integrations/<name>/`` com `schemas.py` + `client.py`. Fim da transcrição manual de documentação de terceiro. `--name`/`--out`/`--header`/`--schemas-only`/`--force`/`--no-format`. [Referência »](recipes/openapi-client.md) |
 | **Schemas com metadados** | ✅ v0.161 | Uma classe `BaseSchema` por componente, com `title`/`description`/`examples` **da spec** em todo `Field` — o módulo gerado é a documentação da integração. Nomes pythônicos + `alias` do nome de rede + `populate_by_name`; palavra reservada resolvida (`class` → `class_`); coleção opcional como lista vazia; enums em `BaseStrEnum`/`BaseIntEnum`; `allOf` achatado; recursão via `model_rebuild()`. Nada é inventado quando a spec não documenta. [Referência »](recipes/openapi-client.md#schemaspy) |
 | **Cliente HTTP tipado** | ✅ v0.161 | Um método `async` por operação, sobre um `HTTPClient` **injetado** — retry/backoff/circuit-breaker/credenciais continuam do chamador, e `httpx.MockTransport` testa a integração inteira sem rede. Params de path/query tipados, corpo e resposta validados, docstring Google completa. [Referência »](recipes/openapi-client.md#clientpy) |
 | **Saída que passa nos gates** | ✅ v0.161 | O código emitido passa `ruff check` + `ruff format --check` **antes** da passada de formatação (testado contra a saída crua), então `--no-format` ou uma máquina sem ruff ainda entregam pacote utilizável. Regenerar uma spec inalterada produz arquivo byte a byte idêntico, então o `git diff` de um `--force` é o changelog da integração. |
@@ -380,7 +380,7 @@ Wrappers `F` / `Q` estilo Django sobre o SQLAlchemy, plugados no
 | Feature | Status | Onde |
 |---------|--------|------|
 | **`F` (expressão de coluna)** | ✅ v0.111 | `F("stock") - 1` computa no banco numa instrução — update atômico sem race. Aritmética dos dois lados e entre colunas; resolvido em `bulk_update`. [Receita »](recipes/database.md) |
-| **`Q` (condições compostas)** | ✅ v0.111 | `Q(status="open") \| Q(...)`, `&`, `~` para `OR`/`NOT` que o dict de filtros não expressa; mesmas convenções (`campo__gte`, `name` ILIKE, iterável → `IN`). `where=` em `list`/`first`/`get`/`get_or_none`/`count`/`exists`/`paginate`/`delete_many`. [Receita »](recipes/database.md) |
+| **`Q` (condições compostas)** | ✅ v0.111 | ``Q(status="open") | Q(...)``, `&`, `~` para `OR`/`NOT` que o dict de filtros não expressa; mesmas convenções (`campo__gte`, `name` ILIKE, iterável → `IN`). `where=` em `list`/`first`/`get`/`get_or_none`/`count`/`exists`/`paginate`/`delete_many`. [Receita »](recipes/database.md) |
 
 ## Entregue na v0.110.0
 

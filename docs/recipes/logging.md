@@ -184,3 +184,14 @@ Parâmetros de query:
     - Exatidão por nível: cada arquivo só recebe a sua severidade.
     - `500.log` isola erros 500 não tratados (marcador `http_500`).
     - `make_logs_router` serve esses arquivos paginados e autenticados.
+
+## Recap
+
+- `configure_logging` escreve JSON estruturado no stdout **e** em `logs/`, um
+  arquivo por nível, cada arquivo com apenas o seu próprio nível.
+- `500.log` fica isolado de propósito: o arquivo que você abre primeiro no
+  incidente não vem misturado com o resto.
+- O id da requisição entra em toda linha, então uma reclamação de usuário vira
+  um `grep` — é isso que separa log estruturado de log bonito.
+- `make_logs_router` monta `GET /logs` paginado sobre esses arquivos, mais
+  recentes primeiro, para ler sem acesso ao disco do container.

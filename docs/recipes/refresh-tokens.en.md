@@ -234,6 +234,22 @@ async def issue(service: UserAuthService, session: AsyncSession, user: object) -
 
 ---
 
+## Recap
+
+- A stateless refresh token is a JWT the server accepts because the signature
+  checks out; it cannot be revoked before it expires. The DB-backed mode trades
+  that for a persisted opaque token.
+- The table is abstract (`BaseUserRefreshTokenModel`); your service ships the
+  concrete one, as it already does for the account token.
+- Passing the concrete model to `UserAuthService` is the **only** step that
+  turns the mode on: the router detects it and mounts `/auth/logout` itself.
+- Every login opens a **family**; every refresh rotates inside it. Reusing an
+  already-rotated token is a theft signal, and it revokes the whole family.
+- Only the hash reaches the database. The plaintext is returned once, at
+  issue time.
+- If you mount your own endpoints, three service methods cover it without the
+  router.
+
 ## Next steps
 
 - **[Auth flow (signup/reset)](auth-flow.md)** — the full flow where tokens are issued.

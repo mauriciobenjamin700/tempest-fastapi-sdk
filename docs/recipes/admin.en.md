@@ -873,16 +873,16 @@ site: AdminSite = AdminSite(title="Servus Admin", brand="Servus", theme=theme)
 | `accent_hover` | `str` | `"#1d4ed8"` | Hover/active shade of `accent` |
 | `danger` | `str` | `"#b91c1c"` | Destructive actions and error messages |
 | `header_bg` | `str` | `"#0f172a"` | Header background |
-| `sidebar_bg` | `str \| None` | `None` | Sidebar background (falls back to `header_bg`) |
-| `page_bg` | `str \| None` | `None` | Content background (mode default) |
+| `sidebar_bg` | ``str | None`` | `None` | Sidebar background (falls back to `header_bg`) |
+| `page_bg` | ``str | None`` | `None` | Content background (mode default) |
 | `radius` | `str` | `"6px"` | Radius of buttons, inputs, cards, tables |
-| `font_family` | `str \| None` | `None` | `font-family` for the whole panel |
-| `logo_url` | `str \| None` | `None` | Header image instead of the text brand |
+| `font_family` | ``str | None`` | `None` | `font-family` for the whole panel |
+| `logo_url` | ``str | None`` | `None` | Header image instead of the text brand |
 | `logo_alt` | `str` | `"Logo"` | `alt` text for the logo image |
-| `favicon_url` | `str \| None` | `None` | Browser-tab favicon |
+| `favicon_url` | ``str | None`` | `None` | Browser-tab favicon |
 | `footer_text` | `str` | `"Powered by tempest-fastapi-sdk"` | Footer text |
 | `dark_mode` | `bool` | `False` | Dark content surfaces |
-| `custom_css_url` | `str \| None` | `None` | Extra stylesheet, linked last |
+| `custom_css_url` | ``str | None`` | `None` | Extra stylesheet, linked last |
 
 !!! info "Dark mode"
     `dark_mode=True` switches the **content surfaces** (page background,
@@ -906,3 +906,19 @@ pass it via `AdminSite(theme=...)`, and the look changes across every page
 (login, dashboard, list, detail, forms) without touching CSS. For full
 control, `custom_css_url`.
 
+## Recap
+
+- `AdminSite` + `AdminModel` turn your models into a CRUD interface with no
+  template of your own: the declaration *is* the screen.
+- `@admin_action` puts a domain operation in the list, and the
+  `AdminActionResult` it returns is what the operator reads back.
+- `audit_model=` renders the who-changed-what timeline inside the detail, and
+  `inlines=` brings 1-N children onto the same page.
+- `autocomplete_fields=` swaps the `<select>` that does not scale for an HTMX
+  search — required the moment a foreign key has thousands of rows.
+- `dashboard_cards=` are business metrics, not system ones; `lenses=` are the
+  saved views an operator would reach for again tomorrow.
+- `access_policy=` is RBAC per (principal, action, model): without it, anyone
+  who reaches the admin can do everything.
+- `AdminTheme` covers the look through typed fields; `can_import=True` opens CSV
+  import with a preview before anything is written.

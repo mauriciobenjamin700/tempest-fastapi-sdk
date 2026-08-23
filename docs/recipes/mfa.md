@@ -317,6 +317,23 @@ Superfície completa:
 
 ---
 
+## Recap
+
+- TOTP é o código de 6 dígitos do app Authenticator: servidor e app
+  compartilham um segredo, e o código é derivado dele mais o relógio.
+- O extra é `[mfa]` (traz `pyotp`), por cima de `[auth]`, e nada é montado sem
+  `AUTH_MFA_ENABLED=True`.
+- O router exige `recovery_code_model`: sem ele levanta `RuntimeError` no
+  wiring, não em produção — perder o telefone sem código de recuperação é
+  perder a conta.
+- Com MFA ativo, `POST /auth/login` deixa de devolver o par de JWT: devolve
+  `mfa_required=True` e um token intermediário, e o segundo passo troca código
+  por JWT.
+- Quem monta os próprios endpoints usa os seis métodos do `UserAuthService`
+  direto, sem o router.
+- O segredo TOTP fica no `UserModel` — considere criptografar a coluna em
+  repouso.
+
 ## Próximos passos
 
 - **[Auth flow (signup/reset) »](auth-flow.md)** — o fluxo de conta local que o MFA estende.

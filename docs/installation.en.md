@@ -132,4 +132,4 @@ python -c "import tempest_fastapi_sdk; print(tempest_fastapi_sdk.__version__)"
 | 3.13 | Primary CI matrix |
 | 3.12 | Supported |
 | 3.11 | Supported (minimum) |
-| 3.10 and older | Not supported (uses `X \| None` PEP 604 syntax) |
+| 3.10 and older | Not supported (uses ``X | None`` PEP 604 syntax) |

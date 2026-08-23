@@ -295,3 +295,17 @@ straight to MinIO via a presigned URL. See
 - `save()` now returns the **key** (relative), not an absolute path — store
   the key and use `DownloadUtils.download(key)` to serve it.
 - `utils.delete(path)` (sync) → `await utils.delete(key)` (async).
+
+## Recap
+
+- `UploadUtils` picks the backend **once, in the constructor**: a folder writes
+  to disk, an `AsyncMinIOClient` writes to the bucket. The rest of your upload
+  code does not change.
+- `allowed_extensions` is an allowlist, not a denylist — and `UploadSettings`
+  lets you configure it per environment.
+- `save()` takes FastAPI's `UploadFile` and returns the **key**; the key is what
+  you store in the database, not the path.
+- `replace` covers the swapped avatar without leaving an orphan, and
+  `write_stream` keeps a large file out of memory.
+- Above roughly 50 MB the road is a presigned PUT: the client uploads straight
+  to the bucket, and your process stops being the bottleneck.

@@ -346,6 +346,21 @@ WS_MAX_MESSAGE_BYTES=65536             # 64 KiB default — fecha com 1009 ao es
 - Protocolo customizado por message-type que SSE não modela bem.
 - Volume de mensagens cliente → servidor é alto.
 
+## Recap
+
+- WebSocket bare do FastAPI te dá `receive_json` / `send_json` e mais nada; o
+  resto — auth no handshake, heartbeat, registro de conexão — é boilerplate que
+  `make_websocket_router` + `WebSocketHub` já resolvem.
+- Três objetos montam o fluxo: o hub (estado em memória), o resolver (token →
+  usuário) e o handler (loop de mensagens).
+- O token entra por subprotocol (preferido) ou query string, e o handshake é
+  onde a autenticação acontece — não na primeira mensagem.
+- O heartbeat automático é o que distingue conexão viva de socket meio-aberto,
+  que TCP sozinho não denuncia.
+- O hub oferece quatro padrões de broadcast, incluindo por tópico.
+- **Single-process por design**: o estado vive na memória do processo, então
+  deploy multi-réplica precisa de um passo a mais — a receita diz qual.
+
 ## Próximos passos
 
 - **[Auth flow »](auth-flow.md)** — o JWT que vai no `?token=` ou no subprotocol vem direto do `POST /auth/login` do `UserAuthService`.

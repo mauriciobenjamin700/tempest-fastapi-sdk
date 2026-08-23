@@ -617,7 +617,9 @@ UsageTotals(input_tokens=3000, output_tokens=800, total_tokens=3800,
 | `ValueError` (na construção do `StageMap`) | lista de estágios vazia, estágio duplicado, ou dois estágios resolvendo para a mesma coluna |
 | `ValueError` (na construção do `SpeechToText`) | `batch_size` sem `vad_filter=True` — é o VAD que corta o áudio nos trechos que viram um batch |
 
-**Recap:** `StageMap` dá nome às colunas de estado sem declarar nenhuma,
+## Recap
+
+O `StageMap` dá nome às colunas de estado sem declarar nenhuma,
 e é a forma certa quando a tela já carrega o registro; cada estágio marca
 `RUNNING`, solta a sessão, trabalha, relê e só grava se `owns` disser que
 o estágio ainda é dele; transcrição cancela levantando de dentro do

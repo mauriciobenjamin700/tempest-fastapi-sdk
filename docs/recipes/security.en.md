@@ -345,3 +345,21 @@ async def login(request: Request, payload: LoginIn) -> LoginOut:
     Defense against `X-Forwarded-For` spoofing must happen at the proxy (Nginx, ALB, CloudFront) — the proxy **overwrites** the header with the real peer before the request hits FastAPI. The SDK only reads the header you trust. If you expose the app directly to the internet, **do not** pass `trusted_header=` — fall back to the peer address.
 
 Use `get_client_ip_from_scope(scope, trusted_header=...)` in middleware or WebSocket handlers where only the ASGI scope is reachable.
+
+## Recap
+
+- `AttemptThrottle` counts failures per key (`login:<email>`, `reset:<ip>`) and
+  blocks the key, not the service — brute force gets expensive without
+  punishing someone who mistyped once.
+- The `typ` claim separates the three JWTs that share one secret: access,
+  refresh and the MFA intermediate. Without it, a refresh token would pass as
+  an access token.
+- `generate_opaque_token()` returns `(plaintext, token_hash)` in one call: the
+  plaintext goes in the email, the hash goes in the database, and a table leak
+  does not become a login.
+- `HardenedStaticFiles` stamps security headers on every response and refuses
+  any path that escapes the base — defence in depth against traversal.
+- `CSRFMiddleware` covers what bearer tokens never need and cookies always do:
+  the browser replaying a credential on a request your service did not start.
+- `set_cookie` / `clear_cookie` default to `HttpOnly`, `Secure` and a safe
+  `SameSite`, and `get_client_ip` resolves the real client IP behind a proxy.

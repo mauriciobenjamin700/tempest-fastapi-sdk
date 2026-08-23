@@ -365,7 +365,7 @@ Small stateless helpers from `tempest_fastapi_sdk.utils` that the SDK itself rel
 | --- | --- | --- |
 | `utcnow()` | `() -> datetime` | Current time as a timezone-aware UTC datetime — the SDK uses this for `created_at` / `updated_at` defaults. |
 | `to_utc(value)` | `(datetime) -> datetime` | Coerce naive datetimes to UTC (assumed UTC) and aware datetimes to UTC via `astimezone`. Used by `BaseResponseSchema` field validators. |
-| `modify_dict(data, exclude=None, include=None)` | `(dict, list[str] \| None, dict \| None) -> dict` | Single-pass filter + merge. Drop sensitive keys before logging or merge computed fields when mapping payloads to ORM models. |
+| `modify_dict(data, exclude=None, include=None)` | ``(dict, list[str] | None, dict | None) -> dict`` | Single-pass filter + merge. Drop sensitive keys before logging or merge computed fields when mapping payloads to ORM models. |
 
 #### Timestamps the same way everywhere
 
@@ -434,3 +434,16 @@ Every helper has its own recipe — this section is the quick map:
 | `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField`, `is_valid_*`, `normalize_*`, `only_digits` | [CPF / CNPJ / phone](#cpf-cnpj-phone) |
 | `UF`, `Region`, `StateBR`, `CityBR`, `ChoiceBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `uf_choices`, `region_choices`, `city_choices`, `is_valid_uf`, `normalize_uf`, `is_valid_city`, `normalize_city` | [States and municipalities](#states-and-municipalities) |
 
+## Recap
+
+- `tempest_fastapi_sdk.utils.regex` ships the regex, the validator, the
+  normalizer and the Pydantic type for CPF, CNPJ, phone and postcode — pure
+  stdlib, no extra.
+- The `Annotated` types (`CPFField`, `CEPField`, …) normalize on the way in, so
+  the schema accepts `"013.100-000"` and your code only ever reads digits.
+- States and municipalities come from a bundled table, so you validate a
+  payload and build a `<select>` without calling an external service.
+- Money goes both ways: a number into Brazilian-real text, and text back into
+  whole cents.
+- `utcnow`, `to_utc` and `modify_dict` are the stateless helpers the SDK itself
+  uses — available with no extra.
