@@ -2,6 +2,40 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.252.0 — `:memory:` do SQLite ganha conexão por sessão
+
+Não quebra API. Muda a topologia de conexão de um banco `:memory:`, e por isso vale ler antes de atualizar se você depende do comportamento antigo.
+
+### O que muda
+
+`AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")` passa a construir o engine sobre um banco in-memory de **cache compartilhado** (`file:<nome-único>?mode=memory&cache=shared&uri=true`) com pool normal, em vez de deixar o SQLAlchemy escolher `StaticPool` com uma única conexão. O manager mantém uma conexão viva enquanto existir, porque banco de cache compartilhado morre com a última conexão.
+
+Isso conserta o erro que apareceu na v0.200.0, quando o `BEGIN` explícito passou a ser emitido para todo engine SQLite:
+
+```text
+sqlite3.OperationalError: cannot start a transaction within a transaction
+[SQL: BEGIN]
+```
+
+Duas sessões sobrepostas voltam a funcionar em `:memory:`, e o `RELEASE SAVEPOINT` continua não sendo um commit disfarçado.
+
+### Se você depende de uma conexão só
+
+Passe o pool explicitamente — pool informado pelo caller nunca é sobrescrito:
+
+```python
+from sqlalchemy.pool import StaticPool
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+```
+
+Isso restaura a topologia anterior, incluindo a falha em sessões sobrepostas.
+
+### Se você trocou `:memory:` por arquivo temporário como contorno
+
+Pode voltar para `:memory:`. O contorno continua funcionando, então não é urgente.
+
 ## 0.251.0 — a assinatura de webhook do Mercado Pago passa a seguir o algoritmo do provedor
 
 Quebra quem passava `manifest_template=` ou desempacotava o retorno de

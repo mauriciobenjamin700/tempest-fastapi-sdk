@@ -3,18 +3,53 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.pool import Pool
+from sqlalchemy.pool import AsyncAdaptedQueuePool, Pool
 
 from tempest_fastapi_sdk.db.model import BaseModel
+
+_MEMORY_URL_MARKERS: tuple[str, ...] = (":memory:", "mode=memory")
+"""Substrings that make a SQLite URL an in-memory database."""
+
+
+def is_memory_sqlite_url(db_url: str) -> bool:
+    """Whether a URL points at an in-memory SQLite database.
+
+    Args:
+        db_url (str): The connection URL.
+
+    Returns:
+        bool: ``True`` for ``sqlite+aiosqlite:///:memory:`` and for the
+        ``mode=memory`` URI form, ``False`` for a file or another backend.
+    """
+    if make_url(db_url).get_backend_name() != "sqlite":
+        return False
+    return any(marker in db_url for marker in _MEMORY_URL_MARKERS)
+
+
+def shared_memory_url(name: str) -> str:
+    """Build a shared-cache in-memory SQLite URL.
+
+    Args:
+        name (str): Database name, unique per manager so two managers do
+            not end up talking to the same in-memory database.
+
+    Returns:
+        str: A URL every connection of one engine resolves to the same
+        in-memory database, instead of the private one each connection
+        gets with plain ``:memory:``.
+    """
+    return f"sqlite+aiosqlite:///file:{name}?mode=memory&cache=shared&uri=true"
 
 
 def enable_sqlite_savepoints(engine: AsyncEngine) -> None:
@@ -188,6 +223,8 @@ class AsyncDatabaseManager:
         """
         self._db_url: str = db_url
         self.is_sqlite: bool = make_url(db_url).get_backend_name() == "sqlite"
+        self.is_memory_sqlite: bool = is_memory_sqlite_url(db_url)
+        self._memory_keepalive: AsyncConnection | None = None
         self._sqlite_wal: bool = sqlite_wal
         self._sqlite_busy_timeout: float = sqlite_busy_timeout
         self._echo: bool = echo
@@ -271,11 +308,19 @@ class AsyncDatabaseManager:
         if self._poolclass is not None:
             kwargs["poolclass"] = self._poolclass
 
-        self._engine = create_async_engine(self._db_url, **kwargs)
+        url = self._db_url
+        share_memory = self.is_memory_sqlite and self._poolclass is None
+        if share_memory:
+            url = shared_memory_url(f"tempest_mem_{uuid4().hex}")
+            kwargs["poolclass"] = AsyncAdaptedQueuePool
+
+        self._engine = create_async_engine(url, **kwargs)
         if self.is_sqlite:
             enable_sqlite_savepoints(self._engine)
             if self._sqlite_wal:
                 enable_sqlite_wal(self._engine)
+        if share_memory:
+            self._memory_keepalive = await self._engine.connect()
         self._session_maker = async_sessionmaker(
             self._engine,
             expire_on_commit=False,
@@ -287,6 +332,9 @@ class AsyncDatabaseManager:
 
         Safe to call multiple times.
         """
+        if self._memory_keepalive is not None:
+            await self._memory_keepalive.close()
+            self._memory_keepalive = None
         if self._engine is not None:
             await self._engine.dispose()
             self._engine = None
@@ -420,5 +468,8 @@ class AsyncDatabaseManager:
 
 __all__: list[str] = [
     "AsyncDatabaseManager",
+    "enable_sqlite_savepoints",
     "enable_sqlite_wal",
+    "is_memory_sqlite_url",
+    "shared_memory_url",
 ]

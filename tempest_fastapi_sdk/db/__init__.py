@@ -35,6 +35,12 @@ from tempest_fastapi_sdk.db.connection import (
 from tempest_fastapi_sdk.db.connection import (
     enable_sqlite_wal as enable_sqlite_wal,
 )
+from tempest_fastapi_sdk.db.connection import (
+    is_memory_sqlite_url as is_memory_sqlite_url,
+)
+from tempest_fastapi_sdk.db.connection import (
+    shared_memory_url as shared_memory_url,
+)
 from tempest_fastapi_sdk.db.device_token_model import (
     BaseDeviceTokenModel as BaseDeviceTokenModel,
 )
@@ -213,6 +219,7 @@ __all__: list[str] = [
     "full_text_condition",
     "full_text_rank",
     "in_transaction",
+    "is_memory_sqlite_url",
     "like_search_condition",
     "make_device_token_model",
     "make_user_recovery_code_model",
@@ -225,6 +232,7 @@ __all__: list[str] = [
     "render_enum_types",
     "reorder_base_columns_first",
     "savepoint",
+    "shared_memory_url",
     "snapshot_model",
     "supports_full_text",
     "sync_enum_types",

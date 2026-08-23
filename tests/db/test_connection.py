@@ -154,3 +154,139 @@ class TestRequireConnected:
         await session.close()
         assert manager.is_connected is True
         await manager.disconnect()
+
+
+class TestInMemoryOverlappingSessions:
+    """``:memory:`` has to behave like a database, not like one connection.
+
+    Plain ``sqlite+aiosqlite:///:memory:`` makes SQLAlchemy pick
+    ``StaticPool``: every session shares **one** DBAPI connection. Since
+    v0.200.0 the manager also emits an explicit ``BEGIN`` per transaction —
+    needed so ``RELEASE SAVEPOINT`` stops committing on SQLite — and the two
+    together broke every overlapping session with ``cannot start a
+    transaction within a transaction``.
+
+    Both properties are measured here, because the obvious fix (drop the
+    ``BEGIN`` when the connection is shared) trades one defect for the other:
+    measured on this repository, it makes the nested-block rows durable
+    through an outer rollback.
+    """
+
+    async def test_two_overlapping_sessions_work(self) -> None:
+        """The shape the issue reported: a session opened inside another."""
+        manager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+        await manager.connect()
+        await manager.create_tables()
+        try:
+            async with manager.get_session_context() as first:
+                await first.execute(text("SELECT 1"))
+                async with manager.get_session_context() as second:
+                    await second.execute(text("SELECT 1"))
+        finally:
+            await manager.disconnect()
+
+    async def test_a_released_savepoint_is_still_not_durable(self) -> None:
+        """The property the explicit ``BEGIN`` exists for, on ``:memory:``.
+
+        A nested block that exits cleanly must not survive the outer
+        rollback. Without the ``BEGIN``, SQLite treats the ``SAVEPOINT`` as
+        the outermost transaction and ``RELEASE`` commits it.
+        """
+        manager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+        await manager.connect()
+        await manager.create_tables()
+        try:
+            async with manager.get_session_context() as session:
+                await session.execute(
+                    text("CREATE TABLE probe (id INTEGER PRIMARY KEY)")
+                )
+                await session.commit()
+                async with session.begin_nested():
+                    await session.execute(text("INSERT INTO probe (id) VALUES (1)"))
+                await session.rollback()
+            async with manager.get_session_context() as check:
+                rows = (await check.execute(text("SELECT id FROM probe"))).all()
+            assert rows == []
+        finally:
+            await manager.disconnect()
+
+    async def test_writes_are_visible_across_sessions(self) -> None:
+        """One in-memory database per manager, not one per connection.
+
+        Sharing is what plain ``:memory:`` gives up when it stops using a
+        single connection, so the manager asks for a shared cache instead.
+        """
+        manager = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+        await manager.connect()
+        try:
+            async with manager.get_session_context() as writer:
+                await writer.execute(text("CREATE TABLE probe (id INTEGER)"))
+                await writer.execute(text("INSERT INTO probe (id) VALUES (7)"))
+                await writer.commit()
+            async with manager.get_session_context() as reader:
+                rows = (await reader.execute(text("SELECT id FROM probe"))).all()
+            assert rows == [(7,)]
+        finally:
+            await manager.disconnect()
+
+    async def test_two_managers_do_not_share_a_database(self) -> None:
+        """The shared cache is named per manager, so isolation is kept."""
+        first = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+        second = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")
+        await first.connect()
+        await second.connect()
+        try:
+            async with first.get_session_context() as session:
+                await session.execute(text("CREATE TABLE only_here (id INTEGER)"))
+                await session.commit()
+            async with second.get_session_context() as other:
+                found = (
+                    await other.execute(
+                        text(
+                            "SELECT name FROM sqlite_master "
+                            "WHERE type='table' AND name='only_here'"
+                        )
+                    )
+                ).all()
+            assert found == []
+        finally:
+            await first.disconnect()
+            await second.disconnect()
+
+    async def test_an_explicit_poolclass_is_left_alone(self) -> None:
+        """The escape hatch: a caller who wants one connection still gets it.
+
+        ``poolclass=StaticPool`` restores the pre-fix topology — including
+        its failure on overlapping sessions — because a caller passing a pool
+        explicitly has a reason, and the manager should not override it.
+        """
+        from sqlalchemy.pool import StaticPool
+
+        manager = AsyncDatabaseManager(
+            "sqlite+aiosqlite:///:memory:", poolclass=StaticPool
+        )
+        await manager.connect()
+        try:
+            assert isinstance(manager.engine.pool, StaticPool)
+        finally:
+            await manager.disconnect()
+
+    async def test_a_file_database_keeps_its_url(self) -> None:
+        """Only the in-memory case is rewritten."""
+        manager = AsyncDatabaseManager("sqlite+aiosqlite:///./probe-url.db")
+        assert manager.is_memory_sqlite is False
+        assert manager.is_sqlite is True
+
+    def test_memory_detection_covers_both_spellings(self) -> None:
+        """``:memory:`` and the ``mode=memory`` URI form."""
+        from tempest_fastapi_sdk.db.connection import is_memory_sqlite_url
+
+        assert is_memory_sqlite_url("sqlite+aiosqlite:///:memory:") is True
+        assert (
+            is_memory_sqlite_url(
+                "sqlite+aiosqlite:///file:x?mode=memory&cache=shared&uri=true"
+            )
+            is True
+        )
+        assert is_memory_sqlite_url("sqlite+aiosqlite:///./file.db") is False
+        assert is_memory_sqlite_url("postgresql+asyncpg://h/db") is False

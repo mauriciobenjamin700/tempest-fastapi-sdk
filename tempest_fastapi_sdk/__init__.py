@@ -827,6 +827,9 @@ from tempest_fastapi_sdk.db import (
     in_transaction as in_transaction,
 )
 from tempest_fastapi_sdk.db import (
+    is_memory_sqlite_url as is_memory_sqlite_url,
+)
+from tempest_fastapi_sdk.db import (
     like_search_condition as like_search_condition,
 )
 from tempest_fastapi_sdk.db import (
@@ -861,6 +864,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     savepoint as savepoint,
+)
+from tempest_fastapi_sdk.db import (
+    shared_memory_url as shared_memory_url,
 )
 from tempest_fastapi_sdk.db import (
     snapshot_model as snapshot_model,
@@ -1973,6 +1979,7 @@ __all__: list[str] = [
     "has_perm",
     "hash_opaque_token",
     "in_transaction",
+    "is_memory_sqlite_url",
     "is_valid_cep",
     "is_valid_city",
     "is_valid_cnpj",
@@ -2064,6 +2071,7 @@ __all__: list[str] = [
     "set_cookie",
     "set_request_id",
     "setup_tracing",
+    "shared_memory_url",
     "snapshot_model",
     "sniff_mime",
     "sse_response",

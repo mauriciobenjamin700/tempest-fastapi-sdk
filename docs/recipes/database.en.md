@@ -487,6 +487,29 @@ and `DATABASE_SQLITE_BUSY_TIMEOUT`.
     a `:memory:` database the pragma is inert — SQLite answers `memory`
     and carries on.
 
+!!! info "`:memory:` gets a real connection per session (v0.252.0)"
+    `sqlite+aiosqlite:///:memory:` makes SQLAlchemy pick `StaticPool`:
+    **one** DBAPI connection shared by every session. Together with the
+    explicit `BEGIN` the manager has emitted since v0.200.0 — needed so
+    `RELEASE SAVEPOINT` stops committing on SQLite — that broke any pair of
+    overlapping sessions with `cannot start a transaction within a
+    transaction`. It hits the test pattern this SDK recommends, and it hits
+    an endpoint that answers and finishes its work in a `BackgroundTasks`.
+
+    The manager now rewrites the URL to a **shared-cache** in-memory
+    database (`file:<name>?mode=memory&cache=shared&uri=true`), with a normal
+    pool, and holds one connection open for as long as the manager lives — a
+    shared-cache in-memory database is destroyed when the last connection
+    closes. Each manager gets its own name, so two managers stay isolated.
+
+    Measured on both properties: an overlapping session works **and** a
+    nested block that exits cleanly is still not durable after an outer
+    rollback. Dropping the `BEGIN` — the obvious way out — buys the first and
+    loses the second.
+
+    Need the old topology? Pass `poolclass=StaticPool` explicitly: a pool the
+    caller names is never overridden.
+
 !!! warning "What waiting does not fix"
     WAL admits **one writer at a time**; the others wait out the
     `busy_timeout`. What no timeout fixes is a transaction that **reads
