@@ -479,23 +479,43 @@ The last line becomes:
 === DOCUMENT TRUNCATED AFTER PAGE 1 OF 3 ===
 ```
 
-!!! warning "`max_chars` is not a ceiling on the returned string"
-    The truncation notice and the page markers are added **on top** of the
-    limit. Measured: `max_chars=60` on a 3-page PDF returned 92 characters. If
-    you need a hard ceiling to fit a context window, measure the returned
-    string — do not read the parameter as a total.
+!!! check "`max_chars` is a hard ceiling, and text always comes back (v0.252.0)"
+    Three things changed, because all three were wrong:
 
-    Worse at the low end: the cut lands on a page boundary, so a `max_chars`
-    smaller than the first page returns **only the notice**, without a line of
-    the document. Measured on a 1-page PDF carrying 45 characters of text: any
-    `max_chars` between 5 and 40 returns exactly
-    `"\n=== DOCUMENT TRUNCATED AFTER PAGE 0 OF 1 ===\n"` — 46 characters,
-    above the requested limit, naming a page 0 that does not exist.
+    | Before | Now |
+    | --- | --- |
+    | notice and markers were added **on top** of the limit (`max_chars=40` → 46 chars) | the result **never** exceeds `max_chars` |
+    | a `max_chars` below page 1 returned **only the notice** | document text comes back, cut inside the page |
+    | the notice said `PAGE 0`, a page that does not exist | the lowest page it can name is 1 |
 
-    So sizing by `max_chars` without checking the output is how an empty
-    document reaches a model. Treat a result with no page-1 marker as "did not
-    fit", and either raise the limit or split the document with
-    `extract_pdf_pages`.
+    The order of preference: whole pages while they fit; if not even the first
+    fits, a cut inside it announced by
+    `=== PAGE 1 OF 3 TRUNCATED MID-PAGE ===`; and if the budget cannot hold a
+    notice while leaving at least **a third** for text, the whole budget goes
+    to text — with no notice and no page marker, because an annotation that
+    swallows the content is the defect this fixes.
+
+    The notice describes the cut that **actually** happened, not the branch
+    the code took: `MID-PAGE` appears only when the returned text is a strict
+    prefix of the page. When the whole of page 1 fits, the line is
+    `=== DOCUMENT TRUNCATED AFTER PAGE 1 OF 3 ===` — measured on a 3-page
+    document, `max_chars=120` returns 106 characters in that shape. And at the
+    budget that holds the page but not that notice (100, same document, where
+    the boundary form needs 106), the cut gives up one character so the
+    `MID-PAGE` warning stays true: 58 of page 1's 59 characters with a
+    warning beat all 59 with pages 2 and 3 gone in silence.
+
+    Measured on a 239-character page: up to `max_chars=60` the answer is raw
+    text exactly as long as the budget; at `max_chars=61` the notice becomes
+    affordable and the answer carries 20 characters of document beside it;
+    from there the text only grows. The step down happens **once** — at the
+    budget where the notice becomes affordable — and it is the price of
+    knowing half is missing. A test pins it: nowhere else between 1 and 300
+    does a larger budget return less document.
+
+    If your flow relied on the old behaviour (a whole number of pages every
+    time), use `extract_pdf_pages` and assemble it yourself: it returns page
+    by page, with no ceiling.
 
 A silent cut is the dangerous one: the model answers about the half it was
 shown, with no sign that a half is missing. Override the sentence with

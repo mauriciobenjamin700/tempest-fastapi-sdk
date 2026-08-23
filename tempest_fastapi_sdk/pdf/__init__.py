@@ -64,6 +64,9 @@ from tempest_fastapi_sdk.pdf.reader import (
     DEFAULT_PAGE_MARKER as DEFAULT_PAGE_MARKER,
 )
 from tempest_fastapi_sdk.pdf.reader import (
+    DEFAULT_PARTIAL_PAGE_NOTICE as DEFAULT_PARTIAL_PAGE_NOTICE,
+)
+from tempest_fastapi_sdk.pdf.reader import (
     DEFAULT_TRUNCATION_NOTICE as DEFAULT_TRUNCATION_NOTICE,
 )
 from tempest_fastapi_sdk.pdf.reader import (
@@ -101,6 +104,7 @@ __all__: list[str] = [
     "DEFAULT_MAX_ASSET_BYTES",
     "DEFAULT_MAX_CONCURRENT_RENDERS",
     "DEFAULT_PAGE_MARKER",
+    "DEFAULT_PARTIAL_PAGE_NOTICE",
     "DEFAULT_REMOTE_TIMEOUT",
     "DEFAULT_TRUNCATION_NOTICE",
     "MAX_EXTENSO_CENTS",

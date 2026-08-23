@@ -220,6 +220,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.pdf.reader.PageText
 ::: tempest_fastapi_sdk.pdf.reader.DEFAULT_PAGE_MARKER
 ::: tempest_fastapi_sdk.pdf.reader.DEFAULT_TRUNCATION_NOTICE
+::: tempest_fastapi_sdk.pdf.reader.DEFAULT_PARTIAL_PAGE_NOTICE
 
 ---
 

@@ -202,11 +202,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   propriedades, a visibilidade entre sessões, o isolamento entre managers e o
   escape hatch.
 
+- **`extract_pdf_text` passa a tratar `max_chars` como teto duro, e a sempre
+  devolver texto do documento** ([#175]). O corte só acontecia em fronteira de
+  página e o aviso entrava **por cima** do orçamento, então qualquer
+  `max_chars` menor que a primeira página devolvia só a anotação. Medido numa
+  página de 239 caracteres: para **todo** `max_chars` de 1 a 254 a resposta era
+  exatamente a mesma linha de aviso, e de 1 a 45 ela estourava o teto pedido:
+
+  ```text
+  max_chars=40  -> len=46  '\n=== DOCUMENT TRUNCATED AFTER PAGE 0 OF 1 ===\n'
+  max_chars=100 -> len=46  '\n=== DOCUMENT TRUNCATED AFTER PAGE 0 OF 1 ===\n'
+  ```
+
+  Três defeitos numa linha: nenhum caractere de documento, 46 caracteres para
+  um teto de 40, e uma "página 0" que não existe. Quem dimensionava o prompt
+  por `max_chars` entregava documento vazio ao modelo — e a string não era
+  vazia, então `if not text` também não pegava.
+
+  Depois, no mesmo documento:
+
+  ```text
+  max_chars=40  -> len=40  'Recibo 4021 Recibo 4021 Recibo 4021 Reci'
+  max_chars=61  -> len=61  'Recibo 4021 Recibo 4\n\n=== PAGE 1 OF 1 TRUNCATED MID-PAGE ===\n'
+  max_chars=100 -> len=100 'Recibo 4021 [...] Recibo 4021\n\n=== PAGE 1 OF 1 TRUNCATED MID-PAGE ===\n'
+  ```
+
+  A ordem de preferência é páginas inteiras enquanto couberem; depois a
+  página 1 cortada, anunciada pelo novo `DEFAULT_PARTIAL_PAGE_NOTICE`; e, se
+  nenhum aviso couber deixando **um terço** do orçamento para texto, o
+  orçamento inteiro vai para o texto — sem aviso e sem marcador de página.
+
+  Duas propriedades que a implementação errou antes de acertar, cada uma com
+  guard próprio:
+
+  - **Orçamento maior nunca devolve menos documento.** Renderizar o marcador
+    sempre que ele *cabia* criava um segundo degrau: `max_chars=16` devolvia
+    16 caracteres de documento e `max_chars=17` devolvia **um**, com o
+    marcador comendo o resto. `test_more_budget_never_buys_less_document`
+    fixa o degrau único entre 1 e 300 — e falha com
+    `AssertionError: [17, 61]` na forma anterior.
+  - **`MID-PAGE` só quando o corte foi no meio.** Escolher o aviso pelo ramo
+    do código, e não pelo corte, fazia um documento de 3 páginas em
+    `max_chars=120` entregar a página 1 **inteira** sob aviso de corte no
+    meio. Agora a linha honesta (`AFTER PAGE 1 OF 3`, 106 caracteres) é
+    preferida, e no orçamento que segura a página mas não esse aviso o corte
+    tira um caractere para o `MID-PAGE` ficar verdadeiro.
+    `test_mid_page_is_only_claimed_when_the_page_was_really_cut` varre 1..400.
+
+  `DEFAULT_PARTIAL_PAGE_NOTICE` exportado na raiz e em
+  `tempest_fastapi_sdk.pdf`, com o parâmetro `partial_page_notice` para
+  sobrescrever. Receita `docs/recipes/pdf.md` reescrita: o bloco que
+  documentava o teto furado virou a tabela antes/depois.
+
 [#186]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/186
 [#187]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/187
 [#188]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/188
 [#189]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/189
 [#180]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/180
+[#175]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/175
 
 ## [0.251.0] — 2026-08-23
 

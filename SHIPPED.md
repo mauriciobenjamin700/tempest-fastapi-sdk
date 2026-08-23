@@ -647,8 +647,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   documento pro modelo". **Camada de texto apenas, sem OCR**: um PDF
   escaneado devolve `""` em vez de documento em branco, porque prompt vazio
   é como um modelo inventa resposta confiante sobre página que ninguém leu.
-  Fronteira de página sobrevive como marcador (parametrizável), e o corte em
-  `max_chars` acontece na última página **completa** e se anuncia no texto.
+  Fronteira de página sobrevive como marcador (parametrizável). `max_chars` é
+  **teto duro** desde a v0.252.0 — o aviso entra no orçamento, não por cima
+  dele — e o corte prefere a última página completa; quando nem a primeira
+  cabe, corta dentro dela e anuncia `TRUNCATED MID-PAGE`, porque devolver só
+  o aviso era entregar prompt vazio ao modelo. Aviso que não deixa **um
+  terço** do orçamento para texto é omitido: anotação não substitui payload.
   Extra separado do `[pdf]` de propósito: renderizar puxa WeasyPrint mais
   Pango e fontconfig do sistema, e quem só lê não deve carregar nada disso.
 - **PDF (v0.218.0, `[pdf]` extra = weasyprint + jinja2)** —
