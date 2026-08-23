@@ -484,6 +484,30 @@ Pelo ambiente, via `DatabaseSettings`: `DATABASE_SQLITE_WAL` e
     posterior, de qualquer processo, já abre o arquivo em WAL. Em banco
     `:memory:` o pragma é inócuo — o SQLite responde `memory` e segue.
 
+!!! info "`:memory:` recebe conexão de verdade por sessão (v0.252.0)"
+    `sqlite+aiosqlite:///:memory:` faz o SQLAlchemy escolher `StaticPool`:
+    **uma** conexão DBAPI compartilhada por todas as sessões. Junto com o
+    `BEGIN` explícito que o manager emite desde a v0.200.0 — necessário para
+    o `RELEASE SAVEPOINT` parar de comitar no SQLite — isso quebrava qualquer
+    par de sessões sobrepostas com `cannot start a transaction within a
+    transaction`. Pega o padrão de teste que este SDK recomenda, e pega um
+    endpoint que responde e termina o trabalho num `BackgroundTasks`.
+
+    O manager passa a reescrever a URL para um banco in-memory de **cache
+    compartilhado** (`file:<nome>?mode=memory&cache=shared&uri=true`), com
+    pool normal, e mantém uma conexão viva enquanto o manager existe — um
+    banco in-memory de cache compartilhado é destruído quando a última
+    conexão fecha. Cada manager recebe um nome próprio, então dois managers
+    continuam isolados.
+
+    Medido nas duas propriedades: sessão sobreposta funciona **e** bloco
+    aninhado que sai limpo continua não durável depois de um rollback
+    externo. Tirar o `BEGIN` — a saída mais óbvia — dá a primeira e perde a
+    segunda.
+
+    Precisa da topologia antiga? Passe `poolclass=StaticPool`
+    explicitamente: pool informado pelo caller nunca é sobrescrito.
+
 !!! warning "O que esperar não conserta"
     WAL admite **um escritor por vez**; os outros aguardam o
     `busy_timeout`. O que timeout nenhum resolve é uma transação que

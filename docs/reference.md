@@ -145,6 +145,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_savepoints
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_wal
+::: tempest_fastapi_sdk.db.connection.is_memory_sqlite_url
+::: tempest_fastapi_sdk.db.connection.shared_memory_url
 ::: tempest_fastapi_sdk.db.transaction.transaction
 ::: tempest_fastapi_sdk.db.transaction.savepoint
 ::: tempest_fastapi_sdk.db.transaction.in_transaction

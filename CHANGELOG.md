@@ -167,10 +167,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Python (`__init__`, `__all__`) não é falso positivo, e há um caso que prova
   que o padrão casa exatamente os cinco marcadores que shipparam.
 
+- **`:memory:` do SQLite volta a aceitar sessões sobrepostas, sem perder a
+  atomicidade do savepoint** ([#180]). Desde a v0.200.0 o manager emite `BEGIN`
+  explícito em todo engine SQLite — necessário para o `RELEASE SAVEPOINT` parar
+  de comitar — e o SQLAlchemy escolhe `StaticPool` para `:memory:`, que é
+  **uma** conexão para todas as sessões. Junto, isso derrubava qualquer par de
+  sessões sobrepostas:
+
+  ```text
+  sqlite3.OperationalError: cannot start a transaction within a transaction
+  ```
+
+  A saída mais óbvia — não emitir o `BEGIN` quando a conexão é compartilhada —
+  foi medida e **troca um defeito pelo outro**:
+
+  | `:memory:` | sessão sobreposta | savepoint liberado |
+  | --- | --- | --- |
+  | com `BEGIN` (v0.200.0 a v0.251.0) | `cannot start a transaction` | atômico |
+  | sem `BEGIN` | ok | **vaza** (fica durável) |
+  | cache compartilhado + pool normal | ok | atômico |
+
+  Então o manager passa a reescrever a URL in-memory para um banco de **cache
+  compartilhado** (`file:<nome-único>?mode=memory&cache=shared&uri=true`) com
+  pool normal, mantendo uma conexão viva enquanto existir — banco de cache
+  compartilhado é destruído quando a última conexão fecha. Nome único por
+  manager, então dois managers continuam isolados (medido).
+
+  Pool informado pelo caller **nunca** é sobrescrito:
+  `poolclass=StaticPool` restaura a topologia antiga, incluindo a falha. Guia de
+  migração em `docs/migration.md`, seção 0.252.0.
+
+  Novos `is_memory_sqlite_url` e `shared_memory_url`, exportados na raiz. Seis
+  casos de regressão em `tests/db/test_connection.py`, cobrindo as duas
+  propriedades, a visibilidade entre sessões, o isolamento entre managers e o
+  escape hatch.
+
 [#186]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/186
 [#187]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/187
 [#188]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/188
 [#189]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/189
+[#180]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/180
 
 ## [0.251.0] — 2026-08-23
 

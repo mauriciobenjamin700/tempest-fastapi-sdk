@@ -2,6 +2,40 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.252.0 — SQLite `:memory:` gets one connection per session
+
+No API break. It changes the connection topology of a `:memory:` database, so read this before upgrading if you rely on the old behaviour.
+
+### What changes
+
+`AsyncDatabaseManager("sqlite+aiosqlite:///:memory:")` now builds the engine over a **shared-cache** in-memory database (`file:<unique-name>?mode=memory&cache=shared&uri=true`) with a normal pool, instead of letting SQLAlchemy pick `StaticPool` with a single connection. The manager holds one connection open for its lifetime, because a shared-cache database dies with its last connection.
+
+This fixes the error introduced in v0.200.0, when the explicit `BEGIN` started being emitted for every SQLite engine:
+
+```text
+sqlite3.OperationalError: cannot start a transaction within a transaction
+[SQL: BEGIN]
+```
+
+Two overlapping sessions work again on `:memory:`, and `RELEASE SAVEPOINT` still is not a commit in disguise.
+
+### If you rely on a single connection
+
+Pass the pool explicitly — a pool the caller names is never overridden:
+
+```python
+from sqlalchemy.pool import StaticPool
+from tempest_fastapi_sdk import AsyncDatabaseManager
+
+db = AsyncDatabaseManager("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+```
+
+That restores the previous topology, including its failure on overlapping sessions.
+
+### If you swapped `:memory:` for a temp file as a workaround
+
+You can go back to `:memory:`. The workaround keeps working, so there is no rush.
+
 ## 0.251.0 — the Mercado Pago webhook signature now follows the provider's algorithm
 
 Breaks anyone passing `manifest_template=` or unpacking the return of
