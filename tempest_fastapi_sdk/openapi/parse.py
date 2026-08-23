@@ -1083,12 +1083,20 @@ class _Parser:
         owner: str,
         path: str,
     ) -> tuple[ParameterIR, ...]:
-        """Build the path and query parameters of an operation.
+        """Build the path, query and header parameters of an operation.
 
         Required parameters are emitted before optional ones so the
-        generated method signature is valid Python; ``header`` and
-        ``cookie`` parameters are skipped with a note, since the
-        ``HTTPClient`` already owns default headers.
+        generated method signature is valid Python; ``cookie`` parameters
+        are skipped with a note, since a cookie is connection state the
+        ``HTTPClient`` owns, not a per-call value.
+
+        ``header`` parameters **are** emitted, as keyword-only arguments.
+        A header the specification attaches to one operation is a per-call
+        value — ``X-Idempotency-Key`` exists precisely to differ on every
+        request — so routing it through the client's ``default_headers``
+        would send one fixed value for every call. For an idempotency key
+        that is not a limitation but a defect: the second charge would be
+        deduplicated onto the first.
 
         A ``path`` parameter whose placeholder is absent from ``path`` is
         skipped with a note rather than emitted. Keeping it would put an
@@ -1120,6 +1128,7 @@ class _Parser:
         path_params: list[ParameterIR] = []
         required_query: list[ParameterIR] = []
         optional_query: list[ParameterIR] = []
+        headers: list[ParameterIR] = []
         used: set[str] = set()
 
         for raw in raw_parameters:
@@ -1130,7 +1139,7 @@ class _Parser:
             wire_name = str(resolved.get("name", ""))
             if not wire_name:
                 continue
-            if location not in ("path", "query"):
+            if location not in ("path", "query", "header"):
                 self.note(
                     f"{location!r} parameter {wire_name!r} skipped (pass it via "
                     f"HTTPClient default_headers)"
@@ -1155,7 +1164,13 @@ class _Parser:
             parameter = ParameterIR(
                 name=unique(field_name(wire_name), used),
                 wire_name=wire_name,
-                location="path" if location == "path" else "query",
+                location=(
+                    "path"
+                    if location == "path"
+                    else "header"
+                    if location == "header"
+                    else "query"
+                ),
                 annotation=annotation,
                 required=required,
                 description=_clean_text(resolved.get("description")),
@@ -1163,6 +1178,8 @@ class _Parser:
             )
             if parameter.location == "path":
                 path_params.append(parameter)
+            elif parameter.location == "header":
+                headers.append(parameter)
             elif required:
                 required_query.append(parameter)
             else:
@@ -1170,7 +1187,7 @@ class _Parser:
 
         path_params.extend(self._undeclared_path_params(path, path_params, used))
         path_params.sort(key=lambda item: path.index(f"{{{item.wire_name}}}"))
-        return (*path_params, *required_query, *optional_query)
+        return (*path_params, *required_query, *optional_query, *headers)
 
     def _undeclared_path_params(
         self,

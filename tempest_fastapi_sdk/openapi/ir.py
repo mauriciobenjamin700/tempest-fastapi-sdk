@@ -136,12 +136,13 @@ class SchemaIR:
 
 @dataclass(frozen=True, slots=True)
 class ParameterIR:
-    """A path or query parameter of an operation.
+    """A path, query or header parameter of an operation.
 
     Attributes:
         name (str): The Python argument name.
         wire_name (str): The name to send on the wire.
-        location (Literal["path", "query"]): Where the value goes.
+        location (Literal["path", "query", "header"]): Where the value
+            goes.
         annotation (str): Rendered type annotation.
         required (bool): Whether the specification marks it required.
             Path parameters are always required.
@@ -155,7 +156,7 @@ class ParameterIR:
 
     name: str
     wire_name: str
-    location: Literal["path", "query"]
+    location: Literal["path", "query", "header"]
     annotation: str
     required: bool
     description: str | None = None
@@ -230,6 +231,22 @@ class OperationIR:
                 order.
         """
         return tuple(p for p in self.parameters if p.location == "query")
+
+    @property
+    def header_parameters(self) -> tuple[ParameterIR, ...]:
+        """Parameters sent as request headers.
+
+        Returns:
+            tuple[ParameterIR, ...]: The matching parameters, in declaration
+                order.
+
+        A header the specification declares on the operation is a
+        per-request value — ``X-Idempotency-Key`` is the clearest case: the
+        whole point is that it differs on every call. Folding it into the
+        client's ``default_headers`` would send one key for every charge,
+        which is worse than sending none.
+        """
+        return tuple(p for p in self.parameters if p.location == "header")
 
 
 @dataclass(frozen=True, slots=True)

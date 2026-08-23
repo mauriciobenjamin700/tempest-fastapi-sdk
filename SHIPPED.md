@@ -691,6 +691,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
+- **Header declarado vira argumento no cliente gerado (v0.247.0)** — o
+  gerador OpenAPI emitia `'header' parameter 'X' skipped (pass it via
+  HTTPClient default_headers)`; agora header declarado na operação é
+  argumento keyword-only da chamada, com `None` significando "não mandar".
+  A saída antiga era defeito para chave de idempotência: `default_headers`
+  manda o mesmo valor em toda requisição, então a segunda cobrança seria
+  deduplicada em cima da primeira. Medido na spec oficial do Mercado Pago,
+  as notas de construto não modelado caem de 9 para 5, e a distribuição —
+  127 operações sem header, 15 com um, 1 com dois — é o que justifica um
+  argumento nomeado por header em vez de uma estrutura de agrupamento.
+  `cookie` segue descartado, sozinho e com o motivo na nota. O gerado do
+  OpenPix **não muda**: aquela spec declara zero headers, e
+  `make openpix-regen` produz diff vazio.
 - **Canonical Pix contract (v0.246.0)** — `integrations/payment/base.py`:
   `PixProvider` (a plain `Protocol`, like every other provider seam here),
   `PixChargeRequest` / `PixCharge` / `PixPayer` / `PixPaymentEvent`, and a

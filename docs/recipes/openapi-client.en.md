@@ -248,6 +248,53 @@ asyncio.run(main())
     `HTTPClient` raises `ImportError` without it.
     `uv add "tempest-fastapi-sdk[http]"`.
 
+### A declared header becomes a call argument
+
+A header the specification declares **on the operation** is a per-request
+value, so the generator emits it as a keyword-only argument rather than as a
+client default:
+
+```python
+import uuid
+
+from src.integrations.vendor import VendorClient
+from src.integrations.vendor.schemas import PaymentRequest
+
+
+async def charge(client: VendorClient) -> None:
+    """Charge once, with a key that makes the retry safe.
+
+    Args:
+        client (VendorClient): The generated client.
+    """
+    await client.create_payment(
+        body=PaymentRequest(transaction_amount=19.9),
+        x_idempotency_key=uuid.uuid4(),
+    )
+```
+
+!!! danger "Why not `default_headers`"
+    The generator used to drop these parameters with the note "pass it via
+    `HTTPClient default_headers`". For most headers that would be merely
+    inconvenient; for an **idempotency key** it is a defect: `default_headers`
+    sends the same value on every request, so the second charge would be
+    deduplicated onto the first and your customer would see one payment where
+    they made two.
+
+    A header that holds for the whole connection — `Authorization`, a fixed
+    `x-platform-id` for your app — still belongs in `default_headers`. What
+    changed is who decides: you, per call, instead of the generator deciding
+    for you.
+
+!!! tip "`None` sends no header at all"
+    An optional header you do not pass simply does not reach the wire. An
+    empty `X-Idempotency-Key: ` is not the same as an absent one — a provider
+    that validates the header would answer 400 on every call that did not opt
+    in.
+
+    `cookie` is now the only location still dropped, with a note: a cookie is
+    connection state, not a per-call value.
+
 ## Options
 
 | Option | Effect |
@@ -327,7 +374,7 @@ never silently:
 | `not` | No Python equivalent |
 | External `$ref` | Bundle the spec first (`redocly bundle`) |
 | Swagger 2.0 | Convert to OpenAPI 3 (`swagger2openapi`) |
-| `header` / `cookie` parameters | Pass them via `HTTPClient(default_headers=...)` |
+| `cookie` parameters | A cookie is connection state, not a per-call value |
 | Non-JSON body/response (`multipart`, `octet-stream`) | Out of scope for this iteration |
 | `type` with several concrete values | Not modelled |
 
@@ -340,7 +387,7 @@ never silently:
     1 construct(s) could not be modelled as written — each line says what was
     generated instead, and the ones with something to mark carry an
     `# openapi: unsupported` comment in the output:
-      - 'header' parameter 'X-Trace' skipped (pass it via HTTPClient default_headers)
+      - 'cookie' parameter 'sessionHint' skipped (pass it via HTTPClient default_headers)
     ```
 
     A wrong schema that **looks** right is worse than a documented gap.
@@ -360,7 +407,7 @@ never silently:
     synthesized parameters. It is greppable on purpose:
     `grep -rn "openapi: unsupported" src/integrations/` lists everything the
     integration lost. A gap with nothing in the file to mark — a dropped
-    `header` parameter, say — stays summary-only, because there is no line to
+    `cookie` parameter, say — stays summary-only, because there is no line to
     comment on.
 
 ## The generated code passes your gates

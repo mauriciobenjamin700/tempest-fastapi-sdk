@@ -5,6 +5,58 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.247.0] — 2026-08-23
+
+### Changed
+
+- **O gerador de cliente OpenAPI passa a emitir header declarado como
+  argumento da chamada**, em vez de descartá-lo com a nota "passe via
+  `HTTPClient default_headers`". Header que a especificação declara **na
+  operação** é valor por requisição:
+
+  ```python
+  await client.create_payment(
+      body=PaymentRequest(transaction_amount=19.9),
+      x_idempotency_key=uuid.uuid4(),
+  )
+  ```
+
+  Para a maioria dos headers o descarte era inconveniente; para uma chave de
+  idempotência era defeito. `default_headers` manda o mesmo valor em toda
+  requisição, então a segunda cobrança seria deduplicada em cima da primeira e
+  o cliente veria um pagamento onde fez dois.
+
+  O que a mudança produz, medido na especificação oficial do Mercado Pago
+  (109 paths, 143 operações): as notas de construto não modelado caem de **9
+  para 5** — as quatro de header somem, sobram as de `multipart`,
+  `octet-stream` e `text/csv`. A distribuição também justifica a forma
+  escolhida: **127 operações sem header, 15 com um, 1 com dois**, então cada
+  um vira um argumento keyword-only nomeado, não uma estrutura de
+  agrupamento.
+
+  `None` não manda header vazio: um `X-Idempotency-Key: ` em branco não é o
+  mesmo que ausente, e provedor que valida o header responderia 400 em toda
+  chamada que não optou por ele.
+
+- **`cookie` continua sendo descartado**, agora sozinho, e a nota diz por quê:
+  cookie é estado de conexão, não valor de chamada.
+
+- A docstring gerada para um header opcional dizia "Omitted from the query
+  when None". Agora diz "request headers" para header e "query" para query.
+
+### Fixed
+
+- A docstring de `BaseRepository.paginate` anunciava a chave `size` no dicionário
+  de retorno; o método devolve `page_size`. Quem seguisse a documentação
+  escrevia um `KeyError` — aconteceu ao montar o `AppErrorService`.
+
+### Note
+
+- **O gerado do OpenPix não muda.** `make openpix-regen` produz diff vazio: a
+  especificação do OpenPix declara 105 operações e **zero** parâmetros de
+  header, então a mudança não alcança o único cliente gerado que o SDK ships
+  hoje. O drift test roda igual.
+
 ## [0.246.0] — 2026-08-23
 
 ### Added
