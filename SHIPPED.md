@@ -369,7 +369,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (v0.99) — embeddings + scale:** `Embedder` (local text→vectors, mean
   pooling, batched, optional `EmbeddingCache`/`InMemoryEmbeddingCache`),
   `BatchScheduler` (coalesce concurrent calls into one batch — pure
-  asyncio, no extra), `ModelRegistry` (LRU model sharing with unload).
+  asyncio, no extra; items already queued are taken without a timer since
+  v0.252.0, so a busy loop no longer splits a full batch), `ModelRegistry` (LRU model sharing with unload).
   Classes-only (no bundled router). Submodule import like
   queue/tasks/vision. **Refinements (v0.100):** `WebSearch.retrieve`
   (one-shot search→extract→context), `ContentExtractor.extract_many`

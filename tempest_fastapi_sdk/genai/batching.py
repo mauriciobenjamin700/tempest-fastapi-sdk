@@ -95,23 +95,34 @@ class BatchScheduler(Generic[ItemT, ResultT]):
         return await future
 
     async def _run(self) -> None:
-        """Drain the queue in batches until it is empty."""
+        """Drain the queue in batches until it is empty.
+
+        Items already queued are taken **without** awaiting: only the wait
+        for an item that has not arrived yet is timed. Timing every take
+        cost throughput under exactly the load batching exists for — five
+        callers whose items were all queued already came back as
+        ``[[0, 1, 2], [3, 4]]`` once the loop was busy enough to burn the
+        20 ms window between two ``wait_for`` calls.
+        """
         while not self._queue.empty():
             item, future = await self._queue.get()
             batch: list[ItemT] = [item]
             futures: list[asyncio.Future[ResultT]] = [future]
             deadline = asyncio.get_running_loop().time() + self.max_wait
             while len(batch) < self.max_batch:
-                remaining = deadline - asyncio.get_running_loop().time()
-                if remaining <= 0:
-                    break
                 try:
-                    nxt_item, nxt_future = await asyncio.wait_for(
-                        self._queue.get(),
-                        timeout=remaining,
-                    )
-                except TimeoutError:
-                    break
+                    nxt_item, nxt_future = self._queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    remaining = deadline - asyncio.get_running_loop().time()
+                    if remaining <= 0:
+                        break
+                    try:
+                        nxt_item, nxt_future = await asyncio.wait_for(
+                            self._queue.get(),
+                            timeout=remaining,
+                        )
+                    except TimeoutError:
+                        break
                 batch.append(nxt_item)
                 futures.append(nxt_future)
             await self._dispatch(batch, futures)

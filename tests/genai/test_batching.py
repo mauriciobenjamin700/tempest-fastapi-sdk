@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
@@ -24,6 +25,46 @@ class TestBatchScheduler:
         assert results == [0, 2, 4, 6, 8]
         # all 5 coalesced into a single batch
         assert len(seen_batches) == 1
+        assert sorted(seen_batches[0]) == [0, 1, 2, 3, 4]
+
+    async def test_queued_items_coalesce_under_loop_load(self) -> None:
+        """The flaky failure, made deterministic.
+
+        The scheduler timed **every** take, including takes of items that
+        were already in the queue, so a loop busy enough to burn the 20 ms
+        window between two ``asyncio.wait_for`` calls split a batch that had
+        nothing to wait for. That is a throughput loss under exactly the load
+        batching exists for, and it is why the plain coalescing test failed
+        in the full suite and passed alone (issue #176).
+
+        The load here is a task that blocks the loop in 5 ms slices, which is
+        what a 6000-test suite does to a 20 ms deadline. Before the fix this
+        returned ``[[0, 1, 2], [3, 4]]``.
+        """
+        seen_batches: list[list[int]] = []
+
+        async def handler(batch: list[int]) -> list[int]:
+            seen_batches.append(list(batch))
+            return [x * 2 for x in batch]
+
+        async def block_the_loop() -> None:
+            for _ in range(20):
+                time.sleep(0.005)
+                await asyncio.sleep(0)
+
+        sched: BatchScheduler[int, int] = BatchScheduler(
+            handler,
+            max_batch=8,
+            max_wait_ms=20,
+        )
+        results = await asyncio.gather(
+            *[sched.submit(i) for i in range(5)],
+            block_the_loop(),
+        )
+        await sched.aclose()
+
+        assert results[:5] == [0, 2, 4, 6, 8]
+        assert len(seen_batches) == 1, seen_batches
         assert sorted(seen_batches[0]) == [0, 1, 2, 3, 4]
 
     async def test_respects_max_batch(self) -> None:
