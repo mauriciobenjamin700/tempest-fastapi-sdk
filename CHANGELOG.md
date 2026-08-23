@@ -5,6 +5,84 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.249.0] — 2026-08-23
+
+### Added
+
+- **Integração Mercado Pago** —
+  `tempest_fastapi_sdk.integrations.payment.mercado_pago`: **324 schemas** e
+  **143 operações** geradas da OpenAPI **oficial** do provedor
+  (`github.com/mercadopago/openapi`, Apache-2.0, commit `73bc0e49` de
+  2026-08-04), mais as peças que a especificação não descreve.
+
+  ```python
+  payment = await client.create_payment(
+      body={"transaction_amount": 19.9, "payment_method_id": "pix"},
+      x_idempotency_key=uuid.uuid4(),
+  )
+  ```
+
+  Caminho de codegen, como o OpenPix — e não o do Stripe, o que foi decidido
+  por medição: a spec inteira do Mercado Pago tem 261 KB contra 847 KB da do
+  OpenPix já vendorizada, e os schemas gerados importam em 0,76 s / 107 MB
+  contra 0,67 s / 107 MB dos do OpenPix. O argumento que fechou o codegen no
+  Stripe (3,3 MB de schemas, 5,8 s, 492 MB) não se aplica.
+
+  Diferente do OpenPix, 142 das 143 operações têm `operationId`, então os
+  nomes de método são do provedor: `create_preference`, `create_payment`,
+  `get_order`.
+
+  Escrito à mão, porque a spec não diz: `DEFAULT_BASE_URL`,
+  `MercadoPagoEvent`, os helpers de dinheiro e a verificação de webhook.
+
+- **`MercadoPagoSettings`** — `MERCADOPAGO_ACCESS_TOKEN` e
+  `MERCADOPAGO_WEBHOOK_SECRET`, com `mercado_pago_kwargs()` devolvendo
+  `base_url` e o header `Authorization: Bearer <token>` — com prefixo, ao
+  contrário do OpenPix, que manda o AppID cru.
+
+  **Sem campo de ambiente, de propósito.** Medido: a spec declara um único
+  `servers`. O que separa uma cobrança de teste de uma real é qual token
+  você segura, e um enum de ambiente sugeriria uma proteção que não existe.
+
+### Fixed
+
+- **Docstring gerada de nome longo cabia na régua e voltava fora dela.** O
+  emissor de schemas quebrava o resumo em uma linha de conteúdo de 88
+  colunas, e o `ruff format` puxava o `"""` de fecho de volta para ela sem
+  reconferir o orçamento — 91 colunas no arquivo entregue, `E501` em código
+  gerado que passa pelos mesmos gates do resto. Medido no enum
+  `OrderTransactionPaymentPaymentMethodTransactionSecurityStatus`, de 61
+  caracteres. O emissor agora reescreve três colunas mais estreito quando a
+  quebra colapsa em uma linha, forçando a segunda, que o formatter deixa em
+  paz. Guard na classe `TestSchemaDocstring` de
+  `tests/openapi/test_hostile_spec.py`,
+  com o formatter de verdade no loop.
+
+- **Path longo de operação ficava acima da régua.** Mercado Pago tem rota de
+  113 caracteres (`/instore/qr/seller/collectors/{user_id}/...`); o
+  `ruff format` nunca quebra string, então o gerador passou a dividir o
+  `path = ...` em fragmentos concatenados na fronteira de `/`, sem cortar
+  placeholder no meio.
+
+### Note
+
+Três coisas que a implementação mediu e que valem antes de usar:
+
+- **Dinheiro é em reais**, não em centavos como no OpenPix — 39 propriedades
+  monetárias tipadas `number`. `to_cents` recusa fração de centavo em vez de
+  arredondar, porque arredondar esconderia a divergência.
+- **O QR do Pix não está em `/v1/payments`.** `qr_code`, `qr_code_base64`,
+  `digitable_line` e `e2e_id` existem em um único schema,
+  `OrderTransactionPayment`, da API de Orders. Como o `BaseSchema` é
+  `extra="ignore"`, um Pix criado por `/v1/payments` teria o
+  `point_of_interaction` que a API devolve descartado silenciosamente.
+- **A assinatura de webhook ainda não foi medida contra o provedor.** A spec
+  não a descreve (`grep -c "x-signature"` devolve `0`). O HMAC está testado
+  nos dois sentidos e contra adulteração; o que falta é confirmar que o
+  manifesto é o mesmo que o Mercado Pago assina. Por isso
+  `manifest_template=` é parâmetro: quem medir pode corrigir sem esperar
+  release.
+
 ## [0.248.0] — 2026-08-23
 
 ### Added

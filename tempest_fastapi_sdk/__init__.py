@@ -1103,6 +1103,9 @@ from tempest_fastapi_sdk.settings import (
     LogSettings as LogSettings,
 )
 from tempest_fastapi_sdk.settings import (
+    MercadoPagoSettings as MercadoPagoSettings,
+)
+from tempest_fastapi_sdk.settings import (
     MinIOSettings as MinIOSettings,
 )
 from tempest_fastapi_sdk.settings import (
@@ -1547,7 +1550,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.248.0"
+__version__: str = "0.249.0"
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
@@ -1747,6 +1750,7 @@ __all__: list[str] = [
     "MemoryResponseCacheStore",
     "MemorySessionStore",
     "MemoryWebAuthnChallengeStore",
+    "MercadoPagoSettings",
     "MessageCatalog",
     "MetricCard",
     "MetricPartition",

@@ -20,6 +20,9 @@ from tempest_fastapi_sdk.settings.mixins import FirebaseSettings as FirebaseSett
 from tempest_fastapi_sdk.settings.mixins import GenAISettings as GenAISettings
 from tempest_fastapi_sdk.settings.mixins import JWTSettings as JWTSettings
 from tempest_fastapi_sdk.settings.mixins import LogSettings as LogSettings
+from tempest_fastapi_sdk.settings.mixins import (
+    MercadoPagoSettings as MercadoPagoSettings,
+)
 from tempest_fastapi_sdk.settings.mixins import MinIOSettings as MinIOSettings
 from tempest_fastapi_sdk.settings.mixins import OpenPixSettings as OpenPixSettings
 from tempest_fastapi_sdk.settings.mixins import PushSettings as PushSettings
@@ -44,6 +47,7 @@ __all__: list[str] = [
     "GenAISettings",
     "JWTSettings",
     "LogSettings",
+    "MercadoPagoSettings",
     "MinIOSettings",
     "OpenPixSettings",
     "PushSettings",

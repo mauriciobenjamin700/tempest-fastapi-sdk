@@ -249,9 +249,9 @@ def _body_lines(operation: OperationIR) -> list[str]:
 
     rendered_path = _as_fstring(operation)
     if "{" in rendered_path:
-        lines.append(f"        path = f{_string_literal(rendered_path)}")
+        lines.extend(_path_lines(rendered_path, prefix="f"))
     else:
-        lines.append(f"        path = {_string_literal(operation.path)}")
+        lines.extend(_path_lines(operation.path, prefix=""))
 
     if operation.query_parameters:
         lines.append("        params: dict[str, Any] = {}")
@@ -308,6 +308,52 @@ def _body_lines(operation: OperationIR) -> list[str]:
         lines.append("        return None")
     else:
         lines.extend(_validate_lines(operation.response_annotation))
+    return lines
+
+
+def _path_lines(path: str, *, prefix: str) -> list[str]:
+    """Render the ``path = ...`` assignment, split when it overruns.
+
+    Args:
+        path (str): The path template, already rendered as an f-string body
+            when it interpolates parameters.
+        prefix (str): ``"f"`` for an f-string, ``""`` for a plain literal.
+
+    Returns:
+        list[str]: Source lines assigning ``path``.
+
+    ``ruff format`` never breaks a string, so a long path stays over the
+    line budget forever unless the generator splits it here. Mercado Pago
+    has paths like
+    ``/instore/qr/seller/collectors/{user_id}/stores/{external_store_id}/pos/{external_pos_id}/orders``
+    — 113 characters once rendered, which fails the project's own ``E501``
+    on generated code that is supposed to pass the same gates as the rest.
+
+    The split is on ``/`` boundaries and uses implicit concatenation inside
+    parentheses, so each fragment stays a valid f-string and no placeholder
+    is ever cut in half.
+    """
+    single = f"        path = {prefix}{_string_literal(path)}"
+    if len(single) <= _MAX_LINE:
+        return [single]
+
+    budget = _MAX_LINE - len('            f"",')
+    segments: list[str] = []
+    current = ""
+    for piece in path.split("/"):
+        candidate = f"{current}/{piece}" if current or path.startswith("/") else piece
+        if current and len(candidate) > budget:
+            segments.append(current)
+            current = f"/{piece}"
+        else:
+            current = candidate
+    if current:
+        segments.append(current)
+
+    lines = ["        path = ("]
+    for segment in segments:
+        lines.append(f"            {prefix}{_string_literal(segment)}")
+    lines.append("        )")
     return lines
 
 

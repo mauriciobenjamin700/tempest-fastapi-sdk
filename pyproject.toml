@@ -1,6 +1,6 @@
 [project]
 name = "tempest-fastapi-sdk"
-version = "0.248.0"
+version = "0.249.0"
 description = "Shared FastAPI building blocks: base schemas, ORM model, async repository, exceptions, pagination and settings — the conventions used across Tempest projects."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -425,6 +425,7 @@ ignore = [
 # accepts them as re-exports; they reach the module through the
 # TYPE_CHECKING star import, which is exactly what F405 reports.
 "tempest_fastapi_sdk/integrations/payment/openpix/__init__.py" = ["F405"]
+"tempest_fastapi_sdk/integrations/payment/mercado_pago/__init__.py" = ["F405"]
 
 [tool.ruff.format]
 quote-style = "double"

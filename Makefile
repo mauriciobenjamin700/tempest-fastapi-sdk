@@ -63,6 +63,9 @@ build: ## Build sdist + wheel into dist/
 openpix-regen: ## Regenerate the vendored OpenPix schemas + client from vendor/openpix-openapi.yaml
 	uv run python scripts/regen_openpix.py
 
+mercadopago-regen: ## Regenerate the vendored Mercado Pago schemas + client from vendor/mercadopago-openapi.yaml
+	uv run python scripts/regen_mercado_pago.py
+
 stripe-regen: ## Regenerate Stripe's event enum from vendor/stripe-api-facts.yaml (offline)
 	uv run python scripts/regen_stripe.py
 

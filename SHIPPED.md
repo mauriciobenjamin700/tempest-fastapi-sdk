@@ -691,6 +691,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
+- **Mercado Pago (v0.249.0)** — `integrations/payment/mercado_pago`: 324
+  schemas e 143 operações geradas da OpenAPI oficial do provedor
+  (`mercadopago/openapi`, Apache-2.0, commit `73bc0e49`), mais
+  `DEFAULT_BASE_URL`, `MercadoPagoEvent`, os helpers de dinheiro e a
+  verificação de webhook. Codegen escolhido por medição: 261 KB de spec e
+  0,76 s / 107 MB de import, contra 847 KB e 0,67 s / 107 MB do OpenPix — o
+  argumento que fechou o codegen no Stripe não se aplica. 142 das 143
+  operações têm `operationId`, então os nomes de método são do provedor.
+  `MercadoPagoSettings` traz token e webhook secret, sem campo de ambiente
+  porque a spec declara um único host. Três armadilhas medidas: dinheiro em
+  **reais** (o inverso do OpenPix), o QR do Pix só modelado em
+  `OrderTransactionPayment` (Orders API), e a assinatura de webhook ainda
+  **não** confirmada contra notificação real — o manifesto é parametrizável
+  por isso. Receita: `docs/recipes/mercado-pago.md`.
 - **App error reports (v0.248.0)** — `app_errors`: `make_app_error_model`,
   `AppErrorService`, `make_app_error_router` e os schemas, para o frontend
   reportar ao backend o erro que quebrou na mão do usuário. Truncar em vez de
