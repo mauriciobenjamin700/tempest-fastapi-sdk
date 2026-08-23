@@ -555,6 +555,21 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 
 ::: tempest_fastapi_sdk.integrations.payment.adapters.openpix.OpenPixPixProvider
 
+## Mercado Pago
+
+### `tempest_fastapi_sdk.integrations.payment.mercado_pago`
+
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.client.MercadoPagoClient
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.environment.DEFAULT_BASE_URL
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.events.MercadoPagoEvent
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.money.to_cents
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.money.from_cents
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.money.format_amount
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.MercadoPagoWebhookEvent
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.verify_signature
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.sign_manifest
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.parse_signature_header
+
 ## OpenPix
 
 ### `tempest_fastapi_sdk.integrations.payment.openpix`

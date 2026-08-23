@@ -511,6 +511,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Logging »](logging.md)** | `LogUtils`, logging JSON estruturado, propagação de request-ID |
 | **[Login social (OAuth2/OIDC) »](oauth.md)** | `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `generate_oauth_state` |
 | **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | registrar comandos próprios na CLI `tempest` do projeto |
+| **[Mercado Pago (Pix, cartão, boleto) »](mercado-pago.md)** | `MercadoPagoClient` (143 operações geradas da OpenAPI oficial do provedor), `to_cents` / `from_cents` (reais, não centavos), `verify_signature`, `MercadoPagoSettings`, `x_idempotency_key` por chamada |
 | **[Métricas »](metrics.md)** | `MetricsUtils` — snapshots de CPU / RAM / disco / GPU |
 | **[MFA (TOTP / 2FA) »](mfa.md)** | `MFAMixin`, `TOTPHelper`, endpoints enroll/confirm/verify/disable no `make_auth_router`, códigos de recuperação |
 | **[Modelops (export, bench, quantização) »](modelops.md)** | `benchmark_onnx` (latência/RAM/GPU/energia), `export_onnx_to_ort`, `quantize_onnx_dynamic`, `quantize_hf_onnx`, `rank` + fronteira de Pareto, `tempest model` |

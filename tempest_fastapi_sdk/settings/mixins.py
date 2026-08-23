@@ -2147,6 +2147,84 @@ class OpenPixSettings(BaseAppSettings):
         }
 
 
+class MercadoPagoSettings(BaseAppSettings):
+    """Mercado Pago credentials.
+
+    Two secrets with different jobs: the access token authenticates *you*
+    to Mercado Pago, and the webhook secret authenticates *them* to you.
+    Both are here because a service that charges needs both, and leaving
+    the second one to be improvised is how an unverified webhook endpoint
+    ships.
+
+    Deliberately no environment field, unlike
+    :class:`OpenPixSettings`. Measured on the pinned specification: Mercado
+    Pago declares a **single** server, ``https://api.mercadopago.com``, so
+    what separates a test charge from a real one is which token you hold.
+    An environment enum here would suggest a safety net that does not
+    exist — and would let someone believe a "sandbox" setting protects them
+    while a production token moves real money.
+
+    Each attribute below is also the name of the environment variable that
+    sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        MERCADOPAGO_ACCESS_TOKEN (str): The access token, sent as
+            ``Authorization: Bearer <token>``. Default: ``""`` (calls will
+            be rejected).
+        MERCADOPAGO_WEBHOOK_SECRET (str): The secret that signs incoming
+            notifications. Default: ``""`` — and an empty secret makes
+            ``verify_signature`` return ``False`` for everything, rather
+            than accepting everything.
+    """
+
+    MERCADOPAGO_ACCESS_TOKEN: str = Field(
+        default="",
+        title="Mercado Pago access token",
+        description=(
+            "Access token issued by Mercado Pago. Sent as "
+            "``Authorization: Bearer <token>``. A test token and a "
+            "production token differ only in value — the host is the same."
+        ),
+        examples=["", "APP_USR-1234567890abcdef-…"],
+    )
+    MERCADOPAGO_WEBHOOK_SECRET: str = Field(
+        default="",
+        title="Mercado Pago webhook secret",
+        description=(
+            "Secret from the dashboard used to verify the ``x-signature`` "
+            "header on incoming notifications. Empty rejects every "
+            "delivery, which is the safe default."
+        ),
+        examples=[""],
+    )
+
+    def mercado_pago_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto the ``HTTPClient`` the client wraps.
+
+        Returns:
+            dict[str, Any]: ``base_url`` and the ``Authorization`` header,
+            ready for::
+
+                client = MercadoPagoClient(
+                    HTTPClient(**settings.mercado_pago_kwargs())
+                )
+
+        Note the ``Bearer`` prefix — the opposite of OpenPix, which takes
+        its AppID raw. Getting that backwards is a 401 on every call, and
+        it is exactly the kind of thing this method exists to settle once.
+        """
+        from tempest_fastapi_sdk.integrations.payment.mercado_pago.environment import (
+            DEFAULT_BASE_URL,
+        )
+
+        return {
+            "base_url": DEFAULT_BASE_URL,
+            "default_headers": {
+                "Authorization": f"Bearer {self.MERCADOPAGO_ACCESS_TOKEN}"
+            },
+        }
+
+
 __all__: list[str] = [
     "AuthSettings",
     "CORSSettings",
@@ -2156,6 +2234,7 @@ __all__: list[str] = [
     "GenAISettings",
     "JWTSettings",
     "LogSettings",
+    "MercadoPagoSettings",
     "MinIOSettings",
     "OpenPixSettings",
     "PushSettings",

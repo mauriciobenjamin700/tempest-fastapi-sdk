@@ -13,10 +13,11 @@ cada integração é alcançada pelo caminho do provedor.
 ## Metade gerada: versionada, nunca editada à mão
 
 O gerado vem de spec pinada em `vendor/<provedor>-openapi.yaml` via
-`scripts/regen_<provedor>.py` (`make openpix-regen`), e é **commitado**. Um
-teste de drift (`tests/integrations/payment/openpix/test_generated_drift.py`)
-falha se o disco divergir do que o script produz — editar o arquivo gerado é
-como código gerado versionado apodrece.
+`scripts/regen_<provedor>.py` (`make openpix-regen`, `make mercadopago-regen`),
+e é **commitado**. Um teste de drift
+(`tests/integrations/payment/<provedor>/test_generated_drift.py`) falha se o
+disco divergir do que o script produz — editar o arquivo gerado é como código
+gerado versionado apodrece.
 
 Ao mexer no gerador:
 
@@ -26,6 +27,12 @@ Ao mexer no gerador:
   normaliza aspas por escape, nunca quebra string longa e junta literal
   solto, então gerador validado só com formatação ligada esconde o que ele de
   fato emite.
+- **O formatter também desfaz quebra — e sem reconferir a régua.** Docstring
+  cujo conteúdo cabe em **uma** linha tem o `"""` de fecho puxado de volta
+  para ela, mesmo que o resultado passe de 88 colunas
+  ([medição](../../LESSONS.md#o-formatter-desfaz-quebra-de-docstring-v02490)).
+  Emissor que mira exatamente a régua entrega `E501`; o alvo da última linha
+  de conteúdo é `MAX_LINE - 3`, ou duas linhas de conteúdo.
 - **A spec fica fora da wheel.** `vendor/` é insumo de build, não payload de
   runtime.
 - Regenerou? Rode o drift test **e** o `make check` — o gerado passa pelos

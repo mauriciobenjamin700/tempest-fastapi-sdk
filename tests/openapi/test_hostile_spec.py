@@ -24,7 +24,13 @@ import pytest
 from pydantic import BaseModel
 
 from tempest_fastapi_sdk.openapi.emit_client import _docstring_lines as _client_doc
-from tempest_fastapi_sdk.openapi.emit_schemas import _argument_lines, _literal
+from tempest_fastapi_sdk.openapi.emit_schemas import (
+    _argument_lines,
+    _literal,
+)
+from tempest_fastapi_sdk.openapi.emit_schemas import (
+    _docstring_lines as _schema_doc,
+)
 from tempest_fastapi_sdk.openapi.generate import generate_integration
 from tempest_fastapi_sdk.openapi.ir import OperationIR
 from tempest_fastapi_sdk.openapi.naming import (
@@ -154,6 +160,52 @@ class TestLongArguments:
         """The split only happens when the flat form overruns."""
         assert _argument_lines('title="Email"', "        ") == [
             '        title="Email",'
+        ]
+
+
+class TestSchemaDocstring:
+    """A wrapped docstring has to survive ``ruff format`` pulling quotes up."""
+
+    _SUMMARY: str = (
+        "Allowed values for "
+        "OrderTransactionPaymentPaymentMethodTransactionSecurityStatus."
+    )
+
+    def test_wraps_to_at_least_two_content_lines(self) -> None:
+        """One content line is where the formatter undoes the wrap.
+
+        Mercado Pago's enum names reach 61 characters, so the summary wraps
+        to exactly one content line at 88 columns. ``ruff format`` then
+        joins the closing quotes back onto it without re-checking the
+        budget, and the generated line ships at 91.
+        """
+        lines = _schema_doc(self._SUMMARY, "    ")
+        assert all(len(line) <= _MAX_LINE for line in lines)
+        content = [line for line in lines if line.strip() != '"""']
+        assert len(content) >= 2
+
+    @pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff not on PATH")
+    def test_formatter_leaves_the_wrap_alone(self, tmp_path: Path) -> None:
+        """The real formatter is the authority, not the emitter's arithmetic."""
+        lines = _schema_doc(self._SUMMARY, "    ")
+        source = "class Probe:\n" + "\n".join(lines) + '\n\n    A = "a"\n'
+        module = tmp_path / "probe.py"
+        module.write_text(source, encoding="utf-8")
+        completed = subprocess.run(
+            ["ruff", "format", "--isolated", "--line-length", "88", str(module)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        formatted = module.read_text(encoding="utf-8").splitlines()
+        long_lines = [line for line in formatted if len(line) > _MAX_LINE]
+        assert long_lines == [], long_lines
+
+    def test_short_summary_stays_on_one_line(self) -> None:
+        """The re-wrap only fires when the flat form overruns."""
+        assert _schema_doc("Allowed values for Status.", "    ") == [
+            '    """Allowed values for Status."""'
         ]
 
 

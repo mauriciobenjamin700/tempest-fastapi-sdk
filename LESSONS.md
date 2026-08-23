@@ -81,6 +81,45 @@ Sem guard: nenhum teste lê prosa, e nenhum resolve "esta frase vale no piso?".
 O que dá para automatizar é o piso em si — um teste que instale o piso
 declarado e exercite o caminho seria o guard real, e não existe.
 
+## O formatter desfaz quebra de docstring (v0.249.0)
+
+O emissor de schemas quebrava resumo longo para caber em 88 colunas e o
+arquivo gerado saía com 91. Medido em vez de deduzido:
+
+```text
+$ cat probe.py
+class OrderTransactionPaymentPaymentMethodTransactionSecurity2:
+    """Allowed values for OrderTransactionPaymentPaymentMethodTransactionSecurityStatus.
+    """
+
+$ ruff format --line-length 88 probe.py
+1 file reformatted
+
+$ awk '{print length}' probe.py | sort -rn | head -1
+91
+```
+
+O `ruff format` puxa o `"""` de fecho para cima quando o conteúdo da docstring
+é **uma** linha, e faz isso sem reconferir o orçamento de coluna. Quebrar para
+uma linha de exatamente 88 é, portanto, o mesmo que não quebrar.
+
+O caso apareceu no Mercado Pago porque os nomes de schema chegam a 61
+caracteres — `Allowed values for <61 chars>.` fecha em 88 com a indentação e o
+`"""` de abertura, e nada mais cabia. Sob nomes de 40 caracteres, como no
+OpenPix, o defeito não existe: a mesma travessia só falha na spec que
+estressa o nome.
+
+A regra que sai daqui é mais forte que "quebre string longa": **o alvo do
+emissor não é a régua, é a régua menos o que o formatter vai grudar depois**.
+Aqui, `MAX_LINE - 3`, ou forçar a segunda linha de conteúdo.
+
+Guard: a classe `TestSchemaDocstring` em
+`tests/openapi/test_hostile_spec.py` — três
+casos, um deles rodando o `ruff format` de verdade sobre o que o emissor
+produziu, porque a aritmética do emissor é exatamente a parte que estava
+errada. Provado que dispara: com o `budget=` revertido, os dois casos
+relevantes falham.
+
 ## Regra sem guard sobrevive violada
 
 - **`**kwargs`**: o defeito shippou **cinco vezes** em `MessageBroker` e

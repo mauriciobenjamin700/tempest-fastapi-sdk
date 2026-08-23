@@ -144,6 +144,7 @@ def wrap(
     first_prefix: str = "",
     *,
     hanging: bool = True,
+    budget: int = MAX_LINE,
 ) -> list[str]:
     """Wrap prose to the line budget.
 
@@ -159,6 +160,9 @@ def wrap(
             continuation deeper than the ``Attributes:`` heading that
             follows it, which reads as though the sentence belonged to
             something else.
+        budget (int): Width to wrap to. Defaults to :data:`MAX_LINE`; a
+            caller passes less when the formatter will append something to
+            the last line after this function returns.
 
     Returns:
         list[str]: Wrapped source lines. A single unbreakable token longer
@@ -167,7 +171,7 @@ def wrap(
     body = f"{first_prefix}{text}"
     wrapped = textwrap.wrap(
         body,
-        width=MAX_LINE,
+        width=budget,
         initial_indent=indent,
         subsequent_indent=f"{indent}    " if hanging else indent,
         break_long_words=False,

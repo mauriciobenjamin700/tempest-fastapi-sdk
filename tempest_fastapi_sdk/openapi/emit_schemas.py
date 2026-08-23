@@ -76,12 +76,24 @@ def _docstring_lines(summary: str, indent: str) -> list[str]:
         wrapping the summary otherwise. A specification is free to write a
         two-sentence ``summary``; leaving it on one line put the overrun
         inside a docstring, which ``ruff format`` does not rewrap.
+
+    Wrapping to a single content line does not survive the formatter.
+    ``ruff format`` pulls the closing ``\"\"\"`` back up onto a docstring
+    whose content is one line, and it does so **without checking the line
+    budget**: measured on Mercado Pago's
+    ``Allowed values for OrderTransactionPaymentPaymentMethodTransaction
+    SecurityStatus.``, an 88-column content line came back at 91 and failed
+    ``E501`` on generated code. So when the wrap collapses to one line, this
+    re-wraps three columns narrower to force a second one, which the
+    formatter leaves alone.
     """
     opening = _delimiter(summary)
     single = f'{indent}{opening}{summary}"""'
     if len(single) <= _MAX_LINE:
         return [single]
     lines = _wrap(summary, indent, opening, hanging=False)
+    if len(lines) == 1:
+        lines = _wrap(summary, indent, opening, hanging=False, budget=_MAX_LINE - 3)
     lines.append(f'{indent}"""')
     return lines
 

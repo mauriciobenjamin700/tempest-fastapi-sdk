@@ -498,6 +498,7 @@ come back here to plug in each capability as you need it.
 | **[Jobs (long work with status) »](jobs.md)** | `BaseJobModel` + `JobStore` — one row per unit of work, `claim`/`succeed`/`fail`, `watch` for the screen, `reclaim_stale`; cooperative cancellation (`cancel` + `run_cancellable`); `StageMap` for several stages on the record itself |
 | **[Logging »](logging.md)** | `LogUtils`, structured JSON logging, request-ID propagation |
 | **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | register your own commands on the project's `tempest` CLI |
+| **[Mercado Pago (Pix, cards, boleto) »](mercado-pago.md)** | `MercadoPagoClient` (143 operations generated from the provider's own OpenAPI), `to_cents` / `from_cents` (reais, not cents), `verify_signature`, `MercadoPagoSettings`, `x_idempotency_key` per call |
 | **[Metrics »](metrics.md)** | `MetricsUtils` — CPU / RAM / disk / GPU snapshots |
 | **[MFA (TOTP / 2FA) »](mfa.md)** | `MFAMixin`, `TOTPHelper`, enroll/confirm/verify/disable endpoints on `make_auth_router`, recovery codes |
 | **[Model weights (Hub lifecycle) »](model-weights.md)** | `ModelRef` (`revision` / `local_files_only` / `trust_remote_code`), `resolve_revision`, `download_model` with a disk preflight, `list_cached_models` / `remove_cached_model`, `tempest model pull` / `cache-list` / `cache-rm` |
