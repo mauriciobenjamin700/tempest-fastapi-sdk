@@ -74,6 +74,9 @@ from tempest_fastapi_sdk.api.middlewares.quota import (
     plan_by_jwt_claim as plan_by_jwt_claim,
 )
 from tempest_fastapi_sdk.api.middlewares.rate_limit import (
+    FailOpenRateLimitStore as FailOpenRateLimitStore,
+)
+from tempest_fastapi_sdk.api.middlewares.rate_limit import (
     MemoryRateLimitStore as MemoryRateLimitStore,
 )
 from tempest_fastapi_sdk.api.middlewares.rate_limit import (
@@ -123,6 +126,7 @@ __all__: list[str] = [
     "BodySizeLimitMiddleware",
     "CSRFMiddleware",
     "CachedResponse",
+    "FailOpenRateLimitStore",
     "GracefulShutdownMiddleware",
     "IdempotencyMiddleware",
     "IdempotencyStore",

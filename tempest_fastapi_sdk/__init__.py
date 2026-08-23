@@ -109,6 +109,9 @@ from tempest_fastapi_sdk.api import (
     CSRFMiddleware as CSRFMiddleware,
 )
 from tempest_fastapi_sdk.api import (
+    FailOpenRateLimitStore as FailOpenRateLimitStore,
+)
+from tempest_fastapi_sdk.api import (
     GitHubOAuthClient as GitHubOAuthClient,
 )
 from tempest_fastapi_sdk.api import (
@@ -1544,7 +1547,7 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.247.0"
+__version__: str = "0.248.0"
 
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
@@ -1678,6 +1681,7 @@ __all__: list[str] = [
     "ExplainReport",
     "F",
     "FCMTransport",
+    "FailOpenRateLimitStore",
     "FeatureFlagBackend",
     "FeatureFlags",
     "FieldRef",

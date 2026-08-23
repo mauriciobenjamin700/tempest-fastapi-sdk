@@ -1232,7 +1232,9 @@ class BaseRepository(Generic[ModelType]):
 
         Returns:
             dict[str, Any]: A mapping with keys ``items``, ``total``,
-            ``page``, ``size``, ``pages``.
+            ``page``, ``page_size``, ``pages`` — the same names
+            :class:`BasePaginationSchema` declares, so the envelope maps
+            across field by field.
 
         Raises:
             ValidationException: When ``order_by`` names something that is

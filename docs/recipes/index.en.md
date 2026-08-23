@@ -469,6 +469,7 @@ come back here to plug in each capability as you need it.
 | **[AI agents (concepts) »](agents-concepts.md)** | the loop step by step, the transcript the model receives on each turn, the vocabulary (step, observation, artifact, budget, `stop_reason`), why the context grows and what that costs, and when to reach for a tool, a skill, delegation or a loop |
 | **[AI agents (database) »](agents-db.md)** | a tool that queries the database: `db.get_session_context()` per call, the `from_session` convention, one `AsyncDatabaseManager` per process, and what `AgentContext` carries (`state` with who is asking, `artifacts`, `deadline`) |
 | **[AI agents (testing) »](agents-testing.md)** | `ScriptedBackend` / `replies` / `replies_with_tool` to script the model's decisions, `assert_completed` / `assert_used_tools` / `assert_artifact`, `FailingBackend`, and the separate `@model` layer |
+| **[App error reports »](app-errors.md)** | `make_app_error_model` (nullable user FK, `SET NULL`, indexed `created_at`), `AppErrorService` (truncate-never-refuse), opt-in admin listing, half-open date range |
 | **[Audit trail »](audit-trail.md)** | `BaseAuditLogModel`, `add_audited` / `update_audited` / `delete_audited`, `snapshot_model` / `diff_snapshots` |
 | **[Auth flow (signup/reset) »](auth-flow.md)** | `UserAuthService`, `make_auth_router` — signup / activation / login / password reset, token delivery (bearer/cookie/both), `BaseUserModel` |
 | **[Brazilian helpers »](br-helpers.md)** | CPF / CNPJ / CEP / phone validation + normalization |

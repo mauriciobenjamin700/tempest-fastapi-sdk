@@ -79,6 +79,9 @@ from tempest_fastapi_sdk.api.middlewares import (
     CSRFMiddleware as CSRFMiddleware,
 )
 from tempest_fastapi_sdk.api.middlewares import (
+    FailOpenRateLimitStore as FailOpenRateLimitStore,
+)
+from tempest_fastapi_sdk.api.middlewares import (
     GracefulShutdownMiddleware as GracefulShutdownMiddleware,
 )
 from tempest_fastapi_sdk.api.middlewares import (
@@ -285,6 +288,7 @@ __all__: list[str] = [
     "BusinessMetrics",
     "CSRFMiddleware",
     "CachedResponse",
+    "FailOpenRateLimitStore",
     "GitHubOAuthClient",
     "GoogleOAuthClient",
     "GracefulShutdownMiddleware",

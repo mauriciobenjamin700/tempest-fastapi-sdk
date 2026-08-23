@@ -524,6 +524,21 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 
 ---
 
+## App errors
+
+### `tempest_fastapi_sdk.app_errors`
+
+::: tempest_fastapi_sdk.app_errors.models.BaseAppErrorModel
+::: tempest_fastapi_sdk.app_errors.models.make_app_error_model
+::: tempest_fastapi_sdk.app_errors.service.AppErrorService
+::: tempest_fastapi_sdk.app_errors.router.make_app_error_router
+::: tempest_fastapi_sdk.app_errors.schemas.AppPlatform
+::: tempest_fastapi_sdk.app_errors.schemas.AppErrorReportSchema
+::: tempest_fastapi_sdk.app_errors.schemas.AppErrorCreateSchema
+::: tempest_fastapi_sdk.app_errors.schemas.AppErrorResponseSchema
+::: tempest_fastapi_sdk.app_errors.schemas.AppErrorDeviceSchema
+::: tempest_fastapi_sdk.app_errors.schemas.AppErrorFilterSchema
+
 ## Payments (canonical contract)
 
 ### `tempest_fastapi_sdk.integrations.payment.base`
@@ -589,6 +604,7 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.RateLimitStore
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.RateLimitResult
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.MemoryRateLimitStore
+::: tempest_fastapi_sdk.api.middlewares.rate_limit.FailOpenRateLimitStore
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.RedisRateLimitStore
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_ip
 ::: tempest_fastapi_sdk.api.middlewares.rate_limit.key_by_jwt_subject
