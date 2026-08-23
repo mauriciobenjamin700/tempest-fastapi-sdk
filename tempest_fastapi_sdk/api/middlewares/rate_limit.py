@@ -23,6 +23,7 @@ Two axes are pluggable:
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import time
 import uuid
@@ -42,6 +43,8 @@ from tempest_fastapi_sdk.api.middlewares.quota import (
     RateLimitPolicy,
 )
 from tempest_fastapi_sdk.utils.client_ip import get_client_ip
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +85,71 @@ class RateLimitStore(Protocol):
             RateLimitResult: The decision for this hit.
         """
         ...
+
+
+class FailOpenRateLimitStore:
+    """Wrap a store so that an outage lets requests through.
+
+    Measured on 2026-08-23: with a store whose ``hit`` raises, the
+    exception propagates out of :class:`RateLimitMiddleware` and the caller
+    gets a 500. For most endpoints that is defensible — a limiter that
+    cannot count is a limiter that cannot protect. For some it is exactly
+    backwards.
+
+    The clearest case is an error-reporting endpoint: the moment the
+    counter store is unwell is the moment errors spike, and rejecting the
+    reports then destroys the evidence of the incident being reported.
+    Losing the report is worse than serving traffic above the ceiling.
+
+    This wrapper makes that trade explicit at the call site instead of
+    leaving it to whether Redis happens to be up:
+
+    ```python
+    store = FailOpenRateLimitStore(RedisRateLimitStore(redis))
+    ```
+
+    It does **not** swallow the outage silently — every failure is logged
+    at ``WARNING`` with the key, so "the ceiling is not being enforced"
+    stays visible in the logs.
+
+    Attributes:
+        inner (RateLimitStore): The store doing the real counting.
+    """
+
+    def __init__(self, inner: RateLimitStore) -> None:
+        """Wrap a counter store.
+
+        Args:
+            inner (RateLimitStore): The store to guard.
+        """
+        self.inner: RateLimitStore = inner
+
+    async def hit(
+        self,
+        key: str,
+        max_requests: int,
+        window_seconds: float,
+    ) -> RateLimitResult:
+        """Count one hit, allowing the request when counting fails.
+
+        Args:
+            key (str): The rate-limit bucket key.
+            max_requests (int): Maximum hits allowed in the window.
+            window_seconds (float): Sliding-window length in seconds.
+
+        Returns:
+            RateLimitResult: The inner store's decision, or an allowing
+            result when the inner store raised.
+        """
+        try:
+            return await self.inner.hit(key, max_requests, window_seconds)
+        except Exception as exc:
+            logger.warning(
+                "Rate limit not enforced for %r: counter store failed (%s)",
+                key,
+                exc,
+            )
+            return RateLimitResult(allowed=True, remaining=max_requests, retry_after=0)
 
 
 class MemoryRateLimitStore:

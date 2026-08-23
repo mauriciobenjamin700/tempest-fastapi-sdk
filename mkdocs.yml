@@ -112,6 +112,7 @@ plugins:
               - AI agents (concepts): recipes/agents-concepts.md
               - AI agents (database): recipes/agents-db.md
               - AI agents (testing): recipes/agents-testing.md
+              - App error reports: recipes/app-errors.md
               - Audit trail: recipes/audit-trail.md
               - Auth flow (signup/reset): recipes/auth-flow.md
               - Brazilian helpers: recipes/br-helpers.md
@@ -408,6 +409,7 @@ nav:
       - "Deploy seguro (migrations + shutdown)": recipes/deploy-safety.md
       - Downloads: recipes/downloads.md
       - Email transacional: recipes/email.md
+      - "Erros do app (relatados pelo cliente)": recipes/app-errors.md
       - "Erros no OpenAPI (Swagger)": recipes/openapi-errors.md
       - "Escolhendo o modelo": recipes/models.md
       - "Exemplos completos":

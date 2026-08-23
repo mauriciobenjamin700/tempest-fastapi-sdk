@@ -5,6 +5,57 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.248.0] — 2026-08-23
+
+### Added
+
+- **Módulo `app_errors`** — o lugar onde o frontend deposita o erro que
+  quebrou na mão do usuário. `make_app_error_model` (tabela abstrata +
+  fábrica), `AppErrorService`, `make_app_error_router` e os schemas.
+
+  Duas regras vêm de um serviço que rodou isso em produção, e cada uma
+  existe porque a alternativa falha em silêncio:
+
+  - **Um relato truncado vale mais que um relato perdido.** Payload acima do
+    limite da coluna é cortado com marcador, nunca recusado: quem envia é um
+    app que acabou de quebrar e não tem caminho de tratamento para um 422, e
+    o relato mais interessante — o que veio com stack trace grande — é
+    exatamente o que a recusa jogaria fora.
+  - **`user_id` vem do token, nunca do corpo.** `AppErrorReportSchema` não
+    tem o campo; quem o preenche é o serviço. A separação em dois schemas é
+    o que torna impossível atribuir o próprio erro à conta de outra pessoa.
+
+  A tabela: `user_id` nullable (erro de login acontece antes de existir
+  usuário — o caso mais difícil de depurar pelo app), FK `ON DELETE SET
+  NULL` em vez do `CASCADE` do resto do schema (o relato descreve defeito da
+  aplicação, não do usuário), e índice próprio em `created_at`, porque a
+  leitura padrão é "mais recente primeiro" numa tabela que cresce sem limite
+  natural.
+
+  A listagem é **opt-in**: sem `admin_dependency` a rota `GET` não é
+  montada, já que ela devolve stack trace e identificador de aparelho. Quem
+  usa o `AdminSite` não precisa dela.
+
+  O corte de datas é semiaberto (`created_at >= start` e `< end + 1 dia`),
+  não `func.date(created_at)`: função na coluna descarta o índice.
+
+  Receita: `docs/recipes/app-errors.md`.
+
+- **`FailOpenRateLimitStore`** — em
+  `api/middlewares/rate_limit.py`, envolve uma store de contadores para que
+  uma indisponibilidade **deixe a requisição passar**, registrando a falha em
+  `WARNING`.
+
+  Nasceu de uma medição feita ao escrever a receita acima: com uma store
+  cujo `hit` levanta, a exceção **propaga** pelo `RateLimitMiddleware` e o
+  chamador recebe erro. Para a maioria dos endpoints isso se defende. Para
+  um endpoint de relato de erro é o contrário: o momento em que a store está
+  mal é o momento em que os erros disparam, e recusar os relatos ali destrói
+  a evidência do incidente que está sendo reportado.
+
+  O teste fixa as duas metades — que o middleware nu propaga, e que o
+  wrapper serve a requisição, loga o aviso e continua limitando quando a
+  store está saudável.
 ## [0.247.0] — 2026-08-23
 
 ### Changed

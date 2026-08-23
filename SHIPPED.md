@@ -691,6 +691,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
+- **App error reports (v0.248.0)** — `app_errors`: `make_app_error_model`,
+  `AppErrorService`, `make_app_error_router` e os schemas, para o frontend
+  reportar ao backend o erro que quebrou na mão do usuário. Truncar em vez de
+  recusar (o remetente acabou de quebrar e não trata 422); `user_id` do token
+  e nunca do corpo (dois schemas, e é isso que impede atribuir o erro a outra
+  conta); `user_id` nullable com FK `SET NULL`, porque erro de login acontece
+  antes do usuário e apagar a conta não pode apagar a evidência do bug;
+  `created_at` indexado; listagem opt-in atrás de `admin_dependency`, ou pelo
+  `AdminSite`. O teto do POST público fica no `RateLimitMiddleware`, com
+  `FailOpenRateLimitStore` — medido: o middleware nu **propaga** a falha da
+  store, o que perderia justamente os relatos do incidente em curso. Receita:
+  `docs/recipes/app-errors.md`.
 - **Header declarado vira argumento no cliente gerado (v0.247.0)** — o
   gerador OpenAPI emitia `'header' parameter 'X' skipped (pass it via
   HTTPClient default_headers)`; agora header declarado na operação é
