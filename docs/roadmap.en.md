@@ -56,11 +56,11 @@ The admin panel already exists (`AdminSite` / `AdminModel` / `make_admin_router`
 
 | Feature | Why it matters | Reuses |
 |---------|----------------|--------|
-| **Per-column filter / search / sort** on the list view | Large lists are unusable without it — the first thing every operator asks for. | `BaseRepository` (filters + pagination) |
-| **Bulk actions** (mass delete / activate) | Row-by-row actions don't scale; select N rows + one action is the standard admin flow. | `BaseRepository.bulk_update` / soft-delete |
+| **Per-column filter / search / sort** on the list view ✅ v0.36.0 | `AdminModel(list_filter=…, search_fields=…, ordering=…)` plus clickable sorting via ``?sort=<column>&dir=asc|desc``, validated against the displayed columns. | `BaseRepository.list` + pagination |
+| **Bulk actions** (mass delete / activate) ✅ v0.36.0 | `POST {prefix}/m/{slug}/bulk` applies delete / activate / deactivate to the selection; `AdminModel(actions=[…])` adds your own action to the same dropdown. | `@admin_action` + CSRF |
 | **Field widgets** (FK select ✅, date picker, file upload) + **FK autocomplete** ✅ v0.115.0 | FK as `<select>`, dates with a picker, upload via `UploadUtils`; large FKs become an HTMX search box (`autocomplete_fields`). | `UploadUtils` + storage backends |
 | **Inline / related editing** ✅ v0.116.0 (read + navigate) | Children (1-N) listed on the parent's detail, with a link to the child admin and "Add" pre-filling the FK (`inlines=[Inline(...)]`). In-place editing on the same screen is a follow-up. | `BaseRepository` + relationships |
-| **CSV / JSON export** | Operator exports the filtered result without opening the database. | list view + filters |
+| **CSV / JSON export** ✅ v0.36.0 | `GET {prefix}/m/{slug}/export.csv` / `.json` honours the active search, filters and sort; `make_admin_router(export_max_rows=…)` caps the size (default 5000). | list view + filters |
 | **Audit log visible in the admin** ✅ v0.114.0 | Who changed what and when, straight in the UI — a per-row timeline in the detail view. | `BaseAuditLogModel` + `diff_snapshots` (`AdminModel(audit_model=...)`) |
 | **Metrics dashboard** (system ✅) + **business cards** ✅ v0.117.0 | CPU/RAM/counters + value/trend/partition cards computed from your data (`AdminSite(dashboard_cards=[...])`). | `MetricsUtils` + `MetricCard` |
 | **MFA on admin login** | Second factor on the most sensitive access in the system; a natural fit now that TOTP exists. | `TOTPHelper` + `MFAMixin` + recovery codes |

@@ -56,11 +56,11 @@ O painel admin já existe (`AdminSite` / `AdminModel` / `make_admin_router`, Jin
 
 | Feature | Por que importa | Reaproveita |
 |---------|-----------------|-------------|
-| **Filtros / busca / ordenação por coluna** na listagem | Listas grandes ficam inutilizáveis sem isso; é o primeiro pedido de todo operador. | `BaseRepository` (filtros + paginação) |
-| **Bulk actions** (deletar / ativar em massa) | Ações linha-a-linha não escalam; selecionar N linhas + uma ação é o fluxo padrão de admin. | `BaseRepository.bulk_update` / soft-delete |
+| **Filtros / busca / ordenação por coluna** na listagem ✅ v0.36.0 | `AdminModel(list_filter=…, search_fields=…, ordering=…)` mais ordenação clicável por ``?sort=<coluna>&dir=asc|desc``, validada contra as colunas exibidas. | `BaseRepository.list` + paginação |
+| **Bulk actions** (deletar / ativar em massa) ✅ v0.36.0 | `POST {prefix}/m/{slug}/bulk` aplica delete / activate / deactivate na seleção; `AdminModel(actions=[…])` acrescenta ação própria ao mesmo dropdown. | `@admin_action` + CSRF |
 | **Widgets de campo** (FK select ✅, date picker, file upload) + **FK autocomplete** ✅ v0.115.0 | FK como `<select>`, data com picker, upload via `UploadUtils`; FKs grandes viram caixa de busca HTMX (`autocomplete_fields`). | `UploadUtils` + storage backends |
 | **Inline / related editing** ✅ v0.116.0 (leitura + navegar) | Filhos (1-N) listados no detail do pai, com link pro admin do filho e "Add" pré-preenchendo o FK (`inlines=[Inline(...)]`). Edição in-place na mesma tela fica como evolução. | `BaseRepository` + relationships |
-| **Export CSV / JSON** | Operador exporta o resultado filtrado sem abrir o banco. | listagem + filtros |
+| **Export CSV / JSON** ✅ v0.36.0 | `GET {prefix}/m/{slug}/export.csv` / `.json` respeita busca, filtros e ordenação ativos; `make_admin_router(export_max_rows=…)` limita o tamanho (default 5000). | listagem + filtros |
 | **Audit log visível no admin** ✅ v0.114.0 | Quem mudou o quê e quando, direto na UI — timeline por registro no detail. | `BaseAuditLogModel` + `diff_snapshots` (`AdminModel(audit_model=...)`) |
 | **Dashboard com métricas** (sistema ✅) + **cards de negócio** ✅ v0.117.0 | CPU/RAM/contadores + cards value/trend/partition computados dos seus dados (`AdminSite(dashboard_cards=[...])`). | `MetricsUtils` + `MetricCard` |
 | **MFA no login do admin** | Segundo fator no acesso mais sensível do sistema; encaixe natural agora que o TOTP existe. | `TOTPHelper` + `MFAMixin` + recovery codes |
