@@ -191,11 +191,12 @@ class TestGenerateIntegration:
     def test_unsupported_notes_reach_the_result(
         self, billing_spec_file: Path, tmp_path: Path
     ) -> None:
-        """The header parameter the generator skips is reported."""
+        """The cookie parameter the generator skips is reported."""
         result = generate_integration(
             str(billing_spec_file), target=tmp_path, name="billing", run_format=False
         )
-        assert any("X-Trace" in note for note in result.unsupported)
+        assert any("sessionHint" in note for note in result.unsupported)
+        assert not any("X-Trace" in note for note in result.unsupported)
 
     def test_suggest_client_class(self) -> None:
         """The client class name is predictable before generating."""
@@ -413,6 +414,62 @@ class TestGeneratedRuntimeBehavior:
         asyncio.run(run())
         assert "status=past_due" in seen["url"]
         assert "pageSize=25" in seen["url"]
+
+    def test_declared_header_reaches_the_wire(self, billing: ModuleType) -> None:
+        """A header argument is sent on that call, and only that call.
+
+        The alternative the generator used to suggest — putting it in
+        ``HTTPClient.default_headers`` — sends the same value on every
+        request. For an idempotency key that turns a retry-safety feature
+        into silent deduplication of distinct charges.
+        """
+        seen: dict[str, str | None] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["trace"] = request.headers.get("X-Trace")
+            return httpx.Response(200, json=[])
+
+        async def run() -> None:
+            from tempest_fastapi_sdk import HTTPClient
+
+            http = HTTPClient(
+                base_url=billing.DEFAULT_BASE_URL,
+                transport=httpx.MockTransport(handler),
+            )
+            async with http:
+                client = billing.BillingClient(http)
+                await client.list_customers(x_trace="trace-1")
+                assert seen["trace"] == "trace-1"
+                await client.list_customers(x_trace="trace-2")
+
+        asyncio.run(run())
+        assert seen["trace"] == "trace-2"
+
+    def test_omitted_header_is_absent(self, billing: ModuleType) -> None:
+        """``None`` sends no header at all, not an empty one.
+
+        An empty ``X-Idempotency-Key`` is not the same as no key: providers
+        that validate the header would answer 400 on every call that did
+        not opt in.
+        """
+        seen: dict[str, bool] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["present"] = "X-Trace" in request.headers
+            return httpx.Response(200, json=[])
+
+        async def run() -> None:
+            from tempest_fastapi_sdk import HTTPClient
+
+            http = HTTPClient(
+                base_url=billing.DEFAULT_BASE_URL,
+                transport=httpx.MockTransport(handler),
+            )
+            async with http:
+                await billing.BillingClient(http).list_customers()
+
+        asyncio.run(run())
+        assert seen["present"] is False
 
     def test_omitted_query_params_are_absent(self, billing: ModuleType) -> None:
         """A ``None`` argument does not reach the query string."""
@@ -635,7 +692,7 @@ class TestOpenapiClientCommand:
             ],
         )
         assert "could not be modelled" in result.output
-        assert "X-Trace" in result.output
+        assert "sessionHint" in result.output
 
     def test_spec_error_is_a_clean_message(self, tmp_path: Path) -> None:
         """A bad specification exits 2 with a message, not a traceback."""

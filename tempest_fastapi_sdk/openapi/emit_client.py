@@ -53,6 +53,9 @@ def _signature_lines(operation: OperationIR) -> list[str]:
     for parameter in operation.query_parameters:
         default = "" if parameter.required else " = None"
         keyword_only.append(f"{parameter.name}: {parameter.annotation}{default}")
+    for parameter in operation.header_parameters:
+        default = "" if parameter.required else " = None"
+        keyword_only.append(f"{parameter.name}: {parameter.annotation}{default}")
 
     if keyword_only:
         arguments.append("*")
@@ -134,6 +137,8 @@ def _render_docstring(operation: OperationIR, opening: str) -> list[str]:
             )
         for parameter in operation.query_parameters:
             lines.extend(_parameter_doc(parameter))
+        for parameter in operation.header_parameters:
+            lines.extend(_parameter_doc(parameter))
 
     lines.extend(["", "        Returns:"])
     if operation.response_annotation is None:
@@ -206,7 +211,8 @@ def _parameter_doc(parameter: ParameterIR) -> list[str]:
     """
     description = parameter.description or f"The {parameter.wire_name} value."
     if not parameter.required:
-        description = f"{description} Omitted from the query when None."
+        where = "request headers" if parameter.location == "header" else "query"
+        description = f"{description} Omitted from the {where} when None."
     return _wrap(
         description,
         "            ",
@@ -263,9 +269,25 @@ def _body_lines(operation: OperationIR) -> list[str]:
                     ]
                 )
 
+    if operation.header_parameters:
+        lines.append("        headers: dict[str, str] = {}")
+        for parameter in operation.header_parameters:
+            key = _string_literal(parameter.wire_name)
+            if parameter.required:
+                lines.append(f"        headers[{key}] = str({parameter.name})")
+            else:
+                lines.extend(
+                    [
+                        f"        if {parameter.name} is not None:",
+                        f"            headers[{key}] = str({parameter.name})",
+                    ]
+                )
+
     call_arguments = ['"' + operation.http_method.upper() + '"', "path"]
     if operation.query_parameters:
         call_arguments.append("params=params")
+    if operation.header_parameters:
+        call_arguments.append("headers=headers")
     if operation.body_annotation is not None:
         if operation.body_required:
             lines.append("        payload = _dump(body)")

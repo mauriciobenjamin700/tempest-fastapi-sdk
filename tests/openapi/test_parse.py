@@ -612,14 +612,56 @@ class TestOperations:
         assert [p.name for p in detail.path_parameters] == ["customer_id"]
         assert detail.path_parameters[0].annotation == "UUID"
 
-    def test_header_parameter_is_skipped_with_a_note(
+    def test_header_parameter_becomes_an_argument(
         self, billing_document: dict[str, Any]
     ) -> None:
-        """Header parameters belong to ``HTTPClient.default_headers``."""
+        """A declared header is a per-call argument, not a default header.
+
+        Routing it through ``HTTPClient.default_headers`` would send one
+        fixed value for every call. For ``X-Idempotency-Key`` — the header
+        that motivated this — that is not a limitation but a defect: the
+        second charge would be deduplicated onto the first.
+        """
         spec = parse_spec(billing_document, client_name="billing")
         listing = next(o for o in spec.client.operations if o.name == "list_customers")
-        assert all(p.wire_name != "X-Trace" for p in listing.parameters)
-        assert any("X-Trace" in note for note in spec.unsupported)
+
+        header = next(p for p in listing.header_parameters if p.wire_name == "X-Trace")
+        assert header.name == "x_trace"
+        assert header.required is False
+        assert header.annotation == "str | None"
+        assert not any("X-Trace" in note for note in spec.unsupported)
+
+    def test_headers_come_after_query_parameters(
+        self, billing_document: dict[str, Any]
+    ) -> None:
+        """Headers sort last, so adding one cannot reorder an existing call.
+
+        Every one of these is keyword-only, so the order is cosmetic for
+        callers — but it keeps the generated diff of an unrelated
+        specification change small.
+        """
+        spec = parse_spec(billing_document, client_name="billing")
+        listing = next(o for o in spec.client.operations if o.name == "list_customers")
+
+        assert [p.name for p in listing.parameters] == [
+            "page_size",
+            "status",
+            "x_trace",
+        ]
+
+    def test_cookie_parameter_is_still_skipped_with_a_note(
+        self, billing_document: dict[str, Any]
+    ) -> None:
+        """A cookie is connection state, not a per-call value.
+
+        Headers stopped being skipped; cookies did not, and the note has to
+        keep naming the one that was dropped.
+        """
+        spec = parse_spec(billing_document, client_name="billing")
+        listing = next(o for o in spec.client.operations if o.name == "list_customers")
+
+        assert all(p.wire_name != "sessionHint" for p in listing.parameters)
+        assert any("sessionHint" in note for note in spec.unsupported)
 
     def test_body_and_response_types(self, billing_document: dict[str, Any]) -> None:
         """Request body and success response resolve to generated classes."""

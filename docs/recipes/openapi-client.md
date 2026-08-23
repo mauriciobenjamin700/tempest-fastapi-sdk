@@ -246,6 +246,52 @@ asyncio.run(main())
 !!! warning "O cliente gerado exige o extra `[http]`"
     `HTTPClient` levanta `ImportError` sem ele. `uv add "tempest-fastapi-sdk[http]"`.
 
+### Header declarado vira argumento da chamada
+
+Header que a spec declara **na operação** é valor por requisição, então o
+gerador o emite como argumento keyword-only — não como header default do
+cliente:
+
+```python
+import uuid
+
+from src.integrations.terceiro import TerceiroClient
+from src.integrations.terceiro.schemas import PaymentRequest
+
+
+async def cobrar(client: TerceiroClient) -> None:
+    """Charge once, with a key that makes the retry safe.
+
+    Args:
+        client (TerceiroClient): The generated client.
+    """
+    await client.create_payment(
+        body=PaymentRequest(transaction_amount=19.9),
+        x_idempotency_key=uuid.uuid4(),
+    )
+```
+
+!!! danger "Por que não `default_headers`"
+    Antes o gerador descartava esses parâmetros com a nota "passe via
+    `HTTPClient default_headers`". Para a maioria dos headers isso seria só
+    inconveniente; para uma **chave de idempotência** é defeito: o
+    `default_headers` manda o mesmo valor em toda requisição, então a segunda
+    cobrança seria deduplicada em cima da primeira e o cliente veria um
+    pagamento onde fez dois.
+
+    Header que vale para a conexão inteira — `Authorization`, um
+    `x-platform-id` fixo do seu app — continua cabendo em `default_headers`.
+    A diferença é quem decide: agora você escolhe por chamada, em vez de o
+    gerador escolher por você.
+
+!!! tip "`None` não manda header vazio"
+    Header opcional que você não passa simplesmente não vai no fio. Um
+    `X-Idempotency-Key: ` vazio não é o mesmo que ausente — provedor que
+    valida o header responderia 400 em toda chamada que não optou por ele.
+
+    `cookie` continua sendo a única localização descartada, com nota: cookie
+    é estado de conexão, não valor de chamada.
+
 ## Opções
 
 | Opção | Efeito |
@@ -324,7 +370,7 @@ nunca em silêncio:
 | `not` | Sem equivalente em Python |
 | `$ref` externo | Bundle a spec primeiro (`redocly bundle`) |
 | Swagger 2.0 | Converta para OpenAPI 3 (`swagger2openapi`) |
-| Parâmetros de `header` / `cookie` | Passe via `HTTPClient(default_headers=...)` |
+| Parâmetros de `cookie` | Cookie é estado de conexão, não valor de chamada |
 | Corpo/resposta não-JSON (`multipart`, `octet-stream`) | Fora do escopo desta iteração |
 | `type` com múltiplos valores concretos | Não modelado |
 
@@ -337,7 +383,7 @@ nunca em silêncio:
     1 construct(s) could not be modelled as written — each line says what was
     generated instead, and the ones with something to mark carry an
     `# openapi: unsupported` comment in the output:
-      - 'header' parameter 'X-Trace' skipped (pass it via HTTPClient default_headers)
+      - 'cookie' parameter 'sessionHint' skipped (pass it via HTTPClient default_headers)
     ```
 
     Um schema errado que **parece** certo é pior que uma lacuna documentada.
@@ -357,7 +403,7 @@ nunca em silêncio:
     para parâmetro sintetizado. É greppável de propósito:
     `grep -rn "openapi: unsupported" src/integrations/` lista tudo que a
     integração perdeu. Uma lacuna sem nada no arquivo para marcar — um
-    parâmetro de `header` descartado, por exemplo — continua só no resumo,
+    parâmetro de `cookie` descartado, por exemplo — continua só no resumo,
     porque não existe linha para comentar.
 
 ## O código gerado passa nos seus gates

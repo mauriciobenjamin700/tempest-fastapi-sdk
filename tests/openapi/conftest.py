@@ -49,6 +49,11 @@ def _billing_document() -> dict[str, Any]:
                             "in": "header",
                             "schema": {"type": "string"},
                         },
+                        {
+                            "name": "sessionHint",
+                            "in": "cookie",
+                            "schema": {"type": "string"},
+                        },
                     ],
                     "responses": {
                         "200": {
