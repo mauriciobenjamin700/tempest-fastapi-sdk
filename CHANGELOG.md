@@ -91,8 +91,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sobre `None` e não sobre usuário qualquer. Provado que os dois casos de 401
   falham sem a correção.
 
+- **A CSP default de `make_spa_router` deixa de bloquear o próprio bundle da
+  SPA** ([#188]). O router usava `DEFAULT_STATIC_SECURITY_HEADERS` como default
+  de `security_headers=`, e aquele conjunto existe para servir **arquivo que
+  não se confia**: `default-src 'none'; sandbox`. Apontado para uma SPA
+  compilada, ele bloqueia o bundle e a folha de estilo da própria página, e o
+  `sandbox` sem `allow-scripts` bloqueia execução de script — documento em
+  branco.
+
+  Medido em browser real (Playwright), com o default antigo:
+
+  ```text
+  Loading the stylesheet '/assets/app.css' violates the following Content
+  Security Policy directive: "default-src 'none'"
+  Blocked script execution in '/' because the document's frame is sandboxed
+  and the 'allow-scripts' permission is not set
+  ```
+
+  O `sandbox` é tão total que o próprio `page.evaluate` do Playwright não roda
+  na página — a demonstração mais direta possível de que nenhum script executa
+  ali.
+
+  Com o default novo: zero mensagem no console, `#root` com o texto que o
+  script escreveu, `background` do CSS externo aplicado, e o atributo `style`
+  inline aplicado (que é o caso do React).
+
+  Novos `DEFAULT_SPA_CONTENT_SECURITY_POLICY` e `DEFAULT_SPA_SECURITY_HEADERS`,
+  exportados na raiz: `default-src 'self'`, `script-src 'self'`, `style-src
+  'self' 'unsafe-inline'`, `img-src`/`font-src` com `data:`, `connect-src
+  'self'`, `form-action 'self'`, `base-uri 'self'`, `object-src 'none'`,
+  `frame-ancestors 'none'`, mais `nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: strict-origin-when-cross-origin` e
+  `Cross-Origin-Resource-Policy: same-origin`.
+
+  `'unsafe-inline'` fica em `style-src` porque React escreve atributo `style`
+  inline e política que quebra a UI é política deletada; fica **restrita a
+  estilo**, com `script-src` em `'self'`. Quem controla a árvore de
+  componentes pode apertar para `style-src-attr` e passar em
+  `security_headers=`.
+
+  `DEFAULT_STATIC_SECURITY_HEADERS` não muda — continua sendo o default certo
+  para `HardenedStaticFiles`, que é para o que ele foi feito. Um teste fixa que
+  os dois conjuntos **não** são iguais, porque igualá-los de novo devolve a
+  página branca.
+
 [#186]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/186
 [#187]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/187
+[#188]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/188
 
 ## [0.251.0] — 2026-08-23
 

@@ -88,6 +88,12 @@ from tempest_fastapi_sdk.api import (
     DEFAULT_MAX_RECORDS_PER_FILE as DEFAULT_MAX_RECORDS_PER_FILE,
 )
 from tempest_fastapi_sdk.api import (
+    DEFAULT_SPA_CONTENT_SECURITY_POLICY as DEFAULT_SPA_CONTENT_SECURITY_POLICY,
+)
+from tempest_fastapi_sdk.api import (
+    DEFAULT_SPA_SECURITY_HEADERS as DEFAULT_SPA_SECURITY_HEADERS,
+)
+from tempest_fastapi_sdk.api import (
     DEFAULT_STATIC_SECURITY_HEADERS as DEFAULT_STATIC_SECURITY_HEADERS,
 )
 from tempest_fastapi_sdk.api import (
@@ -1573,6 +1579,8 @@ __all__: list[str] = [
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_LOCALE",
     "DEFAULT_MAX_RECORDS_PER_FILE",
+    "DEFAULT_SPA_CONTENT_SECURITY_POLICY",
+    "DEFAULT_SPA_SECURITY_HEADERS",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "ENUM_TYPE_SUFFIX",
     "HUNDRED",
