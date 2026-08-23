@@ -524,6 +524,22 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 
 ---
 
+## Payments (canonical contract)
+
+### `tempest_fastapi_sdk.integrations.payment.base`
+
+::: tempest_fastapi_sdk.integrations.payment.base.PixProvider
+::: tempest_fastapi_sdk.integrations.payment.base.PixChargeRequest
+::: tempest_fastapi_sdk.integrations.payment.base.PixCharge
+::: tempest_fastapi_sdk.integrations.payment.base.PixPayer
+::: tempest_fastapi_sdk.integrations.payment.base.PixPaymentEvent
+::: tempest_fastapi_sdk.integrations.payment.base.PaymentStatus
+::: tempest_fastapi_sdk.integrations.payment.base.PixEventType
+
+### `tempest_fastapi_sdk.integrations.payment.adapters`
+
+::: tempest_fastapi_sdk.integrations.payment.adapters.openpix.OpenPixPixProvider
+
 ## OpenPix
 
 ### `tempest_fastapi_sdk.integrations.payment.openpix`

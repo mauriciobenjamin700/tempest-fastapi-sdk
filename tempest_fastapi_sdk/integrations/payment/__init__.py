@@ -6,6 +6,12 @@ script rather than edited — plus the pieces the specification leaves out:
 webhook verification, the environments, and whatever the provider documents
 in prose instead of in the schema.
 
+The canonical contract lives in
+:mod:`tempest_fastapi_sdk.integrations.payment.base`: a service that wants
+to charge over Pix depends on ``PixProvider`` and gets ``PixCharge`` back,
+whichever provider is configured. The translations live in
+:mod:`tempest_fastapi_sdk.integrations.payment.adapters`.
+
 Available:
 
 - **`openpix`** — OpenPix / Woovi (Pix). 358 schemas, 105 operations,
@@ -33,10 +39,69 @@ Available:
     client: OpenPixClient = OpenPixClient(http)
 
 Importing a provider costs almost nothing: its generated schemas load on
-first use, not on import.
+first use, not on import. The same holds for this module — importing it
+leaves ``openpix.schemas`` out of ``sys.modules``, which is what makes it
+safe for the contract to live here.
 """
+
+from typing import TYPE_CHECKING, Any
 
 from tempest_fastapi_sdk.integrations.payment import openpix as openpix
 from tempest_fastapi_sdk.integrations.payment import stripe as stripe
+from tempest_fastapi_sdk.integrations.payment.base import (
+    PaymentStatus as PaymentStatus,
+)
+from tempest_fastapi_sdk.integrations.payment.base import PixCharge as PixCharge
+from tempest_fastapi_sdk.integrations.payment.base import (
+    PixChargeRequest as PixChargeRequest,
+)
+from tempest_fastapi_sdk.integrations.payment.base import (
+    PixEventType as PixEventType,
+)
+from tempest_fastapi_sdk.integrations.payment.base import PixPayer as PixPayer
+from tempest_fastapi_sdk.integrations.payment.base import (
+    PixPaymentEvent as PixPaymentEvent,
+)
+from tempest_fastapi_sdk.integrations.payment.base import (
+    PixProvider as PixProvider,
+)
 
-__all__: list[str] = ["openpix", "stripe"]
+if TYPE_CHECKING:
+    from tempest_fastapi_sdk.integrations.payment import adapters as adapters
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve the ``adapters`` subpackage on first access.
+
+    Args:
+        name (str): The attribute being looked up.
+
+    Returns:
+        Any: The ``adapters`` subpackage.
+
+    Raises:
+        AttributeError: For any other name.
+
+    Importing ``adapters`` eagerly here would defeat the point of the
+    providers being lazy: an adapter reaches into its provider's generated
+    schemas, so ``import ...integrations.payment`` would build them all.
+    """
+    if name == "adapters":
+        from importlib import import_module
+
+        return import_module(f"{__name__}.adapters")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__: list[str] = [
+    "PaymentStatus",
+    "PixCharge",
+    "PixChargeRequest",
+    "PixEventType",
+    "PixPayer",
+    "PixPaymentEvent",
+    "PixProvider",
+    "adapters",
+    "openpix",
+    "stripe",
+]

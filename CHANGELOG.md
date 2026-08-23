@@ -5,6 +5,60 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.246.0] — 2026-08-23
+
+### Added
+
+- **Contrato canônico de Pix** — `integrations/payment/base.py`. Um serviço
+  que cobra por Pix passa a depender de `PixProvider` e a receber `PixCharge`,
+  em vez da forma do provedor.
+
+  A razão é divergência medida entre os provedores que o SDK já traz: OpenPix
+  declara centavos dentro de um `float` e tem três estados de cobrança;
+  Mercado Pago declara reais dentro de um `float` e tem nove estados de
+  pagamento, cinco de pedido e quatro de transação, em três schemas. Escrever
+  `charge.status == "COMPLETED"` não acopla o serviço ao Pix — acopla a um
+  endpoint de um provedor.
+
+  ```python
+  charge = await provider.create_pix_charge(
+      PixChargeRequest(amount_cents=1990, reference="pedido-1042")
+  )
+  ```
+
+  A superfície: `PixProvider` (um `Protocol` puro, como todo seam de provedor
+  daqui), `PixChargeRequest`, `PixCharge`, `PixPayer`, `PixPaymentEvent`,
+  `PaymentStatus` e `PixEventType`.
+
+  Três decisões que o contrato fixa:
+
+  - **Dinheiro é `int` de centavos na fronteira.** `float` não atravessa o
+    contrato; converter para a unidade de cada provedor é do adapter.
+  - **Dois estados, não um.** `status` é o canônico; `provider_status` guarda
+    a string crua, para log e suporte.
+  - **`raw` guarda o payload.** Sem ele, `BaseSchema` sendo `extra="ignore"`
+    descartaria em silêncio tudo que o provedor manda além do contrato.
+
+- **`OpenPixPixProvider`** — `integrations/payment/adapters/openpix.py`, a
+  primeira tradução. `STATUS_MAP` cobre os três estados do OpenPix e um teste
+  percorre o enum gerado falhando em qualquer valor não mapeado, para que uma
+  regeneração que acrescente estado quebre a CI em vez de reportar cobrança
+  não paga como pendente.
+
+  Duas honestidades que o adapter documenta em vez de esconder: o cancelamento
+  do OpenPix responde só `{"status", "id"}`, então os demais campos voltam
+  vazios em vez de disparar uma segunda ida à API que o chamador não pediu; e
+  `paid_at` só é preenchido pelo caminho de webhook, porque `paidAt` aparece
+  nos exemplos da especificação mas não no schema `Charge`.
+
+### Changed
+
+- `PixCharge` e `PixPaymentEvent` desligam o `use_enum_values` que o
+  `BaseSchema` liga. Com o default, `charge.status` guardaria a string `"paid"`
+  e `charge.status is PaymentStatus.PAID` seria `False` em toda cobrança,
+  silenciosamente, enquanto `==` continuaria funcionando. `model_dump(mode="json")`
+  segue devolvendo `"paid"`.
+
 ## [0.245.0] — 2026-08-22
 
 ### Added
