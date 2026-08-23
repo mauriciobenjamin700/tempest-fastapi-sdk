@@ -5,6 +5,70 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.253.0] — 2026-08-23
+
+### Added
+
+- **`tempest_fastapi_sdk.testing.fakes`: um substituto dirigível para cada
+  costura de terceiro.** Oito fakes — `FakePixProvider`, `FakeTextBackend`,
+  `FakeModerationBackend`, `FakePushDispatcher`, `FakeEmailUtils`,
+  `FakeGeocodingBackend`, `FakeRoutingBackend`, `FakeWebSearchBackend` — que
+  implementam a costura e não falam com ninguém: sem credencial, sem conta de
+  sandbox, sem rede. Dois usos, um objeto: rodar o serviço local sem se
+  cadastrar em nada, e afirmar sobre um fluxo em teste sem mock escrito à mão.
+
+  O SDK já tinha 16 substitutos in-memory, mas todos de **infra** (Redis, banco,
+  fila). Nenhum de **terceiro remoto** — cada costura tinha só a implementação
+  real, então validar um checkout, um email de ativação ou um fluxo de agente
+  exigia credencial ou mock.
+
+  O que separa isto de mock é o **steering**. Um mock responde a chamada que
+  você programou; estes guardam estado e deixam o teste movê-lo:
+
+  ```python
+  charge = await provider.create_pix_charge(request)   # pending
+  event = provider.advance(charge.provider_charge_id, PaymentStatus.PAID)
+  event.type   # PixEventType.CHARGE_PAID
+  ```
+
+  `advance` alcança o que o provedor real não dá sob demanda: `PAID` num sandbox
+  exige alguém escaneando um QR code, e `CHARGED_BACK` exige alguém abrindo uma
+  disputa. Cada fake tem o seu (`flag`, `add_place`, `add_route`, `add_results`,
+  `queue`), e todos aceitam `fail_next(erro)` — o ramo que falha, com a exceção
+  que o cliente real levanta, e sem inventar exceção nova.
+
+  O que aconteceu fica inspecionável: `calls` em todos, mais `outbox`, `sent` /
+  `sent_to`, `prompts`, `charges`, `queries`, `routes`, `checked`.
+
+  Três decisões que valem registro:
+
+  - **`FakeEmailUtils` é subclasse de `EmailUtils`**, não implementação de
+    protocolo, porque `UserAuthService` é tipado contra a classe concreta — é a
+    herança que faz o fake passar por `UserAuthService(email=...)` com o
+    type-checker satisfeito. Só o `send` é substituído; `render_template`
+    continua sendo o real, então um teste afirma sobre o mesmo HTML que a
+    produção renderiza.
+  - **`FakeRoutingBackend` delega a `estimate_travel`**, o estimador offline que
+    o SDK já ships, em vez de inventar aritmética própria que poderia divergir
+    dele. Medido: mesma distância e mesma duração do estimador, com `source`
+    marcado como `"fake"`.
+  - **Resolução é lazy (PEP 562)**, como em `integrations`: pedir o fake de Pix
+    não importa genai, push nem geo. Há guard para isso — um subprocesso
+    importa `testing.fakes` e conta os módulos `genai` carregados, e o número
+    tem de ser zero.
+
+  Guard de conformidade em `tests/testing/test_fakes_contract.py`: para cada
+  fake, todo callable da costura existe, os nomes de parâmetro e a anotação de
+  retorno batem por `inspect.signature`, e é `async` exatamente onde a costura é
+  `async` — um substituto sync passaria numa checagem por nome e bloquearia o
+  event loop. Mais um teste que exige que todo fake exportado esteja na tabela,
+  para fake novo não shippar sem cobertura. Medido: renomeando um parâmetro de
+  `max_results` para `limit`, o guard falha com
+  `['self', 'query', 'limit'] == ['self', 'query', 'max_results']`.
+
+  Receita nova, bilíngue: `docs/recipes/fakes.md`. Todo exemplo dela foi
+  executado e a saída publicada é a medida.
+
 ## [0.252.0] — 2026-08-23
 
 ### Fixed

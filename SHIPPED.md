@@ -1159,6 +1159,25 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   name is now written as `validation_alias` + `serialization_alias`
   (`tests/test_alias_guard.py` keeps `alias=` from returning), which leaves
   runtime untouched and clears both basedpyright and mypy.
+- **Fakes das costuras de terceiro (v0.253.0, `tempest_fastapi_sdk.testing.fakes`)** —
+  `FakePixProvider`, `FakeTextBackend`, `FakeModerationBackend`,
+  `FakePushDispatcher`, `FakeEmailUtils`, `FakeGeocodingBackend`,
+  `FakeRoutingBackend`, `FakeWebSearchBackend`: um substituto por costura, sem
+  credencial e sem rede, para rodar o serviço local e para asserção em teste.
+  **Dirigíveis**, e é isso que os separa de mock: guardam estado e deixam o
+  teste movê-lo (`advance(id, status)` chega a `PAID` e `CHARGED_BACK` sem
+  ninguém escanear QR nem abrir disputa; `flag`, `add_place`, `add_route`,
+  `add_results`, `queue`), e `fail_next(erro)` alcança o ramo que falha com a
+  exceção que o cliente real levanta. O que aconteceu fica inspecionável
+  (`calls`, `outbox`, `sent`, `prompts`, `charges`, `queries`). `FakeEmailUtils`
+  é **subclasse** de `EmailUtils`, não implementação de protocolo, porque
+  `UserAuthService` é tipado contra a classe concreta — só o `send` é
+  substituído, `render_template` continua o real. `FakeRoutingBackend` delega a
+  `estimate_travel` em vez de inventar aritmética. Resolução lazy (PEP 562):
+  pedir o fake de Pix não importa genai, push nem geo. Guard em
+  `tests/testing/test_fakes_contract.py` compara assinatura por
+  `inspect.signature`, exige `async` onde a costura é `async`, e falha quando um
+  fake novo entra sem cobertura.
 - **CLI** — `tempest new` (scaffolds layered service +
   docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
   `tempest generate --docker` (regen compose) / `--dockerfile`

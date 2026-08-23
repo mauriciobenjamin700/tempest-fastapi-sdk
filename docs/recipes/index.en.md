@@ -484,6 +484,7 @@ come back here to plug in each capability as you need it.
 | **[Enum columns (safe on both databases) »](enum-columns.md)** | `Mapped[MyEnum]` storing the `value`, native `ENUM` on PostgreSQL and a `CHECK` on SQLite, `enum_column()`, `op.replace_enum` + `sync_enum_types` for the migration autogenerate cannot see |
 | **[Errors in OpenAPI (Swagger) »](openapi-errors.md)** | `error_responses`, `@raises`, `TempestAPIRouter`, `ErrorResponseSchema`, `tempest openapi-errors --fix` |
 | **[Face recognition »](faces.md)** | `FaceRecognizer` (detect / embed / compare), `compare_faces`, 16 MB or 191 MB packs, no opencv and no torch |
+| **[Fakes (no real provider) »](fakes.md)** | `FakePixProvider`, `FakeTextBackend`, `FakeModerationBackend`, `FakePushDispatcher`, `FakeEmailUtils`, `FakeGeocodingBackend`, `FakeRoutingBackend`, `FakeWebSearchBackend` — eight seams with no credential and no network, steerable (`advance`, `flag`, `fail_next`) and inspectable |
 | **[Feature flags »](feature-flags.md)** | `FeatureFlags`, env/Redis/composite backends, `make_flag_dependency` |
 | **[File store (unified) »](file-store.md)** | `FileStoreUtils` — upload + download + presign over a single backend |
 | **[Firebase auth (ID token) »](firebase-auth.md)** | `FirebaseAuth`, `FirebaseIdentity`, `FirebaseUserResolver` — verify the ID token a mobile app sends, idempotent initialization, one `code` per failure, `[firebase]` extra |
