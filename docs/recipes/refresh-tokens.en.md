@@ -145,6 +145,14 @@ Result: both the attacker and the victim are logged out on their next attempt. T
 !!! danger "Single-use is mandatory for reuse detection to work"
     The client **must** discard the old refresh token after each `/refresh` and keep the new one. Reusing a rotated token triggers the family kill — that is not a bug, it is the feature.
 
+!!! info "The revocation is committed, and the request rolled back first (v0.252.0)"
+    The family kill has to survive the 401 that immediately follows it. In a FastAPI request the exception leaves through the session dependency's teardown, so up to v0.251.0 the revocation — which only went through `flush()` — went away with the rollback: the replay was refused and **every descendant kept working**.
+
+    Now, on reuse detection, the service rolls the request's session back, applies the family `UPDATE`, and **commits**. Two consequences for your handler:
+
+    - Any write the request had staged before `/refresh` is dropped. It would have been dropped anyway — the request is closing with a 401 — and committing it as a side effect of a security decision would be a surprise.
+    - Objects loaded in that session before the error are expired. If your `except` reads an attribute off an earlier object, reload it.
+
 ---
 
 ## Logout
