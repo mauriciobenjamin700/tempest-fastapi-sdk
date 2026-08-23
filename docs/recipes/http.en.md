@@ -1146,6 +1146,13 @@ Use `make_jwt_user_dependency` to wire the bearer scheme + JWT decode + user loa
 
 The token is looked up in **header → cookie → query string**, first hit wins: `Authorization: Bearer` always, plus the `cookie_name=` cookie and the `query_param=` query parameter when you enable them (both `None` by default). `subject_claim=` changes which claim is read (default `"sub"`) and `error_message=` the 401 text.
 
+!!! warning "Returning `None` from `user_loader` refuses the request (v0.252.0)"
+    The loader is the natural place to refuse a user — deactivated account, a subject that no longer exists, a malformed id. With `soft=False` (the default), `None` becomes a **401**, the same answer an absent subject already got.
+
+    Up to v0.251.0 that `None` reached the handler and the route answered **200 with a user the loader had rejected** — so deactivating an account had no effect at all until the access token expired. With `soft=True` the `None` still arrives: that is what the flag is for.
+
+    Raising `UnauthorizedException` or `NotFoundException` from inside the loader still works, and is what you want when the message matters.
+
 ```python
 # src/api/dependencies/auth.py
 from uuid import UUID

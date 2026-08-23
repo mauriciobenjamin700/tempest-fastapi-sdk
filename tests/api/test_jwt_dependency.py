@@ -367,3 +367,145 @@ class TestTokenTypeIsolation:
                 headers={"Authorization": f"Bearer {token}"},
             )
         assert response.status_code == 200
+
+
+class TestLoaderDecliningTheSubject:
+    """A loader that returns ``None`` refuses the request.
+
+    ``user_loader`` is documented as the seam where a service refuses a
+    subject — deactivated account, id that no longer resolves, malformed
+    subject. Until v0.252.0 that ``None`` reached the handler, so the route
+    answered 200 with a user the loader had rejected: deactivating an account
+    had no effect until the access token expired.
+    """
+
+    @staticmethod
+    async def _decline(subject: str) -> None:
+        """Refuse every subject, the way a deactivated account would.
+
+        Args:
+            subject (str): The subject claim, ignored.
+
+        Returns:
+            None: Always, which is the refusal.
+        """
+        return None
+
+    @staticmethod
+    async def _decline_with_session(subject: str, session: Any) -> None:
+        """Same refusal, on the shared-session branch.
+
+        Args:
+            subject (str): The subject claim, ignored.
+            session (Any): The request-scoped session, ignored.
+
+        Returns:
+            None: Always.
+        """
+        return None
+
+    @staticmethod
+    async def _session() -> Any:
+        """Stand in for the request-scoped session dependency.
+
+        Returns:
+            Any: An opaque object; the loader never touches it.
+        """
+        return object()
+
+    def _app(
+        self,
+        *,
+        soft: bool,
+        shared: bool,
+    ) -> tuple[FastAPI, JWTUtils]:
+        """Build an app whose loader declines every subject.
+
+        Args:
+            soft (bool): Passed through to the dependency factory.
+            shared (bool): Whether to exercise the shared-session branch,
+                which is a second closure with its own copy of the rule.
+
+        Returns:
+            tuple[FastAPI, JWTUtils]: The app and its token helper.
+        """
+        tokens = _make_tokens()
+        current_user = (
+            make_jwt_user_dependency(
+                tokens,
+                self._decline_with_session,
+                soft=soft,
+                session_dependency=self._session,
+            )
+            if shared
+            else make_jwt_user_dependency(tokens, self._decline, soft=soft)
+        )
+
+        app = FastAPI()
+        register_exception_handlers(app)
+
+        @app.get("/me")
+        async def me(user: Any = Depends(current_user)) -> dict[str, Any]:
+            return {"user": user}
+
+        return app, tokens
+
+    async def _get(self, app: FastAPI, tokens: JWTUtils) -> Any:
+        """Call ``/me`` with a valid token.
+
+        Args:
+            app (FastAPI): The app under test.
+            tokens (JWTUtils): Its token helper.
+
+        Returns:
+            Any: The HTTP response.
+        """
+        token = tokens.encode({"sub": "b0a5a5f6-0000-4000-8000-000000000000"})
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get(
+                "/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+    @pytest.mark.asyncio
+    async def test_declined_subject_is_unauthorized(self) -> None:
+        """Same answer an absent subject already got."""
+        app, tokens = self._app(soft=False, shared=False)
+        assert (await self._get(app, tokens)).status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_declined_subject_is_unauthorized_on_shared_session(self) -> None:
+        """The other closure carries the rule too."""
+        app, tokens = self._app(soft=False, shared=True)
+        assert (await self._get(app, tokens)).status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_soft_mode_still_yields_none(self) -> None:
+        """Anonymous access is what ``soft=True`` is for."""
+        app, tokens = self._app(soft=True, shared=False)
+        response = await self._get(app, tokens)
+        assert response.status_code == 200
+        assert response.json() == {"user": None}
+
+    @pytest.mark.asyncio
+    async def test_soft_mode_still_yields_none_on_shared_session(self) -> None:
+        """Both branches agree in soft mode as well."""
+        app, tokens = self._app(soft=True, shared=True)
+        response = await self._get(app, tokens)
+        assert response.status_code == 200
+        assert response.json() == {"user": None}
+
+    @pytest.mark.asyncio
+    async def test_a_loaded_user_still_reaches_the_handler(self) -> None:
+        """The refusal is about ``None``, not about every falsy user."""
+        app, tokens = _make_user_app(soft=False)
+        token = tokens.encode({"sub": "u1"})
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 200
+        assert response.json()["user"]["id"] == "u1"

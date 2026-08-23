@@ -55,7 +55,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   depois do `pytest.raises`, na mesma sessão, que é a única coisa que uma
   request real nunca faz. Provado que os três falham sem a correção.
 
+- **`make_jwt_user_dependency` deixa de entregar `None` ao handler quando o
+  `user_loader` recusa o subject** ([#187]). Com `soft=False`, a dependency já
+  levantava 401 para token ausente e para JWT sem o claim de subject — mas se
+  o token decodificava e o loader devolvia `None`, esse `None` era **retornado
+  para o handler**, e a rota respondia 200 com um usuário que o loader tinha
+  recusado.
+
+  Medido no repro da issue, antes:
+
+  ```text
+  no token              -> 401 (expected 401)
+  owns, declined        -> 200 (expected 401)
+  shared, declined      -> 200 (expected 401)
+  ```
+
+  Depois, com os dois ramos — o que abre sessão própria e o que compartilha a
+  do request — devolvendo 401, e `soft=True` continuando a entregar `None`.
+
+  O loader é documentado como *"the single seam where the service maps
+  `payload[subject_claim]` to an actual user"*, então é o lugar natural para
+  recusar: conta desativada, subject que não existe mais, id malformado.
+  Recusar ali não recusava a request. Na prática, **desativar uma conta não
+  tinha efeito até o access token expirar**, para quem confiava na dependency
+  para isso.
+
+  A regra agora mora num lugar só (`_resolved`), aplicada pelos dois ramos: um
+  subject recusado tem o mesmo desfecho de um subject ausente. `soft=True`
+  segue devolvendo `None`, que é o propósito do flag; levantar
+  `UnauthorizedException`/`NotFoundException` de dentro do loader continua
+  funcionando para quem quer escolher a mensagem.
+
+  Cinco casos de regressão em `tests/api/test_jwt_dependency.py`, cobrindo os
+  dois ramos em `soft=False` e `soft=True`, mais um que fixa que a recusa é
+  sobre `None` e não sobre usuário qualquer. Provado que os dois casos de 401
+  falham sem a correção.
+
 [#186]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/186
+[#187]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/187
 
 ## [0.251.0] — 2026-08-23
 
