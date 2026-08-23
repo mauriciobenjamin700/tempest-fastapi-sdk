@@ -135,9 +135,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   os dois conjuntos **não** são iguais, porque igualá-los de novo devolve a
   página branca.
 
+- **`tempest new` deixa de escrever placeholder de template no `Dockerfile` e
+  no `.dockerignore`** ([#189]). Os dois templates são compartilhados com
+  `tempest generate dockerfile`, que preenche `__SPA_HEADER__`,
+  `__SPA_STAGE__`, `__SPA_COPY__`, `__SPA_IGNORE__` e `__SYSTEM_DEPS__`. O
+  contexto do scaffold não tinha nenhuma dessas chaves, então todo projeto novo
+  saía com os marcadores literais e o `docker build` morria na primeira linha
+  que carregava um, **antes de qualquer camada**:
+
+  ```text
+  ERROR: dockerfile parse error on line 8: unknown instruction: __SPA_HEADER__#
+  ```
+
+  Medido com `docker build --check` no projeto scaffoldado, antes e depois: o
+  erro acima, e depois `Check complete, no warnings found.`
+
+  O mesmo contexto ausente escondia um segundo defeito: `__SYSTEM_DEPS__`
+  nunca era renderizado, então um scaffold `--extras pdf` produzia imagem
+  **sem** Pango e sem fontconfig — e o WeasyPrint levanta `OSError` do cffi no
+  primeiro render, não no build, então a imagem parecia boa até alguém pedir um
+  PDF.
+
+  Verificado ponta a ponta com Docker de verdade: `tempest new` →
+  `docker build` (imagem de 343 MB) → container de pé, com
+  `/health/liveness`, `/health/readiness` e `/docs` respondendo 200.
+
+  Guard novo em `tests/cli/test_scaffold_placeholders.py`, sobre a **forma** e
+  não sobre os cinco nomes: qualquer `__UPPER_CASE__` remanescente em qualquer
+  arquivo gerado falha, em cinco combinações de extras. Marcador novo em
+  template novo herda a checagem sem ninguém lembrar de estender. Dunder do
+  Python (`__init__`, `__all__`) não é falso positivo, e há um caso que prova
+  que o padrão casa exatamente os cinco marcadores que shipparam.
+
 [#186]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/186
 [#187]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/187
 [#188]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/188
+[#189]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/189
 
 ## [0.251.0] — 2026-08-23
 
