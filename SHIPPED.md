@@ -386,8 +386,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   per-user quota, `recall()` returns scored `MemoryHit`s over any
   `SupportsEmbed`. Uses `PersistentClient` (embedded, no HTTP server), so the
   `chromadb` server advisory PYSEC-2026-311 is not reachable through the SDK.
-  **Audio (v0.102, `[genai-audio]` = faster-whisper +
-  coqui-tts):** `tempest_fastapi_sdk.genai.audio` — `SpeechToText`
+  **Audio (v0.102, `[genai-audio]` = faster-whisper + coqui-tts + the Coqui
+  runtime — torch, torchaudio, torchcodec, `transformers<5`, declared since
+  v0.252.0 because coqui-tts hides all four behind its own extras; XTTS v2 is
+  licence-gated and needs `COQUI_TOS_AGREED=1` on a server):** `tempest_fastapi_sdk.genai.audio` — `SpeechToText`
   (faster-whisper transcribe → `Transcription`) + `TextToSpeech` (Coqui TTS
   synthesize → WAV bytes, XTTS voice cloning via `speaker_wav`), lazy +
   to_thread + semaphore, auto device/compute. **Language presets (v0.103):**

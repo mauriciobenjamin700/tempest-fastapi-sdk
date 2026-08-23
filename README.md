@@ -130,7 +130,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[modelops-onnx]` | `onnx`, `onnxruntime` | Static analysis, ONNX benchmarking, `.onnx` → `.ort` conversion, graph optimization and int8 quantization |
 | `[genai]` (+ `[genai-quant]`) | `transformers`, `torch`, `accelerate`, `safetensors`, `huggingface-hub` (+ `bitsandbytes`) | Self-hosted GenAI — hardware capacity check (`probe_hardware` / `can_run` / `recommend`), local `TextGenerator` / `Embedder` / `VisionTextGenerator`, RAG, moderation (+ int4/int8 quantization) |
 | `[genai-rag]` | `httpx`, `trafilatura`, `pymupdf`, `pgvector`, `rank-bm25` | RAG context for local LLMs — SearXNG web search, page extraction, PDF reading, `build_context`, vector store + `Retriever`, `Reranker` (cross-encoder), `HybridRetriever` (BM25 + dense, RRF) |
-| `[genai-audio]` | `faster-whisper`, `coqui-tts` | Self-hosted voice — `SpeechToText` (STT) + `TextToSpeech` (TTS) + `Language` presets (PT-BR/EN-US) |
+| `[genai-audio]` | `faster-whisper`, `coqui-tts`, `torch`, `torchaudio`, `torchcodec`, `transformers<5` | Self-hosted voice — `SpeechToText` (STT) + `TextToSpeech` (TTS) + `Language` presets (PT-BR/EN-US) |
 | `[genai-diarization]` | `sherpa-onnx` | Speaker diarization on ONNX Runtime (no PyTorch) — `SpeakerDiarizer`, `ConversationTranscriber`, `ensure_models` |
 | `[faces]` | `onnxruntime`, `pillow`, `numpy` | Face detection and recognition on ONNX Runtime (no opencv, no torch, no system libraries) — `FaceRecognizer`, `compare_faces`, 16 MB default pack |
 | `[genai-ollama]` | `httpx` | Ollama backend — `OllamaGenerator` / `OllamaEmbedder` run text + embeddings against a local Ollama daemon instead of loading torch weights; drop into `make_genai_router` / `Retriever` |

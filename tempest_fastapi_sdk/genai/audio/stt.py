@@ -21,6 +21,7 @@ helpers import without the ``[genai-audio]`` extra.
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -31,6 +32,8 @@ from tempest_fastapi_sdk.genai.audio.schemas import Transcription, Transcription
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
 def resolve_audio_device(device: str) -> str:
@@ -44,15 +47,25 @@ def resolve_audio_device(device: str) -> str:
 
     Returns:
         str: The concrete device.
+
+    Detection needs torch, and a missing torch is logged at warning level
+    rather than folded into "no GPU". They are not the same answer: a
+    machine with a GPU whose environment has no torch used to transcribe on
+    the CPU with no sign at all, and the slowdown looked like faster-whisper
+    being slow.
     """
     if device != "auto":
         return device
     try:
         import torch
-
-        return "cuda" if torch.cuda.is_available() else "cpu"
     except ImportError:
+        _LOGGER.warning(
+            "device='auto' resolved to 'cpu' because torch is not installed, "
+            "so a GPU cannot be detected. Install the [genai-audio] extra to "
+            "get torch, or pass device='cuda' explicitly.",
+        )
         return "cpu"
+    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def resolve_compute_type(compute_type: str, device: str) -> str:
@@ -72,20 +85,24 @@ def resolve_compute_type(compute_type: str, device: str) -> str:
 
 
 def _require_faster_whisper() -> Any:
-    """Import ``faster_whisper`` or raise a helpful error.
+    """Import ``faster_whisper``, keeping the reason the import failed.
 
     Returns:
         Any: The ``faster_whisper`` module.
 
     Raises:
-        ImportError: When the ``[genai-audio]`` extra is missing.
+        ImportError: When faster-whisper cannot be imported. The original
+            message is quoted, for the same reason as in
+            :func:`tempest_fastapi_sdk.genai.audio.tts._require_tts`.
     """
     try:
         import faster_whisper
     except ImportError as exc:
         raise ImportError(
-            "Speech-to-text requires the optional [genai-audio] extra. "
-            "Install with: pip install tempest-fastapi-sdk[genai-audio]",
+            f"Speech-to-text could not import faster-whisper: {exc}. "
+            "The [genai-audio] extra installs it; if the import still fails, "
+            "the environment is missing part of its runtime: "
+            "pip install 'tempest-fastapi-sdk[genai-audio]'",
         ) from exc
     return faster_whisper
 
