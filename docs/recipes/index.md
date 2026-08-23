@@ -493,6 +493,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Erros do app (relatados pelo cliente) »](app-errors.md)** | `make_app_error_model` (FK de usuário nullable, `SET NULL`, `created_at` indexado), `AppErrorService` (trunca em vez de recusar), listagem admin opt-in, intervalo de datas semiaberto |
 | **[Erros no OpenAPI (Swagger) »](openapi-errors.md)** | `error_responses`, `@raises`, `TempestAPIRouter`, `ErrorResponseSchema`, `tempest openapi-errors --fix` |
 | **[Escolhendo o modelo »](models.md)** | `TextModel` / `EmbeddingModel` / `RerankerModel` / `VisionModel` / `ImageModel` / `SpeechToTextModel` / `TextToSpeechModel` — ids do Hub com nome, e a tabela de caso de uso por trás de cada escolha |
+| **[Fakes (sem provedor real) »](fakes.md)** | `FakePixProvider`, `FakeTextBackend`, `FakeModerationBackend`, `FakePushDispatcher`, `FakeEmailUtils`, `FakeGeocodingBackend`, `FakeRoutingBackend`, `FakeWebSearchBackend` — oito costuras sem credencial e sem rede, dirigíveis (`advance`, `flag`, `fail_next`) e inspecionáveis |
 | **[Feature flags »](feature-flags.md)** | `FeatureFlags`, backends env/Redis/composto, `make_flag_dependency` |
 | **[Fila e Tarefas »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, outbox transacional |
 | **[File store (unificado) »](file-store.md)** | `FileStoreUtils` — upload + download + presign sobre um backend só |

@@ -1914,6 +1914,7 @@ class TestUsersAPI:
 | `test_session(url="sqlite+aiosqlite:///:memory:", metadata=None)` | Async context manager — yields an `AsyncSession` on top of a fresh `test_database`. |
 | `ModelFactory(session, Model, **defaults)` | Bind a model + defaults to a session; `build()` (unsaved), `create()`/`create_many(n)` (add + flush + refresh). Callable defaults/overrides get the row index. |
 | `seq(template, *, start=0)` | Index generator formatting `template` with `{n}` — `seq("user{n}@x.com")` yields unique values one per row. |
+| `fakes.FakePixProvider()` / `FakeTextBackend()` / `FakeModerationBackend()` / `FakePushDispatcher()` / `FakeEmailUtils()` / `FakeGeocodingBackend()` / `FakeRoutingBackend()` / `FakeWebSearchBackend()` | Steerable stand-ins for the third parties a service talks to — no credential, no network. Move the state (`advance`, `flag`, `add_place`, `queue`), force the failing branch (`fail_next`), assert on what happened (`outbox`, `sent`, `charges`, `calls`). See the [Fakes recipe](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/fakes/). |
 
 ```python
 # tests/conftest.py

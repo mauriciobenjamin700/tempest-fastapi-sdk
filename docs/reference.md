@@ -966,6 +966,19 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.testing.factories.ModelFactory
 ::: tempest_fastapi_sdk.testing.factories.seq
 
+### `tempest_fastapi_sdk.testing.fakes`
+
+::: tempest_fastapi_sdk.testing.fakes.payment.FakePixProvider
+::: tempest_fastapi_sdk.testing.fakes.genai.FakeTextBackend
+::: tempest_fastapi_sdk.testing.fakes.genai.FakeModerationBackend
+::: tempest_fastapi_sdk.testing.fakes.push.FakePushDispatcher
+::: tempest_fastapi_sdk.testing.fakes.push.SentPush
+::: tempest_fastapi_sdk.testing.fakes.email.FakeEmailUtils
+::: tempest_fastapi_sdk.testing.fakes.email.SentEmail
+::: tempest_fastapi_sdk.testing.fakes.geo.FakeGeocodingBackend
+::: tempest_fastapi_sdk.testing.fakes.geo.FakeRoutingBackend
+::: tempest_fastapi_sdk.testing.fakes.search.FakeWebSearchBackend
+
 ---
 
 ## Utils

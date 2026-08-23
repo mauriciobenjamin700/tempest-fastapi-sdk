@@ -133,6 +133,7 @@ plugins:
               - Enum columns (safe on both databases): recipes/enum-columns.md
               - Errors in OpenAPI (Swagger): recipes/openapi-errors.md
               - Face recognition: recipes/faces.md
+              - "Fakes (no real provider)": recipes/fakes.md
               - Feature flags: recipes/feature-flags.md
               - File in the service (mixin): recipes/stored-files.md
               - "Firebase auth (ID token)": recipes/firebase-auth.md
@@ -419,6 +420,7 @@ nav:
           - "Exemplo integrado (marketplace local)": marketplace-local.md
           - "Exemplos de GenAI (fluxos)": genai-examples.md
           - "Fullstack web (SSR, WASM, server)": fullstack-web.md
+      - "Fakes (sem provedor real)": recipes/fakes.md
       - Feature flags: recipes/feature-flags.md
       - Fila e Tarefas: recipes/queue-tasks.md
       - "File store (unificado)": recipes/file-store.md
