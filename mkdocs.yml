@@ -158,6 +158,7 @@ plugins:
               - "OpenPix (subscriptions and plans)": recipes/openpix-subscriptions.md
               - PDF generation: recipes/pdf.md
               - Permission guards (@requires): recipes/permission-guards.md
+              - "Pix protocol (one contract, many providers)": recipes/pix-protocol.md
               - "Push (web + mobile)": recipes/push.md
               - Query plans (EXPLAIN): recipes/query-plans.md
               - Queue & Tasks: recipes/queue-tasks.md
@@ -446,6 +447,7 @@ nav:
       - "Pipeline de transcrição (áudio → resumo)": recipes/transcription-pipeline.md
       - "Planilhas (.xlsx)": recipes/spreadsheets.md
       - "Planos de query (EXPLAIN)": recipes/query-plans.md
+      - "Protocolo de Pix (um contrato, vários provedores)": recipes/pix-protocol.md
       - "Push (web + mobile)": recipes/push.md
       - "Reconhecimento facial": recipes/faces.md
       - "Refresh tokens (rotação/revogação)": recipes/refresh-tokens.md

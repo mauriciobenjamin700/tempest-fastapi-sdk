@@ -691,6 +691,23 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `make_htmx_router` (serves a wheel-bundled HTMX 2.x locally, no CDN).
   `tempestweb` imported lazily so `import tempest_fastapi_sdk` never
   needs the extra.
+- **Canonical Pix contract (v0.246.0)** — `integrations/payment/base.py`:
+  `PixProvider` (a plain `Protocol`, like every other provider seam here),
+  `PixChargeRequest` / `PixCharge` / `PixPayer` / `PixPaymentEvent`, and a
+  `PaymentStatus` a service can branch on. The reason it exists is measured
+  divergence: OpenPix states cents in a `float` with three charge states,
+  Mercado Pago states reais in a `float` with nine payment states, five order
+  states and four transaction states — so `charge.status == "COMPLETED"`
+  couples a service to one endpoint of one provider. `PixCharge` keeps the
+  provider's own string beside the canonical one (`provider_status`) and the
+  whole payload in `raw`, because `BaseSchema` is `extra="ignore"` and would
+  otherwise drop everything the contract does not model. It also turns
+  `use_enum_values` **off**: with `BaseSchema`'s default, `status` would hold
+  the string and `charge.status is PaymentStatus.PAID` would be `False` on
+  every charge while `==` kept working. `adapters/openpix.py` ships the first
+  translation; adapters resolve lazily, so importing
+  `integrations.payment` still leaves `openpix.schemas` out of `sys.modules`
+  (guarded by a subprocess test). Recipe: `docs/recipes/pix-protocol.md`.
 - **OpenPix settings (v0.245.0)** — `OpenPixSettings` carries
   `OPENPIX_APP_ID` and `OPENPIX_ENVIRONMENT`, and `openpix_kwargs()` returns the
   `HTTPClient` keywords the client wraps: base URL resolved from the
