@@ -5,6 +5,58 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.252.0] — 2026-08-23
+
+### Fixed
+
+- **A revogação de família no reuso de refresh token deixa de ser descartada
+  pelo rollback da request** ([#186]). `_lookup_refresh_record` detectava o
+  replay, chamava `_revoke_family` e levantava `InvalidTokenException` — mas a
+  revogação só passava por `flush()`. Numa request FastAPI a exceção sai pelo
+  teardown da dependency de sessão, a unit of work é revertida, e a revogação
+  vai com ela.
+
+  Medido no repro da issue, antes:
+
+  ```text
+  replay rejected: 401: refresh token reuse detected
+  rows in family: 2 | revoked: 0
+  BUG: descendant of the replayed family still refreshes
+  ```
+
+  Depois:
+
+  ```text
+  replay rejected: 401: refresh token reuse detected
+  rows in family: 2 | revoked: 2
+  OK: descendant refused
+  ```
+
+  Detecção sem consequência era o pior dos três resultados possíveis: parece
+  que o roubo foi tratado. Um atacante com token descendente mantinha a sessão
+  viva indefinidamente — exatamente o cenário que a docstring do método diz
+  cobrir.
+
+  A ordem da correção é o desenho: lê o `family_id` **antes** (o rollback
+  expira a instância, e ler coluna expirada em contexto async levanta
+  `MissingGreenlet` em vez de recarregar), faz `rollback()` da sessão da
+  request, aplica o `UPDATE` e comita. O rollback é deliberado: a escrita que a
+  request tinha em stage já estava condenada, e comitá-la como efeito colateral
+  de uma decisão de segurança seria surpresa. Fica na sessão do caller de
+  propósito — uma sessão nova exigiria uma segunda conexão, e no SQLite a
+  transação de leitura aberta do caller bloquearia o commit dela, trocando a
+  revogação por erro de lock justamente na configuração que todo serviço usa
+  em teste.
+
+  Três testes de regressão em `tests/auth/test_refresh_db.py`, todos
+  atravessando a fronteira de sessão que a request tem: a família volta
+  revogada de uma sessão nova, o descendente é recusado, e a escrita alheia em
+  stage **não** é comitada. O teste antigo não podia pegar isto — ele comitava
+  depois do `pytest.raises`, na mesma sessão, que é a única coisa que uma
+  request real nunca faz. Provado que os três falham sem a correção.
+
+[#186]: https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/186
+
 ## [0.251.0] — 2026-08-23
 
 ### Fixed

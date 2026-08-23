@@ -257,6 +257,130 @@ class TestRefreshDBService:
         await session.commit()
 
 
+class TestReuseRevocationSurvivesTheUnwind:
+    """The revocation has to outlive the exception that follows it.
+
+    ``_lookup_refresh_record`` used to ``flush()`` the family revocation and
+    raise. In a FastAPI request the exception travels out through the session
+    dependency's teardown, the unit of work is rolled back, and the
+    revocation goes with it: the replay is refused with 401 while every
+    descendant token keeps working.
+
+    ``test_reuse_revokes_whole_family`` above cannot see that. It commits
+    **after** the ``pytest.raises`` block, on the same session, which is the
+    one thing a real request never does. These cases put a session boundary
+    where the request has one.
+    """
+
+    @pytest.fixture
+    def factory(self, tmp_path: Any) -> Any:
+        """Build a session factory over a file-backed SQLite database.
+
+        Args:
+            tmp_path (Any): pytest's per-test temporary directory.
+
+        Returns:
+            Any: An ``async_sessionmaker`` whose sessions see each other's
+            commits — which ``sqlite+aiosqlite:///:memory:`` does not give,
+            since every connection there opens its own empty database.
+        """
+        engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'auth.db'}")
+        return async_sessionmaker(engine, expire_on_commit=False)
+
+    async def _seed_replayed_family(self, factory: Any) -> tuple[Any, str, str]:
+        """Create a user, rotate once, and return the replayable pair.
+
+        Args:
+            factory (Any): The session factory.
+
+        Returns:
+            tuple[Any, str, str]: The service, the consumed token, and the
+            live descendant token.
+        """
+        service = _service()
+        async with factory() as setup:
+            connection = await setup.connection()
+            await connection.run_sync(BaseModel.metadata.create_all)
+            await setup.commit()
+
+        async with factory() as session:
+            user = await _make_user(
+                session=session, service=service, email="unwind@a.com"
+            )
+            _access, consumed = await service.issue_token_pair(session, user)
+            await session.commit()
+
+        async with factory() as session:
+            _user, _access2, descendant = await service.refresh_tokens(
+                session, refresh_token=consumed
+            )
+            await session.commit()
+
+        return service, consumed, descendant
+
+    async def test_revocation_persists_across_the_session_boundary(
+        self,
+        factory: Any,
+    ) -> None:
+        """Every row in the family comes back revoked, from a fresh session."""
+        service, consumed, _descendant = await self._seed_replayed_family(factory)
+
+        with pytest.raises(InvalidTokenException):
+            async with factory() as request_session:
+                await service.refresh_tokens(request_session, refresh_token=consumed)
+
+        async with factory() as check:
+            rows = (await check.execute(select(_RefreshDBRefreshToken))).scalars().all()
+            assert rows
+            assert all(row.revoked_at is not None for row in rows)
+
+    async def test_the_descendant_is_refused_after_the_unwind(
+        self,
+        factory: Any,
+    ) -> None:
+        """The point of revoking the family, checked where it matters."""
+        service, consumed, descendant = await self._seed_replayed_family(factory)
+
+        with pytest.raises(InvalidTokenException):
+            async with factory() as request_session:
+                await service.refresh_tokens(request_session, refresh_token=consumed)
+
+        with pytest.raises(InvalidTokenException):
+            async with factory() as later:
+                await service.refresh_tokens(later, refresh_token=descendant)
+
+    async def test_other_staged_writes_are_not_committed(
+        self,
+        factory: Any,
+    ) -> None:
+        """The security decision does not drag the request's work with it.
+
+        Committing the caller's session wholesale would persist whatever
+        else the request had staged, as a side effect of refusing it. The
+        revocation rolls that back first, so only the revocation lands.
+        """
+        service, consumed, _descendant = await self._seed_replayed_family(factory)
+
+        with pytest.raises(InvalidTokenException):
+            async with factory() as request_session:
+                request_session.add(
+                    _RefreshDBUser(
+                        email="staged@a.com",
+                        hashed_password="not-a-real-hash",
+                    )
+                )
+                await request_session.flush()
+                await service.refresh_tokens(request_session, refresh_token=consumed)
+
+        async with factory() as check:
+            staged = await check.execute(
+                select(_RefreshDBUser).where(_RefreshDBUser.email == "staged@a.com")
+            )
+            assert staged.scalar_one_or_none() is None
+            rows = (await check.execute(select(_RefreshDBRefreshToken))).scalars().all()
+            assert all(row.revoked_at is not None for row in rows)
+
+
 class TestRefreshDBRouter:
     async def test_login_refresh_logout_cycle(
         self,

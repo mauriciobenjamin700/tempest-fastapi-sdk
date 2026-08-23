@@ -145,6 +145,14 @@ Resultado: tanto o atacante quanto a vítima são deslogados na próxima tentati
 !!! danger "Single-use é obrigatório pro reuso funcionar"
     O cliente **tem** que descartar o refresh token antigo após cada `/refresh` e guardar o novo. Reusar um token rotacionado dispara o kill de família — não é bug, é a feature.
 
+!!! info "A revogação é comitada, e a request é revertida antes (v0.252.0)"
+    O kill de família precisa sobreviver ao 401 que vem logo depois. Numa request FastAPI a exceção sai pelo teardown da dependency de sessão, então até a v0.251.0 a revogação — que só passava por `flush()` — ia embora com o rollback: o replay era recusado e **todo descendente continuava funcionando**.
+
+    Agora, ao detectar reuso, o serviço faz `rollback()` na sessão da request, aplica o `UPDATE` da família e **comita**. Duas consequências para quem escreve o handler:
+
+    - Escrita que a request tinha em stage antes do `/refresh` é descartada. Ela seria descartada de qualquer jeito — a request está fechando em 401 — e comitá-la como efeito colateral de uma decisão de segurança seria surpresa.
+    - Objeto carregado nessa sessão antes do erro fica expirado. Se o seu `except` lê atributo de um objeto anterior, recarregue-o.
+
 ---
 
 ## Logout

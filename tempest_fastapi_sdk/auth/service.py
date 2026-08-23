@@ -1063,7 +1063,9 @@ class UserAuthService:
             Reuse of an already-rotated token is the classic stolen-token
             signal, so the whole family is revoked before raising: without
             that, an attacker holding a descendant token could keep the
-            session alive indefinitely.
+            session alive indefinitely. The revocation is **committed** —
+            see :meth:`_revoke_reused_family` for why a flush was not
+            enough.
 
             Timestamps are compared as naive UTC because the two supported
             backends disagree — SQLite stores naive, Postgres returns
@@ -1082,7 +1084,7 @@ class UserAuthService:
         if record.revoked_at is not None:
             raise InvalidTokenException(message="refresh token revoked")
         if record.used_at is not None:
-            await self._revoke_family(session, record.family_id)
+            await self._revoke_reused_family(session, record)
             raise InvalidTokenException(message="refresh token reuse detected")
         now = utcnow().replace(tzinfo=None)
         expires_at = (
@@ -1093,6 +1095,50 @@ class UserAuthService:
         if expires_at < now:
             raise InvalidTokenException(message="refresh token expired")
         return record
+
+    async def _revoke_reused_family(
+        self,
+        session: AsyncSession,
+        record: BaseUserRefreshTokenModel,
+    ) -> None:
+        """Persist the revocation that a detected replay has to leave behind.
+
+        Args:
+            session (AsyncSession): The caller's session, which is about to
+                be unwound by the exception this precedes.
+            record (BaseUserRefreshTokenModel): The replayed token row,
+                read for its ``family_id`` before anything expires it.
+
+        The caller raises immediately after this returns, so a flush is not
+        enough: in a FastAPI request the exception travels out through the
+        session dependency's teardown, the unit of work is rolled back, and
+        the revocation goes with it. Measured on the issue's repro — the
+        replay was refused with 401 and ``revoked: 0`` of two rows, so every
+        descendant token kept refreshing. Detection without consequence is
+        the worst of the three outcomes: it looks like the theft was handled.
+
+        The order here is the whole design:
+
+        1. ``family_id`` is read **first**, because the rollback below
+           expires the instance and reading an expired column in async
+           context raises ``MissingGreenlet`` rather than reloading.
+        2. ``rollback()`` drops whatever else the request had staged. Those
+           writes were already doomed — the request is about to fail — and
+           committing them as a side effect of a security decision would be
+           a surprise nobody asked for.
+        3. Only then the ``UPDATE``, and a ``commit`` that outlives the
+           unwind.
+
+        The revocation deliberately reuses the caller's session rather than
+        opening its own. A second session would need a second connection,
+        and on SQLite the caller's open read transaction blocks that
+        connection's commit — a lock error in place of a revocation, in the
+        one configuration every service uses for tests.
+        """
+        family_id = record.family_id
+        await session.rollback()
+        await self._revoke_family(session, family_id)
+        await session.commit()
 
     async def _revoke_family(
         self,
