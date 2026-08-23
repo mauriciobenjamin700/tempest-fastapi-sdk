@@ -39,7 +39,70 @@ from fastapi.responses import FileResponse, Response
 from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 
-from tempest_fastapi_sdk.api.static import DEFAULT_STATIC_SECURITY_HEADERS
+DEFAULT_SPA_CONTENT_SECURITY_POLICY: str = "; ".join(
+    (
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "font-src 'self' data:",
+        "connect-src 'self'",
+        "form-action 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+    )
+)
+"""Content Security Policy for an application served from its own origin.
+
+Deliberately **not**
+:data:`~tempest_fastapi_sdk.api.static.DEFAULT_STATIC_SECURITY_HEADERS`. That
+one exists for a file nobody trusts — an upload, an attachment — and blocks
+execution by design: ``default-src 'none'; sandbox``. Pointed at a compiled
+SPA it blocks the page's own bundle and stylesheet, and the sandbox blocks
+script execution outright, so the browser renders a blank document. Measured
+before the fix, on a two-file build:
+
+```text
+document CSP: default-src 'none'; sandbox
+Loading the script '/assets/app.js' violates ... "default-src 'none'"
+Blocked script execution ... the document's frame is sandboxed
+```
+
+This policy is the application counterpart: everything from the same origin,
+nothing from anywhere else. ``object-src 'none'`` and ``frame-ancestors
+'none'`` keep plugins and framing out; ``base-uri 'self'`` stops an injected
+``<base>`` from re-pointing every relative URL.
+
+``style-src`` keeps ``'unsafe-inline'`` because React — and the component
+libraries built on it — writes the ``style`` attribute inline, and a policy
+that breaks the UI is a policy that gets deleted. It is scoped to styles:
+``script-src`` stays ``'self'``, so an injected ``<script>`` or an inline
+handler is still refused. A caller who controls their component tree can
+tighten it to ``style-src 'self'`` plus ``style-src-attr 'unsafe-inline'``
+and pass the result through ``security_headers=``.
+"""
+
+DEFAULT_SPA_SECURITY_HEADERS: dict[str, str] = {
+    "Content-Security-Policy": DEFAULT_SPA_CONTENT_SECURITY_POLICY,
+    # The browser stops guessing a MIME type from the bytes, so a build
+    # artifact with a surprising extension is never rendered as HTML.
+    "X-Content-Type-Options": "nosniff",
+    # Framing is already refused by `frame-ancestors`; this repeats it for
+    # the browsers that read the older header.
+    "X-Frame-Options": "DENY",
+    # A full URL leaks path and query to third parties; the origin alone is
+    # enough for analytics that need a referrer at all.
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    # Same-origin rather than the static default's same-site: a bundle has
+    # no reason to be readable by a sibling subdomain.
+    "Cross-Origin-Resource-Policy": "same-origin",
+}
+"""Headers stamped on SPA responses when the caller passes none.
+
+The default for :func:`make_spa_router`, which serves an application — not
+the static default, which serves files an application must not trust.
+"""
 
 DEFAULT_ASSET_CACHE_CONTROL: str = "public, max-age=31536000, immutable"
 """Cache policy for content-hashed build assets.
@@ -157,9 +220,13 @@ def make_spa_router(
             :data:`DEFAULT_EXCLUDED_PREFIXES`.
         asset_cache_control (str): ``Cache-Control`` for hashed assets.
         document_cache_control (str): ``Cache-Control`` for ``index_file``.
-        security_headers (dict[str, str] | None): Headers stamped on static
-            responses. Defaults to
-            :data:`~tempest_fastapi_sdk.api.static.DEFAULT_STATIC_SECURITY_HEADERS`.
+        security_headers (dict[str, str] | None): Headers stamped on the
+            document and on every asset. Defaults to
+            :data:`DEFAULT_SPA_SECURITY_HEADERS` — the **application**
+            policy. Passing
+            :data:`~tempest_fastapi_sdk.api.static.DEFAULT_STATIC_SECURITY_HEADERS`
+            here serves a blank page: it is the policy for untrusted files,
+            and it blocks the SPA's own bundle.
 
     Returns:
         APIRouter: A router serving the assets and the SPA fallback.
@@ -186,7 +253,7 @@ def make_spa_router(
     headers = (
         dict(security_headers)
         if security_headers is not None
-        else dict(DEFAULT_STATIC_SECURITY_HEADERS)
+        else dict(DEFAULT_SPA_SECURITY_HEADERS)
     )
     router = APIRouter()
 
@@ -263,5 +330,7 @@ __all__: list[str] = [
     "DEFAULT_ASSET_CACHE_CONTROL",
     "DEFAULT_DOCUMENT_CACHE_CONTROL",
     "DEFAULT_EXCLUDED_PREFIXES",
+    "DEFAULT_SPA_CONTENT_SECURITY_POLICY",
+    "DEFAULT_SPA_SECURITY_HEADERS",
     "make_spa_router",
 ]

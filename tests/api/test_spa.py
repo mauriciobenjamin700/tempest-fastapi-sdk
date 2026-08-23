@@ -8,10 +8,15 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from tempest_fastapi_sdk import make_spa_router
+from tempest_fastapi_sdk import (
+    DEFAULT_STATIC_SECURITY_HEADERS,
+    make_spa_router,
+)
 from tempest_fastapi_sdk.api.spa import (
     DEFAULT_ASSET_CACHE_CONTROL,
     DEFAULT_DOCUMENT_CACHE_CONTROL,
+    DEFAULT_SPA_CONTENT_SECURITY_POLICY,
+    DEFAULT_SPA_SECURITY_HEADERS,
 )
 
 
@@ -138,6 +143,85 @@ class TestCachePolicy:
         """Static responses carry the SDK's anti-XSS headers."""
         headers = client.get("/assets/index-a1b2c3.js").headers
         assert headers["x-content-type-options"] == "nosniff"
+
+
+class TestContentSecurityPolicy:
+    """The default policy has to let the page it serves work.
+
+    ``make_spa_router`` used to default to
+    ``DEFAULT_STATIC_SECURITY_HEADERS``, whose ``default-src 'none';
+    sandbox`` is the right policy for a file nobody trusts and the wrong one
+    for an application: the browser refused the page's own bundle and
+    stylesheet, and the sandbox blocked script execution, so the SPA rendered
+    blank.
+    """
+
+    def test_the_document_gets_the_application_policy(
+        self,
+        client: TestClient,
+    ) -> None:
+        """Not the untrusted-file policy."""
+        csp = client.get("/").headers["content-security-policy"]
+        assert csp == DEFAULT_SPA_CONTENT_SECURITY_POLICY
+
+    def test_assets_get_the_same_policy(self, client: TestClient) -> None:
+        """A bundle refused by its own headers is the same bug."""
+        csp = client.get("/assets/index-a1b2c3.js").headers["content-security-policy"]
+        assert csp == DEFAULT_SPA_CONTENT_SECURITY_POLICY
+
+    def test_the_policy_allows_same_origin_script_and_style(self) -> None:
+        """The two directives whose absence blanked the page."""
+        assert "script-src 'self'" in DEFAULT_SPA_CONTENT_SECURITY_POLICY
+        assert "style-src 'self' 'unsafe-inline'" in (
+            DEFAULT_SPA_CONTENT_SECURITY_POLICY
+        )
+
+    def test_the_policy_has_no_sandbox(self) -> None:
+        """``sandbox`` without ``allow-scripts`` blocks execution outright."""
+        assert "sandbox" not in DEFAULT_SPA_CONTENT_SECURITY_POLICY
+
+    def test_nothing_loads_from_another_origin(self) -> None:
+        """Restrictive is still the point — just restrictive to ``'self'``."""
+        assert DEFAULT_SPA_CONTENT_SECURITY_POLICY.startswith("default-src 'self'")
+        assert "object-src 'none'" in DEFAULT_SPA_CONTENT_SECURITY_POLICY
+        assert "frame-ancestors 'none'" in DEFAULT_SPA_CONTENT_SECURITY_POLICY
+        assert "*" not in DEFAULT_SPA_CONTENT_SECURITY_POLICY
+
+    def test_the_two_defaults_are_not_the_same_headers(self) -> None:
+        """Pins the distinction the defect erased.
+
+        Both dicts are legitimate; using the static one for an application
+        is what was wrong. If a future edit makes them equal again, the SPA
+        goes back to serving itself a blank page.
+        """
+        assert DEFAULT_SPA_SECURITY_HEADERS != DEFAULT_STATIC_SECURITY_HEADERS
+        assert (
+            DEFAULT_STATIC_SECURITY_HEADERS["Content-Security-Policy"]
+            == "default-src 'none'; sandbox"
+        )
+
+    def test_an_explicit_override_still_wins(self, dist: Path) -> None:
+        """A caller who wants the strict policy can still have it.
+
+        Including the static one — this is a default, not a policy the
+        router enforces.
+        """
+        app = FastAPI()
+        strict = dict(DEFAULT_STATIC_SECURITY_HEADERS)
+        app.include_router(make_spa_router(dist, security_headers=strict))
+        csp = TestClient(app).get("/").headers["content-security-policy"]
+        assert csp == "default-src 'none'; sandbox"
+
+    def test_the_other_hardening_headers_travel_with_it(
+        self,
+        client: TestClient,
+    ) -> None:
+        """The policy is one header of five."""
+        headers = client.get("/").headers
+        assert headers["x-content-type-options"] == "nosniff"
+        assert headers["x-frame-options"] == "DENY"
+        assert headers["referrer-policy"] == "strict-origin-when-cross-origin"
+        assert headers["cross-origin-resource-policy"] == "same-origin"
 
 
 class TestApiIsolation:

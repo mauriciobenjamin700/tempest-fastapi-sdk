@@ -156,6 +156,7 @@ Beyond that, three details that are easy to get wrong:
 | API paths | Excluded from the fallback — JSON 404, not HTML |
 | Methods | Only `GET`/`HEAD` fall back |
 | Path traversal | `..` (in any encoding) cannot escape `dist/` |
+| Security headers | An **application** CSP (`DEFAULT_SPA_SECURITY_HEADERS`) |
 
 !!! warning "The classic inverted-cache bug"
     `index.html` is the **only** file whose name does not change between
@@ -179,6 +180,37 @@ Beyond that, three details that are easy to get wrong:
         make_spa_router("web/dist", excluded_prefixes=("/api", "/graphql", "/rpc"))
     )
     ```
+
+### The CSP you get by default
+
+The router serves an **application**, so the policy is "everything from the same origin, nothing from anywhere else":
+
+```text
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+img-src 'self' data:; font-src 'self' data:; connect-src 'self';
+form-action 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'
+```
+
+Plus `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` and `Cross-Origin-Resource-Policy: same-origin`. All of it is `DEFAULT_SPA_SECURITY_HEADERS`, and it is the default for `security_headers=`.
+
+!!! danger "Do not pass `DEFAULT_STATIC_SECURITY_HEADERS` here (it was the default up to v0.251.0)"
+    That set is for a **file you do not trust** — a third-party upload, an attachment — and blocks execution by design: `default-src 'none'; sandbox`. Pointed at a compiled SPA it blocks the page's own bundle and stylesheet, and `sandbox` without `allow-scripts` blocks script execution. Result: a blank document.
+
+    Measured in a real browser (Playwright), with the old default:
+
+    ```text
+    Loading the stylesheet '/assets/app.css' violates the following Content
+    Security Policy directive: "default-src 'none'"
+    Blocked script execution in '/' because the document's frame is sandboxed
+    and the 'allow-scripts' permission is not set
+    ```
+
+    With the new default: zero console messages, the script ran, the external CSS applied, and the inline `style` attribute applied.
+
+!!! info "Why `'unsafe-inline'` stays in `style-src`"
+    React — and the component libraries built on it — writes the `style` attribute inline. A policy that breaks the UI is a policy that gets deleted. It stays **scoped to styles**: `script-src` remains `'self'`, so an injected `<script>` or an inline handler is still refused.
+
+    If you control your component tree, tighten it to `style-src 'self'` plus `style-src-attr 'unsafe-inline'` and pass the result through `security_headers=`.
 
 ### Fail early, not in staging
 

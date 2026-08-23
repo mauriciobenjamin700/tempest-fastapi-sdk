@@ -251,6 +251,12 @@ from tempest_fastapi_sdk.api.spa import (
     DEFAULT_EXCLUDED_PREFIXES as DEFAULT_EXCLUDED_PREFIXES,
 )
 from tempest_fastapi_sdk.api.spa import (
+    DEFAULT_SPA_CONTENT_SECURITY_POLICY as DEFAULT_SPA_CONTENT_SECURITY_POLICY,
+)
+from tempest_fastapi_sdk.api.spa import (
+    DEFAULT_SPA_SECURITY_HEADERS as DEFAULT_SPA_SECURITY_HEADERS,
+)
+from tempest_fastapi_sdk.api.spa import (
     make_spa_router as make_spa_router,
 )
 from tempest_fastapi_sdk.api.static import (
@@ -281,6 +287,8 @@ __all__: list[str] = [
     "DEFAULT_EXCLUDED_PREFIXES",
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_MAX_RECORDS_PER_FILE",
+    "DEFAULT_SPA_CONTENT_SECURITY_POLICY",
+    "DEFAULT_SPA_SECURITY_HEADERS",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "IDEMPOTENCY_HEADER",
     "RAISES_ATTRIBUTE",

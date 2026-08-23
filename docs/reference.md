@@ -677,6 +677,8 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.api.spa.DEFAULT_ASSET_CACHE_CONTROL
 ::: tempest_fastapi_sdk.api.spa.DEFAULT_DOCUMENT_CACHE_CONTROL
 ::: tempest_fastapi_sdk.api.spa.DEFAULT_EXCLUDED_PREFIXES
+::: tempest_fastapi_sdk.api.spa.DEFAULT_SPA_CONTENT_SECURITY_POLICY
+::: tempest_fastapi_sdk.api.spa.DEFAULT_SPA_SECURITY_HEADERS
 ::: tempest_fastapi_sdk.api.webhooks.WebhookSender
 ::: tempest_fastapi_sdk.api.webhooks.WebhookDelivery
 ::: tempest_fastapi_sdk.api.tracing.setup_tracing
