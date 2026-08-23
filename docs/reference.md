@@ -565,6 +565,12 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.money.to_cents
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.money.from_cents
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.money.format_amount
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.pix.PixPayment
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.pix.PixPointOfInteraction
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.pix.PixTransactionData
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.pix.create_pix_payment
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.pix.get_pix_payment
+::: tempest_fastapi_sdk.integrations.payment.mercado_pago.pix.parse_pix_payment
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.MercadoPagoWebhookEvent
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.verify_signature
 ::: tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks.sign_manifest

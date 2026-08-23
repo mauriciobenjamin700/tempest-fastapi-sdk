@@ -33,14 +33,23 @@ Two halves, and it is worth knowing which is which:
   provider's, not ours.
 - **Hand-written** — ``DEFAULT_BASE_URL`` (the spec declares a single
   server: what separates test from production is the token, not the host),
-  ``MercadoPagoEvent``, the webhook verification, and the money helpers,
-  because the spec types money as ``number`` and states it in **reais**.
+  ``MercadoPagoEvent``, the webhook verification, the money helpers (the
+  spec types money as ``number`` and states it in **reais**), and the Pix QR
+  the spec never declares on a payment.
 
 !!! warning "Money here is reais, not cents"
     The mirror image of OpenPix, which states cents inside a float. Use
     :func:`to_cents` / :func:`from_cents` at the boundary and keep integers
     inside your own code — mixing the two units up is a factor-of-100 error
     in the direction nobody notices until a customer is charged 100x.
+
+!!! warning "The Pix QR is not on the generated ``Payment``"
+    The specification never declares ``point_of_interaction`` on a payment,
+    and ``BaseSchema`` is ``extra="ignore"`` — so the QR the API returns is
+    dropped during validation, silently. Use :func:`create_pix_payment` /
+    :func:`get_pix_payment`, or :func:`parse_pix_payment` over a body you
+    already have. Details in
+    :mod:`~tempest_fastapi_sdk.integrations.payment.mercado_pago.pix`.
 
 !!! danger "The webhook signature is not measured yet"
     The vendored specification does not describe it. See
@@ -73,6 +82,27 @@ from tempest_fastapi_sdk.integrations.payment.mercado_pago.money import (
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.money import (
     to_cents as to_cents,
 )
+from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
+    PAYMENTS_PATH as PAYMENTS_PATH,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
+    PixPayment as PixPayment,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
+    PixPointOfInteraction as PixPointOfInteraction,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
+    PixTransactionData as PixTransactionData,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
+    create_pix_payment as create_pix_payment,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
+    get_pix_payment as get_pix_payment,
+)
+from tempest_fastapi_sdk.integrations.payment.mercado_pago.pix import (
+    parse_pix_payment as parse_pix_payment,
+)
 from tempest_fastapi_sdk.integrations.payment.mercado_pago.webhooks import (
     DEFAULT_MANIFEST_TEMPLATE as DEFAULT_MANIFEST_TEMPLATE,
 )
@@ -104,10 +134,17 @@ _HAND_WRITTEN: tuple[str, ...] = (
     "DEFAULT_MANIFEST_TEMPLATE",
     "MERCADO_PAGO_REQUEST_ID_HEADER",
     "MERCADO_PAGO_SIGNATURE_HEADER",
+    "PAYMENTS_PATH",
     "MercadoPagoEvent",
     "MercadoPagoWebhookEvent",
+    "PixPayment",
+    "PixPointOfInteraction",
+    "PixTransactionData",
+    "create_pix_payment",
     "format_amount",
     "from_cents",
+    "get_pix_payment",
+    "parse_pix_payment",
     "parse_signature_header",
     "sign_manifest",
     "to_cents",
@@ -196,6 +233,7 @@ __all__: list[str] = [
     "DEFAULT_MANIFEST_TEMPLATE",
     "MERCADO_PAGO_REQUEST_ID_HEADER",
     "MERCADO_PAGO_SIGNATURE_HEADER",
+    "PAYMENTS_PATH",
     "AddOrderTransactionBody",
     "AddOrderTransactionResponse",
     "Address",
@@ -421,6 +459,9 @@ __all__: list[str] = [
     "PaymentUpdateRequest",
     "PaymentUpdateRequestStatus",
     "Phone",
+    "PixPayment",
+    "PixPointOfInteraction",
+    "PixTransactionData",
     "Pos",
     "PosRequest",
     "Preference",
@@ -523,8 +564,11 @@ __all__: list[str] = [
     "WebhookNotificationData",
     "WebhookNotificationType",
     "WebhookSignatureHeader",
+    "create_pix_payment",
     "format_amount",
     "from_cents",
+    "get_pix_payment",
+    "parse_pix_payment",
     "parse_signature_header",
     "sign_manifest",
     "to_cents",
