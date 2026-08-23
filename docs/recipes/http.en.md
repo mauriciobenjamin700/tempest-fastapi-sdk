@@ -600,7 +600,7 @@ There are **two** checks:
    crossed.
 
 The response is the SDK's canonical envelope:
-`{"detail": "Request body too large.", "code": "REQUEST_BODY_TOO_LARGE", "details": {}}`
+`{"detail": "Request body too large.", "code": "REQUEST_BODY_TOO_LARGE", "details": {"max_bytes": 1048576}}`
 with HTTP 413.
 
 !!! info "`exclude_paths` matches by prefix"

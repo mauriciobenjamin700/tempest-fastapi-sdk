@@ -600,7 +600,7 @@ São **duas** checagens:
    conta os bytes das mensagens `http.request` e aborta ao cruzar o teto.
 
 A resposta é o envelope canônico do SDK:
-`{"detail": "Request body too large.", "code": "REQUEST_BODY_TOO_LARGE", "details": {}}`
+`{"detail": "Request body too large.", "code": "REQUEST_BODY_TOO_LARGE", "details": {"max_bytes": 1048576}}`
 com HTTP 413.
 
 !!! info "`exclude_paths` casa por prefixo"

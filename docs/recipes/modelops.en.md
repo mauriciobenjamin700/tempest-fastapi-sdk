@@ -349,8 +349,13 @@ print(export.kind, export.size_bytes, export.verified)
 ```
 
 ```text
-tree_ensemble 13124 True
+tree_ensemble 7476 True
 ```
+
+!!! note "The size depends on the converter version"
+    Measured with `scikit-learn` 1.9.0 and `skl2onnx` 1.20.0. The number moves
+    when either does — the previous version of this page said `13124`, 43%
+    higher. Read it as an order of magnitude, not a constant.
 
 A linear model is a dot product. A tree is a chain of comparisons. Both fit
 in **1.49 KB** of JavaScript — the reader lives in

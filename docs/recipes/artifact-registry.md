@@ -66,11 +66,13 @@ As três operações:
 import asyncio
 from uuid import UUID
 
-from tempest_fastapi_sdk import UploadUtils
+from tempest_fastapi_sdk import AsyncMinIOClient
+
+from src.core.settings import settings
 
 from src.db.repositories import build_registry
 
-registry = build_registry(session, UploadUtils(source="./uploads"))
+registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
 
 version_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
 
@@ -103,10 +105,12 @@ Os dois helpers devolvem `(sha256, size)` **sem carregar o arquivo inteiro na me
 ```python
 import asyncio
 
-from tempest_fastapi_sdk import UploadUtils
+from tempest_fastapi_sdk import AsyncMinIOClient
+
+from src.core.settings import settings
 from tempest_fastapi_sdk.artifacts import file_digest, object_digest
 
-storage = UploadUtils(source="./uploads")
+storage = AsyncMinIOClient(**settings.minio_kwargs())
 
 
 async def main() -> None:
@@ -128,7 +132,9 @@ asyncio.run(main())
 ```python
 import asyncio
 
-from tempest_fastapi_sdk import UploadUtils
+from tempest_fastapi_sdk import AsyncMinIOClient
+
+from src.core.settings import settings
 from tempest_fastapi_sdk.artifacts import (
     ArtifactManifestEntry,
     build_manifest_entries,
@@ -138,9 +144,9 @@ from tempest_fastapi_sdk.artifacts import (
 from src.db.models import ModelVersion
 from src.db.repositories import build_registry
 
-registry = build_registry(session, UploadUtils(source="./uploads"))
+registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
 
-storage = UploadUtils(source="./uploads")
+storage = AsyncMinIOClient(**settings.minio_kwargs())
 
 session = None  # provided by db.get_session_context() in your code
 
@@ -166,7 +172,9 @@ Cada `ArtifactManifestEntry` tem `name`, `version`, `file_key`, `sha256`, `size`
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from tempest_fastapi_sdk import UploadUtils
+from tempest_fastapi_sdk import AsyncMinIOClient
+
+from src.core.settings import settings
 from tempest_fastapi_sdk.artifacts import build_manifest_entries, object_digest
 
 from src.db.repositories import build_registry
@@ -177,9 +185,9 @@ async def model_digest() -> tuple[str, int]:
     return await object_digest(storage, "models", "detect/1.2.0.onnx")
 
 
-registry = build_registry(session, UploadUtils(source="./uploads"))
+registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
 
-storage = UploadUtils(source="./uploads")
+storage = AsyncMinIOClient(**settings.minio_kwargs())
 
 session = None  # provided by db.get_session_context() in your code
 
@@ -241,13 +249,15 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse
 from starlette.responses import StreamingResponse
 
-from tempest_fastapi_sdk import UploadUtils
+from tempest_fastapi_sdk import AsyncMinIOClient
+
+from src.core.settings import settings
 
 from src.db.repositories import build_registry
 
-registry = build_registry(session, UploadUtils(source="./uploads"))
+registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
 
-storage = UploadUtils(source="./uploads")
+storage = AsyncMinIOClient(**settings.minio_kwargs())
 
 session = None  # provided by db.get_session_context() in your code
 

@@ -181,7 +181,7 @@ assert isinstance(DynamoIdempotencyStore(), IdempotencyStore)
 
 - O header `Idempotency-Key` faz o servidor devolver a mesma resposta a qualquer retry **assim que a primeira requisição completa** — sem duplicar registro.
 - Só verbos mutantes (`POST` / `PUT` / `PATCH` / `DELETE`) com o header são elegíveis; o resto passa direto (opt-in por requisição).
-- Não há lock de in-progress: retries concorrentes durante a requisição original rodam o handler — mantenha timeouts do cliente generosos.
+- Há lock de in-progress **por processo**: dentro de uma réplica, requisições concorrentes com a mesma chave são serializadas e a segunda replica a resposta da primeira. Entre réplicas não vale — mantenha timeouts do cliente generosos.
 - `MemoryIdempotencyStore` é process-local e volátil (dev / single-replica); `RedisIdempotencyStore` cobre multi-réplica e sobrevive a restart.
 - Implemente o protocolo `IdempotencyStore` para plugar qualquer backend (ex.: DynamoDB).
 

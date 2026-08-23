@@ -178,7 +178,7 @@ assert isinstance(DynamoIdempotencyStore(), IdempotencyStore)
 
 - The `Idempotency-Key` header makes the server replay the same response on any retry **once the first request completes** — no duplicate record.
 - Only mutating verbs (`POST` / `PUT` / `PATCH` / `DELETE`) carrying the header are eligible; everything else passes straight through (opt-in per request).
-- There is no in-progress lock: concurrent retries during the original request run the handler — keep client timeouts generous.
+- There **is** an in-progress lock, per process: inside one replica, concurrent requests with the same key are serialized and the second replays the first's response. Across replicas it does not hold — keep client timeouts generous.
 - `MemoryIdempotencyStore` is process-local and volatile (dev / single-replica); `RedisIdempotencyStore` covers multi-replica and survives restarts.
 - Implement the `IdempotencyStore` protocol to plug in any backend (e.g. DynamoDB).
 

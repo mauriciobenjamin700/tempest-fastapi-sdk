@@ -508,7 +508,7 @@ Only relevant when `AUTH_BACKEND_LINKS=true`. See [Mode E](#five-operating-modes
 
 | Env var | Type | Default | What it does |
 |---------|------|---------|--------------|
-| `AUTH_BACKEND_LINKS` | `bool` | `false` | `true` = mounts 3 extra HTML endpoints; the email link points at the **backend**, not the frontend. |
+| `AUTH_BACKEND_LINKS` | `bool` | `false` | `true` = mounts 5 extra HTML endpoints; the email link points at the **backend**, not the frontend. |
 | `AUTH_LOGIN_URL` | `str \| None` | `None` | Login URL on the "go to login" button of success pages. `None` hides the button. |
 | `AUTH_ACTIVATION_SUCCESS_TEMPLATE` | `str` | `activation_success.html` | Activation OK HTML page. |
 | `AUTH_ACTIVATION_ERROR_TEMPLATE` | `str` | `activation_error.html` | Activation error HTML page. |
@@ -776,7 +776,7 @@ Signup skips activation entirely and returns `{access_token, refresh_token}` str
 
 ### Mode E — backend-only (v0.32.0+)
 
-When you'd rather have the **whole** link experience happen on the backend, with no frontend page in the loop, flip `AUTH_BACKEND_LINKS=True`. The router then mounts **three extra HTML endpoints** — `GET /auth/activate/{token}`, `GET /auth/password-reset/{token}` and `POST /auth/password-reset/{token}` (form-encoded). The email points the user straight at those endpoints; the backend activates the account / processes the reset / renders HTML success or error — using bundled Jinja2 templates you can shadow.
+When you'd rather have the **whole** link experience happen on the backend, with no frontend page in the loop, flip `AUTH_BACKEND_LINKS=True`. The router then mounts **five extra HTML endpoints** — `GET /auth/activate/{token}`, `GET /auth/password-reset/{token}`, `POST /auth/password-reset/{token}` (form-encoded), `GET /auth/email-change/{token}` and `GET /auth/email-verify/{token}`. The email points the user straight at those endpoints; the backend activates the account / processes the reset / renders HTML success or error — using bundled Jinja2 templates you can shadow.
 
 ```bash
 # .env — Mode E (backend-only)

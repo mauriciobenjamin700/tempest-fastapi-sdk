@@ -348,8 +348,13 @@ print(export.kind, export.size_bytes, export.verified)
 ```
 
 ```text
-tree_ensemble 13124 True
+tree_ensemble 7476 True
 ```
+
+!!! note "O tamanho depende da versão do conversor"
+    Medido com `scikit-learn` 1.9.0 e `skl2onnx` 1.20.0. O número muda quando
+    qualquer um dos dois muda — a versão anterior desta página dizia `13124`,
+    43% acima. Trate como ordem de grandeza, não como constante.
 
 Modelo linear é produto escalar. Árvore é comparação encadeada. Os dois cabem
 em **1,49 KB** de JavaScript — o leitor mora no

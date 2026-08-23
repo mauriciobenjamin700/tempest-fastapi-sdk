@@ -774,8 +774,17 @@ asyncio.run(main())
 
 Pooling is the **attention-mask-weighted mean** of the token embeddings (not a
 naive average over padding), so vectors match the torch `Embedder` for the same
-model (cosine ≈ 1.0). Export the model with `optimum`
-(`optimum-cli export onnx ...`) and point `model_path` at the `.onnx` file.
+model (cosine ≈ 1.0). Export the model in a throwaway environment — `optimum` is **not** a
+dependency of this package, because it pins `transformers<4.58` in the lock of
+whoever installs it:
+
+```bash
+uvx --from "optimum[onnxruntime]" optimum-cli export onnx \
+    --model sentence-transformers/all-MiniLM-L6-v2 \
+    --task feature-extraction exports/minilm
+```
+
+Then point `model_path` at the generated `.onnx`.
 
 ### Batch concurrent inference
 
