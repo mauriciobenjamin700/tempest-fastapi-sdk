@@ -35,8 +35,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   opt-in DB-backed opaque refresh tokens
   (`BaseUserRefreshTokenModel`, `make_user_refresh_token_model`,
   `refresh_token_model=` on `UserAuthService`) with rotation,
-  family-wide reuse detection and `POST /auth/logout`
-  (`LogoutSchema`). **WebAuthn / passkeys (v0.217.0, extra `[webauthn]` =
+  family-wide reuse detection (durable since v0.252.0: the detection path
+  reads `family_id`, rolls the request's staged writes back itself, and only
+  then issues the `UPDATE` and a `commit` that outlives the unwind — before,
+  the revocation only reached `flush()` and went out with the session
+  teardown, so detection without consequence looked like the theft had been
+  handled) and `POST /auth/logout` (`LogoutSchema`). **WebAuthn / passkeys (v0.217.0, extra `[webauthn]` =
   `fido2`):** `WebAuthnService` (both ceremonies + list/delete),
   `BaseWebAuthnCredentialModel`/`make_web_authn_credential_model`,
   `Memory`/`RedisWebAuthnChallengeStore` (`GETDEL`, so single-use holds under
@@ -150,7 +154,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   literals; new static codes `meta-unused` (error), `guard-meta-missing`/
   `guard-meta-annotation`/`meta-key-collision` (warnings). Recipe:
   `docs/recipes/permission-guards.md`.
-- **DB** — `AsyncDatabaseManager`, `BaseRepository[T]` with
+- **DB** — `AsyncDatabaseManager` (+ `is_memory_sqlite_url` /
+  `shared_memory_url`, v0.252.0: a `:memory:` URL is rewritten to a
+  shared-cache database with a normal pool, so overlapping sessions stop
+  dying on `cannot start a transaction within a transaction` without giving
+  up savepoint atomicity; `poolclass=` from the caller is never
+  overridden), `BaseRepository[T]` with
   bulk ops (`bulk_create_values`, `bulk_upsert`, `bulk_update`,
   `add_all`, etc.), `AlembicHelper`, `BaseModel`, audit /
   soft-delete mixins, `reorder_base_columns_first` Alembic

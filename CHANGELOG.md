@@ -253,7 +253,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `poolclass=StaticPool` restaura a topologia antiga, incluindo a falha. Guia de
   migração em `docs/migration.md`, seção 0.252.0.
 
-  Novos `is_memory_sqlite_url` e `shared_memory_url`, exportados na raiz. Seis
+  Novos `is_memory_sqlite_url` e `shared_memory_url`, exportados na raiz. Sete
   casos de regressão em `tests/db/test_connection.py`, cobrindo as duas
   propriedades, a visibilidade entre sessões, o isolamento entre managers e o
   escape hatch.
