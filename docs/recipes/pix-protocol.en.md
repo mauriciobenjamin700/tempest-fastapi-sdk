@@ -30,13 +30,75 @@ from tempest_fastapi_sdk.integrations.payment import (
     PaymentStatus,
     PixCharge,
     PixChargeRequest,
+    PixEventType,
+    PixPaymentEvent,
+    PixPayer,
     PixProvider,
 )
 ```
 
-`PixProvider` is a `Protocol` with four methods: create, read, cancel and
-parse the webhook. Whoever implements it always returns a `PixCharge`, in
-the same shape, wherever it came from.
+!!! info "No extra for the contract"
+    Measured on an install with no extras: the import above and
+    `OpenPixPixProvider` both resolve from the core. Extras are each
+    provider's HTTP client's business, not the contract's.
+
+`PixProvider` is one attribute and four methods — this is
+`integrations/payment/base.py`, unsimplified:
+
+```text
+provider_name: str
+
+async def create_pix_charge(self, request: PixChargeRequest) -> PixCharge
+async def get_pix_charge(self, charge_id: str) -> PixCharge
+async def cancel_pix_charge(self, charge_id: str) -> PixCharge
+def parse_webhook(self, event: Any) -> PixPaymentEvent
+```
+
+A `Protocol`, not a base class: an adapter satisfies it **by shape**, with
+nothing to inherit — the same seam the SDK uses for `RateLimitStore`,
+`QuotaStore`, `ModerationBackend` and `PushDispatcher`.
+
+!!! note "Why it is not `runtime_checkable`"
+    `isinstance` against a runtime-checkable protocol only checks that the
+    **names** exist: an adapter whose `create_pix_charge` takes the wrong
+    arguments would pass the check and fail the charge. What actually checks
+    is `tests/integrations/payment/test_contract.py`, comparing
+    `inspect.signature` — and your type-checker, if you declare the type as
+    `PixProvider` (the next section shows where).
+
+### What goes in: `PixChargeRequest`
+
+| field | type | for |
+| --- | --- | --- |
+| `amount_cents` | `int` | amount in cents — an **integer**, never a `float` |
+| `reference` | `str` | your identifier; comes back in `PixCharge.reference` |
+| `description` | `str` or `None` | the text the payer sees |
+| `expires_in` | `timedelta` or `None` | the payment window |
+| `payer` | `PixPayer` or `None` | payer details, where the provider accepts them |
+
+### What comes out: `PixCharge`
+
+| field | type | for |
+| --- | --- | --- |
+| `provider` | `str` | who issued it (copied from `provider_name`) |
+| `provider_charge_id` | `str` | **the id you store** — it is the argument to `get_pix_charge` and `cancel_pix_charge` |
+| `reference` | `str` | your own identifier, back again |
+| `amount_cents` | `int` | amount, in cents |
+| `currency` | `str` | ISO 4217, defaults to `BRL` |
+| `status` | `PaymentStatus` | the state you branch on |
+| `provider_status` | `str` | the state as the provider names it, raw |
+| `br_code` | `str` or `None` | the EMV copy-and-paste string |
+| `qr_code_image_url` | `str` or `None` | QR as a URL (what OpenPix returns) |
+| `qr_code_base64` | `str` or `None` | QR as Base64 (what Mercado Pago returns) |
+| `end_to_end_id` | `str` or `None` | the Pix settlement identifier |
+| `expires_at` | `datetime` or `None` | when the window closes |
+| `paid_at` | `datetime` or `None` | when it settled |
+| `raw` | `dict[str, Any]` | everything the provider said beyond this |
+
+!!! tip "The QR arrives in both formats because the providers disagree"
+    The contract carries `qr_code_image_url` **and** `qr_code_base64`, and
+    fills in whichever the provider delivers. Your template reads whichever
+    is there, instead of knowing which provider is behind it.
 
 ## Charging
 
@@ -102,9 +164,56 @@ service and a coupled one.
     `float` is money that can be wrong. Converting to whatever unit each
     provider expects is the adapter's problem.
 
+## Reading it back, and cancelling
+
+Creating is a quarter of the contract. The rest of the cycle uses the
+`provider_charge_id` the charge came back with — store that field next to
+your order, because it is the only way back to the provider:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.integrations.payment import (
+    PaymentStatus,
+    PixCharge,
+    PixChargeRequest,
+    PixProvider,
+)
+
+
+async def charge_and_follow(provider: PixProvider) -> PixCharge:
+    """Create a charge, read it back, and withdraw it if it is still open.
+
+    Args:
+        provider (PixProvider): Any provider that implements the contract.
+
+    Returns:
+        PixCharge: The charge in its final observed state.
+    """
+    charge = await provider.create_pix_charge(
+        PixChargeRequest(amount_cents=1990, reference="order-1042"),
+    )
+    charge_id: str = charge.provider_charge_id
+
+    current = await provider.get_pix_charge(charge_id)
+    if current.status is PaymentStatus.PAID:
+        return current
+
+    return await provider.cancel_pix_charge(charge_id)
+```
+
+!!! warning "Polling does not replace the webhook, and the webhook does not replace polling"
+    `get_pix_charge` is the source you control: it answers when you ask. The
+    webhook is the one that arrives first, and may not arrive at all. A
+    service that only listens gets stuck when a delivery fails; one that only
+    polls pays latency on every order. The [OpenPix »](openpix.md) recipe
+    shows both sides wired up — the webhook to react, the read-back to
+    reconcile.
+
 ## Switching provider
 
-The adapter is the only line that changes:
+The adapter is the only line that changes. Keep the choice in one place and
+return the **contract**, never the adapter:
 
 ```python
 from tempest_fastapi_sdk.integrations.payment import PixProvider
@@ -128,7 +237,19 @@ def build_provider(client: OpenPixClient) -> PixProvider:
 
 Because the return type is the `Protocol`, the type-checker starts holding
 you to the contract everywhere else in the service — and it is the one that
-tells you, not production.
+tells you, not production. In a FastAPI service this function is the body of
+the `Depends`: the router receives a `PixProvider` and never learns which
+adapter arrived — that is the point.
+
+!!! info "How many adapters exist today: one"
+    The SDK ships **one** ready adapter — `OpenPixPixProvider`, in
+    `integrations/payment/adapters/openpix.py`. Mercado Pago has a client,
+    schemas and `parse_pix_payment` under
+    `integrations/payment/mercado_pago/`, but **not yet** a `PixProvider`;
+    Stripe comes in through another door, because it
+    [does not do Pix](stripe.md). So the one-line switch is the design, and
+    it is real the moment the second adapter exists — writing one is the last
+    section on this page.
 
 ## States
 
@@ -201,6 +322,30 @@ An event the SDK does not classify becomes `PixEventType.UNKNOWN` **with the
 original name preserved** in `provider_event_name`. It stays visible rather
 than swallowed.
 
+There are six canonical types:
+
+| `PixEventType` | fired when |
+| --- | --- |
+| `CHARGE_CREATED` | the charge was opened |
+| `CHARGE_PAID` | the money arrived |
+| `CHARGE_EXPIRED` | the window closed unpaid |
+| `CHARGE_CANCELLED` | the charge was withdrawn |
+| `CHARGE_REFUNDED` | the amount was returned |
+| `UNKNOWN` | the provider sent something the SDK does not map |
+
+!!! note "Why `parse_webhook` takes `Any`"
+    Each provider delivers a different type: OpenPix delivers an
+    `OpenPixWebhookEvent`, already verified; another provider would deliver
+    the body's dict, or an object of its own. Typing the parameter as one
+    provider's type would tie the contract to that provider — exactly the
+    coupling this page avoids. The adapter knows its own type; the contract
+    only knows what comes **out**, which is `PixPaymentEvent`.
+
+    Verifying the signature happens **before** this, and stays each
+    provider's job: RSA-1024 at OpenPix, HMAC at Stripe. The step-by-step on
+    the OpenPix side, including how to register the URL, is in
+    [OpenPix »](openpix.md).
+
 ## What the provider says beyond the contract
 
 It lives in `raw`:
@@ -235,13 +380,175 @@ def payment_link(charge: PixCharge) -> object | None:
     shows up in the specification's examples but not in the `Charge`
     schema.
 
+## Writing an adapter
+
+An adapter is a class with `provider_name` and the four methods. Nothing to
+inherit. The example below talks to no provider at all — it keeps charges in
+a dict — and that makes it the way to **test your service without a
+network**, which is the first adapter worth writing:
+
+```python
+import asyncio
+from typing import Any
+
+from tempest_fastapi_sdk.integrations.payment import (
+    PaymentStatus,
+    PixCharge,
+    PixChargeRequest,
+    PixEventType,
+    PixPaymentEvent,
+    PixProvider,
+)
+
+
+class FakePixProvider:
+    """A provider that keeps charges in a dict instead of calling anyone.
+
+    Attributes:
+        provider_name (str): The identifier copied into
+            ``PixCharge.provider``.
+    """
+
+    provider_name: str = "fake"
+
+    def __init__(self) -> None:
+        """Start with no charges."""
+        self._charges: dict[str, PixCharge] = {}
+        self._next_id: int = 1
+
+    async def create_pix_charge(self, request: PixChargeRequest) -> PixCharge:
+        """Create a charge in memory.
+
+        Args:
+            request (PixChargeRequest): What the service asked to charge.
+
+        Returns:
+            PixCharge: The charge, in canonical shape.
+        """
+        charge_id = f"fake-{self._next_id}"
+        self._next_id += 1
+        charge = PixCharge(
+            provider=self.provider_name,
+            provider_charge_id=charge_id,
+            reference=request.reference,
+            amount_cents=request.amount_cents,
+            status=PaymentStatus.PENDING,
+            provider_status="created",
+            br_code=f"000201{charge_id}",
+        )
+        self._charges[charge_id] = charge
+        return charge
+
+    async def get_pix_charge(self, charge_id: str) -> PixCharge:
+        """Read a charge back.
+
+        Args:
+            charge_id (str): The provider-side id.
+
+        Returns:
+            PixCharge: The stored charge.
+
+        Raises:
+            KeyError: When no charge carries that id.
+        """
+        return self._charges[charge_id]
+
+    async def cancel_pix_charge(self, charge_id: str) -> PixCharge:
+        """Withdraw an unpaid charge.
+
+        Args:
+            charge_id (str): The provider-side id.
+
+        Returns:
+            PixCharge: The charge in its cancelled shape.
+        """
+        charge = self._charges[charge_id]
+        cancelled = charge.model_copy(
+            update={
+                "status": PaymentStatus.CANCELLED,
+                "provider_status": "cancelled",
+            },
+        )
+        self._charges[charge_id] = cancelled
+        return cancelled
+
+    def parse_webhook(self, event: Any) -> PixPaymentEvent:
+        """Turn a delivery into a canonical event.
+
+        Args:
+            event (Any): Whatever this provider delivers.
+
+        Returns:
+            PixPaymentEvent: The canonical event.
+        """
+        charge = self._charges[str(event["charge_id"])]
+        paid = charge.model_copy(
+            update={"status": PaymentStatus.PAID, "provider_status": "paid"},
+        )
+        self._charges[paid.provider_charge_id] = paid
+        return PixPaymentEvent(
+            provider=self.provider_name,
+            type=PixEventType.CHARGE_PAID,
+            provider_event_name="fake.paid",
+            charge=paid,
+            raw=dict(event),
+        )
+
+
+async def main() -> None:
+    """Exercise the whole contract against the fake."""
+    provider: PixProvider = FakePixProvider()
+
+    charge = await provider.create_pix_charge(
+        PixChargeRequest(amount_cents=1990, reference="order-1042"),
+    )
+    print(charge.provider_charge_id, charge.status.value)
+
+    event = provider.parse_webhook({"charge_id": charge.provider_charge_id})
+    print(event.type.value, event.charge is not None)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Run it and you get:
+
+```text
+fake-1 pending
+charge_paid True
+```
+
+The line doing the checking is `provider: PixProvider = FakePixProvider()`.
+It changes nothing at runtime — it changes what the type-checker demands of
+you. If a method comes out with the wrong signature, `mypy --strict` fails
+there, and not on the day of the first charge.
+
+!!! tip "Three things a real provider's adapter does on top"
+    1. **Converts the unit.** The contract is whole cents; the provider may
+       want decimal currency. The conversion belongs to the adapter, which is
+       why it lives in exactly one place.
+    2. **Maps the state.** The provider's string becomes a `PaymentStatus`,
+       and the original is copied into `provider_status` — nothing discarded.
+    3. **Fills `raw`.** Everything the provider says beyond the contract goes
+       there, so no information dies in translation.
+
+    `OpenPixPixProvider` is the reference for how the three sit together:
+    `integrations/payment/adapters/openpix.py`.
+
 ## Recap
 
 - Your service depends on `PixProvider` and receives `PixCharge`.
+- The contract has four methods: create, read, cancel and parse the webhook.
+  Store `provider_charge_id` — it is the argument to the middle two.
 - Money crosses the contract as an `int` of cents.
 - The state you branch on is `PaymentStatus`; the provider's own sits
   beside it in `provider_status`.
 - Webhook signatures stay per provider; the event that comes out is
-  canonical.
+  canonical, and whatever the SDK does not map arrives as `UNKNOWN` with the
+  original name.
 - Nothing is lost: whatever the provider says beyond the contract is in
   `raw`.
+- An adapter is a class with `provider_name` and the four methods, no
+  inheritance. The SDK ships one today (OpenPix); the in-memory fake above is
+  the one you write first, to test without a network.
