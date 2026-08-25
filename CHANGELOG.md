@@ -5,6 +5,70 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.255.0] — 2026-08-25
+
+### Added
+
+- **`WebPushSubscriptionService.notify_all()`: o aviso global, com a mesma poda
+  do envio por usuário.** O segundo caso de uso mais comum do Web Push —
+  manutenção, release, campanha — era o único que obrigava o consumidor a
+  descer para o dispatcher: listar as linhas por fora, montar os schemas na
+  mão, chamar `send_many` e chamar `prune` com o retorno, reimplementando o
+  `notify_user` inteiro só para trocar a fonte da lista.
+
+  ```python
+  entregues = await service.notify_all(
+      WebPushPayloadSchema(title="Manutenção programada", body="02h às 03h."),
+  )
+  ```
+
+  Duas diferenças em relação ao `notify_user`, as duas sobre tamanho.
+  **Anda em lotes** (`page_size=500`), em vez de carregar a tabela inteira e
+  abrir N mil corrotinas de uma vez. E **limita o paralelismo**
+  (`max_concurrency=32`), porque cada dispatch é uma requisição TLS a um push
+  service e milhares ao mesmo tempo rendem rate limit, não envio mais rápido.
+
+  O passeio é por cursor, não por offset, porque o método **apaga enquanto
+  anda**. Medido numa tabela de 8 inscrições, apagando 4 no caminho, em páginas
+  de 2: o passeio por offset visitou 6 linhas e nunca chegou em duas — uma
+  delas viva. O cursor compara `(created_at, id)` em vez de contar posições.
+  Linha criada durante o broadcast não é visitada, e é isso que faz o passeio
+  terminar.
+
+- **`WebPushSubscriptionService.list_all()`.** Todas as inscrições, de todos os
+  usuários, para quem precisa das linhas em si — export, contagem por host,
+  migração. Para entregar, prefira `notify_all`, que não segura a tabela em
+  memória.
+
+- **`WebPushDispatcher.send_many(max_concurrency=...)`.** Semáforo opcional
+  sobre o fan-out. `None` (default) mantém o comportamento de sempre — todo
+  dispatch começa de imediato, que é o certo para os poucos aparelhos de uma
+  pessoa.
+
+### Fixed
+
+- **Inscrição morta do Edge agora é podada: o WNS diz `400`, não `404`.** O
+  dispatcher tratava `404` e `410` como assinatura morta — os dois status que o
+  padrão reserva para isso, e que FCM e Apple respondem. O WNS, push service da
+  Microsoft usado pelo Edge, responde **`400 Bad Request` com corpo vazio**
+  quando o navegador foi desinstalado, o usuário saiu da conta Microsoft, ou a
+  inscrição foi despejada.
+
+  O resultado era que assinatura morta de Edge nunca era podada: ficava no
+  banco para sempre, falhava em todo envio, e o `notify_user` a contava como
+  não entregue indefinidamente.
+
+  A regra é escopada ao host: `400` de `notify.windows.com` vira
+  `WebPushGoneError`; `400` de qualquer outro serviço continua `WebPushError`,
+  porque ali significa requisição malformada — e apagar a inscrição por causa
+  disso desinscreveria um aparelho vivo, que é o erro pior dos dois.
+
+- **A docstring de `send_many` descrevia comportamento que o código não tinha.**
+  Ela afirmava que toda falha era "also returned in the gone list when the
+  endpoint is known"; o código só coleta `WebPushGoneError`. A lista alimenta o
+  `prune`, então incluir falha transitória apagaria aparelho vivo — o código
+  estava certo e a prosa, errada.
+
 ## [0.254.0] — 2026-08-25
 
 ### Added

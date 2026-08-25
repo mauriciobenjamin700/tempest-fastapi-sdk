@@ -484,11 +484,103 @@ async def notify_order_paid(
         await subscriptions_repo.delete_by_endpoint(subscription.endpoint)
 ```
 
-## Broadcast with automatic pruning
+## Broadcast: one announcement for everyone
 
-`send_many()` fans out the same payload concurrently (`asyncio.gather`)
-and **returns the dead endpoints** (404/410) for you to remove — other
-failures are logged, not raised.
+Sending to the whole base is `notify_all()`, on the same service that
+already stores the subscriptions — the "maintenance at 2am", "new release
+is out", campaign case:
+
+```python
+from tempest_fastapi_sdk import WebPushPayloadSchema
+from tempest_fastapi_sdk.webpush import WebPushSubscriptionService
+
+from src.db.models import WebPushSubscriptionModel
+
+
+async def announce_maintenance(
+    service: WebPushSubscriptionService[WebPushSubscriptionModel],
+) -> int:
+    """Notify every subscribed device, pruning the dead ones.
+
+    Args:
+        service (WebPushSubscriptionService[WebPushSubscriptionModel]): The
+            service assembled by `get_webpush_service`.
+
+    Returns:
+        int: How many devices received it.
+    """
+    return await service.notify_all(
+        WebPushPayloadSchema(
+            title="Scheduled maintenance",
+            body="The app is unavailable from 02:00 to 03:00.",
+        ),
+    )
+```
+
+It does what `notify_user` does — deliver, prune whatever came back dead,
+return how many received it — without the user filter. Two things differ,
+and both are about size:
+
+- **It walks in batches.** `page_size=500` by default: the table is walked
+  page by page, so memory does not grow with the base. `notify_user` loads
+  everything at once, which is right for one person's two or three devices
+  and risky for the whole base.
+- **It bounds the fan-out.** `max_concurrency=32` by default. Every dispatch
+  is a TLS request to a push service; thousands at once earn a rate limit,
+  not a faster send. `None` fires the whole batch at once.
+
+```python
+from tempest_fastapi_sdk import WebPushPayloadSchema
+from tempest_fastapi_sdk.webpush import WebPushSubscriptionService
+
+from src.db.models import WebPushSubscriptionModel
+
+
+async def announce_gently(
+    service: WebPushSubscriptionService[WebPushSubscriptionModel],
+    payload: WebPushPayloadSchema,
+    origin: str,
+) -> int:
+    """Send in smaller batches, with fewer connections at once.
+
+    Args:
+        service (WebPushSubscriptionService[WebPushSubscriptionModel]): The
+            subscription service.
+        payload (WebPushPayloadSchema): The announcement.
+        origin (str): Endpoint of the device that triggered the action,
+            which must not notify itself.
+
+    Returns:
+        int: How many devices received it.
+    """
+    return await service.notify_all(
+        payload,
+        page_size=100,
+        max_concurrency=8,
+        exclude_endpoints=[origin],
+    )
+```
+
+!!! note "Why the walk is cursor-based, not offset-based"
+    `notify_all` **deletes as it walks**: every batch prunes the endpoints
+    the push service reported as dead. With offset pagination each deleted
+    row shifts the following ones back by one, and the next page starts past
+    a row nobody visited.
+
+    Measured on a table of 8 subscriptions, deleting 4 along the way, in
+    pages of 2: the offset walk visited **6** rows and never reached two —
+    one of them **alive**. The cursor walk compares `(created_at, id)`
+    instead of counting positions, so deleting shifts nothing.
+
+    A row created **during** the broadcast is not visited: the cursor moves
+    from newest to oldest, and a new subscription is newer than the page
+    already passed. That is what makes the walk terminate.
+
+### Low-level path: `send_many`
+
+When the recipient list is not "everyone" — the subscribers of a topic, the
+result of a query of yours — the dispatcher takes the ready list and returns
+the dead endpoints for you to prune:
 
 ```python
 from tempest_fastapi_sdk.webpush import (
@@ -497,30 +589,45 @@ from tempest_fastapi_sdk.webpush import (
     WebPushSubscriptionSchema,
 )
 
-from src.core.settings import settings
 from src.db.repositories import WebPushSubscriptionRepository
-
-dispatcher = WebPushDispatcher(**settings.webpush_kwargs())
-
-subscriptions_repo = WebPushSubscriptionRepository(session)
-
-session = None  # provided by db.get_session_context() in your code
 
 
 async def broadcast(
+    dispatcher: WebPushDispatcher,
+    repository: WebPushSubscriptionRepository,
     subs: list[WebPushSubscriptionSchema],
     payload: WebPushPayloadSchema,
 ) -> None:
-    gone: list[str] = await dispatcher.send_many(subs, payload)
+    """Fan out to a ready list and prune whatever came back dead.
+
+    Args:
+        dispatcher (WebPushDispatcher): The configured dispatcher.
+        repository (WebPushSubscriptionRepository): Where subscriptions live.
+        subs (list[WebPushSubscriptionSchema]): The recipients.
+        payload (WebPushPayloadSchema): The notification.
+    """
+    gone: list[str] = await dispatcher.send_many(subs, payload, max_concurrency=16)
     if gone:
-        await subscriptions_repo.delete_by_endpoints(gone)
+        await repository.delete_by_endpoints(gone)
 ```
 
-!!! warning "Always prune dead subscriptions"
-    Subscriptions expire when the user changes device or revokes the
-    permission. Ignoring `WebPushGoneError` / the `send_many` return value
-    piles up zombie endpoints and wastes dispatch. Delete them as soon as
-    the push service answers 404/410.
+!!! warning "The returned list holds dead subscriptions only"
+    `send_many` returns **only** the endpoints the push service reported as
+    dead — exactly what is safe to delete. A transient failure (timeout,
+    `503`) is logged and left out: a delivery that failed once is not a
+    device that went away, and deleting it would unsubscribe an active user.
+
+!!! tip "Edge does not say 404 — it says 400"
+    The standard reserves `404` and `410` for "this subscription is dead",
+    and that is what FCM and Apple's push service answer. WNS — Microsoft's
+    service, the one Edge subscribes to — answers **`400 Bad Request` with an
+    empty body** when the browser was uninstalled, the user signed out of
+    their Microsoft account, or the subscription was evicted.
+
+    The dispatcher handles that case: a `400` from a `notify.windows.com`
+    host is a `WebPushGoneError`, just like a `410`. A `400` from any other
+    service stays a `WebPushError` — there it means a malformed request, and
+    deleting the subscription over it would unsubscribe a live device.
 
 ## Recap
 
@@ -530,4 +637,11 @@ async def broadcast(
 - Assemble the layers: **model** (FK to your user) → **repository** (`BaseRepository` subclass) → **service** (the SDK's, no wrapper) → **controller** (`require_active` gate) → **providers** (one per file, `session` via `Depends`) → **router** (bare prefix, controller via `Depends`) → registration under `/api`.
 - The `WebPushClient` JSON (tempest-react-sdk) *is* the `WebPushSubscriptionSchema` — `subscribe`/`unsubscribe` map directly.
 - `make_web_push_router` is an opt-in shortcut that **skips the controller** — good for a prototype, not for a layered app.
-- Low-level path: `send()` for one target, `send_many()` for broadcast (returns the dead ones); handle `WebPushGoneError` (404/410) by pruning the store.
+- A global announcement is `notify_all()`: the same pruning as `notify_user`, in
+  batches (`page_size=500`) and with a bounded fan-out (`max_concurrency=32`).
+  The walk is cursor-based because the method deletes as it goes.
+- Low-level path: `send()` for one target, `send_many()` for a ready list
+  (returns only the dead ones, never a transient failure); handle
+  `WebPushGoneError` by pruning the store.
+- A dead subscription is `404`/`410` on every service — **and `400` on WNS**,
+  which is how Edge spells the same thing. The dispatcher covers all three.
