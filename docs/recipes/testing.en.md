@@ -246,3 +246,21 @@ Pass `metadata=` when your project mixes the SDK's `BaseModel.metadata` with a s
     - The `tempest_fastapi_sdk.testing` helpers (`test_database` / `test_session`) give ready-made fixtures when you don't need a full `AsyncDatabaseManager`.
 
 **Next step:** see the [database recipe](database.md) for the `BaseRepository` and migration patterns these tests exercise.
+
+## Recap
+
+- The suite is pytest + pytest-asyncio + in-memory SQLite +
+  `httpx.AsyncClient`: a throw-away database per test, never touching the
+  production one.
+- Shared fixtures live in your project's `conftest.py` — the SDK ships the
+  helpers, not the fixtures, so production runtimes never need `pytest` to be
+  importable.
+- `create_test_engine`, `test_database` and `test_session` cover the case where
+  you do not want a whole `AsyncDatabaseManager` (no `lifespan`, no health
+  probes).
+- `ModelFactory` + `seq` remove the required-field boilerplate: declare the
+  defaults once, override per test, and the row index reaches the callable so a
+  unique column stays unique across `create_many`.
+- An endpoint test boots the app with `AsyncClient` and swaps dependencies
+  through `dependency_overrides` — the same seam where a [fake »](fakes.md)
+  goes in place of the real provider.

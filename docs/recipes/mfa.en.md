@@ -317,6 +317,23 @@ Full surface:
 
 ---
 
+## Recap
+
+- TOTP is the 6-digit code in an Authenticator app: the server and the app
+  share a secret, and the code is derived from it plus the clock.
+- The extra is `[mfa]` (it brings `pyotp`) on top of `[auth]`, and nothing is
+  mounted unless `AUTH_MFA_ENABLED=True`.
+- The router requires `recovery_code_model`: without it, it raises
+  `RuntimeError` at wiring time rather than in production — losing the phone
+  with no recovery code means losing the account.
+- With MFA on, `POST /auth/login` stops returning the JWT pair: it returns
+  `mfa_required=True` plus an intermediate token, and the second step trades a
+  code for the JWTs.
+- If you mount your own endpoints, the six `UserAuthService` methods cover the
+  whole cycle without the router.
+- The TOTP secret lives on `UserModel` — consider encrypting that column at
+  rest.
+
 ## Next steps
 
 - **[Auth flow (signup/reset) »](auth-flow.md)** — the local-account flow MFA extends.

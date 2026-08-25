@@ -177,18 +177,30 @@ SSE (`EventStream`/`SSEBroker` com backpressure), WebSocket router, Web Push.
 import asyncio
 
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 
 from tempest_fastapi_sdk import EventStream
-
-task = asyncio.current_task()
 
 app = FastAPI()
 
 
 @app.get("/events")
-async def events():
+async def events() -> StreamingResponse:
+    """Stream one tick per second until the client disconnects.
+
+    Returns:
+        StreamingResponse: The SSE response. ``on_disconnect`` cancels the
+        publisher, so it never outlives the connection.
+    """
     stream = EventStream()
-    ...
+
+    async def pump() -> None:
+        """Publish a tick every second."""
+        while True:
+            await stream.publish({"tick": True}, event="tick")
+            await asyncio.sleep(1)
+
+    task = asyncio.create_task(pump())
     return stream.response(on_disconnect=task.cancel)
 ```
 

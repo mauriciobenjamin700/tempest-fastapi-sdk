@@ -684,12 +684,24 @@ runs in the worker as often as in a request, and a worker has no HTTP
 status to answer with. Translate at the boundary with
 [`not_found_exception(...)`](openapi-errors.md#the-factory-not_found_exception-conflict_exception).
 
-**Recap:** subclass `BaseJobModel` and get the table; `enqueue` writes
-the row before the task leaves; `claim` separates "queued" from
-"running" and is safe under contention; `succeed`/`fail` close the row
-and drop the payload; `watch` is the poll with no session left hanging;
-`reclaim_stale` frees what a dead worker left stuck; `cancel` +
-`run_cancellable` stop work already running, cooperatively, because
-there is no other way. `PhasePlan` + `ProgressTracker` turn measured phases into the
-percentage the row carries, and `watch(emit_on=...)` is what makes the
-bar move between two status changes.
+## Recap
+
+- The queue hands the call to a worker; it answers none of what the person in
+  front of the screen is asking. `JobStore` gives long work a **row of its
+  own**, and that row is what the screen reads.
+- `BaseJobModel` is abstract: your service ships the concrete table and picks
+  the `__tablename__`.
+- `JobStore` takes the `AsyncDatabaseManager`, not a session — each operation
+  opens and closes its own, because a worker and a request do not share a unit
+  of work.
+- `reclaim_stale` exists because a `running` row nobody will ever close is the
+  failure the queue cannot see: the process died holding the job.
+- Cancelling is cooperative: the request writes `CANCELLED` and the worker
+  aborts at its next checkpoint. No broker kills in-flight work for you.
+- Status answers "is it done?"; progress answers "how much is left?". Those are
+  different questions: `PhasePlan` + `ProgressTracker` turn a measured phase
+  into the percentage the row carries, and `watch(emit_on=...)` is what makes
+  the bar move between two status changes. `StageMap` covers the third question
+  — several stages on one record.
+- The store raises `LookupError` / `RuntimeError`, not `AppException`: it runs
+  in the worker, where there is no request to turn into an HTTP response.

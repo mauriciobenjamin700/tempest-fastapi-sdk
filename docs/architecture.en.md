@@ -183,7 +183,7 @@ What you inherit by subclassing `BaseService[RepositoryT, ResponseT]`:
 | Method | Returns | Notes |
 | --- | --- | --- |
 | `get_by_id(id)` | `ResponseT` | Awaits `repository.get_by_id` + `repository.map_to_response`. Raises `repository.not_found_exception` on miss. |
-| `get_or_none(filters)` | `ResponseT \| None` | Same shape, returns `None` instead of raising. |
+| `get_or_none(filters)` | ``ResponseT | None`` | Same shape, returns `None` instead of raising. |
 | `list(filters=None, order_by=None, ascending=True)` | `list[ResponseT]` | Returns `[]` on empty match (never raises). |
 | `paginate(filters=None, order_by=None, page=1, page_size=20, ascending=True)` | `dict` with mapped `items` + `total`/`page`/`page_size`/`pages`. | Offset pagination via `repository.paginate`. |
 | `count(filters=None)` | `int` | Pass-through to `repository.count`. |

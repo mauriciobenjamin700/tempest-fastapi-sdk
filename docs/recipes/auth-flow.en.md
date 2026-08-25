@@ -439,7 +439,7 @@ Controls the signing and lifetime of the tokens login returns. **It's the same `
 | `JWT_ALGORITHM` | `str` | `HS256` | JOSE algorithm. `HS256`/`HS512` (symmetric secret) or `RS256` (key pair). |
 | `JWT_ACCESS_TTL_SECONDS` | `int` (≥1) | `3600` | **Access token** lifetime (1 h). Short by design — renew via refresh. |
 | `JWT_REFRESH_TTL_SECONDS` | `int` (≥1) | `604800` | **Refresh token** lifetime (7 days). |
-| `JWT_ISSUER` | `str \| None` | `None` | `iss` claim. `None` omits the claim. |
+| `JWT_ISSUER` | ``str | None`` | `None` | `iss` claim. `None` omits the claim. |
 
 !!! danger "The default `JWT_SECRET` leaks tokens"
     The default `change-me-change-me-change-me-32` exists only to boot locally. In production, **anyone** with the default can forge a valid JWT. Generate a strong secret (`openssl rand -base64 48`) and inject it via a secret manager — never commit it.
@@ -509,7 +509,7 @@ Only relevant when `AUTH_BACKEND_LINKS=true`. See [Mode E](#five-operating-modes
 | Env var | Type | Default | What it does |
 |---------|------|---------|--------------|
 | `AUTH_BACKEND_LINKS` | `bool` | `false` | `true` = mounts 5 extra HTML endpoints; the email link points at the **backend**, not the frontend. |
-| `AUTH_LOGIN_URL` | `str \| None` | `None` | Login URL on the "go to login" button of success pages. `None` hides the button. |
+| `AUTH_LOGIN_URL` | ``str | None`` | `None` | Login URL on the "go to login" button of success pages. `None` hides the button. |
 | `AUTH_ACTIVATION_SUCCESS_TEMPLATE` | `str` | `activation_success.html` | Activation OK HTML page. |
 | `AUTH_ACTIVATION_ERROR_TEMPLATE` | `str` | `activation_error.html` | Activation error HTML page. |
 | `AUTH_PASSWORD_RESET_FORM_TEMPLATE` | `str` | `password_reset_form.html` | New-password HTML form. |
@@ -529,10 +529,10 @@ There's a whole section dedicated to this, explained step by step:
 
 | Env var | Type | Default | What it does |
 |---------|------|---------|--------------|
-| `AUTH_TOKEN_DELIVERY` | `"bearer" \| "cookie" \| "both"` | `bearer` | How login/refresh return the JWT pair. See [Token delivery](#token-delivery). |
+| `AUTH_TOKEN_DELIVERY` | ``"bearer" | "cookie" | "both"`` | `bearer` | How login/refresh return the JWT pair. See [Token delivery](#token-delivery). |
 | `AUTH_COOKIE_SECURE` | `bool` | `true` | Flag cookies as `Secure` (HTTPS only). **Turn off only on plain HTTP** — otherwise the browser drops the cookie. |
-| `AUTH_COOKIE_SAMESITE` | `"lax" \| "strict" \| "none"` | `lax` | A cross-site SPA needs `none` (+ `Secure=true`). |
-| `AUTH_COOKIE_DOMAIN` | `str \| None` | `None` | Cookie `Domain`. `None` = exact host. Use `.example.com` to share across subdomains. |
+| `AUTH_COOKIE_SAMESITE` | ``"lax" | "strict" | "none"`` | `lax` | A cross-site SPA needs `none` (+ `Secure=true`). |
+| `AUTH_COOKIE_DOMAIN` | ``str | None`` | `None` | Cookie `Domain`. `None` = exact host. Use `.example.com` to share across subdomains. |
 | `AUTH_ACCESS_COOKIE_NAME` | `str` | `access_token` | Access-token cookie name. |
 | `AUTH_REFRESH_COOKIE_NAME` | `str` | `refresh_token` | Refresh-token cookie name (scoped to the refresh endpoint path). |
 
@@ -1367,6 +1367,23 @@ It pairs directly with `current_user_dependency(soft=True)`: the route passes `U
     The same guards exist as static methods on `UserAuthService` — `auth_service.require_admin(current)` — for when you already inject the service and don't want an extra import. Same semantics, same exception.
 
 ---
+
+## Recap
+
+- The bundled flow covers signup, activation, login, password reset and email
+  change — and the concrete `UserTokenModel` is the only table your service has
+  to ship.
+- Password recovery and **email** recovery are different flows: one is for
+  someone who forgot the password, the other for someone who lost the inbox.
+- The five operating modes exist because "who renders the page" changes per
+  project: pure API, backend-rendered, SPA, or a mix.
+- `AUTH_TOKEN_DELIVERY` decides whether the JWT pair leaves in the body, in a
+  cookie or both — and a cross-site cookie needs `SameSite=none` plus `Secure`.
+- Templates and language are overridable, but the defaults work without you
+  creating a single file.
+- The router prefix and the template URL have to agree: mounting under `/api`
+  with a template pointing at the root fails on the user's click, not at deploy
+  time.
 
 ## Next steps
 

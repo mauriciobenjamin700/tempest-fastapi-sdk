@@ -438,7 +438,7 @@ Controla a assinatura e validade dos tokens que o login devolve. **É o mesmo `J
 | `JWT_ALGORITHM` | `str` | `HS256` | Algoritmo JOSE. `HS256`/`HS512` (segredo simétrico) ou `RS256` (par de chaves). |
 | `JWT_ACCESS_TTL_SECONDS` | `int` (≥1) | `3600` | Validade do **access token** (1 h). Curto por design — renove via refresh. |
 | `JWT_REFRESH_TTL_SECONDS` | `int` (≥1) | `604800` | Validade do **refresh token** (7 dias). |
-| `JWT_ISSUER` | `str \| None` | `None` | Claim `iss`. `None` omite o claim. |
+| `JWT_ISSUER` | ``str | None`` | `None` | Claim `iss`. `None` omite o claim. |
 
 !!! danger "`JWT_SECRET` default vaza tokens"
     O default `change-me-change-me-change-me-32` existe só pra subir local. Em produção, **qualquer um** com o default consegue forjar um JWT válido. Gere um segredo forte (`openssl rand -base64 48`) e injete por secret manager — nunca commite.
@@ -508,7 +508,7 @@ Só relevantes quando `AUTH_BACKEND_LINKS=true`. Veja o [Modo E](#cinco-modos-de
 | Env var | Tipo | Default | O que faz |
 |---------|------|---------|-----------|
 | `AUTH_BACKEND_LINKS` | `bool` | `false` | `true` = monta 5 endpoints HTML extras; o link do e-mail aponta pro **backend**, não pro frontend. |
-| `AUTH_LOGIN_URL` | `str \| None` | `None` | URL de login no botão "Ir pro login" das páginas de sucesso. `None` esconde o botão. |
+| `AUTH_LOGIN_URL` | ``str | None`` | `None` | URL de login no botão "Ir pro login" das páginas de sucesso. `None` esconde o botão. |
 | `AUTH_ACTIVATION_SUCCESS_TEMPLATE` | `str` | `activation_success.html` | Página HTML de ativação OK. |
 | `AUTH_ACTIVATION_ERROR_TEMPLATE` | `str` | `activation_error.html` | Página HTML de ativação com erro. |
 | `AUTH_PASSWORD_RESET_FORM_TEMPLATE` | `str` | `password_reset_form.html` | Form HTML de nova senha. |
@@ -527,10 +527,10 @@ Tem uma seção inteira só pra isso, explicada bem devagar: [Idioma dos e-mails
 
 | Env var | Tipo | Default | O que faz |
 |---------|------|---------|-----------|
-| `AUTH_TOKEN_DELIVERY` | `"bearer" \| "cookie" \| "both"` | `bearer` | Como o login/refresh devolvem o par JWT. Veja [Entrega de token](#entrega-de-token). |
+| `AUTH_TOKEN_DELIVERY` | ``"bearer" | "cookie" | "both"`` | `bearer` | Como o login/refresh devolvem o par JWT. Veja [Entrega de token](#entrega-de-token). |
 | `AUTH_COOKIE_SECURE` | `bool` | `true` | Marca os cookies como `Secure` (só trafegam via HTTPS). **Desligue só em HTTP puro** — senão o browser descarta o cookie. |
-| `AUTH_COOKIE_SAMESITE` | `"lax" \| "strict" \| "none"` | `lax` | SPA cross-site precisa `none` (+ `Secure=true`). |
-| `AUTH_COOKIE_DOMAIN` | `str \| None` | `None` | `Domain` do cookie. `None` = host exato. Use `.example.com` pra compartilhar entre subdomínios. |
+| `AUTH_COOKIE_SAMESITE` | ``"lax" | "strict" | "none"`` | `lax` | SPA cross-site precisa `none` (+ `Secure=true`). |
+| `AUTH_COOKIE_DOMAIN` | ``str | None`` | `None` | `Domain` do cookie. `None` = host exato. Use `.example.com` pra compartilhar entre subdomínios. |
 | `AUTH_ACCESS_COOKIE_NAME` | `str` | `access_token` | Nome do cookie do access token. |
 | `AUTH_REFRESH_COOKIE_NAME` | `str` | `refresh_token` | Nome do cookie do refresh token (escopado ao path do endpoint de refresh). |
 
@@ -1362,6 +1362,22 @@ Combina direto com o `current_user_dependency(soft=True)`: a rota passa `UserMod
     Os mesmos guards existem como staticmethods em `UserAuthService` — `auth_service.require_admin(current)` — pra quando você já injeta o service e não quer um import extra. Mesma semântica, mesma exceção.
 
 ---
+
+## Recap
+
+- O fluxo bundled cobre signup, ativação, login, reset de senha e troca de
+  e-mail — e o `UserTokenModel` concreto é a única tabela que o seu serviço
+  precisa ship.
+- Recuperação de senha e recuperação de **e-mail** são fluxos diferentes: um é
+  para quem esqueceu a senha, o outro para quem perdeu o acesso à caixa.
+- Os cinco modos de operação existem porque "quem renderiza a página" muda por
+  projeto: API pura, backend renderizando, SPA, ou combinação.
+- `AUTH_TOKEN_DELIVERY` decide se o par de JWT sai no corpo, no cookie ou nos
+  dois — e cookie cross-site exige `SameSite=none` mais `Secure`.
+- Template e idioma são sobrescrevíveis, mas o default funciona sem você criar
+  arquivo nenhum.
+- Prefixo do router e URL do template têm de concordar: montar em `/api` com
+  template apontando para a raiz dá 404 no clique do usuário, não no deploy.
 
 ## Próximos passos
 

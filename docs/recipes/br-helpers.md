@@ -356,7 +356,7 @@ Pequenos helpers stateless de `tempest_fastapi_sdk.utils` dos quais o próprio S
 | --- | --- | --- |
 | `utcnow()` | `() -> datetime` | Horário atual como datetime UTC ciente de timezone — o SDK usa isto para os defaults de `created_at` / `updated_at`. |
 | `to_utc(value)` | `(datetime) -> datetime` | Converte datetimes naive para UTC (assumido UTC) e datetimes aware para UTC via `astimezone`. Usado pelos field validators de `BaseResponseSchema`. |
-| `modify_dict(data, exclude=None, include=None)` | `(dict, list[str] \| None, dict \| None) -> dict` | Filtro + merge em uma passada. Remove chaves sensíveis antes de logar ou faz merge de campos computados ao mapear payloads para modelos ORM. |
+| `modify_dict(data, exclude=None, include=None)` | ``(dict, list[str] | None, dict | None) -> dict`` | Filtro + merge em uma passada. Remove chaves sensíveis antes de logar ou faz merge de campos computados ao mapear payloads para modelos ORM. |
 
 #### Timestamps do mesmo jeito em todo lugar
 
@@ -424,3 +424,16 @@ Todo helper tem sua própria receita — esta seção é o mapa rápido:
 | `MetricsUtils` (CPU/memória/disco/GPU) | [Receita de métricas do sistema](metrics.md) |
 | `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField`, `is_valid_*`, `normalize_*`, `only_digits` | [CPF / CNPJ / telefone](#cpf-cnpj-telefone) |
 | `UF`, `Region`, `StateBR`, `CityBR`, `ChoiceBR`, `UFField`, `CityNameField`, `list_states`, `get_state`, `cities_by_uf`, `states_by_region`, `uf_choices`, `region_choices`, `city_choices`, `is_valid_uf`, `normalize_uf`, `is_valid_city`, `normalize_city` | [Estados e municípios](#estados-e-municipios) |
+
+## Recap
+
+- `tempest_fastapi_sdk.utils.regex` traz regex, validador, normalizador e tipo
+  Pydantic para CPF, CNPJ, telefone e CEP — tudo stdlib, sem extra nenhum.
+- O tipo `Annotated` (`CPFField`, `CEPField`, …) normaliza na entrada, então o
+  schema aceita `"013.100-000"` e o seu código lê só dígito.
+- UF e município saem de tabela embutida, para validar payload e montar
+  `<select>` sem consultar serviço externo.
+- Dinheiro tem as duas direções: número para texto em real, e texto de volta
+  para centavo inteiro.
+- `utcnow`, `to_utc` e `modify_dict` são os helpers stateless que o próprio SDK
+  usa — disponíveis sem extra.

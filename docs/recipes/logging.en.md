@@ -187,3 +187,13 @@ Query parameters:
     - `500.log` isolates uncaught 500s (the `http_500` marker).
     - `make_logs_router` serves those files, paginated and authenticated.
 
+## Recap
+
+- `configure_logging` writes structured JSON to stdout **and** to `logs/`, one
+  file per level, each file carrying only its own level.
+- `500.log` is isolated on purpose: the file you open first during an incident
+  does not arrive mixed with everything else.
+- The request id lands on every line, so a user complaint becomes a `grep` —
+  that is what separates structured logging from pretty logging.
+- `make_logs_router` mounts a paginated `GET /logs` over those files, newest
+  first, so you can read them without shell access to the container.

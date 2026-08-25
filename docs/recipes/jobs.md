@@ -680,11 +680,24 @@ worker tanto quanto num request, e worker não tem status HTTP para
 responder. Traduza na borda com
 [`not_found_exception(...)`](openapi-errors.md#a-fabrica-not_found_exception-conflict_exception).
 
-**Recap:** subclasse `BaseJobModel` e ganhe a tabela; `enqueue` grava a
-linha antes de a task sair; `claim` separa "na fila" de "rodando" e é
-seguro sob disputa; `succeed`/`fail` fecham e apagam o `payload`;
-`watch` é o polling sem sessão pendurada; `reclaim_stale` devolve o que
-um worker morto deixou preso; `cancel` + `run_cancellable` param o que
-está rodando, de forma cooperativa, porque não existe outra. `PhasePlan` + `ProgressTracker` transformam fases medidas na
-porcentagem que a linha carrega, e `watch(emit_on=...)` é o que faz
-a barra andar entre duas mudanças de status.
+## Recap
+
+- A fila entrega a chamada ao worker; ela não responde nada do que a pessoa na
+  frente da tela pergunta. O `JobStore` dá ao trabalho longo uma **linha
+  própria**, e é essa linha que a tela lê.
+- `BaseJobModel` é abstrata: o seu serviço ship a tabela concreta e escolhe o
+  `__tablename__`.
+- O `JobStore` recebe o `AsyncDatabaseManager`, não uma sessão — cada operação
+  abre e fecha a sua, porque worker e request não compartilham unidade de
+  trabalho.
+- `reclaim_stale` existe porque `running` que ninguém vai fechar é a falha que a
+  fila não enxerga: o processo morreu segurando o job.
+- Cancelar é cooperativo: a request escreve `CANCELLED`, e o worker aborta no
+  próximo checkpoint. Nenhum broker mata trabalho em andamento por você.
+- Status responde "já terminou?"; progresso responde "quanto falta?". São
+  perguntas diferentes: `PhasePlan` + `ProgressTracker` transformam fase medida
+  em porcentagem, e `watch(emit_on=...)` é o que faz a barra andar entre duas
+  mudanças de status. `StageMap` cobre a terceira pergunta — vários estágios no
+  mesmo registro.
+- Os erros do store são `LookupError` / `RuntimeError`, não `AppException`:
+  ele roda no worker, onde não existe request para transformar em HTTP.

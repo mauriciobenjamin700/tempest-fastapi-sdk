@@ -1774,6 +1774,27 @@ lifespan turns slow queries into actionable log lines, with optional
 
 ---
 
+## Recap
+
+- `BaseModel` brings `id`, `is_active`, `created_at` and `updated_at`; you
+  declare only your domain columns, and the Alembic hook keeps that order in
+  generated migrations.
+- One `AsyncDatabaseManager` per application, in `resources.py` — not one per
+  request.
+- `BaseRepository` works instantiated for plain CRUD and subclassed once real
+  queries appear; a filter is a dict with predictable conventions, and `None`
+  skips instead of turning into an accidental `IS NULL`.
+- Bulk work comes in two families: the one that hands the instances back
+  (`add_all`, `update_many`) and the one that does not, but is a single trip to
+  the database.
+- A mixin joins when the domain asks for it: soft-delete and auditing cost a
+  column and an implicit filter.
+- Pagination has two shapes with different purposes: `paginate` to walk pages,
+  `cursor_paginate` for a list that grows while the user reads it.
+- Migrations are `init` once, `revision --autogenerate` per change, `upgrade` on
+  deploy — and `SlowQueryLogger` on the engine shows the slow query with
+  `EXPLAIN` before a user complains.
+
 ## Next steps
 
 This page covered the core. The advanced database features have dedicated

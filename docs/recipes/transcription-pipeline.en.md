@@ -623,7 +623,9 @@ carries `service=NULL` and never becomes a 0% slice on the chart.
 | `ValueError` (building the `StageMap`) | empty stage list, duplicate stage, or two stages resolving to the same column |
 | `ValueError` (building the `SpeechToText`) | `batch_size` without `vad_filter=True` — it is the VAD that cuts the audio into the chunks a batch is made of |
 
-**Recap:** `StageMap` names the state columns without declaring any, and
+## Recap
+
+`StageMap` names the state columns without declaring any, and
 is the right shape when the screen already loads the record; each stage
 marks `RUNNING`, releases the session, works, re-reads and only stores if
 `owns` says the stage is still its own; a transcription cancels by raising

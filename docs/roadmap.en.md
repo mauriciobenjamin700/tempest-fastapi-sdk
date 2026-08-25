@@ -56,11 +56,11 @@ The admin panel already exists (`AdminSite` / `AdminModel` / `make_admin_router`
 
 | Feature | Why it matters | Reuses |
 |---------|----------------|--------|
-| **Per-column filter / search / sort** on the list view | Large lists are unusable without it — the first thing every operator asks for. | `BaseRepository` (filters + pagination) |
-| **Bulk actions** (mass delete / activate) | Row-by-row actions don't scale; select N rows + one action is the standard admin flow. | `BaseRepository.bulk_update` / soft-delete |
+| **Per-column filter / search / sort** on the list view ✅ v0.36.0 | `AdminModel(list_filter=…, search_fields=…, ordering=…)` plus clickable sorting via ``?sort=<column>&dir=asc|desc``, validated against the displayed columns. | `BaseRepository.list` + pagination |
+| **Bulk actions** (mass delete / activate) ✅ v0.36.0 | `POST {prefix}/m/{slug}/bulk` applies delete / activate / deactivate to the selection; `AdminModel(actions=[…])` adds your own action to the same dropdown. | `@admin_action` + CSRF |
 | **Field widgets** (FK select ✅, date picker, file upload) + **FK autocomplete** ✅ v0.115.0 | FK as `<select>`, dates with a picker, upload via `UploadUtils`; large FKs become an HTMX search box (`autocomplete_fields`). | `UploadUtils` + storage backends |
 | **Inline / related editing** ✅ v0.116.0 (read + navigate) | Children (1-N) listed on the parent's detail, with a link to the child admin and "Add" pre-filling the FK (`inlines=[Inline(...)]`). In-place editing on the same screen is a follow-up. | `BaseRepository` + relationships |
-| **CSV / JSON export** | Operator exports the filtered result without opening the database. | list view + filters |
+| **CSV / JSON export** ✅ v0.36.0 | `GET {prefix}/m/{slug}/export.csv` / `.json` honours the active search, filters and sort; `make_admin_router(export_max_rows=…)` caps the size (default 5000). | list view + filters |
 | **Audit log visible in the admin** ✅ v0.114.0 | Who changed what and when, straight in the UI — a per-row timeline in the detail view. | `BaseAuditLogModel` + `diff_snapshots` (`AdminModel(audit_model=...)`) |
 | **Metrics dashboard** (system ✅) + **business cards** ✅ v0.117.0 | CPU/RAM/counters + value/trend/partition cards computed from your data (`AdminSite(dashboard_cards=[...])`). | `MetricsUtils` + `MetricCard` |
 | **MFA on admin login** | Second factor on the most sensitive access in the system; a natural fit now that TOTP exists. | `TOTPHelper` + `MFAMixin` + recovery codes |
@@ -206,7 +206,7 @@ Code generation from an OpenAPI specification:
 
 | Feature | Status | Where |
 |---------|--------|-------|
-| **`tempest openapi-client <spec>`** | ✅ v0.161 | Point it at the spec (URL or file, JSON or YAML) and get `<src\|app>/integrations/<name>/` with `schemas.py` + `client.py`. The end of transcribing a third party's documentation by hand. `--name`/`--out`/`--header`/`--schemas-only`/`--force`/`--no-format`. [Reference »](recipes/openapi-client.md) |
+| **`tempest openapi-client <spec>`** | ✅ v0.161 | Point it at the spec (URL or file, JSON or YAML) and get ``<src|app>/integrations/<name>/`` with `schemas.py` + `client.py`. The end of transcribing a third party's documentation by hand. `--name`/`--out`/`--header`/`--schemas-only`/`--force`/`--no-format`. [Reference »](recipes/openapi-client.md) |
 | **Schemas with metadata** | ✅ v0.161 | One `BaseSchema` class per component, with the **spec's** `title`/`description`/`examples` on every `Field` — the generated module is the integration's documentation. Python names + the wire name as `alias` + `populate_by_name`; reserved words resolved (`class` → `class_`); optional collections as empty lists; enums as `BaseStrEnum`/`BaseIntEnum`; `allOf` flattened; recursion via `model_rebuild()`. Nothing is invented where the spec documents nothing. [Reference »](recipes/openapi-client.md#schemaspy) |
 | **Typed HTTP client** | ✅ v0.161 | One `async` method per operation, over an **injected** `HTTPClient` — retry/backoff/circuit-breaker/credentials stay with the caller, and `httpx.MockTransport` tests the whole integration offline. Typed path/query params, validated body and response, full Google docstrings. [Reference »](recipes/openapi-client.md#clientpy) |
 | **Output that passes your gates** | ✅ v0.161 | The emitted code passes `ruff check` + `ruff format --check` **before** the formatting pass (tested against the raw output), so `--no-format` or a machine without ruff still yields a usable package. Regenerating an unchanged spec produces a byte-for-byte identical file, so the `git diff` of a `--force` is the integration's changelog. |
@@ -379,7 +379,7 @@ Django-style `F` / `Q` wrappers over SQLAlchemy, wired into
 | Feature | Status | Where |
 |---------|--------|-------|
 | **`F` (column expression)** | ✅ v0.111 | `F("stock") - 1` computes in the database in one statement — atomic update, no race. Arithmetic from either side and between columns; resolved in `bulk_update`. [Recipe »](recipes/database.md) |
-| **`Q` (composable conditions)** | ✅ v0.111 | `Q(status="open") \| Q(...)`, `&`, `~` for the `OR`/`NOT` the filter dict can't express; same conventions (`field__gte`, `name` ILIKE, iterable → `IN`). `where=` on `list`/`first`/`get`/`get_or_none`/`count`/`exists`/`paginate`/`delete_many`. [Recipe »](recipes/database.md) |
+| **`Q` (composable conditions)** | ✅ v0.111 | ``Q(status="open") | Q(...)``, `&`, `~` for the `OR`/`NOT` the filter dict can't express; same conventions (`field__gte`, `name` ILIKE, iterable → `IN`). `where=` on `list`/`first`/`get`/`get_or_none`/`count`/`exists`/`paginate`/`delete_many`. [Recipe »](recipes/database.md) |
 
 ## Shipped in v0.110.0
 

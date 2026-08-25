@@ -794,13 +794,17 @@ Every command returns the underlying tool's exit code, so `tempest check` is saf
 
 ---
 
-## Next steps
+## Recap
 
-**Recap:** `tempest` covers the whole cycle — from scaffolding (`new`),
+`tempest` covers the whole cycle — from scaffolding (`new`),
 through infra (`generate --docker` / `--dockerfile` / `--src`), migrations
 (`db`), users (`user`) and secrets (`secrets`), to the quality gates
 (`lint` / `fix` / `type` / `test` / `check`). Once the service is
 generated, head to the related recipes:
+
+## Next steps
+
+Once the service is generated, head to the related recipes:
 
 - [Database »](database.md) — `BaseRepository`, async sessions and the
   migration flow behind `tempest db`.

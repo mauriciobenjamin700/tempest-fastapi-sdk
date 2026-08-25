@@ -267,6 +267,20 @@ async def handler(request: Request) -> dict:
 
 Possible. A web SPA uses the session cookie; mobile on the same backend uses `UserAuthService.login` → JWT. Both flows coexist without conflict — `UserAuthService` and `SessionAuth` speak to the same `UserModel`, differing only in the post-verify step (mint JWT vs mint Session).
 
+## Recap
+
+- A server-side session is the alternative to JWT when instant revocation is a
+  requirement: the cookie carries only an opaque id, and the state lives in the
+  store.
+- Four objects make the flow — `SessionStore`, `SessionAuth`,
+  `SessionMiddleware` and `make_session_router` — mounted once in `app.py`.
+- Five bundled endpoints cover the whole cycle, and the middleware populates
+  `request.state.session` before any router runs.
+- The cookie carries the plaintext; the store keeps only the SHA-256. Leaking
+  the sessions table does **not** log anybody in.
+- `MemorySessionStore` covers dev and tests; swap the store, not the rest of
+  the wiring, to move to Redis or a database.
+
 ## Next steps
 
 - **[Auth flow »](auth-flow.en.md)** — bundled JWT flow (signup / activate / reset). Sessions only cover login/logout.
