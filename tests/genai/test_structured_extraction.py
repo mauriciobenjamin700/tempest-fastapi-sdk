@@ -22,6 +22,7 @@ from pydantic import BaseModel, ValidationError
 
 from tempest_fastapi_sdk.genai.structured import (
     extract_json_list,
+    extract_json_object,
     parse_structured,
     parse_structured_list,
 )
@@ -168,3 +169,39 @@ class TestParseStructuredList:
         """No array at all is an error, not an empty list."""
         with pytest.raises(ValueError, match="no JSON array"):
             parse_structured_list("nothing here", _Item)
+
+
+class TestExtractJsonObject:
+    """The object-shaped answer, for a caller that retries instead of raising.
+
+    ``parse_structured`` already reads this shape, but it raises — and a
+    retry loop written around an exception is the shape that swallows real
+    errors. These cases are the ones an intent classifier hits against a
+    small model.
+    """
+
+    def test_reads_a_fenced_object(self) -> None:
+        """A fence the prompt asked the model not to add is tolerated."""
+        assert extract_json_object('```json\n{"intent": "task"}\n```') == {
+            "intent": "task"
+        }
+
+    def test_reads_an_object_after_prose(self) -> None:
+        """A sentence before the payload does not hide it."""
+        assert extract_json_object('Claro! {"intent": "note"}') == {"intent": "note"}
+
+    def test_survives_a_trailing_brace(self) -> None:
+        """One stray closer after a perfect payload is the greedy-slice bug."""
+        assert extract_json_object('{"a": {"b": 1}}}') == {"a": {"b": 1}}
+
+    def test_returns_none_for_a_list(self) -> None:
+        """A valid JSON array is not an object; the caller should retry."""
+        assert extract_json_object("[1, 2]") is None
+
+    def test_returns_none_for_malformed_json(self) -> None:
+        """Truncated output decodes to nothing, and does not raise."""
+        assert extract_json_object('{"intent": ') is None
+
+    def test_returns_none_when_there_is_no_object(self) -> None:
+        """Prose with no payload is a retry signal, not an exception."""
+        assert extract_json_object("desculpe, nao entendi") is None

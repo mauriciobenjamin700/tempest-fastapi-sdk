@@ -6,6 +6,9 @@ layers:
 * :func:`parse_structured` — extract a JSON **object** out of a model
   completion (tolerating Markdown fences and surrounding prose) and validate
   it against a Pydantic schema. Pure, no optional dependency.
+  :func:`extract_json_object` is the same extraction without the schema and
+  without raising, for a caller whose answer to bad output is another
+  generation rather than a failed request.
 * :func:`extract_json_list` / :func:`parse_structured_list` — the same for a
   JSON **array**, which is what a prompt asking for "a list of items"
   actually returns. ``extract_json_list`` answers "is there a list in here?"
@@ -357,6 +360,46 @@ def extract_json_list(text: str) -> list[Any] | None:
     return decoded if isinstance(decoded, list) else None
 
 
+def extract_json_object(text: str) -> dict[str, Any] | None:
+    """Pull a JSON object out of a model completion, without raising.
+
+    The object-shaped twin of :func:`extract_json_list`, for the prompt
+    whose answer is one record rather than a list — an intent classifier, a
+    routing decision, an extraction with fixed fields.
+
+    :func:`parse_structured` already handles that shape, but it *raises*,
+    which is the wrong contract when the caller's answer to bad output is
+    "generate again" rather than "fail the request". Returning ``None`` says
+    "retry" in one value, with no exception to catch and re-raise around a
+    retry loop.
+
+    Args:
+        text (str): The raw model completion.
+
+    Returns:
+        dict[str, Any] | None: The decoded object, or ``None`` when the
+        completion holds no decodable object (none at all, malformed JSON,
+        or a valid JSON value that is not an object — a bare list included).
+
+    Example:
+
+        >>> extract_json_object('```json\\n{"intent": "create_task"}\\n```')
+        {'intent': 'create_task'}
+        >>> extract_json_object("[1, 2]") is None
+        True
+    """
+    unfenced = _unfence(text)
+    try:
+        whole = json.loads(unfenced)
+    except ValueError:
+        whole = None
+    if isinstance(whole, dict):
+        return whole
+
+    decoded = _decode_span(unfenced, "{")
+    return decoded if isinstance(decoded, dict) else None
+
+
 def parse_structured_list(
     text: str,
     schema: type[StructuredT],
@@ -521,6 +564,7 @@ __all__: list[str] = [
     "StructuredFormatError",
     "build_prefix_allowed_tokens_fn",
     "extract_json_list",
+    "extract_json_object",
     "generate_structured_list",
     "parse_structured",
     "parse_structured_list",

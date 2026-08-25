@@ -592,7 +592,8 @@ of 3000 input + 800 output tokens), the dashboard reads:
 
 ```text
 UsageTotals(input_tokens=3000, output_tokens=800, total_tokens=3800,
-            duration_seconds=30.0, calls=2, cost=0.000644)
+            duration_seconds=30.0, calls=2, cost=0.000644,
+            cache_hit_tokens=0)
 [ServiceUsage(service='summary', total_tokens=3800, share=100.0)]
 ```
 

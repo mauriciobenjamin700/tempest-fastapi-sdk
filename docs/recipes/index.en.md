@@ -521,7 +521,7 @@ come back here to plug in each capability as you need it.
 | **[Refresh tokens (rotation/revocation) »](refresh-tokens.md)** | `BaseUserRefreshTokenModel`, `make_user_refresh_token_model`, `issue_token_pair`, rotation + family reuse detection |
 | **[Safe deploys »](deploy-safety.md)** | `AlembicHelper.safe_upgrade` (blocks DROPs), `GracefulShutdownMiddleware` |
 | **[Security »](security.md)** | `AttemptThrottle`, opaque-token helpers, `HardenedStaticFiles`, security headers |
-| **[Self-hosted generative AI »](genai.md)** | `probe_hardware` / `can_run`, `TextGenerator`, `Embedder`, RAG (web + PDF), audio (STT/TTS + batching), `make_genai_router`; hosted backend (`OpenAICompatGenerator`, any `/chat/completions`) with `TokenUsage`; list output (`parse_structured_list`, retry at a rising temperature); per-user usage accounting (`AIUsageStore`) |
+| **[Self-hosted generative AI »](genai.md)** | `probe_hardware` / `can_run`, `TextGenerator`, `Embedder`, RAG (web + PDF), audio (STT/TTS + batching), `make_genai_router`; hosted backend (`OpenAICompatGenerator`, any `/chat/completions`) with `TokenUsage`, cached prefix included; list output (`parse_structured_list`, retry at a rising temperature) and object output (`extract_json_object`); per-user usage accounting (`AIUsageStore`) |
 | **[Server-Sent Events (SSE) »](sse.md)** | `EventStream`, `sse_response`, `ServerSentEvent`, `SSEBroker` (per-channel fan-out, Redis bridge) |
 | **[Server-side sessions »](sessions.md)** | `SessionMiddleware`, `SessionAuth`, `make_session_router`, `MemorySessionStore` / `RedisSessionStore` |
 | **[Social login (OAuth2/OIDC) »](oauth.md)** | `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `generate_oauth_state` |

@@ -233,6 +233,53 @@ se quer registrar é o trabalho, não cada perna).
     prefixo em cache aparece exatamente assim. O total reportado é a
     autoridade; a soma só entra quando o campo não veio.
 
+#### O prefixo que veio do cache
+
+Quando o começo do prompt bate com uma chamada recente, o provedor serve
+essa parte do cache e cobra bem mais barato por ela — a tabela da DeepSeek
+põe o token de acerto duas ordens de grandeza abaixo do de erro.
+`cache_hit_tokens` é essa fatia:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OpenAICompatGenerator, TokenUsage
+
+gen = OpenAICompatGenerator(
+    "deepseek-chat",
+    api_key="sk-...",
+    base_url="https://api.deepseek.com",
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    uso: TokenUsage | None
+    _texto, uso = await gen.generate_with_usage("Resuma isto.")
+    if uso is not None:
+        print(uso.input_tokens, "entrada, dos quais", uso.cache_hit_tokens, "em cache")
+
+
+asyncio.run(main())
+```
+
+!!! danger "É uma fatia de `input_tokens`, não uma parcela a mais"
+    `cache_hit_tokens` conta tokens que **já estão** em `input_tokens`.
+    Somar os dois cobra o prefixo duas vezes. Quem precifica subtrai:
+    `(entrada − cache) × preço_normal + cache × preço_de_cache`, que é
+    exatamente o que `AIUsageStore.estimate_cost` faz.
+
+!!! info "Duas grafias, as duas lidas"
+    A mesma família OpenAI-compatível escreve isso de dois jeitos: a
+    DeepSeek manda `prompt_cache_hit_tokens` na raiz do `usage`, a OpenAI
+    manda `prompt_tokens_details.cached_tokens`. `from_payload` lê as duas
+    — tratar só uma funciona no provedor em que você testou e cobra caro
+    demais no outro, sem avisar.
+
+    Provedor sem cache de prompt não manda campo nenhum, e aí a fatia é
+    `0`. Aqui zero é honesto (nada veio do cache), diferente do `usage`
+    inteiro ausente, que é `None`.
+
 ### Campo específico de um provedor: `extra_body`
 
 O formato é comum, as extensões não. `extra_body` é mesclado no corpo de
@@ -1580,6 +1627,12 @@ esteja ela envolvendo a resposta inteira ou enterrada entre duas frases.
   novo"**, e é diferente de `[]`, que é "o modelo respondeu, e a resposta
   é nenhum item". Quem confunde os dois ou repete uma chamada que já deu
   certo, ou desiste de um erro de formatação recuperável.
+- **`extract_json_object(texto)`** é o gêmeo para quando a resposta é
+  **um** registro, não uma lista: classificador de intenção, decisão de
+  roteamento, extração de campos fixos. Mesma tolerância a cerca e prosa
+  do `parse_structured`, e o mesmo `None` de "tente de novo" no lugar da
+  exceção — um laço de retry escrito em volta de um `except ValueError` é
+  a forma que engole erro de verdade junto.
 
 #### Tentar de novo quando o modelo erra o formato
 
@@ -1791,6 +1844,22 @@ async def painel() -> tuple[UsageTotals, list[ServiceUsage], list[SubjectUsage]]
     chamada isolada, enquanto um total mensal quer centavos. A formatação
     fica na borda, que sabe qual dos dois está mostrando. `cost is None`
     significa "não mostre custo", nunca zero.
+
+!!! tip "Prefixo em cache tem preço próprio"
+    `price_cache_hit_per_1k` é o preço reduzido dos tokens que o provedor
+    serviu de um prefixo em cache, e `estimate_cost` cobra a fatia
+    `cache_hit_tokens` por ele em vez do preço de entrada.
+
+    O default é `None`, não `0.0`, e isso importa: `0.0` **é** um preço, e
+    um store sem essa configuração passaria a dar o prefixo de graça,
+    subestimando toda chamada repetida. `None` significa "não há tarifa
+    separada" e deixa a fatia no preço de entrada normal — configuração
+    ausente nunca deveria mexer num número.
+
+    A coluna `cache_hit_tokens` é nova em `BaseAIUsageModel`: gere a
+    migration (`tempest db revision`) antes de subir. É nullable de
+    propósito — as linhas gravadas antes dela não sabem o próprio split, e
+    afirmar zero ali cobraria uma chamada com desconto pelo preço cheio.
 
 !!! tip "Inferência local se registra por duração"
     `record_duration(subject_id=..., seconds=...)` é para modelo que roda

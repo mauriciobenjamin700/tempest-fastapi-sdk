@@ -5,6 +5,64 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.254.0] — 2026-08-25
+
+### Added
+
+- **`TokenUsage.cache_hit_tokens`: o prefixo que o provedor serviu do cache.**
+  Quando o começo do prompt bate com uma chamada recente, a DeepSeek e a OpenAI
+  servem essa parte de um cache e cobram bem mais barato por ela — a tabela da
+  DeepSeek põe o token de acerto duas ordens de grandeza abaixo do de erro.
+  `from_payload` descartava o campo, então todo prompt repetido era precificado
+  pelo preço cheio.
+
+  O número errado é pior que o número ausente: o total continuava plausível,
+  só que alto. Nada no sistema tinha como notar.
+
+  A fatia é **parte de** `input_tokens`, não uma parcela a mais — somar os dois
+  cobra o prefixo duas vezes. O campo é o quarto do dataclass, então
+  `TokenUsage(entrada, saida, total)` posicional continua valendo.
+
+  ```python
+  _texto, uso = await gen.generate_with_usage("Resuma isto.")
+  uso.input_tokens        # 3000
+  uso.cache_hit_tokens    # 2560 — destes 3000, não além deles
+  ```
+
+  Duas grafias na mesma família OpenAI-compatível, as duas lidas: a DeepSeek
+  manda `prompt_cache_hit_tokens` na raiz do `usage`, a OpenAI manda
+  `prompt_tokens_details.cached_tokens`. Ler só uma funciona no provedor em que
+  se testou e cobra caro demais no outro.
+
+- **`AIUsageStore` precifica o prefixo em cache.** `price_cache_hit_per_1k`
+  entra no construtor e `estimate_cost` ganha `cache_hit_tokens=` keyword-only;
+  `totals()` soma a fatia e `UsageTotals` a reporta.
+
+  O default é `None`, **não** `0.0`, e a diferença é a linha inteira: `0.0` é um
+  preço, e um store sem essa configuração passaria a dar o prefixo de graça,
+  subestimando toda chamada repetida. `None` significa "não há tarifa separada"
+  e deixa a fatia no preço de entrada normal — configuração ausente não deveria
+  mexer em número nenhum.
+
+  `cache_hit_tokens` maior que `input_tokens` é recusado por clamp, não por
+  exceção: relatório absurdo do provedor não deve virar um termo negativo de
+  preço cheio.
+
+- **`extract_json_object(texto)`**, o gêmeo de `extract_json_list` para a
+  resposta que é **um** registro — classificador de intenção, decisão de
+  roteamento, extração de campos fixos. Mesma tolerância a cerca markdown e
+  prosa em volta que o `parse_structured`, e o mesmo `None` de "gere de novo"
+  no lugar da exceção: um laço de retry escrito em volta de `except ValueError`
+  engole erro de verdade junto com deslize de formato.
+
+### Migration
+
+- `BaseAIUsageModel` ganhou a coluna `cache_hit_tokens`. Gere a migration
+  (`tempest db revision`) antes de subir. A coluna é **nullable** de propósito:
+  linha gravada antes dela não sabe o próprio split entre acerto e erro de
+  cache, e afirmar zero ali cobraria uma chamada com desconto pelo preço cheio.
+  Serviço que não usa `AIUsageStore` não é afetado.
+
 ## [0.253.0] — 2026-08-23
 
 ### Added

@@ -22,6 +22,28 @@ DEFAULT_PER_MESSAGE_OVERHEAD: int = 4
 """Rough per-message token overhead (role tags + separators), tiktoken-style."""
 
 
+def _cache_hit_tokens(payload: dict[str, Any]) -> int:
+    """Read the cached-prefix token count out of a ``usage`` object.
+
+    Args:
+        payload (dict[str, Any]): The provider's ``usage`` mapping.
+
+    Returns:
+        int: How many prompt tokens the provider served from cache, in
+        whichever of the two OpenAI-family spellings it used; ``0`` when
+        neither is present or the value is not an integer.
+    """
+    flat = payload.get("prompt_cache_hit_tokens")
+    if isinstance(flat, int):
+        return flat
+    details = payload.get("prompt_tokens_details")
+    if isinstance(details, dict):
+        nested = details.get("cached_tokens")
+        if isinstance(nested, int):
+            return nested
+    return 0
+
+
 @dataclass(frozen=True)
 class TokenUsage:
     """What one generation call consumed, as the provider reported it.
@@ -36,11 +58,18 @@ class TokenUsage:
         input_tokens (int): Tokens in the prompt.
         output_tokens (int): Tokens generated.
         total_tokens (int): What the provider counts for the call.
+        cache_hit_tokens (int): The **slice of** ``input_tokens`` the
+            provider served from a cached prefix and billed at a reduced
+            rate — not tokens on top of the prompt. Adding it to
+            ``input_tokens`` double-counts. ``0`` when the provider
+            reported none, which is also what a provider that has no
+            prompt cache reports.
     """
 
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
+    cache_hit_tokens: int = 0
 
     def __add__(self, other: TokenUsage) -> TokenUsage:
         """Add two usages, for a job made of several calls.
@@ -59,6 +88,7 @@ class TokenUsage:
             input_tokens=self.input_tokens + other.input_tokens,
             output_tokens=self.output_tokens + other.output_tokens,
             total_tokens=self.total_tokens + other.total_tokens,
+            cache_hit_tokens=self.cache_hit_tokens + other.cache_hit_tokens,
         )
 
     @classmethod
@@ -68,6 +98,13 @@ class TokenUsage:
         Reads the OpenAI-compatible spelling (``prompt_tokens`` /
         ``completion_tokens`` / ``total_tokens``), which DeepSeek, vLLM, TGI
         and the OpenAI API itself all emit.
+
+        The cached-prefix count has **two** spellings in that same family,
+        so both are read: DeepSeek's flat ``prompt_cache_hit_tokens`` and
+        OpenAI's nested ``prompt_tokens_details.cached_tokens``. Reading
+        only one of them silently prices a discounted call at full rate on
+        the other provider, which is a wrong number rather than a missing
+        one.
 
         Args:
             payload (Any): The ``usage`` object from the response, or
@@ -93,6 +130,7 @@ class TokenUsage:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             total_tokens=total,
+            cache_hit_tokens=_cache_hit_tokens(payload),
         )
 
 

@@ -141,6 +141,9 @@ from tempest_fastapi_sdk.genai.structured import (
     extract_json_list as extract_json_list,
 )
 from tempest_fastapi_sdk.genai.structured import (
+    extract_json_object as extract_json_object,
+)
+from tempest_fastapi_sdk.genai.structured import (
     generate_structured_list as generate_structured_list,
 )
 from tempest_fastapi_sdk.genai.structured import (
@@ -266,6 +269,7 @@ __all__: list[str] = [
     "download_model",
     "estimate_model_bytes",
     "extract_json_list",
+    "extract_json_object",
     "fetch_num_params",
     "genai_span",
     "generate_structured_list",

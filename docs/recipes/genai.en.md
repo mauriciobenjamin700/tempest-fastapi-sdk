@@ -234,6 +234,53 @@ is the job, not each leg).
     discounts show up exactly that way. The reported total is the
     authority; the sum is only a fallback when the field is absent.
 
+#### The prefix that came from cache
+
+When the start of a prompt matches a recent call, the provider serves that
+part from cache and bills it far cheaper — DeepSeek's table puts the hit
+token two orders of magnitude below the miss token. `cache_hit_tokens` is
+that slice:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk.genai import OpenAICompatGenerator, TokenUsage
+
+gen = OpenAICompatGenerator(
+    "deepseek-chat",
+    api_key="sk-...",
+    base_url="https://api.deepseek.com",
+)
+
+
+async def main() -> None:
+    """Run this example."""
+    usage: TokenUsage | None
+    _text, usage = await gen.generate_with_usage("Summarize this.")
+    if usage is not None:
+        print(usage.input_tokens, "in, of which", usage.cache_hit_tokens, "cached")
+
+
+asyncio.run(main())
+```
+
+!!! danger "It is a slice of `input_tokens`, not an extra charge"
+    `cache_hit_tokens` counts tokens **already inside** `input_tokens`.
+    Adding the two bills the prefix twice. Pricing subtracts instead:
+    `(input − cached) × normal_rate + cached × cached_rate`, which is what
+    `AIUsageStore.estimate_cost` does.
+
+!!! info "Two spellings, both read"
+    The same OpenAI-compatible family writes this two ways: DeepSeek sends
+    `prompt_cache_hit_tokens` at the root of `usage`, OpenAI sends
+    `prompt_tokens_details.cached_tokens`. `from_payload` reads both —
+    handling only one works against the provider you tested and quietly
+    overcharges on the other.
+
+    A provider with no prompt cache sends no field at all, and the slice is
+    `0`. Zero is honest here (nothing came from cache), unlike a missing
+    `usage` as a whole, which is `None`.
+
 ### Provider-specific fields: `extra_body`
 
 The format is shared; the extensions are not. `extra_body` is merged into
@@ -1581,6 +1628,12 @@ wraps the whole completion or sits buried between two sentences.
   it differs from `[]`, which means "the model answered, and the answer is
   no items". Conflating the two either retries a call that already
   succeeded or gives up on a recoverable formatting slip.
+- **`extract_json_object(text)`** is the twin for when the answer is
+  **one** record rather than a list: an intent classifier, a routing
+  decision, an extraction with fixed fields. Same tolerance for fences and
+  prose as `parse_structured`, and the same `None`-means-retry in place of
+  an exception — a retry loop written around `except ValueError` is the
+  shape that swallows real errors along with format slips.
 
 #### Retrying when the model gets the format wrong
 
@@ -1792,6 +1845,23 @@ async def dashboard() -> tuple[UsageTotals, list[ServiceUsage], list[SubjectUsag
     single call, while a monthly total wants cents. Formatting stays at the
     boundary, which knows which of the two it is showing. `cost is None`
     means "show no cost", never zero.
+
+!!! tip "A cached prefix has its own price"
+    `price_cache_hit_per_1k` is the reduced rate for tokens the provider
+    served from a cached prefix, and `estimate_cost` bills the
+    `cache_hit_tokens` slice at it instead of the input rate.
+
+    The default is `None`, not `0.0`, and the difference matters: `0.0`
+    **is** a price, so an unconfigured store would start giving the prefix
+    away for free and understate every repeated call. `None` means "there
+    is no separate rate" and leaves the slice at the normal input price —
+    an absent setting should never move a number.
+
+    The `cache_hit_tokens` column is new on `BaseAIUsageModel`: generate
+    the migration (`tempest db revision`) before deploying. It is nullable
+    on purpose — rows written before it existed do not know their own
+    split, and claiming zero there would bill a discounted call at full
+    rate.
 
 !!! tip "Local inference is recorded by duration"
     `record_duration(subject_id=..., seconds=...)` is for a model running
