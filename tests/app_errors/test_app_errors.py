@@ -9,7 +9,7 @@ the half-open date range that keeps the index usable.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -217,10 +217,17 @@ class TestListing:
         A report created today must appear when ``end_date`` is today —
         which only works because the condition is ``< end + 1 day`` rather
         than ``<= end``, where ``end`` would mean midnight.
+
+        "Today" is read in **UTC** because that is the day the filter
+        actually cuts: ``created_at`` is written by ``utcnow`` and
+        ``_date_range`` combines the caller's date with midnight, so the
+        boundary is a UTC one. Reading the local date instead made this
+        test fail only between local midnight and UTC midnight — three
+        hours a day in BRT, and never on CI, which runs in UTC.
         """
         service = _service(session)
         await service.report_error(_report())
-        today = datetime.now().date()
+        today = datetime.now(UTC).date()
 
         page = await service.list_errors(
             AppErrorFilterSchema(start_date=today, end_date=today)
@@ -229,10 +236,14 @@ class TestListing:
         assert page.total == 1
 
     async def test_date_range_excludes_outside(self, session: AsyncSession) -> None:
-        """A window that ended yesterday returns nothing stored today."""
+        """A window that ended yesterday returns nothing stored today.
+
+        Yesterday is counted from the UTC day, for the same reason
+        :meth:`test_date_range_includes_both_ends` reads today in UTC.
+        """
         service = _service(session)
         await service.report_error(_report())
-        yesterday = datetime.now().date() - timedelta(days=1)
+        yesterday = datetime.now(UTC).date() - timedelta(days=1)
 
         page = await service.list_errors(
             AppErrorFilterSchema(start_date=yesterday, end_date=yesterday)
