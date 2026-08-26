@@ -220,6 +220,23 @@ GET /api/app-errors?code=PLAN_ACTIVATION_FAILED&app_version=1.4.2
     índice** — e esta é a tabela que mais cresce. Para você, `start_date` e
     `end_date` continuam inclusivos nos dois lados.
 
+!!! warning "`start_date` e `end_date` são dias **UTC**"
+    `created_at` é gravado por `utcnow`, e o filtro compara a data que você
+    manda com meia-noite — então o corte é um limite UTC, não o do fuso onde
+    o processo roda.
+
+    Medido: um relato gravado em `2026-03-10T02:30Z` — que no relógio de
+    Brasília ainda é `2026-03-09 23:30` — aparece filtrando `2026-03-10`
+    (`total=1`) e **não** aparece filtrando `2026-03-09` (`total=0`). A
+    resposta é a mesma com o servidor em `America/Sao_Paulo` ou em
+    `Asia/Tokyo`, que é o ponto: a janela não muda de sentido conforme a
+    máquina.
+
+    Consequência prática: monte o intervalo a partir de
+    `datetime.now(UTC).date()`, não de `datetime.now().date()`. Em BRT, as
+    duas divergem por três horas todo dia, e é nelas que "hoje" devolve
+    vazio.
+
 ## O teto de requisições
 
 O `POST` é público. Ele precisa de teto, e o teto **não mora neste módulo**:

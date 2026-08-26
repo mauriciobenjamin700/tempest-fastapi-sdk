@@ -251,6 +251,48 @@ class TestListing:
 
         assert page.total == 0
 
+    async def test_date_range_cuts_on_the_utc_day(self, session: AsyncSession) -> None:
+        """The window is a UTC day, and does not move with the server's zone.
+
+        ``created_at`` is written by ``utcnow`` and ``_date_range`` compares
+        the caller's date against midnight, so the cut is a UTC boundary.
+        Pinned because the alternative — reading the local calendar — would
+        make the same query answer differently on two machines, and that is
+        drift no reader would suspect.
+
+        Both edges of the day are asserted, not one. A single report near
+        midday survives any shift of the window smaller than twelve hours,
+        so it would prove nothing: the report at 00:30 pins the opening
+        edge and the one at 23:30 pins the closing one. Verified to fail by
+        sliding the boundary three hours: the 23:30 report leaves the day
+        it belongs to and lands in the next one.
+        """
+        service = _service(session)
+        day = date(2026, 3, 10)
+        for hour, minute in ((0, 30), (23, 30)):
+            stored = await service.report_error(_report(code=f"C{hour}"))
+            row = await service.repository.get({"id": stored.id})
+            row.created_at = datetime(2026, 3, 10, hour, minute, tzinfo=UTC)
+        await session.flush()
+
+        inside = await service.list_errors(
+            AppErrorFilterSchema(start_date=day, end_date=day)
+        )
+        before = await service.list_errors(
+            AppErrorFilterSchema(
+                start_date=day - timedelta(days=1), end_date=day - timedelta(days=1)
+            )
+        )
+        after = await service.list_errors(
+            AppErrorFilterSchema(
+                start_date=day + timedelta(days=1), end_date=day + timedelta(days=1)
+            )
+        )
+
+        assert inside.total == 2
+        assert before.total == 0
+        assert after.total == 0
+
     async def test_pagination_reports_totals(self, session: AsyncSession) -> None:
         """The page envelope carries what a table needs to render."""
         service = _service(session)

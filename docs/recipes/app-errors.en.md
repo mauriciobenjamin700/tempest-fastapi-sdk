@@ -220,6 +220,22 @@ GET /api/app-errors?code=PLAN_ACTIVATION_FAILED&app_version=1.4.2
     **discards the index** — and this is the table that grows fastest. From
     the outside, `start_date` and `end_date` stay inclusive on both ends.
 
+!!! warning "`start_date` and `end_date` are **UTC** days"
+    `created_at` is written by `utcnow`, and the filter compares the date
+    you send against midnight — so the cut is a UTC boundary, not the one
+    of the zone the process runs in.
+
+    Measured: a report stored at `2026-03-10T02:30Z` — still
+    `2026-03-09 23:30` on a São Paulo clock — shows up when filtering
+    `2026-03-10` (`total=1`) and **not** when filtering `2026-03-09`
+    (`total=0`). The answer is the same with the server in
+    `America/Sao_Paulo` or in `Asia/Tokyo`, which is the point: the window
+    does not shift with the machine.
+
+    In practice: build the range from `datetime.now(UTC).date()`, not from
+    `datetime.now().date()`. The two disagree for three hours a day in BRT,
+    and those are the hours where "today" comes back empty.
+
 ## The request ceiling
 
 The `POST` is public. It needs a ceiling, and the ceiling does **not** live

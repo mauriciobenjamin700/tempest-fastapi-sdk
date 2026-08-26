@@ -155,6 +155,14 @@ class AppErrorService:
         than ``func.date(created_at) == ...``. Applying a function to the
         column discards the ``created_at`` index, and this is the table
         that grows with no natural bound.
+
+        The boundary is a **UTC** one, and deliberately not the server's:
+        ``created_at`` is written by ``utcnow``, and the dates here are
+        combined with midnight and compared against it. Reading the local
+        calendar instead would make the same query answer differently on
+        two machines in different zones — a filter that depends on where
+        the process runs. Callers building a range from "today" should take
+        it from UTC.
         """
         conditions: list[Any] = []
         column = self.repository.model.created_at

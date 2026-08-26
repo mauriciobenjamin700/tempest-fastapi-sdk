@@ -164,7 +164,14 @@ class AppErrorFilterSchema(BaseSchema):
         app_version (str | None): Filters by application version.
         user_id (UUID | None): Filters by one user's reports.
         start_date (date | None): Start of the creation range, inclusive.
-        end_date (date | None): End of the creation range, inclusive.
+            Read as a **UTC** day, because that is the boundary the filter
+            cuts on: ``created_at`` is written by ``utcnow``, so a report
+            stored at 02:30 UTC belongs to that UTC day even where the
+            local calendar still shows the previous one.
+        end_date (date | None): End of the creation range, inclusive, and
+            a UTC day for the same reason. A caller who builds these from
+            a local "today" gets the wrong window during the hours the two
+            calendars disagree — three a day in BRT.
     """
 
     code: str | None = Field(default=None, description="Filtra pelo código exato.")
