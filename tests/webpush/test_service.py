@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import (
@@ -36,6 +37,8 @@ class _FakeDispatcher(WebPushDispatcher):
         super().__init__("dummy-key", vapid_subject="mailto:ops@example.com")
         self._gone: list[str] = gone or []
         self.sent: list[str] = []
+        self.batches: list[list[str]] = []
+        self.concurrency_seen: list[int | None] = []
 
     async def send_many(
         self,
@@ -44,9 +47,13 @@ class _FakeDispatcher(WebPushDispatcher):
         *,
         ttl_seconds: int | None = None,
         headers: dict[str, str] | None = None,
+        max_concurrency: int | None = None,
     ) -> list[str]:
-        self.sent = [s.endpoint for s in subscriptions]
-        return list(self._gone)
+        endpoints = [s.endpoint for s in subscriptions]
+        self.sent = endpoints
+        self.batches.append(endpoints)
+        self.concurrency_seen.append(max_concurrency)
+        return [e for e in self._gone if e in set(endpoints)]
 
 
 def _sub(endpoint: str) -> WebPushSubscriptionSchema:
@@ -152,3 +159,104 @@ class TestNotifyUser:
             "https://push.example/self",
             "https://push.example/other",
         }
+
+
+class TestListAll:
+    async def test_returns_every_users_rows(self, session: AsyncSession) -> None:
+        service = _service(session)
+        await service.subscribe(uuid4(), _sub("https://push.example/u1"))
+        await service.subscribe(uuid4(), _sub("https://push.example/u2"))
+        assert {row.endpoint for row in await service.list_all()} == {
+            "https://push.example/u1",
+            "https://push.example/u2",
+        }
+
+    async def test_empty_table_is_empty_list(self, session: AsyncSession) -> None:
+        assert await _service(session).list_all() == []
+
+
+class TestNotifyAll:
+    async def test_delivers_across_users(self, session: AsyncSession) -> None:
+        dispatcher = _FakeDispatcher()
+        service = _service(session, dispatcher)
+        await service.subscribe(uuid4(), _sub("https://push.example/a"))
+        await service.subscribe(uuid4(), _sub("https://push.example/b"))
+        delivered = await service.notify_all({"title": "maintenance"})
+        assert delivered == 2
+        assert {e for batch in dispatcher.batches for e in batch} == {
+            "https://push.example/a",
+            "https://push.example/b",
+        }
+
+    async def test_prunes_gone_and_discounts_them(self, session: AsyncSession) -> None:
+        dispatcher = _FakeDispatcher(gone=["https://push.example/dead"])
+        service = _service(session, dispatcher)
+        await service.subscribe(uuid4(), _sub("https://push.example/live"))
+        await service.subscribe(uuid4(), _sub("https://push.example/dead"))
+        delivered = await service.notify_all({"title": "hi"})
+        assert delivered == 1
+        assert [row.endpoint for row in await service.list_all()] == [
+            "https://push.example/live"
+        ]
+
+    async def test_walks_every_row_in_batches(self, session: AsyncSession) -> None:
+        """A base larger than one page is fully reached, page by page."""
+        dispatcher = _FakeDispatcher()
+        service = _service(session, dispatcher)
+        for index in range(7):
+            await service.subscribe(uuid4(), _sub(f"https://push.example/n{index}"))
+        delivered = await service.notify_all({"title": "hi"}, page_size=3)
+        assert delivered == 7
+        assert [len(batch) for batch in dispatcher.batches] == [3, 3, 1]
+        assert {e for batch in dispatcher.batches for e in batch} == {
+            f"https://push.example/n{index}" for index in range(7)
+        }
+
+    async def test_reaches_every_row_while_pruning(self, session: AsyncSession) -> None:
+        """Deleting as it walks must not make the cursor skip a live row."""
+        dead = [f"https://push.example/d{index}" for index in range(4)]
+        dispatcher = _FakeDispatcher(gone=dead)
+        service = _service(session, dispatcher)
+        for index in range(4):
+            await service.subscribe(uuid4(), _sub(f"https://push.example/d{index}"))
+            await service.subscribe(uuid4(), _sub(f"https://push.example/l{index}"))
+        delivered = await service.notify_all({"title": "hi"}, page_size=2)
+        assert delivered == 4
+        assert {row.endpoint for row in await service.list_all()} == {
+            f"https://push.example/l{index}" for index in range(4)
+        }
+
+    async def test_forwards_concurrency_bound(self, session: AsyncSession) -> None:
+        dispatcher = _FakeDispatcher()
+        service = _service(session, dispatcher)
+        await service.subscribe(uuid4(), _sub("https://push.example/one"))
+        await service.notify_all({"title": "hi"})
+        assert dispatcher.concurrency_seen == [32]
+        await service.notify_all({"title": "hi"}, max_concurrency=None)
+        assert dispatcher.concurrency_seen[-1] is None
+
+    async def test_excludes_given_endpoints(self, session: AsyncSession) -> None:
+        dispatcher = _FakeDispatcher()
+        service = _service(session, dispatcher)
+        await service.subscribe(uuid4(), _sub("https://push.example/keep"))
+        await service.subscribe(uuid4(), _sub("https://push.example/skip"))
+        delivered = await service.notify_all(
+            {"title": "hi"},
+            exclude_endpoints=["https://push.example/skip"],
+        )
+        assert delivered == 1
+        assert [e for batch in dispatcher.batches for e in batch] == [
+            "https://push.example/keep"
+        ]
+        assert len(await service.list_all()) == 2
+
+    async def test_empty_table_returns_zero(self, session: AsyncSession) -> None:
+        dispatcher = _FakeDispatcher()
+        service = _service(session, dispatcher)
+        assert await service.notify_all({"title": "hi"}) == 0
+        assert dispatcher.batches == []
+
+    async def test_page_size_below_one_raises(self, session: AsyncSession) -> None:
+        service = _service(session)
+        with pytest.raises(ValueError, match="page_size must be >= 1"):
+            await service.notify_all({"title": "hi"}, page_size=0)

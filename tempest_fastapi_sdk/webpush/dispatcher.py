@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import json
 import logging
-from typing import Any
+from typing import Any, Final
 from urllib.parse import urlsplit
 
 from tempest_fastapi_sdk.webpush.schemas import (
@@ -15,6 +15,46 @@ from tempest_fastapi_sdk.webpush.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+_GONE_STATUSES: Final[frozenset[int]] = frozenset({404, 410})
+"""Statuses every push service uses to say a subscription is dead."""
+
+_WNS_HOST_SUFFIX: Final[str] = "notify.windows.com"
+"""Host suffix of WNS, Microsoft's push service — the one Edge subscribes to."""
+
+
+def _is_gone(status: int | None, endpoint: str) -> bool:
+    """Decide whether a failed dispatch means the subscription is dead.
+
+    ``404`` and ``410`` are the answers the Web Push standard reserves for
+    it, and every other bundled service uses them. WNS does not: when the
+    browser was uninstalled, the user signed out of their Microsoft
+    account, or the subscription was evicted internally, it answers
+    ``400 Bad Request`` with an empty body. Reading that as a transient
+    failure leaves the row in the store forever, failing on every send.
+
+    The ``400`` rule is scoped to the WNS host on purpose. A bare
+    ``status == 400`` would swallow a legitimate bad request — malformed
+    payload, invalid header — from any other service and silently delete a
+    live subscription, which is the worse mistake of the two.
+
+    Args:
+        status (int | None): HTTP status from the push service, or
+            ``None`` when the request never got an answer.
+        endpoint (str): The subscription endpoint the dispatch targeted.
+
+    Returns:
+        bool: Whether the caller should prune this subscription.
+    """
+    if status in _GONE_STATUSES:
+        return True
+    if status != 400:
+        return False
+    try:
+        host = urlsplit(endpoint).netloc
+    except ValueError:
+        return False
+    return host.endswith(_WNS_HOST_SUFFIX)
 
 
 def _mask_endpoint(endpoint: str) -> str:
@@ -161,7 +201,10 @@ class WebPushDispatcher:
                 attach to the push request (forwarded to pywebpush).
 
         Raises:
-            WebPushGoneError: When the push service returns 404/410.
+            WebPushGoneError: When the push service reports the
+                subscription as dead — ``404``/``410`` anywhere, plus
+                ``400`` from WNS, which is how Edge's push service spells
+                it. See :func:`_is_gone`.
             WebPushError: For any other delivery failure.
         """
         pywebpush = _require_pywebpush()
@@ -195,7 +238,7 @@ class WebPushDispatcher:
             except pywebpush.WebPushException as exc:
                 status = exc.response.status_code if exc.response is not None else None
                 masked = _mask_endpoint(subscription.endpoint)
-                if status in {404, 410}:
+                if _is_gone(status, subscription.endpoint):
                     raise WebPushGoneError(
                         f"Subscription gone (HTTP {status}) for {masked}",
                         status_code=status,
@@ -216,27 +259,43 @@ class WebPushDispatcher:
         *,
         ttl_seconds: int | None = None,
         headers: dict[str, str] | None = None,
+        max_concurrency: int | None = None,
     ) -> list[str]:
         """Fan out a single payload to many subscriptions.
 
-        Each dispatch runs concurrently via :func:`asyncio.gather`.
-        Subscriptions that respond with 404/410 are returned so the
-        caller can prune them; every other failure is logged and
-        also returned in the gone list when the endpoint is known.
+        Dispatches run concurrently via :func:`asyncio.gather`. Only
+        subscriptions the push service reports as dead are returned — the
+        list is what :meth:`prune` consumes, so an endpoint that failed
+        for a transient reason must not be in it. Every other failure is
+        logged and dropped: a delivery that failed once is not a device
+        that went away.
 
         Args:
             subscriptions (list[WebPushSubscriptionSchema]): Recipients.
             payload: The notification body (same shapes as :meth:`send`).
             ttl_seconds (int | None): Override TTL.
             headers (dict[str, str] | None): Extra HTTP headers.
+            max_concurrency (int | None): Cap on dispatches in flight at
+                once. ``None`` (the default) keeps the historical
+                behaviour of starting every dispatch immediately, which is
+                right for one user's handful of devices. A global fan-out
+                should pass a bound — every dispatch is a TLS request to a
+                push service, and thousands at once earn a rate limit
+                rather than a faster send. Values below ``1`` are treated
+                as unbounded.
 
         Returns:
             list[str]: Endpoints whose subscription is gone and should
             be removed from the application's store.
         """
         gone: list[str] = []
+        limiter: asyncio.Semaphore | None = (
+            asyncio.Semaphore(max_concurrency)
+            if max_concurrency is not None and max_concurrency >= 1
+            else None
+        )
 
-        async def _one(sub: WebPushSubscriptionSchema) -> None:
+        async def _dispatch(sub: WebPushSubscriptionSchema) -> None:
             try:
                 await self.send(sub, payload, ttl_seconds=ttl_seconds, headers=headers)
             except WebPushGoneError:
@@ -247,6 +306,13 @@ class WebPushDispatcher:
                     _mask_endpoint(sub.endpoint),
                     exc,
                 )
+
+        async def _one(sub: WebPushSubscriptionSchema) -> None:
+            if limiter is None:
+                await _dispatch(sub)
+                return
+            async with limiter:
+                await _dispatch(sub)
 
         await asyncio.gather(*(_one(sub) for sub in subscriptions))
         return gone
