@@ -8,6 +8,7 @@ import fakeredis.aioredis as fakeredis_async
 import pytest
 
 from tempest_fastapi_sdk import SSEBroker
+from tempest_fastapi_sdk.sse import BROADCAST_CHANNEL
 
 
 async def _first_frame(stream_iter: object, timeout: float = 1.0) -> bytes:
@@ -113,3 +114,76 @@ class TestRedisMode:
         broker = SSEBroker(heartbeat_seconds=None)
         with pytest.raises(RuntimeError, match="requires a Redis client"):
             await broker.run()
+
+
+class TestBroadcast:
+    async def test_reaches_every_channel_locally(self) -> None:
+        broker = SSEBroker(heartbeat_seconds=None)
+        room = broker.register("room1")
+        user = broker.register("user-42")
+        lonely = broker.register("room2")
+
+        await broker.broadcast({"type": "MAINTENANCE"}, event="notice")
+
+        for stream in (room, user, lonely):
+            frame = await _first_frame(stream.stream())
+            assert b"event: notice" in frame
+            assert b'"type": "MAINTENANCE"' in frame
+
+    async def test_delivers_once_to_a_stream_in_two_channels(self) -> None:
+        broker = SSEBroker(heartbeat_seconds=None)
+        stream = broker.register("room1")
+        broker._channels.setdefault("room2", set()).add(stream)
+
+        await broker.broadcast("once")
+
+        frame = await _first_frame(stream.stream())
+        assert b"data: once" in frame
+        with pytest.raises(asyncio.TimeoutError):
+            await _first_frame(stream.stream(), timeout=0.15)
+
+    async def test_no_subscribers_is_a_noop(self) -> None:
+        broker = SSEBroker(heartbeat_seconds=None)
+        await broker.broadcast("nobody home")
+        assert broker.local_channels() == []
+
+    async def test_reserved_channel_is_refused(self) -> None:
+        broker = SSEBroker(heartbeat_seconds=None)
+        with pytest.raises(ValueError, match=r"reserved for SSEBroker\.broadcast"):
+            broker.register(BROADCAST_CHANNEL)
+        with pytest.raises(ValueError, match=r"reserved for SSEBroker\.broadcast"):
+            await broker.publish(BROADCAST_CHANNEL, "x")
+
+    async def test_crosses_the_redis_bridge_to_a_second_broker(self) -> None:
+        """Two brokers on one Redis: the other one's streams get the event.
+
+        Same process on purpose — what this measures is the pub/sub bridge
+        and the reserved-channel routing, not process isolation.
+        """
+        redis = fakeredis_async.FakeRedis(decode_responses=True)
+        publisher = SSEBroker(redis=redis, heartbeat_seconds=None)
+        receiver = SSEBroker(redis=redis, heartbeat_seconds=None)
+        task = asyncio.create_task(receiver.run())
+        await asyncio.sleep(0.1)
+
+        stream = receiver.register("u1")
+        await publisher.broadcast({"type": "PING"}, event="system")
+
+        frame = await _first_frame(stream.stream(), timeout=2.0)
+        assert b"event: system" in frame
+        assert b'"type": "PING"' in frame
+
+        await receiver.aclose()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+
+class TestLocalChannels:
+    async def test_lists_channels_with_open_streams(self) -> None:
+        broker = SSEBroker(heartbeat_seconds=None)
+        broker.register("b-room")
+        stream = broker.register("a-room")
+        assert broker.local_channels() == ["a-room", "b-room"]
+        broker.unregister("a-room", stream)
+        assert broker.local_channels() == ["b-room"]

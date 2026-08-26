@@ -125,10 +125,12 @@ class EventStream:
     :func:`sse_response`. A ``None`` enqueued by :meth:`close`
     terminates the iteration so the response completes cleanly.
 
-    Heartbeats are emitted as SSE comments
-    (``: keepalive`` lines) when the queue stays empty for longer
-    than ``heartbeat_seconds``; this keeps load-balancers from
-    closing idle TCP connections.
+    Heartbeats are emitted when the queue stays empty for longer than
+    ``heartbeat_seconds``; this keeps load-balancers from closing idle
+    TCP connections. By default the beat is an SSE comment
+    (``: keepalive``), which the browser never surfaces to JavaScript.
+    Pass ``heartbeat_event`` to send a real event instead, for a client
+    that watches the beat to know the connection is alive.
 
     **Backpressure.** The internal queue is **bounded** (``max_queue``)
     so a slow or stalled client cannot make a busy producer grow the
@@ -141,7 +143,10 @@ class EventStream:
 
     Attributes:
         heartbeat_seconds (float | None): Idle interval that triggers
-            a comment heartbeat. ``None`` disables heartbeats.
+            a heartbeat. ``None`` disables heartbeats.
+        heartbeat_event (ServerSentEvent | Callable[[], ServerSentEvent] | None):
+            What the heartbeat puts on the wire. ``None`` keeps the
+            comment frame.
         max_queue (int): Maximum number of buffered events. ``0``
             disables the bound (unbounded — pre-0.91 behavior).
         overflow (OverflowPolicy): What happens when the queue is full.
@@ -151,6 +156,7 @@ class EventStream:
         self,
         *,
         heartbeat_seconds: float | None = 15.0,
+        heartbeat_event: ServerSentEvent | Callable[[], ServerSentEvent] | None = None,
         max_queue: int = 1000,
         overflow: OverflowPolicy = "drop_oldest",
     ) -> None:
@@ -158,7 +164,17 @@ class EventStream:
 
         Args:
             heartbeat_seconds (float | None): Idle interval before
-                a comment heartbeat is emitted.
+                a heartbeat is emitted.
+            heartbeat_event (ServerSentEvent | Callable[[], ServerSentEvent] | None):
+                The frame the heartbeat emits. ``None`` (the default)
+                emits ``ServerSentEvent(comment="keepalive")``, which
+                keeps the connection warm without waking the browser.
+                Pass a :class:`ServerSentEvent` to make the beat visible
+                to the client instead — a comment does **not** fire
+                ``onmessage``, so a client that treats the beat as proof
+                of a live connection has nothing to listen for. Pass a
+                callable to build a fresh frame per beat, which is what
+                stamping a timestamp into the payload needs.
             max_queue (int): Maximum buffered events before ``overflow``
                 kicks in. ``0`` disables the bound. Defaults to ``1000``.
             overflow (OverflowPolicy): Overflow reaction. Defaults to
@@ -178,6 +194,9 @@ class EventStream:
             maxsize=native_maxsize,
         )
         self.heartbeat_seconds: float | None = heartbeat_seconds
+        self.heartbeat_event: ServerSentEvent | Callable[[], ServerSentEvent] | None = (
+            heartbeat_event
+        )
         self.max_queue: int = max_queue
         self.overflow: OverflowPolicy = overflow
         self._dropped: int = 0
@@ -291,6 +310,24 @@ class EventStream:
             headers=headers,
         )
 
+    def _heartbeat_frame(self) -> ServerSentEvent:
+        """Build the frame this beat puts on the wire.
+
+        Resolved per beat rather than once, because a callable exists
+        precisely for the payload that changes — a timestamp, a counter,
+        a queue depth. A fixed event costs one re-encode per idle
+        interval, which is not a rate worth optimizing.
+
+        Returns:
+            ServerSentEvent: The configured frame, or the default
+            ``: keepalive`` comment when none was configured.
+        """
+        if self.heartbeat_event is None:
+            return ServerSentEvent(comment="keepalive")
+        if callable(self.heartbeat_event):
+            return self.heartbeat_event()
+        return self.heartbeat_event
+
     async def stream(self) -> AsyncIterator[bytes]:
         """Yield encoded SSE bytes until :meth:`close` is invoked.
 
@@ -306,7 +343,7 @@ class EventStream:
                         timeout=self.heartbeat_seconds,
                     )
                 except TimeoutError:
-                    yield ServerSentEvent(comment="keepalive").encode().encode("utf-8")
+                    yield self._heartbeat_frame().encode().encode("utf-8")
                     continue
             else:
                 event = await self._queue.get()
