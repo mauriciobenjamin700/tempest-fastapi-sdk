@@ -167,10 +167,69 @@ The `data` type is the exported alias **`SSEData`**
 value shapes, plus raw `str`/`bytes`. To send an object that only serializes via
 `str()` (e.g. a bare `UUID`), wrap it in `str(...)` or a dict first.
 
-`heartbeat_seconds` emits an SSE **comment** (`: keepalive`) while the
-stream is idle so load-balancers don't cut the connection. Comments are
-**invisible** to `EventSource` — they fire no listener, they just keep
-the socket alive. `None` disables the heartbeat.
+`heartbeat_seconds` emits a beat while the stream is idle so load-balancers
+don't cut the connection. By default that beat is an SSE **comment**
+(`: keepalive`), **invisible** to `EventSource`: it fires no listener, it
+just keeps the socket alive. `None` disables the heartbeat.
+
+### A visible beat: `heartbeat_event`
+
+A comment keeps the TCP connection alive, which is the point — but a client
+that uses the beat as **proof the connection is live** (to reconnect, to light
+a status indicator, to arm a watchdog) has nothing to listen for.
+`heartbeat_event` swaps the frame:
+
+```python
+from tempest_fastapi_sdk import EventStream, ServerSentEvent
+
+stream: EventStream = EventStream(
+    heartbeat_seconds=15.0,
+    heartbeat_event=ServerSentEvent(
+        data={"id": None, "type": "PING", "message": "ping"},
+        event="ping",
+    ),
+)
+```
+
+Now every 15 idle seconds put a `ping` event on the wire, which
+`addEventListener("ping", ...)` receives like any other.
+
+Need to stamp something that changes per beat — a timestamp, a counter, a
+queue depth? Pass a callable, resolved **per beat**:
+
+```python
+from datetime import UTC, datetime
+
+from tempest_fastapi_sdk import EventStream, ServerSentEvent
+
+
+def ping() -> ServerSentEvent:
+    """Build a fresh heartbeat frame carrying the current time.
+
+    Returns:
+        ServerSentEvent: The frame this beat puts on the wire.
+    """
+    return ServerSentEvent(
+        data={"type": "PING", "at": datetime.now(UTC).isoformat()},
+        event="ping",
+    )
+
+
+stream: EventStream = EventStream(heartbeat_seconds=15.0, heartbeat_event=ping)
+```
+
+!!! note "The two choices are separate now, and that was the problem"
+    `heartbeat_seconds` used to decide **both**: whether to beat and what the
+    beat puts on the wire. Anyone who wanted a visible `ping` had to disable
+    the heartbeat and reimplement it outside — a periodic loop publishing into
+    every open channel, which is generic infrastructure back inside the
+    service. Now `heartbeat_seconds` decides **when** and `heartbeat_event`
+    decides **what**.
+
+    `SSEBroker(heartbeat_event=...)` forwards it to every stream it opens,
+    which is the only way to configure this in a service that uses the broker:
+    `register` constructs the `EventStream` internally, so not even a subclass
+    gets into the path.
 
 ## Backpressure (bounded queue)
 
@@ -315,6 +374,67 @@ Step by step, on each `GET /feed`:
     forget: every client that leaves cleans up its own registration. And
     `SSEBroker(max_queue=..., overflow=...)` applies the same backpressure
     policy (see above) to every stream the broker opens.
+
+### A global notice: `broadcast()`
+
+`publish(channel, ...)` resolves one channel to N connections. The orthogonal
+axis — **one event to N channels** — is `broadcast()`:
+
+```python
+from tempest_fastapi_sdk import SSEBroker
+
+
+async def warn_maintenance(broker: SSEBroker) -> None:
+    """Warn every connected client, whichever channel they are on.
+
+    Args:
+        broker (SSEBroker): The process-wide broker.
+    """
+    await broker.broadcast(
+        {"type": "MAINTENANCE", "message": "Maintenance in 5 minutes."},
+        event="notice",
+    )
+```
+
+Same parameters as `publish`, minus the channel. In single-process mode it
+walks the local channels and delivers into each. With Redis it publishes to
+the reserved `__broadcast__` channel — which every worker's
+`PSUBSCRIBE {prefix}:*` **already reaches**, no new subscription — and each
+worker's `run()` re-fans it to all of its local streams.
+
+A stream subscribed to more than one channel receives the event **once**: the
+fan-out is over the set of streams, not the list of channels.
+
+!!! warning "`__broadcast__` is a reserved name"
+    `register("__broadcast__")` and `publish("__broadcast__", ...)` raise
+    `ValueError`. The name is how the receiving side decides between
+    delivering to one channel and delivering to all of them; a stream
+    subscribed under it would make that decision ambiguous. The constant is
+    `BROADCAST_CHANNEL`, in `tempest_fastapi_sdk.sse`.
+
+And for a "how many are connected right now" metric, `local_channels()` lists
+the channels with at least one open stream on **this** worker — the
+counterpart of `local_subscribers(channel)`, with no need to touch
+`_channels`:
+
+```python
+from tempest_fastapi_sdk import SSEBroker
+
+
+def connected(broker: SSEBroker) -> dict[str, int]:
+    """Count the live streams per channel on this worker.
+
+    Args:
+        broker (SSEBroker): The process-wide broker.
+
+    Returns:
+        dict[str, int]: Channel name to local subscriber count.
+    """
+    return {
+        channel: broker.local_subscribers(channel)
+        for channel in broker.local_channels()
+    }
+```
 
 ### Firing from the domain (controller)
 
@@ -749,11 +869,13 @@ const stream = createEventStream<{ text: string }>("/feed", {
 ```
 
 !!! tip "Heartbeat: comment vs a `ping` event"
-    `EventStream`'s heartbeat is a **comment** — `EventSource` ignores it,
-    so the react-sdk doesn't even need `heartbeatEvents`. If you prefer a
-    visible **named** heartbeat, publish
-    `await stream.publish("", event="ping")` and set
-    `heartbeatEvents: ["ping"]` on the front (its default).
+    By default `EventStream`'s heartbeat is a **comment** — `EventSource`
+    ignores it, so the react-sdk does not even need `heartbeatEvents`. For a
+    **named**, visible heartbeat, pass
+    `heartbeat_event=ServerSentEvent(data="ping", event="ping")` to
+    `EventStream` (or to `SSEBroker`, which forwards it to every stream) and
+    set `heartbeatEvents: ["ping"]` on the front end (its default). Publishing
+    the `ping` by hand becomes unnecessary.
 
 Alignment points:
 
@@ -768,7 +890,8 @@ Alignment points:
 - Tie the producer to the connection with `on_disconnect=` (on `EventStream.response`, `sse_response` or `broker.response`) — no hand-rolled `try/finally`.
 - Queue is **bounded** (`max_queue`, default `1000`) + `overflow` (`drop_oldest`/`drop_newest`/`block`) prevents leaks from slow clients; `dropped_events` counts the discards.
 - `publish(data, event=, id=, retry=)` covers the 4 spec fields; non-string `data` becomes JSON.
-- Heartbeat is a comment (invisible to EventSource); `None` disables it.
+- Heartbeat: `heartbeat_seconds` decides **when**, `heartbeat_event` decides **what**. The default is a comment (invisible to EventSource); pass a `ServerSentEvent` (or a callable, resolved per beat) for a `ping` the client listens to; `None` on `heartbeat_seconds` disables it.
 - Broadcast = `SSEBroker`; `broker.response(channel)` does register + response + unregister; publish from controllers/tasks/queues with `broker.publish(channel, ...)`; multi-worker = pass a Redis client + start `broker.run()` in the lifespan.
+- A global notice = `broker.broadcast(...)`: one event to every channel, including on the other workers (reserved `__broadcast__` channel, already reached by the existing `PSUBSCRIBE`). `local_channels()` lists this worker's live channels.
 - Auth: **cookie** (`cookie_name` + `withCredentials`) on the same origin; **query string** (`query_param`, short-lived access token over TLS only) for cookieless clients.
 - `tempest-react-sdk` `createEventStream`/`useEventStream` consumes with reconnect; `namedEvents` ↔ `publish(event=)`.

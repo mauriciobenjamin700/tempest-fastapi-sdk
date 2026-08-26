@@ -45,6 +45,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dispatch começa de imediato, que é o certo para os poucos aparelhos de uma
   pessoa.
 
+- **`SSEBroker.broadcast()`: um evento para todos os canais.** `publish`
+  resolve um canal para N conexões; faltava o eixo ortogonal — um evento para
+  N canais, que é o "aviso global", "manutenção em 5 minutos", "saiu versão
+  nova". Sem ele, o serviço mantinha por fora um registro paralelo dos canais
+  abertos em cada worker, só para conseguir iterar e chamar `publish` em cada
+  um: metade do broker reimplementada no consumidor, e ainda assim só do
+  worker local.
+
+  ```python
+  await broker.broadcast({"type": "MAINTENANCE"}, event="notice")
+  ```
+
+  Em processo único, varre os canais locais. Com Redis, publica no canal
+  reservado `__broadcast__` — que o `PSUBSCRIBE {prefixo}:*` de todo worker já
+  alcança, sem subscrição nova — e o `run()` de cada worker refana para todos
+  os streams locais dele. Um stream inscrito em mais de um canal recebe uma
+  vez só: o fan-out é sobre o conjunto de streams.
+
+  `BROADCAST_CHANNEL` é reservado de verdade: `register` e `publish` recusam
+  esse nome com `ValueError`, porque é ele que o lado receptor lê para decidir
+  entre entregar a um canal e entregar a todos.
+
+- **`SSEBroker.local_channels()`.** Os canais com pelo menos um stream aberto
+  neste worker — a contraparte do `local_subscribers(canal)`, que só responde
+  por um. Resolve "quantos conectados agora" sem o consumidor ler `_channels`,
+  que é privado e mudaria em silêncio.
+
+- **`EventStream(heartbeat_event=...)`: o batimento como evento visível.** O
+  heartbeat era `ServerSentEvent(comment="keepalive")` hardcoded no corpo do
+  `stream()`. Comentário SSE **não dispara `onmessage`**: mantém o TCP vivo,
+  que é o propósito declarado, mas é invisível para o JavaScript. Um cliente
+  que usa o batimento como prova de conexão viva — para reconectar, acender
+  indicador, armar watchdog — não tinha o que escutar.
+
+  ```python
+  stream = EventStream(
+      heartbeat_seconds=15.0,
+      heartbeat_event=ServerSentEvent(data={"type": "PING"}, event="ping"),
+  )
+  ```
+
+  `None` mantém o comentário de sempre; um `ServerSentEvent` troca o frame; um
+  callable é resolvido **por batimento**, para quem carimba timestamp no
+  payload. As duas escolhas eram uma só antes: `heartbeat_seconds=None`
+  desligava o batimento **e** a detecção de ociosidade, e o valor numérico
+  ligava o batimento só na forma de comentário.
+
+  `SSEBroker(heartbeat_event=...)` repassa para todo stream que abrir. É o
+  único caminho de composição possível: `register` constrói o `EventStream`
+  por dentro, então nem subclasse do consumidor entra no fluxo.
+
 ### Fixed
 
 - **Inscrição morta do Edge agora é podada: o WNS diz `400`, não `404`.** O

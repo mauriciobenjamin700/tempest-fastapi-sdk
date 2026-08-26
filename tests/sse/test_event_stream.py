@@ -226,3 +226,53 @@ async def test_event_stream_response_helper() -> None:
     assert response.headers["content-type"].startswith("text/event-stream")
     assert b"event: tick" in response.content
     assert cleaned == ["bye"]
+
+
+class TestHeartbeatEvent:
+    async def test_default_beat_is_a_comment(self) -> None:
+        """The default frame carries no dispatchable data, by construction.
+
+        It encodes as ``: keepalive\\ndata: \\n\\n``: the trailing
+        ``data:`` is empty, and the SSE spec dispatches nothing when the
+        data buffer is empty, so the browser never fires ``onmessage``.
+        That invisibility is the whole reason ``heartbeat_event`` exists.
+        """
+        stream = EventStream(heartbeat_seconds=0.05)
+        frame = await asyncio.wait_for(stream.stream().__anext__(), 1.0)
+        assert frame == b": keepalive\ndata: \n\n"
+
+    async def test_static_event_replaces_the_comment(self) -> None:
+        """A comment never fires onmessage; a real event does."""
+        stream = EventStream(
+            heartbeat_seconds=0.05,
+            heartbeat_event=ServerSentEvent(
+                data={"id": None, "type": "PING", "message": "ping"},
+                event="ping",
+            ),
+        )
+        frame = await asyncio.wait_for(stream.stream().__anext__(), 1.0)
+        assert b"event: ping" in frame
+        assert b'"type": "PING"' in frame
+        assert b": keepalive" not in frame
+
+    async def test_callable_is_resolved_per_beat(self) -> None:
+        beats = iter(range(1, 10))
+
+        def build() -> ServerSentEvent:
+            return ServerSentEvent(data={"beat": next(beats)}, event="ping")
+
+        stream = EventStream(heartbeat_seconds=0.05, heartbeat_event=build)
+        iterator = stream.stream()
+        first = await asyncio.wait_for(iterator.__anext__(), 1.0)
+        second = await asyncio.wait_for(iterator.__anext__(), 1.0)
+        assert b'"beat": 1' in first
+        assert b'"beat": 2' in second
+
+    async def test_a_real_event_does_not_displace_published_data(self) -> None:
+        stream = EventStream(
+            heartbeat_seconds=0.05,
+            heartbeat_event=ServerSentEvent(data="ping", event="ping"),
+        )
+        await stream.publish({"msg": "hi"}, event="chat")
+        frame = await asyncio.wait_for(stream.stream().__anext__(), 1.0)
+        assert b"event: chat" in frame
