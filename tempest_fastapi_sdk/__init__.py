@@ -1316,6 +1316,9 @@ from tempest_fastapi_sdk.utils import (
     MinIOUploadStorage as MinIOUploadStorage,
 )
 from tempest_fastapi_sdk.utils import (
+    MobilePhoneBRField as MobilePhoneBRField,
+)
+from tempest_fastapi_sdk.utils import (
     NonEmptyStrField as NonEmptyStrField,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1335,6 +1338,9 @@ from tempest_fastapi_sdk.utils import (
 )
 from tempest_fastapi_sdk.utils import (
     PhoneBRField as PhoneBRField,
+)
+from tempest_fastapi_sdk.utils import (
+    PhoneNumberBR as PhoneNumberBR,
 )
 from tempest_fastapi_sdk.utils import (
     PixKeyField as PixKeyField,
@@ -1454,6 +1460,9 @@ from tempest_fastapi_sdk.utils import (
     is_valid_cpf_cnpj as is_valid_cpf_cnpj,
 )
 from tempest_fastapi_sdk.utils import (
+    is_valid_mobile_phone_br as is_valid_mobile_phone_br,
+)
+from tempest_fastapi_sdk.utils import (
     is_valid_phone_br as is_valid_phone_br,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1484,6 +1493,9 @@ from tempest_fastapi_sdk.utils import (
     normalize_cpf_cnpj as normalize_cpf_cnpj,
 )
 from tempest_fastapi_sdk.utils import (
+    normalize_mobile_phone_br as normalize_mobile_phone_br,
+)
+from tempest_fastapi_sdk.utils import (
     normalize_phone_br as normalize_phone_br,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1497,6 +1509,9 @@ from tempest_fastapi_sdk.utils import (
 )
 from tempest_fastapi_sdk.utils import (
     parse_currency_br as parse_currency_br,
+)
+from tempest_fastapi_sdk.utils import (
+    parse_phone_br as parse_phone_br,
 )
 from tempest_fastapi_sdk.utils import (
     quantize_money as quantize_money,
@@ -1773,6 +1788,7 @@ __all__: list[str] = [
     "MetricsUtils",
     "MinIOSettings",
     "MinIOUploadStorage",
+    "MobilePhoneBRField",
     "NonEmptyStrField",
     "NonNegativeFloatField",
     "NonNegativeIntField",
@@ -1798,6 +1814,7 @@ __all__: list[str] = [
     "PermissionRegistry",
     "PhoneBR",
     "PhoneBRField",
+    "PhoneNumberBR",
     "PixKeyField",
     "PixKeyType",
     "PlanRateLimitPolicy",
@@ -1985,6 +2002,7 @@ __all__: list[str] = [
     "is_valid_cnpj",
     "is_valid_cpf",
     "is_valid_cpf_cnpj",
+    "is_valid_mobile_phone_br",
     "is_valid_phone_br",
     "is_valid_pix_key",
     "is_valid_uf",
@@ -2036,6 +2054,7 @@ __all__: list[str] = [
     "normalize_cpf_cnpj",
     "normalize_locale",
     "normalize_locale_tag",
+    "normalize_mobile_phone_br",
     "normalize_phone_br",
     "normalize_pix_key",
     "normalize_uf",
@@ -2045,6 +2064,7 @@ __all__: list[str] = [
     "only_digits",
     "parse_accept_language",
     "parse_currency_br",
+    "parse_phone_br",
     "permission",
     "plan_by_header",
     "plan_by_jwt_claim",

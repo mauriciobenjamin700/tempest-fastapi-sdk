@@ -9,16 +9,20 @@ contact fields that show up in almost every Brazilian API:
 * :func:`is_valid_cpf`, :func:`is_valid_cnpj`, :func:`is_valid_cpf_cnpj`
   and :func:`is_valid_phone_br` for full validation (format + check
   digits where applicable).
+* :func:`is_valid_mobile_phone_br` and :func:`parse_phone_br` for the
+  question :func:`is_valid_phone_br` cannot answer -- *is this a mobile
+  line?* -- which is what every WhatsApp/SMS delivery path needs.
 * :func:`only_digits` and the ``normalize_*`` helpers for stripping
   masks down to a canonical digits-only representation.
-* :data:`CPF`, :data:`CNPJ`, :data:`CPFOrCNPJ` and :data:`PhoneBR`
-  annotated types ready to drop into Pydantic schema fields.
+* :data:`CPFField`, :data:`CNPJField`, :data:`CPFOrCNPJField`,
+  :data:`PhoneBRField` and :data:`MobilePhoneBRField` annotated types
+  ready to drop into Pydantic schema fields.
 """
 
 import re
 from typing import Annotated, Final
 
-from pydantic import AfterValidator
+from pydantic import AfterValidator, BaseModel, Field
 
 from tempest_fastapi_sdk.core import BaseStrEnum
 
@@ -41,6 +45,15 @@ PHONE_BR_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?9?\d{4}[-\s]?\d{4}$",
 )
 """Match a BR phone number with optional ``+55``, DDD, mask or 9th digit."""
+
+_COUNTRY_CODE_BR: Final[str] = "55"
+"""Brazil's E.164 country code, optional in every helper below."""
+
+_MOBILE_DIGITS: Final[int] = 9
+"""Length of a BR mobile subscriber number since the 2016 9th-digit rollout."""
+
+_LANDLINE_PREFIXES: Final[frozenset[str]] = frozenset("2345")
+"""First digits ANATEL assigns to landline subscriber numbers."""
 
 CEP_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^\d{5}-?\d{3}$",
@@ -281,6 +294,119 @@ def normalize_phone_br(value: str) -> str:
     return only_digits(value)
 
 
+class PhoneNumberBR(BaseModel):
+    """A Brazilian phone number split into its parts.
+
+    Returned by :func:`parse_phone_br`. The country code never shows up
+    in :attr:`area_code` or :attr:`number`, only in :attr:`e164`, so the
+    national parts compare equal whether or not the caller typed
+    ``+55``.
+
+    Attributes:
+        area_code (str): The two-digit area code (DDD), e.g. ``"89"``.
+        number (str): The subscriber number without the area code:
+            9 digits for a mobile line, 8 for a landline.
+        is_mobile (bool): Whether the line is a mobile one -- the
+            question a WhatsApp/SMS delivery path actually asks.
+        e164 (str): The number in E.164 form, e.g. ``"+5589912345678"``.
+    """
+
+    area_code: str = Field(description="Two-digit area code (DDD).")
+    number: str = Field(
+        description="Subscriber number without the area code (8 or 9 digits).",
+    )
+    is_mobile: bool = Field(
+        description="Whether the line is mobile (9 digits starting with 9).",
+    )
+    e164: str = Field(description="E.164 form: +55, area code and number.")
+
+
+def parse_phone_br(value: str) -> PhoneNumberBR | None:
+    """Split a BR phone number into area code, subscriber number and kind.
+
+    Stricter than :func:`is_valid_phone_br`, which checks shape and
+    length only: this one also applies the ANATEL prefix rules, so an
+    8-digit subscriber number that does not start with ``2``-``5``
+    returns ``None`` even though :func:`is_valid_phone_br` accepts it.
+
+    A 9-digit subscriber number needs no prefix check here: the optional
+    ``9`` in :data:`PHONE_BR_PATTERN` is the only way an 11-digit number
+    matches at all, so the leading ``9`` is already guaranteed by the
+    time this function runs. ``test_pattern_already_forces_the_ninth_digit``
+    pins that coupling.
+
+    Args:
+        value (str): The phone string, masked or unmasked, with or
+            without the ``+55`` country code.
+
+    Returns:
+        PhoneNumberBR | None: The parsed number, or ``None`` when
+        ``value`` is not a number Brazil assigns.
+    """
+    if not is_valid_phone_br(value):
+        return None
+    digits = only_digits(value)
+    if digits.startswith(_COUNTRY_CODE_BR) and len(digits) in (12, 13):
+        digits = digits[2:]
+    area_code, subscriber = digits[:2], digits[2:]
+    if len(subscriber) == _MOBILE_DIGITS:
+        is_mobile = True
+    elif subscriber[0] in _LANDLINE_PREFIXES:
+        is_mobile = False
+    else:
+        return None
+    return PhoneNumberBR(
+        area_code=area_code,
+        number=subscriber,
+        is_mobile=is_mobile,
+        e164=f"+{_COUNTRY_CODE_BR}{area_code}{subscriber}",
+    )
+
+
+def is_valid_mobile_phone_br(value: str) -> bool:
+    """Check whether ``value`` is a Brazilian **mobile** number.
+
+    Use this instead of :func:`is_valid_phone_br` whenever the number is
+    a delivery address -- WhatsApp, SMS, an OTP. A landline passes
+    :func:`is_valid_phone_br` and then fails silently at delivery time,
+    with no error for the user and no obvious log for the operator.
+
+    Args:
+        value (str): The phone string to inspect.
+
+    Returns:
+        bool: ``True`` when the value is a mobile line (area code plus a
+        9-digit subscriber number starting with ``9``).
+    """
+    parsed = parse_phone_br(value)
+    return parsed is not None and parsed.is_mobile
+
+
+def normalize_mobile_phone_br(value: str) -> str:
+    """Return a BR mobile number as the 11 digits of its national form.
+
+    Unlike :func:`normalize_phone_br`, which keeps whatever the caller
+    typed and therefore returns 10, 11, 12 or 13 digits, this one always
+    returns ``DDD`` + 9-digit subscriber number: the ``+55`` country
+    code is dropped, so two spellings of the same line normalize to the
+    same string and compare equal in a database column. Use
+    :attr:`PhoneNumberBR.e164` when the ``+55`` form is what you need.
+
+    Args:
+        value (str): The phone string (masked or unmasked).
+
+    Returns:
+        str: The mobile number as 11 digits.
+
+    Raises:
+        ValueError: If ``value`` is not a valid BR mobile number.
+    """
+    parsed = parse_phone_br(value)
+    if parsed is None or not parsed.is_mobile:
+        raise ValueError("invalid BR mobile phone")
+    return f"{parsed.area_code}{parsed.number}"
+
+
 _PIX_EMAIL_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
 )
@@ -397,6 +523,14 @@ CPFOrCNPJField = Annotated[str, AfterValidator(normalize_cpf_cnpj)]
 PhoneBRField = Annotated[str, AfterValidator(normalize_phone_br)]
 """Pydantic field type that validates a BR phone and normalizes to digits."""
 
+MobilePhoneBRField = Annotated[str, AfterValidator(normalize_mobile_phone_br)]
+"""Pydantic field type that accepts only a BR **mobile** number.
+
+Rejects landlines, which :data:`PhoneBRField` accepts, and normalizes to
+the 11 digits of the national form (``DDD`` + subscriber number) so the
+same line always lands in the column as the same string.
+"""
+
 CEPField = Annotated[str, AfterValidator(normalize_cep)]
 """Pydantic field type that validates a Brazilian CEP, normalized to 8 digits."""
 
@@ -432,8 +566,10 @@ __all__: list[str] = [
     "CPFField",
     "CPFOrCNPJ",
     "CPFOrCNPJField",
+    "MobilePhoneBRField",
     "PhoneBR",
     "PhoneBRField",
+    "PhoneNumberBR",
     "PixKeyField",
     "PixKeyType",
     "detect_pix_key_type",
@@ -441,13 +577,16 @@ __all__: list[str] = [
     "is_valid_cnpj",
     "is_valid_cpf",
     "is_valid_cpf_cnpj",
+    "is_valid_mobile_phone_br",
     "is_valid_phone_br",
     "is_valid_pix_key",
     "normalize_cep",
     "normalize_cnpj",
     "normalize_cpf",
     "normalize_cpf_cnpj",
+    "normalize_mobile_phone_br",
     "normalize_phone_br",
     "normalize_pix_key",
     "only_digits",
+    "parse_phone_br",
 ]

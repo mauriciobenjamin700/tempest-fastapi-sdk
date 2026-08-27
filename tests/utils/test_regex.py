@@ -12,19 +12,24 @@ from tempest_fastapi_sdk.utils import (
     CPFField,
     CPFOrCNPJ,
     CPFOrCNPJField,
+    MobilePhoneBRField,
     PhoneBR,
     PhoneBRField,
+    PhoneNumberBR,
     is_valid_cep,
     is_valid_cnpj,
     is_valid_cpf,
     is_valid_cpf_cnpj,
+    is_valid_mobile_phone_br,
     is_valid_phone_br,
     normalize_cep,
     normalize_cnpj,
     normalize_cpf,
     normalize_cpf_cnpj,
+    normalize_mobile_phone_br,
     normalize_phone_br,
     only_digits,
+    parse_phone_br,
 )
 
 VALID_CPF: str = "52998224725"
@@ -359,3 +364,140 @@ class TestPixKeyField:
         schema = self._schema()
         with pytest.raises(ValidationError):
             schema(key="not-a-pix-key")
+
+
+class MobilePhoneSchema(BaseModel):
+    phone: MobilePhoneBRField
+
+
+class TestIsValidMobilePhoneBr:
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "11988887777",
+            "+5511988887777",
+            "55 11 98888-7777",
+            "(11) 98888-7777",
+            "11 98888 7777",
+            "(55) 99123-4567",
+        ],
+    )
+    def test_accepts_mobile(self, value: str) -> None:
+        assert is_valid_mobile_phone_br(value) is True
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "1133334444",
+            "(11) 3333-4444",
+            "+55 11 3333-4444",
+            "",
+            "abc",
+            "+1 415 555 0100",
+        ],
+    )
+    def test_rejects_landline_and_junk(self, value: str) -> None:
+        assert is_valid_mobile_phone_br(value) is False
+
+    def test_landline_passes_the_looser_helper(self) -> None:
+        """The pair that motivated the helper: same value, opposite answers."""
+        assert is_valid_phone_br("(11) 3333-4444") is True
+        assert is_valid_mobile_phone_br("(11) 3333-4444") is False
+
+
+class TestParsePhoneBr:
+    def test_parses_mobile(self) -> None:
+        parsed = parse_phone_br("+55 11 98888-7777")
+        assert parsed == PhoneNumberBR(
+            area_code="11",
+            number="988887777",
+            is_mobile=True,
+            e164="+5511988887777",
+        )
+
+    def test_parses_landline(self) -> None:
+        parsed = parse_phone_br("(11) 3333-4444")
+        assert parsed == PhoneNumberBR(
+            area_code="11",
+            number="33334444",
+            is_mobile=False,
+            e164="+551133334444",
+        )
+
+    @pytest.mark.parametrize(
+        "value",
+        ["11988887777", "+5511988887777", "5511988887777", "(11) 98888-7777"],
+    )
+    def test_country_code_never_leaks_into_the_parts(self, value: str) -> None:
+        """Every spelling of one line parses to the same national parts."""
+        parsed = parse_phone_br(value)
+        assert parsed is not None
+        assert (parsed.area_code, parsed.number) == ("11", "988887777")
+
+    def test_area_code_55_is_not_read_as_a_country_code(self) -> None:
+        """DDD 55 (Santa Maria/RS) collides with the country code."""
+        parsed = parse_phone_br("(55) 99123-4567")
+        assert parsed is not None
+        assert parsed.area_code == "55"
+        assert parsed.e164 == "+5555991234567"
+
+    def test_rejects_landline_prefix_anatel_does_not_assign(self) -> None:
+        """Stricter than ``is_valid_phone_br``, which accepts this one."""
+        assert is_valid_phone_br("8912345678") is True
+        assert parse_phone_br("8912345678") is None
+
+    @pytest.mark.parametrize(
+        "value",
+        ["89812345678", "89012345678", "11188888888", "11588887777"],
+    )
+    def test_pattern_already_forces_the_ninth_digit(self, value: str) -> None:
+        """Why ``parse_phone_br`` needs no leading-9 check of its own.
+
+        An 11-digit number only matches ``PHONE_BR_PATTERN`` through its
+        optional ``9``, so a 9-digit subscriber number that starts with
+        anything else never reaches the parser. If this ever passes, the
+        pattern loosened and ``parse_phone_br`` needs the check back.
+        """
+        assert is_valid_phone_br(value) is False
+
+    def test_returns_none_on_junk(self) -> None:
+        assert parse_phone_br("abc") is None
+
+
+class TestNormalizeMobilePhoneBr:
+    @pytest.mark.parametrize(
+        "value",
+        ["+55 11 98888-7777", "(11) 98888-7777", "5511988887777", "11988887777"],
+    )
+    def test_every_spelling_normalizes_to_the_same_11_digits(
+        self,
+        value: str,
+    ) -> None:
+        """Unlike ``normalize_phone_br``, the country code never survives."""
+        assert normalize_mobile_phone_br(value) == "11988887777"
+
+    def test_normalize_phone_br_keeps_what_was_typed(self) -> None:
+        """The difference between the two normalizers, pinned."""
+        assert normalize_phone_br("+55 11 98888-7777") == "5511988887777"
+        assert normalize_mobile_phone_br("+55 11 98888-7777") == "11988887777"
+
+    def test_landline_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid BR mobile phone"):
+            normalize_mobile_phone_br("(11) 3333-4444")
+
+    def test_junk_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid BR mobile phone"):
+            normalize_mobile_phone_br("abc")
+
+
+class TestMobilePhoneBRField:
+    def test_normalizes(self) -> None:
+        assert MobilePhoneSchema(phone="+55 (11) 98888-7777").phone == "11988887777"
+
+    def test_rejects_landline(self) -> None:
+        with pytest.raises(ValidationError):
+            MobilePhoneSchema(phone="(11) 3333-4444")
+
+    def test_phone_field_still_accepts_that_landline(self) -> None:
+        """``PhoneBRField`` is unchanged; the new type is the strict one."""
+        assert PhoneSchema(phone="(11) 3333-4444").phone == "1133334444"

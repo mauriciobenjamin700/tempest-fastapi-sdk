@@ -11,10 +11,13 @@ Document validators (CPF, CNPJ, CEP) and phone number normalizer/validator for B
 | --- | --- | --- |
 | `CPF_PATTERN`, `CNPJ_PATTERN`, `CPF_CNPJ_PATTERN`, `PHONE_BR_PATTERN` | `re.Pattern[str]` | Compiled regex (masked or raw input). |
 | `is_valid_cpf`, `is_valid_cnpj`, `is_valid_cpf_cnpj` | `(str) -> bool` | Format match **+** check-digit math. All-same-digit sequences rejected. |
-| `is_valid_phone_br` | `(str) -> bool` | BR phone shape: optional `+55`, optional DDD, optional 9th digit. |
+| `is_valid_phone_br` | `(str) -> bool` | BR phone shape: optional `+55`, optional DDD, optional 9th digit. Accepts landlines. |
+| `is_valid_mobile_phone_br` | `(str) -> bool` | Mobile lines only: area code plus 9 digits starting with `9`. Rejects landlines. |
+| `parse_phone_br` | `(str)` to `PhoneNumberBR` or `None` | Splits into area code, number, `is_mobile` and E.164. `None` for what ANATEL does not assign. |
 | `normalize_cpf`, `normalize_cnpj`, `normalize_cpf_cnpj`, `normalize_phone_br` | `(str) -> str` | Strip mask to digits-only; raise `ValueError` if invalid. |
+| `normalize_mobile_phone_br` | `(str) -> str` | Always the 11 digits of the national form; raises `ValueError` on a landline. |
 | `only_digits` | `(str) -> str` | Strip every non-digit character. |
-| `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField` | `Annotated[str, AfterValidator(...)]` | Drop-in Pydantic field types — validate + normalize automatically. |
+| `CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `MobilePhoneBRField` | `Annotated[str, AfterValidator(...)]` | Drop-in Pydantic field types — validate + normalize automatically. |
 
 !!! info "`Field` suffix (since v0.76)"
     The field types now carry a `Field` suffix (`CPFField`, `CNPJField`, `CPFOrCNPJField`, `PhoneBRField`, `CEPField`) to make it obvious they are schema field types — like `UFField` / `CityNameField`. The old names (`CPF`, `CNPJ`, `CPFOrCNPJ`, `PhoneBR`, `CEP`) still work as **deprecated aliases**; prefer the new ones.
@@ -63,6 +66,82 @@ from src.schemas import CustomerCreateSchema
 CustomerCreateSchema(...).document  # "52998224725"
 CustomerCreateSchema(...).phone     # "5511988887777"
 ```
+
+#### A mobile line, not just a phone
+
+`is_valid_phone_br` answers a question about shape: *does this look like a Brazilian phone number?* When the number is a **delivery address** — WhatsApp, SMS, a verification code — the question is a different one: *is this a mobile line?* A landline sails through the format check, gets stored without a complaint, and only fails much later, when the notification is not delivered — with no error for the user and no obvious log for whoever operates the service.
+
+```python
+from tempest_fastapi_sdk.utils import is_valid_mobile_phone_br, is_valid_phone_br
+
+
+is_valid_phone_br("(11) 3333-4444")          # True  -- it is a phone
+is_valid_mobile_phone_br("(11) 3333-4444")   # False -- but not a mobile one
+is_valid_mobile_phone_br("(11) 98888-7777")  # True
+```
+
+In a schema it is one field type swapped for another:
+
+```python
+from pydantic import EmailStr, Field
+
+from tempest_fastapi_sdk import BaseSchema
+from tempest_fastapi_sdk.utils import MobilePhoneBRField
+
+
+class NotificationTargetSchema(BaseSchema):
+    """Payload for POST /users, where the phone is a delivery channel.
+
+    `MobilePhoneBRField` rejects landlines with a `ValidationError`
+    (HTTP 422 through the SDK handler) and normalizes the value to the
+    11 digits of the national form.
+    """
+
+    name: str = Field(min_length=1, max_length=128)
+    email: EmailStr
+    phone: MobilePhoneBRField
+```
+
+A valid payload:
+
+```json
+{
+    "name": "Ana",
+    "email": "ana@example.com",
+    "phone": "+55 (11) 98888-7777"
+}
+```
+
+After validation `phone` holds `"11988887777"` -- and `"(11) 3333-4444"` in its place answers 422.
+
+!!! warning "The two normalizers do not return the same thing"
+    `normalize_phone_br` keeps whatever the user typed: type `+55` and the `55` survives, so the same line becomes `"5511988887777"` or `"11988887777"` depending on the spelling, and the column ends up holding two different strings for one number.
+
+    `normalize_mobile_phone_br` always returns the **11 digits of the national form** (area code + subscriber number), whatever the input spelling -- which is what makes two spellings compare equal in the database. Need the `+55` form? Use `parse_phone_br(...).e164`.
+
+#### When you need the parts: `parse_phone_br`
+
+Formatting for display, storing E.164 with a push provider, branching on the area code -- all of it wants the number already split, not a digit string:
+
+```python
+from tempest_fastapi_sdk.utils import parse_phone_br
+
+
+parsed = parse_phone_br("+55 (11) 98888-7777")
+
+parsed.area_code  # "11"
+parsed.number     # "988887777"
+parsed.is_mobile  # True
+parsed.e164       # "+5511988887777"
+```
+
+The return type is `PhoneNumberBR | None` -- `None` for anything that is not a number Brazil assigns. The country code never leaks into `area_code` or `number`, so the four spellings of one line (`"11988887777"`, `"+5511988887777"`, `"5511988887777"`, `"(11) 98888-7777"`) produce exactly the same parts.
+
+!!! note "Stricter than `is_valid_phone_br`, on purpose"
+    `parse_phone_br` applies the ANATEL prefix rules: an 8-digit subscriber number starts with `2`-`5`. So `"8912345678"` passes `is_valid_phone_br` and comes back `None` here -- it is not a range ANATEL assigns.
+
+!!! tip "Area code 55 is not the country code"
+    Santa Maria (RS) uses area code 55, which collides with `+55`. `parse_phone_br("(55) 99123-4567")` returns `area_code="55"` and `e164="+5555991234567"` -- the country prefix is only dropped when the digit count (12 or 13) proves it is there.
 
 #### Manual validation (services, controllers, queue handlers)
 
