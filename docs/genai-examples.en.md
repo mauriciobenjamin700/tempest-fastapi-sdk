@@ -79,12 +79,12 @@ No own corpus — search the web, extract, answer:
 ```python
 import httpx
 
+from tempest_fastapi_sdk import HTTPClient
 from tempest_fastapi_sdk.genai import TextGenerator
 from tempest_fastapi_sdk.genai.rag import ContentExtractor, SearxngBackend, WebSearch
 
-client = httpx.AsyncClient()
-search = WebSearch(SearxngBackend("http://localhost:8080", http_client=client))
-extractor = ContentExtractor(http_client=client)
+search = WebSearch(SearxngBackend("http://localhost:8080", http_client=HTTPClient()))
+extractor = ContentExtractor(http_client=httpx.AsyncClient())
 gen = TextGenerator("Qwen/Qwen2.5-7B-Instruct", quantization="int4")
 
 

@@ -95,9 +95,14 @@ app = create_app()
     Este client alimenta um **middleware** (`SessionMiddleware`), montado no
     `create_app` (síncrono), antes de qualquer lifespan async rodar.
     `Redis.from_url()` é **lazy** — constrói sem abrir conexão, então serve nesse
-    ponto. O `AsyncRedisManager` exige `await connect()` e cabe onde há contexto
-    async: client via `Depends(cache.client_dependency)`, ou o `SSEBroker`
-    montado no lifespan. Os dois precisam do extra `[cache]` (o pacote `redis`).
+    ponto.
+
+    Se o serviço já tem um `AsyncRedisManager`, prefira `cache.client_proxy`
+    (v0.256.0) a abrir um client solto: é um handle estável, construível antes
+    do `connect()` e válido através de reconexão, e mantém o `disconnect()` e o
+    `health_check()` do manager. O que não serve aqui é `cache.client`, que
+    levanta `RuntimeError` antes do lifespan. Todos precisam do extra `[cache]`
+    (o pacote `redis`).
 
 Pronto. O usuário faz `POST /auth/session/login` com email+senha; o SDK seta o cookie HttpOnly+Secure; toda request subsequente que carrega o cookie tem `request.state.session` populado.
 
@@ -196,7 +201,7 @@ Schema interno:
 TTL é gerenciado pelo Redis automaticamente — sem janitor process.
 
 !!! note "`RedisSessionStore` exige o extra `[cache]`"
-    O `RedisSessionStore` depende do client async `redis`, que só é instalado com o extra `[cache]`. Como ele alimenta um middleware, receba um `Redis.from_url(...)` (lazy) em vez do `AsyncRedisManager` — ambos vêm do mesmo pacote `redis`. Instale com `uv add "tempest-fastapi-sdk[cache]"` (some `auth` etc. conforme o serviço). O `MemorySessionStore` não precisa de extra nenhum.
+    O `RedisSessionStore` depende do client async `redis`, que só é instalado com o extra `[cache]`. Como ele alimenta um middleware, receba um `Redis.from_url(...)` (lazy) ou o `AsyncRedisManager.client_proxy` — nunca o `cache.client`, que levanta antes do lifespan. Instale com `uv add "tempest-fastapi-sdk[cache]"` (some `auth` etc. conforme o serviço). O `MemorySessionStore` não precisa de extra nenhum.
 
 ### Customizado
 
@@ -284,4 +289,4 @@ Possível. SPA web usa cookie de sessão; mobile do mesmo backend usa `UserAuthS
 
 - **[Auth flow »](auth-flow.md)** — fluxo JWT bundled (signup / activate / reset). Sessions cobre só login/logout.
 - **[Segurança »](security.md)** — `CSRFMiddleware` pra blindar POST contra ataques cross-site mesmo com SameSite=lax.
-- **[Cache »](cache.md)** — `AsyncRedisManager` para contextos async; o `RedisSessionStore` recebe um `Redis.from_url` lazy por alimentar um middleware.
+- **[Cache »](cache.md)** — `AsyncRedisManager` e o `client_proxy`, que é o handle certo para store de middleware como o `RedisSessionStore`.

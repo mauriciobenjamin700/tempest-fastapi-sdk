@@ -2,7 +2,7 @@
 
 Integrar com um sistema de terceiros é, hoje, transcrição manual: você abre a
 documentação, lê campo por campo, escreve o schema Pydantic equivalente, decide
-o nome pythônico de cada campo (`createdAt` → `created_at`), configura o `alias`
+o nome pythônico de cada campo (`createdAt` → `created_at`), configura os aliases de rede
 para o payload continuar batendo com o que vai na rede — e depois escreve mais
 uma camada só para montar as requisições HTTP.
 
@@ -106,15 +106,21 @@ class Customer(BaseSchema):
 
     id: UUID = Field(description="Server-assigned id.")
     email_address: EmailStr = Field(
-        alias="emailAddress",
+        validation_alias="emailAddress",
+        serialization_alias="emailAddress",
         title="Email",
         description="Primary contact email.",
         examples=["ana@example.com"],
     )
-    created_at: datetime | None = Field(alias="createdAt", default=None)
+    created_at: datetime | None = Field(
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
+        default=None,
+    )
     tags: list[str] = Field(default_factory=list)
     class_: str | None = Field(
-        alias="class",
+        validation_alias="class",
+        serialization_alias="class",
         description="Reserved-word field name.",
         default=None,
     )
@@ -122,10 +128,18 @@ class Customer(BaseSchema):
 
 Cinco coisas acontecendo aí:
 
-- **Nomes pythônicos + `alias`.** `emailAddress` → `email_address`, com o nome
-  de rede preservado. `populate_by_name=True` faz o schema aceitar **os dois**
-  na entrada; `model_dump(by_alias=True)` devolve a forma da rede.
-- **Palavra reservada resolvida.** `class` → `class_`, alias intacto.
+- **Nomes pythônicos + alias de rede.** `emailAddress` → `email_address`, com
+  o nome de rede preservado em `validation_alias` **e** `serialization_alias`.
+  `populate_by_name=True` faz o schema aceitar **os dois** na entrada;
+  `model_dump(by_alias=True)` devolve a forma da rede.
+- **Palavra reservada resolvida.** `class` → `class_`, aliases intactos.
+
+!!! tip "Dois aliases, nunca `alias=`"
+    O gerador escreve o nome do fio duas vezes — `validation_alias` para ler,
+    `serialization_alias` para escrever — e nunca o `alias` único. A diferença
+    não aparece em runtime, e aparece no editor de quem consome: com `alias`,
+    o pyright renomeia o parâmetro do `__init__` e rejeita
+    `UserSchema(email_address=...)` pedindo `emailAddress`.
 - **`format` vira tipo rico.** `uuid` → `UUID`, `date-time` → `datetime`,
   `email` → `EmailStr`.
 - **Coleção opcional é lista vazia**, nunca `list[X] | None` — a regra do
@@ -481,7 +495,11 @@ class Charge(BaseSchema):
             "rejeita a requisição e o erro devolvido não diz qual caractere causou."
         ),
     )
-    field_2fa: bool | None = Field(alias="2fa", default=None)
+    field_2fa: bool | None = Field(
+        validation_alias="2fa",
+        serialization_alias="2fa",
+        default=None,
+    )
 ```
 
 Quatro decisões nessa saída, nenhuma óbvia:
@@ -492,7 +510,7 @@ Quatro decisões nessa saída, nenhuma óbvia:
    projeto.
 3. **A `description` foi partida em dois literais adjacentes**, e não deixada
    numa linha longa.
-4. **`2fa` virou `field_2fa`** com `alias="2fa"` — detalhado na
+4. **`2fa` virou `field_2fa`**, com o nome do fio nos dois aliases — detalhado na
    [seção seguinte](#nomes-e-paths-que-a-spec-erra).
 
 As duas do meio são a mesma causa, e vale entender:
@@ -566,7 +584,7 @@ aceita, ou descreve um path que não fecha com os parâmetros que declara:
 
 | Na spec | No código gerado |
 | --- | --- |
-| Propriedade `2fa` | `field_2fa` com `alias="2fa"` |
+| Propriedade `2fa` | `field_2fa`, nome do fio nos dois aliases |
 | `transaction` e `Transaction` juntos | `Transaction` e `Transaction2` |
 | Parâmetro `path` que o template não interpola | Descartado, com nota |
 | Placeholder que nenhum parâmetro declara | Sintetizado como `str` obrigatório, com nota |
@@ -601,7 +619,7 @@ aceita, ou descreve um path que não fecha com os parâmetros que declara:
 
 1. **`tempest openapi-client <spec> --name X`** gera
    `src/integrations/x/` com `schemas.py` + `client.py`.
-2. **Nomes pythônicos com `alias`** para o nome de rede, e `populate_by_name`
+2. **Nomes pythônicos com os dois aliases** para o nome de rede, e `populate_by_name`
    para aceitar os dois na entrada.
 3. **Metadados da spec preenchidos** em todo `Field` — o módulo gerado é a
    documentação da integração. Nada é inventado.

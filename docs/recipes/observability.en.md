@@ -24,16 +24,18 @@ Call it once at startup, after the app exists and (when you want to trace
 queries) after the database has connected:
 
 ```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from tempest_fastapi_sdk import AsyncDatabaseManager, setup_tracing
 
-app: FastAPI = FastAPI()
 db: AsyncDatabaseManager = AsyncDatabaseManager("postgresql+asyncpg://...")
 
 
-@app.on_event("startup")
-async def _startup() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Connect the database and turn tracing on."""
     await db.connect()
     setup_tracing(
@@ -42,6 +44,11 @@ async def _startup() -> None:
         otlp_endpoint="http://otel-collector:4317",
         sqlalchemy_engine=db.engine,
     )
+    yield
+    await db.disconnect()
+
+
+app: FastAPI = FastAPI(lifespan=lifespan)
 ```
 
 That's it: every request becomes a parent span, every query and every httpx

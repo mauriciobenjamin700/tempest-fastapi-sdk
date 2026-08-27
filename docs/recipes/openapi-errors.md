@@ -356,6 +356,19 @@ lado a lado com o payload de cada um. ✅
     e o `detail` sai do `message` da classe — ou do `MessageCatalog`, se você
     passar um.
 
+!!! note "O 429 do rate limiter também é esse envelope (v0.256.0)"
+    O `RateLimitMiddleware` não levanta `TooManyRequestsException` — não
+    poderia: `BaseHTTPMiddleware` adicionado por `add_middleware` fica fora do
+    `ExceptionMiddleware` do Starlette, e exceção levantada no `dispatch` não
+    encontraria handler nenhum (viraria 500). Ele **monta** o `JSONResponse` do
+    429 com esse mesmo shape.
+
+    Consequência para esta receita: documente o 429 com
+    `error_responses(TooManyRequestsException)` e o corpo real vai casar com o
+    schema. Mas o `tempest openapi-errors --check` **não** vai listar essa
+    exceção como não-documentada nem como inalcançável, porque ela nunca é de
+    fato levantada em código de aplicação — quem a produz é o middleware.
+
 ### `ErrorResponseSchema`
 
 O `model` de toda entrada é

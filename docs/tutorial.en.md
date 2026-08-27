@@ -9,7 +9,7 @@ This tutorial walks through wiring the **Users** feature using every SDK convent
 - Domain exception subclasses serialized by the SDK's exception handler
 - A paginated `GET /users` and a signup `POST /users` (with password hashing via `PasswordUtils`)
 
-!!! tip "Tom for the impatient"
+!!! tip "Tip for the impatient"
     If you only want to copy the layout, scaffold it: `tempest new my-service`. The CLI ships the same skeleton this tutorial walks through.
 
 !!! info "Auth flow already ships"

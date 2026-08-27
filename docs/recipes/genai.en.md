@@ -1,11 +1,16 @@
 # Self-hosted generative AI
 
 Run HuggingFace models on **your own hardware** — no external API, no data
-leaving your servers. The `tempest_fastapi_sdk.genai` module ships in
-slices; this page covers the **first**: knowing, *before* you download
+leaving your servers. This page covers the whole `tempest_fastapi_sdk.genai`
+module, starting where every adoption starts: knowing, *before* you download
 gigabytes of weights, whether the machine can handle the model.
 
-!!! info "Module roadmap"
+!!! info "How the module was built"
+    The module shipped in slices, and the order below is the recommended
+    reading path -- each section assumes the ones before it. After v0.108 came
+    structured output (v0.142), diarization (v0.223), STT correction (v0.235)
+    and the Coqui runtime behind the `[genai-audio]` extra (v0.252), all
+    documented in their own sections on this same page.
     - **v0.96:** `genai.hardware` — probing + `can_run` / `recommend`.
     - **v0.97:** `genai.rag` — RAG context (SearXNG web search + PDF
       reading) to inject into LLMs (this page, [RAG context](#rag-context)).

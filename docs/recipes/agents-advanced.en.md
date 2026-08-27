@@ -120,7 +120,9 @@ wrong.
     small models sometimes leave a field empty rather than omitting it:
     validate the values, not just the presence of the object.
 
-To keep trying until the shape arrives, compose with the loop:
+To keep trying until the shape arrives, repeat the run and judge it with
+`structured_verdict` — it accepts only the run that both completed **and**
+carried data:
 
 ```python title="structured_retry.py" hl_lines="14"
 import asyncio

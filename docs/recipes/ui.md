@@ -104,7 +104,7 @@ class UsersPage(BasePage):
 
 ```python
 # src/api/routers/web.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from fastapi.responses import Response
 
 from tempest_fastapi_sdk.ssr import html_response

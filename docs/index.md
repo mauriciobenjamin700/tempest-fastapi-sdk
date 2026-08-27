@@ -50,7 +50,7 @@ uv run pytest
     O passo 1 instala o **CLI** `tempest` num ambiente próprio (via `uv tool`). O `tempest new` gera um projeto com o **seu próprio `pyproject.toml`**; do passo 3 em diante é o `uv` desse projeto que resolve e roda tudo (`uv sync` cria o `.venv` local a partir das deps geradas). Prefira `uv` de ponta a ponta — misturar `pip install` global com o `uv sync` do projeto resolve dois ambientes diferentes.
 
 !!! note "Sobre o `[all]`"
-    O extra `[all]` traz todos os helpers **exceto** os stacks pesados de **modelos locais** de GenAI (`[genai]`, `[genai-quant]`, `[genai-rag]`, `[genai-audio]`) — instale esses à parte quando precisar. Os clients leves de GenAI (Ollama, Chroma) já vêm no `[all]`. Veja **[Instalação »](installation.md)** para a tabela completa de extras.
+    O extra `[all]` traz os helpers de aplicação, e deixa de fora os **15** extras que puxam stack pesado ou binário nativo: os de modelo local (`[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`), os de ONNX/visão (`[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`), mais `[admin-sql]` e `[firebase]`. Instale esses à parte quando precisar. Os clients leves de GenAI (Ollama, Chroma) já vêm no `[all]`. Veja **[Instalação »](installation.md)** para a tabela completa de extras.
 
 !!! example "O que o `tempest new` produz"
     ```text
@@ -92,7 +92,7 @@ uv run pytest
 
 -   **[Receitas »](recipes/index.md)**
 
-    O coração da doc: o **tour do SDK** (um exemplo mínimo por bloco), o índice das **53 receitas**, os **exemplos completos** (checkout Pix, marketplace, admin, fullstack web, GenAI) e o **SSR tipado**.
+    O coração da doc: o **tour do SDK** (um exemplo mínimo por bloco), o índice das **86 receitas**, os **exemplos completos** (checkout Pix, marketplace, admin, fullstack web, GenAI) e o **SSR tipado**.
 
 -   **[Referência »](reference.md)**
 

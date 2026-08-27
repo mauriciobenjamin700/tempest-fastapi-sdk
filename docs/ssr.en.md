@@ -77,7 +77,7 @@ generated from the classes above.
 ### The `Page` class
 
 ```python
-from tempestweb import Column, Text, Widget
+from tempest_core import Column, Text, Widget
 
 from tempest_fastapi_sdk.ssr import Page
 
@@ -104,7 +104,7 @@ content. It is the only required method.
 ### The `html_response` function
 
 ```python
-from tempestweb.server import html_response
+from tempest_fastapi_sdk.ssr import html_response
 
 from src.web.pages import HomePage
 
@@ -117,7 +117,7 @@ Its signature:
 
 ```python
 from fastapi.responses import HTMLResponse
-from tempestweb import Widget
+from tempest_core import Widget
 
 
 def html_response(
@@ -522,7 +522,7 @@ Button(label="Save", attrs={"hx-post": "/save", "hx-swap": "outerHTML"})
 
 # after
 
-from tempestweb import Button
+from tempest_core import Button
 
 from tempest_fastapi_sdk.ssr import htmx
 
@@ -534,7 +534,8 @@ Each builder returns a `dict[str, str]`, so you merge freely with other
 builders and raw keys:
 
 ```python
-from tempestweb import Row, aria, htmx
+from tempest_core import Row
+from tempest_fastapi_sdk.ssr import aria, htmx
 
 
 Row(

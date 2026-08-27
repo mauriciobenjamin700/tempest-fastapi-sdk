@@ -110,13 +110,18 @@ o upstream rejeita recebe **401**; um usuário sem `famacha` no
 import asyncio
 from typing import Any
 
+from fastapi.security import HTTPAuthorizationCredentials
+
 from tempest_fastapi_sdk import IntrospectionAuth
 
 from src.core.settings import settings
 
 auth = IntrospectionAuth(userinfo_url=settings.IAGRO_USERINFO_URL)
 
-credentials = "eyJhbGciOiJIUzI1NiJ9.token"
+credentials = HTTPAuthorizationCredentials(
+    scheme="Bearer",
+    credentials="eyJhbGciOiJIUzI1NiJ9.token",
+)
 
 
 async def main() -> None:
@@ -138,13 +143,18 @@ faz `UUID(str(claims["sub"]))`:
 import asyncio
 from uuid import UUID
 
+from fastapi.security import HTTPAuthorizationCredentials
+
 from tempest_fastapi_sdk import IntrospectionAuth
 
 from src.core.settings import settings
 
 auth = IntrospectionAuth(userinfo_url=settings.IAGRO_USERINFO_URL)
 
-credentials = "eyJhbGciOiJIUzI1NiJ9.token"
+credentials = HTTPAuthorizationCredentials(
+    scheme="Bearer",
+    credentials="eyJhbGciOiJIUzI1NiJ9.token",
+)
 
 
 async def main() -> None:

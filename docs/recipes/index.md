@@ -489,7 +489,6 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Cache »](cache.md)** | `AsyncRedisManager` (+ `client_proxy`, para store construído no import), decorator `@cached`, `CacheInvalidator` (tag/namespace) |
 | **[Camada HTTP »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware` (429 no envelope de erro do SDK), `make_health_router`, dependências de JWT / role / permissão, verificador de assinatura de webhook, headers Link de paginação, router de tool-spec |
 | **[Camada UI (páginas e componentes) »](ui.md)** | a camada `src/ui/` (páginas, layout, componentes, estilos), `Page` + `shell()` herdado, `Card` / `Alert` / `DataTable` / `Pagination` / `EmptyState` / `NavBar`, `Shell` / `Grid`, scaffold via `tempest new --extras "ssr"` |
-| **[Camada UI (páginas e componentes) »](ui.md)** | a camada `src/ui/` (páginas, layout, componentes, estilos), `Page` + `shell()` herdado, `Card` / `Alert` / `DataTable` / `Pagination` / `EmptyState` / `NavBar`, `Shell` / `Grid`, scaffold via `tempest new --extras "ssr"` |
 | **[Campos validados (tipos prontos) »](fields.md)** | tipos Pydantic Annotated — `PositiveIntField` / `CentsField` / `PriceField` / `SlugField` / `HexColorField` / `CPFField` / `UFField` |
 | **[Chat (conversas + mensagens) »](chat.md)** | `ChatService`, `make_chat_router`, tabelas base + fan-out em tempo real via `SSEBroker` |
 | **[CLI »](cli.md)** | `tempest new` / `db` (+ `seed`) / `user` / `secrets rotate` / `lint` / `fix` / `format` / `type` / `test` / `check` |
@@ -497,7 +496,6 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Colunas de enum (seguras nos dois bancos) »](enum-columns.md)** | `Mapped[MeuEnum]` guardando o `value`, `ENUM` nativo no PostgreSQL e `CHECK` no SQLite, `enum_column()`, `op.replace_enum` + `sync_enum_types` para a migration que o autogenerate não vê |
 | **[Comentários + avaliações »](reviews.md)** | `ReviewService`, `make_reviews_router`, notas 0–5 estrelas com agregação, comentários encadeados |
 | **[Console SQL no admin »](admin-sql-console.md)** | `SqlShellService` + `SqlShellPolicy` (capacidades, tabelas permitidas/negadas, teto de linhas, `require_where`), análise real via `sqlglot`, auditoria de toda tentativa, página opt-in no admin |
-| **[CSS tipado (StyleSheet e tokens) »](ui-css.md)** | `StyleSheet` / `Rule` / `Media`, `ThemeTokens` (tokens do `tempest_core` como CSS variables, claro e escuro), `make_css_router` com ETag/304, `app_stylesheet`, `cls()` que rejeita classe inexistente |
 | **[CSS tipado (StyleSheet e tokens) »](ui-css.md)** | `StyleSheet` / `Rule` / `Media`, `ThemeTokens` (tokens do `tempest_core` como CSS variables, claro e escuro), `make_css_router` com ETag/304, `app_stylesheet`, `cls()` que rejeita classe inexistente |
 | **[Deploy seguro »](deploy-safety.md)** | `AlembicHelper.safe_upgrade` (barra DROPs), `GracefulShutdownMiddleware` |
 | **[Downloads »](downloads.md)** | `DownloadUtils` — `file_response`, `stream`, `build_content_disposition`, anti path-traversal |
@@ -509,7 +507,6 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Feature flags »](feature-flags.md)** | `FeatureFlags`, backends env/Redis/composto, `make_flag_dependency` |
 | **[Fila e Tarefas »](queue-tasks.md)** | FastStream (`AsyncBrokerManager`), TaskIQ (`AsyncTaskBrokerManager`), `AsyncTaskScheduler`, outbox transacional |
 | **[File store (unificado) »](file-store.md)** | `FileStoreUtils` — upload + download + presign sobre um backend só |
-| **[Formulários a partir de schemas Pydantic »](ui-forms.md)** | `form_for` / `form_spec_for` / `render_form`, `parse_form` + `FormResult` (erros por campo e valores preservados), mapeamento tipo → controle, `json_schema_extra={"ui": ...}`, `form_stylesheet` |
 | **[Formulários a partir de schemas Pydantic »](ui-forms.md)** | `form_for` / `form_spec_for` / `render_form`, `parse_form` + `FormResult` (erros por campo e valores preservados), mapeamento tipo → controle, `json_schema_extra={"ui": ...}`, `form_stylesheet` |
 | **[Frontend tempestweb + SDK »](tempestweb-frontend.md)** | Frontend tempestweb chamando o backend do SDK: `tempestweb.native.http`, `Idempotency-Key` + `IdempotencyMiddleware`, retry, mesma origem vs CORS |
 | **[Geolocalização (distância + tempo) »](geo.md)** | `haversine_km`, `estimate_travel`, `OSRMBackend`, `NominatimBackend`, `GeoPointMixin` / `GeoRepositoryMixin` |

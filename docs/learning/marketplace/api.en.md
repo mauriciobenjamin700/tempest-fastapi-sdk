@@ -140,7 +140,7 @@ A domain event (order paid/shipped, invite, new review) is delivered on two chan
 | GET  | `/health/liveness` | public | `make_health_router` — alive? |
 | GET  | `/health/readiness` | public | alive + DB ok + Redis ok? |
 | GET  | `/logs` | X-Token | `make_logs_router` — reads `logs/*.log`. |
-| GET  | `/metrics` | public (internal) | Prometheus scrape (v0.26+). |
+| GET  | `/metrics` | public (internal) | Prometheus scrape (v0.28+). |
 | GET  | `/admin/*` | admin session | `AdminSite` Jinja+HTMX. |
 | GET  | `/docs` | public | Swagger UI. |
 | GET  | `/redoc` | public | Redoc. |

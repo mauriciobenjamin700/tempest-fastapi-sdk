@@ -24,6 +24,12 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[admin-sql]` | `sqlglot` | admin SQL console: `SqlShellService` + `SqlShellPolicy` (capabilities, allowed/denied tables, row cap), real statement parsing, every attempt audited |
 | `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils`, bundled `UserAuthService` + `make_auth_router` flow |
 | `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
+| `[genai-onnx]` | `onnxruntime`, `tokenizers` | Local-model inference from an ONNX export, with no PyTorch at runtime |
+| `[genai-structured]` | `lm-format-enforcer` | Grammar-enforced structured output: the local model can only emit JSON matching the schema |
+| `[genai-vlm]` | `pillow`, `torchvision` | Local vision-language model: describe an image, answer a question about one |
+| `[openapi]` | `pyyaml` | Read a YAML OpenAPI spec for `tempest openapi-client` / `tempest openapi-errors` |
+| `[pdf-read]` | `pypdf` | **Read** PDFs (extract text/pages); `[pdf]` is for **generating** them |
+| `[spreadsheet]` | `openpyxl` | `.xlsx` spreadsheets: typed reading, writing and bulk import |
 | `[websocket]` | `websockets` | Protocol driver for `make_websocket_router` — without it the handshake 404s |
 | `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (with `render_template` + Jinja2 templates) |
 | `[faces]` | `onnxruntime`, `pillow`, `numpy` | Face recognition on ONNX Runtime, no opencv and no torch: `FaceRecognizer` (detect/embed/compare), `compare_faces`. 16 MB models fetched by `ensure_models()`. **No system libraries** |
@@ -57,7 +63,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[vision]` | `ort-vision-sdk` | vision helpers (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | Passkeys / security keys: `WebAuthnService`, `make_web_authn_credential_model`, the `/auth/webauthn/*` routes — passwordless, phishing-resistant login |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | everything above **except** the heavy GenAI stacks (`[genai]`, `[genai-quant]`, `[genai-rag]`, `[genai-audio]`) | every helper except the heavy GenAI ones — install `[genai]`/`[genai-rag]`/etc. separately |
+| `[all]` | everything above **except** the 15 extras that pull a heavy stack or a native binary: `[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]` | the application helpers — install the 15 above separately |
 
 === "Subset (recommended)"
 

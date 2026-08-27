@@ -431,14 +431,15 @@ returns the route line decoded into `TravelEstimate.geometry`:
 ```python
 import asyncio
 
-from tempest_fastapi_sdk import HTTPClient
+import httpx
+
 from tempest_fastapi_sdk.geo import BoundingBox, Coordinate, OSRMBackend
 
 a = store_a
 
 b = store_b
 
-client = HTTPClient()
+client = httpx.AsyncClient()
 
 destinations = [destination]
 
@@ -512,10 +513,11 @@ travelled = path_length_km(gps_points)
 ```python
 import asyncio
 
-from tempest_fastapi_sdk import HTTPClient
+import httpx
+
 from tempest_fastapi_sdk.geo import NominatimBackend, cep_to_coordinate, uf_centroid
 
-geocoder = NominatimBackend(http_client=HTTPClient())
+geocoder = NominatimBackend(http_client=httpx.AsyncClient())
 
 
 pin = uf_centroid("SP")  # approximate state centre, offline

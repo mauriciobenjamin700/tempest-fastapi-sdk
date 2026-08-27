@@ -2,7 +2,7 @@
 
 Integrating with a third party is, today, manual transcription: you open their
 documentation, read field by field, write the equivalent Pydantic schema, choose
-the Python name for each field (`createdAt` → `created_at`), wire the `alias` so
+the Python name for each field (`createdAt` → `created_at`), wire the network aliases so
 the payload still matches the wire — and then write another layer just to
 assemble the HTTP calls.
 
@@ -106,15 +106,21 @@ class Customer(BaseSchema):
 
     id: UUID = Field(description="Server-assigned id.")
     email_address: EmailStr = Field(
-        alias="emailAddress",
+        validation_alias="emailAddress",
+        serialization_alias="emailAddress",
         title="Email",
         description="Primary contact email.",
         examples=["ana@example.com"],
     )
-    created_at: datetime | None = Field(alias="createdAt", default=None)
+    created_at: datetime | None = Field(
+        validation_alias="createdAt",
+        serialization_alias="createdAt",
+        default=None,
+    )
     tags: list[str] = Field(default_factory=list)
     class_: str | None = Field(
-        alias="class",
+        validation_alias="class",
+        serialization_alias="class",
         description="Reserved-word field name.",
         default=None,
     )
@@ -122,10 +128,18 @@ class Customer(BaseSchema):
 
 Five things happening there:
 
-- **Python names + `alias`.** `emailAddress` → `email_address`, with the wire
-  name preserved. `populate_by_name=True` makes the schema accept **both** on
-  input; `model_dump(by_alias=True)` gives back the wire shape.
-- **Reserved word resolved.** `class` → `class_`, alias intact.
+- **Python names + wire aliases.** `emailAddress` → `email_address`, with the
+  wire name preserved in `validation_alias` **and** `serialization_alias`.
+  `populate_by_name=True` makes the schema accept **both** on input;
+  `model_dump(by_alias=True)` gives back the wire shape.
+- **Reserved word resolved.** `class` → `class_`, aliases intact.
+
+!!! tip "Two aliases, never `alias=`"
+    The generator writes the wire name twice -- `validation_alias` to read,
+    `serialization_alias` to write -- and never the single `alias`. The
+    difference does not show at runtime, and it does show in your consumer's
+    editor: with `alias`, pyright renames the synthesized `__init__` parameter
+    and rejects `UserSchema(email_address=...)`, asking for `emailAddress`.
 - **`format` becomes a rich type.** `uuid` → `UUID`, `date-time` → `datetime`,
   `email` → `EmailStr`.
 - **An optional collection is an empty list**, never `list[X] | None` — the
@@ -486,7 +500,11 @@ class Charge(BaseSchema):
             "character was at fault."
         ),
     )
-    field_2fa: bool | None = Field(alias="2fa", default=None)
+    field_2fa: bool | None = Field(
+        validation_alias="2fa",
+        serialization_alias="2fa",
+        default=None,
+    )
 ```
 
 Four decisions in that output, none of them obvious:
@@ -497,7 +515,7 @@ Four decisions in that output, none of them obvious:
    rule.
 3. **The `description` was split into adjacent literals** rather than left on a
    long line.
-4. **`2fa` became `field_2fa`** with `alias="2fa"` — covered in the
+4. **`2fa` became `field_2fa`**, with the wire name in both aliases — covered in the
    [next section](#names-and-paths-the-spec-gets-wrong).
 
 The middle two share one cause, and it is worth understanding:
@@ -574,7 +592,7 @@ declares:
 
 | In the spec | In the generated code |
 | --- | --- |
-| A `2fa` property | `field_2fa` with `alias="2fa"` |
+| A `2fa` property | `field_2fa`, wire name in both aliases |
 | `transaction` and `Transaction` together | `Transaction` and `Transaction2` |
 | A `path` parameter the template never interpolates | Dropped, with a note |
 | A placeholder no parameter declares | Synthesized as a required `str`, with a note |
@@ -610,7 +628,7 @@ declares:
 
 1. **`tempest openapi-client <spec> --name X`** generates `src/integrations/x/`
    with `schemas.py` + `client.py`.
-2. **Python names with an `alias`** for the wire name, and `populate_by_name` so
+2. **Python names with both aliases** for the wire name, and `populate_by_name` so
    both are accepted on input.
 3. **The spec's metadata on every `Field`** — the generated module is the
    integration's documentation. Nothing is invented.

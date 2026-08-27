@@ -430,14 +430,10 @@ passing the id of **whoever should hear about it**. The new order notifies the
 import asyncio
 from uuid import uuid4
 
-from tempest_fastapi_sdk.webpush import WebPushDispatcher
-
-from src.core.settings import settings
 from src.db.models import OrderModel, UserModel
+from src.services.notification import notifications
 
 conversation_id = uuid4()
-
-notifications = WebPushDispatcher(**settings.webpush_kwargs())
 
 order = OrderModel(user_id=user.id, total=100)
 

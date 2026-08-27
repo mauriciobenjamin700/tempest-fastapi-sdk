@@ -27,7 +27,7 @@ db = AsyncDatabaseManager(settings.DATABASE_URL)
 cache = AsyncRedisManager(settings.REDIS_URL)
 mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)      # eventos entre serviços
 tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)     # trabalho fora do request
-events = SSEBroker(redis=cache.client)                  # status em tempo real
+events = SSEBroker(redis=cache.client_proxy)                  # status em tempo real
 ```
 
 Todos sobem/descem no lifespan (`connect`/`disconnect`) — veja o
@@ -261,13 +261,9 @@ Na confirmação, o handler da seção 7 troca o `events.publish` cru por um ún
 ```python
 # src/queue/consumers.py
 
-from tempest_fastapi_sdk.webpush import WebPushDispatcher
-
-from src.core.settings import settings
 from src.queue import OrderPaid, mq
+from src.services.notification import notifications
 from src.tasks import send_receipt
-
-notifications = WebPushDispatcher(**settings.webpush_kwargs())
 
 
 @mq.on("orders.paid")
@@ -298,13 +294,10 @@ Quem está com o app aberto assina o canal por SSE. Uma linha resolve tudo:
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from tempest_fastapi_sdk.webpush import WebPushDispatcher
-
-from src.core.settings import settings
 from src.db.models import UserModel
+from src.services.notification import notifications
 
 current_user = UserModel(name="Ana", email="ana@example.com")
-notifications = WebPushDispatcher(**settings.webpush_kwargs())
 router = APIRouter()
 
 

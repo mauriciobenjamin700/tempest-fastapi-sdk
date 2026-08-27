@@ -1,11 +1,16 @@
 # IA generativa self-hosted
 
 Rodar modelos do HuggingFace no **seu próprio hardware** — sem API
-externa, sem enviar dados pra fora. O módulo `tempest_fastapi_sdk.genai`
-está sendo entregue em fatias; esta página cobre a **primeira**: saber,
-*antes* de baixar gigabytes de pesos, se a máquina aguenta o modelo.
+externa, sem enviar dados pra fora. Esta página cobre o módulo
+`tempest_fastapi_sdk.genai` inteiro, começando por onde toda adoção começa:
+saber, *antes* de baixar gigabytes de pesos, se a máquina aguenta o modelo.
 
-!!! info "Roadmap do módulo"
+!!! info "Como o módulo foi construído"
+    O módulo saiu em fatias, e a ordem abaixo é o caminho de leitura
+    recomendado — cada seção assume as anteriores. Depois da v0.108 vieram
+    saída estruturada (v0.142), diarização (v0.223), correção de STT (v0.235)
+    e o runtime Coqui do extra `[genai-audio]` (v0.252), todos documentados
+    nas seções correspondentes desta mesma página.
     - **v0.96:** `genai.hardware` — sondagem + `can_run` / `recommend`.
     - **v0.97:** `genai.rag` — contexto RAG (busca web SearXNG + leitura de
       PDF) pra injetar nas LLMs (esta página, seção [Contexto RAG](#contexto-rag)).

@@ -24,6 +24,12 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[admin-sql]` | `sqlglot` | console SQL do admin: `SqlShellService` + `SqlShellPolicy` (capacidades, tabelas permitidas/negadas, teto de linhas), análise real do statement, auditoria de toda tentativa |
 | `[auth]` | `bcrypt`, `PyJWT` | `PasswordUtils`, `JWTUtils`, fluxo bundled `UserAuthService` + `make_auth_router` |
 | `[cache]` | `redis` | `AsyncRedisManager` + `@cached` + `RedisIdempotencyStore` |
+| `[genai-onnx]` | `onnxruntime`, `tokenizers` | inferência de modelo local exportado para ONNX, sem PyTorch no runtime |
+| `[genai-structured]` | `lm-format-enforcer` | saída estruturada garantida por gramática: o modelo local só consegue emitir JSON que casa com o schema |
+| `[genai-vlm]` | `pillow`, `torchvision` | modelo de visão-linguagem local: descrever imagem, responder pergunta sobre imagem |
+| `[openapi]` | `pyyaml` | ler spec OpenAPI em YAML para `tempest openapi-client` / `tempest openapi-errors` |
+| `[pdf-read]` | `pypdf` | **ler** PDF (extrair texto/páginas); o `[pdf]` é para **gerar** |
+| `[spreadsheet]` | `openpyxl` | planilhas `.xlsx`: leitura tipada, escrita e import em massa |
 | `[websocket]` | `websockets` | Driver de protocolo do `make_websocket_router` — sem ele o handshake devolve 404 |
 | `[email]` | `aiosmtplib`, `jinja2`, `email-validator` | `EmailUtils` (com `render_template` + templates Jinja2) |
 | `[faces]` | `onnxruntime`, `pillow`, `numpy` | reconhecimento facial em ONNX Runtime, sem opencv e sem torch: `FaceRecognizer` (detectar/embutir/comparar), `compare_faces`. Modelos de 16 MB baixados por `ensure_models()`. **Nenhuma biblioteca de sistema** |
@@ -57,7 +63,7 @@ Os helpers mais ricos puxam dependências de terceiros que só são necessárias
 | `[vision]` | `ort-vision-sdk` | helpers de visão (`Detector`, `Classifier`, `Segmenter` + `to_detection_schemas`/`to_classification_schema`/`to_segmentation_schemas`) |
 | `[webauthn]` | `fido2` | passkeys / chaves de segurança: `WebAuthnService`, `make_web_authn_credential_model`, rotas `/auth/webauthn/*` — login sem senha, resistente a phishing |
 | `[webpush]` | `pywebpush`, `cryptography` | `WebPushDispatcher` |
-| `[all]` | tudo acima **exceto** os stacks pesados de GenAI (`[genai]`, `[genai-quant]`, `[genai-rag]`, `[genai-audio]`) | todos os helpers, menos os de GenAI pesado — instale `[genai]`/`[genai-rag]`/etc. à parte |
+| `[all]` | tudo acima **exceto** os 15 extras de stack pesado ou binário nativo: `[genai]`, `[genai-audio]`, `[genai-diarization]`, `[genai-hub]`, `[genai-image]`, `[genai-onnx]`, `[genai-quant]`, `[genai-rag]`, `[genai-structured]`, `[genai-vlm]`, `[faces]`, `[modelops-onnx]`, `[modelops-sklearn]`, `[admin-sql]`, `[firebase]` | os helpers de aplicação — instale os 15 acima à parte |
 
 === "Subconjunto (recomendado)"
 

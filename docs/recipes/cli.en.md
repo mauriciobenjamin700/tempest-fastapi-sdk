@@ -150,6 +150,138 @@ docker compose down -v
 
 Image tags are pinned by the SDK — bump them through `pyproject.toml` of the SDK, not on a per-project basis. Current versions (v0.26.0+): `postgres:18-alpine`, `redis:8-alpine`, `rabbitmq:4-management-alpine`.
 
+### Regenerating `docker-compose.yaml` in an existing project
+
+When you change installed extras (`uv add "tempest-fastapi-sdk[minio]"`) or the SDK bumps image versions, regenerate with:
+
+```bash
+tempest generate --docker                        # read extras from local pyproject.toml
+tempest generate --docker --extras cache,minio   # force explicit extras
+tempest generate --docker --name my-svc          # override container-name prefix
+tempest generate --docker --force                # overwrite an existing compose file
+```
+
+The command reads ``[project] name`` + extras from the current directory's `pyproject.toml` (pass `--path` for another). It refuses to overwrite without `--force` so hand edits don't get clobbered. The `.env.example` addendum is idempotent — re-running does not duplicate service blocks.
+
+### Dockerfile to containerize the app
+
+!!! tip "Fullstack: the SPA is detected and built in a Node stage"
+    If the project holds a frontend — a `package.json` under `web/`,
+    `frontend/`, `client/` or `ui/` — the generated Dockerfile gains a Node
+    stage that installs and builds the SPA, and only the resulting `dist/` is
+    copied into the final image. Neither `node_modules` nor the Node toolchain
+    reaches the runtime.
+
+    ```text
+    Regenerated Dockerfile
+    Regenerated .dockerignore
+      SPA stage: builds web/ and copies web/dist into the image.
+    ```
+
+    | Option | Effect |
+    | --- | --- |
+    | *(none)* | Detect by `package.json`. An empty directory does not count |
+    | `--spa-dir apps-web` | An unconventional layout |
+    | `--no-spa` | Backend-only image even with a frontend present |
+
+    Serve the result with [`make_spa_router("web/dist")`](react-spa.md),
+    included **after** every API router. A project with no frontend renders a
+    byte-identical Dockerfile to before.
+
+
+Since v0.71.0, `tempest new` also generates a ready-to-build **`Dockerfile`** + **`.dockerignore`**. The `Dockerfile` is **multi-stage** and uses [uv](https://docs.astral.sh/uv/):
+
+- **`builder` stage** — installs dependencies into `/app/.venv` (a cached layer that only re-runs when `pyproject.toml` / `uv.lock` change), then installs the project.
+- **final stage** — copies only the venv + the source, runs as a **non-root** user (`app`, uid 1000), and exposes the configured port.
+
+```dockerfile
+FROM python:3.13-slim AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+WORKDIR /app
+COPY pyproject.toml uv.lock* ./
+RUN uv sync --no-dev --no-install-project
+COPY . .
+RUN uv sync --no-dev
+
+FROM python:3.13-slim
+RUN useradd --create-home --uid 1000 app
+WORKDIR /app
+COPY --from=builder --chown=app:app /app /app
+ENV PATH="/app/.venv/bin:$PATH" SERVER_HOST=0.0.0.0 SERVER_PORT=8000
+USER app
+EXPOSE 8000
+CMD ["python", "main.py"]
+```
+
+Build and run:
+
+```bash
+docker build -t my_service .
+docker run --rm -p 8000:8000 --env-file .env my_service
+```
+
+!!! info "The image binds to `0.0.0.0` by default"
+    The final stage sets `ENV SERVER_HOST=0.0.0.0` so the app is
+    reachable from outside the container even without a `.env`. Locally
+    the scaffold keeps `SERVER_HOST=127.0.0.1` (internal service) — the
+    container overrides it to `0.0.0.0` because the bind there must
+    accept external connections. Pass `--env-file .env` to point
+    `DATABASE_URL` at the infra in `docker-compose.yaml`.
+
+!!! warning "`docker-compose.yaml` stays infra-only"
+    The generated compose brings up **only** Postgres + the services
+    your extras need (Redis, RabbitMQ, MinIO, MailHog) — it does not
+    embed an `app` service. The `Dockerfile` is standalone: use
+    `docker build` / `docker run`, or add an `app:` service with
+    `build: .` to the compose by hand if you want a one-command stack.
+
+#### Regenerating the Dockerfile — `tempest generate --dockerfile`
+
+```bash
+tempest generate --dockerfile                    # Dockerfile + .dockerignore
+tempest generate --dockerfile --name my-svc      # override the name in the comments
+tempest generate --dockerfile --force            # overwrite existing files
+tempest generate --docker --dockerfile --src     # everything in one shot
+```
+
+The `EXPOSE` / `SERVER_PORT` port is read from `SERVER_PORT` in `.env` (or `.env.example`), falling back to `8000` when absent. Like the other generators, it refuses to overwrite without `--force`.
+
+### Generating the `src` layers from extras — `tempest generate --src`
+
+The always-present layers (`api`, `controllers`, `services`, `schemas`, `db`, `core`, `utils`) ship in the scaffold. The layers that only make sense with a specific extra — `[queue]` (FastStream) and `[tasks]` (TaskIQ) — are **not** part of the base skeleton: dropping empty placeholder packages in every service contradicts the layout rules. When you add one of those extras to an existing project (`uv add "tempest-fastapi-sdk[queue]"`), generate the matching layer with:
+
+```bash
+tempest generate --src                           # read extras from local pyproject.toml
+tempest generate --src --extras tasks            # force explicit extras
+tempest generate --src --force                   # overwrite existing files
+tempest generate --docker --src                  # compose + layers in one shot
+```
+
+Extra → generated layer mapping:
+
+| Extra | Files created (under `src/` or `app/`) |
+|-------|------------------------------------------|
+| `[queue]` | `queue/__init__.py` (broker + `AsyncBrokerManager` + `get_broker`), `queue/handlers.py` (example subscriber) |
+| `[tasks]` | `tasks/__init__.py` (broker + `AsyncTaskBrokerManager` + `get_task_manager`), `tasks/jobs.py` (example task) |
+
+The source root (`src` or `app`) is auto-detected, and generated imports (`from src.queue import broker`) already point at it. The operation is **idempotent**: existing files are **kept** unless you pass `--force`, so a hand-edited handler is never clobbered silently — a sibling file that doesn't exist yet is still written. Extras with no associated layer (e.g. just `[cache]`) generate nothing and the command says so.
+
+!!! note "`tempest new` already generates the chosen extras' layers"
+    A `tempest new my_service --extras auth,queue` already ships
+    `src/queue/` — `generate --src` is for when you add the extra
+    **after** creating the project.
+
+After scaffolding:
+
+```bash
+cd my_service
+uv sync                                         # installs SDK + dev tools
+cp .env.example .env
+uv run python main.py                           # serves on the configured HOST:PORT
+uv run pytest                                   # the bundled smoke test
+```
+
 ### Database — `tempest db`
 
 Alembic wrapper backed by ``AlembicHelper`` — your project's ``alembic.ini`` + ``env.py`` stay the source of truth.
@@ -384,138 +516,6 @@ tempest secrets rotate --length 64 --no-backup
 
 !!! warning
     Rotating `JWT_SECRET` invalidates every token signed with the old value: users are logged out and pending reset/activation links stop working. Rotate during a maintenance window and restart the service to load the new values.
-
-### Regenerating `docker-compose.yaml` in an existing project
-
-When you change installed extras (`uv add "tempest-fastapi-sdk[minio]"`) or the SDK bumps image versions, regenerate with:
-
-```bash
-tempest generate --docker                        # read extras from local pyproject.toml
-tempest generate --docker --extras cache,minio   # force explicit extras
-tempest generate --docker --name my-svc          # override container-name prefix
-tempest generate --docker --force                # overwrite an existing compose file
-```
-
-The command reads ``[project] name`` + extras from the current directory's `pyproject.toml` (pass `--path` for another). It refuses to overwrite without `--force` so hand edits don't get clobbered. The `.env.example` addendum is idempotent — re-running does not duplicate service blocks.
-
-### Dockerfile to containerize the app
-
-!!! tip "Fullstack: the SPA is detected and built in a Node stage"
-    If the project holds a frontend — a `package.json` under `web/`,
-    `frontend/`, `client/` or `ui/` — the generated Dockerfile gains a Node
-    stage that installs and builds the SPA, and only the resulting `dist/` is
-    copied into the final image. Neither `node_modules` nor the Node toolchain
-    reaches the runtime.
-
-    ```text
-    Regenerated Dockerfile
-    Regenerated .dockerignore
-      SPA stage: builds web/ and copies web/dist into the image.
-    ```
-
-    | Option | Effect |
-    | --- | --- |
-    | *(none)* | Detect by `package.json`. An empty directory does not count |
-    | `--spa-dir apps-web` | An unconventional layout |
-    | `--no-spa` | Backend-only image even with a frontend present |
-
-    Serve the result with [`make_spa_router("web/dist")`](react-spa.md),
-    included **after** every API router. A project with no frontend renders a
-    byte-identical Dockerfile to before.
-
-
-Since v0.71.0, `tempest new` also generates a ready-to-build **`Dockerfile`** + **`.dockerignore`**. The `Dockerfile` is **multi-stage** and uses [uv](https://docs.astral.sh/uv/):
-
-- **`builder` stage** — installs dependencies into `/app/.venv` (a cached layer that only re-runs when `pyproject.toml` / `uv.lock` change), then installs the project.
-- **final stage** — copies only the venv + the source, runs as a **non-root** user (`app`, uid 1000), and exposes the configured port.
-
-```dockerfile
-FROM python:3.13-slim AS builder
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
-WORKDIR /app
-COPY pyproject.toml uv.lock* ./
-RUN uv sync --no-dev --no-install-project
-COPY . .
-RUN uv sync --no-dev
-
-FROM python:3.13-slim
-RUN useradd --create-home --uid 1000 app
-WORKDIR /app
-COPY --from=builder --chown=app:app /app /app
-ENV PATH="/app/.venv/bin:$PATH" SERVER_HOST=0.0.0.0 SERVER_PORT=8000
-USER app
-EXPOSE 8000
-CMD ["python", "main.py"]
-```
-
-Build and run:
-
-```bash
-docker build -t my_service .
-docker run --rm -p 8000:8000 --env-file .env my_service
-```
-
-!!! info "The image binds to `0.0.0.0` by default"
-    The final stage sets `ENV SERVER_HOST=0.0.0.0` so the app is
-    reachable from outside the container even without a `.env`. Locally
-    the scaffold keeps `SERVER_HOST=127.0.0.1` (internal service) — the
-    container overrides it to `0.0.0.0` because the bind there must
-    accept external connections. Pass `--env-file .env` to point
-    `DATABASE_URL` at the infra in `docker-compose.yaml`.
-
-!!! warning "`docker-compose.yaml` stays infra-only"
-    The generated compose brings up **only** Postgres + the services
-    your extras need (Redis, RabbitMQ, MinIO, MailHog) — it does not
-    embed an `app` service. The `Dockerfile` is standalone: use
-    `docker build` / `docker run`, or add an `app:` service with
-    `build: .` to the compose by hand if you want a one-command stack.
-
-#### Regenerating the Dockerfile — `tempest generate --dockerfile`
-
-```bash
-tempest generate --dockerfile                    # Dockerfile + .dockerignore
-tempest generate --dockerfile --name my-svc      # override the name in the comments
-tempest generate --dockerfile --force            # overwrite existing files
-tempest generate --docker --dockerfile --src     # everything in one shot
-```
-
-The `EXPOSE` / `SERVER_PORT` port is read from `SERVER_PORT` in `.env` (or `.env.example`), falling back to `8000` when absent. Like the other generators, it refuses to overwrite without `--force`.
-
-### Generating the `src` layers from extras — `tempest generate --src`
-
-The always-present layers (`api`, `controllers`, `services`, `schemas`, `db`, `core`, `utils`) ship in the scaffold. The layers that only make sense with a specific extra — `[queue]` (FastStream) and `[tasks]` (TaskIQ) — are **not** part of the base skeleton: dropping empty placeholder packages in every service contradicts the layout rules. When you add one of those extras to an existing project (`uv add "tempest-fastapi-sdk[queue]"`), generate the matching layer with:
-
-```bash
-tempest generate --src                           # read extras from local pyproject.toml
-tempest generate --src --extras tasks            # force explicit extras
-tempest generate --src --force                   # overwrite existing files
-tempest generate --docker --src                  # compose + layers in one shot
-```
-
-Extra → generated layer mapping:
-
-| Extra | Files created (under `src/` or `app/`) |
-|-------|------------------------------------------|
-| `[queue]` | `queue/__init__.py` (broker + `AsyncBrokerManager` + `get_broker`), `queue/handlers.py` (example subscriber) |
-| `[tasks]` | `tasks/__init__.py` (broker + `AsyncTaskBrokerManager` + `get_task_manager`), `tasks/jobs.py` (example task) |
-
-The source root (`src` or `app`) is auto-detected, and generated imports (`from src.queue import broker`) already point at it. The operation is **idempotent**: existing files are **kept** unless you pass `--force`, so a hand-edited handler is never clobbered silently — a sibling file that doesn't exist yet is still written. Extras with no associated layer (e.g. just `[cache]`) generate nothing and the command says so.
-
-!!! note "`tempest new` already generates the chosen extras' layers"
-    A `tempest new my_service --extras auth,queue` already ships
-    `src/queue/` — `generate --src` is for when you add the extra
-    **after** creating the project.
-
-After scaffolding:
-
-```bash
-cd my_service
-uv sync                                         # installs SDK + dev tools
-cp .env.example .env
-uv run python main.py                           # serves on the configured HOST:PORT
-uv run pytest                                   # the bundled smoke test
-```
 
 ### Models — `tempest model`
 
@@ -799,8 +799,7 @@ Every command returns the underlying tool's exit code, so `tempest check` is saf
 `tempest` covers the whole cycle — from scaffolding (`new`),
 through infra (`generate --docker` / `--dockerfile` / `--src`), migrations
 (`db`), users (`user`) and secrets (`secrets`), to the quality gates
-(`lint` / `fix` / `type` / `test` / `check`). Once the service is
-generated, head to the related recipes:
+(`lint` / `fix` / `type` / `test` / `check`).
 
 ## Next steps
 

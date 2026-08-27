@@ -27,7 +27,7 @@ db = AsyncDatabaseManager(settings.DATABASE_URL)
 cache = AsyncRedisManager(settings.REDIS_URL)
 mq = MessageBroker.rabbitmq(settings.RABBITMQ_URL)      # cross-service events
 tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)     # work off the request
-events = SSEBroker(redis=cache.client)                  # real-time status
+events = SSEBroker(redis=cache.client_proxy)                  # real-time status
 ```
 
 They all start/stop in the lifespan (`connect`/`disconnect`) — see the
@@ -260,13 +260,9 @@ On confirmation, section 7's handler swaps the raw `events.publish` for a single
 ```python
 # src/queue/consumers.py
 
-from tempest_fastapi_sdk.webpush import WebPushDispatcher
-
-from src.core.settings import settings
 from src.queue import OrderPaid, mq
+from src.services.notification import notifications
 from src.tasks import send_receipt
-
-notifications = WebPushDispatcher(**settings.webpush_kwargs())
 
 
 @mq.on("orders.paid")
@@ -297,13 +293,10 @@ all: `broker.response(channel)`.
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from tempest_fastapi_sdk.webpush import WebPushDispatcher
-
-from src.core.settings import settings
 from src.db.models import UserModel
+from src.services.notification import notifications
 
 current_user = UserModel(name="Ana", email="ana@example.com")
-notifications = WebPushDispatcher(**settings.webpush_kwargs())
 router = APIRouter()
 
 

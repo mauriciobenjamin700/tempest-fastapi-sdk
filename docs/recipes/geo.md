@@ -428,14 +428,15 @@ devolve a linha da rota decodificada em `TravelEstimate.geometry`:
 ```python
 import asyncio
 
-from tempest_fastapi_sdk import HTTPClient
+import httpx
+
 from tempest_fastapi_sdk.geo import BoundingBox, Coordinate, OSRMBackend
 
 a = store_a
 
 b = store_b
 
-client = HTTPClient()
+client = httpx.AsyncClient()
 
 
 def desenhar_no_mapa(box: BoundingBox) -> None:
@@ -507,10 +508,11 @@ percorrido = path_length_km(pontos_do_gps)
 ```python
 import asyncio
 
-from tempest_fastapi_sdk import HTTPClient
+import httpx
+
 from tempest_fastapi_sdk.geo import NominatimBackend, cep_to_coordinate, uf_centroid
 
-geocoder = NominatimBackend(http_client=HTTPClient())
+geocoder = NominatimBackend(http_client=httpx.AsyncClient())
 
 
 pino = uf_centroid("SP")  # centro aproximado do estado, offline

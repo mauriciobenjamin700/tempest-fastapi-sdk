@@ -140,7 +140,7 @@ Um evento de domínio (pedido pago/expedido, convite, novo review) é entregue e
 | GET  | `/health/liveness` | público | `make_health_router` — viva? |
 | GET  | `/health/readiness` | público | viva + DB ok + Redis ok? |
 | GET  | `/logs` | X-Token | `make_logs_router` — lê `logs/*.log`. |
-| GET  | `/metrics` | público (interno) | Prometheus scrape (v0.26+). |
+| GET  | `/metrics` | público (interno) | Prometheus scrape (v0.28+). |
 | GET  | `/admin/*` | session admin | `AdminSite` Jinja+HTMX. |
 | GET  | `/docs` | público | Swagger UI. |
 | GET  | `/redoc` | público | Redoc. |

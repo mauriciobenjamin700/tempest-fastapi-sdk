@@ -110,13 +110,18 @@ gets **403**.
 import asyncio
 from typing import Any
 
+from fastapi.security import HTTPAuthorizationCredentials
+
 from tempest_fastapi_sdk import IntrospectionAuth
 
 from src.core.settings import settings
 
 auth = IntrospectionAuth(userinfo_url=settings.IAGRO_USERINFO_URL)
 
-credentials = "eyJhbGciOiJIUzI1NiJ9.token"
+credentials = HTTPAuthorizationCredentials(
+    scheme="Bearer",
+    credentials="eyJhbGciOiJIUzI1NiJ9.token",
+)
 
 
 async def main() -> None:
@@ -138,13 +143,18 @@ depends on the same bearer, calls `get_claims` internally, and does
 import asyncio
 from uuid import UUID
 
+from fastapi.security import HTTPAuthorizationCredentials
+
 from tempest_fastapi_sdk import IntrospectionAuth
 
 from src.core.settings import settings
 
 auth = IntrospectionAuth(userinfo_url=settings.IAGRO_USERINFO_URL)
 
-credentials = "eyJhbGciOiJIUzI1NiJ9.token"
+credentials = HTTPAuthorizationCredentials(
+    scheme="Bearer",
+    credentials="eyJhbGciOiJIUzI1NiJ9.token",
+)
 
 
 async def main() -> None:
