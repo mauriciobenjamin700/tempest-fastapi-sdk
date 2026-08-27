@@ -2,6 +2,54 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.256.0 — the `RateLimitMiddleware` 429 becomes JSON
+
+Breaks clients that read the 429 body as text.
+
+### What changes
+
+Up to v0.255.0 the middleware answered `text/plain` with the raw `error_message`:
+
+```text
+HTTP/1.1 429 Too Many Requests
+content-type: text/plain; charset=utf-8
+
+Too many requests
+```
+
+It now answers the same envelope `register_exception_handlers` writes in every handler:
+
+```text
+HTTP/1.1 429 Too Many Requests
+content-type: application/json
+retry-after: 60
+
+{"detail": "Too many requests",
+ "code": "TOO_MANY_REQUESTS",
+ "details": {"retry_after_seconds": 60, "limit": 15}}
+```
+
+The reason is a contradiction inside the SDK itself: `error_responses()` always pointed 429 at `ErrorResponseSchema`, so a client generated from the OpenAPI schema broke deserializing the text -- and anyone adopting `register_exception_handlers` alongside the middleware ended up with two error shapes in one API.
+
+### What to do
+
+- **A client branching on `status === 429`:** nothing. The status and `Retry-After` are unchanged.
+- **A client reading the body as text:** read JSON instead, using `detail` to display and `code` to branch.
+
+```typescript
+// before
+const message = await response.text();
+
+// after
+const { detail, code } = await response.json();
+```
+
+- **A service that rewrote the response** (a middleware subclass turning the text into an envelope) can delete the workaround: `error_message` plus the new `error_code` cover it.
+
+### If you need the text back
+
+There is no flag for it. The old body was incompatible with the schema the route itself documents, and keeping both shapes would keep the defect behind an option. A service that genuinely needs another format can subclass the middleware and override the response, the way it did before.
+
 ## 0.252.0 — SQLite `:memory:` gets one connection per session
 
 No API break. It changes the connection topology of a `:memory:` database, so read this before upgrading if you rely on the old behaviour.

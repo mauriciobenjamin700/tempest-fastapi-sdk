@@ -106,6 +106,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Fecha [#210](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/210).
 
+### Changed
+
+- **BREAKING — o 429 do `RateLimitMiddleware` passa a ser JSON, no envelope de
+  erro do SDK.** O SDK define um envelope canônico e o aplica em todo handler
+  registrado por `register_exception_handlers` — menos no próprio rate limiter,
+  que respondia `text/plain` com o `error_message` cru. Quem adotava os dois
+  ficava com duas formas de erro na mesma API, e o cliente precisava de um caso
+  especial checando `status === 429` para ler `text()` em vez de `json()`.
+
+  ```json
+  {"detail": "Too many requests",
+   "code": "TOO_MANY_REQUESTS",
+   "details": {"retry_after_seconds": 60, "limit": 15}}
+  ```
+
+  Não era só inconsistência de estilo: `error_responses()` sempre apontou o 429
+  para o `ErrorResponseSchema`, então o corpo real contradizia o schema que a
+  rota publica e cliente gerado quebrava ao desserializar.
+
+  Novo parâmetro `error_code`, default `TooManyRequestsException.code` — lido da
+  própria exceção, para os dois não divergirem. `details` carrega o que antes só
+  existia em header: `retry_after_seconds` e o `limit` da regra que barrou.
+
+  **Migração:** cliente que ramifica por `status === 429` não muda; cliente que
+  lê o corpo como texto passa a ler JSON e usar `detail`. Serviço que
+  reescrevia a resposta com uma subclasse pode apagar o contorno. Passo a passo
+  no guia de migração: `docs/migration.md`, seção 0.256.0.
+
+  O middleware monta a resposta em vez de levantar a exceção porque
+  `BaseHTTPMiddleware` adicionado por `add_middleware` fica fora do
+  `ExceptionMiddleware` do Starlette: exceção levantada no `dispatch` não
+  encontra handler e vira 500.
+
+  Conferido nos vizinhos que a issue mandou olhar: `BodySizeLimitMiddleware` já
+  emitia o envelope, e `IdempotencyMiddleware` / `ResponseCacheMiddleware` nunca
+  emitem corpo de erro próprio — só replayam resposta cacheada. O
+  `rate_limit.py` era o único site fora do envelope.
+
+  Fecha [#211](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/211).
+
 ## [0.255.0] — 2026-08-25
 
 ### Added

@@ -34,13 +34,16 @@ from typing import Any, Protocol, runtime_checkable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 from tempest_fastapi_sdk.api.middlewares.quota import (
     MemoryQuotaStore,
     QuotaStore,
     RateLimitPolicy,
+)
+from tempest_fastapi_sdk.exceptions.too_many_requests import (
+    TooManyRequestsException,
 )
 from tempest_fastapi_sdk.utils.client_ip import get_client_ip
 
@@ -552,6 +555,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         retry_after_header: bool = True,
         limit_headers: bool = True,
         error_message: str = "Too many requests",
+        error_code: str = TooManyRequestsException.code,
     ) -> None:
         """Initialize the middleware.
 
@@ -599,7 +603,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 429 in single-window mode — the sliding-window store
                 does not report a reset for an accepted request, and a
                 guessed number is worse than an absent header.
-            error_message (str): Body of the 429 response.
+            error_message (str): ``detail`` of the 429 envelope. Prose
+                for humans -- clients branch on ``code``.
+            error_code (str): ``code`` of the 429 envelope, the stable
+                identifier a client branches on. Defaults to
+                :class:`~tempest_fastapi_sdk.TooManyRequestsException`'s
+                own ``TOO_MANY_REQUESTS``, so a route documented with
+                ``error_responses(TooManyRequestsException)`` matches
+                what the middleware actually sends.
 
         Raises:
             ValueError: If ``max_requests`` < 1, ``window_seconds`` <= 0,
@@ -633,6 +644,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._retry_after_header: bool = retry_after_header
         self._limit_headers: bool = limit_headers
         self._error_message: str = error_message
+        self._error_code: str = error_code
 
     async def dispatch(
         self,
@@ -682,10 +694,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not allowed:
             if self._retry_after_header:
                 headers["Retry-After"] = str(retry_after)
-            return Response(
-                content=self._error_message,
+            details: dict[str, Any] = {
+                "retry_after_seconds": retry_after,
+                "limit": limit,
+            }
+            return JSONResponse(
                 status_code=429,
-                media_type="text/plain",
+                content={
+                    "detail": self._error_message,
+                    "code": self._error_code,
+                    "details": details,
+                },
                 headers=headers,
             )
 

@@ -306,7 +306,7 @@ async def update_perms(user_id: UUID) -> None:
 ## Rate limit middleware
 
 
-`RateLimitMiddleware` is a sliding-window limiter — each unique key (client IP by default) is allowed at most `max_requests` requests inside every `window_seconds` window. Exceeded requests get a `429 Too Many Requests` with a `Retry-After` header. Two axes are pluggable: the **store** (memory or Redis) and the **key** (IP, user, tenant, API key) — see below.
+`RateLimitMiddleware` is a sliding-window limiter — each unique key (client IP by default) is allowed at most `max_requests` requests inside every `window_seconds` window. Exceeded requests get a `429 Too Many Requests` with a `Retry-After` header and the SDK's canonical error envelope as the body (see below). Two axes are pluggable: the **store** (memory or Redis) and the **key** (IP, user, tenant, API key) — see below.
 
 ```python
 # src/api/app.py
@@ -521,6 +521,67 @@ Three decisions worth understanding:
   The price is that a caller who *chooses* their own plan (a client-supplied
   header) could reset their counters by switching — pair it with a resolver
   your edge controls.
+
+### The 429 body is the SDK's error envelope
+
+The 429 comes out in the same shape `register_exception_handlers` writes in
+every handler, so a client parses **one** envelope for every failure:
+
+```json
+{
+    "detail": "Too many requests",
+    "code": "TOO_MANY_REQUESTS",
+    "details": {"retry_after_seconds": 60, "limit": 15}
+}
+```
+
+`code` is what a client branches on -- never `detail`, which is prose and
+changes with the negotiated locale once a `MessageCatalog` is registered. Swap
+both for whatever your API uses:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import RateLimitMiddleware
+
+
+app = FastAPI()
+
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests=15,
+    window_seconds=1.0,
+    error_message="Slow down, you are sending too many requests.",
+    error_code="TOO_MANY_REQUESTS",
+)
+```
+
+`details` carries what only headers had before: `retry_after_seconds` (the same
+number as `Retry-After`) and the `limit` of the rule that rejected the request
+-- in policy mode, the tightest one.
+
+!!! warning "Changed in v0.256.0"
+    Up to v0.255.0 the 429 was `text/plain` with the raw `error_message` as the
+    body. Clients reading that body as text have to read JSON and take `detail`
+    instead; clients branching on `status === 429` are unaffected.
+
+    The swap closes a contradiction inside the SDK itself: `error_responses()`
+    always pointed 429 at `ErrorResponseSchema`, so a client generated from the
+    OpenAPI schema broke deserializing the text.
+
+!!! tip "Documenting the 429 in OpenAPI"
+    `error_responses(TooManyRequestsException)` describes exactly what the
+    middleware sends -- the default `error_code` is that exception's own
+    `code`. Change `error_code` and you should change the exception documenting
+    the route too, or the schema drifts from the body again.
+
+!!! info "Why the middleware does not raise the exception"
+    That would be the obvious route -- raise `TooManyRequestsException` and let
+    the registered handler format it. It does not work: a `BaseHTTPMiddleware`
+    added through `add_middleware` sits **outside** Starlette's
+    `ExceptionMiddleware`, so an exception raised in `dispatch` finds no handler
+    and turns into a 500. The middleware therefore builds the response itself,
+    reading the default `code` off that same exception so the two cannot drift.
 
 ### `RateLimit-*` headers
 

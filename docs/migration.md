@@ -2,6 +2,54 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.256.0 — o 429 do `RateLimitMiddleware` passa a ser JSON
+
+Quebra quem lê o corpo do 429 como texto.
+
+### O que muda
+
+Até a v0.255.0 o middleware respondia `text/plain` com o `error_message` cru:
+
+```text
+HTTP/1.1 429 Too Many Requests
+content-type: text/plain; charset=utf-8
+
+Too many requests
+```
+
+Agora responde o mesmo envelope que `register_exception_handlers` escreve em todo handler:
+
+```text
+HTTP/1.1 429 Too Many Requests
+content-type: application/json
+retry-after: 60
+
+{"detail": "Too many requests",
+ "code": "TOO_MANY_REQUESTS",
+ "details": {"retry_after_seconds": 60, "limit": 15}}
+```
+
+O motivo é uma contradição do próprio SDK: `error_responses()` sempre apontou o 429 para o `ErrorResponseSchema`, então cliente gerado a partir do OpenAPI quebrava ao desserializar o texto — e quem adotava `register_exception_handlers` junto com o middleware ficava com duas formas de erro na mesma API.
+
+### O que fazer
+
+- **Cliente que ramifica por `status === 429`:** nada. O status e o `Retry-After` não mudaram.
+- **Cliente que lê o corpo como texto:** passe a ler JSON e a usar `detail` para exibir, `code` para ramificar.
+
+```typescript
+// antes
+const message = await response.text();
+
+// depois
+const { detail, code } = await response.json();
+```
+
+- **Serviço que reescrevia a resposta** (subclasse do middleware convertendo o texto em envelope) pode apagar o contorno: `error_message` e o novo `error_code` cobrem o caso.
+
+### Se você precisa do texto de volta
+
+Não há flag para isso. O corpo antigo era incompatível com o schema que a própria rota documenta; manter as duas formas manteria o defeito atrás de uma opção. Um serviço que realmente precise de outro formato pode subclassar o middleware e sobrescrever a resposta, como antes.
+
 ## 0.252.0 — `:memory:` do SQLite ganha conexão por sessão
 
 Não quebra API. Muda a topologia de conexão de um banco `:memory:`, e por isso vale ler antes de atualizar se você depende do comportamento antigo.
