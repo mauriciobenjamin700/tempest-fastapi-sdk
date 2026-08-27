@@ -86,6 +86,85 @@ def _run(args: list[str], *, env: dict[str, str] | None = None) -> None:
         )
 
 
+def _run_to_file(
+    args: list[str],
+    dest: Path,
+    *,
+    env: dict[str, str] | None = None,
+) -> None:
+    """Run a subprocess and write its stdout to ``dest``.
+
+    Used by the Docker path, where the dump is produced **inside** the
+    container and has to cross back as a stream — there is no shared
+    filesystem to write to.
+
+    Args:
+        args (list[str]): The command and its arguments (no shell).
+        dest (Path): File to write the captured stdout to.
+        env (dict[str, str] | None): Extra environment overrides.
+
+    Raises:
+        RuntimeError: When the process exits non-zero. ``dest`` is
+            removed first, so a failed run never leaves a truncated dump
+            that looks like a successful one.
+    """
+    merged = {**os.environ, **(env or {})}
+    with dest.open("wb") as handle:
+        result = subprocess.run(
+            args,
+            env=merged,
+            stdout=handle,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    if result.returncode != 0:
+        dest.unlink(missing_ok=True)
+        tool = Path(args[0]).name
+        raise RuntimeError(
+            f"{tool} failed (exit {result.returncode}): "
+            f"{result.stderr.decode('utf-8', 'replace').strip()}"
+        )
+
+
+def _run_from_file(
+    args: list[str],
+    source: Path,
+    *,
+    env: dict[str, str] | None = None,
+) -> None:
+    """Run a subprocess with ``source`` piped into its stdin.
+
+    The restore half of :func:`_run_to_file`: the dump lives on this host
+    and the tool that reads it runs in the container, so it is streamed in
+    rather than copied with ``docker cp`` — nothing to clean up inside the
+    container afterwards, and no window where a copy sits there half
+    written.
+
+    Args:
+        args (list[str]): The command and its arguments (no shell).
+        source (Path): File to feed to the process's stdin.
+        env (dict[str, str] | None): Extra environment overrides.
+
+    Raises:
+        RuntimeError: When the process exits non-zero.
+    """
+    merged = {**os.environ, **(env or {})}
+    with source.open("rb") as handle:
+        result = subprocess.run(
+            args,
+            env=merged,
+            stdin=handle,
+            capture_output=True,
+            check=False,
+        )
+    if result.returncode != 0:
+        tool = Path(args[0]).name
+        raise RuntimeError(
+            f"{tool} failed (exit {result.returncode}): "
+            f"{result.stderr.decode('utf-8', 'replace').strip()}"
+        )
+
+
 class DatabaseBackup:
     """Per-dialect database backup / restore over a single URL.
 
@@ -99,18 +178,44 @@ class DatabaseBackup:
             ``"sqlite"``).
     """
 
-    def __init__(self, database_url: str) -> None:
+    def __init__(
+        self,
+        database_url: str,
+        *,
+        docker_container: str | None = None,
+    ) -> None:
         """Initialize from a (possibly async) database URL.
 
         Args:
             database_url (str): The application's ``DATABASE_URL``. The
                 async driver suffix is stripped automatically.
+            docker_container (str | None): Run the Postgres tooling
+                **inside** this container via ``docker exec`` instead of
+                on this host. Set it when the database runs as its own
+                container: the image already carries the ``pg_dump`` that
+                matches its server, so the application image does not need
+                ``postgresql-client`` pinned to a compatible version just
+                for a nightly job. Ignored for SQLite, which is a file
+                copy either way.
         """
         self.url: str = _strip_async_driver(database_url)
         self.backend: str = make_url(self.url).get_backend_name()
+        self.docker_container: str | None = docker_container
 
-    def _pg_conn(self) -> tuple[list[str], dict[str, str]]:
+    def _pg_conn(
+        self,
+        *,
+        include_host: bool = True,
+    ) -> tuple[list[str], dict[str, str]]:
         """Build ``pg_*`` connection flags + a password env from the URL.
+
+        Args:
+            include_host (bool): Emit ``-h``/``-p``. Dropped in Docker
+                mode, where the tool runs **inside** the database
+                container and reaches the server over its local socket —
+                the URL's host and port describe how the *application*
+                reaches it from outside, which is not a route that exists
+                in there.
 
         Returns:
             tuple[list[str], dict[str, str]]: ``(args, env)`` where
@@ -119,9 +224,9 @@ class DatabaseBackup:
         """
         parsed = make_url(self.url)
         args: list[str] = []
-        if parsed.host:
+        if include_host and parsed.host:
             args += ["-h", parsed.host]
-        if parsed.port:
+        if include_host and parsed.port:
             args += ["-p", str(parsed.port)]
         if parsed.username:
             args += ["-U", parsed.username]
@@ -186,11 +291,16 @@ class DatabaseBackup:
         dest = output or self._default_output(plain)
 
         if self.backend == "postgresql":
-            tool = _require_tool("pg_dump")
-            conn, env = self._pg_conn()
             fmt = [] if plain else ["-Fc"]
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            _run([tool, *fmt, "-f", str(dest), *conn], env=env)
+            if self.docker_container is not None:
+                prefix, conn, env = self._docker_pg("pg_dump")
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                _run_to_file([*prefix, *fmt, *conn], dest, env=env)
+            else:
+                tool = _require_tool("pg_dump")
+                conn, env = self._pg_conn()
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                _run([tool, *fmt, "-f", str(dest), *conn], env=env)
         elif self.backend == "sqlite":
             source = self._sqlite_path()
             self._sqlite_copy(source, dest)
@@ -234,6 +344,72 @@ class DatabaseBackup:
                 f"restore is not supported for backend {self.backend!r}."
             )
 
+    def _docker_pg(self, tool: str) -> tuple[list[str], list[str], dict[str, str]]:
+        """Build the ``docker exec`` prefix for a Postgres tool.
+
+        ``PGPASSWORD`` is forwarded by **name** (``-e PGPASSWORD``), not by
+        value: Docker copies it from this process's environment, so the
+        password never appears in the container's command line, where any
+        ``ps`` on the host would show it.
+
+        Args:
+            tool (str): The tool to run inside the container
+                (``pg_dump`` / ``pg_restore`` / ``psql``).
+
+        Returns:
+            tuple[list[str], list[str], dict[str, str]]: The command
+            prefix, the connection flags (no ``-h``/``-p``), and the env
+            carrying ``PGPASSWORD``.
+
+        Raises:
+            BackupToolMissingError: When the ``docker`` CLI is absent.
+        """
+        docker = _require_tool("docker")
+        conn, env = self._pg_conn(include_host=False)
+        assert self.docker_container is not None, "guarded by the caller"
+        prefix = [
+            docker,
+            "exec",
+            "-i",
+            "-e",
+            "PGPASSWORD",
+            self.docker_container,
+            tool,
+        ]
+        return prefix, conn, env
+
+    def _pg_restore_docker(self, source: Path, *, clean: bool) -> None:
+        """Restore a dump by streaming it into the database container.
+
+        Args:
+            source (Path): The dump file on this host (``.sql`` → plain,
+                else custom).
+            clean (bool): Drop existing objects first when ``True``.
+        """
+        if source.suffix == ".sql":
+            prefix, conn, env = self._docker_pg("psql")
+            if clean:
+                _run(
+                    [
+                        *prefix,
+                        *conn,
+                        "-v",
+                        "ON_ERROR_STOP=1",
+                        "-c",
+                        "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;",
+                    ],
+                    env=env,
+                )
+            _run_from_file(
+                [*prefix, *conn, "-v", "ON_ERROR_STOP=1"],
+                source,
+                env=env,
+            )
+            return
+        prefix, conn, env = self._docker_pg("pg_restore")
+        clean_flags = ["--clean", "--if-exists"] if clean else []
+        _run_from_file([*prefix, "--no-owner", *clean_flags, *conn], source, env=env)
+
     def _pg_restore(self, source: Path, *, clean: bool) -> None:
         """Restore a Postgres dump, dispatching on the file format.
 
@@ -241,6 +417,9 @@ class DatabaseBackup:
             source (Path): The dump file (``.sql`` → plain, else custom).
             clean (bool): Drop existing objects first when ``True``.
         """
+        if self.docker_container is not None:
+            self._pg_restore_docker(source, clean=clean)
+            return
         conn, env = self._pg_conn()
         if source.suffix == ".sql":
             psql = _require_tool("psql")

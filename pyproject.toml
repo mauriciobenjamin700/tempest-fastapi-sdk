@@ -573,12 +573,13 @@ addopts = [
     "--cov=tempest_fastapi_sdk",
     "--cov-report=term-missing",
     "-m",
-    "not model and not gpu",
+    "not model and not gpu and not docker",
 ]
 markers = [
     "model: needs real model weights; opt-in, downloads on first run (make test-model)",
     "gpu: needs CUDA; skipped without a GPU (make test-gpu)",
     "docs: asserts against the built MkDocs site; triggers one `mkdocs build`",
+    "docker: starts a real container; opt-in, needs a running daemon (make test-docker)",
 ]
 
 [tool.coverage.run]

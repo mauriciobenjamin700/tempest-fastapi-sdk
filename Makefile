@@ -31,6 +31,10 @@ test-model: ## Run opt-in model smoke tests (downloads tiny weights on first run
 test-gpu: ## Run GPU tests (needs CUDA; skipped without a GPU)
 	uv run pytest -m gpu
 
+.PHONY: test-docker
+test-docker: ## Run tests that start a real container (needs a docker daemon)
+	uv run pytest -m docker
+
 cov: ## Open the last coverage HTML report (run `pytest --cov-report=html` first)
 	@command -v xdg-open >/dev/null && xdg-open htmlcov/index.html || open htmlcov/index.html
 

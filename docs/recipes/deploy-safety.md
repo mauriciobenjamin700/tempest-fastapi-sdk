@@ -101,11 +101,49 @@ backup.restore(Path("backups/app_20260727-104500.dump"))
 SCHEMA public CASCADE` antes do `psql -f` no plain, sobrescrita do arquivo no
 SQLite. Passe `clean=False` pra restaurar **por cima** de um banco existente.
 
+### Banco em container: `docker_container=`
+
+Quando o Postgres roda no container dele, instalar `postgresql-client` na imagem
+da aplicação — e mantê-lo numa versão compatível com o servidor — é peso morto
+só pro job noturno. A imagem do banco já tem o `pg_dump` exato da versão dela:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk import DatabaseBackup
+
+from src.core.settings import settings
+
+backup = DatabaseBackup(settings.DATABASE_URL, docker_container="app-db")
+
+written: Path = backup.backup(Path("backups/app.dump"))
+backup.restore(written)
+```
+
+Com `docker_container` setado, o `pg_dump` roda **dentro** do container e o dump
+volta pelo stdout para o arquivo local; o restore faz o caminho inverso, com o
+arquivo entrando pelo stdin do `pg_restore`/`psql`. Sem ele, nada muda.
+
+!!! note "Três detalhes que fazem esse modo funcionar"
+    - **`-h`/`-p` são descartados.** O host e a porta da URL descrevem como a
+      *aplicação* alcança o banco de fora; dentro do container esse caminho não
+      existe. Usuário e database continuam vindo da URL.
+    - **A senha atravessa por nome.** O comando carrega `-e PGPASSWORD`, sem
+      valor: o Docker copia do ambiente do processo que chamou. Escrever
+      `-e PGPASSWORD=…` colocaria a senha na linha de comando do container, que
+      qualquer `ps` no host lê.
+    - **Nada é copiado para dentro.** O restore transmite pelo stdin em vez de
+      `docker cp`, então não sobra arquivo temporário no container nem janela em
+      que ele está pela metade.
+
+    O que o modo exige é o `docker` no `PATH` de quem chama — e é isso que o
+    `BackupToolMissingError` passa a checar aqui, no lugar do `pg_dump`.
+
 !!! warning "Os dois erros que você vai ver primeiro"
-    - `BackupToolMissingError` — `pg_dump`/`pg_restore`/`psql` não está no
-      `PATH`. Container de app raramente traz o client do Postgres; instale
-      `postgresql-client` na imagem que roda o deploy, ou rode o backup de
-      outro lugar.
+    - `BackupToolMissingError` — `pg_dump`/`pg_restore`/`psql` (ou o `docker`,
+      no modo acima) não está no `PATH`. Container de app raramente traz o
+      client do Postgres; instale `postgresql-client` na imagem que roda o
+      deploy, use `docker_container=`, ou rode o backup de outro lugar.
     - `UnsupportedBackupBackendError` — dialeto sem estratégia (MySQL, SQL
       Server). Só Postgres e SQLite são cobertos.
 

@@ -101,11 +101,50 @@ is a faithful copy: `pg_restore --clean --if-exists` for the custom format,
 `DROP SCHEMA public CASCADE` ahead of `psql -f` for plain, file overwrite for
 SQLite. Pass `clean=False` to restore **on top of** an existing database.
 
+### Database in a container: `docker_container=`
+
+When Postgres runs in its own container, installing `postgresql-client` in the
+application image — and keeping it on a version compatible with the server — is
+dead weight carried for a nightly job. The database image already ships the
+`pg_dump` that matches it exactly:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk import DatabaseBackup
+
+from src.core.settings import settings
+
+backup = DatabaseBackup(settings.DATABASE_URL, docker_container="app-db")
+
+written: Path = backup.backup(Path("backups/app.dump"))
+backup.restore(written)
+```
+
+With `docker_container` set, `pg_dump` runs **inside** the container and the
+dump comes back over stdout into the local file; restore goes the other way,
+with the file fed to `pg_restore`/`psql` on stdin. Without it, nothing changes.
+
+!!! note "Three details that make this mode work"
+    - **`-h`/`-p` are dropped.** The URL's host and port describe how the
+      *application* reaches the database from outside; inside the container that
+      route does not exist. User and database still come from the URL.
+    - **The password crosses by name.** The command carries `-e PGPASSWORD`
+      with no value: Docker copies it from the calling process's environment.
+      Spelling it `-e PGPASSWORD=…` would put the password in the container's
+      command line, where any `ps` on the host reads it.
+    - **Nothing is copied in.** Restore streams over stdin instead of
+      `docker cp`, so no temporary file is left inside the container and there
+      is no window where one sits there half written.
+
+    What the mode does require is `docker` on the caller's `PATH` — and that is
+    what `BackupToolMissingError` checks here, in place of `pg_dump`.
+
 !!! warning "The two errors you will hit first"
-    - `BackupToolMissingError` — `pg_dump` / `pg_restore` / `psql` is not on
-      `PATH`. An app container rarely ships the Postgres client; install
-      `postgresql-client` in the image that runs the deploy, or run the backup
-      elsewhere.
+    - `BackupToolMissingError` — `pg_dump` / `pg_restore` / `psql` (or `docker`,
+      in the mode above) is not on `PATH`. An app container rarely ships the
+      Postgres client; install `postgresql-client` in the image that runs the
+      deploy, use `docker_container=`, or run the backup elsewhere.
     - `UnsupportedBackupBackendError` — a dialect with no strategy (MySQL, SQL
       Server). Only Postgres and SQLite are covered.
 
