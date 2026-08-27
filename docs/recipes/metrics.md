@@ -192,6 +192,36 @@ asyncio.run(main())
 
 Os coletores individuais também estão disponíveis: `MetricsUtils.cpu(interval=...)`, `MetricsUtils.memory()`, `MetricsUtils.disk(path)`, `MetricsUtils.disks(paths)`, `MetricsUtils.gpus()` — e suas variantes `*_async`. Cada um retorna uma dataclass tipada (`CPUMetrics`, `MemoryMetrics`, `DiskMetrics`, `GPUMetrics`, `SystemMetrics`) com um helper `to_dict()` para serialização JSON.
 
+!!! warning "Um disco: use `disk_async`, não `disks_async([path])`"
+    As duas variantes tratam erro de caminho de formas opostas, e a diferença
+    aparece justamente num endpoint de métrica:
+
+    ```python
+    import asyncio
+
+    from tempest_fastapi_sdk import DiskMetrics, MetricsUtils
+
+
+    async def main() -> None:
+        """Compare as duas leituras do mesmo caminho inexistente."""
+        vazio = await MetricsUtils.disks_async(["/mnt/sumiu"])
+        print(vazio)  # [] — o erro virou linha de log, e o payload sai sem o bloco
+
+        try:
+            disco: DiskMetrics = await MetricsUtils.disk_async("/mnt/sumiu")
+        except FileNotFoundError as exc:
+            print(f"propagou: {exc}")
+
+
+    asyncio.run(main())
+    ```
+
+    `disks_async` loga e pula porque a lista é plural — um caminho ruim não
+    deveria derrubar os outros quatro. Para um caminho só isso vira ausência
+    silenciosa: o dashboard mostra "sem disco" onde havia falha de permissão ou
+    mount que sumiu. Quem passa vários caminhos **e** quer falhar pede
+    `disks(paths, strict=True)` (ou `disks_async(paths, strict=True)`).
+
 ## Recap
 
 - **Caminho #1 (`[prometheus]`)** — `PrometheusMiddleware` + `make_prometheus_router` expõem séries RED/USE (`http_requests_total`, `http_request_duration_seconds`, `http_requests_in_progress`) num `GET /metrics` pronto pra scrape. É o que você liga em produção.

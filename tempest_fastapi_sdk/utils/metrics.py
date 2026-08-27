@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import logging
 from dataclasses import asdict, dataclass, field
+from functools import partial
 from typing import Any
 
 try:
@@ -291,16 +292,54 @@ class MetricsUtils:
         )
 
     @classmethod
-    def disks(cls, paths: list[str] | None = None) -> list[DiskMetrics]:
+    async def disk_async(cls, path: str = "/") -> DiskMetrics:
+        """Asyncio-friendly wrapper around :meth:`disk`.
+
+        Same error semantics as the sync method — an unreadable path
+        **raises**. That is the difference from calling
+        ``disks_async([path])``, which logs and skips: on a metrics
+        endpoint a skipped path answers ``200`` with the disk block simply
+        absent, and a dashboard cannot tell a mount that vanished from a
+        disk that was never asked for.
+
+        Args:
+            path (str): The filesystem path to inspect. Defaults to the
+                root partition.
+
+        Returns:
+            DiskMetrics: The usage snapshot.
+
+        Raises:
+            FileNotFoundError: When ``path`` does not exist.
+            PermissionError: When ``path`` cannot be read.
+        """
+        return await asyncio.to_thread(cls.disk, path)
+
+    @classmethod
+    def disks(
+        cls,
+        paths: list[str] | None = None,
+        *,
+        strict: bool = False,
+    ) -> list[DiskMetrics]:
         """Sample usage for multiple disks.
 
         Args:
             paths (list[str] | None): Paths to inspect. ``None``
                 defaults to ``["/"]``.
+            strict (bool): When ``True``, the first unreadable path
+                raises instead of being logged and skipped. Use it when a
+                short list is worse than an error — a caller that asked
+                for four mounts and got two has no way to learn which two
+                are missing, or why.
 
         Returns:
-            list[DiskMetrics]: One entry per resolvable path; paths
-            that raise are logged and skipped.
+            list[DiskMetrics]: One entry per resolvable path; paths that
+            raise are logged and skipped unless ``strict``.
+
+        Raises:
+            FileNotFoundError: Under ``strict``, when a path is absent.
+            PermissionError: Under ``strict``, when a path is unreadable.
         """
         targets = paths if paths is not None else ["/"]
         results: list[DiskMetrics] = []
@@ -308,6 +347,8 @@ class MetricsUtils:
             try:
                 results.append(cls.disk(path))
             except (FileNotFoundError, PermissionError, OSError) as exc:
+                if strict:
+                    raise
                 logger.warning("Disk metrics for %r failed: %s", path, exc)
         return results
 
@@ -315,16 +356,24 @@ class MetricsUtils:
     async def disks_async(
         cls,
         paths: list[str] | None = None,
+        *,
+        strict: bool = False,
     ) -> list[DiskMetrics]:
         """Asyncio-friendly wrapper around :meth:`disks`.
 
         Args:
             paths (list[str] | None): Paths to inspect.
+            strict (bool): Propagate the first failure instead of
+                logging and skipping it.
 
         Returns:
             list[DiskMetrics]: The collected snapshots.
+
+        Raises:
+            FileNotFoundError: Under ``strict``, when a path is absent.
+            PermissionError: Under ``strict``, when a path is unreadable.
         """
-        return await asyncio.to_thread(cls.disks, paths)
+        return await asyncio.to_thread(partial(cls.disks, paths, strict=strict))
 
     @classmethod
     def gpus(cls) -> list[GPUMetrics]:

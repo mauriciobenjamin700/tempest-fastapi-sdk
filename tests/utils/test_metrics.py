@@ -60,6 +60,34 @@ class TestDisk:
         results = await MetricsUtils.disks_async()
         assert isinstance(results, list)
 
+    async def test_disk_async_returns_metrics_for_one_path(self) -> None:
+        result = await MetricsUtils.disk_async("/")
+        assert isinstance(result, DiskMetrics)
+        assert result.path == "/"
+        assert result.total_bytes > 0
+
+    async def test_disk_async_propagates_a_bad_path(self) -> None:
+        """The whole reason it exists: `disks_async` swallows this.
+
+        A metrics endpoint reading one disk had only `disks_async([path])`,
+        which logs and skips — so a mount that vanished answers `200` with
+        the disk block missing, indistinguishable from a disk nobody asked
+        for.
+        """
+        with pytest.raises((FileNotFoundError, OSError)):
+            await MetricsUtils.disk_async("/nonexistent-xyz-path-zzz")
+
+    def test_disks_strict_raises_instead_of_shortening_the_list(self) -> None:
+        with pytest.raises((FileNotFoundError, OSError)):
+            MetricsUtils.disks(["/", "/nonexistent-xyz-path-zzz"], strict=True)
+
+    async def test_disks_async_strict_raises(self) -> None:
+        with pytest.raises((FileNotFoundError, OSError)):
+            await MetricsUtils.disks_async(
+                ["/nonexistent-xyz-path-zzz"],
+                strict=True,
+            )
+
 
 class TestGPUFallbacks:
     def test_gpus_returns_empty_without_pynvml(

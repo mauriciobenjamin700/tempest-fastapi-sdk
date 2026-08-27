@@ -192,6 +192,36 @@ asyncio.run(main())
 
 Individual collectors are also available: `MetricsUtils.cpu(interval=...)`, `MetricsUtils.memory()`, `MetricsUtils.disk(path)`, `MetricsUtils.disks(paths)`, `MetricsUtils.gpus()` — plus their `*_async` variants. Each one returns a typed dataclass (`CPUMetrics`, `MemoryMetrics`, `DiskMetrics`, `GPUMetrics`, `SystemMetrics`) with a `to_dict()` helper for JSON serialization.
 
+!!! warning "One disk: use `disk_async`, not `disks_async([path])`"
+    The two variants treat a bad path in opposite ways, and the difference
+    shows up exactly on a metrics endpoint:
+
+    ```python
+    import asyncio
+
+    from tempest_fastapi_sdk import DiskMetrics, MetricsUtils
+
+
+    async def main() -> None:
+        """Read the same missing path both ways."""
+        empty = await MetricsUtils.disks_async(["/mnt/gone"])
+        print(empty)  # [] — the error became a log line, the payload a gap
+
+        try:
+            disk: DiskMetrics = await MetricsUtils.disk_async("/mnt/gone")
+        except FileNotFoundError as exc:
+            print(f"propagated: {exc}")
+
+
+    asyncio.run(main())
+    ```
+
+    `disks_async` logs and skips because the list is plural — one bad path
+    should not take the other four down. For a single path that becomes silent
+    absence: the dashboard shows "no disk" where there was a permission error
+    or a mount that vanished. Callers passing several paths **and** wanting to
+    fail ask for `disks(paths, strict=True)` (or `disks_async(paths, strict=True)`).
+
 ## Recap
 
 - **Path #1 (`[prometheus]`)** — `PrometheusMiddleware` + `make_prometheus_router` expose RED/USE series (`http_requests_total`, `http_request_duration_seconds`, `http_requests_in_progress`) on a scrape-ready `GET /metrics`. This is what you turn on in production.
