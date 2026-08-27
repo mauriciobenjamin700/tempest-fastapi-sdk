@@ -240,7 +240,9 @@ class RedisSessionStore:
 
         Args:
             client (Redis): Async Redis client (e.g.
-                ``AsyncRedisManager.client``).
+                ``AsyncRedisManager.client``). Pass
+                ``AsyncRedisManager.client_proxy`` instead when the store
+                is built before the lifespan connects.
             prefix (str): Key prefix so session keys do not collide
                 with other cached data.
         """

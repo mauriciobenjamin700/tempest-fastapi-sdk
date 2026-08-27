@@ -1003,6 +1003,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (read-mostly `AdminModel` + `make_requeue_action`) + `task_inventory`
   (`TaskInfo` per registered task). No live queue introspection (TaskIQ exposes
   none) — shows persisted failures + declared task set.
+- **Redis handle para wiring no import (v0.256.0)** —
+  `AsyncRedisManager.client_proxy`, handle estável que resolve o client vivo
+  a cada comando. Existe porque os dois ciclos de vida não se encaixam:
+  `add_middleware` roda no import e `connect()` roda no lifespan, então
+  `manager.client` levanta na hora de construir qualquer store Redis do SDK
+  (`RedisRateLimitStore`, `RedisQuotaStore`, `RedisSessionStore`,
+  `RedisIdempotencyStore`, `RedisResponseCacheStore`,
+  `RedisFeatureFlagBackend`, `RedisWebAuthnChallengeStore` — todos recebem
+  client pronto, nenhum aceita factory). Adiantar a construção não bastava:
+  `disconnect()` descarta o client e o `connect()` seguinte cria outro.
 - **BR validators** — CPF/CNPJ/CEP/phone, with `*Field` Pydantic types
   (`CPFField`/`CNPJField`/`CPFOrCNPJField`/`PhoneBRField`/`CEPField`;
   pre-0.76 unsuffixed names kept as deprecated aliases). **PIX keys**

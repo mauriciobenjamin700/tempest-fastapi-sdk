@@ -65,6 +65,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Fecha [#208](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/208).
 
+- **`AsyncRedisManager.client_proxy`: o handle que pode ser construído antes do
+  `connect()`.** Os dois ciclos de vida não se encaixam. O FastAPI exige
+  middleware registrado no import do módulo — `add_middleware` depois do
+  startup levanta — mas o `connect()` só roda no lifespan. Resultado:
+  `RedisRateLimitStore(redis_manager.client)` levantava `RuntimeError` no
+  único momento em que o store precisa existir, e não havia ordem em que os
+  dois coubessem.
+
+  ```python
+  app.add_middleware(
+      RateLimitMiddleware,
+      store=RedisRateLimitStore(cache.client_proxy),   # válido desde já
+  )
+  ```
+
+  O guard não estava protegendo nada: `connect()` não faz I/O — `from_url()`
+  só monta o `ConnectionPool`, e o `redis-py` conecta preguiçosamente no
+  primeiro comando. Medido contra um host não-roteável, `from_url()` retorna em
+  0,0001 s; quem falha é o primeiro comando — 1,00 s com
+  `socket_connect_timeout=1`, isto é, o timeout configurado, não uma
+  propriedade do `from_url()`.
+
+  Adiantar a construção também não bastava: `disconnect()` descarta o client e
+  o `connect()` seguinte cria um **objeto novo**, então um store que guardou a
+  referência antiga fica com client morto. Por isso o proxy resolve o client a
+  cada acesso de atributo, em vez de capturá-lo uma vez —
+  `test_survives_a_reconnect` fixa isso.
+
+  Vale para os sete stores Redis do SDK, que recebem client pronto e não
+  factory. `client` continua como está, para quem lê dentro de um request; os
+  docstrings de `RedisSessionStore` e `RedisFeatureFlagBackend`, que sugeriam
+  `AsyncRedisManager.client` como valor — justamente a chamada que levanta —
+  agora apontam o `client_proxy` para construção antecipada.
+
+  O tipo declarado é `Redis` para o proxy encaixar em todo parâmetro de store
+  sem cast do lado do consumidor. Ele é um handle que encaminha, não um
+  `Redis`: `isinstance` é `False` e protocolo dunder resolvido no tipo não é
+  encaminhado.
+
+  Fecha [#210](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/210).
+
 ## [0.255.0] — 2026-08-25
 
 ### Added

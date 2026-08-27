@@ -61,6 +61,54 @@ app.include_router(router)
 Wire the health check on the canonical router with `make_health_router(checks={"redis": cache.health_check})` so readiness probes fail when Redis is down.
 
 
+### Wiring a middleware store: `client_proxy`
+
+The two lifecycles do not line up. FastAPI wants middleware registered at module **import** -- `add_middleware` after startup raises -- but `connect()` only runs in the lifespan. A store built from `cache.client` at import time hits the guard:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import RateLimitMiddleware, RedisRateLimitStore
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+
+
+app = FastAPI()
+cache = AsyncRedisManager("redis://localhost:6379/0")
+
+app.add_middleware(
+    RateLimitMiddleware,
+    store=RedisRateLimitStore(cache.client),   # RuntimeError: connect() must be called before
+)
+```
+
+And building it earlier does not help: `disconnect()` drops the client, and the next `connect()` builds a **new** object -- a store holding the old reference is left with a dead client.
+
+`client_proxy` is the stable handle for that case. It resolves the live client on every command, so it is constructible before the first `connect()` and stays correct across a reconnect:
+
+```python
+# src/api/set_middlewares.py -- runs at import time
+from tempest_fastapi_sdk import RateLimitMiddleware, RedisRateLimitStore
+
+from src.api.app import app, cache
+
+
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests=15,
+    window_seconds=1.0,
+    store=RedisRateLimitStore(cache.client_proxy),
+)
+```
+
+It applies to every Redis store the SDK ships -- `RedisRateLimitStore`, `RedisQuotaStore`, `RedisSessionStore`, `RedisIdempotencyStore`, `RedisResponseCacheStore`, `RedisFeatureFlagBackend`, `RedisWebAuthnChallengeStore` -- all of which take a ready client rather than a factory.
+
+!!! info "`client` is still the right one inside a request"
+    Code running **inside** an endpoint runs after the lifespan connected: use `cache.client` or the `cache.client_dependency` dependency. `client_proxy` is for whatever is built before that.
+
+!!! warning "It is a forwarding handle, not a `Redis`"
+    The declared type is `Redis` so the proxy drops into every store parameter without a cast on the consumer side, but `isinstance(cache.client_proxy, Redis)` is `False`, and dunder protocols looked up on the type (`async with proxy`) do not forward. Reading an attribute before the first `connect()` still raises `RuntimeError` -- what changed is that *building* the store no longer does.
+
+
 ## @cached decorator
 
 
