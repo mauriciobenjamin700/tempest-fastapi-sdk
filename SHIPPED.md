@@ -58,7 +58,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   challenge. Tests drive real crypto through a software authenticator
   (`tests/auth/webauthn_authenticator.py`) — a mocked verifier would assert
   away exactly the properties worth testing. Recipe:
-  `docs/recipes/webauthn.md`.
+  `docs/recipes/webauthn.md`. **Token-type checks for foreign tokens
+  (v0.258.0):** `token_type_allowed(..., strict=True, legacy_claims=("type",))`.
+  The default — a payload without `typ` passes — is right for tokens this SDK
+  minted and wrong for everyone else's: a service that already separated
+  access from refresh under a claim of its own has no `typ` and none of the
+  SDK's fallback markers, so every legacy token reached the accept path and a
+  refresh token authorized any call site for the length of its TTL.
+  `legacy_claims` names where else to read the type from (in order, only when
+  `typ` is absent); `strict` refuses what stays unclassified, and does **not**
+  disable the SDK's own `refresh: True` / `purpose: "mfa_pending"` markers.
 - **Firebase ID token verification (v0.230.0, extra `[firebase]` =
   `firebase-admin`)** — for services whose clients sign in with Firebase and
   arrive with an ID token. `FirebaseAuth` owns the idempotent
@@ -206,7 +215,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   metrics; **writes are never re-analyzed**; plans fetched at driver level
   because `session.execute` applies the wrapped statement's result mapping.
   Recipes: `transactions.md`, `text-search.md`, `enum-columns.md`,
-  `query-plans.md`.
+  `query-plans.md`. **Backup/restore:** `DatabaseBackup(url)` dumps and
+  restores Postgres (custom + plain) and SQLite over one URL. **Database in a
+  container (v0.258.0):** `docker_container=` runs `pg_dump`/`pg_restore`/
+  `psql` **inside** that container, so the application image does not carry
+  `postgresql-client` pinned to a compatible server version just for a
+  nightly job. The dump crosses back over stdout and the restore streams in
+  over stdin (nothing is `docker cp`-ed in, so no half-written temp file is
+  left behind); `-h`/`-p` are dropped because the URL's host describes the
+  route from *outside*; `PGPASSWORD` crosses by name (`-e PGPASSWORD`), never
+  by value, so it stays off the container's command line; a non-zero exit
+  removes the destination file so a truncated dump cannot pass for a good
+  one. Measured across a real `postgres:16-alpine` under the `docker` mark
+  (`make test-docker`), not asserted from argv. Recipe:
+  `deploy-safety.md`.
 - **Standardized exceptions** (`AppException` + subclasses) +
   `register_exception_handlers`. **Factories (v0.227.0):**
   `not_found_exception(code, subject=, field=, template=, ...)` and
@@ -242,7 +264,22 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `/metrics` endpoint + `PrometheusMiddleware`, request-id
   middleware with contextvar propagation, typed `HTTPClient`
   (httpx wrapper with retry/backoff/circuit-breaker /
-  `X-Request-ID` propagation).
+  `X-Request-ID` propagation). **Rotation is on by default
+  (v0.258.0):** the per-level handlers are `RotatingFileHandler` with
+  `configure_logging(max_bytes=10_000_000, backup_count=5)` — ~60 MB per
+  level, hard cap; `max_bytes=0` restores the plain `FileHandler` for a host
+  where `logrotate` owns retention. This is the writer side of the ceiling
+  the `/logs` router already had (`DEFAULT_MAX_RECORDS_PER_FILE = 20_000`);
+  `/logs` reads the exact filenames, so rotated files are outside the
+  window. **`LogUtils` takes `%`-style positionals and `stacklevel`
+  (v0.258.0)** — a service that already logs in `%`-style adopts the facade
+  without rewriting call sites, interpolation stays lazy, and `stacklevel=2`
+  by default points `funcName`/`lineno` at the caller instead of the facade.
+  **`MetricsUtils.disk_async()` + `strict=` (v0.258.0)** —
+  `disks_async([path])` logs and skips a bad path (right for a plural list,
+  silent absence for a single one, which a dashboard cannot tell from a disk
+  nobody asked about); `disk_async` propagates, and `strict=True` carries
+  that to the plural variants.
 - **HTTP layer** — `RequestIDMiddleware`, `RateLimitMiddleware`,
   `IdempotencyMiddleware` (memory + Redis stores),
   `ResponseCacheMiddleware` (v0.159.0 — ETag/conditional-GET always on +
@@ -769,6 +806,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `FailOpenRateLimitStore` — medido: o middleware nu **propaga** a falha da
   store, o que perderia justamente os relatos do incidente em curso. Receita:
   `docs/recipes/app-errors.md`.
+- **Bound numérico em schema de string vira bound de tamanho (v0.258.0)** —
+  o gerador passava `maximum` ao pé da letra e emitia `Field(le=140)` num
+  `str`. Pydantic não rejeita o valor: levanta `TypeError: Unable to apply
+  constraint 'le' to supplied value` na construção, então
+  `ChargeRefundPayload` e `RefundPayload` da OpenPix falhavam sempre que o
+  refund carregava comentário. `maximum`/`minimum` sob `type: string` (e sob
+  o `["string", "null"]` da 3.1) agora são relidos como
+  `max_length`/`min_length`; bound exclusivo não tem equivalente de tamanho
+  e é descartado; schema numérico não muda. O gerado da OpenPix regenera com
+  as duas linhas corrigidas.
 - **Header declarado vira argumento no cliente gerado (v0.247.0)** — o
   gerador OpenAPI emitia `'header' parameter 'X' skipped (pass it via
   HTTPClient default_headers)`; agora header declarado na operação é
@@ -932,7 +979,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   URLs).
 - **Email** — SMTP via `EmailUtils` + Jinja2 template rendering
   with bundled defaults (`activation.html`, `password_reset.html`)
-  shadowable by the project's `template_dir`.
+  shadowable by the project's `template_dir`. **Bulk send (v0.258.0):**
+  `send_many()` → `BulkEmailReport` (`delivered`, `permanent`, `transient`,
+  each failure a `FailedRecipient` with the SMTP code and text). One
+  connection per batch (`batch_size=500`) instead of one per message, at
+  most `max_concurrency=32` open at once — the same two defaults the Web
+  Push broadcast uses. A recipient's refusal is reported, never raised; only
+  the operation failing (host, connection, auth) raises. `5xx` (prune) and
+  `4xx` (requeue) land in separate lists, and a refusal with no code is
+  filed as transient. Each recipient gets their own message.
 - **WebPush** — `WebPushDispatcher` (`send`/`send_many`, 404/410
   pruning), subscription storage (`BaseWebPushSubscriptionModel` +
   `make_web_push_subscription_model`) + `WebPushSubscriptionService`

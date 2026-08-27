@@ -2,6 +2,52 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.258.0 — os arquivos de log passam a rotacionar
+
+Não quebra assinatura nenhuma. Muda o que existe **no disco**: quem lia
+`logs/info.log` de fora do SDK passa a ver uma janela, não o histórico
+inteiro.
+
+### O que muda
+
+Os handlers por nível eram `logging.FileHandler` — crescimento sem teto. Agora
+são `RotatingFileHandler` com `max_bytes=10_000_000` e `backup_count=5`: cada
+nível para em ~60 MB (cinco rotacionados mais o que está sendo escrito), e
+`info.log.1`, `info.log.2`, … aparecem ao lado do arquivo corrente.
+
+O motivo é o mesmo que já tinha fechado o lado leitor deste par: o router de
+`/logs` limita a leitura a `DEFAULT_MAX_RECORDS_PER_FILE = 20_000` registros
+por arquivo, adicionado depois que um serviço com diretório de log em
+gigabytes respondeu com worker morto. Num serviço que loga uma linha por
+request, rodando em host de longa duração, é o `info.log` que enche o disco —
+e disco cheio derruba o serviço e o que mais dividir a partição.
+
+### O que fazer
+
+Nada, na maioria dos casos. Confira dois pontos:
+
+- **Coletor que segue o arquivo pelo nome.** Filebeat, Promtail, Fluent Bit e
+  companhia lidam com rotação, mas um `tail -F` caseiro ou um script que abre
+  o arquivo uma vez no boot perde a virada. Aponte o padrão para
+  `info.log*` se você precisa dos rotacionados.
+- **`GET /logs` mostra a janela corrente.** O endpoint lê os nomes exatos
+  (`info.log`, `error.log`, …), então rotacionado não entra na resposta.
+  Retenção mais longa é trabalho de coletor, não do endpoint.
+
+### Se você quer o comportamento antigo
+
+`max_bytes=0` volta ao `FileHandler` puro — para host onde `logrotate` ou um
+sidecar já é o dono da retenção:
+
+```python
+from tempest_fastapi_sdk import configure_logging
+
+configure_logging(level="INFO", max_bytes=0)
+```
+
+Os dois knobs são keyword-only e independentes: `backup_count` só é lido quando a
+rotação está ligada.
+
 ## 0.257.0 — os fakes de agente passam a chamar o parâmetro de `tools`
 
 Quebra quem chamava `chat_with_tools(..., specs=[...])` por keyword.

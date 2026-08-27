@@ -2,6 +2,51 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.258.0 — log files now rotate
+
+No signature breaks. What changes is what sits **on disk**: anyone reading
+`logs/info.log` from outside the SDK now sees a window, not the whole history.
+
+### What changes
+
+The per-level handlers were `logging.FileHandler` — unbounded growth. They are
+now `RotatingFileHandler` with `max_bytes=10_000_000` and `backup_count=5`, so
+each level stops at ~60 MB (five rotated files plus the one being written), and
+`info.log.1`, `info.log.2`, … appear next to the current file.
+
+The reason already closed the reader side of this pair: the `/logs` router caps
+reads at `DEFAULT_MAX_RECORDS_PER_FILE = 20_000` records per file, added after
+a service whose log directory had grown to gigabytes answered with a dead
+worker. On a service that logs one line per request, running on a long-lived
+host, `info.log` is what fills the disk — and a full disk takes down the
+service along with whatever else shares the partition.
+
+### What to do
+
+Nothing, in most cases. Check two things:
+
+- **A collector that follows the file by name.** Filebeat, Promtail, Fluent Bit
+  and friends handle rotation, but a hand-rolled `tail -F`, or a script that
+  opens the file once at boot, misses the turnover. Point the pattern at
+  `info.log*` if you need the rotated files.
+- **`GET /logs` shows the current window.** The endpoint reads the exact names
+  (`info.log`, `error.log`, …), so rotated files are not in the response.
+  Longer retention is a collector's job, not the endpoint's.
+
+### If you want the old behavior
+
+`max_bytes=0` restores the plain `FileHandler` — for a host where `logrotate`
+or a sidecar already owns retention:
+
+```python
+from tempest_fastapi_sdk import configure_logging
+
+configure_logging(level="INFO", max_bytes=0)
+```
+
+Both knobs are keyword-only and independent: `backup_count` is only
+read when rotation is on.
+
 ## 0.257.0 — the agent fakes rename the parameter to `tools`
 
 Breaks callers passing `chat_with_tools(..., specs=[...])` by keyword.

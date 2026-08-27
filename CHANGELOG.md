@@ -5,6 +5,180 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.258.0] — 2026-08-27
+
+### Added
+
+- **`EmailUtils.send_many()`, `BulkEmailReport` e `FailedRecipient`.** Avisar a
+  base inteira com `send()` num laço custa uma conexão SMTP por mensagem, e o
+  primeiro endereço ruim aborta o resto. `send_many` abre **uma** conexão por
+  lote e reporta o que não entregou em vez de levantar:
+
+  ```python
+  from tempest_fastapi_sdk import BulkEmailReport, EmailUtils
+
+  mailer = EmailUtils(**settings.email_kwargs())
+
+  report: BulkEmailReport = await mailer.send_many(
+      destinatarios,
+      subject="Manutenção programada",
+      body="Vamos ficar fora das 02h às 03h.",
+  )
+
+  report.delivered          # aceitos pelo servidor
+  report.permanent          # 5xx — a caixa não existe; pode podar da base
+  report.transient          # 4xx — cheia ou greylisted; reenfileire
+  ```
+
+  Quatro coisas que o laço não faz, e por que a resposta não é `gather` sobre
+  `send()`:
+
+  - **Uma conexão por lote, não por mensagem.** `send()` conecta, autentica e
+    dá `QUIT` toda vez; o número de conexões cai de `len(recipients)` para
+    `len(recipients) / batch_size` (default 500).
+  - **Fan-out com teto.** `gather` sobre a lista inteira abre uma conexão por
+    destinatário, e todo provedor de SMTP hospedado limita quantas um
+    remetente segura ao mesmo tempo — passando do teto, as excedentes são
+    estranguladas ou derrubadas, e o teto é do provedor, não nosso.
+    `max_concurrency` (default 32) limita as conexões abertas
+    — os dois defaults são os mesmos do broadcast de Web Push
+    (`_DEFAULT_BROADCAST_PAGE_SIZE`, `_DEFAULT_BROADCAST_CONCURRENCY`), pelo
+    mesmo motivo.
+  - **Falha parcial vira relatório.** Recusa de destinatário nunca levanta.
+    Só falha da operação levanta — host que não resolve, conexão recusada,
+    autenticação negada.
+  - **`5xx` e `4xx` chegam separados.** Colapsar os dois numa lista "falhou"
+    obriga o chamador a reparsear o código SMTP que ele já tinha. Recusa sem
+    código entra como transitória: o erro barato é tentar de novo, não apagar
+    endereço bom.
+
+  Cada destinatário recebe a própria mensagem — ninguém vê o endereço de
+  ninguém. Concorrência é por conexão, não por mensagem: SMTP é serial num
+  socket só, então o lote é enviado sequencialmente pela conexão dele e o
+  paralelismo vem de rodar vários lotes ao mesmo tempo.
+
+- **`DatabaseBackup(docker_container=...)` roda o tooling do Postgres dentro do
+  container do banco.** Sem isso, a imagem da aplicação precisa carregar
+  `postgresql-client` numa versão compatível com o servidor só para o job
+  noturno. A imagem do banco já tem o `pg_dump` exato da versão dela:
+
+  ```python
+  backup = DatabaseBackup(settings.DATABASE_URL, docker_container="app-db")
+
+  written = backup.backup(Path("backups/app.dump"))
+  backup.restore(written)
+  ```
+
+  O dump é produzido dentro do container e atravessa pelo stdout para o arquivo
+  local; o restore faz o inverso, com o arquivo entrando pelo stdin do
+  `pg_restore`/`psql` — nada é copiado para dentro, então não sobra arquivo
+  temporário nem janela em que ele está pela metade. Três detalhes que o teste
+  fixa:
+
+  - **`-h`/`-p` são descartados.** Host e porta da URL descrevem como a
+    *aplicação* alcança o banco de fora; dentro do container esse caminho não
+    existe. Usuário e database continuam vindo da URL.
+  - **A senha atravessa por nome.** O comando carrega `-e PGPASSWORD` sem
+    valor, e o Docker copia do ambiente do processo chamador — escrever
+    `-e PGPASSWORD=…` colocaria a senha na linha de comando do container, que
+    qualquer `ps` no host lê.
+  - **Dump que falhou não fica no disco.** O arquivo de destino é removido
+    quando o processo sai não-zero, para um dump truncado não passar por um
+    backup bom.
+
+  `BackupToolMissingError` passa a checar o `docker` no lugar do `pg_dump`
+  neste modo. SQLite ignora o parâmetro — é cópia de arquivo dos dois jeitos.
+  A propriedade que importa (o dump gerado lá dentro volta e restaura lá
+  dentro) é testada atravessando de verdade: `tests/db/test_backup.py` sobe um
+  `postgres:16-alpine` sob a marca `docker`, opt-in por `make test-docker`.
+
+- **Os métodos de `LogUtils` aceitam posicionais `%`-style e `stacklevel`.**
+  Adotar o SDK num serviço que já loga em `%`-style não exige reescrever call
+  site, e a interpolação continua lazy — o template fica a mesma string entre
+  chamadas, que é no que o agregador de log agrupa:
+
+  ```python
+  log.info("Email enviado com sucesso para %s", "ana@example.com")
+  log.error("Falha ao enviar para %s: %s", email, motivo, op="send")
+  ```
+
+  Os dois estilos convivem: os posicionais montam a mensagem, `**fields`
+  continua virando chave de topo no JSON. `stacklevel` tem default `2`, então
+  `funcName`/`lineno` do record apontam para o **seu** call site em vez de para
+  dentro da fachada; quem embrulha o `LogUtils` numa camada própria passa
+  `stacklevel=3`.
+
+- **`MetricsUtils.disk_async()`, e `strict=` em `disks`/`disks_async`.**
+  `disks_async([path])` era a única forma async de ler um caminho só, e ela
+  **loga e pula** o erro — porque a lista é plural e um caminho ruim não deve
+  derrubar os outros quatro. Para um caminho só isso vira ausência silenciosa:
+  o endpoint responde `200` com o bloco de disco simplesmente ausente, e o
+  dashboard não distingue mount que sumiu de disco que ninguém pediu.
+  `disk_async` propaga, como o `disk` síncrono. `strict=True` leva o mesmo
+  comportamento para a variante plural.
+
+- **`token_type_allowed(strict=..., legacy_claims=...)`.** O default — token
+  sem `typ` é aceito — é certo para token que o SDK mintou e furado para token
+  que o consumidor mintou. Um serviço que já separava access de refresh com um
+  claim próprio (`type`, `token_type`) não tem `typ` em nenhum token legado nem
+  os marcadores do SDK, então **todos** caem no "aceita" e um refresh token
+  autoriza chamada de API pela vida inteira do refresh:
+
+  ```python
+  legado = {"sub": "u1", "type": "refresh"}
+
+  token_type_allowed(legado, [ACCESS_TOKEN_TYPE])
+  # True  — o SDK não conhece o claim `type`
+
+  token_type_allowed(
+      legado,
+      [ACCESS_TOKEN_TYPE],
+      strict=True,
+      legacy_claims=("type",),
+  )
+  # False
+  ```
+
+  `legacy_claims` é lido em ordem e só quando `typ` está ausente; `strict=True`
+  recusa o que continuar sem classificação e **não** desliga os marcadores
+  antigos do SDK — `refresh: True` continua sendo refresh.
+
+### Changed
+
+- **Os arquivos de log passam a rotacionar por padrão.** `configure_logging`
+  ganha `max_bytes` (default `10_000_000`) e `backup_count` (default `5`), e os
+  handlers por nível viram `RotatingFileHandler`. `FileHandler` puro cresce sem
+  teto: num serviço com uma linha por request, rodando em host de longa
+  duração, `info.log` é o que enche o disco — e disco cheio derruba o serviço e
+  o que mais dividir a partição. O lado leitor deste par já tinha o teto
+  (`DEFAULT_MAX_RECORDS_PER_FILE = 20_000` no router de `/logs`, adicionado
+  depois que um serviço com diretório de log em gigabytes respondeu com worker
+  morto); este é o lado de quem escreve.
+
+  `max_bytes=0` volta ao `FileHandler` puro, para host onde `logrotate` ou um
+  sidecar é o dono da retenção. Detalhe em `docs/migration.md`, seção 0.258.0.
+
+### Fixed
+
+- **Bound numérico em schema `type: string` vira bound de tamanho no codegen —
+  e os dois campos `comment` da OpenPix voltam a se construir.** Nada legítimo
+  produz `maximum` num `type: string` (string não tem magnitude), e spec no
+  mundo real escreve assim mesmo: `ChargeRefundPayload.comment` e
+  `RefundPayload.comment` carregam `maximum: 140` sob uma descrição que diz
+  "Maximum length of 140 characters". Passado ao pé da letra, o gerador emitia
+  `Field(le=140)` num `str` — e pydantic não rejeita o valor, ele levanta na
+  construção:
+
+  ```python
+  ChargeRefundPayload(comment="obrigado")
+  # TypeError: Unable to apply constraint 'le' to supplied value obrigado
+  ```
+
+  Ou seja: todo refund com comentário falhava antes de sair do processo.
+  `maximum` / `minimum` num schema de string agora são relidos como
+  `max_length` / `min_length`; bound exclusivo não tem equivalente de tamanho
+  que valha adivinhar e é descartado. Schema numérico não muda.
+
 ## [0.257.0] — 2026-08-27
 
 ### Changed
