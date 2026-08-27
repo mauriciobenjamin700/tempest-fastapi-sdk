@@ -860,17 +860,23 @@ async def index_user(user: UserModel) -> None:
 
 
 # Imperative form (same thing)
-def bust_cache(user: UserModel) -> None:
-    cache.delete(f"user:{user.id}")
+async def bust_cache(user: UserModel) -> None:
+    """Drop the user's cache entry once the row has committed."""
+    await cache.client.delete(f"user:{user.id}")
 
 connect(UserModel, RepositorySignal.POST_SAVE, bust_cache)
 disconnect(UserModel, RepositorySignal.POST_SAVE, bust_cache)  # remove
 ```
 
-!!! note "`search_index` and `cache` are illustrative objects"
-    `search_index.upsert(...)` and `cache.delete(...)` are placeholders
-    from your project (a search client, a cache client) — they are not
-    part of the SDK. Swap in your domain's real objects.
+!!! note "`search_index` is illustrative; `cache` is not"
+    `search_index.upsert(...)` is a placeholder from your project (a search
+    client) — it is not part of the SDK. Swap in your domain's real object.
+
+    `cache` is a real `AsyncRedisManager`, which is why the call goes through
+    `cache.client`: the manager owns the lifecycle, and the Redis commands
+    live on the client. Building the handler before the lifespan runs, use
+    `cache.client_proxy` — `cache.client` raises `RuntimeError` until
+    `connect()` has run.
 
 The four moments:
 

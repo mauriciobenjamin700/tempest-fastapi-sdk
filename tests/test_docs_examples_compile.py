@@ -23,8 +23,14 @@ would make this guard silently vacuous.
 The second failure is a documented import of something that does not exist —
 a renamed export, a symbol that never shipped, a module path from an earlier
 layout. It costs a reader the same as a syntax error and is invisible to
-`mkdocs build`, so every `from tempest_fastapi_sdk… import X` in the docs is
-resolved against the installed package here.
+`mkdocs build`, so every import from the Tempest family in the docs is
+resolved against the installed packages here.
+
+The net covers the whole family, not just `tempest_fastapi_sdk`: `ssr.md`
+shipped five `from tempestweb import Column…` lines against a package whose
+`__all__` is `[]`, and a check scoped to the SDK's own name could never see
+them. `tempest_core` and `tempestweb` are the packages the SSR pages teach, so
+they are resolved the same way.
 """
 
 from __future__ import annotations
@@ -38,6 +44,17 @@ from types import ModuleType
 import pytest
 
 DOCS_ROOT: Path = Path(__file__).resolve().parent.parent
+
+TEMPEST_PACKAGES: tuple[str, ...] = (
+    "tempest_fastapi_sdk",
+    "tempest_core",
+    "tempestweb",
+)
+"""Packages the docs teach by name, whose imports are resolved for real.
+
+Third-party modules stay out: a missing heavy extra would fail the guard for
+an environment reason, not a docs one.
+"""
 
 FENCE_RE: re.Pattern[str] = re.compile(
     r"^(?P<indent>[ \t]*)```(?:python|py)(?P<attrs>[^\n]*)\n"
@@ -100,8 +117,8 @@ def test_examples_have_no_module_level_await(path: Path) -> None:
     assert not problems, "\n".join(problems)
 
 
-def _sdk_import_targets(body: str) -> list[tuple[str, str]]:
-    """Collect the ``(module, symbol)`` pairs a block imports from the SDK.
+def _tempest_import_targets(body: str) -> list[tuple[str, str]]:
+    """Collect the ``(module, symbol)`` pairs a block imports from the family.
 
     Args:
         body: The fence's Python source.
@@ -119,7 +136,8 @@ def _sdk_import_targets(body: str) -> list[tuple[str, str]]:
         if not isinstance(node, ast.ImportFrom):
             continue
         module: str = node.module or ""
-        if not module.startswith("tempest_fastapi_sdk"):
+        root: str = module.split(".", 1)[0]
+        if root not in TEMPEST_PACKAGES:
             continue
         targets.extend((module, alias.name) for alias in node.names)
     return targets
@@ -140,7 +158,7 @@ def _missing_exports(path: Path) -> list[str]:
     """
     problems: list[str] = []
     for match in FENCE_RE.finditer(path.read_text(encoding="utf-8")):
-        for module_name, symbol in _sdk_import_targets(match.group("body")):
+        for module_name, symbol in _tempest_import_targets(match.group("body")):
             try:
                 module: ModuleType = importlib.import_module(module_name)
             except ImportError:
@@ -161,3 +179,28 @@ def test_examples_import_names_that_exist(path: Path) -> None:
     """Fail when an example imports a symbol the SDK does not export."""
     problems: list[str] = _missing_exports(path)
     assert not problems, "\n".join(problems)
+
+
+SHIPPED_WIDE_IMPORT: str = (
+    "from tempestweb import Column, Text, Widget\n"
+    "from tempest_fastapi_sdk.ssr import Page\n"
+)
+
+
+def test_import_net_covers_the_whole_family() -> None:
+    """Pin the widening: a `tempestweb` import must be collected and resolved.
+
+    Scoped to `tempest_fastapi_sdk`, this guard walked straight past the five
+    `from tempestweb import Column…` lines that shipped in `ssr.md` and
+    `fullstack-web.md` against a package whose `__all__` is empty. Collecting
+    the pair is what makes the resolution below reachable at all.
+    """
+    targets: list[tuple[str, str]] = _tempest_import_targets(SHIPPED_WIDE_IMPORT)
+    assert ("tempestweb", "Column") in targets
+    assert ("tempest_fastapi_sdk.ssr", "Page") in targets
+
+    module: ModuleType = importlib.import_module("tempestweb")
+    assert not hasattr(module, "Column"), (
+        "tempestweb re-exports Column now; the docs may import it from there "
+        "again, and this guard's reason to exist changed."
+    )

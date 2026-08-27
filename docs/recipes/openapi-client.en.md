@@ -214,9 +214,9 @@ import asyncio
 
 from tempest_fastapi_sdk import HTTPClient
 
-from src.integrations.billing import CustomerStatus
+from src.integrations.billing import CustomerStatus, TerceiroClient
 
-vendor = HTTPClient(base_url="https://api.parceiro.com")
+vendor = TerceiroClient(HTTPClient(base_url="https://api.parceiro.com"))
 
 
 async def main() -> None:

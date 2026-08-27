@@ -1974,19 +1974,19 @@ próprio modelo** (nunca heurística — BPE e SentencePiece divergem) e dropе
 os turnos mais antigos quando estoura:
 
 ```python
+from transformers import AutoTokenizer
+
 from tempest_fastapi_sdk.genai import (
-    TextGenerator,
     TextModel,
     count_tokens,
     truncate_messages,
 )
 
 messages = [{"role": "user", "content": "oi"}]
-tokenizer = gen.tokenizer
-gen = TextGenerator(TextModel.QWEN2_5_7B_INSTRUCT)
+tokenizer = AutoTokenizer.from_pretrained(TextModel.QWEN2_5_7B_INSTRUCT)
 
 
-n = count_tokens("Explique PIX.", tokenizer)   # tokenizer do modelo
+n = count_tokens("Explique PIX.", tokenizer)   # tokenizer do próprio modelo
 
 fit = truncate_messages(
     messages, max_tokens=3000, tokenizer=tokenizer,

@@ -237,7 +237,11 @@ async def send_welcome(ctx: AdminActionContext) -> AdminActionResult:
     """Roda nas linhas selecionadas; a mensagem é exibida na list view."""
     users = await ctx.repository.list(filters={"id": ctx.ids})
     for user in users:
-        await mailer.send_welcome(user.email)
+        await mailer.send(
+            user.email,
+            subject="Bem-vindo",
+            body=f"Olá, {user.name}! Sua conta está pronta.",
+        )
     return AdminActionResult(f"{len(users)} e-mails enviados.")
 
 
@@ -779,6 +783,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError, GoogleOAuthClient
 
 from src.core.settings import settings
+from src.db.models import AdminModel
 
 my_oauth_client = GoogleOAuthClient(
     client_id=settings.GOOGLE_CLIENT_ID,
@@ -788,6 +793,13 @@ my_oauth_client = GoogleOAuthClient(
 
 
 class OAuthAdminBackend(AdminAuthBackend):
+    """Trade the admin form's credential for an OAuth identity.
+
+    OAuth has no password to check, so the form's `password` field carries
+    the authorization code the provider redirected back with. The ABC names
+    the parameter `password`; what this backend expects there is the code.
+    """
+
     async def authenticate(
         self,
         session: AsyncSession,
@@ -795,8 +807,10 @@ class OAuthAdminBackend(AdminAuthBackend):
         identifier: str,
         password: str,
     ) -> Any:
-        principal = await my_oauth_client.authenticate(identifier, password)
-        if not principal.has_role("admin"):
+        """Exchange the code, then accept only an allowed admin e-mail."""
+        tokens = await my_oauth_client.exchange_code(password)
+        principal = await my_oauth_client.fetch_user(tokens)
+        if not principal.email_verified or principal.email != identifier:
             raise AdminAuthError("not an admin")
         return principal
 
@@ -805,12 +819,15 @@ class OAuthAdminBackend(AdminAuthBackend):
         session: AsyncSession,
         principal_id: str,
     ) -> Any | None:
-        return await my_oauth_client.get_user(principal_id)
+        """Reload the admin row the subject maps to, on every request."""
+        return await session.get(AdminModel, principal_id)
 
     def principal_id(self, principal: Any) -> str:
-        return principal.sub
+        """Return the provider's stable subject identifier."""
+        return principal.subject
 
     def display_name(self, principal: Any) -> str:
+        """Return what the admin header shows."""
         return principal.email
 ```
 

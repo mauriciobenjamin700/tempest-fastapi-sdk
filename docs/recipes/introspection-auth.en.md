@@ -52,12 +52,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from tempest_fastapi_sdk import IntrospectionAuth
-
 from src.api.dependencies.auth import auth
-from src.core.settings import settings
-
-service = IntrospectionAuth(userinfo_url=settings.IAGRO_USERINFO_URL)
+from src.services.animals import animals
 
 
 router = APIRouter(prefix="/api/animals", tags=["animals"])
@@ -76,11 +72,11 @@ async def list_animals(
     user_id: UUID = Depends(auth.get_user_id),
 ) -> list[str]:
     """List the user's animals — id already resolved from the token."""
-    return await service.list_for(user_id)
+    return await animals.list_for(user_id)
 ```
 
-!!! note "`service` is your application's glue"
-    `service.list_for(...)` stands in for your own service/repository layer —
+!!! note "`animals` is your application's glue"
+    `animals.list_for(...)` stands in for your own service/repository layer —
     it is not part of the SDK. Swap it for your project's real call.
 
 That's it. A request without `Authorization` gets **401**; a token the

@@ -21,7 +21,8 @@ Todos rodam dentro do `make check`.
 | `test_docs_api_guard` | bloco `python` de doc parseia; nome de `__all__` resolve | prosa (roadmap/covers driftando) |
 | `test_docs_signature_guard` | exemplo casa com assinatura real; import resolve; versão do snippet ≤ `pyproject.toml` | símbolo usado sem import; prosa |
 | `test_docs_organization` | espelho `.en.md`, dois navs, ordem alfabética, índice de receitas | — |
-| `test_docs_examples_compile` / `test_docs_examples_names` | exemplos completos compilam e usam nomes reais | — |
+| `test_docs_examples_compile` / `test_docs_examples_names` | exemplos completos compilam e usam nomes reais; import da família Tempest (`tempest_fastapi_sdk`, `tempest_core`, `tempestweb`) resolve de verdade | tipo de argumento |
+| `test_docs_method_guard` | atributo lido de instância construída no exemplo existe na classe | tipo de argumento; nome reatribuído; atributo de atributo |
 | `test_reference_coverage` | símbolo público tem stub em `docs/reference.md` | — |
 | `test_kwargs_guard` | função lê chave do **próprio** `**kwargs` | splat em callable que absorve a chave |
 | `test_reexport_guard` | `from x import Y as Y` + `__all__` em `__init__.py` | — |

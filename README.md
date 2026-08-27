@@ -4076,6 +4076,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError, GoogleOAuthClient
 
 from src.core.settings import settings
+from src.db.models import AdminModel
 
 my_oauth_client = GoogleOAuthClient(
     client_id=settings.GOOGLE_CLIENT_ID,
@@ -4092,8 +4093,9 @@ class OAuthAdminBackend(AdminAuthBackend):
         identifier: str,
         password: str,
     ) -> Any:
-        principal = await my_oauth_client.authenticate(identifier, password)
-        if not principal.has_role("admin"):
+        tokens = await my_oauth_client.exchange_code(password)
+        principal = await my_oauth_client.fetch_user(tokens)
+        if not principal.email_verified or principal.email != identifier:
             raise AdminAuthError("not an admin")
         return principal
 
@@ -4102,10 +4104,10 @@ class OAuthAdminBackend(AdminAuthBackend):
         session: AsyncSession,
         principal_id: str,
     ) -> Any | None:
-        return await my_oauth_client.get_user(principal_id)
+        return await session.get(AdminModel, principal_id)
 
     def principal_id(self, principal: Any) -> str:
-        return principal.sub
+        return principal.subject
 
     def display_name(self, principal: Any) -> str:
         return principal.email
