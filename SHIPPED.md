@@ -1003,6 +1003,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (read-mostly `AdminModel` + `make_requeue_action`) + `task_inventory`
   (`TaskInfo` per registered task). No live queue introspection (TaskIQ exposes
   none) — shows persisted failures + declared task set.
+- **Envelope único de erro, inclusive no 429 (v0.256.0)** — o
+  `RateLimitMiddleware` respondia `text/plain`, contradizendo o
+  `ErrorResponseSchema` que o `error_responses()` publica para o mesmo status.
+  Agora emite `{detail, code, details}` como todo handler, com `error_code`
+  configurável (default lido de `TooManyRequestsException.code`) e
+  `retry_after_seconds`/`limit` em `details`. `BodySizeLimitMiddleware` já
+  emitia o envelope; `Idempotency`/`ResponseCache` não emitem corpo de erro
+  próprio.
 - **Redis handle para wiring no import (v0.256.0)** —
   `AsyncRedisManager.client_proxy`, handle estável que resolve o client vivo
   a cada comando. Existe porque os dois ciclos de vida não se encaixam:

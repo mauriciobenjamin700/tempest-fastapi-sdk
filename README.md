@@ -3287,7 +3287,7 @@ Tweak `page_param=` / `size_param=` when your service uses non-standard query pa
 
 ### Rate limit middleware recipe
 
-`RateLimitMiddleware` is a sliding-window limiter — each unique key (client IP by default) is allowed at most `max_requests` requests inside every `window_seconds` window. Exceeded requests get a `429 Too Many Requests` with a `Retry-After` header. Two axes are pluggable: the **store** (memory or Redis) and the **key** (IP, user, tenant, API key).
+`RateLimitMiddleware` is a sliding-window limiter — each unique key (client IP by default) is allowed at most `max_requests` requests inside every `window_seconds` window. Exceeded requests get a `429 Too Many Requests` with a `Retry-After` header and the SDK's canonical error envelope as the body — `{"detail": ..., "code": "TOO_MANY_REQUESTS", "details": {"retry_after_seconds": ..., "limit": ...}}` — the same shape every exception handler writes. `error_message=` and `error_code=` set the two fields. **Changed in v0.256.0:** it used to be `text/plain`. Two axes are pluggable: the **store** (memory or Redis) and the **key** (IP, user, tenant, API key).
 
 ```python
 # src/api/app.py
