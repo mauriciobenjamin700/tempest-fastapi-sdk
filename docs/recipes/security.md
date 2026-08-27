@@ -122,6 +122,37 @@ require_refresh = make_bearer_token_dependency(
 !!! note "Token sem `typ` continua valendo"
     Quem assina JWT direto com `JWTUtils.encode()` não precisa mudar nada: um token sem `typ` é aceito, senão atualizar o SDK derrubaria toda sessão ativa. Os dois marcadores antigos que o SDK já estampava — `refresh: True` e `purpose: "mfa_pending"` — são reconhecidos e **rejeitados** como access. Use `token_type_allowed()` se precisar da mesma decisão fora de uma dependency.
 
+!!! warning "Se o **seu** serviço já emitia o tipo com outro nome de claim"
+    O default acima é seguro para token que o SDK mintou, e furado para token
+    que você mintou. Um serviço que separava access de refresh com um claim
+    próprio (`type`, `token_type`) não tem `typ` em nenhum token legado e não
+    tem nenhum dos dois marcadores do SDK — então **todos** caem no "aceita" e
+    um refresh token autoriza chamada de API pela vida inteira do refresh.
+
+    Duas chaves fecham isso, e as duas são keyword-only:
+
+    ```python
+    from tempest_fastapi_sdk import ACCESS_TOKEN_TYPE, token_type_allowed
+
+    legado = {"sub": "u1", "type": "refresh"}
+
+    token_type_allowed(legado, [ACCESS_TOKEN_TYPE])
+    # True  — o SDK não conhece o claim `type`, e sem tipo declarado aceita
+
+    token_type_allowed(
+        legado,
+        [ACCESS_TOKEN_TYPE],
+        strict=True,
+        legacy_claims=("type",),
+    )
+    # False — lê o tipo do claim que é seu, e recusa o que continua sem tipo
+    ```
+
+    `legacy_claims` é lido em ordem, e só quando `typ` está ausente — token
+    novo continua decidindo por `typ`. `strict=True` sozinho recusa o que ficar
+    sem classificação, mas **não** desliga os marcadores antigos do SDK:
+    `refresh: True` continua sendo refresh, inclusive sob `strict`.
+
 ## Tokens opacos single-use
 
 `generate_opaque_token()` produz `(plaintext, token_hash)` em uma chamada — `plaintext` é uma string URL-safe (default 32 bytes ≈ 43 chars), `token_hash` é o digest SHA-256 hex em lowercase (64 chars). Você guarda **só o hash** no banco; o `plaintext` sai pelo e-mail/SMS uma única vez. Use pra password reset, confirmação de e-mail, API keys, IDs de sessão opacos — qualquer coisa onde o segredo emitido nunca volta a ser inspecionado.

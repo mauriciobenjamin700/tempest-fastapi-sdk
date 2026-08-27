@@ -122,6 +122,37 @@ require_refresh = make_bearer_token_dependency(
 !!! note "A token without `typ` still works"
     Projects signing JWTs directly with `JWTUtils.encode()` need no change: a token with no `typ` is accepted, otherwise upgrading the SDK would log every live session out. The two legacy markers the SDK already stamped — `refresh: True` and `purpose: "mfa_pending"` — are recognized and **rejected** as access. Use `token_type_allowed()` when you need the same decision outside a dependency.
 
+!!! warning "If **your** service already spelled the type under another claim"
+    The default above is safe for tokens this SDK minted, and a hole for tokens
+    you minted. A service that separated access from refresh with a claim of
+    its own (`type`, `token_type`) has no `typ` on any legacy token and none of
+    the SDK's own markers either — so every one of them lands on "accept", and
+    a refresh token authorizes API calls for as long as the refresh TTL lasts.
+
+    Two keyword-only arguments close it:
+
+    ```python
+    from tempest_fastapi_sdk import ACCESS_TOKEN_TYPE, token_type_allowed
+
+    legacy = {"sub": "u1", "type": "refresh"}
+
+    token_type_allowed(legacy, [ACCESS_TOKEN_TYPE])
+    # True  — the SDK does not know the `type` claim, and undeclared means accept
+
+    token_type_allowed(
+        legacy,
+        [ACCESS_TOKEN_TYPE],
+        strict=True,
+        legacy_claims=("type",),
+    )
+    # False — reads the type from your claim, and refuses what stays untyped
+    ```
+
+    `legacy_claims` is read in order, and only when `typ` is absent — a new
+    token still decides by `typ`. `strict=True` on its own refuses whatever
+    stays unclassified, but does **not** switch off the SDK's legacy markers:
+    `refresh: True` is still a refresh token, strict or not.
+
 ## Opaque single-use tokens
 
 `generate_opaque_token()` returns `(plaintext, token_hash)` in one call — `plaintext` is a URL-safe string (default 32 bytes ≈ 43 chars), `token_hash` is the lowercase SHA-256 hex digest (64 chars). You store **only the hash** in the DB; `plaintext` leaves via email/SMS exactly once. Use it for password reset, email confirmation, API keys, opaque session IDs — anything where the issued secret is never inspected again.
