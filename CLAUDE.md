@@ -130,6 +130,17 @@ mexer neles. Todos rodam dentro do `make check`.
   template); a reprodução por caminho está em
   `tests/admin/test_form_error_rollback.py` —
   [`LESSONS.md`](LESSONS.md#o-rollback-expira-a-sessão-inteira-não-a-linha-que-falhou-v02400).
+- **A anotação que a receita contradiz é defeito da anotação** (v0.257.0).
+  `make type` roda sobre o pacote, e o pacote não se chama do jeito que o
+  consumidor chama — então anotação mais estreita que o contrato só aparece
+  na máquina de quem copia o exemplo. Duas formas recorrentes: membro de
+  `Protocol` escrito `async def get(self, key: str)` exige do implementador
+  o **nome** do parâmetro e retorno `Coroutine` (o redis-py chama de `name` e
+  devolve `Awaitable`, e três dos seis stores de Redis recusavam o cliente
+  que a doc manda passar); e callback cujo retorno o corpo descarta anotado
+  como `-> None`. Guard: `tests/test_docs_type_guard.py` roda mypy sobre os
+  exemplos —
+  [`LESSONS.md`](LESSONS.md#a-anotação-que-a-própria-receita-contradiz-v02570).
 - **`Field(alias=...)` é defeito** (v0.234.0). Escreva o nome do fio duas
   vezes: `validation_alias` para ler, `serialization_alias` para escrever.
   mypy aceita `alias`, pyright/basedpyright não —

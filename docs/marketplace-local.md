@@ -435,6 +435,7 @@ from src.services.notification import notifications
 
 conversation_id = uuid4()
 
+user = UserModel(name="Ana", email="ana@example.com")
 order = OrderModel(user_id=user.id, total=100)
 
 preview = "Ainda está disponível?"
@@ -444,8 +445,6 @@ recipient_id = uuid4()
 seller_id = uuid4()
 
 sender_name = "Ana"
-
-user = UserModel(name="Ana", email="ana@example.com")
 
 
 async def main() -> None:

@@ -204,17 +204,18 @@ defaults.
 ```python
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk.testing import ModelFactory, seq
 
 from src.db.models import UserModel
 
-session = None  # provided by db.get_session_context() in your code
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 users = ModelFactory(
     session,
     UserModel,
-    email=seq("user{n}@example.com"),   # único por linha
+    email=seq("user{n}@example.com"),  # único por linha
     hashed_password="x",
     is_admin=False,
 )
@@ -222,9 +223,9 @@ users = ModelFactory(
 
 async def main() -> None:
     """Run this example."""
-    alice = await users.create(is_admin=True)     # 1 linha, um campo trocado
-    team = await users.create_many(5)             # 5 linhas, e-mails únicos
-    draft = users.build(email="temp@x.com")        # instância não salva
+    alice = await users.create(is_admin=True)  # 1 linha, um campo trocado
+    team = await users.create_many(5)  # 5 linhas, e-mails únicos
+    draft = users.build(email="temp@x.com")  # instância não salva
 
 
 asyncio.run(main())

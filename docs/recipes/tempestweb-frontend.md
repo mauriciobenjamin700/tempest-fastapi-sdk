@@ -141,14 +141,19 @@ def make_state() -> State:
 
 def view(app: App[State]) -> Widget:
     async def load() -> None:
-        app.set_state(lambda s: setattr(s, "loading", True))
+        def start(s: State) -> None:
+            """Flip the view into its loading state."""
+            s.loading = True
+
+        app.set_state(start)
         res = await http.request("GET", "/api/tasks")
-        app.set_state(
-            lambda s: (
-                setattr(s, "tasks", res.json_body or []),
-                setattr(s, "loading", False),
-            )
-        )
+
+        def finish(s: State) -> None:
+            """Store what came back and drop the loading flag."""
+            s.tasks = res.json_body or []
+            s.loading = False
+
+        app.set_state(finish)
 
     async def add() -> None:
         # Idempotency-Key torna o POST seguro pra retry/replay offline.

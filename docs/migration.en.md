@@ -2,6 +2,59 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.257.0 — the agent fakes rename the parameter to `tools`
+
+Breaks callers passing `chat_with_tools(..., specs=[...])` by keyword.
+
+### What changes
+
+`ScriptedBackend` and `FailingBackend` exist to fake the `ChatBackend` /
+`ToolCallingBackend` protocols — and satisfied neither under mypy. The protocol
+names the parameter `tools` and accepts `**kwargs`; the fakes named it `specs`
+and accepted nothing else. A protocol member is only implemented by a signature
+with the **same parameter name**, so the opening line of the testing recipe was
+a type error:
+
+```python
+from tempest_fastapi_sdk.agents import Agent
+from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies
+
+agent = Agent(ScriptedBackend([replies("ok")]))
+# up to v0.256.0:
+# Argument 1 to "Agent" has incompatible type "ScriptedBackend";
+# expected "ChatBackend | ToolCallingBackend"  [arg-type]
+```
+
+### What to do
+
+Nothing, if you call positionally — which is what `Agent` does internally and
+what the recipe shows. If your test calls the fake directly, by keyword:
+
+```diff
+-decision = await backend.chat_with_tools(messages, specs=specs)
++decision = await backend.chat_with_tools(messages, tools=specs)
+```
+
+The `specs_seen` attribute — where the fake records the tool names offered each
+turn — did **not** change name.
+
+### What started compiling
+
+Three annotations that rejected the argument the docs themselves told you to
+pass:
+
+- `EventStream.response(on_disconnect=task.cancel)`, because `Task.cancel`
+  returns `bool` and the annotation asked for `None`;
+- `RedisIdempotencyStore(Redis.from_url(...))`, `RedisResponseCacheStore(...)`
+  and `RedisWebAuthnChallengeStore(...)`, because the protocols demanded the
+  parameter name `key`/`name` and a `Coroutine` return, while redis-py returns
+  an `Awaitable`;
+- `require_authenticated(identity)` with a `FirebaseIdentity`, because the
+  `TypeVar` was bound to `BaseUserModel`.
+
+None of them changes runtime — they only stop demanding a workaround
+(`# type: ignore`, `cast`) from anyone running a type checker.
+
 ## 0.256.0 — the `RateLimitMiddleware` 429 becomes JSON
 
 Breaks clients that read the 429 body as text.
@@ -268,22 +321,21 @@ Contract change in `cursor_paginate`: it used to raise `ValueError` there. Code 
 ```python
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.exceptions import ValidationException
 
 from src.db.models import UserModel
 
-filters = {"is_active": True}
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 repo = BaseRepository(session, model=UserModel)
-
-session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
     """Run this example."""
     try:
-        page = await repo.cursor_paginate(order_by=filters.order_by)
+        page = await repo.cursor_paginate(order_by="not_a_column")
     except ValidationException:
         ...
 

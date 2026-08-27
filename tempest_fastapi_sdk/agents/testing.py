@@ -156,26 +156,35 @@ class ScriptedBackend:
     async def chat_with_tools(
         self,
         messages: list[dict[str, Any]],
-        specs: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """Return the next scripted decision.
 
+        The signature mirrors :class:`~tempest_fastapi_sdk.agents.ToolCallingBackend`
+        down to the parameter name, so a fake handed to ``Agent`` type-checks
+        the same way a real backend does.
+
         Args:
             messages (list[dict[str, Any]]): The conversation so far.
-            specs (list[dict[str, Any]]): The tools on offer this turn.
+            tools (list[dict[str, Any]]): The tools on offer this turn.
+            **kwargs (Any): Generation options a real backend would honor,
+                accepted and ignored.
 
         Returns:
             dict[str, Any]: The scripted reply.
         """
         self._record(messages)
-        self.specs_seen.append([spec["function"]["name"] for spec in specs])
+        self.specs_seen.append([spec["function"]["name"] for spec in tools])
         return self._next()
 
-    async def chat(self, messages: list[dict[str, Any]]) -> str:
+    async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> str:
         """Return the next scripted answer as plain text.
 
         Args:
             messages (list[dict[str, Any]]): The conversation so far.
+            **kwargs (Any): Generation options a real backend would honor,
+                accepted and ignored.
 
         Returns:
             str: The reply's content.
@@ -217,17 +226,27 @@ class FailingBackend:
     async def chat_with_tools(
         self,
         messages: list[dict[str, Any]],
-        specs: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """Raise the configured failure.
+
+        Args:
+            messages (list[dict[str, Any]]): Ignored.
+            tools (list[dict[str, Any]]): Ignored.
+            **kwargs (Any): Ignored.
 
         Raises:
             RuntimeError: Always.
         """
         raise RuntimeError(self.message)
 
-    async def chat(self, messages: list[dict[str, Any]]) -> str:
+    async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> str:
         """Raise the configured failure.
+
+        Args:
+            messages (list[dict[str, Any]]): Ignored.
+            **kwargs (Any): Ignored.
 
         Raises:
             RuntimeError: Always.

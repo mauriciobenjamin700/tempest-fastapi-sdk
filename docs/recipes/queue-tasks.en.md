@@ -550,11 +550,12 @@ Install with `[tasks]` (pulls `taskiq` + `taskiq-aio-pika`).
 ```python
 # src/tasks/__init__.py
 
+from tempest_fastapi_sdk import EmailUtils
 from tempest_fastapi_sdk.tasks import TaskQueue
 
 from src.core.settings import settings
 
-email = "ana@example.com"
+email = EmailUtils(**settings.email_kwargs())
 
 
 tq = TaskQueue.rabbitmq(settings.TASKIQ_BROKER_URL)
@@ -579,8 +580,8 @@ import asyncio
 from src.db.models import UserModel
 from src.tasks import send_welcome
 
-user = UserModel(name="Ana", email=email)
 email = "ana@example.com"
+user = UserModel(name="Ana", email=email)
 
 
 async def main() -> None:

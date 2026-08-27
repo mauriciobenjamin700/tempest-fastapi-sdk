@@ -304,10 +304,11 @@ from sklearn.model_selection import train_test_split
 
 from tempest_fastapi_sdk.modelops import edge_pipeline_from_pickle
 
-X = X_test
 X_train, X_test, y_train, y_test = train_test_split(
     *load_iris(return_X_y=True), random_state=0
 )
+
+X = X_test
 
 
 package = edge_pipeline_from_pickle("bundle.pkl", X, "dist/", key="challenger")
@@ -530,6 +531,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import ArtifactRegistry
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.artifacts import ArtifactRegistry
@@ -541,7 +543,7 @@ from tempest_fastapi_sdk.modelops import (
 
 from src.db.models import ModelVersion
 
-session = None   # from db.get_session_context() in your code
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 predictor = OnnxPredictor("model.onnx")
 registry = ArtifactRegistry(BaseRepository(session, model=ModelVersion))
@@ -630,10 +632,11 @@ from sklearn.model_selection import train_test_split
 
 from tempest_fastapi_sdk.modelops import load_edge_package
 
-rows = X_test.tolist()
 X_train, X_test, y_train, y_test = train_test_split(
     *load_iris(return_X_y=True), random_state=0
 )
+
+rows = X_test.tolist()
 
 
 loaded = load_edge_package("dist/risk")
@@ -782,10 +785,11 @@ from pathlib import Path
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 
-baseline = X_train
 X_train, X_test, y_train, y_test = train_test_split(
     *load_iris(return_X_y=True), random_state=0
 )
+
+baseline = X_train
 
 
 Path("dist/baseline.json").write_text(baseline.model_dump_json())
@@ -1376,13 +1380,17 @@ Neither touches `optimum`: they run on the `onnxruntime` that
 `[modelops-onnx]` already brings.
 
 ```python
-from tempest_fastapi_sdk.modelops import optimize_hf_onnx, quantize_hf_onnx
+from tempest_fastapi_sdk.modelops import (
+    HFQuantizationTarget,
+    optimize_hf_onnx,
+    quantize_hf_onnx,
+)
 
 optimized = optimize_hf_onnx("exports/distilbert", "exports/distilbert-o2")
 quantized = quantize_hf_onnx(
     "exports/distilbert-o2",
     "exports/distilbert-int8",
-    target="avx512_vnni",
+    target=HFQuantizationTarget.AVX512_VNNI,
 )
 print(optimized.size_ratio, quantized.compression_ratio)
 ```

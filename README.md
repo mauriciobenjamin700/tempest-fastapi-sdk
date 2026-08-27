@@ -598,12 +598,13 @@ For plain CRUD you don't need a subclass at all — instantiate `BaseRepository`
 
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
 
-session = None  # provided by db.get_session_context() in your code
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 repository = BaseRepository(session, model=UserModel)
 
@@ -1768,14 +1769,16 @@ The normalizers strip masks before saving, so repository filters and unique cons
 ```python
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.utils import normalize_cpf_cnpj
 
 from src.db.models import UserModel
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 query = "52998224725"
 repo = BaseRepository(session, model=UserModel)
-session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -2463,7 +2466,7 @@ Repository helper (cursor over `created_at` + `id` tie-break):
 
 from typing import Any
 
-from sqlalchemy import asc, desc, select
+from sqlalchemy import asc, desc, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import BaseRepository, decode_cursor, encode_cursor
@@ -2494,8 +2497,9 @@ class UserRepository(BaseRepository[UserModel]):
 
         if cursor is not None:
             state = decode_cursor(cursor)
-            cmp = (UserModel.created_at, UserModel.id) > (state["value"], state["id"])
-            query = query.where(cmp if ascending else ~cmp)
+            row = tuple_(UserModel.created_at, UserModel.id)
+            anchor = (state["value"], state["id"])
+            query = query.where(row > anchor if ascending else row < anchor)
 
         query = query.limit(limit + 1)  # peek one ahead to set has_more
         result = await self.session.execute(query)
@@ -2624,6 +2628,7 @@ app.add_middleware(
 import asyncio
 
 from fastapi import APIRouter
+from starlette.responses import StreamingResponse
 
 from tempest_fastapi_sdk import EventStream
 
@@ -2631,7 +2636,7 @@ router = APIRouter()
 
 
 @router.get("/events")
-async def events() -> "StreamingResponse":  # forward-declared by Starlette
+async def events() -> StreamingResponse:
     stream = EventStream(heartbeat_seconds=15.0)
 
     async def producer() -> None:
@@ -2663,6 +2668,7 @@ The queue is **bounded** (`max_queue`, default `1000`): a slow client can't grow
 ```python
 # src/services/notifications.py
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import (
     WebPushDispatcher,
     WebPushGoneError,
@@ -2673,8 +2679,9 @@ from tempest_fastapi_sdk import (
 from src.core.settings import settings
 from src.db.repositories import WebPushSubscriptionRepository
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 subscriptions_repo = WebPushSubscriptionRepository(session)
-session = None  # provided by db.get_session_context() in your code
 
 
 dispatcher = WebPushDispatcher(
@@ -2701,7 +2708,9 @@ async def notify_order_paid(
         await subscriptions_repo.delete_by_endpoint(subscription.endpoint)
 
 
-async def broadcast(subs: list[WebPushSubscriptionSchema], payload: WebPushPayloadSchema) -> None:
+async def broadcast(
+    subs: list[WebPushSubscriptionSchema], payload: WebPushPayloadSchema
+) -> None:
     gone = await dispatcher.send_many(subs, payload)
     if gone:
         await subscriptions_repo.delete_by_endpoints(gone)
@@ -3110,24 +3119,28 @@ Imperative variants: `is_valid_cep(value)`, `normalize_cep(value)`, plus `CEP_PA
 `@cached(redis, ttl=..., key_prefix=...)` memoizes the result of an async function in Redis. Cache keys are derived from the function's `__qualname__` plus a SHA-256 of args/kwargs; pass `key_prefix=` to namespace entries so invalidation works by prefix scan.
 
 ```python
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
 
 from src.core.settings import settings
 from src.db.models import UserModel
 
-load_from_db = repo.get_by_id
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 repo = BaseRepository(session, model=UserModel)
-session = None  # provided by db.get_session_context() in your code
 
 
 redis = AsyncRedisManager(settings.REDIS_URL)
 
 
 @cached(redis, ttl=300, key_prefix="users:")
-async def get_user_profile(user_id: str) -> dict[str, str]:
+async def get_user_profile(user_id: UUID) -> dict[str, str]:
     """Hits Redis on warm cache; runs the body once every 5 minutes."""
-    return await load_from_db(user_id)
+    user = await repo.get_by_id(user_id)
+    return {"id": str(user.id), "name": user.name}
 
 
 # Selectively bypass the cache (read AND write) for some calls
@@ -3136,8 +3149,7 @@ async def get_user_profile(user_id: str) -> dict[str, str]:
     ttl=60,
     skip_cache=lambda args, kwargs: kwargs.get("fresh") is True,
 )
-async def list_orders(user_id: str, *, fresh: bool = False) -> list[dict]:
-    ...
+async def list_orders(user_id: str, *, fresh: bool = False) -> list[dict]: ...
 ```
 
 Defaults: `ttl=300` seconds (`0` disables expiry), `serializer=json.dumps` / `deserializer=json.loads`. Override `serializer` / `deserializer` for non-JSON payloads (Pydantic models — pass `model_dump_json` / `MyModel.model_validate_json`, or use `pickle.dumps` / `pickle.loads` for arbitrary objects). Corrupt cached values fall back to running the wrapped function and warn on the SDK logger.
@@ -3540,6 +3552,8 @@ from typing import Any
 
 from tempest_fastapi_sdk import require_annotations, strict_types, typed
 
+# docs-guard: skip — the rejected calls below are the point of this section
+
 
 @strict_types
 def add(a: int, b: int) -> int:
@@ -3645,6 +3659,7 @@ def logout(response: Response) -> None:
 `AttemptThrottle` counts failed attempts per key (typically `<endpoint>:<identifier>` — login email, password-reset target, IP, etc.). The constructor takes a `backend` — any object matching the `ThrottleBackend` Protocol (`get`/`incr`/`expire`/`ttl`/`delete`), which `redis.asyncio.Redis` satisfies out of the box — plus `max_attempts` + `window_seconds`. No in-memory backend is bundled: pass the Redis client from `AsyncRedisManager` (or a [fakeredis](https://github.com/cunla/fakeredis-py) double in tests).
 
 ```python
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import AttemptThrottle, PasswordUtils, UnauthorizedException
 from tempest_fastapi_sdk.cache import AsyncRedisManager
 
@@ -3652,9 +3667,10 @@ from src.core.settings import settings
 from src.db.models import User
 from src.db.repositories import UserRepository
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 password_utils = PasswordUtils()
 users_repo = UserRepository(session)
-session = None  # provided by db.get_session_context() in your code
 
 
 cache = AsyncRedisManager(settings.REDIS_URL)
@@ -3662,22 +3678,22 @@ cache = AsyncRedisManager(settings.REDIS_URL)
 throttle = AttemptThrottle(
     cache.client,
     max_attempts=5,
-    window_seconds=300,         # fixed window; also the TTL on the first failure
-    namespace="login",          # key prefix so multiple throttles can coexist
-    fail_open=True,             # a Redis outage degrades to "allow", never locks everyone out
+    window_seconds=300,  # fixed window; also the TTL on the first failure
+    namespace="login",  # key prefix so multiple throttles can coexist
+    fail_open=True,  # a Redis outage degrades to "allow", never locks everyone out
 )
 
 
 async def login(email: str, password: str) -> User:
     key = f"login:{email}"
-    await throttle.raise_if_blocked(key)            # raises 429 when over budget
+    await throttle.raise_if_blocked(key)  # raises 429 when over budget
 
     user = await users_repo.get_or_none({"email": email})
     if user is None or not password_utils.verify(password, user.hashed_password):
-        await throttle.hit(key)                     # +1 failure, applies the TTL
+        await throttle.hit(key)  # +1 failure, applies the TTL
         raise UnauthorizedException(message="Invalid credentials.")
 
-    await throttle.reset(key)                       # success clears the counter
+    await throttle.reset(key)  # success clears the counter
     return user
 ```
 
@@ -3691,13 +3707,15 @@ async def login(email: str, password: str) -> User:
 from datetime import timedelta
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import generate_opaque_token, utcnow, verify_opaque_token
 
 from src.db.models import PasswordResetToken
 from src.db.repositories import UserTokenRepository
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 reset_tokens_repo = UserTokenRepository(session)
-session = None  # provided by db.get_session_context() in your code
 
 
 async def issue_reset_token(user_id: UUID) -> str:

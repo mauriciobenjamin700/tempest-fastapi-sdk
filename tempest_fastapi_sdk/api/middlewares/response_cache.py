@@ -37,7 +37,7 @@ import asyncio
 import hashlib
 import time
 from collections.abc import Awaitable, Callable
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -169,18 +169,23 @@ class MemoryResponseCacheStore:
 class _RedisLike(Protocol):
     """The subset of ``redis.asyncio.Redis`` the Redis store uses."""
 
-    async def get(self, key: str) -> str | bytes | None:
+    def get(self, key: str, /) -> Awaitable[Any]:
         """Return the raw stored value for ``key``, or ``None`` when absent.
+
+        Positional-only, and typed as returning an ``Awaitable`` rather
+        than declared ``async def``: ``redis.asyncio.Redis`` names this
+        parameter ``name`` and returns ``Awaitable``, so the stricter
+        spelling rejects the client this protocol is written for.
 
         Args:
             key (str): The cache key.
 
         Returns:
-            str | bytes | None: The stored payload, or ``None`` on a miss.
+            Awaitable[Any]: The stored payload, or ``None`` on a miss.
         """
         ...
 
-    async def set(self, key: str, value: str, *, ex: int) -> object:
+    def set(self, key: str, value: str, /, *, ex: int) -> Awaitable[Any]:
         """Store ``value`` under ``key`` with a TTL.
 
         Args:
@@ -189,7 +194,8 @@ class _RedisLike(Protocol):
             ex (int): Time-to-live in seconds.
 
         Returns:
-            object: Whatever the client returns; the caller ignores it.
+            Awaitable[Any]: Whatever the client returns; the caller
+            ignores it.
         """
         ...
 

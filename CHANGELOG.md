@@ -5,6 +5,115 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.257.0] — 2026-08-27
+
+### Changed
+
+- **BREAKING (pequeno) — `ScriptedBackend` e `FailingBackend` renomeiam o
+  parâmetro `specs` para `tools`, e as quatro assinaturas ganham `**kwargs`.**
+  Os dois fakes existem para fingir `ChatBackend` / `ToolCallingBackend` — e
+  não satisfaziam nenhum dos dois sob mypy: o protocolo chama o parâmetro
+  `tools` e aceita `**kwargs`, e um membro de protocolo só é implementado por
+  assinatura com o mesmo nome de parâmetro.
+
+  ```python
+  from tempest_fastapi_sdk.agents import Agent
+  from tempest_fastapi_sdk.agents.testing import ScriptedBackend, replies
+
+  agent = Agent(ScriptedBackend([replies("ok")]))
+  # antes: Argument 1 to "Agent" has incompatible type "ScriptedBackend";
+  #        expected "ChatBackend | ToolCallingBackend"  [arg-type]
+  ```
+
+  Era a **primeira linha** de sete blocos da receita
+  `recipes/agents-testing.md`: quem seguia a receita num serviço com mypy
+  ligado colhia o erro no próprio teste.
+
+  **Migração:** a chamada posicional — a que o `Agent` faz — não muda. Quem
+  chamava `backend.chat_with_tools(messages, specs=[...])` por keyword troca
+  para `tools=`. O atributo `specs_seen` continua com o nome de sempre. Passo a
+  passo no guia de migração: `docs/migration.md`, seção 0.257.0.
+
+### Fixed
+
+- **`on_disconnect` aceita callback que devolve alguma coisa.** A anotação era
+  `Callable[[], Awaitable[None] | None] | None`, mas o corpo faz
+  `result = on_disconnect()` e só aguarda quando o retorno é awaitable —
+  qualquer outro valor é descartado. Então o exemplo canônico da receita de
+  SSE não passava no type-checker do leitor:
+
+  ```python
+  task = asyncio.create_task(producer())
+  return stream.response(on_disconnect=task.cancel)  # Task.cancel devolve bool
+  ```
+
+  Passa a ser `Callable[[], object] | None` em `EventStream.response`,
+  `sse_response` e no `_guard_stream` que os dois usam. Nada muda em runtime.
+
+- **Os stores de Redis aceitam o `redis.asyncio.Redis` que a receita manda
+  passar.** `_RedisLike` (idempotência e cache de resposta) e `RedisLike`
+  (WebAuthn) declaravam os membros como `async def get(self, key: str) -> ...`.
+  Duas consequências: um membro `async def` exige retorno `Coroutine`, e um
+  parâmetro nomeado exige o **mesmo nome** na implementação. O redis-py chama
+  o parâmetro de `name` e devolve `Awaitable`, então a linha da receita era
+  erro de tipo:
+
+  ```python
+  store = RedisIdempotencyStore(Redis.from_url(settings.REDIS_URL))
+  # antes: Argument 1 to "RedisIdempotencyStore" has incompatible type
+  #        "Redis"; expected "_RedisLike"  [arg-type]
+  ```
+
+  Os três protocolos passam a declarar parâmetro posicional e retorno
+  `Awaitable[Any]` — a forma que o `RedisLike` do rate limiter já usava, e que
+  é por isso que aquele nunca teve o problema. Medido nos seis stores de Redis
+  exportados: três recusavam o cliente real (idempotência, cache de resposta,
+  WebAuthn) e três aceitavam (rate limit, quota, sessão); agora nenhum recusa.
+
+- **`require_authenticated` aceita qualquer sujeito, não só `BaseUserModel`.**
+  A função não lê atributo nenhum — só rejeita `None` — mas o `TypeVar` estava
+  presa ao modelo de usuário, e a receita do Firebase guarda um
+  `FirebaseIdentity` com ela. mypy resolvia o `TypeVar` para `None` e recusava
+  o argumento. Agora usa um `SubjectT` sem bound; `require_active` e
+  `require_admin` mantêm o bound, porque leem `is_active` / `is_admin`.
+
+### Note
+
+- **Guard novo: `tests/test_docs_type_guard.py`.** Os quatro defeitos acima
+  têm a mesma origem — nenhum guard rodava um type-checker sobre os exemplos
+  da doc, e os dois guards de exemplo diziam isso no próprio docstring
+  ("o que ele não pega, de propósito: tipo de argumento"). O guard novo
+  escreve cada bloco parseável do site como um módulo e roda mypy com a config
+  deste repo, lendo quatro códigos de erro: `arg-type`, `call-arg`,
+  `name-defined` e `used-before-def`.
+
+  Ao rodar pela primeira vez — 1999 blocos, 226 arquivos, as duas línguas
+  mais o `README.md`: **162 achados**. Além dos
+  quatro defeitos de tipagem do SDK, 89 eram `NameError` na colagem — uma
+  passada anterior de "deixar todo exemplo completo" tinha acrescentado o
+  placeholder **depois** da linha que o usa (`repository = BaseRepository(session, ...)`
+  com `session = None` três linhas abaixo). O resto era exemplo que o leitor
+  não conseguia rodar: `PutObjectItem(data="thumbs/a.png")` subindo o nome do
+  arquivo como conteúdo, `body={...}` num cliente que pede o schema gerado,
+  `emb._embed_many` (privado, e com outra assinatura) passado ao
+  `BatchScheduler`.
+
+  A varredura também limpou o que o guard não lê — `email = "ana@example.com"`
+  sendo usado como `await email.send(...)` em duas receitas, `order.id` sobre
+  um `dict`, `provider.advance(...)` chamado sobre a anotação do protocolo em
+  vez do fake. Sobraram 25 `attr-defined`, todos das duas formas legítimas:
+  excerto de classe sem `__init__`, e o `op.replace_enum` que o Alembic
+  registra em runtime.
+
+  O achado mais caro não quebrava nada: a paginação por cursor do `README.md`
+  comparava `(created_at, id) > (valor, id)` como **tupla do Python**, que
+  compara só o primeiro elemento e devolve a expressão dele — SQL válido,
+  desempate silenciosamente perdido, linhas repetidas ou puladas entre páginas.
+  Agora usa `tuple_()`, e a página descendente usa `<` em vez de `~(... > ...)`,
+  que incluía a própria linha do cursor.
+
+  Custo: ~40s com cache de mypy frio, menos de 1s quente.
+
 ## [0.256.0] — 2026-08-27
 
 ### Added

@@ -715,6 +715,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `ts` não-numérico é rejeitado. Portado de `mercadopago/sdk-nodejs` commit
   `99857f33`, com digests conferidos contra `openssl`. Falta uma entrega real.
   Receita: `docs/recipes/mercado-pago.md`.
+- **Guard de tipo nos exemplos da doc (v0.257.0)** —
+  `tests/test_docs_type_guard.py` escreve os 1999 blocos parseáveis dos 226
+  arquivos markdown (as duas línguas mais o `README.md`) como módulo e roda mypy com a config deste repo, lendo quatro códigos:
+  `arg-type`, `call-arg`, `name-defined`, `used-before-def`. Fecha o ponto cego
+  que `test_docs_examples_compile` e `test_docs_method_guard` declaravam no
+  próprio docstring — tipo de argumento. Primeira execução: 162 achados, dos
+  quais 89 eram `NameError` na colagem (placeholder escrito **depois** da linha
+  que o usa) e quatro eram anotação do SDK recusando o argumento que a própria
+  receita mandava passar (`on_disconnect=task.cancel`, os três protocolos de
+  Redis, `require_authenticated` de identidade não-`BaseUserModel`). Ignora
+  `attr-defined` de propósito: página que excerta corpo de classe sem
+  `__init__` é legítima. ~40s com cache frio, <1s quente.
 - **Guard de versão do `uv.lock` (v0.251.0)** —
   `tests/test_lock_version_guard.py` lê `git show HEAD:uv.lock`, porque
   `uv run` conserta o arquivo em disco antes de qualquer teste ler; o workflow

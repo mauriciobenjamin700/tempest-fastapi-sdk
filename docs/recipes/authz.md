@@ -57,16 +57,18 @@ def only_owner_can_delete(user: UserModel, order: OrderModel) -> bool:
 ```python
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.authz import has_perm
 
 from src.db.models import OrderModel, UserModel
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 current_user = UserModel(name="Ana", email="ana@example.com")
+user = UserModel(name="Ana", email="ana@example.com")
 order = OrderModel(user_id=user.id, total=100)
 repository = BaseRepository(session, model=UserModel)
-user = UserModel(name="Ana", email="ana@example.com")
-session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -89,8 +91,8 @@ from tempest_fastapi_sdk.authz import check_permission
 from src.db.models import OrderModel, UserModel
 
 current_user = UserModel(name="Ana", email="ana@example.com")
-order = OrderModel(user_id=user.id, total=100)
 user = UserModel(name="Ana", email="ana@example.com")
+order = OrderModel(user_id=user.id, total=100)
 
 
 async def main() -> None:
@@ -162,21 +164,20 @@ Omita `get_object` para um check **model-level** (`obj=None`) — útil em
 O predicado pode ser `async` — útil quando a decisão precisa do banco:
 
 ```python
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import permission
 
 from src.db.models import ProjectModel, UserModel
 from src.db.repositories import MembershipRepository
 
-membership_repo = MembershipRepository(session)
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
-session = None  # provided by db.get_session_context() in your code
+membership_repo = MembershipRepository(session)
 
 
 @permission("project.invite")
 async def is_project_member(user: UserModel, project: ProjectModel) -> bool:
-    return await membership_repo.exists(
-        {"project_id": project.id, "user_id": user.id}
-    )
+    return await membership_repo.exists({"project_id": project.id, "user_id": user.id})
 ```
 
 ## Ajustando bypass e fallback
@@ -185,15 +186,16 @@ Por padrão o superusuário é `user.is_admin` e o conjunto estático vem de
 `user.permissions`. Ambos são injetáveis — monte seu próprio registry:
 
 ```python
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import has_perm, permission
 from tempest_fastapi_sdk.authz import PermissionRegistry
 
 from src.db.models import OrderModel, UserModel
 from src.db.repositories import RoleRepository
 
-role_repo = RoleRepository(session)
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
-session = None  # provided by db.get_session_context() in your code
+role_repo = RoleRepository(session)
 
 
 async def perms_from_roles(user: UserModel) -> set[str]:
@@ -229,8 +231,8 @@ from tempest_fastapi_sdk.authz import PermissionMixin
 
 from src.db.models import OrderModel, UserModel
 
-order = OrderModel(user_id=user.id, total=100)
 user = UserModel(name="Ana", email="ana@example.com")
+order = OrderModel(user_id=user.id, total=100)
 
 
 class UserModel(BaseUserModel, PermissionMixin):

@@ -876,7 +876,7 @@ async def main() -> None:
         result = await sender.send(
             "https://assinante.example.com/hooks",
             event="order.paid",
-            payload={"id": str(order.id), "total": 4200},
+            payload={"id": order["id"], "total": 4200},
         )
         if not result.delivered:
             # result.status_code / result.attempts / result.error
@@ -884,7 +884,7 @@ async def main() -> None:
 
     # Mesmo evento pra vários assinantes, concorrente:
     results = await sender.send_many(
-        [(sub.url, {"id": str(order.id)}) for sub in subscribers],
+        [(url, {"id": order["id"]}) for url in subscribers],
         event="order.paid",
     )
 

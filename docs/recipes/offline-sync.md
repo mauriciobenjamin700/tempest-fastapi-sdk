@@ -245,14 +245,15 @@ Esta é a parte que costuma dar bug. Siga à risca:
 ```python
 import asyncio
 from datetime import datetime, timedelta, timezone
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from src.db.repositories import AnalysisRepository
+
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 repo = AnalysisRepository(session)
 
 watermark = datetime.now(timezone.utc) - timedelta(hours=1)
-
-session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:

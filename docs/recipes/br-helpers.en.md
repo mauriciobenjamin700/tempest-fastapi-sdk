@@ -175,15 +175,16 @@ The normalizers strip masks before saving, so repository filters and unique cons
 ```python
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk.utils import normalize_cpf_cnpj
 
 from src.db.repositories import CustomerRepository
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 query = "529.982.247-25"
 
 repo = CustomerRepository(session)
-
-session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:

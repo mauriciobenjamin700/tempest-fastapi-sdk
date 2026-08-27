@@ -417,7 +417,11 @@ mesmo com score denso morno. BM25 vem do `rank-bm25` (extra `[genai-rag]`).
 import asyncio
 
 from tempest_fastapi_sdk.genai import Embedder
-from tempest_fastapi_sdk.genai.rag import HybridRetriever, InMemoryVectorStore
+from tempest_fastapi_sdk.genai.rag import (
+    HybridRetriever,
+    InMemoryVectorStore,
+    chunk_text,
+)
 
 rag = HybridRetriever(
     Embedder("sentence-transformers/all-MiniLM-L6-v2", normalize=True),
@@ -427,8 +431,13 @@ rag = HybridRetriever(
 
 async def main() -> None:
     """Run this example."""
-    await rag.index(chunks)                              # indexa denso + BM25
-    chunks = await rag.search("o que é CNPJ?", top_k=5)  # funde denso + esparso
+    chunks = chunk_text(
+        "O CNPJ identifica a pessoa jurídica na Receita Federal.",
+        source="faq.md",
+    )
+    await rag.index(chunks)                            # indexa denso + BM25
+    hits = await rag.search("o que é CNPJ?", top_k=5)  # funde denso + esparso
+    print(hits)
 
 
 asyncio.run(main())
@@ -850,7 +859,12 @@ from tempest_fastapi_sdk.genai import BatchScheduler, Embedder, EmbeddingModel
 emb = Embedder(EmbeddingModel.ALL_MINILM_L6_V2)
 
 
-sched = BatchScheduler(emb._embed_many, max_batch=32, max_wait_ms=10)
+async def embed_batch(texts: list[str]) -> list[list[float]]:
+    """Embed a whole batch in one forward pass."""
+    return await emb.embed(texts)
+
+
+sched = BatchScheduler(embed_batch, max_batch=32, max_wait_ms=10)
 
 
 async def main() -> None:

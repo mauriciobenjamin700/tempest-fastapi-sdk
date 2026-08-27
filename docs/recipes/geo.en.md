@@ -331,17 +331,25 @@ returns the `k` closest. Both take `key=` to extract a `Coordinate` from
 your own objects:
 
 ```python
+from dataclasses import dataclass
+
 from tempest_fastapi_sdk.geo import Coordinate, nearest, within_radius
 
-store_a = Coordinate(latitude=-8.0476, longitude=-34.8770)
 
-store_b = Coordinate(latitude=-7.9899, longitude=-34.8386)
+@dataclass
+class Store:
+    """A store of yours, holding its coordinate in a field of its own."""
 
-store_c = Coordinate(latitude=-8.1130, longitude=-34.9060)
+    name: str
+    location: Coordinate
 
+
+store_a = Store("Boa Viagem", Coordinate(latitude=-8.0476, longitude=-34.8770))
+store_b = Store("Olinda", Coordinate(latitude=-7.9899, longitude=-34.8386))
+store_c = Store("Jaboatão", Coordinate(latitude=-8.1130, longitude=-34.9060))
 
 center = Coordinate(latitude=-23.55, longitude=-46.63)
-stores = [store_a, store_b, store_c]  # objects with .location: Coordinate
+stores = [store_a, store_b, store_c]
 
 near = within_radius(center, stores, 5.0, key=lambda s: s.location)
 top3 = nearest(center, stores, k=3, key=lambda s: s.location)
@@ -433,30 +441,26 @@ import asyncio
 
 import httpx
 
-from tempest_fastapi_sdk.geo import BoundingBox, Coordinate, OSRMBackend
+from tempest_fastapi_sdk.geo import Coordinate, OSRMBackend
 
+store_a = Coordinate(latitude=-8.0476, longitude=-34.8770)
 a = store_a
 
+store_b = Coordinate(latitude=-7.9899, longitude=-34.8386)
 b = store_b
 
 client = httpx.AsyncClient()
 
+destination = Coordinate(latitude=-7.9899, longitude=-34.8386)
 destinations = [destination]
 
 
-def draw_on_map(box: BoundingBox) -> None:
-    """Render the bounding box on your map widget."""
+def draw_on_map(line: list[Coordinate]) -> None:
+    """Render the route line on your map widget."""
 
-
-origins = [origin]
-
-store_a = Coordinate(latitude=-8.0476, longitude=-34.8770)
-
-store_b = Coordinate(latitude=-7.9899, longitude=-34.8386)
-
-destination = Coordinate(latitude=-7.9899, longitude=-34.8386)
 
 origin = Coordinate(latitude=-8.0476, longitude=-34.8770)
+origins = [origin]
 
 
 backend = OSRMBackend(http_client=client)
@@ -481,8 +485,8 @@ Google/OSRM format (precision 5 or 6), no dependency.
 
 ```python
 from tempest_fastapi_sdk.geo import (
-    BoundingBox,
     Coordinate,
+    bounding_box,
     destination_point,
     initial_bearing,
     path_length_km,
@@ -490,21 +494,38 @@ from tempest_fastapi_sdk.geo import (
     polygon_area_km2,
 )
 
-center = ponto
+point = Coordinate(latitude=-8.0476, longitude=-34.8770)
+center = point
 
-delivery_zone = BoundingBox.around(point, radius_km=5)
+delivery_zone = bounding_box(point, radius_km=5)
+
+zone_polygon = [
+    Coordinate(
+        latitude=delivery_zone.min_latitude,
+        longitude=delivery_zone.min_longitude,
+    ),
+    Coordinate(
+        latitude=delivery_zone.min_latitude,
+        longitude=delivery_zone.max_longitude,
+    ),
+    Coordinate(
+        latitude=delivery_zone.max_latitude,
+        longitude=delivery_zone.max_longitude,
+    ),
+    Coordinate(
+        latitude=delivery_zone.max_latitude,
+        longitude=delivery_zone.min_longitude,
+    ),
+]
 
 gps_points = [point, Coordinate(latitude=-7.9899, longitude=-34.8386)]
 
-point = Coordinate(latitude=-8.0476, longitude=-34.8770)
-
-ponto = Coordinate(latitude=-8.0476, longitude=-34.8770)
-
 
 target = destination_point(center, bearing_degrees=90.0, distance_km=2.0)  # 2 km east
-heading = initial_bearing(center, target)                                  # ~90.0
-inside = point_in_polygon(point, delivery_zone)                            # geofence
-area = polygon_area_km2(delivery_zone)
+heading = initial_bearing(center, target)  # ~90.0
+inside = delivery_zone.contains(point)  # geofence: the cheap box test
+in_polygon = point_in_polygon(point, zone_polygon)  # geofence: the ring
+area = polygon_area_km2(zone_polygon)
 travelled = path_length_km(gps_points)
 ```
 

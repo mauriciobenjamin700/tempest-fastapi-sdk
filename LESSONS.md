@@ -30,6 +30,48 @@ Outro caso da mesma família: errei o 500-vs-422 do router de PDF porque
 deduzi que o FastAPI converteria um `ValidationError` levantado dentro do
 corpo da rota. Ele não converte.
 
+## A anotação que a própria receita contradiz (v0.257.0)
+
+O guard novo (`tests/test_docs_type_guard.py`) roda mypy sobre os exemplos.
+Achou 162 defeitos; quatro deles não eram da doc, eram do SDK — a anotação
+recusava o argumento que a receita mandava passar:
+
+| Escrito na receita | O que a anotação pedia |
+| --- | --- |
+| `stream.response(on_disconnect=task.cancel)` | `Callable[[], Awaitable[None] \| None]` — `Task.cancel` devolve `bool` |
+| `RedisIdempotencyStore(Redis.from_url(...))` | membro `async def get(self, key: str)` — o redis-py chama de `name` e devolve `Awaitable`, não `Coroutine` |
+| `require_authenticated(firebase_identity)` | `TypeVar` preso a `BaseUserModel` |
+
+Nos três, o **código** aceitava: `on_disconnect` só aguarda se o retorno for
+awaitable e descarta o resto; o store só chama `get`/`set`; o guard só rejeita
+`None`. A anotação era mais estreita que o contrato, e o único lugar onde isso
+aparecia era a máquina de quem copiava a receita para um serviço com mypy
+ligado — nunca aqui, porque `make type` roda sobre o pacote, e o pacote não
+chama a si mesmo desse jeito.
+
+Duas consequências práticas:
+
+- **Protocolo que promete aceitar um cliente de terceiro é medido contra ele.**
+  Escrever `async def get(self, key: str)` num `Protocol` exige do
+  implementador o nome do parâmetro **e** retorno `Coroutine`. A forma que
+  funciona é `def get(self, key: str, /) -> Awaitable[Any]`. Dos seis stores de
+  Redis exportados, três recusavam o `redis.asyncio.Redis` que a doc manda
+  passar — e o `RedisLike` do rate limiter, que já usava a forma certa,
+  aceitava. A diferença estava no repo desde sempre; ninguém tinha comparado.
+- **Fake que finge um protocolo é checado contra o protocolo.**
+  `ScriptedBackend` chamava o parâmetro de `specs`, o protocolo de `tools`:
+  `Agent(ScriptedBackend([...]))` — a primeira linha da receita de teste — era
+  `arg-type`.
+
+E o achado que nenhum type-checker teria pego sozinho, mas que a leitura
+disparada por ele pegou: a paginação por cursor do `README.md` comparava
+`(created_at, id) > (valor, id)` como tupla do **Python**. Isso compara o
+primeiro elemento e devolve a expressão dele — SQL válido, desempate perdido em
+silêncio, linha repetida ou pulada na virada de página. `tuple_()` é o que
+emite row-value comparison. O `~cmp` da página descendente tinha o mesmo tipo
+de erro: `NOT (a > b)` é `<=`, então a página seguinte repetia a linha do
+cursor.
+
 ## Medir no lock não é medir no piso (v0.243.0 → v0.244.0)
 
 A mesma afirmação saiu errada **duas vezes seguidas**, e a segunda foi medida.

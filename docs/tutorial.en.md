@@ -425,12 +425,13 @@ For plain CRUD you don't need a subclass at all — instantiate `BaseRepository`
 
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
 
-session = None  # provided by db.get_session_context() in your code
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 repository = BaseRepository(session, model=UserModel)
 

@@ -92,6 +92,7 @@ all shows up on the same `GET /metrics`.
 ```python
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import (
     BaseRepository,
     BusinessMetrics,
@@ -100,11 +101,11 @@ from tempest_fastapi_sdk import (
 
 from src.db.models import UserModel
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 elapsed = 0.42
 
 repo = BaseRepository(session, model=UserModel)
-
-session = None  # provided by db.get_session_context() in your code
 
 
 registry = make_prometheus_registry()

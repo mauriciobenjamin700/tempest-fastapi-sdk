@@ -83,7 +83,11 @@ def example() -> tuple[int, str]:
 The buyer is redirected to a Mercado Pago screen:
 
 ```python
-from tempest_fastapi_sdk.integrations.payment.mercado_pago import MercadoPagoClient
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+    MercadoPagoClient,
+    PreferenceItem,
+    PreferenceRequest,
+)
 
 
 async def create_preference_for(client: MercadoPagoClient) -> str | None:
@@ -96,16 +100,16 @@ async def create_preference_for(client: MercadoPagoClient) -> str | None:
         str | None: The ``init_point`` URL, when the provider returned one.
     """
     preference = await client.create_preference(
-        body={
-            "items": [
-                {
-                    "title": "Order 1042",
-                    "quantity": 1,
-                    "unit_price": 19.9,
-                }
+        body=PreferenceRequest(
+            items=[
+                PreferenceItem(
+                    title="Order 1042",
+                    quantity=1,
+                    unit_price=19.9,
+                )
             ],
-            "external_reference": "order-1042",
-        }
+            external_reference="order-1042",
+        )
     )
     return preference.init_point
 ```
@@ -117,7 +121,11 @@ Pix and boleto are **entirely server-side** — no redirect at all:
 ```python
 import uuid
 
-from tempest_fastapi_sdk.integrations.payment.mercado_pago import MercadoPagoClient
+from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+    MercadoPagoClient,
+    PaymentPayer,
+    PaymentRequest,
+)
 
 
 async def charge_pix(client: MercadoPagoClient) -> str | None:
@@ -130,12 +138,12 @@ async def charge_pix(client: MercadoPagoClient) -> str | None:
         str | None: The payment URL for the offline method, when present.
     """
     payment = await client.create_payment(
-        body={
-            "transaction_amount": 19.9,
-            "payment_method_id": "pix",
-            "payer": {"email": "buyer@example.com"},
-            "external_reference": "order-1042",
-        },
+        body=PaymentRequest(
+            transaction_amount=19.9,
+            payment_method_id="pix",
+            payer=PaymentPayer(email="buyer@example.com"),
+            external_reference="order-1042",
+        ),
         x_idempotency_key=uuid.uuid4(),
     )
     details = payment.transaction_details

@@ -194,8 +194,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import UserAuthService
 
+from src.db.models import UserModel
 
-async def issue(service: UserAuthService, session: AsyncSession, user: object) -> None:
+
+async def issue(
+    service: UserAuthService, session: AsyncSession, user: UserModel
+) -> None:
     """Emit a DB-backed pair, rotate it, then revoke the session."""
     access, refresh = await service.issue_token_pair(session, user)
     await session.commit()

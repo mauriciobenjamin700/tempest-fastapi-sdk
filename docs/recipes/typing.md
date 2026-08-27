@@ -57,6 +57,8 @@ from typing import reveal_type
 
 from tempest_fastapi_sdk.schemas import BaseSchema
 
+# docs-guard: skip — a chamada recusada abaixo é o assunto da seção
+
 
 class Probe(BaseSchema):
     """A schema with two typed fields."""
@@ -165,6 +167,8 @@ Rejeita qualquer valor que não seja **já** do tipo anotado. Argumentos
 ```python
 from tempest_fastapi_sdk import strict_types
 
+# docs-guard: skip — a chamada recusada abaixo é o assunto da seção
+
 
 @strict_types
 def add(a: int, b: int) -> int:
@@ -182,6 +186,8 @@ Igual, mas coage quando o pydantic consegue sem ambiguidade
 
 ```python
 from tempest_fastapi_sdk import typed
+
+# docs-guard: skip — a chamada recusada abaixo é o assunto da seção
 
 
 @typed

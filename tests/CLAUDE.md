@@ -23,6 +23,7 @@ Todos rodam dentro do `make check`.
 | `test_docs_organization` | espelho `.en.md`, dois navs, ordem alfabética, índice de receitas | — |
 | `test_docs_examples_compile` / `test_docs_examples_names` | exemplos completos compilam e usam nomes reais; import da família Tempest (`tempest_fastapi_sdk`, `tempest_core`, `tempestweb`) resolve de verdade | tipo de argumento |
 | `test_docs_method_guard` | atributo lido de instância construída no exemplo existe na classe | tipo de argumento; nome reatribuído; atributo de atributo |
+| `test_docs_type_guard` | mypy (config deste repo) sobre todo bloco parseável, filtrado a `arg-type`, `call-arg`, `name-defined`, `used-before-def` | `attr-defined` (excerto de classe sem `__init__` é legítimo); prosa; linha com `...` de elisão |
 | `test_reference_coverage` | símbolo público tem stub em `docs/reference.md` | — |
 | `test_kwargs_guard` | função lê chave do **próprio** `**kwargs` | splat em callable que absorve a chave |
 | `test_reexport_guard` | `from x import Y as Y` + `__all__` em `__init__.py` | — |
@@ -35,8 +36,10 @@ Todos rodam dentro do `make check`.
 | `test_wheel_payload` | payload não-`.py` da wheel é exatamente a allowlist | — |
 
 Marcadores de escape: `# docs-guard: skip` (fragmento não-parseável de
-propósito), `# kwargs-guard: skip` (caso que genuinamente não é isso, com
-docstring dizendo por quê).
+propósito, **ou** bloco que é o erro descrito pela seção — é como
+`recipes/typing.md` demonstra chamada recusada sem derrubar o guard de tipo),
+`# kwargs-guard: skip` (caso que genuinamente não é isso, com docstring
+dizendo por quê).
 
 ## Ao adicionar guard novo
 

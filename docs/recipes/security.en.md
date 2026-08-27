@@ -9,6 +9,7 @@ Defensive primitives: rate-limit by failure (login/OTP), opaque single-use token
 The constructor takes a `backend` (anything matching the `ThrottleBackend` Protocol — `redis.asyncio.Redis` works out of the box) + `max_attempts` + `window_seconds`. No "in-memory" backend is bundled — use the Redis client from `AsyncRedisManager`, or a fake in tests.
 
 ```python
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import (
     AttemptThrottle,
     PasswordUtils,
@@ -21,11 +22,11 @@ from src.core.settings import settings
 from src.db.models import User
 from src.db.repositories import UserRepository
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 password_utils = PasswordUtils()
 
 users_repo = UserRepository(session)
-
-session = None  # provided by db.get_session_context() in your code
 
 
 cache = AsyncRedisManager(settings.REDIS_URL)
@@ -40,27 +41,29 @@ async def on_startup() -> None:
     to your app lifespan (`FastAPI(lifespan=...)`).
     """
     global throttle
-    await cache.connect()   # required — `cache.client` raises RuntimeError until connected
+    await (
+        cache.connect()
+    )  # required — `cache.client` raises RuntimeError until connected
     # `cache.client` is `redis.asyncio.Redis` — matches the ThrottleBackend Protocol
     throttle = AttemptThrottle(
         cache.client,
         max_attempts=5,
-        window_seconds=300,     # fixed window; also the TTL applied on the first failure
-        namespace="login",      # key prefix — multiple throttles can share a backend
-        fail_open=True,         # Redis outage = allow, instead of locking everyone out
+        window_seconds=300,  # fixed window; also the TTL applied on the first failure
+        namespace="login",  # key prefix — multiple throttles can share a backend
+        fail_open=True,  # Redis outage = allow, instead of locking everyone out
     )
 
 
 async def login(email: str, password: str) -> User:
     key = f"login:{email}"
-    await throttle.raise_if_blocked(key)            # 429 if already over budget
+    await throttle.raise_if_blocked(key)  # 429 if already over budget
 
     user = await users_repo.get_or_none({"email": email})
     if user is None or not password_utils.verify(password, user.hashed_password):
-        await throttle.hit(key)                     # +1 failure, apply TTL
+        await throttle.hit(key)  # +1 failure, apply TTL
         raise UnauthorizedException(message="Invalid credentials.")
 
-    await throttle.reset(key)                       # clear counter on success
+    await throttle.reset(key)  # clear counter on success
     return user
 ```
 
@@ -129,6 +132,7 @@ require_refresh = make_bearer_token_dependency(
 from datetime import timedelta
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import (
     generate_opaque_token,
     hash_opaque_token,
@@ -139,9 +143,9 @@ from tempest_fastapi_sdk.utils import utcnow
 from src.db.models import PasswordResetToken
 from src.db.repositories import UserTokenRepository
 
-reset_tokens_repo = UserTokenRepository(session)
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
-session = None  # provided by db.get_session_context() in your code
+reset_tokens_repo = UserTokenRepository(session)
 
 
 async def issue_reset_token(user_id: UUID) -> str:
@@ -153,7 +157,7 @@ async def issue_reset_token(user_id: UUID) -> str:
             expires_at=utcnow() + timedelta(hours=1),
         ),
     )
-    return plaintext   # show once — never store
+    return plaintext  # show once — never store
 
 
 async def consume_reset_token(plaintext: str, user_id: UUID) -> bool:

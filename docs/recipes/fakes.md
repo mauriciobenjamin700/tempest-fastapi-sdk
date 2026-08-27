@@ -31,14 +31,15 @@ from tempest_fastapi_sdk.testing.fakes import FakePixProvider
 
 async def main() -> None:
     """Run a checkout from open charge to paid, with nobody scanning a QR."""
-    provider: PixProvider = FakePixProvider()
+    fake = FakePixProvider()
+    provider: PixProvider = fake
 
     charge = await provider.create_pix_charge(
         PixChargeRequest(amount_cents=1990, reference="pedido-1042"),
     )
     print(charge.status.value)
 
-    event = provider.advance(charge.provider_charge_id, PaymentStatus.PAID)
+    event = fake.advance(charge.provider_charge_id, PaymentStatus.PAID)
     print(event.type.value)
 
 

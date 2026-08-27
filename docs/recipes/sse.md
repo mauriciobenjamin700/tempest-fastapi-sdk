@@ -710,20 +710,23 @@ from uuid import UUID
 from src.db.models import OrderModel, UserModel
 from src.queue import mq
 
+user = UserModel(name="Ana", email="ana@example.com")
 order = OrderModel(user_id=user.id, total=100)
 
 sse_exchange = "sse.fanout"
 
 user_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
 
-user = UserModel(name="Ana", email="ana@example.com")
-
 
 async def main() -> None:
     """Run this example."""
     # de qualquer worker/handler:
     await mq.broker.publish(
-        {"channel": str(user_id), "event": "order_created", "data": {"order_id": str(order.id)}},
+        {
+            "channel": str(user_id),
+            "event": "order_created",
+            "data": {"order_id": str(order.id)},
+        },
         exchange=sse_exchange,
     )
 

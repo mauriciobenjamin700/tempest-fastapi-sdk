@@ -8,7 +8,6 @@ import json
 from collections.abc import (
     AsyncIterable,
     AsyncIterator,
-    Awaitable,
     Callable,
     Mapping,
     Sequence,
@@ -281,7 +280,7 @@ class EventStream:
     def response(
         self,
         *,
-        on_disconnect: Callable[[], Awaitable[None] | None] | None = None,
+        on_disconnect: Callable[[], object] | None = None,
         status_code: int = 200,
         headers: dict[str, str] | None = None,
     ) -> StreamingResponse:
@@ -293,10 +292,13 @@ class EventStream:
         ``try/finally`` boilerplate at every call site.
 
         Args:
-            on_disconnect (Callable[[], Awaitable[None] | None] | None):
-                Called (awaited if a coroutine) when the response
-                generator closes — i.e. the client disconnected or the
-                stream ended. Cancel the producer task here.
+            on_disconnect (Callable[[], object] | None): Called (awaited
+                if it returns an awaitable) when the response generator
+                closes — i.e. the client disconnected or the stream
+                ended. Cancel the producer task here. Whatever it
+                returns is discarded, so a callback with a return value
+                of its own — ``task.cancel``, which returns ``bool`` —
+                is as valid as one returning ``None``.
             status_code (int): HTTP status. Defaults to ``200``.
             headers (dict[str, str] | None): Extra headers to attach.
 
@@ -354,7 +356,7 @@ class EventStream:
 
 async def _guard_stream(
     stream: AsyncIterable[bytes],
-    on_disconnect: Callable[[], Awaitable[None] | None] | None,
+    on_disconnect: Callable[[], object] | None,
 ) -> AsyncIterator[bytes]:
     """Relay ``stream`` and run ``on_disconnect`` once it finishes.
 
@@ -364,8 +366,8 @@ async def _guard_stream(
 
     Args:
         stream (AsyncIterable[bytes]): The wrapped byte stream.
-        on_disconnect (Callable[[], Awaitable[None] | None] | None):
-            Cleanup callback, awaited when it returns a coroutine.
+        on_disconnect (Callable[[], object] | None): Cleanup callback,
+            awaited when it returns an awaitable and discarded otherwise.
 
     Yields:
         bytes: Each frame produced by ``stream``.
@@ -385,7 +387,7 @@ def sse_response(
     *,
     status_code: int = 200,
     headers: dict[str, str] | None = None,
-    on_disconnect: Callable[[], Awaitable[None] | None] | None = None,
+    on_disconnect: Callable[[], object] | None = None,
 ) -> StreamingResponse:
     """Wrap ``stream`` in a Starlette ``text/event-stream`` response.
 
@@ -407,9 +409,9 @@ def sse_response(
             :meth:`EventStream.stream` (or any compatible generator).
         status_code (int): HTTP status code. Defaults to ``200``.
         headers (dict[str, str] | None): Extra headers to attach.
-        on_disconnect (Callable[[], Awaitable[None] | None] | None):
-            Cleanup callback run (and awaited if a coroutine) when the
-            stream ends or the client disconnects. ``None`` skips it.
+        on_disconnect (Callable[[], object] | None): Cleanup callback
+            run (and awaited if it returns an awaitable) when the stream
+            ends or the client disconnects. ``None`` skips it.
 
     Returns:
         StreamingResponse: A ready-to-return SSE response.

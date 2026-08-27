@@ -367,6 +367,7 @@ service/controller that holds the `WebPushSubscriptionService`:
 ```python
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk.webpush import (
     WebPushDispatcher,
     WebPushSubscriptionService,
@@ -376,14 +377,13 @@ from src.core.settings import settings
 from src.db.models import UserModel
 from src.db.repositories import WebPushSubscriptionRepository
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 dispatcher = WebPushDispatcher(**settings.webpush_kwargs())
+subscriptions_repo = WebPushSubscriptionRepository(session)
 service = WebPushSubscriptionService(subscriptions_repo, dispatcher)
 
 user = UserModel(name="Ana", email="ana@example.com")
-
-subscriptions_repo = WebPushSubscriptionRepository(session)
-
-session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -451,6 +451,7 @@ The `payload` accepts `WebPushPayloadSchema`, `dict`, `str`, or `bytes`
 the dead subscription from your store.
 
 ```python
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import (
     WebPushGoneError,
     WebPushPayloadSchema,
@@ -461,11 +462,11 @@ from tempest_fastapi_sdk.webpush import WebPushDispatcher
 from src.core.settings import settings
 from src.db.repositories import WebPushSubscriptionRepository
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 dispatcher = WebPushDispatcher(**settings.webpush_kwargs())
 
 subscriptions_repo = WebPushSubscriptionRepository(session)
-
-session = None  # provided by db.get_session_context() in your code
 
 
 async def notify_order_paid(

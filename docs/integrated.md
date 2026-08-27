@@ -174,10 +174,8 @@ empurra o status pro canal SSE do usuário.
 ```python
 # src/queue/consumers.py
 
-from src.core.resources import events, mq, tq
+from src.core.resources import email, events, mq, tq
 from src.schemas.events import OrderPaid
-
-email = "ana@example.com"
 
 
 @tq.task

@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import secrets
 import time
+from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from sqlalchemy import select
@@ -145,12 +146,33 @@ class RedisLike(Protocol):
     Matches the relevant subset of ``redis.asyncio.Redis``.
     """
 
-    async def set(self, name: str, value: str, ex: int | None = None) -> Any:
-        """Store ``value`` under ``name`` with an optional expiry."""
+    def set(self, name: str, value: str, /, ex: int | None = None) -> Awaitable[Any]:
+        """Store ``value`` under ``name`` with an optional expiry.
+
+        Declared as returning an ``Awaitable`` instead of as ``async def``:
+        ``redis.asyncio.Redis`` returns ``Awaitable``, not ``Coroutine``,
+        and a protocol member spelled ``async def`` demands the narrower
+        one — rejecting the client this protocol names.
+
+        Args:
+            name (str): The Redis key.
+            value (str): The payload to store.
+            ex (int | None): Expiry in seconds, when set.
+
+        Returns:
+            Awaitable[Any]: Whatever the client returns; unused.
+        """
         ...
 
-    async def getdel(self, name: str) -> Any:
-        """Return the value at ``name`` and delete it, atomically."""
+    def getdel(self, name: str, /) -> Awaitable[Any]:
+        """Return the value at ``name`` and delete it, atomically.
+
+        Args:
+            name (str): The Redis key.
+
+        Returns:
+            Awaitable[Any]: The stored payload, or ``None`` when absent.
+        """
         ...
 
 

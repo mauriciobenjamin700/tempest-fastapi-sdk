@@ -50,15 +50,16 @@ class ProductRepository(BaseRepository[ProductModel]):
 
 ```python
 import asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from src.db.models import ProductModel, UserModel
 from src.db.repositories import ProductRepository
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 repo = ProductRepository(session)
 
 user = UserModel(name="Ana", email="ana@example.com")
-
-session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -105,17 +106,18 @@ async def rename_product(
 
 ```python
 import asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from src.db.models import ProductModel, UserModel
 from src.db.repositories import ProductRepository
+
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 product = ProductModel(name="Café", price_cents=1990)
 
 repo = ProductRepository(session)
 
 user = UserModel(name="Ana", email="ana@example.com")
-
-session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:

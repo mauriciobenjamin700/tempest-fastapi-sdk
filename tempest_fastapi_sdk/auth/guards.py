@@ -35,18 +35,31 @@ if TYPE_CHECKING:
 
 UserT = TypeVar("UserT", bound="BaseUserModel")
 
+SubjectT = TypeVar("SubjectT")
+"""Whatever a dependency resolved a caller to, user model or not.
 
-def require_authenticated(user: UserT | None) -> UserT:
-    """Assert that a user is authenticated (non-``None``).
+:func:`require_authenticated` reads no attribute off its argument — it
+only rejects ``None`` — and the SDK hands out subjects that are not user
+models: ``FirebaseAuth.get_optional_identity`` yields a
+``FirebaseIdentity``, and the Firebase recipe guards it with this
+function. Bound to ``BaseUserModel``, that documented call resolved
+``UserT`` to ``None`` and failed under mypy. The siblings below keep the
+bound, because they do read ``is_active`` / ``is_admin``.
+"""
+
+
+def require_authenticated(user: SubjectT | None) -> SubjectT:
+    """Assert that a subject is authenticated (non-``None``).
 
     Args:
-        user (UserT | None): The user resolved from the request —
+        user (SubjectT | None): The subject resolved from the request —
             typically the output of a ``soft=True`` authenticated-user
             dependency, which yields ``None`` when no valid token was
-            sent.
+            sent. A user model, a provider identity, anything a
+            dependency returns.
 
     Returns:
-        UserT: The same user, narrowed to non-``None`` (and to its
+        SubjectT: The same subject, narrowed to non-``None`` (and to its
         concrete subclass).
 
     Raises:

@@ -396,13 +396,14 @@ class AuditLog(BaseAuditLogModel):
 
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import BaseRepository
 from tempest_fastapi_sdk.db.audit import snapshot_model
 
 from src.db.models import AuditLog, OrderModel, UserModel
 
 current_user = UserModel(name="Ana", email="ana@example.com")
-session = None  # injected by the admin action context
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 
 repo = BaseRepository(session, model=OrderModel, audit_model=AuditLog)
@@ -581,9 +582,9 @@ from tempest_fastapi_sdk import (
 
 from src.db.repositories import OrderRepository
 
-last_week = this_week - timedelta(days=7)
-this_week = today - timedelta(days=7)
 today = date.today()
+this_week = today - timedelta(days=7)
+last_week = this_week - timedelta(days=7)
 
 
 async def orders_today(session: AsyncSession) -> MetricValue:
@@ -592,7 +593,9 @@ async def orders_today(session: AsyncSession) -> MetricValue:
 
 
 async def revenue_trend(session: AsyncSession) -> MetricTrend:
-    return MetricTrend(value=await this_week(session), previous=await last_week(session), unit="BRL")
+    return MetricTrend(
+        value=await this_week(session), previous=await last_week(session), unit="BRL"
+    )
 
 
 async def users_by_plan(session: AsyncSession) -> MetricPartition:

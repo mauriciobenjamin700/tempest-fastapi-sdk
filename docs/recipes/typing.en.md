@@ -56,6 +56,8 @@ from typing import reveal_type
 
 from tempest_fastapi_sdk.schemas import BaseSchema
 
+# docs-guard: skip — the rejected call below is what this section is about
+
 
 class Probe(BaseSchema):
     """A schema with two typed fields."""
@@ -164,6 +166,8 @@ Rejects any value that is not **already** the annotated type. Arguments
 ```python
 from tempest_fastapi_sdk import strict_types
 
+# docs-guard: skip — the rejected call below is what this section is about
+
 
 @strict_types
 def add(a: int, b: int) -> int:
@@ -181,6 +185,8 @@ Handy for stringly-typed input.
 
 ```python
 from tempest_fastapi_sdk import typed
+
+# docs-guard: skip — the rejected call below is what this section is about
 
 
 @typed

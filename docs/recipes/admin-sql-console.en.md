@@ -240,7 +240,7 @@ from tempest_fastapi_sdk.admin import SqlShellDenied, SqlShellPolicy, SqlShellSe
 
 from src.api.dependencies.resources import db
 
-policy = SqlShellPolicy(allowed_tables=["users", "orders"])
+policy = SqlShellPolicy(allowed_tables={"users", "orders"})
 
 
 service = SqlShellService(db, policy=policy, dialect="postgres")

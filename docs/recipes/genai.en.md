@@ -418,7 +418,11 @@ comes from `rank-bm25` (the `[genai-rag]` extra).
 import asyncio
 
 from tempest_fastapi_sdk.genai import Embedder
-from tempest_fastapi_sdk.genai.rag import HybridRetriever, InMemoryVectorStore
+from tempest_fastapi_sdk.genai.rag import (
+    HybridRetriever,
+    InMemoryVectorStore,
+    chunk_text,
+)
 
 rag = HybridRetriever(
     Embedder("sentence-transformers/all-MiniLM-L6-v2", normalize=True),
@@ -428,8 +432,13 @@ rag = HybridRetriever(
 
 async def main() -> None:
     """Run this example."""
-    await rag.index(chunks)                             # indexes dense + BM25
-    chunks = await rag.search("what is CNPJ?", top_k=5)  # fuses dense + sparse
+    chunks = chunk_text(
+        "The CNPJ identifies a legal entity at the Receita Federal.",
+        source="faq.md",
+    )
+    await rag.index(chunks)                           # indexes dense + BM25
+    hits = await rag.search("what is CNPJ?", top_k=5)  # fuses dense + sparse
+    print(hits)
 
 
 asyncio.run(main())
@@ -852,7 +861,12 @@ from tempest_fastapi_sdk.genai import BatchScheduler, Embedder, EmbeddingModel
 emb = Embedder(EmbeddingModel.ALL_MINILM_L6_V2)
 
 
-sched = BatchScheduler(emb._embed_many, max_batch=32, max_wait_ms=10)
+async def embed_batch(texts: list[str]) -> list[list[float]]:
+    """Embed a whole batch in one forward pass."""
+    return await emb.embed(texts)
+
+
+sched = BatchScheduler(embed_batch, max_batch=32, max_wait_ms=10)
 
 
 async def main() -> None:

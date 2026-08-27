@@ -536,11 +536,13 @@ Quando você não tem query custom, instancie direto:
 import asyncio
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
 
-session = None  # provided by db.get_session_context() in your code
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 user_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
 
 
@@ -687,15 +689,17 @@ Lembrando da convenção de coleções do projeto: lookups de **registro
 import asyncio
 from uuid import UUID, uuid4
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
+
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 id1, id2, id3 = uuid4(), uuid4(), uuid4()
 repository = BaseRepository(session, model=UserModel)
 user_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
 user_or_id = user_id
-session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -716,9 +720,7 @@ async def main() -> None:
     total = await repository.count({"is_active": True})
 
     # "Esse valor já é de OUTRO registro?" — validação de unicidade no update
-    taken = await repository.exists_excluding(
-        {"email": "a@b.com"}, exclude_id=user.id
-    )
+    taken = await repository.exists_excluding({"email": "a@b.com"}, exclude_id=user.id)
 
     # id-ou-instância → instância (sem if isinstance espalhado nas services)
     user = await repository.resolve(user_or_id)
@@ -727,16 +729,16 @@ async def main() -> None:
     created = await repository.add(
         UserModel(name="Ana", email="ana@x.com", password_hash="...")
     )
-    updated = await repository.update(user)         # commita mutações numa instância anexada
+    updated = await repository.update(user)  # commita mutações numa instância anexada
 
     # Remoção
-    await repository.delete(user_id)                # hard delete (404 se não existe)
+    await repository.delete(user_id)  # hard delete (404 se não existe)
     await repository.delete_many({"is_active": False})  # retorna contagem
-    await repository.delete_batch([id1, id2, id3])      # por PK, retorna contagem
+    await repository.delete_batch([id1, id2, id3])  # por PK, retorna contagem
 
     # Soft-delete via flag is_active (não precisa do SoftDeleteMixin)
-    await repository.soft_delete(user_id)           # is_active = False
-    await repository.restore(user_id)               # is_active = True
+    await repository.soft_delete(user_id)  # is_active = False
+    await repository.restore(user_id)  # is_active = True
 
 
 asyncio.run(main())
@@ -929,8 +931,8 @@ from tempest_fastapi_sdk import F
 
 async def main() -> None:
     """Run this example."""
-    pid = product_id
     product_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
+    pid = product_id
     async with db.get_session_context() as session:
         repository = BaseRepository(session, model=UserModel)
         # stock = stock - 1, no banco
@@ -1096,22 +1098,24 @@ class ProductFilter(BasePaginationFilterSchema):
 ```python
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
 from src.schemas import ProductFilterSchema
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 f = ProductFilterSchema(name="silva", page=1, page_size=20)
 repo = BaseRepository(session, model=UserModel)
-session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
     """Run this example."""
     # No service/repo, o schema inteiro vira filtros + paginação:
     data = await repo.paginate(
-        filters=f.get_conditions(),          # name/category_id__in/price__between/…
-        **f.get_pagination_conditions(),     # page/page_size/order_by/ascending
+        filters=f.get_conditions(),  # name/category_id__in/price__between/…
+        **f.get_pagination_conditions(),  # page/page_size/order_by/ascending
     )
 
 
@@ -1146,11 +1150,11 @@ from src.db.models import UserModel
 async def main() -> None:
     """Run this example."""
     m1, m2, m3 = (UserModel(name=n, email=f"{n}@x.com") for n in "abc")
-    u1, u2 = created[0], created[1]
     async with db.get_session_context() as session:
         repository = BaseRepository(session, model=UserModel)
         # Mantém a UoW — instâncias anexadas e atualizadas
         created = await repository.add_all([m1, m2, m3])      # vários INSERTs, 1 tx
+        u1, u2 = created[0], created[1]
         updated = await repository.update_many([u1, u2])      # vários UPDATEs, 1 tx
 
         # Contorna a UoW — uma instrução, escala melhor (>= 50 linhas)

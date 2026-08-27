@@ -204,17 +204,18 @@ overrides win over the defaults.
 ```python
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk.testing import ModelFactory, seq
 
 from src.db.models import UserModel
 
-session = None  # provided by db.get_session_context() in your code
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 users = ModelFactory(
     session,
     UserModel,
-    email=seq("user{n}@example.com"),   # unique per row
+    email=seq("user{n}@example.com"),  # unique per row
     hashed_password="x",
     is_admin=False,
 )
@@ -222,9 +223,9 @@ users = ModelFactory(
 
 async def main() -> None:
     """Run this example."""
-    alice = await users.create(is_admin=True)     # one row, one field changed
-    team = await users.create_many(5)             # five rows, unique emails
-    draft = users.build(email="temp@x.com")        # unsaved instance
+    alice = await users.create(is_admin=True)  # one row, one field changed
+    team = await users.create_many(5)  # five rows, unique emails
+    draft = users.build(email="temp@x.com")  # unsaved instance
 
 
 asyncio.run(main())

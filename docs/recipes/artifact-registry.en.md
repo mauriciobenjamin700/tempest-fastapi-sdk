@@ -66,17 +66,18 @@ The three operations:
 import asyncio
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import AsyncMinIOClient
 
 from src.core.settings import settings
 
 from src.db.repositories import build_registry
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
 
 version_id = UUID("6f1c3d84-2a55-4d0b-9d7e-0c1a2b3c4d5e")
-
-session = None  # provided by db.get_session_context() in your code
 
 
 async def main() -> None:
@@ -132,6 +133,7 @@ asyncio.run(main())
 ```python
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import AsyncMinIOClient
 
 from src.core.settings import settings
@@ -144,19 +146,19 @@ from tempest_fastapi_sdk.artifacts import (
 from src.db.models import ModelVersion
 from src.db.repositories import build_registry
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
 
 storage = AsyncMinIOClient(**settings.minio_kwargs())
 
-session = None  # provided by db.get_session_context() in your code
-
 
 async def main() -> None:
     """Run this example."""
+
     async def model_digest(row: ModelVersion) -> tuple[str, int]:
         """Digest the current version from its MinIO object."""
         return await object_digest(storage, "models", row.file_key)
-
 
     entries: list[ArtifactManifestEntry] = await build_manifest_entries(
         registry, digest_source=model_digest
@@ -172,24 +174,27 @@ Each `ArtifactManifestEntry` carries `name`, `version`, `file_key`, `sha256`, `s
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import AsyncMinIOClient
 
 from src.core.settings import settings
 from tempest_fastapi_sdk.artifacts import build_manifest_entries, object_digest
 
+from src.db.models import ModelVersion
 from src.db.repositories import build_registry
 
 
-async def model_digest() -> tuple[str, int]:
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
+
+async def model_digest(row: ModelVersion) -> tuple[str, int]:
     """Return the (sha256, size) of the object behind the active version."""
-    return await object_digest(storage, "models", "detect/1.2.0.onnx")
+    return await object_digest(storage, "models", row.file_key)
 
 
 registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
 
 storage = AsyncMinIOClient(**settings.minio_kwargs())
-
-session = None  # provided by db.get_session_context() in your code
 
 
 router = APIRouter(prefix="/models", tags=["models"])
@@ -249,17 +254,19 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse
 from starlette.responses import StreamingResponse
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk import AsyncMinIOClient
 
 from src.core.settings import settings
 
 from src.db.repositories import build_registry
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
 
 storage = AsyncMinIOClient(**settings.minio_kwargs())
 
-session = None  # provided by db.get_session_context() in your code
 
 router = APIRouter()
 

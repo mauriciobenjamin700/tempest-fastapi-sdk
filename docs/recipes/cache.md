@@ -164,7 +164,7 @@ from tempest_fastapi_sdk.cache import AsyncRedisManager, CacheInvalidator, cache
 from src.core.settings import settings
 
 
-async def load_profile(user_id: str) -> dict[str, Any]:
+async def load_profile(user_id: int) -> dict[str, Any]:
     """Read the profile straight from the database."""
     return {"id": user_id}
 
@@ -196,7 +196,7 @@ from src.core.settings import settings
 redis = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
 
 
-async def save_profile(user_id: str, data: dict[str, Any]) -> None:
+async def save_profile(user_id: int, data: dict[str, Any]) -> None:
     """Persist the profile, then invalidate what it feeds."""
 
 
@@ -293,19 +293,20 @@ banco toda vez. Cacheie o resultado vazio com um TTL curto:
 ```python
 from typing import Any
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
 
 from src.core.settings import settings
 from src.db.repositories import ProductRepository
 
+session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
 redis = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)
 
 repo = ProductRepository(session)
 
-session = None  # provided by db.get_session_context() in your code
 
-
-@cached(redis, ttl=30, key_prefix="lookup:")   # TTL curto pro negativo
+@cached(redis, ttl=30, key_prefix="lookup:")  # TTL curto pro negativo
 async def find_user(email: str) -> dict[str, Any] | None:
     """Retorna None no miss — e o None fica em cache por 30s."""
     user = await repo.get_by_email(email)
