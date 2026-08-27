@@ -484,8 +484,8 @@ come back here to plug in each capability as you need it.
 | **[App error reports »](app-errors.md)** | `make_app_error_model` (nullable user FK, `SET NULL`, indexed `created_at`), `AppErrorService` (truncate-never-refuse), opt-in admin listing, half-open date range |
 | **[Audit trail »](audit-trail.md)** | `BaseAuditLogModel`, `add_audited` / `update_audited` / `delete_audited`, `snapshot_model` / `diff_snapshots` |
 | **[Auth flow (signup/reset) »](auth-flow.md)** | `UserAuthService`, `make_auth_router` — signup / activation / login / password reset, token delivery (bearer/cookie/both), `BaseUserModel` |
-| **[Brazilian helpers »](br-helpers.md)** | CPF / CNPJ / CEP / phone validation + normalization |
-| **[Cache »](cache.md)** | `AsyncRedisManager`, `@cached` decorator, `CacheInvalidator` (tag/namespace) |
+| **[Brazilian helpers »](br-helpers.md)** | CPF / CNPJ / CEP / phone validation + normalization, including mobile-only (`is_valid_mobile_phone_br`, `MobilePhoneBRField`) and `parse_phone_br` (area code, number, E.164) |
+| **[Cache »](cache.md)** | `AsyncRedisManager` (+ `client_proxy`, for stores built at import time), `@cached` decorator, `CacheInvalidator` (tag/namespace) |
 | **[Chat (conversations + messages) »](chat.md)** | `ChatService`, `make_chat_router`, base tables + real-time fan-out via `SSEBroker` |
 | **[Choosing a model »](models.md)** | `TextModel` / `EmbeddingModel` / `RerankerModel` / `VisionModel` / `ImageModel` / `SpeechToTextModel` / `TextToSpeechModel` — named Hub ids and the use-case table behind each pick |
 | **[CLI »](cli.md)** | `tempest new` / `db` (+ `seed`) / `user` / `secrets rotate` / `lint` / `fix` / `format` / `type` / `test` / `check` |
@@ -503,7 +503,7 @@ come back here to plug in each capability as you need it.
 | **[Forms from Pydantic schemas »](ui-forms.md)** | `form_for` / `form_spec_for` / `render_form`, `parse_form` + `FormResult` (per-field errors, input preserved), type-to-control mapping, `json_schema_extra={"ui": ...}`, `form_stylesheet` |
 | **[Geolocation (distance + travel time) »](geo.md)** | `haversine_km`, `estimate_travel`, `OSRMBackend`, `NominatimBackend`, `GeoPointMixin` / `GeoRepositoryMixin` |
 | **[HTTP client (outbound) »](http-client.md)** | `HTTPClient` — typed httpx with retry/backoff, circuit-breaker, X-Request-ID; `RetryPolicy`, `CircuitOpenError` |
-| **[HTTP layer »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware`, `make_health_router`, JWT / role / permission dependencies, webhook signature verifier, pagination Link headers, tool-spec router |
+| **[HTTP layer »](http.md)** | `apply_cors`, `RequestIDMiddleware`, `RateLimitMiddleware` (429 in the SDK error envelope), `make_health_router`, JWT / role / permission dependencies, webhook signature verifier, pagination Link headers, tool-spec router |
 | **[Idempotency »](idempotency.md)** | `IdempotencyMiddleware`, `MemoryIdempotencyStore` / `IdempotencyStore` (Redis) — safe replay of POST/PUT/PATCH/DELETE |
 | **[Image generation (local) »](image-generation.md)** | `ImageGenerator` (local diffusers — `generate` / `edit` img2img), `ImageGenerationConfig`, `GeneratedImage` carrying the reproducing seed, `make_genai_router(image_generator=...)` → `POST /image` |
 | **[Integration client (OpenAPI) »](openapi-client.md)** | `tempest openapi-client` — Pydantic schemas + a typed client from a third party's spec |
