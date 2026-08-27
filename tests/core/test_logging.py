@@ -3,6 +3,7 @@
 import io
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import pytest
@@ -273,3 +274,75 @@ class TestFileLogging:
         # No handlers attached, but the app still booted (no exception).
         assert logger.handlers == []
         assert "file logging disabled" in capsys.readouterr().err
+
+
+class TestFileRotation:
+    """The writer side of the ceiling the logs router already had."""
+
+    def test_files_rotate_once_past_max_bytes(self, tmp_path: Path) -> None:
+        """Without this, `info.log` grows until the disk is full.
+
+        A service logging one line per request on a long-lived host is the
+        shape that fills a partition — and takes down whatever else shares
+        it. The reader side (`make_logs_router`) capped itself at 20k
+        records per file for the same reason; this is the writer.
+        """
+        log = configure_logging(
+            level="INFO",
+            log_dir=tmp_path,
+            stdout=False,
+            max_bytes=2_000,
+            backup_count=2,
+        )
+        for index in range(200):
+            log.info("line %s with enough padding to grow the file", index)
+
+        current = tmp_path / "info.log"
+        rotated = sorted(p.name for p in tmp_path.glob("info.log.*"))
+        assert current.exists()
+        assert rotated == ["info.log.1", "info.log.2"]
+        assert current.stat().st_size <= 2_000
+        for name in rotated:
+            assert (tmp_path / name).stat().st_size <= 2_000
+
+    def test_backup_count_is_the_ceiling(self, tmp_path: Path) -> None:
+        log = configure_logging(
+            level="INFO",
+            log_dir=tmp_path,
+            stdout=False,
+            max_bytes=1_000,
+            backup_count=1,
+        )
+        for index in range(400):
+            log.info("line %s with enough padding to grow the file", index)
+
+        assert sorted(p.name for p in tmp_path.glob("info.log*")) == [
+            "info.log",
+            "info.log.1",
+        ]
+
+    def test_rotation_can_be_turned_off(self, tmp_path: Path) -> None:
+        """`max_bytes=0` for a host where logrotate owns retention."""
+        configure_logging(
+            level="INFO",
+            log_dir=tmp_path,
+            stdout=False,
+            max_bytes=0,
+        )
+        handlers = [
+            handler
+            for handler in logging.getLogger().handlers
+            if isinstance(handler, logging.FileHandler)
+        ]
+        assert handlers
+        assert not any(isinstance(h, RotatingFileHandler) for h in handlers)
+
+    def test_default_rotates(self, tmp_path: Path) -> None:
+        configure_logging(level="INFO", log_dir=tmp_path, stdout=False)
+        handlers = [
+            handler
+            for handler in logging.getLogger().handlers
+            if isinstance(handler, logging.FileHandler)
+        ]
+        assert handlers
+        assert all(isinstance(h, RotatingFileHandler) for h in handlers)

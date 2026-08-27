@@ -5,6 +5,7 @@ import json
 import logging
 import sys
 from datetime import UTC, datetime
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,22 @@ LEVEL_LOG_FILES: dict[int, str] = {
 Each file receives **only** records whose level matches exactly (an
 ``ERROR`` never lands in ``warning.log``), so every severity has an
 isolated, greppable stream.
+"""
+
+DEFAULT_LOG_MAX_BYTES: int = 10_000_000
+"""Size at which each log file rotates — about 10 MB.
+
+Rotation is on by default because the alternative is an outage: the
+per-level files never stop growing, and on a service that logs a line per
+request `info.log` fills the host's disk. `0` opts out, for a host where
+`logrotate` or a sidecar already owns the ceiling.
+"""
+
+DEFAULT_LOG_BACKUP_COUNT: int = 5
+"""Rotated files kept per level.
+
+Five rotated files plus the one being written is roughly 60 MB per level
+at the default :data:`DEFAULT_LOG_MAX_BYTES`.
 """
 
 HTTP_500_LOG_FILE: str = "500.log"
@@ -154,20 +171,68 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(payload, default=str, ensure_ascii=False)
 
 
-def _build_file_handlers(log_dir: Path) -> list[logging.Handler]:
+def _rotating_handler(
+    path: Path,
+    *,
+    max_bytes: int,
+    backup_count: int,
+) -> logging.Handler:
+    """Open one log file, rotating unless the caller opted out.
+
+    Args:
+        path (Path): The file to write.
+        max_bytes (int): Rotation threshold; ``0`` means never rotate.
+        backup_count (int): Rotated files to keep.
+
+    Returns:
+        logging.Handler: A ``RotatingFileHandler``, or a plain
+        ``FileHandler`` when rotation is disabled. ``RotatingFileHandler``
+        with ``maxBytes=0`` never rotates either, but the plain handler is
+        what a caller reading ``logging.root.handlers`` expects to find
+        when they asked for no rotation.
+    """
+    if max_bytes <= 0:
+        return logging.FileHandler(path, encoding="utf-8")
+    return RotatingFileHandler(
+        path,
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+        encoding="utf-8",
+    )
+
+
+def _build_file_handlers(
+    log_dir: Path,
+    *,
+    max_bytes: int = DEFAULT_LOG_MAX_BYTES,
+    backup_count: int = DEFAULT_LOG_BACKUP_COUNT,
+) -> list[logging.Handler]:
     """Build the per-level and 500-isolation file handlers.
 
     Creates ``log_dir`` (and parents) if missing, then wires one
-    :class:`logging.FileHandler` per standard level — each gated by an
-    :class:`_ExactLevelFilter` so a record only lands in its own file —
-    plus a dedicated ``500.log`` handler gated by :class:`_Http500Filter`.
-    Every file handler always uses :class:`JSONFormatter` (independent of
-    the stdout ``json_output`` choice) so the ``/logs`` endpoint can parse
-    them back as structured records.
+    :class:`~logging.handlers.RotatingFileHandler` per standard level —
+    each gated by an :class:`_ExactLevelFilter` so a record only lands in
+    its own file — plus a dedicated ``500.log`` handler gated by
+    :class:`_Http500Filter`. Every file handler always uses
+    :class:`JSONFormatter` (independent of the stdout ``json_output``
+    choice) so the ``/logs`` endpoint can parse them back as structured
+    records.
+
+    Rotation is on by default because the failure it prevents is an
+    outage, not an inconvenience: a plain ``FileHandler`` grows without
+    bound, and ``info.log`` on a service that logs one line per request
+    fills the disk of a long-lived host — taking down whatever else shares
+    it. The reader side of this pair already had the ceiling
+    (:data:`DEFAULT_MAX_RECORDS_PER_FILE` in the logs router, added
+    because a service whose log directory had grown to gigabytes answered
+    with a dead worker); this is the writer side of the same story.
 
     Args:
         log_dir (Path): Directory to hold the log files. Created if it
             does not exist.
+        max_bytes (int): Size at which a file rotates. ``0`` disables
+            rotation, for hosts where ``logrotate`` or a sidecar owns it.
+        backup_count (int): How many rotated files to keep per level.
 
     Returns:
         list[logging.Handler]: The configured file handlers.
@@ -186,18 +251,20 @@ def _build_file_handlers(log_dir: Path) -> list[logging.Handler]:
 
     try:
         for levelno, filename in LEVEL_LOG_FILES.items():
-            file_handler = logging.FileHandler(
+            file_handler = _rotating_handler(
                 log_dir / filename,
-                encoding="utf-8",
+                max_bytes=max_bytes,
+                backup_count=backup_count,
             )
             file_handler.setLevel(logging.DEBUG)
             file_handler.addFilter(_ExactLevelFilter(levelno))
             file_handler.setFormatter(formatter)
             handlers.append(file_handler)
 
-        http_500_handler = logging.FileHandler(
+        http_500_handler = _rotating_handler(
             log_dir / HTTP_500_LOG_FILE,
-            encoding="utf-8",
+            max_bytes=max_bytes,
+            backup_count=backup_count,
         )
         http_500_handler.setLevel(logging.DEBUG)
         http_500_handler.addFilter(_Http500Filter())
@@ -220,6 +287,8 @@ def configure_logging(
     log_dir: str | Path | None = "logs",
     stdout: bool = True,
     file_output: bool = True,
+    max_bytes: int = DEFAULT_LOG_MAX_BYTES,
+    backup_count: int = DEFAULT_LOG_BACKUP_COUNT,
 ) -> logging.Logger:
     """Install a structured stdout handler on the root (or named) logger.
 
@@ -264,6 +333,14 @@ def configure_logging(
             Pass ``False`` to disable file logging — useful in
             ephemeral environments (tests, serverless) where the
             filesystem is read-only or short-lived.
+        max_bytes (int): Size at which each file rotates, ~10 MB by
+            default. ``0`` turns rotation off, leaving plain
+            ``FileHandler``s for a host where ``logrotate`` or a sidecar
+            owns retention. Rotating by default is the safe end of that
+            choice: the service that never thought about log growth is
+            exactly the one that fills the disk.
+        backup_count (int): Rotated files kept per level (default ``5``,
+            so roughly 60 MB per level at the default size).
 
     File logging is **best-effort**: if ``log_dir`` cannot be created or
     its files cannot be opened (read-only mount, missing write
@@ -322,7 +399,11 @@ def configure_logging(
 
     if file_output and log_dir:
         try:
-            file_handlers = _build_file_handlers(Path(log_dir))
+            file_handlers = _build_file_handlers(
+                Path(log_dir),
+                max_bytes=max_bytes,
+                backup_count=backup_count,
+            )
         except OSError as exc:
             msg = (
                 "tempest_fastapi_sdk: file logging disabled — could not "
@@ -342,6 +423,8 @@ def configure_logging(
 
 
 __all__: list[str] = [
+    "DEFAULT_LOG_BACKUP_COUNT",
+    "DEFAULT_LOG_MAX_BYTES",
     "HTTP_500_LOG_FILE",
     "HTTP_500_MARKER",
     "LEVEL_LOG_FILES",

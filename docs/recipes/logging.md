@@ -36,6 +36,30 @@ except RuntimeError:
 request_id = get_request_id()
 ```
 
+!!! tip "Adotando num serviço que já loga em `%`-style"
+    Os métodos por nível aceitam os posicionais do `logging`, então call site
+    existente entra sem reescrita — e continua com interpolação **lazy** e com
+    o template estável que a ferramenta de log agrega:
+
+    ```python
+    from tempest_fastapi_sdk import LogUtils
+
+    log = LogUtils("app.email", level="INFO")
+
+    log.info("Email enviado com sucesso para %s", "ana@example.com")
+    log.error("Falha ao enviar para %s: %s", "bruno@x.com", "timeout")
+
+    log.error("Falha ao enviar para %s: %s", "bruno@x.com", "timeout", op="send")
+    ```
+
+    A última linha mostra que os dois estilos convivem: os posicionais montam
+    a mensagem, e o `**fields` continua virando chave de topo no JSON.
+
+    `funcName`/`lineno` apontam para o **seu** call site, não para dentro da
+    fachada — o default é `stacklevel=2`. Quem embrulha o `LogUtils` numa
+    camada própria passa `stacklevel=3` (ou mais) para atravessar os frames
+    extras.
+
 Saída JSON (uma linha — formatada aqui para legibilidade):
 
 ```json
@@ -71,7 +95,29 @@ configure_logging(level="INFO", file_output=False)
 
 # Desligar stdout (sidecar coleta de disco)
 configure_logging(level="INFO", stdout=False)
+
+# Teto de crescimento: cada arquivo rotaciona em ~10 MB, guardando 5 gerações
+configure_logging(level="INFO", max_bytes=10_000_000, backup_count=5)
+
+# Sem rotação — quando o logrotate do host (ou um sidecar) é o dono da retenção
+configure_logging(level="INFO", max_bytes=0)
 ```
+
+!!! danger "Os arquivos rotacionam por padrão — e é por isso"
+    `FileHandler` puro cresce sem teto. Num serviço com uma linha de log por
+    request, rodando em host de longa duração, o `info.log` é o que enche o
+    disco — e disco cheio derruba o serviço **e** o que mais dividir a
+    partição. Por isso o default é `RotatingFileHandler` com
+    `max_bytes=10_000_000` e `backup_count=5`: ~60 MB por nível, teto duro.
+
+    O outro lado deste par já tinha o teto: o `make_logs_router` limita a
+    leitura a 20 mil registros por arquivo, adicionado depois que um serviço
+    com diretório de log em gigabytes respondeu com worker morto. Isto é o lado
+    de quem escreve.
+
+    Os arquivos rotacionados (`info.log.1`, `info.log.2`, …) **não** são lidos
+    pelo `/logs`: o endpoint lê os nomes exatos, então ele mostra a janela
+    corrente. Retenção mais longa é trabalho de coletor.
 
 !!! warning "Não desligue os dois"
     `configure_logging(stdout=False, file_output=False)` lança

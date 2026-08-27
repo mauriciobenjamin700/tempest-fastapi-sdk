@@ -137,63 +137,153 @@ class LogUtils:
         """
         return get_request_id()
 
-    def info(self, message: str, **fields: Any) -> None:
+    def info(
+        self,
+        message: str,
+        *args: Any,
+        stacklevel: int = 2,
+        **fields: Any,
+    ) -> None:
         """Emit an INFO record.
 
         Args:
-            message (str): The log message.
+            message (str): The log message, or a ``%``-style template
+                when ``args`` are given.
+            *args (Any): Positional arguments for ``%``-style
+                interpolation, forwarded to ``logging`` untouched — the
+                interpolation stays lazy, and the template stays the same
+                string across calls, which is what a log aggregator groups
+                on.
+            stacklevel (int): How many frames to walk back when resolving
+                ``funcName``/``lineno``. The default of ``2`` points the
+                record at **your** call site instead of at this facade.
             **fields (Any): Extra structured fields merged into the
                 JSON payload.
         """
-        self.logger.info(message, extra=fields)
+        self.logger.info(message, *args, extra=fields, stacklevel=stacklevel)
 
-    def debug(self, message: str, **fields: Any) -> None:
+    def debug(
+        self,
+        message: str,
+        *args: Any,
+        stacklevel: int = 2,
+        **fields: Any,
+    ) -> None:
         """Emit a DEBUG record.
 
         Args:
-            message (str): The log message.
+            message (str): The log message, or a ``%``-style template
+                when ``args`` are given.
+            *args (Any): Positional arguments for ``%``-style
+                interpolation, forwarded to ``logging`` untouched — the
+                interpolation stays lazy, and the template stays the same
+                string across calls, which is what a log aggregator groups
+                on.
+            stacklevel (int): How many frames to walk back when resolving
+                ``funcName``/``lineno``. The default of ``2`` points the
+                record at **your** call site instead of at this facade.
             **fields (Any): Extra structured fields.
         """
-        self.logger.debug(message, extra=fields)
+        self.logger.debug(message, *args, extra=fields, stacklevel=stacklevel)
 
-    def warning(self, message: str, **fields: Any) -> None:
+    def warning(
+        self,
+        message: str,
+        *args: Any,
+        stacklevel: int = 2,
+        **fields: Any,
+    ) -> None:
         """Emit a WARNING record.
 
         Args:
-            message (str): The log message.
+            message (str): The log message, or a ``%``-style template
+                when ``args`` are given.
+            *args (Any): Positional arguments for ``%``-style
+                interpolation, forwarded to ``logging`` untouched — the
+                interpolation stays lazy, and the template stays the same
+                string across calls, which is what a log aggregator groups
+                on.
+            stacklevel (int): How many frames to walk back when resolving
+                ``funcName``/``lineno``. The default of ``2`` points the
+                record at **your** call site instead of at this facade.
             **fields (Any): Extra structured fields.
         """
-        self.logger.warning(message, extra=fields)
+        self.logger.warning(message, *args, extra=fields, stacklevel=stacklevel)
 
-    def error(self, message: str, **fields: Any) -> None:
+    def error(
+        self,
+        message: str,
+        *args: Any,
+        stacklevel: int = 2,
+        **fields: Any,
+    ) -> None:
         """Emit an ERROR record.
 
         Args:
-            message (str): The log message.
+            message (str): The log message, or a ``%``-style template
+                when ``args`` are given.
+            *args (Any): Positional arguments for ``%``-style
+                interpolation, forwarded to ``logging`` untouched — the
+                interpolation stays lazy, and the template stays the same
+                string across calls, which is what a log aggregator groups
+                on.
+            stacklevel (int): How many frames to walk back when resolving
+                ``funcName``/``lineno``. The default of ``2`` points the
+                record at **your** call site instead of at this facade.
             **fields (Any): Extra structured fields.
         """
-        self.logger.error(message, extra=fields)
+        self.logger.error(message, *args, extra=fields, stacklevel=stacklevel)
 
-    def critical(self, message: str, **fields: Any) -> None:
+    def critical(
+        self,
+        message: str,
+        *args: Any,
+        stacklevel: int = 2,
+        **fields: Any,
+    ) -> None:
         """Emit a CRITICAL record.
 
         Args:
-            message (str): The log message.
+            message (str): The log message, or a ``%``-style template
+                when ``args`` are given.
+            *args (Any): Positional arguments for ``%``-style
+                interpolation, forwarded to ``logging`` untouched — the
+                interpolation stays lazy, and the template stays the same
+                string across calls, which is what a log aggregator groups
+                on.
+            stacklevel (int): How many frames to walk back when resolving
+                ``funcName``/``lineno``. The default of ``2`` points the
+                record at **your** call site instead of at this facade.
             **fields (Any): Extra structured fields.
         """
-        self.logger.critical(message, extra=fields)
+        self.logger.critical(message, *args, extra=fields, stacklevel=stacklevel)
 
-    def exception(self, message: str, **fields: Any) -> None:
+    def exception(
+        self,
+        message: str,
+        *args: Any,
+        stacklevel: int = 2,
+        **fields: Any,
+    ) -> None:
         """Emit an ERROR record with the current exception traceback.
 
         Must be called from inside an ``except`` block — relies on
         ``logger.exception`` which inspects ``sys.exc_info()``.
 
         Args:
-            message (str): The log message.
+            message (str): The log message, or a ``%``-style template
+                when ``args`` are given.
+            *args (Any): Positional arguments for ``%``-style
+                interpolation, forwarded to ``logging`` untouched — the
+                interpolation stays lazy, and the template stays the same
+                string across calls, which is what a log aggregator groups
+                on.
+            stacklevel (int): How many frames to walk back when resolving
+                ``funcName``/``lineno``. The default of ``2`` points the
+                record at **your** call site instead of at this facade.
             **fields (Any): Extra structured fields.
         """
-        self.logger.exception(message, extra=fields)
+        self.logger.exception(message, *args, extra=fields, stacklevel=stacklevel)
 
 
 __all__: list[str] = [
