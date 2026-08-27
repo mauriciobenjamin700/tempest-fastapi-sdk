@@ -327,6 +327,7 @@ from tempest_fastapi_sdk.exceptions import ValidationException
 
 from src.db.models import UserModel
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 repo = BaseRepository(session, model=UserModel)

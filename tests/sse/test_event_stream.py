@@ -276,3 +276,47 @@ class TestHeartbeatEvent:
         await stream.publish({"msg": "hi"}, event="chat")
         frame = await asyncio.wait_for(stream.stream().__anext__(), 1.0)
         assert b"event: chat" in frame
+
+
+@pytest.mark.asyncio
+async def test_on_disconnect_accepts_a_sync_callback_that_returns_a_value() -> None:
+    """The shape the SSE recipe teaches: `on_disconnect=task.cancel`.
+
+    `Task.cancel` is synchronous and returns `bool`, and `_guard_stream`
+    discards whatever is not awaitable. The annotation said
+    `Callable[[], Awaitable[None] | None]` until v0.257.0, so the recipe's own
+    line failed a consumer's mypy while working perfectly at runtime. The
+    other on_disconnect tests here all pass `async def cleanup() -> None`,
+    which is the half that never broke; this one pins the half that did.
+    """
+    ran: list[str] = []
+    app = FastAPI()
+
+    @app.get("/events")
+    async def events() -> object:
+        stream = EventStream(heartbeat_seconds=None)
+
+        async def producer() -> None:
+            await stream.publish({"n": 1}, event="counter")
+            await stream.close()
+            await asyncio.sleep(30)
+
+        task = asyncio.create_task(producer())
+
+        def cancel() -> bool:
+            """Exactly what `Task.cancel` is: sync, and returns a bool."""
+            ran.append("cancelled")
+            return task.cancel()
+
+        return stream.response(on_disconnect=cancel)
+
+    transport = ASGITransport(app=app)
+    async with (
+        AsyncClient(transport=transport, base_url="http://test") as client,
+        client.stream("GET", "/events") as response,
+    ):
+        body = "".join([chunk async for chunk in response.aiter_text()])
+
+    assert response.status_code == 200
+    assert "event: counter" in body
+    assert ran == ["cancelled"]

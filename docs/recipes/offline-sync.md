@@ -249,6 +249,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from src.db.repositories import AnalysisRepository
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 repo = AnalysisRepository(session)

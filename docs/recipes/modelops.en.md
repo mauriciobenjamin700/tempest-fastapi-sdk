@@ -543,6 +543,7 @@ from tempest_fastapi_sdk.modelops import (
 
 from src.db.models import ModelVersion
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 predictor = OnnxPredictor("model.onnx")

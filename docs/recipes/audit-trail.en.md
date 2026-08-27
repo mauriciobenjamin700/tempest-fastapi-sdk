@@ -65,6 +65,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from src.db.models import ProductModel, UserModel
 from src.db.repositories import ProductRepository
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 repo = ProductRepository(session)
@@ -122,6 +123,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from src.db.models import ProductModel, UserModel
 from src.db.repositories import ProductRepository
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 product = ProductModel(name="Café", price_cents=1990)

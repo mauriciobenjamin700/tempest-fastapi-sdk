@@ -604,6 +604,7 @@ from tempest_fastapi_sdk import BaseRepository
 from src.db.models import UserModel
 
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 repository = BaseRepository(session, model=UserModel)
@@ -1775,6 +1776,7 @@ from tempest_fastapi_sdk.utils import normalize_cpf_cnpj
 
 from src.db.models import UserModel
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 query = "52998224725"
@@ -2101,8 +2103,16 @@ from tempest_fastapi_sdk.core import get_request_id
 
 from src.db.models import UserModel
 
-risky = LogUtils.mask
 user = UserModel(name="Ana", email="ana@example.com")
+
+
+def risky() -> None:
+    """Stand in for the call whose failure you want on the log line.
+
+    Raises:
+        RuntimeError: Always, so the handler below has something to log.
+    """
+    raise RuntimeError("reconcile failed")
 
 
 # Imperative — call once during bootstrap.
@@ -2679,6 +2689,7 @@ from tempest_fastapi_sdk import (
 from src.core.settings import settings
 from src.db.repositories import WebPushSubscriptionRepository
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 subscriptions_repo = WebPushSubscriptionRepository(session)
@@ -3128,6 +3139,7 @@ from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
 from src.core.settings import settings
 from src.db.models import UserModel
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 repo = BaseRepository(session, model=UserModel)
@@ -3667,6 +3679,7 @@ from src.core.settings import settings
 from src.db.models import User
 from src.db.repositories import UserRepository
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 password_utils = PasswordUtils()
@@ -3713,6 +3726,7 @@ from tempest_fastapi_sdk import generate_opaque_token, utcnow, verify_opaque_tok
 from src.db.models import PasswordResetToken
 from src.db.repositories import UserTokenRepository
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 reset_tokens_repo = UserTokenRepository(session)

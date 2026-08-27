@@ -101,6 +101,7 @@ from tempest_fastapi_sdk import (
 
 from src.db.models import UserModel
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 elapsed = 0.42

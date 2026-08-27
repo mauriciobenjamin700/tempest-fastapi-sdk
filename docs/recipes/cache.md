@@ -299,6 +299,7 @@ from tempest_fastapi_sdk.cache import AsyncRedisManager, cached
 from src.core.settings import settings
 from src.db.repositories import ProductRepository
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 redis = AsyncRedisManager(settings.REDIS_URL, decode_responses=True)

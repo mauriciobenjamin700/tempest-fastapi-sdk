@@ -430,6 +430,7 @@ from tempest_fastapi_sdk import BaseRepository
 from src.db.models import UserModel
 
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 repository = BaseRepository(session, model=UserModel)

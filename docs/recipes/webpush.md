@@ -375,6 +375,7 @@ from src.core.settings import settings
 from src.db.models import UserModel
 from src.db.repositories import WebPushSubscriptionRepository
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 dispatcher = WebPushDispatcher(**settings.webpush_kwargs())
@@ -460,6 +461,7 @@ from tempest_fastapi_sdk.webpush import WebPushDispatcher
 from src.core.settings import settings
 from src.db.repositories import WebPushSubscriptionRepository
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 dispatcher = WebPushDispatcher(**settings.webpush_kwargs())

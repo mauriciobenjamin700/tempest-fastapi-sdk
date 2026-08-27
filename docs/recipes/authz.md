@@ -63,6 +63,7 @@ from tempest_fastapi_sdk.authz import has_perm
 
 from src.db.models import OrderModel, UserModel
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 current_user = UserModel(name="Ana", email="ana@example.com")
@@ -170,6 +171,7 @@ from tempest_fastapi_sdk import permission
 from src.db.models import ProjectModel, UserModel
 from src.db.repositories import MembershipRepository
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 membership_repo = MembershipRepository(session)
@@ -193,6 +195,7 @@ from tempest_fastapi_sdk.authz import PermissionRegistry
 from src.db.models import OrderModel, UserModel
 from src.db.repositories import RoleRepository
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 role_repo = RoleRepository(session)

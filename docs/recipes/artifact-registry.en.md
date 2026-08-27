@@ -73,6 +73,7 @@ from src.core.settings import settings
 
 from src.db.repositories import build_registry
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
@@ -146,6 +147,7 @@ from tempest_fastapi_sdk.artifacts import (
 from src.db.models import ModelVersion
 from src.db.repositories import build_registry
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))
@@ -184,6 +186,7 @@ from src.db.models import ModelVersion
 from src.db.repositories import build_registry
 
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 
@@ -261,6 +264,7 @@ from src.core.settings import settings
 
 from src.db.repositories import build_registry
 
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 registry = build_registry(session, AsyncMinIOClient(**settings.minio_kwargs()))

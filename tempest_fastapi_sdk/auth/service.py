@@ -1333,6 +1333,14 @@ class UserAuthService:
 
             >>> user = auth_service.require_authenticated(current)
 
+        Deliberately **narrower than the function it forwards to**: that one
+        takes an unbound ``SubjectT``, because the SDK also hands out
+        subjects that are not user models (a ``FirebaseIdentity``, for one).
+        Reached through this service the subject is always the service's own
+        ``UserT``, so keeping the bound here buys back the checking the free
+        function had to give up. Guarding a provider identity calls the
+        function directly.
+
         Args:
             user (UserT | None): The resolved request user.
 

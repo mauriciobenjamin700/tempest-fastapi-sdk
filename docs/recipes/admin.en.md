@@ -403,6 +403,7 @@ from tempest_fastapi_sdk.db.audit import snapshot_model
 from src.db.models import AuditLog, OrderModel, UserModel
 
 current_user = UserModel(name="Ana", email="ana@example.com")
+# In a service the session comes from `db.get_session_context()`; here, SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 

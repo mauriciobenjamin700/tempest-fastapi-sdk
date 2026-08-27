@@ -22,6 +22,7 @@ from src.core.settings import settings
 from src.db.models import User
 from src.db.repositories import UserRepository
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 password_utils = PasswordUtils()
@@ -143,6 +144,7 @@ from tempest_fastapi_sdk.utils import utcnow
 from src.db.models import PasswordResetToken
 from src.db.repositories import UserTokenRepository
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 reset_tokens_repo = UserTokenRepository(session)

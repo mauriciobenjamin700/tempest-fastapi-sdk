@@ -180,6 +180,7 @@ from tempest_fastapi_sdk.utils import normalize_cpf_cnpj
 
 from src.db.repositories import CustomerRepository
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 query = "529.982.247-25"

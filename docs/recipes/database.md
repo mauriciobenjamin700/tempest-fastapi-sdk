@@ -541,6 +541,7 @@ from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 user_id = UUID("2b1d0c2e-7f3a-4c56-9d18-2f9a4c5b6d70")
@@ -694,6 +695,7 @@ from tempest_fastapi_sdk import BaseRepository
 
 from src.db.models import UserModel
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 id1, id2, id3 = uuid4(), uuid4(), uuid4()
@@ -1104,6 +1106,7 @@ from tempest_fastapi_sdk import BaseRepository
 from src.db.models import UserModel
 from src.schemas import ProductFilterSchema
 
+# Num serviço, a sessão real vem de `db.get_session_context()`; aqui, do SQLite.
 session = AsyncSession(create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 f = ProductFilterSchema(name="silva", page=1, page_size=20)

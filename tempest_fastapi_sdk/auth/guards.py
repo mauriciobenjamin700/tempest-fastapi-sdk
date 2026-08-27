@@ -43,8 +43,14 @@ only rejects ``None`` — and the SDK hands out subjects that are not user
 models: ``FirebaseAuth.get_optional_identity`` yields a
 ``FirebaseIdentity``, and the Firebase recipe guards it with this
 function. Bound to ``BaseUserModel``, that documented call resolved
-``UserT`` to ``None`` and failed under mypy. The siblings below keep the
-bound, because they do read ``is_active`` / ``is_admin``.
+``UserT`` to ``None`` and failed under mypy.
+
+Unbound means literally unbound: ``require_authenticated("")`` type-checks
+and hands back a ``str``. That is the honest reading of a function whose
+whole body is ``if user is None: raise``, and the checking is bought back
+where the subject *is* known — :meth:`UserAuthService.require_authenticated`
+keeps the ``UserT`` bound. The siblings below keep it too, because they read
+``is_active`` / ``is_admin``.
 """
 
 
