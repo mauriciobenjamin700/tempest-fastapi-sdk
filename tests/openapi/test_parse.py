@@ -317,6 +317,63 @@ class TestConstraints:
         )
         assert _schema(spec, "M").fields[0].constraints == expected
 
+    @pytest.mark.parametrize(
+        ("schema", "expected"),
+        [
+            ({"type": "string", "maximum": 140}, {"max_length": 140}),
+            ({"type": "string", "minimum": 3}, {"min_length": 3}),
+            ({"type": ["string", "null"], "maximum": 140}, {"max_length": 140}),
+            (
+                {"type": "string", "maxLength": 9, "maximum": 140},
+                {"max_length": 9},
+            ),
+            ({"type": "string", "exclusiveMaximum": 140}, {}),
+        ],
+    )
+    def test_a_numeric_bound_on_a_string_is_read_as_a_length(
+        self, schema: dict[str, Any], expected: dict[str, Any]
+    ) -> None:
+        """The shape that shipped a `TypeError` in the OpenPix client.
+
+        OpenPix's `ChargeRefundPayload.comment` is `type: string` carrying
+        `maximum: 140`, under a description that reads "Maximum length of
+        140 characters". Emitted literally that is `Field(le=140)` on a
+        `str`, and pydantic does not merely reject the value — it raises
+        `TypeError: Unable to apply constraint 'le' to supplied value` when
+        the model is constructed, so every refund with a comment failed
+        before leaving the process.
+
+        A real `maxLength` still wins over the re-read one, and an
+        exclusive bound is dropped rather than guessed at.
+        """
+        spec = parse_spec(
+            _spec(
+                M={
+                    "type": "object",
+                    "required": ["value"],
+                    "properties": {"value": schema},
+                }
+            ),
+            client_name="t",
+        )
+        assert _schema(spec, "M").fields[0].constraints == expected
+
+    def test_a_numeric_bound_on_a_number_is_untouched(self) -> None:
+        """The re-read is scoped to strings — numbers keep `ge`/`le`."""
+        spec = parse_spec(
+            _spec(
+                M={
+                    "type": "object",
+                    "required": ["value"],
+                    "properties": {
+                        "value": {"type": "number", "maximum": 140, "minimum": 1}
+                    },
+                }
+            ),
+            client_name="t",
+        )
+        assert _schema(spec, "M").fields[0].constraints == {"le": 140, "ge": 1}
+
     def test_openapi_30_boolean_exclusive_minimum(self) -> None:
         """3.0's boolean ``exclusiveMinimum`` re-points ``minimum`` at ``gt``.
 

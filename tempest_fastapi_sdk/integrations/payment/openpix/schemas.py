@@ -1046,7 +1046,7 @@ class ChargeRefundPayload(BaseSchema):
     )
     comment: str | None = Field(
         description="Comment for this refund. Maximum length of 140 characters.",
-        le=140,
+        max_length=140,
         default=None,
     )
 
@@ -4120,7 +4120,7 @@ class RefundPayload(BaseSchema):
     )
     comment: str | None = Field(
         description="Comment of this refund. Maximum length of 140 characters.",
-        le=140,
+        max_length=140,
         default=None,
     )
 

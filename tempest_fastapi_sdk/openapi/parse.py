@@ -1467,6 +1467,38 @@ def _collect_examples(schema: Mapping[str, Any]) -> tuple[Any, ...]:
     return ()
 
 
+_LENGTH_FROM_NUMERIC: dict[str, str] = {
+    "maximum": "max_length",
+    "minimum": "min_length",
+}
+"""How a numeric bound is re-read when the schema is a string.
+
+`maximum` on a string is a spec defect, not a shape pydantic can honor —
+see :func:`_collect_constraints`. Only the two inclusive bounds map; an
+exclusive one has no length equivalent worth guessing at.
+"""
+
+
+def _is_string_typed(schema: Mapping[str, Any]) -> bool:
+    """Report whether a schema fragment describes a string.
+
+    Args:
+        schema (Mapping[str, Any]): The schema fragment.
+
+    Returns:
+        bool: ``True`` when ``type`` is ``"string"``, or a list of types
+        whose only non-``null`` member is ``"string"`` (the 3.1 spelling of
+        a nullable string).
+    """
+    declared = schema.get("type")
+    if declared == "string":
+        return True
+    if isinstance(declared, list):
+        concrete = [entry for entry in declared if entry != "null"]
+        return concrete == ["string"]
+    return False
+
+
 def _collect_constraints(schema: Mapping[str, Any]) -> dict[str, Any]:
     """Map OpenAPI validation keywords to Pydantic ``Field`` constraints.
 
@@ -1484,6 +1516,16 @@ def _collect_constraints(schema: Mapping[str, Any]) -> dict[str, Any]:
         qualify ``minimum`` / ``maximum``, so the flag is re-pointed at the
         value it qualifies and the plain ``ge`` / ``le`` it would otherwise
         produce is dropped. Emitting both would validate the wrong bound.
+
+        A numeric bound on a ``type: string`` schema is re-read as a length
+        bound. Nothing legitimate produces that pair — a string has no
+        magnitude — and specs in the wild write it anyway: OpenPix's
+        ``ChargeRefundPayload.comment`` carries ``maximum: 140`` under a
+        description that says "Maximum length of 140 characters". Passed
+        through literally it emits ``Field(le=140)`` on a ``str``, and
+        pydantic does not reject the value, it raises ``TypeError: Unable
+        to apply constraint 'le' to supplied value`` at construction — so
+        every refund carrying a comment failed before leaving the process.
     """
     constraints: dict[str, Any] = {}
     for source, target in _STRING_CONSTRAINTS.items():
@@ -1492,8 +1534,15 @@ def _collect_constraints(schema: Mapping[str, Any]) -> dict[str, Any]:
     for source, target in _ARRAY_CONSTRAINTS.items():
         if source in schema:
             constraints[target] = schema[source]
+    string_typed = _is_string_typed(schema)
     for source, target in _NUMERIC_CONSTRAINTS.items():
         if source not in schema:
+            continue
+        if string_typed:
+            length = _LENGTH_FROM_NUMERIC.get(source)
+            value = schema[source]
+            if length is not None and isinstance(value, int):
+                constraints.setdefault(length, value)
             continue
         value = schema[source]
         if isinstance(value, bool):
