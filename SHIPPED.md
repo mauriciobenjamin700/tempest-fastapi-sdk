@@ -1009,6 +1009,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (v0.95.0): `PixKeyField` validates+normalizes any of the 5 BACEN key
   types (CPF/CNPJ/email/E.164 phone/random UUID); `PixKeyType` +
   `detect_pix_key_type`/`is_valid_pix_key`/`normalize_pix_key`.
+  **Celular (v0.256.0):** `is_valid_phone_br` aceita fixo de propósito, e
+  quem usa o telefone como canal de entrega (WhatsApp/SMS/OTP) tem
+  `is_valid_mobile_phone_br`, `normalize_mobile_phone_br` (sempre os 11
+  dígitos nacionais, ao contrário de `normalize_phone_br`),
+  `MobilePhoneBRField` e `parse_phone_br` -> `PhoneNumberBR`
+  (DDD/número/`is_mobile`/E.164, `None` no que a ANATEL não atribui).
 - **BR localities** — `UF` (StrEnum, 27 siglas) + `Region`
   (5 macro-regiões IBGE), `StateBR`/`CityBR` schemas, offline
   dataset of 27 states + 5606 municipalities (IBGE-derived,

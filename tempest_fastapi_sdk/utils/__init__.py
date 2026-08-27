@@ -238,10 +238,16 @@ from tempest_fastapi_sdk.utils.regex import (
     CPFOrCNPJField as CPFOrCNPJField,
 )
 from tempest_fastapi_sdk.utils.regex import (
+    MobilePhoneBRField as MobilePhoneBRField,
+)
+from tempest_fastapi_sdk.utils.regex import (
     PhoneBR as PhoneBR,
 )
 from tempest_fastapi_sdk.utils.regex import (
     PhoneBRField as PhoneBRField,
+)
+from tempest_fastapi_sdk.utils.regex import (
+    PhoneNumberBR as PhoneNumberBR,
 )
 from tempest_fastapi_sdk.utils.regex import (
     PixKeyField as PixKeyField,
@@ -265,6 +271,9 @@ from tempest_fastapi_sdk.utils.regex import (
     is_valid_cpf_cnpj as is_valid_cpf_cnpj,
 )
 from tempest_fastapi_sdk.utils.regex import (
+    is_valid_mobile_phone_br as is_valid_mobile_phone_br,
+)
+from tempest_fastapi_sdk.utils.regex import (
     is_valid_phone_br as is_valid_phone_br,
 )
 from tempest_fastapi_sdk.utils.regex import (
@@ -283,6 +292,9 @@ from tempest_fastapi_sdk.utils.regex import (
     normalize_cpf_cnpj as normalize_cpf_cnpj,
 )
 from tempest_fastapi_sdk.utils.regex import (
+    normalize_mobile_phone_br as normalize_mobile_phone_br,
+)
+from tempest_fastapi_sdk.utils.regex import (
     normalize_phone_br as normalize_phone_br,
 )
 from tempest_fastapi_sdk.utils.regex import (
@@ -290,6 +302,9 @@ from tempest_fastapi_sdk.utils.regex import (
 )
 from tempest_fastapi_sdk.utils.regex import (
     only_digits as only_digits,
+)
+from tempest_fastapi_sdk.utils.regex import (
+    parse_phone_br as parse_phone_br,
 )
 from tempest_fastapi_sdk.utils.storage_backends import (
     LocalUploadStorage as LocalUploadStorage,
@@ -378,6 +393,7 @@ __all__: list[str] = [
     "MemoryMetrics",
     "MetricsUtils",
     "MinIOUploadStorage",
+    "MobilePhoneBRField",
     "NonEmptyStrField",
     "NonNegativeFloatField",
     "NonNegativeIntField",
@@ -385,6 +401,7 @@ __all__: list[str] = [
     "PercentField",
     "PhoneBR",
     "PhoneBRField",
+    "PhoneNumberBR",
     "PixKeyField",
     "PixKeyType",
     "PortField",
@@ -424,6 +441,7 @@ __all__: list[str] = [
     "is_valid_cnpj",
     "is_valid_cpf",
     "is_valid_cpf_cnpj",
+    "is_valid_mobile_phone_br",
     "is_valid_phone_br",
     "is_valid_pix_key",
     "is_valid_uf",
@@ -434,11 +452,13 @@ __all__: list[str] = [
     "normalize_cnpj",
     "normalize_cpf",
     "normalize_cpf_cnpj",
+    "normalize_mobile_phone_br",
     "normalize_phone_br",
     "normalize_pix_key",
     "normalize_uf",
     "only_digits",
     "parse_currency_br",
+    "parse_phone_br",
     "quantize_money",
     "region_choices",
     "sniff_mime",

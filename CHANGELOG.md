@@ -5,6 +5,66 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.256.0] — 2026-08-27
+
+### Added
+
+- **Celular BR: `is_valid_mobile_phone_br`, `normalize_mobile_phone_br`,
+  `MobilePhoneBRField` e `parse_phone_br`.** `is_valid_phone_br` responde a
+  uma pergunta de formato — *isto tem cara de telefone brasileiro?* — e aceita
+  fixo. Quando o número é o **canal de entrega** (WhatsApp, SMS, um código de
+  verificação), aceitar fixo não é validação frouxa: é falha silenciosa. O
+  número entra no cadastro, passa por toda a validação, e só falha lá na
+  frente, quando a notificação não é entregue — sem erro para o usuário e sem
+  log óbvio para quem opera.
+
+  ```python
+  from tempest_fastapi_sdk.utils import is_valid_mobile_phone_br, is_valid_phone_br
+
+  is_valid_phone_br("(11) 3333-4444")          # True  — é um telefone
+  is_valid_mobile_phone_br("(11) 3333-4444")   # False — mas não é um celular
+  ```
+
+  Em schema é a troca de um tipo de campo por outro:
+
+  ```python
+  from tempest_fastapi_sdk import BaseSchema
+  from tempest_fastapi_sdk.utils import MobilePhoneBRField
+
+  class NotificationTargetSchema(BaseSchema):
+      phone: MobilePhoneBRField   # fixo devolve 422
+  ```
+
+  `parse_phone_br` entrega o número já quebrado, para quem precisa formatar ou
+  gravar E.164:
+
+  ```python
+  from tempest_fastapi_sdk.utils import parse_phone_br
+
+  parsed = parse_phone_br("+55 (11) 98888-7777")
+  parsed.area_code, parsed.number, parsed.is_mobile, parsed.e164
+  # ("11", "988887777", True, "+5511988887777")
+  ```
+
+  Três detalhes que o teste fixa, porque nenhum deles é óbvio:
+
+  - **As duas normalizações divergem de propósito.** `normalize_phone_br`
+    preserva o que foi digitado, então a mesma linha vira `"5511988887777"` ou
+    `"11988887777"` conforme a grafia, e a coluna guarda duas strings para um
+    número só. `normalize_mobile_phone_br` sempre devolve os **11 dígitos da
+    forma nacional**. O `+55` continua disponível em `PhoneNumberBR.e164`.
+  - **`parse_phone_br` é mais estrito que `is_valid_phone_br`.** Aplica os
+    prefixos da ANATEL — assinante de 8 dígitos começa em `2`-`5` — então
+    `"8912345678"` passa pelo validador antigo e volta `None` aqui.
+  - **DDD 55 não é o código do país.** Santa Maria (RS) colide com o `+55`;
+    o prefixo só é descartado quando o total de dígitos (12 ou 13) prova que
+    ele está lá.
+
+  O nome `PhoneBR` já era um alias deprecado de `PhoneBRField` desde a v0.76,
+  então o resultado do parse chama-se `PhoneNumberBR`.
+
+  Fecha [#208](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/208).
+
 ## [0.255.0] — 2026-08-25
 
 ### Added
