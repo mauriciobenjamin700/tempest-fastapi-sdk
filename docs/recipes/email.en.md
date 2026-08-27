@@ -141,6 +141,69 @@ Optional per-message parameters: `cc`, `bcc`, `attachments`
 sender). Any SMTP error is re-raised as
 `aiosmtplib.errors.SMTPException` for the caller to handle.
 
+## Sending to many: `send_many`
+
+`send()` is for the one-recipient transactional message. Telling the whole
+base something — maintenance, an announcement, a campaign — is where the naive
+loop gets expensive:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import BulkEmailReport, EmailUtils
+
+from src.core.settings import settings
+
+mailer = EmailUtils(**settings.email_kwargs())
+
+recipients = ["ana@example.com", "bruno@example.com", "cadu@example.com"]
+
+
+async def main() -> None:
+    """Tell the base, then deal with what did not land."""
+    report: BulkEmailReport = await mailer.send_many(
+        recipients,
+        subject="Scheduled maintenance",
+        body="We are down from 02:00 to 03:00.",
+        batch_size=500,
+        max_concurrency=32,
+    )
+
+    print(report.delivered, "delivered,", report.failed, "not")
+
+    for dead in report.permanent:
+        print(f"prune {dead.email}: {dead.code} {dead.message}")
+
+    for later in report.transient:
+        print(f"requeue {later.email}: {later.code}")
+
+
+asyncio.run(main())
+```
+
+What it does that `for user in users: await mailer.send(...)` does not:
+
+| | Loop over `send()` | `send_many()` |
+| --- | --- | --- |
+| SMTP connections | one per message | one per batch (`batch_size`) |
+| Parallelism | none, or unbounded `gather` | `max_concurrency` open connections |
+| Bad address | raises, ending the run | lands in the report |
+| `5xx` vs `4xx` | indistinguishable | `permanent` vs `transient` |
+
+!!! note "Concurrency is per connection, not per message"
+    SMTP is serial on one socket: a batch is sent sequentially over **its**
+    connection, and parallelism comes from running several batches at once.
+    That is why `max_concurrency` counts open connections — the number a
+    provider actually throttles.
+
+!!! warning "Only an operation failure raises"
+    Host that will not resolve, connection refused, authentication rejected:
+    those raise, because nothing was sent. A refusal of **one** recipient never
+    raises — it is the report. `5xx` means the mailbox does not exist (prune it
+    from your base); `4xx` means full or greylisted (requeue). A refusal with no
+    code is filed as transient: the cheap mistake is retrying, not deleting a
+    good address.
+
 ## Jinja2 templates
 
 Pass `template_dir=` at construction and render with `render_template()` —

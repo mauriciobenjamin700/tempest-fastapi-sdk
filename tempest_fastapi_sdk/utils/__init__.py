@@ -42,7 +42,9 @@ from tempest_fastapi_sdk.utils.download import (
 from tempest_fastapi_sdk.utils.download import (
     build_content_disposition as build_content_disposition,
 )
+from tempest_fastapi_sdk.utils.email import BulkEmailReport as BulkEmailReport
 from tempest_fastapi_sdk.utils.email import EmailUtils as EmailUtils
+from tempest_fastapi_sdk.utils.email import FailedRecipient as FailedRecipient
 from tempest_fastapi_sdk.utils.fields import (
     CentsField as CentsField,
 )
@@ -364,6 +366,7 @@ __all__: list[str] = [
     "REQUEST_ID_HEADER",
     "UF",
     "AttemptThrottle",
+    "BulkEmailReport",
     "CEPField",
     "CNPJField",
     "CPFField",
@@ -380,6 +383,7 @@ __all__: list[str] = [
     "DiskMetrics",
     "DownloadUtils",
     "EmailUtils",
+    "FailedRecipient",
     "FileStoreUtils",
     "GPUMetrics",
     "HTTPClient",

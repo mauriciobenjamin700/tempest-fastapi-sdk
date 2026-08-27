@@ -1229,6 +1229,9 @@ from tempest_fastapi_sdk.utils import (
     AttemptThrottle as AttemptThrottle,
 )
 from tempest_fastapi_sdk.utils import (
+    BulkEmailReport as BulkEmailReport,
+)
+from tempest_fastapi_sdk.utils import (
     CentsField as CentsField,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1275,6 +1278,9 @@ from tempest_fastapi_sdk.utils import (
 )
 from tempest_fastapi_sdk.utils import (
     EmailUtils as EmailUtils,
+)
+from tempest_fastapi_sdk.utils import (
+    FailedRecipient as FailedRecipient,
 )
 from tempest_fastapi_sdk.utils import (
     FileStoreUtils as FileStoreUtils,
@@ -1663,6 +1669,7 @@ __all__: list[str] = [
     "BaseWebAuthnCredentialModel",
     "BaseWebPushSubscriptionModel",
     "BodySizeLimitMiddleware",
+    "BulkEmailReport",
     "BusinessMetrics",
     "CEPField",
     "CNPJField",
@@ -1714,6 +1721,7 @@ __all__: list[str] = [
     "F",
     "FCMTransport",
     "FailOpenRateLimitStore",
+    "FailedRecipient",
     "FeatureFlagBackend",
     "FeatureFlags",
     "FieldRef",

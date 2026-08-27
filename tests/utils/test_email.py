@@ -1,5 +1,6 @@
 """Tests for tempest_fastapi_sdk.utils.email.EmailUtils."""
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -279,3 +280,227 @@ class TestRenderTemplate:
         assert "Ativar conta" in utils.render_template(
             "activation.html", ctx, locale="pt-BR"
         )
+
+
+class _TinySMTP:
+    """A real SMTP server, small enough to live in a test file.
+
+    The bulk path is about the *protocol*: how many connections it opens,
+    and what it does with a per-recipient refusal. A monkeypatched
+    `aiosmtplib.send` can answer neither, so this speaks the handful of
+    verbs aiosmtplib needs over a real socket and counts what arrives.
+    """
+
+    def __init__(self, refuse: dict[str, tuple[int, str]] | None = None) -> None:
+        """Initialize.
+
+        Args:
+            refuse (dict[str, tuple[int, str]] | None): Addresses to answer
+                with ``(code, message)`` at ``RCPT TO`` instead of ``250``.
+        """
+        self.refuse: dict[str, tuple[int, str]] = refuse or {}
+        self.delivered: list[str] = []
+        self.connections: int = 0
+        self.server: asyncio.AbstractServer | None = None
+        self.port: int = 0
+
+    async def start(self) -> int:
+        """Listen on an ephemeral port.
+
+        Returns:
+            int: The port the server bound to.
+        """
+        self.server = await asyncio.start_server(self._handle, "127.0.0.1", 0)
+        self.port = int(self.server.sockets[0].getsockname()[1])
+        return self.port
+
+    async def stop(self) -> None:
+        """Close the listening socket."""
+        if self.server is not None:
+            self.server.close()
+            await self.server.wait_closed()
+
+    async def _handle(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        """Serve one connection until QUIT.
+
+        Args:
+            reader (asyncio.StreamReader): Client stream.
+            writer (asyncio.StreamWriter): Server stream.
+        """
+        self.connections += 1
+        writer.write(b"220 tiny ESMTP\r\n")
+        await writer.drain()
+        pending: list[str] = []
+        while True:
+            line = await reader.readline()
+            if not line:
+                break
+            command = line.decode("utf-8", "replace").strip()
+            upper = command.upper()
+            if upper.startswith(("HELO", "EHLO")):
+                writer.write(b"250-tiny\r\n250 SIZE 10240000\r\n")
+            elif upper.startswith("MAIL FROM"):
+                writer.write(b"250 OK\r\n")
+            elif upper.startswith("RCPT TO"):
+                address = command.split("<", 1)[-1].split(">", 1)[0]
+                if address in self.refuse:
+                    code, text = self.refuse[address]
+                    writer.write(f"{code} {text}\r\n".encode())
+                else:
+                    pending.append(address)
+                    writer.write(b"250 OK\r\n")
+            elif upper == "DATA":
+                writer.write(b"354 End data with <CR><LF>.<CR><LF>\r\n")
+                await writer.drain()
+                while True:
+                    chunk = await reader.readline()
+                    if chunk in (b".\r\n", b".\n", b""):
+                        break
+                self.delivered.extend(pending)
+                pending = []
+                writer.write(b"250 Message accepted\r\n")
+            elif upper == "QUIT":
+                writer.write(b"221 Bye\r\n")
+                await writer.drain()
+                break
+            elif upper == "RSET":
+                pending = []
+                writer.write(b"250 OK\r\n")
+            else:
+                writer.write(b"250 OK\r\n")
+            await writer.drain()
+        writer.close()
+
+
+class TestSendMany:
+    async def _serve(
+        self,
+        refuse: dict[str, tuple[int, str]] | None = None,
+    ) -> tuple[_TinySMTP, EmailUtils]:
+        server = _TinySMTP(refuse=refuse)
+        port = await server.start()
+        mailer = EmailUtils(
+            host="127.0.0.1",
+            port=port,
+            from_addr="no-reply@tempest.dev",
+            use_starttls=False,
+        )
+        return server, mailer
+
+    async def test_one_connection_per_batch_not_per_message(self) -> None:
+        """The reason this exists instead of a loop over `send`.
+
+        `send` opens, authenticates and quits per message, so five thousand
+        recipients cost five thousand handshakes. Fourteen recipients in
+        batches of five must cost three connections, not fourteen.
+        """
+        server, mailer = await self._serve()
+        try:
+            report = await mailer.send_many(
+                [f"user{n}@x.com" for n in range(14)],
+                subject="Maintenance",
+                body="02:00 to 03:00.",
+                batch_size=5,
+                max_concurrency=2,
+            )
+        finally:
+            await server.stop()
+
+        assert report.delivered == 14
+        assert server.connections == 3
+        assert len(server.delivered) == 14
+
+    async def test_a_refusal_is_reported_not_raised(self) -> None:
+        """One bad address must not end the send — that is the loop's bug."""
+        server, mailer = await self._serve(
+            refuse={"dead@x.com": (550, "No such user here")}
+        )
+        try:
+            report = await mailer.send_many(
+                ["a@x.com", "dead@x.com", "b@x.com"],
+                subject="Maintenance",
+                body="02:00 to 03:00.",
+            )
+        finally:
+            await server.stop()
+
+        assert report.delivered == 2
+        assert [row.email for row in report.permanent] == ["dead@x.com"]
+        assert report.permanent[0].code == 550
+        assert "No such user" in report.permanent[0].message
+
+    async def test_5xx_and_4xx_are_reported_apart(self) -> None:
+        """Prune versus requeue is the whole reason the split exists."""
+        server, mailer = await self._serve(
+            refuse={
+                "dead@x.com": (550, "No such user here"),
+                "full@x.com": (452, "Mailbox full, try later"),
+            }
+        )
+        try:
+            report = await mailer.send_many(
+                ["a@x.com", "dead@x.com", "full@x.com"],
+                subject="Maintenance",
+                body="02:00 to 03:00.",
+            )
+        finally:
+            await server.stop()
+
+        assert report.delivered == 1
+        assert [row.email for row in report.permanent] == ["dead@x.com"]
+        assert [row.email for row in report.transient] == ["full@x.com"]
+        assert report.failed == 2
+
+    async def test_recipients_do_not_see_each_other(self) -> None:
+        server, mailer = await self._serve()
+        try:
+            await mailer.send_many(
+                ["a@x.com", "b@x.com"],
+                subject="Maintenance",
+                body="02:00 to 03:00.",
+                batch_size=10,
+            )
+        finally:
+            await server.stop()
+
+        assert server.delivered == ["a@x.com", "b@x.com"]
+
+    async def test_empty_recipient_list_opens_no_connection(self) -> None:
+        server, mailer = await self._serve()
+        try:
+            report = await mailer.send_many([], subject="s", body="b")
+        finally:
+            await server.stop()
+
+        assert report.delivered == 0
+        assert report.failed == 0
+        assert server.connections == 0
+
+    async def test_non_positive_knobs_are_refused(self) -> None:
+        """Silently delivering nothing is the failure this prevents."""
+        server, mailer = await self._serve()
+        try:
+            with pytest.raises(ValueError, match="must be positive"):
+                await mailer.send_many(["a@x.com"], subject="s", body="b", batch_size=0)
+            with pytest.raises(ValueError, match="must be positive"):
+                await mailer.send_many(
+                    ["a@x.com"], subject="s", body="b", max_concurrency=0
+                )
+        finally:
+            await server.stop()
+
+    async def test_connection_failure_still_raises(self) -> None:
+        """A failure of the operation is not a per-recipient failure."""
+        mailer = EmailUtils(
+            host="127.0.0.1",
+            port=1,
+            from_addr="no-reply@tempest.dev",
+            use_starttls=False,
+            timeout=2.0,
+        )
+        with pytest.raises(Exception):  # noqa: B017 — aiosmtplib's connect errors
+            await mailer.send_many(["a@x.com"], subject="s", body="b")

@@ -140,6 +140,69 @@ Parâmetros opcionais por mensagem: `cc`, `bcc`, `attachments`
 padrão). Qualquer erro SMTP é re-levantado como
 `aiosmtplib.errors.SMTPException` para o chamador tratar.
 
+## Enviar para muita gente: `send_many`
+
+`send()` é para a mensagem transacional de um destinatário. Avisar a base
+inteira — manutenção, comunicado, campanha — é o caso em que o laço ingênuo
+custa caro:
+
+```python
+import asyncio
+
+from tempest_fastapi_sdk import BulkEmailReport, EmailUtils
+
+from src.core.settings import settings
+
+mailer = EmailUtils(**settings.email_kwargs())
+
+destinatarios = ["ana@example.com", "bruno@example.com", "cadu@example.com"]
+
+
+async def main() -> None:
+    """Avisa a base e trata o que não entregou."""
+    report: BulkEmailReport = await mailer.send_many(
+        destinatarios,
+        subject="Manutenção programada",
+        body="Vamos ficar fora das 02h às 03h.",
+        batch_size=500,
+        max_concurrency=32,
+    )
+
+    print(report.delivered, "entregues,", report.failed, "não")
+
+    for morto in report.permanent:
+        print(f"podar {morto.email}: {morto.code} {morto.message}")
+
+    for depois in report.transient:
+        print(f"reenfileirar {depois.email}: {depois.code}")
+
+
+asyncio.run(main())
+```
+
+O que isso faz que o `for user in users: await mailer.send(...)` não faz:
+
+| | Laço com `send()` | `send_many()` |
+| --- | --- | --- |
+| Conexões SMTP | uma por mensagem | uma por lote (`batch_size`) |
+| Paralelismo | nenhum, ou `gather` sem teto | `max_concurrency` conexões abertas |
+| Endereço ruim | levanta e aborta o resto | entra no relatório |
+| `5xx` vs `4xx` | indistinguíveis | `permanent` vs `transient` |
+
+!!! note "Concorrência é por conexão, não por mensagem"
+    SMTP é serial num socket só: um lote é enviado sequencialmente pela
+    **sua** conexão, e o paralelismo vem de rodar vários lotes ao mesmo tempo.
+    Por isso `max_concurrency` conta conexões abertas — que é exatamente o
+    número que o provedor limita.
+
+!!! warning "Só falha de operação levanta"
+    Host que não resolve, conexão recusada, autenticação negada: isso levanta,
+    porque nada foi enviado. Recusa de **um** destinatário nunca levanta — ela
+    é o relatório. `5xx` significa que a caixa não existe (pode podar da sua
+    base); `4xx` significa cheia ou greylisted (reenfileire). Recusa sem código
+    entra como transitória: o erro barato é tentar de novo, não apagar
+    endereço bom.
+
 ## Templates Jinja2
 
 Passe `template_dir=` na construção e renderize com `render_template()` —
