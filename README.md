@@ -169,7 +169,7 @@ Since `0.7.1` every optional dependency is imported lazily at first instantiatio
 | `tempest_fastapi_sdk.api` | `register_exception_handlers`, `app_exception_handler`, OpenAPI error docs (`error_responses`, `raises`, `TempestAPIRouter`, `RaisesSpec`, `declared_raises`), `apply_cors`, `make_health_router`, `make_logs_router`, `make_prometheus_router`, `make_prometheus_registry`, `PrometheusMiddleware`, `BusinessMetrics`, `LogSource`, `DEFAULT_MAX_RECORDS_PER_FILE`, `make_tool_spec_router`, `make_token_dependency`, `make_bearer_token_dependency`, `make_jwt_user_dependency`, `make_role_dependency`, `make_permission_dependency`, `require_x_token`, `run_server`, `RequestIDMiddleware`, `RateLimitMiddleware` (+ `RateLimitStore`/`MemoryRateLimitStore`/`RedisRateLimitStore`/`RateLimitResult` and `key_by_ip`/`key_by_jwt_subject`/`key_by_jwt_claim`/`key_by_header`), `IdempotencyMiddleware`, `MemoryIdempotencyStore`, `RedisIdempotencyStore`, `BodySizeLimitMiddleware`, `CSRFMiddleware`, `make_csrf_token_dependency`, `GracefulShutdownMiddleware`, `WebhookSignatureVerifier`, `RSAWebhookSignatureVerifier`, outbound `WebhookSender` (+ `WebhookDelivery`), OAuth2 (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`), `HardenedStaticFiles`, `DEFAULT_STATIC_SECURITY_HEADERS`, `make_spa_router` (serve a compiled React/Vite SPA with a client-side fallback) + `DEFAULT_SPA_SECURITY_HEADERS` / `DEFAULT_SPA_CONTENT_SECURITY_POLICY` (its own CSP, which allows the bundle the SPA ships), `set_cookie`, `clear_cookie`, `SameSite`, `HealthCheck`, `setup_tracing` *(extra: `[otel]`)* |
 | `tempest_fastapi_sdk.auth` *(extra: `[auth]`, opcional `[email]`, `[mfa]`, `[webauthn]`)* | `UserAuthService`, `make_auth_router`, `SignupSchema` / `LoginSchema` / `RefreshSchema` / `PasswordResetRequestSchema` / `PasswordResetConfirmSchema` + responses, `ActivationToken`, `PasswordResetToken`, email change/verify/recovery (`EmailChangeRequestSchema` / `EmailChangeConfirmSchema` / `EmailRecoveryRequestSchema` / `EmailChangeToken` / `EmailVerificationToken`, old-email security notice, opt-in `AUTH_EMAIL_RECOVERY_ENABLED`), MFA schemas (`MFAEnrollResponseSchema` / `MFAConfirmSchema` / `MFAVerifySchema` / `MFADisableSchema`), WebAuthn / passkeys (`WebAuthnService`, `BaseWebAuthnCredentialModel` / `make_web_authn_credential_model`, `Memory`/`RedisWebAuthnChallengeStore`, the six `/auth/webauthn/*` routes), opt-in DB-backed refresh tokens (`BaseUserRefreshTokenModel` / `make_user_refresh_token_model` / `LogoutSchema`) with rotation + reuse detection + `POST /auth/logout`, bilingual emails + backend pages (`AUTH_DEFAULT_LOCALE`, `normalize_locale` / `negotiate_locale`) — signup/activate/login/refresh/logout/reset + email change/recovery + TOTP 2FA out of the box; plus **Firebase ID token verification** (`[firebase]`) — `FirebaseAuth` (idempotent app init, `verify`, `get_identity` / `get_uid` / `get_optional_identity`), `FirebaseIdentity`, `FirebaseUserResolver[UserT]`, and one error `code` per failure (`FIREBASE_TOKEN_MISSING` / `_INVALID` / `_EXPIRED` / `_REVOKED`, `FIREBASE_USER_DISABLED` at 403, `FIREBASE_UNAVAILABLE`) |
 | `tempest_fastapi_sdk.authz` | Object-level permissions: `permission` (rule decorator), `has_perm` / `check_permission`, `PermissionRegistry` (injectable superuser bypass + static-permission fallback, `order.*`/`*` wildcards), `make_permission_checker` (FastAPI route guard), `PermissionMixin` (`await user.has_perm(perm, obj=...)`), `default_registry`, `requires` (guard decorator `(user) -> user | None`, optional `meta: dict[str, Any]` second parameter via `meta=` / `include_args=`, checked at import time + by `tempest permissions`), `declared_guards` / `guarded_user_param` / `guard_metadata`, `TempestPermissionError`, `GuardContractWarning` |
-| `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager`, `cached` (with `namespace` / `tags`), `CacheInvalidator`, `namespace_registry_key`, `tag_registry_key` |
+| `tempest_fastapi_sdk.cache` *(extra: `[cache]`)* | `AsyncRedisManager` (+ `client_proxy` for import-time wiring), `cached` (with `namespace` / `tags`), `CacheInvalidator`, `namespace_registry_key`, `tag_registry_key` |
 | `tempest_fastapi_sdk.chat` | Threaded chat: abstract tables `BaseConversationModel`/`BaseConversationParticipantModel`/`BaseMessageModel` (+ `make_*` factories), `ChatService` (`start_conversation`/`post_message`/`list_messages`/`list_conversations`), `make_chat_router` (opt-in), real-time fan-out via an injected `SSEBroker` |
 | `tempest_fastapi_sdk.checks` | System checks (Django-style config validation): `check` (register decorator), `run_checks` / `run_system_checks` (raises `SystemCheckError` on ERROR+), `CheckMessage` / `CheckLevel` + `debug`/`info`/`warning`/`error`/`critical`, `CheckRegistry` / `default_registry`; built-in settings checks + the `tempest check-config` CLI (auto-detects settings, `--tag` / `--fail-level`) |
 | `tempest_fastapi_sdk.cli` | `tempest` console script — `new <name>` (scaffold layered service), `lint` / `format` / `fmt-check` / `type` / `test` / `check` (run preferred quality gates), `check-config` (validate settings via the system-check framework), `version` / `--version`; plus project-registered management commands (`tempest <cmd>` from `src/commands.py` or `[tool.tempest] commands`) |
@@ -2594,6 +2594,26 @@ async def cached_endpoint(
 ```
 
 Wire the health check on the canonical router with `make_health_router(checks={"redis": cache.health_check})` so readiness probes fail when Redis is down.
+
+Building a Redis-backed store for `add_middleware` happens at import time, before the lifespan runs, so `cache.client` raises there. Pass `cache.client_proxy` instead — a stable handle that resolves the live client on every command, so it is constructible before the first `connect()` and stays correct across a reconnect:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import RateLimitMiddleware, RedisRateLimitStore
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+
+
+app = FastAPI()
+cache = AsyncRedisManager("redis://localhost:6379/0")
+
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests=15,
+    window_seconds=1.0,
+    store=RedisRateLimitStore(cache.client_proxy),
+)
+```
 
 ### Server-Sent Events recipe
 

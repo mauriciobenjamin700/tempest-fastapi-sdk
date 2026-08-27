@@ -61,6 +61,54 @@ app.include_router(router)
 Conecte o health check no router canônico com `make_health_router(checks={"redis": cache.health_check})` para que as readiness probes falhem quando o Redis cair.
 
 
+### Store de middleware: `client_proxy`
+
+Os dois ciclos de vida não se encaixam. O FastAPI exige que middleware seja registrado no **import** do módulo — `add_middleware` depois do startup levanta —, mas o `connect()` só roda no lifespan. Um store construído com `cache.client` no import bate no guard:
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import RateLimitMiddleware, RedisRateLimitStore
+from tempest_fastapi_sdk.cache import AsyncRedisManager
+
+
+app = FastAPI()
+cache = AsyncRedisManager("redis://localhost:6379/0")
+
+app.add_middleware(
+    RateLimitMiddleware,
+    store=RedisRateLimitStore(cache.client),   # RuntimeError: connect() must be called before
+)
+```
+
+E adiantar a construção não resolve: `disconnect()` descarta o client, e o `connect()` seguinte cria um **objeto novo** — um store que guardou a referência antiga fica com client morto.
+
+`client_proxy` é o handle estável para esse caso. Ele resolve o client vivo a cada comando, então é construível antes do primeiro `connect()` e continua correto depois de uma reconexão:
+
+```python
+# src/api/set_middlewares.py — roda no import
+from tempest_fastapi_sdk import RateLimitMiddleware, RedisRateLimitStore
+
+from src.api.app import app, cache
+
+
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests=15,
+    window_seconds=1.0,
+    store=RedisRateLimitStore(cache.client_proxy),
+)
+```
+
+Vale para todo store Redis do SDK — `RedisRateLimitStore`, `RedisQuotaStore`, `RedisSessionStore`, `RedisIdempotencyStore`, `RedisResponseCacheStore`, `RedisFeatureFlagBackend`, `RedisWebAuthnChallengeStore` —, que recebem o client pronto e não uma factory.
+
+!!! info "`client` continua sendo o certo dentro de um request"
+    Quando o código roda **dentro** de um endpoint, o lifespan já conectou: use `cache.client` ou a dependência `cache.client_dependency`. O `client_proxy` é para o que é construído antes disso.
+
+!!! warning "É um handle que encaminha, não um `Redis`"
+    O tipo declarado é `Redis` para o proxy encaixar em todo parâmetro de store sem cast do lado do consumidor, mas `isinstance(cache.client_proxy, Redis)` é `False`, e protocolo dunder resolvido no tipo (`async with proxy`) não é encaminhado. Ler um atributo antes do primeiro `connect()` continua levantando `RuntimeError` — o que muda é que **construir** o store deixou de levantar.
+
+
 ## Decorator @cached
 
 

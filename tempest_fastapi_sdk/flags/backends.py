@@ -213,8 +213,9 @@ class RedisFeatureFlagBackend:
 
         Args:
             redis (_RedisHashClient): An async Redis client (e.g.
-                ``redis.asyncio.Redis`` or
-                ``AsyncRedisManager.client``).
+                ``redis.asyncio.Redis`` or ``AsyncRedisManager.client``).
+                Pass ``AsyncRedisManager.client_proxy`` instead when the
+                backend is built before the lifespan connects.
             key (str): The Redis hash key holding every flag.
         """
         self._redis: _RedisHashClient = redis
