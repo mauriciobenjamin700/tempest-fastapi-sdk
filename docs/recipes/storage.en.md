@@ -246,7 +246,6 @@ Batch upload uses `PutObjectItem`, which mirrors the per-object arguments of `pu
 
 ```python
 import asyncio
-from pathlib import Path
 
 from tempest_fastapi_sdk import AsyncMinIOClient, PutObjectItem
 
@@ -254,8 +253,9 @@ from src.core.settings import settings
 
 storage = AsyncMinIOClient(**settings.minio_kwargs())
 
-thumb_a = Path("thumbs/a.jpg").read_bytes()
-thumb_b = Path("thumbs/b.jpg").read_bytes()
+# In your code these come off disk (`Path(...).read_bytes()`) or from the upload.
+thumb_a = b"\xff\xd8\xff\xdb bytes of the first JPEG"
+thumb_b = b"\xff\xd8\xff\xdb bytes of the second JPEG"
 
 
 async def main() -> None:

@@ -48,7 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ```
 
   Passa a ser `Callable[[], object] | None` em `EventStream.response`,
-  `sse_response` e no `_guard_stream` que os dois usam. Nada muda em runtime.
+  `sse_response` e no `_guard_stream` que os dois usam. Nada muda em runtime —
+  medido com um callback síncrono que devolve `bool` contra um endpoint de
+  verdade: `200`, dois frames entregues, callback executado, retorno
+  descartado. A suíte não fixa essa forma (o teste existente usa
+  `async def cleanup() -> None`); quem a exercita hoje é a receita de SSE,
+  pelo guard de tipo.
 
 - **Os stores de Redis aceitam o `redis.asyncio.Redis` que a receita manda
   passar.** `_RedisLike` (idempotência e cache de resposta) e `RedisLike`
@@ -64,11 +69,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   #        "Redis"; expected "_RedisLike"  [arg-type]
   ```
 
-  Os três protocolos passam a declarar parâmetro posicional e retorno
-  `Awaitable[Any]` — a forma que o `RedisLike` do rate limiter já usava, e que
-  é por isso que aquele nunca teve o problema. Medido nos seis stores de Redis
-  exportados: três recusavam o cliente real (idempotência, cache de resposta,
-  WebAuthn) e três aceitavam (rate limit, quota, sessão); agora nenhum recusa.
+  Os três protocolos passam a declarar parâmetro **posicional** e retorno
+  `Awaitable[str | bytes | None]` — a forma que o `RedisLike` do rate limiter
+  já usava, e que é por isso que aquele nunca teve o problema. Medido nos seis
+  stores de Redis exportados: três recusavam o cliente real (idempotência,
+  cache de resposta, WebAuthn) e três aceitavam (rate limit, quota, sessão);
+  agora nenhum recusa.
+
+  `Awaitable[Any]` também faria o cliente passar, e foi por onde esta correção
+  passou antes de ser medida — mas apaga o tipo do valor lido: com ele,
+  `raw = await client.get(key)` vira `Any` dentro do próprio SDK, e o
+  `json.loads(raw)` logo abaixo deixa de ser checado. Aceitar o cliente e
+  manter o tipo é a mesma linha; só a forma estreita faz as duas coisas.
 
 - **`require_authenticated` aceita qualquer sujeito, não só `BaseUserModel`.**
   A função não lê atributo nenhum — só rejeita `None` — mas o `TypeVar` estava

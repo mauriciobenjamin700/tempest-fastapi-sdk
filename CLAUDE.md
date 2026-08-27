@@ -137,8 +137,10 @@ mexer neles. Todos rodam dentro do `make check`.
   `Protocol` escrito `async def get(self, key: str)` exige do implementador
   o **nome** do parâmetro e retorno `Coroutine` (o redis-py chama de `name` e
   devolve `Awaitable`, e três dos seis stores de Redis recusavam o cliente
-  que a doc manda passar); e callback cujo retorno o corpo descarta anotado
-  como `-> None`. Guard: `tests/test_docs_type_guard.py` roda mypy sobre os
+  que a doc manda passar) — a forma que aceita é
+  `def get(self, key: str, /) -> Awaitable[str | bytes | None]`, e **não**
+  `Awaitable[Any]`, que aceita igual e apaga o tipo em todo call site; e
+  callback cujo retorno o corpo descarta anotado como `-> None`. Guard: `tests/test_docs_type_guard.py` roda mypy sobre os
   exemplos —
   [`LESSONS.md`](LESSONS.md#a-anotação-que-a-própria-receita-contradiz-v02570).
 - **`Field(alias=...)` é defeito** (v0.234.0). Escreva o nome do fio duas

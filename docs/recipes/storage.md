@@ -246,7 +246,6 @@ Upload em lote usa `PutObjectItem`, que espelha os argumentos por-objeto de `put
 
 ```python
 import asyncio
-from pathlib import Path
 
 from tempest_fastapi_sdk import AsyncMinIOClient, PutObjectItem
 
@@ -254,8 +253,9 @@ from src.core.settings import settings
 
 storage = AsyncMinIOClient(**settings.minio_kwargs())
 
-thumb_a = Path("thumbs/a.jpg").read_bytes()
-thumb_b = Path("thumbs/b.jpg").read_bytes()
+# No seu código estes vêm do disco (`Path(...).read_bytes()`) ou do upload.
+thumb_a = b"\xff\xd8\xff\xdb bytes do primeiro JPEG"
+thumb_b = b"\xff\xd8\xff\xdb bytes do segundo JPEG"
 
 
 async def main() -> None:

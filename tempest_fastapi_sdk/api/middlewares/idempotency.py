@@ -49,7 +49,7 @@ import json
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -65,7 +65,7 @@ class _RedisLike(Protocol):
     the SDK to ``redis-py`` for type-checking purposes.
     """
 
-    def get(self, key: str, /) -> Awaitable[Any]:
+    def get(self, key: str, /) -> Awaitable[str | bytes | None]:
         """Return the stored value (or ``None`` when absent).
 
         Declared with a positional-only parameter and an ``Awaitable``
@@ -78,11 +78,12 @@ class _RedisLike(Protocol):
             key (str): The idempotency key from the request header.
 
         Returns:
-            Awaitable[Any]: The stored payload, or ``None`` on a miss.
+            Awaitable[str | bytes | None]: The stored payload, or ``None``
+            on a miss.
         """
         ...
 
-    def set(self, key: str, value: str, /, *, ex: int) -> Awaitable[Any]:
+    def set(self, key: str, value: str, /, *, ex: int) -> Awaitable[object]:
         """Store ``value`` under ``key`` with TTL ``ex`` (seconds).
 
         Args:
@@ -91,7 +92,7 @@ class _RedisLike(Protocol):
             ex (int): Time-to-live in seconds.
 
         Returns:
-            Awaitable[Any]: Whatever the client returns; the caller
+            Awaitable[object]: Whatever the client returns; the caller
             ignores it.
         """
         ...

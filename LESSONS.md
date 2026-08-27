@@ -54,7 +54,11 @@ Duas consequências práticas:
 - **Protocolo que promete aceitar um cliente de terceiro é medido contra ele.**
   Escrever `async def get(self, key: str)` num `Protocol` exige do
   implementador o nome do parâmetro **e** retorno `Coroutine`. A forma que
-  funciona é `def get(self, key: str, /) -> Awaitable[Any]`. Dos seis stores de
+  funciona é `def get(self, key: str, /) -> Awaitable[str | bytes | None]`:
+  posicional resolve o nome, e `Awaitable` no lugar de `async def` resolve o
+  `Coroutine`. Devolver `Awaitable[Any]` também aceita o cliente — e joga fora
+  o tipo do valor lido em todo call site do SDK, o que é trocar um defeito de
+  tipagem por outro. Dos seis stores de
   Redis exportados, três recusavam o `redis.asyncio.Redis` que a doc manda
   passar — e o `RedisLike` do rate limiter, que já usava a forma certa,
   aceitava. A diferença estava no repo desde sempre; ninguém tinha comparado.

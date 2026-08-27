@@ -146,7 +146,7 @@ class RedisLike(Protocol):
     Matches the relevant subset of ``redis.asyncio.Redis``.
     """
 
-    def set(self, name: str, value: str, /, ex: int | None = None) -> Awaitable[Any]:
+    def set(self, name: str, value: str, /, ex: int | None = None) -> Awaitable[object]:
         """Store ``value`` under ``name`` with an optional expiry.
 
         Declared as returning an ``Awaitable`` instead of as ``async def``:
@@ -160,18 +160,19 @@ class RedisLike(Protocol):
             ex (int | None): Expiry in seconds, when set.
 
         Returns:
-            Awaitable[Any]: Whatever the client returns; unused.
+            Awaitable[object]: Whatever the client returns; unused.
         """
         ...
 
-    def getdel(self, name: str, /) -> Awaitable[Any]:
+    def getdel(self, name: str, /) -> Awaitable[str | bytes | None]:
         """Return the value at ``name`` and delete it, atomically.
 
         Args:
             name (str): The Redis key.
 
         Returns:
-            Awaitable[Any]: The stored payload, or ``None`` when absent.
+            Awaitable[str | bytes | None]: The stored payload, or ``None``
+            when absent.
         """
         ...
 
