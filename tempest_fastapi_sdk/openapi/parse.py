@@ -54,6 +54,17 @@ _HTTP_METHODS: tuple[str, ...] = (
 _PLACEHOLDERS: re.Pattern[str] = re.compile(r"\{([^{}]+)\}")
 """Every ``{name}`` an OpenAPI path template interpolates."""
 
+_COLON_PLACEHOLDERS: re.Pattern[str] = re.compile(r"/:([A-Za-z_]\w*)")
+"""A ``/:name`` segment — Express routing syntax, not OpenAPI templating.
+
+OpenAPI interpolates ``{name}``; a path written ``/dispute/:id/evidence``
+has no placeholder at all, so the generator emits the colon literally and
+the request goes to a URL with ``:id`` in it. It reached production once:
+OpenPix published that exact path, and the SDK shipped a method that could
+not name the dispute it was uploading evidence for. Whoever writes the
+specification is not always careful, so this is noted rather than trusted.
+"""
+
 _FORMAT_TYPES: dict[str, str] = {
     "date-time": "datetime",
     "date": "date",
@@ -127,6 +138,7 @@ class _Parser:
         self.wire_to_class: dict[str, str] = {}
         self.notes: list[str] = []
         self.response_annotations: list[str] = []
+        self.body_annotations: list[str] = []
         self.imports: set[str] = set()
         self._sinks: list[list[str]] = []
         self._resolving: set[str] = set()
@@ -1033,12 +1045,18 @@ class _Parser:
             used_names,
         )
 
-        parameters = self._build_parameters(
-            [*shared_parameters, *(operation.get("parameters") or [])],
-            owner=to_pascal(name),
-            path=path,
-        )
         with self.capture() as gaps:
+            for literal in _COLON_PLACEHOLDERS.findall(path):
+                self.note(
+                    f"path {path!r} uses Express syntax ':{literal}' where OpenAPI "
+                    f"interpolates '{{{literal}}}' — the colon is sent literally, "
+                    f"so the value can never reach the URL"
+                )
+            parameters = self._build_parameters(
+                [*shared_parameters, *(operation.get("parameters") or [])],
+                owner=to_pascal(name),
+                path=path,
+            )
             body_annotation, body_required, body_encoding = self._build_body(
                 operation, owner=to_pascal(name)
             )
@@ -1281,12 +1299,11 @@ class _Parser:
             )
             return None, True, "json"
         hint = f"{owner}Body"
-        annotation = self.render_type(schema, hint=hint)
-        return (
-            self._name_body_union(annotation, hint=hint),
-            bool(resolved.get("required", False)),
-            encoding,
+        annotation = self._name_body_union(
+            self.render_type(schema, hint=hint), hint=hint
         )
+        self.body_annotations.append(annotation)
+        return annotation, bool(resolved.get("required", False)), encoding
 
     def _name_body_union(self, annotation: str, *, hint: str) -> str:
         """Give a request body that renders as a union a name of its own.
@@ -1606,9 +1623,37 @@ def _resolve_dependencies(
     return resolved
 
 
+def _reachable(
+    schemas: Mapping[str, SchemaIR],
+    annotations: Sequence[str],
+) -> set[str]:
+    """Close over every generated class the annotations can reach.
+
+    Args:
+        schemas (Mapping[str, SchemaIR]): Every generated class by name,
+            with ``dependencies`` already resolved.
+        annotations (Sequence[str]): Rendered annotations to walk from.
+
+    Returns:
+        set[str]: Names of the classes reached, transitively.
+    """
+    pending: list[str] = []
+    for annotation in annotations:
+        pending.extend(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", annotation))
+    reached: set[str] = set()
+    while pending:
+        name = pending.pop()
+        if name in reached or name not in schemas:
+            continue
+        reached.add(name)
+        pending.extend(schemas[name].dependencies)
+    return reached
+
+
 def _mark_response_reachable(
     schemas: Mapping[str, SchemaIR],
     annotations: Sequence[str],
+    body_annotations: Sequence[str] = (),
 ) -> dict[str, SchemaIR]:
     """Flag every class an operation's success response can reach.
 
@@ -1623,7 +1668,13 @@ def _mark_response_reachable(
 
     Payload models are deliberately left alone: there, an unexpected key
     is the caller's own typo, and carrying it to the provider is worse
-    than dropping it.
+    than dropping it. A class reaching the caller **both** ways — request
+    body of one operation, response of another — is treated as a payload
+    for the same reason, so the body closure is subtracted from the
+    response closure rather than merged with it. OpenPix ships exactly one:
+    ``PreRegistrationPayloadObject`` is the body and the ``200`` of the same
+    operation, and until v0.260.0 it carried ``extra="allow"`` — a typo in
+    the caller's dictionary reached the provider verbatim.
 
     Reachability is transitive — ``ChargeResponse`` naming ``Charge``,
     which names ``Customer``, marks all three — because a nested object is
@@ -1634,24 +1685,15 @@ def _mark_response_reachable(
             with ``dependencies`` already resolved.
         annotations (Sequence[str]): Rendered success-response
             annotations, one per operation that declares a JSON body.
+        body_annotations (Sequence[str]): Rendered request-body
+            annotations. Everything these reach keeps ``extra="ignore"``.
 
     Returns:
         dict[str, SchemaIR]: The same classes, with
         ``reached_by_response`` set on the models the closure covers.
         Enums and unions are skipped — neither takes a ``model_config``.
     """
-    pending: list[str] = []
-    for annotation in annotations:
-        pending.extend(
-            token for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", annotation)
-        )
-    reached: set[str] = set()
-    while pending:
-        name = pending.pop()
-        if name in reached or name not in schemas:
-            continue
-        reached.add(name)
-        pending.extend(schemas[name].dependencies)
+    reached = _reachable(schemas, annotations) - _reachable(schemas, body_annotations)
     return {
         name: replace(schema, reached_by_response=True)
         if name in reached and schema.kind == "model"
@@ -1748,6 +1790,7 @@ def parse_spec(document: Mapping[str, Any], *, client_name: str) -> SpecIR:
     resolved = _mark_response_reachable(
         _resolve_dependencies(parser.schemas),
         parser.response_annotations,
+        parser.body_annotations,
     )
     ordered, cyclic = _order_schemas(resolved)
     return SpecIR(

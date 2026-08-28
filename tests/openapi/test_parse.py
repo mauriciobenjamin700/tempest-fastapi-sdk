@@ -1150,3 +1150,192 @@ class TestResponseModelsKeepWhatTheSpecOmitted:
             "populate_by_name=True",
         )
         assert _schema(spec, "Charge").config_arguments == ('extra="allow"',)
+
+
+class TestPathTemplateGaps:
+    """A parameter that can never reach the URL is named, not dropped."""
+
+    def test_a_declared_path_parameter_absent_from_the_template_is_marked(
+        self,
+    ) -> None:
+        """The shape that shipped as `get_api_v1_account_register`.
+
+        OpenPix declared `CorrelationID` as `in: path` on
+        `/api/v1/account-register`, a template with no placeholder. The
+        parser skipped it and noted why, but the note reached only the
+        summary — `_build_parameters` ran outside the operation's capture —
+        so the generated method took no arguments while its own docstring
+        said "Get account register by CorrelationID".
+        """
+        document: dict[str, Any] = {
+            "openapi": "3.0.0",
+            "info": {"title": "t", "version": "1"},
+            "paths": {
+                "/api/v1/account-register": {
+                    "get": {
+                        "parameters": [
+                            {
+                                "name": "CorrelationID",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            }
+                        ],
+                        "responses": {"200": {"description": "ok"}},
+                    }
+                }
+            },
+            "components": {"schemas": {}},
+        }
+
+        spec = parse_spec(document, client_name="t")
+        operation = spec.client.operations[0]
+
+        assert not operation.parameters
+        assert any("CorrelationID" in note for note in operation.unsupported)
+
+    def test_express_syntax_in_a_path_is_marked(self) -> None:
+        """The shape that shipped as `post_api_v1_dispute_id_evidence`.
+
+        OpenPix published `/api/v1/dispute/:id/evidence`. A colon is not
+        OpenAPI templating, so the generator emitted the segment literally
+        and the request went to a URL containing `:id` — with no argument
+        anywhere to name the dispute.
+        """
+        document: dict[str, Any] = {
+            "openapi": "3.0.0",
+            "info": {"title": "t", "version": "1"},
+            "paths": {
+                "/api/v1/dispute/:id/evidence": {
+                    "post": {"responses": {"200": {"description": "ok"}}}
+                }
+            },
+            "components": {"schemas": {}},
+        }
+
+        spec = parse_spec(document, client_name="t")
+        operation = spec.client.operations[0]
+
+        assert any("Express syntax" in note for note in operation.unsupported)
+
+    def test_a_well_formed_path_is_not_marked(self) -> None:
+        """The guard must stay quiet on the ordinary case."""
+        document: dict[str, Any] = {
+            "openapi": "3.0.0",
+            "info": {"title": "t", "version": "1"},
+            "paths": {
+                "/api/v1/dispute/{id}/evidence": {
+                    "post": {
+                        "parameters": [
+                            {
+                                "name": "id",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            }
+                        ],
+                        "responses": {"200": {"description": "ok"}},
+                    }
+                }
+            },
+            "components": {"schemas": {}},
+        }
+
+        spec = parse_spec(document, client_name="t")
+        operation = spec.client.operations[0]
+
+        assert [p.name for p in operation.parameters] == ["id"]
+        assert operation.unsupported == ()
+
+
+class TestPayloadModelsNeverAllowExtra:
+    """A class the caller fills in keeps dropping what it was not given."""
+
+    def test_a_class_used_as_body_and_response_stays_ignore(self) -> None:
+        """The shape that shipped as `PreRegistrationPayloadObject`.
+
+        It is the request body and the `200` of the same operation, so the
+        response closure reached it and it was emitted with
+        `extra="allow"` — and a typo in the caller's dictionary travelled
+        to the provider verbatim. Body reachability wins: carrying a typo
+        to a payment provider is worse than dropping a field nobody
+        declared.
+        """
+        document: dict[str, Any] = {
+            "openapi": "3.0.0",
+            "info": {"title": "t", "version": "1"},
+            "paths": {
+                "/thing": {
+                    "post": {
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/Thing"}
+                                }
+                            }
+                        },
+                        "responses": {
+                            "200": {
+                                "description": "ok",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {"$ref": "#/components/schemas/Thing"}
+                                    }
+                                },
+                            }
+                        },
+                    }
+                }
+            },
+            "components": {
+                "schemas": {
+                    "Thing": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}},
+                    }
+                }
+            },
+        }
+
+        spec = parse_spec(document, client_name="t")
+        thing = next(s for s in spec.schemas if s.name == "Thing")
+
+        assert not thing.reached_by_response
+        assert 'extra="allow"' not in thing.config_arguments
+
+    def test_a_response_only_class_still_allows_extra(self) -> None:
+        """Subtracting the body closure must not disarm the feature."""
+        document: dict[str, Any] = {
+            "openapi": "3.0.0",
+            "info": {"title": "t", "version": "1"},
+            "paths": {
+                "/thing": {
+                    "get": {
+                        "responses": {
+                            "200": {
+                                "description": "ok",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {"$ref": "#/components/schemas/Thing"}
+                                    }
+                                },
+                            }
+                        }
+                    }
+                }
+            },
+            "components": {
+                "schemas": {
+                    "Thing": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}},
+                    }
+                }
+            },
+        }
+
+        spec = parse_spec(document, client_name="t")
+        thing = next(s for s in spec.schemas if s.name == "Thing")
+
+        assert thing.reached_by_response
+        assert 'extra="allow"' in thing.config_arguments
