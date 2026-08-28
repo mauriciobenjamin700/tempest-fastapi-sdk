@@ -1,0 +1,323 @@
+"""Tests for the corrections applied to the pinned OpenPix specification.
+
+The overlay is the only place this repository disagrees with the document
+the provider publishes, so each disagreement is pinned here: what it
+changes, what it deliberately leaves alone, and that it retires on its own
+when upstream catches up.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+REPO_ROOT: Path = Path(__file__).resolve().parents[4]
+SCRIPTS: str = str(REPO_ROOT / "scripts")
+if SCRIPTS not in sys.path:
+    sys.path.insert(0, SCRIPTS)
+
+from openpix_overlay import (  # noqa: E402
+    CHARGE_RESPONSE_PROPERTIES,
+    PAYMENT_PATH,
+    apply,
+)
+
+
+def _document(properties: dict[str, Any]) -> dict[str, Any]:
+    """Build a minimal document carrying one schema's properties.
+
+    Args:
+        properties (dict[str, Any]): Properties for the ``M`` schema.
+
+    Returns:
+        dict[str, Any]: A loadable OpenAPI 3 document.
+    """
+    return {
+        "openapi": "3.0.0",
+        "info": {"title": "t", "version": "1"},
+        "paths": {},
+        "components": {"schemas": {"M": {"type": "object", "properties": properties}}},
+    }
+
+
+def _typed(document: dict[str, Any], name: str) -> str:
+    """Read back the type of one property of the ``M`` schema.
+
+    Args:
+        document (dict[str, Any]): A patched document.
+        name (str): The property name.
+
+    Returns:
+        str: The declared ``type``.
+    """
+    return str(document["components"]["schemas"]["M"]["properties"][name]["type"])
+
+
+class TestIntegerUnits:
+    """Money and counts stop being `number`, and rates do not."""
+
+    @pytest.mark.parametrize(
+        "name",
+        ["value", "balance", "fee", "skip", "limit", "installmentsCount"],
+    )
+    def test_a_whole_unit_property_is_retyped(self, name: str) -> None:
+        """Woovi settles in whole centavos, and pages in whole rows.
+
+        Args:
+            name (str): The property under test.
+        """
+        patched, report = apply(_document({name: {"type": "number"}}))
+
+        assert _typed(patched, name) == "integer"
+        assert report.integer_fields == 1
+
+    def test_a_description_saying_cents_is_enough(self) -> None:
+        """A name the list misses is still decided by the document."""
+        patched, _ = apply(
+            _document(
+                {"somethingNew": {"type": "number", "description": "Value in cents"}}
+            )
+        )
+
+        assert _typed(patched, "somethingNew") == "integer"
+
+    def test_a_description_saying_not_cents_wins(self) -> None:
+        """The stablecoin quote is the one place a fraction is real.
+
+        ``inputAmount`` is centavos on the deposit list and a BRL currency
+        amount on the quote — same name, opposite unit — which is why the
+        description is read before the name.
+        """
+        patched, report = apply(
+            _document(
+                {
+                    "inputAmount": {
+                        "type": "number",
+                        "description": (
+                            "Input amount in BRL (currency unit, not cents)."
+                        ),
+                    }
+                }
+            )
+        )
+
+        assert _typed(patched, "inputAmount") == "number"
+        assert report.integer_fields == 0
+
+    def test_an_unlisted_undocumented_number_is_left_alone(self) -> None:
+        """Silence is not evidence, so nothing is assumed from it."""
+        patched, _ = apply(_document({"refreshRate": {"type": "number"}}))
+
+        assert _typed(patched, "refreshRate") == "number"
+
+    def test_an_example_is_not_read_as_a_schema(self) -> None:
+        """A `type` key inside an example describes nothing."""
+        patched, report = apply(
+            _document({"value": {"type": "string", "example": {"type": "number"}}})
+        )
+
+        assert _typed(patched, "value") == "string"
+        assert report.integer_fields == 0
+
+    def test_a_query_parameter_is_retyped_by_its_own_name(self) -> None:
+        """`skip` and `limit` are parameters, not properties."""
+        document = {
+            "openapi": "3.0.0",
+            "info": {"title": "t", "version": "1"},
+            "paths": {
+                "/x": {
+                    "get": {
+                        "parameters": [
+                            {
+                                "name": "skip",
+                                "in": "query",
+                                "schema": {"type": "number"},
+                            }
+                        ],
+                        "responses": {"200": {"description": "ok"}},
+                    }
+                }
+            },
+            "components": {"schemas": {}},
+        }
+
+        patched, report = apply(document)
+
+        parameter = patched["paths"]["/x"]["get"]["parameters"][0]
+        assert parameter["schema"]["type"] == "integer"
+        assert report.integer_fields == 1
+
+
+class TestDeclaredFields:
+    """Fields the API returns and the document does not declare."""
+
+    def test_charge_gains_the_three_the_api_returns(self) -> None:
+        """`fee`, `discount` and `valueWithDiscount`, reported from production."""
+        document = {
+            "openapi": "3.0.0",
+            "info": {"title": "t", "version": "1"},
+            "paths": {},
+            "components": {
+                "schemas": {"Charge": {"type": "object", "properties": {}}},
+            },
+        }
+
+        patched, report = apply(document)
+
+        declared = patched["components"]["schemas"]["Charge"]["properties"]
+        assert set(CHARGE_RESPONSE_PROPERTIES) <= set(declared)
+        assert report.added_properties == (
+            "Charge.fee",
+            "Charge.discount",
+            "Charge.valueWithDiscount",
+        )
+
+    def test_an_upstream_declaration_wins(self) -> None:
+        """The overlay retires quietly instead of overwriting a fix."""
+        document = {
+            "openapi": "3.0.0",
+            "info": {"title": "t", "version": "1"},
+            "paths": {},
+            "components": {
+                "schemas": {
+                    "Charge": {
+                        "type": "object",
+                        "properties": {"fee": {"type": "string"}},
+                    }
+                },
+            },
+        }
+
+        patched, report = apply(document)
+
+        assert patched["components"]["schemas"]["Charge"]["properties"]["fee"] == {
+            "type": "string"
+        }
+        assert "Charge.fee" not in report.added_properties
+
+
+class TestTheDocumentIsNotMutated:
+    """The vendored document stays what the provider published."""
+
+    def test_apply_leaves_its_input_untouched(self) -> None:
+        """A caller keeps a clean copy to diff the next refresh against."""
+        document = _document({"value": {"type": "number"}})
+
+        apply(document)
+
+        assert _typed(document, "value") == "number"
+
+    def test_the_cancel_operation_is_added_once(self) -> None:
+        """Applying twice does not stack a second `delete`."""
+        document = {
+            "openapi": "3.0.0",
+            "info": {"title": "t", "version": "1"},
+            "paths": {
+                PAYMENT_PATH: {"get": {"responses": {"200": {"description": ""}}}}
+            },
+            "components": {"schemas": {}},
+        }
+
+        once, first = apply(document)
+        twice, second = apply(once)
+
+        assert first.added_operations == (f"DELETE {PAYMENT_PATH}",)
+        assert second.added_operations == ()
+        assert (
+            twice["paths"][PAYMENT_PATH]["delete"]
+            == once["paths"][PAYMENT_PATH]["delete"]
+        )
+
+
+class TestTheGeneratedResult:
+    """What the consumer actually gets, after the overlay and the generator."""
+
+    def test_money_is_an_integer_number_of_centavos(self) -> None:
+        """The wire stops carrying `1000.0` where the API documents `1000`."""
+        from tempest_fastapi_sdk.integrations.payment.openpix import (
+            Charge,
+            ChargePayload,
+        )
+
+        assert Charge.model_fields["value"].annotation == int | None
+
+        payload = ChargePayload(correlation_id="abc-1", value=1000)
+        dumped = payload.model_dump(by_alias=True, mode="json", exclude_none=True)
+        assert dumped["value"] == 1000
+        assert not isinstance(dumped["value"], float)
+
+    def test_pagination_is_whole_rows(self) -> None:
+        """`skip=0.0` in a query string was asking for leniency."""
+        from tempest_fastapi_sdk.integrations.payment.openpix import (
+            GetApiV1ChargeResponsePageInfo,
+        )
+
+        assert GetApiV1ChargeResponsePageInfo.model_fields["skip"].annotation == (
+            int | None
+        )
+
+    def test_a_stablecoin_quote_is_still_fractional(self) -> None:
+        """The one place a fraction is real keeps it."""
+        from tempest_fastapi_sdk.integrations.payment.openpix import (
+            GetApiV1StablecoinQuoteResponseQuote,
+        )
+
+        fields = GetApiV1StablecoinQuoteResponseQuote.model_fields
+        assert fields["base_price"].annotation == float | None
+        assert fields["input_amount"].annotation == float | None
+
+    def test_charge_carries_the_three_fields_a_ledger_reads(self) -> None:
+        """Undeclared, they were dropped — and a ledger recorded zero."""
+        from tempest_fastapi_sdk.integrations.payment.openpix import Charge
+
+        charge = Charge.model_validate(
+            {"value": 1000, "fee": 25, "discount": 0, "valueWithDiscount": 1000}
+        )
+
+        assert charge.fee == 25
+        assert charge.discount == 0
+        assert charge.value_with_discount == 1000
+
+    def test_a_charge_refund_can_carry_either_identifier(self) -> None:
+        """The document declares `refundId` on `Refund` only; the API sends both."""
+        from tempest_fastapi_sdk.integrations.payment.openpix import ChargeRefund
+
+        refund = ChargeRefund.model_validate(
+            {"refundId": "11bf5b37", "endToEndId": "E2311444"}
+        )
+
+        assert refund.refund_id == "11bf5b37"
+        assert refund.end_to_end_id == "E2311444"
+
+    def test_a_response_keeps_a_field_nobody_declared(self) -> None:
+        """`extra="allow"` is the difference between absent and lost."""
+        from tempest_fastapi_sdk.integrations.payment.openpix import Charge
+
+        charge = Charge.model_validate({"value": 1000, "wooviAddedThis": "later"})
+
+        assert (charge.model_extra or {})["wooviAddedThis"] == "later"
+
+    def test_a_payload_still_drops_what_it_was_not_given(self) -> None:
+        """On the way out, an unexpected key is the caller's own typo."""
+        from tempest_fastapi_sdk.integrations.payment.openpix import ChargePayload
+
+        payload = ChargePayload.model_validate(
+            {"value": 1, "correlationID": "abc-1", "corelationID": "typo"}
+        )
+
+        assert not payload.model_extra
+
+    def test_the_cancel_operation_reaches_the_client(self) -> None:
+        """The recovery path of the two-step transfer flow."""
+        import inspect
+
+        from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixClient
+
+        method = OpenPixClient.delete_api_v1_payment_by_id
+        signature = inspect.signature(method)
+
+        assert list(signature.parameters) == ["self", "id"]
+        assert signature.return_annotation == "dict[str, Any]"

@@ -537,9 +537,18 @@ e o valor é opcional: sem ele, a OpenPix devolve o total.
 ## Dinheiro: centavo inteiro, não float
 
 A especificação escreve, textualmente, *"Value in cents of this charge"* — e
-tipa o campo como `number`. O modelo gerado então valida `1990` para o float
-`1990.0`. Dinheiro que passou por float é dinheiro que pode estar errado: some
+tipa o campo como `number`. Até a v0.258.0 o modelo gerado copiava isso: `1990`
+virava o float `1990.0`, e o cliente mandava `{"value": 1990.0}` de volta pelo
+fio. Dinheiro que passou por float é dinheiro que pode estar errado: some
 alguns e você chega em `0.30000000000000004`.
+
+!!! check "Desde a v0.259.0 o campo já chega `int`"
+    O overlay da spec (veja [O que este pacote corrige na
+    spec](#o-que-este-pacote-corrige-na-spec)) reescreve os campos de valor e
+    de contagem como `integer` antes de gerar, então `Charge.value`,
+    `ChargePayload.value`, `Transaction.value`, `SubAccount.balance` e os
+    outros **154** são `int`. Os três helpers continuam valendo — o que muda é
+    que `to_cents` deixou de ser obrigatório para ler um modelo gerado.
 
 ```python
 from decimal import Decimal
@@ -559,13 +568,81 @@ assert cents_to_reais(1990) == Decimal("19.90")
   centavo. Arredonda meio-para-cima (`0.005` -> `1`), que é o que uma pessoa
   espera de dinheiro e **não** é o que o `round` embutido faz — ele arredonda
   meio-para-par, e `round(0.005 * 100)` dá `0`.
-- **`to_cents`** é o que você usa ao *ler*: estreita o float que a API
-  devolveu para `int` exato. Ele **recusa fração de propósito** —
-  `to_cents(19.9)` levanta `ValueError`, porque o campo já é centavo e uma
-  fração significa que alguém está tratando reais como se fossem centavos.
-  Arredondar em silêncio esconderia esse erro atrás de um número plausível.
+- **`to_cents`** é o que você usa ao ler um payload **cru** — o dicionário que
+  saiu do JSON, um webhook, um campo que o modelo gerado não declara. Ele
+  **recusa fração de propósito**: `to_cents(19.9)` levanta `ValueError`, porque
+  o campo já é centavo e uma fração significa que alguém está tratando reais
+  como se fossem centavos. Arredondar em silêncio esconderia esse erro atrás de
+  um número plausível. Sobre modelo gerado ele não estreita mais nada (o campo
+  já é `int`), mas continua validando.
 - **`cents_to_reais`** devolve `Decimal`, para o valor chegar exato até a
   formatação.
+
+## O que este pacote corrige na spec
+
+`vendor/openpix-openapi.yaml` é o documento que a Woovi publica, byte a byte —
+atualizar é um diff só do que **eles** mudaram. Tudo que a gente sabe que o
+documento erra vive em `scripts/openpix_overlay.py`, uma correção nomeada por
+vez, cada uma com a evidência ao lado. São três famílias:
+
+**1. Unidade inteira.** 154 campos tipados `number` que são valor em centavo ou
+contagem viram `integer`. A regra lê a descrição antes do nome, porque o mesmo
+nome muda de unidade: `inputAmount` é centavo na lista de depósito e é *"BRL
+(currency unit, not cents)"* na cotação de stablecoin — essa continua `float`,
+junto de `outputAmount`, `basePrice` e `rate`, que são fracionários de verdade.
+
+**2. Campos que a resposta traz e o documento não declara.** `Charge` ganha
+`fee`, `discount` e `valueWithDiscount`; `ChargeRefund` ganha `refundId` (o
+documento declara esse campo só no `Refund`, de estorno de transação Pix, e a
+API responde com ele nos dois). Todos opcionais — resposta sem eles continua
+validando.
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import Charge
+
+charge = Charge.model_validate(
+    {"value": 199000, "fee": 2500, "discount": 0, "valueWithDiscount": 199000}
+)
+charge.fee, charge.value_with_discount   # (2500, 199000) — int, não float
+```
+
+**3. Uma operação que o documento omite.** `delete_api_v1_payment_by_id` fecha
+o caminho de recuperação do fluxo de transferência em dois passos: se o
+`POST /payment` criou a solicitação e o `POST /payment/approve` falhou, a
+transferência fica pendente no gateway e ainda pode ser liberada depois.
+
+```python
+import asyncio
+from typing import Any
+
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixClient
+
+
+async def cancelar(payment_id: str) -> dict[str, Any]:
+    """Cancela um pagamento que foi solicitado e não chegou a ser aprovado."""
+    http = HTTPClient(
+        base_url="https://api.openpix.com.br",
+        default_headers={"Authorization": "SEU_APP_ID"},
+    )
+    client = OpenPixClient(http)
+    return await client.delete_api_v1_payment_by_id(payment_id)
+
+
+asyncio.run(cancelar("payment-1"))
+```
+
+O retorno é `dict[str, Any]` de propósito: este repositório não tem credencial
+para observar o corpo da resposta, então ele não é modelado — e nada é
+descartado.
+
+!!! tip "Model de resposta guarda o que a spec não previu"
+    Desde a v0.259.0 todo model alcançável por resposta é gerado com
+    `extra="allow"`. Campo que o provedor adicionar amanhã fica disponível em
+    `model_extra` em vez de sumir na validação — que é exatamente como o `fee`
+    se perdia antes de ser declarado. Model de **payload** continua com
+    `extra="ignore"`: ali chave inesperada é erro de digitação de quem chamou,
+    e levá-la ao provedor é pior que descartar.
 
 ## Registrando o webhook na OpenPix
 

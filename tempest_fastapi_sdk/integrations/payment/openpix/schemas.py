@@ -406,47 +406,47 @@ class AccountLimit(BaseSchema):
     """Schema generated for AccountLimit.
 
     Attributes:
-        pix_day_limit (float | None): Pix day total limit in cents
-        pix_night_limit (float | None): Pix night total limit in cents
-        pix_out_same_holder_day_limit (float | None): Pix outbound day limit for
-            transfers between same-holder accounts (cents)
-        pix_out_different_holder_day_limit (float | None): Pix outbound day limit for
-            transfers between different-holder accounts (cents)
-        pix_out_same_holder_night_limit (float | None): Pix outbound night limit for
-            transfers between same-holder accounts (cents)
-        pix_out_different_holder_night_limit (float | None): Pix outbound night limit
-            for transfers between different-holder accounts (cents)
-        pix_in_same_holder_day_limit (float | None): Pix inbound day limit for transfers
+        pix_day_limit (int | None): Pix day total limit in cents
+        pix_night_limit (int | None): Pix night total limit in cents
+        pix_out_same_holder_day_limit (int | None): Pix outbound day limit for transfers
             between same-holder accounts (cents)
-        pix_in_different_holder_day_limit (float | None): Pix inbound day limit for
+        pix_out_different_holder_day_limit (int | None): Pix outbound day limit for
             transfers between different-holder accounts (cents)
-        pix_in_same_holder_night_limit (float | None): Pix inbound night limit for
+        pix_out_same_holder_night_limit (int | None): Pix outbound night limit for
             transfers between same-holder accounts (cents)
-        pix_in_different_holder_night_limit (float | None): Pix inbound night limit for
+        pix_out_different_holder_night_limit (int | None): Pix outbound night limit for
+            transfers between different-holder accounts (cents)
+        pix_in_same_holder_day_limit (int | None): Pix inbound day limit for transfers
+            between same-holder accounts (cents)
+        pix_in_different_holder_day_limit (int | None): Pix inbound day limit for
+            transfers between different-holder accounts (cents)
+        pix_in_same_holder_night_limit (int | None): Pix inbound night limit for
+            transfers between same-holder accounts (cents)
+        pix_in_different_holder_night_limit (int | None): Pix inbound night limit for
             transfers between different-holder accounts (cents)
         day_start_at (str | None): Start time of the day window (HH:mm)
         night_start_at (str | None): Start time of the night window (HH:mm)
-        boleto_emission_limit (float | None): Maximum number of boletos that can be
+        boleto_emission_limit (int | None): Maximum number of boletos that can be
             emitted per day
-        boleto_maximum_value_limit (float | None): Maximum value (in cents) allowed per
+        boleto_maximum_value_limit (int | None): Maximum value (in cents) allowed per
             boleto emission
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    pix_day_limit: float | None = Field(
+    pix_day_limit: int | None = Field(
         validation_alias="pixDayLimit",
         serialization_alias="pixDayLimit",
         description="Pix day total limit in cents",
         default=None,
     )
-    pix_night_limit: float | None = Field(
+    pix_night_limit: int | None = Field(
         validation_alias="pixNightLimit",
         serialization_alias="pixNightLimit",
         description="Pix night total limit in cents",
         default=None,
     )
-    pix_out_same_holder_day_limit: float | None = Field(
+    pix_out_same_holder_day_limit: int | None = Field(
         validation_alias="pixOutSameHolderDayLimit",
         serialization_alias="pixOutSameHolderDayLimit",
         description=(
@@ -454,7 +454,7 @@ class AccountLimit(BaseSchema):
         ),
         default=None,
     )
-    pix_out_different_holder_day_limit: float | None = Field(
+    pix_out_different_holder_day_limit: int | None = Field(
         validation_alias="pixOutDifferentHolderDayLimit",
         serialization_alias="pixOutDifferentHolderDayLimit",
         description=(
@@ -463,7 +463,7 @@ class AccountLimit(BaseSchema):
         ),
         default=None,
     )
-    pix_out_same_holder_night_limit: float | None = Field(
+    pix_out_same_holder_night_limit: int | None = Field(
         validation_alias="pixOutSameHolderNightLimit",
         serialization_alias="pixOutSameHolderNightLimit",
         description=(
@@ -472,7 +472,7 @@ class AccountLimit(BaseSchema):
         ),
         default=None,
     )
-    pix_out_different_holder_night_limit: float | None = Field(
+    pix_out_different_holder_night_limit: int | None = Field(
         validation_alias="pixOutDifferentHolderNightLimit",
         serialization_alias="pixOutDifferentHolderNightLimit",
         description=(
@@ -481,7 +481,7 @@ class AccountLimit(BaseSchema):
         ),
         default=None,
     )
-    pix_in_same_holder_day_limit: float | None = Field(
+    pix_in_same_holder_day_limit: int | None = Field(
         validation_alias="pixInSameHolderDayLimit",
         serialization_alias="pixInSameHolderDayLimit",
         description=(
@@ -489,7 +489,7 @@ class AccountLimit(BaseSchema):
         ),
         default=None,
     )
-    pix_in_different_holder_day_limit: float | None = Field(
+    pix_in_different_holder_day_limit: int | None = Field(
         validation_alias="pixInDifferentHolderDayLimit",
         serialization_alias="pixInDifferentHolderDayLimit",
         description=(
@@ -498,7 +498,7 @@ class AccountLimit(BaseSchema):
         ),
         default=None,
     )
-    pix_in_same_holder_night_limit: float | None = Field(
+    pix_in_same_holder_night_limit: int | None = Field(
         validation_alias="pixInSameHolderNightLimit",
         serialization_alias="pixInSameHolderNightLimit",
         description=(
@@ -506,7 +506,7 @@ class AccountLimit(BaseSchema):
         ),
         default=None,
     )
-    pix_in_different_holder_night_limit: float | None = Field(
+    pix_in_different_holder_night_limit: int | None = Field(
         validation_alias="pixInDifferentHolderNightLimit",
         serialization_alias="pixInDifferentHolderNightLimit",
         description=(
@@ -529,13 +529,13 @@ class AccountLimit(BaseSchema):
         examples=["20:00"],
         default=None,
     )
-    boleto_emission_limit: float | None = Field(
+    boleto_emission_limit: int | None = Field(
         validation_alias="boletoEmissionLimit",
         serialization_alias="boletoEmissionLimit",
         description="Maximum number of boletos that can be emitted per day",
         default=None,
     )
-    boleto_maximum_value_limit: float | None = Field(
+    boleto_maximum_value_limit: int | None = Field(
         validation_alias="boletoMaximumValueLimit",
         serialization_alias="boletoMaximumValueLimit",
         description="Maximum value (in cents) allowed per boleto emission",
@@ -551,7 +551,7 @@ class AccountObjectPayload(BaseSchema):
             related to this preregistration/company.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     client_id: str | None = Field(
         validation_alias="clientId",
@@ -652,7 +652,7 @@ class Application(BaseSchema):
             control
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = Field(description="Name of the application", default=None)
     is_active: bool | None = Field(
@@ -779,7 +779,7 @@ class BoletoValidatedInfoFinalBeneficiary(BaseSchema):
         tax_id (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = Field(examples=["WOOVI"], default=None)
     tax_id: str | None = Field(
@@ -798,6 +798,8 @@ class BoletoValidatedInfoIssuingEntity(BaseSchema):
         name (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     code: str | None = Field(examples=["341"], default=None)
     name: str | None = Field(examples=["ITAU UNIBANCO S/A"], default=None)
 
@@ -809,6 +811,8 @@ class ChargeAdditionalInfoItem(BaseSchema):
         key (str | None): key of object
         value (str | None): value of object
     """
+
+    model_config = ConfigDict(extra="allow")
 
     key: str | None = Field(description="key of object", default=None)
     value: str | None = Field(description="value of object", default=None)
@@ -853,7 +857,7 @@ class ChargePayloadDiscountSettingsDiscountFixedDateItem(BaseSchema):
             created. On persistence, the server normalizes this offset into an absolute
             calendar date (`data`, format `YYYY-MM-DD`) — that is the field returned by
             the GET endpoint.
-        value (float | None): Discount value. Units depend on modality:   -
+        value (int | None): Discount value. Units depend on modality:   -
             `FIXED_VALUE_UNTIL_SPECIFIED_DATE`: cents.   -
             `PERCENTAGE_UNTIL_SPECIFIED_DATE`: basis points (e.g. 100 = 1.00%).
         data (date | None): Server-computed absolute date (`YYYY-MM-DD`) corresponding
@@ -876,7 +880,7 @@ class ChargePayloadDiscountSettingsDiscountFixedDateItem(BaseSchema):
         ge=1,
         default=None,
     )
-    value: float | None = Field(
+    value: int | None = Field(
         description=(
             "Discount value. Units depend on modality:\n  - "
             "`FIXED_VALUE_UNTIL_SPECIFIED_DATE`: cents.\n  - "
@@ -899,12 +903,12 @@ class ChargePayloadFines(BaseSchema):
     OVERDUE.
 
     Attributes:
-        value (float | None): Value in basis points of fines to be applied when the
-            charge hits the deadline
+        value (int | None): Value in basis points of fines to be applied when the charge
+            hits the deadline
         type (ChargePayloadInterestsType | None): Type of fine calculation to be applied
     """
 
-    value: float | None = Field(
+    value: int | None = Field(
         description=(
             "Value in basis points of fines to be applied when the charge hits the "
             "deadline"
@@ -922,13 +926,13 @@ class ChargePayloadInterests(BaseSchema):
     OVERDUE.
 
     Attributes:
-        value (float | None): Value in basis points of interests to be applied daily
-            after the charge hits the deadline
+        value (int | None): Value in basis points of interests to be applied daily after
+            the charge hits the deadline
         type (ChargePayloadInterestsType | None): Type of interest calculation to be
             applied
     """
 
-    value: float | None = Field(
+    value: int | None = Field(
         description=(
             "Value in basis points of interests to be applied daily after the charge "
             "hits the deadline"
@@ -945,7 +949,7 @@ class ChargePayloadSplitsItem(BaseSchema):
     """Schema generated for ChargePayloadSplitsItem.
 
     Attributes:
-        value (float): how much value of that charge will be splitted
+        value (int): how much value of that charge will be splitted
         pix_key (str): the pixKey of the company bank account that will receive this
             split
         split_type (ChargePayloadSplitsItemSplitType | None): The type of the split.
@@ -956,7 +960,7 @@ class ChargePayloadSplitsItem(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    value: float = Field(description="how much value of that charge will be splitted")
+    value: int = Field(description="how much value of that charge will be splitted")
     pix_key: str = Field(
         validation_alias="pixKey",
         serialization_alias="pixKey",
@@ -985,6 +989,8 @@ class ChargePaymentMethodsPixAdditionalInfoItem(BaseSchema):
         value (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     key: str | None = None
     value: str | None = None
 
@@ -993,20 +999,20 @@ class ChargeRefund(BaseSchema):
     """Schema generated for ChargeRefund.
 
     Attributes:
-        value (float | None): Value in cents of this refund
+        value (int | None): Value in cents of this refund
         status (ChargeRefundStatus | None): Undocumented in the spec.
         correlation_id (str | None): Your correlation ID to keep track of this refund
         end_to_end_id (str | None): The endToEndId of this refund
         time (str | None): Time of this refund
         comment (str | None): Comment of this refund
+        refund_id (str | None): Unique refund ID for this refund. The specification
+            declares this field on `Refund` (a Pix transaction refund) but not on
+            `ChargeRefund`, while the API returns it on both.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    value: float | None = Field(
-        description="Value in cents of this refund",
-        default=None,
-    )
+    value: int | None = Field(description="Value in cents of this refund", default=None)
     status: ChargeRefundStatus | None = None
     correlation_id: str | None = Field(
         validation_alias="correlationID",
@@ -1022,6 +1028,16 @@ class ChargeRefund(BaseSchema):
     )
     time: str | None = Field(description="Time of this refund", default=None)
     comment: str | None = Field(description="Comment of this refund", default=None)
+    refund_id: str | None = Field(
+        validation_alias="refundId",
+        serialization_alias="refundId",
+        description=(
+            "Unique refund ID for this refund. The specification declares this field "
+            "on `Refund` (a Pix transaction refund) but not on `ChargeRefund`, while "
+            "the API returns it on both."
+        ),
+        default=None,
+    )
 
 
 class ChargeRefundPayload(BaseSchema):
@@ -1029,7 +1045,7 @@ class ChargeRefundPayload(BaseSchema):
 
     Attributes:
         correlation_id (str): Your correlation ID to keep track for this refund
-        value (float | None): Value in cents for this refund
+        value (int | None): Value in cents for this refund
         comment (str | None): Comment for this refund. Maximum length of 140 characters.
     """
 
@@ -1040,7 +1056,7 @@ class ChargeRefundPayload(BaseSchema):
         serialization_alias="correlationID",
         description="Your correlation ID to keep track for this refund",
     )
-    value: float | None = Field(
+    value: int | None = Field(
         description="Value in cents for this refund",
         default=None,
     )
@@ -1093,28 +1109,24 @@ class CompanyBankAccountBalance(BaseSchema):
     """Schema generated for CompanyBankAccountBalance.
 
     Attributes:
-        total (float | None): Total amount in cents
-        blocked (float | None): Total blocked amount in cents (security + withdraw
-            safety)
-        available (float | None): Available amount in cents
-        blocked_by_security (float | None): Amount blocked due to security restrictions
+        total (int | None): Total amount in cents
+        blocked (int | None): Total blocked amount in cents (security + withdraw safety)
+        available (int | None): Available amount in cents
+        blocked_by_security (int | None): Amount blocked due to security restrictions
             (e.g., PIX_OUT blocking)
-        blocked_by_withdraw_safety (float | None): Amount blocked as minimum balance
+        blocked_by_withdraw_safety (int | None): Amount blocked as minimum balance
             reserve (withdraw safety value)
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    total: float | None = Field(description="Total amount in cents", default=None)
-    blocked: float | None = Field(
+    total: int | None = Field(description="Total amount in cents", default=None)
+    blocked: int | None = Field(
         description="Total blocked amount in cents (security + withdraw safety)",
         default=None,
     )
-    available: float | None = Field(
-        description="Available amount in cents",
-        default=None,
-    )
-    blocked_by_security: float | None = Field(
+    available: int | None = Field(description="Available amount in cents", default=None)
+    blocked_by_security: int | None = Field(
         validation_alias="blockedBySecurity",
         serialization_alias="blockedBySecurity",
         description=(
@@ -1122,7 +1134,7 @@ class CompanyBankAccountBalance(BaseSchema):
         ),
         default=None,
     )
-    blocked_by_withdraw_safety: float | None = Field(
+    blocked_by_withdraw_safety: int | None = Field(
         validation_alias="blockedByWithdrawSafety",
         serialization_alias="blockedByWithdrawSafety",
         description="Amount blocked as minimum balance reserve (withdraw safety value)",
@@ -1143,6 +1155,8 @@ class CustomerAddress(BaseSchema):
         complement (str | None): Undocumented in the spec.
         country (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     zipcode: str | None = None
     street: str | None = None
@@ -1210,7 +1224,7 @@ class CustomerTaxId(BaseSchema):
         type (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     tax_id: str | None = Field(
         validation_alias="taxID",
@@ -1228,7 +1242,7 @@ class DeleteApiV1AccountByAccountIdResponse(BaseSchema):
         account_id (str | None): ID of the Account
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     status: str | None = Field(
         description="Operation status",
@@ -1252,7 +1266,7 @@ class DeleteApiV1AccountRegisterByIdResponse(BaseSchema):
         account_register_id (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     message: str | None = Field(
         examples=["Account register successfully deleted"],
@@ -1273,6 +1287,8 @@ class DeleteApiV1ApplicationResponse(BaseSchema):
         success (bool | None): Indicates the operation was successful
     """
 
+    model_config = ConfigDict(extra="allow")
+
     success: bool | None = Field(
         description="Indicates the operation was successful",
         default=None,
@@ -1286,6 +1302,8 @@ class DeleteApiV1ChargeByIdResponse(BaseSchema):
         status (str | None): Undocumented in the spec.
         id (str | None): the id previously informed to be found and deleted
     """
+
+    model_config = ConfigDict(extra="allow")
 
     status: str | None = None
     id: str | None = Field(
@@ -1302,6 +1320,8 @@ class DeleteApiV1QrcodeStaticByIdResponse(BaseSchema):
         id (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     status: str | None = None
     id: str | None = None
 
@@ -1314,7 +1334,7 @@ class DeleteApiV1SubaccountByIdResponse(BaseSchema):
         pix_key (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     status: str | None = Field(examples=["OK"], default=None)
     pix_key: str | None = Field(
@@ -1332,6 +1352,8 @@ class DeleteApiV1WebhookByIdResponse(BaseSchema):
         status (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     status: str | None = None
 
 
@@ -1344,7 +1366,7 @@ class Dispute(BaseSchema):
         email (str | None): The Email of the payer who created this dispute.
         phone_number (str | None): The phone number of the payer who created this
             dispute.
-        value (float | None): The value of the dispute.
+        value (int | None): The value of the dispute.
         dispute_reason (str | None): Reason provided to justify the dispute.
         end_to_end_id (str | None): The endToEndId of the dispute (Is the same of the
             endToEndId transaction related).
@@ -1369,7 +1391,7 @@ class Dispute(BaseSchema):
         description="The phone number of the payer who created this dispute.",
         default=None,
     )
-    value: float | None = Field(description="The value of the dispute.", default=None)
+    value: int | None = Field(description="The value of the dispute.", default=None)
     dispute_reason: str | None = Field(
         validation_alias="disputeReason",
         serialization_alias="disputeReason",
@@ -1405,7 +1427,7 @@ class DisputePayload(BaseSchema):
         name (str): The name of the payer who created this dispute.
         email (str): The Email of the payer who created this dispute.
         phone_number (str): The phone number of the payer who created this dispute.
-        value (float): The value of the dispute.
+        value (int): The value of the dispute.
         dispute_reason (str): Reason provided to justify the dispute.
         end_to_end_id (str): The endToEndId of the dispute (Is the same of the
             endToEndId transaction related).
@@ -1421,7 +1443,7 @@ class DisputePayload(BaseSchema):
         serialization_alias="phoneNumber",
         description="The phone number of the payer who created this dispute.",
     )
-    value: float = Field(description="The value of the dispute.")
+    value: int = Field(description="The value of the dispute.")
     dispute_reason: str = Field(
         validation_alias="disputeReason",
         serialization_alias="disputeReason",
@@ -1470,6 +1492,8 @@ class FundsRecoveryEventsItem(BaseSchema):
         event (str | None): Event name
         timestamp (str | None): When the event occurred, in ISO 8601 format
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = Field(description="Event id", default=None)
     event: str | None = Field(description="Event name", default=None)
@@ -1532,7 +1556,7 @@ class GetApiImageQrcodeBase64ByIdResponse(BaseSchema):
         image_base64 (str | None): Base64 encoded PNG image with data URL format
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     success: bool | None = Field(examples=[True], default=None)
     image_base64: str | None = Field(
@@ -1552,7 +1576,7 @@ class GetApiV1AccountRegisterResponseTaxId(BaseSchema):
         type (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     tax_id: str | None = Field(
         validation_alias="taxID",
@@ -1567,23 +1591,27 @@ class GetApiV1AccountResponsePageInfoErrorsItemData(BaseSchema):
     """Schema generated for GetApiV1AccountResponsePageInfoErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class GetApiV1CashbackFidelityBalanceByTaxIdResponse(BaseSchema):
     """Schema generated for GetApiV1CashbackFidelityBalanceByTaxIdResponse.
 
     Attributes:
-        balance (float | None): Undocumented in the spec.
+        balance (int | None): Undocumented in the spec.
         status (str | None): Undocumented in the spec.
     """
 
-    balance: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    balance: int | None = None
     status: str | None = None
 
 
@@ -1591,12 +1619,14 @@ class GetApiV1ChargeResponsePageInfoErrorsItemData(BaseSchema):
     """Schema generated for GetApiV1ChargeResponsePageInfoErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class GetApiV1CompanyResponseCompany(BaseSchema):
@@ -1609,7 +1639,7 @@ class GetApiV1CompanyResponseCompany(BaseSchema):
         correlation_id (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     official_name: str | None = Field(
         validation_alias="officialName",
@@ -1637,12 +1667,14 @@ class GetApiV1CustomerResponsePageInfoErrorsItemData(BaseSchema):
     """Schema generated for GetApiV1CustomerResponsePageInfoErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class GetApiV1DisputeByIdResponseDispute(BaseSchema):
@@ -1662,7 +1694,7 @@ class GetApiV1DisputeByIdResponseDispute(BaseSchema):
         type (GetApiV1DisputeByIdResponseDisputeType | None): The type of the dispute
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     status: GetApiV1DisputeByIdResponseDisputeStatus | None = None
     name: str | None = Field(
@@ -1710,7 +1742,7 @@ class GetApiV1DisputeResponseDisputesItem(BaseSchema):
         email (str | None): The Email of the payer who created this dispute.
         phone_number (str | None): The phone number of the payer who created this
             dispute.
-        value (float | None): The value of the dispute.
+        value (int | None): The value of the dispute.
         dispute_reason (str | None): Reason provided to justify the dispute.
         end_to_end_id (str | None): The endToEndId of the dispute (Is the same of the
             endToEndId transaction related).
@@ -1719,7 +1751,7 @@ class GetApiV1DisputeResponseDisputesItem(BaseSchema):
         type (GetApiV1DisputeResponseDisputesItemType | None): The type of the dispute
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     status: DisputeStatus | None = None
     name: str | None = Field(
@@ -1736,7 +1768,7 @@ class GetApiV1DisputeResponseDisputesItem(BaseSchema):
         description="The phone number of the payer who created this dispute.",
         default=None,
     )
-    value: float | None = Field(description="The value of the dispute.", default=None)
+    value: int | None = Field(description="The value of the dispute.", default=None)
     dispute_reason: str | None = Field(
         validation_alias="disputeReason",
         serialization_alias="disputeReason",
@@ -1772,60 +1804,70 @@ class GetApiV1DisputeResponsePageInfoErrorsItemData(BaseSchema):
     """Schema generated for GetApiV1DisputeResponsePageInfoErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class GetApiV1PartnerAffiliateResponsePageInfoErrorsItemData(BaseSchema):
     """Schema generated for GetApiV1PartnerAffiliateResponsePageInfoErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class GetApiV1PartnerCompanyResponsePageInfoErrorsItemData(BaseSchema):
     """Schema generated for GetApiV1PartnerCompanyResponsePageInfoErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class GetApiV1PaymentResponsePageInfoErrorsItemData(BaseSchema):
     """Schema generated for GetApiV1PaymentResponsePageInfoErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class GetApiV1PixKeysTokensLogsResponsePageInfoErrorsItemData(BaseSchema):
     """Schema generated for GetApiV1PixKeysTokensLogsResponsePageInfoErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class GetApiV1PspResponsePspsItem(BaseSchema):
@@ -1837,6 +1879,8 @@ class GetApiV1PspResponsePspsItem(BaseSchema):
         code (str | None): The code of the PSP
         compe (str | None): The COMPE code of the PSP
     """
+
+    model_config = ConfigDict(extra="allow")
 
     name: str | None = Field(
         description="The name of the PSP",
@@ -1864,24 +1908,28 @@ class GetApiV1QrcodeStaticResponsePageInfoErrorsItemData(BaseSchema):
     """Schema generated for GetApiV1QrcodeStaticResponsePageInfoErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class GetApiV1RefundResponsePageInfoErrorsItemData(BaseSchema):
     """Schema generated for GetApiV1RefundResponsePageInfoErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class GetApiV1StablecoinQuoteResponseQuoteAppliedFeesItem(BaseSchema):
@@ -1892,6 +1940,8 @@ class GetApiV1StablecoinQuoteResponseQuoteAppliedFeesItem(BaseSchema):
         amount (float | None): Undocumented in the spec.
         currency (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     type: str | None = Field(examples=["In Fee"], default=None)
     amount: float | None = Field(examples=[1.5], default=None)
@@ -1905,13 +1955,13 @@ class GetApiV1StatementResponseItem(BaseSchema):
         id (str | None): Unique identifier for the ledger entry
         time (datetime | None): Date and time of the transaction
         description (str | None): Description of the transaction
-        balance (float | None): Account balance after this transaction
-        value (float | None): Transaction amount
+        balance (int | None): Account balance after this transaction
+        value (int | None): Transaction amount
         type (str | None): Type of transaction
         transaction_id (str | None): Transaction tracking ID
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     id: str | None = Field(
         description="Unique identifier for the ledger entry",
@@ -1928,12 +1978,12 @@ class GetApiV1StatementResponseItem(BaseSchema):
         examples=["Payment received from customer"],
         default=None,
     )
-    balance: float | None = Field(
+    balance: int | None = Field(
         description="Account balance after this transaction",
         examples=[1500.5],
         default=None,
     )
-    value: float | None = Field(
+    value: int | None = Field(
         description="Transaction amount",
         examples=[100],
         default=None,
@@ -1959,8 +2009,8 @@ class GetApiV1SubaccountByIdStatementResponseItem(BaseSchema):
         id (str | None): Undocumented in the spec.
         time (datetime | None): Undocumented in the spec.
         description (str | None): Undocumented in the spec.
-        balance (float | None): Undocumented in the spec.
-        value (float | None): Undocumented in the spec.
+        balance (int | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         type (GetApiV1SubaccountByIdStatementResponseItemType | None): Undocumented in
             the spec.
         operation_type (GetApiV1SubaccountByIdStatementResponseItemOperationTyp | None):
@@ -1978,7 +2028,7 @@ class GetApiV1SubaccountByIdStatementResponseItem(BaseSchema):
             taxa de saque                          |
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     id: str | None = Field(examples=["507f1f77bcf86cd799439011"], default=None)
     time: datetime | None = Field(examples=["2023-12-01T10:30:00.000Z"], default=None)
@@ -1986,8 +2036,8 @@ class GetApiV1SubaccountByIdStatementResponseItem(BaseSchema):
         examples=["Payment received from customer"],
         default=None,
     )
-    balance: float | None = Field(examples=[1500], default=None)
-    value: float | None = Field(examples=[100], default=None)
+    balance: int | None = Field(examples=[1500], default=None)
+    value: int | None = Field(examples=[100], default=None)
     type: GetApiV1SubaccountByIdStatementResponseItemType | None = Field(
         examples=["CREDIT"],
         default=None,
@@ -2020,12 +2070,14 @@ class GetApiV1SubaccountResponsePageInfoErrorsItemData(BaseSchema):
     """Schema generated for GetApiV1SubaccountResponsePageInfoErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class GetApiV1SubaccountResponseSubaccountsItem(BaseSchema):
@@ -2034,11 +2086,11 @@ class GetApiV1SubaccountResponseSubaccountsItem(BaseSchema):
     Attributes:
         name (str | None): Undocumented in the spec.
         pix_key (str | None): Undocumented in the spec.
-        balance (float | None): Undocumented in the spec.
+        balance (int | None): Undocumented in the spec.
         withdraw_blocked (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = None
     pix_key: str | None = Field(
@@ -2046,7 +2098,7 @@ class GetApiV1SubaccountResponseSubaccountsItem(BaseSchema):
         serialization_alias="pixKey",
         default=None,
     )
-    balance: float | None = None
+    balance: int | None = None
     withdraw_blocked: bool | None = Field(
         validation_alias="withdrawBlocked",
         serialization_alias="withdrawBlocked",
@@ -2058,12 +2110,14 @@ class GetApiV1TransactionResponsePageInfoErrorsItemData(BaseSchema):
     """Schema generated for GetApiV1TransactionResponsePageInfoErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class GetApiV1WebhookEventsResponseEventsItem(BaseSchema):
@@ -2105,6 +2159,8 @@ class GetApiV1WebhookEventsResponseEventsItem(BaseSchema):
             **PIX_AUTOMATIC_COBR_TRY_REJECTED** - Pix Automatic cobr try rejected *
             **PIX_AUTOMATIC_COBR_TRY_REQUESTED** - Pix Automatic cobr try requested
     """
+
+    model_config = ConfigDict(extra="allow")
 
     name: WebhookEventEnum | None = Field(
         description=(
@@ -2155,6 +2211,8 @@ class GetApiV1WebhookIpsResponse(BaseSchema):
         ips (list[str]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     ips: list[str] = Field(default_factory=list)
 
 
@@ -2162,12 +2220,14 @@ class GetApiV1WebhookResponsePageInfoErrorsItemData(BaseSchema):
     """Schema generated for GetApiV1WebhookResponsePageInfoErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class InstallmentCobrTriesItem(BaseSchema):
@@ -2177,13 +2237,13 @@ class InstallmentCobrTriesItem(BaseSchema):
         try_status (str | None): Undocumented in the spec.
         finality_purpose (str | None): Undocumented in the spec.
         reject_code (str | None): Undocumented in the spec.
-        value (float | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         requested_execution_date (datetime | None): Undocumented in the spec.
         created_at (datetime | None): Undocumented in the spec.
         updated_at (datetime | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     try_status: str | None = Field(
         validation_alias="tryStatus",
@@ -2200,7 +2260,7 @@ class InstallmentCobrTriesItem(BaseSchema):
         serialization_alias="rejectCode",
         default=None,
     )
-    value: float | None = None
+    value: int | None = None
     requested_execution_date: datetime | None = Field(
         validation_alias="requestedExecutionDate",
         serialization_alias="requestedExecutionDate",
@@ -2226,7 +2286,7 @@ class KycOnboardingAccountRegisterRepresentativesItemTaxId(BaseSchema):
         type (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     tax_id: str | None = Field(
         validation_alias="taxID",
@@ -2245,7 +2305,7 @@ class KycOnboardingAccountRegisterTaxId(BaseSchema):
         type (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     tax_id: str | None = Field(
         validation_alias="taxID",
@@ -2293,12 +2353,14 @@ class PaginationErrorsItemData(BaseSchema):
     """Schema generated for PaginationErrorsItemData.
 
     Attributes:
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
     """
 
-    skip: float | None = None
-    limit: float | None = None
+    model_config = ConfigDict(extra="allow")
+
+    skip: int | None = None
+    limit: int | None = None
 
 
 class PartnerApplicationPayload(BaseSchema):
@@ -2315,7 +2377,7 @@ class PartnerApplicationPayload(BaseSchema):
             control.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = Field(
         description="The name that identifies your application.",
@@ -2361,7 +2423,7 @@ class PartyAccount(BaseSchema):
         account_type (str | None): account type
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     branch: str | None = Field(description="account branch", default=None)
     account: str | None = Field(description="account number", default=None)
@@ -2381,7 +2443,7 @@ class PartyHolder(BaseSchema):
         name_friendly (str | None): holder name friendly
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = Field(description="holder name", default=None)
     name_friendly: str | None = Field(
@@ -2401,6 +2463,8 @@ class PartyPsp(BaseSchema):
         code (str | None): psp code
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = Field(description="psp id", default=None)
     name: str | None = Field(description="psp name", default=None)
     code: str | None = Field(description="psp code", default=None)
@@ -2414,7 +2478,7 @@ class PartyTaxId(BaseSchema):
         type (str | None): taxID type
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     tax_id: str | None = Field(
         validation_alias="taxID",
@@ -2434,7 +2498,7 @@ class PatchApiV1ChargeByIdResponse(BaseSchema):
         expires_date (str | None): new date to expire specfic charge
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     status: str | None = None
     id: str | None = Field(
@@ -2471,7 +2535,7 @@ class PatchApiV1InvoiceIntegrationResponseIntegration(BaseSchema):
         is_active (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     id: str | None = None
     type: str | None = None
@@ -2531,7 +2595,7 @@ class PaymentBoletoFinalBeneficiary(BaseSchema):
         tax_id (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = None
     tax_id: str | None = Field(
@@ -2548,6 +2612,8 @@ class PaymentBoletoIssuingEntity(BaseSchema):
         code (str | None): Undocumented in the spec.
         name (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     code: str | None = None
     name: str | None = None
@@ -2645,7 +2711,7 @@ class PaymentCreatePayloadPixKey(BaseSchema):
 
     Attributes:
         type (PaymentCreatePayloadPixKeyType): type of the payment
-        value (float): value of the requested payment in cents
+        value (int): value of the requested payment in cents
         destination_alias (str): the pix key the payment should be sent to
         destination_alias_type (PaymentCreatePayloadPixKeyDestinationAliasType): the
             type of the pix key the payment should be sent to
@@ -2660,7 +2726,7 @@ class PaymentCreatePayloadPixKey(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
-    value: float = Field(description="value of the requested payment in cents")
+    value: int = Field(description="value of the requested payment in cents")
     destination_alias: str = Field(
         validation_alias="destinationAlias",
         serialization_alias="destinationAlias",
@@ -2701,7 +2767,7 @@ class PaymentCreatePayloadQrCode(BaseSchema):
         type (PaymentCreatePayloadPixKeyType): type of the payment
         qr_code (str): the BR Code (Pix QR Code) string to be paid. The system will
             decode it and extract the destination and value automatically
-        value (float | None): optional value in cents. Use this to override the value
+        value (int | None): optional value in cents. Use this to override the value
             extracted from the QR Code, or to set a value for QR Codes without a fixed
             amount
         correlation_id (str): a unique identifier for your payment
@@ -2723,7 +2789,7 @@ class PaymentCreatePayloadQrCode(BaseSchema):
             "and extract the destination and value automatically"
         ),
     )
-    value: float | None = Field(
+    value: int | None = Field(
         description=(
             "optional value in cents. Use this to override the value extracted from "
             "the QR Code, or to set a value for QR Codes without a fixed amount"
@@ -2763,7 +2829,7 @@ class PaymentDestination(BaseSchema):
         account (str | None): the payment destination bank account
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = Field(
         description="the name of the payment destination",
@@ -2804,7 +2870,7 @@ class PixKey(BaseSchema):
         is_default (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     key: str | None = None
     type: PixKeyType | None = None
@@ -2826,7 +2892,7 @@ class PixKeyCheckOwner(BaseSchema):
         tax_id (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     account: str | None = None
     branch: str | None = None
@@ -2862,7 +2928,7 @@ class PixKeyTokens(BaseSchema):
         refresh_rate (float | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     tokens: float | None = None
     max_tokens: float | None = Field(
@@ -2906,7 +2972,7 @@ class PixQrCode(BaseSchema):
         updated_at (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = None
     value: str | None = None
@@ -2967,7 +3033,7 @@ class PixQrCodePayload(BaseSchema):
     Attributes:
         name (str): Name of this pix qrcode
         correlation_id (str | None): Your correlation ID to keep track of this qrcode
-        value (float | None): Value in cents of this qrcode
+        value (int | None): Value in cents of this qrcode
         comment (str | None): Comment to be added in infoPagador
         pix_key (str | None): The pix key that this qrcode is associated with
     """
@@ -2981,10 +3047,7 @@ class PixQrCodePayload(BaseSchema):
         description="Your correlation ID to keep track of this qrcode",
         default=None,
     )
-    value: float | None = Field(
-        description="Value in cents of this qrcode",
-        default=None,
-    )
+    value: int | None = Field(description="Value in cents of this qrcode", default=None)
     comment: str | None = Field(
         description="Comment to be added in infoPagador",
         default=None,
@@ -3001,10 +3064,10 @@ class PostApiV1AccountByAccountIdWithdrawBody(BaseSchema):
     """Schema generated for PostApiV1AccountByAccountIdWithdrawBody.
 
     Attributes:
-        value (float | None): Value in cents
+        value (int | None): Value in cents
     """
 
-    value: float | None = Field(description="Value in cents", default=None)
+    value: int | None = Field(description="Value in cents", default=None)
 
 
 class PostApiV1CashbackFidelityBody(BaseSchema):
@@ -3012,7 +3075,7 @@ class PostApiV1CashbackFidelityBody(BaseSchema):
 
     Attributes:
         tax_id (str | None): Customer taxID (CPF or CNPJ)
-        value (float | None): Cashback value in centavos
+        value (int | None): Cashback value in centavos
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -3023,17 +3086,19 @@ class PostApiV1CashbackFidelityBody(BaseSchema):
         description="Customer taxID (CPF or CNPJ)",
         default=None,
     )
-    value: float | None = Field(description="Cashback value in centavos", default=None)
+    value: int | None = Field(description="Cashback value in centavos", default=None)
 
 
 class PostApiV1CashbackFidelityResponseCashback(BaseSchema):
     """Object representing the existing cashback.
 
     Attributes:
-        value (float | None): Cashback value in centavos
+        value (int | None): Cashback value in centavos
     """
 
-    value: float | None = Field(description="Cashback value in centavos", default=None)
+    model_config = ConfigDict(extra="allow")
+
+    value: int | None = Field(description="Cashback value in centavos", default=None)
 
 
 class PostApiV1DecodeEmvBody(BaseSchema):
@@ -3059,6 +3124,8 @@ class PostApiV1DecodeEmvResponseCobLocationPayloadAdditionalI(BaseSchema):
         value (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     name: str | None = None
     value: str | None = None
 
@@ -3071,6 +3138,8 @@ class PostApiV1DecodeEmvResponseCobLocationPayloadCalendar(BaseSchema):
         expiration (int | None): Undocumented in the spec.
         creation (datetime | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     presentation: datetime | None = None
     expiration: int | None = None
@@ -3085,6 +3154,8 @@ class PostApiV1DecodeEmvResponseCobLocationPayloadDebtor(BaseSchema):
         name (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     cpf: str | None = None
     name: str | None = None
 
@@ -3096,6 +3167,8 @@ class PostApiV1DecodeEmvResponseCobLocationPayloadValue(BaseSchema):
         original (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     original: str | None = None
 
 
@@ -3106,7 +3179,7 @@ class PostApiV1DecodeEmvResponseEmvAdditionalDataFieldTemplat(BaseSchema):
         reference_label (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     reference_label: str | None = Field(
         validation_alias="referenceLabel",
@@ -3125,7 +3198,7 @@ class PostApiV1DecodeEmvResponseEmvMerchantAccountInformation(BaseSchema):
         additional_information (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     gui: str | None = None
     pix_key: str | None = Field(
@@ -3153,6 +3226,8 @@ class PostApiV1DecodeEmvResponseEmvUnreservedTemplates(BaseSchema):
         url (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     gui: str | None = None
     url: str | None = None
 
@@ -3165,7 +3240,7 @@ class PostApiV1DecodeEmvResponseRecLocationPayloadCalendar(BaseSchema):
         periodicity (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     start_date: date | None = Field(
         validation_alias="startDate",
@@ -3183,6 +3258,8 @@ class PostApiV1DecodeEmvResponseRecLocationPayloadLinkDebtor(BaseSchema):
         name (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     cpf: str | None = None
     name: str | None = None
 
@@ -3196,7 +3273,7 @@ class PostApiV1DecodeEmvResponseRecLocationPayloadReceiver(BaseSchema):
         name (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     cnpj: str | None = None
     participant_ispb: str | None = Field(
@@ -3215,6 +3292,8 @@ class PostApiV1DecodeEmvResponseRecLocationPayloadUpdatesItem(BaseSchema):
         status (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     date: datetime | None = None
     status: str | None = None
 
@@ -3226,7 +3305,7 @@ class PostApiV1DecodeEmvResponseRecLocationPayloadValue(BaseSchema):
         value_rec (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     value_rec: str | None = Field(
         validation_alias="valueRec",
@@ -3265,7 +3344,7 @@ class PostApiV1DisputeIdEvidenceResponseDocumentsItem(BaseSchema):
         description (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     url: str | None = Field(
         description="Document url",
@@ -3290,26 +3369,20 @@ class PostApiV1InstallmentsByIdCobrBody(BaseSchema):
     """Schema generated for PostApiV1InstallmentsByIdCobrBody.
 
     Attributes:
-        value (float | None): Valor da cobrança (Opcional)
+        value (int | None): Valor da cobrança (Opcional)
     """
 
-    value: float | None = Field(
-        description="Valor da cobrança (Opcional)",
-        default=None,
-    )
+    value: int | None = Field(description="Valor da cobrança (Opcional)", default=None)
 
 
 class PostApiV1InstallmentsByIdCobrRetryBody(BaseSchema):
     """Schema generated for PostApiV1InstallmentsByIdCobrRetryBody.
 
     Attributes:
-        value (float | None): Valor da cobrança (Opcional)
+        value (int | None): Valor da cobrança (Opcional)
     """
 
-    value: float | None = Field(
-        description="Valor da cobrança (Opcional)",
-        default=None,
-    )
+    value: int | None = Field(description="Valor da cobrança (Opcional)", default=None)
 
 
 class PostApiV1InvoiceByCorrelationIdCancelResponse(BaseSchema):
@@ -3318,6 +3391,8 @@ class PostApiV1InvoiceByCorrelationIdCancelResponse(BaseSchema):
     Attributes:
         success (bool | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     success: bool | None = None
 
@@ -3416,6 +3491,8 @@ class PostApiV1InvoiceIntegrationCertificateResponseIntegrati(BaseSchema):
         status (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     status: str | None = None
 
 
@@ -3436,7 +3513,7 @@ class PostApiV1InvoiceIntegrationResponseIntegrationMetadataN(BaseSchema):
         legal_nature (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     nfeio_company_id: str | None = Field(
         validation_alias="nfeioCompanyId",
@@ -3498,6 +3575,8 @@ class PostApiV1InvoiceIntegrationTestResponseIntegration(BaseSchema):
         id (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
 
 
@@ -3508,6 +3587,8 @@ class PostApiV1InvoiceIntegrationTestResponseInvoice(BaseSchema):
         id (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
 
 
@@ -3516,20 +3597,20 @@ class PostApiV1InvoiceResponseInvoiceCharge(BaseSchema):
 
     Attributes:
         correlation_id (str | None): Undocumented in the spec.
-        value (float | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         status (str | None): Undocumented in the spec.
         paid_at (datetime | None): Undocumented in the spec.
         date (datetime | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     correlation_id: str | None = Field(
         validation_alias="correlationID",
         serialization_alias="correlationID",
         default=None,
     )
-    value: float | None = None
+    value: int | None = None
     status: str | None = None
     paid_at: datetime | None = Field(
         validation_alias="paidAt",
@@ -3547,7 +3628,7 @@ class PostApiV1InvoiceResponseInvoiceCustomer(BaseSchema):
         name (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     correlation_id: str | None = Field(
         validation_alias="correlationID",
@@ -3687,7 +3768,7 @@ class PostApiV1PaymentBodyPixKey(BaseSchema):
 
     Attributes:
         type (PaymentCreatePayloadPixKeyType): type of the payment
-        value (float): value of the requested payment in cents
+        value (int): value of the requested payment in cents
         destination_alias (str): the pix key the payment should be sent to
         destination_alias_type (PaymentCreatePayloadPixKeyDestinationAliasType): the
             type of the pix key the payment should be sent to
@@ -3704,7 +3785,7 @@ class PostApiV1PaymentBodyPixKey(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
-    value: float = Field(description="value of the requested payment in cents")
+    value: int = Field(description="value of the requested payment in cents")
     destination_alias: str = Field(
         validation_alias="destinationAlias",
         serialization_alias="destinationAlias",
@@ -3754,7 +3835,7 @@ class PostApiV1PaymentBodyQrCode(BaseSchema):
         type (PaymentCreatePayloadPixKeyType): type of the payment
         qr_code (str): the BR Code (Pix QR Code) string to be paid. The system will
             decode it and extract the destination and value automatically
-        value (float | None): optional value in cents. Use this to override the value
+        value (int | None): optional value in cents. Use this to override the value
             extracted from the QR Code, or to set a value for QR Codes without a fixed
             amount
         correlation_id (str): a unique identifier for your payment
@@ -3778,7 +3859,7 @@ class PostApiV1PaymentBodyQrCode(BaseSchema):
             "and extract the destination and value automatically"
         ),
     )
-    value: float | None = Field(
+    value: int | None = Field(
         description=(
             "optional value in cents. Use this to override the value extracted from "
             "the QR Code, or to set a value for QR Codes without a fixed amount"
@@ -3857,7 +3938,7 @@ class PostApiV1StablecoinDepositApproveResponse(BaseSchema):
         deposit_id (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     status: str | None = Field(
         description="The deposit status after approval.",
@@ -3882,11 +3963,11 @@ class PostApiV1SubaccountByIdCreditBody(BaseSchema):
     """Schema generated for PostApiV1SubaccountByIdCreditBody.
 
     Attributes:
-        value (float): Amount to credit to the account
+        value (int): Amount to credit to the account
         description (str | None): Optional description for the credit operation
     """
 
-    value: float = Field(description="Amount to credit to the account")
+    value: int = Field(description="Amount to credit to the account")
     description: str | None = Field(
         description="Optional description for the credit operation",
         default=None,
@@ -3898,12 +3979,12 @@ class PostApiV1SubaccountByIdCreditResponse(BaseSchema):
 
     Attributes:
         pix_key (str | None): Undocumented in the spec.
-        value (float | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         description (str | None): Undocumented in the spec.
         success (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     pix_key: str | None = Field(
         validation_alias="pixKey",
@@ -3911,7 +3992,7 @@ class PostApiV1SubaccountByIdCreditResponse(BaseSchema):
         examples=["subaccount@test.com"],
         default=None,
     )
-    value: float | None = Field(examples=[100], default=None)
+    value: int | None = Field(examples=[100], default=None)
     description: str | None = Field(examples=["Monthly deposit"], default=None)
     success: str | None = Field(
         examples=["Sub-account withdrawal has been successfully credited, 100"],
@@ -3923,11 +4004,11 @@ class PostApiV1SubaccountByIdDebitBody(BaseSchema):
     """Schema generated for PostApiV1SubaccountByIdDebitBody.
 
     Attributes:
-        value (float): Amount to debit from the account
+        value (int): Amount to debit from the account
         description (str | None): Optional description for the debit operation
     """
 
-    value: float = Field(description="Amount to debit from the account")
+    value: int = Field(description="Amount to debit from the account")
     description: str | None = Field(
         description="Optional description for the debit operation",
         default=None,
@@ -3939,12 +4020,12 @@ class PostApiV1SubaccountByIdDebitResponse(BaseSchema):
 
     Attributes:
         pix_key (str | None): Undocumented in the spec.
-        value (float | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         description (str | None): Undocumented in the spec.
         success (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     pix_key: str | None = Field(
         validation_alias="pixKey",
@@ -3952,7 +4033,7 @@ class PostApiV1SubaccountByIdDebitResponse(BaseSchema):
         examples=["subaccount@test.com"],
         default=None,
     )
-    value: float | None = Field(examples=[50], default=None)
+    value: int | None = Field(examples=[50], default=None)
     description: str | None = Field(examples=["Monthly payment"], default=None)
     success: str | None = Field(
         examples=["Sub-account withdrawal has been successfully debited, 50"],
@@ -4057,6 +4138,8 @@ class PutApiV1InvoiceIntegrationResponse(BaseSchema):
         integration (dict[str, Any] | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     integration: dict[str, Any] | None = None
 
 
@@ -4064,7 +4147,7 @@ class Refund(BaseSchema):
     """Schema generated for Refund.
 
     Attributes:
-        value (float | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         status (RefundStatus | None): Undocumented in the spec.
         correlation_id (str | None): Your correlation ID to keep track of this refund
         refund_id (str | None): Unique refund ID for this pix refund
@@ -4072,9 +4155,9 @@ class Refund(BaseSchema):
         comment (str | None): Comment of this refund
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    value: float | None = None
+    value: int | None = None
     status: RefundStatus | None = None
     correlation_id: str | None = Field(
         validation_alias="correlationID",
@@ -4096,7 +4179,7 @@ class RefundPayload(BaseSchema):
     """Schema generated for RefundPayload.
 
     Attributes:
-        value (float | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         transaction_end_to_end_id (str | None): Your transaction ID, or endToEnd ID, to
             keep track of this refund
         correlation_id (str | None): Your correlation ID, unique identifier refund
@@ -4105,7 +4188,7 @@ class RefundPayload(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    value: float | None = None
+    value: int | None = None
     transaction_end_to_end_id: str | None = Field(
         validation_alias="transactionEndToEndId",
         serialization_alias="transactionEndToEndId",
@@ -4152,12 +4235,12 @@ class StablecoinDepositListItem(BaseSchema):
         correlation_id (str | None): Idempotency identifier supplied at creation. May be
             absent.
         status (str | None): The deposit status.
-        input_amount (float | None): Amount deposited, in cents (BRL).
+        input_amount (int | None): Amount deposited, in cents (BRL).
         input_currency (str | None): Undocumented in the spec.
         output_amount (float | None): Amount of stablecoin received. May be absent until
             quoted.
         output_currency (str | None): Undocumented in the spec.
-        fee (float | None): Total applied fee. May be absent.
+        fee (int | None): Total applied fee. May be absent.
         created_at (str | None): Undocumented in the spec.
     """
 
@@ -4180,7 +4263,7 @@ class StablecoinDepositListItem(BaseSchema):
         examples=["PENDING"],
         default=None,
     )
-    input_amount: float | None = Field(
+    input_amount: int | None = Field(
         validation_alias="inputAmount",
         serialization_alias="inputAmount",
         description="Amount deposited, in cents (BRL).",
@@ -4206,7 +4289,7 @@ class StablecoinDepositListItem(BaseSchema):
         examples=["USDT"],
         default=None,
     )
-    fee: float | None = Field(
+    fee: int | None = Field(
         description="Total applied fee. May be absent.",
         examples=[50],
         default=None,
@@ -4228,10 +4311,10 @@ class StablecoinDepositQuote(BaseSchema):
         output_amount (float | None): Undocumented in the spec.
         output_currency (str | None): Undocumented in the spec.
         rate (float | None): Undocumented in the spec.
-        fee (float | None): Total applied fee (Woovi fee + provider applied fees).
+        fee (int | None): Total applied fee (Woovi fee + provider applied fees).
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     input_amount: float | None = Field(
         validation_alias="inputAmount",
@@ -4258,7 +4341,7 @@ class StablecoinDepositQuote(BaseSchema):
         default=None,
     )
     rate: float | None = Field(examples=[5.42], default=None)
-    fee: float | None = Field(
+    fee: int | None = Field(
         description="Total applied fee (Woovi fee + provider applied fees).",
         examples=[50],
         default=None,
@@ -4269,7 +4352,7 @@ class StablecoinDepositRequest(BaseSchema):
     """Schema generated for StablecoinDepositRequest.
 
     Attributes:
-        value (float): Amount to deposit, in cents (BRL). Must be positive.
+        value (int): Amount to deposit, in cents (BRL). Must be positive.
         currency (StablecoinDepositRequestCurrency): Stablecoin to receive.
         network (StablecoinDepositRequestNetwork | None): Network to receive the
             stablecoin on. Defaults to POLYGON. Must be supported for the chosen
@@ -4283,7 +4366,7 @@ class StablecoinDepositRequest(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    value: float = Field(
+    value: int = Field(
         description="Amount to deposit, in cents (BRL). Must be positive.",
         examples=[10000],
     )
@@ -4378,7 +4461,7 @@ class StablecoinSubAccountCreateResponse(BaseSchema):
         correlation_id (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     sub_account_id: str | None = Field(
         validation_alias="subAccountId",
@@ -4411,7 +4494,7 @@ class StablecoinSubAccountItem(BaseSchema):
         created_at (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     id: str | None = Field(
         description="The StableSubAccount document id.",
@@ -4444,13 +4527,13 @@ class SubAccount(BaseSchema):
     Attributes:
         name (str | None): Name of the sub account
         pix_key (str | None): The pix key for the sub account
-        balance (float | None): Number in cents that represent the balance of the sub
+        balance (int | None): Number in cents that represent the balance of the sub
             account
         withdraw_blocked (bool | None): Whether withdrawals are blocked for this sub
             account due to an invalid or restricted pix key
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = Field(description="Name of the sub account", default=None)
     pix_key: str | None = Field(
@@ -4459,7 +4542,7 @@ class SubAccount(BaseSchema):
         description="The pix key for the sub account",
         default=None,
     )
-    balance: float | None = Field(
+    balance: int | None = Field(
         description="Number in cents that represent the balance of the sub account",
         default=None,
     )
@@ -4497,7 +4580,7 @@ class SubAccountTransferPayload(BaseSchema):
     """Schema generated for SubAccountTransferPayload.
 
     Attributes:
-        value (float): The value of the transfer in cents
+        value (int): The value of the transfer in cents
         from_pix_key (str): The transfer origin pix key
         from_pix_key_type (PaymentCreatePayloadPixKeyDestinationAliasType): The transfer
             origin pix key type
@@ -4509,7 +4592,7 @@ class SubAccountTransferPayload(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    value: float = Field(description="The value of the transfer in cents")
+    value: int = Field(description="The value of the transfer in cents")
     from_pix_key: str = Field(
         validation_alias="fromPixKey",
         serialization_alias="fromPixKey",
@@ -4544,11 +4627,11 @@ class SubAccountTransferResponsePayloadDestinationSubaccount(BaseSchema):
     Attributes:
         name (str | None): Name of the subaccount
         pix_key (str | None): The pix key for the subaccount
-        balance (float | None): Number in cents that represent the balance of the
+        balance (int | None): Number in cents that represent the balance of the
             subaccount
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = Field(description="Name of the subaccount", default=None)
     pix_key: str | None = Field(
@@ -4557,7 +4640,7 @@ class SubAccountTransferResponsePayloadDestinationSubaccount(BaseSchema):
         description="The pix key for the subaccount",
         default=None,
     )
-    balance: float | None = Field(
+    balance: int | None = Field(
         description="Number in cents that represent the balance of the subaccount",
         default=None,
     )
@@ -4569,11 +4652,11 @@ class SubAccountTransferResponsePayloadOriginSubaccount(BaseSchema):
     Attributes:
         name (str | None): Name of the subaccount
         pix_key (str | None): The pix key for the subaccount
-        balance (float | None): Number in cents that represent the balance of the
+        balance (int | None): Number in cents that represent the balance of the
             subaccount
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = Field(description="Name of the subaccount", default=None)
     pix_key: str | None = Field(
@@ -4582,7 +4665,7 @@ class SubAccountTransferResponsePayloadOriginSubaccount(BaseSchema):
         description="The pix key for the subaccount",
         default=None,
     )
-    balance: float | None = Field(
+    balance: int | None = Field(
         description="Number in cents that represent the balance of the subaccount",
         default=None,
     )
@@ -4592,11 +4675,11 @@ class SubAccountWithdrawPayload(BaseSchema):
     """Schema generated for SubAccountWithdrawPayload.
 
     Attributes:
-        value (float | None): Value of the withdrawal in cents if want to make a partial
+        value (int | None): Value of the withdrawal in cents if want to make a partial
             withdrawal
     """
 
-    value: float | None = Field(
+    value: int | None = Field(
         description=(
             "Value of the withdrawal in cents if want to make a partial withdrawal"
         ),
@@ -4611,6 +4694,8 @@ class SubscriptionAddtionalInfoItem(BaseSchema):
         key (str | None): Undocumented in the spec.
         value (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     key: str | None = None
     value: str | None = None
@@ -4660,7 +4745,7 @@ class SubscriptionPayloadPixRecurringOptions(BaseSchema):
             in the spec.
         journey (SubscriptionPixRecurringOptionsJourney | None): Journey type of the pix
             automatic
-        minimum_value (float | None): Minimum value for each cobr
+        minimum_value (int | None): Minimum value for each cobr
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -4674,7 +4759,7 @@ class SubscriptionPayloadPixRecurringOptions(BaseSchema):
         description="Journey type of the pix automatic",
         default=None,
     )
-    minimum_value: float | None = Field(
+    minimum_value: int | None = Field(
         validation_alias="minimumValue",
         serialization_alias="minimumValue",
         description="Minimum value for each cobr",
@@ -4694,7 +4779,7 @@ class SubscriptionPixRecurringOptions(BaseSchema):
             automatic
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     emv: str | None = Field(description="QR Code", default=None)
     status: SubscriptionPixRecurringOptionsStatus | None = Field(
@@ -4721,7 +4806,7 @@ class TaxIdObjectPayload(BaseSchema):
         type (TaxIdObjectPayloadType | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     tax_id: str | None = Field(
         validation_alias="taxID",
@@ -4750,7 +4835,7 @@ class TokenBucketLog(BaseSchema):
         updated_at (datetime | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     operation: TokenBucketLogOperation | None = None
     reason: str | None = None
@@ -4792,19 +4877,19 @@ class Transaction2(BaseSchema):
 
     Attributes:
         status (str | None): The status of the transaction
-        value (float | None): The value of the transaction in cents
+        value (int | None): The value of the transaction in cents
         correlation_id (str | None): The correlation ID of the transaction
         destination_alias (str | None): The pix key of the transaction
         comment (str | None): The comment of the transaction
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     status: str | None = Field(
         description="The status of the transaction",
         default=None,
     )
-    value: float | None = Field(
+    value: int | None = Field(
         description="The value of the transaction in cents",
         default=None,
     )
@@ -4833,7 +4918,7 @@ class TransactionWebhookSentItem(BaseSchema):
         is_retry (bool | None): Whether this webhook delivery was a retry
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     is_retry: bool | None = Field(
         validation_alias="isRetry",
@@ -4847,7 +4932,7 @@ class TransferCreatePayload(BaseSchema):
     """Schema generated for TransferCreatePayload.
 
     Attributes:
-        value (float | None): value of the transfer in cents
+        value (int | None): value of the transfer in cents
         from_pix_key (str | None): the pix key of the account the value of the transfer
             will come out from
         to_pix_key (str | None): the pix key of the account the value of the transfer
@@ -4857,7 +4942,7 @@ class TransferCreatePayload(BaseSchema):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    value: float | None = Field(
+    value: int | None = Field(
         description="value of the transfer in cents",
         default=None,
     )
@@ -4887,14 +4972,14 @@ class TransferTransaction(BaseSchema):
     """Schema generated for TransferTransaction.
 
     Attributes:
-        value (float | None): value of the transaction generated by the transfer
+        value (int | None): value of the transaction generated by the transfer
         time (str | None): the time the transfer happened
         correlation_id (str | None): your correlation ID to keep track of this transfer
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    value: float | None = Field(
+    value: int | None = Field(
         description="value of the transaction generated by the transfer",
         default=None,
     )
@@ -4954,7 +5039,7 @@ class Webhook(BaseSchema):
         updated_at (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     id: str | None = None
     name: str | None = None
@@ -5121,7 +5206,7 @@ class WithdrawTransaction(BaseSchema):
         value (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     end_to_end_id: str | None = Field(
         validation_alias="endToEndId",
@@ -5235,14 +5320,14 @@ class BoletoValidatedInfo(BaseSchema):
         barcode (str): Normalized boleto barcode.
         digitable (str | None): Digitable line, when the provider returns it.
         expires_date (str | None): Due date (ISO 8601), when available.
-        total_value (float): Total amount to pay, in cents.
+        total_value (int): Total amount to pay, in cents.
         issuing_entity (BoletoValidatedInfoIssuingEntity | None): Issuing institution,
             when available.
         final_beneficiary (BoletoValidatedInfoFinalBeneficiary | None): Final
             beneficiary, when available.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     barcode: str = Field(
         description="Normalized boleto barcode.",
@@ -5259,7 +5344,7 @@ class BoletoValidatedInfo(BaseSchema):
         examples=["2026-06-27T02:59:59.999Z"],
         default=None,
     )
-    total_value: float = Field(
+    total_value: int = Field(
         validation_alias="totalValue",
         serialization_alias="totalValue",
         description="Total amount to pay, in cents.",
@@ -5290,7 +5375,7 @@ class ChargePayloadDiscountSettings(BaseSchema):
             Absolute discounts applied to charge. Required when `modality` is
             `FIXED_VALUE_UNTIL_SPECIFIED_DATE` or `PERCENTAGE_UNTIL_SPECIFIED_DATE`.
             Must contain at least one entry.
-        value (float | None): Discount value. Required when `modality` is one of the
+        value (int | None): Discount value. Required when `modality` is one of the
             advance-day modalities. Must be `>= 1`. Units depend on modality:   -
             `VALUE_PER_RUNNING_DAY_ADVANCE`: cents per running day.   -
             `VALUE_PER_BUSINESS_DAY_ADVANCE`: cents per business day.   -
@@ -5317,7 +5402,7 @@ class ChargePayloadDiscountSettings(BaseSchema):
             default_factory=list,
         )
     )
-    value: float | None = Field(
+    value: int | None = Field(
         description=(
             "Discount value. Required when `modality` is one of the advance-day "
             "modalities. Must be `>= 1`.\nUnits depend on modality:\n  - "
@@ -5340,15 +5425,15 @@ class ChargePaymentMethodsPix(BaseSchema):
         identifier (str | None): Undocumented in the spec.
         additional_info (list[ChargePaymentMethodsPixAdditionalInfoItem]): Undocumented
             in the spec.
-        fee (float | None): Undocumented in the spec.
-        value (float | None): Undocumented in the spec.
+        fee (int | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         status (str | None): Undocumented in the spec.
         tx_id (str | None): Undocumented in the spec.
         br_code (str | None): Undocumented in the spec.
         qr_code_image (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     method: str | None = None
     transaction_id: str | None = Field(
@@ -5362,8 +5447,8 @@ class ChargePaymentMethodsPix(BaseSchema):
         serialization_alias="additionalInfo",
         default_factory=list,
     )
-    fee: float | None = None
-    value: float | None = None
+    fee: int | None = None
+    value: int | None = None
     status: str | None = None
     tx_id: str | None = Field(
         validation_alias="txId",
@@ -5397,7 +5482,7 @@ class CompanyBankAccount(BaseSchema):
         account_name (str | None): Name of the account
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     account_id: str | None = Field(
         validation_alias="accountId",
@@ -5449,7 +5534,7 @@ class CompanyObjectPayload(BaseSchema):
         tax_id (TaxIdObjectPayload | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     id: str | None = Field(
         description="The ID of the company that is related to this preregistration.",
@@ -5488,7 +5573,7 @@ class Customer(BaseSchema):
         address (CustomerAddress | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = None
     email: str | None = None
@@ -5680,7 +5765,7 @@ class FundsRecovery(BaseSchema):
         updated_at (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     dict_id: UUID | None = Field(
         validation_alias="dictId",
@@ -5772,7 +5857,7 @@ class GetApiV1AccountRegisterResponse(BaseSchema):
         correlation_id (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     official_name: str | None = Field(
         validation_alias="officialName",
@@ -5810,6 +5895,8 @@ class GetApiV1AccountResponsePageInfoErrorsItem(BaseSchema):
             spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     message: str | None = None
     data: GetApiV1AccountResponsePageInfoErrorsItemData | None = None
 
@@ -5820,6 +5907,8 @@ class GetApiV1ChargeByIdRefundResponse(BaseSchema):
     Attributes:
         refunds (list[ChargeRefund]): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     refunds: list[ChargeRefund] = Field(default_factory=list)
 
@@ -5833,6 +5922,8 @@ class GetApiV1ChargeResponsePageInfoErrorsItem(BaseSchema):
             spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     message: str | None = None
     data: GetApiV1ChargeResponsePageInfoErrorsItemData | None = None
 
@@ -5843,6 +5934,8 @@ class GetApiV1CompanyResponse(BaseSchema):
     Attributes:
         company (GetApiV1CompanyResponseCompany | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     company: GetApiV1CompanyResponseCompany | None = None
 
@@ -5856,6 +5949,8 @@ class GetApiV1CustomerResponsePageInfoErrorsItem(BaseSchema):
             the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     message: str | None = None
     data: GetApiV1CustomerResponsePageInfoErrorsItemData | None = None
 
@@ -5866,6 +5961,8 @@ class GetApiV1DisputeByIdResponse(BaseSchema):
     Attributes:
         dispute (GetApiV1DisputeByIdResponseDispute | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     dispute: GetApiV1DisputeByIdResponseDispute | None = None
 
@@ -5879,6 +5976,8 @@ class GetApiV1DisputeResponsePageInfoErrorsItem(BaseSchema):
             spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     message: str | None = None
     data: GetApiV1DisputeResponsePageInfoErrorsItemData | None = None
 
@@ -5889,6 +5988,8 @@ class GetApiV1LimitsByAccountIdResponse(BaseSchema):
     Attributes:
         limits (AccountLimit | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     limits: AccountLimit | None = None
 
@@ -5901,6 +6002,8 @@ class GetApiV1PartnerAffiliateResponsePageInfoErrorsItem(BaseSchema):
         data (GetApiV1PartnerAffiliateResponsePageInfoErrorsItemData | None):
             Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     message: str | None = None
     data: GetApiV1PartnerAffiliateResponsePageInfoErrorsItemData | None = None
@@ -5915,6 +6018,8 @@ class GetApiV1PartnerCompanyResponsePageInfoErrorsItem(BaseSchema):
             in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     message: str | None = None
     data: GetApiV1PartnerCompanyResponsePageInfoErrorsItemData | None = None
 
@@ -5927,6 +6032,8 @@ class GetApiV1PaymentResponsePageInfoErrorsItem(BaseSchema):
         data (GetApiV1PaymentResponsePageInfoErrorsItemData | None): Undocumented in the
             spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     message: str | None = None
     data: GetApiV1PaymentResponsePageInfoErrorsItemData | None = None
@@ -5941,6 +6048,8 @@ class GetApiV1PixKeysTokensLogsResponsePageInfoErrorsItem(BaseSchema):
             Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     message: str | None = None
     data: GetApiV1PixKeysTokensLogsResponsePageInfoErrorsItemData | None = None
 
@@ -5953,6 +6062,8 @@ class GetApiV1PspResponse(BaseSchema):
         psps (list[GetApiV1PspResponsePspsItem]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     success: bool | None = Field(examples=[True], default=None)
     psps: list[GetApiV1PspResponsePspsItem] = Field(default_factory=list)
 
@@ -5964,7 +6075,7 @@ class GetApiV1QrcodeStaticByIdResponse(BaseSchema):
         pix_qr_code (PixQrCode | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     pix_qr_code: PixQrCode | None = Field(
         validation_alias="pixQrCode",
@@ -5982,6 +6093,8 @@ class GetApiV1QrcodeStaticResponsePageInfoErrorsItem(BaseSchema):
             in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     message: str | None = None
     data: GetApiV1QrcodeStaticResponsePageInfoErrorsItemData | None = None
 
@@ -5993,7 +6106,7 @@ class GetApiV1RefundByIdResponse(BaseSchema):
         pix_transaction_refund (Refund | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     pix_transaction_refund: Refund | None = Field(
         validation_alias="pixTransactionRefund",
@@ -6010,6 +6123,8 @@ class GetApiV1RefundResponsePageInfoErrorsItem(BaseSchema):
         data (GetApiV1RefundResponsePageInfoErrorsItemData | None): Undocumented in the
             spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     message: str | None = None
     data: GetApiV1RefundResponsePageInfoErrorsItemData | None = None
@@ -6030,7 +6145,7 @@ class GetApiV1StablecoinQuoteResponseQuote(BaseSchema):
         pair_name (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     base_price: float | None = Field(
         validation_alias="basePrice",
@@ -6085,7 +6200,7 @@ class GetApiV1SubaccountByIdResponse(BaseSchema):
         sub_account (SubAccount | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     sub_account: SubAccount | None = Field(
         validation_alias="SubAccount",
@@ -6103,6 +6218,8 @@ class GetApiV1SubaccountResponsePageInfoErrorsItem(BaseSchema):
             the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     message: str | None = None
     data: GetApiV1SubaccountResponsePageInfoErrorsItemData | None = None
 
@@ -6116,6 +6233,8 @@ class GetApiV1TransactionResponsePageInfoErrorsItem(BaseSchema):
             the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     message: str | None = None
     data: GetApiV1TransactionResponsePageInfoErrorsItemData | None = None
 
@@ -6128,6 +6247,8 @@ class GetApiV1WebhookEventsResponse(BaseSchema):
             spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     events: list[GetApiV1WebhookEventsResponseEventsItem] = Field(default_factory=list)
 
 
@@ -6139,6 +6260,8 @@ class GetApiV1WebhookResponsePageInfoErrorsItem(BaseSchema):
         data (GetApiV1WebhookResponsePageInfoErrorsItemData | None): Undocumented in the
             spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     message: str | None = None
     data: GetApiV1WebhookResponsePageInfoErrorsItemData | None = None
@@ -6194,7 +6317,7 @@ class InstallmentCobr(BaseSchema):
         end_to_end_id (str | None): Undocumented in the spec.
         reject_code (str | None): Undocumented in the spec.
         status (str | None): Undocumented in the spec.
-        value (float | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         tries (list[InstallmentCobrTriesItem]): Undocumented in the spec.
         payment_date (str | None): Undocumented in the spec.
         charge_date (str | None): Undocumented in the spec.
@@ -6203,7 +6326,7 @@ class InstallmentCobr(BaseSchema):
         created_at (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     identifier_id: str | None = Field(
         validation_alias="identifierId",
@@ -6231,7 +6354,7 @@ class InstallmentCobr(BaseSchema):
         default=None,
     )
     status: str | None = None
-    value: float | None = None
+    value: int | None = None
     tries: list[InstallmentCobrTriesItem] = Field(default_factory=list)
     payment_date: str | None = Field(
         validation_alias="paymentDate",
@@ -6265,7 +6388,7 @@ class KycOnboardingAccountRegisterRepresentativesItem(BaseSchema):
             Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = Field(examples=["NOME_DO_SOCIO"], default=None)
     tax_id: KycOnboardingAccountRegisterRepresentativesItemTaxId | None = Field(
@@ -6330,6 +6453,8 @@ class PaginationErrorsItem(BaseSchema):
         data (PaginationErrorsItemData | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     message: str | None = None
     data: PaginationErrorsItemData | None = None
 
@@ -6344,7 +6469,7 @@ class Party(BaseSchema):
         tax_id (PartyTaxId | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     account: PartyAccount | None = None
     psp: PartyPsp | None = None
@@ -6364,6 +6489,8 @@ class PatchApiV1InvoiceIntegrationResponse(BaseSchema):
             Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     integration: PatchApiV1InvoiceIntegrationResponseIntegration | None = None
 
 
@@ -6373,13 +6500,13 @@ class PaymentBoleto(BaseSchema):
     Attributes:
         barcode (str | None): the boleto barcode
         expires_date (str | None): due date (ISO 8601)
-        total_value (float | None): total amount to pay, in cents
+        total_value (int | None): total amount to pay, in cents
         issuing_entity (PaymentBoletoIssuingEntity | None): Undocumented in the spec.
         final_beneficiary (PaymentBoletoFinalBeneficiary | None): Undocumented in the
             spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     barcode: str | None = Field(description="the boleto barcode", default=None)
     expires_date: str | None = Field(
@@ -6388,7 +6515,7 @@ class PaymentBoleto(BaseSchema):
         description="due date (ISO 8601)",
         default=None,
     )
-    total_value: float | None = Field(
+    total_value: int | None = Field(
         validation_alias="totalValue",
         serialization_alias="totalValue",
         description="total amount to pay, in cents",
@@ -6433,7 +6560,7 @@ class PixKeyCheck(BaseSchema):
         owner (PixKeyCheckOwner | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     pix_key: str | None = Field(
         validation_alias="pixKey",
@@ -6456,6 +6583,8 @@ class PostApiV1ApplicationResponse(BaseSchema):
         application (Application | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     application: Application | None = None
 
 
@@ -6467,6 +6596,8 @@ class PostApiV1CashbackFidelityResponse(BaseSchema):
             the existing cashback
         message (str | None): String explaining what happened
     """
+
+    model_config = ConfigDict(extra="allow")
 
     cashback: PostApiV1CashbackFidelityResponseCashback | None = Field(
         description="Object representing the existing cashback",
@@ -6484,6 +6615,8 @@ class PostApiV1ChargeByIdRefundResponse(BaseSchema):
     Attributes:
         refund (ChargeRefund | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     refund: ChargeRefund | None = None
 
@@ -6506,7 +6639,7 @@ class PostApiV1DecodeEmvResponseCobLocationPayload(BaseSchema):
             in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     calendar: PostApiV1DecodeEmvResponseCobLocationPayloadCalendar | None = None
     key: str | None = None
@@ -6548,7 +6681,7 @@ class PostApiV1DecodeEmvResponseEmv(BaseSchema):
         crc (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     payload_format_indicator: str | None = Field(
         validation_alias="payloadFormatIndicator",
@@ -6625,6 +6758,8 @@ class PostApiV1DecodeEmvResponseRecLocationPayloadLink(BaseSchema):
             Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     contract: str | None = None
     debtor: PostApiV1DecodeEmvResponseRecLocationPayloadLinkDebtor | None = None
 
@@ -6651,6 +6786,8 @@ class PostApiV1DisputeIdEvidenceResponse(BaseSchema):
             upload
     """
 
+    model_config = ConfigDict(extra="allow")
+
     documents: list[PostApiV1DisputeIdEvidenceResponseDocumentsItem] = Field(
         description="documents for upload",
         default_factory=list,
@@ -6665,6 +6802,8 @@ class PostApiV1InvoiceIntegrationCertificateResponse(BaseSchema):
             Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     integration: PostApiV1InvoiceIntegrationCertificateResponseIntegrati | None = None
 
 
@@ -6675,6 +6814,8 @@ class PostApiV1InvoiceIntegrationResponseIntegrationMetadata(BaseSchema):
         nfeio (PostApiV1InvoiceIntegrationResponseIntegrationMetadataN | None):
             Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     nfeio: PostApiV1InvoiceIntegrationResponseIntegrationMetadataN | None = None
 
@@ -6689,6 +6830,8 @@ class PostApiV1InvoiceIntegrationTestResponse(BaseSchema):
             Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     invoice: PostApiV1InvoiceIntegrationTestResponseInvoice | None = None
     integration: PostApiV1InvoiceIntegrationTestResponseIntegration | None = None
 
@@ -6698,7 +6841,7 @@ class PostApiV1InvoiceResponseInvoice(BaseSchema):
 
     Attributes:
         id (str | None): Undocumented in the spec.
-        value (float | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         date (datetime | None): Undocumented in the spec.
         billing_date (datetime | None): Undocumented in the spec.
         status (str | None): Undocumented in the spec.
@@ -6708,10 +6851,10 @@ class PostApiV1InvoiceResponseInvoice(BaseSchema):
         charge (PostApiV1InvoiceResponseInvoiceCharge | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     id: str | None = None
-    value: float | None = None
+    value: int | None = None
     date: datetime | None = None
     billing_date: datetime | None = Field(
         validation_alias="billingDate",
@@ -6754,6 +6897,8 @@ class PostApiV1PartnerApplicationResponse(BaseSchema):
         application (PartnerApplicationPayload | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     application: PartnerApplicationPayload | None = None
 
 
@@ -6783,7 +6928,7 @@ class PostApiV1QrcodeStaticResponse(BaseSchema):
         br_code (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     pix_qr_code: PixQrCode | None = Field(
         validation_alias="pixQrCode",
@@ -6809,6 +6954,8 @@ class PostApiV1RefundResponse(BaseSchema):
         refund (Refund | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     refund: Refund | None = None
 
 
@@ -6818,6 +6965,8 @@ class PostApiV1SubaccountByIdWithdrawResponseWithdraw(BaseSchema):
     Attributes:
         account (Transaction2 | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     account: Transaction2 | None = None
 
@@ -6829,7 +6978,7 @@ class PostApiV1SubaccountResponse(BaseSchema):
         sub_account (SubAccount | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     sub_account: SubAccount | None = Field(
         validation_alias="SubAccount",
@@ -6844,6 +6993,8 @@ class PostApiV1TransferResponse(BaseSchema):
     Attributes:
         transaction (TransferTransaction | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     transaction: TransferTransaction | None = None
 
@@ -6865,6 +7016,8 @@ class PostApiV1WebhookResponse(BaseSchema):
         webhook (Webhook | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     webhook: Webhook | None = None
 
 
@@ -6878,7 +7031,7 @@ class PreRegistrationObject(BaseSchema):
         tax_id (TaxIdObjectPayload): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str = Field(
         description=(
@@ -6905,7 +7058,7 @@ class PreRegistrationObjectPayload(BaseSchema):
         tax_id (TaxIdObjectPayload | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = Field(
         description=(
@@ -6940,7 +7093,7 @@ class PreRegistrationUserObject(BaseSchema):
         tax_id (TaxIdObjectPayload): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     first_name: str = Field(
         validation_alias="firstName",
@@ -7026,7 +7179,7 @@ class StablecoinDepositResponse(BaseSchema):
         quote (StablecoinDepositQuote | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     status: str | None = Field(
         description="The deposit status.",
@@ -7057,7 +7210,7 @@ class StablecoinSubAccountGetResponse(BaseSchema):
         sub_account (StablecoinSubAccountItem | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     status: str | None = Field(examples=["ok"], default=None)
     sub_account: StablecoinSubAccountItem | None = Field(
@@ -7075,7 +7228,7 @@ class StablecoinSubAccountListResponse(BaseSchema):
         sub_accounts (list[StablecoinSubAccountItem]): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     status: str | None = Field(examples=["ok"], default=None)
     sub_accounts: list[StablecoinSubAccountItem] = Field(
@@ -7089,16 +7242,16 @@ class SubAccountTransferResponsePayload(BaseSchema):
     """Schema generated for SubAccountTransferResponsePayload.
 
     Attributes:
-        value (float | None): The value of the transfer in cents
+        value (int | None): The value of the transfer in cents
         destination_subaccount (SubAccountTransferResponsePayloadDestinationSubaccount |
             None): The destination subaccount
         origin_subaccount (SubAccountTransferResponsePayloadOriginSubaccount | None):
             The destination subaccount
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    value: float | None = Field(
+    value: int | None = Field(
         description="The value of the transfer in cents",
         default=None,
     )
@@ -7150,6 +7303,8 @@ class BoletoValidateResponse(BaseSchema):
         boleto (BoletoValidatedInfo | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     boleto: BoletoValidatedInfo | None = None
 
 
@@ -7158,11 +7313,11 @@ class ChargePayload(BaseSchema):
 
     Attributes:
         correlation_id (str): Your correlation ID to keep track of this charge
-        value (float): Value in cents of this charge
+        value (int): Value in cents of this charge
         type (ChargeType | None): Charge type is used to determine whether a charge will
             have a deadline, fines and interests
         comment (str | None): Comment to be added in infoPagador
-        expires_in (float | None): Expires the charge in seconds (minimum is 5 minutes)
+        expires_in (int | None): Expires the charge in seconds (minimum is 5 minutes)
         expires_date (str | None): Expiration date of the charge. Only in ISO 8601
             format.
         due_date (str | None): Due date for OVERDUE, BOLETO, or subscription charges in
@@ -7176,10 +7331,10 @@ class ChargePayload(BaseSchema):
             to all future charges.
         payment_link_id (str | None): Payment Link ID, used to link charges to the same
             qrCode.
-        days_for_due_date (float | None): Time in days until the charge hits the
-            deadline so fines and interests start applying. This property is only
-            considered for charges of type OVERDUE
-        days_after_due_date (float | None): Time in days that a charge is still payable
+        days_for_due_date (int | None): Time in days until the charge hits the deadline
+            so fines and interests start applying. This property is only considered for
+            charges of type OVERDUE
+        days_after_due_date (int | None): Time in days that a charge is still payable
             after the deadline. This property is only considered for charges of type
             OVERDUE
         interests (ChargePayloadInterests | None): Interests configuration. This
@@ -7225,7 +7380,7 @@ class ChargePayload(BaseSchema):
         serialization_alias="correlationID",
         description="Your correlation ID to keep track of this charge",
     )
-    value: float = Field(description="Value in cents of this charge")
+    value: int = Field(description="Value in cents of this charge")
     type: ChargeType | None = Field(
         description=(
             "Charge type is used to determine whether a charge will have a deadline, "
@@ -7237,7 +7392,7 @@ class ChargePayload(BaseSchema):
         description="Comment to be added in infoPagador",
         default=None,
     )
-    expires_in: float | None = Field(
+    expires_in: int | None = Field(
         validation_alias="expiresIn",
         serialization_alias="expiresIn",
         description="Expires the charge in seconds (minimum is 5 minutes)",
@@ -7291,7 +7446,7 @@ class ChargePayload(BaseSchema):
         description="Payment Link ID, used to link charges to the same qrCode.",
         default=None,
     )
-    days_for_due_date: float | None = Field(
+    days_for_due_date: int | None = Field(
         validation_alias="daysForDueDate",
         serialization_alias="daysForDueDate",
         description=(
@@ -7301,7 +7456,7 @@ class ChargePayload(BaseSchema):
         ),
         default=None,
     )
-    days_after_due_date: float | None = Field(
+    days_after_due_date: int | None = Field(
         validation_alias="daysAfterDueDate",
         serialization_alias="daysAfterDueDate",
         description=(
@@ -7391,6 +7546,8 @@ class ChargePaymentMethods(BaseSchema):
         pix (ChargePaymentMethodsPix | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     pix: ChargePaymentMethodsPix | None = None
 
 
@@ -7401,6 +7558,8 @@ class GetApiV1AccountByAccountIdResponse(BaseSchema):
         account (CompanyBankAccount | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     account: CompanyBankAccount | None = None
 
 
@@ -7410,19 +7569,19 @@ class GetApiV1AccountResponsePageInfo(BaseSchema):
     Attributes:
         errors (list[GetApiV1AccountResponsePageInfoErrorsItem]): Undocumented in the
             spec.
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
         has_previous_page (bool | None): Undocumented in the spec.
         has_next_page (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     errors: list[GetApiV1AccountResponsePageInfoErrorsItem] = Field(
         default_factory=list,
     )
-    skip: float | None = None
-    limit: float | None = None
+    skip: int | None = None
+    limit: int | None = None
     has_previous_page: bool | None = Field(
         validation_alias="hasPreviousPage",
         serialization_alias="hasPreviousPage",
@@ -7441,17 +7600,17 @@ class GetApiV1ChargeResponsePageInfo(BaseSchema):
     Attributes:
         errors (list[GetApiV1ChargeResponsePageInfoErrorsItem]): Undocumented in the
             spec.
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
         has_previous_page (bool | None): Undocumented in the spec.
         has_next_page (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     errors: list[GetApiV1ChargeResponsePageInfoErrorsItem] = Field(default_factory=list)
-    skip: float | None = None
-    limit: float | None = None
+    skip: int | None = None
+    limit: int | None = None
     has_previous_page: bool | None = Field(
         validation_alias="hasPreviousPage",
         serialization_alias="hasPreviousPage",
@@ -7471,6 +7630,8 @@ class GetApiV1CustomerByIdResponse(BaseSchema):
         customer (Customer | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     customer: Customer | None = None
 
 
@@ -7480,19 +7641,19 @@ class GetApiV1CustomerResponsePageInfo(BaseSchema):
     Attributes:
         errors (list[GetApiV1CustomerResponsePageInfoErrorsItem]): Undocumented in the
             spec.
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
         has_previous_page (bool | None): Undocumented in the spec.
         has_next_page (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     errors: list[GetApiV1CustomerResponsePageInfoErrorsItem] = Field(
         default_factory=list,
     )
-    skip: float | None = None
-    limit: float | None = None
+    skip: int | None = None
+    limit: int | None = None
     has_previous_page: bool | None = Field(
         validation_alias="hasPreviousPage",
         serialization_alias="hasPreviousPage",
@@ -7511,19 +7672,19 @@ class GetApiV1DisputeResponsePageInfo(BaseSchema):
     Attributes:
         errors (list[GetApiV1DisputeResponsePageInfoErrorsItem]): Undocumented in the
             spec.
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
         has_previous_page (bool | None): Undocumented in the spec.
         has_next_page (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     errors: list[GetApiV1DisputeResponsePageInfoErrorsItem] = Field(
         default_factory=list,
     )
-    skip: float | None = None
-    limit: float | None = None
+    skip: int | None = None
+    limit: int | None = None
     has_previous_page: bool | None = Field(
         validation_alias="hasPreviousPage",
         serialization_alias="hasPreviousPage",
@@ -7544,6 +7705,8 @@ class GetApiV1PartnerAffiliateResponseAffiliatesItem(BaseSchema):
         account (AccountObjectPayload | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     company: CompanyObjectPayload
     account: AccountObjectPayload | None = None
 
@@ -7554,19 +7717,19 @@ class GetApiV1PartnerAffiliateResponsePageInfo(BaseSchema):
     Attributes:
         errors (list[GetApiV1PartnerAffiliateResponsePageInfoErrorsItem]): Undocumented
             in the spec.
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
         has_previous_page (bool | None): Undocumented in the spec.
         has_next_page (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     errors: list[GetApiV1PartnerAffiliateResponsePageInfoErrorsItem] = Field(
         default_factory=list,
     )
-    skip: float | None = None
-    limit: float | None = None
+    skip: int | None = None
+    limit: int | None = None
     has_previous_page: bool | None = Field(
         validation_alias="hasPreviousPage",
         serialization_alias="hasPreviousPage",
@@ -7589,7 +7752,7 @@ class GetApiV1PartnerCompanyByTaxIdResponsePreRegistration(BaseSchema):
         account (AccountObjectPayload | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     pre_registration: PreRegistrationObjectPayload = Field(
         validation_alias="preRegistration",
@@ -7606,19 +7769,19 @@ class GetApiV1PartnerCompanyResponsePageInfo(BaseSchema):
     Attributes:
         errors (list[GetApiV1PartnerCompanyResponsePageInfoErrorsItem]): Undocumented in
             the spec.
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
         has_previous_page (bool | None): Undocumented in the spec.
         has_next_page (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     errors: list[GetApiV1PartnerCompanyResponsePageInfoErrorsItem] = Field(
         default_factory=list,
     )
-    skip: float | None = None
-    limit: float | None = None
+    skip: int | None = None
+    limit: int | None = None
     has_previous_page: bool | None = Field(
         validation_alias="hasPreviousPage",
         serialization_alias="hasPreviousPage",
@@ -7641,7 +7804,7 @@ class GetApiV1PartnerCompanyResponsePreRegistrationsItem(BaseSchema):
         account (AccountObjectPayload | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     pre_registration: PreRegistrationObjectPayload = Field(
         validation_alias="preRegistration",
@@ -7658,19 +7821,19 @@ class GetApiV1PaymentResponsePageInfo(BaseSchema):
     Attributes:
         errors (list[GetApiV1PaymentResponsePageInfoErrorsItem]): Undocumented in the
             spec.
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
         has_previous_page (bool | None): Undocumented in the spec.
         has_next_page (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     errors: list[GetApiV1PaymentResponsePageInfoErrorsItem] = Field(
         default_factory=list,
     )
-    skip: float | None = None
-    limit: float | None = None
+    skip: int | None = None
+    limit: int | None = None
     has_previous_page: bool | None = Field(
         validation_alias="hasPreviousPage",
         serialization_alias="hasPreviousPage",
@@ -7691,7 +7854,7 @@ class GetApiV1PixKeysResponse(BaseSchema):
         account (CompanyBankAccount | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     pix_keys: list[PixKey] = Field(
         validation_alias="pixKeys",
@@ -7707,19 +7870,19 @@ class GetApiV1PixKeysTokensLogsResponsePageInfo(BaseSchema):
     Attributes:
         errors (list[GetApiV1PixKeysTokensLogsResponsePageInfoErrorsItem]): Undocumented
             in the spec.
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
         has_previous_page (bool | None): Undocumented in the spec.
         has_next_page (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     errors: list[GetApiV1PixKeysTokensLogsResponsePageInfoErrorsItem] = Field(
         default_factory=list,
     )
-    skip: float | None = None
-    limit: float | None = None
+    skip: int | None = None
+    limit: int | None = None
     has_previous_page: bool | None = Field(
         validation_alias="hasPreviousPage",
         serialization_alias="hasPreviousPage",
@@ -7738,19 +7901,19 @@ class GetApiV1QrcodeStaticResponsePageInfo(BaseSchema):
     Attributes:
         errors (list[GetApiV1QrcodeStaticResponsePageInfoErrorsItem]): Undocumented in
             the spec.
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
         has_previous_page (bool | None): Undocumented in the spec.
         has_next_page (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     errors: list[GetApiV1QrcodeStaticResponsePageInfoErrorsItem] = Field(
         default_factory=list,
     )
-    skip: float | None = None
-    limit: float | None = None
+    skip: int | None = None
+    limit: int | None = None
     has_previous_page: bool | None = Field(
         validation_alias="hasPreviousPage",
         serialization_alias="hasPreviousPage",
@@ -7769,17 +7932,17 @@ class GetApiV1RefundResponsePageInfo(BaseSchema):
     Attributes:
         errors (list[GetApiV1RefundResponsePageInfoErrorsItem]): Undocumented in the
             spec.
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
         has_previous_page (bool | None): Undocumented in the spec.
         has_next_page (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     errors: list[GetApiV1RefundResponsePageInfoErrorsItem] = Field(default_factory=list)
-    skip: float | None = None
-    limit: float | None = None
+    skip: int | None = None
+    limit: int | None = None
     has_previous_page: bool | None = Field(
         validation_alias="hasPreviousPage",
         serialization_alias="hasPreviousPage",
@@ -7800,6 +7963,8 @@ class GetApiV1StablecoinQuoteResponse(BaseSchema):
         quote (GetApiV1StablecoinQuoteResponseQuote | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     status: str | None = Field(examples=["ok"], default=None)
     quote: GetApiV1StablecoinQuoteResponseQuote | None = None
 
@@ -7810,19 +7975,19 @@ class GetApiV1SubaccountResponsePageInfo(BaseSchema):
     Attributes:
         errors (list[GetApiV1SubaccountResponsePageInfoErrorsItem]): Undocumented in the
             spec.
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
         has_previous_page (bool | None): Undocumented in the spec.
         has_next_page (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     errors: list[GetApiV1SubaccountResponsePageInfoErrorsItem] = Field(
         default_factory=list,
     )
-    skip: float | None = None
-    limit: float | None = None
+    skip: int | None = None
+    limit: int | None = None
     has_previous_page: bool | None = Field(
         validation_alias="hasPreviousPage",
         serialization_alias="hasPreviousPage",
@@ -7841,19 +8006,19 @@ class GetApiV1TransactionResponsePageInfo(BaseSchema):
     Attributes:
         errors (list[GetApiV1TransactionResponsePageInfoErrorsItem]): Undocumented in
             the spec.
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
         has_previous_page (bool | None): Undocumented in the spec.
         has_next_page (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     errors: list[GetApiV1TransactionResponsePageInfoErrorsItem] = Field(
         default_factory=list,
     )
-    skip: float | None = None
-    limit: float | None = None
+    skip: int | None = None
+    limit: int | None = None
     has_previous_page: bool | None = Field(
         validation_alias="hasPreviousPage",
         serialization_alias="hasPreviousPage",
@@ -7874,6 +8039,8 @@ class GetApiV1WebhookResponsePageInfo(BaseSchema):
             spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     errors: list[GetApiV1WebhookResponsePageInfoErrorsItem] = Field(
         default_factory=list,
     )
@@ -7885,8 +8052,8 @@ class Installment(BaseSchema):
     Attributes:
         date_generate_charge (datetime | None): Undocumented in the spec.
         expiration (float | None): Undocumented in the spec.
-        installment_number (float | None): Undocumented in the spec.
-        value (float | None): Undocumented in the spec.
+        installment_number (int | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         status (str | None): Undocumented in the spec.
         created_at (datetime | None): Undocumented in the spec.
         cobr (InstallmentCobr | None): Undocumented in the spec.
@@ -7895,7 +8062,7 @@ class Installment(BaseSchema):
         global_id (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     date_generate_charge: datetime | None = Field(
         validation_alias="dateGenerateCharge",
@@ -7903,12 +8070,12 @@ class Installment(BaseSchema):
         default=None,
     )
     expiration: float | None = None
-    installment_number: float | None = Field(
+    installment_number: int | None = Field(
         validation_alias="installmentNumber",
         serialization_alias="installmentNumber",
         default=None,
     )
-    value: float | None = None
+    value: int | None = None
     status: str | None = None
     created_at: datetime | None = Field(
         validation_alias="createdAt",
@@ -7968,7 +8135,7 @@ class KycOnboardingAccountRegister(BaseSchema):
             Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     status: str | None = Field(examples=["PENDING"], default=None)
     official_name: str | None = Field(
@@ -8004,17 +8171,17 @@ class Pagination(BaseSchema):
 
     Attributes:
         errors (list[PaginationErrorsItem]): Undocumented in the spec.
-        skip (float | None): Undocumented in the spec.
-        limit (float | None): Undocumented in the spec.
+        skip (int | None): Undocumented in the spec.
+        limit (int | None): Undocumented in the spec.
         has_previous_page (bool | None): Undocumented in the spec.
         has_next_page (bool | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     errors: list[PaginationErrorsItem] = Field(default_factory=list)
-    skip: float | None = None
-    limit: float | None = None
+    skip: int | None = None
+    limit: int | None = None
     has_previous_page: bool | None = Field(
         validation_alias="hasPreviousPage",
         serialization_alias="hasPreviousPage",
@@ -8034,6 +8201,8 @@ class PatchApiV1CustomerByCorrelationIdResponse(BaseSchema):
         customer (Customer | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     customer: Customer | None = None
 
 
@@ -8042,7 +8211,7 @@ class Payment(BaseSchema):
 
     Attributes:
         type (PaymentCreatePayloadPixKeyType | None): type of the payment
-        value (float | None): value of the requested payment in cents
+        value (int | None): value of the requested payment in cents
         destination_alias (str | None): the pix key the payment should be sent to
         destination_alias_type (PaymentCreatePayloadPixKeyDestinationAliasType | None):
             the type of the pix key the payment should be sent to
@@ -8055,13 +8224,13 @@ class Payment(BaseSchema):
             resolved from the validated boleto
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     type: PaymentCreatePayloadPixKeyType | None = Field(
         description="type of the payment",
         default=None,
     )
-    value: float | None = Field(
+    value: int | None = Field(
         description="value of the requested payment in cents",
         default=None,
     )
@@ -8116,7 +8285,7 @@ class PaymentCreatePayloadManual(BaseSchema):
 
     Attributes:
         type (PaymentCreatePayloadPixKeyType): type of the payment
-        value (float): value of the requested payment in cents
+        value (int): value of the requested payment in cents
         correlation_id (str): a unique identifier for your payment
         pix_key_end_to_end_id (str | None): the end to end id of the pix key used for
             track pix key consultations
@@ -8130,7 +8299,7 @@ class PaymentCreatePayloadManual(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
-    value: float = Field(description="value of the requested payment in cents")
+    value: int = Field(description="value of the requested payment in cents")
     correlation_id: str = Field(
         validation_alias="correlationID",
         serialization_alias="correlationID",
@@ -8157,7 +8326,7 @@ class PaymentTransaction(BaseSchema):
     """Schema generated for PaymentTransaction.
 
     Attributes:
-        value (float | None): value of the transaction generated by the payment in cents
+        value (int | None): value of the transaction generated by the payment in cents
         end_to_end_id (str | None): endToEndId of the transaction generated by the
             payment
         time (str | None): time the transaction generated by the payment happened
@@ -8166,9 +8335,9 @@ class PaymentTransaction(BaseSchema):
         credit_party (Party | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    value: float | None = Field(
+    value: int | None = Field(
         description="value of the transaction generated by the payment in cents",
         default=None,
     )
@@ -8204,7 +8373,7 @@ class PixWithdrawTransaction(BaseSchema):
     """Schema generated for PixWithdrawTransaction.
 
     Attributes:
-        value (float | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         time (str | None): Undocumented in the spec.
         end_to_end_id (str | None): Undocumented in the spec.
         transaction_id (str | None): Undocumented in the spec.
@@ -8214,9 +8383,9 @@ class PixWithdrawTransaction(BaseSchema):
         type (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    value: float | None = None
+    value: int | None = None
     time: str | None = None
     end_to_end_id: str | None = Field(
         validation_alias="endToEndID",
@@ -8250,6 +8419,8 @@ class PostApiV1AccountByAccountIdWithdrawResponseWithdraw(BaseSchema):
         transaction (WithdrawTransaction | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     account: CompanyBankAccount | None = None
     transaction: WithdrawTransaction | None = None
 
@@ -8261,6 +8432,8 @@ class PostApiV1AccountResponse(BaseSchema):
         account (CompanyBankAccount | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     account: CompanyBankAccount | None = None
 
 
@@ -8270,6 +8443,8 @@ class PostApiV1CustomerResponse(BaseSchema):
     Attributes:
         customer (Customer | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     customer: Customer | None = None
 
@@ -8285,7 +8460,7 @@ class PostApiV1DecodeEmvResponseCobLocation(BaseSchema):
         url (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     is_valid: bool | None = Field(
         validation_alias="isValid",
@@ -8319,7 +8494,7 @@ class PostApiV1DecodeEmvResponseRecLocationPayload(BaseSchema):
             the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     updates: list[PostApiV1DecodeEmvResponseRecLocationPayloadUpdatesItem] = Field(
         default_factory=list,
@@ -8352,7 +8527,7 @@ class PostApiV1InvoiceIntegrationResponseIntegration(BaseSchema):
             Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     id: str | None = None
     type: str | None = None
@@ -8372,6 +8547,8 @@ class PostApiV1InvoiceResponse(BaseSchema):
         invoice (PostApiV1InvoiceResponseInvoice | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     invoice: PostApiV1InvoiceResponseInvoice | None = None
 
 
@@ -8380,7 +8557,7 @@ class PostApiV1PaymentBodyManual(BaseSchema):
 
     Attributes:
         type (PaymentCreatePayloadPixKeyType): type of the payment
-        value (float): value of the requested payment in cents
+        value (int): value of the requested payment in cents
         correlation_id (str): a unique identifier for your payment
         pix_key_end_to_end_id (str | None): the end to end id of the pix key used for
             track pix key consultations
@@ -8396,7 +8573,7 @@ class PostApiV1PaymentBodyManual(BaseSchema):
     model_config = ConfigDict(populate_by_name=True)
 
     type: PaymentCreatePayloadPixKeyType = Field(description="type of the payment")
-    value: float = Field(description="value of the requested payment in cents")
+    value: int = Field(description="value of the requested payment in cents")
     correlation_id: str = Field(
         validation_alias="correlationID",
         serialization_alias="correlationID",
@@ -8436,6 +8613,8 @@ class PostApiV1SubaccountByIdWithdrawResponse(BaseSchema):
             in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     withdraw: PostApiV1SubaccountByIdWithdrawResponseWithdraw | None = None
 
 
@@ -8447,7 +8626,7 @@ class PreRegistrationPayloadObject(BaseSchema):
         user (PreRegistrationUserObject | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     pre_registration: PreRegistrationObject | None = Field(
         validation_alias="preRegistration",
@@ -8462,10 +8641,10 @@ class Subscription(BaseSchema):
 
     Attributes:
         global_id (str | None): The globalID of the subscription.
-        value (float | None): Value in cents of the subscription
+        value (int | None): Value in cents of the subscription
         name (str | None): Name of the subscription
         customer (Customer | None): Undocumented in the spec.
-        day_generate_charge (float | None): Day of the month that the charges will be
+        day_generate_charge (int | None): Day of the month that the charges will be
             generated
         type (SubscriptionType | None): Type of the subscription
         frequency (SubscriptionFrequency | None): Frequency of the subscription — the
@@ -8475,7 +8654,7 @@ class Subscription(BaseSchema):
             months For Pix Automático (`type: PIX_RECURRING`), only the frequencies
             allowed by the Central Bank apply: `WEEKLY`, `MONTHLY`, `QUARTERLY`,
             `SEMIANNUALLY` and `ANNUALLY` (`BIMONTHLY` is not supported).
-        installments_count (float | None): Total number of installments currently linked
+        installments_count (int | None): Total number of installments currently linked
             to the subscription. `null` when the subscription has no `dateEnd`
             (open-ended). Mirrors the GraphQL `installmentsCount` field.
         is_active (bool | None): Undocumented in the spec.
@@ -8488,7 +8667,7 @@ class Subscription(BaseSchema):
             options
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     global_id: str | None = Field(
         validation_alias="globalID",
@@ -8496,13 +8675,13 @@ class Subscription(BaseSchema):
         description="The globalID of the subscription.",
         default=None,
     )
-    value: float | None = Field(
+    value: int | None = Field(
         description="Value in cents of the subscription",
         default=None,
     )
     name: str | None = Field(description="Name of the subscription", default=None)
     customer: Customer | None = None
-    day_generate_charge: float | None = Field(
+    day_generate_charge: int | None = Field(
         validation_alias="dayGenerateCharge",
         serialization_alias="dayGenerateCharge",
         description="Day of the month that the charges will be generated",
@@ -8524,7 +8703,7 @@ class Subscription(BaseSchema):
         ),
         default=None,
     )
-    installments_count: float | None = Field(
+    installments_count: int | None = Field(
         validation_alias="installmentsCount",
         serialization_alias="installmentsCount",
         description=(
@@ -8570,10 +8749,10 @@ class SubscriptionPayload(BaseSchema):
 
     Attributes:
         customer (SubscriptionPayloadCustomer): Customer of this subscription
-        value (float): Value in cents of this subscription
+        value (int): Value in cents of this subscription
         name (str | None): Name of the subscription
         comment (str | None): Comment to be show in QR Code
-        day_generate_charge (float | datetime | None): Undocumented in the spec.
+        day_generate_charge (int | datetime | None): Undocumented in the spec.
         frequency (SubscriptionFrequency | None): Frequency of the subscription — the
             interval between charges (defaults to `MONTHLY` when omitted):   - `WEEKLY`:
             every week   - `MONTHLY`: every month   - `BIMONTHLY`: every 2 months   -
@@ -8582,9 +8761,9 @@ class SubscriptionPayload(BaseSchema):
             only the frequencies allowed by the Central Bank apply: `WEEKLY`, `MONTHLY`,
             `QUARTERLY`, `SEMIANNUALLY` and `ANNUALLY` (`BIMONTHLY` is not supported).
         type (SubscriptionPayloadType): Type of the subscription
-        day_due (float | None): Days that the charge will take to expire from the
+        day_due (int | None): Days that the charge will take to expire from the
             generation day.
-        installment_count (float | None): number of installments (optional)
+        installment_count (int | None): number of installments (optional)
         correlation_id (str): Your correlation ID to keep track of this subscription
         additional_info (list[SubscriptionPayloadAdditionalInfoItem]): Undocumented in
             the spec.
@@ -8605,13 +8784,13 @@ class SubscriptionPayload(BaseSchema):
     customer: SubscriptionPayloadCustomer = Field(
         description="Customer of this subscription",
     )
-    value: float = Field(description="Value in cents of this subscription")
+    value: int = Field(description="Value in cents of this subscription")
     name: str | None = Field(description="Name of the subscription", default=None)
     comment: str | None = Field(
         description="Comment to be show in QR Code",
         default=None,
     )
-    day_generate_charge: float | datetime | None = Field(
+    day_generate_charge: int | datetime | None = Field(
         validation_alias="dayGenerateCharge",
         serialization_alias="dayGenerateCharge",
         default=None,
@@ -8629,14 +8808,14 @@ class SubscriptionPayload(BaseSchema):
         default=None,
     )
     type: SubscriptionPayloadType = Field(description="Type of the subscription")
-    day_due: float | None = Field(
+    day_due: int | None = Field(
         validation_alias="dayDue",
         serialization_alias="dayDue",
         description="Days that the charge will take to expire from the generation day.",
         ge=3,
         default=None,
     )
-    installment_count: float | None = Field(
+    installment_count: int | None = Field(
         validation_alias="installmentCount",
         serialization_alias="installmentCount",
         description="number of installments (optional)",
@@ -8679,7 +8858,7 @@ class Charge(BaseSchema):
     """Schema generated for Charge.
 
     Attributes:
-        value (float | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         customer (Customer | None): Undocumented in the spec.
         type (ChargeType | None): Charge type is used to determine whether a charge will
             have a deadline, fines and interests
@@ -8706,11 +8885,18 @@ class Charge(BaseSchema):
             ISO 8601 format.
         subscription (Subscription | None): Undocumented in the spec.
         payment_methods (ChargePaymentMethods | None): Undocumented in the spec.
+        fee (int | None): Fee charged on this charge, in cents. Returned by the API at
+            the top level of the charge object; absent from the specification, which
+            models a fee only under `paymentMethods.pix`.
+        discount (int | None): Discount applied to this charge, in cents. Returned by
+            the API and absent from the specification.
+        value_with_discount (int | None): Charge value after the discount, in cents.
+            Returned by the API and absent from the specification.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    value: float | None = None
+    value: int | None = None
     customer: Customer | None = None
     type: ChargeType | None = Field(
         description=(
@@ -8818,6 +9004,30 @@ class Charge(BaseSchema):
         serialization_alias="paymentMethods",
         default=None,
     )
+    fee: int | None = Field(
+        description=(
+            "Fee charged on this charge, in cents. Returned by the API at the top "
+            "level of the charge object; absent from the specification, which models a "
+            "fee only under `paymentMethods.pix`."
+        ),
+        default=None,
+    )
+    discount: int | None = Field(
+        description=(
+            "Discount applied to this charge, in cents. Returned by the API and absent "
+            "from the specification."
+        ),
+        default=None,
+    )
+    value_with_discount: int | None = Field(
+        validation_alias="valueWithDiscount",
+        serialization_alias="valueWithDiscount",
+        description=(
+            "Charge value after the discount, in cents. Returned by the API and absent "
+            "from the specification."
+        ),
+        default=None,
+    )
 
 
 class GetApiV1AccountResponse(BaseSchema):
@@ -8828,7 +9038,7 @@ class GetApiV1AccountResponse(BaseSchema):
         page_info (GetApiV1AccountResponsePageInfo | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     accounts: list[CompanyBankAccount] = Field(default_factory=list)
     page_info: GetApiV1AccountResponsePageInfo | None = Field(
@@ -8846,7 +9056,7 @@ class GetApiV1CustomerResponse(BaseSchema):
         page_info (GetApiV1CustomerResponsePageInfo | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     customers: list[Customer] = Field(default_factory=list)
     page_info: GetApiV1CustomerResponsePageInfo | None = Field(
@@ -8864,7 +9074,7 @@ class GetApiV1DisputeResponse(BaseSchema):
         page_info (GetApiV1DisputeResponsePageInfo | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     disputes: list[GetApiV1DisputeResponseDisputesItem] = Field(default_factory=list)
     page_info: GetApiV1DisputeResponsePageInfo | None = Field(
@@ -8881,6 +9091,8 @@ class GetApiV1InstallmentsByIdResponse(BaseSchema):
         installment (Installment | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     installment: Installment | None = None
 
 
@@ -8894,7 +9106,7 @@ class GetApiV1PartnerAffiliateResponse(BaseSchema):
             spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     affiliates: list[GetApiV1PartnerAffiliateResponseAffiliatesItem] = Field(
         default_factory=list,
@@ -8914,7 +9126,7 @@ class GetApiV1PartnerCompanyByTaxIdResponse(BaseSchema):
             Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     pre_registration: GetApiV1PartnerCompanyByTaxIdResponsePreRegistration | None = (
         Field(
@@ -8935,7 +9147,7 @@ class GetApiV1PartnerCompanyResponse(BaseSchema):
             spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     pre_registrations: list[GetApiV1PartnerCompanyResponsePreRegistrationsItem] = Field(
         validation_alias="preRegistrations",
@@ -8958,6 +9170,8 @@ class GetApiV1PaymentByIdResponse(BaseSchema):
         destination (PaymentDestination | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     payment: Payment | None = None
     transaction: PaymentTransaction | None = None
     destination: PaymentDestination | None = None
@@ -8971,6 +9185,8 @@ class GetApiV1PaymentResponsePaymentsItem(BaseSchema):
         transaction (PaymentTransaction | None): Undocumented in the spec.
         destination (PaymentDestination | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     payment: Payment | None = None
     transaction: PaymentTransaction | None = None
@@ -8986,7 +9202,7 @@ class GetApiV1PixKeysTokensLogsResponse(BaseSchema):
             the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     logs: list[TokenBucketLog] = Field(default_factory=list)
     page_info: GetApiV1PixKeysTokensLogsResponsePageInfo | None = Field(
@@ -9005,7 +9221,7 @@ class GetApiV1QrcodeStaticResponse(BaseSchema):
             spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     pix_qr_codes: list[PixQrCode] = Field(
         validation_alias="pixQrCodes",
@@ -9027,7 +9243,7 @@ class GetApiV1RefundResponse(BaseSchema):
         page_info (GetApiV1RefundResponsePageInfo | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     refunds: list[Refund] = Field(default_factory=list)
     page_info: GetApiV1RefundResponsePageInfo | None = Field(
@@ -9046,7 +9262,7 @@ class GetApiV1SubaccountResponse(BaseSchema):
         page_info (GetApiV1SubaccountResponsePageInfo | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     subaccounts: list[GetApiV1SubaccountResponseSubaccountsItem] = Field(
         default_factory=list,
@@ -9066,7 +9282,7 @@ class GetApiV1SubscriptionsByIdInstallmentsResponse(BaseSchema):
         page_info (Pagination | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     installments: list[Installment] = Field(default_factory=list)
     page_info: Pagination | None = Field(
@@ -9083,6 +9299,8 @@ class GetApiV1SubscriptionsByIdResponse(BaseSchema):
         subscription (Subscription | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     subscription: Subscription | None = None
 
 
@@ -9094,7 +9312,7 @@ class GetApiV1SubscriptionsResponse(BaseSchema):
         page_info (Pagination | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     subscriptions: list[Subscription] = Field(default_factory=list)
     page_info: Pagination | None = Field(
@@ -9112,7 +9330,7 @@ class GetApiV1WebhookResponse(BaseSchema):
         page_info (GetApiV1WebhookResponsePageInfo | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     webhooks: list[Webhook] = Field(default_factory=list)
     page_info: GetApiV1WebhookResponsePageInfo | None = Field(
@@ -9161,6 +9379,8 @@ class PostApiV1AccountByAccountIdWithdrawResponse(BaseSchema):
             Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     withdraw: PostApiV1AccountByAccountIdWithdrawResponseWithdraw | None = None
 
 
@@ -9176,7 +9396,7 @@ class PostApiV1DecodeEmvResponseRecLocation(BaseSchema):
         url (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     is_valid: bool | None = Field(
         validation_alias="isValid",
@@ -9200,6 +9420,8 @@ class PostApiV1InvoiceIntegrationResponse(BaseSchema):
             Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     integration: PostApiV1InvoiceIntegrationResponseIntegration | None = None
 
 
@@ -9214,7 +9436,7 @@ class PostApiV1KycOnboardingResponse(BaseSchema):
             spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     link_onboarding: str | None = Field(
         validation_alias="linkOnboarding",
@@ -9248,6 +9470,8 @@ class PostApiV1PaymentApproveResponse(BaseSchema):
         destination (PaymentDestination | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     payment: Payment | None = None
     transaction: PaymentTransaction | None = None
     destination: PaymentDestination | None = None
@@ -9271,6 +9495,8 @@ class PostApiV1PaymentResponse(BaseSchema):
         destination (PaymentDestination | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     payment: Payment | None = None
     transaction: PaymentTransaction | None = None
     destination: PaymentDestination | None = None
@@ -9283,6 +9509,8 @@ class PostApiV1SubscriptionsResponse(BaseSchema):
         subscription (Subscription | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     subscription: Subscription | None = None
 
 
@@ -9292,6 +9520,8 @@ class GetApiV1ChargeByIdResponse(BaseSchema):
     Attributes:
         charge (Charge | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     charge: Charge | None = None
 
@@ -9304,7 +9534,7 @@ class GetApiV1ChargeResponse(BaseSchema):
         page_info (GetApiV1ChargeResponsePageInfo | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     charges: list[Charge] = Field(default_factory=list)
     page_info: GetApiV1ChargeResponsePageInfo | None = Field(
@@ -9323,7 +9553,7 @@ class GetApiV1PaymentResponse(BaseSchema):
         page_info (GetApiV1PaymentResponsePageInfo | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     status: str | None = None
     payments: list[GetApiV1PaymentResponsePaymentsItem] = Field(default_factory=list)
@@ -9355,7 +9585,7 @@ class PostApiV1ChargeResponse(BaseSchema):
         br_code (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     charge: Charge | None = None
     correlation_id: str | None = Field(
@@ -9381,7 +9611,7 @@ class PostApiV1DecodeEmvResponse(BaseSchema):
             (request for payment) location details when EMV points to a REC endpoint
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     emv: PostApiV1DecodeEmvResponseEmv | None = None
     cob_location: PostApiV1DecodeEmvResponseCobLocation | None = Field(
@@ -9409,7 +9639,7 @@ class Transaction(BaseSchema):
 
     Attributes:
         charge (Charge | None): Undocumented in the spec.
-        value (float | None): Undocumented in the spec.
+        value (int | None): Undocumented in the spec.
         time (str | None): Undocumented in the spec.
         end_to_end_id (str | None): Undocumented in the spec.
         transaction_id (str | None): Undocumented in the spec.
@@ -9427,10 +9657,10 @@ class Transaction(BaseSchema):
             contains the event name as key with status and time, plus an isRetry flag.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     charge: Charge | None = None
-    value: float | None = None
+    value: int | None = None
     time: str | None = None
     end_to_end_id: str | None = Field(
         validation_alias="endToEndID",
@@ -9511,6 +9741,8 @@ class GetApiV1TransactionByIdResponse(BaseSchema):
         transaction (Transaction | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     transaction: Transaction | None = None
 
 
@@ -9524,7 +9756,7 @@ class GetApiV1TransactionResponse(BaseSchema):
             spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     status: str | None = None
     transactions: list[Transaction] = Field(default_factory=list)

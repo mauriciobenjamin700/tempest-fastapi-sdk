@@ -22,12 +22,17 @@ drift check, so the name goes in at generation time.
 from __future__ import annotations
 
 import ast
+import json
 import shutil
 import sys
 import tempfile
 from pathlib import Path
 
+from openpix_overlay import OverlayReport
+from openpix_overlay import apply as apply_overlay
+
 from tempest_fastapi_sdk.openapi import generate_integration
+from tempest_fastapi_sdk.openapi.loader import load_spec
 
 REPO_ROOT: Path = Path(__file__).resolve().parent.parent
 """Repository root, resolved from this file rather than the cwd."""
@@ -55,7 +60,7 @@ EXPORTS_END: str = "]"
 """Line closing that block. The docstring under it is left alone."""
 
 
-def regenerate(destination: Path) -> list[Path]:
+def regenerate(destination: Path) -> tuple[list[Path], OverlayReport]:
     """Generate the OpenPix modules into ``destination``.
 
     Args:
@@ -63,7 +68,8 @@ def regenerate(destination: Path) -> list[Path]:
             ``client.py`` into. Created if missing.
 
     Returns:
-        list[Path]: The written files.
+        tuple[list[Path], OverlayReport]: The written files, and what the
+        overlay corrected on the way in.
 
     Raises:
         FileNotFoundError: If the vendored specification is missing.
@@ -72,15 +78,23 @@ def regenerate(destination: Path) -> list[Path]:
     ``generate_integration`` also writes an ``__init__.py`` — and this
     package's ``__init__.py`` is hand-written, carrying the thin layer and
     the lazy re-exports. Copying only the two generated files keeps it.
+
+    The specification is corrected by :mod:`openpix_overlay` before it
+    reaches the generator, and the corrected copy is staged as JSON beside
+    the output. The vendored YAML is never rewritten: it stays the
+    provider's document, so refreshing it shows only *their* diff.
     """
     if not SPEC_PATH.exists():
         raise FileNotFoundError(f"vendored specification missing: {SPEC_PATH}")
 
     destination.mkdir(parents=True, exist_ok=True)
+    document, report = apply_overlay(load_spec(str(SPEC_PATH)))
     with tempfile.TemporaryDirectory() as staging:
         staging_path = Path(staging)
+        corrected = staging_path / "openpix-corrected.json"
+        corrected.write_text(json.dumps(document), encoding="utf-8")
         generate_integration(
-            str(SPEC_PATH),
+            str(corrected),
             target=staging_path,
             name="open_pix",
             out=staging_path / "generated",
@@ -92,7 +106,7 @@ def regenerate(destination: Path) -> list[Path]:
             target = destination / filename
             shutil.copyfile(source, target)
             written.append(target)
-    return written
+    return written, report
 
 
 def _module_exports(path: Path) -> list[str]:
@@ -239,10 +253,14 @@ def main() -> int:
     Returns:
         int: Process exit code — ``0`` on success.
     """
-    for path in regenerate(PACKAGE_DIR):
+    written, report = regenerate(PACKAGE_DIR)
+    for path in written:
         print(f"  + {path.relative_to(REPO_ROOT)}")
     updated = apply_exports(PACKAGE_DIR, PACKAGE_DIR)
     print(f"  ~ {updated.relative_to(REPO_ROOT)} (__all__)")
+    print(f"  overlay: {report.integer_fields} numeric fields retyped as integer")
+    for entry in (*report.added_properties, *report.added_operations):
+        print(f"  overlay: + {entry}")
     return 0
 
 

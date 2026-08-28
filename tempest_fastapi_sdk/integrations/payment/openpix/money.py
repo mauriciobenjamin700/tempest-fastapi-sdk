@@ -21,8 +21,10 @@ def to_cents(value: float | int | str | Decimal) -> int:
 
     Args:
         value (float | int | str | Decimal): The value as the API typed it.
-            A ``float`` is what a generated model produces, since the
-            specification declares ``type: number``.
+            The generated model produces an ``int`` since v0.259.0, where
+            the overlay corrects the specification's ``type: number``; the
+            wider signature stays because a raw payload read straight off
+            the wire still carries whatever JSON parsed to.
 
     Returns:
         int: The same amount as an ``int``.

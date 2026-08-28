@@ -132,13 +132,17 @@ class OpenPixPixProvider:
         """Create a charge at OpenPix.
 
         ``amount_cents`` goes across unchanged: OpenPix states ``value`` in
-        cents already — it is the *type* that is wrong there, not the unit,
-        which is why the response goes back through ``to_cents``.
+        cents already, and since v0.259.0 the generated model types it as
+        ``int``. The response still goes back through ``to_cents``, which
+        now narrows nothing and validates everything — a value that is
+        negative or not whole means the assumption about the field is
+        wrong, and that is worth an error rather than a plausible number.
 
-        ``expires_in`` is sent in seconds. OpenPix refuses anything under
-        five minutes with a 400; that floor is not re-checked here, because
-        duplicating a provider's validation is how the copy drifts from the
-        original.
+        ``expires_in`` is sent in seconds, truncated to a whole one: the
+        field is an integer count, and ``timedelta.total_seconds()``
+        answers a ``float``. OpenPix refuses anything under five minutes
+        with a 400; that floor is not re-checked here, because duplicating
+        a provider's validation is how the copy drifts from the original.
 
         Args:
             request (PixChargeRequest): What to charge, and for whom.
@@ -157,7 +161,7 @@ class OpenPixPixProvider:
             correlation_id=request.reference,
             comment=request.description,
             expires_in=(
-                request.expires_in.total_seconds()
+                int(request.expires_in.total_seconds())
                 if request.expires_in is not None
                 else None
             ),

@@ -342,18 +342,18 @@ class OpenPixClient:
         self,
         *,
         email: str | None = None,
-        skip: float | None = None,
-        limit: float | None = None,
+        skip: int | None = None,
+        limit: int | None = None,
     ) -> GetApiV1AccountResponse:
         """Get a list of Accounts.
 
         Args:
             email (str | None): You can use the email to filter accounts Omitted from
                 the query when None.
-            skip (float | None): Number of items to skip for pagination Omitted from the
+            skip (int | None): Number of items to skip for pagination Omitted from the
                 query when None.
-            limit (float | None): Maximum number of items to return Omitted from the
-                query when None.
+            limit (int | None): Maximum number of items to return Omitted from the query
+                when None.
 
         Returns:
             GetApiV1AccountResponse: The 200 response body, validated.
@@ -1257,16 +1257,16 @@ class OpenPixClient:
         *,
         start: str | None = None,
         end: str | None = None,
-        skip: float | None = None,
-        limit: float | None = None,
+        skip: int | None = None,
+        limit: int | None = None,
     ) -> Any:
         """Get invoices.
 
         Args:
             start (str | None): The start value. Omitted from the query when None.
             end (str | None): The end value. Omitted from the query when None.
-            skip (float | None): The skip value. Omitted from the query when None.
-            limit (float | None): The limit value. Omitted from the query when None.
+            skip (int | None): The skip value. Omitted from the query when None.
+            limit (int | None): The limit value. Omitted from the query when None.
 
         Returns:
             Any: The 200 response body, validated.
@@ -1873,19 +1873,53 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(GetApiV1PaymentByIdResponse, response.json())
 
+    async def delete_api_v1_payment_by_id(
+        self,
+        id: str,
+    ) -> dict[str, Any]:
+        """Cancel a pending Payment.
+
+        Cancels a payment that was requested and not yet approved.
+
+        Absent from the published specification. It closes the recovery path of the
+        two-step transfer flow: when `POST /api/v1/payment` created the request and
+        `POST /api/v1/payment/approve` failed, the transfer stays pending on the
+        provider and can still be released later.
+
+        The response body is not modelled — this repository has no credentials to
+        observe its shape — so the method answers `dict[str, Any]` and drops nothing.
+
+        Args:
+            id (str): payment ID or correlation ID
+
+        Returns:
+            dict[str, Any]: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                no error status.
+        """
+        path = f"/api/v1/payment/{id}"
+        response = await self._client.request(
+            "DELETE",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(dict[str, Any], response.json())
+
     async def get_api_v1_pix_keys(
         self,
         *,
-        skip: float | None = None,
-        limit: float | None = None,
+        skip: int | None = None,
+        limit: int | None = None,
     ) -> GetApiV1PixKeysResponse:
         """Get all Pix keys.
 
         Retrieves a list of all Pix keys
 
         Args:
-            skip (float | None): The skip value. Omitted from the query when None.
-            limit (float | None): The limit value. Omitted from the query when None.
+            skip (int | None): The skip value. Omitted from the query when None.
+            limit (int | None): The limit value. Omitted from the query when None.
 
         Returns:
             GetApiV1PixKeysResponse: The 200 response body, validated.
@@ -1987,8 +2021,8 @@ class OpenPixClient:
     async def get_api_v1_pix_keys_tokens_logs(
         self,
         *,
-        skip: float | None = None,
-        limit: float | None = None,
+        skip: int | None = None,
+        limit: int | None = None,
         company_bank_account: str | None = None,
     ) -> GetApiV1PixKeysTokensLogsResponse:
         """Get token bucket logs.
@@ -1996,8 +2030,8 @@ class OpenPixClient:
         Get a list of token bucket operation logs
 
         Args:
-            skip (float | None): The skip value. Omitted from the query when None.
-            limit (float | None): The limit value. Omitted from the query when None.
+            skip (int | None): The skip value. Omitted from the query when None.
+            limit (int | None): The limit value. Omitted from the query when None.
             company_bank_account (str | None): Filter logs by company bank account ID
                 Omitted from the query when None.
 
@@ -2421,7 +2455,7 @@ class OpenPixClient:
     async def get_api_v1_stablecoin_quote(
         self,
         *,
-        value: float,
+        value: int,
         currency: StablecoinDepositRequestCurrency | None = None,
     ) -> GetApiV1StablecoinQuoteResponse:
         """Get a stablecoin quote without creating a deposit.
@@ -2435,7 +2469,7 @@ class OpenPixClient:
         Requires the `STABLECOIN_DEPOSIT_CREATE` scope.
 
         Args:
-            value (float): Amount to quote, in cents (BRL). Must be positive.
+            value (int): Amount to quote, in cents (BRL). Must be positive.
             currency (StablecoinDepositRequestCurrency | None): Stablecoin to receive.
                 Defaults to USDT. Omitted from the query when None.
 
@@ -2566,8 +2600,8 @@ class OpenPixClient:
         *,
         start: datetime | None = None,
         end: datetime | None = None,
-        skip: float | None = None,
-        limit: float | None = None,
+        skip: int | None = None,
+        limit: int | None = None,
     ) -> list[GetApiV1StatementResponseItem]:
         """Get statement by company.
 
@@ -2576,8 +2610,8 @@ class OpenPixClient:
         Args:
             start (datetime | None): The start value. Omitted from the query when None.
             end (datetime | None): The end value. Omitted from the query when None.
-            skip (float | None): The skip value. Omitted from the query when None.
-            limit (float | None): The limit value. Omitted from the query when None.
+            skip (int | None): The skip value. Omitted from the query when None.
+            limit (int | None): The limit value. Omitted from the query when None.
 
         Returns:
             list[GetApiV1StatementResponseItem]: The 200 response body, validated.

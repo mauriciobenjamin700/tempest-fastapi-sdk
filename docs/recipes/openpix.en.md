@@ -539,9 +539,18 @@ amount is optional: omit it and OpenPix returns the full value.
 ## Money: whole cents, not floats
 
 The specification says, in those words, *"Value in cents of this charge"* — and
-then types the field `number`. The generated model therefore validates `1990`
-into the float `1990.0`. Money that has been through a float is money that can
-be wrong: add a few of them and you get `0.30000000000000004`.
+then types the field `number`. Up to v0.258.0 the generated model copied that:
+`1990` became the float `1990.0`, and the client sent `{"value": 1990.0}` back
+over the wire. Money that has been through a float is money that can be wrong:
+add a few of them and you get `0.30000000000000004`.
+
+!!! check "Since v0.259.0 the field arrives as an `int`"
+    The specification overlay (see [What this package corrects in the
+    spec](#what-this-package-corrects-in-the-spec)) retypes the value and count
+    fields as `integer` before generating, so `Charge.value`,
+    `ChargePayload.value`, `Transaction.value`, `SubAccount.balance` and **154**
+    others are `int`. All three helpers still apply — what changed is that
+    `to_cents` is no longer required to read a generated model.
 
 ```python
 from decimal import Decimal
@@ -561,13 +570,82 @@ assert cents_to_reais(1990) == Decimal("19.90")
   returns cents. It rounds half-up (`0.005` -> `1`), which is what a person
   expects from money and **not** what the built-in `round` does — that rounds
   half to even, and `round(0.005 * 100)` gives `0`.
-- **`to_cents`** is what you use when *reading*: it narrows the float the API
-  returned into an exact `int`. It **refuses a fraction on purpose** —
-  `to_cents(19.9)` raises `ValueError`, because the field is already in cents
-  and a fraction means someone is treating reais as cents. Rounding silently
-  would hide that behind a plausible number.
+- **`to_cents`** is what you use to read a **raw** payload — the dictionary
+  that came out of the JSON, a webhook, a field the generated model does not
+  declare. It **refuses a fraction on purpose**: `to_cents(19.9)` raises
+  `ValueError`, because the field is already in cents and a fraction means
+  someone is treating reais as cents. Rounding silently would hide that behind
+  a plausible number. On a generated model it narrows nothing any more (the
+  field is already an `int`), but it still validates.
 - **`cents_to_reais`** returns a `Decimal`, so the value stays exact all the
   way to the formatting call.
+
+## What this package corrects in the spec
+
+`vendor/openpix-openapi.yaml` is the document Woovi publishes, byte for byte —
+refreshing it is a diff of what **they** changed and nothing else. Everything
+we know the document gets wrong lives in `scripts/openpix_overlay.py`, one
+named correction at a time, each carrying its evidence. Three families:
+
+**1. Whole units.** 154 fields typed `number` that are an amount in cents or a
+count become `integer`. The rule reads the description before the name, because
+the same name changes unit: `inputAmount` is cents on the deposit list and
+*"BRL (currency unit, not cents)"* on the stablecoin quote — that one stays a
+`float`, along with `outputAmount`, `basePrice` and `rate`, which really are
+fractional.
+
+**2. Fields the response carries and the document does not declare.** `Charge`
+gains `fee`, `discount` and `valueWithDiscount`; `ChargeRefund` gains
+`refundId` (the document declares it only on `Refund`, the Pix transaction
+refund, while the API returns it on both). All optional — a response without
+them still validates.
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import Charge
+
+charge = Charge.model_validate(
+    {"value": 199000, "fee": 2500, "discount": 0, "valueWithDiscount": 199000}
+)
+charge.fee, charge.value_with_discount   # (2500, 199000) — int, not float
+```
+
+**3. An operation the document omits.** `delete_api_v1_payment_by_id` closes
+the recovery path of the two-step transfer flow: when `POST /payment` created
+the request and `POST /payment/approve` failed, the transfer stays pending on
+the provider and can still be released later.
+
+```python
+import asyncio
+from typing import Any
+
+from tempest_fastapi_sdk import HTTPClient
+from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixClient
+
+
+async def cancel(payment_id: str) -> dict[str, Any]:
+    """Cancel a payment that was requested and never approved."""
+    http = HTTPClient(
+        base_url="https://api.openpix.com.br",
+        default_headers={"Authorization": "YOUR_APP_ID"},
+    )
+    client = OpenPixClient(http)
+    return await client.delete_api_v1_payment_by_id(payment_id)
+
+
+asyncio.run(cancel("payment-1"))
+```
+
+The return type is `dict[str, Any]` on purpose: this repository has no
+credentials to observe the response body, so it is not modelled — and nothing
+is dropped.
+
+!!! tip "A response model keeps what the spec did not predict"
+    Since v0.259.0 every model reachable from a response is generated with
+    `extra="allow"`. A field the provider adds tomorrow shows up in
+    `model_extra` instead of vanishing during validation — which is exactly how
+    `fee` used to be lost before it was declared. **Payload** models keep
+    `extra="ignore"`: there an unexpected key is the caller's own typo, and
+    carrying it to the provider is worse than dropping it.
 
 ## Registering the webhook with OpenPix
 

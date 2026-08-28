@@ -155,7 +155,13 @@ class TestGeneratedSurface:
         assert OpenPixClient.__name__ == "OpenPixClient"
 
     def test_carries_the_whole_specification(self) -> None:
-        """373 schemas and 105 operations — the point of embedding it."""
+        """373 schemas and 106 operations — the point of embedding it.
+
+        105 come from the published document; the 106th is
+        ``delete_api_v1_payment_by_id``, declared by
+        ``scripts/openpix_overlay.py`` because the document omits the
+        cancel half of the two-step transfer flow.
+        """
         from tempest_fastapi_sdk.integrations.payment.openpix import client, schemas
 
         operations = [
@@ -165,7 +171,7 @@ class TestGeneratedSurface:
             and callable(getattr(client.OpenPixClient, name))
         ]
         assert len(schemas.__all__) == 373
-        assert len(operations) == 105
+        assert len(operations) == 106
 
     def test_production_base_url_is_the_default(self) -> None:
         """The generated constant comes from the spec's first server."""
