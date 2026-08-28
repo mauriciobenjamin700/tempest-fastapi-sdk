@@ -1013,6 +1013,12 @@ from tempest_fastapi_sdk.schemas import (
     BaseSchema as BaseSchema,
 )
 from tempest_fastapi_sdk.schemas import (
+    CompactPaginationFilterSchema as CompactPaginationFilterSchema,
+)
+from tempest_fastapi_sdk.schemas import (
+    CompactPaginationSchema as CompactPaginationSchema,
+)
+from tempest_fastapi_sdk.schemas import (
     CursorPaginationFilterSchema as CursorPaginationFilterSchema,
 )
 from tempest_fastapi_sdk.schemas import (
@@ -1699,6 +1705,8 @@ __all__: list[str] = [
     "CityBR",
     "CityNameField",
     "ColumnRef",
+    "CompactPaginationFilterSchema",
+    "CompactPaginationSchema",
     "CompositeFeatureFlagBackend",
     "ConflictException",
     "CursorPaginationFilterSchema",

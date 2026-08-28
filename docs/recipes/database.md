@@ -1135,6 +1135,66 @@ vira `IS NULL`. Toda paginação herda esses operadores só declarando o campo.
 
 ---
 
+### O nome do tamanho de página no fio
+
+Por default o envelope publica `page_size`, tanto na resposta quanto no query
+param. Para um serviço novo isso não custa nada — mas um serviço que **já**
+publica `{"total", "items", "page", "size", "pages"}` não pode renomear sem
+quebrar todo endpoint paginado de uma vez, e um app já em loja não atualiza em
+lockstep com o backend.
+
+Desde a v0.261.0 existe a variante pronta:
+
+```python
+from tempest_fastapi_sdk import (
+    CompactPaginationFilterSchema,
+    CompactPaginationSchema,
+)
+
+# GET /users?size=50
+filters = CompactPaginationFilterSchema.model_validate({"size": 50})
+filters.page_size   # 50 — o nome Python não muda
+
+page = CompactPaginationSchema[int](
+    items=[1], total=1, page=1, page_size=20, pages=1
+)
+page.model_dump(by_alias=True)["size"]   # 20
+```
+
+O FastAPI serializa `response_model` com `by_alias=True`, então declarar
+`CompactPaginationSchema[Item]` como `response_model` já basta.
+
+!!! important "O repositório não muda"
+    `BaseRepository.paginate` continua devolvendo
+    `{"items", "total", "page", "page_size", "pages"}` seja qual for o
+    envelope. A renomeação vive **no schema e em nenhum outro lugar** —
+    não há o que renomear na camada de dados, e trocar um serviço de um
+    envelope para o outro toca uma linha.
+
+Se o seu nome no fio não é nem `page_size` nem `size`, as duas classes base
+ligam `populate_by_name`, então dá para sobrescrever só o campo:
+
+```python
+from pydantic import Field
+
+from tempest_fastapi_sdk import BasePaginationSchema
+
+
+class MyPage(BasePaginationSchema[int]):
+    """Envelope próprio, renomeando só o tamanho de página."""
+
+    page_size: int = Field(
+        validation_alias="perPage",
+        serialization_alias="perPage",
+    )
+```
+
+O nome do fio é escrito **duas vezes**, `validation_alias` para ler e
+`serialization_alias` para escrever. `Field(alias=...)` sozinho parece
+funcionar e é aceito pelo mypy, mas pyright e basedpyright acusam erro no
+consumidor — o SDK não usa essa forma em lugar nenhum.
+
+
 ## 5. Operações em lote
 
 Para volume, o ORM linha-a-linha é caro. O repository oferece duas

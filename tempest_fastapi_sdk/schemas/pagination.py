@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 from typing import Any, Generic, TypeVar
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
@@ -42,7 +42,14 @@ class BasePaginationFilterSchema(BaseSchema):
             ``order_by`` is ``None``.
         is_active (bool | None): Filter by active status. ``None``
             returns both active and inactive rows.
+
+    ``populate_by_name`` is on, so a subclass may rename a field on the
+    wire by redeclaring it with an alias and still construct the model
+    by its Python name. See :class:`CompactPaginationFilterSchema` for
+    the ready-made case.
     """
+
+    model_config = ConfigDict(populate_by_name=True)
 
     page: int = Field(
         title="Page Number",
@@ -141,7 +148,20 @@ class BasePaginationSchema(BaseSchema, Generic[T]):
         page (int): The current page number (1-indexed).
         page_size (int): The number of items per page.
         pages (int): The total number of pages.
+
+    ``populate_by_name`` is on, so a subclass may rename a field on the
+    wire by redeclaring it with an alias and still construct the model
+    by its Python name. See :class:`CompactPaginationSchema` for the
+    ready-made case.
+
+    The repository is unaffected either way:
+    :meth:`tempest_fastapi_sdk.db.repository.BaseRepository.paginate`
+    returns ``{"items", "total", "page", "page_size", "pages"}`` whatever
+    the envelope publishes, because the rename lives in the schema and
+    nowhere else.
     """
+
+    model_config = ConfigDict(populate_by_name=True)
 
     items: list[T] = Field(
         title="Items",
@@ -172,6 +192,81 @@ class BasePaginationSchema(BaseSchema, Generic[T]):
         description="The total number of pages available.",
         examples=[10, 25],
         ge=0,
+    )
+
+
+class CompactPaginationFilterSchema(BasePaginationFilterSchema):
+    """Filter that reads the page size from ``size`` on the wire.
+
+    Same fields and same defaults as
+    :class:`BasePaginationFilterSchema`; only the query parameter is
+    spelled differently. Use it when a service already published
+    ``?size=`` and cannot rename it — an app in a store cannot be asked
+    to update in lockstep with the backend.
+
+    The Python name stays ``page_size``, so
+    :meth:`BaseRepository.paginate` still takes it without a rename, and
+    switching a service between the two envelopes touches the schema and
+    nothing else.
+
+    .. code-block:: python
+
+        from fastapi import Depends
+
+        from tempest_fastapi_sdk import CompactPaginationFilterSchema
+
+        # GET /users?size=50
+        filters = CompactPaginationFilterSchema.model_validate({"size": 50})
+        filters.page_size   # 50
+
+    Attributes:
+        page_size (int): Items per page, read from ``size``.
+    """
+
+    page_size: int = Field(
+        title="Page Size",
+        description="The number of items per page.",
+        examples=[10, 20, 50],
+        default=20,
+        ge=1,
+        validation_alias="size",
+        serialization_alias="size",
+    )
+
+
+class CompactPaginationSchema(BasePaginationSchema[T], Generic[T]):
+    """Envelope that publishes the page size as ``size``.
+
+    The counterpart of :class:`CompactPaginationFilterSchema` on the way
+    out: ``{"items", "total", "page", "size", "pages"}``. Adopting the
+    SDK's envelope in a service that already published that shape is
+    otherwise a break on every paginated endpoint at once.
+
+    FastAPI serialises a response model with ``by_alias=True``, so
+    declaring this as ``response_model`` is all it takes. A direct
+    ``model_dump()`` still answers ``page_size`` — pass
+    ``by_alias=True`` to see the wire name.
+
+    .. code-block:: python
+
+        from tempest_fastapi_sdk import CompactPaginationSchema
+
+        page = CompactPaginationSchema[int](
+            items=[1], total=1, page=1, page_size=20, pages=1
+        )
+        page.model_dump(by_alias=True)["size"]   # 20
+
+    Attributes:
+        page_size (int): Items per page, published as ``size``.
+    """
+
+    page_size: int = Field(
+        title="Page Size",
+        description="The number of items per page.",
+        examples=[10, 25],
+        ge=1,
+        validation_alias="size",
+        serialization_alias="size",
     )
 
 

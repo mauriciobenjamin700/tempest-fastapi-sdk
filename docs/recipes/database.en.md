@@ -1137,6 +1137,66 @@ operators just by declaring the field.
 
 ---
 
+### The wire name of the page size
+
+By default the envelope publishes `page_size`, both in the response and as the
+query parameter. For a new service that costs nothing — but a service that
+**already** publishes `{"total", "items", "page", "size", "pages"}` cannot
+rename it without breaking every paginated endpoint at once, and an app
+already in a store does not update in lockstep with its backend.
+
+As of v0.261.0 there is a ready-made variant:
+
+```python
+from tempest_fastapi_sdk import (
+    CompactPaginationFilterSchema,
+    CompactPaginationSchema,
+)
+
+# GET /users?size=50
+filters = CompactPaginationFilterSchema.model_validate({"size": 50})
+filters.page_size   # 50 — the Python name does not move
+
+page = CompactPaginationSchema[int](
+    items=[1], total=1, page=1, page_size=20, pages=1
+)
+page.model_dump(by_alias=True)["size"]   # 20
+```
+
+FastAPI serialises a `response_model` with `by_alias=True`, so declaring
+`CompactPaginationSchema[Item]` as the `response_model` is all it takes.
+
+!!! important "The repository does not change"
+    `BaseRepository.paginate` keeps returning
+    `{"items", "total", "page", "page_size", "pages"}` whatever the
+    envelope publishes. The rename lives **in the schema and nowhere
+    else** — there is nothing to rename in the data layer, and moving a
+    service from one envelope to the other touches one line.
+
+If your wire name is neither `page_size` nor `size`, both base classes turn
+`populate_by_name` on, so you can override just the field:
+
+```python
+from pydantic import Field
+
+from tempest_fastapi_sdk import BasePaginationSchema
+
+
+class MyPage(BasePaginationSchema[int]):
+    """An envelope of your own, renaming only the page size."""
+
+    page_size: int = Field(
+        validation_alias="perPage",
+        serialization_alias="perPage",
+    )
+```
+
+The wire name is written **twice**, `validation_alias` to read and
+`serialization_alias` to write. `Field(alias=...)` alone looks like it works
+and mypy accepts it, but pyright and basedpyright flag it in the consumer —
+the SDK does not use that form anywhere.
+
+
 ## 5. Bulk operations
 
 For volume, row-by-row ORM is expensive. The repository offers two

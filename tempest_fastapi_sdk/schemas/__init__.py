@@ -15,6 +15,12 @@ from tempest_fastapi_sdk.schemas.pagination import (
     BasePaginationSchema as BasePaginationSchema,
 )
 from tempest_fastapi_sdk.schemas.pagination import (
+    CompactPaginationFilterSchema as CompactPaginationFilterSchema,
+)
+from tempest_fastapi_sdk.schemas.pagination import (
+    CompactPaginationSchema as CompactPaginationSchema,
+)
+from tempest_fastapi_sdk.schemas.pagination import (
     CursorPaginationFilterSchema as CursorPaginationFilterSchema,
 )
 from tempest_fastapi_sdk.schemas.pagination import (
@@ -41,6 +47,8 @@ __all__: list[str] = [
     "BasePaginationSchema",
     "BaseResponseSchema",
     "BaseSchema",
+    "CompactPaginationFilterSchema",
+    "CompactPaginationSchema",
     "CursorPaginationFilterSchema",
     "CursorPaginationSchema",
     "ErrorResponseSchema",
