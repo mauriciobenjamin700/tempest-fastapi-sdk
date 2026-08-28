@@ -264,24 +264,42 @@ Sockets mortos são detectados na hora do `send_to`/`broadcast` (a chamada `send
 
 ## Heartbeat
 
+O primeiro frame que o router manda anuncia a cadência:
+
+```json
+{"type": "hello", "data": {"heartbeat_seconds": 30}, "request_id": null}
+```
+
+!!! tip "Calibre o watchdog do cliente por esse número"
+    O socket do browser só reporta conexão que fecha **limpo**. Um link
+    que morre em voo deixa o `readyState` em `OPEN` com nada chegando
+    nunca mais — silêncio é o único sintoma disponível, então o cliente
+    precisa do próprio watchdog.
+
+    Se ele hard-codar o intervalo, retunar `WS_HEARTBEAT_SECONDS` no
+    servidor faz todo cliente confundir intervalo normal com queda. Ler
+    do `hello` resolve isso de uma vez.
+
 A cada `WS_HEARTBEAT_SECONDS` (default 30s) o SDK envia:
 
 ```json
 {"type": "ping", "data": {}, "request_id": null}
 ```
 
-O cliente **deve** responder com `{"type": "pong", "data": {}}` — o pong é tráfego cliente → servidor que reseta o idle timer de load balancers e mantém a conexão saudável.
+Responder `{"type": "pong", "data": {}}` é a forma recomendada — é tráfego cliente → servidor que reseta o idle timer de load balancers. Mas **qualquer** frame de entrada conta como prova de vida desde a v0.261.0: um peer no meio de uma negociação está demonstravelmente presente, e exigir a resposta específica desconectava cliente ocupado que só não tinha chegado nela ainda.
 
-!!! warning "Responder `pong` é obrigatório desde a v0.197.0"
-    O router agora mede o intervalo até o pong e **fecha com `4408`**
-    quando ele passa de `WS_HEARTBEAT_TIMEOUT_SECONDS`. Antes disso um
-    peer half-open — que nunca faz o `send` falhar — segurava o slot no
-    hub para sempre, exatamente o que a documentação prometia evitar.
+!!! warning "Silêncio prolongado fecha o socket desde a v0.197.0"
+    O router mede o intervalo desde o último frame recebido e **fecha
+    com `4408`** quando ele passa de `WS_HEARTBEAT_TIMEOUT_SECONDS`.
+    Antes disso um peer half-open — que nunca faz o `send` falhar —
+    segurava o slot no hub para sempre, exatamente o que a documentação
+    prometia evitar.
 
-    Um cliente que não responde `pong` passa a ser desconectado uma vez
-    por timeout. O `tempest-react-sdk` responde sozinho (`respondToPing`,
-    ligado por default); qualquer outro cliente precisa ecoar
-    `{"type": "pong", "data": {}}` ao receber o ping.
+    Um cliente completamente calado é desconectado uma vez por timeout.
+    O `tempest-react-sdk` responde `pong` sozinho (`respondToPing`,
+    ligado por default); qualquer outro cliente precisa mandar **algo**
+    dentro da janela — o `pong` é a forma barata de fazer isso quando
+    não há tráfego de aplicação.
 
 O pong é consumido pelo router: ele **não** chega no seu handler, porque responde ao ping que o próprio router mandou, não é dado de aplicação.
 
@@ -294,8 +312,64 @@ Códigos de fechamento que o router emite:
 | `1000` | Saída normal (handler retornou ou cliente desconectou limpo) |
 | `1009` | Frame de entrada maior que `WS_MAX_MESSAGE_BYTES` |
 | `4401` | Token inválido / expirado / faltando no handshake |
-| `4408` | Nenhum `pong` dentro de `WS_HEARTBEAT_TIMEOUT_SECONDS` |
+| `4408` | Nenhum frame de entrada dentro de `WS_HEARTBEAT_TIMEOUT_SECONDS` |
 | `4429` | Limite `WS_MAX_CONNECTIONS_PER_USER` excedido — conexão **mais antiga** do user é evictada |
+
+### Heartbeat sem o router
+
+O heartbeat não exige o resto do router. `heartbeat` é um context manager
+async que funciona em **qualquer** endpoint WebSocket já aceito — sem
+bearer no handshake, sem registro no hub:
+
+```python
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+from tempest_fastapi_sdk import WebSocketSettings
+from tempest_fastapi_sdk.websockets import heartbeat
+
+app = FastAPI()
+settings = WebSocketSettings()
+
+ROOMS: dict[str, list[WebSocket]] = {}
+
+
+async def fan_out(room_code: str, payload: dict[str, object]) -> None:
+    """Reenvia o frame para os outros peers da sala."""
+    for peer in ROOMS.get(room_code, []):
+        await peer.send_json(payload)
+
+
+@app.websocket("/relay/{room_code}")
+async def relay(ws: WebSocket, room_code: str) -> None:
+    """Sala anônima: o código é o único segredo, não há usuário para indexar."""
+    await ws.accept()
+    async with heartbeat(ws, settings=settings) as live:
+        await ws.send_json(
+            {"type": "hello", "heartbeat_seconds": live.interval_seconds}
+        )
+        try:
+            while True:
+                payload = await ws.receive_json()
+                await fan_out(room_code, payload)
+        except WebSocketDisconnect:
+            return
+```
+
+`live.interval_seconds` é o intervalo em uso, para o seu próprio `hello`.
+`live.touch()` marca o peer como vivo por evidência que o socket não
+enxerga — uma mensagem que chegou por outro transporte para a mesma
+sessão, por exemplo. Todo frame de entrada já faz isso sozinho.
+
+O cap de tamanho é opcional e separado: passe
+`max_message_bytes=settings.WS_MAX_MESSAGE_BYTES` para recusar frame
+grande com `1009`, ou omita para não mexer em tamanho.
+
+!!! info "Por que isso é público desde a v0.261.0"
+    A mecânica existia, mas só dentro de `make_websocket_router`, que
+    impõe bearer no handshake e registro num hub indexado por
+    `user_id: UUID`. Signaling de WebRTC com salas anônimas, endereçado
+    por `peer_id`, não encaixa em nenhum dos dois — e reimplementava o
+    heartbeat só para não divergir da convenção.
 
 ---
 

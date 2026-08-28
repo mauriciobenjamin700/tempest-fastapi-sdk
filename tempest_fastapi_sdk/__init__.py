@@ -1571,6 +1571,12 @@ from tempest_fastapi_sdk.webpush import (
     make_web_push_router as make_web_push_router,
 )
 from tempest_fastapi_sdk.websockets import (
+    HEARTBEAT_TIMEOUT_CODE as HEARTBEAT_TIMEOUT_CODE,
+)
+from tempest_fastapi_sdk.websockets import (
+    Liveness as Liveness,
+)
+from tempest_fastapi_sdk.websockets import (
     WebSocketConnection as WebSocketConnection,
 )
 from tempest_fastapi_sdk.websockets import (
@@ -1578,6 +1584,9 @@ from tempest_fastapi_sdk.websockets import (
 )
 from tempest_fastapi_sdk.websockets import (
     WSEnvelope as WSEnvelope,
+)
+from tempest_fastapi_sdk.websockets import (
+    heartbeat as heartbeat,
 )
 from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
@@ -1610,6 +1619,7 @@ __all__: list[str] = [
     "DEFAULT_SPA_SECURITY_HEADERS",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "ENUM_TYPE_SUFFIX",
+    "HEARTBEAT_TIMEOUT_CODE",
     "HUNDRED",
     "IDEMPOTENCY_HEADER",
     "MFA_TOKEN_TYPE",
@@ -1762,6 +1772,7 @@ __all__: list[str] = [
     "JWTUtils",
     "LatitudeField",
     "Lens",
+    "Liveness",
     "LocalUploadStorage",
     "Locale",
     "LocaleColumnMixin",
@@ -2003,6 +2014,7 @@ __all__: list[str] = [
     "guarded_user_param",
     "has_perm",
     "hash_opaque_token",
+    "heartbeat",
     "in_transaction",
     "is_memory_sqlite_url",
     "is_valid_cep",

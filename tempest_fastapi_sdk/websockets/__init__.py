@@ -15,6 +15,11 @@ Re-exports use the PEP 484 ``from x import Y as Y`` form alongside
 "private import usage" diagnostic.
 """
 
+from tempest_fastapi_sdk.websockets.heartbeat import (
+    HEARTBEAT_TIMEOUT_CODE as HEARTBEAT_TIMEOUT_CODE,
+)
+from tempest_fastapi_sdk.websockets.heartbeat import Liveness as Liveness
+from tempest_fastapi_sdk.websockets.heartbeat import heartbeat as heartbeat
 from tempest_fastapi_sdk.websockets.hub import (
     WebSocketConnection as WebSocketConnection,
 )
@@ -25,8 +30,11 @@ from tempest_fastapi_sdk.websockets.router import (
 from tempest_fastapi_sdk.websockets.schemas import WSEnvelope as WSEnvelope
 
 __all__: list[str] = [
+    "HEARTBEAT_TIMEOUT_CODE",
+    "Liveness",
     "WSEnvelope",
     "WebSocketConnection",
     "WebSocketHub",
+    "heartbeat",
     "make_websocket_router",
 ]

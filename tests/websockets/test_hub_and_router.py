@@ -17,6 +17,25 @@ from tempest_fastapi_sdk import (
     make_websocket_router,
 )
 
+
+def _skip_hello(ws: Any) -> dict[str, Any]:
+    """Read past the router's `hello` frame and return it.
+
+    Since v0.261.0 the first frame the router sends announces the
+    heartbeat cadence, so a test that reads positionally has to consume
+    it. Returned rather than discarded so a caller can assert on it.
+
+    Args:
+        ws: The connected test-client socket.
+
+    Returns:
+        dict[str, Any]: The `hello` envelope.
+    """
+    hello: dict[str, Any] = ws.receive_json()
+    assert hello["type"] == "hello"
+    return hello
+
+
 # ---------------------------------------------------------------------------
 # Hub unit tests
 # ---------------------------------------------------------------------------
@@ -243,6 +262,7 @@ class TestWebSocketRouter:
             TestClient(app) as client,
             client.websocket_connect("/ws?token=valid-token") as ws,
         ):
+            _skip_hello(ws)
             ws.send_json({"type": "chat.message", "data": {"text": "hi"}})
             received = ws.receive_json()
         assert received["type"] == "echo"
@@ -310,6 +330,7 @@ class TestFrameGuard:
             TestClient(app) as client,
             client.websocket_connect("/ws?token=valid-token") as ws,
         ):
+            _skip_hello(ws)
             ws.send_json({"type": "chat.message", "data": {"text": "x" * 500}})
             with pytest.raises(WebSocketDisconnect) as excinfo:
                 ws.receive_json()
@@ -332,6 +353,7 @@ class TestFrameGuard:
             TestClient(app) as client,
             client.websocket_connect("/ws?token=valid-token") as ws,
         ):
+            _skip_hello(ws)
             ws.send_json({"type": "chat.message", "data": {"text": "hi"}})
             received = ws.receive_json()
         assert received["type"] == "echo"
@@ -378,6 +400,7 @@ class TestHeartbeatTimeout:
             TestClient(app) as client,
             client.websocket_connect("/ws?token=valid-token") as ws,
         ):
+            _skip_hello(ws)
             first = ws.receive_json()
             ws.send_json({"type": "pong", "data": {}})
             second = ws.receive_json()
@@ -393,6 +416,7 @@ class TestHeartbeatTimeout:
             TestClient(app) as client,
             client.websocket_connect("/ws?token=valid-token") as ws,
         ):
+            _skip_hello(ws)
             ws.send_json({"type": "pong", "data": {}})
             ws.send_json({"type": "chat.message", "data": {}})
             received = ws.receive_json()
