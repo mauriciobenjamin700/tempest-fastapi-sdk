@@ -1042,3 +1042,111 @@ class TestTaggedUnionComponents:
         assert _field_annotation(spec, "Owner", "pet") == (
             'Annotated[Cat | Dog, Field(discriminator="kind")] | None'
         )
+
+
+class TestResponseModelsKeepWhatTheSpecOmitted:
+    """A response model carries the field the document did not predict.
+
+    A third-party API adds a field without asking. With ``extra="ignore"``
+    the value is not merely undeclared, it is **gone** — measured twice in
+    this repository: Mercado Pago's ``point_of_interaction`` (the Pix QR,
+    which is why ``parse_pix_payment`` exists) and OpenPix's ``Charge.fee``,
+    which a consumer was persisting into a ledger and would have written as
+    zero on every row.
+
+    Payload models are left alone: there an unexpected key is the caller's
+    own typo, and forwarding it to the provider is worse than dropping it.
+    """
+
+    @staticmethod
+    def _document() -> dict[str, Any]:
+        """Build a document with one response schema and one payload schema.
+
+        Returns:
+            dict[str, Any]: A loadable OpenAPI document where ``Charge``
+            answers a ``GET``, ``Customer`` is reached only through
+            ``Charge``, and ``ChargePayload`` is only ever sent.
+        """
+        return {
+            "openapi": "3.0.3",
+            "info": {"title": "T", "version": "1"},
+            "paths": {
+                "/charge": {
+                    "get": {
+                        "responses": {
+                            "200": {
+                                "description": "ok",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "$ref": "#/components/schemas/Charge"
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    },
+                    "post": {
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "$ref": "#/components/schemas/ChargePayload"
+                                    }
+                                }
+                            }
+                        },
+                        "responses": {"201": {"description": "created"}},
+                    },
+                }
+            },
+            "components": {
+                "schemas": {
+                    "Charge": {
+                        "type": "object",
+                        "properties": {
+                            "value": {"type": "integer"},
+                            "customer": {"$ref": "#/components/schemas/Customer"},
+                        },
+                    },
+                    "Customer": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}},
+                    },
+                    "ChargePayload": {
+                        "type": "object",
+                        "properties": {"correlationID": {"type": "string"}},
+                    },
+                }
+            },
+        }
+
+    def test_a_response_schema_allows_extras(self) -> None:
+        """The class the operation answers with keeps the unexpected key."""
+        spec = parse_spec(self._document(), client_name="t")
+
+        assert _schema(spec, "Charge").reached_by_response
+        assert 'extra="allow"' in _schema(spec, "Charge").config_arguments
+
+    def test_a_nested_schema_is_reached_too(self) -> None:
+        """The dropped field hides in the nested object, so it goes deep."""
+        spec = parse_spec(self._document(), client_name="t")
+
+        assert _schema(spec, "Customer").reached_by_response
+
+    def test_a_payload_schema_is_left_alone(self) -> None:
+        """An unexpected key on the way out is the caller's own typo."""
+        spec = parse_spec(self._document(), client_name="t")
+
+        payload = _schema(spec, "ChargePayload")
+        assert not payload.reached_by_response
+        assert 'extra="allow"' not in payload.config_arguments
+
+    def test_populate_by_name_still_comes_first(self) -> None:
+        """Both keywords land on one `ConfigDict`, in a stable order."""
+        spec = parse_spec(self._document(), client_name="t")
+
+        assert _schema(spec, "ChargePayload").config_arguments == (
+            "populate_by_name=True",
+        )
+        assert _schema(spec, "Charge").config_arguments == ('extra="allow"',)

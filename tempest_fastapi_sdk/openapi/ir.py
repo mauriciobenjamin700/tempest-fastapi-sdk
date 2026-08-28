@@ -106,6 +106,9 @@ class SchemaIR:
         unsupported (tuple[str, ...]): Human-readable notes about
             constructs that could not be represented, surfaced to the
             user instead of silently producing a wrong schema.
+        reached_by_response (bool): Whether an operation's success
+            response reaches this class, directly or through another
+            generated class. Drives ``extra="allow"``.
     """
 
     name: str
@@ -117,6 +120,7 @@ class SchemaIR:
     alias_target: str = ""
     dependencies: frozenset[str] = frozenset()
     unsupported: tuple[str, ...] = ()
+    reached_by_response: bool = False
 
     @property
     def needs_populate_by_name(self) -> bool:
@@ -132,6 +136,21 @@ class SchemaIR:
             bool: Whether the condition holds.
         """
         return any(f.alias for f in self.fields)
+
+    @property
+    def config_arguments(self) -> tuple[str, ...]:
+        """``ConfigDict`` keywords this class declares, in emission order.
+
+        Returns:
+            tuple[str, ...]: The rendered keyword arguments. Empty when
+            the class is content with what ``BaseSchema`` already sets.
+        """
+        arguments: list[str] = []
+        if self.needs_populate_by_name:
+            arguments.append("populate_by_name=True")
+        if self.reached_by_response:
+            arguments.append('extra="allow"')
+        return tuple(arguments)
 
 
 @dataclass(frozen=True, slots=True)

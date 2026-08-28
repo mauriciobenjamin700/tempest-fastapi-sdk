@@ -97,34 +97,43 @@ def mock_client(handler: Any) -> HTTPClient:
     )
 
 
-class TestTheGeneratedModelDropsTheQr:
-    """The defect this module exists for, pinned so it cannot come back quietly."""
+class TestTheGeneratedModelStillHasNoFieldForTheQr:
+    """The defect this module exists for, and how far it now goes.
 
-    def test_the_generated_payment_has_no_place_for_it(self) -> None:
-        """No field means ``extra="ignore"`` discards the object outright."""
+    The specification does not declare ``point_of_interaction``, so the
+    generated model has no typed place for the QR — that half has not
+    changed and is why :func:`parse_pix_payment` exists.
+
+    What changed is the consequence. Until v0.259.0 the object was
+    *discarded*: no exception, no warning, and a
+    ``transaction_details.external_resource_url`` that looked like an
+    answer while the copy-and-paste string was already gone. Response
+    models now carry what the specification did not predict, so the QR
+    survives validation even without a field of its own.
+    """
+
+    def test_the_generated_payment_still_has_no_field_for_it(self) -> None:
+        """The specification is what is missing, and it still is."""
         from tempest_fastapi_sdk.integrations.payment.mercado_pago import Payment
 
         assert "point_of_interaction" not in Payment.model_fields
-        assert Payment.model_config["extra"] == "ignore"
 
-    def test_the_qr_is_gone_after_validating_as_payment(self) -> None:
-        """The body carries the QR; the validated model does not.
-
-        This is the whole failure mode: no exception, no warning, and a
-        ``transaction_details.external_resource_url`` that looks like an
-        answer while the copy-and-paste string is already lost.
-        """
+    def test_a_response_model_keeps_what_the_spec_omitted(self) -> None:
+        """``extra="allow"`` is the difference between absent and lost."""
         from tempest_fastapi_sdk.integrations.payment.mercado_pago import Payment
+
+        assert Payment.model_config["extra"] == "allow"
 
         body = pix_response()
         assert body["point_of_interaction"]["transaction_data"]["qr_code"] == QR_CODE
 
         payment = Payment.model_validate(body)
-        assert not hasattr(payment, "point_of_interaction")
-        assert QR_CODE not in payment.model_dump_json()
+        extra = payment.model_extra or {}
+        assert extra["point_of_interaction"]["transaction_data"]["qr_code"] == QR_CODE
+        assert QR_CODE in payment.model_dump_json()
 
-    def test_the_pix_view_keeps_it(self) -> None:
-        """Same body, the view built for it, and the QR survives."""
+    def test_the_pix_view_is_still_how_you_read_it_typed(self) -> None:
+        """Surviving untyped is not the same as being reachable typed."""
         payment = parse_pix_payment(pix_response())
         assert payment.qr_code == QR_CODE
         assert payment.qr_code_base64 == QR_BASE64

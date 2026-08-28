@@ -126,6 +126,7 @@ class _Parser:
         self.schemas: dict[str, SchemaIR] = {}
         self.wire_to_class: dict[str, str] = {}
         self.notes: list[str] = []
+        self.response_annotations: list[str] = []
         self.imports: set[str] = set()
         self._sinks: list[list[str]] = []
         self._resolving: set[str] = set()
@@ -1349,7 +1350,9 @@ class _Parser:
                 f"only application/json is modelled"
             )
             return None, status
-        return self.render_type(schema, hint=f"{owner}Response"), status
+        annotation = self.render_type(schema, hint=f"{owner}Response")
+        self.response_annotations.append(annotation)
+        return annotation, status
 
     def _error_statuses(
         self,
@@ -1603,6 +1606,60 @@ def _resolve_dependencies(
     return resolved
 
 
+def _mark_response_reachable(
+    schemas: Mapping[str, SchemaIR],
+    annotations: Sequence[str],
+) -> dict[str, SchemaIR]:
+    """Flag every class an operation's success response can reach.
+
+    A third-party API adds a field without asking, and a response model
+    that drops it turns "the specification is behind" into "the value is
+    gone". That was measured on OpenPix: ``Charge`` omits ``fee``,
+    ``discount`` and ``valueWithDiscount``, the API sends all three, and a
+    consumer persisting ``charge.fee`` would have written zero into every
+    row. So a response model keeps what it did not expect
+    (``extra="allow"``) and the caller reads it back through
+    ``model_extra``.
+
+    Payload models are deliberately left alone: there, an unexpected key
+    is the caller's own typo, and carrying it to the provider is worse
+    than dropping it.
+
+    Reachability is transitive — ``ChargeResponse`` naming ``Charge``,
+    which names ``Customer``, marks all three — because a nested object is
+    exactly where the dropped field hides.
+
+    Args:
+        schemas (Mapping[str, SchemaIR]): Every generated class by name,
+            with ``dependencies`` already resolved.
+        annotations (Sequence[str]): Rendered success-response
+            annotations, one per operation that declares a JSON body.
+
+    Returns:
+        dict[str, SchemaIR]: The same classes, with
+        ``reached_by_response`` set on the models the closure covers.
+        Enums and unions are skipped — neither takes a ``model_config``.
+    """
+    pending: list[str] = []
+    for annotation in annotations:
+        pending.extend(
+            token for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", annotation)
+        )
+    reached: set[str] = set()
+    while pending:
+        name = pending.pop()
+        if name in reached or name not in schemas:
+            continue
+        reached.add(name)
+        pending.extend(schemas[name].dependencies)
+    return {
+        name: replace(schema, reached_by_response=True)
+        if name in reached and schema.kind == "model"
+        else schema
+        for name, schema in schemas.items()
+    }
+
+
 def _order_schemas(
     schemas: Mapping[str, SchemaIR],
 ) -> tuple[tuple[SchemaIR, ...], frozenset[str]]:
@@ -1688,7 +1745,11 @@ def parse_spec(document: Mapping[str, Any], *, client_name: str) -> SpecIR:
         parser.ensure_component(str(wire_name), deref(document, raw))
 
     client = parser.build_client()
-    ordered, cyclic = _order_schemas(_resolve_dependencies(parser.schemas))
+    resolved = _mark_response_reachable(
+        _resolve_dependencies(parser.schemas),
+        parser.response_annotations,
+    )
+    ordered, cyclic = _order_schemas(resolved)
     return SpecIR(
         schemas=ordered,
         client=client,

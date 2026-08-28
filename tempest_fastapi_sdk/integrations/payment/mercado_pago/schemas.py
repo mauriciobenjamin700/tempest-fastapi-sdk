@@ -692,6 +692,8 @@ class Address(BaseSchema):
         country (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     zip_code: str | None = Field(examples=["01310-100"], default=None)
     street_name: str | None = Field(examples=["Av. Paulista"], default=None)
     street_number: str | None = Field(examples=["1000"], default=None)
@@ -708,6 +710,8 @@ class AttachClaimFileResponse(BaseSchema):
         file_name (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     file_id: str | None = None
     file_name: str | None = None
 
@@ -720,6 +724,8 @@ class AuthorizedPaymentPayment(BaseSchema):
         status (str | None): Undocumented in the spec.
         status_detail (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: int | None = Field(
         description="Linked payment ID in /v1/payments",
@@ -736,6 +742,8 @@ class AutoRecurringFreeTrial(BaseSchema):
         frequency (int | None): Undocumented in the spec.
         frequency_type (AutoRecurringFrequencyType | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     frequency: int | None = Field(examples=[14], default=None)
     frequency_type: AutoRecurringFrequencyType | None = Field(
@@ -780,6 +788,8 @@ class CaptureOrderResponse(BaseSchema):
         status_detail (str | None): Undocumented in the spec.
         transactions (dict[str, Any] | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = None
     status: str | None = None
@@ -831,6 +841,8 @@ class CardIssuer(BaseSchema):
         name (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: int | None = None
     name: str | None = None
 
@@ -844,6 +856,8 @@ class CardPaymentMethod(BaseSchema):
         payment_type_id (str | None): Undocumented in the spec.
         thumbnail (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = Field(examples=["visa"], default=None)
     name: str | None = Field(examples=["Visa"], default=None)
@@ -859,6 +873,8 @@ class CardSecurityCode(BaseSchema):
         length (int | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     mode: CardSecurityCodeMode | None = None
     length: int | None = Field(examples=[3], default=None)
 
@@ -872,6 +888,8 @@ class ClaimEvidence(BaseSchema):
         date_created (datetime | None): Undocumented in the spec.
         file_name (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = None
     type: ClaimEvidenceType | None = None
@@ -889,6 +907,8 @@ class ClaimHistoryEntry(BaseSchema):
         changed_by (ClaimHistoryEntryChangedBy | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     date: datetime | None = None
     status: str | None = None
     stage: str | None = None
@@ -903,6 +923,8 @@ class ClaimMessageAttachmentsItem(BaseSchema):
         file_id (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     file_name: str | None = None
     file_id: str | None = None
 
@@ -914,6 +936,8 @@ class ClaimMessageFrom(BaseSchema):
         user_id (int | None): Undocumented in the spec.
         role (ClaimMessageFromRole | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     user_id: int | None = None
     role: ClaimMessageFromRole | None = None
@@ -928,6 +952,8 @@ class ClaimPlayersItem(BaseSchema):
         available_actions (list[str]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     role: ClaimPlayersItemRole | None = None
     user_id: int | None = None
     available_actions: list[str] = Field(default_factory=list)
@@ -941,6 +967,8 @@ class ClaimReason(BaseSchema):
         description (str | None): Undocumented in the spec.
         type (ClaimType | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = Field(examples=["PNR"], default=None)
     description: str | None = Field(examples=["Product not received"], default=None)
@@ -993,6 +1021,8 @@ class CreateAdvancedPaymentResponsePayer(BaseSchema):
         type_token (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     token: str | None = None
     type_token: str | None = None
 
@@ -1005,6 +1035,8 @@ class CreateAdvancedPaymentResponseWalletPayment(BaseSchema):
         description (str | None): Undocumented in the spec.
         external_reference (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     transaction_amount: float | None = None
     description: str | None = None
@@ -1032,6 +1064,8 @@ class CreateMerchantOrderResponseCollector(BaseSchema):
         nickname (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: int | None = None
     email: str | None = None
     nickname: str | None = None
@@ -1045,6 +1079,8 @@ class CreateMerchantOrderResponsePayer(BaseSchema):
         email (str | None): Undocumented in the spec.
         nickname (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: int | None = None
     email: str | None = None
@@ -1109,6 +1145,8 @@ class CreateOAuthTokenResponse(BaseSchema):
         public_key (str | None): Public key for client-side card tokenization
         live_mode (bool | None): true = production token.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     access_token: str | None = Field(
         description="Bearer access token for API calls",
@@ -1180,6 +1218,8 @@ class CreatePointPaymentIntentResponse(BaseSchema):
             spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
     device_id: str | None = None
     amount: int | None = None
@@ -1209,6 +1249,8 @@ class CreatePointRefundIntentResponse(BaseSchema):
         status (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = Field(description="Refund intent ID", default=None)
     status: str | None = None
 
@@ -1236,6 +1278,8 @@ class CreateRefundResponseSource(BaseSchema):
         name (str | None): Undocumented in the spec.
         type (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = None
     name: str | None = None
@@ -1294,6 +1338,8 @@ class CreateTerminalActionResponse(BaseSchema):
         status (CreateTerminalActionResponseStatus | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
     status: CreateTerminalActionResponseStatus | None = None
 
@@ -1331,6 +1377,8 @@ class CreateWalletAgreementResponse(BaseSchema):
             agreement
     """
 
+    model_config = ConfigDict(extra="allow")
+
     agreement_id: str | None = None
     agreement_uri: str | None = Field(
         description="Redirect payer to this URL to authorize the agreement",
@@ -1359,6 +1407,8 @@ class CreateWalletDiscountResponseDiscount(BaseSchema):
         coupon_id (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     amount: float | None = None
     type: str | None = None
     coupon_id: str | None = None
@@ -1383,6 +1433,8 @@ class CreateWalletPayerTokenResponse(BaseSchema):
     Attributes:
         payer_token (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     payer_token: str | None = None
 
@@ -1421,6 +1473,8 @@ class GetAdvancedPaymentResponsePayer(BaseSchema):
         type_token (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     token: str | None = None
     type_token: str | None = None
 
@@ -1433,6 +1487,8 @@ class GetAdvancedPaymentResponseWalletPayment(BaseSchema):
         description (str | None): Undocumented in the spec.
         external_reference (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     transaction_amount: float | None = None
     description: str | None = None
@@ -1458,6 +1514,8 @@ class GetChargebackResponse(BaseSchema):
         date_last_updated (datetime | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
     payments: list[dict[str, Any]] = Field(default_factory=list)
     currency: str | None = None
@@ -1481,6 +1539,8 @@ class GetClaimFileResponse(BaseSchema):
         content_type (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     file_name: str | None = None
     file_id: str | None = None
     content_type: str | None = None
@@ -1493,6 +1553,8 @@ class GetInstallmentsResponseItemIssuer(BaseSchema):
         id (int | None): Undocumented in the spec.
         name (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: int | None = None
     name: str | None = None
@@ -1510,6 +1572,8 @@ class GetInstallmentsResponseItemPayerCostsItem(BaseSchema):
         total_amount (float | None): Undocumented in the spec.
         installment_amount (float | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     installments: int | None = None
     installment_rate: float | None = None
@@ -1529,6 +1593,8 @@ class GetMerchantOrderResponseCollector(BaseSchema):
         nickname (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: int | None = None
     email: str | None = None
     nickname: str | None = None
@@ -1542,6 +1608,8 @@ class GetMerchantOrderResponsePayer(BaseSchema):
         email (str | None): Undocumented in the spec.
         nickname (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: int | None = None
     email: str | None = None
@@ -1558,6 +1626,8 @@ class GetPointRefundIntentResponse(BaseSchema):
         amount (float | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
     status: str | None = None
     payment_id: int | None = None
@@ -1571,6 +1641,8 @@ class GetQrIntegratorConfigResponse(BaseSchema):
         callback_url (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     callback_url: str | None = None
 
 
@@ -1582,6 +1654,8 @@ class GetRefundResponseSource(BaseSchema):
         name (str | None): Undocumented in the spec.
         type (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = None
     name: str | None = None
@@ -1599,6 +1673,8 @@ class GetTerminalActionResponse(BaseSchema):
         date_created (datetime | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
     type: str | None = None
     status: CreateTerminalActionResponseStatus | None = None
@@ -1614,6 +1690,8 @@ class GetWalletAgreementResponseAgreementData(BaseSchema):
         description (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     validation_amount: float | None = None
     description: str | None = None
 
@@ -1625,6 +1703,8 @@ class GetWalletAgreementResponseExternalUser(BaseSchema):
         id (str | None): Undocumented in the spec.
         description (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = None
     description: str | None = None
@@ -1638,6 +1718,8 @@ class Identification(BaseSchema):
             Argentina; RFC for Mexico)
         number (str | None): Identification number (no formatting — digits only)
     """
+
+    model_config = ConfigDict(extra="allow")
 
     type: str | None = Field(
         description=(
@@ -1665,6 +1747,8 @@ class ListIdentificationTypesResponseItem(BaseSchema):
         max_length (int | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = Field(examples=["CPF"], default=None)
     name: str | None = Field(examples=["CPF"], default=None)
     type: ListIdentificationTypesResponseItemType | None = None
@@ -1679,6 +1763,8 @@ class ListPaymentMethodsResponseItemFinancialInstitutionsItem(BaseSchema):
         id (str | None): Undocumented in the spec.
         description (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = None
     description: str | None = None
@@ -1695,6 +1781,8 @@ class ListPointDevicesResponseDevicesItem(BaseSchema):
             Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
     pos_id: int | None = None
     store_id: str | None = None
@@ -1709,6 +1797,8 @@ class ListRefundsResponseSource(BaseSchema):
         name (str | None): Undocumented in the spec.
         type (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = None
     name: str | None = None
@@ -1727,6 +1817,8 @@ class ListTerminalsResponseTerminalsItem(BaseSchema):
         status (SubscriptionPlanStatus | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
     pos_id: int | None = None
     store_id: str | None = None
@@ -1742,6 +1834,8 @@ class MediationResolution(BaseSchema):
         amount (float | None): Undocumented in the spec.
         reason (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     type: MediationResolutionType | None = None
     amount: float | None = None
@@ -1856,6 +1950,8 @@ class OrderConfigOnlineTransactionSecurity(BaseSchema):
             shift outcome.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     validation: OrderConfigOnlineTransactionSecurityValidation | None = Field(
         description=(
             "supported — run 3DS when supported by issuer; required — always run 3DS, "
@@ -1885,6 +1981,8 @@ class OrderItem(BaseSchema):
         category_id (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
     title: str | None = None
     description: str | None = None
@@ -1906,6 +2004,8 @@ class OrderPayerAddress(BaseSchema):
         complement (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     zip_code: str | None = None
     street_name: str | None = None
     street_number: str | None = None
@@ -1922,6 +2022,8 @@ class OrderPayerIdentification(BaseSchema):
         type (str | None): Document type (e.g. CPF, CNPJ, DNI, NIT, RFC)
         number (str | None): Document number (digits only, no formatting)
     """
+
+    model_config = ConfigDict(extra="allow")
 
     type: str | None = Field(
         description="Document type (e.g. CPF, CNPJ, DNI, NIT, RFC)",
@@ -1942,6 +2044,8 @@ class OrderPayerPhone(BaseSchema):
         area_code (str | None): Undocumented in the spec.
         number (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     area_code: str | None = Field(examples=["11"], default=None)
     number: str | None = Field(examples=["43434343"], default=None)
@@ -2046,6 +2150,8 @@ class OrderSearchResultPaging(BaseSchema):
         offset (int | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     total: int | None = None
     limit: int | None = None
     offset: int | None = None
@@ -2063,6 +2169,8 @@ class OrderShipmentAddress(BaseSchema):
         state (str | None): Undocumented in the spec.
         complement (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     zip_code: str | None = None
     street_name: str | None = None
@@ -2083,6 +2191,8 @@ class OrderTransactionPaymentPaymentMethodTransactionSecurity(BaseSchema):
             status=pending).
     """
 
+    model_config = ConfigDict(extra="allow")
+
     status: OrderTransactionPaymentPaymentMethodTransactionSecurity2 | None = None
     redirect_url: str | None = Field(
         description=(
@@ -2100,6 +2210,8 @@ class Pagination(BaseSchema):
         limit (int | None): Results per page
         offset (int | None): Offset of the current page
     """
+
+    model_config = ConfigDict(extra="allow")
 
     total: int | None = Field(
         description="Total number of results",
@@ -2193,6 +2305,8 @@ class PaymentTransactionDetails(BaseSchema):
         installment_amount (float | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     net_received_amount: float | None = None
     total_paid_amount: float | None = None
     overpaid_amount: float | None = None
@@ -2242,6 +2356,8 @@ class Phone(BaseSchema):
         number (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     area_code: str | None = Field(examples=["11"], default=None)
     number: str | None = Field(examples=["987654321"], default=None)
 
@@ -2264,6 +2380,8 @@ class Pos(BaseSchema):
         date_created (datetime | None): Undocumented in the spec.
         date_last_updated (datetime | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     name: str = Field(description="POS display name", examples=["Caixa 1"])
     store_id: str = Field(description="Parent store ID")
@@ -2333,6 +2451,8 @@ class PreferenceBackUrls(BaseSchema):
         failure (str | None): Redirect after rejected payment
     """
 
+    model_config = ConfigDict(extra="allow")
+
     success: str | None = Field(
         description="Redirect after approved payment",
         default=None,
@@ -2361,6 +2481,8 @@ class PreferenceItem(BaseSchema):
         unit_price (float): Unit price as a decimal (not integer cents)
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
     title: str = Field(examples=["Premium Plan"])
     description: str | None = None
@@ -2385,6 +2507,8 @@ class PreferencePaymentMethodsExcludedPaymentMethodsItem(BaseSchema):
         id (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
 
 
@@ -2394,6 +2518,8 @@ class PreferencePaymentMethodsExcludedPaymentTypesItem(BaseSchema):
     Attributes:
         id (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = None
 
@@ -2441,6 +2567,8 @@ class RefundOrderResponse(BaseSchema):
         status_detail (str | None): Undocumented in the spec.
         transactions (dict[str, Any] | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = None
     status: str | None = None
@@ -2520,6 +2648,8 @@ class ReportConfigColumnsItem(BaseSchema):
         alias (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     key: str | None = Field(examples=["DATE"], default=None)
     alias: str | None = Field(examples=["transaction_date"], default=None)
 
@@ -2531,6 +2661,8 @@ class ReportConfigFrequency(BaseSchema):
         hour (int | None): Undocumented in the spec.
         type (ReportConfigFrequencyType | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     hour: int | None = Field(ge=0, le=23, default=None)
     type: ReportConfigFrequencyType | None = None
@@ -2545,6 +2677,8 @@ class ReportConfigSftpInfo(BaseSchema):
         username (str | None): Undocumented in the spec.
         remote_dir (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     server: str | None = None
     port: int | None = None
@@ -2564,6 +2698,8 @@ class ReportEntry(BaseSchema):
         end_date (datetime | None): Undocumented in the spec.
         file_name (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = None
     status: ReportEntryStatus | None = None
@@ -2608,6 +2744,8 @@ class ReportTask(BaseSchema):
         updated_at (datetime | None): Undocumented in the spec.
         download_url (str | None): Download URL (present when status=done)
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = Field(
         description="Task unique identifier",
@@ -2655,6 +2793,8 @@ class SearchMerchantOrdersResponseCollector(BaseSchema):
         nickname (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: int | None = None
     email: str | None = None
     nickname: str | None = None
@@ -2668,6 +2808,8 @@ class SearchMerchantOrdersResponsePayer(BaseSchema):
         email (str | None): Undocumented in the spec.
         nickname (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: int | None = None
     email: str | None = None
@@ -2701,6 +2843,8 @@ class StoreBusinessHoursMondayItem(BaseSchema):
         close (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     open: str | None = Field(examples=["09:00"], default=None)
     close: str | None = Field(examples=["18:00"], default=None)
 
@@ -2717,6 +2861,8 @@ class StoreLocation(BaseSchema):
         latitude (float | None): Undocumented in the spec.
         longitude (float | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     street_number: str | None = None
     street_name: str | None = None
@@ -2946,6 +3092,8 @@ class SubscriptionSummarized(BaseSchema):
         pending_charge_amount (float | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     quotas: int | None = None
     charged_quantity: int | None = None
     pending_charge_quantity: int | None = None
@@ -2975,6 +3123,8 @@ class UpdateAdvancedPaymentResponsePayer(BaseSchema):
         type_token (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     token: str | None = None
     type_token: str | None = None
 
@@ -2987,6 +3137,8 @@ class UpdateAdvancedPaymentResponseWalletPayment(BaseSchema):
         description (str | None): Undocumented in the spec.
         external_reference (str | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     transaction_amount: float | None = None
     description: str | None = None
@@ -3066,6 +3218,8 @@ class ValidateWalletCouponResponse(BaseSchema):
         legal_terms (str | None): Undocumented in the spec.
         detail (dict[str, Any] | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     status: ValidateWalletCouponResponseStatus | None = None
     description: str | None = None
@@ -3178,6 +3332,8 @@ class AuthorizedPayment(BaseSchema):
         payment (AuthorizedPaymentPayment | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: int | None = None
     preapproval_id: str | None = None
     status: AuthorizedPaymentStatus | None = None
@@ -3205,6 +3361,8 @@ class AutoRecurring(BaseSchema):
             billing starts
         repetitions (int | None): Total number of billing cycles (null = indefinite)
     """
+
+    model_config = ConfigDict(extra="allow")
 
     frequency: int = Field(
         description="Billing interval (e.g., 1 for monthly, 7 for weekly)",
@@ -3241,6 +3399,8 @@ class CardCardholder(BaseSchema):
             types vary by country.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     name: str | None = Field(description="Name on card", default=None)
     identification: Identification | None = Field(
         description="Payer identification document. Valid types vary by country.",
@@ -3256,6 +3416,8 @@ class CardTokenCardholder(BaseSchema):
         identification (Identification | None): Payer identification document. Valid
             types vary by country.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     name: str | None = None
     identification: Identification | None = Field(
@@ -3299,6 +3461,8 @@ class Claim(BaseSchema):
         players (list[ClaimPlayersItem]): Parties involved (buyer, seller)
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: int | None = Field(
         description="Claim unique identifier",
         examples=[4567890123],
@@ -3340,7 +3504,7 @@ class ClaimMessage(BaseSchema):
         attachments (list[ClaimMessageAttachmentsItem]): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     id: int | None = None
     date_created: datetime | None = None
@@ -3385,6 +3549,8 @@ class CreateAdvancedPaymentResponse(BaseSchema):
         date_created (datetime | None): Undocumented in the spec.
         date_last_updated (datetime | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: int | None = None
     payments: list[dict[str, Any]] = Field(default_factory=list)
@@ -3456,6 +3622,8 @@ class CreateMerchantOrderResponse(BaseSchema):
         last_updated (datetime | None): Undocumented in the spec.
         canceled (bool | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: int | None = None
     status: MerchantOrderStatus | None = None
@@ -3536,6 +3704,8 @@ class CreateRefundResponse(BaseSchema):
         partition_details (list[dict[str, Any]]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: int | None = None
     payment_id: int | None = None
     amount: float | None = None
@@ -3607,6 +3777,8 @@ class CreateWalletDiscountResponse(BaseSchema):
         discount (CreateWalletDiscountResponseDiscount | None): Undocumented in the
             spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     transaction_amount: float | None = None
     currency_id: CurrencyId | None = Field(
@@ -3765,6 +3937,8 @@ class GetAdvancedPaymentResponse(BaseSchema):
         date_last_updated (datetime | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: int | None = None
     payments: list[dict[str, Any]] = Field(default_factory=list)
     wallet_payment: GetAdvancedPaymentResponseWalletPayment | None = None
@@ -3786,6 +3960,8 @@ class GetInstallmentsResponseItem(BaseSchema):
         payer_costs (list[GetInstallmentsResponseItemPayerCostsItem]): Undocumented in
             the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     payment_method_id: str | None = None
     payment_type_id: str | None = None
@@ -3825,6 +4001,8 @@ class GetMerchantOrderResponse(BaseSchema):
         last_updated (datetime | None): Undocumented in the spec.
         canceled (bool | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: int | None = None
     status: MerchantOrderStatus | None = None
@@ -3871,6 +4049,8 @@ class GetRefundResponse(BaseSchema):
         partition_details (list[dict[str, Any]]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: int | None = None
     payment_id: int | None = None
     amount: float | None = None
@@ -3908,6 +4088,8 @@ class GetWalletAgreementResponse(BaseSchema):
         collector_id (int | None): Undocumented in the spec.
         model_version (int | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = None
     status: GetWalletAgreementResponseStatus | None = None
@@ -3950,6 +4132,8 @@ class ListPaymentMethodsResponseItem(BaseSchema):
         processing_modes (list[PaymentProcessingMode]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
     name: str | None = None
     payment_type_id: str | None = None
@@ -3983,6 +4167,8 @@ class ListPointDevicesResponse(BaseSchema):
         devices (list[ListPointDevicesResponseDevicesItem]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     devices: list[ListPointDevicesResponseDevicesItem] = Field(default_factory=list)
 
 
@@ -4005,6 +4191,8 @@ class ListRefundsResponse(BaseSchema):
         partition_details (list[dict[str, Any]]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: int | None = None
     payment_id: int | None = None
     amount: float | None = None
@@ -4026,6 +4214,8 @@ class ListTerminalsResponse(BaseSchema):
     Attributes:
         terminals (list[ListTerminalsResponseTerminalsItem]): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     terminals: list[ListTerminalsResponseTerminalsItem] = Field(default_factory=list)
 
@@ -4233,6 +4423,8 @@ class OrderConfigOnline(BaseSchema):
         callback_url (str | None): Redirect URL after PSE bank authentication completes.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     transaction_security: OrderConfigOnlineTransactionSecurity | None = Field(
         description=(
             "3DS (3D Secure) configuration. After creating the order, the response "
@@ -4261,6 +4453,8 @@ class OrderPayer(BaseSchema):
         entity_type (OrderPayerEntityType | None): Payer entity type. Required for PSE
             (Colombia) payments.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     email: EmailStr = Field(examples=["customer@example.com"])
     first_name: str | None = None
@@ -4348,6 +4542,8 @@ class OrderShipment(BaseSchema):
         address (OrderShipmentAddress | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     address: OrderShipmentAddress | None = None
 
 
@@ -4376,6 +4572,8 @@ class OrderTransactionPaymentPaymentMethod(BaseSchema):
         transaction_security (OrderTransactionPaymentPaymentMethodTransactionSecurity |
             None): 3DS challenge result.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = None
     type: str | None = None
@@ -4554,6 +4752,8 @@ class PaymentCardCardholder(BaseSchema):
             types vary by country.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     name: str | None = None
     identification: Identification | None = Field(
         description="Payer identification document. Valid types vary by country.",
@@ -4623,6 +4823,8 @@ class PaymentPayer2(BaseSchema):
         type (str | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = None
     email: EmailStr | None = None
     identification: Identification | None = Field(
@@ -4688,6 +4890,8 @@ class PreferencePayer(BaseSchema):
         date_created (datetime | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     name: str | None = None
     surname: str | None = None
     email: EmailStr | None = None
@@ -4712,6 +4916,8 @@ class PreferencePaymentMethods(BaseSchema):
         installments (int | None): Maximum number of installments to offer
         default_installments (int | None): Pre-selected installments in the UI
     """
+
+    model_config = ConfigDict(extra="allow")
 
     excluded_payment_methods: list[
         PreferencePaymentMethodsExcludedPaymentMethodsItem
@@ -4820,6 +5026,8 @@ class ReportConfig(BaseSchema):
             is ready
     """
 
+    model_config = ConfigDict(extra="allow")
+
     columns: list[ReportConfigColumnsItem] = Field(
         description="Columns to include in the report",
         default_factory=list,
@@ -4861,6 +5069,8 @@ class ReportListResult(BaseSchema):
         results (list[ReportEntry]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     paging: Pagination | None = Field(
         description="Pagination metadata returned in list/search responses",
         default=None,
@@ -4900,6 +5110,8 @@ class SearchMerchantOrdersResponse(BaseSchema):
         canceled (bool | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: int | None = None
     status: MerchantOrderStatus | None = None
     order_status: CreateMerchantOrderResponseOrderStatus | None = None
@@ -4935,6 +5147,8 @@ class SearchPosResponse(BaseSchema):
         results (list[Pos]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     paging: Pagination | None = Field(
         description="Pagination metadata returned in list/search responses",
         default=None,
@@ -4948,6 +5162,8 @@ class StoreBusinessHours(BaseSchema):
     Attributes:
         monday (list[StoreBusinessHoursMondayItem]): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     monday: list[StoreBusinessHoursMondayItem] = Field(default_factory=list)
 
@@ -5014,6 +5230,8 @@ class UpdateAdvancedPaymentResponse(BaseSchema):
         date_created (datetime | None): Undocumented in the spec.
         date_last_updated (datetime | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: int | None = None
     payments: list[dict[str, Any]] = Field(default_factory=list)
@@ -5203,6 +5421,8 @@ class AuthorizedPaymentSearchResult(BaseSchema):
         results (list[AuthorizedPayment]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     paging: Pagination | None = Field(
         description="Pagination metadata returned in list/search responses",
         default=None,
@@ -5228,6 +5448,8 @@ class Card(BaseSchema):
         issuer (CardIssuer | None): Undocumented in the spec.
         security_code (CardSecurityCode | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = Field(
         description="Card unique identifier",
@@ -5273,6 +5495,8 @@ class CardToken(BaseSchema):
             card)
         cardholder (CardTokenCardholder | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = Field(
         description="Token unique identifier — use as the `token` field in payments",
@@ -5332,6 +5556,8 @@ class ClaimSearchResult(BaseSchema):
         results (list[Claim]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     paging: Pagination | None = Field(
         description="Pagination metadata returned in list/search responses",
         default=None,
@@ -5360,6 +5586,8 @@ class OrderConfig(BaseSchema):
         online (OrderConfigOnline | None): Settings for online card transactions.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     online: OrderConfigOnline | None = Field(
         description="Settings for online card transactions.",
         default=None,
@@ -5384,6 +5612,8 @@ class OrderTransactionPayment(BaseSchema):
         payment_method (OrderTransactionPaymentPaymentMethod | None): Undocumented in
             the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = Field(
         description="Transaction ID, automatically generated by MercadoPago.",
@@ -5465,6 +5695,8 @@ class PaymentCard(BaseSchema):
         cardholder (PaymentCardCardholder | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     last_four_digits: str | None = Field(examples=["4321"], default=None)
     first_six_digits: str | None = Field(examples=["411111"], default=None)
     expiration_year: int | None = None
@@ -5527,6 +5759,8 @@ class Preference(BaseSchema):
         marketplace (str | None): Undocumented in the spec.
         marketplace_fee (float | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = Field(
         description="Preference unique identifier",
@@ -5670,6 +5904,8 @@ class Store(BaseSchema):
         date_last_updated (datetime | None): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     name: str = Field(
         description="Store display name",
         examples=["Main Branch — Paulista"],
@@ -5729,6 +5965,8 @@ class Subscription(BaseSchema):
             subscription
     """
 
+    model_config = ConfigDict(extra="allow")
+
     id: str | None = Field(examples=["2c9380847e9c5058017ea64ea8260b60"], default=None)
     payer_id: int | None = None
     payer_email: EmailStr | None = None
@@ -5764,6 +6002,8 @@ class SubscriptionPlan(BaseSchema):
         last_modified (datetime | None): Undocumented in the spec.
         init_point (str | None): URL to subscribe users to this plan
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = Field(examples=["2c9380847e9c5058017ea64ea8260b60"], default=None)
     reason: str | None = None
@@ -5897,6 +6137,8 @@ class AddOrderTransactionResponse(BaseSchema):
         payments (list[OrderTransactionPayment]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     payments: list[OrderTransactionPayment] = Field(default_factory=list)
 
 
@@ -5920,6 +6162,8 @@ class Customer(BaseSchema):
         cards (list[Card]): Saved cards for this customer
         default_card (str | None): ID of the customer's default card
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = Field(
         description="Customer unique identifier",
@@ -6059,6 +6303,8 @@ class OrderTransactions2(BaseSchema):
         payments (list[OrderTransactionPayment]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     payments: list[OrderTransactionPayment] = Field(default_factory=list)
 
 
@@ -6099,6 +6345,8 @@ class Payment(BaseSchema):
         notification_url (str | None): Undocumented in the spec.
         processing_mode (PaymentProcessingMode | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: int | None = Field(
         description="Payment unique identifier",
@@ -6325,6 +6573,8 @@ class SearchPreferencesResponse(BaseSchema):
             responses
     """
 
+    model_config = ConfigDict(extra="allow")
+
     elements: list[Preference] = Field(default_factory=list)
     paging: Pagination | None = Field(
         description="Pagination metadata returned in list/search responses",
@@ -6340,6 +6590,8 @@ class SearchStoresResponse(BaseSchema):
             responses
         results (list[Store]): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     paging: Pagination | None = Field(
         description="Pagination metadata returned in list/search responses",
@@ -6357,6 +6609,8 @@ class SubscriptionSearchResult(BaseSchema):
         results (list[Subscription]): Undocumented in the spec.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     paging: Pagination | None = Field(
         description="Pagination metadata returned in list/search responses",
         default=None,
@@ -6372,6 +6626,8 @@ class CustomerSearchResult(BaseSchema):
             responses
         results (list[Customer]): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     paging: Pagination | None = Field(
         description="Pagination metadata returned in list/search responses",
@@ -6415,6 +6671,8 @@ class Order(BaseSchema):
         config (OrderConfig | None): Optional settings for the order.
         integration_data (dict[str, Any] | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str | None = Field(
         description="Order unique identifier, automatically generated by MercadoPago.",
@@ -6491,6 +6749,8 @@ class PaymentSearchResult(BaseSchema):
             responses
     """
 
+    model_config = ConfigDict(extra="allow")
+
     results: list[Payment] = Field(default_factory=list)
     paging: Pagination | None = Field(
         description="Pagination metadata returned in list/search responses",
@@ -6505,6 +6765,8 @@ class OrderSearchResult(BaseSchema):
         data (list[Order]): Undocumented in the spec.
         paging (OrderSearchResultPaging | None): Undocumented in the spec.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     data: list[Order] = Field(default_factory=list)
     paging: OrderSearchResultPaging | None = None

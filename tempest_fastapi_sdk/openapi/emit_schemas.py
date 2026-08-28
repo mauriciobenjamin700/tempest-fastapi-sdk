@@ -469,10 +469,11 @@ def _model_lines(schema: SchemaIR) -> list[str]:
         lines.extend(_docstring_lines(docstring, "    "))
     lines.append("")
 
-    if schema.needs_populate_by_name:
+    arguments = schema.config_arguments
+    if arguments:
         lines.extend(
             [
-                "    model_config = ConfigDict(populate_by_name=True)",
+                f"    model_config = ConfigDict({', '.join(arguments)})",
                 "",
             ]
         )
@@ -569,7 +570,7 @@ def _collect_imports(spec: SpecIR) -> list[str]:
         ]
     )
     needs_field = any(_field_arguments(f) for s in spec.schemas for f in s.fields)
-    needs_config = any(s.needs_populate_by_name for s in spec.schemas)
+    needs_config = any(s.config_arguments for s in spec.schemas)
     has_models = any(s.kind == "model" for s in spec.schemas)
     has_str_enum = any(s.kind == "str_enum" for s in spec.schemas)
     has_int_enum = any(s.kind == "int_enum" for s in spec.schemas)
