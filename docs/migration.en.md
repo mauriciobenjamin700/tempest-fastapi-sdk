@@ -2,6 +2,77 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.259.0 — OpenPix money becomes `int`
+
+Breaks anyone who annotated a variable with the generated model's type, or who
+compares a dump against an expected JSON string.
+
+### What changes
+
+154 fields of the `integrations/payment/openpix` package stop being `float`:
+
+- **monetary values** — `Charge.value`, `ChargePayload.value`,
+  `ChargeRefundPayload.value`, `Transaction.value`, `SubAccount.balance`, every
+  `pix*Limit`, and the other 51 `value` fields in the document;
+- **counts and day offsets** — `skip` and `limit` (the pagination pair, on 27
+  operations each), `installmentsCount`, `dayDue`, `daysForDueDate`,
+  `expiresIn`.
+
+Woovi settles in whole centavos — the specification says so 35 times in its own
+field descriptions — and typed all of it `number`. The visible effect is on the
+wire:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import ChargePayload
+
+ChargePayload(correlation_id="abc-1", value=1000).model_dump(
+    by_alias=True, mode="json", exclude_none=True
+)
+# up to v0.258.0: {"correlationID": "abc-1", "value": 1000.0, ...}
+# from v0.259.0:  {"correlationID": "abc-1", "value": 1000, ...}
+```
+
+**18 fields stay `float`**, deliberately: `basePrice` (an exchange rate),
+`inputAmount`/`outputAmount` on the stablecoin quote (the first is documented
+as *"currency unit, not cents"*), `rate`, the rate-limit token bucket, and
+`annualRevenue`, whose unit the document does not state.
+
+### What to do
+
+Nothing, in most cases — an `int` satisfies at runtime wherever a `float` was
+expected. Check three things:
+
+- **Your own annotations.** `amount: float = charge.value` is now a type error.
+  Change it to `int`.
+- **Dump comparisons in tests.** `assert dumped == {"value": 1000.0}` still
+  passes (`1000 == 1000.0`), but a comparison against a JSON **string**, or a
+  snapshot of `model_dump_json()`, does not.
+- **`to_cents` over a generated model.** It still works and still validates
+  (refusing negatives and fractions), it simply narrows nothing any more. For a
+  raw payload — the dictionary out of the JSON, a webhook — it is still the
+  right call.
+
+### The other half: your fields stop disappearing
+
+Generated response models now use `extra="allow"`. A field the provider returns
+and the specification does not declare lands in `model_extra` instead of being
+dropped during validation:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import Charge
+
+charge = Charge.model_validate({"value": 1000, "wooviAddedThis": "later"})
+(charge.model_extra or {})["wooviAddedThis"]   # "later"
+```
+
+**Payload** models are unchanged: they keep `extra="ignore"`, because there an
+unexpected key is the caller's own typo.
+
+Three fields that were in exactly that situation are now declared and typed:
+`Charge.fee`, `Charge.discount` and `Charge.value_with_discount`. If you were
+reading any of them through the raw `HTTPClient` because of this, the generated
+method is now enough.
+
 ## 0.258.0 — log files now rotate
 
 No signature breaks. What changes is what sits **on disk**: anyone reading

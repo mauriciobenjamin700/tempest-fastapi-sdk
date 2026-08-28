@@ -5,6 +5,105 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.259.0] — 2026-08-27
+
+### Added
+
+- **Overlay versionado da spec da OpenPix — `scripts/openpix_overlay.py`.**
+  `vendor/openpix-openapi.yaml` continua byte a byte o documento que a Woovi
+  publica, então refresh upstream continua sendo um diff só do que **eles**
+  mudaram. Tudo que a gente sabe que o documento erra passou a viver no
+  overlay, uma correção nomeada por vez, cada uma com a evidência ao lado, e
+  aplicada antes de gerar. Três famílias, e o `make openpix-regen` imprime o
+  que cada uma fez.
+
+- **`Charge.fee`, `Charge.discount`, `Charge.value_with_discount` e
+  `ChargeRefund.refund_id`.** Campos que a API responde e o documento não
+  declara — o `Charge` da spec (linha 21876) não tem nenhum dos três, e
+  `refundId` está declarado só no `Refund`, de estorno de transação Pix.
+  Sem declaração, `extra="ignore"` os descartava: quem gravava
+  `charge.fee` numa coluna de ledger escreveria **zero em toda linha**, e o
+  erro só apareceria na conciliação.
+
+  ```python
+  from tempest_fastapi_sdk.integrations.payment.openpix import Charge
+
+  charge = Charge.model_validate(
+      {"value": 199000, "fee": 2500, "discount": 0, "valueWithDiscount": 199000}
+  )
+  charge.fee, charge.value_with_discount   # (2500, 199000)
+  ```
+
+  Todos opcionais — resposta sem eles continua validando. `refund_id` é campo
+  próprio, e não um segundo nome para `end_to_end_id`: no `Refund` os dois são
+  identificadores diferentes, e colapsá-los faria o model afirmar o que o
+  documento contradiz.
+
+  Fecha [#223](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/223).
+
+- **`OpenPixClient.delete_api_v1_payment_by_id(id)`.** O documento não tem
+  `DELETE` de payment, então o fluxo de transferência em dois passos ficava
+  **sem caminho de recuperação**: com o `POST /payment` criado e o
+  `POST /payment/approve` falhando, a transferência fica pendente no gateway e
+  pode ser liberada depois — e cancelar exigia descer para o `HTTPClient` cru
+  justamente no passo mais delicado do fluxo de dinheiro.
+
+  O retorno é `dict[str, Any]` de propósito: este repositório não tem
+  credencial da Woovi para observar o corpo da resposta, então ele não é
+  modelado. Modelar um shape que ninguém mediu seria pior que não modelar, e
+  `dict[str, Any]` não descarta nada.
+
+  Fecha [#222](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/222).
+
+### Changed
+
+- **BREAKING — dinheiro e contagem na OpenPix passam de `float` para `int`
+  (154 campos).** A Woovi liquida em centavo inteiro e a spec diz isso na
+  própria descrição, 35 vezes ("Value in cents of this charge", "Number in
+  cents that represent the balance") — e tipa tudo como `number`. O cliente
+  gerado então mandava `{"value": 1990.0}` onde a API documenta `1990`, e
+  qualquer aritmética que o consumidor fizesse sobre o valor começava de uma
+  aproximação binária.
+
+  ```python
+  ChargePayload(correlation_id="abc-1", value=1000).model_dump(
+      by_alias=True, mode="json", exclude_none=True
+  )
+  # antes: {"correlationID": "abc-1", "value": 1000.0, ...}
+  # agora: {"correlationID": "abc-1", "value": 1000, ...}
+  ```
+
+  Não é só dinheiro: `skip` e `limit` — o par de paginação, repetido em 27
+  operações cada — também eram `float`, e um cliente mandando `skip=0.0` numa
+  query string está pedindo tolerância ao provedor.
+
+  **Os 18 campos que continuam `float`** são os únicos onde a fração é real: a
+  cotação de stablecoin (`basePrice` é taxa de câmbio, `inputAmount` é
+  documentado como *"currency unit, not cents"*, `outputAmount` é quantidade de
+  stablecoin), o balde de tokens de rate limit, e `annualRevenue`, cuja unidade
+  o documento não diz. A regra lê a descrição **antes** do nome exatamente por
+  isso: `inputAmount` é centavo na lista de depósito e não é na cotação.
+
+  **Migração:** passo a passo em `docs/migration.md`, seção 0.259.0.
+
+- **Model de resposta gerado passa a usar `extra="allow"`.** Vale para toda
+  integração gerada (OpenPix e Mercado Pago), e é transitivo: o objeto aninhado
+  é justamente onde o campo descartado se esconde. Model de **payload**
+  continua com `extra="ignore"` — ali chave inesperada é erro de digitação de
+  quem chamou, e levá-la ao provedor é pior que descartar.
+
+  Isso fecha na raiz um defeito que este repo já conhecia e contornava: o
+  `point_of_interaction` do Mercado Pago — o QR do Pix — era **descartado** na
+  validação, sem exceção e sem aviso, deixando um
+  `transaction_details.external_resource_url` com cara de resposta enquanto a
+  string de copiar-e-colar já tinha sumido. Ele agora sobrevive em
+  `model_extra`; `parse_pix_payment` continua sendo a forma tipada de lê-lo.
+
+### Fixed
+
+- **O adapter de OpenPix trunca `expires_in` para segundo inteiro.**
+  `timedelta.total_seconds()` devolve `float` e o campo agora é `int`.
+
 ## [0.258.0] — 2026-08-27
 
 ### Added

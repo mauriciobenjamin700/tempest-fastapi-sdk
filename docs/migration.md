@@ -2,6 +2,76 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.259.0 — dinheiro da OpenPix passa a ser `int`
+
+Quebra quem anotou variável com o tipo do model gerado, ou quem compara o dump
+com um JSON esperado.
+
+### O que muda
+
+154 campos do pacote `integrations/payment/openpix` deixam de ser `float`:
+
+- **valor monetário** — `Charge.value`, `ChargePayload.value`,
+  `ChargeRefundPayload.value`, `Transaction.value`, `SubAccount.balance`, todos
+  os `pix*Limit`, e os demais 51 `value` do documento;
+- **contagem e offset de dia** — `skip` e `limit` (o par de paginação, em 27
+  operações cada), `installmentsCount`, `dayDue`, `daysForDueDate`,
+  `expiresIn`.
+
+A Woovi liquida em centavo inteiro — a própria spec diz isso 35 vezes na
+descrição do campo — e tipava tudo como `number`. O efeito visível é no fio:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import ChargePayload
+
+ChargePayload(correlation_id="abc-1", value=1000).model_dump(
+    by_alias=True, mode="json", exclude_none=True
+)
+# até a v0.258.0: {"correlationID": "abc-1", "value": 1000.0, ...}
+# a partir da v0.259.0: {"correlationID": "abc-1", "value": 1000, ...}
+```
+
+**18 campos continuam `float`**, e de propósito: `basePrice` (taxa de câmbio),
+`inputAmount`/`outputAmount` da cotação de stablecoin (o primeiro é
+documentado como *"currency unit, not cents"*), `rate`, o balde de tokens de
+rate limit, e `annualRevenue`, cuja unidade o documento não declara.
+
+### O que fazer
+
+Na maioria dos casos, nada — `int` satisfaz onde `float` era esperado em tempo
+de execução. Confira três pontos:
+
+- **Anotação sua.** `valor: float = charge.value` passa a ser erro de tipo.
+  Troque para `int`.
+- **Comparação de dump em teste.** `assert dumped == {"value": 1000.0}` falha:
+  agora é `1000`. Em Python `1000 == 1000.0` é `True`, mas
+  `{"value": 1000} == {"value": 1000.0}` também é — o que quebra é comparação
+  de **string** JSON, e snapshot de `model_dump_json()`.
+- **`to_cents` sobre model gerado.** Continua funcionando e continua validando
+  (recusa negativo e fração), só não estreita mais nada. Para payload cru — o
+  dicionário que saiu do JSON, um webhook — ele continua sendo a forma certa.
+
+### O outro lado: seus campos param de sumir
+
+Model de resposta gerado agora usa `extra="allow"`. Campo que o provedor
+responde e a spec não declara fica em `model_extra` em vez de ser descartado
+na validação:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import Charge
+
+charge = Charge.model_validate({"value": 1000, "wooviAdicionouIsso": "depois"})
+(charge.model_extra or {})["wooviAdicionouIsso"]   # "depois"
+```
+
+Model de **payload** não mudou: continua `extra="ignore"`, porque ali chave
+inesperada é erro de digitação de quem chamou.
+
+Três campos que estavam nessa situação passaram a ser declarados e tipados:
+`Charge.fee`, `Charge.discount` e `Charge.value_with_discount`. Se você lia
+algum deles pelo `HTTPClient` cru por causa disso, agora dá para usar o método
+gerado.
+
 ## 0.258.0 — os arquivos de log passam a rotacionar
 
 Não quebra assinatura nenhuma. Muda o que existe **no disco**: quem lia

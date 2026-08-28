@@ -806,6 +806,33 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `FailOpenRateLimitStore` — medido: o middleware nu **propaga** a falha da
   store, o que perderia justamente os relatos do incidente em curso. Receita:
   `docs/recipes/app-errors.md`.
+- **Overlay da spec da OpenPix (v0.259.0)** — `scripts/openpix_overlay.py`.
+  `vendor/openpix-openapi.yaml` continua byte a byte o documento do provedor,
+  então refresh upstream é diff só do que **eles** mudaram; tudo que a gente
+  sabe que o documento erra vive no overlay, uma correção nomeada por vez com a
+  evidência ao lado, aplicada antes de gerar. Três famílias: (1) **unidade
+  inteira** — 154 campos `number` que são centavo ou contagem viram `integer`,
+  com a descrição lida **antes** do nome porque `inputAmount` é centavo na
+  lista de depósito e é "currency unit, not cents" na cotação de stablecoin;
+  os 18 genuinamente fracionários ficam `float`. (2) **campos que a resposta
+  traz e o documento não declara** — `Charge.fee`, `Charge.discount`,
+  `Charge.value_with_discount`, `ChargeRefund.refund_id`; sem declaração o
+  `extra="ignore"` os descartava, e quem gravava `charge.fee` num ledger
+  escreveria zero em toda linha. (3) **uma operação que o documento omite** —
+  `delete_api_v1_payment_by_id`, o caminho de recuperação do fluxo de
+  transferência em dois passos; devolve `dict[str, Any]` porque este repo não
+  tem credencial para observar o corpo, e modelar shape não medido é pior que
+  não modelar. O overlay se aposenta sozinho: propriedade que o provedor
+  passar a declarar não é sobrescrita. Testes: `tests/integrations/payment/
+  openpix/test_overlay.py`. Recipe: `openpix.md`, seção "O que este pacote
+  corrige na spec".
+- **Model de resposta gerado usa `extra="allow"` (v0.259.0)** — vale para toda
+  integração gerada, e é transitivo, porque o objeto aninhado é onde o campo
+  descartado se esconde. Model de payload continua `extra="ignore"`: ali chave
+  inesperada é erro de digitação de quem chamou, e levá-la ao provedor é pior
+  que descartar. Fecha na raiz o defeito que o `parse_pix_payment` contornava —
+  o `point_of_interaction` do Mercado Pago (o QR do Pix) era descartado na
+  validação sem exceção e sem aviso.
 - **Bound numérico em schema de string vira bound de tamanho (v0.258.0)** —
   o gerador passava `maximum` ao pé da letra e emitia `Field(le=140)` num
   `str`. Pydantic não rejeita o valor: levanta `TypeError: Unable to apply
