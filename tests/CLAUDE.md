@@ -29,6 +29,7 @@ Todos rodam dentro do `make check`.
 | `test_reexport_guard` | `from x import Y as Y` + `__all__` em `__init__.py` | — |
 | `test_vacuous_guard` | teste afirma cruzar processo/réplica e não cruza | — |
 | `test_alias_guard` | `Field(alias=...)` voltando | — |
+| `test_constraint_shape_guard` | bound numérico em campo `str`, e bound de tamanho em campo numérico — pydantic levanta `TypeError` na construção, então o campo fica inalcançável | anotação que o guard não resolve (alias do projeto, forward reference) é pulada, não adivinhada |
 | `test_pydantic_mypy_guard` | `plugins = ["pydantic.mypy"]` sem `init_typed = true` (aqui e no template do `tempest new`) | serviço já scaffoldado, que nenhum arquivo daqui alcança |
 | `test_agent_docs_guard` | roster desta tabela bate com o disco; link e caminho citado em arquivo de agente existem | conteúdo da prosa |
 | `test_version_agreement` | `pyproject.toml` e `__version__` concordam | `uv.lock`, que `uv run` conserta em disco antes de qualquer teste ler |
