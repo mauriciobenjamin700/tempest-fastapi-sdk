@@ -16,16 +16,30 @@ against our document.
 A difference is not automatically a defect. The SDK is a thin wrapper over
 the resources most integrations use; our document covers far more, and most
 of what only we carry is real. What earns attention is the other direction —
-an operation the provider's own SDK calls and we do not model — and any path
-only we believe in, which is worth probing:
+an operation the provider's own SDK calls and we do not model.
+
+What only we carry is reported in three buckets, because "only we carry it"
+is not one situation:
+
+* **The SDK calls it.** The provider vouches for it.
+* **A probe found it routed.** An unauthenticated request answers ``401``,
+  ``403`` or ``400`` when the route exists and the auth or parameter gate
+  replies first; ``404`` means it is not routed. That is how the two
+  corrections and the three removals in :mod:`mercadopago_overlay` were
+  found.
+* **Nothing vouches for it.** The probe is per method *and* path, so it
+  speaks only for the verb it uses, and sending a ``POST``, ``PUT`` or
+  ``DELETE`` to a payment API in production to find out whether it routes
+  is not an acceptable way to answer the question. Those operations carry
+  the marker :data:`mercadopago_overlay.UNVERIFIED_NOTE` in their own
+  generated docstring, so a consumer reading the client can tell them
+  apart.
+
+To re-probe, or to probe one suspect by hand:
 
 .. code-block:: bash
 
     curl -s -o /dev/null -w "%{http_code}" https://api.mercadopago.com<path>
-
-An unauthenticated request to a route that exists answers ``401``, ``403``
-or ``400``. ``404`` means the path is not routed at all — that is how the
-two corrections in :mod:`mercadopago_overlay` were found.
 """
 
 from __future__ import annotations
@@ -41,6 +55,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from mercadopago_overlay import PROBE_DATE, PROBED_OPERATIONS
 from mercadopago_overlay import apply as apply_overlay
 
 REPO_ROOT: Path = Path(__file__).resolve().parent.parent
@@ -262,12 +277,24 @@ def main() -> int:
         print(f"  {method:6} {path}")
 
     extra = sorted(ours - official, key=lambda entry: (entry[1], entry[0]))
+    probed = [entry for entry in extra if entry in PROBED_OPERATIONS]
+    unverified = [entry for entry in extra if entry not in PROBED_OPERATIONS]
+
+    print(f"\nonly we carry these ({len(extra)}), by what vouches for them:")
+    print(f"\n  probed live on {PROBE_DATE} ({len(probed)}):")
+    for method, path in probed:
+        print(f"    {method:6} {path:56} {PROBED_OPERATIONS[method, path]}")
+
+    print(f"\n  nothing vouches for these ({len(unverified)}):")
+    for method, path in unverified:
+        print(f"    {method:6} {path}")
     print(
-        f"\nonly we carry these ({len(extra)}) — most are real; probe a suspect with:"
+        "\n  The probe is per method and path, so it speaks only for the verb"
+        "\n  it uses. Sending a POST, PUT or DELETE to a payment API in"
+        "\n  production to find out whether it routes is not an acceptable way"
+        "\n  to answer the question — these stay unverified, and each one is"
+        "\n  marked in its own generated docstring."
     )
-    print('  curl -s -o /dev/null -w "%{http_code}" https://api.mercadopago.com<path>')
-    for method, path in extra:
-        print(f"  {method:6} {path}")
     return 0
 
 

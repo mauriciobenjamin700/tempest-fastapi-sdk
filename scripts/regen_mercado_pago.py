@@ -259,6 +259,11 @@ def main() -> int:
         print(f"  overlay: added   {entry}")
     for entry in report.removed_operations:
         print(f"  overlay: removed {entry}")
+    if report.unverified_operations:
+        print(
+            f"  overlay: marked {len(report.unverified_operations)} operations "
+            f"as unverified (no SDK call, no probe)"
+        )
     for entry in report.collisions:
         print(f"  overlay: skipped — {entry}")
     return 0

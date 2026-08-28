@@ -384,6 +384,49 @@ def manifest_of_delivery(data_id: str, request_id: str, ts: str) -> str:
     always fail. Do not route QR Code through here — gate that path some other
     way.
 
+## Telling a trustworthy operation from an unverified one
+
+Mercado Pago **publishes no OpenAPI document** — measured 2026-08-28,
+`api.mercadopago.com/openapi{,.json}` answer `404` and the GitHub organisation
+has no specification repository. The document this SDK generates from has no
+upstream, and how it was assembled is not recorded.
+
+So not every `MercadoPagoClient` operation rests on the same evidence. Of 147:
+
+| Bucket | Count | What vouches for it |
+| --- | --- | --- |
+| The official SDK calls it | 65 | The provider, in its own `mercadopago` on PyPI |
+| Probed live | 35 | An unauthenticated request answered `401`/`403`/`400` |
+| Nothing vouches | 47 | Only the vendored document |
+
+**The 47 say so in their own docstring:**
+
+```
+**Unverified.** Neither the provider's SDK nor an unauthenticated probe
+covers this operation, so nothing here confirms the API routes it.
+```
+
+!!! warning "This does not mean they are wrong"
+    It means nobody checked. They are all `POST`/`PUT`/`PATCH`/`DELETE`, and
+    that is not a coincidence: the probe that tells a live route from a dead
+    one is per **method and path**. A `404` on `GET` says nothing about a
+    `DELETE` on the same path — measured, `GET /v1/customers` answers `404`
+    while `POST /v1/customers` is where the official SDK creates customers.
+
+    Sending a `POST`, `PUT` or `DELETE` to a payment API in production just to
+    find out whether it routes is not an acceptable way to answer the
+    question. They are marked rather than guessed at.
+
+If you use one of them and it works, that is evidence this repository does not
+have — an issue with what you observed is welcome.
+
+To see the three buckets:
+
+```bash
+make mercadopago-diff
+```
+
+
 ## Recap
 
 - One host: what separates test from production is the token.

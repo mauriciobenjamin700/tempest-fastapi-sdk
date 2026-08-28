@@ -5,6 +5,50 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.262.0] — 2026-08-28
+
+### Added
+
+- **Operação que nenhuma fonte confirma passa a dizer isso na própria
+  docstring.**
+  ([#227](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/227))
+  O Mercado Pago não publica OpenAPI, então o documento vendorizado não tem
+  upstream e nem origem registrada. A v0.261.0 fez o SDK oficial do provedor
+  virar a autoridade em conflito — mas ele cobre 65 das 147 operações, e as
+  outras 82 ficavam indistinguíveis dele no cliente gerado.
+
+  Agora são três baldes, e cada um tem lastro diferente:
+
+  | Balde | Qtd | O que responde por ela |
+  | --- | --- | --- |
+  | O SDK oficial chama | 65 | O provedor |
+  | Sondada viva | 35 | Resposta `401`/`403`/`400` sem credencial, em 2026-08-28 |
+  | Nada responde | 47 | Só o documento vendorizado |
+
+  As 47 carregam `**Unverified.**` na docstring gerada. Não quer dizer que
+  estão erradas — quer dizer que ninguém verificou, e a diferença entre uma
+  operação que o provedor chama e uma que só um documento de origem
+  desconhecida declara não devia ser invisível para quem lê o cliente.
+
+  São **todas** `POST`/`PUT`/`PATCH`/`DELETE`, e isso não é coincidência: a
+  sonda que separa rota viva de rota morta é por método **e** path. Medido,
+  `GET /v1/customers` responde `404` enquanto `POST /v1/customers` é onde o
+  SDK oficial cria cliente — então um `404` em `GET` não fala pelo `DELETE` no
+  mesmo path. Mandar `POST`/`PUT`/`DELETE` para uma API de pagamento em
+  produção só para descobrir se rotea não é forma aceitável de responder a
+  pergunta.
+
+- **`PROBED_OPERATIONS` e `PROBE_DATE` em `scripts/mercadopago_overlay.py`.**
+  O inventário de sondagem versionado: o que foi sondado, quando, e com que
+  código cada rota respondeu. 66 rotas `GET`, zero `404` — as três que
+  respondiam foram removidas na v0.261.0.
+
+### Changed
+
+- **`make mercadopago-diff` relata os três baldes** em vez de uma lista única
+  de "só nós carregamos", que fazia 82 operações de lastro muito diferente
+  parecerem uniformes.
+
 ## [0.261.0] — 2026-08-28
 
 ### Added

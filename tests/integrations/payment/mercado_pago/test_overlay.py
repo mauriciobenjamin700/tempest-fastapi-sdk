@@ -26,6 +26,8 @@ from mercadopago_overlay import (  # noqa: E402
     DEAD_OPERATIONS,
     OFFICIAL_SDK_CALLS,
     PATH_CORRECTIONS,
+    PROBED_OPERATIONS,
+    UNVERIFIED_NOTE,
     apply,
 )
 
@@ -342,3 +344,103 @@ class TestOperationsTheApiDoesNotRoute:
 
         assert set(patched["paths"]["/instore/integrator"]) == {"patch"}
         assert "GET /instore/integrator" in report.removed_operations
+
+
+class TestUnverifiedOperationsAreMarked:
+    """Issue #227: an operation nothing vouches for should say so.
+
+    Two sources can vouch for one: the provider's SDK calls it, or an
+    unauthenticated probe found it routed. Everything else is carried on
+    the word of a document whose origin is unrecorded (issue #228), and
+    before v0.262.0 the three were indistinguishable in the generated
+    client.
+    """
+
+    def test_an_operation_the_sdk_calls_is_not_marked(self) -> None:
+        """The provider calling it is the strongest evidence available."""
+        document = _document(
+            {"/v1/payments/{id}": {"get": {"description": "Get a payment."}}}
+        )
+
+        patched, report = apply(document)
+
+        operation = patched["paths"]["/v1/payments/{id}"]["get"]
+        assert UNVERIFIED_NOTE.strip() not in operation["description"]
+        assert "GET /v1/payments/{id}" not in report.unverified_operations
+
+    def test_a_probed_operation_is_not_marked(self) -> None:
+        """A route that answered 401 exists, whatever the document's origin."""
+        document = _document({"/pos/{id}": {"get": {"description": "Get a POS."}}})
+
+        patched, report = apply(document)
+
+        operation = patched["paths"]["/pos/{id}"]["get"]
+        assert UNVERIFIED_NOTE.strip() not in operation["description"]
+        assert "GET /pos/{id}" not in report.unverified_operations
+
+    def test_an_operation_with_neither_source_is_marked(self) -> None:
+        """The 47 non-`GET` operations only our document believes in."""
+        document = _document({"/pos/{id}": {"put": {"description": "Update a POS."}}})
+
+        patched, report = apply(document)
+
+        operation = patched["paths"]["/pos/{id}"]["put"]
+        assert UNVERIFIED_NOTE.strip() in operation["description"]
+        assert "PUT /pos/{id}" in report.unverified_operations
+
+    def test_applying_twice_does_not_stack_the_note(self) -> None:
+        """Regeneration is idempotent, so the docstring must be too."""
+        document = _document({"/pos/{id}": {"put": {"description": "Update a POS."}}})
+
+        once, _ = apply(document)
+        twice, report = apply(once)
+
+        description = twice["paths"]["/pos/{id}"]["put"]["description"]
+        assert description.count("**Unverified.**") == 1
+        assert report.unverified_operations == ()
+
+    def test_an_operation_without_a_description_still_gets_one(self) -> None:
+        """The marker must not depend on the document being polite."""
+        document = _document({"/pos/{id}": {"put": {}}})
+
+        patched, _ = apply(document)
+
+        assert "**Unverified.**" in patched["paths"]["/pos/{id}"]["put"]["description"]
+
+
+class TestTheProbeOnlySpeaksForItsOwnVerb:
+    """The limit that shapes every conclusion drawn from a probe."""
+
+    def test_only_get_was_probed(self) -> None:
+        """Measured 2026-08-28: `GET /v1/customers` answers 404 while
+        `POST /v1/customers` is where the provider's SDK creates customers.
+
+        So a `GET` probe is evidence about `GET` and nothing else. Sending
+        a `POST`, `PUT` or `DELETE` to a payment API in production to find
+        out whether it routes is not an acceptable way to answer the
+        question, which is why the inventory holds one verb.
+        """
+        assert {method for method, _ in PROBED_OPERATIONS} == {"GET"}
+
+    def test_no_probed_route_answered_404(self) -> None:
+        """The three that did were removed, not recorded as live."""
+        assert 404 not in set(PROBED_OPERATIONS.values())
+
+    def test_every_removed_operation_was_probed(self) -> None:
+        """A removal has to rest on a measurement, not on a hunch."""
+        for dead in DEAD_OPERATIONS:
+            assert (dead.method.upper(), dead.path) not in PROBED_OPERATIONS
+
+    def test_the_generated_client_carries_the_marker(self) -> None:
+        """It reaches the docstring a consumer reads, which is the point."""
+        import inspect
+
+        from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
+            MercadoPagoClient,
+        )
+
+        marked = inspect.getsource(MercadoPagoClient.update_pos)
+        vouched = inspect.getsource(MercadoPagoClient.get_payment)
+
+        assert "**Unverified.**" in marked
+        assert "**Unverified.**" not in vouched

@@ -122,8 +122,35 @@ contraparte no SDK para corrigir na direção certa.
 `PATCH /instore/integrator` **fica**. O `404` é por método, e nenhuma sonda
 falou pelo `PATCH`.
 
-## 7. O que continua fora
+## 7. O que continua fora, e como está marcado
 
-As 82 operações que só nós carregamos ficam, pela regra da seção 2. As
-sondáveis respondem `401`/`403`; as 47 não-`GET` não são verificáveis sem
-credencial, e ausência de verificação não é evidência de ausência.
+As 82 operações que só nós carregamos ficam, pela regra da seção 2. Mas "só
+nós carregamos" não é uma situação só, e desde a v0.262.0 o
+`make mercadopago-diff` as separa por **o que responde por elas**:
+
+| Balde | Qtd | O que sustenta |
+| --- | --- | --- |
+| Sondada viva | 35 | Requisição sem credencial respondeu `401`/`403`/`400`/`200` em 2026-08-28 |
+| Nada responde por ela | 47 | Só o documento vendorizado, cuja origem não está registrada |
+
+As 47 são **todas não-`GET`**, e isso não é coincidência: a sonda é por
+método **e** path, então fala só pelo verbo que usa (seção 3). Mandar `POST`,
+`PUT` ou `DELETE` para uma API de pagamento em produção para descobrir se
+rotea não é forma aceitável de responder a pergunta.
+
+Cada uma dessas 47 carrega `UNVERIFIED_NOTE` na própria docstring gerada:
+
+```
+**Unverified.** Neither the provider's SDK nor an unauthenticated probe
+covers this operation, so nothing here confirms the API routes it.
+See issue #227.
+```
+
+O inventário da sondagem vive em `PROBED_OPERATIONS`, com o código que cada
+rota respondeu e a data. Contando o total: **147 operações = 65 cobertas pelo
+SDK + 35 sondadas vivas + 47 sem evidência**.
+
+Isso não torna as 47 erradas — torna visível que elas são de outra classe. A
+diferença entre operação que o provedor chama e operação que só um documento
+de origem desconhecida declara não devia ser invisível para quem lê o cliente
+gerado.

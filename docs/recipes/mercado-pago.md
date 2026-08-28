@@ -382,6 +382,49 @@ def manifesto_da_entrega(data_id: str, request_id: str, ts: str) -> str:
     assinatura e vão falhar sempre. Não passe QR Code por aqui — proteja essa
     rota de outra forma.
 
+## Como saber se uma operação é confiável
+
+O Mercado Pago **não publica OpenAPI** — medido em 2026-08-28,
+`api.mercadopago.com/openapi{,.json}` respondem `404` e a org no GitHub não tem
+repositório de especificação. O documento que este SDK usa não tem upstream, e
+nem se sabe como foi montado.
+
+Então nem toda operação do `MercadoPagoClient` tem o mesmo lastro. Das 147:
+
+| Balde | Qtd | O que responde por ela |
+| --- | --- | --- |
+| O SDK oficial chama | 65 | O provedor, no próprio `mercadopago` do PyPI |
+| Sondada viva | 35 | Requisição sem credencial respondeu `401`/`403`/`400` |
+| Nada responde | 47 | Só o documento vendorizado |
+
+**As 47 dizem isso na própria docstring:**
+
+```
+**Unverified.** Neither the provider's SDK nor an unauthenticated probe
+covers this operation, so nothing here confirms the API routes it.
+```
+
+!!! warning "Não quer dizer que estão erradas"
+    Quer dizer que ninguém verificou. São todas `POST`/`PUT`/`PATCH`/`DELETE`,
+    e isso não é coincidência: a sonda que separa rota viva de rota morta é por
+    **método e path**. Um `404` em `GET` não fala pelo `DELETE` no mesmo path —
+    medido, `GET /v1/customers` responde `404` enquanto
+    `POST /v1/customers` é onde o SDK oficial cria cliente.
+
+    Mandar `POST`, `PUT` ou `DELETE` para uma API de pagamento em produção só
+    para descobrir se rotea não é forma aceitável de responder a pergunta. Elas
+    ficam marcadas em vez de adivinhadas.
+
+Se você usa uma dessas e ela funciona, isso é evidência que o repositório não
+tem — vale abrir issue com o que você observou.
+
+Para ver os três baldes:
+
+```bash
+make mercadopago-diff
+```
+
+
 ## Recapitulando
 
 - Um único host: o que separa teste de produção é o token.

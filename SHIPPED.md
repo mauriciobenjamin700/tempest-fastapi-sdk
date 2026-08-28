@@ -824,6 +824,17 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   declarar não é sobrescrita. Testes: `tests/integrations/payment/
   openpix/test_overlay.py`. Recipe: `openpix.md`, seção "O que este pacote
   corrige na spec".
+- **Operação não verificada passa a ser marcada (v0.262.0)** — issue #227. O
+  documento do Mercado Pago não tem upstream nem origem registrada, e o SDK
+  oficial cobre 65 das 147 operações; as outras 82 ficavam indistinguíveis dele
+  no cliente gerado. Agora são três baldes — 65 cobertas pelo SDK, 35 sondadas
+  vivas, 47 sem evidência —, e as 47 carregam `**Unverified.**` na docstring
+  gerada. São todas não-`GET`, porque a sonda é por método **e** path e só fala
+  pelo verbo que usa: `GET /v1/customers` responde `404` enquanto
+  `POST /v1/customers` é onde o SDK cria cliente. `PROBED_OPERATIONS` guarda o
+  que foi sondado, quando e com que código; `make mercadopago-diff` separa os
+  baldes. Testes: `TestUnverifiedOperationsAreMarked`,
+  `TestTheProbeOnlySpeaksForItsOwnVerb`.
 - **`heartbeat` público, fora do router (v0.261.0)** — issue #225. A mecânica
   existia desde a v0.197.0 mas só dentro de `make_websocket_router`, que impõe
   bearer no handshake e registro num hub indexado por `user_id: UUID`.

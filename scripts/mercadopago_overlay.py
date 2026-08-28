@@ -50,6 +50,7 @@ rests on the SDK alone.
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -148,6 +149,106 @@ _VERBS: frozenset[str] = frozenset(
 
 _FREE_OBJECT: dict[str, Any] = {"type": "object", "additionalProperties": True}
 """A body or response nobody here has observed, rendered ``dict[str, Any]``."""
+
+
+PROBE_DATE: str = "2026-08-28"
+"""When :data:`PROBED_OPERATIONS` was observed."""
+
+PROBED_OPERATIONS: dict[tuple[str, str], int] = {
+    ("GET", "/authorized_payments/search"): 401,
+    ("GET", "/authorized_payments/{}"): 401,
+    ("GET", "/checkout/preferences/search"): 200,
+    ("GET", "/checkout/preferences/{}"): 400,
+    ("GET", "/instore/qr/seller/collectors/{}/pos/{}/orders"): 403,
+    ("GET", "/merchant_orders/search"): 401,
+    ("GET", "/merchant_orders/{}"): 401,
+    ("GET", "/point/integration-api/devices"): 403,
+    ("GET", "/point/integration-api/payment-intents/{}"): 403,
+    ("GET", "/point/integration-api/refund/{}"): 401,
+    ("GET", "/pos"): 403,
+    ("GET", "/pos/{}"): 403,
+    ("GET", "/post-purchase/v1/claims/search"): 403,
+    ("GET", "/post-purchase/v1/claims/{}"): 403,
+    ("GET", "/post-purchase/v1/claims/{}/attachments/{}"): 403,
+    ("GET", "/post-purchase/v1/claims/{}/attachments/{}/download"): 403,
+    ("GET", "/post-purchase/v1/claims/{}/evidences"): 403,
+    ("GET", "/post-purchase/v1/claims/{}/expected-resolutions"): 403,
+    ("GET", "/post-purchase/v1/claims/{}/messages"): 403,
+    ("GET", "/post-purchase/v1/claims/{}/status_history"): 403,
+    ("GET", "/preapproval/export"): 401,
+    ("GET", "/preapproval/search"): 401,
+    ("GET", "/preapproval/{}"): 401,
+    ("GET", "/preapproval_plan/search"): 401,
+    ("GET", "/preapproval_plan/{}"): 401,
+    ("GET", "/terminals/v1/actions/{}"): 401,
+    ("GET", "/terminals/v1/list"): 401,
+    ("GET", "/users/me"): 403,
+    ("GET", "/users/{}/pos"): 403,
+    ("GET", "/users/{}/stores/search"): 403,
+    ("GET", "/v1/account/release_report"): 403,
+    ("GET", "/v1/account/release_report/config"): 403,
+    ("GET", "/v1/account/release_report/list"): 403,
+    ("GET", "/v1/account/release_report/search"): 403,
+    ("GET", "/v1/account/release_report/task/{}"): 403,
+    ("GET", "/v1/account/release_report/{}"): 403,
+    ("GET", "/v1/account/settlement_report"): 403,
+    ("GET", "/v1/account/settlement_report/config"): 403,
+    ("GET", "/v1/account/settlement_report/list"): 403,
+    ("GET", "/v1/account/settlement_report/search"): 403,
+    ("GET", "/v1/account/settlement_report/task/{}"): 403,
+    ("GET", "/v1/account/settlement_report/{}"): 403,
+    ("GET", "/v1/advanced_payments/search"): 401,
+    ("GET", "/v1/advanced_payments/{}"): 401,
+    ("GET", "/v1/advanced_payments/{}/refunds"): 401,
+    ("GET", "/v1/card_tokens/{}"): 401,
+    ("GET", "/v1/chargebacks/search"): 400,
+    ("GET", "/v1/chargebacks/{}"): 400,
+    ("GET", "/v1/customers/search"): 401,
+    ("GET", "/v1/customers/{}"): 401,
+    ("GET", "/v1/customers/{}/addresses"): 401,
+    ("GET", "/v1/customers/{}/addresses/{}"): 401,
+    ("GET", "/v1/customers/{}/cards"): 401,
+    ("GET", "/v1/customers/{}/cards/{}"): 401,
+    ("GET", "/v1/identification_types"): 400,
+    ("GET", "/v1/orders"): 403,
+    ("GET", "/v1/orders/{}"): 403,
+    ("GET", "/v1/payment_methods"): 401,
+    ("GET", "/v1/payment_methods/installments"): 401,
+    ("GET", "/v1/payments/search"): 401,
+    ("GET", "/v1/payments/{}"): 401,
+    ("GET", "/v1/payments/{}/refunds"): 401,
+    ("GET", "/v1/payments/{}/refunds/{}"): 401,
+    ("GET", "/v1/payouts/{}/transactions"): 400,
+    ("GET", "/v1/transaction-intents/{}"): 400,
+    ("GET", "/v2/wallet_connect/agreements/{}"): 403,
+}
+"""Status each operation answered to an unauthenticated request.
+
+`401`, `403` and `400` mean the route exists and the auth or parameter gate
+replied first. `404` would mean it is not routed — none remain, since the
+three that answered it were removed.
+
+**Only `GET` appears here, and that is not an oversight.** The probe is per
+method *and* path, so it speaks for the verb it uses and no other: measured
+:data:`PROBE_DATE`, ``GET /v1/customers`` answers `404` while
+``POST /v1/customers`` is the endpoint the provider's SDK creates customers
+with. Sending a `POST`, `PUT` or `DELETE` to a payment API in production to
+find out whether it routes is not an acceptable way to answer the question,
+so those operations stay unverified rather than guessed at.
+"""
+
+UNVERIFIED_NOTE: str = (
+    "\n\n**Unverified.** Neither the provider's SDK nor an unauthenticated "
+    "probe covers this operation, so nothing here confirms the API routes it. "
+    "See issue #227."
+)
+"""Appended to the description of an operation no source vouches for.
+
+The generator renders an operation's description into the generated method's
+docstring, so this reaches the consumer reading the client — which is the
+point. Without it, an operation backed by the provider's own SDK and one
+backed by a document of unrecorded origin (issue #228) look identical.
+"""
 
 
 @dataclass(frozen=True)
@@ -395,6 +496,9 @@ class OverlayReport:
             declared from the SDK.
         removed_operations (tuple[str, ...]): ``METHOD path`` per operation
             dropped as unrouted.
+        unverified_operations (tuple[str, ...]): ``METHOD path`` per
+            operation no source vouches for, each marked in its own
+            description.
         collisions (tuple[str, ...]): Corrections left in place because the
             destination already declares that verb. Reported rather than
             resolved: which of the two is right is a question about the
@@ -404,7 +508,58 @@ class OverlayReport:
     moved_paths: tuple[str, ...] = ()
     added_operations: tuple[str, ...] = ()
     removed_operations: tuple[str, ...] = ()
+    unverified_operations: tuple[str, ...] = ()
     collisions: tuple[str, ...] = ()
+
+
+def normalise(method: str, path: str) -> tuple[str, str]:
+    """Spell one operation the way the pinned inventories spell it.
+
+    Args:
+        method (str): The HTTP verb, any case.
+        path (str): The path template, with named placeholders.
+
+    Returns:
+        tuple[str, str]: Upper-case verb, and the path with every
+        placeholder collapsed to ``{}`` and no trailing slash.
+    """
+    collapsed = re.sub(r"\{[^}]*\}", "{}", path).rstrip("/") or "/"
+    return method.upper(), collapsed
+
+
+def _mark_unverified(paths: dict[str, Any]) -> tuple[str, ...]:
+    """Append :data:`UNVERIFIED_NOTE` to every operation nothing vouches for.
+
+    Args:
+        paths (dict[str, Any]): The document's ``paths`` block, patched in
+            place.
+
+    Returns:
+        tuple[str, ...]: ``METHOD path`` for each operation marked.
+
+    Two sources can vouch for an operation: the provider's own SDK calls
+    it, or an unauthenticated probe found it routed. Everything else is
+    carried on the word of a document whose origin is unrecorded, and
+    saying so in the generated docstring is the difference between an
+    operation a consumer can rely on and one they should verify before
+    building on.
+    """
+    marked: list[str] = []
+    for path, item in paths.items():
+        if not isinstance(item, dict):
+            continue
+        for method, operation in item.items():
+            if method not in _VERBS or not isinstance(operation, dict):
+                continue
+            key = normalise(method, str(path))
+            if key in OFFICIAL_SDK_CALLS or key in PROBED_OPERATIONS:
+                continue
+            description = str(operation.get("description") or "")
+            if UNVERIFIED_NOTE.strip() in description:
+                continue
+            operation["description"] = description + UNVERIFIED_NOTE
+            marked.append(f"{method.upper()} {path}")
+    return tuple(marked)
 
 
 def _operation(added: AddedOperation) -> dict[str, Any]:
@@ -542,6 +697,7 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
         moved_paths=tuple(moved),
         added_operations=tuple(added),
         removed_operations=tuple(removed),
+        unverified_operations=_mark_unverified(paths),
         collisions=tuple(collisions),
     )
 
@@ -552,6 +708,9 @@ __all__: list[str] = [
     "OFFICIAL_SDK_CALLS",
     "OFFICIAL_SDK_VERSION",
     "PATH_CORRECTIONS",
+    "PROBED_OPERATIONS",
+    "PROBE_DATE",
+    "UNVERIFIED_NOTE",
     "AddedOperation",
     "DeadOperation",
     "OverlayReport",
