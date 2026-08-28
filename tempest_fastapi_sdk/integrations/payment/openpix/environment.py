@@ -1,9 +1,15 @@
 """Which OpenPix host a client talks to.
 
-The two hosts are not variants of one name — production is
-``api.openpix.com.br`` and the test environment is ``api.woovi-sandbox.com``,
-a different domain entirely. Nothing about one spells the other, so the pair
-is worth naming instead of retyping.
+Production is ``api.woovi.com`` and the test environment is
+``api.woovi-sandbox.com`` — one character of difference on a URL that
+carries live money, which is exactly why the pair is named here instead of
+retyped at each call site.
+
+Production moved from ``api.openpix.com.br`` in v0.260.0, following the
+``servers`` block of the refreshed specification. The old host is still
+answering: measured 2026-08-28, ``GET /api/v1/charge`` returns ``401`` on
+``api.openpix.com.br``, ``api.woovi.com`` and ``api.woovi-sandbox.com``
+alike, so a service pinned to the old name keeps working.
 """
 
 from __future__ import annotations
@@ -15,7 +21,7 @@ class OpenPixEnvironment(BaseStrEnum):
     """An OpenPix API environment.
 
     Attributes:
-        PRODUCTION: Live money. ``https://api.openpix.com.br``.
+        PRODUCTION: Live money. ``https://api.woovi.com``.
         SANDBOX: Test environment. ``https://api.woovi-sandbox.com``.
     """
 
@@ -34,7 +40,7 @@ class OpenPixEnvironment(BaseStrEnum):
 
 
 _BASE_URLS: dict[OpenPixEnvironment, str] = {
-    OpenPixEnvironment.PRODUCTION: "https://api.openpix.com.br",
+    OpenPixEnvironment.PRODUCTION: "https://api.woovi.com",
     OpenPixEnvironment.SANDBOX: "https://api.woovi-sandbox.com",
 }
 """Base URL per environment.

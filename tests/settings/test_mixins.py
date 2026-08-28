@@ -395,7 +395,7 @@ class TestOpenPixSettings:
             OPENPIX_APP_ID="abc123", OPENPIX_ENVIRONMENT="production"
         )
 
-        assert settings.openpix_kwargs()["base_url"] == "https://api.openpix.com.br"
+        assert settings.openpix_kwargs()["base_url"] == "https://api.woovi.com"
 
     def test_an_unknown_environment_is_refused(self) -> None:
         """``"prod"`` is the plausible typo; failing at load beats at checkout."""

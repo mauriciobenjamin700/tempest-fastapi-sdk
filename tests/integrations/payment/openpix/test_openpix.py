@@ -145,7 +145,7 @@ class TestEnvironment:
 
     def test_hosts_match_the_specification_servers(self) -> None:
         """Read from the spec's ``servers`` block."""
-        assert OpenPixEnvironment.PRODUCTION.base_url == "https://api.openpix.com.br"
+        assert OpenPixEnvironment.PRODUCTION.base_url == "https://api.woovi.com"
         assert OpenPixEnvironment.SANDBOX.base_url == "https://api.woovi-sandbox.com"
 
     def test_every_member_resolves(self) -> None:
@@ -367,10 +367,10 @@ class TestChargePayloadCarriesTheCustomer:
         any payment at all.
         """
         from tempest_fastapi_sdk.integrations.payment.openpix import (
-            PostApiV1PaymentBodyPixKey,
+            CreatePaymentBodyPixKey,
         )
 
-        body = PostApiV1PaymentBodyPixKey(
+        body = CreatePaymentBodyPixKey(
             type="PIX_KEY",
             value=1990,
             destination_alias="ana@example.com",
@@ -387,3 +387,46 @@ class TestChargePayloadCarriesTheCustomer:
             "correlationID": "payment-1",
             "autoApprove": True,
         }
+
+
+class TestMoneyRejectsWithOneExceptionType:
+    """Every refusal is a `ValueError`, whatever `Decimal` would raise.
+
+    `to_cents` is documented for a raw payload — a webhook body, a
+    dictionary straight off the wire — where the value is whatever JSON
+    allowed. Until v0.260.0 four inputs escaped the documented contract:
+    `"abc"` and `""` raised `decimal.InvalidOperation`, `None` raised
+    `TypeError`, and `float("inf")` raised `OverflowError`. A consumer
+    writing `except ValueError` around a money conversion caught none of
+    them.
+    """
+
+    @pytest.mark.parametrize(
+        "value",
+        ["abc", "", None, float("nan"), float("inf"), float("-inf")],
+    )
+    def test_a_value_that_is_not_a_number_is_a_value_error(self, value: object) -> None:
+        """The four that escaped, plus the two neighbours of `nan`."""
+        from tempest_fastapi_sdk.integrations.payment.openpix import to_cents
+
+        with pytest.raises(ValueError):
+            to_cents(value)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("value", ["abc", None, float("nan")])
+    def test_reais_to_cents_refuses_the_same_way(self, value: object) -> None:
+        """The sibling conversion shares the parsing, so it shares the type."""
+        from tempest_fastapi_sdk.integrations.payment.openpix import reais_to_cents
+
+        with pytest.raises(ValueError):
+            reais_to_cents(value)  # type: ignore[arg-type]
+
+    def test_a_whole_value_still_converts(self) -> None:
+        """The guard must not narrow what already worked."""
+        from tempest_fastapi_sdk.integrations.payment.openpix import (
+            reais_to_cents,
+            to_cents,
+        )
+
+        assert to_cents(1990.0) == 1990
+        assert to_cents("1990") == 1990
+        assert reais_to_cents("19.90") == 1990

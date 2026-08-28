@@ -16,6 +16,30 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 
 
+def _to_decimal(value: float | int | str | Decimal) -> Decimal:
+    """Parse an amount into a finite ``Decimal``, or refuse it.
+
+    Args:
+        value (float | int | str | Decimal): The amount as it arrived.
+
+    Returns:
+        Decimal: The parsed amount, guaranteed finite.
+
+    Raises:
+        ValueError: If the value cannot be read as a number, or reads as
+            ``NaN`` or an infinity. A non-finite value is rejected before
+            any comparison because ``Decimal("NaN") < 0`` does not answer
+            ``False`` — it raises ``decimal.InvalidOperation``.
+    """
+    try:
+        amount = Decimal(repr(value)) if isinstance(value, float) else Decimal(value)
+    except (ArithmeticError, TypeError) as error:
+        raise ValueError(f"not a number: {value!r}") from error
+    if not amount.is_finite():
+        raise ValueError(f"not a finite number: {value!r}")
+    return amount
+
+
 def to_cents(value: float | int | str | Decimal) -> int:
     """Narrow an OpenPix ``value`` to exact integer cents.
 
@@ -30,16 +54,24 @@ def to_cents(value: float | int | str | Decimal) -> int:
         int: The same amount as an ``int``.
 
     Raises:
-        ValueError: If the value is not a whole number of cents, or is
-            negative. Both mean the caller's assumption about the field is
-            wrong, and silently rounding would hide a real mismatch behind
-            a plausible number.
+        ValueError: If the value is not a whole number of cents, is
+            negative, or is not a number at all. The first two mean the
+            caller's assumption about the field is wrong, and silently
+            rounding would hide a real mismatch behind a plausible number.
 
     A ``float`` is routed through ``repr`` before ``Decimal`` so that
     ``1990.0`` reads as ``1990`` rather than the binary expansion
     ``Decimal(1990.0)`` would produce.
+
+    Every rejection is a ``ValueError``, including the ones ``Decimal``
+    would raise as something else. This function's documented use is a raw
+    payload — a webhook body, a dictionary straight off the wire — where
+    the value can be anything JSON allows: ``"abc"`` and ``""`` reached
+    ``decimal.InvalidOperation``, ``None`` reached ``TypeError`` and
+    ``float("inf")`` reached ``OverflowError``, none of which a caller
+    writing ``except ValueError`` around a money conversion would catch.
     """
-    amount = Decimal(repr(value)) if isinstance(value, float) else Decimal(value)
+    amount = _to_decimal(value)
     if amount < 0:
         raise ValueError(f"value in cents cannot be negative: {value!r}")
     if amount != amount.to_integral_value():
@@ -61,13 +93,13 @@ def reais_to_cents(amount: float | int | str | Decimal) -> int:
         int: The amount in cents, rounded half-up at the third decimal.
 
     Raises:
-        ValueError: If the amount is negative.
+        ValueError: If the amount is negative, or is not a number.
 
     Half-up is the rounding a person expects from money (``0.005`` -> ``1``
     cent), and is not what Python's built-in ``round`` does — it rounds
     half to even, so ``round(0.005 * 100)`` gives ``0``.
     """
-    value = Decimal(repr(amount)) if isinstance(amount, float) else Decimal(amount)
+    value = _to_decimal(amount)
     if value < 0:
         raise ValueError(f"amount cannot be negative: {amount!r}")
     return int((value * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))

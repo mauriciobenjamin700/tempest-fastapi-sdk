@@ -1,4 +1,4 @@
-"""Typed HTTP client generated from the OpenPix OpenAPI spec.
+"""Typed HTTP client generated from the Woovi OpenAPI spec.
 
 Do not edit by hand — rerun `tempest openapi-client` to refresh.
 
@@ -20,124 +20,135 @@ from pydantic import BaseModel, TypeAdapter
 from tempest_fastapi_sdk import HTTPClient
 
 from .schemas import (
+    ActivateAnticipationBeneficiaryResponse,
+    AnticipationBalanceBatchPayload,
+    AnticipationBalanceBatchResult,
+    AnticipationBeneficiaryCreatePayload,
+    AnticipationRequestStatus,
     ApplicationPayload,
+    ApproveAnticipationResponse,
+    ApprovePaymentResponse,
+    ApproveStablecoinDepositBody,
+    ApproveStablecoinDepositResponse,
+    BoletoTransactionListResponse,
+    BoletoTransactionStatus,
+    BoletoTransactionType,
     BoletoValidateRequest,
     BoletoValidateResponse,
+    CancelInvoiceResponse,
     ChargePatchPayload,
     ChargePayload,
     ChargeRefundPayload,
     ChargeStatus,
+    CheckPixKeyBody,
+    CloseAccountResponse,
+    CreateAnticipationBeneficiaryResponse,
+    CreateApplicationResponse,
+    CreateCashbackFidelityBody,
+    CreateCashbackFidelityResponse,
+    CreateChargeResponse,
+    CreateCustomerResponse,
+    CreateInstallmentCobrBody,
+    CreateInvoiceResponse,
+    CreateKycOnboardingResponse,
+    CreatePartnerApplicationBody,
+    CreatePartnerApplicationResponse,
+    CreatePaymentBody,
+    CreatePaymentResponse,
+    CreateRefundResponse,
+    CreateStablecoinPayoutBody,
+    CreateStablecoinPayoutResponse,
+    CreateStaticQrCodeResponse,
+    CreateSubaccountResponse,
+    CreateSubscriptionResponse,
+    CreateTransferResponse,
+    CreateWebhookBody,
+    CreateWebhookResponse,
+    CreditSubaccountBody,
+    CreditSubaccountResponse,
     CustomerPatchPayload,
     CustomerPayload,
-    DeleteApiV1AccountByAccountIdResponse,
-    DeleteApiV1AccountRegisterByIdResponse,
-    DeleteApiV1ApplicationResponse,
-    DeleteApiV1ChargeByIdResponse,
-    DeleteApiV1QrcodeStaticByIdResponse,
-    DeleteApiV1SubaccountByIdResponse,
-    DeleteApiV1WebhookByIdResponse,
+    DeactivateAnticipationBeneficiaryResponse,
+    DebitSubaccountBody,
+    DebitSubaccountResponse,
+    DecodeEmvBody,
+    DecodeEmvResponse,
+    DeleteAccountRegisterResponse,
+    DeleteApplicationResponse,
+    DeleteChargeResponse,
+    DeleteStaticQrCodeResponse,
+    DeleteSubaccountResponse,
+    DeleteWebhookResponse,
+    DuplicateAccountResponse,
+    FilePayload,
     FundsRecovery,
     FundsRecoveryPayload,
-    GetApiImageQrcodeBase64ByIdResponse,
-    GetApiV1AccountByAccountIdResponse,
-    GetApiV1AccountRegisterResponse,
-    GetApiV1AccountResponse,
-    GetApiV1CashbackFidelityBalanceByTaxIdResponse,
-    GetApiV1ChargeByIdRefundResponse,
-    GetApiV1ChargeByIdResponse,
-    GetApiV1ChargeResponse,
-    GetApiV1CompanyResponse,
-    GetApiV1CustomerByIdResponse,
-    GetApiV1CustomerResponse,
-    GetApiV1DisputeByIdResponse,
-    GetApiV1DisputeResponse,
-    GetApiV1InstallmentsByIdResponse,
-    GetApiV1LimitsByAccountIdResponse,
-    GetApiV1PartnerAffiliateResponse,
-    GetApiV1PartnerCompanyByTaxIdResponse,
-    GetApiV1PartnerCompanyResponse,
-    GetApiV1PaymentByIdResponse,
-    GetApiV1PaymentResponse,
-    GetApiV1PixKeysResponse,
-    GetApiV1PixKeysTokensLogsResponse,
-    GetApiV1PspResponse,
-    GetApiV1QrcodeStaticByIdResponse,
-    GetApiV1QrcodeStaticResponse,
-    GetApiV1ReceiptByReceiptTypeByEndToEndIdReceiptType,
-    GetApiV1RefundByIdResponse,
-    GetApiV1RefundResponse,
-    GetApiV1StablecoinQuoteResponse,
-    GetApiV1StatementResponseItem,
-    GetApiV1SubaccountByIdResponse,
-    GetApiV1SubaccountByIdStatementResponseItem,
-    GetApiV1SubaccountResponse,
-    GetApiV1SubscriptionsByIdInstallmentsResponse,
-    GetApiV1SubscriptionsByIdResponse,
-    GetApiV1SubscriptionsResponse,
-    GetApiV1TransactionByIdResponse,
-    GetApiV1TransactionResponse,
-    GetApiV1TransactionType,
-    GetApiV1WebhookEventsResponse,
-    GetApiV1WebhookIpsResponse,
-    GetApiV1WebhookResponse,
+    GetAccountLimitsResponse,
+    GetAccountRegisterResponse,
+    GetAccountResponse,
+    GetBoletoTransactionResponse,
+    GetCashbackFidelityBalanceResponse,
+    GetChargeQrCodeBase64Response,
+    GetChargeResponse,
+    GetCompanyResponse,
+    GetCustomerResponse,
+    GetDisputeResponse,
+    GetInstallmentResponse,
+    GetPartnerCompanyResponse,
+    GetPaymentResponse,
+    GetReceiptReceiptType,
+    GetRefundResponse,
+    GetStablecoinQuoteResponse,
+    GetStablecoinSubaccountBalancesResponse,
+    GetStatementResponseItem,
+    GetStaticQrCodeResponse,
+    GetSubaccountResponse,
+    GetSubaccountStatementResponseItem,
+    GetSubscriptionResponse,
+    GetTransactionResponse,
     KycOnboardingRequest,
-    PatchApiV1ChargeByIdResponse,
-    PatchApiV1CustomerByCorrelationIdResponse,
-    PatchApiV1InvoiceIntegrationBody,
-    PatchApiV1InvoiceIntegrationResponse,
+    KycValidation,
+    KycValidationRequest,
+    ListAccountsResponse,
+    ListAnticipationRequestsResponse,
+    ListChargeRefundsResponse,
+    ListChargesResponse,
+    ListCustomersResponse,
+    ListDisputesResponse,
+    ListPartnerAffiliatesResponse,
+    ListPartnerCompaniesResponse,
+    ListPaymentsResponse,
+    ListPixKeysResponse,
+    ListPixKeyTokenLogsResponse,
+    ListPspsResponse,
+    ListRefundsResponse,
+    ListStablecoinSubaccountWalletsResponse,
+    ListStablecoinWalletsResponse,
+    ListStaticQrCodesResponse,
+    ListSubaccountsResponse,
+    ListSubscriptionInstallmentsResponse,
+    ListSubscriptionsResponse,
+    ListTransactionsResponse,
+    ListTransactionsType,
+    ListWebhookEventsResponse,
+    ListWebhookIpsResponse,
+    ListWebhookPublicKeysResponse,
+    ListWebhooksResponse,
     PaymentApprovePayload,
     PixKey,
     PixKeyCheck,
     PixKeyCreate,
     PixKeyTokens,
     PixQrCodePayload,
-    PostApiV1AccountByAccountIdWithdrawBody,
-    PostApiV1AccountByAccountIdWithdrawResponse,
-    PostApiV1AccountResponse,
-    PostApiV1ApplicationResponse,
-    PostApiV1CashbackFidelityBody,
-    PostApiV1CashbackFidelityResponse,
-    PostApiV1ChargeByIdRefundResponse,
-    PostApiV1ChargeResponse,
-    PostApiV1CustomerResponse,
-    PostApiV1DecodeEmvBody,
-    PostApiV1DecodeEmvResponse,
-    PostApiV1DisputeIdEvidenceBody,
-    PostApiV1DisputeIdEvidenceResponse,
-    PostApiV1InstallmentsByIdCobrBody,
-    PostApiV1InstallmentsByIdCobrRetryBody,
-    PostApiV1InvoiceByCorrelationIdCancelResponse,
-    PostApiV1InvoiceIntegrationBody,
-    PostApiV1InvoiceIntegrationCertificateBody,
-    PostApiV1InvoiceIntegrationCertificateResponse,
-    PostApiV1InvoiceIntegrationResponse,
-    PostApiV1InvoiceIntegrationTestResponse,
-    PostApiV1InvoiceResponse,
-    PostApiV1KycOnboardingResponse,
-    PostApiV1PartnerApplicationBody,
-    PostApiV1PartnerApplicationResponse,
-    PostApiV1PaymentApproveResponse,
-    PostApiV1PaymentBody,
-    PostApiV1PaymentResponse,
-    PostApiV1PixKeysCheckBody,
-    PostApiV1QrcodeStaticResponse,
-    PostApiV1RefundResponse,
-    PostApiV1StablecoinDepositApproveBody,
-    PostApiV1StablecoinDepositApproveResponse,
-    PostApiV1SubaccountByIdCreditBody,
-    PostApiV1SubaccountByIdCreditResponse,
-    PostApiV1SubaccountByIdDebitBody,
-    PostApiV1SubaccountByIdDebitResponse,
-    PostApiV1SubaccountByIdWithdrawResponse,
-    PostApiV1SubaccountResponse,
-    PostApiV1SubscriptionsResponse,
-    PostApiV1TransferResponse,
-    PostApiV1WebhookBody,
-    PostApiV1WebhookResponse,
     PreRegistrationPayloadObject,
-    PutApiV1InvoiceIntegrationBody,
-    PutApiV1InvoiceIntegrationResponse,
+    QuoteStablecoinPayoutResponse,
+    RefundChargeResponse,
     RefundPayload,
+    RejectAnticipationBody,
+    RejectAnticipationResponse,
+    RetryInstallmentCobrBody,
+    SetInvoiceIntegrationStatusBody,
+    SetInvoiceIntegrationStatusResponse,
     StablecoinDepositRequest,
     StablecoinDepositRequestCurrency,
     StablecoinDepositResponse,
@@ -150,10 +161,24 @@ from .schemas import (
     SubAccountTransferResponsePayload,
     SubAccountWithdrawPayload,
     SubscriptionPayload,
+    TestInvoiceIntegrationResponse,
     TransferCreatePayload,
+    UpdateChargeResponse,
+    UpdateCustomerResponse,
+    UpdateInvoiceIntegrationTaxFieldsBody,
+    UpdateInvoiceIntegrationTaxFieldsResponse,
+    UploadDisputeEvidenceBody,
+    UploadDisputeEvidenceResponse,
+    UploadInvoiceIntegrationCertificateBody,
+    UploadInvoiceIntegrationCertificateResponse,
+    UpsertInvoiceIntegrationBody,
+    UpsertInvoiceIntegrationResponse,
+    WithdrawFromAccountBody,
+    WithdrawFromAccountResponse,
+    WithdrawFromSubaccountResponse,
 )
 
-DEFAULT_BASE_URL: str = "https://api.openpix.com.br"
+DEFAULT_BASE_URL: str = "https://api.woovi.com"
 """``servers[0].url`` from the specification."""
 
 
@@ -222,7 +247,7 @@ def _param(value: Any) -> Any:
 
 
 class OpenPixClient:
-    """Client for OpenPix (version 1.0.0)."""
+    """Client for Woovi (version 1.0.0)."""
 
     def __init__(self, client: HTTPClient) -> None:
         """Initialize the client.
@@ -236,12 +261,12 @@ class OpenPixClient:
         """
         self._client: HTTPClient = client
 
-    async def get_api_image_qrcode_base64_by_id(
+    async def get_charge_qr_code_base64(
         self,
         id: str,
         *,
         size: str | None = None,
-    ) -> GetApiImageQrcodeBase64ByIdResponse:
+    ) -> GetChargeQrCodeBase64Response:
         """Get a base64 encoded QR Code image from a Charge.
 
         Args:
@@ -251,7 +276,7 @@ class OpenPixClient:
                 1024. Omitted from the query when None.
 
         Returns:
-            GetApiImageQrcodeBase64ByIdResponse: The 200 response body, validated.
+            GetChargeQrCodeBase64Response: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -267,84 +292,15 @@ class OpenPixClient:
             params=params,
         )
         response.raise_for_status()
-        return _validate(GetApiImageQrcodeBase64ByIdResponse, response.json())
+        return _validate(GetChargeQrCodeBase64Response, response.json())
 
-    async def post_api_v1_account(self) -> PostApiV1AccountResponse:
-        """Duplicates the Account.
-
-        Duplicates the account associated with the authorization appId. Requires the
-        bank account feature to be enabled.
-
-        Returns:
-            PostApiV1AccountResponse: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 403.
-        """
-        path = "/api/v1/account"
-        response = await self._client.request(
-            "POST",
-            path,
-        )
-        response.raise_for_status()
-        return _validate(PostApiV1AccountResponse, response.json())
-
-    async def get_api_v1_account_register(self) -> GetApiV1AccountRegisterResponse:
-        """Get account register by CorrelationID.
-
-        Retrieves an existing account registration by CorrelationID
-
-        Returns:
-            GetApiV1AccountRegisterResponse: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 404, 500.
-        """
-        path = "/api/v1/account-register"
-        response = await self._client.request(
-            "GET",
-            path,
-        )
-        response.raise_for_status()
-        return _validate(GetApiV1AccountRegisterResponse, response.json())
-
-    # openapi: unsupported — path '/api/v1/account-register/{id}' interpolates 'id',
-    #   which no parameter declares — generated as a required str
-    async def delete_api_v1_account_register_by_id(
-        self,
-        id: str,
-    ) -> DeleteApiV1AccountRegisterByIdResponse:
-        """Delete an account registration.
-
-        Deletes an account registration that is in PENDING status
-
-        Args:
-            id (str): The id value.
-
-        Returns:
-            DeleteApiV1AccountRegisterByIdResponse: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 404, 500.
-        """
-        path = f"/api/v1/account-register/{id}"
-        response = await self._client.request(
-            "DELETE",
-            path,
-        )
-        response.raise_for_status()
-        return _validate(DeleteApiV1AccountRegisterByIdResponse, response.json())
-
-    async def get_api_v1_account(
+    async def list_accounts(
         self,
         *,
         email: str | None = None,
         skip: int | None = None,
         limit: int | None = None,
-    ) -> GetApiV1AccountResponse:
+    ) -> ListAccountsResponse:
         """Get a list of Accounts.
 
         Args:
@@ -356,13 +312,13 @@ class OpenPixClient:
                 when None.
 
         Returns:
-            GetApiV1AccountResponse: The 200 response body, validated.
+            ListAccountsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = "/api/v1/account/"
+        path = "/api/v1/account"
         params: dict[str, Any] = {}
         if email is not None:
             params["email"] = _param(email)
@@ -376,19 +332,92 @@ class OpenPixClient:
             params=params,
         )
         response.raise_for_status()
-        return _validate(GetApiV1AccountResponse, response.json())
+        return _validate(ListAccountsResponse, response.json())
 
-    async def get_api_v1_account_by_account_id(
+    async def duplicate_account(self) -> DuplicateAccountResponse:
+        """Duplicates the Account.
+
+        Duplicates the account associated with the authorization appId. Requires the
+        bank account feature to be enabled.
+
+        Returns:
+            DuplicateAccountResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 403.
+        """
+        path = "/api/v1/account"
+        response = await self._client.request(
+            "POST",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(DuplicateAccountResponse, response.json())
+
+    async def get_account_register(
+        self,
+        id: str,
+    ) -> GetAccountRegisterResponse:
+        """Get account register by CorrelationID.
+
+        Retrieves an existing account registration by CorrelationID
+
+        Args:
+            id (str): CorrelationID of the account register
+
+        Returns:
+            GetAccountRegisterResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 404, 500.
+        """
+        path = f"/api/v1/account-register/{id}"
+        response = await self._client.request(
+            "GET",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(GetAccountRegisterResponse, response.json())
+
+    async def delete_account_register(
+        self,
+        id: str,
+    ) -> DeleteAccountRegisterResponse:
+        """Delete an account registration.
+
+        Deletes an account registration that is in PENDING status
+
+        Args:
+            id (str): CorrelationID of the account register to delete
+
+        Returns:
+            DeleteAccountRegisterResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 404, 500.
+        """
+        path = f"/api/v1/account-register/{id}"
+        response = await self._client.request(
+            "DELETE",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(DeleteAccountRegisterResponse, response.json())
+
+    async def get_account(
         self,
         account_id: str,
-    ) -> GetApiV1AccountByAccountIdResponse:
+    ) -> GetAccountResponse:
         """Get an Account.
 
         Args:
             account_id (str): ID of the Account
 
         Returns:
-            GetApiV1AccountByAccountIdResponse: The 200 response body, validated.
+            GetAccountResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -400,12 +429,12 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1AccountByAccountIdResponse, response.json())
+        return _validate(GetAccountResponse, response.json())
 
-    async def delete_api_v1_account_by_account_id(
+    async def close_account(
         self,
         account_id: str,
-    ) -> DeleteApiV1AccountByAccountIdResponse:
+    ) -> CloseAccountResponse:
         """Close an Account.
 
         Closes an Account.
@@ -416,7 +445,7 @@ class OpenPixClient:
             account_id (str): ID of the Account
 
         Returns:
-            DeleteApiV1AccountByAccountIdResponse: The 200 response body, validated.
+            CloseAccountResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -428,14 +457,14 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(DeleteApiV1AccountByAccountIdResponse, response.json())
+        return _validate(CloseAccountResponse, response.json())
 
-    async def post_api_v1_account_by_account_id_withdraw(
+    async def withdraw_from_account(
         self,
         account_id: str,
         *,
-        body: PostApiV1AccountByAccountIdWithdrawBody,
-    ) -> PostApiV1AccountByAccountIdWithdrawResponse:
+        body: WithdrawFromAccountBody,
+    ) -> WithdrawFromAccountResponse:
         """Withdraw from an Account.
 
         An additional fee may be charged depending on the minimum free withdrawal
@@ -444,11 +473,10 @@ class OpenPixClient:
 
         Args:
             account_id (str): ID of the Account
-            body (PostApiV1AccountByAccountIdWithdrawBody): The request body.
+            body (WithdrawFromAccountBody): The request body.
 
         Returns:
-            PostApiV1AccountByAccountIdWithdrawResponse: The 200 response body,
-                validated.
+            WithdrawFromAccountResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -462,13 +490,235 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1AccountByAccountIdWithdrawResponse, response.json())
+        return _validate(WithdrawFromAccountResponse, response.json())
 
-    async def post_api_v1_application(
+    async def list_anticipation_requests(
+        self,
+        *,
+        status: AnticipationRequestStatus | None = None,
+        limit: int | None = None,
+    ) -> ListAnticipationRequestsResponse:
+        """List anticipation requests.
+
+        Lists the company's anticipation requests. Poll `?status=PENDING` to discover
+        requests awaiting your approval before settlement. Requires the
+        `anticipation.request.read` scope.
+
+        Args:
+            status (AnticipationRequestStatus | None): Filter by status. Omitted from
+                the query when None.
+            limit (int | None): Max items to return (default 100, capped at 1000).
+                Omitted from the query when None.
+
+        Returns:
+            ListAnticipationRequestsResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401.
+        """
+        path = "/api/v1/anticipation"
+        params: dict[str, Any] = {}
+        if status is not None:
+            params["status"] = _param(status)
+        if limit is not None:
+            params["limit"] = _param(limit)
+        response = await self._client.request(
+            "GET",
+            path,
+            params=params,
+        )
+        response.raise_for_status()
+        return _validate(ListAnticipationRequestsResponse, response.json())
+
+    async def sync_anticipation_balances(
+        self,
+        *,
+        body: AnticipationBalanceBatchPayload,
+    ) -> AnticipationBalanceBatchResult:
+        """Bulk-sync beneficiary balances.
+
+        Absolute set of availableAmount/maxAdvanceableAmount for up to 1000
+        beneficiaries in one call (nightly payroll sync). Returns a per-item report so
+        partial failures can be reconciled.
+
+        Args:
+            body (AnticipationBalanceBatchPayload): The request body.
+
+        Returns:
+            AnticipationBalanceBatchResult: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 403.
+        """
+        path = "/api/v1/anticipation/balance/batch"
+        payload = _dump(body)
+        response = await self._client.request(
+            "POST",
+            path,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(AnticipationBalanceBatchResult, response.json())
+
+    async def create_anticipation_beneficiary(
+        self,
+        *,
+        body: AnticipationBeneficiaryCreatePayload,
+        return_existing: bool | None = None,
+    ) -> CreateAnticipationBeneficiaryResponse:
+        """Register a beneficiary.
+
+        Registers a beneficiary bound to the company resolved from the app_id.
+        Idempotent on the payout key: send `?return_existing=true` to get the existing
+        beneficiary (200) instead of a 409.
+
+        Args:
+            body (AnticipationBeneficiaryCreatePayload): The request body.
+            return_existing (bool | None): When `true`, an already-existing beneficiary
+                is returned with 200 instead of a 409. Omitted from the query when None.
+
+        Returns:
+            CreateAnticipationBeneficiaryResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 403, 409.
+        """
+        path = "/api/v1/anticipation/beneficiary"
+        params: dict[str, Any] = {}
+        if return_existing is not None:
+            params["return_existing"] = _param(return_existing)
+        payload = _dump(body)
+        response = await self._client.request(
+            "POST",
+            path,
+            params=params,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(CreateAnticipationBeneficiaryResponse, response.json())
+
+    async def activate_anticipation_beneficiary(
+        self,
+        tax_id: str,
+    ) -> ActivateAnticipationBeneficiaryResponse:
+        """Activate a beneficiary.
+
+        Reactivates a beneficiary previously deactivated.
+
+        Args:
+            tax_id (str): Payout key (CPF or CNPJ), with or without mask.
+
+        Returns:
+            ActivateAnticipationBeneficiaryResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 403, 404.
+        """
+        path = f"/api/v1/anticipation/beneficiary/{tax_id}/activate"
+        response = await self._client.request(
+            "POST",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(ActivateAnticipationBeneficiaryResponse, response.json())
+
+    async def deactivate_anticipation_beneficiary(
+        self,
+        tax_id: str,
+    ) -> DeactivateAnticipationBeneficiaryResponse:
+        """Deactivate a beneficiary.
+
+        Deactivates a beneficiary; blocks new anticipations and app login.
+
+        Args:
+            tax_id (str): Payout key (CPF or CNPJ), with or without mask.
+
+        Returns:
+            DeactivateAnticipationBeneficiaryResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 403, 404.
+        """
+        path = f"/api/v1/anticipation/beneficiary/{tax_id}/deactivate"
+        response = await self._client.request(
+            "POST",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(DeactivateAnticipationBeneficiaryResponse, response.json())
+
+    async def approve_anticipation(
+        self,
+        id: str,
+    ) -> ApproveAnticipationResponse:
+        """Approve an anticipation request.
+
+        Approves a PENDING request and triggers the Pix Out to the beneficiary.
+        Idempotent: re-approving an already-approved request returns 200 with the
+        current state; a rejected/terminal one returns 409. Requires the
+        `anticipation.request.approve` scope.
+
+        Args:
+            id (str): Anticipation request id.
+
+        Returns:
+            ApproveAnticipationResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 404, 409.
+        """
+        path = f"/api/v1/anticipation/{id}/approve"
+        response = await self._client.request(
+            "POST",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(ApproveAnticipationResponse, response.json())
+
+    async def reject_anticipation(
+        self,
+        id: str,
+        *,
+        body: RejectAnticipationBody | None = None,
+    ) -> RejectAnticipationResponse:
+        """Reject an anticipation request.
+
+        Rejects a PENDING request (releases the reserved cycle limit). Idempotent:
+        re-rejecting a canceled request returns 200; an approved/terminal one returns
+        409. Requires the `anticipation.request.approve` scope.
+
+        Args:
+            id (str): Anticipation request id.
+            body (RejectAnticipationBody): The request body. Optional.
+
+        Returns:
+            RejectAnticipationResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 404, 409.
+        """
+        path = f"/api/v1/anticipation/{id}/reject"
+        payload = None if body is None else _dump(body)
+        response = await self._client.request(
+            "POST",
+            path,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(RejectAnticipationResponse, response.json())
+
+    async def create_application(
         self,
         *,
         body: ApplicationPayload,
-    ) -> PostApiV1ApplicationResponse:
+    ) -> CreateApplicationResponse:
         """Create a new application.
 
         Creates a new application for a company. If the company has the
@@ -478,7 +728,7 @@ class OpenPixClient:
             body (ApplicationPayload): The request body.
 
         Returns:
-            PostApiV1ApplicationResponse: The 201 response body, validated.
+            CreateApplicationResponse: The 201 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -492,16 +742,16 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1ApplicationResponse, response.json())
+        return _validate(CreateApplicationResponse, response.json())
 
-    async def delete_api_v1_application(self) -> DeleteApiV1ApplicationResponse:
+    async def delete_application(self) -> DeleteApplicationResponse:
         """Delete an application.
 
         Deactivates an application by setting isActive to false and adding a removedAt
         timestamp
 
         Returns:
-            DeleteApiV1ApplicationResponse: The 200 response body, validated.
+            DeleteApplicationResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -513,9 +763,126 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(DeleteApiV1ApplicationResponse, response.json())
+        return _validate(DeleteApplicationResponse, response.json())
 
-    async def post_api_v1_boleto_validate(
+    async def list_boleto_transactions(
+        self,
+        *,
+        type: BoletoTransactionType | None = None,
+        status: BoletoTransactionStatus | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        settled_start: datetime | None = None,
+        settled_end: datetime | None = None,
+        skip: int | None = None,
+        limit: int | None = None,
+    ) -> BoletoTransactionListResponse:
+        """List boleto transactions.
+
+        Lists the boleto transactions of your company, most recent first, so you can
+        reconcile boleto receivables and payments against your own records.
+
+        A transaction is either a `BOLETO_IN` — a boleto your payer paid — or a
+        `BOLETO_OUT` — a boleto your company paid. All monetary values are in cents.
+
+        `value` is the amount that actually moved, which for a boleto paid after the due
+        date is above the emitted amount in `charge.value` because of interest and fine.
+        `finesValue` and `interestsValue` split that difference, as charged by the bank,
+        so you can reconcile an overdue boleto without recomputing it from the charge
+        settings. Each is absent when there was none, so a boleto paid on time carries
+        neither.
+
+        Two independent date ranges are offered because they answer different questions:
+        `start`/`end` filter by when the transaction was created, and
+        `settledStart`/`settledEnd` by when Woovi credited the amount to your account.
+        Both dates come back on every item.
+
+        Requires the `BOLETO_TRANSACTION_GET_LIST` scope on the application.
+
+        Args:
+            type (BoletoTransactionType | None): Only transactions of this type. Omitted
+                from the query when None.
+            status (BoletoTransactionStatus | None): Only transactions in this status.
+                Omitted from the query when None.
+            start (datetime | None): Only transactions created from this date on.
+                Omitted from the query when None.
+            end (datetime | None): Only transactions created up to this date. Omitted
+                from the query when None.
+            settled_start (datetime | None): Only transactions settled from this date
+                on. Omitted from the query when None.
+            settled_end (datetime | None): Only transactions settled up to this date.
+                Omitted from the query when None.
+            skip (int | None): Rows to skip. Capped at 10000 — past that, narrow the
+                window with the date filters instead of paginating deeper. Omitted from
+                the query when None.
+            limit (int | None): Rows to return. Omitted from the query when None.
+
+        Returns:
+            BoletoTransactionListResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 403, 422.
+        """
+        path = "/api/v1/boleto-transaction"
+        params: dict[str, Any] = {}
+        if type is not None:
+            params["type"] = _param(type)
+        if status is not None:
+            params["status"] = _param(status)
+        if start is not None:
+            params["start"] = _param(start)
+        if end is not None:
+            params["end"] = _param(end)
+        if settled_start is not None:
+            params["settledStart"] = _param(settled_start)
+        if settled_end is not None:
+            params["settledEnd"] = _param(settled_end)
+        if skip is not None:
+            params["skip"] = _param(skip)
+        if limit is not None:
+            params["limit"] = _param(limit)
+        response = await self._client.request(
+            "GET",
+            path,
+            params=params,
+        )
+        response.raise_for_status()
+        return _validate(BoletoTransactionListResponse, response.json())
+
+    async def get_boleto_transaction(
+        self,
+        boleto_transaction_id: str,
+    ) -> GetBoletoTransactionResponse:
+        """Get a boleto transaction.
+
+        Returns one boleto transaction of your company.
+
+        The id is the `boletoTransactionID` delivered in the `BOLETO_SETTLED` webhook,
+        so you can confirm a settlement you were notified about.
+
+        Requires the `BOLETO_TRANSACTION_GET` scope on the application.
+
+        Args:
+            boleto_transaction_id (str): The boleto transaction id, as delivered in the
+                webhook.
+
+        Returns:
+            GetBoletoTransactionResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                404.
+        """
+        path = f"/api/v1/boleto-transaction/{boleto_transaction_id}"
+        response = await self._client.request(
+            "GET",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(GetBoletoTransactionResponse, response.json())
+
+    async def validate_boleto(
         self,
         *,
         body: BoletoValidateRequest,
@@ -554,11 +921,11 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(BoletoValidateResponse, response.json())
 
-    async def post_api_v1_cashback_fidelity(
+    async def create_cashback_fidelity(
         self,
         *,
-        body: PostApiV1CashbackFidelityBody,
-    ) -> PostApiV1CashbackFidelityResponse:
+        body: CreateCashbackFidelityBody,
+    ) -> CreateCashbackFidelityResponse:
         """Get or create cashback for a customer.
 
         Create a new cashback exclusive for the customer with a given taxID. If the
@@ -566,10 +933,10 @@ class OpenPixClient:
         instead.
 
         Args:
-            body (PostApiV1CashbackFidelityBody): The request body.
+            body (CreateCashbackFidelityBody): The request body.
 
         Returns:
-            PostApiV1CashbackFidelityResponse: The 200 response body, validated.
+            CreateCashbackFidelityResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -583,20 +950,19 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1CashbackFidelityResponse, response.json())
+        return _validate(CreateCashbackFidelityResponse, response.json())
 
-    async def get_api_v1_cashback_fidelity_balance_by_tax_id(
+    async def get_cashback_fidelity_balance(
         self,
         tax_id: str,
-    ) -> GetApiV1CashbackFidelityBalanceByTaxIdResponse:
+    ) -> GetCashbackFidelityBalanceResponse:
         """Get the exclusive cashback amount an user still has to receive by taxID.
 
         Args:
             tax_id (str): The raw tax ID from the customer you want to get the balance.
 
         Returns:
-            GetApiV1CashbackFidelityBalanceByTaxIdResponse: The 200 response body,
-                validated.
+            GetCashbackFidelityBalanceResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -608,11 +974,9 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(
-            GetApiV1CashbackFidelityBalanceByTaxIdResponse, response.json()
-        )
+        return _validate(GetCashbackFidelityBalanceResponse, response.json())
 
-    async def get_api_v1_charge(
+    async def list_charges(
         self,
         *,
         start: datetime | None = None,
@@ -620,7 +984,7 @@ class OpenPixClient:
         status: ChargeStatus | None = None,
         customer: str | None = None,
         subscription: str | None = None,
-    ) -> GetApiV1ChargeResponse:
+    ) -> ListChargesResponse:
         """Get a list of charges.
 
         Args:
@@ -634,7 +998,7 @@ class OpenPixClient:
                 query when None.
 
         Returns:
-            GetApiV1ChargeResponse: The 200 response body, validated.
+            ListChargesResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -658,17 +1022,31 @@ class OpenPixClient:
             params=params,
         )
         response.raise_for_status()
-        return _validate(GetApiV1ChargeResponse, response.json())
+        return _validate(ListChargesResponse, response.json())
 
-    async def post_api_v1_charge(
+    async def create_charge(
         self,
         *,
         body: ChargePayload,
         return_existing: bool | None = None,
-    ) -> PostApiV1ChargeResponse:
+    ) -> CreateChargeResponse:
         """Create a new Charge.
 
-        Endpoint to create a new Charge for a customer
+        Endpoint to create a new Charge for a customer.
+
+        ## Split
+
+        You can split the value of a charge across other accounts by sending the
+        `splits` array in the request body. Each item accepts:
+
+        - `value`: amount in cents that will be split to the destination. - `pixKey`:
+        Pix key of the account that will receive this split. - `splitType`: how the
+        split is processed — one of `SPLIT_INTERNAL_TRANSFER`, `SPLIT_SUB_ACCOUNT` or
+        `SPLIT_PARTNER`. [See how each split type is
+        processed](https://developers.openpix.com.br/docs/splits/split-introduction).
+
+        See the *Charge with Split Internal Transfer* and *Charge with Split
+        Subaccounts* request body examples below for the full payload shape.
 
         Args:
             body (ChargePayload): The request body.
@@ -677,7 +1055,7 @@ class OpenPixClient:
                 the query when None.
 
         Returns:
-            PostApiV1ChargeResponse: The 200 response body, validated.
+            CreateChargeResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -695,12 +1073,12 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1ChargeResponse, response.json())
+        return _validate(CreateChargeResponse, response.json())
 
-    async def get_api_v1_charge_by_id(
+    async def get_charge(
         self,
         id: str,
-    ) -> GetApiV1ChargeByIdResponse:
+    ) -> GetChargeResponse:
         r"""Get one charge.
 
         Args:
@@ -709,7 +1087,7 @@ class OpenPixClient:
                 characters (%, \#, /).
 
         Returns:
-            GetApiV1ChargeByIdResponse: The 200 response body, validated.
+            GetChargeResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -721,14 +1099,14 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1ChargeByIdResponse, response.json())
+        return _validate(GetChargeResponse, response.json())
 
-    async def patch_api_v1_charge_by_id(
+    async def update_charge(
         self,
         id: str,
         *,
         body: ChargePatchPayload,
-    ) -> PatchApiV1ChargeByIdResponse:
+    ) -> UpdateChargeResponse:
         r"""Edit expiration date of a charge.
 
         Args:
@@ -737,7 +1115,7 @@ class OpenPixClient:
             body (ChargePatchPayload): The request body.
 
         Returns:
-            PatchApiV1ChargeByIdResponse: The 200 response body, validated.
+            UpdateChargeResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -751,12 +1129,12 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PatchApiV1ChargeByIdResponse, response.json())
+        return _validate(UpdateChargeResponse, response.json())
 
-    async def delete_api_v1_charge_by_id(
+    async def delete_charge(
         self,
         id: str,
-    ) -> DeleteApiV1ChargeByIdResponse:
+    ) -> DeleteChargeResponse:
         r"""Delete a charge.
 
         Args:
@@ -765,7 +1143,7 @@ class OpenPixClient:
                 characters (%, \#, /).
 
         Returns:
-            DeleteApiV1ChargeByIdResponse: The 200 response body, validated.
+            DeleteChargeResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -777,12 +1155,12 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(DeleteApiV1ChargeByIdResponse, response.json())
+        return _validate(DeleteChargeResponse, response.json())
 
-    async def get_api_v1_charge_by_id_refund(
+    async def list_charge_refunds(
         self,
         id: str,
-    ) -> GetApiV1ChargeByIdRefundResponse:
+    ) -> ListChargeRefundsResponse:
         r"""Get all refunds of a charge.
 
         Endpoint to get all refunds of a charge
@@ -793,7 +1171,7 @@ class OpenPixClient:
                 characters (%, \#, /).
 
         Returns:
-            GetApiV1ChargeByIdRefundResponse: The 200 response body, validated.
+            ListChargeRefundsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -805,14 +1183,14 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1ChargeByIdRefundResponse, response.json())
+        return _validate(ListChargeRefundsResponse, response.json())
 
-    async def post_api_v1_charge_by_id_refund(
+    async def refund_charge(
         self,
         id: str,
         *,
         body: ChargeRefundPayload,
-    ) -> PostApiV1ChargeByIdRefundResponse:
+    ) -> RefundChargeResponse:
         r"""Create a new refund for a charge.
 
         Endpoint to create a new refund for a charge
@@ -824,7 +1202,7 @@ class OpenPixClient:
             body (ChargeRefundPayload): The request body.
 
         Returns:
-            PostApiV1ChargeByIdRefundResponse: The 200 response body, validated.
+            RefundChargeResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -838,13 +1216,13 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1ChargeByIdRefundResponse, response.json())
+        return _validate(RefundChargeResponse, response.json())
 
-    async def get_api_v1_company(self) -> GetApiV1CompanyResponse:
+    async def get_company(self) -> GetCompanyResponse:
         """Get a Company.
 
         Returns:
-            GetApiV1CompanyResponse: The 200 response body, validated.
+            GetCompanyResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -856,13 +1234,13 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1CompanyResponse, response.json())
+        return _validate(GetCompanyResponse, response.json())
 
-    async def get_api_v1_customer(self) -> GetApiV1CustomerResponse:
+    async def list_customers(self) -> ListCustomersResponse:
         """Get a list of customers.
 
         Returns:
-            GetApiV1CustomerResponse: The 200 response body, validated.
+            ListCustomersResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -874,13 +1252,13 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1CustomerResponse, response.json())
+        return _validate(ListCustomersResponse, response.json())
 
-    async def post_api_v1_customer(
+    async def create_customer(
         self,
         *,
         body: CustomerPayload,
-    ) -> PostApiV1CustomerResponse:
+    ) -> CreateCustomerResponse:
         """Create a new Customer.
 
         Endpoint to create a new Customer
@@ -889,7 +1267,7 @@ class OpenPixClient:
             body (CustomerPayload): The request body.
 
         Returns:
-            PostApiV1CustomerResponse: The 200 response body, validated.
+            CreateCustomerResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -903,50 +1281,19 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1CustomerResponse, response.json())
+        return _validate(CreateCustomerResponse, response.json())
 
-    async def patch_api_v1_customer_by_correlation_id(
-        self,
-        correlation_id: str,
-        *,
-        body: CustomerPatchPayload,
-    ) -> PatchApiV1CustomerByCorrelationIdResponse:
-        """Update a Customer.
-
-        Endpoint to update a Customer
-
-        Args:
-            correlation_id (str): correlation ID
-            body (CustomerPatchPayload): The request body.
-
-        Returns:
-            PatchApiV1CustomerByCorrelationIdResponse: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400.
-        """
-        path = f"/api/v1/customer/{correlation_id}"
-        payload = _dump(body)
-        response = await self._client.request(
-            "PATCH",
-            path,
-            json=payload,
-        )
-        response.raise_for_status()
-        return _validate(PatchApiV1CustomerByCorrelationIdResponse, response.json())
-
-    async def get_api_v1_customer_by_id(
+    async def get_customer(
         self,
         id: str,
-    ) -> GetApiV1CustomerByIdResponse:
+    ) -> GetCustomerResponse:
         """Get one customer.
 
         Args:
             id (str): Correlation ID or Tax ID
 
         Returns:
-            GetApiV1CustomerByIdResponse: The 200 response body, validated.
+            GetCustomerResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -958,20 +1305,51 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1CustomerByIdResponse, response.json())
+        return _validate(GetCustomerResponse, response.json())
 
-    async def post_api_v1_decode_emv(
+    async def update_customer(
+        self,
+        id: str,
+        *,
+        body: CustomerPatchPayload,
+    ) -> UpdateCustomerResponse:
+        """Update a Customer.
+
+        Endpoint to update a Customer
+
+        Args:
+            id (str): correlation ID
+            body (CustomerPatchPayload): The request body.
+
+        Returns:
+            UpdateCustomerResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400.
+        """
+        path = f"/api/v1/customer/{id}"
+        payload = _dump(body)
+        response = await self._client.request(
+            "PATCH",
+            path,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(UpdateCustomerResponse, response.json())
+
+    async def decode_emv(
         self,
         *,
-        body: PostApiV1DecodeEmvBody,
-    ) -> PostApiV1DecodeEmvResponse:
+        body: DecodeEmvBody,
+    ) -> DecodeEmvResponse:
         """Parse EMV (PIX) QR code and optionally resolve COB/REC locations.
 
         Args:
-            body (PostApiV1DecodeEmvBody): The request body.
+            body (DecodeEmvBody): The request body.
 
         Returns:
-            PostApiV1DecodeEmvResponse: The 200 response body, validated.
+            DecodeEmvResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -985,14 +1363,14 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1DecodeEmvResponse, response.json())
+        return _validate(DecodeEmvResponse, response.json())
 
-    async def get_api_v1_dispute(
+    async def list_disputes(
         self,
         *,
         start: datetime | None = None,
         end: datetime | None = None,
-    ) -> GetApiV1DisputeResponse:
+    ) -> ListDisputesResponse:
         """Get a list of disputes.
 
         Args:
@@ -1000,7 +1378,7 @@ class OpenPixClient:
             end (datetime | None): The end value. Omitted from the query when None.
 
         Returns:
-            GetApiV1DisputeResponse: The 200 response body, validated.
+            ListDisputesResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1018,43 +1396,12 @@ class OpenPixClient:
             params=params,
         )
         response.raise_for_status()
-        return _validate(GetApiV1DisputeResponse, response.json())
+        return _validate(ListDisputesResponse, response.json())
 
-    async def post_api_v1_dispute_id_evidence(
-        self,
-        *,
-        body: PostApiV1DisputeIdEvidenceBody,
-    ) -> PostApiV1DisputeIdEvidenceResponse:
-        r"""Upload new evidence.
-
-        Upload evidence files for dispute/med. \nOBS para obter esse o id da disputa,
-        veja esse artigo
-        https://developers.woovi.com/docs/disputa/how-add-new-evidence-in-dispute#1-obter-o-id-da-disputa
-
-        Args:
-            body (PostApiV1DisputeIdEvidenceBody): The request body.
-
-        Returns:
-            PostApiV1DisputeIdEvidenceResponse: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400.
-        """
-        path = "/api/v1/dispute/:id/evidence"
-        payload = _dump(body)
-        response = await self._client.request(
-            "POST",
-            path,
-            json=payload,
-        )
-        response.raise_for_status()
-        return _validate(PostApiV1DisputeIdEvidenceResponse, response.json())
-
-    async def get_api_v1_dispute_by_id(
+    async def get_dispute(
         self,
         id: str,
-    ) -> GetApiV1DisputeByIdResponse:
+    ) -> GetDisputeResponse:
         """Get one dispute.
 
         Args:
@@ -1062,7 +1409,7 @@ class OpenPixClient:
                 the Dispute
 
         Returns:
-            GetApiV1DisputeByIdResponse: The 200 response body, validated.
+            GetDisputeResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1074,9 +1421,78 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1DisputeByIdResponse, response.json())
+        return _validate(GetDisputeResponse, response.json())
 
-    async def post_api_v1_funds_recovery(
+    async def upload_dispute_evidence(
+        self,
+        id: str,
+        *,
+        body: UploadDisputeEvidenceBody,
+    ) -> UploadDisputeEvidenceResponse:
+        """Upload new evidence.
+
+        Upload evidence files for a dispute (MED).
+
+        [How to get the dispute
+        id](https://developers.woovi.com/docs/disputa/how-add-new-evidence-in-dispute#1-obter-o-id-da-disputa)
+
+        Args:
+            id (str): id of the dispute the evidence belongs to
+            body (UploadDisputeEvidenceBody): The request body.
+
+        Returns:
+            UploadDisputeEvidenceResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 403.
+        """
+        path = f"/api/v1/dispute/{id}/evidence"
+        payload = _dump(body)
+        response = await self._client.request(
+            "POST",
+            path,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(UploadDisputeEvidenceResponse, response.json())
+
+    # openapi: unsupported — request body of UploadFile uses multipart/form-data — only
+    #   application/json and application/x-www-form-urlencoded are modelled
+    async def upload_file(self) -> FilePayload:
+        """Upload a file.
+
+        Uploads a file and returns its metadata with a pre-signed download URL. The file
+        is sent as `multipart/form-data` on the `file` field, together with the
+        `purpose` that describes what the file is for.
+
+        Send exactly one file per request, of one of the supported content types, up to
+        10 MiB (`10485760` bytes).
+
+        When you send a `correlationID`, repeating the request with the same
+        `correlationID` and `purpose` returns the file already stored (`200`) instead of
+        uploading a second copy, so the request is safe to retry. Without a
+        `correlationID` one is generated for you and every call stores a new file.
+
+        The `url` in the response is temporary and expires at `urlExpiresAt`; ask for
+        the file again to get a fresh one.
+
+        Returns:
+            FilePayload: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 403, 413, 415, 502.
+        """
+        path = "/api/v1/files"
+        response = await self._client.request(
+            "POST",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(FilePayload, response.json())
+
+    async def create_funds_recovery(
         self,
         *,
         body: FundsRecoveryPayload,
@@ -1109,7 +1525,7 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(FundsRecovery, response.json())
 
-    async def get_api_v1_funds_recovery_by_id(
+    async def get_funds_recovery(
         self,
         id: UUID,
     ) -> FundsRecovery:
@@ -1136,7 +1552,7 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(FundsRecovery, response.json())
 
-    async def post_api_v1_funds_recovery_by_id_cancel(
+    async def cancel_funds_recovery(
         self,
         id: UUID,
     ) -> FundsRecovery:
@@ -1165,10 +1581,10 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(FundsRecovery, response.json())
 
-    async def get_api_v1_installments_by_id(
+    async def get_installment(
         self,
         id: str,
-    ) -> GetApiV1InstallmentsByIdResponse:
+    ) -> GetInstallmentResponse:
         """Get one installment.
 
         Args:
@@ -1176,7 +1592,7 @@ class OpenPixClient:
                 transaction.
 
         Returns:
-            GetApiV1InstallmentsByIdResponse: The 200 response body, validated.
+            GetInstallmentResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1188,13 +1604,13 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1InstallmentsByIdResponse, response.json())
+        return _validate(GetInstallmentResponse, response.json())
 
-    async def post_api_v1_installments_by_id_cobr(
+    async def create_installment_cobr(
         self,
         id: str,
         *,
-        body: PostApiV1InstallmentsByIdCobrBody | None = None,
+        body: CreateInstallmentCobrBody | None = None,
     ) -> dict[str, Any]:
         """Create a new Cobr Manually.
 
@@ -1202,7 +1618,7 @@ class OpenPixClient:
 
         Args:
             id (str): The globalID of the installment.
-            body (PostApiV1InstallmentsByIdCobrBody): The request body. Optional.
+            body (CreateInstallmentCobrBody): The request body. Optional.
 
         Returns:
             dict[str, Any]: The 200 response body, validated.
@@ -1221,11 +1637,11 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(dict[str, Any], response.json())
 
-    async def post_api_v1_installments_by_id_cobr_retry(
+    async def retry_installment_cobr(
         self,
         id: str,
         *,
-        body: PostApiV1InstallmentsByIdCobrRetryBody | None = None,
+        body: RetryInstallmentCobrBody | None = None,
     ) -> dict[str, Any]:
         """Create a new Retry Manually.
 
@@ -1233,7 +1649,7 @@ class OpenPixClient:
 
         Args:
             id (str): The globalID of the installment.
-            body (PostApiV1InstallmentsByIdCobrRetryBody): The request body. Optional.
+            body (RetryInstallmentCobrBody): The request body. Optional.
 
         Returns:
             dict[str, Any]: The 200 response body, validated.
@@ -1252,7 +1668,7 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(dict[str, Any], response.json())
 
-    async def get_api_v1_invoice(
+    async def list_invoices(
         self,
         *,
         start: str | None = None,
@@ -1293,18 +1709,18 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(Any, response.json())
 
-    async def post_api_v1_invoice(
+    async def create_invoice(
         self,
         *,
         body: Any,
-    ) -> PostApiV1InvoiceResponse:
+    ) -> CreateInvoiceResponse:
         """Create a new invoice.
 
         Args:
             body (Any): The request body.
 
         Returns:
-            PostApiV1InvoiceResponse: The 201 response body, validated.
+            CreateInvoiceResponse: The 201 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1318,9 +1734,9 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1InvoiceResponse, response.json())
+        return _validate(CreateInvoiceResponse, response.json())
 
-    async def get_api_v1_invoice_integration(self) -> Any:
+    async def get_invoice_integration(self) -> Any:
         """Get the NFe.io integration status and config for the authenticated company.
 
         Returns:
@@ -1338,21 +1754,21 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(Any, response.json())
 
-    async def post_api_v1_invoice_integration(
+    async def upsert_invoice_integration(
         self,
         *,
-        body: PostApiV1InvoiceIntegrationBody | None = None,
-    ) -> PostApiV1InvoiceIntegrationResponse:
+        body: UpsertInvoiceIntegrationBody | None = None,
+    ) -> UpsertInvoiceIntegrationResponse:
         """Create or upsert the NFe.io integration for the authenticated company.
 
         Upserts the NFe.io integration for the authenticated company and sets its tax
         fields. Optionally activates it (only allowed once configured).
 
         Args:
-            body (PostApiV1InvoiceIntegrationBody): The request body. Optional.
+            body (UpsertInvoiceIntegrationBody): The request body. Optional.
 
         Returns:
-            PostApiV1InvoiceIntegrationResponse: The 201 response body, validated.
+            UpsertInvoiceIntegrationResponse: The 201 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1366,13 +1782,13 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1InvoiceIntegrationResponse, response.json())
+        return _validate(UpsertInvoiceIntegrationResponse, response.json())
 
-    async def put_api_v1_invoice_integration(
+    async def update_invoice_integration_tax_fields(
         self,
         *,
-        body: PutApiV1InvoiceIntegrationBody,
-    ) -> PutApiV1InvoiceIntegrationResponse:
+        body: UpdateInvoiceIntegrationTaxFieldsBody,
+    ) -> UpdateInvoiceIntegrationTaxFieldsResponse:
         """Update the tax fields of the invoice integration.
 
         Updates the tax configuration of the authenticated company's existing NFEIO
@@ -1382,10 +1798,10 @@ class OpenPixClient:
         credentials.
 
         Args:
-            body (PutApiV1InvoiceIntegrationBody): The request body.
+            body (UpdateInvoiceIntegrationTaxFieldsBody): The request body.
 
         Returns:
-            PutApiV1InvoiceIntegrationResponse: The 200 response body, validated.
+            UpdateInvoiceIntegrationTaxFieldsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1399,20 +1815,20 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PutApiV1InvoiceIntegrationResponse, response.json())
+        return _validate(UpdateInvoiceIntegrationTaxFieldsResponse, response.json())
 
-    async def patch_api_v1_invoice_integration(
+    async def set_invoice_integration_status(
         self,
         *,
-        body: PatchApiV1InvoiceIntegrationBody,
-    ) -> PatchApiV1InvoiceIntegrationResponse:
+        body: SetInvoiceIntegrationStatusBody,
+    ) -> SetInvoiceIntegrationStatusResponse:
         """Activate or deactivate the NFe.io integration for the authenticated company.
 
         Args:
-            body (PatchApiV1InvoiceIntegrationBody): The request body.
+            body (SetInvoiceIntegrationStatusBody): The request body.
 
         Returns:
-            PatchApiV1InvoiceIntegrationResponse: The 200 response body, validated.
+            SetInvoiceIntegrationStatusResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1426,13 +1842,13 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PatchApiV1InvoiceIntegrationResponse, response.json())
+        return _validate(SetInvoiceIntegrationStatusResponse, response.json())
 
-    async def post_api_v1_invoice_integration_certificate(
+    async def upload_invoice_integration_certificate(
         self,
         *,
-        body: PostApiV1InvoiceIntegrationCertificateBody,
-    ) -> PostApiV1InvoiceIntegrationCertificateResponse:
+        body: UploadInvoiceIntegrationCertificateBody,
+    ) -> UploadInvoiceIntegrationCertificateResponse:
         """Upload the NFe.io A1 certificate for the invoice integration.
 
         Uploads the company's NFe.io A1 certificate (base64-encoded pkcs12) to the
@@ -1440,10 +1856,10 @@ class OpenPixClient:
         integration status and never echoes the certificate, passphrase or credentials.
 
         Args:
-            body (PostApiV1InvoiceIntegrationCertificateBody): The request body.
+            body (UploadInvoiceIntegrationCertificateBody): The request body.
 
         Returns:
-            PostApiV1InvoiceIntegrationCertificateResponse: The 200 response body,
+            UploadInvoiceIntegrationCertificateResponse: The 200 response body,
                 validated.
 
         Raises:
@@ -1458,13 +1874,9 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(
-            PostApiV1InvoiceIntegrationCertificateResponse, response.json()
-        )
+        return _validate(UploadInvoiceIntegrationCertificateResponse, response.json())
 
-    async def post_api_v1_invoice_integration_test(
-        self,
-    ) -> PostApiV1InvoiceIntegrationTestResponse:
+    async def test_invoice_integration(self) -> TestInvoiceIntegrationResponse:
         """Issue a NFe.io test invoice for the invoice integration.
 
         Issues a test NFe.io invoice for the authenticated company's NFEIO integration.
@@ -1474,7 +1886,7 @@ class OpenPixClient:
         longer issue test invoices.
 
         Returns:
-            PostApiV1InvoiceIntegrationTestResponse: The 200 response body, validated.
+            TestInvoiceIntegrationResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1486,20 +1898,19 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(PostApiV1InvoiceIntegrationTestResponse, response.json())
+        return _validate(TestInvoiceIntegrationResponse, response.json())
 
-    async def post_api_v1_invoice_by_correlation_id_cancel(
+    async def cancel_invoice(
         self,
         correlation_id: str,
-    ) -> PostApiV1InvoiceByCorrelationIdCancelResponse:
+    ) -> CancelInvoiceResponse:
         """Cancel an invoice.
 
         Args:
             correlation_id (str): The correlationID value.
 
         Returns:
-            PostApiV1InvoiceByCorrelationIdCancelResponse: The 200 response body,
-                validated.
+            CancelInvoiceResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1511,11 +1922,11 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(PostApiV1InvoiceByCorrelationIdCancelResponse, response.json())
+        return _validate(CancelInvoiceResponse, response.json())
 
-    # openapi: unsupported — response of GetApiV1InvoiceByCorrelationIdPdf uses
-    #   application/pdf — only application/json is modelled
-    async def get_api_v1_invoice_by_correlation_id_pdf(
+    # openapi: unsupported — response of GetInvoicePdf uses application/pdf — only
+    #   application/json is modelled
+    async def get_invoice_pdf(
         self,
         correlation_id: str,
     ) -> None:
@@ -1539,9 +1950,9 @@ class OpenPixClient:
         response.raise_for_status()
         return None
 
-    # openapi: unsupported — response of GetApiV1InvoiceByCorrelationIdXml uses
-    #   application/xml — only application/json is modelled
-    async def get_api_v1_invoice_by_correlation_id_xml(
+    # openapi: unsupported — response of GetInvoiceXml uses application/xml — only
+    #   application/json is modelled
+    async def get_invoice_xml(
         self,
         correlation_id: str,
     ) -> None:
@@ -1565,11 +1976,79 @@ class OpenPixClient:
         response.raise_for_status()
         return None
 
-    async def post_api_v1_kyc_onboarding(
+    async def create_kyc_validation(
+        self,
+        *,
+        body: KycValidationRequest,
+    ) -> KycValidation:
+        """Create a KYC validation for a Tax ID.
+
+        Screens a CPF or CNPJ against fraud, dispute, sanctions, PEP and lawsuit signals
+        and returns a verdict.
+
+        Requires the `KYC_VALIDATION` feature on the company and the
+        `KYC_VALIDATION_POST` scope on the application.
+
+        Args:
+            body (KycValidationRequest): The request body.
+
+        Returns:
+            KycValidation: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 403, 502.
+        """
+        path = "/api/v1/kyc-validation/taxid"
+        payload = _dump(body)
+        response = await self._client.request(
+            "POST",
+            path,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(KycValidation, response.json())
+
+    async def get_kyc_validation(
+        self,
+        correlation_id: str,
+    ) -> KycValidation:
+        """Get a KYC validation by correlationID.
+
+        Reads back a validation created with `POST /api/v1/kyc-validation/taxid`, scoped
+        to your own company. Free — reading a validation is never billed.
+
+        Poll this until `status` leaves `PROCESSING`, or subscribe to the
+        `KYC_VALIDATION_COMPLETED` / `KYC_VALIDATION_FAILED` webhook events and skip the
+        polling entirely.
+
+        Requires the `KYC_VALIDATION` feature on the company and the
+        `KYC_VALIDATION_GET` scope on the application.
+
+        Args:
+            correlation_id (str): The `correlationID` you sent when creating the
+                validation.
+
+        Returns:
+            KycValidation: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                401, 403, 404.
+        """
+        path = f"/api/v1/kyc-validation/{correlation_id}"
+        response = await self._client.request(
+            "GET",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(KycValidation, response.json())
+
+    async def create_kyc_onboarding(
         self,
         *,
         body: KycOnboardingRequest,
-    ) -> PostApiV1KycOnboardingResponse:
+    ) -> CreateKycOnboardingResponse:
         """Create a KYC onboarding.
 
         Creates a new KYC onboarding for a merchant. Returns a link that should be sent
@@ -1593,7 +2072,7 @@ class OpenPixClient:
             body (KycOnboardingRequest): The request body.
 
         Returns:
-            PostApiV1KycOnboardingResponse: The 200 response body, validated.
+            CreateKycOnboardingResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1607,12 +2086,12 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1KycOnboardingResponse, response.json())
+        return _validate(CreateKycOnboardingResponse, response.json())
 
-    async def get_api_v1_limits_by_account_id(
+    async def get_account_limits(
         self,
         account_id: str,
-    ) -> GetApiV1LimitsByAccountIdResponse:
+    ) -> GetAccountLimitsResponse:
         """Get account limits.
 
         Retrieves the most recent account limits configured for a given bank account.
@@ -1624,7 +2103,7 @@ class OpenPixClient:
                 be returned
 
         Returns:
-            GetApiV1LimitsByAccountIdResponse: The 200 response body, validated.
+            GetAccountLimitsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1636,13 +2115,13 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1LimitsByAccountIdResponse, response.json())
+        return _validate(GetAccountLimitsResponse, response.json())
 
-    async def get_api_v1_partner_affiliate(self) -> GetApiV1PartnerAffiliateResponse:
+    async def list_partner_affiliates(self) -> ListPartnerAffiliatesResponse:
         """Get every affiliate company that is managed by you.
 
         Returns:
-            GetApiV1PartnerAffiliateResponse: The 200 response body, validated.
+            ListPartnerAffiliatesResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1654,13 +2133,13 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1PartnerAffiliateResponse, response.json())
+        return _validate(ListPartnerAffiliatesResponse, response.json())
 
-    async def post_api_v1_partner_application(
+    async def create_partner_application(
         self,
         *,
-        body: PostApiV1PartnerApplicationBody,
-    ) -> PostApiV1PartnerApplicationResponse:
+        body: CreatePartnerApplicationBody,
+    ) -> CreatePartnerApplicationResponse:
         """Create a new application to some of your preregistration's company.
 
         As a partner company, you can create a new application to some of your
@@ -1668,10 +2147,10 @@ class OpenPixClient:
         they can use it too.
 
         Args:
-            body (PostApiV1PartnerApplicationBody): The request body.
+            body (CreatePartnerApplicationBody): The request body.
 
         Returns:
-            PostApiV1PartnerApplicationResponse: The 200 response body, validated.
+            CreatePartnerApplicationResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1685,13 +2164,13 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1PartnerApplicationResponse, response.json())
+        return _validate(CreatePartnerApplicationResponse, response.json())
 
-    async def get_api_v1_partner_company(self) -> GetApiV1PartnerCompanyResponse:
+    async def list_partner_companies(self) -> ListPartnerCompaniesResponse:
         """Get every preregistration that is managed by you.
 
         Returns:
-            GetApiV1PartnerCompanyResponse: The 200 response body, validated.
+            ListPartnerCompaniesResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1703,9 +2182,9 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1PartnerCompanyResponse, response.json())
+        return _validate(ListPartnerCompaniesResponse, response.json())
 
-    async def post_api_v1_partner_company(
+    async def create_partner_company(
         self,
         *,
         body: PreRegistrationPayloadObject,
@@ -1735,17 +2214,17 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(PreRegistrationPayloadObject, response.json())
 
-    async def get_api_v1_partner_company_by_tax_id(
+    async def get_partner_company(
         self,
         tax_id: str,
-    ) -> GetApiV1PartnerCompanyByTaxIdResponse:
+    ) -> GetPartnerCompanyResponse:
         """Get an specific preregistration via taxID param.
 
         Args:
             tax_id (str): The raw tax ID from the preregistration that you want to get.
 
         Returns:
-            GetApiV1PartnerCompanyByTaxIdResponse: The 200 response body, validated.
+            GetPartnerCompanyResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1757,13 +2236,13 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1PartnerCompanyByTaxIdResponse, response.json())
+        return _validate(GetPartnerCompanyResponse, response.json())
 
-    async def get_api_v1_payment(self) -> GetApiV1PaymentResponse:
+    async def list_payments(self) -> ListPaymentsResponse:
         """Get a list of payments.
 
         Returns:
-            GetApiV1PaymentResponse: The 200 response body, validated.
+            ListPaymentsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1775,13 +2254,13 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1PaymentResponse, response.json())
+        return _validate(ListPaymentsResponse, response.json())
 
-    async def post_api_v1_payment(
+    async def create_payment(
         self,
         *,
-        body: PostApiV1PaymentBody,
-    ) -> PostApiV1PaymentResponse:
+        body: CreatePaymentBody,
+    ) -> CreatePaymentResponse:
         """Create a Payment Request.
 
         Endpoint to request a payment. Supports four payment types: Pix Key (`PIX_KEY`),
@@ -1801,10 +2280,10 @@ class OpenPixClient:
         approved later via `POST /api/v1/payment/approve`.
 
         Args:
-            body (PostApiV1PaymentBody): The request body.
+            body (CreatePaymentBody): The request body.
 
         Returns:
-            PostApiV1PaymentResponse: The 200 response body, validated.
+            CreatePaymentResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1818,13 +2297,13 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1PaymentResponse, response.json())
+        return _validate(CreatePaymentResponse, response.json())
 
-    async def post_api_v1_payment_approve(
+    async def approve_payment(
         self,
         *,
         body: PaymentApprovePayload,
-    ) -> PostApiV1PaymentApproveResponse:
+    ) -> ApprovePaymentResponse:
         """Approve a Payment Request.
 
         Endpoint to approve a payment
@@ -1833,7 +2312,7 @@ class OpenPixClient:
             body (PaymentApprovePayload): The request body.
 
         Returns:
-            PostApiV1PaymentApproveResponse: The 200 response body, validated.
+            ApprovePaymentResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1847,19 +2326,19 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1PaymentApproveResponse, response.json())
+        return _validate(ApprovePaymentResponse, response.json())
 
-    async def get_api_v1_payment_by_id(
+    async def get_payment(
         self,
         id: str,
-    ) -> GetApiV1PaymentByIdResponse:
+    ) -> GetPaymentResponse:
         """Get one Payment.
 
         Args:
             id (str): payment ID or correlation ID
 
         Returns:
-            GetApiV1PaymentByIdResponse: The 200 response body, validated.
+            GetPaymentResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1871,48 +2350,14 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1PaymentByIdResponse, response.json())
+        return _validate(GetPaymentResponse, response.json())
 
-    async def delete_api_v1_payment_by_id(
-        self,
-        id: str,
-    ) -> dict[str, Any]:
-        """Cancel a pending Payment.
-
-        Cancels a payment that was requested and not yet approved.
-
-        Absent from the published specification. It closes the recovery path of the
-        two-step transfer flow: when `POST /api/v1/payment` created the request and
-        `POST /api/v1/payment/approve` failed, the transfer stays pending on the
-        provider and can still be released later.
-
-        The response body is not modelled — this repository has no credentials to
-        observe its shape — so the method answers `dict[str, Any]` and drops nothing.
-
-        Args:
-            id (str): payment ID or correlation ID
-
-        Returns:
-            dict[str, Any]: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                no error status.
-        """
-        path = f"/api/v1/payment/{id}"
-        response = await self._client.request(
-            "DELETE",
-            path,
-        )
-        response.raise_for_status()
-        return _validate(dict[str, Any], response.json())
-
-    async def get_api_v1_pix_keys(
+    async def list_pix_keys(
         self,
         *,
         skip: int | None = None,
         limit: int | None = None,
-    ) -> GetApiV1PixKeysResponse:
+    ) -> ListPixKeysResponse:
         """Get all Pix keys.
 
         Retrieves a list of all Pix keys
@@ -1922,7 +2367,7 @@ class OpenPixClient:
             limit (int | None): The limit value. Omitted from the query when None.
 
         Returns:
-            GetApiV1PixKeysResponse: The 200 response body, validated.
+            ListPixKeysResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -1940,9 +2385,9 @@ class OpenPixClient:
             params=params,
         )
         response.raise_for_status()
-        return _validate(GetApiV1PixKeysResponse, response.json())
+        return _validate(ListPixKeysResponse, response.json())
 
-    async def post_api_v1_pix_keys(
+    async def create_pix_key(
         self,
         *,
         body: PixKeyCreate,
@@ -1971,17 +2416,30 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(PixKey, response.json())
 
-    async def post_api_v1_pix_keys_check(
+    async def check_pix_key(
         self,
         *,
-        body: PostApiV1PixKeysCheckBody,
+        body: CheckPixKeyBody,
     ) -> PixKeyCheck:
         """Check data from a Pix key.
 
-        Get data from a Pix key if it exists
+        Get data from a Pix key if it exists.
+
+        **This endpoint is not enabled by default.** It queries the DICT for the holder
+        of a Pix key that is not yours, so it has to be requested from support and goes
+        through an internal review before being turned on. Calls are billed per query.
+
+        If what you need is to confirm that an account belongs to who you expect, use
+        bank data validation instead — it is available to every account with no
+        approval:
+
+        - [Validating bank data with a Pix
+        key](https://developers.woovi.com/docs/flows/validate-bank-data) - [Validating
+        bank data with branch and account
+        number](https://developers.woovi.com/docs/flows/validate-bank-data-manual)
 
         Args:
-            body (PostApiV1PixKeysCheckBody): The request body.
+            body (CheckPixKeyBody): The request body.
 
         Returns:
             PixKeyCheck: The 200 response body, validated.
@@ -2000,7 +2458,7 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(PixKeyCheck, response.json())
 
-    async def get_api_v1_pix_keys_tokens(self) -> PixKeyTokens:
+    async def list_pix_key_tokens(self) -> PixKeyTokens:
         """Get tokens data.
 
         Returns:
@@ -2018,13 +2476,13 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(PixKeyTokens, response.json())
 
-    async def get_api_v1_pix_keys_tokens_logs(
+    async def list_pix_key_token_logs(
         self,
         *,
         skip: int | None = None,
         limit: int | None = None,
         company_bank_account: str | None = None,
-    ) -> GetApiV1PixKeysTokensLogsResponse:
+    ) -> ListPixKeyTokenLogsResponse:
         """Get token bucket logs.
 
         Get a list of token bucket operation logs
@@ -2036,7 +2494,7 @@ class OpenPixClient:
                 Omitted from the query when None.
 
         Returns:
-            GetApiV1PixKeysTokensLogsResponse: The 200 response body, validated.
+            ListPixKeyTokenLogsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2056,9 +2514,9 @@ class OpenPixClient:
             params=params,
         )
         response.raise_for_status()
-        return _validate(GetApiV1PixKeysTokensLogsResponse, response.json())
+        return _validate(ListPixKeyTokenLogsResponse, response.json())
 
-    async def delete_api_v1_pix_keys_by_pix_key(
+    async def delete_pix_key(
         self,
         pix_key: str,
     ) -> None:
@@ -2084,13 +2542,26 @@ class OpenPixClient:
         response.raise_for_status()
         return None
 
-    async def get_api_v1_pix_keys_by_pix_key_check(
+    async def check_pix_key_by_key(
         self,
         pix_key: str,
     ) -> PixKeyCheck:
         """Check data from a Pix key.
 
-        Get data from a Pix key if it exists
+        Get data from a Pix key if it exists.
+
+        **This endpoint is not enabled by default.** It queries the DICT for the holder
+        of a Pix key that is not yours, so it has to be requested from support and goes
+        through an internal review before being turned on. Calls are billed per query.
+
+        If what you need is to confirm that an account belongs to who you expect, use
+        bank data validation instead — it is available to every account with no
+        approval:
+
+        - [Validating bank data with a Pix
+        key](https://developers.woovi.com/docs/flows/validate-bank-data) - [Validating
+        bank data with branch and account
+        number](https://developers.woovi.com/docs/flows/validate-bank-data-manual)
 
         Args:
             pix_key (str): The Pix key to check
@@ -2110,7 +2581,7 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(PixKeyCheck, response.json())
 
-    async def put_api_v1_pix_keys_by_pix_key_default(
+    async def set_default_pix_key(
         self,
         pix_key: str,
     ) -> PixKey:
@@ -2134,13 +2605,13 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(PixKey, response.json())
 
-    async def get_api_v1_psp(
+    async def list_psps(
         self,
         *,
         ispb: str | None = None,
         name: str | None = None,
         compe: str | None = None,
-    ) -> GetApiV1PspResponse:
+    ) -> ListPspsResponse:
         """Get a list of PSPs (Payment Service Providers).
 
         Args:
@@ -2151,7 +2622,7 @@ class OpenPixClient:
                 None.
 
         Returns:
-            GetApiV1PspResponse: The 200 response body, validated.
+            ListPspsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2171,13 +2642,13 @@ class OpenPixClient:
             params=params,
         )
         response.raise_for_status()
-        return _validate(GetApiV1PspResponse, response.json())
+        return _validate(ListPspsResponse, response.json())
 
-    async def get_api_v1_qrcode_static(self) -> GetApiV1QrcodeStaticResponse:
+    async def list_static_qr_codes(self) -> ListStaticQrCodesResponse:
         """Get a list of Pix QrCodes.
 
         Returns:
-            GetApiV1QrcodeStaticResponse: The 200 response body, validated.
+            ListStaticQrCodesResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2189,13 +2660,13 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1QrcodeStaticResponse, response.json())
+        return _validate(ListStaticQrCodesResponse, response.json())
 
-    async def post_api_v1_qrcode_static(
+    async def create_static_qr_code(
         self,
         *,
         body: PixQrCodePayload,
-    ) -> PostApiV1QrcodeStaticResponse:
+    ) -> CreateStaticQrCodeResponse:
         """Create a new Pix QrCode Static.
 
         Endpoint to create a new Pix QrCode Static
@@ -2204,7 +2675,7 @@ class OpenPixClient:
             body (PixQrCodePayload): The request body.
 
         Returns:
-            PostApiV1QrcodeStaticResponse: The 200 response body, validated.
+            CreateStaticQrCodeResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2218,19 +2689,19 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1QrcodeStaticResponse, response.json())
+        return _validate(CreateStaticQrCodeResponse, response.json())
 
-    async def get_api_v1_qrcode_static_by_id(
+    async def get_static_qr_code(
         self,
         id: str,
-    ) -> GetApiV1QrcodeStaticByIdResponse:
+    ) -> GetStaticQrCodeResponse:
         """Get one Pix QrCode.
 
         Args:
             id (str): pixQrCode ID, correlation ID or emv identifier
 
         Returns:
-            GetApiV1QrcodeStaticByIdResponse: The 200 response body, validated.
+            GetStaticQrCodeResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2242,12 +2713,12 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1QrcodeStaticByIdResponse, response.json())
+        return _validate(GetStaticQrCodeResponse, response.json())
 
-    async def delete_api_v1_qrcode_static_by_id(
+    async def delete_static_qr_code(
         self,
         id: str,
-    ) -> DeleteApiV1QrcodeStaticByIdResponse:
+    ) -> DeleteStaticQrCodeResponse:
         """Delete a Pix QrCode Static.
 
         Endpoint to delete a Pix QrCode Static
@@ -2256,7 +2727,7 @@ class OpenPixClient:
             id (str): QrCode ID, correlationID or identifier
 
         Returns:
-            DeleteApiV1QrcodeStaticByIdResponse: The 200 response body, validated.
+            DeleteStaticQrCodeResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2268,21 +2739,21 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(DeleteApiV1QrcodeStaticByIdResponse, response.json())
+        return _validate(DeleteStaticQrCodeResponse, response.json())
 
-    # openapi: unsupported — response of GetApiV1ReceiptByReceiptTypeByEndToEndId uses
-    #   application/pdf — only application/json is modelled
-    async def get_api_v1_receipt_by_receipt_type_by_end_to_end_id(
+    # openapi: unsupported — response of GetReceipt uses application/pdf — only
+    #   application/json is modelled
+    async def get_receipt(
         self,
-        receipt_type: GetApiV1ReceiptByReceiptTypeByEndToEndIdReceiptType,
+        receipt_type: GetReceiptReceiptType,
         end_to_end_id: str,
     ) -> None:
         """Get a PDF document related to a payment transaction formatted as a receipt by
         type (pix-in, pix-out or pix-refund).
 
         Args:
-            receipt_type (GetApiV1ReceiptByReceiptTypeByEndToEndIdReceiptType): The
-                ReceiptType from the payment transaction to export.
+            receipt_type (GetReceiptReceiptType): The ReceiptType from the payment
+                transaction to export.
             end_to_end_id (str): The EndToEndId from the payment transaction to export.
 
         Returns:
@@ -2300,11 +2771,11 @@ class OpenPixClient:
         response.raise_for_status()
         return None
 
-    async def get_api_v1_refund(self) -> GetApiV1RefundResponse:
+    async def list_refunds(self) -> ListRefundsResponse:
         """Get a list of refunds.
 
         Returns:
-            GetApiV1RefundResponse: The 200 response body, validated.
+            ListRefundsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2316,13 +2787,13 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1RefundResponse, response.json())
+        return _validate(ListRefundsResponse, response.json())
 
-    async def post_api_v1_refund(
+    async def create_refund(
         self,
         *,
         body: RefundPayload,
-    ) -> PostApiV1RefundResponse:
+    ) -> CreateRefundResponse:
         """Create a new refund.
 
         Endpoint to create a new refund for a customer
@@ -2331,7 +2802,7 @@ class OpenPixClient:
             body (RefundPayload): The request body.
 
         Returns:
-            PostApiV1RefundResponse: The 200 response body, validated.
+            CreateRefundResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2345,19 +2816,19 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1RefundResponse, response.json())
+        return _validate(CreateRefundResponse, response.json())
 
-    async def get_api_v1_refund_by_id(
+    async def get_refund(
         self,
         id: str,
-    ) -> GetApiV1RefundByIdResponse:
+    ) -> GetRefundResponse:
         """Get one refund.
 
         Args:
             id (str): refund ID or correlation ID
 
         Returns:
-            GetApiV1RefundByIdResponse: The 200 response body, validated.
+            GetRefundResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2369,9 +2840,9 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1RefundByIdResponse, response.json())
+        return _validate(GetRefundResponse, response.json())
 
-    async def post_api_v1_stablecoin_deposit(
+    async def create_stablecoin_deposit(
         self,
         *,
         body: StablecoinDepositRequest,
@@ -2386,8 +2857,8 @@ class OpenPixClient:
         KYB). Otherwise the request is rejected with a `400`.
 
         Not every asset is available on every network. The supported matrix is: - USDT:
-        POLYGON, ETHEREUM, CELO, TRON - USDC: POLYGON, ETHEREUM, BASE, CELO - BRLA:
-        POLYGON, ETHEREUM, BASE, CELO
+        POLYGON, ETHEREUM, CELO, TRON, BNB - USDC: POLYGON, ETHEREUM, BASE, CELO, BNB -
+        BRLA: POLYGON, ETHEREUM, BASE, CELO
 
         If `network` is omitted it defaults to `POLYGON`. Sending an asset/network
         combination outside the matrix above returns a `400`.
@@ -2414,11 +2885,11 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(StablecoinDepositResponse, response.json())
 
-    async def post_api_v1_stablecoin_deposit_approve(
+    async def approve_stablecoin_deposit(
         self,
         *,
-        body: PostApiV1StablecoinDepositApproveBody,
-    ) -> PostApiV1StablecoinDepositApproveResponse:
+        body: ApproveStablecoinDepositBody,
+    ) -> ApproveStablecoinDepositResponse:
         """Approve (settle) a stablecoin deposit.
 
         Approves a previously created stablecoin deposit identified by its
@@ -2433,10 +2904,10 @@ class OpenPixClient:
         Requires the `STABLECOIN_DEPOSIT_CREATE` scope.
 
         Args:
-            body (PostApiV1StablecoinDepositApproveBody): The request body.
+            body (ApproveStablecoinDepositBody): The request body.
 
         Returns:
-            PostApiV1StablecoinDepositApproveResponse: The 200 response body, validated.
+            ApproveStablecoinDepositResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2450,14 +2921,165 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1StablecoinDepositApproveResponse, response.json())
+        return _validate(ApproveStablecoinDepositResponse, response.json())
 
-    async def get_api_v1_stablecoin_quote(
+    async def get_stablecoin_payout_by_correlation_id(
+        self,
+        *,
+        correlation_id: str,
+    ) -> None:
+        """Get the current status of a payout by correlationId.
+
+        Same as `GET /api/v1/stablecoin/payout/{payoutId}`, looked up by the
+        `correlationId` sent on create.
+
+        Requires the `STABLECOIN_PAYOUT_CREATE` scope.
+
+        Args:
+            correlation_id (str): The idempotency key sent on create.
+
+        Returns:
+            None: Nothing — the operation answers 200 with no JSON body.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 404.
+        """
+        path = "/api/v1/stablecoin/payout"
+        params: dict[str, Any] = {}
+        params["correlationId"] = _param(correlation_id)
+        response = await self._client.request(
+            "GET",
+            path,
+            params=params,
+        )
+        response.raise_for_status()
+        return None
+
+    async def create_stablecoin_payout(
+        self,
+        *,
+        body: CreateStablecoinPayoutBody,
+    ) -> CreateStablecoinPayoutResponse:
+        """Pay out INTERNAL balance to BRL via Pix.
+
+        Converts a stablecoin balance held on the company's INTERNAL float into BRL and
+        sends it to the given Pix key. Supported input assets: `USDT`, `USDC`, `BRLA`.
+
+        `value` is the amount to spend from the INTERNAL balance, in cents of the input
+        asset. The subaccount is resolved from the Application's `companyBankAccount`,
+        same as the wallets endpoint.
+
+        Flow: balance check → consume Woovi **OUT** limit → resolve Pix beneficiary →
+        provider quote/ticket. There is no deposit or approval step.
+
+        Fund the INTERNAL float first via `GET /api/v1/stablecoin/wallets` (send
+        USDT/USDC/BRLA on-chain to a returned address), then call this endpoint.
+
+        Idempotency is supported via `correlationId`: reusing one returns the payout
+        already created for it.
+
+        Requires the `STABLECOIN_PAYOUT_CREATE` scope.
+
+        Args:
+            body (CreateStablecoinPayoutBody): The request body.
+
+        Returns:
+            CreateStablecoinPayoutResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401.
+        """
+        path = "/api/v1/stablecoin/payout"
+        payload = _dump(body)
+        response = await self._client.request(
+            "POST",
+            path,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(CreateStablecoinPayoutResponse, response.json())
+
+    async def quote_stablecoin_payout(
+        self,
+        *,
+        value: int,
+        currency: StablecoinDepositRequestCurrency,
+    ) -> QuoteStablecoinPayoutResponse:
+        """Quote an INTERNAL balance off-ramp to BRL via Pix.
+
+        Returns a quote for converting a stablecoin balance held on the company's
+        INTERNAL float into BRL delivered via Pix. Supported input assets: `USDT`,
+        `USDC`, `BRLA`.
+
+        `value` is the amount to spend from the INTERNAL balance, in cents of the input
+        asset.
+
+        Requires the `STABLECOIN_PAYOUT_CREATE` scope.
+
+        Args:
+            value (int): Amount to quote, in cents of the input asset.
+            currency (StablecoinDepositRequestCurrency): Stablecoin asset to spend from
+                the INTERNAL balance.
+
+        Returns:
+            QuoteStablecoinPayoutResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 502.
+        """
+        path = "/api/v1/stablecoin/payout/quote"
+        params: dict[str, Any] = {}
+        params["value"] = _param(value)
+        params["currency"] = _param(currency)
+        response = await self._client.request(
+            "GET",
+            path,
+            params=params,
+        )
+        response.raise_for_status()
+        return _validate(QuoteStablecoinPayoutResponse, response.json())
+
+    async def get_stablecoin_payout(
+        self,
+        payout_id: str,
+    ) -> None:
+        """Get the current status of a payout.
+
+        Returns the current state of a payout created through `POST
+        /api/v1/stablecoin/payout`.
+
+        While the payout is still in flight the provider ticket is re-read and the
+        payout is updated before responding. Terminal payouts are served from storage.
+
+        Requires the `STABLECOIN_PAYOUT_CREATE` scope.
+
+        Args:
+            payout_id (str): The `payoutId` returned by the create call.
+
+        Returns:
+            None: Nothing — the operation answers 200 with no JSON body.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                401, 404.
+        """
+        path = f"/api/v1/stablecoin/payout/{payout_id}"
+        response = await self._client.request(
+            "GET",
+            path,
+        )
+        response.raise_for_status()
+        return None
+
+    async def get_stablecoin_quote(
         self,
         *,
         value: int,
         currency: StablecoinDepositRequestCurrency | None = None,
-    ) -> GetApiV1StablecoinQuoteResponse:
+    ) -> GetStablecoinQuoteResponse:
         """Get a stablecoin quote without creating a deposit.
 
         Returns a PIX (BRL) -> stablecoin quote for the given `value` and `currency`
@@ -2474,7 +3096,7 @@ class OpenPixClient:
                 Defaults to USDT. Omitted from the query when None.
 
         Returns:
-            GetApiV1StablecoinQuoteResponse: The 200 response body, validated.
+            GetStablecoinQuoteResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2491,11 +3113,9 @@ class OpenPixClient:
             params=params,
         )
         response.raise_for_status()
-        return _validate(GetApiV1StablecoinQuoteResponse, response.json())
+        return _validate(GetStablecoinQuoteResponse, response.json())
 
-    async def get_api_v1_stablecoin_subaccount(
-        self,
-    ) -> StablecoinSubAccountListResponse:
+    async def list_stablecoin_subaccounts(self) -> StablecoinSubAccountListResponse:
         """List a company's stablecoin subaccounts.
 
         Lists the authenticated company's stablecoin subaccounts, most recent first.
@@ -2521,7 +3141,7 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(StablecoinSubAccountListResponse, response.json())
 
-    async def post_api_v1_stablecoin_subaccount(
+    async def create_stablecoin_subaccount(
         self,
         *,
         body: StablecoinSubAccountCreateRequest,
@@ -2563,7 +3183,7 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(StablecoinSubAccountCreateResponse, response.json())
 
-    async def get_api_v1_stablecoin_subaccount_by_sub_account_id(
+    async def get_stablecoin_subaccount(
         self,
         sub_account_id: str,
     ) -> StablecoinSubAccountGetResponse:
@@ -2595,14 +3215,126 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(StablecoinSubAccountGetResponse, response.json())
 
-    async def get_api_v1_statement(
+    async def get_stablecoin_subaccount_balances(
+        self,
+        sub_account_id: str,
+    ) -> GetStablecoinSubaccountBalancesResponse:
+        """Read the INTERNAL balances of a subaccount's float.
+
+        Returns the provider's INTERNAL balance per asset for this subaccount — exactly
+        the balance `POST /api/v1/stablecoin/payout` debits.
+
+        Poll this after sending funds to one of the addresses from `GET
+        /api/v1/stablecoin/wallets` (or the subaccount wallets route) and only create
+        the payout once the credit has landed.
+
+        Only subaccounts belonging to the authenticated company resolve; any other id
+        returns `404`.
+
+        Requires the `STABLECOIN_SUBACCOUNT_LIST` scope.
+
+        Args:
+            sub_account_id (str): Provider subaccount id (`subAccountId`, not the Woovi
+                `id`).
+
+        Returns:
+            GetStablecoinSubaccountBalancesResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                401, 404, 502.
+        """
+        path = f"/api/v1/stablecoin/subaccount/{sub_account_id}/balances"
+        response = await self._client.request(
+            "GET",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(GetStablecoinSubaccountBalancesResponse, response.json())
+
+    async def list_stablecoin_subaccount_wallets(
+        self,
+        sub_account_id: str,
+    ) -> ListStablecoinSubaccountWalletsResponse:
+        """List the deposit addresses of a subaccount's float.
+
+        Returns the wallets the provider holds for this subaccount. Sending an asset
+        on-chain to one of these addresses credits the subaccount's INTERNAL balance —
+        the same balance `POST /api/v1/stablecoin/swap` spends and `POST
+        /api/v1/stablecoin/withdraw` pays out from.
+
+        Use this to resolve where to prefund instead of hardcoding an address: funding a
+        different account's wallet leaves the swap float empty and the swap fails for
+        lack of balance.
+
+        Only subaccounts belonging to the authenticated company resolve; any other id
+        returns `404`.
+
+        Requires the `STABLECOIN_SUBACCOUNT_LIST` scope.
+
+        Args:
+            sub_account_id (str): Provider subaccount id (`subAccountId`, not the Woovi
+                `id`).
+
+        Returns:
+            ListStablecoinSubaccountWalletsResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                401, 404, 502.
+        """
+        path = f"/api/v1/stablecoin/subaccount/{sub_account_id}/wallets"
+        response = await self._client.request(
+            "GET",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(ListStablecoinSubaccountWalletsResponse, response.json())
+
+    async def list_stablecoin_wallets(self) -> ListStablecoinWalletsResponse:
+        """List custodian deposit wallets for the AppID bank account.
+
+        Returns the deposit addresses for the stable sub-account linked to the
+        authenticated Application's `companyBankAccount` (live from the provider — not
+        stored in Mongo).
+
+        A company can have more than one bank account / KYB sub-account. The sub-account
+        is resolved from `Application.companyBankAccount` (the account bound to the
+        AppID), not from the company alone.
+
+        Sending an asset on-chain to one of these addresses credits the INTERNAL float
+        used by `POST /api/v1/stablecoin/payout` (USDT/USDC/BRLA → Pix).
+
+        For an explicit provider id use `GET
+        /api/v1/stablecoin/subaccount/{subAccountId}/wallets`. To read the float balance
+        after funding use `GET /api/v1/stablecoin/subaccount/{subAccountId}/balances`.
+
+        Requires the `STABLECOIN_SUBACCOUNT_LIST` scope.
+
+        Returns:
+            ListStablecoinWalletsResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                400, 401, 404, 502.
+        """
+        path = "/api/v1/stablecoin/wallets"
+        response = await self._client.request(
+            "GET",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(ListStablecoinWalletsResponse, response.json())
+
+    async def get_statement(
         self,
         *,
         start: datetime | None = None,
         end: datetime | None = None,
         skip: int | None = None,
         limit: int | None = None,
-    ) -> list[GetApiV1StatementResponseItem]:
+        company_bank_account: str | None = None,
+    ) -> list[GetStatementResponseItem]:
         """Get statement by company.
 
         Retrieves the statement/ledger entries for a company's bank account
@@ -2612,13 +3344,18 @@ class OpenPixClient:
             end (datetime | None): The end value. Omitted from the query when None.
             skip (int | None): The skip value. Omitted from the query when None.
             limit (int | None): The limit value. Omitted from the query when None.
+            company_bank_account (str | None): Read the statement of another bank
+                account of your company instead of the one linked to the appID. Only a
+                MASTER application of a company with the MASTER_APP_READ_ANY_ACCOUNT
+                feature can use it. Use the accountId returned by GET /api/v1/account.
+                Omitted from the query when None.
 
         Returns:
-            list[GetApiV1StatementResponseItem]: The 200 response body, validated.
+            list[GetStatementResponseItem]: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400, 401, 500.
+                400, 401, 403, 500.
         """
         path = "/api/v1/statement"
         params: dict[str, Any] = {}
@@ -2630,19 +3367,21 @@ class OpenPixClient:
             params["skip"] = _param(skip)
         if limit is not None:
             params["limit"] = _param(limit)
+        if company_bank_account is not None:
+            params["companyBankAccount"] = _param(company_bank_account)
         response = await self._client.request(
             "GET",
             path,
             params=params,
         )
         response.raise_for_status()
-        return _validate(list[GetApiV1StatementResponseItem], response.json())
+        return _validate(list[GetStatementResponseItem], response.json())
 
-    async def get_api_v1_subaccount(self) -> GetApiV1SubaccountResponse:
+    async def list_subaccounts(self) -> ListSubaccountsResponse:
         """Get a list of subaccounts.
 
         Returns:
-            GetApiV1SubaccountResponse: The 200 response body, validated.
+            ListSubaccountsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2654,20 +3393,20 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1SubaccountResponse, response.json())
+        return _validate(ListSubaccountsResponse, response.json())
 
-    async def post_api_v1_subaccount(
+    async def create_subaccount(
         self,
         *,
         body: SubAccountPayload,
-    ) -> PostApiV1SubaccountResponse:
+    ) -> CreateSubaccountResponse:
         """Create a subaccount.
 
         Args:
             body (SubAccountPayload): The request body.
 
         Returns:
-            PostApiV1SubaccountResponse: The 200 response body, validated.
+            CreateSubaccountResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2681,9 +3420,9 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1SubaccountResponse, response.json())
+        return _validate(CreateSubaccountResponse, response.json())
 
-    async def post_api_v1_subaccount_transfer(
+    async def transfer_between_subaccounts(
         self,
         *,
         body: SubAccountTransferPayload,
@@ -2710,17 +3449,17 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(SubAccountTransferResponsePayload, response.json())
 
-    async def get_api_v1_subaccount_by_id(
+    async def get_subaccount(
         self,
         id: str,
-    ) -> GetApiV1SubaccountByIdResponse:
+    ) -> GetSubaccountResponse:
         """Get subaccount details.
 
         Args:
             id (str): pix key registered to the subaccount
 
         Returns:
-            GetApiV1SubaccountByIdResponse: The 200 response body, validated.
+            GetSubaccountResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2732,12 +3471,12 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1SubaccountByIdResponse, response.json())
+        return _validate(GetSubaccountResponse, response.json())
 
-    async def delete_api_v1_subaccount_by_id(
+    async def delete_subaccount(
         self,
         id: str,
-    ) -> DeleteApiV1SubaccountByIdResponse:
+    ) -> DeleteSubaccountResponse:
         """Delete a Sub Account.
 
         Deletes a Sub Account if it has no remaining balance
@@ -2746,7 +3485,7 @@ class OpenPixClient:
             id (str): Pix key registered to the subaccount
 
         Returns:
-            DeleteApiV1SubaccountByIdResponse: The 200 response body, validated.
+            DeleteSubaccountResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2758,24 +3497,24 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(DeleteApiV1SubaccountByIdResponse, response.json())
+        return _validate(DeleteSubaccountResponse, response.json())
 
-    async def post_api_v1_subaccount_by_id_credit(
+    async def credit_subaccount(
         self,
         id: str,
         *,
-        body: PostApiV1SubaccountByIdCreditBody,
-    ) -> PostApiV1SubaccountByIdCreditResponse:
+        body: CreditSubaccountBody,
+    ) -> CreditSubaccountResponse:
         """Credit subaccount.
 
         Transfers the amount from the main account to the subaccount.
 
         Args:
             id (str): Pix key registered to the subaccount
-            body (PostApiV1SubaccountByIdCreditBody): The request body.
+            body (CreditSubaccountBody): The request body.
 
         Returns:
-            PostApiV1SubaccountByIdCreditResponse: The 200 response body, validated.
+            CreditSubaccountResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2789,24 +3528,24 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1SubaccountByIdCreditResponse, response.json())
+        return _validate(CreditSubaccountResponse, response.json())
 
-    async def post_api_v1_subaccount_by_id_debit(
+    async def debit_subaccount(
         self,
         id: str,
         *,
-        body: PostApiV1SubaccountByIdDebitBody,
-    ) -> PostApiV1SubaccountByIdDebitResponse:
+        body: DebitSubaccountBody,
+    ) -> DebitSubaccountResponse:
         """Debit subaccount.
 
         Transfers the amount from the subaccount to the main account.
 
         Args:
             id (str): Pix key registered to the subaccount
-            body (PostApiV1SubaccountByIdDebitBody): The request body.
+            body (DebitSubaccountBody): The request body.
 
         Returns:
-            PostApiV1SubaccountByIdDebitResponse: The 200 response body, validated.
+            DebitSubaccountResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2820,9 +3559,9 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1SubaccountByIdDebitResponse, response.json())
+        return _validate(DebitSubaccountResponse, response.json())
 
-    async def get_api_v1_subaccount_by_id_statement(
+    async def get_subaccount_statement(
         self,
         id: str,
         *,
@@ -2830,7 +3569,7 @@ class OpenPixClient:
         limit: int | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
-    ) -> list[GetApiV1SubaccountByIdStatementResponseItem]:
+    ) -> list[GetSubaccountStatementResponseItem]:
         """Get Sub Account statement.
 
         Returns the ledger entries (statement) for a specific subaccount.
@@ -2847,8 +3586,7 @@ class OpenPixClient:
                 Omitted from the query when None.
 
         Returns:
-            list[GetApiV1SubaccountByIdStatementResponseItem]: The 200 response body,
-                validated.
+            list[GetSubaccountStatementResponseItem]: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2870,16 +3608,14 @@ class OpenPixClient:
             params=params,
         )
         response.raise_for_status()
-        return _validate(
-            list[GetApiV1SubaccountByIdStatementResponseItem], response.json()
-        )
+        return _validate(list[GetSubaccountStatementResponseItem], response.json())
 
-    async def post_api_v1_subaccount_by_id_withdraw(
+    async def withdraw_from_subaccount(
         self,
         id: str,
         *,
         body: SubAccountWithdrawPayload,
-    ) -> PostApiV1SubaccountByIdWithdrawResponse:
+    ) -> WithdrawFromSubaccountResponse:
         """Withdraw from a Sub Account.
 
         Withdraw from a Sub Account and return the withdrawal transaction information
@@ -2889,7 +3625,7 @@ class OpenPixClient:
             body (SubAccountWithdrawPayload): The request body.
 
         Returns:
-            PostApiV1SubaccountByIdWithdrawResponse: The 200 response body, validated.
+            WithdrawFromSubaccountResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2903,13 +3639,13 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1SubaccountByIdWithdrawResponse, response.json())
+        return _validate(WithdrawFromSubaccountResponse, response.json())
 
-    async def get_api_v1_subscriptions(self) -> GetApiV1SubscriptionsResponse:
+    async def list_subscriptions(self) -> ListSubscriptionsResponse:
         """Get a list of subscriptions.
 
         Returns:
-            GetApiV1SubscriptionsResponse: The 200 response body, validated.
+            ListSubscriptionsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2921,13 +3657,13 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1SubscriptionsResponse, response.json())
+        return _validate(ListSubscriptionsResponse, response.json())
 
-    async def post_api_v1_subscriptions(
+    async def create_subscription(
         self,
         *,
         body: SubscriptionPayload,
-    ) -> PostApiV1SubscriptionsResponse:
+    ) -> CreateSubscriptionResponse:
         """Create a new Subscription.
 
         Endpoint to create a new Subcription
@@ -2936,7 +3672,7 @@ class OpenPixClient:
             body (SubscriptionPayload): The request body.
 
         Returns:
-            PostApiV1SubscriptionsResponse: The 200 response body, validated.
+            CreateSubscriptionResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2950,19 +3686,19 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1SubscriptionsResponse, response.json())
+        return _validate(CreateSubscriptionResponse, response.json())
 
-    async def get_api_v1_subscriptions_by_id(
+    async def get_subscription(
         self,
         id: str,
-    ) -> GetApiV1SubscriptionsByIdResponse:
+    ) -> GetSubscriptionResponse:
         """Get one subscription.
 
         Args:
             id (str): The globalID or correlationID of the subscription.
 
         Returns:
-            GetApiV1SubscriptionsByIdResponse: The 200 response body, validated.
+            GetSubscriptionResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -2974,9 +3710,9 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1SubscriptionsByIdResponse, response.json())
+        return _validate(GetSubscriptionResponse, response.json())
 
-    async def put_api_v1_subscriptions_by_id_cancel(
+    async def cancel_subscription(
         self,
         id: str,
     ) -> dict[str, Any]:
@@ -3000,18 +3736,17 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(dict[str, Any], response.json())
 
-    async def get_api_v1_subscriptions_by_id_installments(
+    async def list_subscription_installments(
         self,
         id: str,
-    ) -> GetApiV1SubscriptionsByIdInstallmentsResponse:
+    ) -> ListSubscriptionInstallmentsResponse:
         """Get a list of installments by subscription.
 
         Args:
             id (str): The globalID of the subscription.
 
         Returns:
-            GetApiV1SubscriptionsByIdInstallmentsResponse: The 200 response body,
-                validated.
+            ListSubscriptionInstallmentsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -3023,9 +3758,9 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1SubscriptionsByIdInstallmentsResponse, response.json())
+        return _validate(ListSubscriptionInstallmentsResponse, response.json())
 
-    async def put_api_v1_subscriptions_by_id_value(
+    async def update_subscription_value(
         self,
         id: str,
     ) -> dict[str, Any]:
@@ -3050,7 +3785,7 @@ class OpenPixClient:
         response.raise_for_status()
         return _validate(dict[str, Any], response.json())
 
-    async def get_api_v1_transaction(
+    async def list_transactions(
         self,
         *,
         start: datetime | None = None,
@@ -3059,8 +3794,8 @@ class OpenPixClient:
         pix_qr_code: str | None = None,
         withdrawal: str | None = None,
         has_webhook: bool | None = None,
-        type: GetApiV1TransactionType | None = None,
-    ) -> GetApiV1TransactionResponse:
+        type: ListTransactionsType | None = None,
+    ) -> ListTransactionsResponse:
         """Get a list of transactions.
 
         Args:
@@ -3079,11 +3814,11 @@ class OpenPixClient:
                 Use true to get only transactions that had a successful webhook delivery
                 (HTTP 200), or false to get transactions without successful webhook
                 delivery. Omitted from the query when None.
-            type (GetApiV1TransactionType | None): Filter transactions by type Omitted
-                from the query when None.
+            type (ListTransactionsType | None): Filter transactions by type Omitted from
+                the query when None.
 
         Returns:
-            GetApiV1TransactionResponse: The 200 response body, validated.
+            ListTransactionsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -3111,38 +3846,49 @@ class OpenPixClient:
             params=params,
         )
         response.raise_for_status()
-        return _validate(GetApiV1TransactionResponse, response.json())
+        return _validate(ListTransactionsResponse, response.json())
 
-    async def get_api_v1_transaction_by_id(
+    async def get_transaction(
         self,
         id: str,
-    ) -> GetApiV1TransactionByIdResponse:
+        *,
+        company_bank_account: str | None = None,
+    ) -> GetTransactionResponse:
         """Get a Transaction.
 
         Args:
             id (str): you can use the transaction id from openpix or the endToEndId of
                 transaction from bank
+            company_bank_account (str | None): Restrict the lookup to another bank
+                account of your company instead of the one linked to the appID. Only a
+                MASTER application of a company with the MASTER_APP_READ_ANY_ACCOUNT
+                feature can use it. Use the accountId returned by GET /api/v1/account.
+                Omitted from the query when None.
 
         Returns:
-            GetApiV1TransactionByIdResponse: The 200 response body, validated.
+            GetTransactionResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                400.
+                400, 403.
         """
         path = f"/api/v1/transaction/{id}"
+        params: dict[str, Any] = {}
+        if company_bank_account is not None:
+            params["companyBankAccount"] = _param(company_bank_account)
         response = await self._client.request(
             "GET",
             path,
+            params=params,
         )
         response.raise_for_status()
-        return _validate(GetApiV1TransactionByIdResponse, response.json())
+        return _validate(GetTransactionResponse, response.json())
 
-    async def post_api_v1_transfer(
+    async def create_transfer(
         self,
         *,
         body: TransferCreatePayload,
-    ) -> PostApiV1TransferResponse:
+    ) -> CreateTransferResponse:
         """Create a Transfer.
 
         Endpoint to to transfer values between accounts
@@ -3151,7 +3897,7 @@ class OpenPixClient:
             body (TransferCreatePayload): The request body.
 
         Returns:
-            PostApiV1TransferResponse: The 200 response body, validated.
+            CreateTransferResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -3165,13 +3911,13 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1TransferResponse, response.json())
+        return _validate(CreateTransferResponse, response.json())
 
-    async def get_api_v1_webhook(
+    async def list_webhooks(
         self,
         *,
         url: str | None = None,
-    ) -> GetApiV1WebhookResponse:
+    ) -> ListWebhooksResponse:
         """Get a list of webhooks.
 
         Args:
@@ -3179,7 +3925,7 @@ class OpenPixClient:
                 the query when None.
 
         Returns:
-            GetApiV1WebhookResponse: The 200 response body, validated.
+            ListWebhooksResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -3195,22 +3941,22 @@ class OpenPixClient:
             params=params,
         )
         response.raise_for_status()
-        return _validate(GetApiV1WebhookResponse, response.json())
+        return _validate(ListWebhooksResponse, response.json())
 
-    async def post_api_v1_webhook(
+    async def create_webhook(
         self,
         *,
-        body: PostApiV1WebhookBody,
-    ) -> PostApiV1WebhookResponse:
+        body: CreateWebhookBody,
+    ) -> CreateWebhookResponse:
         """Create a new Webhook.
 
         Endpoint to create a new Webhook
 
         Args:
-            body (PostApiV1WebhookBody): The request body.
+            body (CreateWebhookBody): The request body.
 
         Returns:
-            PostApiV1WebhookResponse: The 200 response body, validated.
+            CreateWebhookResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -3224,13 +3970,13 @@ class OpenPixClient:
             json=payload,
         )
         response.raise_for_status()
-        return _validate(PostApiV1WebhookResponse, response.json())
+        return _validate(CreateWebhookResponse, response.json())
 
-    async def get_api_v1_webhook_events(self) -> GetApiV1WebhookEventsResponse:
+    async def list_webhook_events(self) -> ListWebhookEventsResponse:
         """Get a list of webhook events.
 
         Returns:
-            GetApiV1WebhookEventsResponse: The 200 response body, validated.
+            ListWebhookEventsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -3242,13 +3988,13 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1WebhookEventsResponse, response.json())
+        return _validate(ListWebhookEventsResponse, response.json())
 
-    async def get_api_v1_webhook_ips(self) -> GetApiV1WebhookIpsResponse:
+    async def list_webhook_ips(self) -> ListWebhookIpsResponse:
         """Get a list of webhook IPs.
 
         Returns:
-            GetApiV1WebhookIpsResponse: The 200 response body, validated.
+            ListWebhookIpsResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -3260,12 +4006,46 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(GetApiV1WebhookIpsResponse, response.json())
+        return _validate(ListWebhookIpsResponse, response.json())
 
-    async def delete_api_v1_webhook_by_id(
+    async def list_webhook_public_keys(self) -> ListWebhookPublicKeysResponse:
+        """Get the public keys that verify the webhook signature.
+
+        Retorna a chave pública usada para verificar o header `x-webhook-signature`,
+        presente em todo webhook enviado pela Woovi.
+
+        A assinatura é `base64(RSA-SHA256)` sobre o corpo **bruto** da request —
+        verifique antes de fazer parse do JSON, porque reserializar muda os bytes e
+        invalida a assinatura.
+
+        Este endpoint **não exige autenticação**: a chave é pública por definição, e
+        quem recebe webhook normalmente valida a assinatura em um contexto que não tem o
+        AppID em mãos.
+
+        A resposta é uma lista, e não uma chave só, para permitir rotação: durante uma
+        troca de chave publicamos a antiga e a nova ao mesmo tempo, com `is_current`
+        indicando qual está assinando agora. Aceite qualquer chave da lista ao verificar
+        e você não quebra quando a rotação acontecer.
+
+        Returns:
+            ListWebhookPublicKeysResponse: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                no error status.
+        """
+        path = "/api/v1/webhook/public-keys"
+        response = await self._client.request(
+            "GET",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(ListWebhookPublicKeysResponse, response.json())
+
+    async def delete_webhook(
         self,
         id: str,
-    ) -> DeleteApiV1WebhookByIdResponse:
+    ) -> DeleteWebhookResponse:
         """Delete a Webhook.
 
         Endpoint to delete a Webhook
@@ -3274,7 +4054,7 @@ class OpenPixClient:
             id (str): webhook ID
 
         Returns:
-            DeleteApiV1WebhookByIdResponse: The 200 response body, validated.
+            DeleteWebhookResponse: The 200 response body, validated.
 
         Raises:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
@@ -3286,9 +4066,9 @@ class OpenPixClient:
             path,
         )
         response.raise_for_status()
-        return _validate(DeleteApiV1WebhookByIdResponse, response.json())
+        return _validate(DeleteWebhookResponse, response.json())
 
-    async def get_openpix_charge_brcode_image_id_png(
+    async def get_charge_qr_code_image(
         self,
         id: str,
         *,

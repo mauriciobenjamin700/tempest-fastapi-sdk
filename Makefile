@@ -64,11 +64,20 @@ build: ## Build sdist + wheel into dist/
 	rm -rf dist
 	uv build
 
-openpix-regen: ## Regenerate the vendored OpenPix schemas + client from vendor/openpix-openapi.yaml
+openpix-regen: ## Regenerate the vendored OpenPix schemas + client from vendor/openpix-openapi.json
 	uv run python scripts/regen_openpix.py
+
+openpix-fetch: ## Refresh vendor/openpix-openapi.json from Woovi's published spec (network)
+	uv run python scripts/regen_openpix.py --fetch
+
+openpix-diff: ## Report the distance between the vendored spec and the published one (network)
+	uv run python scripts/openpix_diff.py
 
 mercadopago-regen: ## Regenerate the vendored Mercado Pago schemas + client from vendor/mercadopago-openapi.yaml
 	uv run python scripts/regen_mercado_pago.py
+
+mercadopago-diff: ## Validate the vendored Mercado Pago spec against the provider's official SDK (network)
+	uv run python scripts/mercadopago_diff.py
 
 stripe-regen: ## Regenerate Stripe's event enum from vendor/stripe-api-facts.yaml (offline)
 	uv run python scripts/regen_stripe.py

@@ -1,25 +1,35 @@
 """What this repo corrects in the pinned OpenPix specification.
 
-``vendor/openpix-openapi.yaml`` stays byte for byte the document the
+``vendor/openpix-openapi.json`` stays byte for byte the document the
 provider publishes, so refreshing it is a reviewable diff of *their*
 changes. Everything we know the document gets wrong lives here instead,
 one named correction at a time, each carrying the evidence that justifies
 it. Editing the vendored file would blend the two and make the next
 refresh unreadable.
 
-Three kinds of correction, in the order :func:`apply` runs them:
+Two kinds of correction, in the order :func:`apply` runs them:
 
 * **Integer units.** The specification types money and counts as
-  ``number``. Woovi settles in whole centavos — its own field descriptions
-  say so, 35 times — so the generated client was sending ``{"value":
-  1000.0}`` where the API documents ``1000``, and every arithmetic a
-  consumer did on a charge value started from a binary approximation.
+  ``number``. Woovi settles in whole centavos, and says so in the field's
+  own description on 58 numeric schemas (the counting method is written out
+  in ``vendor/openpix-evidence.md``, because the number is not reproducible
+  without it) — so the generated client was
+  sending ``{"value": 1000.0}`` where the API documents ``1000``, and every
+  arithmetic a consumer did on a charge value started from a binary
+  approximation. The provider has been fixing this at the source: 45
+  ``value`` fields already arrive typed ``integer``, against 52 that still
+  need the correction.
 * **Fields the response carries and the document omits.** ``Charge`` has
   no ``fee``, ``discount`` or ``valueWithDiscount``; the API returns all
   three at the top level of the charge object.
-* **An operation the document omits.** There is no ``DELETE`` for a
-  payment, so the two-step transfer flow (create, then approve) has no
-  documented way back when the approve fails.
+
+An operation was corrected here too, and removed in v0.260.0: a ``DELETE``
+for a payment, added on the reasoning that the two-step transfer flow had
+no documented way back. Checked against the document the provider publishes
+today, ``/api/v1/payment/{id}`` carries only ``get`` and no payment path
+carries a ``delete`` — the operation was never theirs to omit. Correcting a
+document is for what it gets *wrong*; an endpoint nobody observed is a
+guess, and a guess does not belong in a money path.
 
 Every correction is exercised by ``tests/integrations/payment/openpix``,
 and the generated output is pinned by the drift test — so a correction
@@ -38,6 +48,8 @@ INTEGER_PROPERTY_NAMES: frozenset[str] = frozenset(
         "value",
         "balance",
         "fee",
+        "discount",
+        "valueWithDiscount",
         "total",
         "totalValue",
         "minimumValue",
@@ -73,20 +85,38 @@ INTEGER_PROPERTY_NAMES: frozenset[str] = frozenset(
 
 Money is in centavos and never fractional — the specification says so
 itself on ``balance`` ("Number in cents that represent the balance"), on
-every ``pix*Limit``, and on most of the 51 ``value`` fields. The ones whose
-description is silent are the same quantity on a neighbouring schema.
+every ``pix*Limit``, and on many of the 52 ``value`` fields it still types
+``number``. The ones whose description is silent are the same quantity on a
+neighbouring schema, which is a judgement and not a measurement: it is why
+this list is reviewed by name, one entry at a time, rather than inferred.
 
 ``value`` stays on this list even where the description reads "basis
 points" rather than centavos (the advance-day discount modalities): the
 specification's own example is ``100 = 1.00%``, an integer either way.
 
-The rest are counts and day offsets — ``skip`` and ``limit`` are the
-pagination pair, repeated on 27 operations each, and a client sending
-``skip=0.0`` in a query string is asking the provider to be lenient.
+The rest are counts and day offsets. ``skip`` and ``limit`` are the
+pagination pair: 32 occurrences each still typed ``number``, most of them
+the echo in a ``pageInfo`` response, and 7 operations that take them as a
+query parameter — where a client sending ``skip=0.0`` is asking the
+provider to be lenient.
 """
 
 CENTS_PATTERN: re.Pattern[str] = re.compile(r"\b(cents?|centavos?)\b", re.IGNORECASE)
 """Description that proves the unit, for a property the list above misses."""
+
+STATUS_CODE_PATTERN: re.Pattern[str] = re.compile(r"\bstatus code\b", re.IGNORECASE)
+"""Description that proves a whole count for something that is not money.
+
+Added in v0.260.0 for ``Transaction.webhookSent[].status``, typed
+``number`` and described as "HTTP response status code of the webhook
+delivery attempt". An HTTP status code is an integer by definition, and it
+sat outside both rules: no name on the list, no "cents" in the description.
+
+It is a description rule and not another name on
+:data:`INTEGER_PROPERTY_NAMES` on purpose — ``status`` is one of the most
+reused names in any API, and claiming every ``status`` is a whole number
+would be the kind of guess this module exists to avoid.
+"""
 
 NOT_CENTS_PATTERN: re.Pattern[str] = re.compile(
     r"\bnot cents\b|\bstablecoin\b|\bexchange rate\b",
@@ -154,41 +184,6 @@ the model claim something the document contradicts. Both are optional, so
 a response carrying either one validates.
 """
 
-PAYMENT_DELETE_OPERATION: dict[str, Any] = {
-    "tags": ["payment (request access)"],
-    "summary": "Cancel a pending Payment",
-    "description": (
-        "Cancels a payment that was requested and not yet approved.\n\n"
-        "Absent from the published specification. It closes the recovery "
-        "path of the two-step transfer flow: when `POST /api/v1/payment` "
-        "created the request and `POST /api/v1/payment/approve` failed, the "
-        "transfer stays pending on the provider and can still be released "
-        "later.\n\n"
-        "The response body is not modelled — this repository has no "
-        "credentials to observe its shape — so the method answers "
-        "`dict[str, Any]` and drops nothing."
-    ),
-    "parameters": [
-        {
-            "name": "id",
-            "in": "path",
-            "description": "payment ID or correlation ID",
-            "required": True,
-            "schema": {"type": "string"},
-        }
-    ],
-    "responses": {
-        "200": {
-            "description": "The payment was cancelled",
-            "content": {"application/json": {"schema": {"type": "object"}}},
-        }
-    },
-}
-"""The cancel operation the document omits, on the existing payment path."""
-
-PAYMENT_PATH: str = "/api/v1/payment/{id}"
-"""Where :data:`PAYMENT_DELETE_OPERATION` is attached."""
-
 
 @dataclass(frozen=True)
 class OverlayReport:
@@ -199,12 +194,10 @@ class OverlayReport:
             ``integer``.
         added_properties (tuple[str, ...]): ``Schema.property`` entries
             declared by this overlay.
-        added_operations (tuple[str, ...]): ``METHOD path`` entries added.
     """
 
     integer_fields: int = 0
     added_properties: tuple[str, ...] = ()
-    added_operations: tuple[str, ...] = ()
 
 
 @dataclass
@@ -227,16 +220,16 @@ def _wants_integer(name: str | None, schema: dict[str, Any]) -> bool:
         schema (dict[str, Any]): The schema fragment.
 
     Returns:
-        bool: ``True`` when the description proves centavos, or the name is
-        one this API measures in whole units. A description that proves the
-        opposite wins over both.
+        bool: ``True`` when the description proves a whole unit — centavos,
+        or an HTTP status code — or the name is one this API measures in
+        whole units. A description that proves the opposite wins over both.
     """
     if schema.get("type") != "number":
         return False
     description = str(schema.get("description") or "")
     if NOT_CENTS_PATTERN.search(description):
         return False
-    if CENTS_PATTERN.search(description):
+    if CENTS_PATTERN.search(description) or STATUS_CODE_PATTERN.search(description):
         return True
     return name is not None and name in INTEGER_PROPERTY_NAMES
 
@@ -335,16 +328,9 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
     added = _declare(patched, "Charge", CHARGE_RESPONSE_PROPERTIES)
     added += _declare(patched, "ChargeRefund", CHARGE_REFUND_PROPERTIES)
 
-    operations: list[str] = []
-    path = patched.get("paths", {}).get(PAYMENT_PATH)
-    if isinstance(path, dict) and "delete" not in path:
-        path["delete"] = copy.deepcopy(PAYMENT_DELETE_OPERATION)
-        operations.append(f"DELETE {PAYMENT_PATH}")
-
     return patched, OverlayReport(
         integer_fields=counter.retyped,
         added_properties=added,
-        added_operations=tuple(operations),
     )
 
 
@@ -354,8 +340,7 @@ __all__: list[str] = [
     "CHARGE_RESPONSE_PROPERTIES",
     "INTEGER_PROPERTY_NAMES",
     "NOT_CENTS_PATTERN",
-    "PAYMENT_DELETE_OPERATION",
-    "PAYMENT_PATH",
+    "STATUS_CODE_PATTERN",
     "OverlayReport",
     "apply",
 ]

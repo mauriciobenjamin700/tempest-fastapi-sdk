@@ -167,7 +167,7 @@ class OpenPixPixProvider:
             ),
             customer=self._customer(request),
         )
-        response = await self._client.post_api_v1_charge(body=payload)
+        response = await self._client.create_charge(body=payload)
         if response.charge is None:
             raise ValueError("OpenPix accepted the charge but returned no charge body.")
         charge = self._to_pix_charge(response.charge)
@@ -190,7 +190,7 @@ class OpenPixPixProvider:
             httpx.HTTPStatusError: For any non-2xx answer from OpenPix.
             ValueError: If the answer carries no charge body.
         """
-        response = await self._client.get_api_v1_charge_by_id(charge_id)
+        response = await self._client.get_charge(charge_id)
         if response.charge is None:
             raise ValueError(f"OpenPix returned no charge for {charge_id!r}.")
         return self._to_pix_charge(response.charge)
@@ -215,7 +215,7 @@ class OpenPixPixProvider:
         Raises:
             httpx.HTTPStatusError: For any non-2xx answer from OpenPix.
         """
-        response = await self._client.delete_api_v1_charge_by_id(charge_id)
+        response = await self._client.delete_charge(charge_id)
         return PixCharge(
             provider=PROVIDER_NAME,
             provider_charge_id=response.id or charge_id,

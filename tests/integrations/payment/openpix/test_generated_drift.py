@@ -41,8 +41,10 @@ from regen_openpix import (  # noqa: E402
     GENERATED_FILES,
     PACKAGE_DIR,
     SPEC_PATH,
+    SPEC_SHA256,
     expected_exports,
     regenerate,
+    spec_digest,
 )
 
 
@@ -53,6 +55,23 @@ class TestVendoredSpec:
         """Regeneration and this suite both have to work offline."""
         assert SPEC_PATH.exists(), f"missing {SPEC_PATH}"
         assert SPEC_PATH.stat().st_size > 100_000
+
+    def test_specification_is_the_bytes_the_provider_served(self) -> None:
+        """The claim the whole overlay rests on, finally checked.
+
+        `scripts/openpix_overlay.py` exists so this file stays what Woovi
+        publishes and every correction lives outside it — which makes the
+        next refresh a diff of *their* changes. Until v0.260.0 nothing
+        recorded or verified that: editing this file by hand and
+        regenerating passed green, and nobody could say which publication
+        it came from.
+
+        A failure here means the vendored document is not the bytes
+        `SPEC_SHA256` names. Refresh it with `make openpix-fetch`, which
+        prints the new digest, and update `SPEC_SHA256` plus
+        `vendor/PROVENANCE.md` in the same commit.
+        """
+        assert spec_digest() == SPEC_SHA256
 
     def test_specification_is_not_in_the_wheel(self) -> None:
         """It is build-time input, not something a service loads.
@@ -155,12 +174,14 @@ class TestGeneratedSurface:
         assert OpenPixClient.__name__ == "OpenPixClient"
 
     def test_carries_the_whole_specification(self) -> None:
-        """373 schemas and 106 operations — the point of embedding it.
+        """686 schemas and 125 operations — the point of embedding it.
 
-        105 come from the published document; the 106th is
-        ``delete_api_v1_payment_by_id``, declared by
-        ``scripts/openpix_overlay.py`` because the document omits the
-        cancel half of the two-step transfer flow.
+        All 125 come from the published document, which since the v0.260.0
+        refresh carries an ``operationId`` on every one of them: that is
+        why the methods read ``create_charge`` rather than
+        ``post_api_v1_charge``. The overlay adds no operation — it corrects
+        what the document gets wrong, and an endpoint nobody observed is
+        not a correction.
         """
         from tempest_fastapi_sdk.integrations.payment.openpix import client, schemas
 
@@ -170,8 +191,8 @@ class TestGeneratedSurface:
             if not name.startswith("_")
             and callable(getattr(client.OpenPixClient, name))
         ]
-        assert len(schemas.__all__) == 373
-        assert len(operations) == 106
+        assert len(schemas.__all__) == 686
+        assert len(operations) == 125
 
     def test_production_base_url_is_the_default(self) -> None:
         """The generated constant comes from the spec's first server."""

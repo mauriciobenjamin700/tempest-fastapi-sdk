@@ -25,11 +25,11 @@ from tempest_fastapi_sdk.integrations.payment.openpix import (
     Charge,
     ChargePayload,
     ChargeStatus,
-    DeleteApiV1ChargeByIdResponse,
-    GetApiV1ChargeByIdResponse,
+    CreateChargeResponse,
+    DeleteChargeResponse,
+    GetChargeResponse,
     OpenPixEvent,
     OpenPixWebhookEvent,
-    PostApiV1ChargeResponse,
 )
 
 
@@ -42,7 +42,7 @@ class StubOpenPixClient:
         charge (Charge | None): What the read and create routes answer.
         top_level_br_code (str | None): The ``brCode`` OpenPix puts beside
             the charge on create.
-        deleted (DeleteApiV1ChargeByIdResponse): What the cancel route
+        deleted (DeleteChargeResponse): What the cancel route
             answers.
     """
 
@@ -51,7 +51,7 @@ class StubOpenPixClient:
         *,
         charge: Charge | None = None,
         top_level_br_code: str | None = None,
-        deleted: DeleteApiV1ChargeByIdResponse | None = None,
+        deleted: DeleteChargeResponse | None = None,
     ) -> None:
         """Store the canned answers.
 
@@ -59,34 +59,32 @@ class StubOpenPixClient:
             charge (Charge | None): The charge to answer with.
             top_level_br_code (str | None): The create route's own
                 ``brCode`` field.
-            deleted (DeleteApiV1ChargeByIdResponse | None): The cancel
+            deleted (DeleteChargeResponse | None): The cancel
                 answer.
         """
         self.created_with: ChargePayload | None = None
         self.charge: Charge | None = charge
         self.top_level_br_code: str | None = top_level_br_code
-        self.deleted: DeleteApiV1ChargeByIdResponse = (
-            deleted or DeleteApiV1ChargeByIdResponse(status="OK", id="ch_1")
+        self.deleted: DeleteChargeResponse = deleted or DeleteChargeResponse(
+            status="OK", id="ch_1"
         )
 
-    async def post_api_v1_charge(
+    async def create_charge(
         self, *, body: ChargePayload, return_existing: bool | None = None
-    ) -> PostApiV1ChargeResponse:
+    ) -> CreateChargeResponse:
         """Record the payload and answer with the canned charge."""
         self.created_with = body
-        return PostApiV1ChargeResponse(
+        return CreateChargeResponse(
             charge=self.charge,
             correlation_id=body.correlation_id,
             br_code=self.top_level_br_code,
         )
 
-    async def get_api_v1_charge_by_id(self, id: str) -> GetApiV1ChargeByIdResponse:
+    async def get_charge(self, id: str) -> GetChargeResponse:
         """Answer the read route with the canned charge."""
-        return GetApiV1ChargeByIdResponse(charge=self.charge)
+        return GetChargeResponse(charge=self.charge)
 
-    async def delete_api_v1_charge_by_id(
-        self, id: str
-    ) -> DeleteApiV1ChargeByIdResponse:
+    async def delete_charge(self, id: str) -> DeleteChargeResponse:
         """Answer the cancel route."""
         return self.deleted
 
@@ -254,9 +252,7 @@ async def test_cancel_reports_what_openpix_actually_returns() -> None:
     than issuing a refetch the caller did not ask for.
     """
     provider = OpenPixPixProvider(
-        StubOpenPixClient(
-            deleted=DeleteApiV1ChargeByIdResponse(status="OK", id="ch_global_1")
-        )
+        StubOpenPixClient(deleted=DeleteChargeResponse(status="OK", id="ch_global_1"))
     )
 
     charge = await provider.cancel_pix_charge("ch_global_1")

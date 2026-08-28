@@ -86,7 +86,7 @@ class SubscriptionService:
         Raises:
             ValueError: If the response comes back without the subscription.
         """
-        response = await self.client.post_api_v1_subscriptions(
+        response = await self.client.create_subscription(
             body=SubscriptionPayload(
                 correlation_id=reference,
                 name=plan_name,
@@ -246,7 +246,7 @@ async def charges_of(client: OpenPixClient, reference: str) -> list[str]:
     Returns:
         The status of each cycle charge, oldest first.
     """
-    response = await client.get_api_v1_charge(subscription=reference)
+    response = await client.list_charges(subscription=reference)
     return [str(charge.status) for charge in response.charges]
 ```
 
@@ -270,7 +270,7 @@ async def read(client: OpenPixClient, reference: str) -> Subscription | None:
     Returns:
         Subscription | None: The subscription, or `None` if absent.
     """
-    response = await client.get_api_v1_subscriptions_by_id(id=reference)
+    response = await client.get_subscription(id=reference)
     return response.subscription
 
 
@@ -285,7 +285,7 @@ async def installments(client: OpenPixClient, global_id: str) -> list[Installmen
     Returns:
         The instalments, with number, amount, status and generation date.
     """
-    response = await client.get_api_v1_subscriptions_by_id_installments(id=global_id)
+    response = await client.list_subscription_installments(id=global_id)
     return response.installments
 
 
@@ -296,12 +296,12 @@ async def cancel(client: OpenPixClient, reference: str) -> None:
         client (OpenPixClient): The OpenPix client.
         reference (str): The subscription's `correlationID` or `globalID`.
     """
-    await client.put_api_v1_subscriptions_by_id_cancel(id=reference)
+    await client.cancel_subscription(id=reference)
 ```
 
 !!! warning "`installments` wants the `globalID`, the others take either"
-    It is in the specification itself: `get_api_v1_subscriptions_by_id` and
-    `put_api_v1_subscriptions_by_id_cancel` document *"the globalID or
+    It is in the specification itself: `get_subscription` and
+    `cancel_subscription` document *"the globalID or
     correlationID"*, while the instalments one documents *"the globalID"*.
     Store the `global_id` from the creation response — without it you need an
     extra read just to list instalments.
@@ -311,7 +311,7 @@ async def cancel(client: OpenPixClient, reference: str) -> None:
 `PUT /api/v1/subscriptions/{id}/value` exists, and it re-prices the next
 instalments of a Pix Automático subscription with a dynamic amount. But the
 specification **declares no body for it** — checked in
-`vendor/openpix-openapi.yaml`: the operation has only the path parameter. The
+`vendor/openpix-openapi.json`: the operation has only the path parameter. The
 generated client mirrors that faithfully:
 
 ```python
@@ -325,7 +325,7 @@ async def bump(client: OpenPixClient, reference: str) -> None:
         client (OpenPixClient): The OpenPix client.
         reference (str): The subscription's `correlationID`.
     """
-    await client.put_api_v1_subscriptions_by_id_value(id=reference)
+    await client.update_subscription_value(id=reference)
 ```
 
 If your account needs to send the new amount, send it through the
@@ -400,7 +400,7 @@ async def unpaid_cycles(client: OpenPixClient, global_id: str) -> list[float]:
     Returns:
         The `installment_number` of every open instalment.
     """
-    response = await client.get_api_v1_subscriptions_by_id_installments(id=global_id)
+    response = await client.list_subscription_installments(id=global_id)
     return [
         parcel.installment_number or 0.0
         for parcel in response.installments
@@ -421,7 +421,7 @@ async def unpaid_cycles(client: OpenPixClient, global_id: str) -> list[float]:
 4. **Every cycle is an ordinary charge** — same webhook, same read-back
    through the API, and `charge.subscription` tells you which subscription it
    came from.
-5. **`put_api_v1_subscriptions_by_id_value` has no body in the
+5. **`update_subscription_value` has no body in the
    specification.** Send it through the `HTTPClient` if your account needs it.
 6. **The user's access expires by date**, pushed out on every paid cycle, and
    reconciled against the instalments list.

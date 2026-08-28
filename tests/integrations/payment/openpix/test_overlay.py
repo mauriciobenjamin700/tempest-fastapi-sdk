@@ -21,9 +21,9 @@ if SCRIPTS not in sys.path:
 
 from openpix_overlay import (  # noqa: E402
     CHARGE_RESPONSE_PROPERTIES,
-    PAYMENT_PATH,
     apply,
 )
+from regen_openpix import SPEC_PATH  # noqa: E402
 
 
 def _document(properties: dict[str, Any]) -> dict[str, Any]:
@@ -210,26 +210,30 @@ class TestTheDocumentIsNotMutated:
 
         assert _typed(document, "value") == "number"
 
-    def test_the_cancel_operation_is_added_once(self) -> None:
-        """Applying twice does not stack a second `delete`."""
+    def test_no_operation_is_invented(self) -> None:
+        """The overlay corrects what the document gets wrong, not what it lacks.
+
+        v0.259.0 added a `DELETE /api/v1/payment/{id}` on the reasoning that
+        the two-step transfer flow had no documented way back. The document
+        the provider publishes carries only `get` on that path, and no
+        `delete` on any payment path, so the operation was a guess shipped
+        as a public method in a money path. This pins it out.
+        """
         document = {
             "openapi": "3.0.0",
             "info": {"title": "t", "version": "1"},
             "paths": {
-                PAYMENT_PATH: {"get": {"responses": {"200": {"description": ""}}}}
+                "/api/v1/payment/{id}": {
+                    "get": {"responses": {"200": {"description": ""}}}
+                }
             },
             "components": {"schemas": {}},
         }
 
-        once, first = apply(document)
-        twice, second = apply(once)
+        patched, _ = apply(document)
 
-        assert first.added_operations == (f"DELETE {PAYMENT_PATH}",)
-        assert second.added_operations == ()
-        assert (
-            twice["paths"][PAYMENT_PATH]["delete"]
-            == once["paths"][PAYMENT_PATH]["delete"]
-        )
+        assert set(patched["paths"]["/api/v1/payment/{id}"]) == {"get"}
+        assert patched["paths"] == document["paths"]
 
 
 class TestTheGeneratedResult:
@@ -252,20 +256,20 @@ class TestTheGeneratedResult:
     def test_pagination_is_whole_rows(self) -> None:
         """`skip=0.0` in a query string was asking for leniency."""
         from tempest_fastapi_sdk.integrations.payment.openpix import (
-            GetApiV1ChargeResponsePageInfo,
+            ListChargesResponsePageInfo,
         )
 
-        assert GetApiV1ChargeResponsePageInfo.model_fields["skip"].annotation == (
+        assert ListChargesResponsePageInfo.model_fields["skip"].annotation == (
             int | None
         )
 
     def test_a_stablecoin_quote_is_still_fractional(self) -> None:
         """The one place a fraction is real keeps it."""
         from tempest_fastapi_sdk.integrations.payment.openpix import (
-            GetApiV1StablecoinQuoteResponseQuote,
+            GetStablecoinQuoteResponseQuote,
         )
 
-        fields = GetApiV1StablecoinQuoteResponseQuote.model_fields
+        fields = GetStablecoinQuoteResponseQuote.model_fields
         assert fields["base_price"].annotation == float | None
         assert fields["input_amount"].annotation == float | None
 
@@ -310,14 +314,111 @@ class TestTheGeneratedResult:
 
         assert not payload.model_extra
 
-    def test_the_cancel_operation_reaches_the_client(self) -> None:
-        """The recovery path of the two-step transfer flow."""
-        import inspect
-
+    def test_the_client_has_no_invented_payment_delete(self) -> None:
+        """A method for an endpoint nobody observed does not ship."""
         from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixClient
 
-        method = OpenPixClient.delete_api_v1_payment_by_id
-        signature = inspect.signature(method)
+        assert not hasattr(OpenPixClient, "delete_api_v1_payment_by_id")
 
-        assert list(signature.parameters) == ["self", "id"]
-        assert signature.return_annotation == "dict[str, Any]"
+
+class TestWhatTheOverlayLeavesAlone:
+    """The set it does *not* touch is pinned too.
+
+    Every test above checks a correction the overlay makes. None checked
+    what it leaves behind, and that is where it was wrong: v0.259.0 shipped
+    prose calling the leftovers "the only ones where the fraction is real"
+    while `Transaction.webhookSent[].status` — described in the document as
+    "HTTP response status code of the webhook delivery attempt" — sat among
+    them as a `float`.
+
+    A new `number` in a refreshed document fails here. That is the point:
+    the answer is a judgement call about that field's unit, and it should
+    be made by a person, not defaulted to `float` in silence.
+    """
+
+    def _remaining(self) -> dict[str, int]:
+        """Count the properties still typed `number` after the overlay.
+
+        Returns:
+            dict[str, int]: Property name to occurrence count. The entry
+            keyed ``""`` counts schemas the walk reached without a name.
+        """
+        import json
+
+        from openpix_overlay import apply as apply_overlay
+
+        document = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
+        patched, _ = apply_overlay(document)
+        found: dict[str, int] = {}
+
+        def walk(node: Any, scope: str | None) -> None:
+            if isinstance(node, list):
+                for entry in node:
+                    walk(entry, scope)
+                return
+            if not isinstance(node, dict):
+                return
+            if node.get("type") == "number":
+                found[scope or ""] = found.get(scope or "", 0) + 1
+            for key, value in node.items():
+                if key == "properties" and isinstance(value, dict):
+                    for property_name, property_schema in value.items():
+                        walk(property_schema, str(property_name))
+                elif key == "parameters" and isinstance(value, list):
+                    for parameter in value:
+                        if isinstance(parameter, dict):
+                            walk(
+                                parameter.get("schema"),
+                                str(parameter.get("name") or "") or None,
+                            )
+                elif key in {"items", "allOf", "anyOf", "oneOf", "not"}:
+                    walk(value, scope)
+                elif key in {"example", "examples", "enum", "default"}:
+                    continue
+                else:
+                    walk(value, None)
+
+        walk(patched, None)
+        return found
+
+    def test_the_fields_left_fractional_are_the_expected_ones(self) -> None:
+        """Each name here was looked at, and left `float` on purpose."""
+        assert self._remaining() == {
+            "": 1,
+            "annualRevenue": 2,
+            "expiration": 1,
+            "inputAmount": 2,
+            "maxTokens": 1,
+            "monthlyFeePercentage": 1,
+            "outputAmount": 3,
+            "rate": 2,
+            "refreshRate": 1,
+            "tokens": 2,
+            "tokensAfter": 1,
+            "tokensAfterRefresh": 1,
+            "tokensBefore": 1,
+        }
+
+    def test_a_status_code_is_a_whole_number(self) -> None:
+        """The one the previous release's prose claimed was fractional."""
+        patched, _ = apply(
+            _document(
+                {
+                    "status": {
+                        "type": "number",
+                        "description": (
+                            "HTTP response status code of the webhook delivery attempt"
+                        ),
+                    }
+                }
+            )
+        )
+
+        assert _typed(patched, "status") == "integer"
+
+    def test_an_unrelated_status_is_left_alone(self) -> None:
+        """`status` is not on the name list, and must not become one."""
+        patched, report = apply(_document({"status": {"type": "number"}}))
+
+        assert _typed(patched, "status") == "number"
+        assert report.integer_fields == 0

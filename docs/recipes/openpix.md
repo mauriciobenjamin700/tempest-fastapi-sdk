@@ -17,7 +17,7 @@ Assinaturas e planos (mensalidade, Pix Automático) estão na receita ao lado:
 
 ## O que já vem no pacote
 
-Instalar o SDK já traz a OpenPix inteira: **373 schemas** e **105 operações**
+Instalar o SDK já traz a OpenPix inteira: **686 schemas** e **125 operações**
 gerados da especificação, mais quatro coisas que a especificação não diz
 (ambientes, eventos de webhook, verificação de assinatura e centavos).
 
@@ -60,11 +60,15 @@ barulhento.
     é `ValidationError` na subida do serviço, não uma cobrança no ambiente
     errado.
 
-!!! warning "Os dois ambientes são domínios diferentes"
-    Produção é `api.openpix.com.br`. Testes é `api.woovi-sandbox.com` — outro
-    domínio, não um subdomínio. Nenhum dos dois soletra o outro, e o AppID de
-    um não vale no outro. É por isso que `OpenPixEnvironment` existe em vez de
-    uma string no `.env`.
+!!! warning "Um caractere separa produção de teste"
+    Produção é `api.woovi.com`. Testes é `api.woovi-sandbox.com`. O AppID de um
+    não vale no outro, e a diferença é um sufixo numa URL que carrega dinheiro
+    de verdade — por isso `OpenPixEnvironment` existe em vez de uma string no
+    `.env`.
+
+    Produção mudou de `api.openpix.com.br` na v0.260.0, seguindo o `servers` do
+    documento refrescado. O host antigo continua respondendo: medido em
+    2026-08-28, `GET /api/v1/charge` devolve `401` nos três.
 
 ## A arquitetura sugerida
 
@@ -205,7 +209,7 @@ class OpenPixService:
         Raises:
             ValueError: Se a resposta vier sem a cobrança.
         """
-        response = await self.client.post_api_v1_charge(
+        response = await self.client.create_charge(
             body=ChargePayload(
                 correlation_id=reference,
                 value=reais_to_cents(amount_brl),
@@ -267,7 +271,7 @@ Rodando isso contra a API, a rota devolve:
 ```json
 {
   "br_code": "00020101021226830014BR.GOV.BCB.PIX...",
-  "qr_code_image": "https://api.openpix.com.br/openpix/charge/brcode/image/x.png",
+  "qr_code_image": "https://api.woovi.com/openpix/charge/brcode/image/x.png",
   "payment_link_url": "https://openpix.com.br/pay/pedido-1",
   "status": "ACTIVE"
 }
@@ -307,8 +311,8 @@ Existem três caminhos, e eles não são alternativas: são papéis diferentes.
 | Caminho | O que é | Papel |
 | --- | --- | --- |
 | Webhook `CHARGE_COMPLETED` | A OpenPix avisa | **Aviso.** Rápido, mas chega por rede aberta |
-| `get_api_v1_charge_by_id` | Você pergunta | **Fato.** É o que autoriza liberar |
-| `get_api_v1_charge(status=...)` | Você varre | **Rede de segurança.** Pega o que o webhook perdeu |
+| `get_charge` | Você pergunta | **Fato.** É o que autoriza liberar |
+| `list_charges(status=...)` | Você varre | **Rede de segurança.** Pega o que o webhook perdeu |
 
 A regra que resume: **o webhook avisa, a API confirma.**
 
@@ -404,7 +408,7 @@ async def is_paid(self, reference: str) -> bool:
     Returns:
         bool: `True` somente quando a OpenPix responde `COMPLETED`.
     """
-    response = await self.client.get_api_v1_charge_by_id(id=reference)
+    response = await self.client.get_charge(id=reference)
     charge = response.charge
     return charge is not None and charge.status == ChargeStatus.COMPLETED
 ```
@@ -441,7 +445,7 @@ async def sweep_pending(client: OpenPixClient) -> list[str]:
         Os `correlationID` que continuam aguardando pagamento.
     """
     now = datetime.now(UTC)
-    response = await client.get_api_v1_charge(
+    response = await client.list_charges(
         start=now - timedelta(days=1),
         end=now,
         status=ChargeStatus.ACTIVE,
@@ -451,7 +455,7 @@ async def sweep_pending(client: OpenPixClient) -> list[str]:
 
 Todo pedido que o seu banco tem como "aguardando" e que **não** aparece nessa
 lista terminou de outro jeito: ou foi pago (e o webhook se perdeu) ou expirou.
-Consulte cada um com `get_api_v1_charge_by_id` e feche o caso.
+Consulte cada um com `get_charge` e feche o caso.
 
 !!! note "A listagem não tem paginação na especificação"
     `GET /api/v1/charge` aceita `start`, `end`, `status`, `customer` e
@@ -476,7 +480,7 @@ async def extend(client: OpenPixClient, reference: str, until: str) -> None:
         reference (str): O `correlationID` da cobrança.
         until (str): Nova data de expiração, em ISO 8601.
     """
-    await client.patch_api_v1_charge_by_id(
+    await client.update_charge(
         id=reference,
         body=ChargePatchPayload(expires_date=until),
     )
@@ -489,7 +493,7 @@ async def cancel(client: OpenPixClient, reference: str) -> None:
         client (OpenPixClient): O cliente da OpenPix.
         reference (str): O `correlationID` da cobrança.
     """
-    await client.delete_api_v1_charge_by_id(id=reference)
+    await client.delete_charge(id=reference)
 ```
 
 `patch` só mexe na expiração — é o único campo que `ChargePatchPayload` tem.
@@ -520,7 +524,7 @@ async def refund(
         refund_reference (str): A sua chave para este estorno.
         amount_brl (str): Quanto devolver, em reais.
     """
-    await client.post_api_v1_charge_by_id_refund(
+    await client.refund_charge(
         id=reference,
         body=ChargeRefundPayload(
             correlation_id=refund_reference,
@@ -531,7 +535,7 @@ async def refund(
 ```
 
 O estorno tem `correlationID` próprio — ele é um registro seu, separado da
-cobrança. `get_api_v1_charge_by_id_refund` lista os estornos de uma cobrança,
+cobrança. `list_charge_refunds` lista os estornos de uma cobrança,
 e o valor é opcional: sem ele, a OpenPix devolve o total.
 
 ## Dinheiro: centavo inteiro, não float
@@ -580,16 +584,19 @@ assert cents_to_reais(1990) == Decimal("19.90")
 
 ## O que este pacote corrige na spec
 
-`vendor/openpix-openapi.yaml` é o documento que a Woovi publica, byte a byte —
+`vendor/openpix-openapi.json` é o documento que a Woovi publica, byte a byte —
 atualizar é um diff só do que **eles** mudaram. Tudo que a gente sabe que o
 documento erra vive em `scripts/openpix_overlay.py`, uma correção nomeada por
-vez, cada uma com a evidência ao lado. São três famílias:
+vez, cada uma com a evidência ao lado. São duas famílias:
 
-**1. Unidade inteira.** 154 campos tipados `number` que são valor em centavo ou
-contagem viram `integer`. A regra lê a descrição antes do nome, porque o mesmo
-nome muda de unidade: `inputAmount` é centavo na lista de depósito e é *"BRL
-(currency unit, not cents)"* na cotação de stablecoin — essa continua `float`,
-junto de `outputAmount`, `basePrice` e `rate`, que são fracionários de verdade.
+**1. Unidade inteira.** 157 campos tipados `number` que são valor em centavo,
+contagem ou código HTTP viram `integer`. A regra lê a descrição antes do nome,
+porque o mesmo nome muda de unidade: `inputAmount` é centavo na lista de
+depósito e é *"BRL (currency unit, not cents)"* na cotação de stablecoin — essa
+continua `float`, junto de `outputAmount`, `basePrice` e `rate`, que são
+fracionários de verdade. Os 19 que continuam `float` estão fixados por teste:
+`number` novo num refresh falha, porque a unidade de um campo é julgamento de
+pessoa, não default silencioso.
 
 **2. Campos que a resposta traz e o documento não declara.** `Charge` ganha
 `fee`, `discount` e `valueWithDiscount`; `ChargeRefund` ganha `refundId` (o
@@ -606,35 +613,13 @@ charge = Charge.model_validate(
 charge.fee, charge.value_with_discount   # (2500, 199000) — int, não float
 ```
 
-**3. Uma operação que o documento omite.** `delete_api_v1_payment_by_id` fecha
-o caminho de recuperação do fluxo de transferência em dois passos: se o
-`POST /payment` criou a solicitação e o `POST /payment/approve` falhou, a
-transferência fica pendente no gateway e ainda pode ser liberada depois.
-
-```python
-import asyncio
-from typing import Any
-
-from tempest_fastapi_sdk import HTTPClient
-from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixClient
-
-
-async def cancelar(payment_id: str) -> dict[str, Any]:
-    """Cancela um pagamento que foi solicitado e não chegou a ser aprovado."""
-    http = HTTPClient(
-        base_url="https://api.openpix.com.br",
-        default_headers={"Authorization": "SEU_APP_ID"},
-    )
-    client = OpenPixClient(http)
-    return await client.delete_api_v1_payment_by_id(payment_id)
-
-
-asyncio.run(cancelar("payment-1"))
-```
-
-O retorno é `dict[str, Any]` de propósito: este repositório não tem credencial
-para observar o corpo da resposta, então ele não é modelado — e nada é
-descartado.
+!!! warning "Uma terceira família foi removida na v0.260.0"
+    A v0.259.0 adicionou aqui um `DELETE /api/v1/payment/{id}`, na conta de que
+    o fluxo de transferência em dois passos não tinha caminho de volta. O
+    documento que a Woovi publica tem só `get` nesse path, e nenhum caminho de
+    payment tem `delete` — o DELETE documentado é em `/api/v1/charge/{id}`.
+    Corrigir um documento é para o que ele **erra**; endpoint que ninguém
+    observou é palpite, e palpite não entra em caminho de dinheiro.
 
 !!! tip "Model de resposta guarda o que a spec não previu"
     Desde a v0.259.0 todo model alcançável por resposta é gerado com
@@ -652,7 +637,7 @@ versionado junto do deploy:
 ```python
 from tempest_fastapi_sdk.integrations.payment.openpix import (
     OpenPixClient,
-    PostApiV1WebhookBody,
+    CreateWebhookBody,
     WebhookEventEnum,
     WebhookPayload,
 )
@@ -665,8 +650,8 @@ async def register_webhook(client: OpenPixClient, url: str) -> None:
         client (OpenPixClient): O cliente da OpenPix.
         url (str): O endereço público de `POST /webhooks/openpix`.
     """
-    await client.post_api_v1_webhook(
-        body=PostApiV1WebhookBody(
+    await client.create_webhook(
+        body=CreateWebhookBody(
             webhook=WebhookPayload(
                 name="cobranca-paga",
                 event=WebhookEventEnum.OPENPIX_CHARGE_COMPLETED,
@@ -731,7 +716,7 @@ async def test_charge_carries_the_customer() -> None:
     )
     client = OpenPixClient(http)
 
-    await client.post_api_v1_charge(
+    await client.create_charge(
         body=ChargePayload(correlation_id="pedido-1", value=1990)
     )
 
@@ -764,7 +749,7 @@ diferentes:
 
 !!! info "A metade gerada é versionada, não escrita à mão"
     `scripts/regen_openpix.py` produz `schemas.py` e `client.py` a partir da
-    spec fixada em `vendor/openpix-openapi.yaml`, e **um teste falha se os
+    spec fixada em `vendor/openpix-openapi.json`, e **um teste falha se os
     arquivos em disco divergirem** do que o script produz. Para atualizar
     quando a OpenPix mexer na API: troque o arquivo em `vendor/`, rode `make
     openpix-regen`, e o diff mostra exatamente o que o terceiro mudou.
@@ -786,11 +771,11 @@ diferentes:
    `default_headers` e a base URL vinda de `OpenPixEnvironment`.
 2. **`correlationID` é o id do seu pedido** — é ele que amarra criação,
    webhook, consulta e estorno.
-3. **Abrir a cobrança** é `post_api_v1_charge` com `return_existing=True`; a
+3. **Abrir a cobrança** é `create_charge` com `return_existing=True`; a
    resposta traz `br_code`, `qr_code_image` e `payment_link_url`, e você
    escolhe pela interface.
 4. **O webhook avisa, a API confirma.** `make_openpix_webhook_dependency()`
-   verifica e entrega o evento tipado; `get_api_v1_charge_by_id` é o que
+   verifica e entrega o evento tipado; `get_charge` é o que
    autoriza liberar — a chave da OpenPix é RSA-1024.
 5. **O handler é idempotente**, porque a mesma entrega chega mais de uma vez.
 6. **Um job de reconciliação** varre `status=ACTIVE` e fecha o que o webhook

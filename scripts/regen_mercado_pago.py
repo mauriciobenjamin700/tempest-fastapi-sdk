@@ -32,10 +32,16 @@ generation time.
 from __future__ import annotations
 
 import ast
+import json
 import shutil
 import sys
 import tempfile
 from pathlib import Path
+
+import yaml
+from export_order import export_sort_key
+from mercadopago_overlay import OverlayReport
+from mercadopago_overlay import apply as apply_overlay
 
 from tempest_fastapi_sdk.openapi import generate_integration
 
@@ -65,7 +71,7 @@ EXPORTS_END: str = "]"
 """Line closing that block. The docstring under it is left alone."""
 
 
-def regenerate(destination: Path) -> list[Path]:
+def regenerate(destination: Path) -> tuple[list[Path], OverlayReport]:
     """Generate the Mercado Pago modules into ``destination``.
 
     Args:
@@ -73,7 +79,8 @@ def regenerate(destination: Path) -> list[Path]:
             ``client.py`` into. Created if missing.
 
     Returns:
-        list[Path]: The written files.
+        tuple[list[Path], OverlayReport]: The written files, and what the
+        overlay corrected on the way in.
 
     Raises:
         FileNotFoundError: If the vendored specification is missing.
@@ -82,15 +89,25 @@ def regenerate(destination: Path) -> list[Path]:
     ``generate_integration`` also writes an ``__init__.py`` — and this
     package's ``__init__.py`` is hand-written, carrying the thin layer and
     the lazy re-exports. Copying only the two generated files keeps it.
+
+    The specification is corrected by :mod:`mercadopago_overlay` before it
+    reaches the generator, and the corrected copy is staged as JSON beside
+    the output. The vendored YAML is never rewritten — it is what it always
+    was, and every disagreement with it stays reviewable in one file.
     """
     if not SPEC_PATH.exists():
         raise FileNotFoundError(f"vendored specification missing: {SPEC_PATH}")
 
     destination.mkdir(parents=True, exist_ok=True)
+    document, report = apply_overlay(
+        yaml.safe_load(SPEC_PATH.read_text(encoding="utf-8"))
+    )
     with tempfile.TemporaryDirectory() as staging:
         staging_path = Path(staging)
+        corrected = staging_path / "mercadopago-corrected.json"
+        corrected.write_text(json.dumps(document), encoding="utf-8")
         generate_integration(
-            str(SPEC_PATH),
+            str(corrected),
             target=staging_path,
             name="mercado_pago",
             out=staging_path / "generated",
@@ -102,7 +119,7 @@ def regenerate(destination: Path) -> list[Path]:
             target = destination / filename
             shutil.copyfile(source, target)
             written.append(target)
-    return written
+    return written, report
 
 
 def _module_exports(path: Path) -> list[str]:
@@ -184,25 +201,7 @@ def expected_exports(generated_dir: Path, init_path: Path) -> list[str]:
     names = set(_hand_written_names(init_path))
     for filename in GENERATED_FILES:
         names |= set(_module_exports(generated_dir / filename))
-    return sorted(names, key=_export_sort_key)
-
-
-def _export_sort_key(name: str) -> tuple[int, str]:
-    """Rank one exported name the way ruff's ``RUF022`` sorts ``__all__``.
-
-    Args:
-        name (str): The exported name.
-
-    Returns:
-        tuple[int, str]: Group first — ``0`` for ``SCREAMING_CASE``
-        constants, ``1`` for ``CamelCase`` classes, ``2`` for anything else
-        — then the name itself.
-    """
-    if name.isupper():
-        return (0, name)
-    if name[:1].isupper():
-        return (1, name)
-    return (2, name)
+    return sorted(names, key=export_sort_key)
 
 
 def apply_exports(package_dir: Path, generated_dir: Path) -> Path:
@@ -249,10 +248,19 @@ def main() -> int:
     Returns:
         int: Process exit code — ``0`` on success.
     """
-    for path in regenerate(PACKAGE_DIR):
+    written, report = regenerate(PACKAGE_DIR)
+    for path in written:
         print(f"  + {path.relative_to(REPO_ROOT)}")
     updated = apply_exports(PACKAGE_DIR, PACKAGE_DIR)
     print(f"  ~ {updated.relative_to(REPO_ROOT)} (__all__)")
+    for entry in report.moved_paths:
+        print(f"  overlay: moved   {entry}")
+    for entry in report.added_operations:
+        print(f"  overlay: added   {entry}")
+    for entry in report.removed_operations:
+        print(f"  overlay: removed {entry}")
+    for entry in report.collisions:
+        print(f"  overlay: skipped — {entry}")
     return 0
 
 
