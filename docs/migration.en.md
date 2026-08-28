@@ -2,6 +2,200 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.260.0 — the OpenPix spec was refreshed, and every method was renamed
+
+Breaks **every** `OpenPixClient` caller: all 125 methods changed name. Also
+breaks anyone importing an operation-derived schema class, reading
+`OpenPixEnvironment.PRODUCTION`, or relying on `extra="allow"` on a model that
+is also a payload.
+
+### Why
+
+The vendored document was two versions behind the published one — `3.0.3`
+titled "OpenPix" against the `3.1.0` "Woovi" — and nothing in the repository
+measured that. The new document carries an `operationId` on **125 of 125**
+operations where the old one had none: the generator used to derive names from
+the path, and now uses the name the provider gave.
+
+This is upside wearing a break's clothes. `post_api_v1_charge` was the name you
+get when there is no name; `create_charge` is the operation's name.
+
+### What to do
+
+**1. Rename the calls.** Each row is a direct substitution. Of the 103, only
+three changed signature:
+
+| Method | Change |
+| --- | --- |
+| `update_customer` | the path parameter went from `correlation_id` to `id` — positional callers are fine, keyword callers are not |
+| `get_statement` | gained `company_bank_account`, optional |
+| `get_transaction` | gained `company_bank_account`, optional |
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import (
+    ChargePayload,
+    OpenPixClient,
+)
+
+
+async def charge(client: OpenPixClient, payload: ChargePayload) -> None:
+    """Create one charge with the renamed method."""
+    # up to v0.259.0: await client.post_api_v1_charge(body=payload)
+    await client.create_charge(body=payload)
+```
+
+| Before (v0.259.0) | Now (v0.260.0) |
+| --- | --- |
+| `get_api_image_qrcode_base64_by_id` | `get_charge_qr_code_base64` |
+| `post_api_v1_account` | `duplicate_account` |
+| `delete_api_v1_account_register_by_id` | `delete_account_register` |
+| `get_api_v1_account` | `list_accounts` |
+| `delete_api_v1_account_by_account_id` | `close_account` |
+| `get_api_v1_account_by_account_id` | `get_account` |
+| `post_api_v1_account_by_account_id_withdraw` | `withdraw_from_account` |
+| `delete_api_v1_application` | `delete_application` |
+| `post_api_v1_application` | `create_application` |
+| `post_api_v1_boleto_validate` | `validate_boleto` |
+| `post_api_v1_cashback_fidelity` | `create_cashback_fidelity` |
+| `get_api_v1_cashback_fidelity_balance_by_tax_id` | `get_cashback_fidelity_balance` |
+| `get_api_v1_charge` | `list_charges` |
+| `post_api_v1_charge` | `create_charge` |
+| `delete_api_v1_charge_by_id` | `delete_charge` |
+| `get_api_v1_charge_by_id` | `get_charge` |
+| `patch_api_v1_charge_by_id` | `update_charge` |
+| `get_api_v1_charge_by_id_refund` | `list_charge_refunds` |
+| `post_api_v1_charge_by_id_refund` | `refund_charge` |
+| `get_api_v1_company` | `get_company` |
+| `get_api_v1_customer` | `list_customers` |
+| `post_api_v1_customer` | `create_customer` |
+| `patch_api_v1_customer_by_correlation_id` | `update_customer` |
+| `get_api_v1_customer_by_id` | `get_customer` |
+| `post_api_v1_decode_emv` | `decode_emv` |
+| `get_api_v1_dispute` | `list_disputes` |
+| `get_api_v1_dispute_by_id` | `get_dispute` |
+| `post_api_v1_funds_recovery` | `create_funds_recovery` |
+| `get_api_v1_funds_recovery_by_id` | `get_funds_recovery` |
+| `post_api_v1_funds_recovery_by_id_cancel` | `cancel_funds_recovery` |
+| `get_api_v1_installments_by_id` | `get_installment` |
+| `post_api_v1_installments_by_id_cobr` | `create_installment_cobr` |
+| `post_api_v1_installments_by_id_cobr_retry` | `retry_installment_cobr` |
+| `get_api_v1_invoice` | `list_invoices` |
+| `post_api_v1_invoice` | `create_invoice` |
+| `get_api_v1_invoice_integration` | `get_invoice_integration` |
+| `patch_api_v1_invoice_integration` | `set_invoice_integration_status` |
+| `post_api_v1_invoice_integration` | `upsert_invoice_integration` |
+| `put_api_v1_invoice_integration` | `update_invoice_integration_tax_fields` |
+| `post_api_v1_invoice_integration_certificate` | `upload_invoice_integration_certificate` |
+| `post_api_v1_invoice_integration_test` | `test_invoice_integration` |
+| `post_api_v1_invoice_by_correlation_id_cancel` | `cancel_invoice` |
+| `get_api_v1_invoice_by_correlation_id_pdf` | `get_invoice_pdf` |
+| `get_api_v1_invoice_by_correlation_id_xml` | `get_invoice_xml` |
+| `post_api_v1_kyc_onboarding` | `create_kyc_onboarding` |
+| `get_api_v1_limits_by_account_id` | `get_account_limits` |
+| `get_api_v1_partner_affiliate` | `list_partner_affiliates` |
+| `post_api_v1_partner_application` | `create_partner_application` |
+| `get_api_v1_partner_company` | `list_partner_companies` |
+| `post_api_v1_partner_company` | `create_partner_company` |
+| `get_api_v1_partner_company_by_tax_id` | `get_partner_company` |
+| `get_api_v1_payment` | `list_payments` |
+| `post_api_v1_payment` | `create_payment` |
+| `post_api_v1_payment_approve` | `approve_payment` |
+| `get_api_v1_payment_by_id` | `get_payment` |
+| `get_api_v1_pix_keys` | `list_pix_keys` |
+| `post_api_v1_pix_keys` | `create_pix_key` |
+| `post_api_v1_pix_keys_check` | `check_pix_key` |
+| `get_api_v1_pix_keys_tokens` | `list_pix_key_tokens` |
+| `get_api_v1_pix_keys_tokens_logs` | `list_pix_key_token_logs` |
+| `delete_api_v1_pix_keys_by_pix_key` | `delete_pix_key` |
+| `get_api_v1_pix_keys_by_pix_key_check` | `check_pix_key_by_key` |
+| `put_api_v1_pix_keys_by_pix_key_default` | `set_default_pix_key` |
+| `get_api_v1_psp` | `list_psps` |
+| `get_api_v1_qrcode_static` | `list_static_qr_codes` |
+| `post_api_v1_qrcode_static` | `create_static_qr_code` |
+| `delete_api_v1_qrcode_static_by_id` | `delete_static_qr_code` |
+| `get_api_v1_qrcode_static_by_id` | `get_static_qr_code` |
+| `get_api_v1_receipt_by_receipt_type_by_end_to_end_id` | `get_receipt` |
+| `get_api_v1_refund` | `list_refunds` |
+| `post_api_v1_refund` | `create_refund` |
+| `get_api_v1_refund_by_id` | `get_refund` |
+| `post_api_v1_stablecoin_deposit` | `create_stablecoin_deposit` |
+| `post_api_v1_stablecoin_deposit_approve` | `approve_stablecoin_deposit` |
+| `get_api_v1_stablecoin_quote` | `get_stablecoin_quote` |
+| `get_api_v1_stablecoin_subaccount` | `list_stablecoin_subaccounts` |
+| `post_api_v1_stablecoin_subaccount` | `create_stablecoin_subaccount` |
+| `get_api_v1_stablecoin_subaccount_by_sub_account_id` | `get_stablecoin_subaccount` |
+| `get_api_v1_statement` | `get_statement` |
+| `get_api_v1_subaccount` | `list_subaccounts` |
+| `post_api_v1_subaccount` | `create_subaccount` |
+| `post_api_v1_subaccount_transfer` | `transfer_between_subaccounts` |
+| `delete_api_v1_subaccount_by_id` | `delete_subaccount` |
+| `get_api_v1_subaccount_by_id` | `get_subaccount` |
+| `post_api_v1_subaccount_by_id_credit` | `credit_subaccount` |
+| `post_api_v1_subaccount_by_id_debit` | `debit_subaccount` |
+| `get_api_v1_subaccount_by_id_statement` | `get_subaccount_statement` |
+| `post_api_v1_subaccount_by_id_withdraw` | `withdraw_from_subaccount` |
+| `get_api_v1_subscriptions` | `list_subscriptions` |
+| `post_api_v1_subscriptions` | `create_subscription` |
+| `get_api_v1_subscriptions_by_id` | `get_subscription` |
+| `put_api_v1_subscriptions_by_id_cancel` | `cancel_subscription` |
+| `get_api_v1_subscriptions_by_id_installments` | `list_subscription_installments` |
+| `put_api_v1_subscriptions_by_id_value` | `update_subscription_value` |
+| `get_api_v1_transaction` | `list_transactions` |
+| `get_api_v1_transaction_by_id` | `get_transaction` |
+| `post_api_v1_transfer` | `create_transfer` |
+| `get_api_v1_webhook` | `list_webhooks` |
+| `post_api_v1_webhook` | `create_webhook` |
+| `get_api_v1_webhook_events` | `list_webhook_events` |
+| `get_api_v1_webhook_ips` | `list_webhook_ips` |
+| `delete_api_v1_webhook_by_id` | `delete_webhook` |
+| `get_openpix_charge_brcode_image_id_png` | `get_charge_qr_code_image` |
+
+**2. Three methods have no direct replacement.**
+
+| Before | Now | What was wrong |
+| --- | --- | --- |
+| `post_api_v1_dispute_id_evidence(body=...)` | `upload_dispute_evidence(id, *, body=...)` | The path was `/api/v1/dispute/:id/evidence`, colon and all, and no argument named the dispute |
+| `get_api_v1_account_register()` | `get_account_register(id)` | The docstring said "by CorrelationID" and the method took nothing |
+| `delete_api_v1_payment_by_id(id)` | *removed* | The endpoint does not exist: the published document has only `get` on that path, and the DELETE Woovi documents is on `/api/v1/charge/{id}` |
+
+**3. Operation-derived schema classes were renamed.** The `components` ones
+were **not** — `Charge`, `ChargePayload`, `ChargeStatus`, `Transaction`,
+`Customer` are unchanged. The inline ones moved:
+
+The name up to v0.259.0 was `GetApiV1ChargeResponsePageInfo`. From v0.260.0:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import (
+    ListChargesResponsePageInfo,
+)
+```
+
+The pattern follows the method: `GetApiV1ChargeResponse…` becomes
+`ListChargesResponse…`, `PostApiV1PaymentBody…` becomes `CreatePaymentBody…`.
+
+**4. `OpenPixEnvironment.PRODUCTION` is now `https://api.woovi.com`.** That is
+`servers[0]` of the refreshed document. The old host is still up — measured
+2026-08-28, `GET /api/v1/charge` answers `401` on `api.openpix.com.br`,
+`api.woovi.com` and `api.woovi-sandbox.com` alike — so a service pinned to the
+old URL keeps working. If you assert the value in a test, update it.
+
+**5. If you read `model_extra` from a model that is also a payload.** A class
+reachable from a response **and** from a request body goes back to
+`extra="ignore"`. That is **4 classes on OpenPix** — `PreRegistrationPayloadObject`,
+which is the body and the `200` of the same operation, plus the three it
+reaches — and **25 on Mercado Pago**. The reason is what v0.259.0 already
+stated and could not enforce: an unexpected key on a payload is the caller's
+own typo, and carrying it to the provider is worse than dropping it.
+
+### What you get for free
+
+- 24 new operations: `anticipation` (7), `stablecoin` payout and wallets (7),
+  `boleto-transaction` (2), `kyc-validation` (2), `files`, `webhook/public-keys`.
+- `Transaction.webhook_sent[].status` becomes an `int` — it is an HTTP code.
+- `to_cents` and `reais_to_cents` refuse with `ValueError`, always. Before,
+  `"abc"` raised `decimal.InvalidOperation`, `None` raised `TypeError` and
+  `float("inf")` raised `OverflowError`.
+
 ## 0.259.0 — OpenPix money becomes `int`
 
 Breaks anyone who annotated a variable with the generated model's type, or who
@@ -13,13 +207,14 @@ compares a dump against an expected JSON string.
 
 - **monetary values** — `Charge.value`, `ChargePayload.value`,
   `ChargeRefundPayload.value`, `Transaction.value`, `SubAccount.balance`, every
-  `pix*Limit`, and the other 51 `value` fields in the document;
-- **counts and day offsets** — `skip` and `limit` (the pagination pair, on 27
-  operations each), `installmentsCount`, `dayDue`, `daysForDueDate`,
-  `expiresIn`.
+  `pix*Limit`, and the rest of the document's 50 `value` fields;
+- **counts and day offsets** — `skip` and `limit`, `installmentsCount`,
+  `dayDue`, `daysForDueDate`, `expiresIn`. The pagination pair appeared 27
+  times as a **response field** (`pageInfo`, `Pagination`) and on 6
+  operations as a query parameter.
 
-Woovi settles in whole centavos — the specification says so 35 times in its own
-field descriptions — and typed all of it `number`. The visible effect is on the
+Woovi settles in whole centavos — the specification says so in the field's own
+description on 58 numeric schemas — and typed all of it `number`. The visible effect is on the
 wire:
 
 ```python
@@ -32,10 +227,18 @@ ChargePayload(correlation_id="abc-1", value=1000).model_dump(
 # from v0.259.0:  {"correlationID": "abc-1", "value": 1000, ...}
 ```
 
-**18 fields stay `float`**, deliberately: `basePrice` (an exchange rate),
+**19 fields stay `float`**: `basePrice` (an exchange rate),
 `inputAmount`/`outputAmount` on the stablecoin quote (the first is documented
-as *"currency unit, not cents"*), `rate`, the rate-limit token bucket, and
-`annualRevenue`, whose unit the document does not state.
+as *"currency unit, not cents"*), `rate`, the rate-limit token bucket,
+`annualRevenue` and `Installment.expiration` — the last two with no unit stated
+in the document, which is why they were left alone.
+
+!!! warning "Corrected in v0.260.0"
+    This section originally said "18 fields", and that they were "the only ones
+    where the fraction is real". There were 19, and one of them was
+    `Transaction.webhookSent[].status`, described in the document itself as
+    *"HTTP response status code of the webhook delivery attempt"* — an HTTP
+    status code is never fractional. It became an `int` in v0.260.0.
 
 ### What to do
 

@@ -5,6 +5,178 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.260.0] — 2026-08-28
+
+### Added
+
+- **Procedência do documento vendorizado — `vendor/PROVENANCE.md` +
+  `SPEC_SHA256`.** O overlay da OpenPix foi desenhado sobre uma promessa: o
+  documento vendorizado continua byte a byte o que a Woovi publica, e tudo
+  que a gente sabe que ele erra vive fora dele. Nada registrava nem
+  verificava isso — `test_specification_is_vendored` checava existência e
+  `st_size > 100_000`, então editar o YAML à mão e regenerar passava verde,
+  e ninguém conseguia dizer de qual publicação o arquivo tinha vindo.
+
+  Agora o digest está em `scripts/regen_openpix.py` e um teste o compara.
+  `make openpix-fetch` rebaixa o documento e imprime o hash novo;
+  `make openpix-diff` relata a distância entre o vendorizado e o publicado,
+  sem gatear nada — a resposta a uma divergência é julgamento, não build
+  vermelho.
+
+- **`tests/openapi/test_parse.py::TestPathTemplateGaps`.** Dois guards no
+  gerador, escritos sobre as duas formas que de fato shipparam. Path com
+  sintaxe Express (`/dispute/:id/evidence`) passa a ser anotado — não é
+  templating de OpenAPI, o dois-pontos ia literal na URL. E parâmetro
+  declarado `in: path` cujo placeholder não existe no template passa a
+  chegar ao arquivo gerado: a nota existia, mas `_build_parameters` rodava
+  fora do `capture()` da operação, então morria no sumário.
+
+- **`TestWhatTheOverlayLeavesAlone`.** O overlay tinha teste para tudo que
+  corrige e nenhum para o que deixa passar — que é onde ele estava errado.
+  O conjunto de campos que continuam `float` virou pin: `number` novo num
+  refresh falha, de propósito.
+
+### Changed
+
+- **BREAKING — a spec da OpenPix foi refrescada, e os 125 métodos mudaram
+  de nome.** O documento vendorizado estava duas versões atrás: `3.0.3`
+  intitulado "OpenPix" contra o `3.1.0` "Woovi" que o provedor publica,
+  105 operações contra 125.
+
+  O documento novo traz `operationId` em **125 de 125** operações; o antigo
+  tinha zero, e o gerador derivava nome do path. Então
+  `post_api_v1_charge` virou `create_charge`, `get_api_v1_charge_by_id`
+  virou `get_charge`, `get_api_v1_charge` virou `list_charges` — 103
+  renomeações, com tabela completa em `docs/migration.md`.
+
+  ```python
+  from tempest_fastapi_sdk.integrations.payment.openpix import (
+      ChargePayload,
+      OpenPixClient,
+  )
+
+  # até a v0.259.0: await client.post_api_v1_charge(body=payload)
+  # a partir da v0.260.0:
+  async def cobrar(client: OpenPixClient, payload: ChargePayload) -> None:
+      """Create one charge with the renamed method."""
+      await client.create_charge(body=payload)
+  ```
+
+  Schemas de `components` mantiveram o nome (`Charge`, `ChargePayload`,
+  `ChargeStatus`); o que mudou foi o nome das classes inline derivadas de
+  operação — `GetApiV1ChargeResponsePageInfo` virou
+  `ListChargesResponsePageInfo`.
+
+  A superfície foi de 373 para **686 schemas** e de 106 para **125
+  operações**: entram `anticipation` (7), `stablecoin` payout e wallets
+  (7), `boleto-transaction` (2), `kyc-validation` (2), `files` e
+  `webhook/public-keys`.
+
+- **BREAKING — dois métodos que não podiam funcionar foram substituídos.**
+  Não é regressão do refresh: eram defeitos que a Woovi publicou, corrigiu
+  no documento, e que a gente carregava congelados.
+
+  - `post_api_v1_dispute_id_evidence` montava
+    `path = "/api/v1/dispute/:id/evidence"` — dois-pontos literal na URL — e
+    a assinatura só recebia `body`, sem nenhuma forma de nomear a disputa.
+    Agora é `upload_dispute_evidence(id, *, body)`.
+  - `get_api_v1_account_register` tinha docstring "Get account register by
+    CorrelationID" e **zero argumentos**. Agora é `get_account_register(id)`.
+
+- **BREAKING — `OpenPixEnvironment.PRODUCTION` passa a ser
+  `https://api.woovi.com`.** É o `servers[0]` do documento refrescado, e
+  alinha o enum com o `DEFAULT_BASE_URL` gerado, que já vinha de lá. O host
+  antigo continua no ar: medido 2026-08-28, `GET /api/v1/charge` devolve
+  `401` em `api.openpix.com.br`, `api.woovi.com` e `api.woovi-sandbox.com`
+  igualmente, então serviço fixado no nome antigo segue funcionando.
+
+- **BREAKING — model de payload volta a recusar chave inesperada quando
+  também é resposta.** A v0.259.0 marcava `extra="allow"` por
+  alcançabilidade a partir da resposta, e classe que é **as duas coisas**
+  caía na regra errada. Na OpenPix a âncora é `PreRegistrationPayloadObject`,
+  body e `200` da mesma operação, onde `model_validate({"usre": {...}})` levava
+  o typo do caller para o provedor no dump. Agora o fecho do body é subtraído
+  do fecho da resposta: **4 classes voltam para `extra="ignore"` na OpenPix**
+  (a âncora e as três que ela alcança) e **25 na Mercado Pago**.
+
+- **`Transaction.webhookSent[].status` passa a ser `int`.** O documento o
+  tipa `number` e o descreve como *"HTTP response status code of the
+  webhook delivery attempt"*. Vira inteiro por `STATUS_CODE_PATTERN`, regra
+  de descrição — `status` não entrou no allowlist de nome, porque afirmar
+  que todo `status` de qualquer API é inteiro seria o palpite que o overlay
+  existe para evitar.
+
+- **BREAKING — o SDK oficial do Mercado Pago passa a ser a autoridade sobre a
+  API.** O provedor **não publica OpenAPI** — medido em 2026-08-28,
+  `api.mercadopago.com/openapi{,.json}` respondem `404` e a org no GitHub não
+  tem repositório de spec —, então `vendor/mercadopago-openapi.yaml` não tem
+  upstream e ninguém sabe como foi montado.
+
+  A autoridade passou a ser `mercadopago` no PyPI (3.5.0), escrito pelo
+  provedor, que soletra a URL de toda operação que chama. **A regra é
+  autoridade em conflito, não teto de superfície:** onde os dois discordam o
+  SDK vence; onde o SDK é silencioso o nosso documento fica, porque ele é
+  wrapper fino e as 82 operações que só nós carregamos respondem `401`/`403`,
+  não `404`.
+
+  `make mercadopago-diff` baixa o sdist e relata as duas direções. A que
+  importa — o que o SDK chama e não modelamos — está em **zero**, e
+  `TestTheSdkIsTheAuthority` fixa isso offline contra `OFFICIAL_SDK_CALLS`.
+
+  **Duas rotas corrigidas:**
+
+  | Antes | Agora |
+  | --- | --- |
+  | `DELETE /v1/customers/{id}/delete` | `DELETE /v1/customers/{id}` |
+  | `GET /authorized_payments` | `GET /authorized_payments/search` |
+
+  `MercadoPagoClient.delete_customer` montava a primeira: um método que nunca
+  poderia ter funcionado, a mesma forma do `:id` da OpenPix.
+
+  **Sete operações adicionadas** — `get_authenticated_user`,
+  `search_advanced_payments`, `search_chargebacks`,
+  `list_disbursement_refunds`, `create_disbursement_refunds`,
+  `create_disbursement_refund`, `update_advanced_payment_release_date`. Corpo
+  e resposta são `dict[str, Any]`: path e verbo são medidos, a forma não, e
+  este repositório não tem credencial para observá-la.
+
+  **Três operações removidas** — `GET /instore/integrator`, `GET /stores/{id}`
+  e `GET /post-purchase/v1/claims/reasons/{id}`, que respondem `404` onde a
+  vizinhança responde `401`/`403` e não têm contraparte no SDK. O
+  `PATCH /instore/integrator` fica: `404` é por método, e nenhuma sonda falou
+  pelo `PATCH`.
+
+  A superfície vai de 324/143 para **323 schemas / 147 operações**.
+
+### Fixed
+
+- **`to_cents` e `reais_to_cents` recusam com `ValueError`, sempre.** A
+  docstring prometia só `ValueError`, e quatro entradas escapavam: `"abc"` e
+  `""` levantavam `decimal.InvalidOperation`, `None` levantava `TypeError`,
+  `float("inf")` levantava `OverflowError`. É exatamente o input para o qual
+  a migração recomenda a função — payload cru, corpo de webhook — e quem
+  escrevia `except ValueError` em volta de conversão de dinheiro não pegava
+  nenhuma das quatro.
+
+- **`DELETE /api/v1/payment/{id}` foi removido.** A v0.259.0 o adicionou ao
+  overlay e publicou `delete_api_v1_payment_by_id`, com docstring afirmando
+  que cancela um pagamento pendente. O documento publicado tem só `get`
+  nesse path, e nenhum caminho de payment tem `delete` — o DELETE que a
+  Woovi documenta é em `/api/v1/charge/{id}`. Corrigir um documento é para o
+  que ele erra; endpoint que ninguém observou é palpite.
+
+- **`__all__` gerado volta a passar no `RUF022`.** A ordenação do gerador
+  era de string, e a do ruff é natural: com o contador de desambiguação
+  chegando a dois dígitos no documento novo, ele queria `...Orig9` antes de
+  `...Orig10`. A chave virou `scripts/export_order.py`, compartilhada pelos
+  dois geradores em vez de duplicada.
+
+- **Números da v0.259.0 corrigidos na doc.** "18 campos continuam `float`"
+  eram 19; "`skip` e `limit` em 27 operações cada" contava campo de
+  **resposta**, e só 6 operações os recebiam como query param; "os demais 51
+  `value`" eram 50; e "105 operações" era o número de antes da própria
+  release, que shippou 106. Detalhe em `vendor/openpix-evidence.md`.
+
 ## [0.259.0] — 2026-08-27
 
 ### Added

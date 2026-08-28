@@ -807,25 +807,68 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   store, o que perderia justamente os relatos do incidente em curso. Receita:
   `docs/recipes/app-errors.md`.
 - **Overlay da spec da OpenPix (v0.259.0)** — `scripts/openpix_overlay.py`.
-  `vendor/openpix-openapi.yaml` continua byte a byte o documento do provedor,
+  `vendor/openpix-openapi.json` continua byte a byte o documento do provedor,
   então refresh upstream é diff só do que **eles** mudaram; tudo que a gente
   sabe que o documento erra vive no overlay, uma correção nomeada por vez com a
   evidência ao lado, aplicada antes de gerar. Três famílias: (1) **unidade
   inteira** — 154 campos `number` que são centavo ou contagem viram `integer`,
   com a descrição lida **antes** do nome porque `inputAmount` é centavo na
   lista de depósito e é "currency unit, not cents" na cotação de stablecoin;
-  os 18 genuinamente fracionários ficam `float`. (2) **campos que a resposta
+  os genuinamente fracionários ficam `float`. (2) **campos que a resposta
   traz e o documento não declara** — `Charge.fee`, `Charge.discount`,
   `Charge.value_with_discount`, `ChargeRefund.refund_id`; sem declaração o
   `extra="ignore"` os descartava, e quem gravava `charge.fee` num ledger
-  escreveria zero em toda linha. (3) **uma operação que o documento omite** —
-  `delete_api_v1_payment_by_id`, o caminho de recuperação do fluxo de
-  transferência em dois passos; devolve `dict[str, Any]` porque este repo não
-  tem credencial para observar o corpo, e modelar shape não medido é pior que
-  não modelar. O overlay se aposenta sozinho: propriedade que o provedor
-  passar a declarar não é sobrescrita. Testes: `tests/integrations/payment/
+  escreveria zero em toda linha. Uma terceira família — um `DELETE` de payment
+  que o documento omitiria — foi **removida na v0.260.0**: o endpoint não
+  existe. O overlay se aposenta sozinho: propriedade que o provedor passar a
+  declarar não é sobrescrita. Testes: `tests/integrations/payment/
   openpix/test_overlay.py`. Recipe: `openpix.md`, seção "O que este pacote
   corrige na spec".
+- **Refresh da spec da OpenPix + procedência vendorizada (v0.260.0)** — o
+  documento estava duas versões atrás (`3.0.3` "OpenPix" contra `3.1.0`
+  "Woovi"), e nada media isso: `test_specification_is_vendored` checava
+  existência e tamanho. Agora `vendor/openpix-openapi.json` é guardado como o
+  provedor serve (JSON, sem reformatar), o sha256 vive em `SPEC_SHA256` e um
+  teste o compara — editar o vendorizado à mão passou a falhar.
+  `make openpix-fetch` rebaixa e imprime o digest novo, `make openpix-diff`
+  relata a distância contra o publicado, e `vendor/PROVENANCE.md` +
+  `vendor/openpix-evidence.md` guardam de onde cada documento veio e o que foi
+  medido. **Breaking:** o documento novo traz `operationId` em 125 de 125
+  operações onde o antigo tinha zero, então os 125 métodos mudaram de nome
+  (`post_api_v1_charge` → `create_charge`); superfície foi de 373/106 para
+  **686 schemas / 125 operações**; `OpenPixEnvironment.PRODUCTION` virou
+  `https://api.woovi.com`. Tabela de renomeação em `docs/migration.md`.
+- **Dois métodos que não podiam funcionar, corrigidos na raiz (v0.260.0)** —
+  `post_api_v1_dispute_id_evidence` montava `/api/v1/dispute/:id/evidence`, com
+  dois-pontos literal na URL e sem argumento para nomear a disputa;
+  `get_api_v1_account_register` dizia "by CorrelationID" e não recebia nada. Os
+  dois vinham de defeitos que a Woovi publicou e já corrigiu. O gerador ganhou
+  os guards que faltavam: path com sintaxe Express vira nota, e parâmetro
+  `in: path` sem placeholder no template passa a chegar ao arquivo gerado — a
+  nota existia, mas morria no sumário porque `_build_parameters` rodava fora do
+  `capture()` da operação. Testes: `tests/openapi/test_parse.py::
+  TestPathTemplateGaps`.
+- **SDK oficial do Mercado Pago vira a autoridade (v0.260.0)** — o provedor
+  não publica OpenAPI (`api.mercadopago.com/openapi{,.json}` → `404`, nenhum
+  repo de spec na org), então o vendorizado não tem upstream. `mercadopago`
+  no PyPI (3.5.0) passou a ser a autoridade **em conflito, não teto**: onde
+  discordam o SDK vence, onde ele é silencioso o documento fica — ele é
+  wrapper fino, e as 82 operações que só nós temos respondem `401`/`403`.
+  `make mercadopago-diff` relata as duas direções; a que importa está em zero,
+  fixada offline por `TestTheSdkIsTheAuthority` contra `OFFICIAL_SDK_CALLS`.
+  Duas rotas corrigidas (`DELETE /v1/customers/{id}/delete` →
+  `/v1/customers/{id}`, `GET /authorized_payments` → `/authorized_payments/
+  search`), sete adicionadas com `dict[str, Any]` nos dois lados (path e verbo
+  medidos, forma não), três `GET` removidas por responderem `404`. Duas
+  armadilhas de leitura medidas: regex atribui verbo de chamada multi-linha à
+  URL seguinte (3 fantasmas), e ler só literal esconde URL montada em variável
+  (2 operações reais). Evidência: `vendor/mercadopago-evidence.md`.
+- **`extra="allow"` para de vazar para payload (v0.260.0)** — classe alcançável
+  pela resposta **e** pelo request body volta a `extra="ignore"`; o fecho do
+  body é subtraído do fecho da resposta. São 4 classes na OpenPix — a âncora
+  `PreRegistrationPayloadObject`, body e `200` da mesma operação, onde o typo
+  do caller ia para o provedor no dump, mais as três que ela alcança — e 25 na
+  Mercado Pago. Guard: `TestPayloadModelsNeverAllowExtra`.
 - **Model de resposta gerado usa `extra="allow"` (v0.259.0)** — vale para toda
   integração gerada, e é transitivo, porque o objeto aninhado é onde o campo
   descartado se esconde. Model de payload continua `extra="ignore"`: ali chave
@@ -1234,7 +1277,7 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Bundled integrations (v0.215.0)** — `tempest_fastapi_sdk.integrations.<kind>.<provider>`,
   grouped by **what the provider does**, not by vendor. **`integrations.payment.openpix`**
   ships the *whole* OpenPix API: 358 schemas + 105 operations generated from the
-  spec pinned at `vendor/openpix-openapi.yaml` and **checked in**, so no service
+  spec pinned at `vendor/openpix-openapi.json` and **checked in**, so no service
   runs the generator. `scripts/regen_openpix.py` (`make openpix-regen`) is the
   only way to produce them and a **drift test fails on any hand edit**;
   `--name open_pix` is what yields `OpenPixClient` (not `Openpix…`), fed in at

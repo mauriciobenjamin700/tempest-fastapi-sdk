@@ -2,6 +2,201 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.260.0 — a spec da OpenPix foi refrescada, e os métodos mudaram de nome
+
+Quebra **todo** chamador do `OpenPixClient`: os 125 métodos mudaram de nome.
+Quebra também quem importa classe de schema derivada de operação, quem lê
+`OpenPixEnvironment.PRODUCTION`, e quem dependia de `extra="allow"` num model
+que também é payload.
+
+### Por que
+
+O documento vendorizado estava duas versões atrás do publicado — `3.0.3`
+intitulado "OpenPix" contra o `3.1.0` "Woovi" —, e nada no repositório media
+isso. O documento novo traz `operationId` em **125 de 125** operações, onde o
+antigo tinha zero: o gerador derivava nome do path, e agora usa o nome que o
+provedor deu.
+
+Isso é upside disfarçado de quebra. `post_api_v1_charge` era o nome que sobrava
+de não haver nome; `create_charge` é o nome da operação.
+
+### O que fazer
+
+**1. Renomeie as chamadas.** Cada linha é uma substituição direta. Das 103, só
+três mudaram de assinatura:
+
+| Método | Mudança |
+| --- | --- |
+| `update_customer` | o path param passou de `correlation_id` para `id` — quem chamava por posição não sente, quem chamava por keyword sim |
+| `get_statement` | ganhou `company_bank_account`, opcional |
+| `get_transaction` | ganhou `company_bank_account`, opcional |
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import (
+    ChargePayload,
+    OpenPixClient,
+)
+
+
+async def cobrar(client: OpenPixClient, payload: ChargePayload) -> None:
+    """Create one charge with the renamed method."""
+    # até a v0.259.0: await client.post_api_v1_charge(body=payload)
+    await client.create_charge(body=payload)
+```
+
+| Antes (v0.259.0) | Agora (v0.260.0) |
+| --- | --- |
+| `get_api_image_qrcode_base64_by_id` | `get_charge_qr_code_base64` |
+| `post_api_v1_account` | `duplicate_account` |
+| `delete_api_v1_account_register_by_id` | `delete_account_register` |
+| `get_api_v1_account` | `list_accounts` |
+| `delete_api_v1_account_by_account_id` | `close_account` |
+| `get_api_v1_account_by_account_id` | `get_account` |
+| `post_api_v1_account_by_account_id_withdraw` | `withdraw_from_account` |
+| `delete_api_v1_application` | `delete_application` |
+| `post_api_v1_application` | `create_application` |
+| `post_api_v1_boleto_validate` | `validate_boleto` |
+| `post_api_v1_cashback_fidelity` | `create_cashback_fidelity` |
+| `get_api_v1_cashback_fidelity_balance_by_tax_id` | `get_cashback_fidelity_balance` |
+| `get_api_v1_charge` | `list_charges` |
+| `post_api_v1_charge` | `create_charge` |
+| `delete_api_v1_charge_by_id` | `delete_charge` |
+| `get_api_v1_charge_by_id` | `get_charge` |
+| `patch_api_v1_charge_by_id` | `update_charge` |
+| `get_api_v1_charge_by_id_refund` | `list_charge_refunds` |
+| `post_api_v1_charge_by_id_refund` | `refund_charge` |
+| `get_api_v1_company` | `get_company` |
+| `get_api_v1_customer` | `list_customers` |
+| `post_api_v1_customer` | `create_customer` |
+| `patch_api_v1_customer_by_correlation_id` | `update_customer` |
+| `get_api_v1_customer_by_id` | `get_customer` |
+| `post_api_v1_decode_emv` | `decode_emv` |
+| `get_api_v1_dispute` | `list_disputes` |
+| `get_api_v1_dispute_by_id` | `get_dispute` |
+| `post_api_v1_funds_recovery` | `create_funds_recovery` |
+| `get_api_v1_funds_recovery_by_id` | `get_funds_recovery` |
+| `post_api_v1_funds_recovery_by_id_cancel` | `cancel_funds_recovery` |
+| `get_api_v1_installments_by_id` | `get_installment` |
+| `post_api_v1_installments_by_id_cobr` | `create_installment_cobr` |
+| `post_api_v1_installments_by_id_cobr_retry` | `retry_installment_cobr` |
+| `get_api_v1_invoice` | `list_invoices` |
+| `post_api_v1_invoice` | `create_invoice` |
+| `get_api_v1_invoice_integration` | `get_invoice_integration` |
+| `patch_api_v1_invoice_integration` | `set_invoice_integration_status` |
+| `post_api_v1_invoice_integration` | `upsert_invoice_integration` |
+| `put_api_v1_invoice_integration` | `update_invoice_integration_tax_fields` |
+| `post_api_v1_invoice_integration_certificate` | `upload_invoice_integration_certificate` |
+| `post_api_v1_invoice_integration_test` | `test_invoice_integration` |
+| `post_api_v1_invoice_by_correlation_id_cancel` | `cancel_invoice` |
+| `get_api_v1_invoice_by_correlation_id_pdf` | `get_invoice_pdf` |
+| `get_api_v1_invoice_by_correlation_id_xml` | `get_invoice_xml` |
+| `post_api_v1_kyc_onboarding` | `create_kyc_onboarding` |
+| `get_api_v1_limits_by_account_id` | `get_account_limits` |
+| `get_api_v1_partner_affiliate` | `list_partner_affiliates` |
+| `post_api_v1_partner_application` | `create_partner_application` |
+| `get_api_v1_partner_company` | `list_partner_companies` |
+| `post_api_v1_partner_company` | `create_partner_company` |
+| `get_api_v1_partner_company_by_tax_id` | `get_partner_company` |
+| `get_api_v1_payment` | `list_payments` |
+| `post_api_v1_payment` | `create_payment` |
+| `post_api_v1_payment_approve` | `approve_payment` |
+| `get_api_v1_payment_by_id` | `get_payment` |
+| `get_api_v1_pix_keys` | `list_pix_keys` |
+| `post_api_v1_pix_keys` | `create_pix_key` |
+| `post_api_v1_pix_keys_check` | `check_pix_key` |
+| `get_api_v1_pix_keys_tokens` | `list_pix_key_tokens` |
+| `get_api_v1_pix_keys_tokens_logs` | `list_pix_key_token_logs` |
+| `delete_api_v1_pix_keys_by_pix_key` | `delete_pix_key` |
+| `get_api_v1_pix_keys_by_pix_key_check` | `check_pix_key_by_key` |
+| `put_api_v1_pix_keys_by_pix_key_default` | `set_default_pix_key` |
+| `get_api_v1_psp` | `list_psps` |
+| `get_api_v1_qrcode_static` | `list_static_qr_codes` |
+| `post_api_v1_qrcode_static` | `create_static_qr_code` |
+| `delete_api_v1_qrcode_static_by_id` | `delete_static_qr_code` |
+| `get_api_v1_qrcode_static_by_id` | `get_static_qr_code` |
+| `get_api_v1_receipt_by_receipt_type_by_end_to_end_id` | `get_receipt` |
+| `get_api_v1_refund` | `list_refunds` |
+| `post_api_v1_refund` | `create_refund` |
+| `get_api_v1_refund_by_id` | `get_refund` |
+| `post_api_v1_stablecoin_deposit` | `create_stablecoin_deposit` |
+| `post_api_v1_stablecoin_deposit_approve` | `approve_stablecoin_deposit` |
+| `get_api_v1_stablecoin_quote` | `get_stablecoin_quote` |
+| `get_api_v1_stablecoin_subaccount` | `list_stablecoin_subaccounts` |
+| `post_api_v1_stablecoin_subaccount` | `create_stablecoin_subaccount` |
+| `get_api_v1_stablecoin_subaccount_by_sub_account_id` | `get_stablecoin_subaccount` |
+| `get_api_v1_statement` | `get_statement` |
+| `get_api_v1_subaccount` | `list_subaccounts` |
+| `post_api_v1_subaccount` | `create_subaccount` |
+| `post_api_v1_subaccount_transfer` | `transfer_between_subaccounts` |
+| `delete_api_v1_subaccount_by_id` | `delete_subaccount` |
+| `get_api_v1_subaccount_by_id` | `get_subaccount` |
+| `post_api_v1_subaccount_by_id_credit` | `credit_subaccount` |
+| `post_api_v1_subaccount_by_id_debit` | `debit_subaccount` |
+| `get_api_v1_subaccount_by_id_statement` | `get_subaccount_statement` |
+| `post_api_v1_subaccount_by_id_withdraw` | `withdraw_from_subaccount` |
+| `get_api_v1_subscriptions` | `list_subscriptions` |
+| `post_api_v1_subscriptions` | `create_subscription` |
+| `get_api_v1_subscriptions_by_id` | `get_subscription` |
+| `put_api_v1_subscriptions_by_id_cancel` | `cancel_subscription` |
+| `get_api_v1_subscriptions_by_id_installments` | `list_subscription_installments` |
+| `put_api_v1_subscriptions_by_id_value` | `update_subscription_value` |
+| `get_api_v1_transaction` | `list_transactions` |
+| `get_api_v1_transaction_by_id` | `get_transaction` |
+| `post_api_v1_transfer` | `create_transfer` |
+| `get_api_v1_webhook` | `list_webhooks` |
+| `post_api_v1_webhook` | `create_webhook` |
+| `get_api_v1_webhook_events` | `list_webhook_events` |
+| `get_api_v1_webhook_ips` | `list_webhook_ips` |
+| `delete_api_v1_webhook_by_id` | `delete_webhook` |
+| `get_openpix_charge_brcode_image_id_png` | `get_charge_qr_code_image` |
+
+**2. Três métodos não têm substituição direta.**
+
+| Antes | Agora | O que estava errado |
+| --- | --- | --- |
+| `post_api_v1_dispute_id_evidence(body=...)` | `upload_dispute_evidence(id, *, body=...)` | O path era `/api/v1/dispute/:id/evidence`, com dois-pontos literal na URL, e não havia argumento para nomear a disputa |
+| `get_api_v1_account_register()` | `get_account_register(id)` | Docstring dizia "by CorrelationID" e o método não recebia nada |
+| `delete_api_v1_payment_by_id(id)` | *removido* | O endpoint não existe: o documento publicado tem só `get` nesse path, e o DELETE que a Woovi documenta é em `/api/v1/charge/{id}` |
+
+**3. Classe de schema derivada de operação mudou de nome.** As de
+`components` **não** mudaram — `Charge`, `ChargePayload`, `ChargeStatus`,
+`Transaction`, `Customer` seguem iguais. O que mudou é o inline:
+
+O nome que existia até a v0.259.0 era `GetApiV1ChargeResponsePageInfo`. A
+partir da v0.260.0:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import (
+    ListChargesResponsePageInfo,
+)
+```
+
+O padrão é o mesmo do método: `GetApiV1ChargeResponse…` vira
+`ListChargesResponse…`, `PostApiV1PaymentBody…` vira `CreatePaymentBody…`.
+
+**4. `OpenPixEnvironment.PRODUCTION` agora é `https://api.woovi.com`.** É o
+`servers[0]` do documento refrescado. O host antigo continua no ar — medido em
+2026-08-28, `GET /api/v1/charge` devolve `401` em `api.openpix.com.br`,
+`api.woovi.com` e `api.woovi-sandbox.com` igualmente —, então serviço com a URL
+fixada não quebra. Se você assere o valor em teste, atualize a expectativa.
+
+**5. Se você lia `model_extra` de um model que também é payload.** Uma classe
+alcançável pela resposta **e** pelo request body volta a `extra="ignore"`. São
+**4 classes na OpenPix** — `PreRegistrationPayloadObject`, que é o body e o
+`200` da mesma operação, mais as três que ela alcança — e **25 na Mercado
+Pago**. O motivo é o que a v0.259.0 já dizia e não conseguia cumprir: chave
+inesperada num payload é typo de quem chamou, e levá-la ao provedor é pior que
+descartar.
+
+### O que ganha sem fazer nada
+
+- 24 operações novas: `anticipation` (7), `stablecoin` payout e wallets (7),
+  `boleto-transaction` (2), `kyc-validation` (2), `files`, `webhook/public-keys`.
+- `Transaction.webhook_sent[].status` passa a ser `int` — é um código HTTP.
+- `to_cents` e `reais_to_cents` recusam **sempre** com `ValueError`. Antes,
+  `"abc"` levantava `decimal.InvalidOperation`, `None` levantava `TypeError` e
+  `float("inf")` levantava `OverflowError`.
+
 ## 0.259.0 — dinheiro da OpenPix passa a ser `int`
 
 Quebra quem anotou variável com o tipo do model gerado, ou quem compara o dump
@@ -13,13 +208,15 @@ com um JSON esperado.
 
 - **valor monetário** — `Charge.value`, `ChargePayload.value`,
   `ChargeRefundPayload.value`, `Transaction.value`, `SubAccount.balance`, todos
-  os `pix*Limit`, e os demais 51 `value` do documento;
-- **contagem e offset de dia** — `skip` e `limit` (o par de paginação, em 27
-  operações cada), `installmentsCount`, `dayDue`, `daysForDueDate`,
-  `expiresIn`.
+  os `pix*Limit`, e os demais dos 50 `value` do documento;
+- **contagem e offset de dia** — `skip` e `limit`, `installmentsCount`,
+  `dayDue`, `daysForDueDate`, `expiresIn`. O par de paginação aparecia 27
+  vezes como **campo de resposta** (`pageInfo`, `Pagination`) e em 6
+  operações como query param.
 
-A Woovi liquida em centavo inteiro — a própria spec diz isso 35 vezes na
-descrição do campo — e tipava tudo como `number`. O efeito visível é no fio:
+A Woovi liquida em centavo inteiro — a própria spec diz isso na descrição do
+campo, em 58 schemas numéricos — e tipava tudo como `number`. O efeito
+visível é no fio:
 
 ```python
 from tempest_fastapi_sdk.integrations.payment.openpix import ChargePayload
@@ -31,10 +228,18 @@ ChargePayload(correlation_id="abc-1", value=1000).model_dump(
 # a partir da v0.259.0: {"correlationID": "abc-1", "value": 1000, ...}
 ```
 
-**18 campos continuam `float`**, e de propósito: `basePrice` (taxa de câmbio),
+**19 campos continuam `float`**: `basePrice` (taxa de câmbio),
 `inputAmount`/`outputAmount` da cotação de stablecoin (o primeiro é
 documentado como *"currency unit, not cents"*), `rate`, o balde de tokens de
-rate limit, e `annualRevenue`, cuja unidade o documento não declara.
+rate limit, `annualRevenue` e `Installment.expiration` — os dois últimos sem
+unidade declarada no documento, e por isso deixados como estavam.
+
+!!! warning "Corrigido na v0.260.0"
+    Esta seção dizia originalmente "18 campos", e que eles eram "os únicos onde
+    a fração é real". Eram 19, e um deles era
+    `Transaction.webhookSent[].status`, descrito no próprio documento como
+    *"HTTP response status code of the webhook delivery attempt"* — código HTTP
+    nunca é fracionário. Ele virou `int` na v0.260.0.
 
 ### O que fazer
 
