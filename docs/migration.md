@@ -2,6 +2,64 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.261.0 — o router WebSocket manda um `hello` antes de tudo
+
+Quebra cliente que lê o **primeiro** frame por posição. Cliente que despacha
+por `type` e ignora o que não conhece não sente nada.
+
+### O que muda
+
+O primeiro frame que `make_websocket_router` manda passou a ser:
+
+```json
+{"type": "hello", "data": {"heartbeat_seconds": 30}, "request_id": null}
+```
+
+Antes, o primeiro frame do servidor era o `ping`, ou o que o seu handler
+mandasse.
+
+### O que fazer
+
+**1. Se o seu cliente lê o primeiro frame por posição, consuma o `hello`.**
+
+```javascript
+// até a v0.260.0
+socket.onmessage = (event) => {
+  const first = JSON.parse(event.data);   // era ping ou dado de aplicação
+};
+
+// a partir da v0.261.0 — despache por tipo, que é estável
+socket.onmessage = (event) => {
+  const frame = JSON.parse(event.data);
+  if (frame.type === "hello") {
+    calibrateWatchdog(frame.data.heartbeat_seconds);
+    return;
+  }
+  if (frame.type === "ping") {
+    socket.send(JSON.stringify({ type: "pong", data: {} }));
+    return;
+  }
+  handle(frame);
+};
+```
+
+**2. Aproveite o número.** O socket do browser só reporta conexão que fecha
+limpo; um link que morre em voo deixa o `readyState` em `OPEN` com nada
+chegando nunca mais. O watchdog de silêncio do cliente não é opcional, e
+calibrá-lo pelo `hello` significa que retunar `WS_HEARTBEAT_SECONDS` no
+servidor não faz mais todo cliente confundir intervalo normal com queda.
+
+### O que ganha sem fazer nada
+
+- **Qualquer frame de entrada conta como prova de vida.** Antes só `pong`
+  contava, então um cliente ocupado respondendo outra coisa podia cruzar o
+  deadline e ser fechado com `4408`. O `pong` continua sendo consumido antes
+  do handler.
+- **`heartbeat` virou público**, utilizável em endpoint sem auth e sem hub.
+  Receita em `docs/recipes/websocket.md`, seção "Heartbeat sem o router".
+- **`CompactPaginationSchema`/`CompactPaginationFilterSchema`**, para quem
+  publica `size` em vez de `page_size`. Nada muda para quem não usa.
+
 ## 0.260.0 — a spec da OpenPix foi refrescada, e os métodos mudaram de nome
 
 Quebra **todo** chamador do `OpenPixClient`: os 125 métodos mudaram de nome.

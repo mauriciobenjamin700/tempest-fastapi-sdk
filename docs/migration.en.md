@@ -2,6 +2,65 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.261.0 — the WebSocket router sends a `hello` first
+
+Breaks a client that reads the **first** frame positionally. A client that
+dispatches on `type` and ignores what it does not know is unaffected.
+
+### What changes
+
+The first frame `make_websocket_router` sends is now:
+
+```json
+{"type": "hello", "data": {"heartbeat_seconds": 30}, "request_id": null}
+```
+
+Before, the server's first frame was the `ping`, or whatever your handler
+sent.
+
+### What to do
+
+**1. If your client reads the first frame positionally, consume the `hello`.**
+
+```javascript
+// up to v0.260.0
+socket.onmessage = (event) => {
+  const first = JSON.parse(event.data);   // was a ping, or application data
+};
+
+// from v0.261.0 — dispatch on type, which is stable
+socket.onmessage = (event) => {
+  const frame = JSON.parse(event.data);
+  if (frame.type === "hello") {
+    calibrateWatchdog(frame.data.heartbeat_seconds);
+    return;
+  }
+  if (frame.type === "ping") {
+    socket.send(JSON.stringify({ type: "pong", data: {} }));
+    return;
+  }
+  handle(frame);
+};
+```
+
+**2. Use the number.** A browser socket only reports a connection that closes
+cleanly; a link that dies in flight leaves `readyState` at `OPEN` with nothing
+ever arriving again. The client's silence watchdog is not optional, and
+calibrating it from the `hello` means retuning `WS_HEARTBEAT_SECONDS` on the
+server no longer turns every client's normal interval into a perceived drop.
+
+### What you get for free
+
+- **Any inbound frame counts as proof of life.** Only `pong` used to, so a
+  busy client answering something else could cross the deadline and be closed
+  with `4408`. The `pong` is still consumed before the handler.
+- **`heartbeat` is public**, usable on an endpoint with no auth and no hub.
+  Recipe in `docs/recipes/websocket.md`, section "Heartbeat without the
+  router".
+- **`CompactPaginationSchema`/`CompactPaginationFilterSchema`**, for services
+  publishing `size` rather than `page_size`. Nothing moves if you do not use
+  them.
+
 ## 0.260.0 — the OpenPix spec was refreshed, and every method was renamed
 
 Breaks **every** `OpenPixClient` caller: all 125 methods changed name. Also

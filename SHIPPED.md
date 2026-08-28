@@ -824,6 +824,30 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   declarar não é sobrescrita. Testes: `tests/integrations/payment/
   openpix/test_overlay.py`. Recipe: `openpix.md`, seção "O que este pacote
   corrige na spec".
+- **`heartbeat` público, fora do router (v0.261.0)** — issue #225. A mecânica
+  existia desde a v0.197.0 mas só dentro de `make_websocket_router`, que impõe
+  bearer no handshake e registro num hub indexado por `user_id: UUID`.
+  Signaling de WebRTC com salas anônimas, endereçado por `peer_id`, não encaixa
+  em nenhum dos dois e reimplementava tudo. Agora é context manager async sobre
+  socket já aceito: `async with heartbeat(ws, settings=settings) as live`.
+  `live.interval_seconds` para anunciar a cadência, `live.touch()` para vida
+  por evidência que o socket não vê, `max_message_bytes=` opcional porque cap
+  de tamanho é outra política, e `ws.receive` restaurado na saída. **Qualquer**
+  frame passa a contar como prova de vida, não só `pong` — peer no meio de
+  negociação está presente. E o router manda um `hello` com
+  `heartbeat_seconds` antes de tudo, porque o browser não distingue intervalo
+  quieto de link morto e precisa calibrar o próprio watchdog. Testes:
+  `tests/websockets/test_heartbeat.py`. Receita: `websocket.md`, seção
+  "Heartbeat sem o router".
+- **Nome do tamanho de página configurável no fio (v0.261.0)** — issue #209.
+  `CompactPaginationSchema`/`CompactPaginationFilterSchema` publicam `size`
+  mantendo `page_size` como nome Python, e as duas classes base ligam
+  `populate_by_name` para o consumidor sobrescrever só o campo com outro alias.
+  O nome do fio se escreve duas vezes (`validation_alias` +
+  `serialization_alias`); `Field(alias=...)` passa no mypy e quebra em pyright.
+  `BaseRepository.paginate` não muda — a renomeação vive no schema e em nenhum
+  outro lugar. Receita: `database.md`, seção "O nome do tamanho de página no
+  fio".
 - **Refresh da spec da OpenPix + procedência vendorizada (v0.260.0)** — o
   documento estava duas versões atrás (`3.0.3` "OpenPix" contra `3.1.0`
   "Woovi"), e nada media isso: `test_specification_is_vendored` checava

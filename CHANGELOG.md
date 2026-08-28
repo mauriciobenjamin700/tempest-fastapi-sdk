@@ -5,6 +5,96 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.261.0] — 2026-08-28
+
+### Added
+
+- **`heartbeat` — liveness para qualquer endpoint WebSocket.**
+  ([#225](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/225))
+  A mecânica existia desde a v0.197.0, mas só dentro de
+  `make_websocket_router`, que impõe bearer no handshake **e** registro num
+  `WebSocketHub` indexado por `user_id: UUID`. Um endpoint fora desse molde —
+  signaling de WebRTC com salas anônimas, endereçado por `peer_id`, onde o
+  código da sala é o único segredo — reimplementava o heartbeat inteiro.
+
+  Agora é um context manager async que não pede nada além de um socket já
+  aceito:
+
+  ```python
+  from fastapi import WebSocket
+
+  from tempest_fastapi_sdk import WebSocketSettings
+  from tempest_fastapi_sdk.websockets import heartbeat
+
+
+  async def relay(ws: WebSocket, settings: WebSocketSettings) -> None:
+      """Sala anônima, sem auth e sem hub."""
+      await ws.accept()
+      async with heartbeat(ws, settings=settings) as live:
+          await ws.send_json(
+              {"type": "hello", "heartbeat_seconds": live.interval_seconds}
+          )
+  ```
+
+  O problema que resolve é medido: sem heartbeat, um socket cujo peer sumiu sem
+  close frame — celular que perdeu sinal ou foi encerrado à força — fica aberto
+  até o timeout de TCP do kernel, que é de minutos, e nada levanta, porque
+  mandar para socket half-open funciona.
+
+  `live.touch()` marca vida por evidência que o socket não enxerga. O cap de
+  tamanho é opcional e separado (`max_message_bytes=`), porque é outra política.
+  Na saída do bloco o `ws.receive` é restaurado, então um bloco aninhado não
+  deixa guard para trás.
+
+- **`CompactPaginationSchema` e `CompactPaginationFilterSchema`.**
+  ([#209](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/209))
+  Publicam o tamanho de página como `size` no fio, mantendo `page_size` como
+  nome Python. Para um serviço que já publica
+  `{"total", "items", "page", "size", "pages"}`, adotar o envelope do SDK
+  deixa de ser um break em todo endpoint paginado de uma vez — e um app já em
+  loja não atualiza em lockstep com o backend.
+
+  ```python
+  from tempest_fastapi_sdk import CompactPaginationSchema
+
+  page = CompactPaginationSchema[int](
+      items=[1], total=1, page=1, page_size=20, pages=1
+  )
+  page.model_dump(by_alias=True)["size"]   # 20
+  page.page_size                           # 20 — o nome Python não muda
+  ```
+
+  `BaseRepository.paginate` continua devolvendo `page_size` seja qual for o
+  envelope: a renomeação vive no schema e em nenhum outro lugar.
+
+### Changed
+
+- **BREAKING — o primeiro frame do `make_websocket_router` passa a ser um
+  `hello`.** `{"type": "hello", "data": {"heartbeat_seconds": N}, "request_id": null}`,
+  antes de qualquer coisa que o handler mande.
+
+  O motivo é do lado do cliente: o socket do browser só reporta conexão que
+  fecha **limpo**, e um link que morre em voo deixa o `readyState` em `OPEN`
+  com nada chegando nunca mais. Silêncio é o único sintoma, então o cliente
+  precisa do próprio watchdog — e se ele hard-codar o intervalo, retunar
+  `WS_HEARTBEAT_SECONDS` no servidor faz todo cliente confundir intervalo
+  normal com queda.
+
+  Cliente que despacha por `type` e ignora o que não conhece não sente. Cliente
+  que lê o **primeiro** frame por posição, sim: cinco testes desta suíte
+  quebraram exatamente assim. Passo a passo em `docs/migration.md`.
+
+- **Qualquer frame de entrada conta como prova de vida, não só `pong`.** Um
+  peer no meio de uma negociação está demonstravelmente presente, e exigir a
+  resposta específica desconectava cliente ocupado que só não tinha chegado
+  nela ainda. O `pong` continua sendo consumido antes do handler.
+
+- **`BasePaginationSchema` e `BasePaginationFilterSchema` ligam
+  `populate_by_name`.** Sem isso, sobrescrever um campo para renomeá-lo no fio
+  impedia construir o model pelo nome Python. O nome do fio se escreve duas
+  vezes — `validation_alias` para ler, `serialization_alias` para escrever;
+  `Field(alias=...)` sozinho passa no mypy e quebra em pyright.
+
 ## [0.260.0] — 2026-08-28
 
 ### Added
