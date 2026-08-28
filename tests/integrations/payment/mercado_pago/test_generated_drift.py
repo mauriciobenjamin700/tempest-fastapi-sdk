@@ -159,7 +159,13 @@ class TestGeneratedSurface:
         assert MercadoPagoClient.__name__ == "MercadoPagoClient"
 
     def test_carries_the_whole_specification(self) -> None:
-        """324 schemas and 143 operations — the point of embedding it."""
+        """323 schemas and 147 operations — the point of embedding it.
+
+        The counts moved in v0.260.0, when the provider's own SDK became
+        the authority on this API: seven operations it calls were added,
+        three the API does not route were removed, and the three removed
+        ones took a response schema each with them.
+        """
         from tempest_fastapi_sdk.integrations.payment.mercado_pago import (
             client,
             schemas,
@@ -171,8 +177,8 @@ class TestGeneratedSurface:
             if not name.startswith("_")
             and callable(getattr(client.MercadoPagoClient, name))
         ]
-        assert len(schemas.__all__) == 324
-        assert len(operations) == 143
+        assert len(schemas.__all__) == 323
+        assert len(operations) == 147
 
     def test_there_is_only_one_server(self) -> None:
         """The spec declares a single host, so there is nothing to switch.
@@ -192,7 +198,7 @@ class TestGeneratedSurface:
 
 
 class TestLazyLoading:
-    """The 324 models load on first use, not on import."""
+    """The 323 models load on first use, not on import."""
 
     def test_importing_the_package_does_not_load_the_schemas(self) -> None:
         """Someone importing this for ``to_cents`` should not pay for them.

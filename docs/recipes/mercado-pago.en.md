@@ -251,7 +251,7 @@ after settlement.
     `PixPayment` carries only what a Pix flow reads — id, status, amount,
     expiration — plus the QR object. It deliberately does not import the
     generated schemas: reading a QR should not pay the 0.76 s that building
-    the 324 models costs.
+    the 323 models costs.
 
 ### The alternative route: Orders API
 
@@ -314,8 +314,10 @@ def notification_is_authentic(
 The algorithm is **ported from Mercado Pago's own validator**
 (`mercadopago/sdk-nodejs`, `src/utils/webhook/index.ts`, commit `99857f33`) —
 the module their documentation points integrators at. The vendored
-specification describes none of it: `grep -c "x-signature"
-vendor/mercadopago-openapi.yaml` returns `0`.
+specification models none of it: `grep -c "x-signature"
+vendor/mercadopago-openapi.yaml` returns `2`, and both hits are prose inside a
+`description` — **no** declared parameter or header carries that name, and the
+verification algorithm is not there.
 
 The signed manifest **omits absent pairs**. It is not a fixed template:
 

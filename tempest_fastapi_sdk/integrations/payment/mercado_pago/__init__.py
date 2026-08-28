@@ -361,7 +361,6 @@ __all__: list[str] = [
     "GetMerchantOrderResponseCollector",
     "GetMerchantOrderResponsePayer",
     "GetPointRefundIntentResponse",
-    "GetQrIntegratorConfigResponse",
     "GetRefundResponse",
     "GetRefundResponseSource",
     "GetTerminalActionResponse",

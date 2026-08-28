@@ -692,8 +692,6 @@ class Address(BaseSchema):
         country (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(extra="allow")
-
     zip_code: str | None = Field(examples=["01310-100"], default=None)
     street_name: str | None = Field(examples=["Av. Paulista"], default=None)
     street_number: str | None = Field(examples=["1000"], default=None)
@@ -742,8 +740,6 @@ class AutoRecurringFreeTrial(BaseSchema):
         frequency (int | None): Undocumented in the spec.
         frequency_type (AutoRecurringFrequencyType | None): Undocumented in the spec.
     """
-
-    model_config = ConfigDict(extra="allow")
 
     frequency: int | None = Field(examples=[14], default=None)
     frequency_type: AutoRecurringFrequencyType | None = Field(
@@ -967,8 +963,6 @@ class ClaimReason(BaseSchema):
         description (str | None): Undocumented in the spec.
         type (ClaimType | None): Undocumented in the spec.
     """
-
-    model_config = ConfigDict(extra="allow")
 
     id: str | None = Field(examples=["PNR"], default=None)
     description: str | None = Field(examples=["Product not received"], default=None)
@@ -1634,18 +1628,6 @@ class GetPointRefundIntentResponse(BaseSchema):
     amount: float | None = None
 
 
-class GetQrIntegratorConfigResponse(BaseSchema):
-    """Schema generated for GetQrIntegratorConfigResponse.
-
-    Attributes:
-        callback_url (str | None): Undocumented in the spec.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    callback_url: str | None = None
-
-
 class GetRefundResponseSource(BaseSchema):
     """Schema generated for GetRefundResponseSource.
 
@@ -1718,8 +1700,6 @@ class Identification(BaseSchema):
             Argentina; RFC for Mexico)
         number (str | None): Identification number (no formatting — digits only)
     """
-
-    model_config = ConfigDict(extra="allow")
 
     type: str | None = Field(
         description=(
@@ -1950,8 +1930,6 @@ class OrderConfigOnlineTransactionSecurity(BaseSchema):
             shift outcome.
     """
 
-    model_config = ConfigDict(extra="allow")
-
     validation: OrderConfigOnlineTransactionSecurityValidation | None = Field(
         description=(
             "supported — run 3DS when supported by issuer; required — always run 3DS, "
@@ -1981,8 +1959,6 @@ class OrderItem(BaseSchema):
         category_id (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(extra="allow")
-
     id: str | None = None
     title: str | None = None
     description: str | None = None
@@ -2004,8 +1980,6 @@ class OrderPayerAddress(BaseSchema):
         complement (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(extra="allow")
-
     zip_code: str | None = None
     street_name: str | None = None
     street_number: str | None = None
@@ -2022,8 +1996,6 @@ class OrderPayerIdentification(BaseSchema):
         type (str | None): Document type (e.g. CPF, CNPJ, DNI, NIT, RFC)
         number (str | None): Document number (digits only, no formatting)
     """
-
-    model_config = ConfigDict(extra="allow")
 
     type: str | None = Field(
         description="Document type (e.g. CPF, CNPJ, DNI, NIT, RFC)",
@@ -2044,8 +2016,6 @@ class OrderPayerPhone(BaseSchema):
         area_code (str | None): Undocumented in the spec.
         number (str | None): Undocumented in the spec.
     """
-
-    model_config = ConfigDict(extra="allow")
 
     area_code: str | None = Field(examples=["11"], default=None)
     number: str | None = Field(examples=["43434343"], default=None)
@@ -2169,8 +2139,6 @@ class OrderShipmentAddress(BaseSchema):
         state (str | None): Undocumented in the spec.
         complement (str | None): Undocumented in the spec.
     """
-
-    model_config = ConfigDict(extra="allow")
 
     zip_code: str | None = None
     street_name: str | None = None
@@ -2356,8 +2324,6 @@ class Phone(BaseSchema):
         number (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(extra="allow")
-
     area_code: str | None = Field(examples=["11"], default=None)
     number: str | None = Field(examples=["987654321"], default=None)
 
@@ -2451,8 +2417,6 @@ class PreferenceBackUrls(BaseSchema):
         failure (str | None): Redirect after rejected payment
     """
 
-    model_config = ConfigDict(extra="allow")
-
     success: str | None = Field(
         description="Redirect after approved payment",
         default=None,
@@ -2481,8 +2445,6 @@ class PreferenceItem(BaseSchema):
         unit_price (float): Unit price as a decimal (not integer cents)
     """
 
-    model_config = ConfigDict(extra="allow")
-
     id: str | None = None
     title: str = Field(examples=["Premium Plan"])
     description: str | None = None
@@ -2507,8 +2469,6 @@ class PreferencePaymentMethodsExcludedPaymentMethodsItem(BaseSchema):
         id (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(extra="allow")
-
     id: str | None = None
 
 
@@ -2518,8 +2478,6 @@ class PreferencePaymentMethodsExcludedPaymentTypesItem(BaseSchema):
     Attributes:
         id (str | None): Undocumented in the spec.
     """
-
-    model_config = ConfigDict(extra="allow")
 
     id: str | None = None
 
@@ -2648,8 +2606,6 @@ class ReportConfigColumnsItem(BaseSchema):
         alias (str | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(extra="allow")
-
     key: str | None = Field(examples=["DATE"], default=None)
     alias: str | None = Field(examples=["transaction_date"], default=None)
 
@@ -2661,8 +2617,6 @@ class ReportConfigFrequency(BaseSchema):
         hour (int | None): Undocumented in the spec.
         type (ReportConfigFrequencyType | None): Undocumented in the spec.
     """
-
-    model_config = ConfigDict(extra="allow")
 
     hour: int | None = Field(ge=0, le=23, default=None)
     type: ReportConfigFrequencyType | None = None
@@ -2677,8 +2631,6 @@ class ReportConfigSftpInfo(BaseSchema):
         username (str | None): Undocumented in the spec.
         remote_dir (str | None): Undocumented in the spec.
     """
-
-    model_config = ConfigDict(extra="allow")
 
     server: str | None = None
     port: int | None = None
@@ -3361,8 +3313,6 @@ class AutoRecurring(BaseSchema):
             billing starts
         repetitions (int | None): Total number of billing cycles (null = indefinite)
     """
-
-    model_config = ConfigDict(extra="allow")
 
     frequency: int = Field(
         description="Billing interval (e.g., 1 for monthly, 7 for weekly)",
@@ -4423,8 +4373,6 @@ class OrderConfigOnline(BaseSchema):
         callback_url (str | None): Redirect URL after PSE bank authentication completes.
     """
 
-    model_config = ConfigDict(extra="allow")
-
     transaction_security: OrderConfigOnlineTransactionSecurity | None = Field(
         description=(
             "3DS (3D Secure) configuration. After creating the order, the response "
@@ -4453,8 +4401,6 @@ class OrderPayer(BaseSchema):
         entity_type (OrderPayerEntityType | None): Payer entity type. Required for PSE
             (Colombia) payments.
     """
-
-    model_config = ConfigDict(extra="allow")
 
     email: EmailStr = Field(examples=["customer@example.com"])
     first_name: str | None = None
@@ -4541,8 +4487,6 @@ class OrderShipment(BaseSchema):
     Attributes:
         address (OrderShipmentAddress | None): Undocumented in the spec.
     """
-
-    model_config = ConfigDict(extra="allow")
 
     address: OrderShipmentAddress | None = None
 
@@ -4890,8 +4834,6 @@ class PreferencePayer(BaseSchema):
         date_created (datetime | None): Undocumented in the spec.
     """
 
-    model_config = ConfigDict(extra="allow")
-
     name: str | None = None
     surname: str | None = None
     email: EmailStr | None = None
@@ -4916,8 +4858,6 @@ class PreferencePaymentMethods(BaseSchema):
         installments (int | None): Maximum number of installments to offer
         default_installments (int | None): Pre-selected installments in the UI
     """
-
-    model_config = ConfigDict(extra="allow")
 
     excluded_payment_methods: list[
         PreferencePaymentMethodsExcludedPaymentMethodsItem
@@ -5025,8 +4965,6 @@ class ReportConfig(BaseSchema):
         notification_email_list (list[EmailStr]): Email addresses to notify when report
             is ready
     """
-
-    model_config = ConfigDict(extra="allow")
 
     columns: list[ReportConfigColumnsItem] = Field(
         description="Columns to include in the report",
@@ -5585,8 +5523,6 @@ class OrderConfig(BaseSchema):
     Attributes:
         online (OrderConfigOnline | None): Settings for online card transactions.
     """
-
-    model_config = ConfigDict(extra="allow")
 
     online: OrderConfigOnline | None = Field(
         description="Settings for online card transactions.",
@@ -6888,7 +6824,6 @@ __all__: list[str] = [
     "GetMerchantOrderResponseCollector",
     "GetMerchantOrderResponsePayer",
     "GetPointRefundIntentResponse",
-    "GetQrIntegratorConfigResponse",
     "GetRefundResponse",
     "GetRefundResponseSource",
     "GetTerminalActionResponse",

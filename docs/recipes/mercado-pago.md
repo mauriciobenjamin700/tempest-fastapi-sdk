@@ -247,7 +247,7 @@ depois da liquidação.
     Para tudo que a especificação declara, use o `Payment` gerado. O
     `PixPayment` carrega só o que um fluxo Pix lê — id, status, valor,
     expiração — mais o objeto do QR. Ele não importa os schemas gerados, de
-    propósito: ler um QR não paga os 0,76 s que construir os 324 modelos
+    propósito: ler um QR não paga os 0,76 s que construir os 323 modelos
     custa.
 
 ### A rota alternativa: Orders API
@@ -311,8 +311,10 @@ def notificacao_e_autentica(
 O algoritmo é **portado do validador do próprio Mercado Pago**
 (`mercadopago/sdk-nodejs`, `src/utils/webhook/index.ts`, commit `99857f33`),
 que é o módulo para o qual a documentação deles aponta o integrador. A
-especificação vendorizada não descreve nada disso —
-`grep -c "x-signature" vendor/mercadopago-openapi.yaml` devolve `0`.
+especificação vendorizada não modela nada disso:
+`grep -c "x-signature" vendor/mercadopago-openapi.yaml` devolve `2`, e as duas
+ocorrências são prosa dentro de `description` — **nenhum** parâmetro ou header
+declarado leva esse nome, e o algoritmo de validação não está lá.
 
 O manifesto assinado **omite par ausente**. Não é template fixo:
 

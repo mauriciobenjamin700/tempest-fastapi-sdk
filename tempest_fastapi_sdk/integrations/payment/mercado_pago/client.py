@@ -36,7 +36,6 @@ from .schemas import (
     ClaimEvidence,
     ClaimHistoryEntry,
     ClaimMessage,
-    ClaimReason,
     ClaimSearchResult,
     ClaimStage,
     ClaimStatus,
@@ -75,7 +74,6 @@ from .schemas import (
     GetInstallmentsResponseItem,
     GetMerchantOrderResponse,
     GetPointRefundIntentResponse,
-    GetQrIntegratorConfigResponse,
     GetRefundResponse,
     GetTerminalActionResponse,
     GetWalletAgreementResponse,
@@ -253,7 +251,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 500.
         """
-        path = "/authorized_payments"
+        path = "/authorized_payments/search"
         params: dict[str, Any] = {}
         if preapproval_id is not None:
             params["preapproval_id"] = _param(preapproval_id)
@@ -459,24 +457,6 @@ class MercadoPagoClient:
         )
         response.raise_for_status()
         return _validate(Preference, response.json())
-
-    async def get_qr_integrator_config(self) -> GetQrIntegratorConfigResponse:
-        """Get QR integrator configuration.
-
-        Returns:
-            GetQrIntegratorConfigResponse: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                401.
-        """
-        path = "/instore/integrator"
-        response = await self._client.request(
-            "GET",
-            path,
-        )
-        response.raise_for_status()
-        return _validate(GetQrIntegratorConfigResponse, response.json())
 
     async def create_qr_integrator_config(
         self,
@@ -1321,32 +1301,6 @@ class MercadoPagoClient:
         response.raise_for_status()
         return None
 
-    async def get_claim_reasons(
-        self,
-        reason_id: str,
-    ) -> ClaimReason:
-        """Get claim reason.
-
-        Returns the description and metadata for a specific claim reason code.
-
-        Args:
-            reason_id (str): The reason_id value.
-
-        Returns:
-            ClaimReason: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                404.
-        """
-        path = f"/post-purchase/v1/claims/reasons/{reason_id}"
-        response = await self._client.request(
-            "GET",
-            path,
-        )
-        response.raise_for_status()
-        return _validate(ClaimReason, response.json())
-
     async def search_claims(
         self,
         *,
@@ -2037,30 +1991,6 @@ class MercadoPagoClient:
         response.raise_for_status()
         return _validate(SubscriptionPlan, response.json())
 
-    async def get_store(
-        self,
-        id: str,
-    ) -> Store:
-        """Get store by ID.
-
-        Args:
-            id (str): Store ID
-
-        Returns:
-            Store: The 200 response body, validated.
-
-        Raises:
-            httpx.HTTPStatusError: For any non-2xx response. The specification documents
-                404.
-        """
-        path = f"/stores/{id}"
-        response = await self._client.request(
-            "GET",
-            path,
-        )
-        response.raise_for_status()
-        return _validate(Store, response.json())
-
     async def create_terminal_action(
         self,
         *,
@@ -2196,6 +2126,33 @@ class MercadoPagoClient:
         )
         response.raise_for_status()
         return None
+
+    async def get_authenticated_user(self) -> dict[str, Any]:
+        """Get the authenticated user.
+
+        Returns the account the credentials belong to.
+
+        Absent from the vendored document. The response is not modelled — this
+        repository has no Mercado Pago credentials to observe its shape — so the method
+        answers `dict[str, Any]` and drops nothing.
+
+        Declared by `scripts/mercadopago_overlay.py` from mercadopago 3.5.0
+        `resources/user.py:get`.
+
+        Returns:
+            dict[str, Any]: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                no error status.
+        """
+        path = "/users/me"
+        response = await self._client.request(
+            "GET",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(dict[str, Any], response.json())
 
     async def list_pos(
         self,
@@ -2911,6 +2868,49 @@ class MercadoPagoClient:
         response.raise_for_status()
         return _validate(CreateAdvancedPaymentResponse, response.json())
 
+    async def search_advanced_payments(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, Any]:
+        """Search advanced payments.
+
+        Searches advanced payments matching the given filters.
+
+        Absent from the vendored document. `limit` and `offset` are declared because
+        every other search in this document declares them — that is this document's
+        convention, not a measurement. The remaining filters and the response are not
+        modelled.
+
+        Declared by `scripts/mercadopago_overlay.py` from mercadopago 3.5.0
+        `resources/advanced_payment.py:search`.
+
+        Args:
+            limit (int | None): The limit value. Omitted from the query when None.
+            offset (int | None): The offset value. Omitted from the query when None.
+
+        Returns:
+            dict[str, Any]: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                no error status.
+        """
+        path = "/v1/advanced_payments/search"
+        params: dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = _param(limit)
+        if offset is not None:
+            params["offset"] = _param(offset)
+        response = await self._client.request(
+            "GET",
+            path,
+            params=params,
+        )
+        response.raise_for_status()
+        return _validate(dict[str, Any], response.json())
+
     async def get_advanced_payment(
         self,
         advanced_payment_id: int,
@@ -2969,6 +2969,155 @@ class MercadoPagoClient:
         )
         response.raise_for_status()
         return _validate(UpdateAdvancedPaymentResponse, response.json())
+
+    async def create_disbursement_refund(
+        self,
+        advanced_payment_id: str,
+        disbursement_id: str,
+        *,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Refund one disbursement of an advanced payment.
+
+        Refunds a single disbursement, in full or by amount.
+
+        Absent from the vendored document, and built through a local variable in the
+        SDK. Neither the body nor the response is modelled.
+
+        Declared by `scripts/mercadopago_overlay.py` from mercadopago 3.5.0
+        `resources/disbursement_refund.py:create`.
+
+        Args:
+            advanced_payment_id (str): The advanced_payment_id value.
+            disbursement_id (str): The disbursement_id value.
+            body (dict[str, Any]): The request body.
+
+        Returns:
+            dict[str, Any]: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                no error status.
+        """
+        path = (
+            f"//v1/advanced_payments/{advanced_payment_id}/disbursements"
+            f"/{disbursement_id}/refunds"
+        )
+        payload = _dump(body)
+        response = await self._client.request(
+            "POST",
+            path,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(dict[str, Any], response.json())
+
+    async def update_advanced_payment_release_date(
+        self,
+        advanced_payment_id: str,
+        *,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Update the release date of a disbursement.
+
+        Moves the money release date of an advanced payment's disbursements.
+
+        Absent from the vendored document. Neither the body nor the response is
+        modelled.
+
+        Declared by `scripts/mercadopago_overlay.py` from mercadopago 3.5.0
+        `resources/advanced_payment.py:update_release_date`.
+
+        Args:
+            advanced_payment_id (str): The advanced_payment_id value.
+            body (dict[str, Any]): The request body.
+
+        Returns:
+            dict[str, Any]: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                no error status.
+        """
+        path = f"/v1/advanced_payments/{advanced_payment_id}/disburses"
+        payload = _dump(body)
+        response = await self._client.request(
+            "POST",
+            path,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(dict[str, Any], response.json())
+
+    async def list_disbursement_refunds(
+        self,
+        advanced_payment_id: str,
+    ) -> dict[str, Any]:
+        """List the refunds of an advanced payment.
+
+        Lists every disbursement refund of one advanced payment.
+
+        Absent from the vendored document, and invisible to a reader that only follows
+        literal arguments: the SDK builds this URL through a local variable. The
+        response is not modelled.
+
+        Declared by `scripts/mercadopago_overlay.py` from mercadopago 3.5.0
+        `resources/disbursement_refund.py:list_all`.
+
+        Args:
+            advanced_payment_id (str): The advanced_payment_id value.
+
+        Returns:
+            dict[str, Any]: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                no error status.
+        """
+        path = f"/v1/advanced_payments/{advanced_payment_id}/refunds"
+        response = await self._client.request(
+            "GET",
+            path,
+        )
+        response.raise_for_status()
+        return _validate(dict[str, Any], response.json())
+
+    async def create_disbursement_refunds(
+        self,
+        advanced_payment_id: str,
+        *,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Refund an advanced payment.
+
+        Creates a refund covering the advanced payment's disbursements.
+
+        Absent from the vendored document. Neither the body nor the response is modelled
+        — nobody here has credentials to observe either — so both are `dict[str, Any]`.
+
+        Declared by `scripts/mercadopago_overlay.py` from mercadopago 3.5.0
+        `resources/disbursement_refund.py:create_all`.
+
+        Args:
+            advanced_payment_id (str): The advanced_payment_id value.
+            body (dict[str, Any]): The request body.
+
+        Returns:
+            dict[str, Any]: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                no error status.
+        """
+        path = f"/v1/advanced_payments/{advanced_payment_id}/refunds"
+        payload = _dump(body)
+        response = await self._client.request(
+            "POST",
+            path,
+            json=payload,
+        )
+        response.raise_for_status()
+        return _validate(dict[str, Any], response.json())
 
     async def create_card_token(
         self,
@@ -3031,6 +3180,48 @@ class MercadoPagoClient:
         )
         response.raise_for_status()
         return _validate(CardToken, response.json())
+
+    async def search_chargebacks(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, Any]:
+        """Search chargebacks.
+
+        Searches chargebacks matching the given filters.
+
+        Absent from the vendored document. `limit` and `offset` follow this document's
+        convention for a search; the remaining filters and the response are not
+        modelled.
+
+        Declared by `scripts/mercadopago_overlay.py` from mercadopago 3.5.0
+        `resources/chargeback.py:search`.
+
+        Args:
+            limit (int | None): The limit value. Omitted from the query when None.
+            offset (int | None): The offset value. Omitted from the query when None.
+
+        Returns:
+            dict[str, Any]: The 200 response body, validated.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response. The specification documents
+                no error status.
+        """
+        path = "/v1/chargebacks/search"
+        params: dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = _param(limit)
+        if offset is not None:
+            params["offset"] = _param(offset)
+        response = await self._client.request(
+            "GET",
+            path,
+            params=params,
+        )
+        response.raise_for_status()
+        return _validate(dict[str, Any], response.json())
 
     async def get_chargeback(
         self,
@@ -3503,7 +3694,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 401, 404.
         """
-        path = f"/v1/customers/{id}/delete"
+        path = f"/v1/customers/{id}"
         response = await self._client.request(
             "DELETE",
             path,
