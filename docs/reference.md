@@ -1039,6 +1039,8 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.websockets.hub.WebSocketHub
 ::: tempest_fastapi_sdk.websockets.hub.WebSocketConnection
 ::: tempest_fastapi_sdk.websockets.router.make_websocket_router
+::: tempest_fastapi_sdk.websockets.heartbeat.heartbeat
+::: tempest_fastapi_sdk.websockets.heartbeat.Liveness
 ::: tempest_fastapi_sdk.websockets.schemas.WSEnvelope
 
 ---
