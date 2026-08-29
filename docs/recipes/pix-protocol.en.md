@@ -76,6 +76,26 @@ nothing to inherit — the same seam the SDK uses for `RateLimitStore`,
 | `expires_in` | `timedelta` or `None` | the payment window |
 | `payer` | `PixPayer` or `None` | payer details, where the provider accepts them |
 
+!!! note "What the adapter does with an incomplete `payer` (v0.270.0)"
+    Every `PixPayer` field is optional, but a provider has its own rule
+    about the set. OpenPix requires `name` **and** at least one of
+    `taxID`, `email` or `phone` — all three variants of its `oneOf` ask
+    for `name` plus a contact, so `name` is necessary in all three and
+    sufficient in none.
+
+    The adapter **omits** the block when the payer reaches no variant,
+    rather than sending one the provider's own specification rejects, and
+    rather than inventing a contact to fill it — made-up data would end up
+    on the payer's receipt. A charge is valid with no payer block at all.
+
+!!! tip "`reference` may contain a reserved character"
+    `reference` is the identifier **you** choose, and it becomes OpenPix's
+    `correlationID`, which in turn goes into the path of the read and
+    cancel routes. The SDK escapes the segment (`quote(..., safe="")`), so
+    `order#42` and `order/1042` address the right charge. Before v0.270.0
+    the `#` was read as a fragment and the call hit a different resource —
+    on a `DELETE`.
+
 ### What comes out: `PixCharge`
 
 | field | type | for |
@@ -564,7 +584,8 @@ async def open_checkout(
 
     `raw` is the provider's payload as decoded — on the OpenPix path it is
     the whole `Charge`, `customer` included, with the payer's `name`,
-    `email` and `tax_id`. `provider_charge_id` is your write key at the
+    `email` and `taxID` — the wire spelling, which is what `raw` uses.
+    `provider_charge_id` is your write key at the
     provider. A response schema of your own, carrying the fields the screen
     uses, is what separates your API from a third party's payload.
 
@@ -720,6 +741,7 @@ You branch on `PaymentStatus`, never on the provider's string:
 | `CHARGED_BACK` | reversed by the payer's institution |
 | `IN_ANALYSIS` | held for review |
 | `FAILED` | refused |
+| `UNKNOWN` | a state this SDK version does not classify |
 
 The original string is not lost: it lives in `provider_status`, which is
 what you put in the log and show to support.
@@ -746,6 +768,21 @@ def release_order(charge: PixCharge) -> bool:
     `charge.status is PaymentStatus.PAID` would be `False` on every charge,
     silently, while `==` kept working. That is the kind of defect that
     survives review precisely because the obvious check still passes.
+
+!!! tip "A provider can invent a state — and that must not break the read"
+    `UNKNOWN` exists because providers add states without warning. Both
+    ways of hiding that are worse: falling through to `PENDING` claims the
+    charge is awaiting payment right after the provider said it is not,
+    and refusing the read turns a state the SDK does not know into a
+    failed request, with the real state nowhere you can see it.
+
+    The original string stays in `provider_status`, so you can branch on
+    it while the canonical mapping does not exist yet:
+
+    ```python
+    if charge.status is PaymentStatus.UNKNOWN:
+        logger.warning("new OpenPix state: %s", charge.provider_status)
+    ```
 
 ## Webhooks
 
@@ -827,13 +864,27 @@ def payment_link(charge: PixCharge) -> object | None:
     validation — no error, no warning. `raw` is what makes going through
     the contract lossless.
 
-    One honest difference: on the API path `raw` is the payload **after**
-    the generated schema validated it, so fields the provider's own
-    specification does not declare are already gone. On the webhook path
-    the body arrives as a dictionary and `raw` is faithful. That is why
-    `paid_at` is only filled by a webhook delivery on OpenPix: `paidAt`
-    shows up in the specification's examples but not in the `Charge`
-    schema.
+    **`raw` uses the wire's spelling on both paths**, which is why the
+    lookup above is `raw["paymentLinkUrl"]` and not
+    `raw["payment_link_url"]`. The name the provider documents is the only
+    one you can predict from the provider's own documentation.
+
+!!! warning "Changed in v0.270.0"
+    Up to v0.269.0 the API path dumped without `by_alias`, so a
+    **declared** field came out in `snake_case` while an undeclared one
+    (which `extra="allow"` keeps) came out in `camelCase` — `raw` was a
+    mixture, and `raw["paymentLinkUrl"]` answered `None` on every charge
+    read back from the API. A service already reading `raw` with
+    `snake_case` keys has to switch to the wire names.
+
+    The previous admonition also explained this wrongly. It said that on
+    the API path `raw` was the payload "after the generated schema
+    validated it, so fields the specification does not declare are already
+    gone". That stopped being true when response models became
+    `extra="allow"` (v0.259/v0.260): `paidAt` **survives** validation and
+    is in `raw` on both paths. What is still different is only that
+    OpenPix's adapter reads `paid_at` on the webhook delivery and not on
+    the API path.
 
 ## Writing an adapter
 

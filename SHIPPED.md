@@ -850,6 +850,35 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   corpo **capturado da API** — os fixtures antigos saíam da mesma
   especificação errada que os modelos, então fantasia e implementação
   concordavam — mais o guard contra regeração repor o tipo errado.
+- **Adapter da OpenPix exercitado no fio, e as seis correções que isso
+  achou (v0.270.0)** — issues #239 a #245.
+  `tests/integrations/payment/adapters/test_openpix_adapter_wire.py` dirige
+  `OpenPixPixProvider` sobre `httpx.MockTransport` com corpos capturados do
+  sandbox — 43 testes, dois deles montando rota real (webhook assinado de
+  ponta a ponta, e leitura atrás de `register_exception_handlers`, porque
+  status code é fato sobre serviço). Era o buraco de fundo: os 12 testes de
+  adapter usam um stub que devolve modelo construído em Python, e foi por
+  isso que a #238 shippou passando por eles.
+  O que a fronteira achou, cada uma com correção própria: `value` de webhook
+  não-numérico virando `amount_cents=0` em silêncio (**#239** — o guard
+  `isinstance` era mais estreito que `to_cents`, que aceita `str` de
+  propósito); bloco `customer` só com `name` violando o `oneOf` da própria
+  spec (**#240** — `name` é necessário nas três variantes e suficiente em
+  nenhuma); status fora do enum virando 500 na API e `PENDING` silencioso no
+  webhook (**#241** — os dois agora dão `PaymentStatus.UNKNOWN`, membro novo,
+  e a leitura da API parou de recusar); `charge_id` sem escape no path, onde
+  `order#42` virava um `DELETE` em `/charge/order` (**#242** — corrigido no
+  **emissor**, `_path_param` com `quote(..., safe="")`, valendo para 58
+  interpolações na OpenPix e 108 no Mercado Pago); `raw` mudando de grafia
+  conforme o caminho (**#243** — `by_alias=True`, a grafia do fio nos dois,
+  com nota de migração). E `MISTYPED_POINTERS` (**#244**), tabela irmã
+  endereçada por JSON pointer, para o campo mistipado que não mora em
+  `components.schemas` — `dispute.value` inline, que mantinha `get_dispute`
+  quebrado, e `pix.value` nos três callbacks `receivedPix*`.
+  A correção da #241 é um **lift**, não uma deleção: remover o `enum` no
+  lugar apaga a classe `ChargeStatus` gerada, que é superfície pública, então
+  os valores viraram componente próprio e a propriedade virou
+  `ChargeStatus | str | None`.
 - **Painel de tasks no admin (v0.268.0)** — issue #234.
   `TaskPanelService` + `tasks=` no `make_admin_router` montam
   `{prefix}/tasks` (execuções filtráveis do `JobStore` + agenda lida do

@@ -8,6 +8,7 @@ when upstream catches up.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,8 @@ if SCRIPTS not in sys.path:
 
 from openpix_overlay import (  # noqa: E402
     CHARGE_RESPONSE_PROPERTIES,
+    LIFTED_ENUMS,
+    MISTYPED_POINTERS,
     apply,
 )
 from regen_openpix import SPEC_PATH  # noqa: E402
@@ -54,6 +57,176 @@ def _typed(document: dict[str, Any], name: str) -> str:
         str: The declared ``type``.
     """
     return str(document["components"]["schemas"]["M"]["properties"][name]["type"])
+
+
+def _vendored() -> dict[str, Any]:
+    """Load the pinned specification the provider published.
+
+    Returns:
+        dict[str, Any]: A fresh copy, safe for a test to mutate.
+    """
+    return json.loads(SPEC_PATH.read_text(encoding="utf-8"))
+
+
+_DISPUTE_VALUE_POINTER: str = (
+    "/paths/~1api~1v1~1dispute~1{id}/get/responses/200/content"
+    "/application~1json/schema/properties/dispute/properties/value"
+)
+"""The pointer the overlay must apply, spelled out instead of looked up.
+
+Taking it from `MISTYPED_POINTERS` would make these tests agree with
+whatever that table happens to hold — an emptied table included, which is
+exactly the regression they exist to catch.
+"""
+
+
+def _at(document: dict[str, Any], pointer: str) -> dict[str, Any]:
+    """Read the node one RFC 6901 pointer addresses.
+
+    Args:
+        document (dict[str, Any]): The document to read.
+        pointer (str): The pointer, ``~1`` standing for a literal ``/``.
+
+    Returns:
+        dict[str, Any]: The addressed schema.
+
+    Written out here rather than imported from the overlay so the test does
+    not agree with the code it checks by construction: a resolver that
+    forgot to unescape would pass against itself.
+    """
+    node: Any = document
+    for token in pointer.split("/")[1:]:
+        node = node[token.replace("~1", "/").replace("~0", "~")]
+    return dict(node)
+
+
+class TestPointerOverrides:
+    """Corrections for schemas that have no component to name.
+
+    `MISTYPED_PROPERTIES` addresses
+    `components.schemas.<Name>.properties.<prop>`. Two of the document's
+    self-contradictions are declared inline instead — the `dispute` object
+    of `GET /api/v1/dispute/{id}`, and the `pix` object of the three
+    `receivedPix*` callbacks — so they are addressed by JSON pointer.
+    """
+
+    def test_every_pointer_fires_on_the_document_we_vendor(self) -> None:
+        """Proof the table is not passing because nothing resolves.
+
+        A pointer that mis-escaped the `/` inside `/api/v1/dispute/{id}` or
+        inside the callback key `{$request.body#/webhook.url}` would
+        resolve to nothing and correct nothing, silently.
+        """
+        _patched, report = apply(_vendored())
+
+        assert report.retyped_pointers == tuple(MISTYPED_POINTERS)
+        assert _DISPUTE_VALUE_POINTER in report.retyped_pointers
+        assert len(report.retyped_pointers) == 4
+
+    def test_the_dispute_value_stops_being_text(self) -> None:
+        """The inline schema that kept `get_dispute` from reading a reply."""
+        document = _vendored()
+        assert _at(document, _DISPUTE_VALUE_POINTER)["type"] == "string"
+
+        patched, _report = apply(document)
+
+        assert _at(patched, _DISPUTE_VALUE_POINTER)["type"] == "integer"
+
+    def test_an_override_upstream_fixed_retires(self) -> None:
+        """The day the provider corrects it, the log stops naming it."""
+        document = _vendored()
+        dispute = document["paths"]["/api/v1/dispute/{id}"]["get"]["responses"]["200"][
+            "content"
+        ]["application/json"]["schema"]["properties"]["dispute"]
+        dispute["properties"]["value"] = {"type": "integer"}
+
+        _patched, report = apply(document)
+
+        assert _DISPUTE_VALUE_POINTER not in report.retyped_pointers
+        assert len(report.retyped_pointers) == 3
+
+    def test_a_pointer_that_no_longer_resolves_is_a_no_op(self) -> None:
+        """A restructured document must not crash a regeneration."""
+        patched, report = apply(_document({"value": {"type": "number"}}))
+
+        assert report.retyped_pointers == ()
+        assert _typed(patched, "value") == "integer"
+
+    def test_a_dispute_value_is_an_integer_number_of_centavos(self) -> None:
+        """`get_dispute` validating a real reply, which it could not before.
+
+        Before the pointer override this raised `Input should be a valid
+        string [type=string_type, input_value=15000, input_type=int]`.
+        """
+        from tempest_fastapi_sdk.integrations.payment.openpix import (
+            GetDisputeResponse,
+        )
+
+        parsed = GetDisputeResponse.model_validate(
+            {"dispute": {"status": "CREATED", "value": 15000, "type": "MED"}}
+        )
+
+        assert parsed.dispute is not None
+        assert parsed.dispute.value == 15000
+
+
+class TestLiftedEnums:
+    """A closed enum on a response is a refused read, not a typed one.
+
+    The correction has two halves and both are load-bearing: the property
+    stops being restricted, and the values keep a class of their own. The
+    naive form — deleting the `enum` in place — does the first and silently
+    undoes the second, because the generated `ChargeStatus` exists only as
+    long as something declares those values.
+    """
+
+    def test_the_property_stops_being_restricted(self) -> None:
+        """`Charge.status` accepts a state the document does not list."""
+        document = _vendored()
+        declared = document["components"]["schemas"]["Charge"]["properties"]["status"]
+        assert declared["enum"] == ["ACTIVE", "COMPLETED", "EXPIRED"]
+
+        patched, report = apply(document)
+
+        corrected = patched["components"]["schemas"]["Charge"]["properties"]["status"]
+        assert "enum" not in corrected
+        assert report.lifted_enums == ("Charge.status",)
+
+    def test_the_values_survive_as_a_component(self) -> None:
+        """Deleting in place would take the public `ChargeStatus` with it."""
+        patched, _report = apply(_vendored())
+
+        component = patched["components"]["schemas"]["ChargeStatus"]
+        assert component["enum"] == ["ACTIVE", "COMPLETED", "EXPIRED"]
+
+    def test_the_property_still_references_the_component(self) -> None:
+        """A component nothing references is pruned by the generator."""
+        patched, _report = apply(_vendored())
+
+        corrected = patched["components"]["schemas"]["Charge"]["properties"]["status"]
+        refs = [entry.get("$ref") for entry in corrected["anyOf"]]
+        assert "#/components/schemas/ChargeStatus" in refs
+
+    def test_a_lift_upstream_already_did_retires(self) -> None:
+        """The override disappears when the provider unconstrains the field.
+
+        The first assertion is what keeps this from passing vacuously: an
+        emptied `LIFTED_ENUMS` also reports nothing, so "reports nothing"
+        only means retirement once the table is known to fire.
+        """
+        _patched, baseline = apply(_vendored())
+        assert baseline.lifted_enums == ("Charge.status",)
+
+        document = _vendored()
+        del document["components"]["schemas"]["Charge"]["properties"]["status"]["enum"]
+
+        _patched, report = apply(document)
+
+        assert report.lifted_enums == ()
+
+    def test_the_table_names_the_component_consumers_import(self) -> None:
+        """The name is public API, so it is spelled out and not derived."""
+        assert LIFTED_ENUMS["Charge"]["status"] == "ChargeStatus"
 
 
 class TestIntegerUnits:

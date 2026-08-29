@@ -50,6 +50,14 @@ def _agent_docs() -> list[pathlib.Path]:
 
     Returns:
         list[pathlib.Path]: The instruction files that exist, in a stable order.
+
+    ``.claude/worktrees/`` is skipped. A ``git worktree`` created there holds
+    a **whole second copy of the repository**, so the sweep picked up that
+    copy's ``CHANGELOG.md``, ``README.md`` and ``docs/`` and checked them as
+    if they were this repo's instruction files — 238 failures, every one of
+    them a path that exists relative to the worktree's own root and not to
+    this one. The guard reads the agent instructions of the repository it
+    runs in, and a worktree is a different checkout of it.
     """
     paths = [
         ROOT / "CLAUDE.md",
@@ -58,7 +66,11 @@ def _agent_docs() -> list[pathlib.Path]:
         ROOT / "docs" / "CLAUDE.md",
         ROOT / "tempest_fastapi_sdk" / "integrations" / "CLAUDE.md",
     ]
-    paths.extend(sorted((ROOT / ".claude").rglob("*.md")))
+    paths.extend(
+        path
+        for path in sorted((ROOT / ".claude").rglob("*.md"))
+        if "worktrees" not in path.relative_to(ROOT).parts
+    )
     return [path for path in paths if path.exists()]
 
 

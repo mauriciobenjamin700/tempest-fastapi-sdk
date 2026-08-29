@@ -393,11 +393,23 @@ def _as_fstring(operation: OperationIR) -> str:
         operation (OperationIR): The operation whose path is rewritten.
 
     Returns:
-        str: The path with each ``{wireName}`` replaced by ``{python_name}``.
+        str: The path with each ``{wireName}`` replaced by a
+        ``{_path_param(python_name)}`` call, so the argument is escaped
+        into a single segment instead of being interpolated raw.
+
+    The escaping is here and not left to the caller because the value is
+    an identifier the caller chose — OpenPix takes the consumer's own
+    ``correlationID`` on every charge route — and a reserved character in
+    it silently *retargets* the request. ``order#42`` interpolated raw
+    becomes ``/charge/order``: the HTTP client drops the fragment, and on
+    the cancellation route that is a ``DELETE`` against another resource.
     """
     path = operation.path
     for parameter in operation.path_parameters:
-        path = path.replace(f"{{{parameter.wire_name}}}", f"{{{parameter.name}}}")
+        path = path.replace(
+            f"{{{parameter.wire_name}}}",
+            f"{{_path_param({parameter.name})}}",
+        )
     return path
 
 
@@ -442,7 +454,10 @@ def _import_block(client: ClientIR) -> list[str]:
     ``form_encode`` is decided from the operations rather than from the
     annotations: it appears in call sites, never in a type, so scanning
     the rendered annotations would never find it and the generated
-    module would fail on an undefined name.
+    module would fail on an undefined name. ``quote`` is decided the same
+    way, from whether any operation has a path parameter to escape — a
+    specification without one would otherwise import a name it never uses
+    and fail ``ruff check``.
 
     Args:
         client (ClientIR): The parsed client.
@@ -460,6 +475,8 @@ def _import_block(client: ClientIR) -> list[str]:
         stdlib["decimal"] = ["Decimal"]
     if _uses(rendered, "UUID"):
         stdlib["uuid"] = ["UUID"]
+    if any(operation.path_parameters for operation in client.operations):
+        stdlib["urllib.parse"] = ["quote"]
 
     pydantic_names = ["BaseModel", "TypeAdapter"]
     if _uses(rendered, "EmailStr"):
@@ -660,6 +677,42 @@ def emit_client(client: ClientIR, *, schemas_module: str = "schemas") -> str:
             "    return value",
             "",
             "",
+        ]
+    )
+
+    if any(operation.path_parameters for operation in client.operations):
+        lines.extend(
+            [
+                "def _path_param(value: Any) -> str:",
+                '    """Escape a value into exactly one path segment.',
+                "",
+                "    Args:",
+                "        value (Any): The argument as the caller passed it,",
+                "            normalized through ``_param`` first so an ``Enum``",
+                "            reaches the path as its value rather than as",
+                '            ``"Class.MEMBER"``.',
+                "",
+                "    Returns:",
+                "        str: The value percent-encoded with an empty ``safe``",
+                "        set, so every reserved character is escaped — ``/``",
+                "        included, because an identifier is one segment and must",
+                "        not become two.",
+                "",
+                "    Without this, a reserved character does not fail: it",
+                "    *retargets*. ``order#42`` interpolated raw yields",
+                "    ``/charge/order#42``, whose fragment the HTTP client never",
+                "    sends — so the request addresses ``/charge/order``, and on a",
+                "    ``DELETE`` route that is a destructive call against a",
+                "    different resource.",
+                '    """',
+                '    return quote(str(_param(value)), safe="")',
+                "",
+                "",
+            ]
+        )
+
+    lines.extend(
+        [
             f"class {client.class_name}:",
             f'    """Client for {client.title}'
             + (f" (version {client.version})." if client.version else ".")

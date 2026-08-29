@@ -5,6 +5,206 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.270.0] — 2026-08-29
+
+### Added
+
+- **`OpenPixPixProvider` passou a ser exercitado sobre HTTP de verdade.**
+  ([#245](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/245))
+  A classe que a receita manda o consumidor usar nunca tinha visto um byte
+  de JSON: os testes de adapter existentes usam um `StubOpenPixClient`
+  que devolve `CreateChargeResponse(...)` construído em Python, então a
+  camada JSON→modelo inteira — alias, enum, tipo declarado de cada campo —
+  não rodava. **Foi por isso que a #238 shippou passando por 12 testes
+  verdes** — a contagem que o `pytest --collect-only` reporta para aquele
+  módulo; a issue estimou 13.
+
+  `tests/integrations/payment/adapters/test_openpix_adapter_wire.py` põe um
+  `httpx.MockTransport` sob o `OpenPixClient` real e dirige o provider como
+  um serviço o usa: bytes saindo, bytes voltando — **43 testes**. Os corpos
+  não são inventados: o da cobrança é o capturado do sandbox em 2026-08-29,
+  e o da entrega é o exemplo de request-body do próprio documento. Fixture
+  derivada da especificação não enxerga uma especificação que mente.
+
+  Dois testes vão além e **montam rota**, porque status code é fato sobre um
+  serviço e não sobre uma função: a metade de webhook assina os bytes crus e
+  deixa `make_openpix_webhook_dependency` verificar e decodificar antes de o
+  `parse_webhook` ver um objeto; a metade de leitura põe `get_pix_charge`
+  atrás de `register_exception_handlers`, então o que se assere é a resposta
+  que o consumidor recebe.
+
+  Cada teste nasceu `xfail(strict=True)` nomeando a issue dona da correção.
+  As seis fechadas aqui tiraram os marcadores junto — que é para isso que o
+  `strict` serve: passar inesperadamente é falhar, então nenhum deles podia
+  ficar para trás em silêncio.
+
+  A suíte com stub continua: ela é rápida e cobre mapeamento. O que ela não
+  alcança é a fronteira, e as seis correções abaixo estavam todas lá.
+
+- **`PaymentStatus.UNKNOWN`.** Estado canônico para o que esta versão do
+  SDK não classifica, irmão do `PixEventType.UNKNOWN` que já existia.
+
+### Fixed
+
+- **Webhook com `value` não-numérico deixou de virar `amount_cents=0`.**
+  ([#239](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/239))
+  Uma cobrança liquidada cujo `value` não fosse `int`/`float` chegava ao
+  serviço como **paga, valendo zero**, sem exceção e sem log. Medido na
+  v0.268.0:
+
+  ```text
+  int 1990     -> amount_cents=1990
+  str '1990'   -> amount_cents=0
+  None         -> amount_cents=0
+  ```
+
+  O guard era `isinstance(value, (int, float))` com `else 0` — **mais
+  estreito que a função que ele protegia**. `to_cents` aceita `str` de
+  propósito, e a docstring dela diz que o uso documentado é um payload cru
+  de webhook; o documento da Woovi tipa `value` como string em dois
+  schemas, então `"1990"` é um corpo que ela pode legitimamente mandar.
+
+  Agora `to_cents` decide, e a recusa dela é tratada: um valor ilegível
+  levanta nomeando a cobrança, em vez de responder "zero" para "não sei".
+  Zero é um número que o serviço credita.
+
+- **Bloco `customer` deixou de violar o `oneOf` da própria especificação.**
+  ([#240](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/240))
+  `create_pix_charge` com um `PixPayer` que só tinha `name` montava um bloco
+  que nenhuma variante aceita:
+
+  ```text
+  CustomerPayload.oneOf[0] required = ['name', 'taxID']
+  CustomerPayload.oneOf[1] required = ['name', 'email']
+  CustomerPayload.oneOf[2] required = ['name', 'phone']
+  ```
+
+  `name` é necessário nas três e suficiente em nenhuma. O modelo gerado não
+  podia recusar — o emissor registra que funde `oneOf` num modelo só — e
+  todo campo de `PixPayer` é opcional. Payer que não alcança nenhuma
+  variante agora é **omitido**, como já acontecia com payer sem nome.
+
+- **Estado que o enum não conhece deixou de virar 500 na API e `PENDING`
+  silencioso no webhook.**
+  ([#241](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/241))
+  Um `status` fora do enum gerado se comportava de dois jeitos opostos, e
+  nenhum era o que a docstring do `STATUS_MAP` afirmava. Medido na v0.268.0:
+
+  ```text
+  API (get_pix_charge, status 'CANCELLED'):
+    ValidationError: charge.status
+      Input should be 'ACTIVE', 'COMPLETED' or 'EXPIRED'
+    -> o app responde 500 {"detail":"Internal server error"}
+
+  webhook (mesmo status):
+    type=charge_paid status=pending provider_status='CANCELLED'
+  ```
+
+  Os dois caminhos agora respondem `PaymentStatus.UNKNOWN` preservando
+  `provider_status`. E a leitura da API parou de recusar: o documento
+  declara três valores em `Charge.status` e deixa `WebhookCharge.status`
+  como string livre, então a Woovi não se comprometeu com a lista no objeto
+  que entrega.
+
+  A correção é um **lift**, não uma deleção, e a diferença é o desenho
+  inteiro: remover o `enum` no lugar apaga a classe `ChargeStatus` gerada —
+  medido, ela some do módulo e do `__all__` — e ela é superfície pública,
+  exportada, chaveando o `STATUS_MAP`, ensinada pela receita e citada no
+  guia de migração como classe que **não** mudou. Os valores passaram a ser
+  um componente próprio, e a propriedade virou um `anyOf` dele com string:
+  `Charge.status: ChargeStatus | str | None`. Valor conhecido continua
+  chegando como membro do enum.
+
+  União foi rejeitada para `expiresIn` na v0.269.0 e é certa aqui porque as
+  duas não têm a mesma forma. `int | str` obriga todo consumidor a um
+  `int()` defensivo sem saber o que recebe; `ChargeStatus | str` é a união
+  de um enum de `str` com `str` — é string dos dois lados, `==` funciona
+  dos dois lados, e a união **acrescenta** informação em vez de ambiguidade.
+
+  A docstring do `STATUS_MAP` estava invertida para o caminho de API e foi
+  corrigida.
+
+- **Identificador com caractere reservado parou de endereçar outro
+  recurso.**
+  ([#242](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/242))
+  O id entrava no path sem escape, e com `#` a chamada **mudava de alvo**.
+  Medido na v0.268.0:
+
+  ```text
+  'order-1042'   -> /api/v1/charge/order-1042
+  'order/1042'   -> /api/v1/charge/order/1042
+  'order#42'     -> /api/v1/charge/order
+  ```
+
+  O fragmento é descartado pelo cliente HTTP, então `order#42` virava uma
+  operação sobre `order` — e em `cancel_pix_charge` isso é um `DELETE` no
+  lugar errado. O `correlationID` é escolhido pelo consumidor e
+  `PixChargeRequest.reference` só valida `min_length=1`.
+
+  A correção entra pelo **emissor** (`openapi/emit_client.py`), não editando
+  código gerado: todo parâmetro de path é interpolado por um
+  `_path_param(value)` novo, que faz `quote(str(_param(value)), safe="")`.
+  Vale para todas as rotas de todos os clientes gerados de uma vez — **58
+  interpolações na OpenPix e 108 no Mercado Pago**. Medido depois:
+
+  ```text
+  'order#42'   -> /api/v1/charge/order%2342
+  'order/1042' -> /api/v1/charge/order%2F1042
+  ```
+
+- **`PixCharge.raw` passou a ter uma grafia só, a do fio.**
+  ([#243](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/243))
+  O `raw` mudava de grafia conforme o caminho, e o exemplo da própria
+  receita devolvia `None`. Medido na v0.268.0, mesmo corpo, dois caminhos:
+
+  ```text
+  API      raw['paymentLinkUrl']   -> None
+  API      raw['payment_link_url'] -> https://openpix.com.br/pay/pl_1
+  webhook  raw['paymentLinkUrl']   -> https://openpix.com.br/pay/pl_1
+  ```
+
+  O caminho de API fazia `model_dump(mode="json")` sem `by_alias`, então
+  campo declarado saía em `snake_case`; o webhook devolvia o dict cru, em
+  `camelCase`. Pior, o caminho de API produzia uma **mistura**: campo não
+  declarado, que `extra="allow"` preserva, mantinha a grafia do fio
+  enquanto os vizinhos declarados não. Agora os dois usam `by_alias=True`.
+
+  Ver [Migração](docs/migration.md) — é mudança observável para quem já lê
+  `raw` com `snake_case`.
+
+- **Dois guards de doc paravam de funcionar quando existia um `git
+  worktree`.** `tests/test_agent_docs_guard.py` e
+  `tests/test_docs_api_guard.py` varriam `.claude/` com `rglob("*.md")`, e um
+  worktree criado em `.claude/worktrees/` é **um checkout inteiro do
+  repositório**, virtualenv incluído. Os dois passavam a checar o
+  `CHANGELOG.md`, o `README.md` e o `docs/` daquela cópia como se fossem os
+  deste repo — e o segundo chegava a parsear
+  `.venv/.../typeshed/.../README.md` de terceiro. Medido: **238 falhas** com
+  três worktrees em disco, todas em caminho que existe relativo à raiz do
+  worktree e não a esta. Os dois agora pulam `worktrees/`.
+
+- **Dois campos de dinheiro que o overlay não alcançava.**
+  ([#244](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/244))
+  A v0.269.0 fechou a classe da #238 até onde o overlay chegava, e dois
+  casos ficaram registrados no guard como conhecidos. `_retype` endereça
+  `components.schemas.<Nome>.properties.<prop>`, e nenhum dos dois mora ali:
+
+  ```text
+  paths./api/v1/dispute/{id}.get.responses.200.content
+       .application/json.schema.properties.dispute
+  paths./api/v1/webhook.post.callbacks.receivedPix
+       .{$request.body#/webhook.url}.post.requestBody...properties.pix
+  ```
+
+  `MISTYPED_POINTERS` é a tabela irmã, endereçada por **JSON pointer**
+  (RFC 6901). `dispute.value` quebrava hoje — `get_dispute` era um dos sete
+  métodos que não liam resposta real, e a correção da v0.269.0 parava nos
+  schemas de componente. Os três callbacks `receivedPix*` não quebram nada
+  ainda, porque o gerador não emite modelo para `callbacks` (medido: zero
+  classes `Callback` nos schemas gerados); foram corrigidos assim mesmo,
+  para o dia em que os modelos de callback existirem não ser o dia da
+  descoberta.
+
 ## [0.269.0] — 2026-08-29
 
 ### Fixed

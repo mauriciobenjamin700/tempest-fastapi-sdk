@@ -2,6 +2,113 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.270.0 — `PixCharge.raw` usa a grafia do fio
+
+Não muda nenhuma assinatura. Muda **as chaves de um dicionário** que o
+contrato canônico entrega.
+
+### O que muda
+
+`PixCharge.raw` sempre carregou o payload do provedor, mas com grafia
+diferente conforme o caminho. Medido na v0.269.0, mesmo corpo, mesmos dois
+caminhos:
+
+```text
+API      raw['paymentLinkUrl']   -> None
+API      raw['payment_link_url'] -> https://openpix.com.br/pay/pl_1
+webhook  raw['paymentLinkUrl']   -> https://openpix.com.br/pay/pl_1
+```
+
+O caminho de API dumpava sem `by_alias`, então campo **declarado** saía em
+`snake_case` enquanto campo **não declarado** — que `extra="allow"`
+preserva desde a v0.259/v0.260 — mantinha o nome do fio. O `raw` do
+caminho de API era, literalmente, uma mistura das duas grafias.
+
+A partir da v0.270.0 os dois caminhos usam `by_alias=True`: **a grafia é a
+do provedor, sempre**.
+
+### O que fazer
+
+Se o seu serviço lê `raw` em campo **declarado** pela especificação, troque
+para o nome do fio:
+
+```python
+from tempest_fastapi_sdk.integrations.payment import PixCharge
+
+
+def payment_link(charge: PixCharge) -> object | None:
+    """Read OpenPix's payment link out of the raw payload.
+
+    Args:
+        charge (PixCharge): The charge, in canonical shape.
+
+    Returns:
+        object | None: The link, when the provider sent one.
+    """
+    return charge.raw.get("paymentLinkUrl")
+```
+
+Quem já lia campo **não declarado** (`paidAt`, por exemplo) não muda nada:
+esses já vinham na grafia do fio.
+
+!!! tip "Como achar as ocorrências"
+    ```bash
+    grep -rn 'raw\[\|raw\.get(' <seu-serviço>/
+    ```
+
+    Toda leitura de `raw` com chave em `snake_case` é candidata. A
+    contrapartida é o nome que a documentação do provedor usa.
+
+!!! note "Por que a grafia do fio, e não a do Python"
+    `raw` existe para o que o contrato **não** modela. O consumidor
+    descobre esse campo lendo a documentação do provedor, e lá ele se
+    chama `paymentLinkUrl`. Uma grafia que só existe depois de o SDK
+    renomear é uma que ninguém consegue prever.
+
+## 0.270.0 — `PaymentStatus` ganhou `UNKNOWN`
+
+Membro novo num enum. **Aditivo**: nada que existia mudou de valor.
+
+### O que muda
+
+Um estado que o SDK não classifica agora chega como
+`PaymentStatus.UNKNOWN`, com a string do provedor preservada em
+`provider_status`. Antes, os dois caminhos da OpenPix respondiam coisas
+opostas e nenhuma era verdade:
+
+```text
+API      status 'CANCELLED' -> ValidationError -> 500 no seu serviço
+webhook  status 'CANCELLED' -> status=pending
+```
+
+### O que fazer
+
+Se você ramifica exaustivamente em `PaymentStatus` — um `match` sem
+`case _`, um dicionário indexado por membro — acrescente o caso:
+
+```python
+from tempest_fastapi_sdk.integrations.payment import PaymentStatus, PixCharge
+
+
+def describe(charge: PixCharge) -> str:
+    """Describe a charge's state for a support screen.
+
+    Args:
+        charge (PixCharge): The charge, in canonical shape.
+
+    Returns:
+        str: A line a human can act on.
+    """
+    if charge.status is PaymentStatus.UNKNOWN:
+        return f"estado não classificado: {charge.provider_status}"
+    return charge.status.value
+```
+
+Quem ramifica só em `PAID`/`PENDING` com um ramo default não precisa fazer
+nada — o comportamento novo é estritamente melhor: uma cobrança que antes
+aparecia como `PENDING` sem ser, ou que derrubava a requisição, agora se
+identifica.
+
 ## 0.269.0 — `Charge.expires_in` virou `int`
 
 Não muda nenhuma assinatura. Muda **o tipo de um campo de resposta** da

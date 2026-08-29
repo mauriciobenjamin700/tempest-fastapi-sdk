@@ -423,7 +423,31 @@ async def is_paid(self, reference: str) -> bool:
     delivery, silently. `ChargeStatus` is a `str` enum, so `==` works with the
     member **and** with the literal string.
 
-    The three values are `ACTIVE`, `COMPLETED` and `EXPIRED`.
+    The three documented values are `ACTIVE`, `COMPLETED` and `EXPIRED`.
+
+!!! info "The field accepts a fourth value — on purpose (v0.270.0)"
+    `Charge.status` is annotated `ChargeStatus | str | None`, not just
+    `ChargeStatus`. The specification declares the three values on
+    `Charge.status` and leaves `WebhookCharge.status` an unconstrained
+    string — so Woovi itself has not committed to the list on the object
+    it delivers.
+
+    While the field was a closed enum, a new provider state did not become
+    an unknown state: it became a `ValidationError` inside the client,
+    which reaches your service as a **500**, with the real value nowhere in
+    the response. Measured before the fix:
+
+    ```text
+    pydantic_core._pydantic_core.ValidationError: 1 validation error
+    charge.status
+      Input should be 'ACTIVE', 'COMPLETED' or 'EXPIRED'
+      [input_value='CANCELLED']
+    ```
+
+    Comparing with `==` is unchanged: a known value still matches the enum
+    member. If you branch on `status`, handle the off-list case — through
+    the canonical contract that is
+    [`PaymentStatus.UNKNOWN`](pix-protocol.en.md#states).
 
 ### Reconciliation
 
@@ -589,7 +613,7 @@ assert cents_to_reais(1990) == Decimal("19.90")
 `vendor/openpix-openapi.json` is the document Woovi publishes, byte for byte —
 refreshing it is a diff of what **they** changed and nothing else. Everything
 we know the document gets wrong lives in `scripts/openpix_overlay.py`, one
-named correction at a time, each carrying its evidence. Two families:
+named correction at a time, each carrying its evidence. Four families:
 
 **1. Whole units.** 157 fields typed `number` that are an amount in cents, a
 count or an HTTP status code become `integer`. The rule reads the description
@@ -615,7 +639,41 @@ charge = Charge.model_validate(
 charge.fee, charge.value_with_discount   # (2500, 199000) — int, not float
 ```
 
-!!! warning "A third family was removed in v0.260.0"
+**3. Fields the document declares with the wrong type.** `Charge.expiresIn` is
+declared `string` and the API answers `3600`, so **every** charge read failed
+validation until v0.269.0. The same sweep found four more, all money:
+`PixQrCode.value`, `WithdrawTransaction.value`, the inline `dispute.value`
+under `GET /api/v1/dispute/{id}` and `pix.value` on the three `receivedPix*`
+callbacks. The first three are addressed by component name
+(`MISTYPED_PROPERTIES`); the last two have no component to name — they live
+inline under a path and under a callback — and are addressed by **JSON
+pointer** (`MISTYPED_POINTERS`).
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import GetDisputeResponse
+
+reply: GetDisputeResponse = GetDisputeResponse.model_validate(
+    {"dispute": {"status": "CREATED", "value": 15000, "type": "MED"}}
+)
+print(reply.dispute)   # value=15000 — an int, not the string the spec declares
+```
+
+**4. An enum the provider does not honour on a response.** `Charge.status` is
+declared with three values, and `WebhookCharge.status` — the same object,
+delivered by webhook — is an unconstrained string. While the field was a closed
+enum, a fourth state did not become an unknown state: it became a
+`ValidationError` inside the client, which is a **500** from your service.
+`LIFTED_ENUMS` moves the values into a component of their own and leaves the
+property an `anyOf` of it and a string, so the `ChargeStatus` class keeps
+existing and the field accepts whatever Woovi sends.
+
+!!! check "The correction retires by itself"
+    Every correction in these families applies only when what is declared
+    **differs** from the correction. The day Woovi fixes the document, the
+    matching line disappears from the `make openpix-regen` log — nobody has to
+    remember to remove the entry.
+
+!!! warning "A fifth family was removed in v0.260.0"
     v0.259.0 added a `DELETE /api/v1/payment/{id}` here, on the reasoning that
     the two-step transfer flow had no way back. The document Woovi publishes
     carries only `get` on that path, and no payment path carries a `delete` —

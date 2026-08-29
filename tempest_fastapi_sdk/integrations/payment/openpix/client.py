@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import date, datetime, time
 from enum import Enum
 from typing import Any, TypeVar
+from urllib.parse import quote
 from uuid import UUID
 
 from pydantic import BaseModel, TypeAdapter
@@ -259,6 +260,31 @@ def _param(value: Any) -> Any:
     return value
 
 
+def _path_param(value: Any) -> str:
+    """Escape a value into exactly one path segment.
+
+    Args:
+        value (Any): The argument as the caller passed it,
+            normalized through ``_param`` first so an ``Enum``
+            reaches the path as its value rather than as
+            ``"Class.MEMBER"``.
+
+    Returns:
+        str: The value percent-encoded with an empty ``safe``
+        set, so every reserved character is escaped — ``/``
+        included, because an identifier is one segment and must
+        not become two.
+
+    Without this, a reserved character does not fail: it
+    *retargets*. ``order#42`` interpolated raw yields
+    ``/charge/order#42``, whose fragment the HTTP client never
+    sends — so the request addresses ``/charge/order``, and on a
+    ``DELETE`` route that is a destructive call against a
+    different resource.
+    """
+    return quote(str(_param(value)), safe="")
+
+
 class OpenPixClient:
     """Client for Woovi (version 1.0.0)."""
 
@@ -295,7 +321,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 500.
         """
-        path = f"/api/image/qrcode/base64/{id}"
+        path = f"/api/image/qrcode/base64/{_path_param(id)}"
         params: dict[str, Any] = {}
         if size is not None:
             params["size"] = _param(size)
@@ -386,7 +412,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 404, 500.
         """
-        path = f"/api/v1/account-register/{id}"
+        path = f"/api/v1/account-register/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -412,7 +438,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 404, 500.
         """
-        path = f"/api/v1/account-register/{id}"
+        path = f"/api/v1/account-register/{_path_param(id)}"
         response = await self._client.request(
             "DELETE",
             path,
@@ -436,7 +462,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/account/{account_id}"
+        path = f"/api/v1/account/{_path_param(account_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -464,7 +490,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 403, 404, 500.
         """
-        path = f"/api/v1/account/{account_id}"
+        path = f"/api/v1/account/{_path_param(account_id)}"
         response = await self._client.request(
             "DELETE",
             path,
@@ -495,7 +521,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/account/{account_id}/withdraw"
+        path = f"/api/v1/account/{_path_param(account_id)}/withdraw"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -631,7 +657,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 403, 404.
         """
-        path = f"/api/v1/anticipation/beneficiary/{tax_id}/activate"
+        path = f"/api/v1/anticipation/beneficiary/{_path_param(tax_id)}/activate"
         response = await self._client.request(
             "POST",
             path,
@@ -657,7 +683,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 403, 404.
         """
-        path = f"/api/v1/anticipation/beneficiary/{tax_id}/deactivate"
+        path = f"/api/v1/anticipation/beneficiary/{_path_param(tax_id)}/deactivate"
         response = await self._client.request(
             "POST",
             path,
@@ -686,7 +712,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404, 409.
         """
-        path = f"/api/v1/anticipation/{id}/approve"
+        path = f"/api/v1/anticipation/{_path_param(id)}/approve"
         response = await self._client.request(
             "POST",
             path,
@@ -717,7 +743,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404, 409.
         """
-        path = f"/api/v1/anticipation/{id}/reject"
+        path = f"/api/v1/anticipation/{_path_param(id)}/reject"
         payload = None if body is None else _dump(body)
         response = await self._client.request(
             "POST",
@@ -887,7 +913,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/api/v1/boleto-transaction/{boleto_transaction_id}"
+        path = f"/api/v1/boleto-transaction/{_path_param(boleto_transaction_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -981,7 +1007,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/cashback-fidelity/balance/{tax_id}"
+        path = f"/api/v1/cashback-fidelity/balance/{_path_param(tax_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -1106,7 +1132,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/charge/{id}"
+        path = f"/api/v1/charge/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -1134,7 +1160,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/charge/{id}"
+        path = f"/api/v1/charge/{_path_param(id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PATCH",
@@ -1162,7 +1188,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/charge/{id}"
+        path = f"/api/v1/charge/{_path_param(id)}"
         response = await self._client.request(
             "DELETE",
             path,
@@ -1190,7 +1216,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/charge/{id}/refund"
+        path = f"/api/v1/charge/{_path_param(id)}/refund"
         response = await self._client.request(
             "GET",
             path,
@@ -1221,7 +1247,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/charge/{id}/refund"
+        path = f"/api/v1/charge/{_path_param(id)}/refund"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -1312,7 +1338,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/customer/{id}"
+        path = f"/api/v1/customer/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -1341,7 +1367,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/customer/{id}"
+        path = f"/api/v1/customer/{_path_param(id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PATCH",
@@ -1428,7 +1454,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 500.
         """
-        path = f"/api/v1/dispute/{id}"
+        path = f"/api/v1/dispute/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -1460,7 +1486,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 403.
         """
-        path = f"/api/v1/dispute/{id}/evidence"
+        path = f"/api/v1/dispute/{_path_param(id)}/evidence"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -1557,7 +1583,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 403, 404.
         """
-        path = f"/api/v1/funds-recovery/{id}"
+        path = f"/api/v1/funds-recovery/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -1586,7 +1612,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 403, 404, 422.
         """
-        path = f"/api/v1/funds-recovery/{id}/cancel"
+        path = f"/api/v1/funds-recovery/{_path_param(id)}/cancel"
         response = await self._client.request(
             "POST",
             path,
@@ -1611,7 +1637,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/installments/{id}"
+        path = f"/api/v1/installments/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -1640,7 +1666,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/installments/{id}/cobr"
+        path = f"/api/v1/installments/{_path_param(id)}/cobr"
         payload = None if body is None else _dump(body)
         response = await self._client.request(
             "POST",
@@ -1671,7 +1697,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/installments/{id}/cobr/retry"
+        path = f"/api/v1/installments/{_path_param(id)}/cobr/retry"
         payload = None if body is None else _dump(body)
         response = await self._client.request(
             "POST",
@@ -1929,7 +1955,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 403, 404.
         """
-        path = f"/api/v1/invoice/{correlation_id}/cancel"
+        path = f"/api/v1/invoice/{_path_param(correlation_id)}/cancel"
         response = await self._client.request(
             "POST",
             path,
@@ -1955,7 +1981,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 401, 403, 404, 500.
         """
-        path = f"/api/v1/invoice/{correlation_id}/pdf"
+        path = f"/api/v1/invoice/{_path_param(correlation_id)}/pdf"
         response = await self._client.request(
             "GET",
             path,
@@ -1981,7 +2007,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 401, 403, 404, 500.
         """
-        path = f"/api/v1/invoice/{correlation_id}/xml"
+        path = f"/api/v1/invoice/{_path_param(correlation_id)}/xml"
         response = await self._client.request(
             "GET",
             path,
@@ -2049,7 +2075,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 401, 403, 404.
         """
-        path = f"/api/v1/kyc-validation/{correlation_id}"
+        path = f"/api/v1/kyc-validation/{_path_param(correlation_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -2122,7 +2148,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 403, 404.
         """
-        path = f"/api/v1/limits/{account_id}"
+        path = f"/api/v1/limits/{_path_param(account_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -2243,7 +2269,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/partner/company/{tax_id}"
+        path = f"/api/v1/partner/company/{_path_param(tax_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -2357,7 +2383,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/payment/{id}"
+        path = f"/api/v1/payment/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -2547,7 +2573,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 403, 404.
         """
-        path = f"/api/v1/pix-keys/{pix_key}"
+        path = f"/api/v1/pix-keys/{_path_param(pix_key)}"
         response = await self._client.request(
             "DELETE",
             path,
@@ -2586,7 +2612,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 403, 404, 429.
         """
-        path = f"/api/v1/pix-keys/{pix_key}/check"
+        path = f"/api/v1/pix-keys/{_path_param(pix_key)}/check"
         response = await self._client.request(
             "GET",
             path,
@@ -2610,7 +2636,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/api/v1/pix-keys/{pix_key}/default"
+        path = f"/api/v1/pix-keys/{_path_param(pix_key)}/default"
         response = await self._client.request(
             "PUT",
             path,
@@ -2720,7 +2746,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/qrcode-static/{id}"
+        path = f"/api/v1/qrcode-static/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -2746,7 +2772,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/qrcode-static/{id}"
+        path = f"/api/v1/qrcode-static/{_path_param(id)}"
         response = await self._client.request(
             "DELETE",
             path,
@@ -2776,7 +2802,9 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404.
         """
-        path = f"/api/v1/receipt/{receipt_type}/{end_to_end_id}"
+        path = (
+            f"//api/v1/receipt/{_path_param(receipt_type)}/{_path_param(end_to_end_id)}"
+        )
         response = await self._client.request(
             "GET",
             path,
@@ -2847,7 +2875,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/refund/{id}"
+        path = f"/api/v1/refund/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -3079,7 +3107,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 401, 404.
         """
-        path = f"/api/v1/stablecoin/payout/{payout_id}"
+        path = f"/api/v1/stablecoin/payout/{_path_param(payout_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -3220,7 +3248,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 401, 404.
         """
-        path = f"/api/v1/stablecoin/subaccount/{sub_account_id}"
+        path = f"/api/v1/stablecoin/subaccount/{_path_param(sub_account_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -3257,7 +3285,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 401, 404, 502.
         """
-        path = f"/api/v1/stablecoin/subaccount/{sub_account_id}/balances"
+        path = f"/api/v1/stablecoin/subaccount/{_path_param(sub_account_id)}/balances"
         response = await self._client.request(
             "GET",
             path,
@@ -3296,7 +3324,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 401, 404, 502.
         """
-        path = f"/api/v1/stablecoin/subaccount/{sub_account_id}/wallets"
+        path = f"/api/v1/stablecoin/subaccount/{_path_param(sub_account_id)}/wallets"
         response = await self._client.request(
             "GET",
             path,
@@ -3478,7 +3506,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/subaccount/{id}"
+        path = f"/api/v1/subaccount/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -3504,7 +3532,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 403.
         """
-        path = f"/api/v1/subaccount/{id}"
+        path = f"/api/v1/subaccount/{_path_param(id)}"
         response = await self._client.request(
             "DELETE",
             path,
@@ -3533,7 +3561,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 403.
         """
-        path = f"/api/v1/subaccount/{id}/credit"
+        path = f"/api/v1/subaccount/{_path_param(id)}/credit"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -3564,7 +3592,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 403.
         """
-        path = f"/api/v1/subaccount/{id}/debit"
+        path = f"/api/v1/subaccount/{_path_param(id)}/debit"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -3605,7 +3633,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 403.
         """
-        path = f"/api/v1/subaccount/{id}/statement"
+        path = f"/api/v1/subaccount/{_path_param(id)}/statement"
         params: dict[str, Any] = {}
         if skip is not None:
             params["skip"] = _param(skip)
@@ -3644,7 +3672,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/subaccount/{id}/withdraw"
+        path = f"/api/v1/subaccount/{_path_param(id)}/withdraw"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -3717,7 +3745,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/subscriptions/{id}"
+        path = f"/api/v1/subscriptions/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -3741,7 +3769,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/subscriptions/{id}/cancel"
+        path = f"/api/v1/subscriptions/{_path_param(id)}/cancel"
         response = await self._client.request(
             "PUT",
             path,
@@ -3765,7 +3793,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/subscriptions/{id}/installments"
+        path = f"/api/v1/subscriptions/{_path_param(id)}/installments"
         response = await self._client.request(
             "GET",
             path,
@@ -3790,7 +3818,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/subscriptions/{id}/value"
+        path = f"/api/v1/subscriptions/{_path_param(id)}/value"
         response = await self._client.request(
             "PUT",
             path,
@@ -3885,7 +3913,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 403.
         """
-        path = f"/api/v1/transaction/{id}"
+        path = f"/api/v1/transaction/{_path_param(id)}"
         params: dict[str, Any] = {}
         if company_bank_account is not None:
             params["companyBankAccount"] = _param(company_bank_account)
@@ -4073,7 +4101,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/api/v1/webhook/{id}"
+        path = f"/api/v1/webhook/{_path_param(id)}"
         response = await self._client.request(
             "DELETE",
             path,
@@ -4102,7 +4130,7 @@ class OpenPixClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/openpix/charge/brcode/image/{id}.png"
+        path = f"/openpix/charge/brcode/image/{_path_param(id)}.png"
         params: dict[str, Any] = {}
         if size is not None:
             params["size"] = _param(size)

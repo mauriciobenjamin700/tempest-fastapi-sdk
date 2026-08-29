@@ -421,7 +421,31 @@ async def is_paid(self, reference: str) -> bool:
     em silêncio. `ChargeStatus` é um `str` enum, então a comparação por `==`
     funciona com o membro **e** com a string literal.
 
-    Os três valores são `ACTIVE`, `COMPLETED` e `EXPIRED`.
+    Os três valores documentados são `ACTIVE`, `COMPLETED` e `EXPIRED`.
+
+!!! info "O campo aceita um quarto valor — de propósito (v0.270.0)"
+    `Charge.status` é anotado `ChargeStatus | str | None`, e não só
+    `ChargeStatus`. A especificação declara os três valores em
+    `Charge.status` e deixa `WebhookCharge.status` como string livre — ou
+    seja, a própria Woovi não se comprometeu com a lista no objeto que
+    entrega.
+
+    Enquanto o campo era um enum fechado, um estado novo do provedor não
+    virava um estado desconhecido: virava `ValidationError` dentro do
+    cliente, que chega ao seu serviço como **500**, com o valor real em
+    lugar nenhum da resposta. Medido antes da correção:
+
+    ```text
+    pydantic_core._pydantic_core.ValidationError: 1 validation error
+    charge.status
+      Input should be 'ACTIVE', 'COMPLETED' or 'EXPIRED'
+      [input_value='CANCELLED']
+    ```
+
+    A comparação por `==` não muda: valor conhecido continua batendo com o
+    membro do enum. Se você ramifica em `status`, trate o caso de fora da
+    lista — pelo contrato canônico isso é
+    [`PaymentStatus.UNKNOWN`](pix-protocol.md#estados).
 
 ### A reconciliação
 
@@ -587,7 +611,7 @@ assert cents_to_reais(1990) == Decimal("19.90")
 `vendor/openpix-openapi.json` é o documento que a Woovi publica, byte a byte —
 atualizar é um diff só do que **eles** mudaram. Tudo que a gente sabe que o
 documento erra vive em `scripts/openpix_overlay.py`, uma correção nomeada por
-vez, cada uma com a evidência ao lado. São duas famílias:
+vez, cada uma com a evidência ao lado. São quatro famílias:
 
 **1. Unidade inteira.** 157 campos tipados `number` que são valor em centavo,
 contagem ou código HTTP viram `integer`. A regra lê a descrição antes do nome,
@@ -613,7 +637,40 @@ charge = Charge.model_validate(
 charge.fee, charge.value_with_discount   # (2500, 199000) — int, não float
 ```
 
-!!! warning "Uma terceira família foi removida na v0.260.0"
+**3. Campos que o documento declara com o tipo errado.** `Charge.expiresIn` é
+declarado `string` e a API responde `3600`, então **toda** leitura de cobrança
+falhava na validação até a v0.269.0. A mesma varredura achou mais quatro, todos
+dinheiro: `PixQrCode.value`, `WithdrawTransaction.value`, o `dispute.value`
+inline de `GET /api/v1/dispute/{id}` e o `pix.value` dos três callbacks
+`receivedPix*`. Os três primeiros são endereçados por nome de componente
+(`MISTYPED_PROPERTIES`); os dois últimos não têm componente para nomear —
+moram inline sob um path e sob um callback — e são endereçados por **JSON
+pointer** (`MISTYPED_POINTERS`).
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import GetDisputeResponse
+
+reply: GetDisputeResponse = GetDisputeResponse.model_validate(
+    {"dispute": {"status": "CREATED", "value": 15000, "type": "MED"}}
+)
+print(reply.dispute)   # value=15000 — int, não a string que a spec declara
+```
+
+**4. Enum que o provedor não honra numa resposta.** `Charge.status` é declarado
+com três valores, e `WebhookCharge.status` — o mesmo objeto, entregue por
+webhook — é string livre. Enquanto o campo era enum fechado, um quarto estado
+não virava estado desconhecido: virava `ValidationError` dentro do cliente, ou
+seja **500** no seu serviço. `LIFTED_ENUMS` move os valores para um componente
+próprio e deixa a propriedade como `anyOf` dele com string, então a classe
+`ChargeStatus` continua existindo e o campo aceita o que a Woovi mandar.
+
+!!! check "A correção se aposenta sozinha"
+    Toda correção destas famílias só aplica quando o que está declarado
+    **difere** do corrigido. No dia em que a Woovi arrumar o documento, a linha
+    correspondente some do log de `make openpix-regen` — sem ninguém precisar
+    lembrar de remover a entrada.
+
+!!! warning "Uma quinta família foi removida na v0.260.0"
     A v0.259.0 adicionou aqui um `DELETE /api/v1/payment/{id}`, na conta de que
     o fluxo de transferência em dois passos não tinha caminho de volta. O
     documento que a Woovi publica tem só `get` nesse path, e nenhum caminho de

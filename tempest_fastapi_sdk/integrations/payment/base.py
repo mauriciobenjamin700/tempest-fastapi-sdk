@@ -34,6 +34,15 @@ class PaymentStatus(BaseStrEnum):
     :attr:`PixCharge.provider_status`. This enum is what a service branches
     on.
 
+    :attr:`UNKNOWN` exists for the same reason
+    :attr:`PixEventType.UNKNOWN` does: a provider can report a state this
+    SDK version has never seen, and the two ways of hiding that are both
+    worse than saying so. Falling through to :attr:`PENDING` reports a
+    charge as awaiting payment when the provider just said it is not;
+    refusing to read the charge at all turns a state the SDK does not
+    recognize into a failed request, with the real state nowhere the
+    caller can see it.
+
     Attributes:
         PENDING (str): Created and waiting for the payer.
         PAID (str): Settled. The money is with the receiver.
@@ -47,6 +56,10 @@ class PaymentStatus(BaseStrEnum):
             settled nor refused yet.
         FAILED (str): Refused. A terminal state distinct from
             :attr:`EXPIRED`, which is about time rather than refusal.
+        UNKNOWN (str): A state this SDK version does not classify. The
+            provider's own string stays in
+            :attr:`PixCharge.provider_status`, so an unmapped state is
+            visible rather than reported as something it is not.
     """
 
     PENDING = "pending"
@@ -57,6 +70,7 @@ class PaymentStatus(BaseStrEnum):
     CHARGED_BACK = "charged_back"
     IN_ANALYSIS = "in_analysis"
     FAILED = "failed"
+    UNKNOWN = "unknown"
 
 
 class PixEventType(BaseStrEnum):
@@ -209,7 +223,11 @@ class PixCharge(_EnumSafeSchema):
         raw (dict[str, Any]): The provider's payload as decoded. Present
             because ``BaseSchema`` is ``extra="ignore"``: without it,
             everything a provider sends beyond this contract would be
-            dropped in validation, with no error.
+            dropped in validation, with no error. Keys are spelled the way
+            the provider spells them **on the wire**, whichever path
+            produced the charge — an adapter that reads a response through
+            a generated model dumps it ``by_alias``, so an API read and a
+            webhook delivery answer to the same key.
     """
 
     provider: str = Field(description="Provedor dono desta cobrança.")

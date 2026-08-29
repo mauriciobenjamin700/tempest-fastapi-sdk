@@ -350,6 +350,10 @@ def main() -> int:
         print(f"  overlay: + {entry}")
     for entry in report.retyped_properties:
         print(f"  overlay: ! {entry} (type corrected)")
+    for entry in report.retyped_pointers:
+        print(f"  overlay: ! {entry} (type corrected, by pointer)")
+    for entry in report.lifted_enums:
+        print(f"  overlay: ~ {entry} (enum lifted to its own component)")
     return 0
 
 

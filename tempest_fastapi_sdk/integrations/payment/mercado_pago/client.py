@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import date, datetime, time
 from enum import Enum
 from typing import Any, TypeVar
+from urllib.parse import quote
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, TypeAdapter
@@ -217,6 +218,31 @@ def _param(value: Any) -> Any:
     return value
 
 
+def _path_param(value: Any) -> str:
+    """Escape a value into exactly one path segment.
+
+    Args:
+        value (Any): The argument as the caller passed it,
+            normalized through ``_param`` first so an ``Enum``
+            reaches the path as its value rather than as
+            ``"Class.MEMBER"``.
+
+    Returns:
+        str: The value percent-encoded with an empty ``safe``
+        set, so every reserved character is escaped — ``/``
+        included, because an identifier is one segment and must
+        not become two.
+
+    Without this, a reserved character does not fail: it
+    *retargets*. ``order#42`` interpolated raw yields
+    ``/charge/order#42``, whose fragment the HTTP client never
+    sends — so the request addresses ``/charge/order``, and on a
+    ``DELETE`` route that is a destructive call against a
+    different resource.
+    """
+    return quote(str(_param(value)), safe="")
+
+
 class MercadoPagoClient:
     """Client for MercadoPago API (version 1.0.0)."""
 
@@ -302,7 +328,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 500.
         """
-        path = f"/authorized_payments/{id}"
+        path = f"/authorized_payments/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -408,7 +434,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 404.
         """
-        path = f"/checkout/preferences/{id}"
+        path = f"/checkout/preferences/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -435,7 +461,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/checkout/preferences/{id}"
+        path = f"/checkout/preferences/{_path_param(id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -466,7 +492,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 403, 404, 500.
         """
-        path = f"/checkout/preferences/{id}/expire"
+        path = f"/checkout/preferences/{_path_param(id)}/expire"
         response = await self._client.request(
             "PUT",
             path,
@@ -534,7 +560,8 @@ class MercadoPagoClient:
                 no error status.
         """
         path = (
-            f"//instore/orders/qr/seller/collectors/{user_id}/pos/{external_pos_id}/qrs"
+            f"//instore/orders/qr/seller/collectors/{_path_param(user_id)}/pos"
+            f"/{_path_param(external_pos_id)}/qrs"
         )
         payload = _dump(body)
         response = await self._client.request(
@@ -573,7 +600,8 @@ class MercadoPagoClient:
                 no error status.
         """
         path = (
-            f"//instore/orders/qr/seller/collectors/{user_id}/pos/{external_pos_id}/qrs"
+            f"//instore/orders/qr/seller/collectors/{_path_param(user_id)}/pos"
+            f"/{_path_param(external_pos_id)}/qrs"
         )
         payload = _dump(body)
         response = await self._client.request(
@@ -609,7 +637,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401.
         """
-        path = f"/instore/orders/{merchant_order_id}/confirmation"
+        path = f"/instore/orders/{_path_param(merchant_order_id)}/confirmation"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -640,7 +668,10 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/instore/qr/seller/collectors/{user_id}/pos/{external_pos_id}/orders"
+        path = (
+            f"//instore/qr/seller/collectors/{_path_param(user_id)}/pos"
+            f"/{_path_param(external_pos_id)}/orders"
+        )
         response = await self._client.request(
             "GET",
             path,
@@ -672,7 +703,10 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/instore/qr/seller/collectors/{user_id}/pos/{external_pos_id}/orders"
+        path = (
+            f"//instore/qr/seller/collectors/{_path_param(user_id)}/pos"
+            f"/{_path_param(external_pos_id)}/orders"
+        )
         response = await self._client.request(
             "DELETE",
             path,
@@ -710,8 +744,9 @@ class MercadoPagoClient:
                 no error status.
         """
         path = (
-            f"//instore/qr/seller/collectors/{user_id}/stores/{external_store_id}/pos"
-            f"/{external_pos_id}/orders"
+            f"//instore/qr/seller/collectors/{_path_param(user_id)}/stores"
+            f"/{_path_param(external_store_id)}/pos/{_path_param(external_pos_id)}"
+            f"/orders"
         )
         payload = _dump(body)
         response = await self._client.request(
@@ -859,7 +894,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404.
         """
-        path = f"/merchant_orders/{id}"
+        path = f"/merchant_orders/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -886,7 +921,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401.
         """
-        path = f"/merchant_orders/{id}"
+        path = f"/merchant_orders/{_path_param(id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -923,7 +958,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/mpmobile/instore/qr/{user_id}/{external_id}"
+        path = f"/mpmobile/instore/qr/{_path_param(user_id)}/{_path_param(external_id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -957,7 +992,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/mpmobile/instore/qr/{user_id}/{external_id}"
+        path = f"/mpmobile/instore/qr/{_path_param(user_id)}/{_path_param(external_id)}"
         response = await self._client.request(
             "DELETE",
             path,
@@ -1043,7 +1078,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400.
         """
-        path = f"/point/integration-api/devices/{deviceid}/payment-intents"
+        path = f"/point/integration-api/devices/{_path_param(deviceid)}/payment-intents"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -1074,8 +1109,8 @@ class MercadoPagoClient:
                 no error status.
         """
         path = (
-            f"//point/integration-api/devices/{deviceid}/payment-intents"
-            f"/{paymentintentid}"
+            f"//point/integration-api/devices/{_path_param(deviceid)}/payment-intents"
+            f"/{_path_param(paymentintentid)}"
         )
         response = await self._client.request(
             "DELETE",
@@ -1108,7 +1143,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404.
         """
-        path = f"/point/integration-api/devices/{deviceid}/refund"
+        path = f"/point/integration-api/devices/{_path_param(deviceid)}/refund"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -1139,7 +1174,10 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/point/integration-api/devices/{deviceid}/refund/{refundintentid}"
+        path = (
+            f"//point/integration-api/devices/{_path_param(deviceid)}/refund"
+            f"/{_path_param(refundintentid)}"
+        )
         response = await self._client.request(
             "DELETE",
             path,
@@ -1165,7 +1203,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/point/integration-api/payment-intents/{paymentintentid}"
+        path = f"/point/integration-api/payment-intents/{_path_param(paymentintentid)}"
         response = await self._client.request(
             "GET",
             path,
@@ -1189,7 +1227,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/point/integration-api/refund/{refundintentid}"
+        path = f"/point/integration-api/refund/{_path_param(refundintentid)}"
         response = await self._client.request(
             "GET",
             path,
@@ -1289,7 +1327,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/pos/{id}"
+        path = f"/pos/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -1319,7 +1357,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/pos/{id}"
+        path = f"/pos/{_path_param(id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -1348,7 +1386,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/pos/{id}"
+        path = f"/pos/{_path_param(id)}"
         response = await self._client.request(
             "DELETE",
             path,
@@ -1425,7 +1463,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 401, 404.
         """
-        path = f"/post-purchase/v1/claims/{claim_id}"
+        path = f"/post-purchase/v1/claims/{_path_param(claim_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -1458,7 +1496,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401.
         """
-        path = f"/post-purchase/v1/claims/{claim_id}/actions/evidences"
+        path = f"/post-purchase/v1/claims/{_path_param(claim_id)}/actions/evidences"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -1489,7 +1527,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401.
         """
-        path = f"/post-purchase/v1/claims/{claim_id}/actions/open-dispute"
+        path = f"/post-purchase/v1/claims/{_path_param(claim_id)}/actions/open-dispute"
         response = await self._client.request(
             "POST",
             path,
@@ -1524,7 +1562,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 429.
         """
-        path = f"/post-purchase/v1/claims/{claim_id}/actions/send-message"
+        path = f"/post-purchase/v1/claims/{_path_param(claim_id)}/actions/send-message"
         params: dict[str, Any] = {}
         if application_id is not None:
             params["application_id"] = _param(application_id)
@@ -1562,7 +1600,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401.
         """
-        path = f"/post-purchase/v1/claims/{claim_id}/attachments"
+        path = f"/post-purchase/v1/claims/{_path_param(claim_id)}/attachments"
         response = await self._client.request(
             "POST",
             path,
@@ -1588,7 +1626,10 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/post-purchase/v1/claims/{claim_id}/attachments/{file_name}"
+        path = (
+            f"//post-purchase/v1/claims/{_path_param(claim_id)}/attachments"
+            f"/{_path_param(file_name)}"
+        )
         response = await self._client.request(
             "GET",
             path,
@@ -1616,7 +1657,10 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/post-purchase/v1/claims/{claim_id}/attachments/{file_name}/download"
+        path = (
+            f"//post-purchase/v1/claims/{_path_param(claim_id)}/attachments"
+            f"/{_path_param(file_name)}/download"
+        )
         response = await self._client.request(
             "GET",
             path,
@@ -1640,7 +1684,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/post-purchase/v1/claims/{claim_id}/evidences"
+        path = f"/post-purchase/v1/claims/{_path_param(claim_id)}/evidences"
         response = await self._client.request(
             "GET",
             path,
@@ -1666,7 +1710,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/post-purchase/v1/claims/{claim_id}/expected-resolutions"
+        path = f"/post-purchase/v1/claims/{_path_param(claim_id)}/expected-resolutions"
         response = await self._client.request(
             "GET",
             path,
@@ -1690,7 +1734,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/post-purchase/v1/claims/{claim_id}/messages"
+        path = f"/post-purchase/v1/claims/{_path_param(claim_id)}/messages"
         response = await self._client.request(
             "GET",
             path,
@@ -1714,7 +1758,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/post-purchase/v1/claims/{claim_id}/status_history"
+        path = f"/post-purchase/v1/claims/{_path_param(claim_id)}/status_history"
         response = await self._client.request(
             "GET",
             path,
@@ -1883,7 +1927,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 403, 404, 500.
         """
-        path = f"/preapproval/{id}"
+        path = f"/preapproval/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -1914,7 +1958,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 500.
         """
-        path = f"/preapproval/{id}"
+        path = f"/preapproval/{_path_param(id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -2021,7 +2065,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 401, 404, 500.
         """
-        path = f"/preapproval_plan/{id}"
+        path = f"/preapproval_plan/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -2048,7 +2092,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404, 500.
         """
-        path = f"/preapproval_plan/{id}"
+        path = f"/preapproval_plan/{_path_param(id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -2111,7 +2155,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/terminals/v1/actions/{action_id}"
+        path = f"/terminals/v1/actions/{_path_param(action_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -2140,7 +2184,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/terminals/v1/actions/{action_id}/cancel"
+        path = f"/terminals/v1/actions/{_path_param(action_id)}/cancel"
         response = await self._client.request(
             "POST",
             path,
@@ -2246,7 +2290,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/users/{user_id}/pos"
+        path = f"/users/{_path_param(user_id)}/pos"
         response = await self._client.request(
             "GET",
             path,
@@ -2276,7 +2320,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/users/{user_id}/stores"
+        path = f"/users/{_path_param(user_id)}/stores"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -2306,7 +2350,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/users/{user_id}/stores/search"
+        path = f"/users/{_path_param(user_id)}/stores/search"
         params: dict[str, Any] = {}
         if external_id is not None:
             params["external_id"] = _param(external_id)
@@ -2342,7 +2386,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/users/{user_id}/stores/{id}"
+        path = f"/users/{_path_param(user_id)}/stores/{_path_param(id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -2373,7 +2417,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/users/{user_id}/stores/{id}"
+        path = f"/users/{_path_param(user_id)}/stores/{_path_param(id)}"
         response = await self._client.request(
             "DELETE",
             path,
@@ -2628,7 +2672,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/v1/account/release_report/task/{task_id}"
+        path = f"/v1/account/release_report/task/{_path_param(task_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -2656,7 +2700,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/v1/account/release_report/{file_name}"
+        path = f"/v1/account/release_report/{_path_param(file_name)}"
         response = await self._client.request(
             "GET",
             path,
@@ -2908,7 +2952,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/v1/account/settlement_report/task/{task_id}"
+        path = f"/v1/account/settlement_report/task/{_path_param(task_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -2934,7 +2978,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/v1/account/settlement_report/{file_name}"
+        path = f"/v1/account/settlement_report/{_path_param(file_name)}"
         response = await self._client.request(
             "GET",
             path,
@@ -3044,7 +3088,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404, 500.
         """
-        path = f"/v1/advanced_payments/{advanced_payment_id}"
+        path = f"/v1/advanced_payments/{_path_param(advanced_payment_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -3075,7 +3119,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404, 500.
         """
-        path = f"/v1/advanced_payments/{advanced_payment_id}"
+        path = f"/v1/advanced_payments/{_path_param(advanced_payment_id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -3115,8 +3159,8 @@ class MercadoPagoClient:
                 no error status.
         """
         path = (
-            f"//v1/advanced_payments/{advanced_payment_id}/disbursements"
-            f"/{disbursement_id}/refunds"
+            f"//v1/advanced_payments/{_path_param(advanced_payment_id)}/disbursements"
+            f"/{_path_param(disbursement_id)}/refunds"
         )
         payload = _dump(body)
         response = await self._client.request(
@@ -3154,7 +3198,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/v1/advanced_payments/{advanced_payment_id}/disburses"
+        path = f"/v1/advanced_payments/{_path_param(advanced_payment_id)}/disburses"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -3189,7 +3233,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/v1/advanced_payments/{advanced_payment_id}/refunds"
+        path = f"/v1/advanced_payments/{_path_param(advanced_payment_id)}/refunds"
         response = await self._client.request(
             "GET",
             path,
@@ -3224,7 +3268,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/v1/advanced_payments/{advanced_payment_id}/refunds"
+        path = f"/v1/advanced_payments/{_path_param(advanced_payment_id)}/refunds"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -3288,7 +3332,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/v1/card_tokens/{id}"
+        path = f"/v1/card_tokens/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -3354,7 +3398,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/v1/chargebacks/{id}"
+        path = f"/v1/chargebacks/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -3384,7 +3428,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/v1/chargebacks/{id}"
+        path = f"/v1/chargebacks/{_path_param(id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -3477,7 +3521,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 401.
         """
-        path = f"/v1/customers/{customer_id}/addresses"
+        path = f"/v1/customers/{_path_param(customer_id)}/addresses"
         response = await self._client.request(
             "GET",
             path,
@@ -3509,7 +3553,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 429.
         """
-        path = f"/v1/customers/{customer_id}/addresses"
+        path = f"/v1/customers/{_path_param(customer_id)}/addresses"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -3537,7 +3581,10 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/v1/customers/{customer_id}/addresses/{address_id}"
+        path = (
+            f"//v1/customers/{_path_param(customer_id)}/addresses"
+            f"/{_path_param(address_id)}"
+        )
         response = await self._client.request(
             "GET",
             path,
@@ -3569,7 +3616,10 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/v1/customers/{customer_id}/addresses/{address_id}"
+        path = (
+            f"//v1/customers/{_path_param(customer_id)}/addresses"
+            f"/{_path_param(address_id)}"
+        )
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -3600,7 +3650,10 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 404.
         """
-        path = f"/v1/customers/{customer_id}/addresses/{address_id}"
+        path = (
+            f"//v1/customers/{_path_param(customer_id)}/addresses"
+            f"/{_path_param(address_id)}"
+        )
         response = await self._client.request(
             "DELETE",
             path,
@@ -3624,7 +3677,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401.
         """
-        path = f"/v1/customers/{customer_id}/cards"
+        path = f"/v1/customers/{_path_param(customer_id)}/cards"
         response = await self._client.request(
             "GET",
             path,
@@ -3656,7 +3709,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401.
         """
-        path = f"/v1/customers/{customer_id}/cards"
+        path = f"/v1/customers/{_path_param(customer_id)}/cards"
         payload = _dump(body)
         response = await self._client.request(
             "POST",
@@ -3684,7 +3737,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404.
         """
-        path = f"/v1/customers/{customer_id}/cards/{id}"
+        path = f"/v1/customers/{_path_param(customer_id)}/cards/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -3713,7 +3766,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404.
         """
-        path = f"/v1/customers/{customer_id}/cards/{id}"
+        path = f"/v1/customers/{_path_param(customer_id)}/cards/{_path_param(id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -3741,7 +3794,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404.
         """
-        path = f"/v1/customers/{customer_id}/cards/{id}"
+        path = f"/v1/customers/{_path_param(customer_id)}/cards/{_path_param(id)}"
         response = await self._client.request(
             "DELETE",
             path,
@@ -3765,7 +3818,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404.
         """
-        path = f"/v1/customers/{id}"
+        path = f"/v1/customers/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -3792,7 +3845,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404.
         """
-        path = f"/v1/customers/{id}"
+        path = f"/v1/customers/{_path_param(id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -3821,7 +3874,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 401, 404.
         """
-        path = f"/v1/customers/{id}"
+        path = f"/v1/customers/{_path_param(id)}"
         response = await self._client.request(
             "DELETE",
             path,
@@ -3973,7 +4026,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404.
         """
-        path = f"/v1/orders/{id}"
+        path = f"/v1/orders/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -4003,7 +4056,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404, 409.
         """
-        path = f"/v1/orders/{order_id}/cancel"
+        path = f"/v1/orders/{_path_param(order_id)}/cancel"
         headers: dict[str, str] = {}
         headers["X-Idempotency-Key"] = str(x_idempotency_key)
         response = await self._client.request(
@@ -4036,7 +4089,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404, 409.
         """
-        path = f"/v1/orders/{order_id}/capture"
+        path = f"/v1/orders/{_path_param(order_id)}/capture"
         headers: dict[str, str] = {}
         headers["X-Idempotency-Key"] = str(x_idempotency_key)
         response = await self._client.request(
@@ -4070,7 +4123,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404, 409.
         """
-        path = f"/v1/orders/{order_id}/process"
+        path = f"/v1/orders/{_path_param(order_id)}/process"
         headers: dict[str, str] = {}
         headers["X-Idempotency-Key"] = str(x_idempotency_key)
         response = await self._client.request(
@@ -4107,7 +4160,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404, 409.
         """
-        path = f"/v1/orders/{order_id}/refund"
+        path = f"/v1/orders/{_path_param(order_id)}/refund"
         headers: dict[str, str] = {}
         headers["X-Idempotency-Key"] = str(x_idempotency_key)
         payload = None if body is None else _dump(body)
@@ -4144,7 +4197,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404, 422.
         """
-        path = f"/v1/orders/{order_id}/transactions"
+        path = f"/v1/orders/{_path_param(order_id)}/transactions"
         headers: dict[str, str] = {}
         headers["X-Idempotency-Key"] = str(x_idempotency_key)
         payload = _dump(body)
@@ -4182,7 +4235,10 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404.
         """
-        path = f"/v1/orders/{order_id}/transactions/{transaction_id}"
+        path = (
+            f"//v1/orders/{_path_param(order_id)}/transactions"
+            f"/{_path_param(transaction_id)}"
+        )
         headers: dict[str, str] = {}
         headers["X-Idempotency-Key"] = str(x_idempotency_key)
         payload = _dump(body)
@@ -4216,7 +4272,10 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404.
         """
-        path = f"/v1/orders/{order_id}/transactions/{transaction_id}"
+        path = (
+            f"//v1/orders/{_path_param(order_id)}/transactions"
+            f"/{_path_param(transaction_id)}"
+        )
         response = await self._client.request(
             "DELETE",
             path,
@@ -4432,7 +4491,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 403, 404.
         """
-        path = f"/v1/payments/{id}"
+        path = f"/v1/payments/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -4463,7 +4522,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 403, 404.
         """
-        path = f"/v1/payments/{id}"
+        path = f"/v1/payments/{_path_param(id)}"
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -4499,7 +4558,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404, 422, 429.
         """
-        path = f"/v1/payments/{id}/cancellations"
+        path = f"/v1/payments/{_path_param(id)}/cancellations"
         payload = _dump(body)
         response = await self._client.request(
             "PUT",
@@ -4525,7 +4584,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404.
         """
-        path = f"/v1/payments/{id}/refunds"
+        path = f"/v1/payments/{_path_param(id)}/refunds"
         response = await self._client.request(
             "GET",
             path,
@@ -4560,7 +4619,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 401, 404.
         """
-        path = f"/v1/payments/{id}/refunds"
+        path = f"/v1/payments/{_path_param(id)}/refunds"
         headers: dict[str, str] = {}
         if x_idempotency_key is not None:
             headers["X-Idempotency-Key"] = str(x_idempotency_key)
@@ -4592,7 +4651,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 404.
         """
-        path = f"/v1/payments/{id}/refunds/{refund_id}"
+        path = f"/v1/payments/{_path_param(id)}/refunds/{_path_param(refund_id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -4650,7 +4709,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/v1/payouts/{payout_id}/transactions"
+        path = f"/v1/payouts/{_path_param(payout_id)}/transactions"
         response = await self._client.request(
             "GET",
             path,
@@ -4681,7 +4740,10 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/v1/payouts/{payout_id}/transactions/{transaction_id}/cancel"
+        path = (
+            f"//v1/payouts/{_path_param(payout_id)}/transactions"
+            f"/{_path_param(transaction_id)}/cancel"
+        )
         response = await self._client.request(
             "PUT",
             path,
@@ -4741,7 +4803,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 no error status.
         """
-        path = f"/v1/transaction-intents/{id}"
+        path = f"/v1/transaction-intents/{_path_param(id)}"
         response = await self._client.request(
             "GET",
             path,
@@ -4822,7 +4884,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 404, 500.
         """
-        path = f"/v2/wallet_connect/agreements/{agreement_id}"
+        path = f"/v2/wallet_connect/agreements/{_path_param(agreement_id)}"
         params: dict[str, Any] = {}
         if client_id is not None:
             params["client.id"] = _param(client_id)
@@ -4866,7 +4928,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 404, 500.
         """
-        path = f"/v2/wallet_connect/agreements/{agreement_id}"
+        path = f"/v2/wallet_connect/agreements/{_path_param(agreement_id)}"
         params: dict[str, Any] = {}
         if client_id is not None:
             params["client.id"] = _param(client_id)
@@ -4909,7 +4971,7 @@ class MercadoPagoClient:
             httpx.HTTPStatusError: For any non-2xx response. The specification documents
                 400, 404, 500.
         """
-        path = f"/v2/wallet_connect/agreements/{agreement_id}/payer_token"
+        path = f"/v2/wallet_connect/agreements/{_path_param(agreement_id)}/payer_token"
         headers: dict[str, str] = {}
         if x_platform_id is not None:
             headers["x-platform-id"] = str(x_platform_id)

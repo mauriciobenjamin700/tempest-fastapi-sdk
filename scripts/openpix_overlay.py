@@ -235,6 +235,125 @@ mentioning it the day upstream is fixed.
 """
 
 
+MISTYPED_POINTERS: dict[str, dict[str, Any]] = {
+    "/paths/~1api~1v1~1dispute~1{id}/get/responses/200/content/"
+    "application~1json/schema/properties/dispute/properties/value": {
+        "type": "integer",
+        "description": (
+            "The value of the dispute, in cents. Declared `string` on this "
+            "inline response schema while the `Dispute` component declares "
+            "the same field `number`."
+        ),
+    },
+    "/paths/~1api~1v1~1webhook/post/callbacks/receivedPix/"
+    "{$request.body#~1webhook.url}/post/requestBody/content/"
+    "application~1json/schema/properties/pix/properties/value": {
+        "type": "integer",
+        "description": (
+            "Value of the received Pix, in cents. Declared `string` on this "
+            "callback while every `Webhook*Payload` component declares it "
+            "`integer`."
+        ),
+    },
+    "/paths/~1api~1v1~1webhook/post/callbacks/receivedPixDetached/"
+    "{$request.body#~1webhook.url}/post/requestBody/content/"
+    "application~1json/schema/properties/pix/properties/value": {
+        "type": "integer",
+        "description": (
+            "Value of the received Pix, in cents. Declared `string` on this "
+            "callback while every `Webhook*Payload` component declares it "
+            "`integer`."
+        ),
+    },
+    "/paths/~1api~1v1~1webhook/post/callbacks/receivedPixQrCode/"
+    "{$request.body#~1webhook.url}/post/requestBody/content/"
+    "application~1json/schema/properties/pix/properties/value": {
+        "type": "integer",
+        "description": (
+            "Value of the received Pix, in cents. Declared `string` on this "
+            "callback while every `Webhook*Payload` component declares it "
+            "`integer`."
+        ),
+    },
+}
+"""Mistyped properties that do not live under ``components.schemas``.
+
+Sibling of :data:`MISTYPED_PROPERTIES`, which addresses a property by
+component name. These four are the same defect in places that name cannot
+reach, so they are addressed by JSON pointer instead (issue #244):
+
+* ``GET /api/v1/dispute/{id}`` declares its 200 body **inline**, and types
+  ``dispute.value`` ``string`` while the ``Dispute`` component types the
+  same field ``number``. This one breaks today — ``get_dispute`` is one of
+  the seven methods that could not read a real answer, and the v0.269.0
+  correction stops at component schemas.
+* The three ``receivedPix*`` callbacks type ``pix.value`` ``string``
+  against ``integer`` on every ``Webhook*Payload`` component. These break
+  nothing yet, because the generator emits no model for ``callbacks``
+  (measured: zero ``Callback`` classes in the generated schemas). They are
+  corrected anyway so the day callback models are emitted is not the day
+  the defect is discovered.
+
+Escaping follows RFC 6901: ``~1`` for ``/`` and ``~0`` for ``~``. The
+callback keys contain a literal ``#``, which is not special to a pointer
+and is written as-is.
+"""
+
+LIFTED_ENUMS: dict[str, dict[str, str]] = {
+    "Charge": {"status": "ChargeStatus"},
+}
+"""Response properties whose declared ``enum`` the provider does not honour.
+
+``Charge.status`` is declared ``{"type": "string", "enum": ["ACTIVE",
+"COMPLETED", "EXPIRED"]}``, and the generated model therefore *refuses* any
+other value — a ``ValidationError`` raised inside the client, which reaches
+a service as a generic 500 with the real state nowhere in the response.
+
+The document contradicts itself here exactly as it does about types:
+``WebhookCharge`` is the same charge object delivered by webhook, and it
+declares ``status`` as an unconstrained ``{"type": "string"}``. A provider
+that leaves itself free to report a fourth state on one path has not
+committed to three on the other.
+
+A closed enum is right on a **request**, where the value is ours and a
+typo should be refused before the call. On a **response** it makes the
+client fail on data it merely does not recognize yet, which is the worse
+of the two outcomes: the charge is real either way, and a service that
+cannot read it cannot even see what arrived.
+
+The correction is a **lift**, not a deletion, and the difference is the
+whole design. Dropping the ``enum`` in place also deletes the generated
+``ChargeStatus`` class: it exists only because ``Charge.status`` declares
+those three values inline, and it is public API — exported, keyed on by
+``STATUS_MAP``, taught by the recipe
+(``charge.status == ChargeStatus.COMPLETED``) and named in the migration
+guide as a class that did *not* change. Measured: with the ``enum``
+simply removed, ``ChargeStatus`` disappears from the generated module and
+from ``__all__``.
+
+So the values move into a component schema of their own and the property
+becomes an ``anyOf`` of that component and a bare string. The generator
+emits the component as the same class under the same name, and the field
+annotation becomes ``ChargeStatus | str | None``: known states keep the
+enum member, an unrecognized one arrives as the string the provider sent.
+
+A union was rejected for ``Charge.expiresIn`` in v0.269.0 and is right
+here, because the two unions are not the same shape. ``int | str`` forces
+every consumer into a defensive ``int()`` without knowing which they get.
+``ChargeStatus | str`` is a union of a ``str`` enum and ``str``: the value
+is a string either way, comparison works either way, and the union adds
+information — *this one is a state we know* — rather than ambiguity.
+
+A component that nothing references is pruned by the generator, so the
+``anyOf`` is also what keeps the class alive: the reference is what makes
+it reachable.
+
+The value of this mapping is that component's name. It is spelled out
+rather than derived because it is the name consumers already import:
+deriving it would make a rename look like a formatting detail.
+"""
+
+
 CHARGE_REFUND_PROPERTIES: dict[str, dict[str, Any]] = {
     "refundId": {
         "type": "string",
@@ -266,11 +385,19 @@ class OverlayReport:
             declared by this overlay.
         retyped_properties (tuple[str, ...]): ``Schema.property`` entries
             whose declared type this overlay corrected.
+        retyped_pointers (tuple[str, ...]): JSON pointers whose declared
+            type this overlay corrected, for the mistyped properties that
+            do not live under ``components.schemas``.
+        lifted_enums (tuple[str, ...]): ``Schema.property`` entries whose
+            inline ``enum`` this overlay moved into a component of its
+            own, leaving the property unconstrained.
     """
 
     integer_fields: int = 0
     added_properties: tuple[str, ...] = ()
     retyped_properties: tuple[str, ...] = ()
+    retyped_pointers: tuple[str, ...] = ()
+    lifted_enums: tuple[str, ...] = ()
 
 
 @dataclass
@@ -391,6 +518,119 @@ def _retype(
     return tuple(corrected)
 
 
+def _resolve(document: dict[str, Any], pointer: str) -> dict[str, Any] | None:
+    """Walk an RFC 6901 JSON pointer to the container it addresses.
+
+    Args:
+        document (dict[str, Any]): The document being patched.
+        pointer (str): The pointer, leading ``/`` included.
+
+    Returns:
+        dict[str, Any] | None: The addressed mapping, or ``None`` when any
+        step is missing. A pointer that no longer resolves means the
+        provider restructured the document, and silently patching a
+        neighbouring node would be worse than not patching at all.
+
+    Only mappings are traversed. This overlay addresses named properties,
+    never array positions, so a numeric token is a key like any other and
+    is never read as an index.
+    """
+    node: Any = document
+    for token in pointer.lstrip("/").split("/"):
+        key = token.replace("~1", "/").replace("~0", "~")
+        if not isinstance(node, dict) or key not in node:
+            return None
+        node = node[key]
+    return node if isinstance(node, dict) else None
+
+
+def _retype_pointer(
+    document: dict[str, Any],
+    pointer: str,
+    schema: dict[str, Any],
+) -> str | None:
+    """Replace the schema a JSON pointer addresses.
+
+    Args:
+        document (dict[str, Any]): The document being patched.
+        pointer (str): The pointer to the mistyped schema.
+        schema (dict[str, Any]): The corrected schema.
+
+    Returns:
+        str | None: The pointer when it was corrected, else ``None`` —
+        for a pointer that does not resolve, or one already declared with
+        the corrected ``type``, which is how the override retires the day
+        the provider fixes the document.
+    """
+    target = _resolve(document, pointer)
+    if target is None or target.get("type") == schema.get("type"):
+        return None
+    target.clear()
+    target.update(copy.deepcopy(schema))
+    return pointer
+
+
+def _lift_enum(
+    document: dict[str, Any],
+    schema_name: str,
+    properties: dict[str, str],
+) -> tuple[str, ...]:
+    """Move a property's inline ``enum`` into a component of its own.
+
+    Args:
+        document (dict[str, Any]): The document being patched.
+        schema_name (str): The ``components.schemas`` key to correct.
+        properties (dict[str, str]): Component name to lift into, by
+            property name.
+
+    Returns:
+        tuple[str, ...]: ``Schema.property`` for each enum actually lifted.
+        A property that no longer declares one is skipped, so the override
+        retires by itself the day the provider unconstrains the field.
+
+    The values are not discarded. They are declared as a standalone
+    component and the property is rewritten as an ``anyOf`` of that
+    component and the bare type, so the generator still emits the enum
+    class of the same name — a component nothing references is pruned —
+    and the field accepts a state the list does not name.
+    """
+    schemas = document.get("components", {}).get("schemas", {})
+    target = schemas.get(schema_name)
+    if not isinstance(target, dict):
+        return ()
+    declared = target.get("properties")
+    if not isinstance(declared, dict):
+        return ()
+    lifted: list[str] = []
+    for name, component in properties.items():
+        current = declared.get(name)
+        if not isinstance(current, dict) or "enum" not in current:
+            continue
+        schemas.setdefault(
+            component,
+            {
+                "type": current.get("type", "string"),
+                "enum": copy.deepcopy(current["enum"]),
+                "description": (
+                    f"The values `{schema_name}.{name}` is documented with. "
+                    f"Declared as a component so the generated class survives "
+                    f"the property being unconstrained: the API reports states "
+                    f"outside this list, and a closed enum on a response makes "
+                    f"an unrecognized state a refused read."
+                ),
+            },
+        )
+        declared[name] = {
+            "anyOf": [
+                {"$ref": f"#/components/schemas/{component}"},
+                {"type": current.get("type", "string")},
+            ],
+            "description": current.get("description", ""),
+        }
+        lifted.append(f"{schema_name}.{name}")
+    return tuple(lifted)
+
+
 def _declare(
     document: dict[str, Any],
     schema_name: str,
@@ -444,10 +684,22 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
     for schema_name, properties in MISTYPED_PROPERTIES.items():
         retyped += _retype(patched, schema_name, properties)
 
+    pointers: tuple[str, ...] = tuple(
+        corrected
+        for pointer, schema in MISTYPED_POINTERS.items()
+        if (corrected := _retype_pointer(patched, pointer, schema)) is not None
+    )
+
+    unconstrained: tuple[str, ...] = ()
+    for schema_name, properties in LIFTED_ENUMS.items():
+        unconstrained += _lift_enum(patched, schema_name, properties)
+
     return patched, OverlayReport(
         integer_fields=counter.retyped,
         added_properties=added,
         retyped_properties=retyped,
+        retyped_pointers=pointers,
+        lifted_enums=unconstrained,
     )
 
 
@@ -456,6 +708,8 @@ __all__: list[str] = [
     "CHARGE_REFUND_PROPERTIES",
     "CHARGE_RESPONSE_PROPERTIES",
     "INTEGER_PROPERTY_NAMES",
+    "LIFTED_ENUMS",
+    "MISTYPED_POINTERS",
     "MISTYPED_PROPERTIES",
     "NOT_CENTS_PATTERN",
     "STATUS_CODE_PATTERN",

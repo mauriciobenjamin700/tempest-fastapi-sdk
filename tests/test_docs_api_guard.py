@@ -43,6 +43,12 @@ def _doc_files() -> list[pathlib.Path]:
     Includes the area-scoped ``CLAUDE.md`` files, ``LESSONS.md`` and the
     ``.claude/`` skill and agent definitions: rules moved out of the root file
     into those, so their examples and symbol references need the same check.
+
+    ``.claude/worktrees/`` is skipped. A ``git worktree`` created there is a
+    whole second checkout of this repository, virtualenv included, so the
+    sweep reached that copy's ``CHANGELOG.md`` *and*
+    ``.venv/.../typeshed/.../README.md`` — parsing third-party Markdown as
+    if this repo had written it.
     """
     files = [
         _ROOT / "CLAUDE.md",
@@ -52,7 +58,11 @@ def _doc_files() -> list[pathlib.Path]:
         _ROOT / "tempest_fastapi_sdk" / "integrations" / "CLAUDE.md",
     ]
     files.extend(sorted((_ROOT / "docs").rglob("*.md")))
-    files.extend(sorted((_ROOT / ".claude").rglob("*.md")))
+    files.extend(
+        path
+        for path in sorted((_ROOT / ".claude").rglob("*.md"))
+        if "worktrees" not in path.relative_to(_ROOT).parts
+    )
     return [f for f in files if f.exists()]
 
 

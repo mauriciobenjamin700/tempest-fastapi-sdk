@@ -248,6 +248,70 @@ produziu, porque a aritmética do emissor é exatamente a parte que estava
 errada. Provado que dispara: com o `budget=` revertido, os dois casos
 relevantes falham.
 
+## O double não pode falhar do jeito que a produção falha (v0.270.0)
+
+`OpenPixPixProvider` tinha 12 testes verdes e **nunca tinha visto um byte de
+JSON**. O `StubOpenPixClient` devolve `CreateChargeResponse(...)` construído
+em Python, então o `_validate(GetChargeResponse, response.json())` do
+cliente real nunca rodava: alias, enum, tipo declarado de cada campo — a
+camada JSON→modelo inteira ficava de fora. Foi por isso que a #238 (`Charge`
+inteiro recusado por `expiresIn`) passou pelos 12.
+
+O tamanho do ponto cego só ficou visível ao cruzar a fronteira uma vez.
+Uma suíte sobre `httpx.MockTransport` com corpos capturados do sandbox
+achou **cinco defeitos distintos**, cada um com correção própria, todos
+vivos há releases:
+
+| Issue | O que o stub não podia ver |
+| --- | --- |
+| #239 | `value` de webhook como `"1990"` virando `amount_cents=0` |
+| #240 | bloco `customer` que nenhuma variante do `oneOf` aceita |
+| #241 | status fora do enum: 500 na API, `PENDING` no webhook |
+| #242 | `order#42` no path endereçando `/charge/order` num `DELETE` |
+| #243 | `raw` em `snake_case` na API e `camelCase` no webhook |
+
+(A sexta da mesma release, a #244, veio por outro caminho — o guard de
+conflitos de tipo do documento já a listava como conhecida-não-corrigida.
+Guard que registra o que ainda dói é a outra metade disto.)
+
+O padrão: **um double construído com os mesmos tipos que o código produz
+concorda com o código por construção.** Ele testa o mapeamento e nada mais.
+Nenhum dos cinco é sutil — cada um é óbvio no instante em que um byte real
+atravessa —, e nenhum era alcançável de dentro.
+
+Não é "fake é ruim": a suíte com stub continua, é rápida e cobre mapeamento.
+É que **toda superfície que fala com o mundo externo precisa de pelo menos
+um teste que atravesse a serialização de verdade**, e o repo já tinha o
+padrão do lado certo (`tests/integrations/payment/mercado_pago/test_pix.py`)
+sem tê-lo do lado da OpenPix.
+
+Sem guard: exigiria decidir o que conta como "fronteira" para uma classe
+arbitrária. O que existe é a suíte —
+`tests/integrations/payment/adapters/test_openpix_adapter_wire.py` — e esta
+entrada.
+
+## Guard que varre um diretório varre o que aparecer nele (v0.270.0)
+
+`tests/test_agent_docs_guard.py` e `tests/test_docs_api_guard.py` liam
+`.claude/` com `rglob("*.md")` para alcançar as definições de skill e de
+agente. No dia em que três `git worktree` foram criados em
+`.claude/worktrees/`, os dois passaram a checar **um checkout inteiro do
+repositório cada**, virtualenv incluído: o `CHANGELOG.md` daquela cópia, o
+`README.md`, o `docs/` — e, no segundo, o
+`.venv/.../typeshed/.../README.md` de terceiro. Medido: **238 falhas**,
+nenhuma delas sobre o código sob teste.
+
+O modo de falha é o que engana: as falhas são *plausíveis*. Cada uma nomeia
+um caminho que de fato não existe — relativo a esta raiz —, então parecem
+regressão de conteúdo e não erro de coleta. Custou uma investigação inteira
+antes de alguém olhar o prefixo do caminho.
+
+A regra: **guard que coleta por `rglob` declara o que exclui**, e a
+exclusão é escrita quando o guard nasce, não quando alguém põe um
+diretório no caminho. Aqui é `worktrees/`; a pergunta que vale para o
+próximo é "o que mais pode aparecer sob este prefixo?" — `.venv`, `node_modules`,
+build, cache, checkout aninhado.
+
 ## Regra sem guard sobrevive violada
 
 - **`**kwargs`**: o defeito shippou **cinco vezes** em `MessageBroker` e

@@ -2,6 +2,113 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.270.0 — `PixCharge.raw` uses the wire's spelling
+
+No signature changes. What changes is **the keys of a dictionary** the
+canonical contract hands you.
+
+### What changes
+
+`PixCharge.raw` always carried the provider's payload, but with a
+different spelling depending on the path. Measured on v0.269.0, same body,
+same two paths:
+
+```text
+API      raw['paymentLinkUrl']   -> None
+API      raw['payment_link_url'] -> https://openpix.com.br/pay/pl_1
+webhook  raw['paymentLinkUrl']   -> https://openpix.com.br/pay/pl_1
+```
+
+The API path dumped without `by_alias`, so a **declared** field came out in
+`snake_case` while an **undeclared** one — which `extra="allow"` has kept
+since v0.259/v0.260 — held on to the wire name. The API path's `raw` was
+literally a mixture of the two spellings.
+
+From v0.270.0 both paths use `by_alias=True`: **the spelling is the
+provider's, always**.
+
+### What to do
+
+If your service reads `raw` for a field the specification **declares**,
+switch to the wire name:
+
+```python
+from tempest_fastapi_sdk.integrations.payment import PixCharge
+
+
+def payment_link(charge: PixCharge) -> object | None:
+    """Read OpenPix's payment link out of the raw payload.
+
+    Args:
+        charge (PixCharge): The charge, in canonical shape.
+
+    Returns:
+        object | None: The link, when the provider sent one.
+    """
+    return charge.raw.get("paymentLinkUrl")
+```
+
+Anyone already reading an **undeclared** field (`paidAt`, say) changes
+nothing: those already arrived in the wire's spelling.
+
+!!! tip "Finding the call sites"
+    ```bash
+    grep -rn 'raw\[\|raw\.get(' <your-service>/
+    ```
+
+    Every `raw` lookup with a `snake_case` key is a candidate. The
+    replacement is the name the provider's documentation uses.
+
+!!! note "Why the wire's spelling and not Python's"
+    `raw` exists for what the contract does **not** model. A consumer
+    discovers that field by reading the provider's documentation, and
+    there it is called `paymentLinkUrl`. A spelling that only exists after
+    the SDK renames it is one nobody can predict.
+
+## 0.270.0 — `PaymentStatus` gained `UNKNOWN`
+
+A new enum member. **Additive**: nothing that existed changed value.
+
+### What changes
+
+A state the SDK does not classify now arrives as
+`PaymentStatus.UNKNOWN`, with the provider's string preserved in
+`provider_status`. Before, OpenPix's two paths answered opposite things
+and neither was true:
+
+```text
+API      status 'CANCELLED' -> ValidationError -> 500 from your service
+webhook  status 'CANCELLED' -> status=pending
+```
+
+### What to do
+
+If you branch exhaustively on `PaymentStatus` — a `match` with no
+`case _`, a dictionary indexed by member — add the case:
+
+```python
+from tempest_fastapi_sdk.integrations.payment import PaymentStatus, PixCharge
+
+
+def describe(charge: PixCharge) -> str:
+    """Describe a charge's state for a support screen.
+
+    Args:
+        charge (PixCharge): The charge, in canonical shape.
+
+    Returns:
+        str: A line a human can act on.
+    """
+    if charge.status is PaymentStatus.UNKNOWN:
+        return f"unclassified state: {charge.provider_status}"
+    return charge.status.value
+```
+
+If you branch only on `PAID`/`PENDING` with a default arm, nothing to do —
+the new behaviour is strictly better: a charge that used to show up as
+`PENDING` without being one, or that failed the request outright, now
+identifies itself.
+
 ## 0.269.0 — `Charge.expires_in` became an `int`
 
 No signature changes. What changes is **the type of one OpenPix response

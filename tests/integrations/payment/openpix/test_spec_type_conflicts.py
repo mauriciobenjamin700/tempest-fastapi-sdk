@@ -45,13 +45,12 @@ KNOWN_CONFLICTS: dict[str, str] = {
         "it does not break a read, it just types seconds as a float."
     ),
     "value": (
-        "The remaining `string` declarations are the `additionalInfo` "
-        "key/value pairs, where text is correct. Two real ones are left and "
-        "tracked: the inline `dispute.value` under `GET /api/v1/dispute/{id}` "
-        "and `pix.value` in the three `receivedPix*` callbacks. Neither is "
-        "reachable by `MISTYPED_PROPERTIES`, which addresses "
-        "`components.schemas.<Name>.properties.<prop>` — they need an "
-        "override addressed by JSON pointer."
+        "The `string` declarations that are left are the `additionalInfo` "
+        "key/value pairs, where text is correct. The two that were real — "
+        "the inline `dispute.value` under `GET /api/v1/dispute/{id}` and "
+        "`pix.value` in the three `receivedPix*` callbacks — are corrected "
+        "in `MISTYPED_POINTERS`, which addresses a schema by JSON pointer "
+        "where `MISTYPED_PROPERTIES` can only name a component."
     ),
 }
 """Property names that contradict themselves and why that is not a bug.
@@ -73,6 +72,22 @@ MONEY_VALUE_STRING_TRAILS: frozenset[str] = frozenset(
         "paths./api/v1/decode/emv.post.responses.200.content.application/json"
         ".schema.properties.cobLocation.properties.payload.properties"
         ".additionalInfo.items",
+    }
+)
+"""Exactly where `value` is still declared `string` after the overlay.
+
+Frozen rather than counted because `value` is the money field: a new place
+declaring it as text is the next seven broken methods, and the diff should
+name the place.
+
+Four trails left this set when `MISTYPED_POINTERS` shipped — the inline
+`dispute` object of `GET /api/v1/dispute/{id}` and the `pix` object of the
+three `receivedPix*` callbacks. Every trail still here is an
+`additionalInfo` entry, where a `value` really is text.
+"""
+
+MONEY_VALUE_POINTER_TRAILS: frozenset[str] = frozenset(
+    {
         "paths./api/v1/dispute/{id}.get.responses.200.content.application/json"
         ".schema.properties.dispute",
         "paths./api/v1/webhook.post.callbacks.receivedPix"
@@ -86,11 +101,12 @@ MONEY_VALUE_STRING_TRAILS: frozenset[str] = frozenset(
         ".schema.properties.pix",
     }
 )
-"""Exactly where `value` is still declared `string` after the overlay.
+"""The four `value` schemas only a JSON pointer can reach.
 
-Frozen rather than counted because `value` is the money field: a new place
-declaring it as text is the next seven broken methods, and the diff should
-name the place.
+Pinned separately from the set above so the two directions stay readable:
+these must be numeric after the overlay, and the set above must not grow.
+Both are the same walk, and dropping a trail from one without adding it to
+the other would leave the place unwatched.
 """
 
 
@@ -196,3 +212,9 @@ class TestTheDocumentDoesNotContradictItself:
         ):
             assert trail in seen["value"]["integer"], trail
         assert "components.schemas.Charge" in seen["expiresIn"]["integer"]
+
+    def test_the_pointer_corrections_are_numeric(self) -> None:
+        """The four schemas `MISTYPED_PROPERTIES` cannot address."""
+        seen = _declared_types()
+        for trail in sorted(MONEY_VALUE_POINTER_TRAILS):
+            assert trail in seen["value"]["integer"], trail

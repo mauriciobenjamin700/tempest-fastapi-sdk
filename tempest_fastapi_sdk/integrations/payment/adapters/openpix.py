@@ -39,10 +39,18 @@ STATUS_MAP: Final[dict[ChargeStatus, PaymentStatus]] = {
 """Every value of OpenPix's ``ChargeStatus``, mapped to the canonical one.
 
 Exhaustive by construction and kept that way by
-``tests/integrations/payment/adapters/test_openpix_adapter.py``, which walks
-the generated enum and fails on any member missing here. Without that guard
-a regeneration that adds a state would quietly fall through to
-``PENDING`` — a charge reported as awaiting payment when it is not.
+``tests/integrations/payment/test_contract.py``, which walks the generated
+enum and fails on any member missing here.
+
+What that guard cannot cover is the opposite direction: a state the
+*provider* reports and the generated enum does not have. It happens —
+the document declares three values on ``Charge.status`` and leaves
+``WebhookCharge.status`` an unconstrained string, so OpenPix has not
+committed to the list on the path it validates. Both readers below treat a
+value missing from this map as :attr:`PaymentStatus.UNKNOWN`, keeping the
+provider's own string in ``provider_status``. Falling through to
+``PENDING`` would report a charge as awaiting payment on the strength of
+not recognizing it.
 """
 
 EVENT_MAP: Final[dict[OpenPixEvent, PixEventType]] = {
@@ -89,6 +97,79 @@ def _parse_datetime(value: object) -> datetime | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _to_status(raw: object) -> PaymentStatus:
+    """Read OpenPix's status string into the canonical state.
+
+    Args:
+        raw (object): The ``status`` field, from the generated model or
+            straight off a webhook body. Typed ``object`` because since
+            the v0.270.0 overlay ``Charge.status`` is a plain ``str``: the
+            document's three-value ``enum`` is not honoured by the API,
+            and a closed enum on a *response* turns an unrecognized state
+            into a refused read.
+
+    Returns:
+        PaymentStatus: The mapped state, or :attr:`PaymentStatus.UNKNOWN`
+        for anything :data:`STATUS_MAP` does not name. The provider's own
+        string is kept by the caller in ``provider_status``, so nothing is
+        lost by not recognizing it.
+    """
+    if not isinstance(raw, str) or not raw:
+        return PaymentStatus.UNKNOWN
+    try:
+        return STATUS_MAP[ChargeStatus(raw)]
+    except (KeyError, ValueError):
+        return PaymentStatus.UNKNOWN
+
+
+def _webhook_cents(payload: dict[str, Any], value: Any) -> int:
+    """Read a webhook charge's ``value`` into cents, or refuse the delivery.
+
+    Args:
+        payload (dict[str, Any]): The ``charge`` object, for the error
+            message — a rejected delivery is worth naming the charge it
+            was about.
+        value (Any): The ``value`` field exactly as JSON parsed it.
+
+    Returns:
+        int: The amount in cents.
+
+    The message keeps ``to_cents``'s own reason verbatim. "Not a whole
+    number of cents" and "cannot be negative" are different mistakes with
+    different fixes, and a wrapper that replaces both with one sentence
+    tells an operator only that something was wrong.
+
+    Raises:
+        ValueError: If the value cannot be read as a whole, non-negative
+            number of cents. The guard here used to be
+            ``isinstance(value, (int, float))`` with ``else 0`` — narrower
+            than :func:`to_cents`, which accepts ``str`` on purpose
+            because its documented input is a raw payload. The document
+            types ``value`` as a string in two schemas, so ``"1990"`` is a
+            body OpenPix can legitimately send, and it arrived as a charge
+            *paid for nothing*: no exception, no log, and a divergence
+            that surfaces at reconciliation rather than at the call.
+            Zero is a number a service credits; "unreadable" is not zero.
+
+    A ``value`` the delivery omits is refused with the rest rather than
+    read as ``0``: every example body in the vendored document that
+    carries a ``charge`` object carries the field too — 10 of 10,
+    measured — so its absence is not a shape the provider documents.
+
+    Refusing makes the webhook route answer non-2xx, which OpenPix
+    retries. That is the point: a delivery this SDK cannot read is worth
+    retrying, and is not worth booking as a settlement of nothing.
+    """
+    try:
+        return to_cents(value)
+    except (ValueError, TypeError) as error:
+        reference = payload.get("correlationID") or payload.get("identifier")
+        raise ValueError(
+            f"OpenPix delivered a charge whose value cannot be read as cents: "
+            f"{value!r} (correlationID={reference!r}) — {error}"
+        ) from error
 
 
 def _as_optional_str(value: object) -> str | None:
@@ -276,13 +357,33 @@ class OpenPixPixProvider:
             request (PixChargeRequest): The canonical request.
 
         Returns:
-            CustomerPayload | None: The customer, or ``None``. OpenPix makes
-            ``name`` required inside the block, so a payer known only by
-            tax ID or e-mail cannot be sent — and sending a placeholder name
-            would put invented data on the payer's receipt.
+            CustomerPayload | None: The customer, or ``None`` when the
+            payer does not satisfy any variant the provider accepts.
+
+        ``CustomerPayload`` is a ``oneOf`` of three variants, and the
+        document requires ``name`` in all three plus one of ``taxID``,
+        ``email`` or ``phone``::
+
+            CustomerPayload.oneOf[0] required = ['name', 'taxID']
+            CustomerPayload.oneOf[1] required = ['name', 'email']
+            CustomerPayload.oneOf[2] required = ['name', 'phone']
+
+        So ``name`` is necessary in all three and sufficient in none, and
+        a block carrying only a name is a claim no variant accepts. The
+        generated model cannot refuse it — the emitter records that it
+        merges ``oneOf`` into one model and does not enforce "exactly one
+        variant" — and every field of :class:`PixPayer` is optional, so
+        the check has to live here.
+
+        A payer who does not reach any variant is omitted rather than
+        padded: inventing a contact detail to satisfy the schema would put
+        made-up data on the payer's receipt, and the charge is valid
+        without a customer block at all.
         """
         payer = request.payer
         if payer is None or not payer.name:
+            return None
+        if not (payer.tax_id or payer.email or payer.phone):
             return None
         return CustomerPayload(
             name=payer.name,
@@ -295,11 +396,18 @@ class OpenPixPixProvider:
     def _to_pix_charge(charge: Any) -> PixCharge:
         """Map a generated ``Charge`` onto the canonical shape.
 
-        ``raw`` here is the payload **after** the generated model validated
-        it, so anything OpenPix sends beyond its own specification is
-        already gone — ``BaseSchema`` is ``extra="ignore"``. The webhook
-        path does not have that limitation, because the delivery body
-        reaches the adapter as a plain ``dict``.
+        ``raw`` is dumped ``by_alias=True``, so it carries the wire's own
+        spelling — ``paymentLinkUrl``, not ``payment_link_url``. The two
+        paths used to disagree: this one dumped declared fields in
+        ``snake_case`` while the webhook path kept the raw dictionary, so
+        ``raw["paymentLinkUrl"]`` — the very lookup the recipe teaches —
+        answered the link on a delivery and ``None`` on every charge read
+        back from the API. Worse, this path produced a *mixture*: a field
+        the specification does not declare survives under ``extra="allow"``
+        and kept the wire spelling while its declared neighbours did not.
+
+        The provider's spelling is the one a consumer can predict from the
+        provider's own documentation, so it is the one ``raw`` uses.
 
         Args:
             charge (Any): The generated ``Charge`` model.
@@ -318,16 +426,12 @@ class OpenPixPixProvider:
             ),
             reference=charge.correlation_id or "",
             amount_cents=to_cents(charge.value) if charge.value else 0,
-            status=(
-                STATUS_MAP.get(status, PaymentStatus.PENDING)
-                if status is not None
-                else PaymentStatus.PENDING
-            ),
-            provider_status=str(status) if status is not None else "",
+            status=_to_status(status),
+            provider_status=status if isinstance(status, str) else "",
             br_code=charge.br_code,
             qr_code_image_url=_as_optional_str(charge.qr_code_image),
             expires_at=_parse_datetime(charge.expires_date),
-            raw=charge.model_dump(mode="json"),
+            raw=charge.model_dump(mode="json", by_alias=True),
         )
 
     @staticmethod
@@ -347,15 +451,17 @@ class OpenPixPixProvider:
 
         Returns:
             PixCharge: The canonical charge.
+
+        Raises:
+            ValueError: If ``value`` cannot be read as cents. A delivery
+                is the settlement notice a service credits from, so an
+                unreadable amount is refused rather than reported as zero
+                — see :func:`_webhook_cents`. This is deliberately a
+                different posture from :func:`_parse_datetime`, which
+                swallows a malformed timestamp: a wrong date is cosmetic
+                and a wrong amount is money.
         """
         raw_status = payload.get("status")
-        status = PaymentStatus.PENDING
-        if isinstance(raw_status, str):
-            try:
-                status = STATUS_MAP[ChargeStatus(raw_status)]
-            except (KeyError, ValueError):
-                status = PaymentStatus.PENDING
-        value = payload.get("value")
         return PixCharge(
             provider=PROVIDER_NAME,
             provider_charge_id=(
@@ -365,8 +471,8 @@ class OpenPixPixProvider:
                 or ""
             ),
             reference=_as_optional_str(payload.get("correlationID")) or "",
-            amount_cents=to_cents(value) if isinstance(value, (int, float)) else 0,
-            status=status,
+            amount_cents=_webhook_cents(payload, payload.get("value")),
+            status=_to_status(raw_status),
             provider_status=raw_status if isinstance(raw_status, str) else "",
             br_code=_as_optional_str(payload.get("brCode")),
             qr_code_image_url=_as_optional_str(payload.get("qrCodeImage")),

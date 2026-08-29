@@ -272,11 +272,11 @@ causa disso: `get_static_qr_code`, `list_static_qr_codes`,
 `Transaction.pixQrCode` é um `PixQrCode`.
 
 Os dois entram no `MISTYPED_PROPERTIES` sem mudança de mecanismo. **Dois
-casos reais ficam de fora** e estão registrados no guard, não esquecidos: o
+casos reais ficaram de fora** e foram registrados no guard, não esquecidos: o
 `dispute.value` inline de `GET /api/v1/dispute/{id}` e o `pix.value` dos três
 callbacks `receivedPix*`. `_retype` endereça
-`components.schemas.<Nome>.properties.<prop>`; esses precisam de override por
-JSON pointer.
+`components.schemas.<Nome>.properties.<prop>`; esses precisavam de override
+por JSON pointer, que é a seção 8.
 
 O que impede o próximo é
 `tests/integrations/payment/openpix/test_spec_type_conflicts.py`: ele varre o
@@ -288,3 +288,278 @@ silenciador.
 Rejeitado: `int | str` em união. Empurraria a ambiguidade para todo
 consumidor, que passaria a precisar de `int(charge.expires_in)` defensivo
 sem nunca saber se algum dia recebe texto.
+
+## 8. Os dois que só um JSON pointer alcança
+
+Medições de **2026-08-29**, contra o mesmo `vendor/openpix-openapi.json`
+(digest inalterado). Fecham a classe que a v0.269.0 deixou aberta —
+[issue #244](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/244).
+
+### `dispute.value` quebrava a leitura hoje
+
+`get_dispute` é um dos sete métodos que não liam resposta real, e continuava
+quebrado depois da v0.269.0: a correção por nome de componente não alcança
+schema inline. Reprodução, **antes** da correção:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import GetDisputeResponse
+
+body = {
+    "dispute": {
+        "status": "CREATED",
+        "name": "Fulano de Tal",
+        "email": "fulano@example.com",
+        "phoneNumber": "+5511999999999",
+        "value": 15000,
+        "disputeReason": "Produto nao entregue",
+        "endToEndId": "E18236120202508291500s0123456789",
+        "type": "MED",
+    }
+}
+print(GetDisputeResponse.model_validate(body))
+```
+
+```text
+pydantic_core._pydantic_core.ValidationError: 1 validation error for GetDisputeResponse
+dispute.value
+  Input should be a valid string [type=string_type, input_value=15000, input_type=int]
+```
+
+**Depois**, o mesmo corpo:
+
+```text
+ok: 15000 int
+```
+
+O que torna a correção uma leitura e não um palpite: o mesmo objeto de
+disputa é declarado com **três** tipos, e o `string` é o único que aparece
+uma vez só.
+
+```bash
+uv run python -c "
+import json
+
+document = json.load(open('vendor/openpix-openapi.json'))
+
+
+def walk(node: object, trail: str) -> None:
+    \"\"\"Print every schema shaped like the dispute object.\"\"\"
+    if isinstance(node, list):
+        for index, entry in enumerate(node):
+            walk(entry, f'{trail}[{index}]')
+        return
+    if not isinstance(node, dict):
+        return
+    properties = node.get('properties')
+    if isinstance(properties, dict) and {'value', 'disputeReason'} <= set(properties):
+        print(f\"{properties['value'].get('type'):8} {trail}\")
+    for key, value in node.items():
+        if key not in {'example', 'examples', 'enum', 'default'}:
+            walk(value, f'{trail}.{key}' if trail else key)
+
+
+walk(document, '')
+"
+```
+
+```text
+string   paths./api/v1/dispute/{id}.get.responses.200.content.application/json.schema.properties.dispute
+number   components.schemas.Dispute
+number   components.schemas.DisputePayload
+integer  components.schemas.WebhookOpenpixDisputeCreatedPayload.properties.dispute
+integer  components.schemas.WebhookOpenpixDisputeAcceptedPayload.properties.dispute
+integer  components.schemas.WebhookOpenpixDisputeRejectedPayload.properties.dispute
+integer  components.schemas.WebhookOpenpixDisputeCanceledPayload.properties.dispute
+```
+
+`GET /api/v1/dispute` — a **lista** — não inlina nada: ela `$ref`a
+`components.schemas.Dispute`, que o overlay já retipa para `integer` pela
+regra de nome. Era a mesma API devolvendo o mesmo objeto com dois tipos,
+dependendo de qual das duas rotas você chamasse.
+
+### Os três callbacks `receivedPix*` não quebram nada hoje
+
+```text
+string   callbacks.receivedPix.{$request.body#/webhook.url}
+string   callbacks.receivedPixDetached.{$request.body#/webhook.url}
+string   callbacks.receivedPixQrCode.{$request.body#/webhook.url}
+integer  components.schemas.WebhookOpenpixChargeCompletedPayload.pix
+integer  components.schemas.WebhookOpenpixChargeCompletedNotSameCustomerPayerPayload.pix
+integer  components.schemas.WebhookOpenpixTransactionReceivedPayload.pix
+integer  components.schemas.WebhookOpenpixTransactionRefundReceivedPayload.pix
+```
+
+Mesmo objeto `pix`, `string` nos três callbacks e `integer` nos quatro
+payloads de componente. Não quebra leitura porque o gerador não emite modelo
+para `callbacks`:
+
+```bash
+grep -c "Callback" tempest_fastapi_sdk/integrations/payment/openpix/schemas.py
+```
+
+```text
+0
+```
+
+Corrigido assim mesmo. Tipo errado no documento é defeito quer o gerador de
+hoje leia aquela parte, quer não — e o dia em que alguém gerar os modelos de
+callback não é o dia de descobrir isto.
+
+### O mecanismo, e as duas disciplinas que ele herda
+
+`MISTYPED_POINTERS`, em `scripts/openpix_overlay.py`, endereça o schema por
+JSON pointer (RFC 6901) em vez de por nome de componente — é por isso que a
+chave do callback, `{$request.body#/webhook.url}`, aparece escrita
+`{$request.body#~1webhook.url}`. `_retype_pointer` **só aplica quando o tipo
+declarado difere**, então o override se aposenta sozinho, e **reporta**:
+
+```text
+$ make openpix-regen
+  + tempest_fastapi_sdk/integrations/payment/openpix/schemas.py
+  + tempest_fastapi_sdk/integrations/payment/openpix/client.py
+  ~ tempest_fastapi_sdk/integrations/payment/openpix/__init__.py (__all__)
+  overlay: 157 numeric fields retyped as integer
+  overlay: + Charge.fee
+  overlay: + Charge.discount
+  overlay: + Charge.valueWithDiscount
+  overlay: + ChargeRefund.refundId
+  overlay: ! Charge.expiresIn (type corrected)
+  overlay: ! PixQrCode.value (type corrected)
+  overlay: ! WithdrawTransaction.value (type corrected)
+  overlay: ! /paths/~1api~1v1~1dispute~1{id}/get/responses/200/content/application~1json/schema/properties/dispute/properties/value (type corrected, by pointer)
+  overlay: ! /paths/~1api~1v1~1webhook/post/callbacks/receivedPix/{$request.body#~1webhook.url}/post/requestBody/content/application~1json/schema/properties/pix/properties/value (type corrected, by pointer)
+  overlay: ! /paths/~1api~1v1~1webhook/post/callbacks/receivedPixDetached/{$request.body#~1webhook.url}/post/requestBody/content/application~1json/schema/properties/pix/properties/value (type corrected, by pointer)
+  overlay: ! /paths/~1api~1v1~1webhook/post/callbacks/receivedPixQrCode/{$request.body#~1webhook.url}/post/requestBody/content/application~1json/schema/properties/pix/properties/value (type corrected, by pointer)
+  overlay: ~ Charge.status (enum lifted to its own component)
+```
+
+O diff gerado é de um campo só — `GetDisputeResponseDispute.value`, de
+`str | None` para `int | None` —, que é a medida de C acima virando texto:
+os callbacks corrigidos não têm modelo para mudar.
+
+### O que sobrou no `KNOWN_CONFLICTS["value"]`
+
+Só o `additionalInfo`. Depois da correção, os sete trails que ainda declaram
+`value` como `string` são todos par chave/valor de `additionalInfo`, onde
+texto é o tipo certo — fixados em `MONEY_VALUE_STRING_TRAILS`. Os quatro que
+saíram de lá entraram no `MONEY_VALUE_POINTER_TRAILS`, que exige o contrário:
+numéricos depois do overlay. A entrada de `value` continua no
+`KNOWN_CONFLICTS` porque `value` **continua** se contradizendo (texto no
+`additionalInfo`, inteiro no dinheiro), que é o que
+`test_an_explanation_without_a_conflict_is_stale` cobra.
+
+Os cinco guards foram vistos falhar com a tabela `MISTYPED_POINTERS`
+esvaziada, e passar com ela:
+
+```text
+FAILED test_overlay.py::TestPointerOverrides::test_every_pointer_fires_on_the_document_we_vendor
+FAILED test_overlay.py::TestPointerOverrides::test_the_dispute_value_stops_being_text
+FAILED test_overlay.py::TestPointerOverrides::test_an_override_upstream_fixed_retires
+FAILED test_spec_type_conflicts.py::...::test_the_money_field_is_text_only_where_it_should_be
+FAILED test_spec_type_conflicts.py::...::test_the_pointer_corrections_are_numeric
+5 failed, 36 passed in 0.90s
+```
+
+## 9. O enum fechado numa resposta é uma leitura recusada
+
+Medições de **2026-08-29**, mesmo `vendor/openpix-openapi.json` —
+[issue #241](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/241).
+
+### O documento se contradiz sobre quanto o estado é fechado
+
+```text
+Charge.status        -> {"type": "string", "enum": ["ACTIVE", "COMPLETED", "EXPIRED"]}
+WebhookCharge.status -> {"type": "string"}
+```
+
+`WebhookCharge` é o mesmo objeto de cobrança entregue por webhook. A Woovi
+não se comprometeu com a lista no objeto que entrega, então um quarto estado
+é coisa que a fonte que vendoramos permite.
+
+### O que um quarto estado fazia
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import GetChargeResponse
+
+GetChargeResponse.model_validate({"charge": {"value": 1190, "status": "CANCELLED"}})
+```
+
+```text
+pydantic_core._pydantic_core.ValidationError: 1 validation error for GetChargeResponse
+charge.status
+  Input should be 'ACTIVE', 'COMPLETED' or 'EXPIRED' [input_value='CANCELLED']
+```
+
+A cobrança nunca chegava a existir, então o serviço respondia **500** sem o
+valor real em lugar nenhum da resposta.
+
+### Por que é um lift, e não uma deleção
+
+Tirar o `enum` da propriedade resolve a leitura e **apaga a classe**
+`ChargeStatus`, que existe só porque `Charge.status` declara aqueles valores
+inline. Medido, comparando os dois patches contra o mesmo documento:
+
+```bash
+uv run python -c "
+import copy
+import json
+import sys
+
+sys.path.insert(0, 'scripts')
+import openpix_overlay
+from tempest_fastapi_sdk.openapi import parse_spec
+
+document = json.load(open('vendor/openpix-openapi.json'))
+
+naive = copy.deepcopy(document)
+del naive['components']['schemas']['Charge']['properties']['status']['enum']
+names = {schema.name for schema in parse_spec(naive, client_name='C').schemas}
+print('delecao simples ->', 'ChargeStatus' in names)
+
+patched, _report = openpix_overlay.apply(document)
+names = {schema.name for schema in parse_spec(patched, client_name='C').schemas}
+print('lift            ->', 'ChargeStatus' in names)
+"
+```
+
+```text
+delecao simples -> False
+lift            -> True
+```
+
+`ChargeStatus` é superfície pública: está no `__all__`, chaveia o
+`STATUS_MAP` do adapter, é o que a receita ensina a comparar
+(`charge.status == ChargeStatus.COMPLETED`) e o guia de migração da v0.232.0
+o cita como classe que **não** mudou de nome.
+
+Por isso `LIFTED_ENUMS` move os valores para um componente próprio e troca a
+propriedade por um `anyOf` dele com o tipo cru. O componente precisa ser
+referenciado — componente que ninguém referencia o gerador poda —, e o campo
+sai assim:
+
+```text
+Charge.status -> ChargeStatus | str | None
+```
+
+Valor conhecido continua chegando como membro do enum; valor novo chega como
+a string que o provedor mandou.
+
+### Os guards do lift foram vistos falhar
+
+Com `LIFTED_ENUMS` esvaziada:
+
+```text
+FAILED test_overlay.py::TestLiftedEnums::test_the_property_stops_being_restricted
+FAILED test_overlay.py::TestLiftedEnums::test_the_values_survive_as_a_component
+FAILED test_overlay.py::TestLiftedEnums::test_the_property_still_references_the_component
+FAILED test_overlay.py::TestLiftedEnums::test_a_lift_upstream_already_did_retires
+FAILED test_overlay.py::TestLiftedEnums::test_the_table_names_the_component_consumers_import
+5 failed, 31 passed in 0.72s
+```
+
+Os cinco, e não quatro: `test_a_lift_upstream_already_did_retires` passava
+com a tabela vazia — "não reportou nada" é verdade tanto para a correção
+aposentada quanto para a correção ausente. Ele ganhou uma primeira asserção
+de que a tabela **dispara** no documento intacto, que é o que dá sentido à
+segunda.
+

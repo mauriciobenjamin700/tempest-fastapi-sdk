@@ -140,6 +140,40 @@ class TestOverlayOverridesStillApply:
         assert declared["expiresIn"] == {"type": "string"}
 
 
+class TestTheLiftedEnumKeepsItsClass:
+    """A closed enum on a response is a refused read, not a typed one.
+
+    The correction has two halves and both are load-bearing: the property
+    stops being restricted, and the values keep a class of their own. The
+    naive form — deleting the ``enum`` in place — does the first and
+    silently undoes the second, because the generated ``ChargeStatus``
+    exists only as long as something declares those values.
+    """
+
+    def test_the_generated_class_still_exists(self) -> None:
+        """``ChargeStatus`` is public API, exported and taught by the recipe."""
+        from tempest_fastapi_sdk.integrations.payment import openpix
+
+        assert "ChargeStatus" in openpix.__all__
+        assert openpix.ChargeStatus.COMPLETED.value == "COMPLETED"
+
+    def test_a_status_outside_the_enum_validates(self) -> None:
+        """The exact body that used to reach a service as a 500."""
+        parsed = GetChargeResponse.model_validate(
+            {"charge": {**CAPTURED_CHARGE, "status": "CANCELLED"}}
+        )
+        assert parsed.charge is not None
+        assert parsed.charge.status == "CANCELLED"
+
+    def test_a_known_status_still_arrives_as_the_enum_member(self) -> None:
+        """Widening the field must not cost the typing it already gave."""
+        from tempest_fastapi_sdk.integrations.payment.openpix import ChargeStatus
+
+        parsed = GetChargeResponse.model_validate({"charge": CAPTURED_CHARGE})
+        assert parsed.charge is not None
+        assert parsed.charge.status == ChargeStatus.ACTIVE
+
+
 @pytest.mark.parametrize(
     ("schema_name", "expected"),
     [("Charge", "string"), ("ChargePayload", "number"), ("WebhookCharge", "integer")],

@@ -2987,7 +2987,9 @@ class GetDisputeResponseDispute(BaseSchema):
         email (str | None): The Email of the payer who created this dispute.
         phone_number (str | None): The phone number of the payer who created this
             dispute.
-        value (str | None): The value of the dispute.
+        value (int | None): The value of the dispute, in cents. Declared `string` on
+            this inline response schema while the `Dispute` component declares the same
+            field `number`.
         dispute_reason (str | None): Reason provided to justify the dispute.
         end_to_end_id (str | None): The endToEndId of the dispute (Is the same of the
             endToEndId transaction related).
@@ -3011,7 +3013,14 @@ class GetDisputeResponseDispute(BaseSchema):
         description="The phone number of the payer who created this dispute.",
         default=None,
     )
-    value: str | None = Field(description="The value of the dispute.", default=None)
+    value: int | None = Field(
+        description=(
+            "The value of the dispute, in cents. Declared `string` on this inline "
+            "response schema while the `Dispute` component declares the same field "
+            "`number`."
+        ),
+        default=None,
+    )
     dispute_reason: str | None = Field(
         validation_alias="disputeReason",
         serialization_alias="disputeReason",
@@ -16312,7 +16321,7 @@ class Charge(BaseSchema):
             have a deadline, fines and interests
         comment (str | None): Undocumented in the spec.
         br_code (str | None): EMV BRCode to be rendered as a QRCode
-        status (ChargeStatus | None): Undocumented in the spec.
+        status (ChargeStatus | str | None): Undocumented in the spec.
         correlation_id (str | None): Your correlation ID to keep track of this charge
         payment_link_id (str | None): Payment Link ID, used on payment link and to
             retrieve qrcode image
@@ -16361,7 +16370,7 @@ class Charge(BaseSchema):
         description="EMV BRCode to be rendered as a QRCode",
         default=None,
     )
-    status: ChargeStatus | None = None
+    status: ChargeStatus | str | None = None
     correlation_id: str | None = Field(
         validation_alias="correlationID",
         serialization_alias="correlationID",

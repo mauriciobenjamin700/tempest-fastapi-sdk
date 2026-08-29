@@ -202,7 +202,7 @@ class TestTheGeneratedResult:
 
         source = inspect.getsource(MercadoPagoClient.delete_customer)
 
-        assert 'path = f"/v1/customers/{id}"' in source
+        assert 'path = f"/v1/customers/{_path_param(id)}"' in source
         assert "/delete" not in source
 
     def test_searching_invoices_hits_the_routed_path(self) -> None:
