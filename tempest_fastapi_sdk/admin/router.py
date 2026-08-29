@@ -142,7 +142,7 @@ def make_admin_router(
     site: AdminSite,
     *,
     db: AsyncDatabaseManager,
-    auth_backend: AdminAuthBackend,
+    auth_backend: AdminAuthBackend[Any],
     secret_key: str,
     prefix: str = "/admin",
     session_store: SessionStore | None = None,
@@ -185,7 +185,7 @@ def make_admin_router(
         site (AdminSite): The configured registry.
         db (AsyncDatabaseManager): Active DB manager (used for both
             sessions and the readiness check).
-        auth_backend (AdminAuthBackend): Backend resolving login
+        auth_backend (AdminAuthBackend[Any]): Backend resolving login
             credentials to a principal.
         secret_key (str): Secret used to sign the session cookie.
             32 bytes minimum.

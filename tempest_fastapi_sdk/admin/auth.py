@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Generic, TypeVar
 from uuid import UUID
 
 from sqlalchemy import select
@@ -41,7 +41,11 @@ class AdminAuthError(Exception):
         self.status_code: int = status_code
 
 
-class AdminAuthBackend(ABC):
+PrincipalT = TypeVar("PrincipalT")
+"""The type of the value :meth:`AdminAuthBackend.authenticate` returns."""
+
+
+class AdminAuthBackend(ABC, Generic[PrincipalT]):
     """Abstract base for admin authentication.
 
     Implementations receive a session-bound async DB session per
@@ -49,6 +53,18 @@ class AdminAuthBackend(ABC):
     a :class:`BaseUserModel` subclass and enforces ``is_admin=True``.
     Custom backends can use the same protocol to integrate LDAP,
     OAuth, IAM tokens, etc.
+
+    The class is generic in the *principal* — the value ``authenticate``
+    returns and every other method consumes. Parameterizing it is what
+    makes that contract checkable::
+
+        class LdapAuthBackend(AdminAuthBackend[LdapEntry]):
+            def display_name(self, principal: LdapEntry) -> str:
+                return principal.common_name
+
+    Subclassing without a parameter stays valid and resolves to
+    ``AdminAuthBackend[Any]``, which is the behaviour that shipped before
+    the class was generic — nothing has to change to keep working.
     """
 
     @abstractmethod
@@ -58,7 +74,7 @@ class AdminAuthBackend(ABC):
         *,
         identifier: str,
         password: str,
-    ) -> Any:
+    ) -> PrincipalT:
         """Verify credentials and return the authenticated principal.
 
         Args:
@@ -67,8 +83,8 @@ class AdminAuthBackend(ABC):
             password (str): The plaintext password.
 
         Returns:
-            Any: The authenticated principal. The admin router calls
-            :meth:`principal_id` on the return value to derive the
+            PrincipalT: The authenticated principal. The admin router
+            calls :meth:`principal_id` on the return value to derive the
             session payload. Typically a :class:`BaseUserModel` row.
 
         Raises:
@@ -81,7 +97,7 @@ class AdminAuthBackend(ABC):
         self,
         session: AsyncSession,
         principal_id: str,
-    ) -> Any | None:
+    ) -> PrincipalT | None:
         """Reload the principal from storage given its ID.
 
         Called on every request once the session cookie has been
@@ -93,29 +109,30 @@ class AdminAuthBackend(ABC):
                 :meth:`principal_id` at login.
 
         Returns:
-            Any | None: The reloaded principal, or ``None`` when it
-            no longer exists or no longer has admin access.
+            PrincipalT | None: The reloaded principal, or ``None`` when
+            it no longer exists or no longer has admin access.
         """
 
     @abstractmethod
-    def principal_id(self, principal: Any) -> str:
+    def principal_id(self, principal: PrincipalT) -> str:
         """Return a stable identifier for the authenticated principal.
 
         Args:
-            principal (Any): The value returned by :meth:`authenticate`.
+            principal (PrincipalT): The value returned by
+                :meth:`authenticate`.
 
         Returns:
             str: The identifier serialized into the session cookie.
         """
 
-    def display_name(self, principal: Any) -> str:
+    def display_name(self, principal: PrincipalT) -> str:
         """Return a human-readable label for the principal.
 
         Defaults to the principal's ``email`` attribute (or its repr
         when missing); override for richer labels.
 
         Args:
-            principal (Any): The principal.
+            principal (PrincipalT): The principal.
 
         Returns:
             str: A label suitable for the admin header bar.
@@ -123,7 +140,7 @@ class AdminAuthBackend(ABC):
         email = getattr(principal, "email", None)
         return str(email) if email else repr(principal)
 
-    def mfa_enabled(self, principal: Any) -> bool:
+    def mfa_enabled(self, principal: PrincipalT) -> bool:
         """Whether ``principal`` must pass a TOTP challenge after login.
 
         Defaults to ``False`` so non-user backends (LDAP, OAuth) skip
@@ -131,14 +148,14 @@ class AdminAuthBackend(ABC):
         login behind MFA.
 
         Args:
-            principal (Any): The authenticated principal.
+            principal (PrincipalT): The authenticated principal.
 
         Returns:
             bool: ``True`` to require the TOTP step.
         """
         return False
 
-    def verify_mfa(self, principal: Any, code: str) -> bool:
+    def verify_mfa(self, principal: PrincipalT, code: str) -> bool:
         """Verify a submitted TOTP ``code`` for ``principal``.
 
         Only called when :meth:`mfa_enabled` returned ``True``. The
@@ -146,7 +163,7 @@ class AdminAuthBackend(ABC):
         override it.
 
         Args:
-            principal (Any): The authenticated principal.
+            principal (PrincipalT): The authenticated principal.
             code (str): The 6-digit code from the authenticator app.
 
         Returns:
@@ -155,7 +172,7 @@ class AdminAuthBackend(ABC):
         return False
 
 
-class UserModelAuthBackend(AdminAuthBackend):
+class UserModelAuthBackend(AdminAuthBackend[BaseUserModel]):
     """Default backend backed by :class:`BaseUserModel`.
 
     Authenticates by selecting the row whose ``email`` matches the
@@ -266,18 +283,18 @@ class UserModelAuthBackend(AdminAuthBackend):
             return None
         return user
 
-    def principal_id(self, principal: Any) -> str:
+    def principal_id(self, principal: BaseUserModel) -> str:
         """Return the ``id`` UUID hex for serialization.
 
         Args:
-            principal (Any): A :class:`BaseUserModel` instance.
+            principal (BaseUserModel): The authenticated row.
 
         Returns:
             str: The UUID as ``str``.
         """
         return str(principal.id)
 
-    def mfa_enabled(self, principal: Any) -> bool:
+    def mfa_enabled(self, principal: BaseUserModel) -> bool:
         """Whether the user has completed MFA enrollment.
 
         True when the user carries a populated ``totp_secret`` and a
@@ -286,7 +303,7 @@ class UserModelAuthBackend(AdminAuthBackend):
         simply never enable MFA.
 
         Args:
-            principal (Any): A :class:`BaseUserModel` instance.
+            principal (BaseUserModel): The authenticated row.
 
         Returns:
             bool: ``True`` to require the TOTP step.
@@ -296,11 +313,11 @@ class UserModelAuthBackend(AdminAuthBackend):
             and getattr(principal, "totp_enabled_at", None)
         )
 
-    def verify_mfa(self, principal: Any, code: str) -> bool:
+    def verify_mfa(self, principal: BaseUserModel, code: str) -> bool:
         """Verify ``code`` against the user's persisted TOTP secret.
 
         Args:
-            principal (Any): A :class:`BaseUserModel` instance.
+            principal (BaseUserModel): The authenticated row.
             code (str): The submitted authenticator code.
 
         Returns:
