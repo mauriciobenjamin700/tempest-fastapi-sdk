@@ -14,7 +14,7 @@ that matters:
 
 | | OpenPix | Mercado Pago |
 | --- | --- | --- |
-| amount | cents, in a `float` | reais, in a `float` |
+| amount | cents, in an `int` | reais, in a `float` |
 | states | `ACTIVE`, `COMPLETED`, `EXPIRED` | 9 in `Payment`, 5 in `Order`, 4 in `OrderTransactionPayment` |
 | copy-and-paste code | `brCode` | `qr_code` |
 | QR image | a **URL** | **Base64** |

@@ -112,26 +112,27 @@ The body that goes on the wire (measured, with `MockTransport`):
 ```json
 {
   "customer": {"name": "Ana", "email": "ana@example.com", "taxID": "11111111111"},
-  "value": 4990.0,
+  "value": 4990,
   "name": "Plano Pro",
-  "dayGenerateCharge": 10.0,
+  "dayGenerateCharge": 10,
   "frequency": "MONTHLY",
   "type": "RECURRENT",
-  "dayDue": 5.0,
-  "correlationID": "assinatura-1",
-  "additionalInfo": []
+  "dayDue": 5,
+  "correlationID": "assinatura-1"
 }
 ```
 
 And the response carries `payment_link_url` — the page where the subscriber
 pays each cycle — alongside the `global_id` OpenPix uses internally.
 
-!!! note "The numbers go out as floats, and that is the specification"
-    `value`, `dayGenerateCharge` and `dayDue` are `type: number` in the spec,
-    so the generated model serializes them as `4990.0`, `10.0` and `5.0`. It
-    is valid JSON and the same value — but if you compare bodies byte for byte
-    in a test, that is what you will see. On the reading side, `to_cents`
-    undoes the float back into whole cents.
+!!! note "Whole numbers, and no key you did not ask for"
+    Two corrections changed this body, and they are worth knowing if you
+    compare bodies byte for byte in a test. **v0.259.0** retyped `value`,
+    `dayGenerateCharge` and `dayDue`: the spec says `type: number` and the
+    overlay corrects them to `integer`, because they are cents and a day of
+    the month. **v0.265.0** stopped sending an optional array you never
+    filled in, so `additionalInfo` left the body instead of going out as
+    `[]` — to Woovi, an empty list is a claim, not silence.
 
 ### The fields that decide the behaviour
 
@@ -390,7 +391,7 @@ Two rules that avoid the classic subscription bug:
 from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixClient
 
 
-async def unpaid_cycles(client: OpenPixClient, global_id: str) -> list[float]:
+async def unpaid_cycles(client: OpenPixClient, global_id: str) -> list[int]:
     """List the numbers of the instalments not yet paid.
 
     Args:
@@ -402,7 +403,7 @@ async def unpaid_cycles(client: OpenPixClient, global_id: str) -> list[float]:
     """
     response = await client.list_subscription_installments(id=global_id)
     return [
-        parcel.installment_number or 0.0
+        parcel.installment_number or 0
         for parcel in response.installments
         if parcel.status != "COMPLETED"
     ]

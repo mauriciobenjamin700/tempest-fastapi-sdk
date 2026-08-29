@@ -348,6 +348,8 @@ def main() -> int:
     print(f"  overlay: {report.integer_fields} numeric fields retyped as integer")
     for entry in report.added_properties:
         print(f"  overlay: + {entry}")
+    for entry in report.retyped_properties:
+        print(f"  overlay: ! {entry} (type corrected)")
     return 0
 
 

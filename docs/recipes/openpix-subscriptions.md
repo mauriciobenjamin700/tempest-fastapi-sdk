@@ -111,26 +111,27 @@ O corpo que sai no fio (medido, com `MockTransport`):
 ```json
 {
   "customer": {"name": "Ana", "email": "ana@example.com", "taxID": "11111111111"},
-  "value": 4990.0,
+  "value": 4990,
   "name": "Plano Pro",
-  "dayGenerateCharge": 10.0,
+  "dayGenerateCharge": 10,
   "frequency": "MONTHLY",
   "type": "RECURRENT",
-  "dayDue": 5.0,
-  "correlationID": "assinatura-1",
-  "additionalInfo": []
+  "dayDue": 5,
+  "correlationID": "assinatura-1"
 }
 ```
 
 E a resposta traz o `payment_link_url` — a página onde o assinante paga cada
 ciclo — junto do `global_id` que a OpenPix usa internamente.
 
-!!! note "Os números saem como float, e isso é a especificação"
-    `value`, `dayGenerateCharge` e `dayDue` são `type: number` na spec, então
-    o modelo gerado os serializa como `4990.0`, `10.0` e `5.0`. É JSON válido
-    e o mesmo valor — mas se você comparar corpos byte a byte em teste, é isso
-    que vai ver. Do lado da leitura, `to_cents` desfaz o float para centavo
-    inteiro.
+!!! note "Números inteiros, e nenhuma chave que você não pediu"
+    Duas correções mudaram esse corpo, e vale saber quais se você compara
+    corpos byte a byte em teste. A **v0.259.0** reclassificou `value`,
+    `dayGenerateCharge` e `dayDue`: a spec diz `type: number` e o overlay os
+    corrige para `integer`, porque são centavo e dia do mês. A **v0.265.0**
+    parou de mandar array opcional que você não informou, então
+    `additionalInfo` sumiu do corpo em vez de sair `[]` — para a Woovi, lista
+    vazia é uma afirmação, não silêncio.
 
 ### Os campos que decidem o comportamento
 
@@ -389,7 +390,7 @@ Duas regras que evitam o bug clássico de assinatura:
 from tempest_fastapi_sdk.integrations.payment.openpix import OpenPixClient
 
 
-async def unpaid_cycles(client: OpenPixClient, global_id: str) -> list[float]:
+async def unpaid_cycles(client: OpenPixClient, global_id: str) -> list[int]:
     """Lista os números das parcelas que ainda não foram pagas.
 
     Args:
@@ -401,7 +402,7 @@ async def unpaid_cycles(client: OpenPixClient, global_id: str) -> list[float]:
     """
     response = await client.list_subscription_installments(id=global_id)
     return [
-        parcel.installment_number or 0.0
+        parcel.installment_number or 0
         for parcel in response.installments
         if parcel.status != "COMPLETED"
     ]

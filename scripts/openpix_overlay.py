@@ -165,6 +165,76 @@ reconciliation, not at the call. They are declared optional, so a response
 without them still validates.
 """
 
+MISTYPED_PROPERTIES: dict[str, dict[str, dict[str, Any]]] = {
+    "Charge": {
+        "expiresIn": {
+            "type": "integer",
+            "description": (
+                "Seconds until the charge expires. The specification "
+                "declares this `string`; the API returns an integer."
+            ),
+        },
+    },
+    "PixQrCode": {
+        "value": {
+            "type": "integer",
+            "description": (
+                "Value of this QR code, in cents. The specification "
+                "declares this `string` on the response while declaring "
+                "the same field `number` on `PixQrCodePayload`, the "
+                "request for the very same object."
+            ),
+        },
+    },
+    "WithdrawTransaction": {
+        "value": {
+            "type": "integer",
+            "description": (
+                "Value withdrawn, in cents. The specification declares "
+                "this `string` while declaring the same field `number` on "
+                "`PixWithdrawTransaction`."
+            ),
+        },
+    },
+}
+"""Properties the document declares with the wrong type.
+
+Different from :data:`CHARGE_RESPONSE_PROPERTIES`, which adds a field the
+document forgot: here the field is declared, and declared wrong, so every
+response carrying it fails validation before the caller sees it.
+
+``Charge.expiresIn`` is the measured case (issue #238): the API answers
+``{"expiresIn": 3600}`` with HTTP 200 and the generated model demanded a
+string, so **every** charge read raised
+``Input should be a valid string [input_value=3600, input_type=int]``.
+
+The document contradicts itself about this one field three ways, which is
+what makes the correction safe rather than a guess::
+
+    Charge.expiresIn        -> "string"
+    ChargePayload.expiresIn -> "number"
+    WebhookCharge.expiresIn -> "integer"
+
+``WebhookCharge`` is the same charge object delivered by webhook, and it
+already says integer. Evidence and the raw body are in
+``vendor/openpix-evidence.md``.
+
+``expiresIn`` was the case somebody tripped over; it was not the only one.
+Sweeping the document for the same shape — a property name declared
+``string`` in one schema and numeric in another — found two more, both
+money, both on responses the client validates: ``PixQrCode.value`` (against
+``PixQrCodePayload.value``, the request for the same object) and
+``WithdrawTransaction.value`` (against ``PixWithdrawTransaction.value``).
+Seven of the client's methods could not read a real answer because of them.
+``tests/integrations/payment/openpix/test_spec_type_conflicts.py`` keeps the
+sweep running so the next one shows up here instead of in production.
+
+An override retires by itself: :func:`_retype` skips a property the
+provider has since declared correctly, so the regeneration log stops
+mentioning it the day upstream is fixed.
+"""
+
+
 CHARGE_REFUND_PROPERTIES: dict[str, dict[str, Any]] = {
     "refundId": {
         "type": "string",
@@ -194,10 +264,13 @@ class OverlayReport:
             ``integer``.
         added_properties (tuple[str, ...]): ``Schema.property`` entries
             declared by this overlay.
+        retyped_properties (tuple[str, ...]): ``Schema.property`` entries
+            whose declared type this overlay corrected.
     """
 
     integer_fields: int = 0
     added_properties: tuple[str, ...] = ()
+    retyped_properties: tuple[str, ...] = ()
 
 
 @dataclass
@@ -279,6 +352,45 @@ def _walk(node: Any, name: str | None, counter: _Counter) -> None:
             _walk(value, None, counter)
 
 
+def _retype(
+    document: dict[str, Any],
+    schema_name: str,
+    properties: dict[str, dict[str, Any]],
+) -> tuple[str, ...]:
+    """Replace the declared schema of properties the document types wrong.
+
+    Args:
+        document (dict[str, Any]): The document being patched.
+        schema_name (str): The ``components.schemas`` key to correct.
+        properties (dict[str, dict[str, Any]]): The corrected schemas, by
+            property name.
+
+    Returns:
+        tuple[str, ...]: ``Schema.property`` for each one actually
+        changed. A property already declared with the corrected ``type``
+        is skipped, so the override retires quietly the day the provider
+        fixes the document — and the regeneration log says so by no longer
+        naming it.
+    """
+    schemas = document.get("components", {}).get("schemas", {})
+    target = schemas.get(schema_name)
+    if not isinstance(target, dict):
+        return ()
+    declared = target.get("properties")
+    if not isinstance(declared, dict):
+        return ()
+    corrected: list[str] = []
+    for name, schema in properties.items():
+        current = declared.get(name)
+        if not isinstance(current, dict):
+            continue
+        if current.get("type") == schema.get("type"):
+            continue
+        declared[name] = copy.deepcopy(schema)
+        corrected.append(f"{schema_name}.{name}")
+    return tuple(corrected)
+
+
 def _declare(
     document: dict[str, Any],
     schema_name: str,
@@ -328,9 +440,14 @@ def apply(document: dict[str, Any]) -> tuple[dict[str, Any], OverlayReport]:
     added = _declare(patched, "Charge", CHARGE_RESPONSE_PROPERTIES)
     added += _declare(patched, "ChargeRefund", CHARGE_REFUND_PROPERTIES)
 
+    retyped: tuple[str, ...] = ()
+    for schema_name, properties in MISTYPED_PROPERTIES.items():
+        retyped += _retype(patched, schema_name, properties)
+
     return patched, OverlayReport(
         integer_fields=counter.retyped,
         added_properties=added,
+        retyped_properties=retyped,
     )
 
 
@@ -339,6 +456,7 @@ __all__: list[str] = [
     "CHARGE_REFUND_PROPERTIES",
     "CHARGE_RESPONSE_PROPERTIES",
     "INTEGER_PROPERTY_NAMES",
+    "MISTYPED_PROPERTIES",
     "NOT_CENTS_PATTERN",
     "STATUS_CODE_PATTERN",
     "OverlayReport",

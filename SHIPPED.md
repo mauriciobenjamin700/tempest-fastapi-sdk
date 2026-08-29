@@ -835,6 +835,21 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   que foi sondado, quando e com que código; `make mercadopago-diff` separa os
   baldes. Testes: `TestUnverifiedOperationsAreMarked`,
   `TestTheProbeOnlySpeaksForItsOwnVerb`.
+- **Campo declarado com o tipo errado deixa de quebrar a leitura (v0.269.0)**
+  — issue #238. A Woovi devolve `expiresIn` inteiro e o documento declara
+  `string`, então toda resposta de cobrança falhava na validação Pydantic —
+  o andar seguinte ao `splits` da v0.265.0. A camada de overlay ganhou
+  `MISTYPED_PROPERTIES`, irmã da `CHARGE_RESPONSE_PROPERTIES` (campo
+  ausente) para o caso de campo declarado errado; `_retype` pula o que já
+  estiver certo, então o override se aposenta sozinho quando o provedor
+  corrigir. Decisivo para a correção não ser palpite: o documento se
+  contradiz três vezes sobre o mesmo campo (`Charge` `string`,
+  `ChargePayload` `number`, `WebhookCharge` `integer`), e o `WebhookCharge`
+  é o mesmo objeto de cobrança. Testes:
+  `tests/integrations/payment/openpix/test_real_payload_shapes.py`, com o
+  corpo **capturado da API** — os fixtures antigos saíam da mesma
+  especificação errada que os modelos, então fantasia e implementação
+  concordavam — mais o guard contra regeração repor o tipo errado.
 - **Painel de tasks no admin (v0.268.0)** — issue #234.
   `TaskPanelService` + `tasks=` no `make_admin_router` montam
   `{prefix}/tasks` (execuções filtráveis do `JobStore` + agenda lida do

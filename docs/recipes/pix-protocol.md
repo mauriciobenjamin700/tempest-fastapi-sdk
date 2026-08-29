@@ -12,7 +12,7 @@ Os dois provedores que o SDK já traz discordam em quase tudo que importa:
 
 | | OpenPix | Mercado Pago |
 | --- | --- | --- |
-| valor | centavos, num `float` | reais, num `float` |
+| valor | centavos, num `int` | reais, num `float` |
 | estados | `ACTIVE`, `COMPLETED`, `EXPIRED` | 9 estados em `Payment`, 5 em `Order`, 4 em `OrderTransactionPayment` |
 | copia-e-cola | `brCode` | `qr_code` |
 | imagem do QR | uma **URL** | **Base64** |

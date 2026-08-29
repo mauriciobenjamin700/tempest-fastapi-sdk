@@ -4495,7 +4495,9 @@ class PixQrCode(BaseSchema):
 
     Attributes:
         name (str | None): Undocumented in the spec.
-        value (str | None): Undocumented in the spec.
+        value (int | None): Value of this QR code, in cents. The specification declares
+            this `string` on the response while declaring the same field `number` on
+            `PixQrCodePayload`, the request for the very same object.
         comment (str | None): Undocumented in the spec.
         br_code (str | None): EMV BRCode to be rendered as a Pix QRCode
         correlation_id (str | None): Your correlation ID to keep track of this pix
@@ -4512,7 +4514,14 @@ class PixQrCode(BaseSchema):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = None
-    value: str | None = None
+    value: int | None = Field(
+        description=(
+            "Value of this QR code, in cents. The specification declares this `string` "
+            "on the response while declaring the same field `number` on "
+            "`PixQrCodePayload`, the request for the very same object."
+        ),
+        default=None,
+    )
     comment: str | None = None
     br_code: str | None = Field(
         validation_alias="brCode",
@@ -9511,7 +9520,9 @@ class WithdrawTransaction(BaseSchema):
 
     Attributes:
         end_to_end_id (str | None): ID of the Withdraw Transaction
-        value (str | None): Undocumented in the spec.
+        value (int | None): Value withdrawn, in cents. The specification declares this
+            `string` while declaring the same field `number` on
+            `PixWithdrawTransaction`.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
@@ -9522,7 +9533,13 @@ class WithdrawTransaction(BaseSchema):
         description="ID of the Withdraw Transaction",
         default=None,
     )
-    value: str | None = None
+    value: int | None = Field(
+        description=(
+            "Value withdrawn, in cents. The specification declares this `string` while "
+            "declaring the same field `number` on `PixWithdrawTransaction`."
+        ),
+        default=None,
+    )
 
 
 class AccountRegister(BaseSchema):
@@ -16310,7 +16327,8 @@ class Charge(BaseSchema):
         pix_key (str | None): Undocumented in the spec.
         created_at (str | None): Undocumented in the spec.
         updated_at (str | None): Undocumented in the spec.
-        expires_in (str | None): Undocumented in the spec.
+        expires_in (int | None): Seconds until the charge expires. The specification
+            declares this `string`; the API returns an integer.
         expires_date (str | None): Expiration date of the charge in ISO 8601 format.
         due_date (str | None): Due date for OVERDUE, BOLETO, or subscription charges in
             ISO 8601 format.
@@ -16410,9 +16428,13 @@ class Charge(BaseSchema):
         serialization_alias="updatedAt",
         default=None,
     )
-    expires_in: str | None = Field(
+    expires_in: int | None = Field(
         validation_alias="expiresIn",
         serialization_alias="expiresIn",
+        description=(
+            "Seconds until the charge expires. The specification declares this "
+            "`string`; the API returns an integer."
+        ),
         default=None,
     )
     expires_date: str | None = Field(

@@ -2,6 +2,47 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.269.0 — `Charge.expires_in` virou `int`
+
+Não muda nenhuma assinatura. Muda **o tipo de um campo de resposta** da
+OpenPix.
+
+### O que muda
+
+`Charge.expires_in` era `str | None` e passa a ser `int | None`. O documento
+da Woovi declara `expiresIn` como `string`, a API devolve `3600`, e a
+validação estourava antes de qualquer consumidor ver a cobrança:
+
+```text
+charge.expiresIn
+  Input should be a valid string [type=string_type, input_value=3600, input_type=int]
+```
+
+### O que fazer
+
+**Nada, em runtime.** Como nenhuma resposta de cobrança chegava a ser
+construída, o tipo antigo nunca entregou um valor a ninguém — não existe
+código lá fora que tenha lido uma `str` desse campo e funcionado.
+
+**Se você anotou o campo**, troque o tipo:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import Charge
+
+
+def seconds_left(charge: Charge) -> int:
+    """Quantos segundos faltam para a cobrança expirar."""
+    return charge.expires_in or 0
+```
+
+!!! note "Por que não `int | str`"
+    Uma união empurraria a ambiguidade para todo consumidor, que passaria a
+    precisar de `int(charge.expires_in)` defensivo sem nunca saber se algum
+    dia recebe texto. O documento se contradiz sobre esse campo em três
+    lugares (`Charge` diz `string`, `ChargePayload` diz `number`,
+    `WebhookCharge` diz `integer`) — a evidência está em
+    `vendor/openpix-evidence.md`, seção 7.
+
 ## 0.265.0 — array opcional em corpo de request virou `| None`
 
 Não muda assinatura de método. Muda **o tipo de alguns campos** dos modelos de

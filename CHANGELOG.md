@@ -5,6 +5,87 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.269.0] — 2026-08-29
+
+### Fixed
+
+- **Toda resposta de cobrança da OpenPix voltou a validar.**
+  ([#238](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/238))
+  Com o `splits` da v0.265.0 corrigido, o `POST /api/v1/charge` passava — e a
+  resposta era rejeitada um andar adiante:
+
+  ```text
+  pydantic_core._pydantic_core.ValidationError: 1 validation error for CreateChargeResponse
+  charge.expiresIn
+    Input should be a valid string [type=string_type, input_value=3600, input_type=int]
+  ```
+
+  A Woovi devolve `expiresIn` inteiro; o documento declara `string`. O
+  codegen estava certo em relação à especificação, e a especificação errada
+  em relação à API.
+
+  O que torna a correção uma leitura e não um palpite: **o documento se
+  contradiz sobre esse campo em três lugares**, medido —
+
+  ```text
+  Charge.expiresIn        -> "string"
+  ChargePayload.expiresIn -> "number"
+  WebhookCharge.expiresIn -> "integer"
+  ```
+
+  `WebhookCharge` é o mesmo objeto de cobrança entregue por webhook, e ali o
+  documento já diz `integer`.
+
+  A correção entra pela camada de overlay que já existia
+  (`scripts/openpix_overlay.py`), numa tabela nova `MISTYPED_PROPERTIES` —
+  irmã da `CHARGE_RESPONSE_PROPERTIES`, que cobre campo **ausente**, para o
+  caso de campo **declarado errado**. Ela **se aposenta sozinha**: `_retype`
+  pula a propriedade já declarada com o tipo certo, então no dia em que a
+  Woovi corrigir o documento a linha some do log de regeração.
+
+  Rejeitado: `int | str` em união — empurraria a ambiguidade para todo
+  consumidor, que passaria a precisar de `int(charge.expires_in)` defensivo
+  sem saber se algum dia recebe texto.
+
+- **E `expiresIn` não estava sozinho: mais dois campos de dinheiro.**
+  ([#238](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/238))
+  Varrer o documento atrás da mesma forma achou `PixQrCode.value` e
+  `WithdrawTransaction.value`, os dois `string` em resposta contra `number`
+  no schema irmão — e `PixQrCode` contra `PixQrCodePayload` é o mesmo objeto
+  indo e voltando. **Sete dos 106 métodos do cliente** não liam uma resposta
+  real: `get_static_qr_code`, `list_static_qr_codes`,
+  `create_static_qr_code`, `withdraw_from_account`, `get_dispute`,
+  `get_transaction` e `list_transactions`.
+
+  Dois casos reais ficam de fora e estão **registrados**, não esquecidos: o
+  `dispute.value` inline de `GET /api/v1/dispute/{id}` e o `pix.value` dos
+  três callbacks `receivedPix*`, que exigem override por JSON pointer.
+
+### Changed
+
+- **`Charge.expires_in` passa de `str | None` para `int | None`.**
+  ([#238](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/238))
+  Antes da correção nenhuma resposta chegava a ser construída, então o tipo
+  antigo nunca entregou um valor a ninguém — mas anotação de consumidor que
+  o mencione precisa mudar. Guia de migração tem a linha.
+
+### Added
+
+- **`tests/integrations/payment/openpix/test_spec_type_conflicts.py`.** Varre
+  o documento corrigido e falha quando um nome de propriedade passa a ser
+  `string` num schema e numérico noutro. Conflito que não é defeito precisa
+  de uma entrada escrita dizendo por quê, e entrada que deixou de conflitar
+  também falha — para a tabela não virar silenciador que ninguém lê.
+
+- **`tests/integrations/payment/openpix/test_real_payload_shapes.py`.** O
+  corpo **capturado da API**, não construído a partir do documento — que é
+  por que nada acusava: fixture e modelo saíam da mesma especificação errada
+  e concordavam entre si. Mais o guard que impede uma regeração de repor o
+  tipo errado em silêncio, e o par de testes que fixa a contradição de três
+  tipos, para uma correção upstream aparecer como teste falhando em vez de
+  surpresa. Alimentados com o código da v0.268.0, falham com o
+  `ValidationError` exato do relato.
+
 ## [0.268.0] — 2026-08-29
 
 ### Added

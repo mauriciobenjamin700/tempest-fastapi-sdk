@@ -2,6 +2,47 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.269.0 — `Charge.expires_in` became an `int`
+
+No signature changes. What changes is **the type of one OpenPix response
+field**.
+
+### What changes
+
+`Charge.expires_in` was `str | None` and is now `int | None`. Woovi's
+document declares `expiresIn` as `string`, the API returns `3600`, and
+validation blew up before any consumer saw the charge:
+
+```text
+charge.expiresIn
+  Input should be a valid string [type=string_type, input_value=3600, input_type=int]
+```
+
+### What to do
+
+**Nothing at runtime.** Since no charge response was ever constructed, the
+old type never handed anyone a value — there is no code out there that read
+a `str` from this field and worked.
+
+**If you annotated the field**, change the type:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import Charge
+
+
+def seconds_left(charge: Charge) -> int:
+    """How many seconds are left before the charge expires."""
+    return charge.expires_in or 0
+```
+
+!!! note "Why not `int | str`"
+    A union would push the ambiguity onto every consumer, who would then
+    need a defensive `int(charge.expires_in)` without ever knowing whether
+    text arrives someday. The document contradicts itself about this field
+    in three places (`Charge` says `string`, `ChargePayload` says `number`,
+    `WebhookCharge` says `integer`) — the evidence is in
+    `vendor/openpix-evidence.md`, section 7.
+
 ## 0.265.0 — an optional array in a request body became `| None`
 
 No method signature changes. What changes is **the type of some fields** on

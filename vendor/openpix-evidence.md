@@ -203,3 +203,88 @@ def walk(node: object) -> None:
 walk(document)
 print(total, numeric)   # 73 58
 ```
+
+## 7. Um campo declarado com o tipo errado: `Charge.expiresIn`
+
+Medição de **2026-08-29**, contra `api.woovi-sandbox.com` com AppID válido,
+reportada na [issue #238](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/238).
+Com o `splits` da v0.265.0 corrigido, o `POST /api/v1/charge` passa e a
+**resposta** é que falha:
+
+```text
+pydantic_core._pydantic_core.ValidationError: 1 validation error for CreateChargeResponse
+charge.expiresIn
+  Input should be a valid string [type=string_type, input_value=3600, input_type=int]
+```
+
+Corpo cru da mesma chamada, HTTP 200:
+
+```json
+{"charge": {"value": 1190, "identifier": "5400e12f…", "status": "ACTIVE",
+            "expiresIn": 3600, "fee": 50,
+            "expiresDate": "2026-08-29T15:17:16.060Z"}}
+```
+
+O documento se contradiz sobre esse campo em **três** lugares — e é isso que
+torna a correção uma leitura, não um palpite:
+
+```bash
+uv run python -c "
+import json
+schemas = json.load(open('vendor/openpix-openapi.json'))['components']['schemas']
+print({n: s['properties']['expiresIn'].get('type')
+       for n, s in schemas.items()
+       if isinstance(s, dict) and isinstance(s.get('properties'), dict)
+       and 'expiresIn' in s['properties']})
+"
+```
+
+```text
+{'Charge': 'string', 'ChargePayload': 'number', 'WebhookCharge': 'integer'}
+```
+
+`WebhookCharge` é o **mesmo objeto de cobrança** entregue por webhook, e ali
+o documento já diz `integer`. Nenhuma API devolve como texto no corpo o
+inteiro que anuncia no webhook.
+
+A correção vive em `MISTYPED_PROPERTIES`, no `scripts/openpix_overlay.py`, e
+**se aposenta sozinha**: `_retype` pula a propriedade que já estiver
+declarada com o tipo certo, então no dia em que a Woovi corrigir o documento
+a linha `overlay: ! Charge.expiresIn (type corrected)` some do log de
+regeração.
+
+### O `expiresIn` não estava sozinho
+
+Varrendo o documento inteiro atrás da mesma forma — um nome de propriedade
+declarado `string` num schema e numérico noutro —, aparecem mais dois, os
+dois **dinheiro**, os dois em resposta que o cliente valida:
+
+```text
+PixQrCode.value            "string"  vs  PixQrCodePayload.value        "number"
+WithdrawTransaction.value  "string"  vs  PixWithdrawTransaction.value  "number"
+```
+
+`PixQrCode` contra `PixQrCodePayload` é o mesmo objeto indo e voltando.
+Sete dos 106 métodos do cliente não conseguiam ler uma resposta real por
+causa disso: `get_static_qr_code`, `list_static_qr_codes`,
+`create_static_qr_code`, `withdraw_from_account`, `get_dispute`,
+`get_transaction` e `list_transactions` — as duas últimas porque
+`Transaction.pixQrCode` é um `PixQrCode`.
+
+Os dois entram no `MISTYPED_PROPERTIES` sem mudança de mecanismo. **Dois
+casos reais ficam de fora** e estão registrados no guard, não esquecidos: o
+`dispute.value` inline de `GET /api/v1/dispute/{id}` e o `pix.value` dos três
+callbacks `receivedPix*`. `_retype` endereça
+`components.schemas.<Nome>.properties.<prop>`; esses precisam de override por
+JSON pointer.
+
+O que impede o próximo é
+`tests/integrations/payment/openpix/test_spec_type_conflicts.py`: ele varre o
+documento corrigido e falha quando um nome novo passa a se contradizer.
+Conflito que **não** é defeito precisa de uma entrada escrita dizendo por quê
+— e uma entrada que deixou de conflitar também falha, para a tabela não virar
+silenciador.
+
+Rejeitado: `int | str` em união. Empurraria a ambiguidade para todo
+consumidor, que passaria a precisar de `int(charge.expires_in)` defensivo
+sem nunca saber se algum dia recebe texto.
