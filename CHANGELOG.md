@@ -5,6 +5,57 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.267.0] — 2026-08-29
+
+### Changed
+
+- **`tempest db` reporta condição operacional em uma linha, não em vinte
+  frames.**
+  ([#233](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/233))
+  `CommandError` é como o Alembic diz que o banco não está no estado que o
+  comando precisa — migration pendente, histórico bifurcado, revisão apagada.
+  Nada disso é bug, e tudo isso chegava no `pretty_exceptions` do Typer:
+  ~20 frames de alembic, asyncio, greenlet e do `env.py` do próprio projeto,
+  com o caminho deste pacote no topo, então a falha lia como defeito do SDK.
+
+  Medido, num projeto de verdade contra Alembic 1.18.4 + SQLite, repetindo o
+  passo a passo do relato (gerar revisão, **não** aplicar, gerar de novo):
+
+  ```text
+  $ tempest db revision -m two --autogenerate
+  error: the database is behind head — a migration is pending. Run `tempest db upgrade`, then try again.
+         (TEMPEST_DEBUG=1 for the full traceback)
+  $ echo $?
+  1
+  ```
+
+  Quatro condições ganham conselho acionável; qualquer outra mensagem sai
+  **verbatim**, para uma mensagem nova do Alembic degradar para as palavras
+  dele em vez de para uma dica errada. Os substrings foram lidos da fonte
+  instalada (`autogenerate/api.py:601`, `script/base.py:214,222,236`), não
+  lembrados.
+
+  Vale para os seis comandos que chamam o helper — `revision`, `upgrade`,
+  `downgrade`, `current`, `stamp` e `history` —, não só o do relato.
+
+  `TEMPEST_DEBUG=1` re-levanta intocado, medido: o traceback completo volta e
+  o exit code segue 1.
+
+  **Escopo:** só a CLI. `AlembicHelper` continua propagando `CommandError`,
+  porque uso programático quer a exceção tipada, não `SystemExit`.
+
+  A mensagem sai em inglês, como as outras nove da CLI. A issue pedia PT-BR;
+  misturar as duas línguas na mesma superfície é pior que traduzir tudo, e
+  traduzir tudo não é o que ela pede.
+
+### Added
+
+- **`tests/cli/test_db_alembic_errors.py`.** As quatro condições conhecidas,
+  o fallback verbatim, o `TEMPEST_DEBUG`, os seis comandos, e — sem double —
+  o repro do relato contra Alembic de verdade. Alimentados com o código da
+  v0.266.0, 6 dos 8 falham (o do `TEMPEST_DEBUG` passa lá de propósito: sem
+  o wrapper, o `CommandError` sempre propagava).
+
 ## [0.266.0] — 2026-08-29
 
 ### Fixed

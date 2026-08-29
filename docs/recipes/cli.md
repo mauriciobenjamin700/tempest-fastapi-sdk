@@ -312,6 +312,34 @@ tempest db seed                                  # roda src.db.seeds:seed
 tempest db seed --seed src.db.fixtures:demo      # callable customizado
 ```
 
+#### Quando o Alembic recusa o comando
+
+Erro do Alembic que descreve o **estado do banco** — e não um bug — sai como
+uma linha, com o que fazer:
+
+```console
+$ tempest db revision -m "novo campo" --autogenerate
+error: the database is behind head — a migration is pending. Run `tempest db upgrade`, then try again.
+       (TEMPEST_DEBUG=1 for the full traceback)
+$ echo $?
+1
+```
+
+Quatro condições ganham conselho: banco atrás da head, histórico com mais de
+uma head, revisão que não existe em `alembic/versions/`, e revisões que não
+estão na mesma linhagem. Qualquer outra mensagem sai **como o Alembic
+escreveu**, sem tradução — dica errada seria pior que a mensagem crua.
+
+!!! tip "Quer o traceback de volta?"
+    `TEMPEST_DEBUG=1 tempest db revision ...` re-levanta a exceção intocada.
+    Use quando o erro **não** for uma das condições acima e você precisar ver
+    de onde ele veio.
+
+!!! note "Só a CLI traduz"
+    Chamar `AlembicHelper.revision(...)` direto, de um script ou do lifespan,
+    continua levantando `alembic.util.exc.CommandError`. Código quer a
+    exceção tipada; quem está no terminal quer a frase.
+
 #### Colapsar o histórico — `tempest db squash`
 
 Com o tempo o diretório `alembic/versions/` cresce sem limite — cada ajuste de schema vira mais um arquivo que o Alembic precisa percorrer em todo `upgrade`. O `squash` zera esse histórico para **uma única migration raiz** que descreve o schema **atual**, sem perder os bancos já existentes.

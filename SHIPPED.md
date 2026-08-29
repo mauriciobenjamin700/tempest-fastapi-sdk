@@ -835,6 +835,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   que foi sondado, quando e com que código; `make mercadopago-diff` separa os
   baldes. Testes: `TestUnverifiedOperationsAreMarked`,
   `TestTheProbeOnlySpeaksForItsOwnVerb`.
+- **Erro esperado do Alembic vira uma linha acionável (v0.267.0)** — issue
+  #233. `CommandError` chegava no `pretty_exceptions` do Typer: ~20 frames com
+  o caminho do SDK no topo, para terminar numa única linha útil. Os seis
+  comandos de `tempest db` passam por um tradutor que casa quatro condições
+  conhecidas (banco atrás da head, histórico com mais de uma head, revisão
+  inexistente, revisões fora da mesma linhagem) e imprime o que fazer;
+  mensagem desconhecida sai verbatim, e `TEMPEST_DEBUG=1` devolve o traceback.
+  Só a CLI: o `AlembicHelper` continua propagando a exceção tipada. Guard:
+  `tests/cli/test_db_alembic_errors.py`, que inclui o repro contra Alembic de
+  verdade, sem double.
 - **Página de auth sobrevive ao default do SQLAlchemy (v0.266.0)** — issue
   #237. `async_sessionmaker` usa `expire_on_commit=True` por default, e as
   páginas HTML renderizam depois do commit que consome o token: o primeiro

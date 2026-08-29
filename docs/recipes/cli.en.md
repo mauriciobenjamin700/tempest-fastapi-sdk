@@ -313,6 +313,34 @@ tempest db seed                                  # runs src.db.seeds:seed
 tempest db seed --seed src.db.fixtures:demo      # custom callable
 ```
 
+#### When Alembic refuses the command
+
+An Alembic error describing the **state of the database** — not a bug — comes
+out as one line, with what to do about it:
+
+```console
+$ tempest db revision -m "new field" --autogenerate
+error: the database is behind head — a migration is pending. Run `tempest db upgrade`, then try again.
+       (TEMPEST_DEBUG=1 for the full traceback)
+$ echo $?
+1
+```
+
+Four conditions get advice: the database is behind head, the history has more
+than one head, the revision is not in `alembic/versions/`, and two revisions
+are not on the same branch. Any other message is printed **exactly as Alembic
+wrote it** — a wrong hint would be worse than the raw words.
+
+!!! tip "Want the traceback back?"
+    `TEMPEST_DEBUG=1 tempest db revision ...` re-raises untouched. Use it when
+    the error is **not** one of the conditions above and you need to see where
+    it came from.
+
+!!! note "Only the CLI translates"
+    Calling `AlembicHelper.revision(...)` directly, from a script or a
+    lifespan, still raises `alembic.util.exc.CommandError`. Code wants the
+    typed exception; a person at a terminal wants the sentence.
+
 #### Collapse the history — `tempest db squash`
 
 Over time the `alembic/versions/` directory grows without bound — every schema tweak adds another file Alembic must walk on every `upgrade`. `squash` resets that history to a **single root migration** describing the **current** schema, while keeping existing databases usable.
