@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Run · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-tasks">
+  {% if job is none %}
+  <div class="tempest-admin-list__header">
+    <h1>Run not found</h1>
+  </div>
+  <p class="tempest-admin-tasks__empty">
+    This run is no longer stored. Retention sweeps delete finished rows, so a
+    bookmarked link outlives the record it points at.
+  </p>
+  <p><a href="{{ tasks_url }}">Back to tasks</a></p>
+  {% else %}
+  <div class="tempest-admin-list__header">
+    <h1>{{ job.kind }}</h1>
+    <span class="tempest-admin-tasks__status tempest-admin-tasks__status--{{ job.status }}">{{ job.status }}</span>
+  </div>
+
+  <span class="tempest-admin-tasks__bar tempest-admin-tasks__bar--wide" role="img"
+        aria-label="{{ (job.progress * 100) | round(0) | int }} percent">
+    <span class="tempest-admin-tasks__bar-fill" style="width: {{ (job.progress * 100) | round(0) | int }}%"></span>
+  </span>
+
+  <dl class="tempest-admin-tasks__facts">
+    <dt>Stage</dt><dd>{{ job.stage or "—" }}</dd>
+    <dt>Attempts</dt><dd>{{ job.attempts }} of {{ job.max_attempts }}</dd>
+    <dt>Requested</dt><dd>{{ job.created_at }}</dd>
+    <dt>Started</dt><dd>{{ job.started_at or "—" }}</dd>
+    <dt>Finished</dt><dd>{{ job.finished_at or "—" }}</dd>
+    <dt>Result</dt><dd>{{ job.result_id or "—" }}</dd>
+  </dl>
+
+  {% if job.error %}
+  <div class="tempest-admin-tasks__error">
+    <h2 class="tempest-admin-tasks__heading">Error</h2>
+    <pre>{{ job.error }}</pre>
+  </div>
+  {% endif %}
+
+  {% if cancellable %}
+  <form method="post" action="{{ cancel_url }}" class="tempest-admin-tasks__cancel">
+    <button type="submit">Cancel this run</button>
+    <span class="tempest-admin-tasks__hint">
+      Cancelling is cooperative: the row flips now, and the worker stops at its
+      next progress check.
+    </span>
+  </form>
+  {% endif %}
+
+  <p><a href="{{ tasks_url }}">Back to tasks</a></p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Tasks · {{ site.title }}{% endblock %}
+{% block content %}
+<section class="tempest-admin-tasks">
+  <div class="tempest-admin-list__header">
+    <h1>Tasks</h1>
+  </div>
+
+  <p class="tempest-admin-tasks__scope">
+    This panel shows what is <strong>declared</strong> on the broker and what
+    was <strong>persisted</strong> by the workers. It does not show live queue
+    depth &mdash; TaskIQ exposes none.
+  </p>
+
+  {% if shows_runs %}
+  <h2 class="tempest-admin-tasks__heading">Runs</h2>
+  <form method="get" action="{{ tasks_url }}" class="tempest-admin-list__filters">
+    <label>
+      <span>Status</span>
+      <select name="status">
+        <option value=""{% if not status_filter %} selected{% endif %}>All</option>
+        {% for value in statuses %}
+        <option value="{{ value.value }}"{% if value.value == status_filter %} selected{% endif %}>{{ value.value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Filter</button>
+  </form>
+
+  {% if runs %}
+  <div class="tempest-admin-table-wrap">
+    <table class="tempest-admin-list__table">
+      <thead>
+        <tr>
+          <th>Kind</th>
+          <th>Status</th>
+          <th>Progress</th>
+          <th>Stage</th>
+          <th>Attempts</th>
+          <th>Requested</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in runs %}
+        <tr>
+          <td><a href="{{ tasks_url }}/{{ job.id }}">{{ job.kind }}</a></td>
+          <td><span class="tempest-admin-tasks__status tempest-admin-tasks__status--{{ job.status }}">{{ job.status }}</span></td>
+          <td>
+            <span class="tempest-admin-tasks__bar" role="img" aria-label="{{ (job.progress * 100) | round(0) | int }} percent">
+              <span class="tempest-admin-tasks__bar-fill" style="width: {{ (job.progress * 100) | round(0) | int }}%"></span>
+            </span>
+          </td>
+          <td>{{ job.stage or "—" }}</td>
+          <td>{{ job.attempts }}/{{ job.max_attempts }}</td>
+          <td>{{ job.created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="tempest-admin-tasks__empty">
+    No runs recorded yet. Rows appear here once a
+    <code>JobStore</code> enqueues work.
+  </p>
+  {% endif %}
+  {% endif %}
+
+  {% if shows_schedule %}
+  <h2 class="tempest-admin-tasks__heading">Schedule</h2>
+  {% if schedule %}
+  <div class="tempest-admin-table-wrap">
+    <table class="tempest-admin-list__table">
+      <thead>
+        <tr>
+          <th>Task</th>
+          <th>Cron</th>
+          <th>Interval</th>
+          <th>Retries</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for task in schedule %}
+        <tr>
+          <td>{{ task.name }}</td>
+          <td>{% if task.cron %}<code>{{ task.cron }}</code>{% else %}—{% endif %}</td>
+          <td>{% if task.interval_seconds %}every {{ task.interval_seconds | int }}s{% elif not task.is_scheduled %}on demand{% else %}—{% endif %}</td>
+          <td>
+            {% if task.retry_on_error %}
+              up to {{ task.max_retries if task.max_retries is not none else "default" }}
+            {% else %}
+              off
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="tempest-admin-tasks__empty">
+    No tasks registered on the broker.
+  </p>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

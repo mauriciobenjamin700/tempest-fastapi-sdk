@@ -885,7 +885,81 @@ Pass the instance via `auth_backend=` and the rest of the admin pipeline (sessio
     `AdminAuthBackend[Any]`. The `pyproject.toml` that `tempest new` writes sets
     `strict = true`.
 
-#### 6. Customize the look — `AdminTheme`
+#### 6. Task panel — what is scheduled and what ran
+
+`TaskPanelService` wires the admin to what the workers already produce: the
+**schedule** declared on the broker and the **runs** a `JobStore` persisted.
+
+```python
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AdminSite,
+    AsyncDatabaseManager,
+    UserModelAuthBackend,
+    make_admin_router,
+)
+from tempest_fastapi_sdk.admin import TaskPanelService
+from tempest_fastapi_sdk.tasks import JobStore, TaskQueue
+
+from src.core.settings import settings
+from src.db.models import JobModel, UserModel
+
+app: FastAPI = FastAPI()
+db: AsyncDatabaseManager = AsyncDatabaseManager(settings.DATABASE_URL)
+tq: TaskQueue = TaskQueue.rabbitmq(settings.RABBITMQ_URL)
+jobs: JobStore[JobModel] = JobStore(db, model=JobModel)
+
+app.include_router(
+    make_admin_router(
+        AdminSite(title="Ops"),
+        db=db,
+        auth_backend=UserModelAuthBackend(UserModel),
+        secret_key=settings.ADMIN_SECRET_KEY,
+        tasks=TaskPanelService(queue=tq, job_store=jobs),
+    )
+)
+```
+
+That mounts three routes and a "Tasks" entry in the sidebar:
+
+| Route | What it does |
+| --- | --- |
+| `GET /admin/tasks` | recent runs (filterable by status) + the declared schedule |
+| `GET /admin/tasks/{job_id}` | one run: progress, stage, attempts, error |
+| `POST /admin/tasks/{job_id}/cancel` | asks it to stop, while the status still allows it |
+
+!!! warning "The panel does not show the broker's queue"
+    It shows what is **persisted** (`JobStore` rows) and what is **declared**
+    (the broker's registry). Queue depth is absent because TaskIQ exposes
+    none — and a screen implying otherwise would be worse than no screen.
+
+!!! tip "Either half is enough"
+    `queue=` alone shows the schedule; `job_store=` alone shows the runs. A
+    section with no source is not rendered, rather than rendering empty and
+    implying there is nothing to see. Passing neither raises `ValueError` at
+    construction.
+
+!!! note "Why there is no \"next run\" column"
+    `pycron`, which arrives with TaskIQ, exposes `is_now` and `has_been` —
+    and no `next()`. Computing the next run would mean sweeping candidate
+    minutes on every render (up to ~44k iterations for a monthly cron) or
+    taking a new dependency for one column. The panel shows the expression.
+
+For the paginated, filterable, exportable list the admin already knows how to
+render, register the job model too — symmetric to the dead-letter panel:
+
+```python
+from tempest_fastapi_sdk import AdminSite
+from tempest_fastapi_sdk.tasks import make_job_admin_model
+
+from src.db.models import JobModel
+
+site: AdminSite = AdminSite(title="Ops")
+site.register(make_job_admin_model(JobModel))
+```
+
+#### 7. Customize the look — `AdminTheme`
 
 The admin CSS is driven entirely by **CSS custom properties** on `:root`. Instead of forking the stylesheet, you pass an `AdminTheme` with **typed, documented parameters** — colors, logo, favicon, font, radius, footer, dark mode — and the SDK injects a `<style>` block in the `<head>` (after `admin.css`, so it wins).
 

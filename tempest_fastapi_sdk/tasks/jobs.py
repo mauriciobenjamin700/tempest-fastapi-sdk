@@ -974,6 +974,58 @@ class JobStore(Generic[JobT]):
             await asyncio.sleep(interval)
 
 
+def make_job_admin_model(
+    model: type[BaseJobModel],
+    *,
+    can_delete: bool = False,
+) -> Any:
+    """Build a read-mostly :class:`AdminModel` over a job table.
+
+    Register the result on your
+    :class:`~tempest_fastapi_sdk.admin.AdminSite` and the admin gets the
+    list half of the task panel for free — pagination, filtering, sorting
+    and CSV/JSON export over the same rows the workers write. Symmetric to
+    :func:`~tempest_fastapi_sdk.tasks.make_dead_letter_admin_model`, which
+    does the same for terminal failures.
+
+    Create and edit are off: a job row is a record of what a worker did,
+    and an operator typing a new one describes work nobody will run.
+    Deleting is off by default for the same reason, and available for the
+    retention sweep an operator does want.
+
+    Args:
+        model (type[BaseJobModel]): The concrete job table.
+        can_delete (bool): Whether the admin may delete rows. Defaults to
+            ``False``.
+
+    Returns:
+        Any: A preconfigured ``AdminModel`` — annotated loosely because
+        importing the admin package at module scope would make ``tasks``
+        depend on it, and the admin is optional.
+    """
+    from sqlalchemy import desc
+
+    from tempest_fastapi_sdk.admin import AdminModel
+
+    return AdminModel(
+        model=model,
+        list_display=[
+            model.kind,
+            model.status,
+            model.progress,
+            model.stage,
+            model.attempts,
+            model.created_at,
+        ],
+        list_filter=[model.kind, model.status],
+        search_fields=[model.kind, model.stage, model.error],
+        ordering=desc(model.created_at),
+        can_create=False,
+        can_edit=False,
+        can_delete=can_delete,
+    )
+
+
 __all__: list[str] = [
     "STALE_JOB_ERROR",
     "TERMINAL_JOB_STATUSES",
@@ -982,5 +1034,6 @@ __all__: list[str] = [
     "JobNotFoundError",
     "JobStatus",
     "JobStore",
+    "make_job_admin_model",
     "make_job_model",
 ]

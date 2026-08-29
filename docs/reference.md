@@ -78,6 +78,18 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 
 ---
 
+### `tempest_fastapi_sdk.admin.tasks`
+
+::: tempest_fastapi_sdk.admin.tasks
+    options:
+      show_root_toc_entry: false
+      show_submodules: false
+      members_order: source
+      filters:
+        - "!^_"
+
+---
+
 ## API (integração FastAPI)
 
 ### `tempest_fastapi_sdk.api`
@@ -420,6 +432,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.tasks.queue.Hook
 ::: tempest_fastapi_sdk.tasks.jobs.TERMINAL_JOB_STATUSES
 ::: tempest_fastapi_sdk.tasks.jobs.STALE_JOB_ERROR
+::: tempest_fastapi_sdk.tasks.jobs.make_job_admin_model
 
 ---
 

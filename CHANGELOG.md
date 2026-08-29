@@ -5,6 +5,57 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.268.0] — 2026-08-29
+
+### Added
+
+- **Painel de tasks no admin.**
+  ([#234](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/234))
+  As duas metades já produziam o dado e nenhuma tinha tela: `task_inventory`
+  devolvia uma lista que nada renderizava, e uma linha de `JobStore` só era
+  alcançável escrevendo a própria página.
+
+  `make_admin_router(..., tasks=TaskPanelService(queue=tq, job_store=jobs))`
+  monta `GET {prefix}/tasks` (execuções filtráveis + agenda declarada),
+  `GET {prefix}/tasks/{job_id}` (progresso, estágio, tentativas, erro) e
+  `POST {prefix}/tasks/{job_id}/cancel`, mais o item "Tasks" na barra
+  lateral — o mesmo formato opcional do console SQL.
+
+  Qualquer uma das metades serve: só `queue=` mostra a agenda, só
+  `job_store=` mostra as execuções, e a seção sem fonte **não é renderizada**
+  em vez de aparecer vazia. Nenhuma das duas levanta `ValueError` na
+  construção.
+
+  **O painel não mostra profundidade de fila** — a TaskIQ não expõe, o que já
+  estava registrado para o painel de dead-letter. A página diz isso em vez de
+  deixar o leitor supor.
+
+  **Não há coluna "próxima execução"**, e a docstring registra por quê: o
+  `pycron` que chega com a TaskIQ expõe `is_now`/`has_been` e nenhum
+  `next()`, então calcular exigiria varrer minuto a minuto a cada render
+  (até ~44 mil iterações para um cron mensal) ou uma dependência nova.
+
+- **`make_job_admin_model`.** Simétrico ao `make_dead_letter_admin_model`:
+  registra a tabela de jobs no `AdminSite` e a listagem ganha paginação,
+  filtro, ordenação e export. Create e edit desligados — uma linha de job é
+  registro do que um worker fez, e um operador digitando uma nova descreve
+  trabalho que ninguém vai executar.
+
+### Fixed
+
+- **Três defeitos que só o browser pegou** (validação em Playwright antes de
+  reportar concluído, como manda a regra de mudança visual):
+
+  1. As páginas novas renderizavam **sem barra lateral e sem header** — o
+     `_render` não injeta o principal, cada view passa; as três rotas passam
+     agora.
+  2. Uma task com **intervalo** aparecia como `on demand` na coluna Cron. Cron
+     vazio virou `—`, e `on demand` sobrou só para quem não tem agenda
+     nenhuma.
+  3. A barra de progresso ficava **invisível** nas linhas listradas: o trilho
+     usava `--tempest-bg-row-alt`, exatamente a cor com que a tabela listra.
+     Passou a `--tempest-border`.
+
 ## [0.267.0] — 2026-08-29
 
 ### Changed

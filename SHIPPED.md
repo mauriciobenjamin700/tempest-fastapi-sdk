@@ -835,6 +835,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   que foi sondado, quando e com que código; `make mercadopago-diff` separa os
   baldes. Testes: `TestUnverifiedOperationsAreMarked`,
   `TestTheProbeOnlySpeaksForItsOwnVerb`.
+- **Painel de tasks no admin (v0.268.0)** — issue #234.
+  `TaskPanelService` + `tasks=` no `make_admin_router` montam
+  `{prefix}/tasks` (execuções filtráveis do `JobStore` + agenda lida do
+  registro do broker), o detalhe de uma execução e o cancelamento
+  cooperativo, no mesmo formato opcional do console SQL. Qualquer uma das
+  metades serve; seção sem fonte não renderiza. `make_job_admin_model` dá a
+  listagem com paginação/filtro/export, simétrico ao de dead-letter. **Sem
+  profundidade de fila** (a TaskIQ não expõe) e **sem coluna de próxima
+  execução** (o `pycron` não tem `next()`) — as duas ausências ficam escritas
+  na tela e na docstring. Validado em browser real, que achou três defeitos
+  que os 15 testes não pegaram: chrome ausente, coluna de cron mentindo para
+  task com intervalo, e trilho de progresso invisível na linha listrada.
 - **Erro esperado do Alembic vira uma linha acionável (v0.267.0)** — issue
   #233. `CommandError` chegava no `pretty_exceptions` do Typer: ~20 frames com
   o caminho do SDK no topo, para terminar numa única linha útil. Os seis

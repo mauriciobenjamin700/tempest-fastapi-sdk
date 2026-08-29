@@ -1421,3 +1421,128 @@ a.tempest-admin-list__new:hover {
 .tempest-admin-flash--warning {
   border-left-color: #d97706;
 }
+
+/* Task panel — declared schedule and persisted runs. */
+.tempest-admin-tasks__scope {
+  margin: 0 0 1.25rem;
+  color: var(--tempest-fg-soft);
+  font-size: 0.9rem;
+}
+
+.tempest-admin-tasks__heading {
+  margin: 1.75rem 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.tempest-admin-tasks__empty {
+  padding: 1rem;
+  border: 1px dashed var(--tempest-border);
+  border-radius: var(--tempest-radius);
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-tasks__status {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  border: 1px solid var(--tempest-border);
+  color: var(--tempest-fg-soft);
+}
+
+.tempest-admin-tasks__status--running {
+  border-color: var(--tempest-accent);
+  color: var(--tempest-accent);
+}
+
+.tempest-admin-tasks__status--done {
+  border-color: #15803d;
+  color: #15803d;
+}
+
+.tempest-admin-tasks__status--failed {
+  border-color: var(--tempest-danger);
+  color: var(--tempest-danger);
+}
+
+/* Cancelled is terminal but not a failure, so it stays neutral: an
+   operator scanning for red should find only what went wrong. */
+.tempest-admin-tasks__status--cancelled {
+  border-color: var(--tempest-border);
+  color: var(--tempest-fg-soft);
+}
+
+/* The track uses the border token, not a row background: the list stripes
+   rows with --tempest-bg-row-alt, so a track painted in it vanished on
+   every other row — an empty progress cell reads as "no data", not as 0%. */
+.tempest-admin-tasks__bar {
+  display: inline-block;
+  width: 90px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--tempest-border);
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.tempest-admin-tasks__bar--wide {
+  display: block;
+  width: 100%;
+  height: 12px;
+  margin: 0 0 1.25rem;
+}
+
+.tempest-admin-tasks__bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--tempest-accent);
+}
+
+.tempest-admin-tasks__facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1.25rem;
+  margin: 0 0 1.5rem;
+}
+
+.tempest-admin-tasks__facts dt {
+  color: var(--tempest-fg-soft);
+  font-size: 0.85rem;
+}
+
+.tempest-admin-tasks__facts dd {
+  margin: 0;
+}
+
+.tempest-admin-tasks__error pre {
+  padding: 0.85rem;
+  border-radius: var(--tempest-radius);
+  border-left: 4px solid var(--tempest-danger);
+  background: var(--tempest-bg-row-alt);
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+.tempest-admin-tasks__cancel {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0 0 1.5rem;
+}
+
+.tempest-admin-tasks__hint {
+  color: var(--tempest-fg-soft);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 640px) {
+  .tempest-admin-tasks__facts {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .tempest-admin-tasks__facts dd {
+    margin: 0 0 0.6rem;
+  }
+}

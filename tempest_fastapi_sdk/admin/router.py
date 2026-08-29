@@ -13,7 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlencode
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
@@ -59,6 +59,7 @@ from tempest_fastapi_sdk.admin.sql_shell import (
     SqlShellError,
     SqlShellService,
 )
+from tempest_fastapi_sdk.admin.tasks import TaskPanelService
 from tempest_fastapi_sdk.api.routers.logs import (
     LogSource,
     _read_entries,
@@ -69,6 +70,10 @@ from tempest_fastapi_sdk.api.routers.logs import (
 from tempest_fastapi_sdk.db.expressions import escape_like
 from tempest_fastapi_sdk.db.repository import BaseRepository
 from tempest_fastapi_sdk.exceptions import AppException
+from tempest_fastapi_sdk.tasks.jobs import (
+    CANCELLABLE_JOB_STATUSES,
+    JobStatus,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -153,6 +158,7 @@ def make_admin_router(
     log_dir: str | Path = "logs",
     access_policy: AdminAccessPolicy | None = None,
     sql_shell: SqlShellService | None = None,
+    tasks: TaskPanelService[Any] | None = None,
 ) -> APIRouter:
     """Build the FastAPI router that mounts the admin site.
 
@@ -219,6 +225,14 @@ def make_admin_router(
             action yields ``403`` and hides the model from the dashboard
             + nav for ``VIEW``. Composes with the ``can_*`` flags — both
             must allow.
+        sql_shell (SqlShellService | None): When given, mounts the SQL
+            console at ``GET/POST {prefix}/sql`` and adds its nav entry.
+        tasks (TaskPanelService[Any] | None): When given, mounts the task
+            panel at ``GET {prefix}/tasks`` (declared schedule + persisted
+            runs), the run detail at ``GET {prefix}/tasks/{job_id}`` and
+            the cancel action at ``POST {prefix}/tasks/{job_id}/cancel``,
+            and adds its nav entry. Either half of the service may be
+            absent; a section with no source is not rendered.
 
     Returns:
         APIRouter: A router ready to attach via ``app.include_router``.
@@ -397,6 +411,10 @@ def make_admin_router(
         context.setdefault(
             "nav_sql_url",
             f"{prefix}/sql" if sql_shell is not None else None,
+        )
+        context.setdefault(
+            "nav_tasks_url",
+            f"{prefix}/tasks" if tasks is not None else None,
         )
         return templates.TemplateResponse(
             request,
@@ -2442,6 +2460,132 @@ def make_admin_router(
                 context["error_kind"] = "Statement failed"
                 context["error"] = str(exc)
             return _render(request, "sql_shell.html", context)
+
+    if tasks is not None:
+        _panel = tasks
+
+        @router.get("/tasks", response_class=HTMLResponse, name="admin_tasks")
+        async def task_panel(
+            request: Request,
+            status: str = "",
+            db_session: AsyncSession = Depends(_db_session),
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Render the declared schedule and the persisted runs.
+
+            Neither section is invented: the schedule is the broker's own
+            registry and the runs are rows a worker wrote. Live queue
+            depth is not shown because TaskIQ exposes none.
+
+            Args:
+                request (Request): The incoming request.
+                status (str): Optional job status to filter the runs by.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal the chrome renders.
+                session (AdminSession): The validated session.
+
+            Returns:
+                Response: The task panel page.
+            """
+            principal = await _resolve_principal(request, db_session, session)
+            runs = await _panel.recent_runs(status=status or None)
+            return _render(
+                request,
+                "tasks.html",
+                {
+                    "user": principal,
+                    "session": session,
+                    "user_display": auth_backend.display_name(principal),
+                    "nav_models": await _visible_nav(principal),
+                    "shows_runs": _panel.shows_runs,
+                    "shows_schedule": _panel.shows_schedule,
+                    "runs": runs,
+                    "schedule": _panel.schedule(),
+                    "status_filter": status,
+                    "statuses": sorted(JobStatus),
+                    "tasks_url": f"{prefix}/tasks",
+                },
+            )
+
+        @router.get(
+            "/tasks/{job_id}",
+            response_class=HTMLResponse,
+            name="admin_task_detail",
+        )
+        async def task_detail(
+            request: Request,
+            job_id: UUID,
+            db_session: AsyncSession = Depends(_db_session),
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Render one run: progress, stage, attempts and error.
+
+            Args:
+                request (Request): The incoming request.
+                job_id (UUID): The run to show.
+                db_session (AsyncSession): The DB session, used to resolve
+                    the principal the chrome renders.
+                session (AdminSession): The validated session.
+
+            Returns:
+                Response: The detail page, or a 404 page when the row is
+                gone — a job an operator can reach by URL after a
+                retention sweep is exactly the case that would otherwise
+                raise.
+            """
+            principal = await _resolve_principal(request, db_session, session)
+            chrome: dict[str, Any] = {
+                "user": principal,
+                "session": session,
+                "user_display": auth_backend.display_name(principal),
+                "nav_models": await _visible_nav(principal),
+                "tasks_url": f"{prefix}/tasks",
+            }
+            job = await _panel.run(job_id)
+            if job is None:
+                return _render(
+                    request,
+                    "task_detail.html",
+                    {**chrome, "job": None},
+                    status_code=404,
+                )
+            return _render(
+                request,
+                "task_detail.html",
+                {
+                    **chrome,
+                    "job": job,
+                    "cancellable": job.status in CANCELLABLE_JOB_STATUSES,
+                    "cancel_url": f"{prefix}/tasks/{job_id}/cancel",
+                },
+            )
+
+        @router.post("/tasks/{job_id}/cancel", name="admin_task_cancel")
+        async def task_cancel(
+            request: Request,
+            job_id: UUID,
+            session: AdminSession = Depends(_require_session),
+        ) -> Response:
+            """Ask a queued or running job to stop, then show it again.
+
+            Cancelling is cooperative: the row flips and the worker
+            notices at its next progress tick, so the page the operator
+            lands on may still say ``running`` for a moment. Saying that
+            on the page beats implying the work stopped.
+
+            Args:
+                request (Request): The incoming request.
+                job_id (UUID): The run to cancel.
+                session (AdminSession): The validated session.
+
+            Returns:
+                Response: A redirect back to the run's detail page.
+            """
+            await _panel.cancel(job_id)
+            return RedirectResponse(
+                f"{prefix}/tasks/{job_id}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
 
     return router
 

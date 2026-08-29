@@ -90,6 +90,9 @@ from tempest_fastapi_sdk.tasks.jobs import JobCancelledError as JobCancelledErro
 from tempest_fastapi_sdk.tasks.jobs import JobNotFoundError as JobNotFoundError
 from tempest_fastapi_sdk.tasks.jobs import JobStatus as JobStatus
 from tempest_fastapi_sdk.tasks.jobs import JobStore as JobStore
+from tempest_fastapi_sdk.tasks.jobs import (
+    make_job_admin_model as make_job_admin_model,
+)
 from tempest_fastapi_sdk.tasks.jobs import make_job_model as make_job_model
 from tempest_fastapi_sdk.tasks.manager import (
     AsyncTaskBrokerManager as AsyncTaskBrokerManager,
@@ -179,6 +182,7 @@ __all__: list[str] = [
     "make_dead_letter_admin_model",
     "make_dead_letter_middleware",
     "make_dead_letter_model",
+    "make_job_admin_model",
     "make_job_model",
     "make_requeue_action",
     "monthly",
