@@ -217,9 +217,23 @@ class RedisLike(Protocol):
         self,
         script: str,
         numkeys: int,
+        /,
         *keys_and_args: Any,
-    ) -> Awaitable[Any]:
-        """Evaluate a Lua ``script`` server-side."""
+    ) -> Awaitable[list[int]]:
+        """Evaluate a Lua ``script`` server-side.
+
+        Args:
+            script (str): The Lua source to evaluate.
+            numkeys (int): How many of ``keys_and_args`` are keys.
+            *keys_and_args (Any): The keys, then the arguments.
+
+        Returns:
+            Awaitable[list[int]]: Resolves to ``{allowed, remaining,
+                retry_after_ms}`` — the three integers
+                ``_SLIDING_WINDOW_LUA`` returns. Redis converts every Lua
+                number to an integer reply, so no element is ever a
+                float.
+        """
         ...
 
 

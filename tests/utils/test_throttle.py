@@ -145,3 +145,52 @@ class TestFailOpen:
         t = _throttle(ExplodingRedis(), fail_open=False)
         with pytest.raises(RuntimeError):
             await t.hit("k")
+
+
+class TestTheClientsTheRecipeNames:
+    """The recipe promises two concrete clients; run against the real one.
+
+    The dict double above never exercises what actually broke: it is written
+    to match the protocol, so it cannot disagree with it. ``fakeredis``
+    implements the ``redis-py`` surface — including calling ``expire``'s
+    second parameter ``time`` — which is the shape the protocol got wrong
+    through v0.262.0.
+    """
+
+    async def test_fakeredis_drives_a_full_window(self) -> None:
+        """Count, block, expire and reset over the client the docs name."""
+        fake_aioredis = pytest.importorskip("fakeredis.aioredis")
+        client = fake_aioredis.FakeRedis()
+        throttle = AttemptThrottle(
+            client,
+            max_attempts=2,
+            window_seconds=60,
+            fail_open=False,
+        )
+
+        assert (await throttle.hit("k")).attempts == 1
+        second = await throttle.hit("k")
+        assert second.attempts == 2
+        assert second.blocked is True
+        assert second.retry_after_seconds == 60
+
+        with pytest.raises(TooManyRequestsException):
+            await throttle.raise_if_blocked("k")
+
+        await throttle.reset("k")
+        assert (await throttle.status("k")) == ThrottleStatus(0, False, 0)
+
+    async def test_the_ttl_the_first_failure_set_is_real(self) -> None:
+        """``expire`` reached the client, whatever it calls its parameter."""
+        fake_aioredis = pytest.importorskip("fakeredis.aioredis")
+        client = fake_aioredis.FakeRedis()
+        throttle = AttemptThrottle(
+            client,
+            max_attempts=5,
+            window_seconds=900,
+            fail_open=False,
+        )
+
+        await throttle.hit("k")
+
+        assert await client.ttl("throttle:k") == 900

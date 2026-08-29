@@ -404,17 +404,31 @@ class RedisLike(Protocol):
         self,
         script: str,
         numkeys: int,
+        /,
         *keys_and_args: Any,
-    ) -> Awaitable[Any]:
-        """Evaluate a Lua ``script`` server-side."""
+    ) -> Awaitable[list[int]]:
+        """Evaluate a Lua ``script`` server-side.
+
+        Args:
+            script (str): The Lua source to evaluate.
+            numkeys (int): How many of ``keys_and_args`` are keys.
+            *keys_and_args (Any): The keys, then the arguments.
+
+        Returns:
+            Awaitable[list[int]]: Resolves to ``{allowed, limit,
+                remaining, reset_ms, retry_ms, rule_index}`` — the six
+                integers ``_QUOTA_LUA`` returns. Redis converts every Lua
+                number to an integer reply, so no element is ever a
+                float.
+        """
         ...
 
 
 # Evaluates every rule before writing any of them, so a rejection never
 # spends another rule's budget. Rule i is encoded as four ARGV slots
 # (kind, max_requests, window_ms, capacity) starting at index 4.
-# Returns {allowed, limit, remaining, reset_ms, retry_ms} for the
-# binding rule.
+# Returns {allowed, limit, remaining, reset_ms, retry_ms, rule_index}
+# for the binding rule.
 _QUOTA_LUA: str = """
 local now = tonumber(ARGV[1])
 local count = tonumber(ARGV[2])

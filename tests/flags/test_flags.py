@@ -165,6 +165,25 @@ async def test_redis_backend_roundtrip() -> None:
     assert await backend.all() == {"x": True, "y": False}
 
 
+async def test_redis_backend_against_the_real_client() -> None:
+    """A client without ``decode_responses`` hands back ``bytes``.
+
+    The hand-rolled fake above returns ``str`` for every field, so it never
+    reaches the ``bytes`` branch of ``_decode`` — the branch the protocol
+    now declares in ``Awaitable[str | bytes | None]``.
+    """
+    fake_aioredis = pytest.importorskip("fakeredis.aioredis")
+    backend = RedisFeatureFlagBackend(fake_aioredis.FakeRedis(), key="ff")
+
+    assert await backend.get("x") is None
+    await backend.set("x", True)
+    await backend.set("y", False)
+
+    assert await backend.get("x") is True
+    assert await backend.get("y") is False
+    assert await backend.all() == {"x": True, "y": False}
+
+
 # --------------------------------------------------------------------------- #
 # make_flag_dependency                                                        #
 # --------------------------------------------------------------------------- #

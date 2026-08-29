@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Awaitable, Iterable, Mapping
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 _TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on", "t", "y"})
 
@@ -183,16 +183,44 @@ class EnvFeatureFlagBackend:
 class _RedisHashClient(Protocol):
     """Minimal async Redis hash surface used by the Redis backend."""
 
-    def hget(self, name: str, key: str) -> Awaitable[Any]:
-        """Return a hash field value."""
+    def hget(self, name: str, key: str, /) -> Awaitable[str | bytes | None]:
+        """Return a hash field value, or ``None`` when the field is unset.
+
+        Args:
+            name (str): The hash key.
+            key (str): The field inside the hash.
+
+        Returns:
+            Awaitable[str | bytes | None]: The raw field value. ``str``
+                with ``decode_responses=True``, ``bytes`` without.
+        """
         ...
 
-    def hset(self, name: str, key: str, value: str) -> Awaitable[Any]:
-        """Set a hash field value."""
+    def hset(self, name: str, key: str, value: str, /) -> Awaitable[object]:
+        """Set a hash field value.
+
+        Args:
+            name (str): The hash key.
+            key (str): The field inside the hash.
+            value (str): The value to store.
+
+        Returns:
+            Awaitable[object]: Resolves once the write completes. The
+                result is discarded, so any return type is accepted —
+                ``redis-py`` resolves ``int``.
+        """
         ...
 
-    def hgetall(self, name: str) -> Awaitable[Any]:
-        """Return every field/value in a hash."""
+    def hgetall(self, name: str, /) -> Awaitable[Mapping[str | bytes, str | bytes]]:
+        """Return every field/value in a hash.
+
+        Args:
+            name (str): The hash key.
+
+        Returns:
+            Awaitable[Mapping[str | bytes, str | bytes]]: Every field and
+                its value. Empty when the hash does not exist.
+        """
         ...
 
 
@@ -222,9 +250,17 @@ class RedisFeatureFlagBackend:
         self._key: str = key
 
     @staticmethod
-    def _decode(value: Any) -> str:
-        """Return ``value`` as ``str`` whether the client decodes or not."""
-        return value.decode() if isinstance(value, bytes) else str(value)
+    def _decode(value: str | bytes) -> str:
+        """Return ``value`` as ``str`` whether the client decodes or not.
+
+        Args:
+            value (str | bytes): A raw hash field or value, as the client
+                resolved it.
+
+        Returns:
+            str: The decoded text.
+        """
+        return value.decode() if isinstance(value, bytes) else value
 
     async def get(self, name: str) -> bool | None:
         """Return the flag value from the hash, or ``None`` when unset.
@@ -253,7 +289,7 @@ class RedisFeatureFlagBackend:
         Returns:
             dict[str, bool]: Every known flag as ``{name: enabled}``.
         """
-        data: Mapping[Any, Any] = await self._redis.hgetall(self._key)
+        data: Mapping[str | bytes, str | bytes] = await self._redis.hgetall(self._key)
         return {
             self._decode(field): coerce_flag(self._decode(value))
             for field, value in data.items()

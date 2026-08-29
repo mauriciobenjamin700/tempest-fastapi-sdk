@@ -25,7 +25,7 @@ Example:
 
 from collections.abc import Awaitable
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Protocol
 
 from tempest_fastapi_sdk.exceptions.too_many_requests import (
     TooManyRequestsException,
@@ -38,55 +38,68 @@ class ThrottleBackend(Protocol):
     Matches the relevant subset of ``redis.asyncio.Redis``.
     """
 
-    def incr(self, name: str) -> Awaitable[int]:
+    def incr(self, name: str, /) -> Awaitable[int]:
         """Atomically increment ``name`` and return the new value.
 
         Args:
             name (str): Identifier being throttled (an IP, a user, an email).
+                Positional-only: ``redis-py`` is free to call it whatever
+                it likes.
 
         Returns:
             Awaitable[int]: Resolves to the current attempt count.
         """
 
-    def expire(self, name: str, seconds: int) -> Awaitable[Any]:
+    def expire(self, name: str, seconds: int, /) -> Awaitable[object]:
         """Set a TTL (seconds) on ``name``.
 
         Args:
             name (str): Identifier being throttled (an IP, a user, an email).
-            seconds (int): Window length in seconds.
+            seconds (int): Window length in seconds. Positional-only
+                because ``redis.asyncio.Redis.expire`` calls this
+                parameter ``time``.
 
         Returns:
-            Awaitable[Any]: Resolves once the backend call completes.
+            Awaitable[object]: Resolves once the backend call completes.
+                The result is discarded, so any return type is accepted —
+                ``redis-py`` resolves ``bool``.
         """
 
-    def ttl(self, name: str) -> Awaitable[int]:
+    def ttl(self, name: str, /) -> Awaitable[int]:
         """Return remaining TTL in seconds (``-1``/``-2`` when unset).
 
         Args:
             name (str): Identifier being throttled (an IP, a user, an email).
 
         Returns:
-            Awaitable[int]: Resolves to the current attempt count.
+            Awaitable[int]: Resolves to the remaining TTL in seconds.
         """
 
-    def get(self, name: str) -> Awaitable[Any]:
+    def get(self, name: str, /) -> Awaitable[str | bytes | None]:
         """Return the value at ``name`` (``None`` when absent).
 
         Args:
             name (str): Identifier being throttled (an IP, a user, an email).
 
         Returns:
-            Awaitable[Any]: Resolves once the backend call completes.
+            Awaitable[str | bytes | None]: Resolves to the stored counter
+                as text, or ``None`` when the key is absent. Both halves
+                matter: a client with ``decode_responses=True`` resolves
+                ``str``, one without resolves ``bytes``.
         """
 
-    def delete(self, name: str) -> Awaitable[Any]:
+    def delete(self, name: str, /) -> Awaitable[object]:
         """Delete ``name``.
 
         Args:
             name (str): Identifier being throttled (an IP, a user, an email).
+                Positional-only because ``redis.asyncio.Redis.delete``
+                takes ``*names``, which no keyword call can reach.
 
         Returns:
-            Awaitable[Any]: Resolves once the backend call completes.
+            Awaitable[object]: Resolves once the backend call completes.
+                The result is discarded, so any return type is accepted —
+                ``redis-py`` resolves ``int``.
         """
 
 
