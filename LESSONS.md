@@ -301,6 +301,23 @@ registrar por quê: em `sqlalchemy/orm/session.py` (2.0.51) o teste de
 **commit**; o rollback passa por `_restore_snapshot`, que expira tudo sem
 condição (linha 1126).
 
+**E o caminho de commit tem o mesmo defeito, quando o consumidor não
+desliga o `expire_on_commit` (v0.266.0).** As cinco páginas HTML do fluxo de
+auth renderizam depois do commit que consome o token, e o
+`async_sessionmaker` **default** é `expire_on_commit=True` — então a página
+lia coluna expirada e respondia 500 num fluxo que já tinha dado certo. Nada
+acusou porque toda fixture da suíte, e o próprio `AsyncDatabaseManager`
+(`db/connection.py:326`), constroem com `expire_on_commit=False`: a
+configuração quebrada era justamente a que ninguém testava, e é o default de
+quem escreve o próprio provider.
+
+A correção é a mesma forma da de cima, mas condicional:
+`inspect(user).expired` responde **sem tocar no banco**, então o
+`await session.refresh(user)` só acontece para quem de fato expirou. Guard:
+`tests/auth/test_expire_on_commit.py`, que monta a factory do jeito default
+e exercita as quatro rotas que commitam antes de renderizar — as quatro
+falham com `MissingGreenlet` no código da v0.265.0.
+
 Consequência prática: **view que renderiza depois de uma escrita que pode
 falhar recarrega, no `await`, tudo o que a página vai ler** — o principal,
 a linha pai do formset inline. Sem guard: saber o que o template toca exige

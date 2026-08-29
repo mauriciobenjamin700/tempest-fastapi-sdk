@@ -1331,6 +1331,16 @@ async def profile(current: UserModel = Depends(get_current_user)) -> UserRespons
     )
     ```
 
+!!! note "Your `session_factory` has to guarantee nothing"
+
+    The HTML pages render after the commit that consumes the token, and
+    SQLAlchemy's `async_sessionmaker` defaults to `expire_on_commit=True` —
+    which made the page read an expired column and answer **500**
+    (`MissingGreenlet`) through v0.265.0. The router now reloads the row
+    **only when it expired**, checking `inspect(user).expired`, which never
+    touches the database. With `AsyncDatabaseManager`'s factory
+    (`expire_on_commit=False`) there is no extra query at all.
+
 ### 3. Optional auth — `soft=True`
 
 For routes that work both authenticated **and** anonymous (e.g. a public feed that personalizes when logged in), use the `soft` variant — it returns `None` instead of raising:

@@ -5,6 +5,41 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.266.0] — 2026-08-29
+
+### Fixed
+
+- **As páginas HTML do auth pararam de responder 500 sob o default do
+  SQLAlchemy.**
+  ([#237](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/237))
+  `async_sessionmaker` usa `expire_on_commit=True` por default. As páginas de
+  sucesso renderizam **depois** do commit que consome o token, então o
+  primeiro `user.<coluna>` do template disparava um refresh — IO fora do
+  greenlet, em contexto async:
+
+  ```text
+  sqlalchemy.exc.MissingGreenlet: greenlet_spawn has not been called;
+  can't call await_only() here. Was IO attempted in an unexpected place?
+  ```
+
+  Quem passa o `session_factory` do `AsyncDatabaseManager` nunca viu:
+  `db/connection.py:326` já constrói com `expire_on_commit=False`. Quem
+  escreve o próprio provider — o `session_factory=get_db` que a própria
+  receita mostra — recebia 500 num fluxo que já tinha dado certo.
+
+  A recarga é condicional: `inspect(user).expired` responde **sem tocar no
+  banco**, então o `SELECT` extra só acontece para quem de fato expirou.
+  Quatro rotas: ativação, o ramo de sucesso do reset de senha, confirmação de
+  troca de e-mail e verificação. O `password_reset_form` (GET) não commita, e
+  as páginas de erro não leem coluna nenhuma.
+
+### Added
+
+- **`tests/auth/test_expire_on_commit.py`.** Monta a factory do jeito default
+  do SQLAlchemy — toda outra fixture da suíte usa `expire_on_commit=False`, e
+  é por isso que nada acusou. Alimentado com o código da v0.265.0, os quatro
+  testes falham com `MissingGreenlet`.
+
 ## [0.265.0] — 2026-08-29
 
 ### Fixed

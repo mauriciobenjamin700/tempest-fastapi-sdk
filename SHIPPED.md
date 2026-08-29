@@ -835,6 +835,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   que foi sondado, quando e com que código; `make mercadopago-diff` separa os
   baldes. Testes: `TestUnverifiedOperationsAreMarked`,
   `TestTheProbeOnlySpeaksForItsOwnVerb`.
+- **Página de auth sobrevive ao default do SQLAlchemy (v0.266.0)** — issue
+  #237. `async_sessionmaker` usa `expire_on_commit=True` por default, e as
+  páginas HTML renderizam depois do commit que consome o token: o primeiro
+  `user.<coluna>` do template virava IO fora do greenlet e o usuário via 500
+  num fluxo que deu certo. Recarga condicional por `inspect(user).expired`,
+  que não toca no banco — quem usa o `AsyncDatabaseManager` não paga query
+  extra. Quatro rotas (o GET do formulário de reset não commita; as páginas
+  de erro não leem coluna). Guard: `tests/auth/test_expire_on_commit.py`,
+  a primeira fixture da suíte que **não** desliga o `expire_on_commit`.
 - **Corpo de request para de afirmar o que ninguém disse (v0.265.0)** — issue
   #236. `create_pix_charge` falhava com 400 em toda chamada: o codegen
   materializava array opcional como `default_factory=list` e o `_dump` gerado
