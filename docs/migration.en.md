@@ -2,6 +2,55 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.265.0 — an optional array in a request body became `| None`
+
+No method signature changes. What changes is **the type of some fields** on
+the generated body models, and **what goes on the wire**.
+
+### What changes
+
+An array the specification lists as optional, on a model the SDK only
+**sends**, is no longer `list[T]` with `default_factory=list`; it is
+`list[T] | None` with `default=None`. That is 21 fields: 9 on OpenPix, 12 on
+Mercado Pago.
+
+Alongside it, the generated `_dump` now passes `exclude_unset=True`, so **no**
+field you did not touch reaches the body — including on the shared models,
+which kept the list spelling.
+
+**Response** models are untouched: `Charge.additional_info` is still `[]` when
+the provider sends nothing, which is the SDK's convention.
+
+### What to do
+
+**Nothing, if you only build the payload and send it.** That case is exactly
+what the fix repairs:
+
+```text
+before: {"correlationID": "...", "value": 1190, "additionalInfo": [], "splits": []}  → 400
+now:    {"correlationID": "...", "value": 1190}                                      → 200
+```
+
+**If you read the field back off a payload you built**, it is now `None`
+instead of `[]`. Before, `for split in payload.splits:` iterated an empty
+list and did nothing; now it raises `TypeError`. The form that works on both
+versions:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import ChargePayload
+
+payload: ChargePayload = ChargePayload(correlation_id="abc", value=1190)
+
+for split in payload.splits or []:
+    print(split.pix_key)
+```
+
+!!! tip "Sending an empty list is still possible — and still a claim"
+    `ChargePayload(..., splits=[])` **does** send `"splits": []`, and Woovi
+    answers `400 O array de split precisa ter ao menos um item`. That is
+    correct: you asserted something and the provider judged it. What changed
+    is that the SDK stopped asserting it for you.
+
 ## 0.264.0 — the language belongs to the flow, not to each end
 
 Breaks no signature. It changes **the language some pages come out in** —

@@ -835,6 +835,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   que foi sondado, quando e com que código; `make mercadopago-diff` separa os
   baldes. Testes: `TestUnverifiedOperationsAreMarked`,
   `TestTheProbeOnlySpeaksForItsOwnVerb`.
+- **Corpo de request para de afirmar o que ninguém disse (v0.265.0)** — issue
+  #236. `create_pix_charge` falhava com 400 em toda chamada: o codegen
+  materializava array opcional como `default_factory=list` e o `_dump` gerado
+  só descartava `None`, então `"splits": []` ia no corpo sempre e a Woovi
+  recusa lista vazia de split. Duas correções: o `_dump` gerado ganha
+  `exclude_unset=True` (colateral medido zero — os dois módulos gerados não
+  têm nenhum campo com default literal), e array opcional em modelo que o
+  fechamento alcança só como corpo vira `| None = None`, reusando a mesma
+  maquinaria de direção que decide `extra="allow"` desde a v0.260.0. Modelo
+  alcançado nas duas direções mantém a lista e é o `exclude_unset` que o
+  segura. 21 campos (9 OpenPix, 12 Mercado Pago); resposta intocada. Testes:
+  `tests/openapi/test_payload_arrays.py` (as quatro direções) e
+  `tests/integrations/payment/openpix/test_request_body_shape.py`, que lê o
+  corpo enviado de um `MockTransport` — nenhum teste olhava para o corpo.
 - **Um fluxo, um idioma (v0.264.0)** — issue #235. O e-mail lia
   `AUTH_DEFAULT_LOCALE` e a página negociava `Accept-Language`, então um
   cadastro saía bilíngue e nenhuma configuração consertava (setar o default

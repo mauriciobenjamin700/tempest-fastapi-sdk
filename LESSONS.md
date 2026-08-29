@@ -76,6 +76,40 @@ emite row-value comparison. O `~cmp` da página descendente tinha o mesmo tipo
 de erro: `NOT (a > b)` é `<=`, então a página seguinte repetia a linha do
 cursor.
 
+## O teste que olha só para a resposta não vê o corpo (v0.265.0)
+
+`create_pix_charge` shippou quebrado: **400 em toda chamada**, contra a
+sandbox da Woovi. A suíte tinha teste de `create_charge` no cliente gerado e
+no adapter, e os dois passavam — porque os dois afirmam sobre a **resposta**.
+O defeito estava no corpo enviado, e nenhum teste o lia.
+
+O corpo, capturado depois num `httpx.MockTransport`:
+
+```text
+{"correlationID": "probe-0001", "value": 1190, "additionalInfo": [], "splits": []}
+→ 400 {"error": "O array de split precisa ter ao menos um item"}
+```
+
+Duas decisões certas isoladamente produziram a errada: o codegen materializa
+array opcional como `default_factory=list` (correto para resposta — "nada
+casou" é `[]`), e o `_dump` gerado descarta `None` (correto, e inútil aqui:
+`[]` não é `None`). O resultado é um cliente que **afirma** o que o chamador
+não afirmou, num campo em que afirmar vazio é erro de configuração.
+
+O que levar:
+
+- **Cliente de terceiro precisa de teste que leia o request, não só a
+  resposta.** Stub de cliente e asserção sobre o retorno não alcançam o
+  ponto em que a integração de fato falha. `httpx.MockTransport` custa dez
+  linhas.
+- **Default que "não faz mal" faz, quando atravessa a fronteira.** Dentro do
+  processo, `[]` e ausente são quase a mesma coisa; no fio, são duas
+  mensagens diferentes, e quem julga é o outro lado.
+- **A direção do dado muda a regra.** A convenção "coleção vazia é sucesso"
+  é de leitura. Na escrita, a pergunta é outra: o chamador disse isso? O
+  gerador já tinha o fechamento request-vs-response (usado desde a v0.260.0
+  para `extra="allow"`); a regra nova reusa ele em vez de inventar outro.
+
 ## Corrigir onde doeu não é corrigir a regra (v0.263.0)
 
 A v0.257.0 achou que `Awaitable[Any]` e nome de parâmetro imposto recusavam

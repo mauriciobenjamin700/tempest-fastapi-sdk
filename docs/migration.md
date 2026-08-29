@@ -2,6 +2,55 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.265.0 — array opcional em corpo de request virou `| None`
+
+Não muda assinatura de método. Muda **o tipo de alguns campos** dos modelos de
+corpo gerados, e **o que vai para o fio**.
+
+### O que muda
+
+Um array que a especificação lista como opcional, num modelo que o SDK só
+**envia**, deixa de ser `list[T]` com `default_factory=list` e passa a ser
+`list[T] | None` com `default=None`. São 21 campos: 9 na OpenPix, 12 na
+Mercado Pago.
+
+Junto disso, o `_dump` gerado passa a usar `exclude_unset=True`, então
+**nenhum** campo que você não tocou vai para o corpo — inclusive nos modelos
+compartilhados, que mantiveram a grafia de lista.
+
+Modelo de **resposta** não mudou: `Charge.additional_info` continua `[]`
+quando o provedor não manda nada, que é a convenção do SDK.
+
+### O que fazer
+
+**Nada, se você só constrói o payload e envia.** O caso que a correção
+conserta é justamente esse:
+
+```text
+antes:  {"correlationID": "...", "value": 1190, "additionalInfo": [], "splits": []}  → 400
+agora:  {"correlationID": "...", "value": 1190}                                      → 200
+```
+
+**Se você lê o campo de volta do payload que construiu**, o valor agora é
+`None` em vez de `[]`. Antes, `for split in payload.splits:` percorria uma
+lista vazia e não executava; agora levanta `TypeError`. A forma que funciona
+nas duas versões:
+
+```python
+from tempest_fastapi_sdk.integrations.payment.openpix import ChargePayload
+
+payload: ChargePayload = ChargePayload(correlation_id="abc", value=1190)
+
+for split in payload.splits or []:
+    print(split.pix_key)
+```
+
+!!! tip "Informar lista vazia continua possível — e continua sendo uma afirmação"
+    `ChargePayload(..., splits=[])` **envia** `"splits": []`, e a Woovi
+    responde `400 O array de split precisa ter ao menos um item`. Isso é
+    correto: você afirmou algo, e o provedor julgou. O que mudou é que o SDK
+    parou de afirmar por você.
+
 ## 0.264.0 — o idioma passa a ser do fluxo, não de cada ponta
 
 Não quebra assinatura nenhuma. Muda **o idioma em que algumas páginas

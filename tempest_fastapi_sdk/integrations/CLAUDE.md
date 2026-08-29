@@ -38,6 +38,25 @@ Ao mexer no gerador:
 - Regenerou? Rode o drift test **e** o `make check` — o gerado passa pelos
   mesmos guards do resto.
 
+## A direção do dado decide a regra do campo
+
+`components.schemas` é um saco de tipos sem direção, mas a mesma forma
+significa coisas opostas ao ler e ao escrever. Array opcional é o caso
+pago: numa resposta, ausente é `[]` (a convenção de coleção-vazia-é-sucesso
+do repo); num corpo de request, `[]` é uma **afirmação** — a Woovi responde
+`400 O array de split precisa ter ao menos um item` e aceita o mesmo corpo
+sem a chave ([lição](../../LESSONS.md#o-teste-que-olha-só-para-a-resposta-não-vê-o-corpo-v02650)).
+
+O gerador já mantém o fechamento das duas direções
+(`_reachable` sobre `body_annotations` e `response_annotations`), usado
+desde a v0.260.0 para decidir `extra="allow"`. Regra nova que dependa de
+direção **reusa esse fechamento** — não inventa outro caminho, e não
+decide durante a recursão, onde a ordem de visita escolheria por você.
+Modelo alcançado nas duas direções fica com a grafia de resposta; o
+`exclude_unset` do `_dump` cobre o envio.
+
+Guard: `tests/openapi/test_payload_arrays.py` fixa as quatro direções.
+
 ## `__all__` é obrigatório, e wildcard não é re-export
 
 Superfície gerada é resolvida de forma lazy (PEP 562 `__getattr__`) e exposta

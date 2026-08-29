@@ -5,6 +5,67 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.265.0] — 2026-08-29
+
+### Fixed
+
+- **`create_pix_charge` volta a abrir cobrança: o corpo parou de mandar
+  `"splits": []`.**
+  ([#236](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/236))
+  Toda chamada da OpenPix falhava com 400. O corpo que o SDK montava, lido do
+  transporte no teste novo:
+
+  ```text
+  {"correlationID": "probe-0001", "value": 1190, "additionalInfo": [], "splits": []}
+  → 400 {"error": "O array de split precisa ter ao menos um item"}
+  ```
+
+  O mesmo corpo sem as duas chaves é aceito. Duas decisões certas isoladamente
+  se anulavam: o codegen materializava array opcional como
+  `default_factory=list`, e o `_dump` gerado só sabia descartar `None` — `[]`
+  não é `None`, então ia para o fio sempre. O cliente afirmava algo que o
+  chamador nunca afirmou, e para a Woovi "sem splits" e "com lista vazia de
+  splits" são fatos diferentes.
+
+  Duas correções, uma por causa:
+
+  1. **O `_dump` gerado ganha `exclude_unset=True`.** Medido antes de mudar:
+     os dois módulos gerados têm **zero** campo com default literal
+     (1245 + 291 `default=None`, 84 + 70 `default_factory=list`), e o
+     `exclude_none` já descartava os `None` — então o único efeito de somar
+     `exclude_unset` é deixar de mandar lista vazia que ninguém tocou.
+  2. **Array opcional em modelo que só é enviado passa a ser `| None = None`.**
+     O tipo passa a distinguir "não informado" de "informado vazio", que é a
+     distinção que a API faz. Vale só para o modelo que o fechamento alcança
+     como corpo e **nunca** como resposta — a mesma maquinaria que a v0.260.0
+     usa para decidir `extra="allow"`. Modelo alcançado nas duas direções
+     mantém a grafia de resposta (`[]` é a leitura certa de um array ausente)
+     e é o `exclude_unset` que o segura no envio.
+
+  Alcance: **21 campos** — 9 na OpenPix, 12 na Mercado Pago. Resposta não
+  mudou: `Charge.additional_info` e `CreateMerchantOrderResponse.payments`
+  seguem com `default_factory=list`.
+
+  O mesmo `model_dump(..., exclude_none=True)` escrito à mão em
+  `mercado_pago/pix.py` recebeu o mesmo tratamento.
+
+### Changed
+
+- **Modelo de corpo de request: array opcional agora é `list[T] | None`.**
+  ([#236](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/236))
+  Quem lê o campo de volta de um payload que construiu — `payload.splits` —
+  recebe `None` em vez de `[]` quando não informou. Guia de migração tem a
+  linha exata.
+
+### Added
+
+- **`tests/openapi/test_payload_arrays.py`** fixa a regra nas quatro direções
+  (só request, só response, ambos, obrigatório), e
+  **`tests/integrations/payment/openpix/test_request_body_shape.py`** lê o
+  corpo enviado de um `httpx.MockTransport` — nenhum teste olhava para o corpo,
+  que era exatamente onde estava o defeito. Alimentados com o código da
+  v0.264.0, os dois falham.
+
 ## [0.264.0] — 2026-08-29
 
 ### Fixed
