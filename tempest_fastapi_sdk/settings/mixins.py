@@ -1232,11 +1232,29 @@ class AuthSettings(BaseAppSettings):
             "signal is available. Supported values: ``pt-BR`` (default) "
             "and ``en-US``. The value is normalized case-insensitively, "
             "so ``PT-BR``, ``pt_br`` and ``ptbr`` all resolve to "
-            "``pt-BR``. Emails always use this locale (they have no "
-            "request context); the backend HTML pages prefer the "
-            "browser's ``Accept-Language`` header and fall back to this."
+            "``pt-BR``. This is the **last** resort: pages first "
+            "honour the ``?lang=`` on the emailed link, then the user's "
+            "stored ``locale``, then the browser's ``Accept-Language`` "
+            "header; emails honour the stored ``locale`` (there is no "
+            "link yet when the email is built)."
         ),
         examples=["pt-BR", "en-US"],
+    )
+    AUTH_STAMP_LOCALE_IN_LINK: bool = Field(
+        default=True,
+        title="Append ?lang= to the links inside bundled auth emails",
+        description=(
+            "Stamps the resolved locale onto the activation / password "
+            "reset / email-change / verification link, so the page the "
+            "link opens renders in the language of the email that "
+            "carried it — the only signal available for an account that "
+            "was just created and has no stored ``locale`` yet. Turn it "
+            "off when the URL template points at a front-end route that "
+            "rejects unknown query parameters; the language then falls "
+            "back to ``Accept-Language``, which is what produced the "
+            "bilingual flow this setting exists to fix."
+        ),
+        examples=[True, False],
     )
 
     @field_validator("AUTH_DEFAULT_LOCALE")

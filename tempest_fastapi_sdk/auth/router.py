@@ -47,7 +47,11 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from tempest_fastapi_sdk.api.dependencies import make_jwt_user_dependency
-from tempest_fastapi_sdk.auth.locale import auth_page_message, negotiate_locale
+from tempest_fastapi_sdk.auth.locale import (
+    LOCALE_QUERY_PARAM,
+    auth_page_message,
+    resolve_locale,
+)
 from tempest_fastapi_sdk.auth.page_renderer import render_auth_page
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationResponseSchema,
@@ -239,20 +243,29 @@ def make_auth_router(
         domain=auth_settings.AUTH_COOKIE_DOMAIN,
     )
 
-    def _page_locale(request: Request) -> str:
-        """Pick the HTML-page locale from ``Accept-Language``.
+    def _page_locale(request: Request, user: object | None = None) -> str:
+        """Pick the HTML-page locale, in the same order the emails use.
 
-        Falls back to ``AUTH_DEFAULT_LOCALE`` when the browser sends no
-        usable header.
+        The ``?lang=`` the emailed link carried, then the stored user
+        preference, then ``Accept-Language``, then
+        ``AUTH_DEFAULT_LOCALE``. Every token page calls this twice: once
+        before the token is consumed (the error page has no user to
+        read), then again with the row in hand, so a user whose
+        ``locale`` says otherwise is not answered in the browser's
+        language.
 
         Args:
             request (Request): The incoming HTTP request.
+            user (object | None): The row the token resolved to, when the
+                caller already has it. Only its ``locale`` is read.
 
         Returns:
             str: A canonical supported locale.
         """
-        return negotiate_locale(
-            request.headers.get("accept-language"),
+        return resolve_locale(
+            user=user,
+            query_locale=request.query_params.get(LOCALE_QUERY_PARAM),
+            accept_language=request.headers.get("accept-language"),
             default=default_locale,
         )
 
@@ -982,9 +995,9 @@ def make_auth_router(
                 "localized HTML success page "
                 "(``AUTH_ACTIVATION_SUCCESS_TEMPLATE``) — or an error "
                 "page (``AUTH_ACTIVATION_ERROR_TEMPLATE``) on a bad / "
-                "expired token. The page language is negotiated from the "
-                "browser's ``Accept-Language`` header, falling back to "
-                "``AUTH_DEFAULT_LOCALE``."
+                "expired token. The page language follows the ``?lang=`` on "
+                "the emailed link, then the user's stored ``locale``, "
+                "then ``Accept-Language``, then ``AUTH_DEFAULT_LOCALE``."
             ),
         )
         async def activate_html(
@@ -1003,6 +1016,7 @@ def make_auth_router(
                     locale=locale,
                 )
             await session.commit()
+            locale = _page_locale(request, user)
             html = render_auth_page(
                 auth_settings.AUTH_ACTIVATION_SUCCESS_TEMPLATE,
                 {"user": user, "login_url": login_url},
@@ -1025,9 +1039,9 @@ def make_auth_router(
                 "(``AUTH_PASSWORD_RESET_FORM_TEMPLATE``) that POSTs back "
                 "to the same path. A bad / expired token renders the "
                 "error page (``AUTH_PASSWORD_RESET_ERROR_TEMPLATE``) "
-                "instead. The page language is negotiated from "
-                "``Accept-Language``, falling back to "
-                "``AUTH_DEFAULT_LOCALE``."
+                "instead. The page language follows the ``?lang=`` on "
+                "the emailed link, then the user's stored ``locale``, "
+                "then ``Accept-Language``, then ``AUTH_DEFAULT_LOCALE``."
             ),
         )
         async def password_reset_form(
@@ -1048,6 +1062,7 @@ def make_auth_router(
                     reason=exc.message,
                     locale=locale,
                 )
+            locale = _page_locale(request, user)
             html = render_auth_page(
                 auth_settings.AUTH_PASSWORD_RESET_FORM_TEMPLATE,
                 {
@@ -1076,9 +1091,9 @@ def make_auth_router(
                 "the new password, then re-renders the form with a "
                 "localized inline error on any problem, or the success "
                 "page (``AUTH_PASSWORD_RESET_SUCCESS_TEMPLATE``) when it "
-                "works. The page language is negotiated from "
-                "``Accept-Language``, falling back to "
-                "``AUTH_DEFAULT_LOCALE``."
+                "works. The page language follows the ``?lang=`` on "
+                "the emailed link, then the user's stored ``locale``, "
+                "then ``Accept-Language``, then ``AUTH_DEFAULT_LOCALE``."
             ),
         )
         async def password_reset_form_submit(
@@ -1102,6 +1117,7 @@ def make_auth_router(
                         reason=exc.message,
                         locale=locale,
                     )
+                locale = _page_locale(request, user)
                 html = render_auth_page(
                     auth_settings.AUTH_PASSWORD_RESET_FORM_TEMPLATE,
                     {
@@ -1142,6 +1158,7 @@ def make_auth_router(
                         reason=exc.message,
                         locale=locale,
                     )
+                locale = _page_locale(request, peek_user)
                 html = render_auth_page(
                     auth_settings.AUTH_PASSWORD_RESET_FORM_TEMPLATE,
                     {
@@ -1156,6 +1173,7 @@ def make_auth_router(
                 )
                 return HTMLResponse(content=html, status_code=400)
             await session.commit()
+            locale = _page_locale(request, user)
             html = render_auth_page(
                 auth_settings.AUTH_PASSWORD_RESET_SUCCESS_TEMPLATE,
                 {"user": user, "login_url": login_url},
@@ -1178,9 +1196,10 @@ def make_auth_router(
                 "localized success page "
                 "(``AUTH_EMAIL_CHANGE_SUCCESS_TEMPLATE``) — or an error "
                 "page (``AUTH_EMAIL_CHANGE_ERROR_TEMPLATE``) on a bad / "
-                "expired token or a target address taken meanwhile. The "
-                "page language is negotiated from ``Accept-Language``, "
-                "falling back to ``AUTH_DEFAULT_LOCALE``."
+                "expired token or a target address taken meanwhile. "
+                "The page language follows the ``?lang=`` on "
+                "the emailed link, then the user's stored ``locale``, "
+                "then ``Accept-Language``, then ``AUTH_DEFAULT_LOCALE``."
             ),
         )
         async def email_change_html(
@@ -1199,6 +1218,7 @@ def make_auth_router(
                     locale=locale,
                 )
             await session.commit()
+            locale = _page_locale(request, user)
             html = render_auth_page(
                 auth_settings.AUTH_EMAIL_CHANGE_SUCCESS_TEMPLATE,
                 {"user": user, "login_url": login_url},
@@ -1218,9 +1238,9 @@ def make_auth_router(
                 "marks the account active, and renders a localized success "
                 "page (``AUTH_EMAIL_VERIFICATION_SUCCESS_TEMPLATE``) — or "
                 "an error page (``AUTH_EMAIL_VERIFICATION_ERROR_TEMPLATE``) "
-                "on a bad / expired token. The page language is negotiated "
-                "from ``Accept-Language``, falling back to "
-                "``AUTH_DEFAULT_LOCALE``."
+                "on a bad / expired token. The page language follows the ``?lang=`` on "
+                "the emailed link, then the user's stored ``locale``, "
+                "then ``Accept-Language``, then ``AUTH_DEFAULT_LOCALE``."
             ),
         )
         async def email_verify_html(
@@ -1239,6 +1259,7 @@ def make_auth_router(
                     locale=locale,
                 )
             await session.commit()
+            locale = _page_locale(request, user)
             html = render_auth_page(
                 auth_settings.AUTH_EMAIL_VERIFICATION_SUCCESS_TEMPLATE,
                 {"user": user, "login_url": login_url},

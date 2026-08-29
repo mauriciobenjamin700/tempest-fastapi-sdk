@@ -58,10 +58,15 @@ from tempest_fastapi_sdk.auth.introspection import (
 from tempest_fastapi_sdk.auth.locale import (
     DEFAULT_AUTH_LOCALE as DEFAULT_AUTH_LOCALE,
 )
+from tempest_fastapi_sdk.auth.locale import (
+    LOCALE_QUERY_PARAM as LOCALE_QUERY_PARAM,
+)
 from tempest_fastapi_sdk.auth.locale import SUPPORTED_LOCALES as SUPPORTED_LOCALES
 from tempest_fastapi_sdk.auth.locale import format_expires_at as format_expires_at
 from tempest_fastapi_sdk.auth.locale import negotiate_locale as negotiate_locale
 from tempest_fastapi_sdk.auth.locale import normalize_locale as normalize_locale
+from tempest_fastapi_sdk.auth.locale import resolve_locale as resolve_locale
+from tempest_fastapi_sdk.auth.locale import stamp_locale as stamp_locale
 from tempest_fastapi_sdk.auth.router import make_auth_router as make_auth_router
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationResponseSchema as ActivationResponseSchema,
@@ -156,6 +161,7 @@ from tempest_fastapi_sdk.auth.webauthn import WebAuthnService as WebAuthnService
 __all__: list[str] = [
     "DEFAULT_AUTH_LOCALE",
     "DEFAULT_FIREBASE_APP_NAME",
+    "LOCALE_QUERY_PARAM",
     "SUPPORTED_LOCALES",
     "ActivationResponseSchema",
     "ActivationToken",
@@ -214,4 +220,6 @@ __all__: list[str] = [
     "require_active",
     "require_admin",
     "require_authenticated",
+    "resolve_locale",
+    "stamp_locale",
 ]

@@ -376,6 +376,9 @@ from tempest_fastapi_sdk.auth import (
     DEFAULT_FIREBASE_APP_NAME as DEFAULT_FIREBASE_APP_NAME,
 )
 from tempest_fastapi_sdk.auth import (
+    LOCALE_QUERY_PARAM as LOCALE_QUERY_PARAM,
+)
+from tempest_fastapi_sdk.auth import (
     SUPPORTED_LOCALES as SUPPORTED_LOCALES,
 )
 from tempest_fastapi_sdk.auth import (
@@ -548,6 +551,12 @@ from tempest_fastapi_sdk.auth import (
 )
 from tempest_fastapi_sdk.auth import (
     require_authenticated as require_authenticated,
+)
+from tempest_fastapi_sdk.auth import (
+    resolve_locale as resolve_locale,
+)
+from tempest_fastapi_sdk.auth import (
+    stamp_locale as stamp_locale,
 )
 from tempest_fastapi_sdk.authz import (
     Guard as Guard,
@@ -1628,6 +1637,7 @@ __all__: list[str] = [
     "HEARTBEAT_TIMEOUT_CODE",
     "HUNDRED",
     "IDEMPOTENCY_HEADER",
+    "LOCALE_QUERY_PARAM",
     "MFA_TOKEN_TYPE",
     "NAMING_CONVENTION",
     "PHONE_BR_PATTERN",
@@ -2112,6 +2122,7 @@ __all__: list[str] = [
     "require_authenticated",
     "require_x_token",
     "requires",
+    "resolve_locale",
     "run_checks",
     "run_server",
     "run_system_checks",
@@ -2123,6 +2134,7 @@ __all__: list[str] = [
     "snapshot_model",
     "sniff_mime",
     "sse_response",
+    "stamp_locale",
     "states_by_region",
     "strict_types",
     "supports_full_text",

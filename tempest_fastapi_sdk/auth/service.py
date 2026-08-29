@@ -35,6 +35,8 @@ from tempest_fastapi_sdk.auth.guards import (
 from tempest_fastapi_sdk.auth.locale import (
     auth_email_message,
     format_expires_at,
+    resolve_locale,
+    stamp_locale,
 )
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationToken,
@@ -1596,11 +1598,23 @@ class UserAuthService:
         user: BaseUserModel,
         token_bundle: tuple[str, str, datetime],
     ) -> None:
-        """Render + send the activation email when EmailUtils is wired."""
+        """Render + send the activation email when EmailUtils is wired.
+
+        The language comes from :func:`resolve_locale`, so the user's
+        stored ``locale`` wins over ``AUTH_DEFAULT_LOCALE``, and the link
+        carries the choice forward as ``?lang=`` (unless
+        ``AUTH_STAMP_LOCALE_IN_LINK`` is off) so the page it opens cannot
+        answer in a different language.
+        """
         if self.email is None or self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE:
             return
         _plain, url, expires_at = token_bundle
-        locale = self.auth_settings.AUTH_DEFAULT_LOCALE
+        locale = resolve_locale(
+            user=user,
+            default=self.auth_settings.AUTH_DEFAULT_LOCALE,
+        )
+        if self.auth_settings.AUTH_STAMP_LOCALE_IN_LINK:
+            url = stamp_locale(url, locale)
         html = self.email.render_template(
             self.auth_settings.AUTH_ACTIVATION_TEMPLATE,
             {
@@ -1623,11 +1637,20 @@ class UserAuthService:
         user: BaseUserModel,
         token_bundle: tuple[str, str, datetime],
     ) -> None:
-        """Render + send the reset email when EmailUtils is wired."""
+        """Render + send the reset email when EmailUtils is wired.
+
+        Same locale resolution as the activation email: stored user
+        preference first, the emailed link stamped with the result.
+        """
         if self.email is None or self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE:
             return
         _plain, url, expires_at = token_bundle
-        locale = self.auth_settings.AUTH_DEFAULT_LOCALE
+        locale = resolve_locale(
+            user=user,
+            default=self.auth_settings.AUTH_DEFAULT_LOCALE,
+        )
+        if self.auth_settings.AUTH_STAMP_LOCALE_IN_LINK:
+            url = stamp_locale(url, locale)
         html = self.email.render_template(
             self.auth_settings.AUTH_PASSWORD_RESET_TEMPLATE,
             {
@@ -1651,11 +1674,20 @@ class UserAuthService:
         new_email: str,
         token_bundle: tuple[str, str, datetime],
     ) -> None:
-        """Send the confirmation email to the NEW address when wired."""
+        """Send the confirmation email to the NEW address when wired.
+
+        Localized from the user's stored preference, with the link
+        stamped so the confirmation page matches this email.
+        """
         if self.email is None or self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE:
             return
         _plain, url, expires_at = token_bundle
-        locale = self.auth_settings.AUTH_DEFAULT_LOCALE
+        locale = resolve_locale(
+            user=user,
+            default=self.auth_settings.AUTH_DEFAULT_LOCALE,
+        )
+        if self.auth_settings.AUTH_STAMP_LOCALE_IN_LINK:
+            url = stamp_locale(url, locale)
         html = self.email.render_template(
             self.auth_settings.AUTH_EMAIL_CHANGE_TEMPLATE,
             {
@@ -1679,11 +1711,20 @@ class UserAuthService:
         user: BaseUserModel,
         token_bundle: tuple[str, str, datetime],
     ) -> None:
-        """Send the re-verification email to the current address when wired."""
+        """Send the re-verification email to the current address when wired.
+
+        Localized from the user's stored preference, with the link
+        stamped so the verification page matches this email.
+        """
         if self.email is None or self.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE:
             return
         _plain, url, expires_at = token_bundle
-        locale = self.auth_settings.AUTH_DEFAULT_LOCALE
+        locale = resolve_locale(
+            user=user,
+            default=self.auth_settings.AUTH_DEFAULT_LOCALE,
+        )
+        if self.auth_settings.AUTH_STAMP_LOCALE_IN_LINK:
+            url = stamp_locale(url, locale)
         html = self.email.render_template(
             self.auth_settings.AUTH_EMAIL_VERIFICATION_TEMPLATE,
             {
@@ -1712,11 +1753,15 @@ class UserAuthService:
         Skipped when ``EmailUtils`` is not wired or
         ``AUTH_EMAIL_CHANGE_NOTIFY_OLD`` is off. Unlike the token emails
         this is not gated by ``AUTH_RETURN_TOKEN_IN_RESPONSE`` — it
-        carries no token, only a security notice.
+        carries no token, only a security notice. Nothing to stamp for
+        the same reason: the notice has no link.
         """
         if self.email is None or not self.auth_settings.AUTH_EMAIL_CHANGE_NOTIFY_OLD:
             return
-        locale = self.auth_settings.AUTH_DEFAULT_LOCALE
+        locale = resolve_locale(
+            user=user,
+            default=self.auth_settings.AUTH_DEFAULT_LOCALE,
+        )
         html = self.email.render_template(
             self.auth_settings.AUTH_EMAIL_CHANGED_NOTICE_TEMPLATE,
             {

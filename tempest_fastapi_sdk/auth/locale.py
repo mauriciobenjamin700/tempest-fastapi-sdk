@@ -3,8 +3,8 @@
 The bundled activation / password-reset **emails** and the backend-only
 **HTML pages** ship in two languages out of the box — Brazilian
 Portuguese (``pt-BR``, the default) and US English (``en-US``). This
-module centralizes three things so the rest of the auth flow never
-hard-codes a language again:
+module centralizes the language decision so the rest of the auth flow
+never hard-codes one again:
 
 1. :data:`SUPPORTED_LOCALES` — the locales the SDK bundles templates for.
 2. :func:`normalize_locale` — turn a loose user value (``"PT-BR"``,
@@ -12,6 +12,12 @@ hard-codes a language again:
 3. :func:`negotiate_locale` — pick the best supported locale for a
    browser request from its ``Accept-Language`` header, falling back to a
    configured default.
+4. :func:`resolve_locale` — the one entry point both ends of a flow use:
+   the ``?lang=`` on the link, then the stored user preference, then the
+   header, then the configured default. Email and page called different
+   things through v0.263.0, so a single activation could arrive in one
+   language and open in the other.
+5. :func:`stamp_locale` — write that ``?lang=`` onto the emailed link.
 
 It also owns the localized **subject lines and plain-text bodies** for the
 two transactional emails (:data:`AUTH_EMAIL_MESSAGES`) and the per-locale
@@ -23,6 +29,7 @@ seconds, no microseconds.
 from __future__ import annotations
 
 from datetime import datetime
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from tempest_fastapi_sdk.exceptions.i18n import parse_accept_language
 
@@ -32,6 +39,10 @@ so it acts as the default when nothing else matches."""
 
 DEFAULT_AUTH_LOCALE: str = "pt-BR"
 """Locale used when no value is configured and nothing is negotiated."""
+
+LOCALE_QUERY_PARAM: str = "lang"
+"""Query parameter carrying the locale from an emailed link to the page it
+opens. Read by :func:`resolve_locale`, written by :func:`stamp_locale`."""
 
 # Maps the canonical lower-cased primary subtag (``"pt"`` / ``"en"``) and
 # full tag (``"pt-br"`` / ``"en-us"``) to the canonical supported locale.
@@ -43,6 +54,34 @@ _CANONICAL: dict[str, str] = {
     "enus": "en-US",
     "en-us": "en-US",
 }
+
+
+def _match(value: str | None) -> str | None:
+    """Return the canonical supported locale for ``value``, or ``None``.
+
+    The whole matching rule lives here, once: casing and separators are
+    normalized (``"PT-BR"``, ``"pt_br"``, ``"ptbr"`` are the same tag), and
+    an unknown full tag falls back to its primary subtag, so ``pt-pt``
+    resolves as ``pt``.
+
+    Returning ``None`` instead of a default is what lets
+    :func:`resolve_locale` tell "this signal said nothing" from "this
+    signal said the default" — the distinction the whole precedence chain
+    is built on. :func:`normalize_locale` is this plus a fallback.
+
+    Args:
+        value (str | None): A loose locale string, or ``None``.
+
+    Returns:
+        str | None: One of :data:`SUPPORTED_LOCALES`, or ``None`` when
+        ``value`` is empty or matches nothing.
+    """
+    if not value:
+        return None
+    key = value.strip().lower().replace("_", "-")
+    if key in _CANONICAL:
+        return _CANONICAL[key]
+    return _CANONICAL.get(key.split("-", 1)[0])
 
 
 def normalize_locale(value: str | None, *, default: str = DEFAULT_AUTH_LOCALE) -> str:
@@ -66,13 +105,7 @@ def normalize_locale(value: str | None, *, default: str = DEFAULT_AUTH_LOCALE) -
         An unknown full tag falls back to its primary subtag, so ``pt-pt``
         resolves as ``pt``.
     """
-    if not value:
-        return default
-    key = value.strip().lower().replace("_", "-")
-    if key in _CANONICAL:
-        return _CANONICAL[key]
-    primary = key.split("-", 1)[0]
-    return _CANONICAL.get(primary, default)
+    return _match(value) or default
 
 
 def negotiate_locale(
@@ -104,6 +137,113 @@ def negotiate_locale(
         if primary in _CANONICAL:
             return _CANONICAL[primary]
     return default
+
+
+def resolve_locale(
+    *,
+    user: object | None = None,
+    query_locale: str | None = None,
+    accept_language: str | None = None,
+    default: str = DEFAULT_AUTH_LOCALE,
+) -> str:
+    """Pick one locale for a whole auth flow, from every signal available.
+
+    Both ends of a flow call this, so the email and the page it links to
+    cannot disagree. Precedence, first match wins:
+
+    1. ``query_locale`` — the ``?lang=`` :data:`LOCALE_QUERY_PARAM` that
+       :func:`stamp_locale` wrote on the emailed link. **It outranks the
+       stored preference on purpose**: it records the language *this
+       email* went out in, so a user who changes their preference between
+       the send and the click still opens a page that matches the message
+       they are reading. Preferring the row instead would recreate the
+       exact split this function exists to close.
+    2. ``user.locale`` — the preference the consumer persisted, and what
+       the email side resolves from (there is no link yet when the email
+       is built). Read with ``getattr`` because
+       :class:`~tempest_fastapi_sdk.BaseUserModel` declares no such
+       column; mix in
+       :class:`~tempest_fastapi_sdk.LocaleColumnMixin` to have one.
+    3. ``accept_language`` — the browser's own negotiation.
+    4. ``default`` — usually ``AUTH_DEFAULT_LOCALE``.
+
+    A signal that is absent, empty, or names an unsupported locale is
+    skipped rather than treated as an answer, so a row saying ``fr-FR``
+    still reaches the header instead of rendering in a language the SDK
+    does not ship.
+
+    Args:
+        user (object | None): The user the flow is about, when the caller
+            has one. Only its ``locale`` attribute is read.
+        query_locale (str | None): Raw value of the ``lang`` query
+            parameter, when the request carried one.
+        accept_language (str | None): Raw ``Accept-Language`` header.
+        default (str): Canonical locale used when nothing else matches.
+
+    Returns:
+        str: One of :data:`SUPPORTED_LOCALES`.
+    """
+    from_query = _match(query_locale)
+    if from_query is not None:
+        return from_query
+    stored = getattr(user, "locale", None) if user is not None else None
+    if isinstance(stored, str):
+        matched = _match(stored)
+        if matched is not None:
+            return matched
+    return negotiate_locale(accept_language, default=default)
+
+
+def stamp_locale(
+    url: str,
+    locale: str,
+    *,
+    param: str = LOCALE_QUERY_PARAM,
+) -> str:
+    """Append ``?lang=<locale>`` to an emailed link.
+
+    Lets the page the link opens render in the language of the email that
+    carried it, which is the only signal available for an account that was
+    just created and has no stored preference yet.
+
+    Every other query parameter is carried over **verbatim** — the opaque
+    token already sitting there is never re-encoded.
+
+    Three cases for a URL that already mentions ``param``:
+
+    * ``?lang=en-US`` — returned unchanged. A consumer who writes the
+      language into their own template stays in charge.
+    * ``?lang=`` — the blank pair is **dropped** and the real value
+      appended, instead of leaving a repeated parameter whose answer
+      depends on who parses it. Measured: Starlette's ``QueryParams.get``
+      returns the *last* occurrence (``"pt-BR"``), while a consumer
+      reading ``parse_qs(query)["lang"][0]`` gets the *blank* one.
+      Dropping removes the ambiguity rather than betting on the reader.
+    * ``?LANG=en-US`` — left alone, and stamped beside. Query-parameter
+      names are case-sensitive, so that is somebody else's parameter, not
+      another spelling of this one.
+
+    Args:
+        url (str): The absolute link that goes into the email.
+        locale (str): A canonical supported locale.
+        param (str): Query-parameter name. Defaults to
+            :data:`LOCALE_QUERY_PARAM`.
+
+    Returns:
+        str: The URL with the locale parameter appended.
+    """
+    parts = urlsplit(url)
+    kept: list[str] = []
+    for segment in parts.query.split("&") if parts.query else []:
+        name, _, value = segment.partition("=")
+        if name == param:
+            if value:
+                return url
+            continue
+        kept.append(segment)
+    kept.append(urlencode({param: locale}))
+    query = "&".join(kept)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
 
 
 # Per-locale ``strftime`` pattern for token expiry. No seconds, no
@@ -224,10 +364,13 @@ __all__: list[str] = [
     "AUTH_EMAIL_MESSAGES",
     "AUTH_PAGE_MESSAGES",
     "DEFAULT_AUTH_LOCALE",
+    "LOCALE_QUERY_PARAM",
     "SUPPORTED_LOCALES",
     "auth_email_message",
     "auth_page_message",
     "format_expires_at",
     "negotiate_locale",
     "normalize_locale",
+    "resolve_locale",
+    "stamp_locale",
 ]
