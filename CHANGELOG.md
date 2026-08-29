@@ -5,6 +5,67 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.264.0] — 2026-08-29
+
+### Fixed
+
+- **Um fluxo de ativação sai em uma língua só.**
+  ([#235](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/235))
+  O e-mail e a página que aquele e-mail abre resolviam a língua de fontes
+  diferentes: o e-mail lia `AUTH_DEFAULT_LOCALE`
+  (`auth/service.py`, cinco `_maybe_send_*`), a página negociava
+  `Accept-Language` (`auth/router.py`, cinco endpoints HTML). Cadastro com o
+  default `pt-BR` num navegador em inglês mandava o e-mail em português e
+  abria a página em inglês — e **nenhuma configuração consertava**, porque
+  `AUTH_DEFAULT_LOCALE` era justamente o valor que o header atropelava.
+
+  Agora as duas pontas chamam `resolve_locale`, na mesma ordem:
+
+  ```text
+  1. ?lang= no link     (a língua em que ESTE e-mail saiu)
+  2. user.locale        (a preferência que o consumidor gravou)
+  3. Accept-Language    (só páginas — e-mail não tem navegador)
+  4. AUTH_DEFAULT_LOCALE
+  ```
+
+  O link vence a linha de propósito: ele registra a língua **daquele**
+  e-mail, então quem troca a preferência entre o envio e o clique ainda abre
+  uma página que casa com a mensagem que está lendo. Preferir a linha
+  recriaria exatamente o descasamento que a correção fecha.
+
+  Nenhuma das duas olhava para o usuário, embora `_maybe_send_activation_email`
+  já **recebesse** o objeto e o descartasse na linha seguinte. A leitura é
+  duck-typed (`getattr(user, "locale", None)`), então um model sem a coluna
+  cai para o próximo sinal em vez de quebrar; quem quer a coluna tipada usa o
+  `LocaleColumnMixin` que o SDK já ships.
+
+  Medido: alimentados com o código da v0.263.0, **7 dos 8** testes novos de
+  coerência falham com o sintoma do relato —
+  `assert 'Reset your password' == 'Redefina sua senha'` para um usuário
+  `locale="pt-BR"`, e o link de ativação sem `?lang=`. O oitavo passa lá de
+  propósito: é o que fixa que `AUTH_STAMP_LOCALE_IN_LINK=False` restaura a
+  negociação por header. Os quatro fluxos com link entram um a um
+  (ativação, reset, troca de e-mail, verificação), mais a página de **erro**,
+  onde não existe usuário para ler e o carimbo é o único sinal.
+
+### Added
+
+- **`resolve_locale`, `stamp_locale` e `LOCALE_QUERY_PARAM`.**
+  ([#235](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/235))
+  `resolve_locale` é o ponto de entrada único das duas pontas do fluxo, para
+  não voltarem a divergir. `stamp_locale` escreve o `?lang=` no link do
+  e-mail, preservando todo o resto da query **verbatim** — o token opaco que
+  já está lá nunca é reencodado. URL que já nomeia o parâmetro **com valor**
+  volta intocada (o consumidor manda); `?lang=` **vazio** é substituído em vez
+  de duplicado, porque parâmetro repetido responde diferente conforme quem lê:
+  medido, o `QueryParams.get` do Starlette devolve a **última** ocorrência e um
+  `parse_qs(query)["lang"][0]` devolve a **primeira**, que seria a vazia.
+
+- **`AUTH_STAMP_LOCALE_IN_LINK`** (default `True`). Desliga o carimbo para
+  quem aponta o `AUTH_*_URL_TEMPLATE` para uma rota de frontend que recusa
+  query param desconhecido. Desligado, a língua da página volta a sair do
+  `Accept-Language`.
+
 ## [0.263.0] — 2026-08-29
 
 ### Fixed

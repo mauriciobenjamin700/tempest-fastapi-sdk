@@ -519,7 +519,8 @@ Só relevantes quando `AUTH_BACKEND_LINKS=true`. Veja o [Modo E](#cinco-modos-de
 
 | Env var | Tipo | Default | O que faz |
 |---------|------|---------|-----------|
-| `AUTH_DEFAULT_LOCALE` | `str` | `pt-BR` | Idioma dos **e-mails** e **páginas HTML** bundled. Aceita `pt-BR` e `en-US` (normalizado: `PT-BR`, `pt_br`, `ptbr` → `pt-BR`). |
+| `AUTH_DEFAULT_LOCALE` | `str` | `pt-BR` | Idioma dos **e-mails** e **páginas HTML** bundled quando nenhum outro sinal existe. Aceita `pt-BR` e `en-US` (normalizado: `PT-BR`, `pt_br`, `ptbr` → `pt-BR`). |
+| `AUTH_STAMP_LOCALE_IN_LINK` | `bool` | `True` | Carimba `?lang=<locale>` no link do e-mail, para a página abrir no idioma do e-mail que a produziu. |
 
 Tem uma seção inteira só pra isso, explicada bem devagar: [Idioma dos e-mails e páginas (i18n)](#idioma-dos-e-mails-e-paginas-i18n).
 
@@ -597,21 +598,38 @@ precisa criar nenhum template pra isso funcionar. 🚀
 
 ### A regra de ouro (decore só isso)
 
-Existem **duas coisas diferentes** que escolhem o idioma, e elas
-funcionam de jeitos diferentes. Preste atenção:
+**Um fluxo, um idioma.** O e-mail e a página que aquele e-mail abre
+resolvem o idioma **do mesmo jeito**, na mesma ordem — primeiro sinal que
+existir vence:
 
-| O que | Como o idioma é escolhido |
-|-------|---------------------------|
-| **E-mails** (ativação, reset) | **Sempre** usam `AUTH_DEFAULT_LOCALE`. Ponto final. |
-| **Páginas HTML** (Modo E, backend) | Usam o `Accept-Language` do **navegador** do usuário; se o navegador não disser nada, caem no `AUTH_DEFAULT_LOCALE`. |
+| # | Sinal | De onde vem |
+|---|-------|-------------|
+| 1 | `?lang=` no link | O SDK carimba no link o idioma em que **aquele** e-mail saiu. |
+| 2 | `user.locale` | A preferência que **você** gravou na linha do usuário (coluna do `LocaleColumnMixin`). É por ela que o **e-mail** se decide — quando ele é montado ainda não existe link. |
+| 3 | `Accept-Language` | O navegador de quem clicou (só páginas — e-mail não tem navegador). |
+| 4 | `AUTH_DEFAULT_LOCALE` | O último recurso. |
 
-!!! info "Por que o e-mail não negocia idioma?"
-    Quando o SDK **monta** o e-mail, não existe nenhum navegador
-    pedindo nada — é um processo de servidor mandando uma mensagem. Não
-    tem de onde "adivinhar" o idioma. Por isso o e-mail é sempre fixo no
-    `AUTH_DEFAULT_LOCALE`. Já a **página HTML** é aberta por um navegador
-    de verdade, que manda o cabeçalho `Accept-Language` dizendo "eu
-    prefiro português" — aí dá pra respeitar a preferência da pessoa.
+!!! info "Por que o link vence a preferência gravada?"
+    Porque ele registra a língua **daquele** e-mail. Se a pessoa troca o
+    idioma no app entre o envio e o clique, a página ainda casa com a
+    mensagem que ela está lendo. Preferir a linha recriaria o descasamento
+    que essa ordem existe para fechar — só que invertido.
+
+!!! warning "Até a v0.263.0 as duas pontas discordavam"
+    O e-mail lia **só** o `AUTH_DEFAULT_LOCALE` e a página negociava
+    **só** o `Accept-Language`. Um cadastro com o padrão `pt-BR` e um
+    navegador em inglês mandava o e-mail em português e abria a página em
+    inglês — e **nenhuma configuração consertava**, porque setar
+    `AUTH_DEFAULT_LOCALE=pt-BR` era exatamente o valor que o header
+    atropelava. Se você guarda o idioma do usuário, agora ele manda nas
+    duas pontas.
+
+!!! info "Por que o link precisa carregar o idioma?"
+    No cadastro a conta acabou de nascer: não há preferência gravada
+    ainda. O único lugar onde a escolha do e-mail sobrevive até o clique é
+    o próprio link — daí o `?lang=`. Desligue com
+    `AUTH_STAMP_LOCALE_IN_LINK=false` se a sua rota de frontend rejeita
+    query param desconhecido.
 
 ### Passo 1 — escolher o idioma padrão
 
@@ -634,18 +652,30 @@ AUTH_DEFAULT_LOCALE=en-US
     `EN_us`, `enus`, `en`. Se você digitar algo que o SDK não conhece
     (tipo `klingon`), ele cai no padrão `pt-BR` em vez de quebrar.
 
-### Passo 2 — (opcional) deixar a página HTML seguir o navegador
+### Passo 2 — (opcional) guardar a preferência do usuário
 
-Isso **já vem ligado de graça** no Modo E (`AUTH_BACKEND_LINKS=true`).
-Você não faz nada. Quando o usuário clica no link do e-mail e o
-navegador dele está em português, ele vê a página em português; se
-estiver em inglês, vê em inglês. Se o navegador não mandar
-`Accept-Language`, a página usa o `AUTH_DEFAULT_LOCALE`.
+Se o seu serviço deixa a pessoa escolher o idioma, guarde na linha dela
+com o `LocaleColumnMixin` — e o SDK passa a respeitar isso nas duas
+pontas, sem mais nenhuma configuração:
+
+```python
+from tempest_fastapi_sdk import BaseUserModel, LocaleColumnMixin
+
+
+class UserModel(LocaleColumnMixin, BaseUserModel):
+    """A coluna `locale` (BCP-47) entra pelo mixin."""
+
+    __tablename__ = "users"
+```
+
+Sem o mixin nada quebra: o SDK lê o atributo com `getattr`, então um
+model sem a coluna simplesmente cai para o próximo sinal.
 
 ```text
-Navegador em pt-BR  →  Accept-Language: pt-BR  →  página em Português
-Navegador em en-US  →  Accept-Language: en-US  →  página em Inglês
-Navegador sem header →  cai no AUTH_DEFAULT_LOCALE
+user.locale = "pt-BR", navegador en-US  →  e-mail E página em Português
+link com ?lang=pt-BR, linha diz en-US   →  página em Português (casa com o e-mail)
+sem os dois, navegador en-US            →  página em Inglês
+nada disso                              →  AUTH_DEFAULT_LOCALE
 ```
 
 ### Passo 3 — (opcional) traduzir/customizar você mesmo
@@ -677,10 +707,12 @@ Se quiser formatar do seu jeito, o `datetime` cru ainda está disponível
 em `{{ expires_at }}`.
 
 !!! check "Recapitulando"
-    - **Uma variável** manda no idioma dos e-mails: `AUTH_DEFAULT_LOCALE`.
-    - **Páginas HTML** seguem o navegador (Accept-Language) e caem no
-      `AUTH_DEFAULT_LOCALE` quando não há header.
+    - **Um fluxo, um idioma**: e-mail e página resolvem na mesma ordem —
+      `?lang=` do link → `user.locale` → `Accept-Language` →
+      `AUTH_DEFAULT_LOCALE`.
+    - **Guardou o idioma do usuário?** Ele manda nas duas pontas.
     - **Padrão é `pt-BR`.** Coloque `en-US` se quiser inglês.
+    - `AUTH_STAMP_LOCALE_IN_LINK=false` desliga o carimbo `?lang=`.
     - Use `{{ expires_at_str }}` pra mostrar a expiração sem segundos.
 
 ---

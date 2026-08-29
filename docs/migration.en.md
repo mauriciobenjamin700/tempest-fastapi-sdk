@@ -2,6 +2,63 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.264.0 — the language belongs to the flow, not to each end
+
+Breaks no signature. It changes **the language some pages come out in** —
+to the correct one, but observably.
+
+### What changes
+
+Through v0.263.0 the email read `AUTH_DEFAULT_LOCALE` and the page
+negotiated `Accept-Language`, each on its own. Both now call
+`resolve_locale`, in the same order:
+
+```text
+1. ?lang= on the link (the language THIS email went out in)
+2. user.locale        (the preference you stored on the row)
+3. Accept-Language    (pages only)
+4. AUTH_DEFAULT_LOCALE
+```
+
+Two observable consequences:
+
+1. **A user with a stored `locale` on a differently-configured browser now
+   sees the page in their language.** The header used to win.
+2. **The emailed link gains `?lang=<locale>`.** The previous query string is
+   preserved byte for byte — the token is never re-encoded — but the URL
+   carries one more parameter.
+
+### What to do
+
+**Nothing, if you store no user language and don't validate the link's
+query.** With no signal at all the behaviour is what it was:
+`Accept-Language`, then `AUTH_DEFAULT_LOCALE`.
+
+**If your front-end route rejects unknown query parameters**, turn the stamp
+off:
+
+```env
+AUTH_STAMP_LOCALE_IN_LINK=false
+```
+
+**If you want the user's preference to win**, store it — the SDK reads the
+attribute with `getattr`, so it just has to exist:
+
+```python
+from tempest_fastapi_sdk import BaseUserModel, LocaleColumnMixin
+
+
+class UserModel(LocaleColumnMixin, BaseUserModel):
+    """The BCP-47 `locale` column (nullable) comes from the mixin."""
+
+    __tablename__ = "users"
+```
+
+!!! note "A locale the SDK doesn't ship is not an answer"
+    The SDK ships `pt-BR` and `en-US`. A row saying `locale="fr-FR"` does
+    **not** stop the search: it falls through to the next signal instead of
+    rendering in a language that does not exist.
+
 ## 0.263.0 — `AdminAuthBackend` became generic
 
 Breaks no runtime at all. It breaks **the type-check** for anyone who

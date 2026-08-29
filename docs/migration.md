@@ -2,6 +2,63 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.264.0 — o idioma passa a ser do fluxo, não de cada ponta
+
+Não quebra assinatura nenhuma. Muda **o idioma em que algumas páginas
+saem** — para o correto, mas de forma observável.
+
+### O que muda
+
+Até a v0.263.0 o e-mail lia `AUTH_DEFAULT_LOCALE` e a página negociava
+`Accept-Language`, cada um por conta própria. Agora os dois chamam
+`resolve_locale`, na mesma ordem:
+
+```text
+1. ?lang= no link     (a língua em que ESTE e-mail saiu)
+2. user.locale        (a preferência que você gravou na linha)
+3. Accept-Language    (só páginas)
+4. AUTH_DEFAULT_LOCALE
+```
+
+Duas consequências observáveis:
+
+1. **Usuário com `locale` gravado e navegador em outra língua passa a ver a
+   página no idioma dele.** Antes o header vencia.
+2. **O link do e-mail ganha `?lang=<locale>`.** A query anterior é
+   preservada byte a byte — o token não é reencodado —, mas a URL tem um
+   parâmetro a mais.
+
+### O que fazer
+
+**Nada, se você não guarda idioma de usuário e não valida a query do link.**
+O comportamento sem sinal nenhum é o de antes: `Accept-Language`, depois
+`AUTH_DEFAULT_LOCALE`.
+
+**Se a sua rota de frontend recusa query param desconhecido**, desligue o
+carimbo:
+
+```env
+AUTH_STAMP_LOCALE_IN_LINK=false
+```
+
+**Se você quer que a preferência do usuário mande**, guarde-a — o SDK lê o
+atributo com `getattr`, então basta existir:
+
+```python
+from tempest_fastapi_sdk import BaseUserModel, LocaleColumnMixin
+
+
+class UserModel(LocaleColumnMixin, BaseUserModel):
+    """A coluna `locale` (BCP-47, nullable) entra pelo mixin."""
+
+    __tablename__ = "users"
+```
+
+!!! note "Locale que o SDK não conhece não é resposta"
+    O SDK ships `pt-BR` e `en-US`. Uma linha com `locale="fr-FR"` **não**
+    para a busca: ela cai para o próximo sinal, em vez de renderizar numa
+    língua que não existe.
+
 ## 0.263.0 — `AdminAuthBackend` virou genérica
 
 Não quebra runtime nenhum. Quebra **o type-check** de quem subclasseia

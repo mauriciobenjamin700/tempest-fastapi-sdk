@@ -835,6 +835,18 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   que foi sondado, quando e com que código; `make mercadopago-diff` separa os
   baldes. Testes: `TestUnverifiedOperationsAreMarked`,
   `TestTheProbeOnlySpeaksForItsOwnVerb`.
+- **Um fluxo, um idioma (v0.264.0)** — issue #235. O e-mail lia
+  `AUTH_DEFAULT_LOCALE` e a página negociava `Accept-Language`, então um
+  cadastro saía bilíngue e nenhuma configuração consertava (setar o default
+  era exatamente o valor que o header atropelava). As duas pontas passam a
+  chamar `resolve_locale`: `?lang=` carimbado no link (`stamp_locale`,
+  `AUTH_STAMP_LOCALE_IN_LINK` para desligar) → `user.locale` (duck-typed,
+  `LocaleColumnMixin` para quem quer a coluna tipada) → `Accept-Language` →
+  `AUTH_DEFAULT_LOCALE`. O link vence a linha porque registra a língua
+  **daquele** e-mail — trocar a preferência entre o envio e o clique não
+  descasa a página da mensagem. Cobre os 5 `_maybe_send_*` e os 5 endpoints
+  HTML. Testes: `TestFlowCoherence` roda e-mail e página do mesmo
+  fluxo e falha no código da v0.263.0 com o sintoma do relato.
 - **Protocolo de cliente de terceiro deixa de mentir (v0.263.0)** — issue
   #231. A receita de segurança prometia que `redis.asyncio.Redis` funciona
   out-of-the-box como `ThrottleBackend` e que o `fakeredis` serve nos testes;

@@ -520,7 +520,8 @@ Only relevant when `AUTH_BACKEND_LINKS=true`. See [Mode E](#five-operating-modes
 
 | Env var | Type | Default | What it does |
 |---------|------|---------|--------------|
-| `AUTH_DEFAULT_LOCALE` | `str` | `pt-BR` | Language of the bundled **emails** and **HTML pages**. Accepts `pt-BR` and `en-US` (normalized: `PT-BR`, `pt_br`, `ptbr` → `pt-BR`). |
+| `AUTH_DEFAULT_LOCALE` | `str` | `pt-BR` | Language of the bundled **emails** and **HTML pages** when no other signal exists. Accepts `pt-BR` and `en-US` (normalized: `PT-BR`, `pt_br`, `ptbr` → `pt-BR`). |
+| `AUTH_STAMP_LOCALE_IN_LINK` | `bool` | `True` | Stamps `?lang=<locale>` onto the emailed link, so the page opens in the language of the email that produced it. |
 
 There's a whole section dedicated to this, explained step by step:
 [Email and page language (i18n)](#email-and-page-language-i18n).
@@ -599,21 +600,38 @@ create any template for this to work. 🚀
 
 ### The golden rule (memorize just this)
 
-There are **two different things** that pick the language, and they work
-differently. Pay attention:
+**One flow, one language.** The email and the page that email opens
+resolve the language **the same way**, in the same order — the first
+signal that exists wins:
 
-| What | How the language is chosen |
-|------|----------------------------|
-| **Emails** (activation, reset) | **Always** use `AUTH_DEFAULT_LOCALE`. Full stop. |
-| **HTML pages** (Mode E, backend) | Use the **browser's** `Accept-Language`; if the browser says nothing, fall back to `AUTH_DEFAULT_LOCALE`. |
+| # | Signal | Where it comes from |
+|---|--------|---------------------|
+| 1 | `?lang=` on the link | The SDK stamps the language **that** email went out in onto its own link. |
+| 2 | `user.locale` | The preference **you** stored on the user row (the `LocaleColumnMixin` column). It is what the **email** resolves from — there is no link yet when it is built. |
+| 3 | `Accept-Language` | The browser of whoever clicked (pages only — an email has no browser). |
+| 4 | `AUTH_DEFAULT_LOCALE` | The last resort. |
 
-!!! info "Why doesn't the email negotiate the language?"
-    When the SDK **builds** the email there's no browser asking for
-    anything — it's a server process sending a message. There's nothing
-    to "guess" the language from. That's why the email is always fixed to
-    `AUTH_DEFAULT_LOCALE`. An **HTML page**, on the other hand, is opened
-    by a real browser, which sends the `Accept-Language` header saying "I
-    prefer Portuguese" — so the person's preference can be honored.
+!!! info "Why does the link outrank the stored preference?"
+    Because it records the language of **that** email. If the person
+    changes their language in the app between the send and the click, the
+    page still matches the message they are reading. Preferring the row
+    would recreate the very split this order exists to close, only
+    inverted.
+
+!!! warning "Through v0.263.0 the two ends disagreed"
+    The email read **only** `AUTH_DEFAULT_LOCALE` and the page negotiated
+    **only** `Accept-Language`. A signup with the `pt-BR` default and an
+    English browser sent the email in Portuguese and opened the page in
+    English — and **no configuration fixed it**, because setting
+    `AUTH_DEFAULT_LOCALE=pt-BR` was exactly the value the header
+    overrode. If you store the user's language, it now drives both ends.
+
+!!! info "Why does the link need to carry the language?"
+    At signup the account was just born: there's no stored preference
+    yet. The only place the email's choice survives until the click is
+    the link itself — hence `?lang=`. Turn it off with
+    `AUTH_STAMP_LOCALE_IN_LINK=false` if your front-end route rejects
+    unknown query parameters.
 
 ### Step 1 — choose the default language
 
@@ -637,18 +655,31 @@ AUTH_DEFAULT_LOCALE=en-US
     SDK doesn't know (like `klingon`), it falls back to the `pt-BR`
     default instead of crashing.
 
-### Step 2 — (optional) let the HTML page follow the browser
+### Step 2 — (optional) store the user's preference
 
-This is **already on for free** in Mode E (`AUTH_BACKEND_LINKS=true`).
-You do nothing. When the user clicks the email link and their browser is
-in Portuguese, they see the page in Portuguese; if it's in English, they
-see English. If the browser sends no `Accept-Language`, the page uses
-`AUTH_DEFAULT_LOCALE`.
+If your service lets people pick a language, store it on their row with
+`LocaleColumnMixin` — and the SDK honors it on both ends, with no further
+configuration:
+
+```python
+from tempest_fastapi_sdk import BaseUserModel, LocaleColumnMixin
+
+
+class UserModel(LocaleColumnMixin, BaseUserModel):
+    """The BCP-47 `locale` column comes from the mixin."""
+
+    __tablename__ = "users"
+```
+
+Nothing breaks without the mixin: the SDK reads the attribute with
+`getattr`, so a model without the column simply falls through to the next
+signal.
 
 ```text
-Browser in pt-BR   →  Accept-Language: pt-BR  →  page in Portuguese
-Browser in en-US   →  Accept-Language: en-US  →  page in English
-Browser w/o header →  falls back to AUTH_DEFAULT_LOCALE
+user.locale = "pt-BR", en-US browser  →  email AND page in Portuguese
+link says ?lang=pt-BR, row says en-US →  page in Portuguese (matches the email)
+neither, en-US browser                →  page in English
+none of the above                     →  AUTH_DEFAULT_LOCALE
 ```
 
 ### Step 3 — (optional) translate/customize it yourself
@@ -681,10 +712,12 @@ If you want to format it yourself, the raw `datetime` is still available
 in `{{ expires_at }}`.
 
 !!! check "Recap"
-    - **One variable** drives the email language: `AUTH_DEFAULT_LOCALE`.
-    - **HTML pages** follow the browser (Accept-Language) and fall back
-      to `AUTH_DEFAULT_LOCALE` when there's no header.
+    - **One flow, one language**: email and page resolve in the same
+      order — the link's `?lang=` → `user.locale` → `Accept-Language` →
+      `AUTH_DEFAULT_LOCALE`.
+    - **Stored the user's language?** It drives both ends.
     - **The default is `pt-BR`.** Set `en-US` if you want English.
+    - `AUTH_STAMP_LOCALE_IN_LINK=false` turns the `?lang=` stamp off.
     - Use `{{ expires_at_str }}` to show the expiry without seconds.
 
 ---
