@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Form, Request, Response, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from sqlalchemy import inspect as sa_inspect
 
 from tempest_fastapi_sdk.api.dependencies import make_jwt_user_dependency
 from tempest_fastapi_sdk.auth.locale import (
@@ -111,6 +112,31 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.db.user_webauthn_credential_model import (
         BaseWebAuthnCredentialModel,
     )
+
+
+async def _reload_if_expired(session: AsyncSession, user: BaseUserModel) -> None:
+    """Undo a commit's expiry before the page reads the row.
+
+    ``async_sessionmaker`` defaults to ``expire_on_commit=True``, and a
+    commit under it expires the whole identity map. The success pages
+    render **after** the commit that consumed the token, so the first
+    ``user.<column>`` they touch triggers a lazy refresh — I/O outside the
+    greenlet, which in async is
+    ``MissingGreenlet: greenlet_spawn has not been called``, and a 500 on a
+    page that had already done its work.
+
+    ``inspect(user).expired`` answers without touching the database, so a
+    consumer whose factory sets ``expire_on_commit=False`` — which is what
+    :class:`~tempest_fastapi_sdk.AsyncDatabaseManager` builds — pays
+    nothing. Only the default-configured session buys the extra ``SELECT``.
+
+    Args:
+        session (AsyncSession): The session the page will read through.
+        user (BaseUserModel): The row the template and the locale
+            resolution are about.
+    """
+    if sa_inspect(user).expired:
+        await session.refresh(user)
 
 
 def make_auth_router(
@@ -1016,6 +1042,7 @@ def make_auth_router(
                     locale=locale,
                 )
             await session.commit()
+            await _reload_if_expired(session, user)
             locale = _page_locale(request, user)
             html = render_auth_page(
                 auth_settings.AUTH_ACTIVATION_SUCCESS_TEMPLATE,
@@ -1173,6 +1200,7 @@ def make_auth_router(
                 )
                 return HTMLResponse(content=html, status_code=400)
             await session.commit()
+            await _reload_if_expired(session, user)
             locale = _page_locale(request, user)
             html = render_auth_page(
                 auth_settings.AUTH_PASSWORD_RESET_SUCCESS_TEMPLATE,
@@ -1218,6 +1246,7 @@ def make_auth_router(
                     locale=locale,
                 )
             await session.commit()
+            await _reload_if_expired(session, user)
             locale = _page_locale(request, user)
             html = render_auth_page(
                 auth_settings.AUTH_EMAIL_CHANGE_SUCCESS_TEMPLATE,
@@ -1259,6 +1288,7 @@ def make_auth_router(
                     locale=locale,
                 )
             await session.commit()
+            await _reload_if_expired(session, user)
             locale = _page_locale(request, user)
             html = render_auth_page(
                 auth_settings.AUTH_EMAIL_VERIFICATION_SUCCESS_TEMPLATE,
