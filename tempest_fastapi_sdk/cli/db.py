@@ -25,13 +25,14 @@ import importlib
 import inspect
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import typer
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,6 +105,77 @@ def _helper(
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
     return AlembicHelper(str(ini), db_url=database_url)
+
+
+_ALEMBIC_ADVICE: tuple[tuple[str, str], ...] = (
+    (
+        "Target database is not up to date.",
+        "the database is behind head — a migration is pending. "
+        "Run `tempest db upgrade`, then try again.",
+    ),
+    (
+        "Multiple head revisions are present",
+        "the history has more than one head. Run `tempest db history` and "
+        "resolve it with a merge or a stamp.",
+    ),
+    (
+        "Can't locate revision identified by",
+        "that revision is not in `alembic/versions/`. "
+        "Run `tempest db history` to list the ones that exist.",
+    ),
+    (
+        "does not refer to ancestor/descendant revisions along the same branch",
+        "those two revisions are not on the same branch. "
+        "Run `tempest db history` to see the lineage.",
+    ),
+)
+"""Substring of an Alembic ``CommandError`` mapped to what to do about it.
+
+Every entry is an **operational** condition, not a programming error: the
+database is behind, the history forked, the revision was deleted. Matched by
+substring and in order, because Alembic interpolates the offending revision
+into three of the four messages. Read from alembic 1.18.4
+(``autogenerate/api.py:601`` and ``script/base.py:214,222,236``); a message
+that matches nothing is printed verbatim, so a new one degrades to Alembic's
+own words rather than to a wrong hint.
+"""
+
+
+@contextmanager
+def _alembic_errors() -> Iterator[None]:
+    """Report an expected Alembic failure as one actionable line.
+
+    ``CommandError`` is how Alembic says "the database is not in the state
+    this command needs" — a condition the operator fixes, not a bug. Letting
+    it reach Typer's ``pretty_exceptions`` prints ~20 frames of alembic,
+    asyncio, greenlet and the project's own ``env.py`` before the single
+    useful line, with this package's path at the top, so the failure reads
+    as an SDK defect.
+
+    ``TEMPEST_DEBUG=1`` re-raises untouched, for the case where the
+    traceback is the point.
+
+    Yields:
+        None: For the duration of the Alembic call.
+
+    Raises:
+        typer.Exit: Code 1, after printing the advice.
+    """
+    from alembic.util.exc import CommandError
+
+    try:
+        yield
+    except CommandError as exc:
+        if os.environ.get("TEMPEST_DEBUG"):
+            raise
+        message = str(exc)
+        advice = next(
+            (text for needle, text in _ALEMBIC_ADVICE if needle in message),
+            message,
+        )
+        typer.echo(f"error: {advice}", err=True)
+        typer.echo("       (TEMPEST_DEBUG=1 for the full traceback)", err=True)
+        raise typer.Exit(1) from exc
 
 
 def _load_seed_callable(spec: str) -> Callable[[AsyncSession], Any]:
@@ -248,7 +320,8 @@ def db_revision(
     ``src/db/models/__init__.py`` imports it.
     """
     helper = _helper(ini, _resolve_database_url(database_url))
-    helper.revision(message=message, autogenerate=autogenerate)  # type: ignore[attr-defined]
+    with _alembic_errors():
+        helper.revision(message=message, autogenerate=autogenerate)  # type: ignore[attr-defined]
     typer.echo(f"Created revision: {message}")
 
 
@@ -271,7 +344,8 @@ def db_upgrade(
 ) -> None:
     """Apply migrations up to ``target`` (``head`` by default)."""
     helper = _helper(ini, _resolve_database_url(database_url))
-    helper.upgrade(target)  # type: ignore[attr-defined]
+    with _alembic_errors():
+        helper.upgrade(target)  # type: ignore[attr-defined]
     typer.echo(f"Upgraded to {target}.")
 
 
@@ -294,7 +368,8 @@ def db_downgrade(
 ) -> None:
     """Roll back migrations toward ``target`` (default one step)."""
     helper = _helper(ini, _resolve_database_url(database_url))
-    helper.downgrade(target)  # type: ignore[attr-defined]
+    with _alembic_errors():
+        helper.downgrade(target)  # type: ignore[attr-defined]
     typer.echo(f"Downgraded to {target}.")
 
 
@@ -313,7 +388,8 @@ def db_current(
 ) -> None:
     """Print the revision currently applied to the database."""
     helper = _helper(ini, _resolve_database_url(database_url))
-    current = helper.current()  # type: ignore[attr-defined]
+    with _alembic_errors():
+        current = helper.current()  # type: ignore[attr-defined]
     typer.echo(current or "(no revision applied)")
 
 
@@ -410,7 +486,8 @@ def db_stamp(
     script directory, so a plain stamp would fail to resolve it.
     """
     helper = _helper(ini, _resolve_database_url(database_url))
-    helper.stamp(revision, purge=purge)  # type: ignore[attr-defined]
+    with _alembic_errors():
+        helper.stamp(revision, purge=purge)  # type: ignore[attr-defined]
     typer.echo(f"Stamped database at {revision}.")
 
 
@@ -571,7 +648,8 @@ def db_history(
 ) -> None:
     """Print the migration history (newest → oldest)."""
     helper = _helper(ini, _resolve_database_url(database_url))
-    typer.echo(helper.history(verbose=verbose))  # type: ignore[attr-defined]
+    with _alembic_errors():
+        typer.echo(helper.history(verbose=verbose))  # type: ignore[attr-defined]
 
 
 __all__: list[str] = [
