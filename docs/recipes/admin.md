@@ -777,11 +777,12 @@ volta ao padrão.
 
 #### 5. Plugue um backend de auth customizado
 
-`AdminAuthBackend` é uma ABC, então troque o default por LDAP / OAuth / IAM externo subclasseando:
+`AdminAuthBackend` é uma ABC **genérica no principal** — o valor que `authenticate` devolve e que todo o resto dos métodos consome. Troque o default por LDAP / OAuth / IAM externo subclasseando, e diga no parâmetro qual é o seu principal:
 
 ```python
-from typing import Any
+from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError, GoogleOAuthClient
@@ -796,12 +797,13 @@ my_oauth_client = GoogleOAuthClient(
 )
 
 
-class OAuthAdminBackend(AdminAuthBackend):
-    """Trade the admin form's credential for an OAuth identity.
+class OAuthAdminBackend(AdminAuthBackend[AdminModel]):
+    """Troca a credencial do formulário do admin por uma identidade OAuth.
 
-    OAuth has no password to check, so the form's `password` field carries
-    the authorization code the provider redirected back with. The ABC names
-    the parameter `password`; what this backend expects there is the code.
+    OAuth não tem senha para conferir, então o campo `password` do
+    formulário carrega o authorization code que o provedor devolveu no
+    redirect. A ABC chama o parâmetro de `password`; o que este backend
+    espera ali é o code.
     """
 
     async def authenticate(
@@ -810,32 +812,58 @@ class OAuthAdminBackend(AdminAuthBackend):
         *,
         identifier: str,
         password: str,
-    ) -> Any:
-        """Exchange the code, then accept only an allowed admin e-mail."""
+    ) -> AdminModel:
+        """Troca o code e aceita só um e-mail de admin conhecido."""
         tokens = await my_oauth_client.exchange_code(password)
-        principal = await my_oauth_client.fetch_user(tokens)
-        if not principal.email_verified or principal.email != identifier:
+        identity = await my_oauth_client.fetch_user(tokens)
+        if not identity.email_verified or identity.email != identifier:
             raise AdminAuthError("not an admin")
-        return principal
+        result = await session.execute(
+            select(AdminModel).where(AdminModel.email == identity.email)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            raise AdminAuthError("not an admin")
+        return row
 
     async def load_principal(
         self,
         session: AsyncSession,
         principal_id: str,
-    ) -> Any | None:
-        """Reload the admin row the subject maps to, on every request."""
-        return await session.get(AdminModel, principal_id)
+    ) -> AdminModel | None:
+        """Recarrega a linha de admin a cada request."""
+        return await session.get(AdminModel, UUID(principal_id))
 
-    def principal_id(self, principal: Any) -> str:
-        """Return the provider's stable subject identifier."""
-        return principal.subject
+    def principal_id(self, principal: AdminModel) -> str:
+        """Devolve o identificador que vai serializado no cookie."""
+        return str(principal.id)
 
-    def display_name(self, principal: Any) -> str:
-        """Return what the admin header shows."""
+    def display_name(self, principal: AdminModel) -> str:
+        """Devolve o que o cabeçalho do admin mostra."""
         return principal.email
 ```
 
 Passe a instância via `auth_backend=` e o resto do pipeline do admin (sessões, dashboard, list, detail) segue funcionando sem mudanças.
+
+!!! tip "O parâmetro `[AdminModel]` é o que torna o contrato conferível"
+
+    Sem ele a classe resolve para `AdminAuthBackend[Any]` — que é como ela se
+    comportava antes da v0.263.0, e continua válido. O que o parâmetro compra é
+    o erro que aparece quando `authenticate` devolve um tipo e `display_name`
+    lê outro. Medido com mypy e com basedpyright: os dois recusam um
+    `display_name(self, principal: dict[str, str])` numa classe declarada
+    `AdminAuthBackend[LdapEntry]` — o mypy citando Liskov por nome
+    (`This violates the Liskov substitution principle`), o basedpyright com
+    `reportIncompatibleMethodOverride`.
+
+!!! warning "Subclasse sem parâmetro sob `mypy --strict`"
+
+    `mypy --strict` liga `disallow_any_generics`, então `class MeuBackend(AdminAuthBackend)`
+    passa a acusar `Missing type arguments for generic type "AdminAuthBackend"`.
+    O runtime não mudou — é só o type-checker. Escreva o seu principal
+    (`AdminAuthBackend[MinhaLinha]`) ou, para manter exatamente o comportamento
+    anterior, `AdminAuthBackend[Any]`. O `pyproject.toml` que o `tempest new`
+    escreve tem `strict = true`.
 
 #### 6. Customizar a aparência — `AdminTheme`
 

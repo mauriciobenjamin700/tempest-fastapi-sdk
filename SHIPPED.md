@@ -835,6 +835,26 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   que foi sondado, quando e com que código; `make mercadopago-diff` separa os
   baldes. Testes: `TestUnverifiedOperationsAreMarked`,
   `TestTheProbeOnlySpeaksForItsOwnVerb`.
+- **Protocolo de cliente de terceiro deixa de mentir (v0.263.0)** — issue
+  #231. A receita de segurança prometia que `redis.asyncio.Redis` funciona
+  out-of-the-box como `ThrottleBackend` e que o `fakeredis` serve nos testes;
+  medido com basedpyright contra redis-py 8.1.0, **os dois eram recusados** —
+  `expire(name, seconds)` exigia o nome `seconds` e o redis-py chama de
+  `time`; `delete(name)` exigia keyword e o redis-py declara `delete(*names)`.
+  O mypy aceita as duas formas, que é como shippou. Agora todo parâmetro
+  obrigatório desses protocolos é posicional, e os oito membros
+  `Awaitable[Any]` (`get`/`expire`/`delete`, `hget`/`hset`/`hgetall`,
+  `eval` nos dois middlewares) declaram o contrato real — `Awaitable[object]`
+  onde o resultado é descartado, nunca `Awaitable[None]`. Guard:
+  `tests/test_protocol_shape_guard.py`, que acusa os 8 retornos erasados e os
+  16 parâmetros nomeados quando alimentado com o código da v0.262.0.
+- **`AdminAuthBackend` genérica no principal (v0.263.0)** — issue #232. O
+  valor central do ponto de extensão de auth do admin atravessava seis
+  métodos como `Any`, com o contrato só em prosa. Agora
+  `AdminAuthBackend(ABC, Generic[PrincipalT])`, e `UserModelAuthBackend`
+  declara `AdminAuthBackend[BaseUserModel]`. Runtime intocado; `mypy --strict`
+  passa a exigir o parâmetro em subclasse de consumidor
+  (`disallow_any_generics`), o que o guia de migração cobre com a linha exata.
 - **`heartbeat` público, fora do router (v0.261.0)** — issue #225. A mecânica
   existia desde a v0.197.0 mas só dentro de `make_websocket_router`, que impõe
   bearer no handshake e registro num hub indexado por `user_id: UUID`.

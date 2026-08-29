@@ -4098,11 +4098,12 @@ Write operations (create/edit/delete/bulk) are gated by the `AdminModel` flags `
 
 #### 5. Plug in a custom auth backend
 
-`AdminAuthBackend` is an ABC, so swap the default for LDAP / OAuth / external IAM by subclassing:
+`AdminAuthBackend` is an ABC that is **generic in the principal** — the value `authenticate` returns and every other method consumes. Swap the default for LDAP / OAuth / external IAM by subclassing, and name your principal in the parameter:
 
 ```python
-from typing import Any
+from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError, GoogleOAuthClient
@@ -4117,35 +4118,43 @@ my_oauth_client = GoogleOAuthClient(
 )
 
 
-class OAuthAdminBackend(AdminAuthBackend):
+class OAuthAdminBackend(AdminAuthBackend[AdminModel]):
     async def authenticate(
         self,
         session: AsyncSession,
         *,
         identifier: str,
         password: str,
-    ) -> Any:
+    ) -> AdminModel:
         tokens = await my_oauth_client.exchange_code(password)
-        principal = await my_oauth_client.fetch_user(tokens)
-        if not principal.email_verified or principal.email != identifier:
+        identity = await my_oauth_client.fetch_user(tokens)
+        if not identity.email_verified or identity.email != identifier:
             raise AdminAuthError("not an admin")
-        return principal
+        result = await session.execute(
+            select(AdminModel).where(AdminModel.email == identity.email)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            raise AdminAuthError("not an admin")
+        return row
 
     async def load_principal(
         self,
         session: AsyncSession,
         principal_id: str,
-    ) -> Any | None:
-        return await session.get(AdminModel, principal_id)
+    ) -> AdminModel | None:
+        return await session.get(AdminModel, UUID(principal_id))
 
-    def principal_id(self, principal: Any) -> str:
-        return principal.subject
+    def principal_id(self, principal: AdminModel) -> str:
+        return str(principal.id)
 
-    def display_name(self, principal: Any) -> str:
+    def display_name(self, principal: AdminModel) -> str:
         return principal.email
 ```
 
 Pass the instance via `auth_backend=` and the rest of the admin pipeline (sessions, dashboard, list, detail) keeps working unchanged.
+
+Subclassing without the parameter still works and resolves to `AdminAuthBackend[Any]` — the pre-v0.263.0 behaviour. Note that `mypy --strict` (what `tempest new` scaffolds) turns on `disallow_any_generics`, so an unparameterized subclass now reports `Missing type arguments for generic type "AdminAuthBackend"`. Runtime is unchanged; write your principal, or `AdminAuthBackend[Any]`, to silence it.
 
 ### Migration guide 0.7 → 0.8
 

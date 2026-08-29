@@ -143,6 +143,17 @@ mexer neles. Todos rodam dentro do `make check`.
   callback cujo retorno o corpo descarta anotado como `-> None`. Guard: `tests/test_docs_type_guard.py` roda mypy sobre os
   exemplos —
   [`LESSONS.md`](LESSONS.md#a-anotação-que-a-própria-receita-contradiz-v02570).
+- **O `make check` roda um checker só, e o consumidor roda outro** (v0.263.0).
+  mypy aceita nome de parâmetro divergente em compatibilidade de `Protocol`;
+  basedpyright recusa com `Parameter name mismatch`. Por isso protocolo que
+  descreve um cliente que não é nosso escreve todo parâmetro **obrigatório**
+  como posicional (`/`) — parâmetro opcional continua nomeado, porque só dá
+  para passá-lo por keyword. A v0.257.0 consertou o protocolo em que doeu e
+  deixou outros três; os dois clientes que a receita nomeia
+  (`redis.asyncio.Redis` e `fakeredis`) eram recusados. Guard:
+  `tests/test_protocol_shape_guard.py`, que cobre também retorno de membro
+  resolvendo para `Any` —
+  [`LESSONS.md`](LESSONS.md#corrigir-onde-doeu-não-é-corrigir-a-regra-v02630).
 - **`Field(alias=...)` é defeito** (v0.234.0). Escreva o nome do fio duas
   vezes: `validation_alias` para ler, `serialization_alias` para escrever.
   mypy aceita `alias`, pyright/basedpyright não —

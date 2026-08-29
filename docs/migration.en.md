@@ -2,6 +2,155 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.263.0 — `AdminAuthBackend` became generic
+
+Breaks no runtime at all. It breaks **the type-check** for anyone who
+subclasses `AdminAuthBackend` and runs `mypy --strict` — which the
+`pyproject.toml` written by `tempest new` turns on by default.
+
+### What changes
+
+`AdminAuthBackend` is now `Generic[PrincipalT]`, parameterized by the
+*principal* — the value `authenticate` returns and that `load_principal`,
+`principal_id`, `display_name`, `mfa_enabled` and `verify_mfa` consume.
+Before, all six passed that value around as `Any`.
+
+Subclassing without a parameter is still **valid at runtime** and resolves to
+`AdminAuthBackend[Any]`, the behaviour through v0.262.0. What changes is that
+`mypy --strict` enables `disallow_any_generics`, and then:
+
+```text
+src/admin/backend.py:12: error: Missing type arguments for generic type
+"AdminAuthBackend"  [type-arg]
+```
+
+Measured: basedpyright in `standard` mode does not complain; mypy strict does.
+
+### What to do
+
+**1. Name your principal in the parameter.** This is the option that buys you
+something — it was `class LdapAuthBackend(AdminAuthBackend)` with
+`principal: Any` on every method; it becomes:
+
+```python
+from dataclasses import dataclass
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError
+
+
+@dataclass
+class LdapEntry:
+    """The principal your directory hands back."""
+
+    dn: str
+    common_name: str
+
+
+DIRECTORY: dict[str, LdapEntry] = {
+    "admin@example.com": LdapEntry(dn="cn=admin", common_name="Admin"),
+}
+
+
+class LdapAuthBackend(AdminAuthBackend[LdapEntry]):
+    """Authenticate against the directory instead of the user table."""
+
+    async def authenticate(
+        self,
+        session: AsyncSession,
+        *,
+        identifier: str,
+        password: str,
+    ) -> LdapEntry:
+        """Return the directory entry, or reject the login."""
+        entry = DIRECTORY.get(identifier)
+        if entry is None:
+            raise AdminAuthError("Invalid credentials")
+        return entry
+
+    async def load_principal(
+        self,
+        session: AsyncSession,
+        principal_id: str,
+    ) -> LdapEntry | None:
+        """Reload the entry on every request."""
+        for entry in DIRECTORY.values():
+            if entry.dn == principal_id:
+                return entry
+        return None
+
+    def principal_id(self, principal: LdapEntry) -> str:
+        """Return what gets serialized into the cookie."""
+        return principal.dn
+
+    def display_name(self, principal: LdapEntry) -> str:
+        """Return what the admin header shows."""
+        return principal.common_name
+```
+
+With the parameter written down, a `display_name` reading a different type
+than `authenticate` returned becomes an override error — in mypy (which names
+Liskov outright) and in basedpyright. That was exactly the defect `Any` let
+through.
+
+**2. Or preserve the previous behaviour, literally.** `AdminAuthBackend[Any]`
+is what the unparameterized class already resolved to:
+
+```python
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import AdminAuthBackend, AdminAuthError
+
+
+class LegacyAuthBackend(AdminAuthBackend[Any]):
+    """Exactly the behaviour through v0.262.0."""
+
+    async def authenticate(
+        self,
+        session: AsyncSession,
+        *,
+        identifier: str,
+        password: str,
+    ) -> Any:
+        """Return whatever principal your IdP hands back."""
+        raise AdminAuthError("Invalid credentials")
+
+    async def load_principal(
+        self,
+        session: AsyncSession,
+        principal_id: str,
+    ) -> Any | None:
+        """Reload the principal, or invalidate the session."""
+        return None
+
+    def principal_id(self, principal: Any) -> str:
+        """Return the cookie identifier."""
+        return str(principal)
+```
+
+No difference from what you had; it only silences `disallow_any_generics`.
+
+!!! note "`UserModelAuthBackend` asks for nothing"
+
+    The implementation the SDK ships already declares
+    `AdminAuthBackend[BaseUserModel]`. If you use the default backend —
+    `auth_backend=UserModelAuthBackend(user_model=UserModel)` — nothing
+    changes for you.
+
+!!! tip "The Redis protocols only got easier to satisfy"
+
+    The same release made every required parameter of `ThrottleBackend`,
+    `_RedisHashClient` and `RedisLike` positional-only, and swapped
+    `Awaitable[Any]` for the concrete type. That **widens** what is accepted:
+    a backend of yours that already passed still passes, and
+    `redis.asyncio.Redis`/`fakeredis` — which basedpyright rejected — pass
+    now. The only way to feel it is to have a call site that declared the
+    wrong return type on the back of `Any`; there, the type-checker will
+    point at the line.
+
 ## 0.261.0 — the WebSocket router sends a `hello` first
 
 Breaks a client that reads the **first** frame positionally. A client that

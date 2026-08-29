@@ -6,7 +6,17 @@ Defensive primitives: rate-limit by failure (login/OTP), opaque single-use token
 
 `AttemptThrottle` counts failed attempts per key (typically `<endpoint>:<identifier>` — login email, password-reset target, IP, etc.). When the threshold is crossed, `raise_if_blocked` throws `TooManyRequestsException` directly; or you can read `status`/`hit` and decide what to do.
 
-The constructor takes a `backend` (anything matching the `ThrottleBackend` Protocol — `redis.asyncio.Redis` works out of the box) + `max_attempts` + `window_seconds`. No "in-memory" backend is bundled — use the Redis client from `AsyncRedisManager`, or a fake in tests.
+The constructor takes a `backend` (anything matching the `ThrottleBackend` Protocol) + `max_attempts` + `window_seconds`. No "in-memory" backend is bundled — use the Redis client from `AsyncRedisManager`, or a fake in tests.
+
+!!! check "`redis.asyncio.Redis` and `fakeredis` satisfy the Protocol, measured"
+
+    Since v0.263.0 every required parameter of `ThrottleBackend` is
+    positional-only, so what the client calls its own parameters no longer
+    matters. Checked in both type-checkers against redis-py 8.1.0 and
+    `fakeredis.aioredis.FakeRedis`: mypy and basedpyright accept both.
+    Through v0.262.0 basedpyright rejected both, because the protocol
+    demanded `expire(..., seconds=...)` and redis-py calls that parameter
+    `time`.
 
 ```python
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -80,7 +90,7 @@ Use the fields to build friendly error payloads. `raise_if_blocked` already craf
     `cache.client` raises `RuntimeError` until `connect()` is called. Connect the manager at application startup (via `FastAPI(lifespan=...)` or `on_startup`) before accessing `cache.client` — and call `cache.disconnect()` on shutdown.
 
 !!! warning "`AttemptThrottle` ships no in-memory backend"
-    For tests without Redis, use a fake/double via [fakeredis](https://github.com/cunla/fakeredis-py) (`pip install fakeredis`) — it satisfies the `ThrottleBackend` Protocol (`get`, `incr`, `expire`, `ttl`, `delete`) with a fully in-memory Redis API.
+    For tests without Redis, use [fakeredis](https://github.com/cunla/fakeredis-py) (`pip install fakeredis`): `fakeredis.aioredis.FakeRedis` satisfies the `ThrottleBackend` Protocol (`get`, `incr`, `expire`, `ttl`, `delete`) with a fully in-memory Redis API. Checked in the type-checkers **and** at runtime: `tests/utils/test_throttle.py::TestTheClientsTheRecipeNames` drives a whole window over a `FakeRedis` — counting, blocking, `TooManyRequestsException`, `reset`, and the 900s TTL the first `hit` wrote.
 
 ## JWT token types (`typ`)
 

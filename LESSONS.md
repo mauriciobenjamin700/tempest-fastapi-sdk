@@ -76,6 +76,54 @@ emite row-value comparison. O `~cmp` da página descendente tinha o mesmo tipo
 de erro: `NOT (a > b)` é `<=`, então a página seguinte repetia a linha do
 cursor.
 
+## Corrigir onde doeu não é corrigir a regra (v0.263.0)
+
+A v0.257.0 achou que `Awaitable[Any]` e nome de parâmetro imposto recusavam
+o `redis.asyncio.Redis` que a doc manda passar, e consertou **o protocolo em
+que doeu**. Seis releases depois, uma vistoria de `Any` achou a mesma forma
+intocada em outros três: `ThrottleBackend`, `_RedisHashClient` e o `RedisLike`
+dos dois middlewares — oito membros `Awaitable[Any]` e dezesseis parâmetros
+obrigatórios nomeados.
+
+Medido com basedpyright contra redis-py 8.1.0, antes da correção:
+
+```text
+error: Type "Redis" is not assignable to declared type "ThrottleBackend"
+error: Type "FakeRedis" is not assignable to declared type "ThrottleBackend"
+```
+
+O basedpyright trunca a explicação antes da causa; ela aparece isolando o
+membro culpado num protocolo de um membro só:
+
+```text
+"expire" is an incompatible type
+  Type "(name: KeyT, time: ExpiryT, nx: bool = False, xx: bool = False, gt: bool = False, lt: bool = False) -> Awaitable[bool]" is not assignable to type "(name: str, seconds: int) -> Awaitable[Any]"
+"delete" is an incompatible type
+  Type "(*names: KeyT) -> Awaitable[int]" is not assignable to type "(name: str) -> Awaitable[Any]"
+```
+
+(dois diagnósticos separados, um por protocolo isolado.)
+
+Os **dois** clientes que a receita de segurança nomeia — o real e o
+`fakeredis` que ela manda usar em teste — eram recusados, enquanto a frase
+"funciona out-of-the-box" seguia publicada.
+
+Três coisas para levar:
+
+- **`make check` não podia ver.** O gate roda mypy, e mypy aceita nome de
+  parâmetro divergente em compatibilidade de `Protocol` — medido com um par
+  mínimo `expire(name, seconds)` / `expire(name, time)`: mypy `Success`,
+  basedpyright `Parameter name mismatch`. Regra que só um checker fora do
+  gate enxerga é regra que shippa violada até alguém olhar de novo.
+- **A lição vira guard ou vira recorrência.** A v0.257.0 escreveu a forma
+  certa na prosa do `CLAUDE.md` e não escreveu o teste. O guard que faltava
+  (`tests/test_protocol_shape_guard.py`) leva menos de uma tarde e acusa os
+  vinte e quatro achados quando alimentado com o código que shippou.
+- **Vistoria de `Any` acha o que a dor não achou.** Nenhum usuário reportou:
+  o runtime sempre funcionou, e quem roda só mypy nunca viu erro. O defeito
+  vivia inteiro dentro do type-checker do consumidor — o lugar que a nossa
+  CI, por construção, não é.
+
 ## Medir no lock não é medir no piso (v0.243.0 → v0.244.0)
 
 A mesma afirmação saiu errada **duas vezes seguidas**, e a segunda foi medida.

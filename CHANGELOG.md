@@ -5,6 +5,110 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.263.0] — 2026-08-29
+
+### Fixed
+
+- **Os dois clientes Redis que a documentação manda passar voltam a ser
+  aceitos pelo type-checker.**
+  ([#231](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/231))
+  A receita de segurança diz que `redis.asyncio.Redis` "funciona
+  out-of-the-box" como `ThrottleBackend`, e que o `fakeredis` serve nos
+  testes. Medido com basedpyright contra redis-py 8.1.0: **os dois eram
+  recusados.**
+
+  ```text
+  error: Type "Redis" is not assignable to declared type "ThrottleBackend"
+  error: Type "FakeRedis" is not assignable to declared type "ThrottleBackend"
+  ```
+
+  O basedpyright trunca a explicação antes de chegar na causa. Ela aparece
+  isolando cada membro culpado num protocolo de um membro só — `expire`:
+
+  ```text
+  "expire" is an incompatible type
+    Type "(name: KeyT, time: ExpiryT, nx: bool = False, xx: bool = False, gt: bool = False, lt: bool = False) -> Awaitable[bool]" is not assignable to type "(name: str, seconds: int) -> Awaitable[Any]"
+  ```
+
+  e `delete`:
+
+  ```text
+  "delete" is an incompatible type
+    Type "(*names: KeyT) -> Awaitable[int]" is not assignable to type "(name: str) -> Awaitable[Any]"
+  ```
+
+  Duas causas, ambas de nome de parâmetro. `ThrottleBackend.expire(name,
+  seconds)` exigia que o implementador chamasse o segundo parâmetro de
+  `seconds`; o redis-py chama de `time`. `delete(name)` exigia um parâmetro
+  nomeado; o redis-py declara `delete(*names)`, que nenhuma chamada por
+  keyword alcança. `mypy --strict` aceita as duas formas — é por isso que
+  shippou, e é a mesma cegueira que produziu a lição da v0.257.0.
+
+  Agora todo parâmetro **obrigatório** dos protocolos que descrevem um
+  cliente que não é nosso é posicional (`/`), então o nome que o cliente usa
+  deixa de importar. Medido depois: `redis.asyncio.Redis` e
+  `fakeredis.aioredis.FakeRedis` passam nos quatro protocolos, sob mypy e
+  sob basedpyright.
+
+  Parâmetro **opcional** continua nomeado de propósito: `set(key, payload,
+  ex=ttl)` só pode ser passado por keyword, e aí o nome é parte do contrato
+  — o redis-py também o chama de `ex`.
+
+### Changed
+
+- **Oito membros de `Protocol` trocam `Awaitable[Any]` pelo contrato real.**
+  ([#231](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/231))
+
+  Todos eram `Awaitable[Any]` — sete assinaturas, e a de `eval` conta duas
+  vezes porque `RedisLike` é declarada nos dois middlewares:
+
+  ```text
+  ThrottleBackend.get        -> Awaitable[str | bytes | None]
+  ThrottleBackend.expire     -> Awaitable[object]
+  ThrottleBackend.delete     -> Awaitable[object]
+  _RedisHashClient.hget      -> Awaitable[str | bytes | None]
+  _RedisHashClient.hset      -> Awaitable[object]
+  _RedisHashClient.hgetall   -> Awaitable[Mapping[str | bytes, str | bytes]]
+  RedisLike.eval             -> Awaitable[list[int]]     # rate limit e quota
+  ```
+
+  `Awaitable[Any]` deixa o call site declarar o que quiser. Medido com o
+  mypy deste repositório, o mesmo `await redis.eval(...)` era aceito como
+  `list[int]` **e** como `dict[str, complex]`; com o tipo concreto, a
+  segunda linha é erro. O script Lua é nosso, está no repositório, e o
+  Redis converte todo número Lua em inteiro na resposta — `list[int]` é o
+  que ele devolve, não uma esperança.
+
+  Resultado descartado vira `Awaitable[object]`, nunca `Awaitable[None]`:
+  `object` aceita qualquer retorno de implementador (o redis-py devolve
+  `bool` no `expire` e `int` no `delete`) sem apagar o tipo no call site.
+
+- **`AdminAuthBackend` é genérico no principal.**
+  ([#232](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/232))
+  O valor central que o backend manipula atravessava seis métodos como
+  `Any`, com o contrato escrito só em prosa ("the value returned by
+  `authenticate`"). Agora é `AdminAuthBackend(ABC, Generic[PrincipalT])`, e
+  `UserModelAuthBackend` declara o que já usava:
+  `AdminAuthBackend[BaseUserModel]`.
+
+  O que isso compra, medido: um backend declarado
+  `AdminAuthBackend[LdapEntry]` cujo `display_name` lê `dict[str, str]` é
+  recusado por mypy **e** por basedpyright — o primeiro citando Liskov por
+  nome, o segundo com `reportIncompatibleMethodOverride`. Antes, os dois
+  concordavam com o backend errado.
+
+  **Subclasse sem parâmetro continua válida em runtime** e resolve para
+  `AdminAuthBackend[Any]` — mas `mypy --strict` liga `disallow_any_generics`
+  e passa a acusá-la. O guia de migração tem a linha exata e a correção.
+
+### Added
+
+- **`tests/test_protocol_shape_guard.py`.** Duas regras que o `make check`
+  não tinha como ver: retorno de membro de `Protocol` que resolve para `Any`,
+  e parâmetro obrigatório não-posicional em protocolo de cliente de terceiro.
+  Alimentado com o código exato que shippou, o guard acusa os oito membros
+  erasados e os dezesseis parâmetros nomeados.
+
 ## [0.262.0] — 2026-08-28
 
 ### Added
