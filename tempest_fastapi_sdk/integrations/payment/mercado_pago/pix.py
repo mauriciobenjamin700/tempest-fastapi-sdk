@@ -239,7 +239,12 @@ async def create_pix_payment(
     if idempotency_key is not None:
         headers["X-Idempotency-Key"] = str(idempotency_key)
     payload = (
-        body.model_dump(by_alias=True, mode="json", exclude_none=True)
+        body.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude_none=True,
+            exclude_unset=True,
+        )
         if isinstance(body, BaseModel)
         else body
     )

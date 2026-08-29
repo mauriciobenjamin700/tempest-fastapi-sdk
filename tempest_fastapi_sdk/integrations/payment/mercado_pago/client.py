@@ -143,6 +143,14 @@ DEFAULT_BASE_URL: str = "https://api.mercadopago.com"
 def _dump(payload: Any) -> Any:
     """Serialize a request body to JSON-ready data.
 
+    ``exclude_unset`` rides along with ``exclude_none`` so a field
+    the caller never touched stays off the wire. An optional array
+    is generated with ``default_factory=list``, and to an API
+    "informed as empty" is a different claim from "not informed":
+    Woovi answers ``{"splits": []}`` with 400 *O array de split
+    precisa ter ao menos um item*, and accepts the same body
+    without the key.
+
     Args:
         payload (Any): A generated schema instance, or already-plain
             data when the specification typed the body loosely.
@@ -153,7 +161,12 @@ def _dump(payload: Any) -> Any:
         value untouched for anything else.
     """
     if isinstance(payload, BaseModel):
-        return payload.model_dump(by_alias=True, mode="json", exclude_none=True)
+        return payload.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude_none=True,
+            exclude_unset=True,
+        )
     return payload
 
 

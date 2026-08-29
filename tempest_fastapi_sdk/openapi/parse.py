@@ -1650,6 +1650,67 @@ def _reachable(
     return reached
 
 
+def _omit_optional_arrays_in_payloads(
+    schemas: Mapping[str, SchemaIR],
+    body_annotations: Sequence[str],
+    response_annotations: Sequence[str],
+) -> dict[str, SchemaIR]:
+    """Let a request-only model leave an optional array off the wire.
+
+    An optional array means opposite things in the two directions. Read
+    back from a response, an absent array is an empty one — the repo rule
+    that "no matches" is a list, not a missing value. Sent in a request
+    body it is a *claim*: measured against Woovi, ``{"splits": []}`` is
+    answered with ``400 O array de split precisa ter ao menos um item``,
+    and the identical body without the key is accepted. Materializing it
+    as ``default_factory=list`` made every generated call assert something
+    the caller never said.
+
+    So a field that the specification leaves optional stays omissible —
+    ``| None = None``, which the generated ``_dump`` already drops through
+    ``exclude_none``. Only models the closure reaches **as a body and
+    never as a response** are rewritten; one reaching the caller both ways
+    keeps the response spelling, and ``_dump``'s ``exclude_unset`` keeps
+    its untouched arrays off the wire anyway.
+
+    Args:
+        schemas (Mapping[str, SchemaIR]): Every generated class by name,
+            with ``dependencies`` already resolved.
+        body_annotations (Sequence[str]): Rendered request-body
+            annotations, one per operation that declares one.
+        response_annotations (Sequence[str]): Rendered success-response
+            annotations.
+
+    Returns:
+        dict[str, SchemaIR]: The same classes, with the optional array
+        fields of request-only models turned into nullable, omissible
+        ones.
+    """
+    payloads = _reachable(schemas, body_annotations) - _reachable(
+        schemas, response_annotations
+    )
+    rewritten: dict[str, SchemaIR] = {}
+    for name, schema in schemas.items():
+        if name not in payloads or schema.kind != "model":
+            rewritten[name] = schema
+            continue
+        fields = tuple(
+            replace(
+                field,
+                default="None",
+                default_is_factory=False,
+                annotation=field.annotation
+                if field.annotation.endswith("| None")
+                else f"{field.annotation} | None",
+            )
+            if field.default_is_factory and field.default == "list"
+            else field
+            for field in schema.fields
+        )
+        rewritten[name] = replace(schema, fields=fields)
+    return rewritten
+
+
 def _mark_response_reachable(
     schemas: Mapping[str, SchemaIR],
     annotations: Sequence[str],
@@ -1787,8 +1848,13 @@ def parse_spec(document: Mapping[str, Any], *, client_name: str) -> SpecIR:
         parser.ensure_component(str(wire_name), deref(document, raw))
 
     client = parser.build_client()
-    resolved = _mark_response_reachable(
+    resolved = _omit_optional_arrays_in_payloads(
         _resolve_dependencies(parser.schemas),
+        parser.body_annotations,
+        parser.response_annotations,
+    )
+    resolved = _mark_response_reachable(
+        resolved,
         parser.response_annotations,
         parser.body_annotations,
     )

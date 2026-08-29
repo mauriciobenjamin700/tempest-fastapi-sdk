@@ -1079,8 +1079,8 @@ class ApplicationPayloadApplication(BaseSchema):
     Attributes:
         name (str | None): Name of the application
         type (ApplicationPayloadApplicationType | None): Type of the application (API)
-        scopes (list[str]): List of scopes to assign to the application. When provided,
-            checkScopes will be enabled automatically.
+        scopes (list[str] | None): List of scopes to assign to the application. When
+            provided, checkScopes will be enabled automatically.
     """
 
     name: str | None = Field(description="Name of the application", default=None)
@@ -1088,12 +1088,12 @@ class ApplicationPayloadApplication(BaseSchema):
         description="Type of the application (API)",
         default=None,
     )
-    scopes: list[str] = Field(
+    scopes: list[str] | None = Field(
         description=(
             "List of scopes to assign to the application. When provided, checkScopes "
             "will be enabled automatically."
         ),
-        default_factory=list,
+        default=None,
     )
 
 
@@ -1762,8 +1762,8 @@ class CreatePartnerApplicationBodyApplication(BaseSchema):
         name (str): The name you want to give your application
         type (ApplicationEnumTypePayload): Type of the application that you want to
             register. Each of this has some kind of permissions.
-        scopes (list[str]): List of scopes to assign to the application. When provided,
-            checkScopes will be enabled automatically.
+        scopes (list[str] | None): List of scopes to assign to the application. When
+            provided, checkScopes will be enabled automatically.
     """
 
     name: str = Field(description="The name you want to give your application")
@@ -1773,12 +1773,12 @@ class CreatePartnerApplicationBodyApplication(BaseSchema):
             "kind of permissions."
         ),
     )
-    scopes: list[str] = Field(
+    scopes: list[str] | None = Field(
         description=(
             "List of scopes to assign to the application. When provided, checkScopes "
             "will be enabled automatically."
         ),
-        default_factory=list,
+        default=None,
     )
 
 
@@ -9776,7 +9776,7 @@ class AnticipationBeneficiaryCreatePayload(BaseSchema):
         validation_alias="paymentDaysOverride",
         serialization_alias="paymentDaysOverride",
         description="Per-beneficiary payment days (1-31).",
-        default_factory=list,
+        default=None,
     )
     frequency_override: AnticipationBeneficiaryCreatePayloadFrequencyOverride | None = (
         Field(
@@ -10007,8 +10007,8 @@ class ChargePayloadDiscountSettings(BaseSchema):
     Attributes:
         modality (ChargePayloadDiscountSettingsModality | None): Modality of discount to
             be applied
-        discount_fixed_date (list[ChargePayloadDiscountSettingsDiscountFixedDateItem]):
-            Absolute discounts applied to charge. Required when `modality` is
+        discount_fixed_date (list[ChargePayloadDiscountSettingsDiscountFixedDateItem] |
+            None): Absolute discounts applied to charge. Required when `modality` is
             `FIXED_VALUE_UNTIL_SPECIFIED_DATE` or `PERCENTAGE_UNTIL_SPECIFIED_DATE`.
             Must contain at least one entry.
         value (int | None): Discount value. Required when `modality` is one of the
@@ -10025,18 +10025,18 @@ class ChargePayloadDiscountSettings(BaseSchema):
         description="Modality of discount to be applied",
         default=None,
     )
-    discount_fixed_date: list[ChargePayloadDiscountSettingsDiscountFixedDateItem] = (
-        Field(
-            validation_alias="discountFixedDate",
-            serialization_alias="discountFixedDate",
-            description=(
-                "Absolute discounts applied to charge. Required when `modality` is "
-                "`FIXED_VALUE_UNTIL_SPECIFIED_DATE` or "
-                "`PERCENTAGE_UNTIL_SPECIFIED_DATE`. Must contain at least one entry."
-            ),
-            min_length=1,
-            default_factory=list,
-        )
+    discount_fixed_date: (
+        list[ChargePayloadDiscountSettingsDiscountFixedDateItem] | None
+    ) = Field(
+        validation_alias="discountFixedDate",
+        serialization_alias="discountFixedDate",
+        description=(
+            "Absolute discounts applied to charge. Required when `modality` is "
+            "`FIXED_VALUE_UNTIL_SPECIFIED_DATE` or `PERCENTAGE_UNTIL_SPECIFIED_DATE`. "
+            "Must contain at least one entry."
+        ),
+        min_length=1,
+        default=None,
     )
     value: int | None = Field(
         description=(
@@ -11207,8 +11207,8 @@ class KycOnboardingRequest(BaseSchema):
         redirect_url (str | None): URL para onde o merchant sera redirecionado apos
             concluir o onboarding. Quando informado, a pagina final do fluxo KYC
             redireciona automaticamente apos 5 segundos.
-        representatives (list[KycOnboardingRepresentative]): Socios/representantes da
-            empresa
+        representatives (list[KycOnboardingRepresentative] | None):
+            Socios/representantes da empresa
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -11238,9 +11238,9 @@ class KycOnboardingRequest(BaseSchema):
         examples=["https://partner.example.com/kyc-done"],
         default=None,
     )
-    representatives: list[KycOnboardingRepresentative] = Field(
+    representatives: list[KycOnboardingRepresentative] | None = Field(
         description="Socios/representantes da empresa",
-        default_factory=list,
+        default=None,
     )
 
 
@@ -12022,12 +12022,13 @@ class UploadDisputeEvidenceBody(BaseSchema):
     """Schema generated for UploadDisputeEvidenceBody.
 
     Attributes:
-        documents (list[UploadDisputeEvidenceBodyDocumentsItem]): documents for upload
+        documents (list[UploadDisputeEvidenceBodyDocumentsItem] | None): documents for
+            upload
     """
 
-    documents: list[UploadDisputeEvidenceBodyDocumentsItem] = Field(
+    documents: list[UploadDisputeEvidenceBodyDocumentsItem] | None = Field(
         description="documents for upload",
-        default_factory=list,
+        default=None,
     )
 
 
@@ -13609,15 +13610,15 @@ class ChargePayload(BaseSchema):
             `PERCENTAGE_PER_BUSINESS_DAY_ADVANCE`), provide a single `value`.
             **Rounding.** Computed discount and interest amounts are rounded to the
             nearest cent.
-        additional_info (list[ChargePayloadAdditionalInfoItem]): Additional info of the
-            charge
+        additional_info (list[ChargePayloadAdditionalInfoItem] | None): Additional info
+            of the charge
         enable_cashback_percentage (bool | None): true to enable cashback and false to
             disable.
         enable_cashback_exclusive_percentage (bool | None): true to enable fidelity
             cashback and false to disable.
         subaccount (str | None): Pix key of the subaccount to receive the charge
-        splits (list[ChargePayloadSplitsItem]): This is the array that will configure
-            how will be splitted the value of the charge
+        splits (list[ChargePayloadSplitsItem] | None): This is the array that will
+            configure how will be splitted the value of the charge
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -13755,11 +13756,11 @@ class ChargePayload(BaseSchema):
         ),
         default=None,
     )
-    additional_info: list[ChargePayloadAdditionalInfoItem] = Field(
+    additional_info: list[ChargePayloadAdditionalInfoItem] | None = Field(
         validation_alias="additionalInfo",
         serialization_alias="additionalInfo",
         description="Additional info of the charge",
-        default_factory=list,
+        default=None,
     )
     enable_cashback_percentage: bool | None = Field(
         validation_alias="enableCashbackPercentage",
@@ -13777,12 +13778,12 @@ class ChargePayload(BaseSchema):
         description="Pix key of the subaccount to receive the charge",
         default=None,
     )
-    splits: list[ChargePayloadSplitsItem] = Field(
+    splits: list[ChargePayloadSplitsItem] | None = Field(
         description=(
             "This is the array that will configure how will be splitted the value of "
             "the charge"
         ),
-        default_factory=list,
+        default=None,
     )
 
 
@@ -14976,8 +14977,8 @@ class SubscriptionPayload(BaseSchema):
             generation day.
         installment_count (int | None): number of installments (optional)
         correlation_id (str): Your correlation ID to keep track of this subscription
-        additional_info (list[SubscriptionPayloadAdditionalInfoItem]): Undocumented in
-            the spec.
+        additional_info (list[SubscriptionPayloadAdditionalInfoItem] | None):
+            Undocumented in the spec.
         pix_recurring_options (SubscriptionPayloadPixRecurringOptions | None): Pix
             automatic options
         charge_type (ChargeType | None): Charge method used for each charge generated by
@@ -15037,10 +15038,10 @@ class SubscriptionPayload(BaseSchema):
         serialization_alias="correlationID",
         description="Your correlation ID to keep track of this subscription",
     )
-    additional_info: list[SubscriptionPayloadAdditionalInfoItem] = Field(
+    additional_info: list[SubscriptionPayloadAdditionalInfoItem] | None = Field(
         validation_alias="additionalInfo",
         serialization_alias="additionalInfo",
-        default_factory=list,
+        default=None,
     )
     pix_recurring_options: SubscriptionPayloadPixRecurringOptions | None = Field(
         validation_alias="pixRecurringOptions",

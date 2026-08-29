@@ -2773,7 +2773,7 @@ class SendMessageRequest(BaseSchema):
 
     Attributes:
         message (str): Text content of the message to send
-        attachments (list[str]): File IDs to attach (upload first via attachments
+        attachments (list[str] | None): File IDs to attach (upload first via attachments
             endpoint)
     """
 
@@ -2781,9 +2781,9 @@ class SendMessageRequest(BaseSchema):
         description="Text content of the message to send",
         examples=["I can provide the tracking code for the shipment."],
     )
-    attachments: list[str] = Field(
+    attachments: list[str] | None = Field(
         description="File IDs to attach (upload first via attachments endpoint)",
-        default_factory=list,
+        default=None,
     )
 
 
@@ -3524,7 +3524,7 @@ class CreateMerchantOrderBody(BaseSchema):
         sponsor_id (int | None): Undocumented in the spec.
         payer (CreateMerchantOrderBodyPayer | None): Undocumented in the spec.
         site_id (CreateMerchantOrderBodySiteId | None): Undocumented in the spec.
-        items (list[dict[str, Any]]): Undocumented in the spec.
+        items (list[dict[str, Any]] | None): Undocumented in the spec.
         additional_info (str | None): Undocumented in the spec.
         application_id (str | None): Undocumented in the spec.
     """
@@ -3536,7 +3536,7 @@ class CreateMerchantOrderBody(BaseSchema):
     sponsor_id: int | None = None
     payer: CreateMerchantOrderBodyPayer | None = None
     site_id: CreateMerchantOrderBodySiteId | None = None
-    items: list[dict[str, Any]] = Field(default_factory=list)
+    items: list[dict[str, Any]] | None = None
     additional_info: str | None = None
     application_id: str | None = None
 
@@ -3606,11 +3606,12 @@ class CreatePayoutBody(BaseSchema):
 
     Attributes:
         external_reference (str | None): Undocumented in the spec.
-        transactions (list[CreatePayoutBodyTransactionsItem]): Undocumented in the spec.
+        transactions (list[CreatePayoutBodyTransactionsItem] | None): Undocumented in
+            the spec.
     """
 
     external_reference: str | None = None
-    transactions: list[CreatePayoutBodyTransactionsItem] = Field(default_factory=list)
+    transactions: list[CreatePayoutBodyTransactionsItem] | None = None
 
 
 class CreatePointPaymentIntentBody(BaseSchema):
@@ -4461,13 +4462,13 @@ class OrderRefundRequest(BaseSchema):
     specific transaction amounts for partial refunds.
 
     Attributes:
-        transactions (list[OrderRefundRequestTransactionsItem]): Transactions to refund.
-            Omit for full order refund.
+        transactions (list[OrderRefundRequestTransactionsItem] | None): Transactions to
+            refund. Omit for full order refund.
     """
 
-    transactions: list[OrderRefundRequestTransactionsItem] = Field(
+    transactions: list[OrderRefundRequestTransactionsItem] | None = Field(
         description="Transactions to refund. Omit for full order refund.",
-        default_factory=list,
+        default=None,
     )
 
 
@@ -5110,32 +5111,29 @@ class StoreRequestBusinessHours(BaseSchema):
     """Schema generated for StoreRequestBusinessHours.
 
     Attributes:
-        monday (list[StoreRequestBusinessHoursMondayItem]): Undocumented in the spec.
+        monday (list[StoreRequestBusinessHoursMondayItem] | None): Undocumented in the
+            spec.
     """
 
-    monday: list[StoreRequestBusinessHoursMondayItem] = Field(default_factory=list)
+    monday: list[StoreRequestBusinessHoursMondayItem] | None = None
 
 
 class SubscriptionPlanRequestPaymentMethodsAllowed(BaseSchema):
     """Schema generated for SubscriptionPlanRequestPaymentMethodsAllowed.
 
     Attributes:
-        payment_types (list[SubscriptionPlanRequestPaymentMethodsAllowedPaymentType]):
-            Undocumented in the spec.
-        payment_methods (list[SubscriptionPlanRequestPaymentMethodsAllowedPaymentMeth]):
-            Undocumented in the spec.
+        payment_types (list[SubscriptionPlanRequestPaymentMethodsAllowedPaymentType] |
+            None): Undocumented in the spec.
+        payment_methods (list[SubscriptionPlanRequestPaymentMethodsAllowedPaymentMeth] |
+            None): Undocumented in the spec.
     """
 
-    payment_types: list[SubscriptionPlanRequestPaymentMethodsAllowedPaymentType] = (
-        Field(
-            default_factory=list,
-        )
-    )
-    payment_methods: list[SubscriptionPlanRequestPaymentMethodsAllowedPaymentMeth] = (
-        Field(
-            default_factory=list,
-        )
-    )
+    payment_types: (
+        list[SubscriptionPlanRequestPaymentMethodsAllowedPaymentType] | None
+    ) = None
+    payment_methods: (
+        list[SubscriptionPlanRequestPaymentMethodsAllowedPaymentMeth] | None
+    ) = None
 
 
 class UpdateAdvancedPaymentBody(BaseSchema):
@@ -5205,10 +5203,10 @@ class UpdateChargebackBody(BaseSchema):
     """Schema generated for UpdateChargebackBody.
 
     Attributes:
-        files (list[UpdateChargebackBodyFilesItem]): Undocumented in the spec.
+        files (list[UpdateChargebackBodyFilesItem] | None): Undocumented in the spec.
     """
 
-    files: list[UpdateChargebackBodyFilesItem] = Field(default_factory=list)
+    files: list[UpdateChargebackBodyFilesItem] | None = None
 
 
 class UpdateMerchantOrderBody(BaseSchema):
@@ -5222,7 +5220,7 @@ class UpdateMerchantOrderBody(BaseSchema):
         sponsor_id (int | None): Undocumented in the spec.
         payer (UpdateMerchantOrderBodyPayer | None): Undocumented in the spec.
         site_id (CreateMerchantOrderBodySiteId | None): Undocumented in the spec.
-        items (list[dict[str, Any]]): Undocumented in the spec.
+        items (list[dict[str, Any]] | None): Undocumented in the spec.
         additional_info (str | None): Undocumented in the spec.
         application_id (str | None): Undocumented in the spec.
     """
@@ -5234,7 +5232,7 @@ class UpdateMerchantOrderBody(BaseSchema):
     sponsor_id: int | None = None
     payer: UpdateMerchantOrderBodyPayer | None = None
     site_id: CreateMerchantOrderBodySiteId | None = None
-    items: list[dict[str, Any]] = Field(default_factory=list)
+    items: list[dict[str, Any]] | None = None
     additional_info: str | None = None
     application_id: str | None = None
 
@@ -5589,18 +5587,18 @@ class OrderTransactions(BaseSchema):
     """Payment transactions for this order. Currently supports one transaction.
 
     Attributes:
-        payments (list[OrderPayment]): Payment transaction(s). Required when
+        payments (list[OrderPayment] | None): Payment transaction(s). Required when
             processing_mode=automatic. Must not be present when processing_mode=manual
             (add via POST /orders/{id}/transactions).
     """
 
-    payments: list[OrderPayment] = Field(
+    payments: list[OrderPayment] | None = Field(
         description=(
             "Payment transaction(s). Required when processing_mode=automatic. Must not "
             "be present when processing_mode=manual (add via POST "
             "/orders/{id}/transactions)."
         ),
-        default_factory=list,
+        default=None,
     )
 
 
@@ -5608,12 +5606,12 @@ class PaymentAdditionalInfo(BaseSchema):
     """Additional context for fraud scoring and installment calculation.
 
     Attributes:
-        items (list[PaymentItem]): Undocumented in the spec.
+        items (list[PaymentItem] | None): Undocumented in the spec.
         payer (PaymentAdditionalInfoPayer | None): Undocumented in the spec.
         shipments (PaymentAdditionalInfoShipments | None): Undocumented in the spec.
     """
 
-    items: list[PaymentItem] = Field(default_factory=list)
+    items: list[PaymentItem] | None = None
     payer: PaymentAdditionalInfoPayer | None = None
     shipments: PaymentAdditionalInfoShipments | None = None
 
@@ -6155,7 +6153,7 @@ class OrderRequest(BaseSchema):
         transactions (OrderTransactions): Payment transactions for this order. Currently
             supports one transaction.
         config (OrderConfig | None): Optional settings for the order.
-        items (list[OrderItem]): Items included in the order.
+        items (list[OrderItem] | None): Items included in the order.
         shipment (OrderShipment | None): Undocumented in the spec.
         additional_info (OrderRequestAdditionalInfo | None): Additional information
             required for specific payment methods (e.g. PSE).
@@ -6215,9 +6213,9 @@ class OrderRequest(BaseSchema):
         description="Optional settings for the order.",
         default=None,
     )
-    items: list[OrderItem] = Field(
+    items: list[OrderItem] | None = Field(
         description="Items included in the order.",
-        default_factory=list,
+        default=None,
     )
     shipment: OrderShipment | None = None
     additional_info: OrderRequestAdditionalInfo | None = Field(
