@@ -91,9 +91,11 @@ schemas) nunca teve procedência registrada. `mtime` no checkout era
 | `info.title` | `MercadoPago API` |
 | `info.version` | `1.0.0` |
 | `servers` | `https://api.mercadopago.com` (Production) |
-| Operações (paths) | 109 |
+| Paths | 109 |
+| Operações (path × verbo) | 143 |
 | Schemas em `components` | 99 |
 | sha256 | `893ec14bfd912dd377626fa0b4a4e9896afc2fbfb8f67fd6293502d39d0f6d46` |
+| Guard do digest | `tests/integrations/payment/mercado_pago/test_generated_drift.py::TestVendoredSpec::test_the_vendored_document_is_the_one_that_was_justified` |
 | Gera | `tempest_fastapi_sdk/integrations/payment/mercado_pago/{schemas,client}.py` |
 | Refresh | `make mercadopago-regen` (offline) · `make mercadopago-diff` (rede, valida contra o SDK oficial) |
 | Overlay | `scripts/mercadopago_overlay.py` — 2 correções, 7 adições, 3 remoções |
@@ -123,6 +125,30 @@ sondas e o que ficou **sem** correção: [`mercadopago-evidence.md`](mercadopago
 Não há hash de origem a comparar, porque não há origem. O digest acima fixa o
 que está no checkout; mudança nele é edição nossa, e precisa de justificativa
 no overlay ou no evidence.
+
+**Desde a v0.271.0 isso é forçado por teste.** Até então a frase acima era só
+prosa: editar o YAML à mão e regenerar passava verde, e o diff parecia um
+refresh de codegen de rotina. Medido — acrescentar uma linha de comentário ao
+documento deixava o teste de drift dos arquivos gerados **passar**, porque a
+regeneração usa o arquivo editado e produz saída consistente com ele:
+
+```text
+# com um comentário acrescentado ao vendorizado, antes do guard
+14 passed
+
+# com o guard
+FAILED ...::test_the_vendored_document_is_the_one_that_was_justified
+1 failed, 13 passed
+```
+
+O que o guard **não** faz, e é a diferença que importa: ele não diz de onde o
+arquivo veio. Para a OpenPix o digest é de bytes que o provedor serviu, então
+sustenta uma afirmação sobre **eles**. Aqui sustenta uma afirmação sobre
+**nós** — que o documento não mudou desde que alguém justificou o conteúdo.
+As 82 operações que o SDK oficial não toca continuam sem segunda fonte, e três
+delas responderam `404` quando sondadas. Achar a origem continua aberto na
+[issue #228](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/228);
+um digest não substitui isso.
 
 ## `stripe-api-facts.yaml`
 

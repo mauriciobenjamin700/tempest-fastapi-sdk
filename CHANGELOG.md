@@ -5,6 +5,49 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.271.0] — 2026-08-29
+
+### Added
+
+- **O documento vendorizado do Mercado Pago ganhou guard de digest.**
+  ([#228](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/228))
+  `vendor/PROVENANCE.md` já dizia que "mudança nele é edição nossa, e precisa
+  de justificativa" — mas isso era **só prosa**. Nenhum teste comparava o
+  digest do arquivo do Mercado Pago; `SPEC_SHA256` e o guard existiam apenas
+  do lado da OpenPix.
+
+  Medido: acrescentar uma linha de comentário ao YAML vendorizado deixava a
+  suíte inteira **passar**, porque o teste de drift regenera a partir do
+  arquivo editado e a saída fica consistente com ele —
+
+  ```text
+  # com um comentário acrescentado, antes do guard
+  14 passed
+
+  # com o guard
+  FAILED ...::test_the_vendored_document_is_the_one_that_was_justified
+  1 failed, 13 passed
+  ```
+
+  `scripts/regen_mercado_pago.py` ganhou `SPEC_SHA256` e `spec_digest()`,
+  espelhando a OpenPix, e o drift test do Mercado Pago compara os dois.
+
+  **O que ele não faz** está escrito junto, porque a diferença é o ponto: o
+  digest da OpenPix é de bytes que o provedor serviu, então sustenta uma
+  afirmação sobre **eles**. O Mercado Pago não publica especificação
+  (medido: `api.mercadopago.com/openapi{,.json}` respondem `404`), então
+  este digest sustenta uma afirmação sobre **nós** — que o documento não
+  mudou desde que alguém justificou o conteúdo. As 82 operações que o SDK
+  oficial não toca continuam sem segunda fonte, e três delas responderam
+  `404` quando sondadas. Achar a origem continua aberto na #228.
+
+### Fixed
+
+- **`vendor/PROVENANCE.md` contava operações com o rótulo errado.** A linha
+  dizia `Operações (paths) | 109`, misturando duas medidas diferentes. São
+  **109 paths** e **143 operações** (path × verbo) — os dois números agora
+  aparecem separados, cada um com o próprio rótulo.
+
 ## [0.270.0] — 2026-08-29
 
 ### Added

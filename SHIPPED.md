@@ -850,6 +850,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   corpo **capturado da API** — os fixtures antigos saíam da mesma
   especificação errada que os modelos, então fantasia e implementação
   concordavam — mais o guard contra regeração repor o tipo errado.
+- **Guard de digest do documento do Mercado Pago (v0.271.0)** — issue #228.
+  `scripts/regen_mercado_pago.py` ganhou `SPEC_SHA256` + `spec_digest()` e o
+  drift test compara os dois, espelhando o que a OpenPix tem desde a v0.260.0.
+  Fecha a segunda das três opções que a issue lista. Antes, editar o YAML
+  vendorizado à mão e regenerar passava verde (medido: 14 passed com um
+  comentário acrescentado); agora falha nomeando o arquivo. **Não fecha a
+  issue**: o digest fixa o arquivo, não estabelece de onde ele veio — o
+  Mercado Pago não publica OpenAPI, e as 82 operações que o SDK oficial não
+  toca seguem sem segunda fonte. Achar a origem é a opção 1 e continua aberta.
 - **Adapter da OpenPix exercitado no fio, e as seis correções que isso
   achou (v0.270.0)** — issues #239 a #245.
   `tests/integrations/payment/adapters/test_openpix_adapter_wire.py` dirige

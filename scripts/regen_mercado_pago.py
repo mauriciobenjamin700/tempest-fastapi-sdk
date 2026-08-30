@@ -32,6 +32,7 @@ generation time.
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import shutil
 import sys
@@ -51,9 +52,41 @@ REPO_ROOT: Path = Path(__file__).resolve().parent.parent
 SPEC_PATH: Path = REPO_ROOT / "vendor" / "mercadopago-openapi.yaml"
 """The pinned Mercado Pago specification.
 
-Vendored so regeneration and the drift test both work offline, and so the
-diff of an upstream change is reviewable. Excluded from the wheel — nothing
-at runtime reads it.
+Vendored so regeneration and the drift test both work offline. Excluded
+from the wheel — nothing at runtime reads it.
+
+Unlike the OpenPix document, this one has **no upstream to diff against**:
+measured on 2026-08-28, ``api.mercadopago.com/openapi{,.json}`` answer
+``404`` and the ``mercadopago`` GitHub organization publishes SDKs, carts
+and samples but no specification repository. So "is it still right?"
+cannot be answered by refetching. The second opinion here is the
+provider's own SDK — ``mercadopago`` on PyPI — pinned in
+``OFFICIAL_SDK_CALLS`` and compared by ``make mercadopago-diff``.
+"""
+
+SPEC_SHA256: str = "893ec14bfd912dd377626fa0b4a4e9896afc2fbfb8f67fd6293502d39d0f6d46"
+"""Digest of the vendored bytes.
+
+**This pins the file; it does not establish where the file came from.**
+The distinction matters, and conflating the two is the trap this constant
+could otherwise set. For OpenPix, ``SPEC_SHA256`` is the digest of bytes a
+provider served, so it backs a claim about *them*. Here nobody knows how
+the document was assembled — the header says "MercadoPago Developer
+Experience" and nothing else (issue #228) — so this digest is a claim
+about *us*: that the file has not changed since someone last justified it.
+
+What it buys, exactly: a hand edit to the vendored document stops being
+invisible. Before this, editing the YAML and regenerating passed green,
+and the diff looked like a routine codegen refresh. Now the guard names
+the file and the change has to be argued for in the overlay or in
+``vendor/PROVENANCE.md``.
+
+What it does not buy: any confidence that the 82 operations the official
+SDK never calls describe a real API. Three of those answered ``404`` when
+probed. That is issue #228's first option — finding the origin — and a
+digest cannot substitute for it.
+
+Refresh this value only alongside a written justification for the edit.
 """
 
 PACKAGE_DIR: Path = (
@@ -69,6 +102,18 @@ EXPORTS_START: str = "__all__: list[str] = ["
 
 EXPORTS_END: str = "]"
 """Line closing that block. The docstring under it is left alone."""
+
+
+def spec_digest() -> str:
+    """Hash the vendored specification as it sits on disk.
+
+    Returns:
+        str: Hex sha256 of the file's bytes.
+
+    Raises:
+        FileNotFoundError: If the vendored specification is missing.
+    """
+    return hashlib.sha256(SPEC_PATH.read_bytes()).hexdigest()
 
 
 def regenerate(destination: Path) -> tuple[list[Path], OverlayReport]:

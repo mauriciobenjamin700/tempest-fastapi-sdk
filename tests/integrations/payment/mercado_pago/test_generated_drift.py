@@ -41,8 +41,10 @@ from regen_mercado_pago import (  # noqa: E402
     GENERATED_FILES,
     PACKAGE_DIR,
     SPEC_PATH,
+    SPEC_SHA256,
     expected_exports,
     regenerate,
+    spec_digest,
 )
 
 
@@ -53,6 +55,35 @@ class TestVendoredSpec:
         """Regeneration and this suite both have to work offline."""
         assert SPEC_PATH.exists(), f"missing {SPEC_PATH}"
         assert SPEC_PATH.stat().st_size > 100_000
+
+    def test_the_vendored_document_is_the_one_that_was_justified(self) -> None:
+        """A hand edit to the vendored YAML stops being invisible.
+
+        Deliberately a narrower claim than the OpenPix guard it mirrors.
+        There, the digest is of bytes the provider served, so it backs a
+        statement about *them*. Mercado Pago publishes no specification —
+        measured 2026-08-28, `api.mercadopago.com/openapi{,.json}` answer
+        `404` — so this file has no upstream and nobody knows how it was
+        assembled (issue #228). The digest therefore pins *our* copy: it
+        says the document has not moved since someone last argued for its
+        contents, and nothing more.
+
+        That is still worth having. Before it, editing the YAML and
+        regenerating passed green, and the resulting diff read like a
+        routine codegen refresh — an operation this repository otherwise
+        keeps honest with `scripts/mercadopago_overlay.py`, whose whole
+        point is that corrections live outside the vendored file.
+
+        A failure here means the document changed. Justify the change in
+        the overlay or in `vendor/PROVENANCE.md` and update `SPEC_SHA256`
+        in the same commit.
+        """
+        assert spec_digest() == SPEC_SHA256, (
+            "vendor/mercadopago-openapi.yaml is not the document "
+            f"{SPEC_SHA256[:12]}… names. This file has no upstream to "
+            "refetch from, so a change to it is an edit of ours and needs "
+            "a written justification."
+        )
 
     def test_specification_is_not_in_the_wheel(self) -> None:
         """It is build-time input, not something a service loads.
