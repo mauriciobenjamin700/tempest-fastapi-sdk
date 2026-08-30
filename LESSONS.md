@@ -158,6 +158,50 @@ Três coisas para levar:
   vivia inteiro dentro do type-checker do consumidor — o lugar que a nossa
   CI, por construção, não é.
 
+## Taxa medida por amostragem precisa do N (v0.273.0)
+
+Escrevi numa issue que `secrets.token_urlsafe(32)` era reprovado pela política
+de senha em **25,57%** das vezes — "5113/20000". Número exato, contagem exata,
+comando que de fato rodou. Ao implementar, rodei de novo e deu **26,75%**
+(5350/20000). Nem um dos dois é falso, e nenhum dos dois é reproduzível: são
+duas amostras da mesma distribuição, e a contagem exata que eu tinha citado
+sugeria uma precisão que a medição não tinha.
+
+A 200 000 amostras a taxa para de andar:
+
+```text
+token_urlsafe(16)    106012/200000 rejeitados (53.01%)
+token_urlsafe(32)     53076/200000 rejeitados (26.54%)
+token_hex(32)        200000/200000 rejeitados (100.00%)
+```
+
+O terceiro é o único que podia ser citado como contagem: `token_hex` não tem
+maiúscula nem caractere especial, então reprova **sempre** — não é uma taxa, é
+uma propriedade.
+
+E o modelo analítico errou. Inclusão-exclusão sobre "esta classe está ausente",
+alfabeto base64url de 64 símbolos, dá 51,08% e 25,59% — 2 pontos abaixo do
+medido nos dois casos, muito além do erro amostral (σ ≈ 0,11pp em N=200000). A
+causa é real: `token_urlsafe(16)` produz 22 caracteres para 128 bits, e 22×6 =
+132, então **o último caractere não é uniforme** — ele carrega 2 bits reais e
+sai de um subconjunto de 4 símbolos, todos alfanuméricos. O modelo assumia
+uniformidade que o base64 não tem.
+
+Na prática:
+
+- **Taxa medida por amostragem vai com o N declarado, e num N onde ela é
+  estável.** "26,54% em 200 000 amostras" é reproduzível dentro de um décimo;
+  "5113/20000" não é reproduzível de jeito nenhum.
+- **Contagem exata só para o que é determinístico.** 20000/20000 é uma
+  propriedade; 5113/20000 é ruído com aparência de dado.
+- **Modelo que discorda da medição perde, e a divergência é uma pergunta.**
+  Os 2 pontos não eram erro de medição — eram o padding do base64, que é a
+  coisa que eu não sabia sobre a função que estava medindo.
+
+Sem guard: nenhum teste lê prosa, e ninguém sabe olhando um número se ele veio
+de N=20000 ou de N=200000. É revisão de diff — para cada taxa, *qual N, e ela
+é estável ali?*
+
 ## Medir no lock não é medir no piso (v0.243.0 → v0.244.0)
 
 A mesma afirmação saiu errada **duas vezes seguidas**, e a segunda foi medida.

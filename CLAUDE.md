@@ -80,6 +80,13 @@ Na prática:
 - **Declare o escopo junto da afirmação.** "Byte a byte idêntico" quase
   nunca é verdade sem qualificação — diga sob quais condições, e o que
   continua variando.
+- **Taxa medida por amostragem vai com o N, e num N onde ela é estável.**
+  Contagem exata (`5113/20000`) parece mais precisa do que é e não
+  reproduz; a mesma medição a 200 000 deu 26,54% e para de andar. Contagem
+  exata só para o que é determinístico (`20000/20000` é propriedade, não
+  taxa). E modelo analítico que discorda da medição **perde** — a
+  divergência é uma pergunta sobre a função medida, não um arredondamento:
+  [`LESSONS.md`](LESSONS.md#taxa-medida-por-amostragem-precisa-do-n-v02730).
 - **Ao afirmar um modo de falha, reproduza-o.** Mensagem de erro, status
   code, o que o usuário vê.
 - **Prosa entra na revisão do diff.** Para cada frase que afirma
@@ -177,6 +184,14 @@ mexer neles. Todos rodam dentro do `make check`.
 - **Wildcard não é re-export.** Para superfície gerada (OpenPix, 373 nomes
   lazy), `__all__` é a única forma disponível — e é suficiente. Detalhe em
   [`tempest_fastapi_sdk/integrations/CLAUDE.md`](tempest_fastapi_sdk/integrations/CLAUDE.md).
+- **Regra de segurança que a doc manda o consumidor implementar é regra que
+  o SDK deveria implementar** (v0.273.0). A receita de OAuth carregava três
+  `!!! danger` — conferir o `state`, exigir `email_verified is True` antes de
+  ligar conta por e-mail, chavear em `(provider, subject)`. Nenhuma tinha
+  guard, e não dava para ter: o SDK não era dono de nenhuma linha daquele
+  caminho. `!!! danger` num passo que o leitor escreve à mão é o sinal de que
+  falta superfície, não de que falta aviso — trazido para dentro do
+  `make_auth_router`, cada uma virou uma classe de teste.
 - **Sem emoji** em código ou docs, salvo pedido explícito.
 - **Bind default `127.0.0.1`** nos templates do CLI; `0.0.0.0` só quando um
   frontend de outra origem consome o serviço.

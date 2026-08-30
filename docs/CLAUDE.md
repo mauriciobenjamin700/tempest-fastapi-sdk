@@ -26,6 +26,13 @@ Por isso ele não tem espelho `.en.md` nem entrada no `nav:`.
 6. **Build limpo.** `make docs-build` (mkdocs `--strict`) com zero warning.
    Âncora quebrada sai só como `INFO`, então ao adicionar link cross-page
    confira a âncora no HTML buildado.
+7. **Link para a referência, vindo de página `.en.md`, é caminho do site, não
+   `../reference.md`.** A `reference.en.md` é página-ponteiro sem âncora
+   nenhuma, então um destino `../reference.md#simbolo` escrito na versão EN
+   vira link morto — reportado só como `INFO`, com o `--strict` verde. De
+   `docs/recipes/<p>.en.md` (buildado em `en/recipes/<p>/`) o alvo é
+   `../../../reference/#simbolo`. Confira contando os `../` contra o caminho
+   **buildado**, não contra o `docs/`.
 
 ## O que fica fora da ordem alfabética, de propósito
 

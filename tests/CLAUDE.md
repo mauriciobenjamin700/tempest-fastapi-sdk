@@ -69,6 +69,14 @@ dizendo por quê).
   status code e mensagem que o usuário vê. O FastAPI não converte
   `ValidationError` levantado dentro do corpo da rota
   ([`LESSONS.md`](../LESSONS.md#prosa-deduzida-shippa-errada-v02180)).
+- **`app.routes` não é a lista de rotas do router incluído.** No FastAPI
+  0.141.1 o `include_router` guarda uma entrada `_IncludedRouter` em vez de
+  achatar as rotas na aplicação, então `{r.path for r in app.routes}` não
+  contém nenhum `/auth/*` — e todo `assert "/auth/x" not in paths` passa por
+  vacuidade, inclusive com a feature ligada. Asere sobre o `APIRouter` que a
+  factory devolveu (`router.routes`) ou sobre `app.openapi()["paths"]`. Achado
+  ao montar o kill-switch de signup (v0.272.0), quando 4 testes passavam
+  provando nada.
 - **Fake não substitui o artefato real.** Suíte de fake esconde gap de
   design: dois defeitos do caminho de modelo só apareceram rodando peso de
   verdade, e quatro do caminho OO de fila só com broker real. Para superfície
