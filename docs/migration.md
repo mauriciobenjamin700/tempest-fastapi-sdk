@@ -2,6 +2,54 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.272.0 — os checks passaram a ver o que já estava errado
+
+Nenhuma assinatura muda, nenhum default muda. O que muda é **o que o
+`tempest check-config` reporta** — e o CI de quem roda
+`--fail-level warning` pode passar a falhar.
+
+### O que muda
+
+Três correções, todas na direção de reportar mais:
+
+| Check | Antes | Agora |
+| --- | --- | --- |
+| `deployment.I001` | lia `DEBUG`, que nenhum mixin declara — nunca disparava | resolve `SERVER_DEBUG` e depois `DEBUG` |
+| `database.W001` | a isenção de debug nunca valia; avisava com o debug **ligado** | fica calado com o debug ligado, avisa com ele desligado |
+| `security.W004` | não existia | avisa quando o segredo ainda é o default declarado no campo |
+
+O `security.W004` é o que muda o resultado do gate na prática. O default de
+`JWTSettings.JWT_SECRET` tem exatos 32 caracteres, então nunca acionava
+`security.W002` — um serviço que nunca definiu `JWT_SECRET` passava limpo.
+Agora não passa.
+
+### O que fazer
+
+Se o seu CI roda o gate com aviso bloqueante:
+
+```bash
+tempest check-config --fail-level warning
+```
+
+...e ele começar a falhar com `security.W004`, **a falha está certa**: o
+serviço estava assinando token com um valor publicado no código-fonte do
+SDK. Gere um segredo de verdade e ponha no ambiente:
+
+```bash
+tempest secrets rotate
+```
+
+Se o serviço declarou um campo `DEBUG` na mão em vez de compor
+`ServerSettings`, nada muda — a resolução tenta `SERVER_DEBUG` primeiro e
+cai em `DEBUG` depois.
+
+!!! note "O texto de duas mensagens mudou"
+    `deployment.I001` passou a nomear o campo que carregou o flag
+    (`SERVER_DEBUG is enabled.`), e o `database.W001` diz
+    `while debug is off` em vez de `while DEBUG is off`. Se alguma
+    automação casa esse texto por substring, ajuste; o **id** de cada
+    mensagem não mudou.
+
 ## 0.270.0 — `PixCharge.raw` usa a grafia do fio
 
 Não muda nenhuma assinatura. Muda **as chaves de um dicionário** que o

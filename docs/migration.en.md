@@ -2,6 +2,54 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.272.0 — the checks started seeing what was already wrong
+
+No signature changes, no default changes. What changes is **what
+`tempest check-config` reports** — and a CI running `--fail-level warning`
+may start failing.
+
+### What changes
+
+Three fixes, all in the direction of reporting more:
+
+| Check | Before | Now |
+| --- | --- | --- |
+| `deployment.I001` | read `DEBUG`, which no mixin declares — never fired | resolves `SERVER_DEBUG`, then `DEBUG` |
+| `database.W001` | the debug exemption never applied; it warned with debug **on** | quiet with debug on, warns with debug off |
+| `security.W004` | did not exist | warns when the secret still equals the default declared on its field |
+
+`security.W004` is the one that changes the gate's outcome in practice.
+`JWTSettings.JWT_SECRET` defaults to exactly 32 characters, so it never
+tripped `security.W002` — a service that never set `JWT_SECRET` passed
+clean. It does not any more.
+
+### What to do
+
+If your CI runs the gate with warnings blocking:
+
+```bash
+tempest check-config --fail-level warning
+```
+
+...and it starts failing on `security.W004`, **the failure is right**: the
+service was signing tokens with a value published in the SDK source.
+Generate a real secret and put it in the environment:
+
+```bash
+tempest secrets rotate
+```
+
+If your service declared a `DEBUG` field by hand instead of composing
+`ServerSettings`, nothing changes — resolution tries `SERVER_DEBUG` first
+and falls back to `DEBUG`.
+
+!!! note "Two message texts changed"
+    `deployment.I001` now names the field that carried the flag
+    (`SERVER_DEBUG is enabled.`), and `database.W001` says
+    `while debug is off` instead of `while DEBUG is off`. If any
+    automation matches that text by substring, adjust it; each message's
+    **id** is unchanged.
+
 ## 0.270.0 — `PixCharge.raw` uses the wire's spelling
 
 No signature changes. What changes is **the keys of a dictionary** the

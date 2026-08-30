@@ -32,10 +32,10 @@ tempest check-config --settings src.core.settings:settings
 Typical output:
 
 ```text
-WARNING: (security.W001) JWT_SECRET is empty — token verification is effectively disabled.
-	HINT: Set a random secret in production (dev-only when empty).
-INFO: (deployment.I001) DEBUG is enabled.
-	HINT: Ensure DEBUG is off in production (it leaks internals).
+WARNING: (security.W004) JWT_SECRET still holds the default declared by its settings field — a deployment that never set it signs tokens with a value that lives in source control.
+	HINT: Generate one with `tempest secrets rotate`.
+INFO: (deployment.I001) SERVER_DEBUG is enabled.
+	HINT: Ensure SERVER_DEBUG is off in production (it leaks internals).
 2 message(s), 0 at/above ERROR.
 ```
 
@@ -54,9 +54,29 @@ is absent from your settings):
 |----|-------|------|
 | `security.W001` / `W002` | WARNING | `JWT_SECRET` / `SECRET_KEY` / `TOKEN_SECRET` empty or < 32 chars |
 | `security.W003` | WARNING | CORS `*` **with** credentials |
-| `database.W001` | WARNING | SQLite `DATABASE_URL` with `DEBUG` off |
-| `deployment.I001` | INFO | `DEBUG` on |
+| `security.W004` | WARNING | secret still equal to the default declared on its own field |
+| `database.W001` | WARNING | SQLite `DATABASE_URL` with debug off |
+| `deployment.I001` | INFO | `SERVER_DEBUG` (or `DEBUG`) on |
 | `deployment.I002` | INFO | bind on `0.0.0.0` |
+
+!!! warning "The secret that passed was the only one guaranteed to be wrong"
+    Up to v0.271.0, `security.W002` only rejected a secret shorter than
+    32 characters — and the placeholder the SDK itself ships in
+    `JWTSettings.JWT_SECRET` is **exactly** 32. A deployment that forgot
+    to set `JWT_SECRET` signed tokens with a value published in the SDK
+    source, and `tempest check-config` reported everything as fine.
+
+    `security.W004` compares the value against
+    `model_fields[name].default`, never against a copy of the string —
+    so it keeps holding the day the placeholder changes.
+
+!!! note "Which field the debug check reads"
+    `deployment.I001` and `database.W001` resolve debug by name
+    precedence: `SERVER_DEBUG` first (the name the `ServerSettings`
+    mixin declares), then `DEBUG`, so a project that declared one by
+    hand keeps working. Up to v0.271.0 both read only `DEBUG` — `I001`
+    never fired, and `database.W001` warned backwards, complaining
+    about SQLite precisely when debug was **on**.
 
 ## Writing your own check
 
