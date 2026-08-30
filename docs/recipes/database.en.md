@@ -398,6 +398,14 @@ async def health() -> dict[str, object]:
     - `db.create_tables()` / `db.drop_tables()` — tests and local dev
       only; in production the schema is Alembic's.
 
+!!! danger "`create_tables()` is a silent no-op on an existing table"
+    `create_all` is `CREATE TABLE IF NOT EXISTS`: against a table that already
+    exists it **adds no column at all**, does not fail and does not warn. Using
+    it at boot and stamping `head` afterwards leaves an old schema with Alembic
+    declaring itself up to date — the failure surfaces weeks later, far from the
+    cause. The correct bootstrap, for all three states a database can be in, is
+    in [Migrations »](migrations.en.md).
+
 !!! danger "Never log `db_url`, always `db_url_safe`"
     The raw URL carries user and password. `db_url_safe` renders
     `postgresql+asyncpg://***@host/db`. The raw URL lives on a private

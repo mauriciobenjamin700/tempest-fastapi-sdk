@@ -524,6 +524,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Mercado Pago (Pix, cartão, boleto) »](mercado-pago.md)** | `MercadoPagoClient` (143 operações geradas da OpenAPI oficial do provedor), `to_cents` / `from_cents` (reais, não centavos), `verify_signature`, `MercadoPagoSettings`, `x_idempotency_key` por chamada |
 | **[Métricas »](metrics.md)** | `MetricsUtils` — snapshots de CPU / RAM / disco / GPU |
 | **[MFA (TOTP / 2FA) »](mfa.md)** | `MFAMixin`, `TOTPHelper`, endpoints enroll/confirm/verify/disable no `make_auth_router`, códigos de recuperação |
+| **[Migrations »](migrations.md)** | `AlembicHelper.sync_schema()` / `adopt()` / `base_revision()` / `has_existing_schema()` — como o schema nasce, adotar banco que precede o Alembic, e por que `create_tables()` + `stamp("head")` quebra em silêncio |
 | **[Modelops (export, bench, quantização) »](modelops.md)** | `benchmark_onnx` (latência/RAM/GPU/energia), `export_onnx_to_ort`, `quantize_onnx_dynamic`, `quantize_hf_onnx`, `rank` + fronteira de Pareto, `tempest model` |
 | **[Multi-tenant »](multi-tenant.md)** | `TenantScopedRepository` — isolamento por `tenant_id` em toda query |
 | **[Observabilidade (tracing) »](observability.md)** | `setup_tracing` (OpenTelemetry), `SlowQueryLogger` |

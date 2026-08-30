@@ -24,6 +24,23 @@ from tempest_fastapi_sdk.modelops.monitoring import MonitoringReport
 from tempest_fastapi_sdk.modelops.serving import OnnxPredictor, PredictorInfo
 from tempest_fastapi_sdk.schemas.base import BaseSchema
 
+_UNPROCESSABLE_CONTENT: int = 422
+"""``422``, spelled as the number rather than a Starlette constant.
+
+Starlette 1.x renamed ``HTTP_422_UNPROCESSABLE_ENTITY`` to
+``HTTP_422_UNPROCESSABLE_CONTENT`` and made the old name warn. The warning is
+a ``StarletteDeprecationWarning``, which subclasses ``UserWarning`` rather than
+``DeprecationWarning`` — so a consumer running ``filterwarnings = ["error"]``
+gets it **raised** while this route builds its response, and the 422 the route
+promises becomes a 500.
+
+The new name is not usable either: measured on 2026-08-30, it is absent from
+starlette 0.46.0, the floor ``fastapi>=0.141.1`` allows. Neither constant spans
+the supported range, so the number is the only spelling that does. The other
+statuses on this router keep their constants — only these four names warn.
+"""
+
+
 if TYPE_CHECKING:
     from tempest_fastapi_sdk.artifacts.registry import ArtifactRegistry
     from tempest_fastapi_sdk.modelops.monitoring import (
@@ -257,7 +274,7 @@ def make_prediction_router(
             result = predictor.predict(body.rows)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=_UNPROCESSABLE_CONTENT,
                 detail=str(exc),
             ) from exc
         if monitor is not None:

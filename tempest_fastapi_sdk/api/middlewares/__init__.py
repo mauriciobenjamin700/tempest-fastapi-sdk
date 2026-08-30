@@ -1,5 +1,8 @@
 """Reusable Starlette middlewares for FastAPI services."""
 
+from tempest_fastapi_sdk.api.middlewares.access_log import (
+    AccessLogMiddleware as AccessLogMiddleware,
+)
 from tempest_fastapi_sdk.api.middlewares.body_size import (
     BodySizeLimitMiddleware as BodySizeLimitMiddleware,
 )
@@ -21,6 +24,21 @@ from tempest_fastapi_sdk.api.middlewares.csrf import (
 )
 from tempest_fastapi_sdk.api.middlewares.graceful import (
     GracefulShutdownMiddleware as GracefulShutdownMiddleware,
+)
+from tempest_fastapi_sdk.api.middlewares.honeypot import (
+    DEFAULT_HONEYPOT_PATTERNS as DEFAULT_HONEYPOT_PATTERNS,
+)
+from tempest_fastapi_sdk.api.middlewares.honeypot import (
+    BanStore as BanStore,
+)
+from tempest_fastapi_sdk.api.middlewares.honeypot import (
+    HoneypotBanMiddleware as HoneypotBanMiddleware,
+)
+from tempest_fastapi_sdk.api.middlewares.honeypot import (
+    MemoryBanStore as MemoryBanStore,
+)
+from tempest_fastapi_sdk.api.middlewares.honeypot import (
+    RedisBanStore as RedisBanStore,
 )
 from tempest_fastapi_sdk.api.middlewares.idempotency import (
     IDEMPOTENCY_HEADER as IDEMPOTENCY_HEADER,
@@ -122,14 +140,19 @@ from tempest_fastapi_sdk.api.middlewares.response_cache import (
 __all__: list[str] = [
     "CSRF_COOKIE_NAME",
     "CSRF_HEADER_NAME",
+    "DEFAULT_HONEYPOT_PATTERNS",
     "IDEMPOTENCY_HEADER",
+    "AccessLogMiddleware",
+    "BanStore",
     "BodySizeLimitMiddleware",
     "CSRFMiddleware",
     "CachedResponse",
     "FailOpenRateLimitStore",
     "GracefulShutdownMiddleware",
+    "HoneypotBanMiddleware",
     "IdempotencyMiddleware",
     "IdempotencyStore",
+    "MemoryBanStore",
     "MemoryIdempotencyStore",
     "MemoryQuotaStore",
     "MemoryRateLimitStore",
@@ -142,6 +165,7 @@ __all__: list[str] = [
     "RateLimitResult",
     "RateLimitRule",
     "RateLimitStore",
+    "RedisBanStore",
     "RedisIdempotencyStore",
     "RedisQuotaStore",
     "RedisRateLimitStore",

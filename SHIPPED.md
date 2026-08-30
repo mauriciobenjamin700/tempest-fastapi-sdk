@@ -180,7 +180,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   hook so generated migrations ship `id`/`is_active`/
   `created_at`/`updated_at` first. `alembic.ini` ships with
   `sqlalchemy.url` empty — URL resolves at runtime from env /
-  settings / constructor. **Transactions (v0.200.0):**
+  settings / constructor. **First-boot bootstrap (v0.275.0):**
+  `AlembicHelper.sync_schema()` tells an empty database, one that
+  predates Alembic and one already migrated apart, reporting which path
+  it took via `SchemaSyncOutcome`; `adopt()` stamps the **base** (never
+  `head`), `base_revision()` and `has_existing_schema()` are the two
+  questions behind it. Exists because `create_tables()` + `stamp("head")`
+  is a plausible bootstrap that leaves an old schema with Alembic
+  declaring itself up to date — recipe `docs/recipes/migrations.md`. **Transactions (v0.200.0):**
   `transaction(session)` / `savepoint(session)` (+ `repo.transaction()` /
   `.savepoint()`), depth counter in `session.info` so **every repository on
   that session joins the same block**; `commit()`/`flush()`/`rollback()` on
@@ -290,7 +297,15 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `ResponseCacheMiddleware` (v0.159.0 — ETag/conditional-GET always on +
   opt-in server-side cache via `ResponseCacheStore`/`Memory`/`Redis`; respects
   `no-store`/`private`/`Set-Cookie`, `vary=` key),
-  `BodySizeLimitMiddleware`, hardened static files, CORS,
+  `BodySizeLimitMiddleware`, `AccessLogMiddleware` (v0.275.0 — one
+  structured line per request, pure ASGI so the exception path stays
+  intact; `redact` for secrets in the URL, prefix `exempt_paths` for SSE,
+  `5xx` at `ERROR`; register it **before** `RequestIDMiddleware` or the
+  lines carry no `request_id`), `HoneypotBanMiddleware` (v0.275.0 — 39
+  curated scanner signatures in `DEFAULT_HONEYPOT_PATTERNS` matched
+  against path **and** query, `BanStore`/`MemoryBanStore`/`RedisBanStore`,
+  fail-open by default, client IP via `trusted_ip_header`),
+  hardened static files, CORS,
   health + tool-spec routers. **Quotas (v0.216.0):** `RateLimitRule`
   (sliding window, or **token bucket** when `burst` is set),
   `StaticRateLimitPolicy`/`PlanRateLimitPolicy` (+ `plan_by_jwt_claim`/

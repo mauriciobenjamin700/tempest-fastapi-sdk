@@ -82,6 +82,9 @@ from tempest_fastapi_sdk.api import (
     DEFAULT_EXCLUDED_PREFIXES as DEFAULT_EXCLUDED_PREFIXES,
 )
 from tempest_fastapi_sdk.api import (
+    DEFAULT_HONEYPOT_PATTERNS as DEFAULT_HONEYPOT_PATTERNS,
+)
+from tempest_fastapi_sdk.api import (
     DEFAULT_LATENCY_BUCKETS as DEFAULT_LATENCY_BUCKETS,
 )
 from tempest_fastapi_sdk.api import (
@@ -101,6 +104,12 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     RAISES_ATTRIBUTE as RAISES_ATTRIBUTE,
+)
+from tempest_fastapi_sdk.api import (
+    AccessLogMiddleware as AccessLogMiddleware,
+)
+from tempest_fastapi_sdk.api import (
+    BanStore as BanStore,
 )
 from tempest_fastapi_sdk.api import (
     BodySizeLimitMiddleware as BodySizeLimitMiddleware,
@@ -133,6 +142,9 @@ from tempest_fastapi_sdk.api import (
     HealthCheck as HealthCheck,
 )
 from tempest_fastapi_sdk.api import (
+    HoneypotBanMiddleware as HoneypotBanMiddleware,
+)
+from tempest_fastapi_sdk.api import (
     IdempotencyMiddleware as IdempotencyMiddleware,
 )
 from tempest_fastapi_sdk.api import (
@@ -140,6 +152,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     LogSource as LogSource,
+)
+from tempest_fastapi_sdk.api import (
+    MemoryBanStore as MemoryBanStore,
 )
 from tempest_fastapi_sdk.api import (
     MemoryIdempotencyStore as MemoryIdempotencyStore,
@@ -194,6 +209,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     RateLimitStore as RateLimitStore,
+)
+from tempest_fastapi_sdk.api import (
+    RedisBanStore as RedisBanStore,
 )
 from tempest_fastapi_sdk.api import (
     RedisIdempotencyStore as RedisIdempotencyStore,
@@ -674,6 +692,9 @@ from tempest_fastapi_sdk.db import (
     AlembicHelper as AlembicHelper,
 )
 from tempest_fastapi_sdk.db import (
+    AmbiguousBaseRevisionError as AmbiguousBaseRevisionError,
+)
+from tempest_fastapi_sdk.db import (
     AsyncDatabaseManager as AsyncDatabaseManager,
 )
 from tempest_fastapi_sdk.db import (
@@ -768,6 +789,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     RepositorySignal as RepositorySignal,
+)
+from tempest_fastapi_sdk.db import (
+    SchemaSyncOutcome as SchemaSyncOutcome,
 )
 from tempest_fastapi_sdk.db import (
     SlowQueryLogger as SlowQueryLogger,
@@ -1702,6 +1726,7 @@ __all__: list[str] = [
     "DEFAULT_EXCLUDED_PREFIXES",
     "DEFAULT_FIREBASE_APP_NAME",
     "DEFAULT_GENERATED_PASSWORD_LENGTH",
+    "DEFAULT_HONEYPOT_PATTERNS",
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_LOCALE",
     "DEFAULT_MAX_RECORDS_PER_FILE",
@@ -1721,6 +1746,7 @@ __all__: list[str] = [
     "REQUEST_ID_HEADER",
     "SUPPORTED_LOCALES",
     "UF",
+    "AccessLogMiddleware",
     "ActivationResponseSchema",
     "ActivationToken",
     "AdminAccessPolicy",
@@ -1734,6 +1760,7 @@ __all__: list[str] = [
     "AdminSite",
     "AdminTheme",
     "AlembicHelper",
+    "AmbiguousBaseRevisionError",
     "AppException",
     "AppSettingsMeta",
     "ArtifactManifestEntry",
@@ -1748,6 +1775,7 @@ __all__: list[str] = [
     "AuthSettings",
     "AuthUserSchema",
     "BackupToolMissingError",
+    "BanStore",
     "BaseAppSettings",
     "BaseAuditLogModel",
     "BaseController",
@@ -1856,6 +1884,7 @@ __all__: list[str] = [
     "HardenedStaticFiles",
     "HealthCheck",
     "HexColorField",
+    "HoneypotBanMiddleware",
     "IdempotencyMiddleware",
     "IdempotencyStore",
     "InheritedErrorCodeWarning",
@@ -1886,6 +1915,7 @@ __all__: list[str] = [
     "MFAEnrollResponseSchema",
     "MFAMixin",
     "MFAVerifySchema",
+    "MemoryBanStore",
     "MemoryFeatureFlagBackend",
     "MemoryIdempotencyStore",
     "MemoryMetrics",
@@ -1977,6 +2007,7 @@ __all__: list[str] = [
     "RateLimitStore",
     "RatingField",
     "RatioField",
+    "RedisBanStore",
     "RedisFeatureFlagBackend",
     "RedisIdempotencyStore",
     "RedisQuotaStore",
@@ -1996,6 +2027,7 @@ __all__: list[str] = [
     "SSEBroker",
     "SSEData",
     "SameSite",
+    "SchemaSyncOutcome",
     "ServerSentEvent",
     "ServerSettings",
     "Session",

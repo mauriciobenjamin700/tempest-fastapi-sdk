@@ -76,7 +76,13 @@ from tempest_fastapi_sdk.db.expressions import Q as Q
 from tempest_fastapi_sdk.db.expressions import WhereClause as WhereClause
 from tempest_fastapi_sdk.db.migrations import AlembicHelper as AlembicHelper
 from tempest_fastapi_sdk.db.migrations import (
+    AmbiguousBaseRevisionError as AmbiguousBaseRevisionError,
+)
+from tempest_fastapi_sdk.db.migrations import (
     DestructiveMigrationError as DestructiveMigrationError,
+)
+from tempest_fastapi_sdk.db.migrations import (
+    SchemaSyncOutcome as SchemaSyncOutcome,
 )
 from tempest_fastapi_sdk.db.mixins import AuditMixin as AuditMixin
 from tempest_fastapi_sdk.db.mixins import LocaleColumnMixin as LocaleColumnMixin
@@ -168,6 +174,7 @@ __all__: list[str] = [
     "ENUM_TYPE_SUFFIX",
     "NAMING_CONVENTION",
     "AlembicHelper",
+    "AmbiguousBaseRevisionError",
     "AsyncDatabaseManager",
     "AuditAction",
     "AuditMixin",
@@ -202,6 +209,7 @@ __all__: list[str] = [
     "QueryPlan",
     "ReplaceEnumOp",
     "RepositorySignal",
+    "SchemaSyncOutcome",
     "SignalHandler",
     "SlowQueryLogger",
     "SoftDeleteMixin",

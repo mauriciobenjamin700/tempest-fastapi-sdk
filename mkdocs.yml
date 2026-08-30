@@ -151,6 +151,7 @@ plugins:
               - Mercado Pago (Pix, cards, boleto): recipes/mercado-pago.md
               - Metrics: recipes/metrics.md
               - MFA (TOTP / 2FA): recipes/mfa.md
+              - Migrations: recipes/migrations.md
               - "Model weights (Hub lifecycle)": recipes/model-weights.md
               - "Modelops (export, bench, quantization)": recipes/modelops.md
               - Multi-tenant: recipes/multi-tenant.md
@@ -441,6 +442,7 @@ nav:
       - "Mercado Pago (Pix, cartão, boleto)": recipes/mercado-pago.md
       - Métricas: recipes/metrics.md
       - MFA (TOTP / 2FA): recipes/mfa.md
+      - Migrations: recipes/migrations.md
       - "Modelops (export, bench, quantização)": recipes/modelops.md
       - Multi-tenant: recipes/multi-tenant.md
       - "Observabilidade (tracing)": recipes/observability.md

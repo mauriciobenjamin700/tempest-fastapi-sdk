@@ -158,6 +158,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.audit.snapshot_model
 ::: tempest_fastapi_sdk.db.audit.diff_snapshots
 ::: tempest_fastapi_sdk.db.migrations.DestructiveMigrationError
+::: tempest_fastapi_sdk.db.migrations.AmbiguousBaseRevisionError
+::: tempest_fastapi_sdk.db.migrations.SchemaSyncOutcome
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_savepoints
 ::: tempest_fastapi_sdk.db.connection.enable_sqlite_wal
 ::: tempest_fastapi_sdk.db.connection.is_memory_sqlite_url
@@ -649,6 +651,12 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.RedisIdempotencyStore
 ::: tempest_fastapi_sdk.api.middlewares.idempotency.IDEMPOTENCY_HEADER
 ::: tempest_fastapi_sdk.api.middlewares.body_size.BodySizeLimitMiddleware
+::: tempest_fastapi_sdk.api.middlewares.access_log.AccessLogMiddleware
+::: tempest_fastapi_sdk.api.middlewares.honeypot.HoneypotBanMiddleware
+::: tempest_fastapi_sdk.api.middlewares.honeypot.DEFAULT_HONEYPOT_PATTERNS
+::: tempest_fastapi_sdk.api.middlewares.honeypot.BanStore
+::: tempest_fastapi_sdk.api.middlewares.honeypot.MemoryBanStore
+::: tempest_fastapi_sdk.api.middlewares.honeypot.RedisBanStore
 ::: tempest_fastapi_sdk.api.middlewares.graceful.GracefulShutdownMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.csrf.CSRFMiddleware
 ::: tempest_fastapi_sdk.api.middlewares.csrf.make_csrf_token_dependency

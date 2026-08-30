@@ -35,6 +35,7 @@ Todos rodam dentro do `make check`.
 | `test_agent_docs_guard` | roster desta tabela bate com o disco; link e caminho citado em arquivo de agente existem | conteúdo da prosa |
 | `test_version_agreement` | `pyproject.toml` e `__version__` concordam | `uv.lock`, que `uv run` conserta em disco antes de qualquer teste ler |
 | `test_lock_version_guard` | versão **commitada** em `uv.lock` bate com a do `pyproject.toml`, lida por `git show HEAD:` | commit que ainda não existe (drift aparece na próxima execução) |
+| `test_testclient_httpx2_guard` | dev group deste repo **e** do template do `tempest new` pinam `httpx2`, sem o qual `fastapi.testclient` importa avisando um `UserWarning` que derruba quem roda `filterwarnings = ["error"]` | outro projeto que copie o template antes deste bump |
 | `test_wheel_payload` | payload não-`.py` da wheel é exatamente a allowlist | — |
 
 Marcadores de escape: `# docs-guard: skip` (fragmento não-parseável de

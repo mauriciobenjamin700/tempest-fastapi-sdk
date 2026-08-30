@@ -514,6 +514,7 @@ come back here to plug in each capability as you need it.
 | **[Mercado Pago (Pix, cards, boleto) »](mercado-pago.md)** | `MercadoPagoClient` (143 operations generated from the provider's own OpenAPI), `to_cents` / `from_cents` (reais, not cents), `verify_signature`, `MercadoPagoSettings`, `x_idempotency_key` per call |
 | **[Metrics »](metrics.md)** | `MetricsUtils` — CPU / RAM / disk / GPU snapshots |
 | **[MFA (TOTP / 2FA) »](mfa.md)** | `MFAMixin`, `TOTPHelper`, enroll/confirm/verify/disable endpoints on `make_auth_router`, recovery codes |
+| **[Migrations »](migrations.md)** | `AlembicHelper.sync_schema()` / `adopt()` / `base_revision()` / `has_existing_schema()` — how the schema comes into being, adopting a pre-Alembic database, and why `create_tables()` + `stamp("head")` breaks silently |
 | **[Model weights (Hub lifecycle) »](model-weights.md)** | `ModelRef` (`revision` / `local_files_only` / `trust_remote_code`), `resolve_revision`, `download_model` with a disk preflight, `list_cached_models` / `remove_cached_model`, `tempest model pull` / `cache-list` / `cache-rm` |
 | **[Modelops (export, bench, quantization) »](modelops.md)** | `benchmark_onnx` (latency/RAM/GPU/energy), `export_onnx_to_ort`, `quantize_onnx_dynamic`, `quantize_hf_onnx`, `rank` + Pareto frontier, `tempest model` |
 | **[Multi-tenant »](multi-tenant.md)** | `TenantScopedRepository` — `tenant_id` isolation on every query |

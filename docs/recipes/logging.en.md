@@ -232,6 +232,130 @@ Query parameters:
     - `500.log` isolates uncaught 500s (the `http_500` marker).
     - `make_logs_router` serves those files, paginated and authenticated.
 
+## One line per request — `AccessLogMiddleware`
+
+`configure_logging` formats what you log and `RequestIDMiddleware` binds the
+correlation id, but none of that emits the **one line per request** that makes
+`make_logs_router` worth reading. That is what `AccessLogMiddleware` is for:
+
+```python
+# src/api/app.py
+import logging
+
+from fastapi import FastAPI
+from tempest_fastapi_sdk import AccessLogMiddleware, RequestIDMiddleware
+
+app: FastAPI = FastAPI()
+
+app.add_middleware(AccessLogMiddleware, level=logging.INFO)
+app.add_middleware(RequestIDMiddleware)
+```
+
+Every request becomes a record whose `message` is the familiar line
+(`GET /api/users 200 12.4ms`) and whose details go through `extra=` as real
+fields — `http_method`, `http_path`, `http_query`, `http_status`,
+`duration_ms`, `client_ip`. That difference is what makes `JSONFormatter` write
+keys rather than an interpolated string, and therefore what lets `GET /logs`
+filter on them.
+
+!!! danger "Registration order decides whether `request_id` shows up"
+    Starlette applies the **last** `add_middleware` as the outermost layer, and
+    `RequestIDMiddleware` clears the context variable as it unwinds. So the
+    access log only sees the id when it runs **inside** it — that is, adding
+    `AccessLogMiddleware` **first**, as above. The other way round every line is
+    written without a `request_id`, with no error to tell you.
+
+### Level: `ERROR` is where the failure is
+
+A response below `500` is logged at the `level` you configured (`INFO` by
+default). A `5xx` is logged at `ERROR` — both the one the application rendered
+and the one that escaped a handler. Finding failed requests by filtering on
+level is the reason to write these lines at all.
+
+The escaping exception is the case that most needs a log line and the one
+hand-written versions most often miss: the handler blew up before sending
+anything, so there is no status to read. The middleware records `500`, adds an
+`error` field naming the exception class, and **re-raises** — your own error
+handling still decides what the client sees.
+
+### A stream is not a one-hour request
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+from tempest_fastapi_sdk import AccessLogMiddleware
+
+app: FastAPI = FastAPI()
+
+app.add_middleware(
+    AccessLogMiddleware,
+    exempt_paths=("/api/sse", "/api/metrics"),
+)
+```
+
+`exempt_paths` matches by **prefix**, so `("/api/sse",)` covers
+`/api/sse/stream`. An SSE connection held open for an hour would otherwise be
+logged, on close, as a request that took an hour.
+
+### A secret in the URL is already logged
+
+A deprecated endpoint that took a bearer-equivalent token as a path parameter
+reaches the middleware with the token in the URL — refusing the request in the
+handler does **not** un-log it. `redact` is the seam for that, applied to the
+path and the query separately:
+
+```python
+# src/api/app.py
+import re
+
+from fastapi import FastAPI
+from tempest_fastapi_sdk import AccessLogMiddleware
+
+_LEGACY_TOKEN_PATH: re.Pattern[str] = re.compile(
+    r"^(?P<prefix>/api)?/auth/google/[^/]+$"
+)
+
+app: FastAPI = FastAPI()
+
+
+def redact_path(value: str) -> str:
+    """Replace the secret segment of a legacy path before it is logged."""
+    if _LEGACY_TOKEN_PATH.match(value):
+        return _LEGACY_TOKEN_PATH.sub(r"\g<prefix>/auth/google/<redacted>", value)
+    return value
+
+
+app.add_middleware(AccessLogMiddleware, redact=redact_path)
+```
+
+### Behind a proxy
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+from tempest_fastapi_sdk import AccessLogMiddleware
+
+app: FastAPI = FastAPI()
+
+app.add_middleware(AccessLogMiddleware, trusted_ip_header="x-real-ip")
+```
+
+`client_ip` comes from `get_client_ip_from_scope`. Never point
+`trusted_ip_header` at a bare `X-Forwarded-For`: that header is **appended** to
+whatever the client sent, so its leftmost entry is attacker-chosen — and the log
+would start attributing requests to whatever address they picked. See
+[Security »](security.en.md).
+
+!!! check "Recap"
+    - `AccessLogMiddleware` is pure ASGI: it reads the status off
+      `http.response.start` and leaves the exception path untouched.
+    - Register it **before** `RequestIDMiddleware` for the lines to carry
+      `request_id`.
+    - `5xx` (rendered or escaped) is logged at `ERROR`; everything else at the
+      configured `level`.
+    - `exempt_paths` matches by prefix — that is what keeps SSE out of the log.
+    - `redact` rewrites path and query before the record exists.
+
 ## Recap
 
 - `configure_logging` writes structured JSON to stdout **and** to `logs/`, one

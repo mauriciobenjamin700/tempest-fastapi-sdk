@@ -5,6 +5,148 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.275.0] — 2026-08-30
+
+Quatro issues abertas por consumidores, todas da mesma família: **um serviço
+reescrevendo, à mão, um passo que sempre tem a mesma resposta certa** — e
+errando. Duas viram middleware, uma vira superfície no `AlembicHelper`, uma é
+uma linha de dependência que fazia todo projeto novo nascer avisando.
+
+O guard que a última delas trouxe achou um quinto defeito que ninguém tinha
+visto: uma rota do SDK que devolve 500 no lugar de 422 para todo consumidor que
+trata warning como erro.
+
+### Added
+
+- **`AccessLogMiddleware` — uma linha estruturada por request.**
+  ([#256](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/256))
+  O SDK amarrava o id de correlação e formatava JSON, mas nada emitia a linha
+  que faz o `make_logs_router` valer a leitura. Cada consumidor reescrevia os
+  mesmos ~60 linhas de ASGI puro e errava um subconjunto diferente de três
+  detalhes: não pode ser `BaseHTTPMiddleware` (o status sai do
+  `http.response.start` via wrapper de `send`, e o caminho de exceção fica
+  intocado); exceção que escapa não tem status, e é justamente o request que
+  mais precisa de linha; e o path pode carregar segredo, que recusar no handler
+  não desloga.
+
+  Emite `http_method`, `http_path`, `http_query`, `http_status`, `duration_ms`
+  e `client_ip` por `extra=`, então o `JSONFormatter` grava chaves de verdade e
+  o `GET /logs` filtra por elas. `5xx` — renderizado ou escapado — sai em
+  `ERROR`; o resto no `level` configurado. `exempt_paths` casa por prefixo,
+  para o SSE não virar "request de uma hora"; `redact` reescreve path e query
+  antes do registro existir.
+
+  A ordem de registro decide se a linha carrega `request_id`, e isso foi
+  medido, não deduzido: o `RequestIDMiddleware` limpa o context var ao
+  desenrolar, então o access log só vê o id quando roda por dentro dele —
+  adicionado **primeiro**, já que o Starlette aplica o último `add_middleware`
+  como o mais externo. Na ordem invertida toda linha sai sem id e nada avisa
+  (`tests/api/test_access_log.py::TestAccessLogRequestIdOrdering`).
+
+- **`HoneypotBanMiddleware` + `DEFAULT_HONEYPOT_PATTERNS` — ban de scanner.**
+  ([#257](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/257))
+  O `RateLimitMiddleware` responde *essa chave passou de N requests em W
+  segundos*; um scanner que sonda doze caminhos uma vez cada e vai embora nunca
+  o dispara. A entrega real aqui não é o middleware — é a lista de 39
+  assinaturas curadas (dotfile, recon de PHP, scanner de CMS, extensão de
+  backup/dump, sonda de credencial), portada do `BadActorMiddleware` que roda em
+  produção no `alofans-api`, casada contra path **e** query string. Vindo do
+  SDK, o consumidor pega assinatura nova com um bump em vez de manter regex na
+  mão.
+
+  Duas decisões ficam dentro em vez de na doc: **falha aberta** (todo acesso ao
+  store é guardado; store que levanta vira `WARNING` e o request passa, porque
+  blocklist que não alcança o Redis não pode transformar queda de cache em
+  queda de API) e **o IP vem de um header que só o edge escreve** — atrás de
+  nginx o `X-Forwarded-For` é acrescentado ao que o cliente mandou, então lê-lo
+  direto bane o IP errado e pode ser induzido a banir um usuário real.
+
+  `MemoryBanStore` e `RedisBanStore` implementam o protocolo `BanStore`. A
+  resposta é um 403 que não conta nada: scanner que aprende que está banido
+  aprende a rodar de IP. `/.well-known/` fica fora da lista de propósito — ACME
+  e `security.txt` moram lá.
+
+- **`AlembicHelper.sync_schema()` / `adopt()` / `base_revision()` /
+  `has_existing_schema()` — o bootstrap de schema do primeiro boot.**
+  ([#249](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/249))
+  Um serviço perdeu um dia com o chat inteiro fora do ar: um banco criado antes
+  de o projeto ter migrations foi carimbado em `head` no boot, sem que nenhuma
+  migration rodasse. `create_tables()` é `create_all`, ou seja
+  `CREATE TABLE IF NOT EXISTS` — no-op silencioso em tabela existente —, e o
+  `stamp("head")` seguinte registrou como aplicadas revisions que nunca rodaram.
+  O resultado é o pior estado possível: schema velho, com `alembic current`,
+  `upgrade` e `history` todos respondendo que está em dia, até uma query
+  estourar `no such column` semanas depois.
+
+  `sync_schema()` distingue os três estados e devolve qual caminho tomou
+  (`SchemaSyncOutcome`): banco vazio roda a árvore inteira; banco que precede o
+  Alembic é carimbado na **base** e só então sobe; banco já sob o Alembic só
+  sobe. O defeito está reproduzido ponta a ponta em
+  `tests/db/test_schema_sync.py::TestTheReportedDefect`, junto do caminho de
+  reparo (`stamp("base")` e `sync_schema()`) para quem já está no estado ruim.
+
+  Nova receita bilíngue [Migrations](https://mauriciobenjamin700.github.io/tempest-fastapi-sdk/recipes/migrations/),
+  que cobre como o schema nasce, adoção, reparo e onde `create_tables()`
+  continua legítimo — com a razão técnica, não só a proibição.
+
+### Changed
+
+- **O template do `tempest new` pina `httpx2>=2.12.0` no grupo `dev`, no lugar
+  de `httpx`.**
+  ([#251](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/251))
+  O Starlette 1.x liga o `starlette.testclient` ao `httpx2` quando ele está
+  instalado, e cai no `httpx` avisando quando não está. O aviso parece
+  cosmético e não é: `StarletteDeprecationWarning` herda de `UserWarning`, não
+  de `DeprecationWarning`, então um projeto com `filterwarnings = ["error"]`
+  quebra **no import**, antes de coletar teste, e o silenciador óbvio
+  (`ignore::DeprecationWarning`) não casa nada. Como o smoke test do scaffold
+  abre com `from fastapi.testclient import TestClient`, todo serviço novo
+  nascia avisando.
+
+  Medido com fastapi 0.141.1 / starlette 1.6.0 / httpx 0.28.1 /
+  httpx2 2.12.0: com o `httpx2` instalado o import é silencioso e o
+  `TestClient` responde `200` por cima dele. O grupo `dev` deste repo ganhou o
+  mesmo pin, mais `filterwarnings = ["error::starlette.exceptions.StarletteDeprecationWarning"]`
+  no `pytest`, para o aviso voltar como falha de coleta em vez de ruído.
+
+- **Piso do `fastapi` de `>=0.118.0` para `>=0.141.1`.**
+  ([#251](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/251))
+  Um piso 23 minors atrás do que a CI exercita deixava a resolução de qualquer
+  consumidor escolher um FastAPI que nada aqui testa. Isto **não** silencia o
+  aviso acima — os dois itens da issue são independentes.
+
+- **`AlembicHelper.stamp` documenta o modo de falha.** A docstring dizia
+  "useful when importing an existing schema into Alembic for the first time"
+  sem dizer em qual revision, com `revision: str = "head"` na assinatura logo
+  abaixo — convidando ao erro em vez de evitá-lo. Agora carrega o
+  `.. danger::` e aponta para `adopt()` / `sync_schema()`.
+
+### Fixed
+
+- **`make_serving_router` devolvia 500 no lugar do 422 para quem trata warning
+  como erro.** Achado pelo `filterwarnings` novo, não por relato: o
+  `tempest_fastapi_sdk/modelops/router.py` montava a rejeição com
+  `status.HTTP_422_UNPROCESSABLE_ENTITY`, que o Starlette 1.x depreciou. Ler
+  esse nome emite `StarletteDeprecationWarning` — que é `UserWarning` —, então
+  num consumidor com `filterwarnings = ["error"]` o aviso é **levantado**
+  enquanto a resposta está sendo montada, e o 422 que a rota promete vira 500.
+  Reproduzido em `tests/modelops/test_serving.py::TestRouter::test_the_wrong_width_is_a_422_not_a_500`
+  e `tests/modelops/test_monitoring.py::TestMonitoredRouter::test_a_rejected_request_is_not_counted`.
+
+  O nome novo (`HTTP_422_UNPROCESSABLE_CONTENT`) **não** resolve: medido, ele
+  não existe no starlette 0.46.0, que é o piso que `fastapi>=0.141.1` aceita.
+  Nenhuma das duas constantes cobre a faixa suportada, então a rota passou a
+  escrever o número, com o motivo registrado numa constante nomeada.
+
+### Internal
+
+- `AlembicHelper.current()` passou a compartilhar o caminho de leitura com
+  `has_existing_schema()` (`_read` / `_read_via_async`), em vez de duplicar a
+  lógica de engine sync com fallback assíncrono.
+- Guard novo `tests/test_testclient_httpx2_guard.py`: os dois `pyproject`
+  (este e o do template) pinam `httpx2`, e as duas afirmações de comportamento
+  da issue são re-executadas em vez de confiadas.
+
 ## [0.274.0] — 2026-08-30
 
 Quatro defeitos achados pela mesma migração real — um serviço adotando a

@@ -24,6 +24,9 @@ Esta página lista o que o SDK **ainda não oferece** + o que já foi entregue. 
 | Login social dentro do `make_auth_router` (`AUTH_OAUTH_ENABLED` + `oauth_clients=`, quatro rotas `/auth/oauth/*`, `OAuthSettings`, `make_user_oauth_account_model`, `NameMixin`) | ✅ v0.273.0 | `tempest_fastapi_sdk.auth` |
 | `CSRFMiddleware` + `make_csrf_token_dependency` | ✅ v0.29.0 | `tempest_fastapi_sdk.api.middlewares.csrf` |
 | `BodySizeLimitMiddleware` | ✅ v0.28.0 | `tempest_fastapi_sdk.api.middlewares.body_size` |
+| `AccessLogMiddleware` — uma linha estruturada por request, com `redact` e `exempt_paths` | ✅ v0.275.0 | `tempest_fastapi_sdk.api.middlewares.access_log` |
+| `HoneypotBanMiddleware` + `DEFAULT_HONEYPOT_PATTERNS` — ban de scanner, fail-open, IP por header confiável | ✅ v0.275.0 | `tempest_fastapi_sdk.api.middlewares.honeypot` |
+| `AlembicHelper.sync_schema` / `adopt` / `base_revision` — bootstrap de schema no primeiro boot | ✅ v0.275.0 | `tempest_fastapi_sdk.db.migrations` |
 | `BaseRepository.bulk_create_values / bulk_upsert` | ✅ v0.28.0 | `BaseRepository` |
 | Endpoint Prometheus `/metrics` | ✅ v0.28.0 | `tempest_fastapi_sdk.api.routers.metrics` |
 | Bundled signup / activate / login / password-reset | ✅ v0.31.0 | `tempest_fastapi_sdk.auth` |

@@ -420,6 +420,118 @@ async def login(request: Request, payload: LoginIn) -> LoginOut:
 
 Use `get_client_ip_from_scope(scope, trusted_header=...)` em middleware ou handlers de WebSocket onde só o scope ASGI está ao alcance.
 
+## Ban de scanner (`HoneypotBanMiddleware`)
+
+Toda API pública recebe um fluxo constante de scanner automatizado pedindo
+`/.env`, `/.git/config`, `/wp-admin/`, `/phpmyadmin/`, `/xmlrpc.php` e algumas
+centenas de irmãos. Nenhum deles é caminho que um cliente honesto peça — o que
+faz de **um único hit** um sinal bem mais confiável do que qualquer coisa que um
+rate limiter consiga inferir de volume.
+
+O `RateLimitMiddleware` não sabe expressar isso. Ele responde *essa chave passou
+de N requests em W segundos*, e um scanner que sonda doze caminhos uma vez cada
+e vai embora nunca o dispara. Os dois são complementares: o limiter delimita o
+cliente honesto, este delimita o desonesto.
+
+```python
+# src/api/app.py
+from fastapi import FastAPI
+from tempest_fastapi_sdk import HoneypotBanMiddleware, RedisBanStore
+
+from src.db.configs.redis import redis_manager
+
+app: FastAPI = FastAPI()
+
+app.add_middleware(
+    HoneypotBanMiddleware,
+    store=RedisBanStore(redis_manager.client),
+    trusted_ip_header="x-real-ip",
+)
+```
+
+Um IP banido é respondido **antes** do roteamento, da autenticação e do rate
+limiter — a rejeição mais barata possível, que é o motivo de banir em vez de
+limitar.
+
+### A lista é a entrega
+
+`DEFAULT_HONEYPOT_PATTERNS` é o que este middleware realmente entrega: uma lista
+curada e versionada de assinaturas — dotfiles, recon de PHP, scanner de CMS,
+extensão de backup/dump e sonda de credencial —, casada contra o path **e** a
+query string, sem nada específico do serviço que a hospeda. É pura pesquisa, e
+envelhece; vindo do SDK, você pega assinatura nova com um bump em vez de manter
+regex na mão.
+
+Ela é sobrescrevível de propósito, porque o julgamento não é universal — em
+algum lugar existe um serviço que serve `/wp-admin` legitimamente:
+
+```python
+# src/api/app.py
+import re
+
+from fastapi import FastAPI
+from tempest_fastapi_sdk import (
+    DEFAULT_HONEYPOT_PATTERNS,
+    HoneypotBanMiddleware,
+    RedisBanStore,
+)
+
+from src.db.configs.redis import redis_manager
+
+app: FastAPI = FastAPI()
+
+EXTRA: tuple[re.Pattern[str], ...] = (re.compile(r"(?:^|/)\.terraform(?:/|$)"),)
+
+app.add_middleware(
+    HoneypotBanMiddleware,
+    store=RedisBanStore(redis_manager.client),
+    patterns=DEFAULT_HONEYPOT_PATTERNS + EXTRA,
+    exempt_paths=("/wp-admin",),
+)
+```
+
+`/.well-known/` **não** está na lista: ACME e `security.txt` moram lá e são
+legítimos, então as regras de dotfile nomeiam os diretórios em vez de casar
+`/.` genérico.
+
+### Falha aberta, por padrão
+
+Toda chamada ao store é guardada. Store que levanta vira `WARNING` no log e o
+request segue. Blocklist que não alcança o Redis **precisa** deixar o tráfego
+passar — inverter isso transforma uma queda de cache numa queda da API inteira.
+A falha continua visível no log em vez de ser engolida.
+
+O único efeito de uma queda do store no caminho de escrita é que o ban não é
+gravado: o request ofensor é recusado do mesmo jeito.
+
+!!! danger "O IP tem que vir de um header que só o edge escreve"
+    Atrás de Nginx, `X-Forwarded-For` é **acrescentado** ao que o cliente
+    mandou, então a entrada mais à esquerda é escolhida pelo atacante. Uma
+    blocklist escrita à mão que lê esse header direto bane o IP errado — e pode
+    ser induzida a banir um usuário real. `trusted_ip_header` é repassado ao
+    `get_client_ip_from_scope`, que lê **um** header setado pelo edge e, na
+    falta dele, cai no peer da conexão. Sem proxy na frente, não passe o
+    parâmetro.
+
+### A resposta não conta nada
+
+O 403 diz apenas `{"detail": "Forbidden"}`. Um scanner que aprende que está
+banido aprende a rodar de IP. `status_code=` troca o código se você preferir
+outro; `ban_seconds=` troca a duração (default 24 h — o bastante para sobreviver
+a uma passada de varredura, curto o bastante para um endereço reciclado não
+pagar pelo antecessor).
+
+### Store
+
+| Store | Quando |
+| --- | --- |
+| `MemoryBanStore` | um worker só, ou teste. Os bans morrem com o processo. |
+| `RedisBanStore` | qualquer coisa com réplica: o ban é compartilhado no instante em que é escrito e o Redis é dono da expiração. Precisa do extra `[cache]`. |
+
+O contrato é o `BanStore` — `is_banned(ip)` e `ban(ip, ttl_seconds=…, reason=…)`
+—, então um store próprio (Postgres, um serviço de reputação) entra sem tocar no
+middleware.
+
 ## Recap
 
 - `AttemptThrottle` conta falha por chave (`login:<email>`, `reset:<ip>`) e

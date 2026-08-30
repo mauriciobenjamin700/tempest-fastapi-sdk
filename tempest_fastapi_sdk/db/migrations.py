@@ -3,19 +3,24 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from contextlib import redirect_stdout
 from importlib import resources
 from io import StringIO
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine
-from sqlalchemy.engine import make_url
+from sqlalchemy import create_engine, inspect
+from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.exc import NoSuchModuleError
+
+from tempest_fastapi_sdk.core.enums import BaseStrEnum
+
+_T = TypeVar("_T")
 
 # Alembic operation calls that destroy data. Matched against the source
 # of each pending migration's ``upgrade()`` so :meth:`AlembicHelper.safe_upgrade`
@@ -53,6 +58,45 @@ class DestructiveMigrationError(RuntimeError):
         super().__init__(
             f"refusing to run destructive migration(s) without force=True: {detail}"
         )
+
+
+class AmbiguousBaseRevisionError(RuntimeError):
+    """Raised when a migration tree has no single root to adopt at.
+
+    :meth:`AlembicHelper.base_revision` needs exactly one base. Zero means
+    the project has no revisions yet, so there is nothing to stamp; more
+    than one means the tree was merged from independent roots and only a
+    human knows which one describes the schema already on disk.
+
+    Attributes:
+        bases (list[str]): The roots Alembic reported.
+    """
+
+    def __init__(self, bases: list[str]) -> None:
+        """Initialize.
+
+        Args:
+            bases (list[str]): The roots Alembic reported.
+        """
+        self.bases: list[str] = bases
+        super().__init__(f"expected exactly one base revision, found {bases or 'none'}")
+
+
+class SchemaSyncOutcome(BaseStrEnum):
+    """What :meth:`AlembicHelper.sync_schema` did.
+
+    Attributes:
+        NO_MIGRATIONS (str): The project has no revisions yet, so the
+            database was left alone.
+        ADOPTED (str): A schema that predates Alembic was stamped at the
+            base revision and then upgraded.
+        SYNCED (str): The ordinary path — the database was already under
+            Alembic (or empty) and was upgraded to head.
+    """
+
+    NO_MIGRATIONS = "no_migrations"
+    ADOPTED = "adopted"
+    SYNCED = "synced"
 
 
 def _upgrade_section(source: str) -> str:
@@ -488,20 +532,82 @@ class AlembicHelper:
         """
         command.downgrade(self.config, revision)
 
+    def _read(self, operation: Callable[[Connection], _T]) -> _T:
+        """Run ``operation`` against the database on a sync connection.
+
+        Opens a short-lived engine from the configured URL with the async
+        driver stripped, and falls back to :meth:`_read_via_async` when no
+        sync DBAPI is available for the backend. Two different exceptions
+        signal that, and both are caught: ``NoSuchModuleError`` when
+        SQLAlchemy does not know the stripped driver at all, and
+        ``ModuleNotFoundError`` when it knows the driver but the package is
+        not installed — ``create_engine`` imports the DBAPI eagerly in
+        SQLAlchemy 2.0, so an asyncpg-only project (no psycopg2) raises on
+        construction rather than on connect.
+
+        Args:
+            operation (Callable[[Connection], _T]): Reader invoked with an
+                open sync connection. Must not depend on the connection
+                outliving the call.
+
+        Returns:
+            _T: Whatever ``operation`` returned.
+
+        Raises:
+            RuntimeError: When ``sqlalchemy.url`` is not configured, so
+                there is no database to read from.
+        """
+        url = self.config.get_main_option("sqlalchemy.url")
+        if url is None:
+            raise RuntimeError("sqlalchemy.url is not configured in alembic.ini")
+        try:
+            engine = create_engine(_strip_async_driver(url))
+        except (NoSuchModuleError, ModuleNotFoundError):
+            return self._read_via_async(url, operation)
+        try:
+            with engine.connect() as connection:
+                return operation(connection)
+        except ModuleNotFoundError:
+            return self._read_via_async(url, operation)
+        finally:
+            engine.dispose()
+
+    def _read_via_async(
+        self,
+        url: str,
+        operation: Callable[[Connection], _T],
+    ) -> _T:
+        """Run ``operation`` through the async driver instead.
+
+        Fallback for projects that install only an async DBAPI (e.g.
+        ``asyncpg``) and therefore have no sync driver for the stripped
+        URL. Opens a short-lived async engine and hands ``operation`` the
+        sync connection ``run_sync`` provides.
+
+        Args:
+            url (str): The (async-flavored) database URL from the config.
+            operation (Callable[[Connection], _T]): The reader to run.
+
+        Returns:
+            _T: Whatever ``operation`` returned.
+        """
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        async def _run() -> _T:
+            engine = create_async_engine(url)
+            try:
+                async with engine.connect() as connection:
+                    return await connection.run_sync(operation)
+            finally:
+                await engine.dispose()
+
+        return asyncio.run(_run())
+
     def current(self) -> str | None:
         """Return the revision the database is currently stamped at.
 
-        Reads ``alembic_version`` via a temporary sync engine derived
-        from the configured URL (async drivers get stripped).
-
-        Falls back to :meth:`_current_via_async` when no sync DBAPI is
-        available for the backend. Two different exceptions signal that,
-        and both are caught: ``NoSuchModuleError`` when SQLAlchemy does
-        not know the stripped driver at all, and ``ModuleNotFoundError``
-        when it knows the driver but the package is not installed —
-        ``create_engine`` imports the DBAPI eagerly in SQLAlchemy 2.0,
-        so an asyncpg-only project (no psycopg2) raises on construction
-        rather than on connect.
+        Reads ``alembic_version`` via a temporary connection derived from
+        the configured URL.
 
         Returns:
             str | None: The revision identifier, or ``None`` when the
@@ -511,53 +617,126 @@ class AlembicHelper:
             RuntimeError: When ``sqlalchemy.url`` is not configured, so
                 there is no database to read the revision from.
         """
-        config = self.config
-        url = config.get_main_option("sqlalchemy.url")
-        if url is None:
-            raise RuntimeError("sqlalchemy.url is not configured in alembic.ini")
-        try:
-            engine = create_engine(_strip_async_driver(url))
-        except (NoSuchModuleError, ModuleNotFoundError):
-            return self._current_via_async(url)
-        try:
-            with engine.connect() as connection:
-                migration_context = MigrationContext.configure(connection)
-                return migration_context.get_current_revision()
-        except ModuleNotFoundError:
-            return self._current_via_async(url)
-        finally:
-            engine.dispose()
+        return self._read(
+            lambda connection: MigrationContext.configure(
+                connection
+            ).get_current_revision()
+        )
 
-    def _current_via_async(self, url: str) -> str | None:
-        """Read the current revision through the async driver.
+    def has_existing_schema(self) -> bool:
+        """Report whether the database holds tables Alembic did not create.
 
-        Fallback for projects that install only an async DBAPI (e.g.
-        ``asyncpg``) and therefore have no sync driver for the stripped
-        URL. Opens a short-lived async engine and reads
-        ``alembic_version`` via ``run_sync``.
-
-        Args:
-            url (str): The (async-flavored) database URL from the config.
+        This is the question that separates "empty database, run the
+        migrations" from "database that predates Alembic, adopt it first",
+        and it is the one a hand-rolled bootstrap usually forgets to ask.
+        ``alembic_version`` is excluded because Alembic writes it itself,
+        so its presence says nothing about the application schema.
 
         Returns:
-            str | None: The current revision, or ``None`` when the
-            ``alembic_version`` table is missing/empty.
+            bool: ``True`` when at least one non-Alembic table exists.
+
+        Raises:
+            RuntimeError: When ``sqlalchemy.url`` is not configured.
         """
-        from sqlalchemy.ext.asyncio import create_async_engine
+        return self._read(
+            lambda connection: bool(
+                set(inspect(connection).get_table_names()) - {"alembic_version"}
+            )
+        )
 
-        async def _read() -> str | None:
-            engine = create_async_engine(url)
-            try:
-                async with engine.connect() as connection:
-                    return await connection.run_sync(
-                        lambda sync_conn: MigrationContext.configure(
-                            sync_conn
-                        ).get_current_revision()
-                    )
-            finally:
-                await engine.dispose()
+    def base_revision(self) -> str:
+        """Return the root revision of the migration tree.
 
-        return asyncio.run(_read())
+        This is the revision to stamp when adopting a schema that already
+        exists — never ``head``, which is :meth:`stamp`'s default and the
+        wrong answer for adoption.
+
+        Returns:
+            str: The single root revision identifier.
+
+        Raises:
+            AmbiguousBaseRevisionError: When the tree has no revisions, or
+                more than one root.
+        """
+        bases: list[str] = list(ScriptDirectory.from_config(self.config).get_bases())
+        if len(bases) != 1:
+            raise AmbiguousBaseRevisionError(bases)
+        return bases[0]
+
+    def adopt(self) -> bool:
+        """Bring a pre-Alembic database under Alembic, without upgrading.
+
+        Stamps the **base** revision when the database holds application
+        tables but no ``alembic_version`` row — the state a project reaches
+        by creating its schema with ``create_all`` before it had
+        migrations. Stamping the base says "the baseline is already
+        applied", which is true, and leaves every revision after it
+        pending, which is also true.
+
+        Does nothing when the database is already stamped (there is
+        nothing to adopt) or when it is empty (the baseline will create the
+        tables itself, so stamping would skip the work).
+
+        Returns:
+            bool: ``True`` when a stamp was written.
+
+        Raises:
+            AmbiguousBaseRevisionError: When adoption is needed but the
+                tree has no single root to stamp.
+            RuntimeError: When ``sqlalchemy.url`` is not configured.
+        """
+        if self.current() is not None:
+            return False
+        if not self.has_existing_schema():
+            return False
+        self.stamp(self.base_revision())
+        return True
+
+    def sync_schema(self, *, force: bool = False) -> SchemaSyncOutcome:
+        """Bring the schema in line with the migration tree, from any state.
+
+        This is the whole first-boot bootstrap, and it exists because the
+        obvious hand-written version is wrong in a way that stays invisible
+        for weeks. That version calls ``create_tables()`` and then
+        ``stamp("head")``: ``create_all`` is ``CREATE TABLE IF NOT
+        EXISTS``, so against a schema that already exists it adds no
+        column, and the stamp then records every revision as applied.
+        ``alembic current`` answers ``head``, ``alembic upgrade head`` has
+        nothing to do, ``alembic history`` looks clean — and the first
+        query touching a column a migration was supposed to add fails in
+        production, far from the cause.
+
+        The three states this distinguishes:
+
+        * **Empty database** — no stamp; ``safe_upgrade`` runs the whole
+          tree, and the schema the baseline builds is by construction the
+          one later revisions expect to alter.
+        * **Database that predates Alembic** — :meth:`adopt` stamps the
+          base, then ``safe_upgrade`` runs everything after it.
+        * **Database already under Alembic** — ``safe_upgrade`` alone.
+
+        Alembic is synchronous, so call this from a lifespan hook via
+        ``asyncio.to_thread(helper.sync_schema)``.
+
+        Args:
+            force (bool): Passed to :meth:`safe_upgrade`. Destructive
+                migrations are refused without it.
+
+        Returns:
+            SchemaSyncOutcome: Which of the three paths ran.
+
+        Raises:
+            DestructiveMigrationError: When a pending migration drops a
+                table, column or constraint and ``force`` is ``False``.
+            AmbiguousBaseRevisionError: When adoption is needed but the
+                tree has no single root to stamp.
+            RuntimeError: When ``sqlalchemy.url`` is not configured.
+        """
+        if not self.heads():
+            return SchemaSyncOutcome.NO_MIGRATIONS
+        adopted = self.adopt()
+        self.safe_upgrade(force=force)
+        return SchemaSyncOutcome.ADOPTED if adopted else SchemaSyncOutcome.SYNCED
 
     def heads(self) -> list[str]:
         """Return every head revision known to the script directory.
@@ -622,9 +801,20 @@ class AlembicHelper:
     def stamp(self, revision: str = "head", *, purge: bool = False) -> None:
         """Stamp the database with ``revision`` without running migrations.
 
-        Useful when importing an existing schema into Alembic for the
-        first time, or after a manual squash where ``alembic_version``
-        still points at a revision that no longer exists in the tree.
+        Useful after a manual squash where ``alembic_version`` still points
+        at a revision that no longer exists in the tree.
+
+        .. danger::
+            The default is ``"head"``, and ``"head"`` is the wrong answer
+            when importing an existing schema into Alembic for the first
+            time. Stamping ``head`` on a schema Alembic did not build
+            records every revision as applied when none of them ran: the
+            database keeps the old columns while ``alembic current``,
+            ``upgrade`` and ``history`` all report it up to date, and the
+            failure surfaces weeks later as ``no such column`` in
+            production. The revision to stamp when adopting is the **base**
+            — use :meth:`adopt`, or :meth:`sync_schema` for the whole
+            first-boot path, rather than choosing by hand.
 
         Args:
             revision (str): The revision to stamp.
@@ -676,5 +866,7 @@ class AlembicHelper:
 
 __all__: list[str] = [
     "AlembicHelper",
+    "AmbiguousBaseRevisionError",
     "DestructiveMigrationError",
+    "SchemaSyncOutcome",
 ]

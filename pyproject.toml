@@ -39,7 +39,7 @@ dependencies = [
     "tempest-cli>=0.3.0",
     "click>=8.0.0",
     "email-validator>=2.0.0",
-    "fastapi>=0.118.0",
+    "fastapi>=0.141.1",
     "httpx>=0.28.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
@@ -334,6 +334,7 @@ dev = [
     "aiosqlite>=0.20.0",
     "bcrypt>=5.0.0",
     "httpx>=0.28.0",
+    "httpx2>=2.12.0",
     "mypy>=1.13.0",
     "pyjwt>=2.12.1",
     "pytest>=8.3.3",
@@ -574,6 +575,9 @@ addopts = [
     "--cov-report=term-missing",
     "-m",
     "not model and not gpu and not docker",
+]
+filterwarnings = [
+    "error::starlette.exceptions.StarletteDeprecationWarning",
 ]
 markers = [
     "model: needs real model weights; opt-in, downloads on first run (make test-model)",

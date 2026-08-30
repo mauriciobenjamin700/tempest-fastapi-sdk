@@ -312,6 +312,15 @@ tempest db seed                                  # roda src.db.seeds:seed
 tempest db seed --seed src.db.fixtures:demo      # callable customizado
 ```
 
+!!! danger "`stamp head` não adota um banco existente"
+    `stamp` grava o ponteiro sem rodar nada. Contra um schema que o Alembic
+    **não** construiu, carimbar `head` registra como aplicadas revisions que
+    nunca rodaram: o banco fica com as colunas velhas enquanto `current`,
+    `upgrade` e `history` respondem que está em dia, e a falha aparece semanas
+    depois em produção. A revision certa para adoção é a **base** — veja
+    [Migrations »](migrations.md), que traz `AlembicHelper.adopt()` e
+    `sync_schema()` para não escolher isso à mão.
+
 #### Quando o Alembic recusa o comando
 
 Erro do Alembic que descreve o **estado do banco** — e não um bug — sai como

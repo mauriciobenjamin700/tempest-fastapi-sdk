@@ -67,7 +67,16 @@ from tempest_fastapi_sdk.api.middlewares import (
     CSRF_HEADER_NAME as CSRF_HEADER_NAME,
 )
 from tempest_fastapi_sdk.api.middlewares import (
+    DEFAULT_HONEYPOT_PATTERNS as DEFAULT_HONEYPOT_PATTERNS,
+)
+from tempest_fastapi_sdk.api.middlewares import (
     IDEMPOTENCY_HEADER as IDEMPOTENCY_HEADER,
+)
+from tempest_fastapi_sdk.api.middlewares import (
+    AccessLogMiddleware as AccessLogMiddleware,
+)
+from tempest_fastapi_sdk.api.middlewares import (
+    BanStore as BanStore,
 )
 from tempest_fastapi_sdk.api.middlewares import (
     BodySizeLimitMiddleware as BodySizeLimitMiddleware,
@@ -85,10 +94,16 @@ from tempest_fastapi_sdk.api.middlewares import (
     GracefulShutdownMiddleware as GracefulShutdownMiddleware,
 )
 from tempest_fastapi_sdk.api.middlewares import (
+    HoneypotBanMiddleware as HoneypotBanMiddleware,
+)
+from tempest_fastapi_sdk.api.middlewares import (
     IdempotencyMiddleware as IdempotencyMiddleware,
 )
 from tempest_fastapi_sdk.api.middlewares import (
     IdempotencyStore as IdempotencyStore,
+)
+from tempest_fastapi_sdk.api.middlewares import (
+    MemoryBanStore as MemoryBanStore,
 )
 from tempest_fastapi_sdk.api.middlewares import (
     MemoryIdempotencyStore as MemoryIdempotencyStore,
@@ -125,6 +140,9 @@ from tempest_fastapi_sdk.api.middlewares import (
 )
 from tempest_fastapi_sdk.api.middlewares import (
     RateLimitStore as RateLimitStore,
+)
+from tempest_fastapi_sdk.api.middlewares import (
+    RedisBanStore as RedisBanStore,
 )
 from tempest_fastapi_sdk.api.middlewares import (
     RedisIdempotencyStore as RedisIdempotencyStore,
@@ -288,6 +306,7 @@ __all__: list[str] = [
     "DEFAULT_ASSET_CACHE_CONTROL",
     "DEFAULT_DOCUMENT_CACHE_CONTROL",
     "DEFAULT_EXCLUDED_PREFIXES",
+    "DEFAULT_HONEYPOT_PATTERNS",
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_MAX_RECORDS_PER_FILE",
     "DEFAULT_SPA_CONTENT_SECURITY_POLICY",
@@ -295,6 +314,8 @@ __all__: list[str] = [
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "IDEMPOTENCY_HEADER",
     "RAISES_ATTRIBUTE",
+    "AccessLogMiddleware",
+    "BanStore",
     "BodySizeLimitMiddleware",
     "BusinessMetrics",
     "CSRFMiddleware",
@@ -305,9 +326,11 @@ __all__: list[str] = [
     "GracefulShutdownMiddleware",
     "HardenedStaticFiles",
     "HealthCheck",
+    "HoneypotBanMiddleware",
     "IdempotencyMiddleware",
     "IdempotencyStore",
     "LogSource",
+    "MemoryBanStore",
     "MemoryIdempotencyStore",
     "MemoryQuotaStore",
     "MemoryRateLimitStore",
@@ -328,6 +351,7 @@ __all__: list[str] = [
     "RateLimitResult",
     "RateLimitRule",
     "RateLimitStore",
+    "RedisBanStore",
     "RedisIdempotencyStore",
     "RedisQuotaStore",
     "RedisRateLimitStore",

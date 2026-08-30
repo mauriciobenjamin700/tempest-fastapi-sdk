@@ -313,6 +313,15 @@ tempest db seed                                  # runs src.db.seeds:seed
 tempest db seed --seed src.db.fixtures:demo      # custom callable
 ```
 
+!!! danger "`stamp head` does not adopt an existing database"
+    `stamp` writes the pointer without running anything. Against a schema
+    Alembic did **not** build, stamping `head` records revisions that never ran
+    as applied: the database keeps its old columns while `current`, `upgrade`
+    and `history` all answer that it is up to date, and the failure surfaces
+    weeks later in production. The right revision for adoption is the **base** —
+    see [Migrations »](migrations.en.md), which ships `AlembicHelper.adopt()`
+    and `sync_schema()` so the choice is not made by hand.
+
 #### When Alembic refuses the command
 
 An Alembic error describing the **state of the database** — not a bug — comes
