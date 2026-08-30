@@ -199,7 +199,13 @@ from tempest_fastapi_sdk.utils.opaque_token import (
 from tempest_fastapi_sdk.utils.opaque_token import (
     verify_opaque_token as verify_opaque_token,
 )
+from tempest_fastapi_sdk.utils.password import (
+    DEFAULT_GENERATED_PASSWORD_LENGTH as DEFAULT_GENERATED_PASSWORD_LENGTH,
+)
 from tempest_fastapi_sdk.utils.password import PasswordUtils as PasswordUtils
+from tempest_fastapi_sdk.utils.password import (
+    generate_password as generate_password,
+)
 from tempest_fastapi_sdk.utils.regex import (
     CEP as CEP,
 )
@@ -359,6 +365,7 @@ __all__: list[str] = [
     "CPF",
     "CPF_CNPJ_PATTERN",
     "CPF_PATTERN",
+    "DEFAULT_GENERATED_PASSWORD_LENGTH",
     "HUNDRED",
     "MFA_TOKEN_TYPE",
     "PHONE_BR_PATTERN",
@@ -436,6 +443,7 @@ __all__: list[str] = [
     "format_percent_br",
     "format_quantity_br",
     "generate_opaque_token",
+    "generate_password",
     "get_client_ip",
     "get_client_ip_from_scope",
     "get_state",

@@ -1,324 +1,470 @@
 # Login social (OAuth2 / OIDC)
 
-"Entrar com Google" tem três partes: mandar o usuário pro provedor, receber o
-`code` de volta e trocar esse `code` por um token que identifica a pessoa. O SDK
-entrega as três — `GoogleOAuthClient`, `GitHubOAuthClient` e o genérico
-`OIDCProvider` — com uma identidade normalizada no fim (`OAuthUser`), qualquer
-que seja o provedor.
+"Entrar com Google" tem quatro partes: mandar o usuário pro provedor, receber o
+`code` de volta, trocar esse `code` por uma identidade — e transformar essa
+identidade numa **sessão do seu serviço**. O SDK entrega as quatro.
 
-!!! info "O que o SDK faz e o que fica com você"
-    Os clients cobrem **só a dança OAuth2**: URL de autorização, troca do
-    `code`, busca do usuário. Gravar esse usuário na sua tabela, emitir o
-    **seu** token de sessão e gravar o cookie são decisões do serviço — e o SDK
-    já tem peças pra isso ([`UserAuthService`](auth-flow.md), `JWTUtils`,
-    `set_cookie`).
+As três primeiras são os clients: `GoogleOAuthClient`, `GitHubOAuthClient` e o
+genérico `OIDCProvider`, todos terminando na mesma identidade normalizada
+(`OAuthUser`). A quarta — a que decide quem é a pessoa no *seu* banco e emite o
+*seu* token — é o `make_auth_router` a partir da v0.273.0, ligado por
+`AUTH_OAUTH_ENABLED`.
+
+!!! info "Por que a quarta parte importa tanto"
+    Emitir o token na mão é o passo que parece trivial e não é. Um
+    `jwt.encode({"sub": str(user.id)})` produz um token **diferente** do que o
+    `POST /auth/login` devolve: sem o claim `typ`, sem refresh token opaco, sem
+    rotação, sem detecção de reuso por família e sem `POST /auth/logout`. O
+    serviço termina com dois mecanismos de sessão, um deles com metade das
+    garantias — e o dia em que alguém ligar `strict=True` na verificação de
+    tipo, todo login com Google quebra de uma vez.
 
 Nada de extra pra instalar: `httpx` é dependência base do SDK e o `HTTPClient`
 (com retry e circuit breaker) já vem embutido.
 
-## O fluxo em quatro passos
+## O fluxo, ponta a ponta
 
 ```mermaid
 sequenceDiagram
     participant B as Browser
     participant S as Seu serviço
     participant P as Provedor (Google)
-    B->>S: GET /auth/google/login
-    S->>B: 307 -> authorize_url (state no cookie)
+    B->>S: GET /auth/oauth/google/login
+    S->>B: 302 -> authorize_url (state no cookie HttpOnly)
     B->>P: consentimento
-    P->>B: 302 /auth/google/callback?code=...&state=...
-    B->>S: GET /auth/google/callback
+    P->>B: 302 /auth/oauth/google/callback?code=...&state=...
+    B->>S: GET /auth/oauth/google/callback
+    S->>S: confere o state contra o cookie
     S->>P: POST token (exchange_code)
     P->>S: access_token (+ id_token)
     S->>P: GET userinfo (fetch_user)
     P->>S: perfil
-    S->>B: seu JWT / cookie de sessão
+    S->>S: resolve (provider, subject) -> usuário local
+    S->>B: o mesmo par JWT do POST /auth/login
 ```
 
 ## 1. Registre o app no provedor
 
 No console do provedor (Google Cloud, GitHub Developer Settings, Auth0…) crie
-uma credencial OAuth e cadastre o **redirect URI exato** que o seu serviço vai
-expor — `https://api.exemplo.com/auth/google/callback`. Guarde `client_id` e
-`client_secret` nas settings:
+uma credencial OAuth e cadastre o **redirect URI exato** que o serviço expõe —
+`https://api.exemplo.com/auth/oauth/google/callback`. Depois componha o mixin
+`OAuthSettings`, que guarda as credenciais e **deriva** esse URI:
 
 ```python
 # src/core/settings.py
-from tempest_fastapi_sdk import BaseAppSettings
+from tempest_fastapi_sdk import (
+    AuthSettings,
+    DatabaseSettings,
+    JWTSettings,
+    OAuthSettings,
+    ServerSettings,
+)
 
 
-class Settings(BaseAppSettings):
+class Settings(
+    ServerSettings,
+    DatabaseSettings,
+    JWTSettings,
+    AuthSettings,
+    OAuthSettings,
+):
     """Environment-driven configuration."""
-
-    GOOGLE_CLIENT_ID: str
-    GOOGLE_CLIENT_SECRET: str
-    GOOGLE_REDIRECT_URI: str = "http://127.0.0.1:8000/auth/google/callback"
 
 
 settings: Settings = Settings()
 ```
 
+`OAuthSettings` lê cinco variáveis de ambiente:
+
+| Variável | Default | Para que serve |
+| --- | --- | --- |
+| `OAUTH_REDIRECT_BASE_URL` | `""` | Origem pública do serviço (`https://api.exemplo.com`), sem barra final e sem path |
+| `OAUTH_GOOGLE_CLIENT_ID` | `""` | `Client ID` do console do Google |
+| `OAUTH_GOOGLE_CLIENT_SECRET` | `""` | `Client secret` correspondente |
+| `OAUTH_GITHUB_CLIENT_ID` | `""` | `Client ID` do OAuth app do GitHub |
+| `OAUTH_GITHUB_CLIENT_SECRET` | `""` | `Client secret` correspondente |
+
+O redirect URI não é declarado — ele é **derivado** da base, do prefixo do
+router e da chave do provedor:
+
+```python
+from tempest_fastapi_sdk import OAuthSettings
+
+settings: OAuthSettings = OAuthSettings(
+    OAUTH_REDIRECT_BASE_URL="https://api.exemplo.com",
+)
+print(settings.oauth_redirect_uri("google"))
+# https://api.exemplo.com/auth/oauth/google/callback
+```
+
 !!! warning "O redirect URI tem que casar caractere a caractere"
     Barra final, `http` vs `https`, `127.0.0.1` vs `localhost` — qualquer
-    diferença faz o provedor recusar com `redirect_uri_mismatch`. Cadastre um
-    URI por ambiente (dev, staging, produção) em vez de tentar um curinga.
+    diferença faz o provedor recusar com `redirect_uri_mismatch`, e a recusa
+    acontece **antes** da tela de consentimento, o que faz parecer problema de
+    credencial. Cole no console exatamente o que `oauth_redirect_uri` imprime.
+    Em desenvolvimento, a base é o túnel ou `http://localhost:8000` — o
+    provedor redireciona o *navegador*, não a si mesmo, então o endereço
+    interno do container não serve.
 
-## 2. Instancie o client uma vez
+## 2. Duas peças no banco
 
-O client abre conexões HTTP, então ele vive junto dos outros recursos de infra —
-um por processo, não um por request:
+O login social escreve em duas tabelas: a de usuários (que ganha uma coluna de
+nome) e uma tabela nova, de identidades ligadas.
+
+```python
+# src/db/models.py
+from tempest_fastapi_sdk import (
+    BaseUserModel,
+    NameMixin,
+    make_user_oauth_account_model,
+    make_user_refresh_token_model,
+    make_user_token_model,
+)
+
+
+class UserModel(NameMixin, BaseUserModel):
+    """The project's user table."""
+
+    __tablename__ = "users"
+
+
+UserTokenModel = make_user_token_model(user_table="users")
+UserOAuthAccountModel = make_user_oauth_account_model(user_table="users")
+UserRefreshTokenModel = make_user_refresh_token_model(user_table="users")
+```
+
+**`NameMixin`** existe porque `BaseUserModel` não tem coluna `name` — ele foi
+desenhado para o login do admin, que precisa de e-mail e senha, não de saudação.
+O callback cria contas e guarda o nome que o provedor reporta, então a coluna
+passa a ser necessária. Ligar `AUTH_OAUTH_ENABLED` sem o mixin é recusado na
+construção do router, com a mensagem dizendo o que falta — falhar no boot, não
+no primeiro callback em produção.
+
+**A tabela de identidades é separada** — não duas colunas no `UserModel`. É o
+que permite a mesma pessoa ter Google **e** GitHub ligados, e é onde mora o
+`UNIQUE (provider, subject)` que faz a identidade, e não o e-mail, ser a chave
+do login.
+
+!!! info "A chave é `(provider, subject)`, nunca o e-mail"
+    E-mail muda de dono; `subject` não. Uma pessoa que troca o e-mail no Google
+    continua entrando na mesma conta local, porque o `subject` não mudou. O
+    modelo declara os dois `UNIQUE` no próprio abstrato, então um mapeamento
+    escrito à mão também não consegue shippar sem eles.
+
+Gere a migration com o Alembic normalmente — as duas mudanças (a coluna `name`
+e a tabela nova) saem num `alembic revision --autogenerate` só.
+
+## 3. Ligue no router
+
+Três linhas: o client, o `oauth_account_model` no serviço e o `oauth_clients` no
+router.
 
 ```python
 # src/api/dependencies/resources.py
-from tempest_fastapi_sdk import GoogleOAuthClient
-
-from src.core.settings import settings
-
-google: GoogleOAuthClient = GoogleOAuthClient(
-    client_id=settings.GOOGLE_CLIENT_ID,
-    client_secret=settings.GOOGLE_CLIENT_SECRET,
-    redirect_uri=settings.GOOGLE_REDIRECT_URI,
-)
-```
-
-Scopes default do Google: `openid email profile`. Passe `scopes=[...]` pra
-pedir mais (ex.: `"https://www.googleapis.com/auth/calendar.readonly"`).
-
-!!! tip "Reuse o seu `HTTPClient`"
-    Sem `http_client=`, o client constrói um dedicado (timeout 10s, breaker
-    desligado). Se o serviço já tem um `HTTPClient` configurado, injete: uma
-    pool de conexões só, e o retry/breaker/`X-Request-ID` que você já
-    calibrou valem pro provedor também.
-
-    ```python
-    from tempest_fastapi_sdk import GoogleOAuthClient, HTTPClient, RetryPolicy
-
-    http: HTTPClient = HTTPClient(
-        timeout=10.0,
-        retry_policy=RetryPolicy(max_attempts=2),
-    )
-    google: GoogleOAuthClient = GoogleOAuthClient(
-        client_id=settings.GOOGLE_CLIENT_ID,
-        client_secret=settings.GOOGLE_CLIENT_SECRET,
-        redirect_uri=settings.GOOGLE_REDIRECT_URI,
-        http_client=http,
-    )
-    ```
-
-    Quando o client é dono do `HTTPClient` (sem `http_client=`), feche no
-    shutdown com `await google.aclose()` — é no-op se o client foi injetado.
-
-## 3. A rota de início: `state` + redirect
-
-`state` é a proteção contra CSRF do fluxo: um valor aleatório que você guarda
-**antes** do redirect e confere **na volta**. `generate_oauth_state()` gera; um
-cookie `HttpOnly` guarda:
-
-```python
-# src/api/routers/oauth.py
-from fastapi import APIRouter
-from fastapi.responses import RedirectResponse
-from tempest_fastapi_sdk import generate_oauth_state, set_cookie
-
-from src.api.dependencies.resources import google
-
-router: APIRouter = APIRouter(prefix="/auth/google", tags=["oauth"])
-
-STATE_COOKIE: str = "oauth_state"
-
-
-@router.get("/login")
-async def login() -> RedirectResponse:
-    """Redirect the browser to Google, remembering the CSRF state."""
-    state: str = generate_oauth_state()
-    response: RedirectResponse = RedirectResponse(
-        google.build_authorize_url(state=state),
-    )
-    set_cookie(
-        response,
-        STATE_COOKIE,
-        state,
-        max_age=600,
-        samesite="lax",
-    )
-    return response
-```
-
-`build_authorize_url` aceita `**extra` pra qualquer parâmetro do provedor:
-`build_authorize_url(state=state, access_type="offline", prompt="consent")`
-pede um `refresh_token` ao Google.
-
-!!! danger "Sem conferir o `state`, o callback é forjável"
-    Um atacante consegue induzir o browser da vítima a chamar o seu
-    `/callback` com um `code` obtido na conta *dele* — e a vítima termina
-    logada na conta do atacante. A comparação do passo 4 é o que fecha isso;
-    ela não é opcional.
-
-## 4. O callback: valida, troca, busca o usuário
-
-```python
-# src/api/routers/oauth.py (continuação)
-
-from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse
-
 from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
     GoogleOAuthClient,
-    OAuthTokens,
-    OAuthUser,
-    UnauthorizedException,
-    clear_cookie,
-    set_cookie,
+    UserAuthService,
 )
 
-from src.api.routers.oauth import oauth_login
 from src.core.settings import settings
-
-STATE_COOKIE = "oauth_state"
-
-google = GoogleOAuthClient(
-    client_id=settings.GOOGLE_CLIENT_ID,
-    client_secret=settings.GOOGLE_CLIENT_SECRET,
-    redirect_uri=settings.GOOGLE_REDIRECT_URI,
+from src.db.models import (
+    UserModel,
+    UserOAuthAccountModel,
+    UserRefreshTokenModel,
+    UserTokenModel,
 )
 
-router = APIRouter()
+db: AsyncDatabaseManager = AsyncDatabaseManager(**settings.database_kwargs())
 
+google: GoogleOAuthClient = GoogleOAuthClient(**settings.google_kwargs())
 
-@router.get("/callback")
-async def callback(request: Request, code: str, state: str) -> RedirectResponse:
-    """Complete the OAuth dance and hand the browser your own session.
-
-    Raises:
-        UnauthorizedException: When the `state` does not match the cookie
-            issued at `/login`, which means a forged callback.
-    """
-    expected: str | None = request.cookies.get(STATE_COOKIE)
-    if expected is None or expected != state:
-        raise UnauthorizedException(message="Invalid OAuth state")
-
-    tokens: OAuthTokens = await google.exchange_code(code)
-    profile: OAuthUser = await google.fetch_user(tokens)
-
-    access_token: str = await oauth_login.login(profile)
-
-    response: RedirectResponse = RedirectResponse("/")
-    clear_cookie(response, STATE_COOKIE)
-    set_cookie(response, "access_token", access_token, max_age=3600)
-    return response
+auth_service: UserAuthService = UserAuthService(
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    db=db,
+    refresh_token_model=UserRefreshTokenModel,
+    oauth_account_model=UserOAuthAccountModel,
+)
 ```
 
-`OAuthUser` é a mesma forma pra todo provedor:
+```python
+# src/api/app.py
+from fastapi import FastAPI
+from tempest_fastapi_sdk import make_auth_router
+
+from src.api.dependencies.resources import auth_service, db, google
+
+
+def create_app() -> FastAPI:
+    """Build the application with social login mounted."""
+    app: FastAPI = FastAPI()
+    app.include_router(
+        make_auth_router(
+            auth_service,
+            session_factory=db.session_dependency,
+            oauth_clients={"google": google},
+        )
+    )
+    return app
+```
+
+Ligue o switch no ambiente:
+
+```bash
+AUTH_OAUTH_ENABLED=true
+OAUTH_REDIRECT_BASE_URL=https://api.exemplo.com
+OAUTH_GOOGLE_CLIENT_ID=1234567890-abc123.apps.googleusercontent.com
+OAUTH_GOOGLE_CLIENT_SECRET=GOCSPX-...
+```
+
+!!! tip "A chave do dicionário é a chave da URL"
+    `{"google": google}` serve `/auth/oauth/google/login`. Essa mesma string vai
+    para a coluna `provider` de cada identidade ligada, então renomeá-la depois
+    que existem contas órfa­na as ligações. Escolha e mantenha.
+
+!!! check "Três coisas que falham no boot, não no primeiro request"
+    `AUTH_OAUTH_ENABLED=true` exige (1) pelo menos um client, (2) um
+    `oauth_account_model` no serviço e (3) a coluna `name` no user model. Cada
+    um que faltar levanta `RuntimeError` na construção do router, dizendo qual
+    é — mesmo idioma de `AUTH_MFA_ENABLED` sem `recovery_code_model`.
+
+## 4. As quatro rotas
+
+| Método | Rota | O que faz |
+| --- | --- | --- |
+| `GET` | `/auth/oauth/{provider}/login` | Sorteia o `state`, grava no cookie `HttpOnly` e redireciona **302** para o provedor |
+| `GET` | `/auth/oauth/{provider}/callback` | Confere o `state`, troca o `code`, resolve a identidade e devolve o par JWT |
+| `GET` | `/auth/oauth/accounts` | Autenticado. Lista os provedores ligados à conta |
+| `POST` | `/auth/oauth/accounts/unlink` | Autenticado. Desliga um provedor |
+
+A rota de início é uma **navegação**, não um XHR: aponte um link ou um botão
+direto para ela. Um `fetch` recebe um redirect para outra origem e ou o segue
+opaco ou falha no CORS.
+
+Um `{provider}` que não está registrado responde **404** — ele faz parte do
+path, então provedor desconhecido é rota desconhecida.
+
+!!! danger "O `state` é o que impede o callback forjado"
+    Sem a comparação, um atacante induz o navegador da vítima a chamar o seu
+    `/callback` com um `code` obtido na conta **dele** — e a vítima termina
+    logada na conta do atacante, entregando o que digitar ali. O router faz a
+    comparação com `hmac.compare_digest` e o cookie carrega a chave do provedor
+    junto do valor aleatório, então um `state` sorteado para o Google não vale
+    no callback do GitHub.
+
+    O cookie é sempre `SameSite=Lax`, **independente de
+    `AUTH_COOKIE_SAMESITE`**: o provedor devolve o usuário numa navegação
+    top-level cross-site, e `Strict` reteria o cookie exatamente ali — todo
+    login falharia a checagem que o cookie existe para passar.
+
+## 5. Criar conta, ou só autenticar quem já tem
+
+O callback é uma porta de cadastro também. Na primeira vez que uma identidade
+desconhecida chega, ele cria a linha em `users` — com o e-mail do provedor, o
+nome do provedor e uma senha gerada — ou recusa.
+
+`AUTH_OAUTH_ALLOW_ACCOUNT_CREATION` decide, e o default **herda
+`AUTH_SIGNUP_ENABLED`**: fechar a porta da frente fecha essa junto, em vez de
+deixar um segundo caminho mais silencioso.
+
+| `AUTH_SIGNUP_ENABLED` | `AUTH_OAUTH_ALLOW_ACCOUNT_CREATION` | Identidade nova |
+| --- | --- | --- |
+| `true` | não definido | Cria a conta |
+| `false` | não definido | **403** — só autentica identidade já ligada |
+| `false` | `true` | Cria a conta (sistema fechado com onboarding pelo provedor) |
+| `true` | `false` | **403** — cadastro por formulário sim, por provedor não |
+
+A conta criada nasce **ativa**. O ponto do fluxo é que o provedor já fez a
+verificação; re-verificar por e-mail pediria ao usuário que provasse de novo o
+que o Google acabou de provar. `AUTH_AUTO_ACTIVATE` não é consultado aqui — um
+serviço que quer aprovação humana antes do primeiro login desliga a criação e
+faz um administrador criar e ligar a linha.
+
+!!! info "A senha gerada, e por que ela não é `secrets.token_urlsafe`"
+    `hashed_password` é `NOT NULL` e continua assim: nenhuma migration, nenhum
+    ramo "usuário sem senha" espalhado pelo login. O callback gera uma senha
+    aleatória e a grava — ninguém nunca a vê, e quem quiser uma senha própria
+    usa o `POST /auth/password-reset/request`, que já existe e já funciona
+    porque o e-mail já está na linha.
+
+    A geração passa por
+    [`generate_password`](../reference.md#tempest_fastapi_sdk.utils.password.generate_password),
+    que garante as classes de caractere **por construção**. Sortear de um
+    alfabeto plano e torcer é o defeito que essa função existe para evitar:
+    medido contra a política real com complexidade ligada, 200 000 amostras
+    cada, `secrets.token_urlsafe(32)` é reprovado em 26,54% das vezes e
+    `secrets.token_hex(32)` em 100%. Um quarto dos logins falharia de forma
+    intermitente, com um 422 vindo de dentro do callback sobre uma senha que o
+    usuário nunca digitou.
+
+## 6. Ligar por e-mail: o botão que você provavelmente não quer
+
+Cenário: a pessoa já tem conta com senha em `ana@exemplo.com` e clica em "entrar
+com Google" pela primeira vez. O e-mail bate; a identidade não. O default é
+recusar com **409**.
+
+`AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL=true` liga automaticamente — mas **só** quando
+o provedor afirma explicitamente ter verificado o endereço
+(`email_verified is True`).
+
+!!! danger "`None` não é um sim"
+    `email_verified` tem três valores, e a diferença é a vulnerabilidade:
+    `True` = o provedor verificou, `False` = o provedor diz que não verificou,
+    `None` = **o provedor não falou nada**. Tratar silêncio como verificação
+    entrega qualquer conta cujo e-mail o atacante consiga adivinhar: basta
+    cadastrar aquele endereço num IdP que não exige confirmação.
+
+    É o caso possível do GitHub — o `email` de `GET /user` é o do perfil
+    público, que o GitHub não exige verificar, e por isso o SDK deixa
+    `email_verified=None` ali em vez de inventar um valor. Ligue esse knob só
+    para provedores em que você confia na verificação.
+
+O caminho seguro, com o knob desligado: a pessoa entra com a senha e liga o
+provedor de dentro da conta.
+
+## 7. Como o par JWT volta
+
+O callback respeita `AUTH_TOKEN_DELIVERY` como qualquer outro passo equivalente
+a login — com uma diferença:
+
+| `AUTH_TOKEN_DELIVERY` | O callback devolve |
+| --- | --- |
+| `bearer` (default) | `access_token` e `refresh_token` no corpo |
+| `cookie` | Os dois como cookies `HttpOnly`; o corpo mantém `null` |
+| `both` | Cookies **e** corpo, na mesma resposta |
+
+Em `both`, o resto do router monta rotas paralelas em `/auth/cookie/*`. O
+callback não: a URL dele está **cadastrada no provedor**, então uma segunda rota
+obrigaria a cadastrar um segundo redirect URI em cada console para um fluxo só.
+
+O efeito prático de responder JSON é que o fluxo serve SPA e mobile sem
+redirect: o cliente chama o callback, recebe o par e segue.
+
+E o par é o par de sempre. Vale a pena ver o que isso significa:
+
+```python
+from tempest_fastapi_sdk import ACCESS_TOKEN_TYPE, JWTUtils, token_type_allowed
+
+jwt: JWTUtils = JWTUtils(secret="a-32-character-secret-for-tests!")
+access_token: str = "<o access_token que o callback devolveu>"
+payload: dict[str, object] = jwt.decode(access_token)
+print(sorted(payload))
+# ['email', 'exp', 'iat', 'sub', 'typ']
+print(token_type_allowed(payload, [ACCESS_TOKEN_TYPE], strict=True))
+# True
+```
+
+Com o `refresh_token_model` ligado, o refresh do login social é opaco,
+persistido, de uso único, entra na mesma família de rotação, é coberto pela
+detecção de reuso e morre no `POST /auth/logout` — nada disso existe num token
+assinado à mão.
+
+## 8. Contas ligadas: listar e desligar
+
+```bash
+curl -H "Authorization: Bearer $ACCESS_TOKEN" \
+     https://api.exemplo.com/auth/oauth/accounts
+```
+
+```json
+[
+  {
+    "provider": "google",
+    "subject": "101234567890123456789",
+    "email": "ana@exemplo.com",
+    "email_verified": true,
+    "name": "Ana Souza",
+    "picture": "https://lh3.googleusercontent.com/a/...",
+    "created_at": "2026-08-30T12:00:00Z",
+    "last_login_at": "2026-08-30T18:41:03Z"
+  }
+]
+```
+
+Conta que só usou senha responde **200** com `[]` — lista vazia é sucesso, não
+404.
+
+```bash
+curl -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"provider": "google"}' \
+     https://api.exemplo.com/auth/oauth/accounts/unlink
+```
+
+**204** ao desligar; **404** quando aquele provedor não está ligado nesta conta.
+A busca é escopada ao chamador, então um provedor ligado por outra pessoa
+responde 404 igual a um que nunca existiu.
+
+Desligar o único provedor de uma conta criada pelo callback deixa o
+`POST /auth/password-reset/request` como caminho de volta — a mesma porta que
+esse fluxo sempre ofereceu, já que o e-mail está na linha.
+
+## `OAuthUser`, a identidade normalizada
+
+É a mesma forma para todo provedor, e é o que o `login_with_oauth` recebe:
 
 | Campo | Tipo | Conteúdo |
 | --- | --- | --- |
 | `provider` | `str` | `"google"`, `"github"`, `"oidc:auth0"` — a chave do provedor |
 | `subject` | `str` | Id estável **dentro** daquele provedor |
 | `email` | `str` ou `None` | E-mail, quando o provedor devolve. **Não necessariamente verificado** |
-| `email_verified` | `bool` ou `None` | O provedor afirma ter verificado o e-mail? `None` = não disse nada |
+| `email_verified` | `bool` ou `None` | O provedor afirma ter verificado? `None` = não disse nada |
 | `name` | `str` ou `None` | Nome de exibição |
 | `picture` | `str` ou `None` | URL do avatar |
-| `raw` | `dict[str, Any]` | Payload cru do provedor, pra claims customizadas |
+| `raw` | `dict[str, Any]` | Payload cru do provedor, para claims customizadas |
 
-!!! info "A chave única é `(provider, subject)`, não o e-mail"
-    E-mail muda, e o mesmo e-mail pode chegar por dois provedores. Guarde as
-    duas colunas com um índice único composto — é o que permite a mesma pessoa
-    ter Google e GitHub ligados na mesma conta.
+!!! warning "Provedor sem e-mail não completa o login"
+    `OAuthUser.email` é `str | None` e a coluna é `NOT NULL UNIQUE`, então um
+    provedor que não devolve endereço recebe **422** em vez de um endereço
+    inventado — uma conta com e-mail falso é uma conta que ninguém recupera.
+    Escopo de e-mail no client resolve a maioria dos casos; o resto é recusa
+    explícita, não fallback silencioso.
 
-!!! danger "Ligar conta por e-mail exige `email_verified is True`"
-    Se você casa o login social com uma conta existente pelo e-mail, um
-    provedor que devolve endereço **não verificado** entrega a conta da vítima:
-    basta o atacante cadastrar o e-mail dela no provedor sem confirmar. É o caso
-    do GitHub — o `email` de `GET /user` é o do perfil público, que o GitHub não
-    exige verificar. Só faça o vínculo automático quando
-    `profile.email_verified is True`; com `None` ou `False`, peça a confirmação
-    do e-mail no seu próprio fluxo antes de ligar.
-
-## 5. Ligando no seu usuário
-
-O passo que é seu: achar ou criar o usuário e emitir o **seu** token. Padrão
-mínimo com `JWTUtils`:
-
-```python
-# src/services/oauth.py
-from tempest_fastapi_sdk import JWTUtils, OAuthUser
-
-from src.db.models import UserModel
-from src.db.repositories import UserRepository
-
-
-class OAuthLoginService:
-    """Turn a provider identity into a local user + local session token."""
-
-    def __init__(self, repository: UserRepository, tokens: JWTUtils) -> None:
-        """Initialize the service.
-
-        Args:
-            repository (UserRepository): Data access for users.
-            tokens (JWTUtils): The same helper the rest of the API
-                validates bearer tokens with.
-        """
-        self.repository: UserRepository = repository
-        self.tokens: JWTUtils = tokens
-
-    async def login(self, profile: OAuthUser) -> str:
-        """Find-or-create the local user and mint an access token.
-
-        Args:
-            profile (OAuthUser): Normalized identity from the provider.
-
-        Returns:
-            str: A signed access token for this service's own routes.
-        """
-        user: UserModel | None = await self.repository.get_or_none(
-            {"oauth_provider": profile.provider, "oauth_subject": profile.subject},
-        )
-        if user is None:
-            user = await self.repository.add(
-                UserModel(
-                    email=profile.email,
-                    name=profile.name,
-                    oauth_provider=profile.provider,
-                    oauth_subject=profile.subject,
-                    is_active=True,
-                ),
-            )
-        return self.tokens.encode({"sub": str(user.id)})
-```
-
-!!! tip "Já usa o flow bundled? Reuse o mesmo `JWTUtils`"
-    Se o serviço monta `make_auth_router` ([receita de auth](auth-flow.md)),
-    passe o `auth_service.jwt` aqui em vez de construir outro `JWTUtils` — o
-    token do login social passa a valer nas mesmas rotas protegidas, com o
-    mesmo segredo. Dois `JWTUtils` com segredos diferentes é o footgun
-    clássico: o login funciona e toda rota protegida devolve 401.
+Quando o provedor não devolve `name`, o SDK grava um placeholder localizado:
+`"Você"` em pt-BR, `"You"` em en-US, escolhido pelo mesmo `resolve_locale` que o
+resto do fluxo de auth usa (o `?lang=` do link → `Accept-Language` →
+`AUTH_DEFAULT_LOCALE`).
 
 ## GitHub
 
 Mesma superfície, dois detalhes diferentes:
 
 ```python
-from tempest_fastapi_sdk import GitHubOAuthClient
+from tempest_fastapi_sdk import GitHubOAuthClient, OAuthSettings
 
-from src.core.settings import settings
+settings: OAuthSettings = OAuthSettings()
+github: GitHubOAuthClient = GitHubOAuthClient(**settings.github_kwargs())
+```
 
+Registre junto do Google e as duas rotas passam a existir:
 
-github: GitHubOAuthClient = GitHubOAuthClient(
-    client_id=settings.GITHUB_CLIENT_ID,
-    client_secret=settings.GITHUB_CLIENT_SECRET,
-    redirect_uri=settings.GITHUB_REDIRECT_URI,
+```python
+from fastapi import FastAPI
+from tempest_fastapi_sdk import make_auth_router
+
+from src.api.dependencies.resources import auth_service, db, github, google
+
+app: FastAPI = FastAPI()
+app.include_router(
+    make_auth_router(
+        auth_service,
+        session_factory=db.session_dependency,
+        oauth_clients={"google": google, "github": github},
+    )
 )
 ```
 
 - **Não é OIDC.** Não vem `id_token`; o perfil sai de `GET /user`, que é o que
   `fetch_user` faz.
 - **`email` pode vir `None`.** Scopes default são `read:user` e `user:email`,
-  mas quem marca o e-mail como privado no GitHub não expõe no `/user`. Trate
-  `profile.email is None` — pedindo o e-mail numa tela sua, por exemplo.
+  mas quem marca o e-mail como privado no GitHub não o expõe no `/user` — e aí
+  o callback responde 422.
 - **`email_verified` é sempre `None` aqui.** O payload de `GET /user` não traz
-  nenhum campo de verificação, então o SDK não inventa um. Se você precisa da
-  resposta, chame `GET /user/emails` (scope `user:email`) e leia o campo
-  `verified` de lá.
+  campo de verificação, então o SDK não inventa um. Se você precisa da resposta,
+  chame `GET /user/emails` (scope `user:email`) e leia o campo `verified` de lá.
 
 ## Qualquer outro IdP: `OIDCProvider`
 
@@ -327,26 +473,60 @@ três endpoints do *discovery document*
 (`${issuer}/.well-known/openid-configuration`):
 
 ```python
-from tempest_fastapi_sdk import OIDCProvider
+from tempest_fastapi_sdk import OAuthSettings, OIDCProvider
 
-from src.core.settings import settings
-
+settings: OAuthSettings = OAuthSettings(
+    OAUTH_REDIRECT_BASE_URL="https://api.exemplo.com",
+)
 
 keycloak: OIDCProvider = OIDCProvider(
-    client_id=settings.OIDC_CLIENT_ID,
-    client_secret=settings.OIDC_CLIENT_SECRET,
-    redirect_uri=settings.OIDC_REDIRECT_URI,
+    client_id="the-client-id",
+    client_secret="the-client-secret",
+    redirect_uri=settings.oauth_redirect_uri("keycloak"),
     authorize_url="https://id.exemplo.com/realms/app/protocol/openid-connect/auth",
     token_url="https://id.exemplo.com/realms/app/protocol/openid-connect/token",
     userinfo_url="https://id.exemplo.com/realms/app/protocol/openid-connect/userinfo",
-    provider_name="oidc:keycloak",
+    provider_name="keycloak",
 )
 ```
 
-`provider_name` entra no `OAuthUser.provider`, então use um valor estável — ele
-vira parte da chave única do usuário. Sem `userinfo_url`, `fetch_user` levanta
-`NotImplementedError`: nesse caso o perfil tem que sair do `id_token`, e você
-sobrescreve `_parse_user` numa subclasse.
+Registre como `{"keycloak": keycloak}` e as rotas viram
+`/auth/oauth/keycloak/login`. Use a **mesma string** em `provider_name` e na
+chave do dicionário: `provider_name` é o que vai para a coluna `provider`, e a
+chave é o que aparece na URL — divergirem cria ligações que o unlink não acha.
+
+Sem `userinfo_url`, `fetch_user` levanta `NotImplementedError`: nesse caso o
+perfil tem que sair do `id_token`, e você sobrescreve `_parse_user` numa
+subclasse.
+
+## Reusando o seu `HTTPClient`
+
+Sem `http_client=`, cada client constrói um dedicado (timeout 10s, breaker
+desligado). Se o serviço já tem um `HTTPClient` calibrado, injete: uma pool de
+conexões só, e o retry/breaker/`X-Request-ID` que você já ajustou valem para o
+provedor também.
+
+```python
+from tempest_fastapi_sdk import (
+    GoogleOAuthClient,
+    HTTPClient,
+    OAuthSettings,
+    RetryPolicy,
+)
+
+settings: OAuthSettings = OAuthSettings()
+http: HTTPClient = HTTPClient(
+    timeout=10.0,
+    retry_policy=RetryPolicy(max_attempts=2),
+)
+google: GoogleOAuthClient = GoogleOAuthClient(
+    **settings.google_kwargs(),
+    http_client=http,
+)
+```
+
+Quando o client é dono do `HTTPClient` (sem `http_client=`), feche no shutdown
+com `await google.aclose()` — é no-op se o client foi injetado.
 
 ## Erros
 
@@ -354,36 +534,82 @@ Falha na troca do `code` ou no userinfo levanta **`OAuthError`** — uma
 `AppException` com `code="OAUTH_ERROR"` e status **502** (o problema está no
 provedor, não no cliente), com o corpo da resposta do provedor em `details`.
 Com `register_exception_handlers` montado, ela já sai no envelope canônico
-`{detail, code, details}`; declare na rota pro Swagger:
+`{detail, code, details}`.
+
+O que o callback responde, por causa:
+
+| Status | Quando |
+| --- | --- |
+| **401** | `state` ausente ou divergente; provedor devolveu `error=` |
+| **403** | Identidade nova e criação de conta desligada |
+| **404** | `{provider}` não registrado |
+| **409** | E-mail já é de outra conta e o vínculo automático não é permitido |
+| **422** | Provedor não devolveu e-mail, ou callback sem `code` |
+| **502** | `OAuthError` — o provedor recusou a troca ou o userinfo |
+
+## Fazendo na mão
+
+O router bundled é o caminho recomendado, mas os clients continuam públicos e
+funcionam sozinhos — um serviço que não monta `make_auth_router`, ou que precisa
+de um passo próprio no meio (aprovação, convite, tenant), usa os três métodos
+direto:
 
 ```python
-from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse
-
-from tempest_fastapi_sdk import OAuthError, UnauthorizedException, error_responses
-
-router = APIRouter()
-
-
-@router.get(
-    "/callback",
-    responses=error_responses(OAuthError, UnauthorizedException),
+from tempest_fastapi_sdk import (
+    GoogleOAuthClient,
+    OAuthTokens,
+    OAuthUser,
+    generate_oauth_state,
 )
-async def callback(request: Request, code: str, state: str) -> RedirectResponse:
-    """Complete the OAuth dance (see above)."""
+
+google: GoogleOAuthClient = GoogleOAuthClient(
+    client_id="the-client-id",
+    client_secret="the-client-secret",
+    redirect_uri="https://api.exemplo.com/callback",
+)
+
+
+def start_login() -> str:
+    """Mint the state you must store, and the URL to redirect to."""
+    state: str = generate_oauth_state()
+    return google.build_authorize_url(state=state)
+
+
+async def finish_login(code: str) -> OAuthUser:
+    """Trade the callback's code for a normalized identity."""
+    tokens: OAuthTokens = await google.exchange_code(code)
+    return await google.fetch_user(tokens)
 ```
+
+`build_authorize_url` aceita `**extra` para qualquer parâmetro do provedor:
+`build_authorize_url(state=state, access_type="offline", prompt="consent")` pede
+um `refresh_token` ao Google.
+
+!!! warning "Indo por aqui, as três regras de segurança são suas"
+    Guardar e comparar o `state`; exigir `email_verified is True` antes de ligar
+    conta por e-mail; e chavear em `(provider, subject)` com índice único
+    composto. O router bundled faz as três e tem teste para cada uma; na mão,
+    elas voltam a viver só na sua atenção.
+
+    Se for por aqui e o serviço já monta `make_auth_router`, **reuse o
+    `auth_service.jwt`** em vez de construir outro `JWTUtils`. Dois `JWTUtils`
+    com segredos diferentes é o footgun clássico: o login funciona e toda rota
+    protegida devolve 401.
 
 ## Recap
 
-- `GoogleOAuthClient` / `GitHubOAuthClient` / `OIDCProvider` — mesma API:
-  `build_authorize_url(state=...)` → `exchange_code(code)` →
-  `fetch_user(tokens)`.
-- `generate_oauth_state()` + um cookie `HttpOnly` + comparação no callback é a
-  defesa contra callback forjado. Não pule.
-- `OAuthUser` normaliza os provedores; a chave única é `(provider, subject)`.
-- `OAuthTokens` traz `access_token`, e `id_token`/`refresh_token` quando o
-  provedor manda.
-- Emitir a **sua** sessão continua sendo seu: reuse o `JWTUtils` do resto da
-  API. Fluxo local completo (signup, ativação, reset) está na
+- `AUTH_OAUTH_ENABLED=true` + `oauth_clients={"google": ...}` monta quatro
+  rotas em `/auth/oauth/*`; três pré-requisitos faltando falham no boot.
+- `OAuthSettings` guarda as credenciais e **deriva** o redirect URI com
+  `oauth_redirect_uri(provider)` — cole no console o que ele imprime.
+- O banco ganha `NameMixin` no user model e uma tabela de identidades
+  (`make_user_oauth_account_model`), com `UNIQUE (provider, subject)`.
+- O callback devolve o **mesmo par JWT** do `POST /auth/login`: `typ`, refresh
+  opaco, rotação, detecção de reuso e `/auth/logout`.
+- Criar conta herda `AUTH_SIGNUP_ENABLED`; ligar por e-mail exige
+  `email_verified is True` e está desligado por padrão.
+- Provedor sem e-mail recebe 422, não um endereço inventado; provedor sem nome
+  recebe `"Você"` / `"You"` conforme o locale.
+- Fluxo local completo (signup, ativação, reset) está na
   [receita de auth](auth-flow.md); entrega por cookie e CSRF, na
   [receita HTTP](http.md).

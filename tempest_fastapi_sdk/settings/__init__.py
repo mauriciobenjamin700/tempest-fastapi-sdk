@@ -24,6 +24,7 @@ from tempest_fastapi_sdk.settings.mixins import (
     MercadoPagoSettings as MercadoPagoSettings,
 )
 from tempest_fastapi_sdk.settings.mixins import MinIOSettings as MinIOSettings
+from tempest_fastapi_sdk.settings.mixins import OAuthSettings as OAuthSettings
 from tempest_fastapi_sdk.settings.mixins import OpenPixSettings as OpenPixSettings
 from tempest_fastapi_sdk.settings.mixins import PushSettings as PushSettings
 from tempest_fastapi_sdk.settings.mixins import RabbitMQSettings as RabbitMQSettings
@@ -49,6 +50,7 @@ __all__: list[str] = [
     "LogSettings",
     "MercadoPagoSettings",
     "MinIOSettings",
+    "OAuthSettings",
     "OpenPixSettings",
     "PushSettings",
     "RabbitMQSettings",

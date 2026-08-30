@@ -163,6 +163,10 @@ uv run tempest db upgrade
 | POST | `/auth/email-verify/request` *(v0.92.0+)* | — → `EmailChangeResponseSchema` | **Autenticado.** Reenvia link de verificação pro e-mail **atual**. |
 | POST | `/auth/email-verify/confirm` *(v0.92.0+)* | `EmailChangeConfirmSchema` → `EmailChangeResponseSchema` | Consome o token + marca a conta ativa. |
 | POST | `/auth/email-recovery/request` *(v0.92.0+, opt-in)* | `EmailRecoveryRequestSchema` → `EmailChangeResponseSchema` | **Não autenticado.** Recupera conta cujo e-mail se perdeu: senha (+ MFA se inscrito). Só montado com `AUTH_EMAIL_RECOVERY_ENABLED=True`. Sempre 202. |
+| GET | `/auth/oauth/{provider}/login` *(v0.273.0+)* | — → `302` | Sorteia o `state`, grava no cookie `HttpOnly` e redireciona ao provedor. Só montado com `AUTH_OAUTH_ENABLED=true`. Veja a [receita de login social](oauth.md). |
+| GET | `/auth/oauth/{provider}/callback` *(v0.273.0+)* | — → `LoginResponseSchema` | Confere o `state`, troca o `code`, resolve `(provider, subject)` no banco e emite **o mesmo par JWT** do `/auth/login` — `typ`, refresh opaco, rotação e `/auth/logout` incluídos. |
+| GET | `/auth/oauth/accounts` *(v0.273.0+)* | — → `list[OAuthAccountSchema]` | **Autenticado.** Provedores ligados à conta. Lista vazia é 200, não 404. |
+| POST | `/auth/oauth/accounts/unlink` *(v0.273.0+)* | `OAuthUnlinkSchema` → `204` | **Autenticado.** Desliga um provedor. 404 quando não está ligado nesta conta. |
 | POST | `/auth/refresh` *(v0.65.0+)* | `RefreshSchema` → `LoginResponseSchema` | Troca um **refresh token** válido por um JWT pair novo. **Sem email/senha.** Rejeita access token replayado (401) e conta inativa (403). |
 
 !!! tip "`password-reset/confirm` vs `password-change` — qual é qual?"
@@ -631,6 +635,19 @@ Tem uma seção inteira só pra isso, explicada bem devagar: [Idioma dos e-mails
 | Env var | Tipo | Default | O que faz |
 |---------|------|---------|-----------|
 | `AUTH_SIGNUP_ENABLED` | `bool` | `true` | `false` = `make_auth_router` não monta `POST /auth/signup`; a rota some da aplicação e do OpenAPI. Ativação, reset e o resto ficam intactos. Veja [Sistema fechado](#sistema-fechado-sem-porta-de-cadastro-v02720). |
+
+### Grupo 10 — Login social (`AuthSettings` + `OAuthSettings`) *(v0.273.0+)*
+
+| Env var | Tipo | Default | O que faz |
+|---------|------|---------|-----------|
+| `AUTH_OAUTH_ENABLED` | `bool` | `false` | `true` monta as quatro rotas `/auth/oauth/*`. Exige um client em `oauth_clients=`, um `oauth_account_model` no serviço e a coluna `name` no user model — cada um que faltar levanta `RuntimeError` na construção do router. |
+| `AUTH_OAUTH_STATE_COOKIE_NAME` | `str` | `oauth_state` | Cookie que carrega o `state` CSRF entre o redirect e o callback. Sempre `HttpOnly` e sempre `SameSite=Lax`. |
+| `AUTH_OAUTH_STATE_TTL_SECONDS` | `int` | `600` | Quanto tempo o usuário tem para concluir o consentimento no provedor. |
+| `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL` | `bool` | `false` | `true` liga uma identidade nova a uma conta existente cujo e-mail bate — **só** quando `email_verified is True`. Desligado por padrão porque é o knob que transforma a palavra do provedor sobre um e-mail em controle de uma conta. |
+| `AUTH_OAUTH_ALLOW_ACCOUNT_CREATION` | `bool` ou vazio | vazio | Se o callback pode criar conta. Vazio herda `AUTH_SIGNUP_ENABLED`, então fechar o cadastro fecha essa porta junto. |
+| `OAUTH_REDIRECT_BASE_URL` | `str` | `""` | Origem pública do serviço. O redirect URI é derivado dela por `oauth_redirect_uri(provider)`. |
+| `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | `str` | `""` | Credenciais do console do Google. `google_kwargs()` monta o client. |
+| `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | `str` | `""` | Credenciais do OAuth app do GitHub. `github_kwargs()` monta o client. |
 
 !!! note "MFA / TOTP tem suas próprias vars"
     Quando `AUTH_MFA_ENABLED=true`, o `AuthSettings` ainda expõe `AUTH_MFA_ISSUER`, `AUTH_MFA_RECOVERY_CODES_COUNT`, `AUTH_MFA_TOKEN_TTL_SECONDS` e `AUTH_MFA_VERIFY_WINDOW`. Ficam fora do escopo desta receita (signup/activate/login/reset) — são cobertos na receita de MFA.

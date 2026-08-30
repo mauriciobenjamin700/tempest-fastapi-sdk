@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlencode
 
 from tempest_fastapi_sdk.exceptions.base import AppException
@@ -137,6 +137,63 @@ def generate_oauth_state(n_bytes: int = 32) -> str:
         str: URL-safe random token.
     """
     return secrets.token_urlsafe(n_bytes)
+
+
+@runtime_checkable
+class OAuthClient(Protocol):
+    """The three calls the bundled auth router makes on a provider.
+
+    Every client in this module satisfies it, and so does anything else
+    that speaks the same three moves — which is the point: the router
+    resolves ``/auth/oauth/{provider}/…`` against a mapping the
+    application registered, so a provider the SDK does not ship, or a
+    stub that never touches the network in tests, is wired the same way
+    Google is. Naming the shape as a protocol keeps
+    ``_BaseOAuthClient`` private without forcing consumers to subclass
+    it.
+
+    Attributes:
+        provider_name (str): Key this client answers to. Stored on
+            every linked-identity row, so changing it after accounts
+            exist orphans them.
+    """
+
+    provider_name: str
+
+    def build_authorize_url(self, *, state: str, **extra: str) -> str:
+        """Render the URL the browser must be redirected to.
+
+        Args:
+            state (str): CSRF state to echo back on the callback.
+            **extra (str): Extra query parameters.
+
+        Returns:
+            str: The provider's authorize URL.
+        """
+        ...
+
+    async def exchange_code(self, code: str, /) -> OAuthTokens:
+        """Swap an authorization code for tokens.
+
+        Args:
+            code (str): The ``code`` query parameter from the callback.
+
+        Returns:
+            OAuthTokens: The provider's token bundle.
+        """
+        ...
+
+    async def fetch_user(self, tokens: OAuthTokens, /) -> OAuthUser:
+        """Resolve tokens to a normalized identity.
+
+        Args:
+            tokens (OAuthTokens): The bundle from
+                :meth:`exchange_code`.
+
+        Returns:
+            OAuthUser: The normalized identity.
+        """
+        ...
 
 
 class _BaseOAuthClient:
@@ -536,6 +593,7 @@ class OIDCProvider(_BaseOAuthClient):
 __all__: list[str] = [
     "GitHubOAuthClient",
     "GoogleOAuthClient",
+    "OAuthClient",
     "OAuthError",
     "OAuthTokens",
     "OAuthUser",

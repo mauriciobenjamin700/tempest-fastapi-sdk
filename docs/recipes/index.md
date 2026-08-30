@@ -519,7 +519,7 @@ aqui pra plugar cada capacidade conforme precisar.
 | **[Idempotência »](idempotency.md)** | `IdempotencyMiddleware`, `MemoryIdempotencyStore` / `IdempotencyStore` (Redis) — replay seguro de POST/PUT/PATCH/DELETE |
 | **[Jobs (trabalho longo com status) »](jobs.md)** | `BaseJobModel` + `JobStore` — uma linha por unidade de trabalho, `claim`/`succeed`/`fail`, `watch` para a tela, `reclaim_stale`; cancelamento cooperativo (`cancel` + `run_cancellable`); `StageMap` para vários estágios no próprio registro |
 | **[Logging »](logging.md)** | `LogUtils`, logging JSON estruturado, propagação de request-ID |
-| **[Login social (OAuth2/OIDC) »](oauth.md)** | `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `generate_oauth_state` |
+| **[Login social (OAuth2/OIDC) »](oauth.md)** | `AUTH_OAUTH_ENABLED` + `oauth_clients=` (quatro rotas `/auth/oauth/*`), `OAuthSettings`, `make_user_oauth_account_model`, `NameMixin`, `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `OAuthClient`, `generate_oauth_state` |
 | **[Management commands (tempest &lt;cmd&gt;) »](management-commands.md)** | registrar comandos próprios na CLI `tempest` do projeto |
 | **[Mercado Pago (Pix, cartão, boleto) »](mercado-pago.md)** | `MercadoPagoClient` (143 operações geradas da OpenAPI oficial do provedor), `to_cents` / `from_cents` (reais, não centavos), `verify_signature`, `MercadoPagoSettings`, `x_idempotency_key` por chamada |
 | **[Métricas »](metrics.md)** | `MetricsUtils` — snapshots de CPU / RAM / disco / GPU |

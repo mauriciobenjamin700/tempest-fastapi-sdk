@@ -326,6 +326,37 @@ AUTH_PAGE_MESSAGES: dict[str, dict[str, str]] = {
 }
 
 
+AUTH_DEFAULT_DISPLAY_NAME: dict[str, str] = {
+    "pt-BR": "Você",
+    "en-US": "You",
+}
+"""Placeholder display name, per locale.
+
+Used when an account is created without anyone having typed a name —
+the OAuth callback for a provider that reports no ``name`` claim. A
+second-person pronoun rather than ``"User"`` or an empty string:
+whatever lands here is what a greeting renders, and "Olá, Você" reads
+as a UI that has not learned your name yet, while "Olá, User" reads as
+a bug and "Olá, " reads as a broken template.
+"""
+
+
+def default_display_name(locale: str) -> str:
+    """Return the placeholder display name for ``locale``.
+
+    Args:
+        locale (str): A canonical supported locale. Unknown locales fall
+            back to :data:`DEFAULT_AUTH_LOCALE`.
+
+    Returns:
+        str: The localized placeholder.
+    """
+    return AUTH_DEFAULT_DISPLAY_NAME.get(
+        locale,
+        AUTH_DEFAULT_DISPLAY_NAME[DEFAULT_AUTH_LOCALE],
+    )
+
+
 def auth_page_message(locale: str, key: str) -> str:
     """Return a localized backend-page message for ``key``.
 
@@ -361,6 +392,7 @@ def auth_email_message(locale: str, key: str) -> str:
 
 
 __all__: list[str] = [
+    "AUTH_DEFAULT_DISPLAY_NAME",
     "AUTH_EMAIL_MESSAGES",
     "AUTH_PAGE_MESSAGES",
     "DEFAULT_AUTH_LOCALE",
@@ -368,6 +400,7 @@ __all__: list[str] = [
     "SUPPORTED_LOCALES",
     "auth_email_message",
     "auth_page_message",
+    "default_display_name",
     "format_expires_at",
     "negotiate_locale",
     "normalize_locale",

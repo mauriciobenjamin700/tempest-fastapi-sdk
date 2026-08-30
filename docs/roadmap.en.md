@@ -21,6 +21,7 @@ What the SDK **doesn't ship yet** + what already landed. Sorted by impact, not i
 |---------|--------|-------|
 | `EmailUtils.render_template(path, ctx)` with Jinja2 | ✅ v0.24.0 | `EmailUtils.render_template` + bundled templates |
 | OAuth2 / OIDC providers (`GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`) | ✅ v0.29.0 | `tempest_fastapi_sdk.api.oauth` |
+| Social login inside `make_auth_router` (`AUTH_OAUTH_ENABLED` + `oauth_clients=`, four `/auth/oauth/*` routes, `OAuthSettings`, `make_user_oauth_account_model`, `NameMixin`) | ✅ v0.273.0 | `tempest_fastapi_sdk.auth` |
 | `CSRFMiddleware` + `make_csrf_token_dependency` | ✅ v0.29.0 | `tempest_fastapi_sdk.api.middlewares.csrf` |
 | `BodySizeLimitMiddleware` | ✅ v0.28.0 | `tempest_fastapi_sdk.api.middlewares.body_size` |
 | `BaseRepository.bulk_create_values / bulk_upsert` | ✅ v0.28.0 | `BaseRepository` |

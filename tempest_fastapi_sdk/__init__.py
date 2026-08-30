@@ -1609,8 +1609,43 @@ from tempest_fastapi_sdk.websockets import (
 
 __version__: str = "0.272.0"
 
+from tempest_fastapi_sdk.api import (
+    OAuthClient as OAuthClient,
+)
+from tempest_fastapi_sdk.auth import (
+    AUTH_DEFAULT_DISPLAY_NAME as AUTH_DEFAULT_DISPLAY_NAME,
+)
+from tempest_fastapi_sdk.auth import (
+    OAuthAccountSchema as OAuthAccountSchema,
+)
+from tempest_fastapi_sdk.auth import (
+    OAuthUnlinkSchema as OAuthUnlinkSchema,
+)
+from tempest_fastapi_sdk.auth import (
+    default_display_name as default_display_name,
+)
+from tempest_fastapi_sdk.db import (
+    BaseUserOAuthAccountModel as BaseUserOAuthAccountModel,
+)
+from tempest_fastapi_sdk.db import (
+    NameMixin as NameMixin,
+)
+from tempest_fastapi_sdk.db import (
+    make_user_oauth_account_model as make_user_oauth_account_model,
+)
+from tempest_fastapi_sdk.settings import (
+    OAuthSettings as OAuthSettings,
+)
+from tempest_fastapi_sdk.utils import (
+    DEFAULT_GENERATED_PASSWORD_LENGTH as DEFAULT_GENERATED_PASSWORD_LENGTH,
+)
+from tempest_fastapi_sdk.utils import (
+    generate_password as generate_password,
+)
+
 __all__: list[str] = [
     "ACCESS_TOKEN_TYPE",
+    "AUTH_DEFAULT_DISPLAY_NAME",
     "BASE_COLUMN_ORDER",
     "CENT",
     "CEP",
@@ -1627,6 +1662,7 @@ __all__: list[str] = [
     "DEFAULT_DOCUMENT_CACHE_CONTROL",
     "DEFAULT_EXCLUDED_PREFIXES",
     "DEFAULT_FIREBASE_APP_NAME",
+    "DEFAULT_GENERATED_PASSWORD_LENGTH",
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_LOCALE",
     "DEFAULT_MAX_RECORDS_PER_FILE",
@@ -1688,6 +1724,7 @@ __all__: list[str] = [
     "BaseService",
     "BaseStrEnum",
     "BaseUserModel",
+    "BaseUserOAuthAccountModel",
     "BaseUserRecoveryCodeModel",
     "BaseUserRefreshTokenModel",
     "BaseUserTokenModel",
@@ -1826,12 +1863,17 @@ __all__: list[str] = [
     "MinIOSettings",
     "MinIOUploadStorage",
     "MobilePhoneBRField",
+    "NameMixin",
     "NonEmptyStrField",
     "NonNegativeFloatField",
     "NonNegativeIntField",
     "NotFoundException",
+    "OAuthAccountSchema",
+    "OAuthClient",
     "OAuthError",
+    "OAuthSettings",
     "OAuthTokens",
+    "OAuthUnlinkSchema",
     "OAuthUser",
     "OIDCProvider",
     "ObjectStat",
@@ -2000,6 +2042,7 @@ __all__: list[str] = [
     "declared_guards",
     "declared_raises",
     "decode_cursor",
+    "default_display_name",
     "default_message_catalog",
     "default_registry",
     "detect_pix_key_type",
@@ -2024,6 +2067,7 @@ __all__: list[str] = [
     "generate_csrf_token",
     "generate_oauth_state",
     "generate_opaque_token",
+    "generate_password",
     "get_client_ip",
     "get_client_ip_from_scope",
     "get_request_id",
@@ -2075,6 +2119,7 @@ __all__: list[str] = [
     "make_token_dependency",
     "make_tool_spec_router",
     "make_unhandled_exception_handler",
+    "make_user_oauth_account_model",
     "make_user_recovery_code_model",
     "make_user_refresh_token_model",
     "make_user_token_model",

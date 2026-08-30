@@ -1151,6 +1151,100 @@ class WebAuthnDeleteSchema(BaseSchema):
     )
 
 
+class OAuthAccountSchema(BaseSchema):
+    """One linked social identity, as returned by the listing endpoint.
+
+    Deliberately omits the raw provider payload
+    (:attr:`~tempest_fastapi_sdk.OAuthUser.raw`): it is whatever the
+    IdP felt like sending, it is not part of any contract, and it is
+    the field most likely to carry something the account owner did not
+    expect to see echoed back.
+
+    Attributes:
+        provider (str): Provider key — the value to pass back when
+            unlinking.
+        subject (str): The provider's stable id for this person.
+            Opaque; useful for support, never for lookup by the client.
+        email (str | None): Email the provider reported at the last
+            login through this link.
+        email_verified (bool | None): Whether the provider stated it
+            verified that address. ``None`` means it said nothing.
+        name (str | None): Display name the provider reported.
+        picture (str | None): Avatar URL the provider reported.
+        created_at (datetime): When the identity was linked.
+        last_login_at (datetime | None): Last login through this link.
+    """
+
+    provider: str = Field(
+        title="Provider key",
+        description="Identifies the link in the unlink endpoint.",
+        examples=["google", "github", "oidc:auth0"],
+    )
+    subject: str = Field(
+        title="Provider subject",
+        description="The provider's stable id for this person.",
+        examples=["101234567890123456789"],
+    )
+    email: str | None = Field(
+        default=None,
+        title="Email at the provider",
+        description="Email the provider reported at the last login.",
+        examples=["person@example.com", None],
+    )
+    email_verified: bool | None = Field(
+        default=None,
+        title="Provider verified the email",
+        description=(
+            "Whether the provider stated it verified the address. "
+            "``null`` means the provider said nothing either way, "
+            "which is not the same as ``false``."
+        ),
+        examples=[True, False, None],
+    )
+    name: str | None = Field(
+        default=None,
+        title="Display name at the provider",
+        description="Display name the provider reported.",
+        examples=["Ana Souza", None],
+    )
+    picture: str | None = Field(
+        default=None,
+        title="Avatar URL",
+        description="Profile picture URL the provider reported.",
+        examples=["https://lh3.googleusercontent.com/a/…", None],
+    )
+    created_at: datetime = Field(
+        title="Linked at",
+        description="When this identity was first linked to the account.",
+        examples=["2024-01-02T12:00:00Z"],
+    )
+    last_login_at: datetime | None = Field(
+        default=None,
+        title="Last login through this link",
+        description=(
+            "Timestamp of the most recent callback completed through "
+            "this provider. ``null`` before the first one."
+        ),
+        examples=["2024-01-02T12:00:00Z", None],
+    )
+
+
+class OAuthUnlinkSchema(BaseSchema):
+    """Request body for ``POST /auth/oauth/accounts/unlink``.
+
+    Attributes:
+        provider (str): Provider key to detach, as the listing endpoint
+            reported it.
+    """
+
+    provider: str = Field(
+        min_length=1,
+        title="Provider key",
+        description="The value the listing endpoint returned.",
+        examples=["google", "github"],
+    )
+
+
 __all__: list[str] = [
     "ActivationResponseSchema",
     "ActivationToken",
@@ -1168,6 +1262,8 @@ __all__: list[str] = [
     "MFADisableSchema",
     "MFAEnrollResponseSchema",
     "MFAVerifySchema",
+    "OAuthAccountSchema",
+    "OAuthUnlinkSchema",
     "PasswordChangeSchema",
     "PasswordResetConfirmSchema",
     "PasswordResetRequestSchema",

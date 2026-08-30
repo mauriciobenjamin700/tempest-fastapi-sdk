@@ -56,12 +56,18 @@ from tempest_fastapi_sdk.auth.introspection import (
     IntrospectionAuth as IntrospectionAuth,
 )
 from tempest_fastapi_sdk.auth.locale import (
+    AUTH_DEFAULT_DISPLAY_NAME as AUTH_DEFAULT_DISPLAY_NAME,
+)
+from tempest_fastapi_sdk.auth.locale import (
     DEFAULT_AUTH_LOCALE as DEFAULT_AUTH_LOCALE,
 )
 from tempest_fastapi_sdk.auth.locale import (
     LOCALE_QUERY_PARAM as LOCALE_QUERY_PARAM,
 )
 from tempest_fastapi_sdk.auth.locale import SUPPORTED_LOCALES as SUPPORTED_LOCALES
+from tempest_fastapi_sdk.auth.locale import (
+    default_display_name as default_display_name,
+)
 from tempest_fastapi_sdk.auth.locale import format_expires_at as format_expires_at
 from tempest_fastapi_sdk.auth.locale import negotiate_locale as negotiate_locale
 from tempest_fastapi_sdk.auth.locale import normalize_locale as normalize_locale
@@ -100,6 +106,12 @@ from tempest_fastapi_sdk.auth.schemas import (
     MFAEnrollResponseSchema as MFAEnrollResponseSchema,
 )
 from tempest_fastapi_sdk.auth.schemas import MFAVerifySchema as MFAVerifySchema
+from tempest_fastapi_sdk.auth.schemas import (
+    OAuthAccountSchema as OAuthAccountSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
+    OAuthUnlinkSchema as OAuthUnlinkSchema,
+)
 from tempest_fastapi_sdk.auth.schemas import (
     PasswordChangeSchema as PasswordChangeSchema,
 )
@@ -159,6 +171,7 @@ from tempest_fastapi_sdk.auth.webauthn import (
 from tempest_fastapi_sdk.auth.webauthn import WebAuthnService as WebAuthnService
 
 __all__: list[str] = [
+    "AUTH_DEFAULT_DISPLAY_NAME",
     "DEFAULT_AUTH_LOCALE",
     "DEFAULT_FIREBASE_APP_NAME",
     "LOCALE_QUERY_PARAM",
@@ -192,6 +205,8 @@ __all__: list[str] = [
     "MFAEnrollResponseSchema",
     "MFAVerifySchema",
     "MemoryWebAuthnChallengeStore",
+    "OAuthAccountSchema",
+    "OAuthUnlinkSchema",
     "PasswordChangeSchema",
     "PasswordResetConfirmSchema",
     "PasswordResetRequestSchema",
@@ -213,6 +228,7 @@ __all__: list[str] = [
     "WebAuthnService",
     "apply_auth_cookies",
     "clear_auth_cookies",
+    "default_display_name",
     "format_expires_at",
     "make_auth_router",
     "negotiate_locale",

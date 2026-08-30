@@ -163,6 +163,10 @@ uv run tempest db upgrade
 | POST | `/auth/email-verify/request` *(v0.92.0+)* | — → `EmailChangeResponseSchema` | **Authenticated.** Re-send a verification link to the **current** email. |
 | POST | `/auth/email-verify/confirm` *(v0.92.0+)* | `EmailChangeConfirmSchema` → `EmailChangeResponseSchema` | Consume the token + mark the account active. |
 | POST | `/auth/email-recovery/request` *(v0.92.0+, opt-in)* | `EmailRecoveryRequestSchema` → `EmailChangeResponseSchema` | **Unauthenticated.** Recover an account whose mailbox is lost: password (+ MFA if enrolled). Only mounted with `AUTH_EMAIL_RECOVERY_ENABLED=True`. Always 202. |
+| GET | `/auth/oauth/{provider}/login` *(v0.273.0+)* | — → `302` | Mints the `state`, writes it to an `HttpOnly` cookie and redirects to the provider. Mounted only with `AUTH_OAUTH_ENABLED=true`. See the [social-login recipe](oauth.en.md). |
+| GET | `/auth/oauth/{provider}/callback` *(v0.273.0+)* | — → `LoginResponseSchema` | Checks the `state`, trades the `code`, resolves `(provider, subject)` in the database and issues **the same JWT pair** as `/auth/login` — `typ`, opaque refresh, rotation and `/auth/logout` included. |
+| GET | `/auth/oauth/accounts` *(v0.273.0+)* | — → `list[OAuthAccountSchema]` | **Authenticated.** Providers linked to the account. An empty list is a 200, not a 404. |
+| POST | `/auth/oauth/accounts/unlink` *(v0.273.0+)* | `OAuthUnlinkSchema` → `204` | **Authenticated.** Detaches one provider. 404 when it is not linked to this account. |
 | POST | `/auth/refresh` *(v0.65.0+)* | `RefreshSchema` → `LoginResponseSchema` | Exchange a valid **refresh token** for a fresh JWT pair. **No email/password.** Rejects a replayed access token (401) and inactive accounts (403). |
 
 !!! tip "`password-reset/confirm` vs `password-change` — which is which?"
@@ -635,6 +639,19 @@ There's a whole section dedicated to this, explained step by step:
 | Env var | Type | Default | What it does |
 |---------|------|---------|--------------|
 | `AUTH_SIGNUP_ENABLED` | `bool` | `true` | `false` = `make_auth_router` does not mount `POST /auth/signup`; the route is gone from the application and from the OpenAPI schema. Activation, reset and everything else stay intact. See [Closed system](#closed-system-no-registration-door-v02720). |
+
+### Group 10 — Social login (`AuthSettings` + `OAuthSettings`) *(v0.273.0+)*
+
+| Env var | Type | Default | What it does |
+|---------|------|---------|--------------|
+| `AUTH_OAUTH_ENABLED` | `bool` | `false` | `true` mounts the four `/auth/oauth/*` routes. Requires a client in `oauth_clients=`, an `oauth_account_model` on the service and a `name` column on the user model — each missing piece raises `RuntimeError` at router construction. |
+| `AUTH_OAUTH_STATE_COOKIE_NAME` | `str` | `oauth_state` | Cookie carrying the CSRF `state` between the redirect and the callback. Always `HttpOnly` and always `SameSite=Lax`. |
+| `AUTH_OAUTH_STATE_TTL_SECONDS` | `int` | `600` | How long the user has to finish consenting at the provider. |
+| `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL` | `bool` | `false` | `true` attaches a new identity to an existing account whose email matches — **only** when `email_verified is True`. Off by default because this is the knob that turns a provider's word about an email into control of an account. |
+| `AUTH_OAUTH_ALLOW_ACCOUNT_CREATION` | `bool` or empty | empty | Whether the callback may create an account. Empty inherits `AUTH_SIGNUP_ENABLED`, so closing signup closes this door with it. |
+| `OAUTH_REDIRECT_BASE_URL` | `str` | `""` | Public origin of the service. The redirect URI is derived from it by `oauth_redirect_uri(provider)`. |
+| `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | `str` | `""` | Credentials from the Google console. `google_kwargs()` builds the client. |
+| `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | `str` | `""` | Credentials of the GitHub OAuth app. `github_kwargs()` builds the client. |
 
 !!! note "MFA / TOTP has its own vars"
     When `AUTH_MFA_ENABLED=true`, `AuthSettings` also exposes `AUTH_MFA_ISSUER`, `AUTH_MFA_RECOVERY_CODES_COUNT`, `AUTH_MFA_TOKEN_TTL_SECONDS` and `AUTH_MFA_VERIFY_WINDOW`. They're out of scope for this recipe (signup/activate/login/reset) — covered in the MFA recipe.

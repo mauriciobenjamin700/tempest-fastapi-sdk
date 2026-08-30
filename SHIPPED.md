@@ -34,7 +34,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `AUTH_EMAIL_CHANGE_NOTIFY_OLD`; `EMAIL_CHANGE` token purpose;
   JSON + backend HTML pages + bilingual templates), OAuth2/OIDC
   providers (`GoogleOAuthClient`, `GitHubOAuthClient`,
-  `OIDCProvider`), CSRF middleware + `make_csrf_token_dependency`,
+  `OIDCProvider`) **plus the four bundled social-login routes since
+  v0.273.0** (see the dedicated bullet below), CSRF middleware +
+  `make_csrf_token_dependency`,
   opt-in DB-backed opaque refresh tokens
   (`BaseUserRefreshTokenModel`, `make_user_refresh_token_model`,
   `refresh_token_model=` on `UserAuthService`) with rotation,
@@ -317,6 +319,40 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   32-character `JWT_SECRET` placeholder cleared both the empty and the
   length branch, so the one value guaranteed to be wrong was the one the
   check approved.
+- **Social login is inside `make_auth_router` (v0.273.0)** — issue #250.
+  `AUTH_OAUTH_ENABLED=true` + `oauth_clients={"google": ...}` mounts
+  `/auth/oauth/{provider}/login|callback` and
+  `/auth/oauth/accounts[/unlink]`; measured, the full router goes from 25
+  routes with no OAuth path to 29 with four. The callback issues through
+  `issue_token_pair`, which is the point: the hand-rolled
+  `encode({"sub": ...})` the old recipe taught carries
+  `['exp', 'iat', 'sub']` and is accepted only by `token_type_allowed`'s
+  legacy branch (`lax=True strict=False`), while the bundled token carries
+  `['email', 'exp', 'iat', 'sub', 'typ']` and passes `strict=True` — so a
+  service with no legacy tokens that correctly sets `strict=True` used to
+  break every Google login, invisibly, because no SDK code ran on that path.
+  Ships `OAuthSettings` (credentials + `google_kwargs`/`github_kwargs` +
+  `oauth_redirect_uri`, which **derives** the callback URL instead of asking
+  for it twice), `BaseUserOAuthAccountModel`/`make_user_oauth_account_model`
+  (separate table, `UNIQUE (provider, subject)` and `UNIQUE (user_id,
+  provider)` declared on the abstract base), `NameMixin`, `OAuthClient` as a
+  public `Protocol`, and `login_with_oauth`/`list_oauth_accounts`/
+  `unlink_oauth_account`. The three security rules that used to live only in
+  the recipe's `!!! danger` blocks now have a test class each: the `state`
+  compared with `hmac.compare_digest` against an `HttpOnly` cookie that binds
+  the provider key, linking by email gated on
+  `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL` **and** `email_verified is True`
+  (`None` is not a yes — GitHub's `GET /user` never says), and the identity
+  keyed on `(provider, subject)`. Account creation defaults to inheriting
+  `AUTH_SIGNUP_ENABLED`, so the v0.272.0 kill-switch closes this door too.
+- **`generate_password` guarantees the policy by construction (v0.273.0)** —
+  the OAuth callback creates accounts and `hashed_password` stays `NOT NULL`,
+  so a password has to be minted. Drawing from a flat alphabet does not work:
+  against `_enforce_password_policy` with complexity on and the default
+  12-character floor, 200 000 samples each, `token_urlsafe(16)` was rejected
+  53.01% of the time, `token_urlsafe(32)` 26.54% and `token_hex(32)` 100%.
+  One character per required class, filled and shuffled with
+  `secrets.SystemRandom`, is 0/2000 across every policy combination.
 - **SSE** — `EventStream` (bounded queue + `overflow` backpressure —
   `drop_oldest`/`drop_newest`/`block`, `dropped_events` counter,
   `max_queue=0` to disable), `ServerSentEvent`, `sse_response`

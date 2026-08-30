@@ -536,7 +536,7 @@ come back here to plug in each capability as you need it.
 | **[Self-hosted generative AI »](genai.md)** | `probe_hardware` / `can_run`, `TextGenerator`, `Embedder`, RAG (web + PDF), audio (STT/TTS + batching), `make_genai_router`; hosted backend (`OpenAICompatGenerator`, any `/chat/completions`) with `TokenUsage`, cached prefix included; list output (`parse_structured_list`, retry at a rising temperature) and object output (`extract_json_object`); per-user usage accounting (`AIUsageStore`) |
 | **[Server-Sent Events (SSE) »](sse.md)** | `EventStream`, `sse_response`, `ServerSentEvent`, `SSEBroker` (per-channel fan-out, Redis bridge) |
 | **[Server-side sessions »](sessions.md)** | `SessionMiddleware`, `SessionAuth`, `make_session_router`, `MemorySessionStore` / `RedisSessionStore` |
-| **[Social login (OAuth2/OIDC) »](oauth.md)** | `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `generate_oauth_state` |
+| **[Social login (OAuth2/OIDC) »](oauth.md)** | `AUTH_OAUTH_ENABLED` + `oauth_clients=` (four `/auth/oauth/*` routes), `OAuthSettings`, `make_user_oauth_account_model`, `NameMixin`, `GoogleOAuthClient`, `GitHubOAuthClient`, `OIDCProvider`, `OAuthUser`, `OAuthClient`, `generate_oauth_state` |
 | **[Spreadsheets (.xlsx) »](spreadsheets.md)** | `SheetWriter` (row cursor), `Column` (width/mask/alignment), `SheetStyle` as plain data, `BR_*` formats pinned to pt-BR, `new_workbook` / `workbook_to_bytes` |
 | **[SSR (typed pages) »](../ssr.md)** | `Page`, `html_response`, `make_htmx_router`, hosting a `tempestweb` build |
 | **[Storage (MinIO/S3) »](storage.md)** | `AsyncMinIOClient`, `MinIOUploadStorage`, `presigned_get_url` / `presigned_put_url`, `list_objects` |

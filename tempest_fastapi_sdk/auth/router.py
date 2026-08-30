@@ -39,15 +39,18 @@ token models and the email rendering pipeline.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+import hmac
+from collections.abc import AsyncIterator, Callable, Mapping
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Form, Request, Response, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import inspect as sa_inspect
 
+from tempest_fastapi_sdk.api.cookies import clear_cookie, set_cookie
 from tempest_fastapi_sdk.api.dependencies import make_jwt_user_dependency
+from tempest_fastapi_sdk.api.oauth import OAuthClient, generate_oauth_state
 from tempest_fastapi_sdk.auth.locale import (
     LOCALE_QUERY_PARAM,
     auth_page_message,
@@ -68,6 +71,8 @@ from tempest_fastapi_sdk.auth.schemas import (
     MFADisableSchema,
     MFAEnrollResponseSchema,
     MFAVerifySchema,
+    OAuthAccountSchema,
+    OAuthUnlinkSchema,
     PasswordChangeSchema,
     PasswordResetConfirmSchema,
     PasswordResetRequestSchema,
@@ -152,6 +157,7 @@ def make_auth_router(
     token_delivery: TokenDelivery | None = None,
     cookie_config: AuthCookieConfig | None = None,
     webauthn: WebAuthnService | None = None,
+    oauth_clients: Mapping[str, OAuthClient] | None = None,
 ) -> APIRouter:
     """Build the bundled auth router.
 
@@ -209,6 +215,16 @@ def make_auth_router(
             Required when ``AUTH_WEBAUTHN_ENABLED`` is on; it carries the
             relying-party identity, the credential model and the challenge
             store, none of which the router can infer.
+        oauth_clients (Mapping[str, OAuthClient] | None): Social-login
+            clients keyed by the provider name the URLs will carry —
+            ``{"google": GoogleOAuthClient(...)}`` serves
+            ``/auth/oauth/google/login``. Required when
+            ``AUTH_OAUTH_ENABLED`` is on. The key is stored on every
+            linked-identity row, so renaming one after accounts exist
+            orphans them. Anything satisfying
+            :class:`~tempest_fastapi_sdk.OAuthClient` is accepted, so a
+            provider the SDK does not ship is wired the same way Google
+            is.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -230,6 +246,15 @@ def make_auth_router(
         * **WebAuthn endpoints** are mounted only when
           ``AUTH_WEBAUTHN_ENABLED`` is on and a ``webauthn`` service is
           passed.
+        * **Social-login endpoints** are mounted only when
+          ``AUTH_OAUTH_ENABLED`` is on, at least one client is passed,
+          the service carries an ``oauth_account_model`` and the user
+          model carries a ``name`` column. The callback honours
+          ``AUTH_TOKEN_DELIVERY`` like every other login-equivalent
+          step, except that ``both`` sets cookies *and* fills the body
+          rather than mounting a parallel ``/auth/cookie/*`` route: the
+          callback URL is registered at the provider, so a second one
+          would have to be registered there too.
 
         The refresh cookie is scoped to the auth base path rather than the
         site root, so it reaches the refresh and logout endpoints but is not
@@ -242,7 +267,15 @@ def make_auth_router(
 
     Raises:
         RuntimeError: When the requested token delivery mode needs a
-            refresh-token model and the service was built without one.
+            refresh-token model and the service was built without one;
+            when ``AUTH_MFA_ENABLED`` is on without a
+            ``recovery_code_model``; when ``AUTH_WEBAUTHN_ENABLED`` is
+            on without a ``webauthn`` service; or when
+            ``AUTH_OAUTH_ENABLED`` is on and any of its three
+            prerequisites — a client, an ``oauth_account_model``, a
+            ``name`` column — is missing. Every one of these fails at
+            construction rather than on the first request that needs
+            the piece.
     """
     from fastapi import Depends
 
@@ -1729,6 +1762,298 @@ def make_auth_router(
                 session,
                 user=user,
                 credential_id=_decode_credential_id(payload.credential_id),
+            )
+            await session.commit()
+
+    # ------------------------------------------------------------------
+    # Social login (OAuth2 / OIDC)
+    # ------------------------------------------------------------------
+
+    if auth_settings.AUTH_OAUTH_ENABLED:
+        if not oauth_clients:
+            raise RuntimeError(
+                "AUTH_OAUTH_ENABLED=True requires at least one configured "
+                "client passed to make_auth_router(oauth_clients={...}), "
+                "keyed by the provider name the URLs will use."
+            )
+        if service.oauth_account_model is None:
+            raise RuntimeError(
+                "AUTH_OAUTH_ENABLED=True requires a concrete "
+                "oauth_account_model (subclass of BaseUserOAuthAccountModel) "
+                "passed to UserAuthService(oauth_account_model=...)."
+            )
+        if not hasattr(service.user_model, "name"):
+            raise RuntimeError(
+                "AUTH_OAUTH_ENABLED=True requires a user model carrying a "
+                "'name' column: the callback creates accounts and must store "
+                "the display name the provider reports. Mix in NameMixin "
+                "(`class UserModel(NameMixin, BaseUserModel)`) and migrate."
+            )
+        clients: dict[str, OAuthClient] = dict(oauth_clients)
+        state_cookie = auth_settings.AUTH_OAUTH_STATE_COOKIE_NAME
+        state_ttl = auth_settings.AUTH_OAUTH_STATE_TTL_SECONDS
+
+        def _client_for(provider: str) -> OAuthClient:
+            """Resolve ``provider`` against the registered clients.
+
+            Args:
+                provider (str): The ``{provider}`` path segment.
+
+            Returns:
+                OAuthClient: The registered client.
+
+            Raises:
+                NotFoundException: When nothing is registered under that
+                    key. A 404 rather than a 400: the provider is part
+                    of the path, so an unknown one is an unknown route.
+            """
+            client = clients.get(provider)
+            if client is None:
+                raise NotFoundException(
+                    message="unknown oauth provider",
+                    details={"provider": provider, "known": sorted(clients)},
+                )
+            return client
+
+        @router.get(
+            "/oauth/{provider}/login",
+            status_code=status.HTTP_302_FOUND,
+            response_class=RedirectResponse,
+            summary="Start the social-login redirect",
+            description=(
+                "Mints a CSRF ``state``, stores it in an ``HttpOnly`` "
+                "cookie scoped to the auth prefix, and redirects the "
+                "browser to the provider's consent screen with **302 "
+                "Found**.\n\n"
+                "Point a link or a button straight at this URL — it is "
+                "a navigation, not an XHR: the response is a redirect "
+                "to a different origin, so `fetch` will either follow "
+                "it opaquely or fail CORS.\n\n"
+                "The state cookie is always written with "
+                "``SameSite=Lax``, whatever ``AUTH_COOKIE_SAMESITE`` "
+                "says, because the provider sends the user back with a "
+                "**cross-site top-level navigation** — ``Strict`` would "
+                "withhold the cookie there and every login would fail "
+                "the state check it exists to pass. It expires after "
+                "``AUTH_OAUTH_STATE_TTL_SECONDS`` and carries the "
+                "provider key alongside the random value, so a state "
+                "minted for one provider cannot be replayed at "
+                "another's callback.\n\n"
+                "An unregistered ``{provider}`` answers **404**."
+            ),
+        )
+        async def oauth_login(provider: str) -> RedirectResponse:
+            """Redirect the browser to the provider's consent screen.
+
+            Args:
+                provider (str): Key of the registered client.
+
+            Returns:
+                RedirectResponse: A 302 to the authorize URL, carrying
+                the state cookie.
+            """
+            client = _client_for(provider)
+            state = generate_oauth_state()
+            redirect = RedirectResponse(
+                client.build_authorize_url(state=state),
+                status_code=status.HTTP_302_FOUND,
+            )
+            set_cookie(
+                redirect,
+                state_cookie,
+                f"{provider}:{state}",
+                max_age=state_ttl,
+                path=prefix,
+                domain=cookies.domain,
+                http_only=True,
+                secure=cookies.secure,
+                samesite="lax",
+            )
+            return redirect
+
+        @router.get(
+            "/oauth/{provider}/callback",
+            response_model=LoginResponseSchema,
+            summary="Finish the social login and return the JWT pair",
+            description=(
+                "Where the provider sends the user back. Validates the "
+                "``state`` against the cookie, exchanges the ``code`` "
+                "for tokens, resolves the identity to a local account "
+                "and answers with the **same JWT pair** "
+                "``POST /auth/login`` returns — same ``typ`` claim, "
+                "same opaque refresh token, same rotation family, same "
+                "``POST /auth/logout``.\n\n"
+                "**Delivery follows ``AUTH_TOKEN_DELIVERY``**, with one "
+                "difference from the rest of the router: ``both`` sets "
+                "the cookies *and* fills the body, instead of mounting "
+                "a second endpoint. The callback URL is registered at "
+                "the provider, so a parallel ``/auth/cookie/...`` route "
+                "would force every provider console to hold two "
+                "redirect URIs for one flow.\n\n"
+                "Answers **401** when the state is missing or does not "
+                "match (a forged callback), or when the provider "
+                "reported an ``error``; **422** when the provider "
+                "returned no email, since the column is ``NOT NULL "
+                "UNIQUE`` and there is nothing to store; **409** when "
+                "the email already belongs to another account and "
+                "``AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL`` does not allow "
+                "attaching it; **403** when the identity is new and "
+                "account creation is off; **404** for an unregistered "
+                "provider."
+            ),
+        )
+        async def oauth_callback(
+            provider: str,
+            request: Request,
+            response: Response,
+            code: str | None = None,
+            state: str | None = None,
+            error: str | None = None,
+            session: AsyncSession = session_dep,
+        ) -> LoginResponseSchema:
+            """Complete the OAuth dance and log the user in.
+
+            Args:
+                provider (str): Key of the registered client.
+                request (Request): The inbound request, read for the
+                    state cookie and the locale signals.
+                response (Response): The outgoing response, used to
+                    clear the state cookie and — in cookie delivery —
+                    to set the session pair.
+                code (str | None): Authorization code from the
+                    provider.
+                state (str | None): CSRF state echoed by the provider.
+                error (str | None): Error key the provider sends
+                    instead of a code when the user declines.
+                session (AsyncSession): The request-scoped DB session.
+
+            Returns:
+                LoginResponseSchema: The authenticated user and, unless
+                delivery is cookie-only, the JWT pair.
+
+            Raises:
+                UnauthorizedException: On a provider-reported error or
+                    a state that does not match the cookie.
+                ValidationException: When the callback carries no code.
+            """
+            client = _client_for(provider)
+            clear_cookie(
+                response,
+                state_cookie,
+                path=prefix,
+                domain=cookies.domain,
+                http_only=True,
+                secure=cookies.secure,
+                samesite="lax",
+            )
+            if error:
+                raise UnauthorizedException(
+                    message="the provider did not authorize the login",
+                    details={"provider": provider, "error": error},
+                )
+            presented = request.cookies.get(state_cookie)
+            if (
+                not state
+                or not presented
+                or not hmac.compare_digest(presented, f"{provider}:{state}")
+            ):
+                raise UnauthorizedException(
+                    message="oauth state mismatch — the callback was not "
+                    "started by this browser",
+                    details={"provider": provider},
+                )
+            if not code:
+                raise ValidationException(
+                    message="the callback carried no authorization code",
+                    details={"provider": provider},
+                )
+            tokens = await client.exchange_code(code)
+            profile = await client.fetch_user(tokens)
+            user, access, refresh = await service.login_with_oauth(
+                session,
+                profile,
+                locale=_page_locale(request),
+            )
+            await session.commit()
+            if cookie_enabled:
+                apply_auth_cookies(
+                    response,
+                    access_token=access,
+                    refresh_token=refresh,
+                    config=cookies,
+                )
+            if not mount_bearer:
+                return LoginResponseSchema(user_id=user.id)
+            return LoginResponseSchema(
+                user_id=user.id,
+                access_token=access,
+                refresh_token=refresh,
+            )
+
+        @router.get(
+            "/oauth/accounts",
+            response_model=list[OAuthAccountSchema],
+            summary="List the identities linked to the current account",
+            description=(
+                "Every provider the **currently authenticated** user "
+                "has linked, oldest first. Returns **200** with an "
+                "empty list for an account that only ever used a "
+                "password.\n\n"
+                "``email_verified`` is three-valued on purpose: "
+                "``null`` means the provider said nothing about the "
+                "address, which is not the same as saying it is "
+                "unverified."
+            ),
+        )
+        async def oauth_list_accounts(
+            session: AsyncSession = session_dep,
+            user: BaseUserModel = Depends(current_user_dep),
+        ) -> list[OAuthAccountSchema]:
+            """Return the caller's linked identities.
+
+            Args:
+                session (AsyncSession): The request-scoped DB session.
+                user (BaseUserModel): The authenticated caller.
+
+            Returns:
+                list[OAuthAccountSchema]: The links, possibly empty.
+            """
+            records = await service.list_oauth_accounts(session, user)
+            return [OAuthAccountSchema.model_validate(record) for record in records]
+
+        @router.post(
+            "/oauth/accounts/unlink",
+            status_code=status.HTTP_204_NO_CONTENT,
+            summary="Detach a provider from the current account",
+            description=(
+                "Removes the link belonging to the **currently "
+                "authenticated** user. The lookup is scoped to the "
+                "caller, so a provider linked by somebody else answers "
+                "**404** exactly like one that was never linked.\n\n"
+                "The account keeps its password and its other links, "
+                "so it stays reachable. Unlinking the only provider on "
+                "an account created by a callback leaves "
+                "``POST /auth/password-reset/request`` as the way back "
+                "in — the same door that flow always offered, since "
+                "the email is already on the row."
+            ),
+        )
+        async def oauth_unlink_account(
+            payload: OAuthUnlinkSchema,
+            session: AsyncSession = session_dep,
+            user: BaseUserModel = Depends(current_user_dep),
+        ) -> None:
+            """Detach one provider from the caller's account.
+
+            Args:
+                payload (OAuthUnlinkSchema): The provider to detach.
+                session (AsyncSession): The request-scoped DB session.
+                user (BaseUserModel): The authenticated caller.
+            """
+            await service.unlink_oauth_account(
+                session,
+                user,
+                provider=payload.provider,
             )
             await session.commit()
 

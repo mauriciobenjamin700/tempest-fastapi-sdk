@@ -81,6 +81,7 @@ from tempest_fastapi_sdk.db.migrations import (
 from tempest_fastapi_sdk.db.mixins import AuditMixin as AuditMixin
 from tempest_fastapi_sdk.db.mixins import LocaleColumnMixin as LocaleColumnMixin
 from tempest_fastapi_sdk.db.mixins import MFAMixin as MFAMixin
+from tempest_fastapi_sdk.db.mixins import NameMixin as NameMixin
 from tempest_fastapi_sdk.db.mixins import SoftDeleteMixin as SoftDeleteMixin
 from tempest_fastapi_sdk.db.model import NAMING_CONVENTION as NAMING_CONVENTION
 from tempest_fastapi_sdk.db.model import BaseModel as BaseModel
@@ -118,6 +119,12 @@ from tempest_fastapi_sdk.db.transaction import (
     transaction_depth as transaction_depth,
 )
 from tempest_fastapi_sdk.db.user_model import BaseUserModel as BaseUserModel
+from tempest_fastapi_sdk.db.user_oauth_account_model import (
+    BaseUserOAuthAccountModel as BaseUserOAuthAccountModel,
+)
+from tempest_fastapi_sdk.db.user_oauth_account_model import (
+    make_user_oauth_account_model as make_user_oauth_account_model,
+)
 from tempest_fastapi_sdk.db.user_recovery_code_model import (
     BaseUserRecoveryCodeModel as BaseUserRecoveryCodeModel,
 )
@@ -171,6 +178,7 @@ __all__: list[str] = [
     "BaseOutboxModel",
     "BaseRepository",
     "BaseUserModel",
+    "BaseUserOAuthAccountModel",
     "BaseUserRecoveryCodeModel",
     "BaseUserRefreshTokenModel",
     "BaseUserTokenModel",
@@ -187,6 +195,7 @@ __all__: list[str] = [
     "F",
     "LocaleColumnMixin",
     "MFAMixin",
+    "NameMixin",
     "OutboxRelay",
     "OutboxStatus",
     "Q",
@@ -222,6 +231,7 @@ __all__: list[str] = [
     "is_memory_sqlite_url",
     "like_search_condition",
     "make_device_token_model",
+    "make_user_oauth_account_model",
     "make_user_recovery_code_model",
     "make_user_refresh_token_model",
     "make_user_token_model",

@@ -5,6 +5,144 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.273.0] — 2026-08-30
+
+### Added
+
+- **Login social entra no `make_auth_router`: o SDK deixa de parar no protocolo
+  e passa a entregar a sessão.**
+  ([#250](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/250))
+  `api/oauth.py` sempre entregou a dança OAuth2 — `GoogleOAuthClient`,
+  `GitHubOAuthClient`, `OIDCProvider`, terminando num `OAuthUser`. O que vinha
+  **depois**, que é onde mora o login de verdade, era do consumidor: rota,
+  `state`, modelo, find-or-create e emissão de token, escritos à mão em cada
+  serviço. Medido na v0.272.0, com todos os grupos condicionais ligados:
+
+  ```text
+  rotas com tudo ligado: 25 (23 paths distintos)
+  paths de OAuth / social: []
+  ```
+
+  Agora, com `AUTH_OAUTH_ENABLED=true` e pelo menos um client registrado:
+
+  ```text
+  rotas com tudo ligado: 29 (27 paths distintos)
+  paths de OAuth / social: ['/auth/oauth/accounts', '/auth/oauth/accounts/unlink',
+                            '/auth/oauth/{provider}/callback',
+                            '/auth/oauth/{provider}/login']
+  com AUTH_OAUTH_ENABLED=false: 25 rotas, oauth=[]
+  ```
+
+  **O defeito que isso fecha é o token.** A receita antiga terminava em
+  `self.tokens.encode({"sub": str(user.id)})`, e o access token do flow bundled
+  carrega mais coisa. Os dois lado a lado, mesmo `JWTUtils`:
+
+  ```text
+  receita antiga     claims=['exp', 'iat', 'sub']                   lax=True strict=False
+  callback bundled   claims=['email', 'exp', 'iat', 'sub', 'typ']   lax=True strict=True
+  ```
+
+  O token do login social só passava pela **janela de compatibilidade** do
+  `token_type_allowed` — o ramo `return not strict`, que existe para não
+  deslogar sessão emitida antes do claim `typ`. Um serviço que nunca teve token
+  legado e liga `strict=True` (a postura correta para ele) derrubava todo login
+  com Google, e nenhum teste via, porque o caminho social não passava por
+  código do SDK. Agora passa: o callback emite por `issue_token_pair`, então
+  herda `typ`, refresh token opaco, rotação, detecção de reuso por família e
+  `POST /auth/logout`.
+
+  As quatro rotas:
+
+  | Método | Rota | O que faz |
+  | --- | --- | --- |
+  | `GET` | `/auth/oauth/{provider}/login` | Sorteia o `state`, grava no cookie `HttpOnly` e redireciona **302** ao provedor |
+  | `GET` | `/auth/oauth/{provider}/callback` | Confere o `state`, troca o `code`, resolve a identidade e devolve o par JWT |
+  | `GET` | `/auth/oauth/accounts` | Autenticado. Lista os provedores ligados |
+  | `POST` | `/auth/oauth/accounts/unlink` | Autenticado. Desliga um provedor |
+
+  As três regras de segurança que a receita carregava em `!!! danger` e que
+  nenhum guard alcançava — porque o SDK não era dono de nenhuma linha daquele
+  caminho — viraram código exercitado, uma classe de teste cada:
+
+  - o `state` é comparado com `hmac.compare_digest` contra um cookie
+    `HttpOnly` que carrega **a chave do provedor** junto do valor aleatório,
+    então um `state` sorteado para o Google não vale no callback do GitHub;
+  - ligar identidade nova a conta existente por e-mail exige
+    `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL=true` **e** `email_verified is True` —
+    `None` (o provedor não disse nada) não é um sim, que é exatamente o caso
+    possível do GitHub;
+  - a identidade é chaveada em `(provider, subject)` com `UNIQUE` composto,
+    declarado no próprio modelo abstrato, então nem um mapeamento escrito à mão
+    ships sem ele.
+
+- **`OAuthSettings`** — mixin de credenciais com `google_kwargs()`,
+  `github_kwargs()` e `oauth_redirect_uri(provider, prefix=...)`. O redirect URI
+  não é declarado: ele é derivado de `OAUTH_REDIRECT_BASE_URL` + prefixo do
+  router + chave do provedor, porque é totalmente determinado pelos três e
+  precisa casar caractere a caractere com o que está no console.
+
+- **`BaseUserOAuthAccountModel` + `make_user_oauth_account_model`** — tabela de
+  identidades ligadas, espelhando `make_user_refresh_token_model`. Tabela
+  separada (e não duas colunas no `UserModel`) é o que permite a mesma pessoa
+  ter Google **e** GitHub ligados, e é onde ficam os dois `UNIQUE`.
+
+- **`NameMixin`** — coluna `name` opt-in para o user model, espelhando o
+  `MFAMixin`. Declarada type-only no `BaseUserModel`, vira coluna real só para
+  quem mistura. Ligar `AUTH_OAUTH_ENABLED` sem ela é recusado na construção do
+  router, no mesmo idioma de `AUTH_MFA_ENABLED` sem `recovery_code_model`.
+
+- **`generate_password`** — gerador de senha que satisfaz a política **por
+  construção**, usado pelo callback ao criar conta (`hashed_password` continua
+  `NOT NULL`, sem migration e sem ramo "usuário sem senha"). Sortear de um
+  alfabeto plano e torcer é o defeito que ele evita; medido contra
+  `_enforce_password_policy` com `AUTH_PASSWORD_REQUIRE_COMPLEXITY=true` e o
+  piso default de 12 caracteres, 200 000 amostras cada:
+
+  ```text
+  token_urlsafe(16)    106012/200000 rejeitados (53.01%)
+  token_urlsafe(32)     53076/200000 rejeitados (26.54%)
+  token_hex(32)        200000/200000 rejeitados (100.00%)
+  ```
+
+  Um quarto dos logins com Google falharia de forma intermitente, com um 422
+  vindo de dentro do callback sobre uma senha que o usuário nunca digitou.
+
+- **`OAuthClient`** — `Protocol` público com os três métodos que o router chama,
+  para registrar um provedor que o SDK não ships (ou um stub de teste) sem
+  herdar de `_BaseOAuthClient`, que continua privado.
+
+- **`UserAuthService.login_with_oauth` / `.list_oauth_accounts` /
+  `.unlink_oauth_account`**, mais o parâmetro `oauth_account_model=` no
+  construtor e `oauth_clients=` no `make_auth_router`.
+
+- **`AUTH_OAUTH_ENABLED`, `AUTH_OAUTH_STATE_COOKIE_NAME`,
+  `AUTH_OAUTH_STATE_TTL_SECONDS`, `AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL`,
+  `AUTH_OAUTH_ALLOW_ACCOUNT_CREATION`** no `AuthSettings`. O último tem default
+  `None`, que **herda `AUTH_SIGNUP_ENABLED`**: o callback cria conta, então
+  fechar o cadastro público (v0.272.0) fecha essa porta junto, em vez de deixar
+  um segundo caminho mais silencioso.
+
+- **`AUTH_DEFAULT_DISPLAY_NAME` / `default_display_name`** — placeholder de nome
+  localizado (`"Você"` / `"You"`) para quando o provedor não devolve `name`,
+  resolvido pelo mesmo `resolve_locale` que o resto do fluxo de auth usa.
+
+### Changed
+
+- **`docs/recipes/oauth.md` / `.en.md` reescritas.** A receita ensinava a
+  escrever as duas rotas, o find-or-create e a emissão do token à mão; agora
+  ensina o router bundled primeiro, e o caminho manual continua documentado numa
+  seção própria — com o aviso de que, indo por ali, as três regras de segurança
+  voltam a ser do leitor.
+- **`docs/recipes/auth-flow.md` / `.en.md`** ganham as quatro rotas na tabela de
+  endpoints e o "Grupo 10 — Login social" na tabela de settings.
+
+### Notes
+
+Nada quebra: os cinco campos novos de `AuthSettings` têm default que preserva o
+comportamento atual (`AUTH_OAUTH_ENABLED=false`), os dois parâmetros novos são
+keyword-only com default `None`, e `api/oauth.py` não se move nem muda de
+assinatura. Por isso **não há seção de migração** para esta release.
+
 ## [0.272.0] — 2026-08-30
 
 ### Fixed

@@ -132,6 +132,8 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.user_recovery_code_model.make_user_recovery_code_model
 ::: tempest_fastapi_sdk.db.user_webauthn_credential_model.BaseWebAuthnCredentialModel
 ::: tempest_fastapi_sdk.db.user_webauthn_credential_model.make_web_authn_credential_model
+::: tempest_fastapi_sdk.db.user_oauth_account_model.BaseUserOAuthAccountModel
+::: tempest_fastapi_sdk.db.user_oauth_account_model.make_user_oauth_account_model
 ::: tempest_fastapi_sdk.db.repository.BaseRepository
 ::: tempest_fastapi_sdk.db.expressions.F
 ::: tempest_fastapi_sdk.db.expressions.Q
@@ -143,6 +145,7 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.mixins.SoftDeleteMixin
 ::: tempest_fastapi_sdk.db.mixins.AuditMixin
 ::: tempest_fastapi_sdk.db.mixins.MFAMixin
+::: tempest_fastapi_sdk.db.mixins.NameMixin
 ::: tempest_fastapi_sdk.db.mixins.LocaleColumnMixin
 ::: tempest_fastapi_sdk.db.connection.AsyncDatabaseManager
 ::: tempest_fastapi_sdk.db.migrations.AlembicHelper
@@ -673,6 +676,7 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.api.oauth.OAuthTokens
 ::: tempest_fastapi_sdk.api.oauth.OAuthError
 ::: tempest_fastapi_sdk.api.oauth.generate_oauth_state
+::: tempest_fastapi_sdk.api.oauth.OAuthClient
 ::: tempest_fastapi_sdk.api.middlewares.cors.apply_cors
 ::: tempest_fastapi_sdk.api.routers.health.make_health_router
 ::: tempest_fastapi_sdk.api.routers.logs.make_logs_router
@@ -729,6 +733,8 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.auth.schemas.MFAConfirmSchema
 ::: tempest_fastapi_sdk.auth.schemas.MFAVerifySchema
 ::: tempest_fastapi_sdk.auth.schemas.MFADisableSchema
+::: tempest_fastapi_sdk.auth.schemas.OAuthAccountSchema
+::: tempest_fastapi_sdk.auth.schemas.OAuthUnlinkSchema
 ::: tempest_fastapi_sdk.auth.webauthn.WebAuthnService
 ::: tempest_fastapi_sdk.auth.webauthn.WebAuthnChallengeStore
 ::: tempest_fastapi_sdk.auth.webauthn.MemoryWebAuthnChallengeStore
@@ -999,6 +1005,8 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ### `tempest_fastapi_sdk.utils`
 
 ::: tempest_fastapi_sdk.utils.password.PasswordUtils
+::: tempest_fastapi_sdk.utils.password.generate_password
+::: tempest_fastapi_sdk.utils.password.DEFAULT_GENERATED_PASSWORD_LENGTH
 ::: tempest_fastapi_sdk.utils.jwt.JWTUtils
 ::: tempest_fastapi_sdk.utils.token_types.token_type_allowed
 ::: tempest_fastapi_sdk.utils.totp.TOTPHelper

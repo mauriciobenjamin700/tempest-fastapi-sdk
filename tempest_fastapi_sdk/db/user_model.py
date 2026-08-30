@@ -41,6 +41,18 @@ class BaseUserModel(BaseModel):
     to map it directly; concrete projects subclass it and either keep
     the auto-derived ``__tablename__`` (``user``) or override it.
 
+    Three further columns are declared **type-only**, under
+    ``TYPE_CHECKING``: ``totp_secret`` / ``totp_enabled_at``, whose
+    runtime columns come from
+    :class:`~tempest_fastapi_sdk.MFAMixin`, and ``name``, whose runtime
+    column comes from :class:`~tempest_fastapi_sdk.NameMixin`. The
+    bundled service reads all three, but a project that never enables
+    MFA or never stores a display name should not carry the columns —
+    so the migration lands only when the mixin is actually adopted
+    (``class UserModel(MFAMixin, NameMixin, BaseUserModel)``). Code
+    reading them at runtime must go through ``getattr``/``hasattr``,
+    because a plain ``BaseUserModel`` subclass has none of them.
+
     Attributes:
         email (str): Login identifier. Unique. 320 chars max
             (RFC 5321 mailbox limit).
@@ -77,13 +89,9 @@ class BaseUserModel(BaseModel):
     )
 
     if TYPE_CHECKING:
-        # Runtime columns are provided by MFAMixin — declared here
-        # type-only so UserAuthService can reference them without
-        # every user model carrying the columns. A project enables MFA
-        # by mixing in MFAMixin (``class UserModel(MFAMixin, BaseUserModel)``);
-        # the columns only land in the migration then.
         totp_secret: Mapped[str | None]
         totp_enabled_at: Mapped[datetime | None]
+        name: Mapped[str]
 
     def set_password(self, plain: str, *, rounds: int = 12) -> None:
         """Hash ``plain`` and write it to :attr:`hashed_password`.

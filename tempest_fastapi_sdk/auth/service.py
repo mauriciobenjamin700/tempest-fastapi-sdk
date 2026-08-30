@@ -34,6 +34,7 @@ from tempest_fastapi_sdk.auth.guards import (
 )
 from tempest_fastapi_sdk.auth.locale import (
     auth_email_message,
+    default_display_name,
     format_expires_at,
     resolve_locale,
     stamp_locale,
@@ -50,6 +51,7 @@ from tempest_fastapi_sdk.db.user_token_model import (
 )
 from tempest_fastapi_sdk.exceptions import (
     ConflictException,
+    ForbiddenException,
     InvalidTokenException,
     NotFoundException,
     UnauthorizedException,
@@ -61,7 +63,7 @@ from tempest_fastapi_sdk.utils.opaque_token import (
     generate_opaque_token,
     hash_opaque_token,
 )
-from tempest_fastapi_sdk.utils.password import PasswordUtils
+from tempest_fastapi_sdk.utils.password import PasswordUtils, generate_password
 from tempest_fastapi_sdk.utils.token_types import (
     ACCESS_TOKEN_TYPE,
     MFA_TOKEN_TYPE,
@@ -72,8 +74,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any
 
+    from tempest_fastapi_sdk.api.oauth import OAuthUser
     from tempest_fastapi_sdk.db.connection import AsyncDatabaseManager
     from tempest_fastapi_sdk.db.user_model import BaseUserModel
+    from tempest_fastapi_sdk.db.user_oauth_account_model import (
+        BaseUserOAuthAccountModel,
+    )
     from tempest_fastapi_sdk.db.user_recovery_code_model import (
         BaseUserRecoveryCodeModel,
     )
@@ -119,6 +125,7 @@ class UserAuthService:
         jwt: JWTUtils | None = None,
         db: AsyncDatabaseManager | None = None,
         refresh_token_model: type[BaseUserRefreshTokenModel] | None = None,
+        oauth_account_model: type[BaseUserOAuthAccountModel] | None = None,
     ) -> None:
         """Initialize the service.
 
@@ -150,6 +157,12 @@ class UserAuthService:
                 (default), the service keeps issuing the legacy
                 stateless JWT refresh token (no DB persistence, no
                 revocation).
+            oauth_account_model (type[BaseUserOAuthAccountModel] | None):
+                Concrete linked-identity model — usually
+                ``src.db.models.UserOAuthAccountModel``. **Opt-in:**
+                required by :meth:`login_with_oauth` and therefore by
+                the ``/auth/oauth/*`` endpoints; ``None`` (default)
+                leaves social login unavailable.
         """
         self.user_model: type[BaseUserModel] = user_model
         self.token_model: type[BaseUserTokenModel] = token_model
@@ -164,6 +177,9 @@ class UserAuthService:
         self.db: AsyncDatabaseManager | None = db
         self.refresh_token_model: type[BaseUserRefreshTokenModel] | None = (
             refresh_token_model
+        )
+        self.oauth_account_model: type[BaseUserOAuthAccountModel] | None = (
+            oauth_account_model
         )
 
     # ------------------------------------------------------------------
@@ -325,6 +341,432 @@ class UserAuthService:
         await session.flush()
         await session.refresh(user)
         return user
+
+    # ------------------------------------------------------------------
+    # Social login (OAuth2 / OIDC)
+    # ------------------------------------------------------------------
+
+    async def login_with_oauth(
+        self,
+        session: AsyncSession,
+        profile: OAuthUser,
+        *,
+        locale: str,
+        link_by_verified_email: bool | None = None,
+        allow_account_creation: bool | None = None,
+    ) -> tuple[BaseUserModel, str, str]:
+        """Resolve a third-party identity to a local user and log them in.
+
+        The half of social login the OAuth clients deliberately leave
+        out: they end at a :class:`~tempest_fastapi_sdk.OAuthUser`, and
+        this turns it into a session. Feeding the result through
+        :meth:`issue_token_pair` — rather than signing a token by hand
+        at the call site — is what makes a Google login the *same*
+        session as an email login: the same ``typ`` claim, the same
+        opaque refresh token, the same rotation family, the same reuse
+        detection, the same ``POST /auth/logout``.
+
+        Resolution order, and why:
+
+        1. **``(provider, subject)``** — the linked identity. This is
+           the only lookup that authenticates. The pair is the
+           provider's own stable id, unique in the account table, and
+           unaffected by the user later changing their email at either
+           end.
+        2. **Email, when linking is allowed** — a first-time identity
+           whose address already belongs to a local account. Attaches
+           the identity to that account, but *only* when the provider
+           explicitly states it verified the address
+           (``email_verified is True``; ``None`` means the provider
+           said nothing, which is not a yes). This is the branch that
+           converts a provider's word about an email into control of an
+           existing account, so it is off unless asked for twice — once
+           by ``AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL``, once by the
+           provider's own flag.
+        3. **Creation** — an unknown identity with an unknown email.
+           Creates the user row with the provider's email, the
+           provider's name (or a localized placeholder) and a generated
+           password, then links the identity to it.
+
+        A created account is **active immediately**: the point of the
+        flow is that the identity provider performed the verification,
+        so re-verifying by email would ask the user to prove something
+        Google already proved. ``AUTH_AUTO_ACTIVATE`` is not consulted
+        here — a project that wants human approval before first login
+        turns account creation off and has an administrator create and
+        link the row.
+
+        The generated password is never shown to anyone. The account
+        owner reaches a password of their own through the ordinary
+        ``POST /auth/password-reset/request``, which needs no new flow
+        because the email is already on the row.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. Rows are
+                added and flushed; the caller owns the commit.
+            profile (OAuthUser): The identity the provider returned,
+                normalized by the client.
+            locale (str): Canonical locale for this request, as
+                :func:`~tempest_fastapi_sdk.resolve_locale` resolved it.
+                Required rather than defaulted because it is what picks
+                the placeholder display name — a silent default would
+                answer a Portuguese user in English.
+            link_by_verified_email (bool | None): Override for
+                ``AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL``. ``None``
+                (default) reads the setting.
+            allow_account_creation (bool | None): Override for
+                ``AUTH_OAUTH_ALLOW_ACCOUNT_CREATION``, which itself
+                falls back to ``AUTH_SIGNUP_ENABLED``. ``None``
+                (default) walks that chain.
+
+        Returns:
+            tuple[BaseUserModel, str, str]: The authenticated user and
+            the ``(access_token, refresh_token)`` pair, identical in
+            shape to what ``POST /auth/login`` returns.
+
+        Raises:
+            RuntimeError: When the service was built without an
+                ``oauth_account_model``. A configuration error, not a
+                request error.
+            ValidationException: When the provider returned no email.
+                The column is ``NOT NULL UNIQUE``, so there is nothing
+                to store and inventing an address would create an
+                account nobody can recover.
+            ConflictException: When the email already belongs to
+                another account and linking is not allowed, or the
+                provider did not verify it.
+            ForbiddenException: When the identity is unknown and
+                account creation is disabled.
+            UnauthorizedException: When the resolved account is
+                inactive.
+        """
+        if self.oauth_account_model is None:
+            raise RuntimeError(
+                "login_with_oauth requires a concrete oauth_account_model "
+                "(subclass of BaseUserOAuthAccountModel) passed to "
+                "UserAuthService(oauth_account_model=...)."
+            )
+        account_model = self.oauth_account_model
+        found = await session.execute(
+            select(account_model).where(
+                account_model.provider == profile.provider,
+                account_model.subject == profile.subject,
+            )
+        )
+        account = found.scalar_one_or_none()
+        if account is not None:
+            user = await self._load_linked_user(session, account.user_id)
+        else:
+            user = await self._resolve_oauth_user(
+                session,
+                profile,
+                locale=locale,
+                link_by_verified_email=(
+                    self.auth_settings.AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL
+                    if link_by_verified_email is None
+                    else link_by_verified_email
+                ),
+                allow_account_creation=self._oauth_creation_allowed(
+                    allow_account_creation
+                ),
+            )
+            account = account_model(
+                user_id=user.id,
+                provider=profile.provider,
+                subject=profile.subject,
+            )
+            session.add(account)
+        self._sync_oauth_account(account, profile)
+        now = utcnow()
+        account.last_login_at = now
+        user.last_login_at = now
+        await session.flush()
+        await session.refresh(user)
+        access, refresh = await self.issue_token_pair(session, user)
+        return user, access, refresh
+
+    def _oauth_creation_allowed(self, override: bool | None) -> bool:
+        """Resolve whether the callback may create an account.
+
+        Walks the two-step fallback the settings describe: the explicit
+        argument, then ``AUTH_OAUTH_ALLOW_ACCOUNT_CREATION``, then
+        ``AUTH_SIGNUP_ENABLED``. The last hop is what makes closing the
+        public signup door close the social one with it, instead of
+        leaving a second, quieter way in.
+
+        Args:
+            override (bool | None): The caller's explicit choice, or
+                ``None`` to read the settings.
+
+        Returns:
+            bool: Whether an unknown identity may create a user row.
+        """
+        if override is not None:
+            return override
+        configured = self.auth_settings.AUTH_OAUTH_ALLOW_ACCOUNT_CREATION
+        if configured is not None:
+            return configured
+        return self.auth_settings.AUTH_SIGNUP_ENABLED
+
+    async def _load_linked_user(
+        self,
+        session: AsyncSession,
+        user_id: UUID,
+    ) -> BaseUserModel:
+        """Load the user behind an existing link, refusing dead accounts.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            user_id (UUID): The FK stored on the link row.
+
+        Returns:
+            BaseUserModel: The linked user.
+
+        Raises:
+            UnauthorizedException: When the row is gone or inactive. A
+                deactivated account must not be revived by arriving
+                through the provider instead of the login form.
+        """
+        result = await session.execute(
+            select(self.user_model).where(self.user_model.id == user_id)
+        )
+        user: BaseUserModel | None = result.scalar_one_or_none()
+        if user is None or not user.is_active:
+            raise UnauthorizedException(message="account is not active")
+        return user
+
+    async def _resolve_oauth_user(
+        self,
+        session: AsyncSession,
+        profile: OAuthUser,
+        *,
+        locale: str,
+        link_by_verified_email: bool,
+        allow_account_creation: bool,
+    ) -> BaseUserModel:
+        """Find or create the local user for a first-time identity.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            profile (OAuthUser): The identity the provider returned.
+            locale (str): Canonical locale, for the placeholder name.
+            link_by_verified_email (bool): Whether an existing account
+                may be claimed by a verified email match.
+            allow_account_creation (bool): Whether an unknown identity
+                may create a row.
+
+        Returns:
+            BaseUserModel: The user this identity belongs to.
+
+        Raises:
+            ValidationException: When the provider returned no email.
+            ConflictException: When the email is taken and cannot be
+                linked. The message names the collision rather than
+                hiding it: the alternative to refusing loudly is
+                attaching the identity anyway, which is account
+                takeover.
+            ForbiddenException: When creation is disabled.
+            UnauthorizedException: When the matched account is
+                inactive.
+        """
+        email = (profile.email or "").strip().lower()
+        if not email:
+            raise ValidationException(
+                message="the identity provider returned no email address",
+                details={"provider": profile.provider},
+            )
+        result = await session.execute(
+            select(self.user_model).where(self.user_model.email == email)
+        )
+        existing: BaseUserModel | None = result.scalar_one_or_none()
+        if existing is not None:
+            if not link_by_verified_email:
+                raise ConflictException(
+                    message="email already registered — sign in and link "
+                    "the provider from your account settings",
+                    details={"email": email, "provider": profile.provider},
+                )
+            if profile.email_verified is not True:
+                raise ConflictException(
+                    message="the identity provider did not verify this email",
+                    details={"email": email, "provider": profile.provider},
+                )
+            if not existing.is_active:
+                raise UnauthorizedException(message="account is not active")
+            return existing
+        if not allow_account_creation:
+            raise ForbiddenException(
+                message="this account does not exist and self-service "
+                "registration is disabled",
+                details={"provider": profile.provider},
+            )
+        return await self._create_oauth_user(
+            session,
+            profile,
+            email=email,
+            locale=locale,
+        )
+
+    async def _create_oauth_user(
+        self,
+        session: AsyncSession,
+        profile: OAuthUser,
+        *,
+        email: str,
+        locale: str,
+    ) -> BaseUserModel:
+        """Insert the user row for a brand-new social identity.
+
+        The password is generated rather than left empty because
+        ``hashed_password`` is ``NOT NULL`` and every other flow
+        assumes a real hash sits there — an empty column would make
+        :meth:`~tempest_fastapi_sdk.BaseUserModel.check_password`
+        silently return ``False`` for every input, which is correct but
+        indistinguishable from a wrong password.
+
+        The generated value is passed back through
+        :meth:`_enforce_password_policy` before use. It cannot fail for
+        the shipped policy — that is what
+        :func:`~tempest_fastapi_sdk.generate_password` guarantees by
+        construction — but a project that overrides the policy with
+        something the generator cannot satisfy should learn that here,
+        loudly, rather than by storing a hash that violates its own
+        rules.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            profile (OAuthUser): The identity the provider returned.
+            email (str): The already-normalized email.
+            locale (str): Canonical locale, for the placeholder name.
+
+        Returns:
+            BaseUserModel: The persisted, active user.
+
+        Raises:
+            ValidationException: When the configured policy rejects the
+                generated password — a misconfiguration.
+        """
+        password = generate_password(
+            min_length=self.auth_settings.AUTH_PASSWORD_MIN_LENGTH,
+            max_bytes=self.auth_settings.AUTH_PASSWORD_MAX_BYTES,
+            require_complexity=(self.auth_settings.AUTH_PASSWORD_REQUIRE_COMPLEXITY),
+        )
+        self._enforce_password_policy(password)
+        user = self.user_model(email=email, is_active=True)
+        user.hashed_password = self.passwords.hash(password)
+        if hasattr(user, "name"):
+            user.name = (profile.name or "").strip() or default_display_name(locale)
+        session.add(user)
+        await session.flush()
+        await session.refresh(user)
+        return user
+
+    @staticmethod
+    def _sync_oauth_account(
+        account: BaseUserOAuthAccountModel,
+        profile: OAuthUser,
+    ) -> None:
+        """Copy the provider's current profile onto the link row.
+
+        Runs on every callback, not just the first, so a display name
+        or avatar changed at the provider is reflected locally instead
+        of freezing at whatever it was the day the account was linked.
+        Only the link row is refreshed — the user's own ``name`` is
+        left alone, because a user who edited it in this application
+        did so on purpose.
+
+        Args:
+            account (BaseUserOAuthAccountModel): The link row.
+            profile (OAuthUser): The identity the provider returned.
+        """
+        account.email = profile.email
+        account.email_verified = profile.email_verified
+        account.name = profile.name
+        account.picture = profile.picture
+
+    async def list_oauth_accounts(
+        self,
+        session: AsyncSession,
+        user: BaseUserModel,
+    ) -> list[BaseUserOAuthAccountModel]:
+        """Return every identity linked to ``user``.
+
+        A user with no links is a user who signed up with a password —
+        an ordinary state, so this returns ``[]`` rather than raising.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session.
+            user (BaseUserModel): The authenticated account.
+
+        Returns:
+            list[BaseUserOAuthAccountModel]: The linked identities,
+            oldest first. Empty when none are linked.
+
+        Raises:
+            RuntimeError: When the service was built without an
+                ``oauth_account_model``.
+        """
+        if self.oauth_account_model is None:
+            raise RuntimeError(
+                "list_oauth_accounts requires a concrete oauth_account_model "
+                "passed to UserAuthService(oauth_account_model=...)."
+            )
+        account_model = self.oauth_account_model
+        result = await session.execute(
+            select(account_model)
+            .where(account_model.user_id == user.id)
+            .order_by(account_model.created_at)
+        )
+        return list(result.scalars().all())
+
+    async def unlink_oauth_account(
+        self,
+        session: AsyncSession,
+        user: BaseUserModel,
+        *,
+        provider: str,
+    ) -> None:
+        """Detach ``provider`` from ``user``.
+
+        The user keeps their password and every other link, so the
+        account stays reachable — unlinking the only provider on an
+        account whose password was generated leaves the reset flow as
+        the way back in, which is the same door that flow always
+        offered.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. The row
+                is deleted and flushed; the caller owns the commit.
+            user (BaseUserModel): The authenticated account.
+            provider (str): Provider key to unlink.
+
+        Raises:
+            RuntimeError: When the service was built without an
+                ``oauth_account_model``.
+            NotFoundException: When that provider is not linked to this
+                user. A single named resource, so 404 is the right
+                answer — unlike the plural listing above.
+        """
+        if self.oauth_account_model is None:
+            raise RuntimeError(
+                "unlink_oauth_account requires a concrete oauth_account_model "
+                "passed to UserAuthService(oauth_account_model=...)."
+            )
+        account_model = self.oauth_account_model
+        result = await session.execute(
+            select(account_model).where(
+                account_model.user_id == user.id,
+                account_model.provider == provider,
+            )
+        )
+        account = result.scalar_one_or_none()
+        if account is None:
+            raise NotFoundException(
+                message="provider is not linked to this account",
+                details={"provider": provider},
+            )
+        await session.delete(account)
+        await session.flush()
 
     # ------------------------------------------------------------------
     # Password reset

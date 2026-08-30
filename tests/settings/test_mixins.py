@@ -14,8 +14,10 @@ from tempest_fastapi_sdk import (
     CORSSettings,
     DatabaseSettings,
     EmailSettings,
+    GoogleOAuthClient,
     JWTSettings,
     LogSettings,
+    OAuthSettings,
     OpenPixSettings,
     RabbitMQSettings,
     RedisSettings,
@@ -441,3 +443,78 @@ class TestOpenPixSettings:
             ],
             check=True,
         )
+
+
+class TestOAuthSettings:
+    """`OAuthSettings` — credentials, and the URI that must not be typed twice.
+
+    The redirect URI is the string most likely to be wrong: the provider
+    compares it byte for byte and refuses **before** the consent screen, so a
+    mismatch reads like a credential problem. Deriving it from the base URL,
+    the router prefix and the provider key is the whole point of the mixin, so
+    that derivation is what these tests pin.
+    """
+
+    def test_the_redirect_uri_is_derived_not_declared(self) -> None:
+        settings = OAuthSettings(OAUTH_REDIRECT_BASE_URL="https://api.example.com")
+
+        assert (
+            settings.oauth_redirect_uri("google")
+            == "https://api.example.com/auth/oauth/google/callback"
+        )
+
+    def test_a_trailing_slash_on_the_base_does_not_double_up(self) -> None:
+        """A pasted base URL usually carries one; a doubled slash is a mismatch."""
+        settings = OAuthSettings(OAUTH_REDIRECT_BASE_URL="https://api.example.com/")
+
+        assert (
+            settings.oauth_redirect_uri("github")
+            == "https://api.example.com/auth/oauth/github/callback"
+        )
+
+    def test_a_custom_router_prefix_reaches_the_uri(self) -> None:
+        """The prefix is a `make_auth_router` argument, so it can differ."""
+        settings = OAuthSettings(OAUTH_REDIRECT_BASE_URL="https://api.example.com")
+
+        assert (
+            settings.oauth_redirect_uri("google", prefix="/api/auth")
+            == "https://api.example.com/api/auth/oauth/google/callback"
+        )
+
+    def test_google_kwargs_are_exactly_what_the_client_takes(self) -> None:
+        settings = OAuthSettings(
+            OAUTH_REDIRECT_BASE_URL="https://api.example.com",
+            OAUTH_GOOGLE_CLIENT_ID="the-id",
+            OAUTH_GOOGLE_CLIENT_SECRET="the-secret",
+        )
+
+        assert settings.google_kwargs() == {
+            "client_id": "the-id",
+            "client_secret": "the-secret",
+            "redirect_uri": "https://api.example.com/auth/oauth/google/callback",
+        }
+
+    def test_github_kwargs_point_at_the_github_callback(self) -> None:
+        settings = OAuthSettings(
+            OAUTH_REDIRECT_BASE_URL="https://api.example.com",
+            OAUTH_GITHUB_CLIENT_ID="the-id",
+            OAUTH_GITHUB_CLIENT_SECRET="the-secret",
+        )
+
+        assert settings.github_kwargs() == {
+            "client_id": "the-id",
+            "client_secret": "the-secret",
+            "redirect_uri": "https://api.example.com/auth/oauth/github/callback",
+        }
+
+    def test_the_kwargs_build_the_real_client(self) -> None:
+        """The mapping is only worth having if the splat actually works."""
+        settings = OAuthSettings(
+            OAUTH_REDIRECT_BASE_URL="https://api.example.com",
+            OAUTH_GOOGLE_CLIENT_ID="the-id",
+            OAUTH_GOOGLE_CLIENT_SECRET="the-secret",
+        )
+        client = GoogleOAuthClient(**settings.google_kwargs())
+
+        assert client.provider_name == "google"
+        assert client.redirect_uri == settings.oauth_redirect_uri("google")

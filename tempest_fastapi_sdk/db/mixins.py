@@ -172,6 +172,50 @@ class MFAMixin:
         return self.totp_enabled_at is not None
 
 
+class NameMixin:
+    """Add a display-name column to a user model.
+
+    Opt-in companion to :class:`tempest_fastapi_sdk.BaseUserModel`,
+    which ships no ``name`` column — the admin login flow it was built
+    for needs an email and a password, not a greeting. Mix it in when
+    the project wants one on the user row:
+
+    ```python
+    from tempest_fastapi_sdk import BaseUserModel, NameMixin
+
+
+    class UserModel(NameMixin, BaseUserModel):
+        __tablename__ = "users"
+    ```
+
+    Two bundled flows write it when it exists:
+    :meth:`~tempest_fastapi_sdk.UserAuthService.signup` passes the
+    ``name`` from the payload through, and
+    :meth:`~tempest_fastapi_sdk.UserAuthService.login_with_oauth`
+    stores what the identity provider reported (falling back to a
+    localized placeholder when the provider reports nothing). Enabling
+    the OAuth router without this mixin is refused at construction
+    rather than at the first callback.
+
+    The column is ``NOT NULL`` with an empty-string default rather than
+    nullable, so reading ``user.name`` never hands a template ``None``
+    to concatenate.
+
+    Attributes:
+        name (str): Display name. Empty string until something sets it.
+    """
+
+    name: Mapped[str] = mapped_column(
+        String(200),
+        nullable=False,
+        default="",
+        doc=(
+            "Display name shown in UI and emails. NOT NULL with an "
+            "empty-string default so readers never handle None."
+        ),
+    )
+
+
 class LocaleColumnMixin:
     """Add a nullable ``locale`` column for the row's preferred language.
 
@@ -206,5 +250,6 @@ __all__: list[str] = [
     "AuditMixin",
     "LocaleColumnMixin",
     "MFAMixin",
+    "NameMixin",
     "SoftDeleteMixin",
 ]

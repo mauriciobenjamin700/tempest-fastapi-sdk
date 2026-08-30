@@ -1053,6 +1053,19 @@ class AuthSettings(BaseAppSettings):
             discoverable. Default: ``"preferred"``.
         AUTH_WEBAUTHN_CHALLENGE_TTL_SECONDS (int): Lifetime of the
             between-request ceremony state. Default: ``300``.
+        AUTH_OAUTH_ENABLED (bool): Kill-switch enabling the social-login
+            (``/auth/oauth/*``) endpoints. Default: ``False``.
+        AUTH_OAUTH_STATE_COOKIE_NAME (str): Cookie carrying the CSRF
+            state between the redirect and the callback.
+            Default: ``"oauth_state"``.
+        AUTH_OAUTH_STATE_TTL_SECONDS (int): Lifetime of that state.
+            Default: ``600``.
+        AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL (bool): Attach a new provider
+            identity to an existing account when the provider states the
+            email is verified. Default: ``False``.
+        AUTH_OAUTH_ALLOW_ACCOUNT_CREATION (bool | None): Whether the
+            callback may create a user row. Default: ``None``
+            (inherits ``AUTH_SIGNUP_ENABLED``).
     """
 
     AUTH_SIGNUP_ENABLED: bool = Field(
@@ -1636,6 +1649,80 @@ class AuthSettings(BaseAppSettings):
         ),
         examples=[120, 300, 600],
     )
+    AUTH_OAUTH_ENABLED: bool = Field(
+        default=False,
+        title="Social-login endpoints kill-switch",
+        description=(
+            "When ``True``, ``make_auth_router`` mounts the "
+            "``/auth/oauth/*`` endpoints. Requires at least one "
+            "configured client passed as ``oauth_clients=``, a "
+            "``UserAuthService`` wired with an ``oauth_account_model``, "
+            "and a user model carrying ``NameMixin``; each missing "
+            "piece is refused at router construction. When ``False`` "
+            "(default) the endpoints do not exist."
+        ),
+        examples=[False, True],
+    )
+    AUTH_OAUTH_STATE_COOKIE_NAME: str = Field(
+        default="oauth_state",
+        title="CSRF state cookie name",
+        description=(
+            "Cookie the login redirect writes and the callback compares "
+            "against the ``state`` query parameter. The comparison is "
+            "what makes a forged callback unusable, so the cookie is "
+            "``HttpOnly`` and scoped to the auth prefix. It carries the "
+            "provider key alongside the random value, so a state minted "
+            "for one provider cannot be replayed at another's callback."
+        ),
+        examples=["oauth_state"],
+    )
+    AUTH_OAUTH_STATE_TTL_SECONDS: int = Field(
+        default=600,
+        ge=30,
+        le=3600,
+        title="CSRF state lifetime (seconds)",
+        description=(
+            "How long the state cookie survives, and therefore how long "
+            "the user has to finish consenting at the provider. Ten "
+            "minutes by default — long enough to type a password and "
+            "clear a second factor, short enough that an abandoned tab "
+            "cannot complete a login an hour later."
+        ),
+        examples=[300, 600, 900],
+    )
+    AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL: bool = Field(
+        default=False,
+        title="Attach a new provider identity to an existing account by email",
+        description=(
+            "When ``True``, a first-time callback whose email already "
+            "belongs to a local account links the two instead of "
+            "failing on the unique-email constraint — and **only** when "
+            "the provider explicitly states it verified that address "
+            "(``email_verified is True``; an unstated flag is not a "
+            "yes). Default ``False``, because this is the setting that "
+            "turns a provider's word about an email into control of an "
+            "existing account: an IdP that lets a user set any address "
+            "without proving it hands over every account whose email "
+            "was guessed. Turn it on only for providers you trust to "
+            "verify, and read the recipe's warning first."
+        ),
+        examples=[False, True],
+    )
+    AUTH_OAUTH_ALLOW_ACCOUNT_CREATION: bool | None = Field(
+        default=None,
+        title="Whether the OAuth callback may create an account",
+        description=(
+            "The OAuth callback is a signup door too: the first time an "
+            "unknown identity arrives, it either creates a user row or "
+            "refuses. ``None`` (default) inherits "
+            "``AUTH_SIGNUP_ENABLED``, so closing the front door closes "
+            "this one with it. Set ``True`` on a closed system that "
+            "still wants onboarding through the provider; set ``False`` "
+            "to keep an open signup form while restricting social login "
+            "to identities an administrator already linked."
+        ),
+        examples=[None, True, False],
+    )
     AUTH_TOKEN_DELIVERY: Literal["bearer", "cookie", "both"] = Field(
         default="bearer",
         title="How login/refresh return the JWT pair",
@@ -1711,6 +1798,163 @@ class AuthSettings(BaseAppSettings):
         ),
         examples=["refresh_token"],
     )
+
+
+class OAuthSettings(BaseAppSettings):
+    """Credentials for the bundled social-login providers.
+
+    Splits cleanly from :class:`AuthSettings` along one line: this
+    mixin says **who you are at the provider**, and the ``AUTH_OAUTH_*``
+    fields of ``AuthSettings`` say **what the bundled router does**. The
+    router never reads this mixin — it receives clients the application
+    already built — so a project that gets its credentials from a
+    secret manager instead of the environment can skip it entirely and
+    still use every ``/auth/oauth/*`` endpoint.
+
+    The redirect URI is derived rather than declared. It has to match
+    what is registered at the provider *byte for byte*, and it is fully
+    determined by the public base URL, the router prefix and the
+    provider key — so declaring it separately is one more string to
+    keep in sync for no gained freedom. Give the base URL; take the
+    callback from :meth:`oauth_redirect_uri`.
+
+    Each attribute below is also the name of the environment variable
+    that sets it (matched case-sensitively, no prefix).
+
+    Attributes:
+        OAUTH_REDIRECT_BASE_URL (str): Public origin the provider will
+            redirect back to, scheme included and no trailing path
+            (e.g. ``"https://api.example.com"``). Default: ``""``.
+        OAUTH_GOOGLE_CLIENT_ID (str): OAuth client id from the Google
+            Cloud console. Default: ``""``.
+        OAUTH_GOOGLE_CLIENT_SECRET (str): Matching client secret.
+            Default: ``""``.
+        OAUTH_GITHUB_CLIENT_ID (str): Client id of the GitHub OAuth
+            app. Default: ``""``.
+        OAUTH_GITHUB_CLIENT_SECRET (str): Matching client secret.
+            Default: ``""``.
+    """
+
+    OAUTH_REDIRECT_BASE_URL: str = Field(
+        default="",
+        title="Public base URL the provider redirects back to",
+        description=(
+            "Scheme and host this service is reachable at from a "
+            "browser, with no trailing slash and no path — the callback "
+            "path is appended by ``oauth_redirect_uri``. In "
+            "development this is the tunnel or ``http://localhost:8000``, "
+            "not the container's internal address: the provider "
+            "redirects the *user agent*, not itself."
+        ),
+        examples=["", "https://api.example.com", "http://localhost:8000"],
+    )
+    OAUTH_GOOGLE_CLIENT_ID: str = Field(
+        default="",
+        title="Google OAuth client id",
+        description=(
+            "``Client ID`` of the OAuth 2.0 credential created under "
+            "APIs & Services in the Google Cloud console. Public — it "
+            "travels in the authorize URL."
+        ),
+        examples=["", "1234567890-abc123.apps.googleusercontent.com"],
+    )
+    OAUTH_GOOGLE_CLIENT_SECRET: str = Field(
+        default="",
+        title="Google OAuth client secret",
+        description=(
+            "``Client secret`` paired with the id above. Sent only "
+            "server-to-server on the token exchange — never put it in a "
+            "frontend bundle."
+        ),
+        examples=["", "GOCSPX-…"],
+    )
+    OAUTH_GITHUB_CLIENT_ID: str = Field(
+        default="",
+        title="GitHub OAuth app client id",
+        description=(
+            "``Client ID`` of the OAuth app registered under Developer "
+            "settings. Public — it travels in the authorize URL."
+        ),
+        examples=["", "Iv1.a1b2c3d4e5f6"],
+    )
+    OAUTH_GITHUB_CLIENT_SECRET: str = Field(
+        default="",
+        title="GitHub OAuth app client secret",
+        description=(
+            "``Client secret`` paired with the id above. Sent only "
+            "server-to-server on the token exchange."
+        ),
+        examples=["", "ghp_…"],
+    )
+
+    def oauth_redirect_uri(self, provider: str, *, prefix: str = "/auth") -> str:
+        """Build the callback URL to register with ``provider``.
+
+        The value must match the provider's registered redirect URI
+        exactly — a trailing slash or an ``http`` where the console
+        holds ``https`` is rejected at the *authorize* step, before the
+        user ever sees a consent screen, which makes it look like a
+        credential problem. Deriving it here keeps the string that
+        reaches the provider and the string the router serves as one
+        expression.
+
+        Args:
+            provider (str): Provider key as the router routes it
+                (``"google"``, ``"github"``, or whatever key the
+                application registered an ``OIDCProvider`` under).
+            prefix (str): The ``make_auth_router`` prefix. Defaults to
+                ``"/auth"``; pass the same value you passed the router
+                if you changed it.
+
+        Returns:
+            str: The absolute callback URL.
+        """
+        return (
+            f"{self.OAUTH_REDIRECT_BASE_URL.rstrip('/')}"
+            f"{prefix}/oauth/{provider}/callback"
+        )
+
+    def google_kwargs(self, *, prefix: str = "/auth") -> dict[str, Any]:
+        """Map these settings onto ``GoogleOAuthClient``.
+
+        ```python
+        from tempest_fastapi_sdk import GoogleOAuthClient
+
+        client: GoogleOAuthClient = GoogleOAuthClient(**settings.google_kwargs())
+        ```
+
+        Args:
+            prefix (str): The ``make_auth_router`` prefix, forwarded to
+                :meth:`oauth_redirect_uri`. Defaults to ``"/auth"``.
+
+        Returns:
+            dict[str, Any]: ``client_id``, ``client_secret`` and the
+            derived ``redirect_uri``. Scopes are left to the client's
+            own defaults (``openid email profile``).
+        """
+        return {
+            "client_id": self.OAUTH_GOOGLE_CLIENT_ID,
+            "client_secret": self.OAUTH_GOOGLE_CLIENT_SECRET,
+            "redirect_uri": self.oauth_redirect_uri("google", prefix=prefix),
+        }
+
+    def github_kwargs(self, *, prefix: str = "/auth") -> dict[str, Any]:
+        """Map these settings onto ``GitHubOAuthClient``.
+
+        Args:
+            prefix (str): The ``make_auth_router`` prefix, forwarded to
+                :meth:`oauth_redirect_uri`. Defaults to ``"/auth"``.
+
+        Returns:
+            dict[str, Any]: ``client_id``, ``client_secret`` and the
+            derived ``redirect_uri``. Scopes are left to the client's
+            own defaults (``read:user user:email``).
+        """
+        return {
+            "client_id": self.OAUTH_GITHUB_CLIENT_ID,
+            "client_secret": self.OAUTH_GITHUB_CLIENT_SECRET,
+            "redirect_uri": self.oauth_redirect_uri("github", prefix=prefix),
+        }
 
 
 class MinIOSettings(BaseAppSettings):
@@ -2273,6 +2517,7 @@ __all__: list[str] = [
     "LogSettings",
     "MercadoPagoSettings",
     "MinIOSettings",
+    "OAuthSettings",
     "OpenPixSettings",
     "PushSettings",
     "RabbitMQSettings",
