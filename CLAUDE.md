@@ -161,6 +161,18 @@ mexer neles. Todos rodam dentro do `make check`.
   `tests/test_protocol_shape_guard.py`, que cobre também retorno de membro
   resolvendo para `Any` —
   [`LESSONS.md`](LESSONS.md#corrigir-onde-doeu-não-é-corrigir-a-regra-v02630).
+- **Aviso de depreciação de dependência é modo de falha, não ruído**
+  (v0.275.0). `StarletteDeprecationWarning` herda de **`UserWarning`**, não de
+  `DeprecationWarning` — então consumidor com `filterwarnings = ["error"]`
+  **levanta** ao ler a constante, no meio da construção da resposta. O
+  `modelops/router.py` shippou assim por releases: o 422 que a rota promete
+  virava 500, sem relato, e o filtro óbvio (`ignore::DeprecationWarning`) não
+  pega nada porque a classe não está nessa árvore. Guard:
+  `filterwarnings = ["error::starlette.exceptions.StarletteDeprecationWarning"]`
+  no `[tool.pytest.ini_options]` — foi ele que achou. E o nome novo nem sempre
+  é a saída: `HTTP_422_UNPROCESSABLE_CONTENT` não existe no starlette 0.46.0,
+  o piso que `fastapi>=0.141.1` aceita, então **meça no piso antes de trocar**
+  — [`LESSONS.md`](LESSONS.md#o-aviso-de-depreciação-já-era-um-500-v02750).
 - **`Field(alias=...)` é defeito** (v0.234.0). Escreva o nome do fio duas
   vezes: `validation_alias` para ler, `serialization_alias` para escrever.
   mypy aceita `alias`, pyright/basedpyright não —

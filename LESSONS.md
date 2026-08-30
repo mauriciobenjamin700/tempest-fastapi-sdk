@@ -253,6 +253,70 @@ Sem guard: nenhum teste lê prosa, e nenhum resolve "esta frase vale no piso?".
 O que dá para automatizar é o piso em si — um teste que instale o piso
 declarado e exercite o caminho seria o guard real, e não existe.
 
+## O aviso de depreciação já era um 500 (v0.275.0)
+
+A issue [#251](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/251)
+pedia uma coisa cosmética: todo serviço do `tempest new` nascia imprimindo
+`StarletteDeprecationWarning` no primeiro `pytest`. A correção era uma linha —
+pinar `httpx2` no grupo `dev`. O guard que veio junto é que pagou:
+
+```toml
+[tool.pytest.ini_options]
+filterwarnings = ["error::starlette.exceptions.StarletteDeprecationWarning"]
+```
+
+Duas execuções depois, dois testes do `modelops` falharam. Não pelo
+`testclient` — por uma linha do próprio SDK:
+
+```text
+tempest_fastapi_sdk/modelops/router.py:260: status.HTTP_422_UNPROCESSABLE_ENTITY
+starlette.exceptions.StarletteDeprecationWarning:
+  'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated.
+  Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+```
+
+O que faz disso um defeito e não ruído é a árvore da classe:
+
+```pycon
+>>> from starlette.exceptions import StarletteDeprecationWarning as W
+>>> [c.__name__ for c in W.__mro__]
+['StarletteDeprecationWarning', 'UserWarning', 'Warning', 'Exception',
+ 'BaseException', 'object']
+```
+
+`UserWarning`, não `DeprecationWarning`. Num consumidor que roda
+`filterwarnings = ["error"]` — configuração comum, e recomendada — **ler a
+constante levanta**, no meio da construção da resposta. O 422 que a rota
+promete vira 500, e o consumidor vê isso como bug do SDK sem ter como
+adivinhar de onde vem. Ninguém tinha relatado; o aviso estava lá havia
+releases.
+
+### E o nome novo não servia
+
+O reflexo é trocar pelo nome que a mensagem sugere. Medido antes, e ainda bem:
+
+| starlette | `HTTP_422_UNPROCESSABLE_ENTITY` | `HTTP_422_UNPROCESSABLE_CONTENT` |
+| --- | --- | --- |
+| 1.5.1 (o que o lock resolve) | 422, com aviso | 422 |
+| 0.46.0 (o piso que `fastapi>=0.141.1` aceita) | 422, sem aviso | **ausente** |
+
+Nenhuma das duas constantes cobre a faixa suportada: a antiga avisa no topo, a
+nova não existe no piso. A rota passou a escrever `422`, com o motivo numa
+constante nomeada e docstring — que é o formato desta casa para valor cuja
+origem precisa sobreviver ao próximo leitor.
+
+É a mesma lição de **Medir no lock não é medir no piso** (acima), com o
+final invertido: lá o piso estava atrás do que a doc afirmava; aqui o piso
+é que recusa a correção óbvia.
+
+### O que ficou
+
+- Aviso de depreciação de dependência **não é ruído de log**: quando a classe
+  herda de `UserWarning`, ele é um modo de falha do consumidor. O gate deste
+  repo o trata como erro, para o defeito aparecer aqui e não lá.
+- Guard barato achou defeito que revisão manual não achou, em código que
+  ninguém tinha tocado. O custo foi uma linha de `pyproject.toml`.
+
 ## O formatter desfaz quebra de docstring (v0.249.0)
 
 O emissor de schemas quebrava resumo longo para caber em 88 colunas e o
