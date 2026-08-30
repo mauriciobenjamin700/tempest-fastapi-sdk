@@ -151,7 +151,7 @@ uv run tempest db upgrade
 
 | Método | Path | Body / Output | Comportamento |
 |--------|------|---------------|---------------|
-| POST | `/auth/signup` | `SignupSchema` → `SignupResponseSchema` | Cria user. Emite e-mail (modos A/B) **ou** devolve link no body (modo C). Se `AUTH_AUTO_ACTIVATE=True`, user nasce ativo e JWT pair volta direto (modo D). |
+| POST | `/auth/signup` | `SignupSchema` → `SignupResponseSchema` | Cria user. Não montado quando `AUTH_SIGNUP_ENABLED=false` (v0.272.0+). Emite e-mail (modos A/B) **ou** devolve link no body (modo C). Se `AUTH_AUTO_ACTIVATE=True`, user nasce ativo e JWT pair volta direto (modo D). |
 | POST | `/auth/activate/{token}` | — → `ActivationResponseSchema` | Consome token + `is_active=True` + emite JWT pair. |
 | POST | `/auth/login` | `LoginSchema` → `LoginResponseSchema` | Email + senha → JWT pair. Erros genéricos (não enumera contas). |
 | GET | `/auth/me` *(v0.198.0+)* | — → `AuthUserSchema` | **Autenticado.** Devolve a conta dona do bearer token. Nunca serializa o hash da senha: o handler entrega o modelo inteiro e o `response_model` filtra. Troque o schema por um seu com `me_response_model=` pra expor colunas próprias. |
@@ -176,6 +176,97 @@ uv run tempest db upgrade
       Bearer …` e reconfirma a `current_password`. Não envolve e-mail
       nem token de reset. Retorna **204** e os tokens atuais continuam
       válidos.
+
+### Sistema fechado — sem porta de cadastro *(v0.272.0+)*
+
+Nem todo serviço quer `POST /auth/signup` no ar. Num sistema **fechado** —
+conta criada só por administrador, nunca por quem chega na porta — a rota de
+cadastro público é exatamente o buraco que não se quer aberto.
+
+Desligue por variável de ambiente:
+
+```dotenv
+AUTH_SIGNUP_ENABLED=false
+```
+
+Ou por router, quando o mesmo processo monta mais de um e só um deles é
+fechado:
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    UserAuthService,
+    make_auth_router,
+)
+
+from src.core.settings import settings
+from src.db.models import UserModel, UserTokenModel
+
+app = FastAPI()
+
+db = AsyncDatabaseManager(settings.DATABASE_URL)
+
+auth_service = UserAuthService(
+    db=db,
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    email=None,
+)
+
+app.include_router(
+    make_auth_router(
+        auth_service,
+        session_factory=db.session_dependency,
+        allow_signup=False,
+    ),
+)
+```
+
+O argumento vence a setting nos dois sentidos; `allow_signup=None` (o
+default) delega para `AUTH_SIGNUP_ENABLED`. É o mesmo par que
+`token_delivery` já formava com `AUTH_TOKEN_DELIVERY`.
+
+O que o serviço passa a responder:
+
+```console
+$ curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8000/auth/signup \
+    -H "Content-Type: application/json" \
+    -d '{"email":"quem-chegou@example.com","password":"strong-pass-12"}'
+404
+```
+
+!!! warning "Filtrar `router.routes` depois de montar não é equivalente"
+    O workaround que sobrava antes era remover a rota da lista já
+    construída:
+
+    ```python
+    router.routes = [
+        route for route in router.routes
+        if getattr(route, "path", "") != "/auth/signup"
+    ]
+    ```
+
+    Ele casa uma **string de path** — quebra em silêncio no dia em que o
+    caminho mudar — e não diz nada ao schema: o `/openapi.json` continua
+    anunciando uma porta que não existe mais. Com `AUTH_SIGNUP_ENABLED`
+    a rota nunca é registrada, então some da aplicação **e** do schema.
+
+!!! note "A ativação continua montada — de propósito"
+    Desligar o signup **não** desmonta `/auth/activate/{token}`. Conta
+    criada por um administrador também precisa ser ativada, e é esse
+    endpoint que consome o token do e-mail. Nada além de
+    `POST /auth/signup` muda de lugar.
+
+**Recap.** `AUTH_SIGNUP_ENABLED=false` fecha o cadastro público sem tocar em
+nenhum outro endpoint; `allow_signup=` sobrescreve por router; a rota some do
+OpenAPI junto, que é o que o filtro manual nunca entregou.
+
 
 ## Recuperação de senha
 
@@ -534,6 +625,12 @@ Tem uma seção inteira só pra isso, explicada bem devagar: [Idioma dos e-mails
 | `AUTH_COOKIE_DOMAIN` | ``str | None`` | `None` | `Domain` do cookie. `None` = host exato. Use `.example.com` pra compartilhar entre subdomínios. |
 | `AUTH_ACCESS_COOKIE_NAME` | `str` | `access_token` | Nome do cookie do access token. |
 | `AUTH_REFRESH_COOKIE_NAME` | `str` | `refresh_token` | Nome do cookie do refresh token (escopado ao path do endpoint de refresh). |
+
+### Grupo 9 — Sistema fechado (`AuthSettings`) *(v0.272.0+)*
+
+| Env var | Tipo | Default | O que faz |
+|---------|------|---------|-----------|
+| `AUTH_SIGNUP_ENABLED` | `bool` | `true` | `false` = `make_auth_router` não monta `POST /auth/signup`; a rota some da aplicação e do OpenAPI. Ativação, reset e o resto ficam intactos. Veja [Sistema fechado](#sistema-fechado-sem-porta-de-cadastro-v02720). |
 
 !!! note "MFA / TOTP tem suas próprias vars"
     Quando `AUTH_MFA_ENABLED=true`, o `AuthSettings` ainda expõe `AUTH_MFA_ISSUER`, `AUTH_MFA_RECOVERY_CODES_COUNT`, `AUTH_MFA_TOKEN_TTL_SECONDS` e `AUTH_MFA_VERIFY_WINDOW`. Ficam fora do escopo desta receita (signup/activate/login/reset) — são cobertos na receita de MFA.

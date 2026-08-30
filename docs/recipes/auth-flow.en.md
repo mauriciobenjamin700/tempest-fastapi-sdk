@@ -151,7 +151,7 @@ uv run tempest db upgrade
 
 | Method | Path | Body / Output | Behavior |
 |--------|------|---------------|----------|
-| POST | `/auth/signup` | `SignupSchema` → `SignupResponseSchema` | Creates user. Emits email (modes A/B) **or** returns the link in the body (mode C). With `AUTH_AUTO_ACTIVATE=True`, the user is born active and the JWT pair returns immediately (mode D). |
+| POST | `/auth/signup` | `SignupSchema` → `SignupResponseSchema` | Creates user. Not mounted when `AUTH_SIGNUP_ENABLED=false` (v0.272.0+). Emits email (modes A/B) **or** returns the link in the body (mode C). With `AUTH_AUTO_ACTIVATE=True`, the user is born active and the JWT pair returns immediately (mode D). |
 | POST | `/auth/activate/{token}` | — → `ActivationResponseSchema` | Consumes token + sets `is_active=True` + issues JWT pair. |
 | POST | `/auth/login` | `LoginSchema` → `LoginResponseSchema` | Email + password → JWT pair. Generic errors (no account enumeration). |
 | GET | `/auth/me` *(v0.198.0+)* | — → `AuthUserSchema` | **Authenticated.** Returns the account owning the bearer token. Never serializes the password hash: the handler returns the whole model and the `response_model` filters. Swap in your own schema with `me_response_model=` to expose extra columns. |
@@ -177,6 +177,99 @@ uv run tempest db upgrade
       `Authorization: Bearer …` header and re-confirm their
       `current_password`. No email or reset token involved. Returns
       **204** and the current tokens stay valid.
+
+### Closed system — no registration door *(v0.272.0+)*
+
+Not every service wants `POST /auth/signup` reachable. In a **closed**
+system — accounts created by an administrator, never by whoever reaches the
+door — the public registration route is exactly the hole you don't want open.
+
+Turn it off with an environment variable:
+
+```dotenv
+AUTH_SIGNUP_ENABLED=false
+```
+
+Or per router, when one process mounts several and only one of them is
+closed:
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    UserAuthService,
+    make_auth_router,
+)
+
+from src.core.settings import settings
+from src.db.models import UserModel, UserTokenModel
+
+app = FastAPI()
+
+db = AsyncDatabaseManager(settings.DATABASE_URL)
+
+auth_service = UserAuthService(
+    db=db,
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    email=None,
+)
+
+app.include_router(
+    make_auth_router(
+        auth_service,
+        session_factory=db.session_dependency,
+        allow_signup=False,
+    ),
+)
+```
+
+The argument wins over the setting in both directions;
+`allow_signup=None` (the default) defers to `AUTH_SIGNUP_ENABLED`. It is the
+same pair `token_delivery` already formed with `AUTH_TOKEN_DELIVERY`.
+
+What the service answers now:
+
+```console
+$ curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8000/auth/signup \
+    -H "Content-Type: application/json" \
+    -d '{"email":"whoever@example.com","password":"strong-pass-12"}'
+404
+```
+
+!!! warning "Filtering `router.routes` after mounting is not equivalent"
+    The workaround left before was dropping the route from the built
+    list:
+
+    ```python
+    router.routes = [
+        route for route in router.routes
+        if getattr(route, "path", "") != "/auth/signup"
+    ]
+    ```
+
+    It matches a **path string** — going quiet the day the path changes —
+    and it says nothing to the schema: `/openapi.json` keeps advertising
+    a door that is no longer there. With `AUTH_SIGNUP_ENABLED` the route
+    is never registered, so it is gone from the application **and** from
+    the schema.
+
+!!! note "Activation stays mounted — deliberately"
+    Turning signup off does **not** unmount `/auth/activate/{token}`. An
+    account created by an administrator still has to be activated, and
+    that endpoint is what consumes the emailed token. Nothing beyond
+    `POST /auth/signup` moves.
+
+**Recap.** `AUTH_SIGNUP_ENABLED=false` closes the public door without
+touching any other endpoint; `allow_signup=` overrides per router; and the
+route leaves the OpenAPI schema along with it, which the manual filter never
+delivered.
+
 
 ## Password recovery
 
@@ -536,6 +629,12 @@ There's a whole section dedicated to this, explained step by step:
 | `AUTH_COOKIE_DOMAIN` | ``str | None`` | `None` | Cookie `Domain`. `None` = exact host. Use `.example.com` to share across subdomains. |
 | `AUTH_ACCESS_COOKIE_NAME` | `str` | `access_token` | Access-token cookie name. |
 | `AUTH_REFRESH_COOKIE_NAME` | `str` | `refresh_token` | Refresh-token cookie name (scoped to the refresh endpoint path). |
+
+### Group 9 — Closed system (`AuthSettings`) *(v0.272.0+)*
+
+| Env var | Type | Default | What it does |
+|---------|------|---------|--------------|
+| `AUTH_SIGNUP_ENABLED` | `bool` | `true` | `false` = `make_auth_router` does not mount `POST /auth/signup`; the route is gone from the application and from the OpenAPI schema. Activation, reset and everything else stay intact. See [Closed system](#closed-system-no-registration-door-v02720). |
 
 !!! note "MFA / TOTP has its own vars"
     When `AUTH_MFA_ENABLED=true`, `AuthSettings` also exposes `AUTH_MFA_ISSUER`, `AUTH_MFA_RECOVERY_CODES_COUNT`, `AUTH_MFA_TOKEN_TTL_SECONDS` and `AUTH_MFA_VERIFY_WINDOW`. They're out of scope for this recipe (signup/activate/login/reset) — covered in the MFA recipe.

@@ -148,6 +148,7 @@ def make_auth_router(
     template_dir: str | None = None,
     recovery_code_model: type[BaseUserRecoveryCodeModel] | None = None,
     me_response_model: type[BaseModel] | None = None,
+    allow_signup: bool | None = None,
     token_delivery: TokenDelivery | None = None,
     cookie_config: AuthCookieConfig | None = None,
     webauthn: WebAuthnService | None = None,
@@ -181,6 +182,14 @@ def make_auth_router(
             user table carries — the endpoint hands the ORM instance to
             FastAPI, so whatever the model does not declare is never
             serialized.
+        allow_signup (bool | None): Whether to mount
+            ``POST /auth/signup``. ``False`` leaves the route out of the
+            application and out of the OpenAPI schema, which is what a
+            closed system wants — accounts created by an administrator,
+            never by whoever reaches the door. Activation is not
+            unmounted with it: an admin-created account still completes
+            ``/auth/activate/{token}``. ``None`` (default) reads
+            ``AuthSettings.AUTH_SIGNUP_ENABLED``.
         token_delivery (TokenDelivery | None): How login / refresh hand
             back the JWT pair — ``"bearer"`` (body only), ``"cookie"``
             (``HttpOnly`` cookies, body omits tokens) or ``"both"``
@@ -207,7 +216,9 @@ def make_auth_router(
     Notes:
         Which endpoint groups get mounted, and where:
 
-        * **JSON / SPA endpoints** are always mounted.
+        * **JSON / SPA endpoints** are always mounted, except
+          ``POST /auth/signup``, which is skipped when
+          ``AUTH_SIGNUP_ENABLED`` is off (or ``allow_signup=False``).
         * **Cookie endpoints** are mounted when ``AUTH_TOKEN_DELIVERY`` is
           ``cookie`` or ``both``. In ``cookie`` mode they take the normal
           ``/login``, ``/refresh`` and ``/logout`` paths; in ``both`` mode
@@ -248,6 +259,9 @@ def make_auth_router(
 
     auth_settings = service.auth_settings
     backend_links = auth_settings.AUTH_BACKEND_LINKS
+    signup_enabled = (
+        auth_settings.AUTH_SIGNUP_ENABLED if allow_signup is None else allow_signup
+    )
     login_url = auth_settings.AUTH_LOGIN_URL
     min_length = auth_settings.AUTH_PASSWORD_MIN_LENGTH
     default_locale = auth_settings.AUTH_DEFAULT_LOCALE
@@ -336,33 +350,36 @@ def make_auth_router(
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------
 
-    @router.post(
-        "/signup",
-        response_model=SignupResponseSchema,
-        status_code=status.HTTP_201_CREATED,
-        summary="Register a new account (email + password)",
-        description=(
-            "Create a brand-new user from an email, a password and an "
-            "optional display name.\n\n"
-            "**Password policy.** The password must satisfy "
-            "``AUTH_PASSWORD_MIN_LENGTH`` (and the character-complexity "
-            "rules when ``AUTH_PASSWORD_REQUIRE_COMPLEXITY=True``); "
-            "violations return **422**. A duplicate email returns "
-            "**409**.\n\n"
-            "**What happens next depends on ``AUTH_AUTO_ACTIVATE``:**\n\n"
-            "* ``AUTH_AUTO_ACTIVATE=True`` — the account is active "
-            "immediately and the **201** response already carries the "
-            "``access_token`` + ``refresh_token`` JWT pair "
-            "(``activation_required=false``).\n"
-            "* ``AUTH_AUTO_ACTIVATE=False`` (default) — the account "
-            "starts inactive and an activation token is issued "
-            "(``activation_required=true``). When ``EmailUtils`` is "
-            "wired the activation link is **emailed** (localized via "
-            "``AUTH_DEFAULT_LOCALE``) and ``activation_url`` is "
-            "``null``; when email is not configured — or "
-            "``AUTH_RETURN_TOKEN_IN_RESPONSE=True`` — the ready-to-use "
-            "``activation_url`` is returned in the body instead so you "
-            "can complete activation without SMTP."
+    @_mount_if(
+        signup_enabled,
+        router.post(
+            "/signup",
+            response_model=SignupResponseSchema,
+            status_code=status.HTTP_201_CREATED,
+            summary="Register a new account (email + password)",
+            description=(
+                "Create a brand-new user from an email, a password and an "
+                "optional display name.\n\n"
+                "**Password policy.** The password must satisfy "
+                "``AUTH_PASSWORD_MIN_LENGTH`` (and the character-complexity "
+                "rules when ``AUTH_PASSWORD_REQUIRE_COMPLEXITY=True``); "
+                "violations return **422**. A duplicate email returns "
+                "**409**.\n\n"
+                "**What happens next depends on ``AUTH_AUTO_ACTIVATE``:**\n\n"
+                "* ``AUTH_AUTO_ACTIVATE=True`` — the account is active "
+                "immediately and the **201** response already carries the "
+                "``access_token`` + ``refresh_token`` JWT pair "
+                "(``activation_required=false``).\n"
+                "* ``AUTH_AUTO_ACTIVATE=False`` (default) — the account "
+                "starts inactive and an activation token is issued "
+                "(``activation_required=true``). When ``EmailUtils`` is "
+                "wired the activation link is **emailed** (localized via "
+                "``AUTH_DEFAULT_LOCALE``) and ``activation_url`` is "
+                "``null``; when email is not configured — or "
+                "``AUTH_RETURN_TOKEN_IN_RESPONSE=True`` — the ready-to-use "
+                "``activation_url`` is returned in the body instead so you "
+                "can complete activation without SMTP."
+            ),
         ),
     )
     async def signup(

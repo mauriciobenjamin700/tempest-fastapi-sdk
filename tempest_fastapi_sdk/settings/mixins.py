@@ -989,6 +989,8 @@ class AuthSettings(BaseAppSettings):
     that sets it (matched case-sensitively, no prefix).
 
     Attributes:
+        AUTH_SIGNUP_ENABLED (bool): Kill-switch mounting
+            ``POST /auth/signup``. Default: ``True``.
         AUTH_AUTO_ACTIVATE (bool): Mark users active on signup, skipping the
             activation email. Default: ``False``.
         AUTH_RETURN_TOKEN_IN_RESPONSE (bool): Include the activation / reset
@@ -1053,6 +1055,23 @@ class AuthSettings(BaseAppSettings):
             between-request ceremony state. Default: ``300``.
     """
 
+    AUTH_SIGNUP_ENABLED: bool = Field(
+        default=True,
+        title="Self-service signup kill-switch",
+        description=(
+            "When ``False``, ``make_auth_router`` does not mount "
+            "``POST /auth/signup`` — the route is absent from the "
+            "application and from the OpenAPI schema, so a closed "
+            "system where accounts are created by an administrator "
+            "does not expose a public registration door. Activation, "
+            "password reset and every other endpoint are unaffected: "
+            "an admin-created account still completes activation "
+            "through ``/auth/activate/{token}``. The "
+            "``allow_signup`` argument of ``make_auth_router`` "
+            "overrides this per router."
+        ),
+        examples=[True, False],
+    )
     AUTH_AUTO_ACTIVATE: bool = Field(
         default=False,
         title="Auto-activate on signup",

@@ -21,7 +21,10 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   read the token from header → cookie → query string via
   `query_param=`, for cookieless `EventSource`/SSE clients), full
   bundled flow (`UserAuthService` + `make_auth_router` covering
-  signup/activate/login/password-reset), `BaseUserModel` +
+  signup/activate/login/password-reset; signup is closable since
+  v0.272.0 via `AUTH_SIGNUP_ENABLED=false` or `allow_signup=False`,
+  which keeps the route out of the app **and** out of the OpenAPI
+  schema while leaving activation mounted), `BaseUserModel` +
   `BaseUserTokenModel` (nullable `payload` column carrying flow
   context), email change/re-verify/recovery
   (`request_email_change`/`confirm_email_change`,
@@ -304,6 +307,16 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
 - **Pagination** — offset + cursor.
 - **Settings mixins** — every `*Settings` carries
   `title`/`description`/`examples` on every field.
+- **System checks read the names the mixins declare (v0.272.0)** —
+  `check_debug` / `check_database` resolve the debug flag as
+  `SERVER_DEBUG` then `DEBUG`, so a service composing `ServerSettings`
+  is actually covered; before, both asked for a bare `DEBUG` that no
+  mixin defines, which made `check_debug` inert and inverted
+  `check_database`. `check_secrets` gained `security.W004`, comparing
+  each secret against `model_fields[name].default` — the SDK's own
+  32-character `JWT_SECRET` placeholder cleared both the empty and the
+  length branch, so the one value guaranteed to be wrong was the one the
+  check approved.
 - **SSE** — `EventStream` (bounded queue + `overflow` backpressure —
   `drop_oldest`/`drop_newest`/`block`, `dropped_events` counter,
   `max_queue=0` to disable), `ServerSentEvent`, `sse_response`

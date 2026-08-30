@@ -5,6 +5,100 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.272.0] — 2026-08-30
+
+### Fixed
+
+- **`check_debug` e `check_database` liam um campo que nenhum mixin do SDK
+  declara.**
+  ([#246](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/246))
+  Os dois faziam `getattr(context, "DEBUG", ...)`, e o mixin `ServerSettings`
+  chama o campo de `SERVER_DEBUG`. O erro não era simétrico: `check_debug`
+  ficava permanentemente calado, e `check_database` avisava **ao contrário** —
+  a condição `not getattr(context, "DEBUG", False)` é sempre `True` quando o
+  campo não existe, então a isenção de debug nunca valia e a mensagem
+  "while DEBUG is off" aparecia justamente com o debug **ligado**.
+
+  Medido num serviço compondo os mixins, antes:
+
+  ```text
+  SERVER_DEBUG = True | hasattr DEBUG = False
+  check_debug    -> []
+  check_database -> ['DATABASE_URL points at SQLite while DEBUG is off.']
+  ```
+
+  Depois:
+
+  ```text
+  debug on  -> check_debug    ['deployment.I001']
+  debug on  -> check_database []
+  debug off -> check_debug    []
+  debug off -> check_database ['DATABASE_URL points at SQLite while debug is off.']
+  ```
+
+  O helper `_debug_enabled` resolve por precedência de nome — `SERVER_DEBUG`
+  primeiro, `DEBUG` depois — então quem declarou o campo na mão continua
+  coberto. `deployment.I001` passou a nomear o campo que de fato carregou o
+  flag.
+
+- **`check_secrets` aprovava o placeholder que o próprio SDK ships.**
+  ([#247](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/247))
+  `MIN_SECRET_LENGTH` é 32 e o default de `JWTSettings.JWT_SECRET` é
+  `"change-me-change-me-change-me-32"` — **exatos** 32 caracteres. Não era
+  vazio (`security.W001`) nem curto (`security.W002`), então o único valor
+  garantidamente errado era o único que o check aprovava: um deploy que
+  esqueceu de definir `JWT_SECRET` assinava token com um segredo publicado no
+  código-fonte, e o `tempest check-config` dizia que estava tudo bem.
+
+  Novo `security.W004` compara o valor com `model_fields[nome].default`, lido
+  da classe — nunca com uma cópia da string — então a checagem acompanha uma
+  troca futura do placeholder em vez de comparar com um valor que o SDK parou
+  de usar. Medido, num serviço sem nenhuma env var definida:
+
+  ```console
+  $ tempest check-config --settings probe.settings:settings
+  WARNING: (security.W004) JWT_SECRET still holds the default declared by its settings field — a deployment that never set it signs tokens with a value that lives in source control.
+  	HINT: Generate one with `tempest secrets rotate`.
+  WARNING: (database.W001) DATABASE_URL points at SQLite while debug is off.
+  	HINT: Use PostgreSQL in production; SQLite is for development.
+  2 message(s), 0 at/above ERROR.
+  ```
+
+  Segredo vazio continua saindo como `security.W001`, que é a mensagem mais
+  específica; cada segredo rende no máximo uma mensagem.
+
+### Added
+
+- **`AUTH_SIGNUP_ENABLED` / `allow_signup=` — fechar o cadastro público.**
+  ([#248](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/248))
+  `make_auth_router` montava o conjunto inteiro de rotas. Num sistema fechado
+  — conta criada só por administrador — `POST /auth/signup` é exatamente o
+  buraco que não se quer aberto, e não havia parâmetro para não montá-lo.
+
+  `AuthSettings` ganhou `AUTH_SIGNUP_ENABLED` (default `True`), e
+  `make_auth_router` ganhou `allow_signup: bool | None = None`, que
+  sobrescreve a setting nos dois sentidos — o mesmo par que `token_delivery`
+  já formava com `AUTH_TOKEN_DELIVERY`. A rota passa pelo `_mount_if` que os
+  outros grupos condicionais já usam, então some da aplicação **e** do
+  `/openapi.json`; o workaround que sobrava (filtrar `router.routes` por
+  string de path depois de montar) corrigia só o primeiro.
+
+  Medido: o router sai com 12 rotas ligado e 11 desligado, e a diferença é
+  exatamente `/auth/signup`. **A ativação continua montada de propósito** —
+  conta criada por administrador também precisa consumir o token de
+  `/auth/activate/{token}`.
+
+### Changed
+
+- **A suíte dos checks passou a exercitar os mixins reais.** Todo teste de
+  `tests/checks/test_checks.py` alimentava os checks com um attribute bag
+  escrito à mão, que carregava um `DEBUG` que os mixins nunca definem — é
+  por isso que o #246 shippou com a suíte verde. A classe
+  `TestBuiltinsAgainstTheSdkMixins` compõe `ServerSettings` +
+  `DatabaseSettings` + `JWTSettings` de verdade. Rodada contra o
+  `builtins.py` da v0.271.0, ela falha em 4 testes — os dois defeitos, nas
+  duas direções de cada um.
+
 ## [0.271.0] — 2026-08-29
 
 ### Added
