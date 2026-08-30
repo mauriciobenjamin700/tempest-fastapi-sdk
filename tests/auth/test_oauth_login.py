@@ -53,6 +53,7 @@ from tempest_fastapi_sdk import (
     make_user_token_model,
     register_exception_handlers,
 )
+from tempest_fastapi_sdk.exceptions import ConflictException
 from tempest_fastapi_sdk.settings.mixins import AuthSettings, JWTSettings
 from tempest_fastapi_sdk.utils.token_types import (
     ACCESS_TOKEN_TYPE,
@@ -795,3 +796,160 @@ class TestProviderFailureSurfaces:
 
         assert response.status_code == 502
         assert response.json()["code"] == "OAUTH_ERROR"
+
+
+class TestEveryRefusalIsIdentifiable:
+    """Each refusal carries its own ``code``, not a shared generic one.
+
+    The defect: "email already registered — sign in and link the
+    provider" and "the provider did not verify this email" arrived as
+    the same ``409 CONFLICT``, distinguishable only by an English
+    sentence. They are opposite instructions to a person — the first has
+    a next step, the second has none, by design — and the SDK localizes
+    the rest of the auth flow, so matching on the message was never
+    going to survive translation.
+    """
+
+    async def _codes(
+        self,
+        session: AsyncSession,
+        *,
+        clients: dict[str, Any] | None = None,
+        service: UserAuthService | None = None,
+        params: dict[str, str] | None = None,
+        path: str = "/auth/oauth/google/callback",
+    ) -> tuple[int, str]:
+        """Drive a callback and return ``(status, code)``.
+
+        Args:
+            session (AsyncSession): The shared DB session.
+            clients (dict[str, Any] | None): OAuth clients to register.
+            service (UserAuthService | None): Service override.
+            params (dict[str, str] | None): Query params replacing the
+                ordinary ``code``/``state`` pair.
+            path (str): Callback path to hit.
+
+        Returns:
+            tuple[int, str]: The HTTP status and the envelope ``code``.
+        """
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.include_router(
+            make_auth_router(
+                service or _service(),
+                session_factory=_factory,
+                oauth_clients=clients
+                if clients is not None
+                else {"google": _FakeClient(_profile())},
+            )
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as client:
+            redirect = await client.get("/auth/oauth/google/login")
+            state = parse_qs(urlparse(redirect.headers["location"]).query)["state"][0]
+            response = await client.get(
+                path, params=params or {"code": "the-code", "state": state}
+            )
+        return response.status_code, response.json().get("code", "")
+
+    async def test_the_two_conflicts_are_told_apart(
+        self, session: AsyncSession
+    ) -> None:
+        """The pair the issue is about, asserted side by side."""
+        taken_service = _service()
+        await taken_service.signup(session, email="ana@example.com", password=_PASSWORD)
+        await session.commit()
+        taken = await self._codes(session, service=taken_service)
+
+        linking_service = _service(AUTH_OAUTH_LINK_BY_VERIFIED_EMAIL=True)
+        unverified = await self._codes(
+            session,
+            service=linking_service,
+            clients={"google": _FakeClient(_profile(email_verified=None))},
+        )
+
+        assert taken == (409, "OAUTH_EMAIL_TAKEN")
+        assert unverified == (409, "OAUTH_EMAIL_UNVERIFIED")
+        assert taken[1] != unverified[1]
+
+    async def test_registration_disabled_has_its_own_code(
+        self, session: AsyncSession
+    ) -> None:
+        status, code = await self._codes(
+            session, service=_service(AUTH_SIGNUP_ENABLED=False)
+        )
+        assert (status, code) == (403, "OAUTH_REGISTRATION_DISABLED")
+
+    async def test_missing_email_has_its_own_code(self, session: AsyncSession) -> None:
+        status, code = await self._codes(
+            session, clients={"google": _FakeClient(_profile(email=None))}
+        )
+        assert (status, code) == (422, "OAUTH_EMAIL_MISSING")
+
+    async def test_state_mismatch_has_its_own_code(self, session: AsyncSession) -> None:
+        status, code = await self._codes(
+            session, params={"code": "c", "state": "forged"}
+        )
+        assert (status, code) == (401, "OAUTH_STATE_MISMATCH")
+
+    async def test_provider_denial_has_its_own_code(
+        self, session: AsyncSession
+    ) -> None:
+        status, code = await self._codes(
+            session, params={"error": "access_denied", "state": "whatever"}
+        )
+        assert (status, code) == (401, "OAUTH_PROVIDER_DENIED")
+
+    async def test_unknown_provider_has_its_own_code(
+        self, session: AsyncSession
+    ) -> None:
+        status, code = await self._codes(session, path="/auth/oauth/gitlab/callback")
+        assert (status, code) == (404, "OAUTH_PROVIDER_NOT_CONFIGURED")
+
+    async def test_unlinking_an_unlinked_provider_has_its_own_code(
+        self, session: AsyncSession
+    ) -> None:
+        service = _service()
+
+        async def _factory() -> AsyncIterator[AsyncSession]:
+            yield session
+
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.include_router(
+            make_auth_router(
+                service,
+                session_factory=_factory,
+                oauth_clients={"google": _FakeClient(_profile())},
+            )
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as client:
+            token = (await _login(client)).json()["access_token"]
+            response = await client.post(
+                "/auth/oauth/accounts/unlink",
+                json={"provider": "github"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 404
+        assert response.json()["code"] == "OAUTH_ACCOUNT_NOT_LINKED"
+
+    async def test_the_old_base_classes_still_catch(
+        self, session: AsyncSession
+    ) -> None:
+        """Backward compatibility: a consumer catching the base still does.
+
+        Every new class subclasses the exception that used to be raised
+        at that site, so ``except ConflictException`` keeps working.
+        """
+        service = _service()
+        await service.signup(session, email="ana@example.com", password=_PASSWORD)
+        await session.commit()
+        with pytest.raises(ConflictException):
+            await service.login_with_oauth(session, _profile(), locale="pt-BR")

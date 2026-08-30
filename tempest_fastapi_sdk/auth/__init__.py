@@ -47,6 +47,9 @@ from tempest_fastapi_sdk.auth.firebase import (
 from tempest_fastapi_sdk.auth.firebase import (
     FirebaseUserResolver as FirebaseUserResolver,
 )
+from tempest_fastapi_sdk.auth.guards import FlagGuard as FlagGuard
+from tempest_fastapi_sdk.auth.guards import GuardException as GuardException
+from tempest_fastapi_sdk.auth.guards import make_flag_guard as make_flag_guard
 from tempest_fastapi_sdk.auth.guards import require_active as require_active
 from tempest_fastapi_sdk.auth.guards import require_admin as require_admin
 from tempest_fastapi_sdk.auth.guards import (
@@ -196,6 +199,8 @@ __all__: list[str] = [
     "FirebaseUnavailableError",
     "FirebaseUserDisabledError",
     "FirebaseUserResolver",
+    "FlagGuard",
+    "GuardException",
     "IntrospectionAuth",
     "LoginResponseSchema",
     "LoginSchema",
@@ -231,6 +236,7 @@ __all__: list[str] = [
     "default_display_name",
     "format_expires_at",
     "make_auth_router",
+    "make_flag_guard",
     "negotiate_locale",
     "normalize_locale",
     "require_active",

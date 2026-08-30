@@ -542,14 +542,33 @@ the canonical `{detail, code, details}` envelope.
 
 What the callback answers, by cause:
 
-| Status | When |
-| --- | --- |
-| **401** | `state` missing or mismatched; the provider returned `error=` |
-| **403** | New identity and account creation is off |
-| **404** | `{provider}` is not registered |
-| **409** | The email belongs to another account and automatic linking is not allowed |
-| **422** | The provider returned no email, or the callback carried no `code` |
-| **502** | `OAuthError` — the provider refused the exchange or the userinfo call |
+| Status | `code` | When |
+| --- | --- | --- |
+| **401** | `OAUTH_STATE_MISMATCH` | `state` missing or not matching the cookie |
+| **401** | `OAUTH_PROVIDER_DENIED` | The provider returned `error=` (almost always, the user declined consent) |
+| **401** | `OAUTH_ACCOUNT_INACTIVE` | The identity resolves to a deactivated account |
+| **403** | `OAUTH_REGISTRATION_DISABLED` | New identity and account creation is off |
+| **404** | `OAUTH_PROVIDER_NOT_CONFIGURED` | `{provider}` is not registered |
+| **404** | `OAUTH_ACCOUNT_NOT_LINKED` | Unlinking a provider this account never linked |
+| **409** | `OAUTH_EMAIL_TAKEN` | The email belongs to another account and automatic linking is not allowed |
+| **409** | `OAUTH_EMAIL_UNVERIFIED` | Linking allowed, but the provider did not state it verified the email |
+| **422** | `OAUTH_EMAIL_MISSING` | The provider returned no email |
+| **422** | `OAUTH_CODE_MISSING` | The callback carried neither a `code` nor an `error` |
+| **502** | `OAUTH_ERROR` | The provider refused the exchange or the userinfo call |
+
+!!! tip "Branch on `code`, never on the message *(v0.274.0+)*"
+    The two **409**s are the pair that matters most, and they arrived
+    identical before v0.274.0. `OAUTH_EMAIL_TAKEN` **has** a next step for the
+    person: sign in with the password they already have and link the provider
+    from their settings. `OAUTH_EMAIL_UNVERIFIED` **has none** — it is the
+    barrier that stops someone who registered an identity carrying the
+    victim's email from taking the account over, and no user action clears it.
+    An app showing "sign in and link it" for both would be telling half of
+    those people to do something that cannot work.
+
+    Each class subclasses the exception that site already raised
+    (`OAuthEmailTakenException(ConflictException)` and the other nine), so
+    `except ConflictException` keeps catching what it caught.
 
 ## Doing it by hand
 

@@ -162,6 +162,36 @@ require_refresh = make_bearer_token_dependency(
     sem classificação, mas **não** desliga os marcadores antigos do SDK:
     `refresh: True` continua sendo refresh, inclusive sob `strict`.
 
+    **As factories repassam os dois desde a v0.274.0.** Antes, a única forma de
+    alcançar o modo estrito era não usar as factories — o consumidor
+    reimplementava a verificação inteira para chegar num parâmetro que já
+    existia. Agora as três portas aceitam:
+
+    ```python
+    from tempest_fastapi_sdk import make_bearer_token_dependency, JWTUtils
+
+    tokens: JWTUtils = JWTUtils(secret="a-32-character-secret-for-tests!")
+    claims_dependency = make_bearer_token_dependency(
+        tokens,
+        strict=True,
+        legacy_claims=("type",),
+    )
+    ```
+
+    O mesmo par vale em `make_jwt_user_dependency`, em
+    `UserAuthService.current_user_dependency` e — como `token_strict=` /
+    `token_legacy_claims=` — em `make_auth_router`, que é quem guarda
+    `/auth/me`, `/auth/password-change` e o resto das rotas autenticadas do
+    fluxo bundled. Medido, com um refresh token legado (`{"type": "refresh"}`)
+    apresentado como bearer:
+
+    ```text
+    default (strict=False)               -> HTTP 200
+    strict=True                          -> HTTP 401
+    strict=True, legacy_claims=('type',) -> HTTP 401
+    o access legado, mesmas opções       -> HTTP 200
+    ```
+
 ## Tokens opacos single-use
 
 `generate_opaque_token()` produz `(plaintext, token_hash)` em uma chamada — `plaintext` é uma string URL-safe (default 32 bytes ≈ 43 chars), `token_hash` é o digest SHA-256 hex em lowercase (64 chars). Você guarda **só o hash** no banco; o `plaintext` sai pelo e-mail/SMS uma única vez. Use pra password reset, confirmação de e-mail, API keys, IDs de sessão opacos — qualquer coisa onde o segredo emitido nunca volta a ser inspecionado.

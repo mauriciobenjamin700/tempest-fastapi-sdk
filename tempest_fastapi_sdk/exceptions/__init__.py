@@ -51,6 +51,36 @@ from tempest_fastapi_sdk.exceptions.jwt import (
 from tempest_fastapi_sdk.exceptions.not_found import (
     NotFoundException as NotFoundException,
 )
+from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthAccountInactiveException as OAuthAccountInactiveException,
+)
+from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthAccountNotLinkedException as OAuthAccountNotLinkedException,
+)
+from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthCodeMissingException as OAuthCodeMissingException,
+)
+from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthEmailMissingException as OAuthEmailMissingException,
+)
+from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthEmailTakenException as OAuthEmailTakenException,
+)
+from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthEmailUnverifiedException as OAuthEmailUnverifiedException,
+)
+from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthProviderDeniedException as OAuthProviderDeniedException,
+)
+from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthProviderNotConfiguredException as OAuthProviderNotConfiguredException,
+)
+from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthRegistrationDisabledException as OAuthRegistrationDisabledException,
+)
+from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthStateMismatchException as OAuthStateMismatchException,
+)
 from tempest_fastapi_sdk.exceptions.too_many_requests import (
     TooManyRequestsException as TooManyRequestsException,
 )
@@ -83,6 +113,16 @@ __all__: list[str] = [
     "InvalidTokenException",
     "MessageCatalog",
     "NotFoundException",
+    "OAuthAccountInactiveException",
+    "OAuthAccountNotLinkedException",
+    "OAuthCodeMissingException",
+    "OAuthEmailMissingException",
+    "OAuthEmailTakenException",
+    "OAuthEmailUnverifiedException",
+    "OAuthProviderDeniedException",
+    "OAuthProviderNotConfiguredException",
+    "OAuthRegistrationDisabledException",
+    "OAuthStateMismatchException",
     "TooManyRequestsException",
     "UnauthorizedException",
     "ValidationException",

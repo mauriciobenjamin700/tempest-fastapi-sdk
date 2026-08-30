@@ -1616,6 +1616,12 @@ from tempest_fastapi_sdk.auth import (
     AUTH_DEFAULT_DISPLAY_NAME as AUTH_DEFAULT_DISPLAY_NAME,
 )
 from tempest_fastapi_sdk.auth import (
+    FlagGuard as FlagGuard,
+)
+from tempest_fastapi_sdk.auth import (
+    GuardException as GuardException,
+)
+from tempest_fastapi_sdk.auth import (
     OAuthAccountSchema as OAuthAccountSchema,
 )
 from tempest_fastapi_sdk.auth import (
@@ -1623,6 +1629,9 @@ from tempest_fastapi_sdk.auth import (
 )
 from tempest_fastapi_sdk.auth import (
     default_display_name as default_display_name,
+)
+from tempest_fastapi_sdk.auth import (
+    make_flag_guard as make_flag_guard,
 )
 from tempest_fastapi_sdk.db import (
     BaseUserOAuthAccountModel as BaseUserOAuthAccountModel,
@@ -1632,6 +1641,36 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     make_user_oauth_account_model as make_user_oauth_account_model,
+)
+from tempest_fastapi_sdk.exceptions import (
+    OAuthAccountInactiveException as OAuthAccountInactiveException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    OAuthAccountNotLinkedException as OAuthAccountNotLinkedException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    OAuthCodeMissingException as OAuthCodeMissingException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    OAuthEmailMissingException as OAuthEmailMissingException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    OAuthEmailTakenException as OAuthEmailTakenException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    OAuthEmailUnverifiedException as OAuthEmailUnverifiedException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    OAuthProviderDeniedException as OAuthProviderDeniedException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    OAuthProviderNotConfiguredException as OAuthProviderNotConfiguredException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    OAuthRegistrationDisabledException as OAuthRegistrationDisabledException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    OAuthStateMismatchException as OAuthStateMismatchException,
 )
 from tempest_fastapi_sdk.settings import (
     OAuthSettings as OAuthSettings,
@@ -1803,6 +1842,7 @@ __all__: list[str] = [
     "FirebaseUnavailableError",
     "FirebaseUserDisabledError",
     "FirebaseUserResolver",
+    "FlagGuard",
     "ForbiddenException",
     "GPUMetrics",
     "GenAISettings",
@@ -1811,6 +1851,7 @@ __all__: list[str] = [
     "GracefulShutdownMiddleware",
     "Guard",
     "GuardContractWarning",
+    "GuardException",
     "HTTPClient",
     "HardenedStaticFiles",
     "HealthCheck",
@@ -1868,10 +1909,20 @@ __all__: list[str] = [
     "NonNegativeFloatField",
     "NonNegativeIntField",
     "NotFoundException",
+    "OAuthAccountInactiveException",
+    "OAuthAccountNotLinkedException",
     "OAuthAccountSchema",
     "OAuthClient",
+    "OAuthCodeMissingException",
+    "OAuthEmailMissingException",
+    "OAuthEmailTakenException",
+    "OAuthEmailUnverifiedException",
     "OAuthError",
+    "OAuthProviderDeniedException",
+    "OAuthProviderNotConfiguredException",
+    "OAuthRegistrationDisabledException",
     "OAuthSettings",
+    "OAuthStateMismatchException",
     "OAuthTokens",
     "OAuthUnlinkSchema",
     "OAuthUser",
@@ -2103,6 +2154,7 @@ __all__: list[str] = [
     "make_csrf_token_dependency",
     "make_device_token_model",
     "make_flag_dependency",
+    "make_flag_guard",
     "make_health_router",
     "make_http_exception_handler",
     "make_jwt_user_dependency",

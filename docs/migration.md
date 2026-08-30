@@ -2,6 +2,62 @@
 
 Passo a passo das mudanças que quebram compatibilidade, agrupadas por release minor. Siga a versão que casa com aquela **de onde** você está atualizando. As seções estão listadas da mais nova para a mais antiga, então num salto de várias versões leia e aplique-as de baixo para cima.
 
+## 0.274.0 — só o link mais recente abre a conta
+
+Nenhuma assinatura muda e nenhum default de campo existente muda. O que muda é
+**quantos links de uma vez ficam válidos**: emitir um token de conta agora
+gasta os outros tokens não usados do mesmo usuário e do mesmo propósito.
+
+### O que muda
+
+Antes, cada `POST /auth/password-reset/request` só empilhava linha em
+`user_tokens`, e todos os tokens não usados e não expirados valiam ao mesmo
+tempo. Agora vale um por propósito — o mais recente.
+
+Aplica-se a **`ACTIVATION`, `PASSWORD_RESET`, `EMAIL_CHANGE` e
+`EMAIL_VERIFICATION`**, porque a correção vive dentro do `_issue_token`, por
+onde os quatro fluxos passam.
+
+O escopo é estreito nas duas direções:
+
+- **Só o mesmo propósito.** Pedir um reset de senha não derruba uma troca de
+  e-mail pendente.
+- **Só o mesmo usuário.** O token de outra pessoa não é tocado.
+
+A linha antiga é marcada `used_at` em vez de apagada, então a trilha de
+auditoria continua completa.
+
+### Por que o default mudou
+
+Porque o comportamento antigo anulava a reação correta do usuário. Um atacante
+dispara o reset para a vítima; a vítima recebe um e-mail de recuperação que não
+pediu, desconfia, e por conta própria pede um reset e conclui. Sem superseder,
+o link do atacante continuava valendo até `AUTH_PASSWORD_RESET_TTL_SECONDS`.
+Medido:
+
+```text
+AUTH_SINGLE_ACTIVE_TOKEN=True  -> link do atacante: recusado (InvalidTokenException)
+AUTH_SINGLE_ACTIVE_TOKEN=False -> link do atacante: AINDA FUNCIONA
+```
+
+### O que fazer
+
+**Na maioria dos serviços, nada.** É a propriedade que quase todo provedor já
+aplica, e é o que o usuário espera.
+
+Quebra num caso: um fluxo que **de propósito** mantém vários links vivos ao
+mesmo tempo — por exemplo, um convite reenviado para vários endereços em que
+qualquer um dos links deve funcionar. Se for o seu caso:
+
+```bash
+AUTH_SINGLE_ACTIVE_TOKEN=false
+```
+
+Um sintoma a reconhecer, se você não ligar o flag: um usuário que clica num
+link **antigo** agora recebe `InvalidTokenException` (400,
+`INVALID_TOKEN`) em vez de entrar. A instrução certa na sua UI é "peça um novo
+link", não "tente de novo".
+
 ## 0.272.0 — os checks passaram a ver o que já estava errado
 
 Nenhuma assinatura muda, nenhum default muda. O que muda é **o que o

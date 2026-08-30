@@ -1053,6 +1053,9 @@ class AuthSettings(BaseAppSettings):
             discoverable. Default: ``"preferred"``.
         AUTH_WEBAUTHN_CHALLENGE_TTL_SECONDS (int): Lifetime of the
             between-request ceremony state. Default: ``300``.
+        AUTH_SINGLE_ACTIVE_TOKEN (bool): Issuing an account token spends
+            the user's other unused tokens of the same purpose, so only
+            the newest link works. Default: ``True``.
         AUTH_OAUTH_ENABLED (bool): Kill-switch enabling the social-login
             (``/auth/oauth/*``) endpoints. Default: ``False``.
         AUTH_OAUTH_STATE_COOKIE_NAME (str): Cookie carrying the CSRF
@@ -1648,6 +1651,29 @@ class AuthSettings(BaseAppSettings):
             "regardless."
         ),
         examples=[120, 300, 600],
+    )
+    AUTH_SINGLE_ACTIVE_TOKEN: bool = Field(
+        default=True,
+        title="Only the newest link of each flow works",
+        description=(
+            "When ``True`` (default), issuing an account token spends "
+            "every unused token of the **same purpose** the user still "
+            "has, so only the most recent activation / password-reset / "
+            "email-change link opens the account.\n\n"
+            "This is the property that makes the victim's own correct "
+            "reaction effective. An attacker requests a password reset "
+            "for someone else; that person gets a recovery email they "
+            "did not ask for, gets suspicious and resets the password "
+            "themselves — and without this, the attacker's link stays "
+            "valid until ``AUTH_PASSWORD_RESET_TTL_SECONDS``, so a "
+            "token leaked through any side channel still resets the "
+            "password after the incident looked handled.\n\n"
+            "Set ``False`` only for a flow that deliberately keeps "
+            "several links alive at once — and note that the SDK "
+            "behaved this way before v0.274.0, so this is the flag that "
+            "restores it."
+        ),
+        examples=[True, False],
     )
     AUTH_OAUTH_ENABLED: bool = Field(
         default=False,

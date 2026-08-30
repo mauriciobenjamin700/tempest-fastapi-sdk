@@ -192,6 +192,72 @@ async def me(user: UserModel | None = Depends(get_current_user_soft)) -> UserMod
 
 Returning `None` is allowed and means "I did not touch the user".
 
+!!! warning "A guard carrying a Pydantic schema **must** return `None`"
+    The decorator decides "user value" by `isinstance` against the declarative
+    base. A service-layer guard that receives a DTO and returns the validated
+    DTO *looks* like it is using the same narrowing contract, but `@requires`
+    does not recognize it — it warns with `GuardContractWarning` and keeps the
+    original user. Return `None`: it is the documented way to say "I only
+    assert, I do not narrow", and it is never a denial (guards deny by
+    raising).
+
+## The SDK's guards carry your `code` *(v0.274.0+)*
+
+`require_active` and `require_admin` raised a fixed `ForbiddenException`, in
+English, with `code="FORBIDDEN"` — which made them unadoptable by precisely the
+service that followed the SDK's own error advice. If you declared
+`UserIsNotAdminError(code="USER_IS_NOT_ADMIN")` because
+`register_exception_handlers` serializes `code` for the client to branch on,
+adopting `require_admin` would have answered `FORBIDDEN` on every admin route
+and broken your clients.
+
+The refusal is now a parameter:
+
+```python
+from tempest_fastapi_sdk import ForbiddenException, require_admin
+
+
+class UserIsNotAdminError(ForbiddenException):
+    """The project's own admin refusal."""
+
+    message: str = "Only administrators can access this resource"
+    code: str = "USER_IS_NOT_ADMIN"
+```
+
+`require_admin(user, exception=UserIsNotAdminError)` answers
+`403 USER_IS_NOT_ADMIN`; without the argument, `403 FORBIDDEN`, as always. The
+`user is None` case has its own knob, `unauthenticated=`, because swapping only
+the 403 would leave the other half generic.
+
+For the flags the SDK does not model — `is_producer`, `is_staff`,
+`is_verified`, which you were hand-writing anyway — use the factory:
+
+```python
+from tempest_fastapi_sdk import ForbiddenException, make_flag_guard
+
+
+class UserIsNotProducerError(ForbiddenException):
+    """The project's own producer refusal."""
+
+    message: str = "Only producers can access this resource"
+    code: str = "USER_IS_NOT_PRODUCER"
+
+
+require_producer = make_flag_guard(
+    "is_producer",
+    exception=UserIsNotProducerError,
+)
+```
+
+The resulting guard goes into `@requires` like any other, and narrows the type
+the same way the SDK's do.
+
+!!! tip "A model without the column is refused, not broken"
+    The attribute is read with `getattr(user, attr, False)`. A user model that
+    does not declare `is_producer` gets a **403**, not an `AttributeError` that
+    would become a 500 — a missing column and a `False` one mean the same thing
+    here.
+
 ## Metadata: one generic guard, many call sites
 
 A guard may declare a **second parameter** `meta: dict[str, Any]`. That is what turns a generic guard into a specific check per route — instead of writing `manager_only`, `auditor_only`, `admin_only`, you write `has_role` once and each call site says which role it requires.

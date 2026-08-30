@@ -649,6 +649,25 @@ Tem uma seção inteira só pra isso, explicada bem devagar: [Idioma dos e-mails
 | `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | `str` | `""` | Credenciais do console do Google. `google_kwargs()` monta o client. |
 | `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | `str` | `""` | Credenciais do OAuth app do GitHub. `github_kwargs()` monta o client. |
 
+### Grupo 11 — Um link por vez (`AuthSettings`) *(v0.274.0+)*
+
+| Env var | Tipo | Default | O que faz |
+|---------|------|---------|-----------|
+| `AUTH_SINGLE_ACTIVE_TOKEN` | `bool` | `true` | Emitir um token de conta gasta os outros tokens não usados **do mesmo propósito** daquele usuário, então só o link mais recente de ativação / reset / troca de e-mail abre a conta. `false` restaura o comportamento anterior à v0.274.0. Veja o [guia de migração](../migration.md#02740-so-o-link-mais-recente-abre-a-conta). |
+
+!!! danger "Sem isso, a reação certa do usuário não fecha a janela"
+    Um atacante dispara `POST /auth/password-reset/request` para a vítima. A
+    vítima recebe um e-mail de recuperação que não pediu, desconfia, e **por
+    conta própria** pede um reset e conclui — exatamente a reação correta. Com
+    vários links vivos, o link do atacante continua valendo até
+    `AUTH_PASSWORD_RESET_TTL_SECONDS`, e um token vazado por qualquer via
+    lateral (log de proxy, extensão de browser, e-mail encaminhado, dispositivo
+    compartilhado) ainda reseta a senha depois do incidente parecer resolvido.
+
+    O escopo é estreito nas duas direções: só o mesmo propósito (pedir um reset
+    não derruba uma troca de e-mail pendente) e só o mesmo usuário. A linha
+    antiga é marcada `used_at`, não apagada, então a auditoria fica.
+
 !!! note "MFA / TOTP tem suas próprias vars"
     Quando `AUTH_MFA_ENABLED=true`, o `AuthSettings` ainda expõe `AUTH_MFA_ISSUER`, `AUTH_MFA_RECOVERY_CODES_COUNT`, `AUTH_MFA_TOKEN_TTL_SECONDS` e `AUTH_MFA_VERIFY_WINDOW`. Ficam fora do escopo desta receita (signup/activate/login/reset) — são cobertos na receita de MFA.
 

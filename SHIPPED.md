@@ -353,6 +353,36 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   53.01% of the time, `token_urlsafe(32)` 26.54% and `token_hex(32)` 100%.
   One character per required class, filled and shuffled with
   `secrets.SystemRandom`, is 0/2000 across every policy combination.
+- **The front doors expose what the SDK already could do (v0.274.0)** —
+  issues #252, #253, #254, #255, all found by one real migration onto
+  v0.273.0 and all the same shape: the capability existed, the door
+  everyone enters through did not offer it, so the consumer reimplemented
+  the piece to reach it.
+  **(#252)** `make_bearer_token_dependency` / `make_jwt_user_dependency` /
+  `current_user_dependency` / `make_auth_router` now forward `strict` and
+  `legacy_claims` to `token_type_allowed`. Measured with a legacy refresh
+  token declaring `{"type": "refresh"}`: `HTTP 200` under the default,
+  `401` with `strict=True` — so before this, every refresh token such a
+  service ever issued authorized any route for its whole TTL, and the only
+  way to fix it was to stop using the factories.
+  **(#253)** `_issue_token` now spends the user's other unused tokens of the
+  same purpose, so only the newest activation / reset / email-change link
+  works (`AUTH_SINGLE_ACTIVE_TOKEN`, default `True`). It is what makes the
+  victim's own correct reaction effective: measured,
+  `AUTH_SINGLE_ACTIVE_TOKEN=False` leaves the attacker's link working
+  **after** the victim reset the password themselves. Scoped to the same
+  purpose and the same user; the row is marked `used_at`, not deleted.
+  **(#254)** `require_active` / `require_admin` / `require_authenticated`
+  take `exception=` and `unauthenticated=` (free functions and the
+  `UserAuthService` mirrors), plus `make_flag_guard(attr, exception=...)`
+  for the flags the SDK does not model. The generic `code="FORBIDDEN"` was
+  what made them unadoptable by the service that followed the SDK's own
+  advice and declared `USER_IS_NOT_ADMIN`.
+  **(#255)** Ten typed OAuth refusals, each with its own `code`. The pair
+  that mattered: `OAUTH_EMAIL_TAKEN` has a next step for the person,
+  `OAUTH_EMAIL_UNVERIFIED` has none by design — and both arrived as the same
+  `409 CONFLICT`. Every class subclasses what that site already raised, so
+  `except ConflictException` keeps working.
 - **SSE** — `EventStream` (bounded queue + `overflow` backpressure —
   `drop_oldest`/`drop_newest`/`block`, `dropped_events` counter,
   `max_queue=0` to disable), `ServerSentEvent`, `sse_response`

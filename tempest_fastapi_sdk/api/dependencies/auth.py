@@ -95,6 +95,8 @@ def make_bearer_token_dependency(
     cookie_name: str | None = None,
     query_param: str | None = None,
     accepted_typ: Collection[str] = (ACCESS_TOKEN_TYPE,),
+    strict: bool = False,
+    legacy_claims: Collection[str] = (),
     error_message: str = "Authorization token is missing or invalid",
 ) -> Callable[..., Coroutine[Any, Any, dict[str, Any] | None]]:
     """Build a FastAPI dependency that decodes a JWT from header/cookie/query.
@@ -147,6 +149,23 @@ def make_bearer_token_dependency(
             **rejected**, even though both are validly signed with the
             same secret. Widen it only for a route that deliberately
             takes another kind of token.
+        strict (bool): How to treat a token that carries no
+            recognizable type marker. ``False`` (default) accepts it —
+            the compatibility window that keeps sessions minted before
+            the ``typ`` claim existed from being logged out on upgrade.
+            ``True`` refuses it. **A service whose legacy tokens
+            declared their type under a claim of their own (``type``,
+            ``token_type``) has neither ``typ`` nor an SDK fallback
+            marker on any of them**, so under the default every one of
+            those refresh tokens authorizes any route for the length of
+            its TTL. Such a service wants ``strict=True`` plus
+            ``legacy_claims``, and until v0.274.0 could only get there
+            by not using this factory.
+        legacy_claims (Collection[str]): Extra claim names to read the
+            token type from when ``typ`` is absent, in order. Pair with
+            ``strict=True``: the claims classify the old tokens, and
+            strict refuses whatever stays unclassified. See
+            :func:`~tempest_fastapi_sdk.token_type_allowed`.
         error_message (str): Message attached to the raised
             :class:`UnauthorizedException` when ``soft`` is ``False``.
 
@@ -175,11 +194,21 @@ def make_bearer_token_dependency(
             raise UnauthorizedException(message=error_message)
         if soft:
             payload = tokens.decode_or_none(raw_token)
-            if payload is None or not token_type_allowed(payload, accepted_typ):
+            if payload is None or not token_type_allowed(
+                payload,
+                accepted_typ,
+                strict=strict,
+                legacy_claims=legacy_claims,
+            ):
                 return None
             return payload
         payload = tokens.decode(raw_token)
-        if not token_type_allowed(payload, accepted_typ):
+        if not token_type_allowed(
+            payload,
+            accepted_typ,
+            strict=strict,
+            legacy_claims=legacy_claims,
+        ):
             raise UnauthorizedException(message=error_message)
         return payload
 
@@ -199,6 +228,8 @@ def make_jwt_user_dependency(
     cookie_name: str | None = None,
     query_param: str | None = None,
     accepted_typ: Collection[str] = (ACCESS_TOKEN_TYPE,),
+    strict: bool = False,
+    legacy_claims: Collection[str] = (),
     subject_claim: str = "sub",
     error_message: str = "Authorization token is missing or invalid",
     session_dependency: Callable[..., Any] | None = None,
@@ -263,6 +294,23 @@ def make_jwt_user_dependency(
             refresh token and the MFA-pending token cannot stand in for
             an access token. See
             :func:`make_bearer_token_dependency`.
+        strict (bool): How to treat a token that carries no
+            recognizable type marker. ``False`` (default) accepts it —
+            the compatibility window that keeps sessions minted before
+            the ``typ`` claim existed from being logged out on upgrade.
+            ``True`` refuses it. **A service whose legacy tokens
+            declared their type under a claim of their own (``type``,
+            ``token_type``) has neither ``typ`` nor an SDK fallback
+            marker on any of them**, so under the default every one of
+            those refresh tokens authorizes any route for the length of
+            its TTL. Such a service wants ``strict=True`` plus
+            ``legacy_claims``, and until v0.274.0 could only get there
+            by not using this factory.
+        legacy_claims (Collection[str]): Extra claim names to read the
+            token type from when ``typ`` is absent, in order. Pair with
+            ``strict=True``: the claims classify the old tokens, and
+            strict refuses whatever stays unclassified. See
+            :func:`~tempest_fastapi_sdk.token_type_allowed`.
         subject_claim (str): Which JWT claim carries the user id.
             Defaults to ``"sub"``.
         error_message (str): Message attached to the raised
@@ -283,6 +331,8 @@ def make_jwt_user_dependency(
         cookie_name=cookie_name,
         query_param=query_param,
         accepted_typ=accepted_typ,
+        strict=strict,
+        legacy_claims=legacy_claims,
         error_message=error_message,
     )
 

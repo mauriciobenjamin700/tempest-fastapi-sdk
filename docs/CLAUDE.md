@@ -33,6 +33,11 @@ Por isso ele não tem espelho `.en.md` nem entrada no `nav:`.
    `docs/recipes/<p>.en.md` (buildado em `en/recipes/<p>/`) o alvo é
    `../../../reference/#simbolo`. Confira contando os `../` contra o caminho
    **buildado**, não contra o `docs/`.
+8. **Âncora de heading acentuado perde o acento.**
+   `## 0.274.0 — só o link mais recente` vira
+   `#02740-so-o-link-mais-recente`, não `#02740-só-...`. Escrever o link com
+   o acento dá link morto reportado como `INFO`, com o `--strict` verde —
+   copie o `id=` do HTML buildado em vez de derivar o slug de cabeça.
 
 ## O que fica fora da ordem alfabética, de propósito
 

@@ -653,6 +653,25 @@ There's a whole section dedicated to this, explained step by step:
 | `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | `str` | `""` | Credentials from the Google console. `google_kwargs()` builds the client. |
 | `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | `str` | `""` | Credentials of the GitHub OAuth app. `github_kwargs()` builds the client. |
 
+### Group 11 — One link at a time (`AuthSettings`) *(v0.274.0+)*
+
+| Env var | Type | Default | What it does |
+|---------|------|---------|--------------|
+| `AUTH_SINGLE_ACTIVE_TOKEN` | `bool` | `true` | Issuing an account token spends that user's other unused tokens **of the same purpose**, so only the newest activation / reset / email-change link opens the account. `false` restores the pre-v0.274.0 behaviour. See the [migration guide](../migration.en.md#02740-only-the-newest-link-opens-the-account). |
+
+!!! danger "Without this, the user's correct reaction does not close the window"
+    An attacker fires `POST /auth/password-reset/request` at a victim. The
+    victim receives a recovery email they never asked for, gets suspicious,
+    and **on their own** requests a reset and completes it — exactly the right
+    reaction. With several links alive, the attacker's link stays valid until
+    `AUTH_PASSWORD_RESET_TTL_SECONDS`, and a token leaked through any side
+    channel (a proxy log, a browser extension, a forwarded email, a shared
+    device) still resets the password after the incident looked handled.
+
+    The scope is narrow in both directions: same purpose only (requesting a
+    reset does not kill a pending email change) and same user only. The old row
+    is marked `used_at`, not deleted, so the audit trail stays.
+
 !!! note "MFA / TOTP has its own vars"
     When `AUTH_MFA_ENABLED=true`, `AuthSettings` also exposes `AUTH_MFA_ISSUER`, `AUTH_MFA_RECOVERY_CODES_COUNT`, `AUTH_MFA_TOKEN_TTL_SECONDS` and `AUTH_MFA_VERIFY_WINDOW`. They're out of scope for this recipe (signup/activate/login/reset) — covered in the MFA recipe.
 

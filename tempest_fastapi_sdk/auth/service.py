@@ -27,6 +27,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tempest_fastapi_sdk.auth.guards import (
+    GuardException,
     UserT,
     require_active,
     require_admin,
@@ -51,9 +52,14 @@ from tempest_fastapi_sdk.db.user_token_model import (
 )
 from tempest_fastapi_sdk.exceptions import (
     ConflictException,
-    ForbiddenException,
     InvalidTokenException,
     NotFoundException,
+    OAuthAccountInactiveException,
+    OAuthAccountNotLinkedException,
+    OAuthEmailMissingException,
+    OAuthEmailTakenException,
+    OAuthEmailUnverifiedException,
+    OAuthRegistrationDisabledException,
     UnauthorizedException,
     ValidationException,
 )
@@ -71,7 +77,7 @@ from tempest_fastapi_sdk.utils.token_types import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Callable, Collection, Coroutine
     from typing import Any
 
     from tempest_fastapi_sdk.api.oauth import OAuthUser
@@ -428,16 +434,19 @@ class UserAuthService:
             RuntimeError: When the service was built without an
                 ``oauth_account_model``. A configuration error, not a
                 request error.
-            ValidationException: When the provider returned no email.
-                The column is ``NOT NULL UNIQUE``, so there is nothing
-                to store and inventing an address would create an
-                account nobody can recover.
-            ConflictException: When the email already belongs to
-                another account and linking is not allowed, or the
-                provider did not verify it.
-            ForbiddenException: When the identity is unknown and
-                account creation is disabled.
-            UnauthorizedException: When the resolved account is
+            OAuthEmailMissingException: When the provider returned
+                no email. The column is ``NOT NULL UNIQUE``, so there is
+                nothing to store and inventing an address would create
+                an account nobody can recover.
+            OAuthEmailTakenException: When the email already belongs to
+                another account and linking is not allowed.
+            OAuthEmailUnverifiedException: When linking was allowed but
+                the provider did not state it verified the address.
+                Deliberately distinct from the one above: that one has a
+                next step for the user, this one has none.
+            OAuthRegistrationDisabledException: When the identity is
+                unknown and account creation is disabled.
+            OAuthAccountInactiveException: When the resolved account is
                 inactive.
         """
         if self.oauth_account_model is None:
@@ -523,16 +532,19 @@ class UserAuthService:
             BaseUserModel: The linked user.
 
         Raises:
-            UnauthorizedException: When the row is gone or inactive. A
-                deactivated account must not be revived by arriving
-                through the provider instead of the login form.
+            OAuthAccountInactiveException: When the row is gone or
+                inactive. A deactivated account must not be revived by
+                arriving through the provider instead of the login
+                form.
         """
         result = await session.execute(
             select(self.user_model).where(self.user_model.id == user_id)
         )
         user: BaseUserModel | None = result.scalar_one_or_none()
         if user is None or not user.is_active:
-            raise UnauthorizedException(message="account is not active")
+            raise OAuthAccountInactiveException(
+                details={"user_id": str(user_id)},
+            )
         return user
 
     async def _resolve_oauth_user(
@@ -559,20 +571,22 @@ class UserAuthService:
             BaseUserModel: The user this identity belongs to.
 
         Raises:
-            ValidationException: When the provider returned no email.
-            ConflictException: When the email is taken and cannot be
-                linked. The message names the collision rather than
-                hiding it: the alternative to refusing loudly is
-                attaching the identity anyway, which is account
-                takeover.
-            ForbiddenException: When creation is disabled.
-            UnauthorizedException: When the matched account is
+            OAuthEmailMissingException: When the provider returned no
+                email.
+            OAuthEmailTakenException: When the email is taken and
+                linking is not allowed. Refusing names the collision
+                rather than hiding it: the alternative is attaching the
+                identity anyway, which is account takeover.
+            OAuthEmailUnverifiedException: When linking was allowed but
+                the provider did not verify the address.
+            OAuthRegistrationDisabledException: When creation is
+                disabled.
+            OAuthAccountInactiveException: When the matched account is
                 inactive.
         """
         email = (profile.email or "").strip().lower()
         if not email:
-            raise ValidationException(
-                message="the identity provider returned no email address",
+            raise OAuthEmailMissingException(
                 details={"provider": profile.provider},
             )
         result = await session.execute(
@@ -581,23 +595,20 @@ class UserAuthService:
         existing: BaseUserModel | None = result.scalar_one_or_none()
         if existing is not None:
             if not link_by_verified_email:
-                raise ConflictException(
-                    message="email already registered — sign in and link "
-                    "the provider from your account settings",
+                raise OAuthEmailTakenException(
                     details={"email": email, "provider": profile.provider},
                 )
             if profile.email_verified is not True:
-                raise ConflictException(
-                    message="the identity provider did not verify this email",
+                raise OAuthEmailUnverifiedException(
                     details={"email": email, "provider": profile.provider},
                 )
             if not existing.is_active:
-                raise UnauthorizedException(message="account is not active")
+                raise OAuthAccountInactiveException(
+                    details={"email": email, "provider": profile.provider},
+                )
             return existing
         if not allow_account_creation:
-            raise ForbiddenException(
-                message="this account does not exist and self-service "
-                "registration is disabled",
+            raise OAuthRegistrationDisabledException(
                 details={"provider": profile.provider},
             )
         return await self._create_oauth_user(
@@ -743,9 +754,9 @@ class UserAuthService:
         Raises:
             RuntimeError: When the service was built without an
                 ``oauth_account_model``.
-            NotFoundException: When that provider is not linked to this
-                user. A single named resource, so 404 is the right
-                answer — unlike the plural listing above.
+            OAuthAccountNotLinkedException: When that provider is not
+                linked to this user. A single named resource, so 404 is
+                the right answer — unlike the plural listing above.
         """
         if self.oauth_account_model is None:
             raise RuntimeError(
@@ -761,8 +772,7 @@ class UserAuthService:
         )
         account = result.scalar_one_or_none()
         if account is None:
-            raise NotFoundException(
-                message="provider is not linked to this account",
+            raise OAuthAccountNotLinkedException(
                 details={"provider": provider},
             )
         await session.delete(account)
@@ -1677,6 +1687,8 @@ class UserAuthService:
         session_dependency: Callable[..., Any] | None = None,
         cookie_name: str | None = None,
         query_param: str | None = None,
+        strict: bool = False,
+        legacy_claims: Collection[str] = (),
     ) -> Callable[..., Coroutine[Any, Any, Any]]:
         """Build a FastAPI dependency that returns the authenticated user.
 
@@ -1730,6 +1742,19 @@ class UserAuthService:
                 A token in the URL leaks into access logs, history and the
                 ``Referer`` header, so enable it only over TLS with
                 short-lived access tokens (never a refresh token).
+            strict (bool): Refuse a token that carries no recognizable
+                type marker. ``False`` (default) accepts it, which is
+                the compatibility window for sessions minted before the
+                ``typ`` claim existed. A service whose legacy tokens
+                declared their type under a claim of their own has no
+                ``typ`` and no SDK fallback marker on any of them, so
+                under the default each of its refresh tokens authorizes
+                any route for the length of its TTL — that service wants
+                ``strict=True``.
+            legacy_claims (Collection[str]): Extra claim names to read
+                the token type from when ``typ`` is absent, in order.
+                Pair with ``strict=True``. See
+                :func:`~tempest_fastapi_sdk.token_type_allowed`.
 
         Returns:
             Callable[..., Coroutine[Any, Any, Any]]: An async FastAPI
@@ -1760,6 +1785,8 @@ class UserAuthService:
             soft=soft,
             cookie_name=resolved_cookie_name,
             query_param=query_param,
+            strict=strict,
+            legacy_claims=legacy_claims,
             session_dependency=session_dependency or self.db.session_dependency,
         )
 
@@ -1768,7 +1795,11 @@ class UserAuthService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def require_authenticated(user: UserT | None) -> UserT:
+    def require_authenticated(
+        user: UserT | None,
+        *,
+        exception: GuardException | None = None,
+    ) -> UserT:
         """Assert the user is authenticated; return it narrowed to non-``None``.
 
         Thin static mirror of
@@ -1787,46 +1818,78 @@ class UserAuthService:
 
         Args:
             user (UserT | None): The resolved request user.
+            exception (GuardException | None): Factory for the refusal.
+                ``None`` (default) raises
+                :class:`UnauthorizedException` with the generic
+                ``UNAUTHORIZED`` code.
 
         Returns:
             UserT: The same user, narrowed to non-``None``.
 
         Raises:
-            UnauthorizedException: When ``user`` is ``None`` (HTTP 401).
+            AppException: When ``user`` is ``None`` — whatever
+                ``exception`` builds, or :class:`UnauthorizedException`
+                (HTTP 401).
         """
-        return require_authenticated(user)
+        return require_authenticated(user, exception=exception)
 
     @staticmethod
-    def require_active(user: UserT | None) -> UserT:
+    def require_active(
+        user: UserT | None,
+        *,
+        exception: GuardException | None = None,
+        unauthenticated: GuardException | None = None,
+    ) -> UserT:
         """Assert the user is authenticated and active. See :func:`require_active`.
 
         Args:
             user (UserT | None): The resolved request user.
+            exception (GuardException | None): Factory for the refusal
+                when ``is_active`` is falsy. ``None`` (default) raises
+                :class:`ForbiddenException`.
+            unauthenticated (GuardException | None): Factory for the
+                ``user is None`` case.
 
         Returns:
             UserT: The authenticated, active user.
 
         Raises:
-            UnauthorizedException: When ``user`` is ``None`` (HTTP 401).
-            ForbiddenException: When ``user.is_active`` is falsy (HTTP 403).
+            AppException: When ``user`` is ``None`` (HTTP 401 by
+                default) or ``user.is_active`` is falsy (HTTP 403 by
+                default).
         """
-        return require_active(user)
+        return require_active(
+            user, exception=exception, unauthenticated=unauthenticated
+        )
 
     @staticmethod
-    def require_admin(user: UserT | None) -> UserT:
+    def require_admin(
+        user: UserT | None,
+        *,
+        exception: GuardException | None = None,
+        unauthenticated: GuardException | None = None,
+    ) -> UserT:
         """Assert the user is authenticated and an admin. See :func:`require_admin`.
 
         Args:
             user (UserT | None): The resolved request user.
+            exception (GuardException | None): Factory for the refusal
+                when ``is_admin`` is falsy. ``None`` (default) raises
+                :class:`ForbiddenException` with the generic
+                ``FORBIDDEN`` code — which is exactly what a project
+                carrying its own ``USER_IS_NOT_ADMIN`` needs to replace.
+            unauthenticated (GuardException | None): Factory for the
+                ``user is None`` case.
 
         Returns:
             UserT: The authenticated admin user.
 
         Raises:
-            UnauthorizedException: When ``user`` is ``None`` (HTTP 401).
-            ForbiddenException: When ``user.is_admin`` is falsy (HTTP 403).
+            AppException: When ``user`` is ``None`` (HTTP 401 by
+                default) or ``user.is_admin`` is falsy (HTTP 403 by
+                default).
         """
-        return require_admin(user)
+        return require_admin(user, exception=exception, unauthenticated=unauthenticated)
 
     # ------------------------------------------------------------------
     # Internals
@@ -1917,7 +1980,13 @@ class UserAuthService:
             url_template (str): URL template with a ``{token}`` slot.
             payload (str | None): Optional flow context stored on the
                 row (e.g. the pending new email for ``EMAIL_CHANGE``).
+
+        Returns:
+            tuple[str, str, datetime]: The plaintext token (surfaced
+            exactly once), the rendered URL, and the expiry.
         """
+        if self.auth_settings.AUTH_SINGLE_ACTIVE_TOKEN:
+            await self._burn_pending_tokens(session, user_id=user_id, purpose=purpose)
         plain, digest = generate_opaque_token(48)
         expires_at = utcnow() + timedelta(seconds=ttl_seconds)
         record = self.token_model(
@@ -1931,6 +2000,60 @@ class UserAuthService:
         await session.flush()
         url = url_template.replace("{token}", plain)
         return plain, url, expires_at
+
+    async def _burn_pending_tokens(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: UUID,
+        purpose: UserTokenPurpose,
+    ) -> None:
+        """Spend every unused token of ``purpose`` belonging to ``user_id``.
+
+        Called by :meth:`_issue_token` before inserting the new row, so
+        **only the most recent link opens the account** — the property
+        every mainstream provider applies, and the one whose absence
+        makes the user's own correct reaction useless.
+
+        The scenario it closes: an attacker requests a password reset
+        for a victim. The victim gets a recovery email they did not ask
+        for, gets suspicious, and resets the password themselves. That
+        is exactly the right response, and without this it does not
+        close the window — the attacker's token stays valid until
+        ``AUTH_PASSWORD_RESET_TTL_SECONDS``, so a token leaked through
+        any side channel (a proxy log, a browser extension, a forwarded
+        email, a shared device) still resets the password *after* the
+        victim considered the incident handled.
+
+        Applied to every purpose rather than to password reset alone:
+        a pending email change to an address the attacker controls has
+        the same shape, and so does an activation link. Marking a token
+        ``used_at`` rather than deleting it keeps the row for audit and
+        reuses the check :meth:`_lookup_token` already performs.
+
+        Expired rows are marked too. Filtering them out would buy a
+        clock comparison in SQL to avoid writing to rows that are
+        already dead.
+
+        Args:
+            session (AsyncSession): Active SQLAlchemy session. The
+                statement is executed but not committed — the caller
+                owns the transaction, so the burn and the new token land
+                together or not at all.
+            user_id (UUID): Owner of the tokens to spend.
+            purpose (UserTokenPurpose): Which flow's tokens to spend.
+                Only the same purpose is touched: requesting a password
+                reset does not invalidate a pending email change.
+        """
+        await session.execute(
+            update(self.token_model)
+            .where(
+                self.token_model.user_id == user_id,
+                self.token_model.purpose == purpose.value,
+                self.token_model.used_at.is_(None),
+            )
+            .values(used_at=utcnow())
+        )
 
     async def _email_taken(
         self,

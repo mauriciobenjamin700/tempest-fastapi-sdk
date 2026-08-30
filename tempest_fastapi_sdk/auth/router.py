@@ -40,7 +40,7 @@ token models and the email rendering pipeline.
 from __future__ import annotations
 
 import hmac
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Collection, Mapping
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Form, Request, Response, status
@@ -98,6 +98,10 @@ from tempest_fastapi_sdk.exceptions import (
     ConflictException,
     InvalidTokenException,
     NotFoundException,
+    OAuthCodeMissingException,
+    OAuthProviderDeniedException,
+    OAuthProviderNotConfiguredException,
+    OAuthStateMismatchException,
     UnauthorizedException,
     ValidationException,
 )
@@ -158,6 +162,8 @@ def make_auth_router(
     cookie_config: AuthCookieConfig | None = None,
     webauthn: WebAuthnService | None = None,
     oauth_clients: Mapping[str, OAuthClient] | None = None,
+    token_strict: bool = False,
+    token_legacy_claims: Collection[str] = (),
 ) -> APIRouter:
     """Build the bundled auth router.
 
@@ -225,6 +231,20 @@ def make_auth_router(
             :class:`~tempest_fastapi_sdk.OAuthClient` is accepted, so a
             provider the SDK does not ship is wired the same way Google
             is.
+        token_strict (bool): Whether the router's authenticated routes
+            refuse an access token carrying no recognizable type marker.
+            ``False`` (default) accepts it — the compatibility window
+            for sessions minted before the ``typ`` claim existed. A
+            service whose legacy tokens declared their type under a
+            claim of their own has no ``typ`` and no SDK fallback marker
+            on any of them, so under the default each of its refresh
+            tokens authorizes ``/auth/me``, ``/auth/password-change``
+            and every other guarded route for the length of its TTL.
+        token_legacy_claims (Collection[str]): Extra claim names to read
+            the token type from when ``typ`` is absent, in order. Pair
+            with ``token_strict=True``: the claims classify the old
+            tokens, strict refuses whatever stays unclassified. See
+            :func:`~tempest_fastapi_sdk.token_type_allowed`.
 
     Returns:
         APIRouter: Ready to mount with ``app.include_router``.
@@ -355,6 +375,8 @@ def make_auth_router(
         service.jwt,
         user_loader=_make_user_loader(service),
         cookie_name=cookies.access_name if cookie_enabled else None,
+        strict=token_strict,
+        legacy_claims=token_legacy_claims,
         session_dependency=_session,
     )
 
@@ -1803,14 +1825,14 @@ def make_auth_router(
                 OAuthClient: The registered client.
 
             Raises:
-                NotFoundException: When nothing is registered under that
-                    key. A 404 rather than a 400: the provider is part
-                    of the path, so an unknown one is an unknown route.
+                OAuthProviderNotConfiguredException: When nothing is
+                    registered under that key. A 404 rather than a 400:
+                    the provider is part of the path, so an unknown one
+                    is an unknown route.
             """
             client = clients.get(provider)
             if client is None:
-                raise NotFoundException(
-                    message="unknown oauth provider",
+                raise OAuthProviderNotConfiguredException(
                     details={"provider": provider, "known": sorted(clients)},
                 )
             return client
@@ -1932,9 +1954,12 @@ def make_auth_router(
                 delivery is cookie-only, the JWT pair.
 
             Raises:
-                UnauthorizedException: On a provider-reported error or
-                    a state that does not match the cookie.
-                ValidationException: When the callback carries no code.
+                OAuthProviderDeniedException: When the provider
+                    reported an ``error`` instead of a code.
+                OAuthStateMismatchException: When the ``state`` does not
+                    match the cookie the redirect wrote.
+                OAuthCodeMissingException: When the callback carries
+                    neither a code nor an error.
             """
             client = _client_for(provider)
             clear_cookie(
@@ -1947,8 +1972,7 @@ def make_auth_router(
                 samesite="lax",
             )
             if error:
-                raise UnauthorizedException(
-                    message="the provider did not authorize the login",
+                raise OAuthProviderDeniedException(
                     details={"provider": provider, "error": error},
                 )
             presented = request.cookies.get(state_cookie)
@@ -1957,14 +1981,11 @@ def make_auth_router(
                 or not presented
                 or not hmac.compare_digest(presented, f"{provider}:{state}")
             ):
-                raise UnauthorizedException(
-                    message="oauth state mismatch — the callback was not "
-                    "started by this browser",
+                raise OAuthStateMismatchException(
                     details={"provider": provider},
                 )
             if not code:
-                raise ValidationException(
-                    message="the callback carried no authorization code",
+                raise OAuthCodeMissingException(
                     details={"provider": provider},
                 )
             tokens = await client.exchange_code(code)

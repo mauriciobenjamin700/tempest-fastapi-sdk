@@ -193,6 +193,70 @@ async def me(user: UserModel | None = Depends(get_current_user_soft)) -> UserMod
 
 Devolver `None` é permitido e significa "não mexi no usuário".
 
+!!! warning "Guard que trafega schema Pydantic **precisa** devolver `None`"
+    O decorator decide "valor de usuário" por `isinstance` contra a base
+    declarativa. Um guard de camada de serviço que recebe um DTO e devolve o
+    DTO validado *parece* estar usando o mesmo contrato de narrowing, mas o
+    `@requires` não reconhece — ele avisa com `GuardContractWarning` e mantém o
+    usuário original. Devolva `None`: é a forma documentada de dizer "eu só
+    afirmo, não estreito", e nunca é uma negação (guards negam levantando).
+
+## Os guards do SDK carregam o seu `code` *(v0.274.0+)*
+
+`require_active` e `require_admin` levantavam `ForbiddenException` fixa, em
+inglês, com `code="FORBIDDEN"` — e isso os tornava inadotáveis justamente pelo
+serviço que seguiu a recomendação de erro do próprio SDK. Se você declarou
+`UserIsNotAdminError(code="USER_IS_NOT_ADMIN")` porque o
+`register_exception_handlers` serializa `code` para o cliente ramificar nele,
+adotar `require_admin` devolveria `FORBIDDEN` em toda rota de admin e quebraria
+seus clientes.
+
+Agora a recusa é parâmetro:
+
+```python
+from tempest_fastapi_sdk import ForbiddenException, require_admin
+
+
+class UserIsNotAdminError(ForbiddenException):
+    """The project's own admin refusal."""
+
+    message: str = "Apenas administradores podem acessar este recurso"
+    code: str = "USER_IS_NOT_ADMIN"
+```
+
+`require_admin(user, exception=UserIsNotAdminError)` devolve
+`403 USER_IS_NOT_ADMIN`; sem o argumento, `403 FORBIDDEN`, como sempre. O caso
+`user is None` tem knob próprio, `unauthenticated=`, porque trocar só o 403
+deixaria a outra metade genérica.
+
+Para as flags que o SDK não modela — `is_producer`, `is_staff`, `is_verified`,
+que você escrevia à mão de qualquer jeito — use a fábrica:
+
+```python
+from tempest_fastapi_sdk import ForbiddenException, make_flag_guard
+
+
+class UserIsNotProducerError(ForbiddenException):
+    """The project's own producer refusal."""
+
+    message: str = "Apenas produtores podem acessar este recurso"
+    code: str = "USER_IS_NOT_PRODUCER"
+
+
+require_producer = make_flag_guard(
+    "is_producer",
+    exception=UserIsNotProducerError,
+)
+```
+
+O guard resultante entra no `@requires` como qualquer outro, e estreita o tipo
+igual aos do SDK.
+
+!!! tip "Model sem a coluna é recusado, não quebrado"
+    O atributo é lido com `getattr(user, attr, False)`. Um user model que não
+    declara `is_producer` recebe **403**, não um `AttributeError` que viraria
+    500 — uma coluna ausente e uma coluna `False` significam a mesma coisa aqui.
+
 ## Metadata: um guard genérico, vários call sites
 
 Um guard pode declarar um **segundo parâmetro** `meta: dict[str, Any]`. É isso que transforma um guard genérico numa checagem específica por rota — em vez de escrever `manager_only`, `auditor_only`, `admin_only`, você escreve `has_role` uma vez e cada call site diz qual papel exige.

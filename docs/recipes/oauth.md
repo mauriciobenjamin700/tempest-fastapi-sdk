@@ -538,14 +538,33 @@ Com `register_exception_handlers` montado, ela já sai no envelope canônico
 
 O que o callback responde, por causa:
 
-| Status | Quando |
-| --- | --- |
-| **401** | `state` ausente ou divergente; provedor devolveu `error=` |
-| **403** | Identidade nova e criação de conta desligada |
-| **404** | `{provider}` não registrado |
-| **409** | E-mail já é de outra conta e o vínculo automático não é permitido |
-| **422** | Provedor não devolveu e-mail, ou callback sem `code` |
-| **502** | `OAuthError` — o provedor recusou a troca ou o userinfo |
+| Status | `code` | Quando |
+| --- | --- | --- |
+| **401** | `OAUTH_STATE_MISMATCH` | `state` ausente ou divergente do cookie |
+| **401** | `OAUTH_PROVIDER_DENIED` | Provedor devolveu `error=` (quase sempre, o usuário recusou o consentimento) |
+| **401** | `OAUTH_ACCOUNT_INACTIVE` | A identidade resolve para uma conta desativada |
+| **403** | `OAUTH_REGISTRATION_DISABLED` | Identidade nova e criação de conta desligada |
+| **404** | `OAUTH_PROVIDER_NOT_CONFIGURED` | `{provider}` não registrado |
+| **404** | `OAUTH_ACCOUNT_NOT_LINKED` | Unlink de um provedor que esta conta não ligou |
+| **409** | `OAUTH_EMAIL_TAKEN` | E-mail já é de outra conta e o vínculo automático não é permitido |
+| **409** | `OAUTH_EMAIL_UNVERIFIED` | Vínculo permitido, mas o provedor não afirmou ter verificado o e-mail |
+| **422** | `OAUTH_EMAIL_MISSING` | Provedor não devolveu e-mail |
+| **422** | `OAUTH_CODE_MISSING` | Callback sem `code` e sem `error` |
+| **502** | `OAUTH_ERROR` | O provedor recusou a troca ou o userinfo |
+
+!!! tip "Ramifique no `code`, nunca na mensagem *(v0.274.0+)*"
+    Os dois **409** são o par que mais importa, e chegavam idênticos antes da
+    v0.274.0. `OAUTH_EMAIL_TAKEN` **tem** um próximo passo para a pessoa:
+    entrar com a senha que ela já tem e ligar o provedor pelas configurações.
+    `OAUTH_EMAIL_UNVERIFIED` **não tem nenhum** — é a barreira que impede quem
+    registrou uma identidade carregando o e-mail da vítima de assumir a conta,
+    e nenhuma ação do usuário a remove. Um app que mostrasse "entre e ligue"
+    nos dois estaria mandando metade das pessoas fazer algo que não pode
+    funcionar.
+
+    Cada classe herda a exceção que aquele ponto já levantava
+    (`OAuthEmailTakenException(ConflictException)` e as outras nove), então
+    `except ConflictException` continua pegando o que pegava.
 
 ## Fazendo na mão
 

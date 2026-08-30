@@ -5,6 +5,130 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.274.0] — 2026-08-30
+
+Quatro defeitos achados pela mesma migração real — um serviço adotando a
+v0.273.0 — e todos da mesma família: **o SDK tem a capacidade, mas a porta por
+onde todo mundo entra não a expõe.** O consumidor então reimplementa o pedaço
+inteiro para alcançá-la.
+
+### Security
+
+- **`request_password_reset` não invalidava os links anteriores.**
+  ([#253](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/253))
+  Cada chamada só empilhava linha em `user_tokens`, então todos os tokens de
+  reset não usados e não expirados ficavam válidos ao mesmo tempo.
+
+  O que isso quebra é a reação **correta** do usuário. Um atacante dispara o
+  reset para a vítima; a vítima recebe um e-mail de recuperação que não pediu,
+  desconfia, e por conta própria pede um reset e conclui. Isso não fechava a
+  janela — o link do atacante continuava valendo até
+  `AUTH_PASSWORD_RESET_TTL_SECONDS`, então um token vazado por qualquer via
+  lateral (log de proxy, extensão de browser, e-mail encaminhado, dispositivo
+  compartilhado) ainda resetava a senha **depois** do incidente parecer
+  resolvido. Medido:
+
+  ```text
+  AUTH_SINGLE_ACTIVE_TOKEN=True  -> link do atacante: recusado (InvalidTokenException)
+  AUTH_SINGLE_ACTIVE_TOKEN=False -> link do atacante: AINDA FUNCIONA
+  ```
+
+  A correção vive dentro do `_issue_token`, não no `request_password_reset`,
+  então cobre **todos** os propósitos de uma vez: ativação, reset,
+  troca de e-mail e verificação de e-mail. Uma troca de e-mail pendente para um
+  endereço que o atacante controla tem exatamente a mesma forma. O escopo é
+  estreito nas duas direções — só o mesmo propósito e só o mesmo usuário:
+  pedir um reset não derruba uma troca de e-mail pendente. A linha é marcada
+  `used_at` em vez de apagada, então a trilha de auditoria fica.
+
+  **É mudança de comportamento**, com `AUTH_SINGLE_ACTIVE_TOKEN` (default
+  `True`) restaurando o anterior. Ver o [guia de migração](docs/migration.md).
+
+### Added
+
+- **`make_bearer_token_dependency` / `make_jwt_user_dependency` repassam
+  `strict` e `legacy_claims`.**
+  ([#252](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/252))
+  O `token_type_allowed` ganhou os dois parâmetros e a docstring descreve
+  exatamente quem precisa deles — um serviço cujos tokens legados declaravam o
+  tipo numa claim própria (`type`, `token_type`). Esse token não tem `typ` nem
+  o marcador de fallback do SDK, então o default permissivo o classifica como
+  "desconhecido" e deixa passar. Medido, com um refresh token legado:
+
+  ```text
+  default (strict=False)               -> HTTP 200
+  strict=True                          -> HTTP 401
+  strict=True, legacy_claims=('type',) -> HTTP 401
+  o access legado, mesmas opções       -> HTTP 200
+  ```
+
+  A primeira linha é o buraco: **todo refresh token que aquele serviço já
+  emitiu autoriza qualquer rota pelo resto da vida dele**. A capacidade existia;
+  o único jeito de alcançá-la era não usar as factories. Agora as três portas
+  repassam — as duas factories, `UserAuthService.current_user_dependency`, e o
+  `make_auth_router` por `token_strict=` / `token_legacy_claims=`, que guarda
+  `/auth/me`, `/auth/password-change` e o resto das rotas autenticadas.
+
+- **Os guards de autorização ganham seam de exceção, e
+  `make_flag_guard`.**
+  ([#254](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/254))
+  `require_active` / `require_admin` levantavam `ForbiddenException` fixa, em
+  inglês, com `code="FORBIDDEN"`. O próprio SDK trata `code` como contrato — o
+  `register_exception_handlers` serializa `{"detail", "code", "details"}` para
+  o cliente ramificar nele, e o `AppException` avisa com `GenericCodeWarning`
+  quando uma subclasse herda um genérico. Um serviço que levou isso a sério
+  declara `UserIsNotAdminError(code="USER_IS_NOT_ADMIN")` e **não podia adotar
+  `require_admin`**, porque adotá-lo devolveria `FORBIDDEN` em toda rota de
+  admin e quebraria os clientes. Medido:
+
+  ```text
+  require_admin default          -> 403 'FORBIDDEN'
+  require_admin exception=       -> 403 'USER_IS_NOT_ADMIN'
+  make_flag_guard('is_producer') -> 403 'USER_IS_NOT_ADMIN'
+  ```
+
+  Cada guard agora aceita `exception=` (a própria recusa) e `unauthenticated=`
+  (o caso `None` que ele delega), nas funções livres **e** nos espelhos
+  estáticos do `UserAuthService`. `make_flag_guard(attr, exception=...)`
+  generaliza para as flags que o SDK não modela — `is_producer`, `is_staff` —
+  que o consumidor escrevia à mão de qualquer jeito. O atributo é lido com
+  `getattr(user, attr, False)`, então um model sem a coluna é recusado com 403
+  em vez de estourar `AttributeError` num 500. Defaults inalterados.
+
+- **Dez exceções tipadas para as recusas do login social.**
+  ([#255](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/255))
+  `login_with_oauth` negava por motivos opostos com a mesma classe, o mesmo
+  `code` (`"CONFLICT"`) e as mesmas chaves em `details`: "e-mail já cadastrado,
+  entre e ligue o provedor pelas configurações" **tem** um próximo passo para
+  a pessoa; "o provedor não verificou este e-mail" — a barreira que impede
+  quem registrou uma identidade carregando o e-mail da vítima de assumir a
+  conta — **não tem nenhum**, por design. Um cliente que mostrasse "entre e
+  ligue" no segundo caso estaria mandando a pessoa fazer algo que não pode
+  funcionar. Distinguir por `message` é frágil por definição, e o SDK já
+  localiza o resto do fluxo de auth.
+
+  Agora cada recusa do caminho tem `code` próprio — não só as duas da issue:
+  `OAUTH_PROVIDER_NOT_CONFIGURED`, `OAUTH_PROVIDER_DENIED`,
+  `OAUTH_STATE_MISMATCH`, `OAUTH_CODE_MISSING`, `OAUTH_EMAIL_MISSING`,
+  `OAUTH_EMAIL_TAKEN`, `OAUTH_EMAIL_UNVERIFIED`,
+  `OAUTH_REGISTRATION_DISABLED`, `OAUTH_ACCOUNT_INACTIVE`,
+  `OAUTH_ACCOUNT_NOT_LINKED`. Cada classe herda da exceção que aquele ponto já
+  levantava, então `except ConflictException` continua pegando exatamente o que
+  pegava.
+
+- **`AUTH_SINGLE_ACTIVE_TOKEN`** no `AuthSettings` (default `True`).
+- **`FlagGuard`** e **`GuardException`** exportados, para tipar um guard
+  próprio sem redeclarar a forma.
+
+### Changed
+
+- **`@requires`: documentado que um guard que trafega schema Pydantic precisa
+  retornar `None`.** O `_accept_result` decide "valor de usuário" por
+  `isinstance` contra a base declarativa, então devolver o schema validado
+  parece o contrato de narrowing que os guards de ORM usam, mas o decorator não
+  reconhece — ele avisa com `GuardContractWarning` e mantém o usuário original.
+  Era descoberta por warning; agora está na docstring do módulo.
+
 ## [0.273.0] — 2026-08-30
 
 ### Added

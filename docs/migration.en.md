@@ -2,6 +2,62 @@
 
 Breaking-change walkthroughs grouped by minor release. Stick to the version that matches what you're upgrading **from**. The release sections are listed newest-first, so on a multi-version jump read and apply them bottom-up.
 
+## 0.274.0 — only the newest link opens the account
+
+No signature changes and no existing field default changes. What changes is
+**how many links stay valid at once**: issuing an account token now spends the
+user's other unused tokens of the same purpose.
+
+### What changes
+
+Before, each `POST /auth/password-reset/request` only stacked a row in
+`user_tokens`, and every unused, unexpired token was valid at the same time.
+Now one per purpose is — the most recent.
+
+It applies to **`ACTIVATION`, `PASSWORD_RESET`, `EMAIL_CHANGE` and
+`EMAIL_VERIFICATION`**, because the fix lives inside `_issue_token`, which all
+four flows funnel through.
+
+The scope is narrow in both directions:
+
+- **Same purpose only.** Requesting a password reset does not kill a pending
+  email change.
+- **Same user only.** Somebody else's token is untouched.
+
+The old row is marked `used_at` rather than deleted, so the audit trail stays
+complete.
+
+### Why the default changed
+
+Because the old behaviour cancelled out the user's own correct reaction. An
+attacker fires a reset for a victim; the victim gets a recovery email they
+never asked for, gets suspicious, and resets the password themselves. Without
+superseding, the attacker's link stayed valid until
+`AUTH_PASSWORD_RESET_TTL_SECONDS`. Measured:
+
+```text
+AUTH_SINGLE_ACTIVE_TOKEN=True  -> attacker's link: refused (InvalidTokenException)
+AUTH_SINGLE_ACTIVE_TOKEN=False -> attacker's link: STILL WORKS
+```
+
+### What to do
+
+**In most services, nothing.** It is the property nearly every provider already
+applies, and what the user expects.
+
+It breaks one case: a flow that **deliberately** keeps several links alive at
+once — an invitation resent to several addresses where any of the links should
+work. If that is you:
+
+```bash
+AUTH_SINGLE_ACTIVE_TOKEN=false
+```
+
+One symptom to recognize if you do not set the flag: a user clicking an **old**
+link now gets `InvalidTokenException` (400, `INVALID_TOKEN`) instead of being
+let in. The right instruction in your UI is "request a new link", not "try
+again".
+
 ## 0.272.0 — the checks started seeing what was already wrong
 
 No signature changes, no default changes. What changes is **what

@@ -93,6 +93,15 @@ cannot:
   with :class:`GuardContractWarning`. The original exception still
   propagates; the warning names the guard.
 
+"Non-user value" is decided by ``isinstance`` against the declarative
+base, so a guard that receives a **Pydantic schema** rather than an ORM
+row — common when a service layer traffics DTOs — must ``return None``
+rather than returning the subject it validated. Returning the schema
+looks like the narrowing contract the ORM guards use, but the decorator
+cannot recognize it, so it warns and keeps the original user. ``None``
+is the documented way to say "I only assert; I do not narrow", and it is
+never a denial: guards deny by raising.
+
 Whole classes of mistake are invisible to both — a guard defined but
 never wired, a guard whose ``raise`` is dynamic — so the static checker
 ``tempest permissions`` walks the same contract over the project source.
