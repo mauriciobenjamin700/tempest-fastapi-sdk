@@ -7,7 +7,7 @@ PACKAGE := tempest_fastapi_sdk
 PYTHON_VERSION := 3.11
 
 .DEFAULT_GOAL := help
-.PHONY: help install sync clean openpix-regen mercadopago-regen stripe-regen stripe-fetch test test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
+.PHONY: help install sync clean openpix-regen mercadopago-regen mercadopago-fetch stripe-regen stripe-fetch test test-model test-gpu cov lint fix fmt fmt-check type check ci build smoke release tag version docs docs-serve docs-build
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -75,6 +75,9 @@ openpix-diff: ## Report the distance between the vendored spec and the published
 
 mercadopago-regen: ## Regenerate the vendored Mercado Pago schemas + client from vendor/mercadopago-openapi.yaml
 	uv run python scripts/regen_mercado_pago.py
+
+mercadopago-fetch: ## Refresh vendor/mercadopago-openapi.yaml from the provider's spec repository (network)
+	uv run python scripts/regen_mercado_pago.py --fetch
 
 mercadopago-diff: ## Validate the vendored Mercado Pago spec against the provider's official SDK (network)
 	uv run python scripts/mercadopago_diff.py

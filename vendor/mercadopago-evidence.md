@@ -1,19 +1,55 @@
 # mercadopago-evidence.md — o que foi medido na integração do Mercado Pago
 
-Medições de **2026-08-28**. Procedência em [`PROVENANCE.md`](PROVENANCE.md).
+Medições de **2026-08-28**, com a seção 1 corrigida em **2026-08-30**.
+Procedência em [`PROVENANCE.md`](PROVENANCE.md).
 
-## 1. Não existe documento upstream
+## 1. O documento upstream existe — a seção anterior estava errada
 
-| Tentativa | Resultado |
-| --- | --- |
-| `https://api.mercadopago.com/openapi.json` | `404` |
-| `https://api.mercadopago.com/openapi` | `404` |
-| `https://raw.githubusercontent.com/mercadopago/openapi/main/openapi.yaml` | `404` |
-| Repositórios da org `mercadopago` no GitHub | SDKs, carrinhos e samples; **nenhum de especificação** |
+**Corrigido em 2026-08-30.** Esta seção afirmava que não existe documento
+upstream. As sondas de 2026-08-28 continuam valendo; a conclusão tirada delas
+não.
 
-Diferente da OpenPix, `vendor/mercadopago-openapi.yaml` **não tem upstream
-para diferir**, e ninguém sabe como o arquivo foi montado — o header cita
-"MercadoPago Developer Experience" e nada mais.
+| Tentativa | 2026-08-28 | 2026-08-30 |
+| --- | --- | --- |
+| `https://api.mercadopago.com/openapi.json` | `404` | `404` |
+| `https://api.mercadopago.com/openapi` | `404` | `404` |
+| `https://raw.githubusercontent.com/mercadopago/openapi/main/openapi.yaml` | `404` | `404` |
+| `https://raw.githubusercontent.com/mercadopago/openapi/main/spec3.yaml` | não sondado | **`200`** |
+
+A terceira linha adivinhou o nome do arquivo. O repositório
+`github.com/mercadopago/openapi` existe — público, Apache-2.0, criado em
+2026-05-20, descrição *"MercadoPago's OpenAPI Specification"* — e o arquivo se
+chama `spec3.yaml`. O `404` era do nome, não do repositório, e "a org não tem
+repositório de especificação" nunca foi medido: foi inferido de um `404` sobre
+outra coisa.
+
+E o `scripts/regen_mercado_pago.py` **já nomeava a origem corretamente**, no
+docstring do módulo, desde que o arquivo foi vendorizado:
+
+> The specification comes from Mercado Pago's own repository,
+> `github.com/mercadopago/openapi` (Apache-2.0), pinned at commit `73bc0e49`
+> of 2026-08-04.
+
+Trinta linhas abaixo, no mesmo arquivo, `SPEC_PATH` dizia *"no upstream to diff
+against"*. O repositório se contradizia, e nenhum guard lê prosa.
+
+`vendor/mercadopago-openapi.yaml` é byte a byte aquele `spec3.yaml`:
+
+```text
+vendorizado        260935 bytes  sha256 893ec14bfd912dd3…
+commit 73bc0e49    260935 bytes  sha256 893ec14bfd912dd3…
+main (2026-08-30)  260935 bytes  sha256 893ec14bfd912dd3…
+```
+
+`make mercadopago-fetch` rebaixa, desde a v0.276.0.
+
+### O que isso não conserta
+
+O upstream é do provedor, mas **não é completo**: ele omite as sete operações
+que o SDK oficial da própria empresa chama (seção 5), e três operações que ele
+carrega responderam `404` quando sondadas. Rebaixar responde *"o documento
+mudou?"*, não *"a operação existe?"*. Por isso o overlay continua, e a
+autoridade em conflito continua sendo o SDK oficial.
 
 ## 2. A autoridade é o SDK oficial
 

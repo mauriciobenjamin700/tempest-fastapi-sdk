@@ -5,6 +5,90 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.276.0] — 2026-08-30
+
+Uma issue que pedia para **achar** a origem de um documento vendorizado. A
+origem estava escrita no repositório desde o dia em que o arquivo entrou — no
+docstring do módulo que o gera, trinta linhas acima da frase que a negava.
+
+### Fixed
+
+- **`vendor/mercadopago-openapi.yaml` tem upstream, e sempre teve.**
+  ([#228](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/228))
+  Quatro lugares afirmavam que o documento não tinha de onde ser refrescado e
+  que ninguém sabia como fora montado: `vendor/PROVENANCE.md`,
+  `vendor/mercadopago-evidence.md`, `scripts/mercadopago_diff.py` e dois
+  docstrings de `scripts/regen_mercado_pago.py`. O docstring do módulo **desse
+  mesmo arquivo** dizia o contrário, e estava certo.
+
+  A afirmação errada saiu de uma sonda que adivinhou o nome do arquivo. As
+  três sondas registradas continuam válidas; a conclusão tirada delas, não:
+
+  ```text
+  404  api.mercadopago.com/openapi.json
+  404  api.mercadopago.com/openapi
+  404  raw.githubusercontent.com/mercadopago/openapi/main/openapi.yaml
+  200  raw.githubusercontent.com/mercadopago/openapi/main/spec3.yaml
+  ```
+
+  `github.com/mercadopago/openapi` é público, Apache-2.0, criado em
+  2026-05-20, e se descreve como *"MercadoPago's OpenAPI Specification"*. O
+  arquivo se chama `spec3.yaml`. "A org não tem repositório de especificação"
+  nunca foi medido — foi inferido de um `404` sobre outro nome.
+
+  O arquivo vendorizado é aquele `spec3.yaml`, byte a byte:
+
+  ```text
+  vendorizado        260935 bytes  sha256 893ec14bfd912dd3…
+  commit 73bc0e49    260935 bytes  sha256 893ec14bfd912dd3…
+  main (2026-08-30)  260935 bytes  sha256 893ec14bfd912dd3…
+  ```
+
+  Consequência para o `SPEC_SHA256`: ele passou a ser afirmação sobre **eles**,
+  não sobre nós. O docstring dizia explicitamente o oposto — *"this digest is a
+  claim about us"* — e essa distinção era a justificativa inteira de por que o
+  guard do Mercado Pago era mais fraco que o da OpenPix. Não era.
+
+### Added
+
+- **`make mercadopago-fetch`.** Rebaixa `vendor/mercadopago-openapi.yaml` do
+  repositório do provedor, espelhando `make openpix-fetch`. Medido: rebaixa os
+  mesmos bytes e a regeneração seguinte é no-op, então um refresh futuro vira
+  um diff só do que **eles** mudaram — que é a propriedade que o overlay
+  existe para preservar.
+
+- **Guard de procedência** — `tests/integrations/payment/mercado_pago/test_provenance.py`.
+  Afirma o fato positivo, não a ausência da frase errada: a URL que o fetcher
+  usa está registrada no `PROVENANCE.md`, o digest bate, o alvo
+  `mercadopago-fetch` existe no `Makefile` e aponta para o arquivo certo, e as
+  duas línguas da receita nomeiam o repositório upstream e o comando de
+  refresh. Grepar a redação antiga seria pior: as notas de correção a citam de
+  propósito, e guard que proíbe citar um erro torna o erro mais difícil de
+  explicar.
+
+### Changed
+
+- **A receita do Mercado Pago para de dizer que o provedor não publica
+  OpenAPI**, nas duas línguas, e passa a separar as duas perguntas que estavam
+  fundidas: *"o documento mudou?"* (rebaixar responde) e *"esta operação
+  existe?"* (rebaixar não responde). A segunda continua com o SDK oficial como
+  autoridade, porque — medido em 2026-08-30 — o documento do provedor **omite
+  as sete operações** que o SDK do próprio provedor chama. É por isso que a
+  [#226](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/226)
+  não fecha junto: o upstream não modela as sete, então `dict[str, Any]`
+  continua sendo a forma honesta até haver credencial de sandbox.
+
+### Internal
+
+- `vendor/PROVENANCE.md` ganhou a tabela das variantes que o upstream publica,
+  medidas no mesmo commit: `spec3.yaml` (109 paths / 143 operações, a
+  vendorizada), `spec3.reference.yaml` e `spec3.sdk.yaml` (108 / 142 cada). A
+  raiz é vendorizada por ser o superconjunto — a operação a mais é
+  `PUT /checkout/preferences/{id}/expire`.
+- `spec3.sdk.yaml` anota `x-mp-sdk-coverage` por operação, dizendo quais SDKs
+  oficiais cobrem cada uma. Cruzar isso com o `OFFICIAL_SDK_CALLS` mantido à
+  mão é trabalho separado, registrado em issue própria.
+
 ## [0.275.0] — 2026-08-30
 
 Quatro issues abertas por consumidores, todas da mesma família: **um serviço

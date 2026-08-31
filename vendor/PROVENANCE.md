@@ -35,7 +35,7 @@ completa em [`openpix-evidence.md`](openpix-evidence.md).
 | Arquivo | Origem | Obtido em | sha256 (12) | Bytes |
 | --- | --- | --- | --- | --- |
 | `openpix-openapi.json` | `https://api.woovi.com/api/openapi.json` | 2026-08-28 | `9b14fb336276` | 1.318.389 |
-| `mercadopago-openapi.yaml` | **não existe upstream** (ver seção) | — | `893ec14bfd91` | 260.935 |
+| `mercadopago-openapi.yaml` | `https://raw.githubusercontent.com/mercadopago/openapi/main/spec3.yaml` | 2026-08-30 | `893ec14bfd91` | 260.935 |
 | `stripe-api-facts.yaml` | derivado de `https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.yaml` | ver `api_version` no próprio arquivo | `171c35ef4e09` | 7.965 |
 
 ## `openpix-openapi.json`
@@ -97,20 +97,57 @@ schemas) nunca teve procedência registrada. `mtime` no checkout era
 | sha256 | `893ec14bfd912dd377626fa0b4a4e9896afc2fbfb8f67fd6293502d39d0f6d46` |
 | Guard do digest | `tests/integrations/payment/mercado_pago/test_generated_drift.py::TestVendoredSpec::test_the_vendored_document_is_the_one_that_was_justified` |
 | Gera | `tempest_fastapi_sdk/integrations/payment/mercado_pago/{schemas,client}.py` |
-| Refresh | `make mercadopago-regen` (offline) · `make mercadopago-diff` (rede, valida contra o SDK oficial) |
+| Refresh | `make mercadopago-fetch` (rede, rebaixa do provedor) · `make mercadopago-regen` (offline) · `make mercadopago-diff` (rede, valida contra o SDK oficial) |
 | Overlay | `scripts/mercadopago_overlay.py` — 2 correções, 7 adições, 3 remoções |
 | Autoridade | `mercadopago` 3.5.0 (PyPI), fixado em `OFFICIAL_SDK_CALLS` |
 
-**Não existe documento upstream.** Medido em 2026-08-28:
-`api.mercadopago.com/openapi` e `.../openapi.json` respondem `404`, e a org
-`mercadopago` no GitHub tem SDKs, carrinhos e samples — nenhum repositório de
-especificação. Este arquivo não tem de onde ser refrescado, e não se sabe como
-foi montado: o header cita "MercadoPago Developer Experience" e nada mais.
+**O upstream existe, e este arquivo é ele.** Medido em 2026-08-30:
 
-Isso muda a forma de validar. Para a OpenPix, "ainda está certo?" se responde
-rebaixando o documento e diferindo. Aqui a segunda opinião é o **SDK oficial
-do provedor** — `mercadopago` no PyPI, escrito pela própria empresa, que
-soletra a URL de toda operação que chama.
+```text
+vendorizado        260935 bytes  sha256 893ec14bfd912dd3…
+commit 73bc0e49    260935 bytes  sha256 893ec14bfd912dd3…
+main (2026-08-30)  260935 bytes  sha256 893ec14bfd912dd3…
+```
+
+`github.com/mercadopago/openapi` (Apache-2.0, público, criado 2026-05-20) é o
+repositório de especificação do próprio provedor. O arquivo vendorizado aqui é
+o `spec3.yaml` da raiz, byte a byte, no commit `73bc0e49` — que continua sendo
+o `main`. `make mercadopago-fetch` rebaixa.
+
+**Esta seção afirmou o contrário até a v0.276.0.** Ela dizia *"não existe
+documento upstream"*, e o `scripts/regen_mercado_pago.py` dizia *"no upstream
+to diff against"* — trinta linhas abaixo do docstring do módulo, que **nomeava
+o repositório corretamente**. A afirmação errada saiu de uma sonda que
+adivinhou o nome do arquivo:
+
+```text
+404  raw.githubusercontent.com/mercadopago/openapi/main/openapi.yaml
+200  raw.githubusercontent.com/mercadopago/openapi/main/spec3.yaml
+```
+
+Os `404` de `api.mercadopago.com/openapi{,.json}` são reais e continuam reais —
+o provedor não serve a spec pela API. A conclusão tirada deles é que estava
+errada. Mesma forma de erro que a issue #230 já tinha corrigido em si mesma:
+evidência sobre uma coisa, afirmação sobre outra.
+
+O repositório publica outras variantes. Medido no mesmo commit:
+
+| Arquivo | Bytes | Paths | Operações |
+| --- | --- | --- | --- |
+| `spec3.yaml` (vendorizado) | 260.935 | 109 | 143 |
+| `spec3.reference.yaml` | 423.740 | 108 | 142 |
+| `spec3.sdk.yaml` | 243.874 | 108 | 142 |
+
+A raiz é a vendorizada por ser o superconjunto — a operação a mais é
+`PUT /checkout/preferences/{id}/expire` — e por ser a que o README deles
+descreve como *"fully self-contained"*. O `spec3.sdk.yaml` anota
+`x-mp-sdk-coverage` por operação, dizendo quais SDKs oficiais cobrem cada uma;
+cruzar isso com o nosso `OFFICIAL_SDK_CALLS` é trabalho separado.
+
+Rebaixar responde "ainda está certo?", mas **não** responde "toda operação
+existe?": o documento do provedor omite sete operações que o SDK oficial dele
+chama. Por isso a segunda opinião continua sendo o **SDK oficial** —
+`mercadopago` no PyPI, que soletra a URL de toda operação que chama.
 
 ```bash
 make mercadopago-diff
@@ -122,9 +159,9 @@ errado e que a API não roteia — corrigidas em
 `scripts/mercadopago_overlay.py`, no mesmo padrão da OpenPix. Evidência,
 sondas e o que ficou **sem** correção: [`mercadopago-evidence.md`](mercadopago-evidence.md).
 
-Não há hash de origem a comparar, porque não há origem. O digest acima fixa o
-que está no checkout; mudança nele é edição nossa, e precisa de justificativa
-no overlay ou no evidence.
+O digest acima é o dos bytes que o provedor serve, então mudança nele é
+mudança **deles** — e um `make mercadopago-fetch` mostra qual. Mudança sem
+refetch é edição nossa, e precisa de justificativa no overlay ou no evidence.
 
 **Desde a v0.271.0 isso é forçado por teste.** Até então a frase acima era só
 prosa: editar o YAML à mão e regenerar passava verde, e o diff parecia um

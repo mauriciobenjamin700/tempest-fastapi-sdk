@@ -31,12 +31,14 @@ generation time.
 
 from __future__ import annotations
 
+import argparse
 import ast
 import hashlib
 import json
 import shutil
 import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 
 import yaml
@@ -55,38 +57,66 @@ SPEC_PATH: Path = REPO_ROOT / "vendor" / "mercadopago-openapi.yaml"
 Vendored so regeneration and the drift test both work offline. Excluded
 from the wheel — nothing at runtime reads it.
 
-Unlike the OpenPix document, this one has **no upstream to diff against**:
-measured on 2026-08-28, ``api.mercadopago.com/openapi{,.json}`` answer
-``404`` and the ``mercadopago`` GitHub organization publishes SDKs, carts
-and samples but no specification repository. So "is it still right?"
-cannot be answered by refetching. The second opinion here is the
-provider's own SDK — ``mercadopago`` on PyPI — pinned in
-``OFFICIAL_SDK_CALLS`` and compared by ``make mercadopago-diff``.
+These are the provider's own bytes, served from :data:`SPEC_URL`, so
+"is it still right?" **is** answerable by refetching — ``make
+mercadopago-fetch``. Measured 2026-08-30: the vendored file is byte-for-byte
+``spec3.yaml`` at commit ``73bc0e49``, which is still ``main``.
+
+This docstring used to say the opposite — "no upstream to diff against",
+because ``api.mercadopago.com/openapi{,.json}`` answer ``404`` and a probe of
+``raw.githubusercontent.com/mercadopago/openapi/main/openapi.yaml`` answered
+``404`` too. That last probe guessed the filename. The repository exists and
+the file is ``spec3.yaml``, which answers ``200``; the module docstring above
+had named it correctly the whole time. See ``vendor/mercadopago-evidence.md``
+section 1.
+
+The second opinion is still the provider's own SDK — ``mercadopago`` on PyPI
+— pinned in ``OFFICIAL_SDK_CALLS`` and compared by ``make mercadopago-diff``,
+because the upstream document omits seven operations that SDK calls.
 """
 
+SPEC_URL: str = "https://raw.githubusercontent.com/mercadopago/openapi/main/spec3.yaml"
+"""Where :data:`SPEC_PATH` is refreshed from.
+
+The root ``spec3.yaml`` of ``github.com/mercadopago/openapi`` (Apache-2.0).
+That repository also publishes ``spec3.reference.yaml`` and
+``spec3.sdk.yaml`` — measured 2026-08-30, both carry 142 operations over 108
+paths against the root's 143 over 109, the extra one being
+``PUT /checkout/preferences/{id}/expire``. The root is vendored because it is
+the superset and the one the README documents as "fully self-contained".
+"""
+
+USER_AGENT: str = (
+    "tempest-fastapi-sdk/regen_mercado_pago"
+    " (+https://pypi.org/project/tempest-fastapi-sdk/)"
+)
+"""Identifies this script to the origin, mirroring the OpenPix fetcher."""
+
 SPEC_SHA256: str = "893ec14bfd912dd377626fa0b4a4e9896afc2fbfb8f67fd6293502d39d0f6d46"
-"""Digest of the vendored bytes.
+"""Digest of the vendored bytes, refreshed by ``--fetch``.
 
-**This pins the file; it does not establish where the file came from.**
-The distinction matters, and conflating the two is the trap this constant
-could otherwise set. For OpenPix, ``SPEC_SHA256`` is the digest of bytes a
-provider served, so it backs a claim about *them*. Here nobody knows how
-the document was assembled — the header says "MercadoPago Developer
-Experience" and nothing else (issue #228) — so this digest is a claim
-about *us*: that the file has not changed since someone last justified it.
+This backs a claim about **the provider**, not just about us: measured
+2026-08-30, it is the sha256 of ``spec3.yaml`` as ``github.com/mercadopago/
+openapi`` serves it, at commit ``73bc0e49`` — which is also ``main``.
 
-What it buys, exactly: a hand edit to the vendored document stops being
-invisible. Before this, editing the YAML and regenerating passed green,
-and the diff looked like a routine codegen refresh. Now the guard names
-the file and the change has to be argued for in the overlay or in
-``vendor/PROVENANCE.md``.
+    vendored          260935 bytes  893ec14bfd912dd3…
+    commit 73bc0e49   260935 bytes  893ec14bfd912dd3…
+    main (2026-08-30) 260935 bytes  893ec14bfd912dd3…
 
-What it does not buy: any confidence that the 82 operations the official
-SDK never calls describe a real API. Three of those answered ``404`` when
-probed. That is issue #228's first option — finding the origin — and a
-digest cannot substitute for it.
+Until v0.276.0 this docstring said the narrower thing — that nobody knew how
+the document was assembled, so the digest pinned only our copy. That was
+wrong, and wrong in the way this repository keeps catching: the probe behind
+it guessed a filename (``openapi.yaml``) in a repository that publishes
+``spec3.yaml``.
 
-Refresh this value only alongside a written justification for the edit.
+What it buys: a hand edit to the vendored document fails loudly, and a
+refresh is a diff of what **they** changed.
+
+What it still does not buy: confidence that every operation describes a live
+API. The upstream document is the provider's, but three of the operations it
+carries answered ``404`` when probed, and the upstream omits seven the
+official SDK calls — which is why the overlay exists and why
+``make mercadopago-diff`` compares against the SDK.
 """
 
 PACKAGE_DIR: Path = (
@@ -114,6 +144,41 @@ def spec_digest() -> str:
         FileNotFoundError: If the vendored specification is missing.
     """
     return hashlib.sha256(SPEC_PATH.read_bytes()).hexdigest()
+
+
+def fetch_spec() -> tuple[int, str]:
+    """Download the published specification over the vendored one.
+
+    Returns:
+        tuple[int, str]: Bytes written and their hex sha256. The digest is
+        printed so it can be pasted into :data:`SPEC_SHA256` in the same
+        commit as the refreshed file.
+
+    Raises:
+        RuntimeError: If the response is not a usable OpenAPI document —
+            better a loud failure than vendoring an error page.
+
+    The bytes are written exactly as served, so the next refresh is a diff
+    of what the provider changed and nothing else. Every correction this
+    repository makes lives in :mod:`mercadopago_overlay`, outside the file.
+    """
+    request = urllib.request.Request(
+        SPEC_URL,
+        headers={"User-Agent": USER_AGENT},
+    )
+    with urllib.request.urlopen(request) as response:
+        payload: bytes = response.read()
+    try:
+        document = yaml.safe_load(payload)
+    except yaml.YAMLError as error:
+        raise RuntimeError(f"{SPEC_URL} did not serve YAML") from error
+    if not isinstance(document, dict):
+        raise RuntimeError(f"{SPEC_URL} did not serve a mapping")
+    if not str(document.get("openapi", "")).startswith("3."):
+        raise RuntimeError(f"{SPEC_URL} is not an OpenAPI 3 document")
+    SPEC_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SPEC_PATH.write_bytes(payload)
+    return len(payload), hashlib.sha256(payload).hexdigest()
 
 
 def regenerate(destination: Path) -> tuple[list[Path], OverlayReport]:
@@ -293,6 +358,21 @@ def main() -> int:
     Returns:
         int: Process exit code — ``0`` on success.
     """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--fetch",
+        action="store_true",
+        help=("download the specification and refresh vendor/mercadopago-openapi.yaml"),
+    )
+    arguments = parser.parse_args()
+
+    if arguments.fetch:
+        size, digest = fetch_spec()
+        print(f"  + {SPEC_PATH.relative_to(REPO_ROOT)} ({size} bytes)")
+        print(f"    sha256: {digest}")
+        if digest != SPEC_SHA256:
+            print("    SPEC_SHA256 is stale — update it and PROVENANCE.md")
+
     written, report = regenerate(PACKAGE_DIR)
     for path in written:
         print(f"  + {path.relative_to(REPO_ROOT)}")

@@ -918,9 +918,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   declarar não é sobrescrita. Testes: `tests/integrations/payment/
   openpix/test_overlay.py`. Recipe: `openpix.md`, seção "O que este pacote
   corrige na spec".
+- **A procedência do documento do Mercado Pago é o próprio provedor
+  (v0.276.0)** — issue #228. `vendor/mercadopago-openapi.yaml` é, byte a
+  byte, o `spec3.yaml` de `github.com/mercadopago/openapi` no commit
+  `73bc0e49` (que ainda é `main`). A afirmação anterior — "não existe
+  documento upstream" — saiu de uma sonda que adivinhou o nome do arquivo
+  (`openapi.yaml` → `404`; `spec3.yaml` → `200`), enquanto o docstring do
+  módulo `scripts/regen_mercado_pago.py` nomeava a origem corretamente trinta
+  linhas acima da frase que a negava. `make mercadopago-fetch` rebaixa, e o
+  `SPEC_SHA256` passou a ser afirmação sobre **eles**, não sobre nós. Não
+  fecha a #226: o documento do provedor omite as mesmas sete operações.
 - **Operação não verificada passa a ser marcada (v0.262.0)** — issue #227. O
-  documento do Mercado Pago não tem upstream nem origem registrada, e o SDK
-  oficial cobre 65 das 147 operações; as outras 82 ficavam indistinguíveis dele
+  documento do Mercado Pago vem do provedor mas omite operações que o SDK
+  oficial dele chama, e esse SDK cobre 65 das 147 operações; as outras 82 ficavam indistinguíveis dele
   no cliente gerado. Agora são três baldes — 65 cobertas pelo SDK, 35 sondadas
   vivas, 47 sem evidência —, e as 47 carregam `**Unverified.**` na docstring
   gerada. São todas não-`GET`, porque a sonda é por método **e** path e só fala
@@ -949,10 +959,8 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   drift test compara os dois, espelhando o que a OpenPix tem desde a v0.260.0.
   Fecha a segunda das três opções que a issue lista. Antes, editar o YAML
   vendorizado à mão e regenerar passava verde (medido: 14 passed com um
-  comentário acrescentado); agora falha nomeando o arquivo. **Não fecha a
-  issue**: o digest fixa o arquivo, não estabelece de onde ele veio — o
-  Mercado Pago não publica OpenAPI, e as 82 operações que o SDK oficial não
-  toca seguem sem segunda fonte. Achar a origem é a opção 1 e continua aberta.
+  comentário acrescentado); agora falha nomeando o arquivo. A opção 1 — achar
+  a origem — fechou na v0.276.0.
 - **Adapter da OpenPix exercitado no fio, e as seis correções que isso
   achou (v0.270.0)** — issues #239 a #245.
   `tests/integrations/payment/adapters/test_openpix_adapter_wire.py` dirige
@@ -1108,8 +1116,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `capture()` da operação. Testes: `tests/openapi/test_parse.py::
   TestPathTemplateGaps`.
 - **SDK oficial do Mercado Pago vira a autoridade (v0.260.0)** — o provedor
-  não publica OpenAPI (`api.mercadopago.com/openapi{,.json}` → `404`, nenhum
-  repo de spec na org), então o vendorizado não tem upstream. `mercadopago`
+  publica OpenAPI num repositório próprio (achado na v0.276.0), mas o
+  documento omite sete operações que o SDK oficial dele chama, então rebaixar
+  não basta. `mercadopago`
   no PyPI (3.5.0) passou a ser a autoridade **em conflito, não teto**: onde
   discordam o SDK vence, onde ele é silencioso o documento fica — ele é
   wrapper fino, e as 82 operações que só nós temos respondem `401`/`403`.

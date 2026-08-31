@@ -386,10 +386,16 @@ def manifest_of_delivery(data_id: str, request_id: str, ts: str) -> str:
 
 ## Telling a trustworthy operation from an unverified one
 
-Mercado Pago **publishes no OpenAPI document** — measured 2026-08-28,
-`api.mercadopago.com/openapi{,.json}` answer `404` and the GitHub organisation
-has no specification repository. The document this SDK generates from has no
-upstream, and how it was assembled is not recorded.
+The document this SDK generates from comes from the provider: it is,
+byte for byte, the `spec3.yaml` of
+[`github.com/mercadopago/openapi`](https://github.com/mercadopago/openapi),
+the company's own specification repository. `make mercadopago-fetch` refreshes
+it.
+
+But that document is **not complete**: measured 2026-08-30, it omits seven
+operations Mercado Pago's own SDK calls, and three operations it does carry
+answered `404` when probed. Refreshing answers *"did the document move?"*, not
+*"does this operation exist?"*.
 
 So not every `MercadoPagoClient` operation rests on the same evidence. Of 147:
 

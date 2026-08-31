@@ -253,6 +253,73 @@ Sem guard: nenhum teste lê prosa, e nenhum resolve "esta frase vale no piso?".
 O que dá para automatizar é o piso em si — um teste que instale o piso
 declarado e exercite o caminho seria o guard real, e não existe.
 
+## `404` em nome adivinhado não é evidência de ausência (v0.276.0)
+
+A issue #228 pedia para **achar** a origem de `vendor/mercadopago-openapi.yaml`,
+sob a premissa de que ninguém sabia como o arquivo tinha sido montado. A
+premissa vinha de uma tabela de sondas:
+
+| Tentativa | Resultado |
+| --- | --- |
+| `api.mercadopago.com/openapi.json` | `404` |
+| `api.mercadopago.com/openapi` | `404` |
+| `raw.githubusercontent.com/mercadopago/openapi/main/openapi.yaml` | `404` |
+| Repositórios da org `mercadopago` no GitHub | *"nenhum de especificação"* |
+
+As três primeiras linhas são medições. A quarta **não é** — é uma conclusão
+escrita no formato de uma medição, e a conclusão está errada:
+
+```text
+200  raw.githubusercontent.com/mercadopago/openapi/main/spec3.yaml
+```
+
+O repositório existe. É público, Apache-2.0, criado em 2026-05-20, e se
+descreve como *"MercadoPago's OpenAPI Specification"*. O `404` da terceira
+linha era do **nome do arquivo**, não do repositório — e virou, sem transição
+registrada, uma afirmação sobre a org inteira.
+
+### O repositório já sabia
+
+Pior que a sonda: a resposta certa estava escrita no próprio arquivo que
+carregava a frase errada. `scripts/regen_mercado_pago.py`, docstring do
+módulo:
+
+> The specification comes from Mercado Pago's own repository,
+> `github.com/mercadopago/openapi` (Apache-2.0), pinned at commit `73bc0e49`
+> of 2026-08-04.
+
+Trinta linhas abaixo, `SPEC_PATH`:
+
+> Unlike the OpenPix document, this one has **no upstream to diff against**
+
+As duas conviveram por três releases. Nenhum guard lê prosa, então nada
+comparou uma com a outra — e a segunda se propagou para `vendor/PROVENANCE.md`,
+`vendor/mercadopago-evidence.md`, `scripts/mercadopago_diff.py`, as duas
+línguas da receita, o `SHIPPED.md` e o docstring do guard de digest.
+
+O custo composto: o `SPEC_SHA256` do Mercado Pago foi deliberadamente
+documentado como uma garantia **mais fraca** que a da OpenPix — *"this digest
+is a claim about us"* —, e essa fraqueza inteira era ficção. Os bytes são os
+do provedor. A garantia sempre foi a mesma.
+
+### O que ficou
+
+- **Sondar um nome e concluir sobre o namespace é o erro.** `404` responde
+  *"este caminho não serve isto"*. Para responder *"isto não existe"* é preciso
+  enumerar — listar os arquivos do repositório, pesquisar a org — e a diferença
+  entre as duas perguntas tem que aparecer na tabela de evidência, não sumir
+  nela.
+- **Ao escrever que algo não existe, registre o que foi enumerado**, não só o
+  que respondeu `404`. Linha de evidência sem método é conclusão disfarçada de
+  medição.
+- **Contradição dentro do mesmo arquivo é o sinal mais barato que existe** — e
+  passou. Ao corrigir prosa, `grep` pelo assunto no repositório inteiro antes
+  de acreditar na frase que está na sua frente.
+- Guard: `tests/integrations/payment/mercado_pago/test_provenance.py`, que
+  afirma o fato positivo (URL registrada, digest batendo, alvo de refresh
+  existindo, receita nomeando o upstream) em vez de proibir a redação antiga —
+  as notas de correção precisam poder citá-la.
+
 ## O aviso de depreciação já era um 500 (v0.275.0)
 
 A issue [#251](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/251)

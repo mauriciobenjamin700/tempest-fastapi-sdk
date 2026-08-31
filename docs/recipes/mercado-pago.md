@@ -384,10 +384,15 @@ def manifesto_da_entrega(data_id: str, request_id: str, ts: str) -> str:
 
 ## Como saber se uma operação é confiável
 
-O Mercado Pago **não publica OpenAPI** — medido em 2026-08-28,
-`api.mercadopago.com/openapi{,.json}` respondem `404` e a org no GitHub não tem
-repositório de especificação. O documento que este SDK usa não tem upstream, e
-nem se sabe como foi montado.
+O documento que este SDK usa vem do provedor: é, byte a byte, o `spec3.yaml`
+de [`github.com/mercadopago/openapi`](https://github.com/mercadopago/openapi),
+o repositório de especificação da própria empresa. `make mercadopago-fetch`
+rebaixa.
+
+Mas o documento **não é completo**: medido em 2026-08-30, ele omite sete
+operações que o SDK oficial do próprio Mercado Pago chama, e três operações que
+ele carrega responderam `404` quando sondadas. Rebaixar responde *"o documento
+mudou?"*, não *"esta operação existe?"*.
 
 Então nem toda operação do `MercadoPagoClient` tem o mesmo lastro. Das 147:
 

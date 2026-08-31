@@ -1,17 +1,18 @@
 """Validate the vendored Mercado Pago document against the official SDK.
 
-Mercado Pago publishes no OpenAPI document — checked 2026-08-28,
-``api.mercadopago.com/openapi{,.json}`` answer ``404`` and the
-``mercadopago`` GitHub organisation has no specification repository. So
-``vendor/mercadopago-openapi.yaml`` cannot be refreshed from upstream the
-way the OpenPix one can, and "is it still right?" has to be answered
-another way.
+``vendor/mercadopago-openapi.yaml`` **can** be refreshed from upstream —
+``make mercadopago-fetch`` pulls ``spec3.yaml`` from
+``github.com/mercadopago/openapi``, the provider's own specification
+repository. What a refresh cannot answer is whether every operation the
+document carries exists, or whether the document carries every operation
+that does: measured 2026-08-30, the provider's own document omits seven
+operations the provider's own SDK calls.
 
-The provider's own SDK is that way. ``mercadopago`` on PyPI is written by
-Mercado Pago and spells the URL of every operation it calls, so its
-inventory is a second opinion from the same company. This script downloads
-that SDK, parses the URLs out of it, and reports the two-way difference
-against our document.
+So "is it still right?" needs a second opinion, and the provider's own SDK
+is that opinion. ``mercadopago`` on PyPI is written by Mercado Pago and
+spells the URL of every operation it calls. This script downloads that SDK,
+parses the URLs out of it, and reports the two-way difference against our
+document.
 
 A difference is not automatically a defect. The SDK is a thin wrapper over
 the resources most integrations use; our document covers far more, and most

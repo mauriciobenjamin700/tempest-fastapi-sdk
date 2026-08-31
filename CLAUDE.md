@@ -161,6 +161,20 @@ mexer neles. Todos rodam dentro do `make check`.
   `tests/test_protocol_shape_guard.py`, que cobre também retorno de membro
   resolvendo para `Any` —
   [`LESSONS.md`](LESSONS.md#corrigir-onde-doeu-não-é-corrigir-a-regra-v02630).
+- **`404` em nome adivinhado não é evidência de ausência** (v0.276.0).
+  Sondar `raw.githubusercontent.com/<org>/<repo>/main/openapi.yaml` e receber
+  `404` responde *"este caminho não serve isto"*; escrever a partir disso que
+  *"a org não tem repositório de especificação"* é conclusão no formato de
+  medição. O arquivo chamava `spec3.yaml` e respondia `200`. Para afirmar
+  ausência é preciso **enumerar** — e o método entra na linha de evidência.
+  Custo composto: a frase errada se espalhou por seis arquivos e fez o
+  `SPEC_SHA256` do Mercado Pago ser documentado como garantia mais fraca que a
+  da OpenPix, sendo que os bytes sempre foram os do provedor. O sinal mais
+  barato passou batido — o docstring do módulo, no **mesmo arquivo**, nomeava a
+  origem corretamente trinta linhas acima da frase que a negava; ao corrigir
+  prosa, `grep` o assunto no repositório inteiro antes de acreditar na frase à
+  sua frente. Guard: `tests/integrations/payment/mercado_pago/test_provenance.py`
+  — [`LESSONS.md`](LESSONS.md#404-em-nome-adivinhado-não-é-evidência-de-ausência-v02760).
 - **Aviso de depreciação de dependência é modo de falha, não ruído**
   (v0.275.0). `StarletteDeprecationWarning` herda de **`UserWarning`**, não de
   `DeprecationWarning` — então consumidor com `filterwarnings = ["error"]`
