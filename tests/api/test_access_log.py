@@ -191,11 +191,11 @@ class TestAccessLogRedaction:
         assert "secret-abc123" not in record.getMessage()
 
 
-class TestAccessLogRequestIdOrdering:
-    """The correlation id is only there while the binding is."""
+class TestAccessLogRequestId:
+    """The correlation id reaches the line from whichever source has it."""
 
     @staticmethod
-    def _bound_request_ids(app: FastAPI) -> list[str | None]:
+    def _logged_request_ids(app: FastAPI) -> list[str | None]:
         """Drive one request and report the id each access record carried.
 
         Args:
@@ -204,22 +204,18 @@ class TestAccessLogRequestIdOrdering:
         Returns:
             list[str | None]: One entry per access record.
         """
-        from tempest_fastapi_sdk.core.context import get_request_id
-
         seen: list[str | None] = []
 
         class _Capture(logging.Handler):
-            """Record the bound correlation id at emit time."""
+            """Record the ``request_id`` field of every access line."""
 
             def emit(self, record: logging.LogRecord) -> None:
-                """Capture the context variable, not the record.
+                """Capture the field, or ``None`` when it is absent.
 
                 Args:
-                    record (logging.LogRecord): Ignored; the point is
-                        when this runs, not what it carries.
+                    record (logging.LogRecord): The emitted record.
                 """
-                del record
-                seen.append(get_request_id())
+                seen.append(getattr(record, "request_id", None))
 
         handler = _Capture()
         logger = logging.getLogger(LOGGER_NAME)
@@ -234,23 +230,93 @@ class TestAccessLogRequestIdOrdering:
             logger.setLevel(previous)
         return seen
 
-    def test_access_log_added_first_sees_the_request_id(self) -> None:
-        """Added first, it is innermost, so the binding is still live."""
-        app = build_app()
-        app.add_middleware(RequestIDMiddleware)
-        assert self._bound_request_ids(app) == [_NotNone()]
+    @staticmethod
+    def _build(access_first: bool) -> FastAPI:
+        """Build an app with the two middlewares in a chosen order.
 
-    def test_access_log_added_last_is_outside_the_binding(self) -> None:
-        """Added last, it is outermost, and the id is already cleared."""
+        Args:
+            access_first (bool): Whether ``AccessLogMiddleware`` is added
+                before ``RequestIDMiddleware`` — which makes it the inner
+                layer, since Starlette applies the last one added outermost.
+
+        Returns:
+            FastAPI: The configured application.
+        """
         app: FastAPI = FastAPI()
 
         @app.get("/ok")
         def ok() -> dict[str, str]:
             return {"status": "ok"}
 
-        app.add_middleware(RequestIDMiddleware)
+        if access_first:
+            app.add_middleware(AccessLogMiddleware, logger_name=LOGGER_NAME)
+            app.add_middleware(RequestIDMiddleware)
+        else:
+            app.add_middleware(RequestIDMiddleware)
+            app.add_middleware(AccessLogMiddleware, logger_name=LOGGER_NAME)
+        return app
+
+    def test_inner_registration_carries_the_id(self) -> None:
+        """Inside the binding, the context variable supplies it."""
+        assert self._logged_request_ids(self._build(access_first=True)) == [_NotNone()]
+
+    def test_outer_registration_carries_the_id_too(self) -> None:
+        """Outside it, the response header does — the point of the fix.
+
+        v0.275.0 logged `None` here and documented the ordering constraint
+        as a warning. Registration order no longer decides.
+        """
+        assert self._logged_request_ids(self._build(access_first=False)) == [_NotNone()]
+
+    @pytest.mark.parametrize("access_first", [True, False])
+    def test_both_orders_agree_with_the_header_the_client_sees(
+        self,
+        access_first: bool,
+    ) -> None:
+        """Whatever the line says is what the caller can correlate on.
+
+        Args:
+            access_first (bool): Which registration order to exercise.
+        """
+        app = self._build(access_first=access_first)
+        seen: list[str | None] = []
+
+        class _Capture(logging.Handler):
+            """Record the id of every access line."""
+
+            def emit(self, record: logging.LogRecord) -> None:
+                """Capture the field.
+
+                Args:
+                    record (logging.LogRecord): The emitted record.
+                """
+                seen.append(getattr(record, "request_id", None))
+
+        handler = _Capture()
+        logger = logging.getLogger(LOGGER_NAME)
+        previous = logger.level
+        logger.setLevel(logging.INFO)
+        logger.addHandler(handler)
+        try:
+            with TestClient(app) as client:
+                response = client.get("/ok", headers={"X-Request-ID": "abc-123"})
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(previous)
+
+        assert response.headers["X-Request-ID"] == "abc-123"
+        assert seen == ["abc-123"]
+
+    def test_without_the_request_id_middleware_there_is_no_field(self) -> None:
+        """Nothing is invented when nobody bound an id."""
+        app: FastAPI = FastAPI()
+
+        @app.get("/ok")
+        def ok() -> dict[str, str]:
+            return {"status": "ok"}
+
         app.add_middleware(AccessLogMiddleware, logger_name=LOGGER_NAME)
-        assert self._bound_request_ids(app) == [None]
+        assert self._logged_request_ids(app) == [None]
 
 
 class _NotNone:

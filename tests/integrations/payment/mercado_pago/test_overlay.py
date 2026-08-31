@@ -1,9 +1,11 @@
 """Tests for the corrections applied to the vendored Mercado Pago document.
 
-Mercado Pago publishes no OpenAPI document, so unlike OpenPix there is no
-upstream that could carry a fix in on its own and retire a correction here.
-Every disagreement is therefore pinned: what it changes, what it refuses to
-change, and that it stays quiet on a document that no longer needs it.
+The document has an upstream — `spec3.yaml` in
+`github.com/mercadopago/openapi` — but unlike OpenPix a refresh cannot be
+trusted to retire a correction here: measured 2026-08-30, the provider's own
+document omits seven operations its own SDK calls. Every disagreement is
+therefore pinned: what it changes, what it refuses to change, and that it
+stays quiet on a document that no longer needs it.
 
 The evidence behind each correction — the provider's own SDK, and the
 unauthenticated probe that tells a missing route from a guarded one — is in

@@ -257,12 +257,26 @@ Cada request vira um registro cujo `message` é a linha familiar
 chaves em vez de uma string interpolada, e portanto que faz o `GET /logs`
 conseguir filtrar por elas.
 
-!!! danger "A ordem de registro decide se o `request_id` aparece"
-    O Starlette aplica o **último** `add_middleware` como o mais externo, e o
-    `RequestIDMiddleware` limpa o context var ao desenrolar. Então o access log
-    só enxerga o id quando roda **por dentro** dele — ou seja, adicionando o
-    `AccessLogMiddleware` **primeiro**, como no exemplo acima. Na ordem
-    invertida toda linha sai sem `request_id`, sem nenhum erro para avisar.
+!!! info "A ordem de registro não importa (desde a v0.277.0)"
+    O `request_id` vem de duas fontes, porque nenhuma sozinha sobrevive às
+    duas ordens: o context var que o `RequestIDMiddleware` amarra, e o header
+    que ele carimba na resposta. Medido:
+
+    ```text
+    AccessLogMiddleware por dentro do RequestIDMiddleware   context var: setado
+                                                            header:      ainda não escrito
+    AccessLogMiddleware por fora do RequestIDMiddleware     context var: limpo
+                                                            header:      presente
+    ```
+
+    O `RequestIDMiddleware` é um `BaseHTTPMiddleware`: carimba o header
+    **depois** que a app retorna, então o wrapper de `send` de um middleware
+    interno já rodou; e limpa o context var ao desenrolar, então um externo
+    não acha nada lá. Ler as duas cobre as duas.
+
+    Até a v0.276.0 isto era um `!!! danger` dizendo para registrar na ordem
+    certa. Aviso sobre passo mecânico com uma resposta certa é código não
+    escrito — a regra do repositório pegou o próprio SDK.
 
 ### Nível: `ERROR` é onde a falha está
 
@@ -348,8 +362,8 @@ atacante — e o log passaria a atribuir requests ao endereço que ele quis. Vej
 !!! check "Recap"
     - `AccessLogMiddleware` é ASGI puro: lê o status do `http.response.start` e
       deixa o caminho de exceção intocado.
-    - Registre-o **antes** do `RequestIDMiddleware` para as linhas carregarem
-      `request_id`.
+    - O `request_id` entra na linha em qualquer ordem de registro: do context
+      var quando ele é interno, do header da resposta quando é externo.
     - `5xx` (renderizado ou escapado) sai em `ERROR`; o resto no `level`
       configurado.
     - `exempt_paths` casa por prefixo — é o que tira o SSE do log.

@@ -300,8 +300,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `BodySizeLimitMiddleware`, `AccessLogMiddleware` (v0.275.0 — one
   structured line per request, pure ASGI so the exception path stays
   intact; `redact` for secrets in the URL, prefix `exempt_paths` for SSE,
-  `5xx` at `ERROR`; register it **before** `RequestIDMiddleware` or the
-  lines carry no `request_id`), `HoneypotBanMiddleware` (v0.275.0 — 39
+  `5xx` at `ERROR`; since v0.277.0 the `request_id` reaches the line in
+  **either** registration order, read from the context variable when inner
+  and from the response header when outer), `HoneypotBanMiddleware` (v0.275.0 — 39
   curated scanner signatures in `DEFAULT_HONEYPOT_PATTERNS` matched
   against path **and** query, `BanStore`/`MemoryBanStore`/`RedisBanStore`,
   fail-open by default, client IP via `trusted_ip_header`),
@@ -918,6 +919,14 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   declarar não é sobrescrita. Testes: `tests/integrations/payment/
   openpix/test_overlay.py`. Recipe: `openpix.md`, seção "O que este pacote
   corrige na spec".
+- **Política que apaga a própria SPA é recusada (v0.277.0)** —
+  `make_spa_router` levanta `ValueError` quando `security_headers` carrega
+  `sandbox` sem `allow-scripts` ou `default-src 'none'` sem `script-src`, que
+  é a forma de `DEFAULT_STATIC_SECURITY_HEADERS` (o default deste router até a
+  v0.251.0, e destinado a arquivo não confiável). Antes servia documento em
+  branco com a causa só no console do browser. A checagem é sobre a forma da
+  política, não sobre a identidade da constante, e `allow_blocking_headers=True`
+  mantém o override que a v0.251.0 decidiu deixar cru.
 - **A procedência do documento do Mercado Pago é o próprio provedor
   (v0.276.0)** — issue #228. `vendor/mercadopago-openapi.yaml` é, byte a
   byte, o `spec3.yaml` de `github.com/mercadopago/openapi` no commit

@@ -5,6 +5,76 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.277.0] — 2026-08-30
+
+Uma auditoria de documentação, feita para ver se tinha ficado algo pendente.
+Nove verificações mecânicas vieram limpas — 44/44 extras, 42/42 linhas de
+roadmap, 43/43 comandos de CLI, 24/24 links do site, todas as contagens de
+operação. Os três achados foram os que **nenhum guard podia pegar**, e dois
+deles apontam para código do próprio SDK.
+
+### Fixed
+
+- **`AccessLogMiddleware` deixa de depender da ordem de registro.** A
+  v0.275.0 documentou a ordem como um `!!! danger`: registrado por fora do
+  `RequestIDMiddleware`, toda linha saía sem `request_id` e nada avisava.
+  A regra deste repositório diz que aviso sobre passo mecânico com uma
+  resposta certa é código não escrito — e ela pegou o SDK. Medido:
+
+  ```text
+  AccessLogMiddleware por dentro do RequestIDMiddleware   context var: setado
+                                                          header:      ainda não escrito
+  AccessLogMiddleware por fora  do RequestIDMiddleware    context var: limpo
+                                                          header:      presente
+  ```
+
+  O `RequestIDMiddleware` é um `BaseHTTPMiddleware`: carimba o header
+  **depois** que a app retorna, então o wrapper de `send` de um middleware
+  interno já rodou; e limpa o context var ao desenrolar, então um externo não
+  acha nada lá. As duas fontes são complementares, e o middleware passou a ler
+  as duas — o wrapper de `send` que ele já tinha para capturar o status agora
+  captura o header também. `request_id_header=` acompanha um
+  `RequestIDMiddleware(header_name=...)` customizado.
+
+  Sem `RequestIDMiddleware` na pilha, nenhum campo é inventado.
+
+- **`make_spa_router` recusa uma política que apaga a própria página.** Passar
+  `DEFAULT_STATIC_SECURITY_HEADERS` — que foi o default deste router até a
+  v0.251.0, e é destinado a **arquivo que o serviço não confia** — aponta
+  `default-src 'none'; sandbox` para a SPA compilada. O bundle e a folha de
+  estilo da própria página são bloqueados, e o único sintoma é documento em
+  branco com a causa no console do browser.
+
+  Isso estava documentado como `!!! danger`, com repro medido em browser real,
+  e a função aceitava o dict sem olhar. Agora levanta `ValueError` nomeando a
+  saída. A checagem é sobre a **forma** da política — `sandbox` sem
+  `allow-scripts`, ou `default-src 'none'` sem `script-src` — então um
+  equivalente escrito à mão é recusado igual, e uma política que funciona
+  passa.
+
+### Changed
+
+- **`make_spa_router` ganhou `allow_blocking_headers: bool = False`.** A
+  v0.251.0 decidiu de propósito que `security_headers` é override cru que o
+  router não policia, e um teste fixava isso. A checagem acima reverteria essa
+  decisão em silêncio, então ela vem com opt-out explícito, no padrão que o
+  `safe_upgrade(force=True)` já usa aqui: o override continua possível, mas
+  precisa ser deliberado. É o que separa "eu quis isso" de "copiei um snippet
+  antigo".
+
+### Docs
+
+- **Três frases sobreviveram à correção da v0.276.0** e afirmavam ainda que o
+  Mercado Pago não publica OpenAPI: `scripts/mercadopago_overlay.py`,
+  `tests/integrations/payment/mercado_pago/test_overlay.py` e o checklist de
+  `vendor/PROVENANCE.md`. Corrigidas. A lição que a v0.276.0 escreveu —
+  *"`grep` o assunto no repositório inteiro antes de acreditar na frase à sua
+  frente"* — falhou em sua primeira aplicação, que foi a si mesma.
+- O `!!! danger` de ordem de registro em `logging.md` virou `!!! info`
+  dizendo que a ordem não importa, com a medição das duas fontes. O
+  `!!! danger` do `react-spa.md` continua — ele explica *por que* a política
+  quebra —, mas agora diz que o SDK recusa, e como pedir o override.
+
 ## [0.276.0] — 2026-08-30
 
 Uma issue que pedia para **achar** a origem de um documento vendorizado. A

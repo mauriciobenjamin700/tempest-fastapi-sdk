@@ -25,6 +25,15 @@ This module is those three details, solved once:
    with the token in the URL, and refusing the request downstream does not
    un-log it. ``redact`` is the seam that rewrites path and query before the
    record is built.
+4. **The correlation id has two homes, and which one is populated depends on
+   where this middleware sits.** ``RequestIDMiddleware`` binds a context
+   variable and clears it as it unwinds, so a middleware registered *outside*
+   it sees nothing there — but the same id is on the outgoing
+   ``http.response.start`` headers, which the ``send`` wrapper above already
+   reads. Taking whichever of the two is populated is what makes registration
+   order stop mattering. v0.275.0 shipped only the context variable and
+   documented the ordering constraint as a warning; a warning about a
+   mechanical step with one right answer is code that was not written.
 """
 
 from __future__ import annotations
@@ -35,6 +44,7 @@ from collections.abc import Callable
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from tempest_fastapi_sdk.core.context import get_request_id
 from tempest_fastapi_sdk.utils.client_ip import get_client_ip_from_scope
 
 _SERVER_ERROR: int = 500
@@ -55,14 +65,21 @@ class AccessLogMiddleware:
     exception propagated out. Finding failed requests by level is the point
     of writing them at all.
 
-    Ordering note, measured on 2026-08-30: the ``request_id`` field comes
-    from the context variable :class:`RequestIDMiddleware` binds, and that
-    binding is cleared as that middleware unwinds. So this middleware only
-    sees the id when it runs **inside** it — with Starlette's
-    ``add_middleware``, which applies the last one added as the outermost,
-    that means adding ``AccessLogMiddleware`` **first** and
-    ``RequestIDMiddleware`` **after** it. Added the other way round, every
-    line is written after the id is gone and carries none.
+    The ``request_id`` field is resolved from two sources, because neither
+    alone survives every registration order. Measured on 2026-08-30:
+
+    ```text
+    AccessLogMiddleware inside RequestIDMiddleware   context variable: set
+                                                     response header:  not yet written
+    AccessLogMiddleware outside RequestIDMiddleware  context variable: cleared
+                                                     response header:  present
+    ```
+
+    ``RequestIDMiddleware`` is a ``BaseHTTPMiddleware``: it stamps the header
+    onto the response *after* the downstream app returns, so an inner
+    middleware's ``send`` wrapper has already run. It also clears the context
+    variable as it unwinds, so an outer one finds nothing there. Reading both
+    covers both, and the line carries the id either way.
 
     Attributes:
         app (ASGIApp): The wrapped ASGI application.
@@ -79,6 +96,7 @@ class AccessLogMiddleware:
         exempt_paths: tuple[str, ...] = (),
         redact: Callable[[str], str] | None = None,
         trusted_ip_header: str | None = None,
+        request_id_header: str = "X-Request-ID",
     ) -> None:
         """Initialize.
 
@@ -111,6 +129,10 @@ class AccessLogMiddleware:
                 the client sent, so its leftmost entry is
                 attacker-controlled and the log would attribute requests to
                 an address the caller chose.
+            request_id_header (str): Response header the correlation id is
+                read from when the context variable is empty. Must match
+                :class:`RequestIDMiddleware`'s ``header_name``; the default
+                is the same on both sides.
         """
         self.app: ASGIApp = app
         self.logger: logging.Logger = logging.getLogger(logger_name)
@@ -118,6 +140,7 @@ class AccessLogMiddleware:
         self._exempt: tuple[str, ...] = exempt_paths
         self._redact: Callable[[str], str] | None = redact
         self._trusted_ip_header: str | None = trusted_ip_header
+        self._request_id_header: bytes = request_id_header.lower().encode("latin-1")
 
     def _clean(self, value: str) -> str:
         """Run ``value`` through the configured redactor.
@@ -138,6 +161,7 @@ class AccessLogMiddleware:
         status: int,
         elapsed_ms: float,
         error: str | None,
+        request_id: str | None,
     ) -> None:
         """Write the access line for one finished request.
 
@@ -148,6 +172,8 @@ class AccessLogMiddleware:
             elapsed_ms (float): Wall-clock duration in milliseconds.
             error (str | None): Class name of the exception that
                 propagated, or ``None`` when the request completed.
+            request_id (str | None): Correlation id read off the outgoing
+                response headers, used when the context variable is empty.
         """
         method: str = scope.get("method", "")
         path: str = self._clean(scope.get("path", ""))
@@ -166,6 +192,9 @@ class AccessLogMiddleware:
         }
         if error is not None:
             fields["error"] = error
+        correlation = get_request_id() or request_id
+        if correlation is not None:
+            fields["request_id"] = correlation
         level = logging.ERROR if status >= _SERVER_ERROR else self.level
         self.logger.log(
             level,
@@ -210,12 +239,17 @@ class AccessLogMiddleware:
             return
 
         status: int | None = None
+        request_id: str | None = None
         started = time.perf_counter()
 
         async def _watched_send(message: Message) -> None:
-            nonlocal status
+            nonlocal status, request_id
             if message["type"] == "http.response.start":
                 status = int(message["status"])
+                for key, raw in message.get("headers") or []:
+                    if key.lower() == self._request_id_header and raw:
+                        request_id = raw.decode("latin-1")
+                        break
             await send(message)
 
         try:
@@ -226,6 +260,7 @@ class AccessLogMiddleware:
                 status=status if status is not None else _SERVER_ERROR,
                 elapsed_ms=(time.perf_counter() - started) * 1000.0,
                 error=type(exc).__name__,
+                request_id=request_id,
             )
             raise
         self._emit(
@@ -233,6 +268,7 @@ class AccessLogMiddleware:
             status=status if status is not None else _SERVER_ERROR,
             elapsed_ms=(time.perf_counter() - started) * 1000.0,
             error=None,
+            request_id=request_id,
         )
 
 

@@ -213,9 +213,12 @@ fato. É o padrão que os outros dois devem seguir.
 - [x] Guard que compara o sha256 do arquivo com o registrado, para edição à
       mão do vendorizado falhar em vez de passar calada. (v0.260.0)
 - [x] Refresh do documento da OpenPix. (v0.260.0)
-- [x] Investigar a origem do `mercadopago-openapi.yaml`. **Não existe**: o
-      provedor não publica OpenAPI. A validação passou a ser contra o SDK
-      oficial, por `make mercadopago-diff`. (v0.260.0)
+- [x] Investigar a origem do `mercadopago-openapi.yaml`. É o `spec3.yaml`
+      de `github.com/mercadopago/openapi`, byte a byte — a conclusão de
+      v0.260.0 ("não existe") vinha de uma sonda que adivinhou o nome do
+      arquivo. `make mercadopago-fetch` rebaixa; a validação por
+      `make mercadopago-diff` continua, porque o documento do provedor omite
+      sete operações que o SDK dele chama. (v0.276.0)
 - [x] Sete operações que o SDK oficial chama e não modelávamos — adicionadas
       com `dict[str, Any]` nos dois lados, porque path e verbo são medidos e a
       forma não. (v0.260.0)

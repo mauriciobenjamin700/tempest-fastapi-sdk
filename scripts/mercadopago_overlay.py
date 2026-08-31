@@ -1,11 +1,11 @@
 """What this repo corrects in the vendored Mercado Pago specification.
 
-Mercado Pago **publishes no OpenAPI document**: checked 2026-08-28,
-``api.mercadopago.com/openapi{,.json}`` answer ``404`` and the
-``mercadopago`` GitHub organisation carries SDKs, carts and samples but no
-specification repository. So ``vendor/mercadopago-openapi.yaml`` has no
-upstream to diff against, and no refresh that would carry a provider's fix
-in on its own.
+``vendor/mercadopago-openapi.yaml`` **does** have an upstream —
+``spec3.yaml`` in ``github.com/mercadopago/openapi``, refreshed by ``make
+mercadopago-fetch`` (see ``vendor/PROVENANCE.md``). What a refresh cannot do
+is retire a correction here on its own: measured 2026-08-30, the provider's
+document omits seven operations the provider's own SDK calls, and carries
+three that answer ``404``.
 
 **The provider's own Python SDK is the authority instead.** ``mercadopago``
 on PyPI is written by Mercado Pago and names the URL of every operation it

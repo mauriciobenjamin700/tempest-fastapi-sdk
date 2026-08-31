@@ -258,12 +258,26 @@ fields — `http_method`, `http_path`, `http_query`, `http_status`,
 keys rather than an interpolated string, and therefore what lets `GET /logs`
 filter on them.
 
-!!! danger "Registration order decides whether `request_id` shows up"
-    Starlette applies the **last** `add_middleware` as the outermost layer, and
-    `RequestIDMiddleware` clears the context variable as it unwinds. So the
-    access log only sees the id when it runs **inside** it — that is, adding
-    `AccessLogMiddleware` **first**, as above. The other way round every line is
-    written without a `request_id`, with no error to tell you.
+!!! info "Registration order no longer matters (since v0.277.0)"
+    The `request_id` comes from two sources, because neither alone survives
+    both orders: the context variable `RequestIDMiddleware` binds, and the
+    header it stamps on the response. Measured:
+
+    ```text
+    AccessLogMiddleware inside RequestIDMiddleware   context variable: set
+                                                     response header:  not yet written
+    AccessLogMiddleware outside RequestIDMiddleware  context variable: cleared
+                                                     response header:  present
+    ```
+
+    `RequestIDMiddleware` is a `BaseHTTPMiddleware`: it stamps the header
+    **after** the app returns, so an inner middleware's `send` wrapper has
+    already run; and it clears the context variable as it unwinds, so an outer
+    one finds nothing there. Reading both covers both.
+
+    Up to v0.276.0 this was a `!!! danger` telling you to register in the right
+    order. A warning about a mechanical step with one right answer is code that
+    was not written — the repository's own rule caught the SDK itself.
 
 ### Level: `ERROR` is where the failure is
 
@@ -349,8 +363,8 @@ would start attributing requests to whatever address they picked. See
 !!! check "Recap"
     - `AccessLogMiddleware` is pure ASGI: it reads the status off
       `http.response.start` and leaves the exception path untouched.
-    - Register it **before** `RequestIDMiddleware` for the lines to carry
-      `request_id`.
+    - The `request_id` reaches the line in either registration order: from the
+      context variable when inner, from the response header when outer.
     - `5xx` (rendered or escaped) is logged at `ERROR`; everything else at the
       configured `level`.
     - `exempt_paths` matches by prefix — that is what keeps SSE out of the log.

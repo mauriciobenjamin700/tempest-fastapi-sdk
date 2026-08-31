@@ -207,6 +207,14 @@ Plus `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Polic
 
     With the new default: zero console messages, the script ran, the external CSS applied, and the inline `style` attribute applied.
 
+    **Since v0.277.0 `make_spa_router` refuses this** with a `ValueError`
+    instead of serving the blank page. The check is on the policy's **shape** —
+    `sandbox` without `allow-scripts`, or `default-src 'none'` with no
+    `script-src` — so a hand-written equivalent lands in the same place.
+    `security_headers` is still a raw override: a caller who genuinely wants the
+    strict policy passes `allow_blocking_headers=True`, which separates "I meant
+    this" from "I copied an old snippet".
+
 !!! info "Why `'unsafe-inline'` stays in `style-src`"
     React — and the component libraries built on it — writes the `style` attribute inline. A policy that breaks the UI is a policy that gets deleted. It stays **scoped to styles**: `script-src` remains `'self'`, so an injected `<script>` or an inline handler is still refused.
 

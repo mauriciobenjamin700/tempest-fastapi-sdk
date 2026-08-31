@@ -185,6 +185,70 @@ class _SpaStaticFiles(StaticFiles):
         return response
 
 
+def _reject_self_blocking_csp(headers: dict[str, str]) -> None:
+    """Refuse a Content-Security-Policy that blocks the SPA's own bundle.
+
+    Args:
+        headers (dict[str, str]): The caller's ``security_headers``.
+
+    Raises:
+        ValueError: When the policy would stop the page loading the very
+            assets this router serves.
+
+    The mistake this exists for is one specific, mechanical one: passing
+    :data:`~tempest_fastapi_sdk.api.static.DEFAULT_STATIC_SECURITY_HEADERS`,
+    which was this router's default up to v0.251.0 and is meant for files
+    the service does **not** trust. Its policy is
+    ``default-src 'none'; sandbox`` — pointed at a compiled SPA it blocks
+    the page's own stylesheet and script, and the result is a blank
+    document with the reason buried in the browser console:
+
+    ```text
+    Loading the stylesheet '/assets/app.css' violates the following Content
+    Security Policy directive: "default-src 'none'"
+    Blocked script execution in '/' because the document's frame is sandboxed
+    and the 'allow-scripts' permission is not set
+    ```
+
+    There is exactly one right answer here, so it is enforced rather than
+    documented. The check is on the policy's shape, not on the identity of
+    that constant, because a hand-written equivalent fails the same way.
+    """
+    policy = ""
+    for name, value in headers.items():
+        if name.lower() == "content-security-policy":
+            policy = value.lower()
+            break
+    if not policy:
+        return
+
+    directives = [part.strip() for part in policy.split(";") if part.strip()]
+    has_script_src = any(d.startswith("script-src") for d in directives)
+    blocks_by_default = any(
+        d.replace('"', "'").startswith("default-src 'none'") for d in directives
+    )
+    sandboxed = any(
+        d == "sandbox" or (d.startswith("sandbox") and "allow-scripts" not in d)
+        for d in directives
+    )
+
+    if sandboxed:
+        raise ValueError(
+            "security_headers carries a `sandbox` directive without "
+            "`allow-scripts`, which blocks the SPA's own bundle and serves a "
+            "blank page. DEFAULT_STATIC_SECURITY_HEADERS is for untrusted "
+            "files, not for a compiled SPA — omit `security_headers` to get "
+            "DEFAULT_SPA_SECURITY_HEADERS, or add `allow-scripts`."
+        )
+    if blocks_by_default and not has_script_src:
+        raise ValueError(
+            "security_headers sets `default-src 'none'` with no `script-src`, "
+            "which blocks the SPA's own bundle and serves a blank page. Omit "
+            "`security_headers` to get DEFAULT_SPA_SECURITY_HEADERS, or "
+            "declare a `script-src` the bundle satisfies."
+        )
+
+
 def make_spa_router(
     dist_dir: str | Path,
     *,
@@ -194,6 +258,7 @@ def make_spa_router(
     asset_cache_control: str = DEFAULT_ASSET_CACHE_CONTROL,
     document_cache_control: str = DEFAULT_DOCUMENT_CACHE_CONTROL,
     security_headers: dict[str, str] | None = None,
+    allow_blocking_headers: bool = False,
 ) -> APIRouter:
     """Build a router that serves a compiled SPA with a client-side fallback.
 
@@ -220,6 +285,12 @@ def make_spa_router(
             :data:`DEFAULT_EXCLUDED_PREFIXES`.
         asset_cache_control (str): ``Cache-Control`` for hashed assets.
         document_cache_control (str): ``Cache-Control`` for ``index_file``.
+        allow_blocking_headers (bool): Skip the check that refuses a
+            ``security_headers`` policy which would block the SPA's own
+            bundle. ``security_headers`` stays a raw override — this
+            parameter is what keeps it one — but the override has to be
+            deliberate, because the failure it causes is a blank page whose
+            only symptom is in the browser console.
         security_headers (dict[str, str] | None): Headers stamped on the
             document and on every asset. Defaults to
             :data:`DEFAULT_SPA_SECURITY_HEADERS` — the **application**
@@ -236,6 +307,12 @@ def make_spa_router(
             missing. Failing at wiring time is deliberate: the alternative
             is a service that boots fine and answers every page with a 404,
             which usually gets discovered in staging.
+        ValueError: When ``security_headers`` carries a policy that would
+            block the SPA's own bundle — the shape
+            ``DEFAULT_STATIC_SECURITY_HEADERS`` has — and
+            ``allow_blocking_headers`` is ``False``. Same reasoning as the
+            missing-directory case: a blank page with the cause in the
+            browser console is worse than a refusal at wiring time.
     """
     root = Path(dist_dir).expanduser().resolve()
     index_path = root / index_file
@@ -250,6 +327,8 @@ def make_spa_router(
             f"{index_path} not found — {root} does not look like a built SPA."
         )
 
+    if security_headers is not None and not allow_blocking_headers:
+        _reject_self_blocking_csp(security_headers)
     headers = (
         dict(security_headers)
         if security_headers is not None

@@ -204,11 +204,19 @@ class TestContentSecurityPolicy:
         """A caller who wants the strict policy can still have it.
 
         Including the static one — this is a default, not a policy the
-        router enforces.
+        router enforces. Since v0.277.0 that override has to be deliberate:
+        the shape blanks the page, so `allow_blocking_headers=True` is what
+        separates "I meant this" from "I copied an old snippet".
         """
         app = FastAPI()
         strict = dict(DEFAULT_STATIC_SECURITY_HEADERS)
-        app.include_router(make_spa_router(dist, security_headers=strict))
+        app.include_router(
+            make_spa_router(
+                dist,
+                security_headers=strict,
+                allow_blocking_headers=True,
+            )
+        )
         csp = TestClient(app).get("/").headers["content-security-policy"]
         assert csp == "default-src 'none'; sandbox"
 
@@ -299,3 +307,82 @@ class TestPathTraversal:
         app = FastAPI()
         app.include_router(make_spa_router(dist))
         assert "do-not-serve" not in TestClient(app).get(path).text
+
+
+class TestSelfBlockingCspIsRefused:
+    """A policy that blanks the page fails at wiring, not in the browser.
+
+    `DEFAULT_STATIC_SECURITY_HEADERS` was this router's default up to
+    v0.251.0 and is meant for files the service does not trust. Pointed at a
+    compiled SPA it blocks the page's own bundle, and the only symptom is a
+    blank document with the reason in the browser console. Up to v0.277.0
+    that was a `!!! danger` in the recipe; the check on the policy's shape is
+    what makes the danger unreachable.
+    """
+
+    def test_the_shipped_footgun_is_refused(self, dist: Path) -> None:
+        """The exact constant a reader of an old snippet would pass.
+
+        Args:
+            dist (Path): The build directory.
+        """
+        with pytest.raises(ValueError, match="allow-scripts"):
+            make_spa_router(dist, security_headers=DEFAULT_STATIC_SECURITY_HEADERS)
+
+    def test_default_src_none_without_script_src_is_refused(self, dist: Path) -> None:
+        """A hand-written equivalent fails the same way, so it is caught too.
+
+        Args:
+            dist (Path): The build directory.
+        """
+        with pytest.raises(ValueError, match="script-src"):
+            make_spa_router(
+                dist,
+                security_headers={"Content-Security-Policy": "default-src 'none'"},
+            )
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            pytest.param(None, id="default"),
+            pytest.param(
+                {
+                    "Content-Security-Policy": (
+                        "default-src 'none'; script-src 'self'; style-src 'self'"
+                    )
+                },
+                id="declared-script-src",
+            ),
+            pytest.param(
+                {
+                    "Content-Security-Policy": (
+                        "sandbox allow-scripts allow-same-origin"
+                    )
+                },
+                id="sandbox-with-allow-scripts",
+            ),
+            pytest.param({"X-Content-Type-Options": "nosniff"}, id="no-csp-at-all"),
+        ],
+    )
+    def test_a_workable_policy_is_accepted(
+        self,
+        dist: Path,
+        headers: dict[str, str] | None,
+    ) -> None:
+        """The guard is narrow: only self-blocking shapes are refused.
+
+        Args:
+            dist (Path): The build directory.
+            headers (dict[str, str] | None): The policy under test.
+        """
+        assert make_spa_router(dist, security_headers=headers) is not None
+
+    def test_the_refusal_names_the_way_out(self, dist: Path) -> None:
+        """An error that does not say what to do costs a search.
+
+        Args:
+            dist (Path): The build directory.
+        """
+        with pytest.raises(ValueError) as error:
+            make_spa_router(dist, security_headers=DEFAULT_STATIC_SECURITY_HEADERS)
+        assert "DEFAULT_SPA_SECURITY_HEADERS" in str(error.value)
