@@ -52,6 +52,13 @@ segurança que uma delas carregava em toda reimplementação conhecida.
   **401** `OAUTH_TOKEN_AUDIENCE_MISMATCH`; token recusado pelo provedor é
   **401** `OAUTH_TOKEN_REJECTED`.
 
+  **App mobile tem um `client_id` por plataforma** — o Google emite um para o
+  backend, um para o Android, um para o iOS —, então `extra_audiences=` no
+  construtor do client lista os ids das outras plataformas do **mesmo**
+  projeto. Client sem nenhum id configurado responde 501 em vez de comparar
+  contra string vazia, que ou recusaria tudo ou casaria com um provedor que
+  ecoa claim vazio.
+
   **Fail closed:** um client registrado que não implementa
   `verify_token_audience` faz a rota responder **501**
   `OAUTH_AUDIENCE_UNVERIFIABLE` sem sequer buscar o perfil. Aceitar seria

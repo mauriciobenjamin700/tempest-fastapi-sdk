@@ -319,6 +319,32 @@ The registered client is what answers the question, through
 | `OIDCProvider` | The introspection endpoint (RFC 7662) you pass as `tokeninfo_url=`; without it the route refuses |
 | Your own client | Implement `verify_token_audience`; without the method the route refuses |
 
+!!! warning "A mobile app has one `client_id` per platform"
+    Google issues one client id for the backend (web), another for Android,
+    another for iOS. The token the Android app sends carries the **Android**
+    id in `aud` — comparing only against the backend's would refuse every
+    legitimate login. List the platform ids in `extra_audiences=`:
+
+    ```python
+    google = GoogleOAuthClient(
+        client_id=settings.GOOGLE_CLIENT_ID,
+        client_secret=settings.GOOGLE_CLIENT_SECRET,
+        redirect_uri=settings.oauth_redirect_uri("google"),
+        extra_audiences=[
+            settings.GOOGLE_ANDROID_CLIENT_ID,
+            settings.GOOGLE_IOS_CLIENT_ID,
+        ],
+    )
+    ```
+
+    Every value in that list is an application allowed to log people into this
+    service. Put **your** project's ids there, and only those.
+
+    A client with no id configured at all — the `GoogleOAuthClient(client_id="")`
+    that exists only for `fetch_user` — makes the route answer **501**: there is
+    nothing to compare against, and comparing with the empty string would either
+    refuse everything or match a provider that echoes an empty claim.
+
 ```python
 # src/api/dependencies/resources.py
 

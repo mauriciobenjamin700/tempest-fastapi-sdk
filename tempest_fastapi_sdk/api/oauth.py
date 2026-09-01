@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import secrets
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlencode
@@ -253,6 +254,7 @@ class _BaseOAuthClient:
         redirect_uri: str,
         scopes: list[str] | None = None,
         http_client: HTTPClient | None = None,
+        extra_audiences: Sequence[str] = (),
     ) -> None:
         """Initialize.
 
@@ -266,8 +268,18 @@ class _BaseOAuthClient:
             http_client (HTTPClient | None): Shared client to
                 reuse. ``None`` builds a dedicated one with sane
                 defaults.
+            extra_audiences (Sequence[str]): Other client ids of the
+                **same** application that may mint tokens presented to
+                ``POST /auth/oauth/{provider}/token``. A mobile app is
+                the reason this exists: Google issues one client id per
+                platform, so a token minted by the Android app carries
+                the Android client id in ``aud``, not the backend's.
+                List those ids here and nowhere else — every value
+                added is an application allowed to log people into this
+                service.
         """
         self.client_id: str = client_id
+        self.extra_audiences: tuple[str, ...] = tuple(extra_audiences)
         self.client_secret: str = client_secret
         self.redirect_uri: str = redirect_uri
         self.scopes: list[str] = scopes or self._default_scopes()
@@ -459,15 +471,32 @@ class _BaseOAuthClient:
         self._assert_audience(payload)
 
     def _assert_audience(self, payload: dict[str, Any]) -> None:
-        """Compare the audience claims in ``payload`` with our client id.
+        """Compare the audience claims in ``payload`` with our client ids.
+
+        Accepted are :attr:`client_id` and :attr:`extra_audiences` — the
+        latter being the same application's other platform client ids,
+        which is how a token minted by the Android or iOS app passes
+        while a token minted by somebody else's app does not.
 
         Args:
             payload (dict[str, Any]): The introspection response.
 
         Raises:
+            OAuthAudienceUnverifiableException: When no client id is
+                configured at all. There is nothing to compare against,
+                and comparing against the empty string would refuse
+                every token — or, worse, match a provider that echoes
+                an empty claim. A client built for ``fetch_user`` alone
+                lands here, which is the correct answer: wire the ids
+                before opening the token-in-hand route.
             OAuthTokenAudienceMismatchException: When none of the
-                audience claims is :attr:`client_id`.
+                audience claims is one of ours.
         """
+        accepted = {value for value in (self.client_id, *self.extra_audiences) if value}
+        if not accepted:
+            raise OAuthAudienceUnverifiableException(
+                details={"provider": self.provider_name, "reason": "no client id"},
+            )
         audiences: set[str] = set()
         for key in ("aud", "azp", "client_id"):
             value = payload.get(key)
@@ -475,7 +504,7 @@ class _BaseOAuthClient:
                 audiences.update(str(item) for item in value)
             elif value:
                 audiences.add(str(value))
-        if self.client_id not in audiences:
+        if not audiences & accepted:
             raise OAuthTokenAudienceMismatchException(
                 details={"provider": self.provider_name},
             )
@@ -699,6 +728,7 @@ class OIDCProvider(_BaseOAuthClient):
         provider_name: str = "oidc",
         scopes: list[str] | None = None,
         http_client: HTTPClient | None = None,
+        extra_audiences: Sequence[str] = (),
     ) -> None:
         """Initialize.
 
@@ -721,6 +751,9 @@ class OIDCProvider(_BaseOAuthClient):
                 :attr:`OAuthUser.provider` (e.g. ``"oidc:auth0"``).
             scopes (list[str] | None): Scopes to request.
             http_client (HTTPClient | None): Shared client.
+            extra_audiences (Sequence[str]): Other client ids of the
+                same application whose tokens the token-in-hand route
+                accepts.
         """
         self._authorize_url: str = authorize_url
         self._token_url: str = token_url
@@ -733,6 +766,7 @@ class OIDCProvider(_BaseOAuthClient):
             redirect_uri=redirect_uri,
             scopes=scopes,
             http_client=http_client,
+            extra_audiences=extra_audiences,
         )
 
     def _default_scopes(self) -> list[str]:

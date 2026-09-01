@@ -316,6 +316,32 @@ Quem responde a pergunta é o client registrado, por
 | `OIDCProvider` | O endpoint de introspection (RFC 7662) que você passar em `tokeninfo_url=`; sem ele, a rota recusa |
 | Client próprio | Implemente `verify_token_audience`; sem o método, a rota recusa |
 
+!!! warning "App mobile tem um `client_id` por plataforma"
+    O Google emite um client id para o backend (web), outro para o Android,
+    outro para o iOS. O token que o app Android manda carrega o id **do
+    Android** em `aud` — comparar só com o do backend recusaria todo login
+    legítimo. Liste os ids das plataformas em `extra_audiences=`:
+
+    ```python
+    google = GoogleOAuthClient(
+        client_id=settings.GOOGLE_CLIENT_ID,
+        client_secret=settings.GOOGLE_CLIENT_SECRET,
+        redirect_uri=settings.oauth_redirect_uri("google"),
+        extra_audiences=[
+            settings.GOOGLE_ANDROID_CLIENT_ID,
+            settings.GOOGLE_IOS_CLIENT_ID,
+        ],
+    )
+    ```
+
+    Cada valor nessa lista é uma aplicação autorizada a logar gente neste
+    serviço. Coloque os ids do **seu** projeto, e só eles.
+
+    Client sem nenhum id configurado — o `GoogleOAuthClient(client_id="")` que
+    serve só para `fetch_user` — faz a rota responder **501**: não há contra o
+    que comparar, e comparar com string vazia ou recusaria tudo ou casaria com
+    um provedor que ecoa claim vazio.
+
 ```python
 # src/api/dependencies/resources.py
 

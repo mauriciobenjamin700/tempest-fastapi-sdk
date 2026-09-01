@@ -494,3 +494,61 @@ class TestVerifyTokenAudience:
                 )
         finally:
             await client.aclose()
+
+    async def test_a_platform_client_id_is_accepted(self) -> None:
+        """The Android app's token carries the Android client id."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"aud": "android-id", "azp": "android-id"},
+            )
+
+        http_client = HTTPClient(failure_threshold=0)
+        http_client._client = httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+        )
+        client = GoogleOAuthClient(
+            client_id="web-id",
+            client_secret="secret",
+            redirect_uri="https://app/cb",
+            http_client=http_client,
+            extra_audiences=["android-id", "ios-id"],
+        )
+        try:
+            await client.verify_token_audience(
+                OAuthTokens(access_token="ya29.x", token_type="Bearer"),
+            )
+        finally:
+            await client.aclose()
+
+    async def test_a_client_with_no_ids_configured_cannot_verify(self) -> None:
+        """A client built for `fetch_user` alone must not pass tokens.
+
+        Comparing against an empty client id would either refuse every
+        token or — if the provider echoes an empty claim — accept
+        everyone's. Refusing to answer is the honest outcome.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"aud": "whoever", "azp": ""})
+
+        http_client = HTTPClient(failure_threshold=0)
+        http_client._client = httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+        )
+        client = GoogleOAuthClient(
+            client_id="",
+            client_secret="",
+            redirect_uri="",
+            http_client=http_client,
+        )
+        try:
+            with pytest.raises(OAuthAudienceUnverifiableException) as caught:
+                await client.verify_token_audience(
+                    OAuthTokens(access_token="ya29.x", token_type="Bearer"),
+                )
+        finally:
+            await client.aclose()
+
+        assert caught.value.details["reason"] == "no client id"
