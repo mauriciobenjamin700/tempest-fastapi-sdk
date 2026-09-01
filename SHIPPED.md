@@ -276,7 +276,9 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   `/metrics` endpoint + `PrometheusMiddleware`, request-id
   middleware with contextvar propagation, typed `HTTPClient`
   (httpx wrapper with retry/backoff/circuit-breaker /
-  `X-Request-ID` propagation). **Rotation is on by default
+  `X-Request-ID` propagation), `async_retry` (v0.280.0 — applies a
+  `RetryPolicy` to any coroutine, not just an HTTP call; `RetryPolicy`
+  moved to `utils/retry.py`, old import path kept). **Rotation is on by default
   (v0.258.0):** the per-level handlers are `RotatingFileHandler` with
   `configure_logging(max_bytes=10_000_000, backup_count=5)` — ~60 MB per
   level, hard cap; `max_bytes=0` restores the plain `FileHandler` for a host
@@ -292,6 +294,36 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   silent absence for a single one, which a dashboard cannot tell from a disk
   nobody asked about); `disk_async` propagates, and `strict=True` carries
   that to the plural variants.
+  **`LogUtils` configures the root logger (v0.280.0)** — `LogUtils(__name__)`
+  in every module now shares one handler set instead of giving each module
+  logger its own with `propagate=False`; the old shape opened `N` stdout and
+  `N * 6` file handlers on the same six paths, with that many
+  `RotatingFileHandler` instances racing to roll one file over. `scope="logger"`
+  restores it for a deliberately isolated subsystem, and the first instance is
+  the one that decides level and format. **`LogUtils.error_500()` +
+  `exc_info="auto"` + `reinitialize_logging()` + `configure_root_once()`
+  (v0.280.0)** — writing to the SDK's own `500.log` no longer means importing
+  `HTTP_500_MARKER` from `core.logging`; `"auto"` attaches a traceback only
+  when one is being handled; `reinitialize_logging()` undoes the logger
+  disabling that Alembic's `fileConfig()` performs. **`DELETE /logs` +
+  `resolve_log_files()` (v0.280.0)** — the router's third verb, behind the same
+  `X-Token`, truncating in place because the handlers hold open descriptors;
+  `all` covers `500.log` here and not on the read. **`LOG_MAX_BYTES` /
+  `LOG_BACKUP_COUNT` + `logging_kwargs()` on `LogSettings` (v0.280.0)** — the
+  rotation knobs `configure_logging` always accepted are now settable from the
+  environment.
+- **Database error introspection** — `parse_integrity_error()` reads an
+  `IntegrityError` back into the constraint that refused it
+  (`IntegrityFailure` / `IntegrityViolation`), so a service answers `409`
+  naming the field instead of a generic conflict (v0.280.0). Covers Postgres
+  and SQLite, the two dialects the SDK supports; every pattern was read off a
+  real server, and `tests/db/test_integrity_live.py` (marked `docker`)
+  reproduces them live. Reads `error.orig`, never `str(error)`, whose
+  `[SQL: ...]` echo carries user data.
+- **Error i18n** — the built-in `MessageCatalog` covers **every** exception
+  code the SDK can raise, in `pt-BR` and `en-US` (v0.280.0: the thirteen
+  `OAUTH_*` codes were missing and fell back to the exception's English
+  `message`). `tests/test_i18n_coverage_guard.py` refuses the next omission.
 - **HTTP layer** — `RequestIDMiddleware`, `RateLimitMiddleware`,
   `IdempotencyMiddleware` (memory + Redis stores),
   `ResponseCacheMiddleware` (v0.159.0 — ETag/conditional-GET always on +

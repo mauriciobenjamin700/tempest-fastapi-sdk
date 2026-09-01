@@ -72,6 +72,31 @@ class LogEntrySchema(BaseSchema):
     )
 
 
+class LogFilesClearedSchema(BaseSchema):
+    """What a truncate request actually emptied.
+
+    Naming the files back is what makes the operation checkable: the
+    selector is a level name, and which files it covers is a decision of
+    the SDK's layout, not of the caller. ``"all"`` in particular reaches
+    ``500.log`` too, and a caller that assumed otherwise should be able
+    to see it in the response rather than in the next incident.
+
+    Attributes:
+        cleared (list[str]): File names that were truncated, in the
+            order they were processed. A file that did not exist is
+            created empty and still listed — the post-condition is the
+            same either way.
+    """
+
+    cleared: list[str] = Field(
+        default_factory=list,
+        title="Cleared files",
+        description="Names of the log files that were truncated.",
+        examples=[["info.log", "error.log", "500.log"]],
+    )
+
+
 __all__: list[str] = [
     "LogEntrySchema",
+    "LogFilesClearedSchema",
 ]

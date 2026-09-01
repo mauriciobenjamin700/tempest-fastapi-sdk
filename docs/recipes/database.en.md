@@ -691,6 +691,64 @@ class UserRepository(BaseRepository[UserModel]):
     exactly what it was (the generic `ConflictException`). Available from
     0.169.0.
 
+### Which constraint refused — `parse_integrity_error`
+
+Swapping `ConflictException` for a class of your own answers *there was a
+conflict*. Answering *on which field* means reading what the server said — and
+what it says has the driver's shape, not your application's.
+
+```python
+from typing import Any
+
+from sqlalchemy.exc import IntegrityError
+
+from tempest_fastapi_sdk import parse_integrity_error
+
+
+def to_response(error: IntegrityError) -> dict[str, Any]:
+    """Translate an integrity error into the envelope clients parse."""
+    failure = parse_integrity_error(error)
+    return {
+        "code": failure.kind.value,
+        "field": failure.column,
+        "constraint": failure.constraint,
+    }
+```
+
+`IntegrityViolation` classifies into `unique`, `foreign_key`, `not_null`,
+`check` and `unknown`. `IntegrityFailure` carries what the server reported:
+`constraint`, `table`, `columns` (in the order listed) and `column`, the
+shortcut for the single-column case.
+
+!!! warning "An empty field means 'this server did not say'"
+    Never 'there is none'. The two dialects speak differently, and the
+    differences are not cosmetic:
+
+    | | Postgres | SQLite |
+    | --- | --- | --- |
+    | unique | names the constraint; columns arrive in `DETAIL:` | names `table.column`; no constraint |
+    | not null | names column and table | names `table.column` |
+    | check | names the constraint and the table | returns the **expression** when the constraint is unnamed |
+    | foreign key | names constraint, table and column | says only `FOREIGN KEY constraint failed` |
+
+    Two measured absences worth repeating: a SQLite foreign key carries
+    nothing beyond the kind, and a Postgres unique **does not name the
+    table** — the constraint name usually starts with it, but splitting on a
+    convention a hand-written DDL need not follow would be a guess.
+
+!!! info "Reads `error.orig`, not `str(error)`"
+    `str()` on a SQLAlchemy `IntegrityError` appends `[SQL: <statement>]`, and
+    a statement contains user data. A value carrying the text
+    `UNIQUE constraint failed: x.y` would be parsed as a column name. The
+    function reads the DBAPI exception, whose message is the server's sentence
+    alone.
+
+!!! check "Never raises"
+    An unknown message comes back as `IntegrityViolation.UNKNOWN` with the
+    text in `failure.message`. A parser for error prose that raises turns a
+    handled 409 into an unhandled 500, which is worse than the generic
+    conflict it was added to improve on.
+
 ### The CRUD you get
 
 Recall the project's collection convention: **single-record** lookups

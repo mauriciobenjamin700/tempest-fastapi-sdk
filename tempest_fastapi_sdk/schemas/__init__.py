@@ -8,6 +8,9 @@ from tempest_fastapi_sdk.schemas.link_headers import (
     build_pagination_link_header as build_pagination_link_header,
 )
 from tempest_fastapi_sdk.schemas.logs import LogEntrySchema as LogEntrySchema
+from tempest_fastapi_sdk.schemas.logs import (
+    LogFilesClearedSchema as LogFilesClearedSchema,
+)
 from tempest_fastapi_sdk.schemas.pagination import (
     BasePaginationFilterSchema as BasePaginationFilterSchema,
 )
@@ -53,6 +56,7 @@ __all__: list[str] = [
     "CursorPaginationSchema",
     "ErrorResponseSchema",
     "LogEntrySchema",
+    "LogFilesClearedSchema",
     "SyncFilterSchema",
     "SyncPaginationSchema",
     "build_pagination_link_header",

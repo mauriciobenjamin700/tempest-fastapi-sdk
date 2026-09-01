@@ -29,6 +29,7 @@ Todos rodam dentro do `make check`.
 | `test_reexport_guard` | `from x import Y as Y` + `__all__` em `__init__.py` | — |
 | `test_vacuous_guard` | teste afirma cruzar processo/réplica e não cruza | — |
 | `test_alias_guard` | `Field(alias=...)` voltando | — |
+| `test_i18n_coverage_guard` | todo `code` de exceção do SDK tem entrada no catálogo, nas duas línguas, e nenhuma entrada órfã | code definido fora de `tempest_fastapi_sdk/exceptions/`; qualidade da tradução |
 | `test_protocol_shape_guard` | membro de `Protocol` cujo retorno resolve para `Any` (`Any` pelado, `Awaitable[Any]`, `Coroutine[..., Any]`, iterador de `Any`); e parâmetro obrigatório não-posicional em protocolo de cliente de terceiro, que impõe o **nome** ao implementador | a atribuição no call site, que exigiria `disallow_any_expr`; protocolo de terceiro fora da lista `THIRD_PARTY_CLIENT_PROTOCOLS` |
 | `test_constraint_shape_guard` | bound numérico em campo `str`, e bound de tamanho em campo numérico — pydantic levanta `TypeError` na construção, então o campo fica inalcançável | anotação que o guard não resolve (alias do projeto, forward reference) é pulada, não adivinhada |
 | `test_pydantic_mypy_guard` | `plugins = ["pydantic.mypy"]` sem `init_typed = true` (aqui e no template do `tempest new`) | serviço já scaffoldado, que nenhum arquivo daqui alcança |

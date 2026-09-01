@@ -113,9 +113,6 @@ from tempest_fastapi_sdk.utils.http_client import (
 from tempest_fastapi_sdk.utils.http_client import (
     HTTPClient as HTTPClient,
 )
-from tempest_fastapi_sdk.utils.http_client import (
-    RetryPolicy as RetryPolicy,
-)
 from tempest_fastapi_sdk.utils.jwt import JWTUtils as JWTUtils
 from tempest_fastapi_sdk.utils.locations import (
     UF as UF,
@@ -314,6 +311,12 @@ from tempest_fastapi_sdk.utils.regex import (
 from tempest_fastapi_sdk.utils.regex import (
     parse_phone_br as parse_phone_br,
 )
+from tempest_fastapi_sdk.utils.retry import (
+    RetryPolicy as RetryPolicy,
+)
+from tempest_fastapi_sdk.utils.retry import (
+    async_retry as async_retry,
+)
 from tempest_fastapi_sdk.utils.storage_backends import (
     LocalUploadStorage as LocalUploadStorage,
 )
@@ -434,6 +437,7 @@ __all__: list[str] = [
     "UploadResult",
     "UploadStorage",
     "UploadUtils",
+    "async_retry",
     "build_content_disposition",
     "cities_by_uf",
     "city_choices",

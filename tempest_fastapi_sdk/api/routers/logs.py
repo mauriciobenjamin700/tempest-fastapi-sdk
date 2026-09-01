@@ -18,7 +18,10 @@ from tempest_fastapi_sdk.core.logging import (
     HTTP_500_LOG_FILE,
     LEVEL_LOG_FILES,
 )
-from tempest_fastapi_sdk.schemas.logs import LogEntrySchema
+from tempest_fastapi_sdk.schemas.logs import (
+    LogEntrySchema,
+    LogFilesClearedSchema,
+)
 from tempest_fastapi_sdk.schemas.pagination import BasePaginationSchema
 
 logger = logging.getLogger(__name__)
@@ -94,6 +97,47 @@ def _as_aware(moment: datetime) -> datetime:
     return moment
 
 
+def resolve_log_files(
+    log_dir: str | Path,
+    source: LogSource,
+    *,
+    include_http_500: bool = False,
+) -> list[Path]:
+    """Resolve which files a ``source`` selector points at.
+
+    Public because the mapping from a level name to a file name is the
+    SDK's layout decision, not the caller's: a service that wants to
+    truncate, archive, ship or count these files was re-deriving
+    ``{"info": "info.log", ...}`` from :data:`LEVEL_LOG_FILES` by hand,
+    and that copy drifts the day a level is added.
+
+    ``include_http_500`` is the one place the two callers disagree.
+    Reading ``"all"`` must **not** include ``500.log``, because every
+    record in it is also in ``error.log`` and the page would list it
+    twice. Truncating ``"all"`` must include it, because a clear that
+    silently left the 500 stream behind is the surprising outcome.
+
+    Args:
+        log_dir (str | Path): Directory holding the log files.
+        source (LogSource): The requested source selector.
+        include_http_500 (bool): Whether ``"all"`` also covers
+            ``500.log``. Ignored for every other selector.
+
+    Returns:
+        list[Path]: The files the selector covers, existing or not —
+        callers decide whether a missing file is skipped or created.
+    """
+    base = Path(log_dir)
+    if source == "all":
+        names = list(LEVEL_LOG_FILES.values())
+        if include_http_500:
+            names.append(HTTP_500_LOG_FILE)
+        return [base / filename for filename in names]
+    if source == "500":
+        return [base / HTTP_500_LOG_FILE]
+    return [base / _LEVEL_FILE_BY_NAME[source]]
+
+
 def _resolve_files(log_dir: Path, source: LogSource) -> list[Path]:
     """Resolve the log files to read for a given ``source``.
 
@@ -105,11 +149,7 @@ def _resolve_files(log_dir: Path, source: LogSource) -> list[Path]:
         list[Path]: The files to read (existing or not — callers skip
         missing ones).
     """
-    if source == "all":
-        return [log_dir / filename for filename in LEVEL_LOG_FILES.values()]
-    if source == "500":
-        return [log_dir / HTTP_500_LOG_FILE]
-    return [log_dir / _LEVEL_FILE_BY_NAME[source]]
+    return resolve_log_files(log_dir, source)
 
 
 def _read_entries(
@@ -304,6 +344,21 @@ def render_entries_json(entries: list[dict[str, Any]]) -> str:
     return json.dumps(entries, indent=2, ensure_ascii=False, default=str)
 
 
+def _truncate_files(paths: list[Path]) -> None:
+    """Empty each path in place, creating it when missing.
+
+    Args:
+        paths (list[Path]): The files to truncate.
+
+    Raises:
+        OSError: When a path cannot be opened for writing.
+    """
+    for path in paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as handle:
+            handle.truncate(0)
+
+
 def make_logs_router(
     *,
     log_dir: str | Path = "logs",
@@ -448,6 +503,49 @@ def make_logs_router(
             pages=pages,
         )
 
+    @router.delete(
+        "",
+        summary="Truncate structured application logs",
+        response_model=LogFilesClearedSchema,
+        dependencies=[Depends(require_token)],
+    )
+    async def clear_logs(
+        source: LogSource = Query(
+            default="all",
+            description=(
+                "Which log file(s) to truncate. 'all' empties every "
+                "level **and** the isolated 500 stream; '500' empties "
+                "only the latter."
+            ),
+        ),
+    ) -> LogFilesClearedSchema:
+        """Empty the log files a source selector points at.
+
+        The counterpart of the read endpoint, on the same files and
+        behind the same ``X-Token`` gate. Every service that shipped a
+        log viewer also shipped a way to clear it, each one re-deriving
+        the level-to-filename map that :func:`resolve_log_files` owns.
+
+        Files are **truncated in place**, not unlinked: the handlers
+        that :func:`configure_logging` attached hold an open descriptor
+        on each path, and deleting the file would leave them writing to
+        an inode nothing can read back. A missing file is created empty,
+        so the post-condition is the same either way.
+
+        Unlike reading, ``"all"`` covers ``500.log`` as well. A clear
+        that left the 500 stream behind is the surprising outcome, and
+        the response names every file it emptied.
+
+        Args:
+            source (LogSource): Which file(s) to truncate.
+
+        Returns:
+            LogFilesClearedSchema: The file names that were emptied.
+        """
+        paths = resolve_log_files(base_dir, source, include_http_500=True)
+        await run_in_threadpool(_truncate_files, paths)
+        return LogFilesClearedSchema(cleared=[path.name for path in paths])
+
     return router
 
 
@@ -457,4 +555,5 @@ __all__: list[str] = [
     "make_logs_router",
     "render_entries_json",
     "render_entries_markdown",
+    "resolve_log_files",
 ]

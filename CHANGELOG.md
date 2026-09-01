@@ -5,6 +5,99 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.280.0] — 2026-09-01
+
+Seis buracos de superfície que o `alofans-api` vinha tapando por fora, achados
+ao auditar quais pontes locais dele o SDK já tornava desnecessárias. Cinco eram
+"o SDK escreve isto, mas não deixa você alcançá-lo"; o sexto é o defeito que
+`LogUtils(__name__)` tinha desde sempre.
+
+### Changed
+
+- **`LogUtils` configura o logger raiz, não o logger nomeado.** `LogUtils(__name__)`
+  é como a classe se lê e como ela é usada — uma linha por módulo. Até aqui o
+  construtor chamava `configure_logging(logger_name=name)`, que põe
+  `propagate = False` naquele logger e lhe dá handlers próprios: medido em 7 handlers por logger (1 stdout + 6 de
+  arquivo), um serviço com 27 módulos abria 27 stdout e 162 de arquivo, todos
+  nos mesmos seis caminhos, com `RotatingFileHandler` disputando o rollover de cada um —
+  registro perdido e backups `.1`/`.2` embaralhados. Agora o construtor
+  configura o **raiz**, uma vez por processo, e liga o nome por propagação.
+  Medido: cinco instâncias → 7 handlers no raiz, zero em cada logger de módulo.
+
+  Duas consequências visíveis, ambas intencionais: logger de biblioteca
+  (`httpx`, `sqlalchemy`) passa a cair nos seus arquivos, que é o que
+  configurar o raiz significa; e a **primeira** instância decide nível e
+  formato, porque as seguintes não reconfiguram nada. `scope="logger"`
+  restaura a forma anterior para quem isola um subsistema de propósito.
+
+- **`RetryPolicy` mudou de `utils/http_client.py` para `utils/retry.py`.** A
+  curva de backoff não é uma ideia de HTTP. O import antigo continua
+  funcionando (`from tempest_fastapi_sdk.utils.http_client import RetryPolicy`),
+  e o export de topo não muda.
+
+### Added
+
+- **`async_retry`** — aplica um `RetryPolicy` a qualquer corrotina. O SDK tinha
+  a matemática da espera e nenhum jeito de esperar: todo serviço reescrevia o
+  laço, e cada um decidia sozinho as duas coisas fáceis de errar — quais
+  exceções consomem tentativa (um `TypeError` retentado é o mesmo bug, mais
+  tarde) e o que sobe quando o budget acaba (engolir a última esconde a falha
+  permanente). A última exceção propaga, e `asyncio.CancelledError` passa
+  intocada porque deriva de `BaseException`.
+
+- **`LogUtils.error_500()`** — escreve no `500.log` que o próprio SDK mantém.
+  O marcador `HTTP_500_MARKER` e o filtro do arquivo sempre foram do SDK, mas
+  só os handlers de exceção dele os usavam: um serviço reportando falha grave
+  própria precisava importar a constante de `core.logging`. O registro também
+  cai no `error.log`, e o traceback vai junto quando há um sendo tratado.
+
+- **`exc_info="auto"` em `LogUtils.error()`** — anexa o traceback só quando há
+  exceção sendo tratada. `exception()` exige estar dentro de um `except`;
+  `exc_info=True` fora de um escreve `NoneType: None`. O default segue `False`.
+
+- **`reinitialize_logging()`** — re-habilita todo logger e limpa o latch de
+  configuração. `fileConfig()` desabilita, por padrão, todo logger existente, e
+  o `env.py` que este SDK ships chama exatamente isso: uma migration silenciava
+  os loggers da aplicação pelo resto do processo, com os registros descartados
+  antes de qualquer handler ver.
+
+- **`configure_root_once()`** — o ponto de entrada idempotente que o `LogUtils`
+  usa, exposto para quem configura logging no bootstrap.
+
+- **`DELETE /logs` no `make_logs_router`**, atrás do mesmo gate `X-Token`, e
+  **`resolve_log_files()`** público. O router escreve e lê `logs/`; limpar era
+  o terceiro verbo, e todo consumidor recopiava o mapa de nível para nome de
+  arquivo. Trunca in-place em vez de remover, porque os handlers seguram
+  descritor aberto em cada caminho. `all` aqui inclui o `500.log` — ao ler
+  não inclui, para não listar o mesmo registro duas vezes.
+
+- **`LOG_MAX_BYTES` e `LOG_BACKUP_COUNT` no `LogSettings`, mais
+  `logging_kwargs()`.** `configure_logging` aceitava os dois desde que a
+  rotação existe e o mixin não modelava nenhum, então o knob que decide quanto
+  disco os logs ocupam num host de longa duração era o único que o operador
+  não podia setar.
+
+- **`parse_integrity_error()`, `IntegrityFailure`, `IntegrityViolation`** — lê
+  um erro de integridade de volta na constraint que o recusou, para responder
+  `409` nomeando o campo em vez de um conflito genérico. Os dois dialetos
+  suportados dizem as mesmas cinco coisas de formas diferentes, e a diferença
+  não é cosmética: o Postgres nomeia a constraint e lista as colunas num
+  `DETAIL:`; o SQLite nomeia `tabela.coluna` e, para chave estrangeira, nada.
+  Todo padrão foi lido de erro real — Postgres 16 em container, SQLite via
+  `aiosqlite` —, e `tests/db/test_integrity_live.py` (marcado `docker`) os
+  reproduz contra servidor vivo, para uma mudança de wording falhar aqui em vez
+  de no handler de um consumidor. Lê `error.orig`, não `str(error)`: este
+  último anexa `[SQL: <statement>]`, e um valor contendo
+  `UNIQUE constraint failed: x.y` seria parseado como nome de coluna.
+
+### Fixed
+
+- **Os treze codes `OAUTH_*` não tinham tradução.** O catálogo tem `pt-BR` como
+  locale default, então um code sem entrada não caía num texto neutro — caía na
+  `message` da própria exceção, escrita em inglês. Eram 24 codes com classe e 11
+  traduzidos; agora são 24/24 nas duas línguas. Guard novo
+  (`tests/test_i18n_coverage_guard.py`) recusa o décimo quarto.
+
 ## [0.279.0] — 2026-09-01
 
 A metade que faltava da v0.278.0: a audiência extra existia no client, mas não

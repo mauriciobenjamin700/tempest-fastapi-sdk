@@ -95,6 +95,45 @@ async def call() -> None:
     exponha um `get_http_client`, e feche no lifespan com `await client.aclose()`
     — assim o connection pool é reaproveitado entre requests.
 
+## A mesma curva fora do HTTP — `async_retry`
+
+`RetryPolicy` descreve a espera: quantas tentativas, quanto tempo entre elas,
+com teto. Isso não é uma ideia de HTTP — um `connect` no RabbitMQ durante o
+boot, um dispatch de push e uma chamada a terceiro querem a mesma curva. Só o
+`HTTPClient` se importa com `retry_statuses`.
+
+`async_retry` aplica a curva a qualquer corrotina:
+
+```python
+from tempest_fastapi_sdk import RetryPolicy, async_retry
+
+BOOT: RetryPolicy = RetryPolicy(max_attempts=5, backoff_initial_seconds=0.5)
+
+
+@async_retry(BOOT, (ConnectionError, TimeoutError))
+async def connect_broker(url: str) -> None:
+    """Conecta ao broker, tolerando um servidor que ainda está subindo."""
+    raise ConnectionError(f"{url} indisponível")
+```
+
+Três decisões que um laço escrito à mão costuma errar, e que aqui são
+explícitas:
+
+* **O que conta como transiente é seu.** O segundo argumento é a tupla de
+  exceções que consome tentativa. Tudo fora dela propaga na hora, sem gastar
+  budget — um `TypeError` retentado três vezes é o mesmo bug, mais tarde.
+* **A última exceção propaga**, não um wrapper. Quem sabia reagir a um
+  `ConnectionError` permanente continua vendo um `ConnectionError`.
+* **Cancelamento é honrado.** O default `(Exception,)` deixa
+  `asyncio.CancelledError` passar, porque ela deriva de `BaseException` desde
+  o 3.8 — retentar uma task cancelada é brigar com o cancelamento.
+
+!!! warning "`max_attempts` conta a primeira tentativa"
+    `max_attempts=3` é uma tentativa e dois retries, com duas esperas. Zero é
+    recusado na decoração: rodaria a função nenhuma vez e devolveria `None` de
+    algo anotado para devolver `T`.
+
+
 ## Recap
 
 - `HTTPClient` = `httpx.AsyncClient` tipado + retry/backoff/circuit-breaker + X-Request-ID.

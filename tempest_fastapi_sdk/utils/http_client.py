@@ -27,7 +27,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -39,6 +39,7 @@ except ImportError:  # pragma: no cover - guarded by [http] extra
     _httpx_mod = None  # type: ignore[assignment]
 
 from tempest_fastapi_sdk.core.context import get_request_id
+from tempest_fastapi_sdk.utils.retry import RetryPolicy as RetryPolicy
 
 REQUEST_ID_HEADER: str = "X-Request-ID"
 """Outbound header carrying the inbound correlation id."""
@@ -73,46 +74,6 @@ class _BreakerState:
 
     consecutive_failures: int = 0
     opened_at: float = 0.0
-
-
-@dataclass(slots=True)
-class RetryPolicy:
-    """Bounded exponential backoff for retried requests.
-
-    The first retry sleeps for ``backoff_initial_seconds``; each
-    subsequent retry doubles the wait, capped at
-    ``backoff_max_seconds``. Total retries are bounded by
-    ``max_attempts`` (the first try counts).
-
-    Attributes:
-        max_attempts (int): Total tries including the first.
-            ``1`` disables retries.
-        backoff_initial_seconds (float): Sleep before the second
-            attempt.
-        backoff_max_seconds (float): Hard cap per sleep.
-        retry_statuses (frozenset[int]): HTTP status codes worth
-            retrying. Defaults to common 5xx; ``429`` is included
-            because it usually means "back off and try again".
-    """
-
-    max_attempts: int = 3
-    backoff_initial_seconds: float = 0.5
-    backoff_max_seconds: float = 8.0
-    retry_statuses: frozenset[int] = field(
-        default_factory=lambda: frozenset({429, 500, 502, 503, 504}),
-    )
-
-    def sleep_for(self, attempt: int) -> float:
-        """Compute the sleep between attempt ``n`` and attempt ``n+1``.
-
-        Args:
-            attempt (int): Zero-based retry attempt number.
-
-        Returns:
-            float: Seconds to wait before the next attempt.
-        """
-        wait: float = self.backoff_initial_seconds * (2 ** max(0, attempt - 1))
-        return min(wait, self.backoff_max_seconds)
 
 
 class HTTPClient:

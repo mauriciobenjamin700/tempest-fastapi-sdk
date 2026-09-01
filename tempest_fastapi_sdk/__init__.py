@@ -644,6 +644,15 @@ from tempest_fastapi_sdk.checks import (
 )
 from tempest_fastapi_sdk.controllers import BaseController as BaseController
 from tempest_fastapi_sdk.core import (
+    DEFAULT_LOG_BACKUP_COUNT as DEFAULT_LOG_BACKUP_COUNT,
+)
+from tempest_fastapi_sdk.core import (
+    DEFAULT_LOG_MAX_BYTES as DEFAULT_LOG_MAX_BYTES,
+)
+from tempest_fastapi_sdk.core import (
+    HTTP_500_MARKER as HTTP_500_MARKER,
+)
+from tempest_fastapi_sdk.core import (
     BaseIntEnum as BaseIntEnum,
 )
 from tempest_fastapi_sdk.core import (
@@ -662,10 +671,16 @@ from tempest_fastapi_sdk.core import (
     configure_logging as configure_logging,
 )
 from tempest_fastapi_sdk.core import (
+    configure_root_once as configure_root_once,
+)
+from tempest_fastapi_sdk.core import (
     get_request_id as get_request_id,
 )
 from tempest_fastapi_sdk.core import (
     normalize_locale_tag as normalize_locale_tag,
+)
+from tempest_fastapi_sdk.core import (
+    reinitialize_logging as reinitialize_logging,
 )
 from tempest_fastapi_sdk.core import (
     request_id_ctx as request_id_ctx,
@@ -768,6 +783,12 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     F as F,
+)
+from tempest_fastapi_sdk.db import (
+    IntegrityFailure as IntegrityFailure,
+)
+from tempest_fastapi_sdk.db import (
+    IntegrityViolation as IntegrityViolation,
 )
 from tempest_fastapi_sdk.db import (
     LocaleColumnMixin as LocaleColumnMixin,
@@ -891,6 +912,9 @@ from tempest_fastapi_sdk.db import (
 )
 from tempest_fastapi_sdk.db import (
     on_signal as on_signal,
+)
+from tempest_fastapi_sdk.db import (
+    parse_integrity_error as parse_integrity_error,
 )
 from tempest_fastapi_sdk.db import (
     render_enum_types as render_enum_types,
@@ -1454,6 +1478,9 @@ from tempest_fastapi_sdk.utils import (
     UploadUtils as UploadUtils,
 )
 from tempest_fastapi_sdk.utils import (
+    async_retry as async_retry,
+)
+from tempest_fastapi_sdk.utils import (
     build_content_disposition as build_content_disposition,
 )
 from tempest_fastapi_sdk.utils import (
@@ -1747,12 +1774,15 @@ __all__: list[str] = [
     "DEFAULT_HONEYPOT_PATTERNS",
     "DEFAULT_LATENCY_BUCKETS",
     "DEFAULT_LOCALE",
+    "DEFAULT_LOG_BACKUP_COUNT",
+    "DEFAULT_LOG_MAX_BYTES",
     "DEFAULT_MAX_RECORDS_PER_FILE",
     "DEFAULT_SPA_CONTENT_SECURITY_POLICY",
     "DEFAULT_SPA_SECURITY_HEADERS",
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "ENUM_TYPE_SUFFIX",
     "HEARTBEAT_TIMEOUT_CODE",
+    "HTTP_500_MARKER",
     "HUNDRED",
     "IDEMPOTENCY_HEADER",
     "LOCALE_QUERY_PARAM",
@@ -1907,6 +1937,8 @@ __all__: list[str] = [
     "IdempotencyStore",
     "InheritedErrorCodeWarning",
     "Inline",
+    "IntegrityFailure",
+    "IntegrityViolation",
     "IntrospectionAuth",
     "InvalidFileTypeException",
     "InvalidTokenException",
@@ -2132,6 +2164,7 @@ __all__: list[str] = [
     "app_exception_handler",
     "apply_auth_cookies",
     "apply_cors",
+    "async_retry",
     "backfill_non_nullable_defaults",
     "build_content_disposition",
     "build_manifest_entries",
@@ -2145,6 +2178,7 @@ __all__: list[str] = [
     "coerce_flag",
     "compose_hooks",
     "configure_logging",
+    "configure_root_once",
     "conflict_exception",
     "declared_guards",
     "declared_raises",
@@ -2255,6 +2289,7 @@ __all__: list[str] = [
     "only_digits",
     "parse_accept_language",
     "parse_currency_br",
+    "parse_integrity_error",
     "parse_phone_br",
     "permission",
     "plan_by_header",
@@ -2264,6 +2299,7 @@ __all__: list[str] = [
     "region_choices",
     "register_check",
     "register_exception_handlers",
+    "reinitialize_logging",
     "render_entries_json",
     "render_entries_markdown",
     "render_enum_types",

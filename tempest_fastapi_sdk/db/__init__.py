@@ -74,6 +74,15 @@ from tempest_fastapi_sdk.db.explain import explain_queries as explain_queries
 from tempest_fastapi_sdk.db.expressions import F as F
 from tempest_fastapi_sdk.db.expressions import Q as Q
 from tempest_fastapi_sdk.db.expressions import WhereClause as WhereClause
+from tempest_fastapi_sdk.db.integrity import (
+    IntegrityFailure as IntegrityFailure,
+)
+from tempest_fastapi_sdk.db.integrity import (
+    IntegrityViolation as IntegrityViolation,
+)
+from tempest_fastapi_sdk.db.integrity import (
+    parse_integrity_error as parse_integrity_error,
+)
 from tempest_fastapi_sdk.db.migrations import AlembicHelper as AlembicHelper
 from tempest_fastapi_sdk.db.migrations import (
     AmbiguousBaseRevisionError as AmbiguousBaseRevisionError,
@@ -200,6 +209,8 @@ __all__: list[str] = [
     "ExplainDetail",
     "ExplainReport",
     "F",
+    "IntegrityFailure",
+    "IntegrityViolation",
     "LocaleColumnMixin",
     "MFAMixin",
     "NameMixin",
@@ -247,6 +258,7 @@ __all__: list[str] = [
     "make_web_authn_credential_model",
     "make_web_push_subscription_model",
     "on_signal",
+    "parse_integrity_error",
     "render_enum_types",
     "reorder_base_columns_first",
     "savepoint",

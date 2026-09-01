@@ -76,6 +76,65 @@ JSON output (single line — formatted here for readability):
 The middleware accepts a custom header name (`RequestIDMiddleware(app, header_name="X-Correlation-ID")`); the same header is echoed back on every response.
 
 
+## One handler set, not one per module
+
+`LogUtils(__name__)` is how the class reads, and how it gets used: one line at
+the top of every module. Since v0.280.0 it is also what the class does well.
+
+```python
+# src/services/user.py
+from tempest_fastapi_sdk import LogUtils
+
+logger: LogUtils = LogUtils(__name__)
+
+logger.info("User %s created", "u-1")
+```
+
+```python
+# src/services/payment.py
+from tempest_fastapi_sdk import LogUtils
+
+logger: LogUtils = LogUtils(__name__)
+
+logger.warning("Charge %s expired", "c-9")
+```
+
+Both modules write to the same files through the **same** handler set: the
+constructor configures the **root** logger, once per process, and binds
+`__name__` to it by propagation. The logger name still rides on every line
+(the `logger` field), so you still know who wrote what.
+
+!!! danger "Why this matters more than it looks"
+    Through v0.279.0 the constructor called
+    `configure_logging(logger_name=name)`, which sets `propagate = False` on
+    that logger and gives it handlers of its own. Measured:
+    **7 handlers per logger** (1 stdout + 6 files), so a service with 27
+    modules opened 27 stdout and 162 file handlers, all pointed at the same
+    six paths — and `RotatingFileHandler` does not coordinate
+    rollover across instances: when the file hits the ceiling several of them
+    try to roll the same path, and the result is lost records and interleaved
+    `.1`/`.2` backups.
+
+    Measured in a process with five instances: **7 handlers on the root**
+    (1 stdout + 6 files) and zero on each module logger.
+
+!!! warning "The first instance decides level and format"
+    "Once per process" has a consequence: the second call reconfigures
+    nothing, so `level=` and `json_output=` from the second one on are
+    ignored. That is what you want in a service — the bootstrap decides — but
+    it surprises in tests, where each case wants its own. Call
+    `reinitialize_logging()` between them.
+
+To isolate one logger on purpose — a subsystem whose stream you do not want
+merged — ask for the old shape:
+
+```python
+from tempest_fastapi_sdk import LogUtils
+
+audit: LogUtils = LogUtils("audit", log_dir="logs/audit", scope="logger")
+```
+
+
 ## Per-level files + isolated `500.log`
 
 **By default the SDK writes to stdout AND to `logs/`** (one JSON file per level) at the same time. Each file receives **only its own level** (exact match — an `ERROR` never lands in `warning.log`), so every severity becomes an isolated, greppable stream.
@@ -167,6 +226,99 @@ In the scaffold the directory comes from `LOG_DIR` (defaults to
 `"logs"`; set it empty to disable file logging). Add `logs/` to your
 `.gitignore`.
 
+The `LogSettings` mixin models the whole configuration, rotation included, and
+`logging_kwargs()` hands it over ready to splat — so the field-to-argument
+translation lives in one place instead of in a hand-written call where the two
+newest arguments are exactly the ones that get left out:
+
+```python
+from tempest_fastapi_sdk import configure_logging
+from tempest_fastapi_sdk.settings import LogSettings
+
+
+class Settings(LogSettings):
+    """The service's configuration."""
+
+
+config = Settings()
+configure_logging(**config.logging_kwargs())
+```
+
+| Variable | Default | What it decides |
+| --- | --- | --- |
+| `LOG_LEVEL` | `INFO` | Minimum level emitted. |
+| `LOG_JSON` | `True` | JSON on stdout (files are always JSON). |
+| `LOG_DIR` | `logs` | Directory for the files; empty disables file logging. |
+| `LOG_MAX_BYTES` | `10000000` | Size at which each file rotates; `0` disables rotation. |
+| `LOG_BACKUP_COUNT` | `5` | Generations kept per level. |
+
+The disk budget is `LOG_MAX_BYTES * (LOG_BACKUP_COUNT + 1)` per level, times
+the six files.
+
+
+## Reporting a 500 of your own — `error_500`
+
+The SDK's catch-all handler marks every unhandled exception with
+`http_500=True`, which is what `500.log` filters on. When **your** code detects
+a grave failure that never becomes an exception — a wallet credit that rolled
+back, a transfer stranded at the gateway — `error_500` puts the record in that
+same file:
+
+```python
+from tempest_fastapi_sdk import LogUtils
+
+logger: LogUtils = LogUtils(__name__)
+
+
+def settle(charge_id: str) -> None:
+    """Credit a wallet, escalating a rollback to the 500 stream."""
+    try:
+        raise RuntimeError("commit failed")
+    except RuntimeError:
+        logger.error_500(
+            "CRITICAL: wallet credit failed for charge %s",
+            charge_id,
+            charge_id=charge_id,
+        )
+```
+
+The record lands in `500.log` **and** in `error.log` — the isolated file exists
+so a grave failure is not buried, not to remove it from the level stream. The
+traceback rides along whenever one is being handled.
+
+!!! tip "`exc_info="auto"` for the call site that is sometimes in an `except`"
+    `logger.exception(...)` requires being inside an `except`; `exc_info=True`
+    outside one writes the useless `NoneType: None`. A helper called from both
+    places wants the third option:
+
+    ```python
+    from tempest_fastapi_sdk import LogUtils
+
+    logger: LogUtils = LogUtils(__name__)
+
+    logger.error("Failed to send to %s", "ana@x.com", exc_info="auto")
+    ```
+
+    The default stays `False`, so existing call sites do not change output.
+
+## After Alembic — `reinitialize_logging`
+
+`logging.config.fileConfig()` disables, by default, every logger that already
+existed. The `env.py` this SDK ships calls exactly that, so a migration run
+silences the application's own loggers for the rest of the process — records
+are dropped before any handler sees them, which looks like a logging
+configuration problem and is not one.
+
+```python
+from tempest_fastapi_sdk import reinitialize_logging
+
+reinitialize_logging()
+```
+
+Call it after any code that reconfigures Python's logging system. It re-enables
+the loggers and clears the "root already configured" latch, so the next
+`LogUtils(...)` installs handlers again.
+
 
 ## Reading logs over HTTP — `make_logs_router`
 
@@ -225,6 +377,53 @@ Query parameters:
     on every request, taking the worker down before it answered. Tune it with
     `make_logs_router(max_records_per_file=...)`; when the cap bites, a
     `WARNING` is logged naming the `source`.
+
+### Clearing — `DELETE /logs`
+
+The same router mounts the opposite verb, behind the same `X-Token`:
+
+```bash
+# Empty one level
+curl -X DELETE -H "X-Token: $TOKEN_SECRET" \
+  "http://localhost:8000/logs?source=info"
+
+# Empty everything, 500.log included
+curl -X DELETE -H "X-Token: $TOKEN_SECRET" \
+  "http://localhost:8000/logs"
+```
+
+The response names what it emptied:
+
+```json
+{"cleared": ["debug.log", "info.log", "warning.log", "error.log", "critical.log", "500.log"]}
+```
+
+!!! warning "`all` reaches `500.log` here; on the read, it does not"
+    It is the one place the two verbs disagree, and it is deliberate. Reading
+    `all` does **not** include `500.log` because every record in it is also in
+    `error.log` — the page would list the same record twice. Clearing `all`
+    **does** include it, because a clear that left the 500 stream behind is
+    the surprising outcome.
+
+!!! info "Truncates, never unlinks"
+    The handlers `configure_logging` installed hold an open descriptor on each
+    path. Removing the file would leave them writing to an inode nothing can
+    read back — the endpoint would look like it worked exactly once. A missing
+    file is created empty, so the post-condition is the same.
+
+Anything that needs the paths outside a route — an archiving job, a collector,
+a counter — uses the same resolver the router uses, instead of re-deriving the
+level-to-filename map:
+
+```python
+from pathlib import Path
+
+from tempest_fastapi_sdk.api.routers.logs import resolve_log_files
+
+paths: list[Path] = resolve_log_files("logs", "error")
+every: list[Path] = resolve_log_files("logs", "all", include_http_500=True)
+```
+
 
 !!! check "Recap"
     - `configure_logging(log_dir=...)` → stdout **+** one file per level.

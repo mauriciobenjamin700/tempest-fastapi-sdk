@@ -202,6 +202,38 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "TOKEN_EXPIRED": "Token expirado",
         "FILE_TOO_LARGE": "Arquivo muito grande",
         "INVALID_FILE_TYPE": "Tipo de arquivo inválido",
+        "OAUTH_ACCOUNT_INACTIVE": "Conta inativa",
+        "OAUTH_ACCOUNT_NOT_LINKED": ("Este provedor não está vinculado a esta conta"),
+        "OAUTH_AUDIENCE_UNVERIFIABLE": (
+            "Este provedor não permite verificar para qual aplicação o "
+            "token foi emitido"
+        ),
+        "OAUTH_CODE_MISSING": (
+            "O retorno do provedor não trouxe o código de autorização"
+        ),
+        "OAUTH_EMAIL_MISSING": "O provedor de identidade não informou um e-mail",
+        "OAUTH_EMAIL_TAKEN": (
+            "E-mail já cadastrado — entre com sua senha e vincule o "
+            "provedor nas configurações da conta"
+        ),
+        "OAUTH_EMAIL_UNVERIFIED": (
+            "O provedor de identidade não verificou este e-mail"
+        ),
+        "OAUTH_PROVIDER_DENIED": "O provedor não autorizou o login",
+        "OAUTH_PROVIDER_NOT_CONFIGURED": "Provedor OAuth desconhecido",
+        "OAUTH_REGISTRATION_DISABLED": (
+            "Esta conta não existe e o cadastro automático está desativado"
+        ),
+        "OAUTH_STATE_MISMATCH": (
+            "Divergência no state do OAuth — o retorno não foi iniciado "
+            "por este navegador"
+        ),
+        "OAUTH_TOKEN_AUDIENCE_MISMATCH": (
+            "O token apresentado foi emitido para outra aplicação"
+        ),
+        "OAUTH_TOKEN_REJECTED": (
+            "O provedor de identidade recusou o token apresentado"
+        ),
     },
     "en-US": {
         "INTERNAL_SERVER_ERROR": "Internal server error",
@@ -215,6 +247,30 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
         "TOKEN_EXPIRED": "Token expired",
         "FILE_TOO_LARGE": "File too large",
         "INVALID_FILE_TYPE": "Invalid file type",
+        "OAUTH_ACCOUNT_INACTIVE": "Account is not active",
+        "OAUTH_ACCOUNT_NOT_LINKED": "Provider is not linked to this account",
+        "OAUTH_AUDIENCE_UNVERIFIABLE": (
+            "This provider cannot verify who the token was issued to"
+        ),
+        "OAUTH_CODE_MISSING": "The callback carried no authorization code",
+        "OAUTH_EMAIL_MISSING": ("The identity provider returned no email address"),
+        "OAUTH_EMAIL_TAKEN": (
+            "Email already registered — sign in and link the provider "
+            "from your account settings"
+        ),
+        "OAUTH_EMAIL_UNVERIFIED": ("The identity provider did not verify this email"),
+        "OAUTH_PROVIDER_DENIED": "The provider did not authorize the login",
+        "OAUTH_PROVIDER_NOT_CONFIGURED": "Unknown OAuth provider",
+        "OAUTH_REGISTRATION_DISABLED": (
+            "This account does not exist and self-service registration is disabled"
+        ),
+        "OAUTH_STATE_MISMATCH": (
+            "OAuth state mismatch — the callback was not started by this browser"
+        ),
+        "OAUTH_TOKEN_AUDIENCE_MISMATCH": (
+            "The presented token was issued to a different application"
+        ),
+        "OAUTH_TOKEN_REJECTED": ("The identity provider rejected the presented token"),
     },
 }
 

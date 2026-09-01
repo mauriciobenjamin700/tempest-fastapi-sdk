@@ -135,6 +135,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
 ::: tempest_fastapi_sdk.db.user_oauth_account_model.BaseUserOAuthAccountModel
 ::: tempest_fastapi_sdk.db.user_oauth_account_model.make_user_oauth_account_model
 ::: tempest_fastapi_sdk.db.repository.BaseRepository
+::: tempest_fastapi_sdk.db.integrity.parse_integrity_error
+::: tempest_fastapi_sdk.db.integrity.IntegrityFailure
+::: tempest_fastapi_sdk.db.integrity.IntegrityViolation
 ::: tempest_fastapi_sdk.db.expressions.F
 ::: tempest_fastapi_sdk.db.expressions.Q
 ::: tempest_fastapi_sdk.db.expressions.build_filter_condition
@@ -685,8 +688,9 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.utils.storage_backends.LocalUploadStorage
 ::: tempest_fastapi_sdk.utils.storage_backends.MinIOUploadStorage
 ::: tempest_fastapi_sdk.utils.http_client.HTTPClient
-::: tempest_fastapi_sdk.utils.http_client.RetryPolicy
 ::: tempest_fastapi_sdk.utils.http_client.CircuitOpenError
+::: tempest_fastapi_sdk.utils.retry.RetryPolicy
+::: tempest_fastapi_sdk.utils.retry.async_retry
 ::: tempest_fastapi_sdk.api.oauth.GoogleOAuthClient
 ::: tempest_fastapi_sdk.api.oauth.GitHubOAuthClient
 ::: tempest_fastapi_sdk.api.oauth.OIDCProvider
@@ -698,6 +702,7 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.api.middlewares.cors.apply_cors
 ::: tempest_fastapi_sdk.api.routers.health.make_health_router
 ::: tempest_fastapi_sdk.api.routers.logs.make_logs_router
+::: tempest_fastapi_sdk.api.routers.logs.resolve_log_files
 ::: tempest_fastapi_sdk.api.routers.logs.DEFAULT_MAX_RECORDS_PER_FILE
 ::: tempest_fastapi_sdk.api.routers.logs.render_entries_markdown
 ::: tempest_fastapi_sdk.api.routers.logs.render_entries_json
@@ -881,6 +886,7 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.schemas.pagination.SyncFilterSchema
 ::: tempest_fastapi_sdk.schemas.pagination.SyncPaginationSchema
 ::: tempest_fastapi_sdk.schemas.logs.LogEntrySchema
+::: tempest_fastapi_sdk.schemas.logs.LogFilesClearedSchema
 ::: tempest_fastapi_sdk.schemas.errors.ErrorResponseSchema
 
 ---
@@ -1039,6 +1045,8 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.utils.file_store.FileStoreUtils
 ::: tempest_fastapi_sdk.utils.metrics.MetricsUtils
 ::: tempest_fastapi_sdk.utils.log.LogUtils
+::: tempest_fastapi_sdk.core.logging.configure_root_once
+::: tempest_fastapi_sdk.core.logging.reinitialize_logging
 ::: tempest_fastapi_sdk.utils.throttle.AttemptThrottle
 ::: tempest_fastapi_sdk.utils.locations.UF
 ::: tempest_fastapi_sdk.utils.locations.Region

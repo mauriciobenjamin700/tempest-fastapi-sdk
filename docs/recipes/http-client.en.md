@@ -99,6 +99,45 @@ async def call() -> None:
     `await client.aclose()` — so the connection pool is reused across
     requests.
 
+## The same curve outside HTTP — `async_retry`
+
+`RetryPolicy` describes the waiting: how many tries, how long between them,
+with a cap. That is not an HTTP idea — a RabbitMQ connect on boot, a push
+dispatch and a third-party call all want the same curve. Only `HTTPClient`
+cares about `retry_statuses`.
+
+`async_retry` applies the curve to any coroutine:
+
+```python
+from tempest_fastapi_sdk import RetryPolicy, async_retry
+
+BOOT: RetryPolicy = RetryPolicy(max_attempts=5, backoff_initial_seconds=0.5)
+
+
+@async_retry(BOOT, (ConnectionError, TimeoutError))
+async def connect_broker(url: str) -> None:
+    """Connect to the broker, tolerating a server still coming up."""
+    raise ConnectionError(f"{url} unavailable")
+```
+
+Three decisions a hand-written loop tends to get wrong, made explicit here:
+
+* **What counts as transient is yours.** The second argument is the tuple of
+  exceptions that consume an attempt. Anything outside it propagates
+  immediately without spending budget — a `TypeError` retried three times is
+  the same bug, later.
+* **The last exception propagates**, not a wrapper. A caller that knew how to
+  react to a permanent `ConnectionError` still sees a `ConnectionError`.
+* **Cancellation is honored.** The default `(Exception,)` lets
+  `asyncio.CancelledError` through, since it derives from `BaseException` as
+  of 3.8 — retrying a cancelled task fights the cancellation.
+
+!!! warning "`max_attempts` counts the first try"
+    `max_attempts=3` is one attempt plus two retries, with two waits. Zero is
+    refused at decoration time: it would run the callable zero times and
+    return `None` from something annotated to return `T`.
+
+
 ## Recap
 
 - `HTTPClient` = typed `httpx.AsyncClient` + retry/backoff/circuit-breaker + X-Request-ID.

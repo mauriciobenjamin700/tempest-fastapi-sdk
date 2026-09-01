@@ -4,10 +4,12 @@ import io
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 from tempest_fastapi_sdk import (
     LogUtils,
     clear_request_id,
+    reinitialize_logging,
     set_request_id,
 )
 
@@ -36,15 +38,51 @@ class TestStaticHelpers:
             clear_request_id(token)
 
 
+def _root_stream_handler() -> logging.StreamHandler[Any]:
+    """Return the stdout handler ``scope="root"`` installed on the root.
+
+    Since v0.280.0 the handlers live on the **root** logger and each
+    named logger propagates into them, so a test that wants to read what
+    was emitted swaps the stream here rather than on the instance's own
+    logger, which now has no handlers of its own.
+
+    Returns:
+        logging.StreamHandler[Any]: The root's stream handler.
+    """
+    handlers = [
+        handler
+        for handler in logging.getLogger().handlers
+        if isinstance(handler, logging.StreamHandler)
+    ]
+    assert handlers, "configure_root_once did not install a stream handler"
+    return handlers[0]
+
+
 class TestInstance:
     def _capture(self, level: str = "DEBUG") -> tuple[LogUtils, io.StringIO]:
+        """Build a fresh root-scoped logger and capture its stdout.
+
+        ``reinitialize_logging`` first because ``scope="root"``
+        configures the root logger **once** per process: without the
+        reset the second instance in a test session inherits the first
+        one's level and formatter, and a case that asks for ``INFO``
+        would silently run at whatever ran before it.
+
+        Args:
+            level (str): Minimum level for this instance.
+
+        Returns:
+            tuple[LogUtils, io.StringIO]: The facade and the buffer its
+            records are written to.
+        """
+        reinitialize_logging()
         util = LogUtils(
             name=f"tempest.lu.inst.{level}",
             level=level,
             file_output=False,
         )
         buf = io.StringIO()
-        util.logger.handlers[0].stream = buf  # type: ignore[attr-defined]
+        _root_stream_handler().stream = buf
         return util, buf
 
     def test_info_emits_json_with_fields(self) -> None:
@@ -91,6 +129,7 @@ class TestInstance:
         assert "RuntimeError: kaboom" in payload["exception"]
 
     def test_text_mode(self) -> None:
+        reinitialize_logging()
         util = LogUtils(
             name="tempest.lu.text",
             level="INFO",
@@ -98,7 +137,7 @@ class TestInstance:
             file_output=False,
         )
         buf = io.StringIO()
-        util.logger.handlers[0].stream = buf  # type: ignore[attr-defined]
+        _root_stream_handler().stream = buf
         util.info("plain")
         line = buf.getvalue().strip()
         assert "INFO" in line
@@ -120,9 +159,15 @@ class TestPercentStyleAndStacklevel:
     """The two things that kept an existing service on its own facade."""
 
     def _capture(self) -> tuple[LogUtils, io.StringIO]:
+        """Build a fresh root-scoped logger and capture its stdout.
+
+        Returns:
+            tuple[LogUtils, io.StringIO]: The facade and its buffer.
+        """
+        reinitialize_logging()
         util = LogUtils(name="tempest.lu.percent", level="DEBUG", file_output=False)
         buf = io.StringIO()
-        util.logger.handlers[0].stream = buf  # type: ignore[attr-defined]
+        _root_stream_handler().stream = buf
         return util, buf
 
     def test_percent_style_arguments_are_interpolated(self) -> None:
@@ -191,3 +236,179 @@ class TestPercentStyleAndStacklevel:
         payload = json.loads(buf.getvalue().strip())
         assert payload["message"] == "reconcile of order-1042 failed"
         assert "RuntimeError: boom" in payload["exception"]
+
+
+class TestRootScope:
+    """``scope="root"`` is what makes ``LogUtils(__name__)`` per module safe."""
+
+    def test_every_module_shares_one_handler_set(self, tmp_path: Path) -> None:
+        """N modules must not mean N handler sets on the same files.
+
+        The pre-0.280.0 default gave each named logger its own handlers
+        with ``propagate = False``. A service with 27 modules therefore
+        opened 27 stdout handlers and 162 file handlers across six
+        paths, and that many ``RotatingFileHandler`` instances racing to
+        roll one file over lose records.
+        """
+        reinitialize_logging()
+        names = [f"tempest.scope.mod{index}" for index in range(5)]
+        for name in names:
+            LogUtils(name, log_dir=tmp_path)
+
+        root_handlers = len(logging.getLogger().handlers)
+        for name in names:
+            module_logger = logging.getLogger(name)
+            assert module_logger.handlers == []
+            assert module_logger.propagate is True
+
+        assert root_handlers == len(logging.getLogger().handlers)
+
+    def test_records_from_every_module_reach_the_files(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Sharing the root's handlers must not cost any record."""
+        reinitialize_logging()
+        LogUtils("tempest.scope.a", log_dir=tmp_path).info("from a")
+        LogUtils("tempest.scope.b", log_dir=tmp_path).info("from b")
+
+        messages = [
+            json.loads(line)["message"]
+            for line in (tmp_path / "info.log").read_text().splitlines()
+        ]
+        assert "from a" in messages
+        assert "from b" in messages
+
+    def test_logger_scope_keeps_the_old_isolation(self, tmp_path: Path) -> None:
+        """``scope="logger"`` restores the pre-0.280.0 shape."""
+        reinitialize_logging()
+        util = LogUtils(
+            "tempest.scope.isolated",
+            log_dir=tmp_path,
+            scope="logger",
+        )
+
+        assert util.logger.handlers
+        assert util.logger.propagate is False
+
+
+class TestError500:
+    """Writing to the SDK's own ``500.log`` without importing its marker."""
+
+    def test_lands_in_the_isolated_file(self, tmp_path: Path) -> None:
+        """The whole point: a service can reach ``500.log``."""
+        reinitialize_logging()
+        LogUtils("tempest.e5.a", log_dir=tmp_path).error_500("grave")
+
+        payload = json.loads((tmp_path / "500.log").read_text().strip())
+        assert payload["message"] == "grave"
+        assert payload["http_500"] is True
+
+    def test_also_lands_in_error_log(self, tmp_path: Path) -> None:
+        """The isolated file exists so 500s are not buried, not to move them."""
+        reinitialize_logging()
+        LogUtils("tempest.e5.b", log_dir=tmp_path).error_500("grave")
+
+        assert "grave" in (tmp_path / "error.log").read_text()
+
+    def test_a_plain_error_is_not_flagged(self, tmp_path: Path) -> None:
+        """Only ``error_500`` reaches the isolated stream."""
+        reinitialize_logging()
+        LogUtils("tempest.e5.c", log_dir=tmp_path).error("ordinary")
+
+        assert (tmp_path / "500.log").read_text() == ""
+
+    def test_attaches_the_traceback_being_handled(self, tmp_path: Path) -> None:
+        """A 500 that reports no traceback is the case the file exists for."""
+        reinitialize_logging()
+        util = LogUtils("tempest.e5.d", log_dir=tmp_path)
+        try:
+            raise RuntimeError("kaboom")
+        except RuntimeError:
+            util.error_500("handler failed")
+
+        payload = json.loads((tmp_path / "500.log").read_text().strip())
+        assert "RuntimeError: kaboom" in payload["exception"]
+
+    def test_carries_structured_fields(self, tmp_path: Path) -> None:
+        """``**fields`` keep working alongside the marker."""
+        reinitialize_logging()
+        LogUtils("tempest.e5.e", log_dir=tmp_path).error_500(
+            "failed",
+            route="/pay",
+        )
+
+        payload = json.loads((tmp_path / "500.log").read_text().strip())
+        assert payload["route"] == "/pay"
+
+
+class TestErrorExcInfoAuto:
+    """``exc_info="auto"`` serves a call site that is sometimes in an except."""
+
+    def test_attaches_inside_an_except(self, tmp_path: Path) -> None:
+        """Inside an ``except`` the traceback is worth having."""
+        reinitialize_logging()
+        util = LogUtils("tempest.auto.a", log_dir=tmp_path)
+        try:
+            raise ValueError("boom")
+        except ValueError:
+            util.error("failed: %s", "boom", exc_info="auto")
+
+        payload = json.loads((tmp_path / "error.log").read_text().strip())
+        assert "ValueError: boom" in payload["exception"]
+
+    def test_omits_it_outside_an_except(self, tmp_path: Path) -> None:
+        """``True`` here would write the useless ``NoneType: None``."""
+        reinitialize_logging()
+        LogUtils("tempest.auto.b", log_dir=tmp_path).error(
+            "no exception here",
+            exc_info="auto",
+        )
+
+        payload = json.loads((tmp_path / "error.log").read_text().strip())
+        assert "exception" not in payload
+
+    def test_default_stays_off(self, tmp_path: Path) -> None:
+        """Adding the option must not change what existing callers get."""
+        reinitialize_logging()
+        util = LogUtils("tempest.auto.c", log_dir=tmp_path)
+        try:
+            raise ValueError("boom")
+        except ValueError:
+            util.error("failed")
+
+        payload = json.loads((tmp_path / "error.log").read_text().strip())
+        assert "exception" not in payload
+
+
+class TestReinitializeLogging:
+    """Undoing what ``fileConfig(disable_existing_loggers=True)`` does."""
+
+    def test_re_enables_disabled_loggers(self, tmp_path: Path) -> None:
+        """Alembic's ``env.py`` silences the application's own loggers.
+
+        The records are dropped before any handler sees them, which
+        looks like a logging configuration problem and is not one.
+        """
+        reinitialize_logging()
+        util = LogUtils("tempest.reinit.a", log_dir=tmp_path)
+        util.logger.disabled = True
+        util.info("swallowed")
+        assert (tmp_path / "info.log").read_text() == ""
+
+        reinitialize_logging()
+        LogUtils("tempest.reinit.a", log_dir=tmp_path).info("heard")
+
+        assert "heard" in (tmp_path / "info.log").read_text()
+
+    def test_clears_the_configure_once_latch(self, tmp_path: Path) -> None:
+        """Without clearing it, the re-attached handlers never come back."""
+        reinitialize_logging()
+        LogUtils("tempest.reinit.b", log_dir=tmp_path)
+        for handler in list(logging.getLogger().handlers):
+            logging.getLogger().removeHandler(handler)
+
+        reinitialize_logging()
+        LogUtils("tempest.reinit.b", log_dir=tmp_path)
+
+        assert logging.getLogger().handlers

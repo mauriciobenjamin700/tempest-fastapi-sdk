@@ -1,8 +1,10 @@
 """Tests for tempest_fastapi_sdk.settings.mixins."""
 
+import logging
 import os
 import subprocess
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,8 @@ from pydantic import ValidationError
 from pydantic_settings import SettingsConfigDict
 
 from tempest_fastapi_sdk import (
+    DEFAULT_LOG_BACKUP_COUNT,
+    DEFAULT_LOG_MAX_BYTES,
     BaseAppSettings,
     CORSSettings,
     DatabaseSettings,
@@ -26,6 +30,7 @@ from tempest_fastapi_sdk import (
     TokenSettings,
     UploadSettings,
     WebPushSettings,
+    configure_logging,
 )
 
 
@@ -536,3 +541,96 @@ class TestOAuthSettings:
 
         assert client.provider_name == "google"
         assert client.redirect_uri == settings.oauth_redirect_uri("google")
+
+
+class TestLogRotationSettings:
+    """Rotation is configurable through the environment, like every other knob.
+
+    ``configure_logging`` has taken ``max_bytes`` / ``backup_count``
+    since rotation landed, and ``LogSettings`` modelled neither — so the
+    one knob that decides how much disk a long-lived host gives to logs
+    was the one an operator could not set. Wiring the call by hand is
+    where those two get left out: they are the newest arguments, and a
+    missing one degrades to a default rather than to an error.
+    """
+
+    def test_defaults_match_the_logging_defaults(self) -> None:
+        """A mixin default that drifts from the function's is a silent change."""
+        settings = LogSettings()
+
+        assert settings.LOG_MAX_BYTES == DEFAULT_LOG_MAX_BYTES
+        assert settings.LOG_BACKUP_COUNT == DEFAULT_LOG_BACKUP_COUNT
+
+    def test_zero_is_allowed_because_it_means_no_rotation(self) -> None:
+        """A host with ``logrotate`` owns retention; the SDK must step aside."""
+        settings = LogSettings(LOG_MAX_BYTES=0, LOG_BACKUP_COUNT=0)
+
+        assert settings.LOG_MAX_BYTES == 0
+        assert settings.LOG_BACKUP_COUNT == 0
+
+    def test_negative_values_are_refused(self) -> None:
+        """``maxBytes=-1`` is not "unlimited" to ``RotatingFileHandler``."""
+        with pytest.raises(ValidationError):
+            LogSettings(LOG_MAX_BYTES=-1)
+
+    def test_kwargs_carry_every_field_configure_logging_reads(self) -> None:
+        settings = LogSettings(
+            LOG_LEVEL="DEBUG",
+            LOG_JSON=False,
+            LOG_DIR="/var/log/app",
+            LOG_MAX_BYTES=5_000_000,
+            LOG_BACKUP_COUNT=3,
+        )
+
+        assert settings.logging_kwargs() == {
+            "level": "DEBUG",
+            "json_output": False,
+            "log_dir": "/var/log/app",
+            "max_bytes": 5_000_000,
+            "backup_count": 3,
+        }
+
+    def test_the_kwargs_actually_splat(self, tmp_path: Path) -> None:
+        """The mapping is only worth having if the splat works.
+
+        Asserted on the handler the call installed, not on the returned
+        dictionary: a key the function does not accept would raise here
+        and pass a shape comparison.
+        """
+        settings = LogSettings(
+            LOG_DIR=str(tmp_path),
+            LOG_MAX_BYTES=1_234_567,
+            LOG_BACKUP_COUNT=2,
+        )
+
+        logger = configure_logging(
+            logger_name="tempest.settings.rotation",
+            **settings.logging_kwargs(),
+        )
+
+        rotating = [
+            handler
+            for handler in logger.handlers
+            if isinstance(handler, RotatingFileHandler)
+        ]
+        assert rotating
+        for handler in rotating:
+            assert handler.maxBytes == 1_234_567
+            assert handler.backupCount == 2
+
+    def test_an_empty_log_dir_still_disables_file_output(
+        self,
+    ) -> None:
+        """``LOG_DIR=""`` is the documented way to go stdout-only."""
+        settings = LogSettings(LOG_DIR="")
+
+        logger = configure_logging(
+            logger_name="tempest.settings.nofiles",
+            **settings.logging_kwargs(),
+        )
+
+        assert not [
+            handler
+            for handler in logger.handlers
+            if isinstance(handler, logging.FileHandler)
+        ]

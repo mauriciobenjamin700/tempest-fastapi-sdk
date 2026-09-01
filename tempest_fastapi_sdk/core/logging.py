@@ -419,7 +419,69 @@ def configure_logging(
                 logger.addHandler(file_handler)
 
     logger.propagate = False
+    if logger_name is None:
+        global _root_configured
+        _root_configured = True
     return logger
+
+
+_root_configured: bool = False
+"""Whether :func:`configure_root_once` has already run in this process."""
+
+
+def configure_root_once(**kwargs: Any) -> logging.Logger:
+    """Configure the root logger the first time, and only the first time.
+
+    The idempotent entry point for the common shape: one handler set on
+    the root logger, every module logger propagating into it. Calling
+    :func:`configure_logging` per module instead gives each of them its
+    own handler set with ``propagate = False``, which for a service with
+    N modules means N stdout handlers plus ``N * 6`` file handlers open
+    on the **same** six paths — and that many ``RotatingFileHandler``
+    instances racing to roll one file over lose records and interleave
+    the numbered backups.
+
+    Args:
+        **kwargs (Any): Forwarded to :func:`configure_logging` on the
+            first call, ignored afterwards. ``logger_name`` is not
+            accepted — this function is about the root logger.
+
+    Returns:
+        logging.Logger: The root logger, configured.
+
+    Raises:
+        TypeError: When ``logger_name`` is passed.
+    """
+    if "logger_name" in kwargs:
+        raise TypeError(
+            "configure_root_once() configures the root logger; "
+            "pass logger_name to configure_logging() instead",
+        )
+    if _root_configured:
+        return logging.getLogger()
+    return configure_logging(logger_name=None, **kwargs)
+
+
+def reinitialize_logging() -> None:
+    """Re-enable every logger and clear the configure-once latch.
+
+    ``logging.config.fileConfig()`` defaults to
+    ``disable_existing_loggers=True``, which sets ``disabled = True`` on
+    every logger that already existed. Alembic calls it from the
+    ``env.py`` this SDK ships, so a migration run silences the
+    application's own loggers for the rest of the process — the records
+    are dropped before any handler sees them, which looks like a logging
+    configuration problem and is not one.
+
+    Call this after any code that reconfigures Python's logging system.
+    The next :func:`configure_root_once` will re-attach handlers.
+    """
+    global _root_configured
+    _root_configured = False
+
+    for existing in logging.Logger.manager.loggerDict.values():
+        if isinstance(existing, logging.Logger):
+            existing.disabled = False
 
 
 __all__: list[str] = [
@@ -430,4 +492,6 @@ __all__: list[str] = [
     "LEVEL_LOG_FILES",
     "JSONFormatter",
     "configure_logging",
+    "configure_root_once",
+    "reinitialize_logging",
 ]

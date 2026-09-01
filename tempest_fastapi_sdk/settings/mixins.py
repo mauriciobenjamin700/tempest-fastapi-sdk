@@ -38,6 +38,10 @@ from typing import Any, Literal
 
 from pydantic import Field, field_validator
 
+from tempest_fastapi_sdk.core.logging import (
+    DEFAULT_LOG_BACKUP_COUNT,
+    DEFAULT_LOG_MAX_BYTES,
+)
 from tempest_fastapi_sdk.settings.base import BaseAppSettings
 
 
@@ -103,6 +107,10 @@ class LogSettings(BaseAppSettings):
         LOG_JSON (bool): Emit stdout logs as JSON. Default: ``True``.
         LOG_DIR (str): Directory for per-level + ``500.log`` files; empty
             disables file logging. Default: ``"logs"``.
+        LOG_MAX_BYTES (int): Size at which each log file rotates; ``0``
+            disables rotation. Default: ``10_000_000``.
+        LOG_BACKUP_COUNT (int): Rotated files kept per level.
+            Default: ``5``.
     """
 
     LOG_LEVEL: str = Field(
@@ -129,6 +137,54 @@ class LogSettings(BaseAppSettings):
         ),
         examples=["logs", "/var/log/myapp", ""],
     )
+    LOG_MAX_BYTES: int = Field(
+        default=DEFAULT_LOG_MAX_BYTES,
+        ge=0,
+        title="Log rotation size",
+        description=(
+            "Size in bytes at which each per-level file rotates. ``0`` "
+            "turns rotation off, leaving plain ``FileHandler``s for a "
+            "host where ``logrotate`` or a sidecar owns retention. "
+            "Rotating by default is the safe end of that choice: the "
+            "service that never thought about log growth is exactly the "
+            "one that fills the disk."
+        ),
+        examples=[10_000_000, 5_000_000, 0],
+    )
+    LOG_BACKUP_COUNT: int = Field(
+        default=DEFAULT_LOG_BACKUP_COUNT,
+        ge=0,
+        title="Rotated files kept per level",
+        description=(
+            "How many rotated files to keep for each level. The disk "
+            "budget is ``LOG_MAX_BYTES * (LOG_BACKUP_COUNT + 1)`` per "
+            "level, times the six files this SDK writes."
+        ),
+        examples=[5, 3, 0],
+    )
+
+    def logging_kwargs(self) -> dict[str, Any]:
+        """Map these settings onto :func:`configure_logging` kwargs.
+
+        Without this, a service wires the call by hand and the two
+        rotation knobs are the ones that get left out — they are the
+        newest, and a missing one degrades to a default rather than to
+        an error.
+
+        ``log_dir`` is passed through as-is, including the empty string,
+        which :func:`configure_logging` reads as "no file logging".
+
+        Returns:
+            dict[str, Any]: Keyword arguments ready to splat into
+            ``configure_logging(**settings.logging_kwargs())``.
+        """
+        return {
+            "level": self.LOG_LEVEL,
+            "json_output": self.LOG_JSON,
+            "log_dir": self.LOG_DIR,
+            "max_bytes": self.LOG_MAX_BYTES,
+            "backup_count": self.LOG_BACKUP_COUNT,
+        }
 
 
 class DatabaseSettings(BaseAppSettings):
