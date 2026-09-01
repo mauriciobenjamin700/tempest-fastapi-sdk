@@ -9,7 +9,11 @@ from tempest_fastapi_sdk import (
     GitHubOAuthClient,
     GoogleOAuthClient,
     HTTPClient,
+    OAuthAudienceUnverifiableException,
     OAuthError,
+    OAuthTokenAudienceMismatchException,
+    OAuthTokenRejectedException,
+    OAuthTokens,
     OIDCProvider,
     generate_oauth_state,
 )
@@ -318,5 +322,175 @@ class TestEmailVerification:
             )
             assert user.email == "ana@example.com"
             assert user.email_verified is None
+        finally:
+            await client.aclose()
+
+
+class TestVerifyTokenAudience:
+    """The check that separates "consented to us" from "consented to someone".
+
+    Only the token-in-hand endpoint needs it, and it is the entire
+    reason that endpoint is safe: a provider's userinfo answers *whose*
+    token this is, which any app that got the victim through a consent
+    screen can also obtain. Comparing the audience the provider reports
+    against our own ``client_id`` is what stops that token from becoming
+    a session here.
+    """
+
+    async def test_google_accepts_a_token_minted_for_us(self) -> None:
+        captured: dict[str, str] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["url"] = str(request.url)
+            return httpx.Response(200, json={"aud": "id", "azp": "id"})
+
+        client = _client_with_handler(GoogleOAuthClient, handler)
+        try:
+            await client.verify_token_audience(
+                OAuthTokens(access_token="ya29.x", token_type="Bearer"),
+            )
+        finally:
+            await client.aclose()
+
+        assert "oauth2.googleapis.com/tokeninfo" in captured["url"]
+        assert "access_token=ya29.x" in captured["url"]
+
+    async def test_google_accepts_when_only_azp_is_ours(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"aud": "other-web-client", "azp": "id"},
+            )
+
+        client = _client_with_handler(GoogleOAuthClient, handler)
+        try:
+            await client.verify_token_audience(
+                OAuthTokens(access_token="ya29.x", token_type="Bearer"),
+            )
+        finally:
+            await client.aclose()
+
+    async def test_a_token_minted_for_another_app_is_refused(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"aud": "attacker-app", "azp": "attacker-app"},
+            )
+
+        client = _client_with_handler(GoogleOAuthClient, handler)
+        try:
+            with pytest.raises(OAuthTokenAudienceMismatchException) as caught:
+                await client.verify_token_audience(
+                    OAuthTokens(access_token="ya29.x", token_type="Bearer"),
+                )
+        finally:
+            await client.aclose()
+
+        assert caught.value.code == "OAUTH_TOKEN_AUDIENCE_MISMATCH"
+        assert caught.value.status_code == 401
+
+    async def test_a_list_valued_aud_still_matches(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"aud": ["other", "id"]})
+
+        client = _client_with_handler(GoogleOAuthClient, handler)
+        try:
+            await client.verify_token_audience(
+                OAuthTokens(access_token="ya29.x", token_type="Bearer"),
+            )
+        finally:
+            await client.aclose()
+
+    async def test_a_rejected_token_is_not_an_audience_question(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"error": "invalid_token"})
+
+        client = _client_with_handler(GoogleOAuthClient, handler)
+        try:
+            with pytest.raises(OAuthTokenRejectedException) as caught:
+                await client.verify_token_audience(
+                    OAuthTokens(access_token="expired", token_type="Bearer"),
+                )
+        finally:
+            await client.aclose()
+
+        assert caught.value.code == "OAUTH_TOKEN_REJECTED"
+
+    async def test_rfc7662_inactive_is_a_rejection(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"active": False, "client_id": "id"})
+
+        http_client = HTTPClient(failure_threshold=0)
+        http_client._client = httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+        )
+        client = OIDCProvider(
+            client_id="id",
+            client_secret="secret",
+            redirect_uri="https://app/cb",
+            authorize_url="https://idp/authorize",
+            token_url="https://idp/token",
+            userinfo_url="https://idp/userinfo",
+            tokeninfo_url="https://idp/introspect",
+            http_client=http_client,
+        )
+        try:
+            with pytest.raises(OAuthTokenRejectedException):
+                await client.verify_token_audience(
+                    OAuthTokens(access_token="revoked", token_type="Bearer"),
+                )
+        finally:
+            await client.aclose()
+
+    async def test_a_provider_with_no_introspection_refuses_instead(
+        self,
+    ) -> None:
+        client = OIDCProvider(
+            client_id="id",
+            client_secret="secret",
+            redirect_uri="https://app/cb",
+            authorize_url="https://idp/authorize",
+            token_url="https://idp/token",
+            userinfo_url="https://idp/userinfo",
+        )
+        try:
+            with pytest.raises(OAuthAudienceUnverifiableException) as caught:
+                await client.verify_token_audience(
+                    OAuthTokens(access_token="x", token_type="Bearer"),
+                )
+        finally:
+            await client.aclose()
+
+        assert caught.value.status_code == 501
+
+    async def test_github_asks_the_app_token_endpoint(self) -> None:
+        captured: dict[str, str] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["url"] = str(request.url)
+            captured["auth"] = request.headers.get("authorization", "")
+            return httpx.Response(200, json={"app": {"client_id": "id"}})
+
+        client = _client_with_handler(GitHubOAuthClient, handler)
+        try:
+            await client.verify_token_audience(
+                OAuthTokens(access_token="gho_x", token_type="Bearer"),
+            )
+        finally:
+            await client.aclose()
+
+        assert captured["url"] == "https://api.github.com/applications/id/token"
+        assert captured["auth"].startswith("Basic ")
+
+    async def test_github_404_means_another_app_minted_it(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, json={"message": "Not Found"})
+
+        client = _client_with_handler(GitHubOAuthClient, handler)
+        try:
+            with pytest.raises(OAuthTokenAudienceMismatchException):
+                await client.verify_token_audience(
+                    OAuthTokens(access_token="gho_x", token_type="Bearer"),
+                )
         finally:
             await client.aclose()

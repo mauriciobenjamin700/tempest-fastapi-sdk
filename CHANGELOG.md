@@ -5,6 +5,78 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.278.0] — 2026-09-01
+
+Duas metades de auth que todo serviço reescrevia por fora do SDK, e a falha de
+segurança que uma delas carregava em toda reimplementação conhecida.
+
+### Added
+
+- **`signup_schema=` e `on_signup=` no `make_auth_router`.** Quase nenhum
+  produto tem uma conta que é só e-mail, senha e nome — tem o telefone, o
+  documento, a flag que separa cliente de produtor. A saída até aqui era
+  desligar `POST /auth/signup` e escrever a rota na mão, que então
+  reconstruía a política de senha, o 409 de duplicata, o ramo de ativação e a
+  emissão do par JWT. Agora o corpo é uma subclasse de `SignupSchema` (visível
+  no `/openapi.json`, não só no handler) e o hook escreve as colunas novas
+  **dentro da transação do insert**, antes do commit: hook que levanta desfaz a
+  conta junto, em vez de deixar uma linha com e-mail e senha e nenhum dos
+  campos que a tornam usável — invisível no produto, mas ocupando o e-mail
+  `UNIQUE` e respondendo ao reset de senha. Um `signup_schema` que não herda de
+  `SignupSchema` falha na montagem do router, não no primeiro request.
+
+- **`POST /auth/oauth/{provider}/token` — login social para cliente sem
+  navegador.** O app nativo roda o SDK do provedor no dispositivo e termina com
+  um access token na mão; não há navegador para o `/login` → consentimento →
+  `/callback`. A rota nova recebe esse token **no corpo** (nunca no path: URL
+  atravessa log de acesso, histórico e `Referer`) e devolve a mesma sessão do
+  callback — mesmos claims, mesma família de rotação, mesmo `/auth/logout`. Só
+  monta com `AUTH_OAUTH_ENABLED`, junto das outras quatro.
+
+### Security
+
+- **A audiência do token passou a ser conferida, e é o que torna a rota acima
+  segura.** O `userinfo` de um provedor responde de **quem** é o token, nunca
+  para **qual aplicação** ele foi emitido — e no fluxo token-in-hand quem
+  apresenta o token é quem está chamando. Sem a checagem, o ataque é de três
+  passos e nenhuma senha: o atacante publica um app qualquer, pede consentimento
+  `email profile`, a vítima aceita, e o token resultante — que descreve a
+  vítima — vira sessão da vítima neste serviço. Toda reimplementação local
+  desse endpoint que conhecemos parava no `userinfo`.
+
+  A rota agora pergunta ao provedor para qual `client_id` o token foi emitido,
+  **antes** de ler qualquer linha: `GoogleOAuthClient` usa o `tokeninfo`
+  (comparando `aud` e `azp`), `GitHubOAuthClient` usa
+  `POST /applications/{client_id}/token` com Basic auth, e `OIDCProvider` usa o
+  endpoint de introspection passado em `tokeninfo_url=`. Token de outro app é
+  **401** `OAUTH_TOKEN_AUDIENCE_MISMATCH`; token recusado pelo provedor é
+  **401** `OAUTH_TOKEN_REJECTED`.
+
+  **Fail closed:** um client registrado que não implementa
+  `verify_token_audience` faz a rota responder **501**
+  `OAUTH_AUDIENCE_UNVERIFIABLE` sem sequer buscar o perfil. Aceitar seria
+  exatamente o furo. O fluxo de redirect desse mesmo client continua
+  funcionando — lá o token foi trocado por este serviço, a partir de um `code`
+  que este serviço pediu.
+
+### Changed
+
+- `OAuthClient` **não** ganhou método novo: a checagem mora no protocolo
+  separado `OAuthAudienceVerifier`, então client escrito contra versão anterior
+  segue satisfazendo o contrato do fluxo de redirect. Ele só não serve para o
+  token-in-hand, e é recusado explicitamente em vez de silenciosamente confiado.
+- `OIDCProvider.__init__` aceita `tokeninfo_url=` (default `None`).
+
+### Docs
+
+- `recipes/auth-flow` ganha *Conta que nasce com mais que e-mail e senha*, com
+  o par `signup_schema` + `on_signup` e o `!!! danger` explicando por que o hook
+  roda antes do commit.
+- `recipes/oauth` passa de quatro para cinco rotas e ganha *Cliente sem
+  navegador: o fluxo token-in-hand*, com o ataque de substituição de token
+  escrito passo a passo e a tabela de como cada client confere a audiência. As
+  duas páginas nas duas línguas.
+
 ## [0.277.0] — 2026-08-30
 
 Uma auditoria de documentação, feita para ver se tinha ficado algo pendente.

@@ -1245,6 +1245,52 @@ class OAuthUnlinkSchema(BaseSchema):
     )
 
 
+class OAuthTokenLoginSchema(BaseSchema):
+    """Request body for ``POST /auth/oauth/{provider}/token``.
+
+    The token-in-hand half of social login. A native mobile client
+    completes the provider's own SDK flow on the device and ends up
+    holding an access token, with no browser to redirect through the
+    ``/login`` → consent → ``/callback`` dance. It posts that token
+    here and gets back the same session the redirect flow issues.
+
+    The token travels in the **body**, never in the path or the query
+    string: a URL is written to the access log, the browser history and
+    every ``Referer`` header on the way, and this value is a live
+    credential at the provider.
+
+    Attributes:
+        access_token (str): The provider's OAuth2 access token, as the
+            device SDK returned it. Exchanged for the profile through
+            the registered client's ``fetch_user``, so a forged or
+            expired one fails at the provider rather than here.
+        token_type (str): Scheme the ``Authorization`` header will use
+            when the SDK calls the provider's userinfo endpoint.
+            Defaults to ``Bearer``, which is what every provider the SDK
+            ships a client for expects.
+    """
+
+    access_token: str = Field(
+        min_length=1,
+        title="Provider access token",
+        description=(
+            "The OAuth2 access token the device SDK obtained from the "
+            "provider. Sent in the body — never in the URL — because it "
+            "is a live credential."
+        ),
+        examples=["ya29.a0AfH6SM..."],
+    )
+    token_type: str = Field(
+        default="Bearer",
+        min_length=1,
+        title="Token type",
+        description=(
+            "Authorization scheme used when calling the provider's userinfo endpoint."
+        ),
+        examples=["Bearer"],
+    )
+
+
 __all__: list[str] = [
     "ActivationResponseSchema",
     "ActivationToken",
@@ -1263,6 +1309,7 @@ __all__: list[str] = [
     "MFAEnrollResponseSchema",
     "MFAVerifySchema",
     "OAuthAccountSchema",
+    "OAuthTokenLoginSchema",
     "OAuthUnlinkSchema",
     "PasswordChangeSchema",
     "PasswordResetConfirmSchema",

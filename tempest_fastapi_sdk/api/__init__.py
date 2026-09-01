@@ -205,6 +205,9 @@ from tempest_fastapi_sdk.api.oauth import (
     GoogleOAuthClient as GoogleOAuthClient,
 )
 from tempest_fastapi_sdk.api.oauth import (
+    OAuthAudienceVerifier as OAuthAudienceVerifier,
+)
+from tempest_fastapi_sdk.api.oauth import (
     OAuthClient as OAuthClient,
 )
 from tempest_fastapi_sdk.api.oauth import (
@@ -335,6 +338,7 @@ __all__: list[str] = [
     "MemoryQuotaStore",
     "MemoryRateLimitStore",
     "MemoryResponseCacheStore",
+    "OAuthAudienceVerifier",
     "OAuthClient",
     "OAuthError",
     "OAuthTokens",

@@ -508,6 +508,9 @@ from tempest_fastapi_sdk.auth import (
     RefreshSchema as RefreshSchema,
 )
 from tempest_fastapi_sdk.auth import (
+    SignupHook as SignupHook,
+)
+from tempest_fastapi_sdk.auth import (
     SignupResponseSchema as SignupResponseSchema,
 )
 from tempest_fastapi_sdk.auth import (
@@ -1631,8 +1634,11 @@ from tempest_fastapi_sdk.websockets import (
     make_websocket_router as make_websocket_router,
 )
 
-__version__: str = "0.277.0"
+__version__: str = "0.278.0"
 
+from tempest_fastapi_sdk.api import (
+    OAuthAudienceVerifier as OAuthAudienceVerifier,
+)
 from tempest_fastapi_sdk.api import (
     OAuthClient as OAuthClient,
 )
@@ -1647,6 +1653,9 @@ from tempest_fastapi_sdk.auth import (
 )
 from tempest_fastapi_sdk.auth import (
     OAuthAccountSchema as OAuthAccountSchema,
+)
+from tempest_fastapi_sdk.auth import (
+    OAuthTokenLoginSchema as OAuthTokenLoginSchema,
 )
 from tempest_fastapi_sdk.auth import (
     OAuthUnlinkSchema as OAuthUnlinkSchema,
@@ -1673,6 +1682,9 @@ from tempest_fastapi_sdk.exceptions import (
     OAuthAccountNotLinkedException as OAuthAccountNotLinkedException,
 )
 from tempest_fastapi_sdk.exceptions import (
+    OAuthAudienceUnverifiableException as OAuthAudienceUnverifiableException,
+)
+from tempest_fastapi_sdk.exceptions import (
     OAuthCodeMissingException as OAuthCodeMissingException,
 )
 from tempest_fastapi_sdk.exceptions import (
@@ -1695,6 +1707,12 @@ from tempest_fastapi_sdk.exceptions import (
 )
 from tempest_fastapi_sdk.exceptions import (
     OAuthStateMismatchException as OAuthStateMismatchException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    OAuthTokenAudienceMismatchException as OAuthTokenAudienceMismatchException,
+)
+from tempest_fastapi_sdk.exceptions import (
+    OAuthTokenRejectedException as OAuthTokenRejectedException,
 )
 from tempest_fastapi_sdk.settings import (
     OAuthSettings as OAuthSettings,
@@ -1942,6 +1960,8 @@ __all__: list[str] = [
     "OAuthAccountInactiveException",
     "OAuthAccountNotLinkedException",
     "OAuthAccountSchema",
+    "OAuthAudienceUnverifiableException",
+    "OAuthAudienceVerifier",
     "OAuthClient",
     "OAuthCodeMissingException",
     "OAuthEmailMissingException",
@@ -1953,6 +1973,9 @@ __all__: list[str] = [
     "OAuthRegistrationDisabledException",
     "OAuthSettings",
     "OAuthStateMismatchException",
+    "OAuthTokenAudienceMismatchException",
+    "OAuthTokenLoginSchema",
+    "OAuthTokenRejectedException",
     "OAuthTokens",
     "OAuthUnlinkSchema",
     "OAuthUser",
@@ -2039,6 +2062,7 @@ __all__: list[str] = [
     "SessionStore",
     "SessionSummarySchema",
     "SignedDecimalRatioField",
+    "SignupHook",
     "SignupResponseSchema",
     "SignupSchema",
     "SlowQueryLogger",

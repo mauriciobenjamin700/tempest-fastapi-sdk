@@ -76,6 +76,7 @@ from tempest_fastapi_sdk.auth.locale import negotiate_locale as negotiate_locale
 from tempest_fastapi_sdk.auth.locale import normalize_locale as normalize_locale
 from tempest_fastapi_sdk.auth.locale import resolve_locale as resolve_locale
 from tempest_fastapi_sdk.auth.locale import stamp_locale as stamp_locale
+from tempest_fastapi_sdk.auth.router import SignupHook as SignupHook
 from tempest_fastapi_sdk.auth.router import make_auth_router as make_auth_router
 from tempest_fastapi_sdk.auth.schemas import (
     ActivationResponseSchema as ActivationResponseSchema,
@@ -111,6 +112,9 @@ from tempest_fastapi_sdk.auth.schemas import (
 from tempest_fastapi_sdk.auth.schemas import MFAVerifySchema as MFAVerifySchema
 from tempest_fastapi_sdk.auth.schemas import (
     OAuthAccountSchema as OAuthAccountSchema,
+)
+from tempest_fastapi_sdk.auth.schemas import (
+    OAuthTokenLoginSchema as OAuthTokenLoginSchema,
 )
 from tempest_fastapi_sdk.auth.schemas import (
     OAuthUnlinkSchema as OAuthUnlinkSchema,
@@ -211,6 +215,7 @@ __all__: list[str] = [
     "MFAVerifySchema",
     "MemoryWebAuthnChallengeStore",
     "OAuthAccountSchema",
+    "OAuthTokenLoginSchema",
     "OAuthUnlinkSchema",
     "PasswordChangeSchema",
     "PasswordResetConfirmSchema",
@@ -219,6 +224,7 @@ __all__: list[str] = [
     "PasswordResetToken",
     "RedisWebAuthnChallengeStore",
     "RefreshSchema",
+    "SignupHook",
     "SignupResponseSchema",
     "SignupSchema",
     "TokenDelivery",

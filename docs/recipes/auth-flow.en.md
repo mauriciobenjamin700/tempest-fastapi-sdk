@@ -274,6 +274,120 @@ touching any other endpoint; `allow_signup=` overrides per router; and the
 route leaves the OpenAPI schema along with it, which the manual filter never
 delivered.
 
+### An account born with more than email and password *(v0.278.0+)*
+
+Almost no product has an account that is only `email`, `password` and `name`.
+There is the phone, the tax document, the flag that separates a customer from a
+producer. Until now the way out was to unmount `POST /auth/signup` and write the
+route by hand — and that hand-written route had to re-derive the password
+policy, the 409 on a duplicate email, the activation branch and the JWT pair.
+Four things the bundled route already gets right, and that start drifting one
+release at a time.
+
+Two arguments settle it: **`signup_schema`** replaces the request body,
+**`on_signup`** writes the extra columns.
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+from pydantic import Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tempest_fastapi_sdk import (
+    AsyncDatabaseManager,
+    SignupSchema,
+    UserAuthService,
+    make_auth_router,
+)
+
+from src.core.settings import settings
+from src.db.models import UserModel, UserTokenModel
+
+
+class ProducerSignupSchema(SignupSchema):
+    """This product's signup: email, password, name — and the rest."""
+
+    phone: str | None = Field(default=None, max_length=20)
+    is_producer: bool = Field(default=False)
+
+
+async def write_profile(
+    session: AsyncSession,
+    user: UserModel,
+    payload: ProducerSignupSchema,
+) -> None:
+    """Copy the product fields onto the freshly created row.
+
+    Args:
+        session (AsyncSession): The transaction the row was inserted in.
+        user (UserModel): The instance to write onto.
+        payload (ProducerSignupSchema): The validated body.
+    """
+    user.phone = payload.phone
+    user.is_producer = payload.is_producer
+
+
+app = FastAPI()
+
+db = AsyncDatabaseManager(settings.DATABASE_URL)
+
+auth_service = UserAuthService(
+    db=db,
+    user_model=UserModel,
+    token_model=UserTokenModel,
+    auth_settings=settings,
+    jwt_settings=settings,
+    email=None,
+)
+
+app.include_router(
+    make_auth_router(
+        auth_service,
+        session_factory=db.session_dependency,
+        signup_schema=ProducerSignupSchema,
+        on_signup=write_profile,
+    ),
+)
+```
+
+```console
+$ curl -s -X POST localhost:8000/auth/signup \
+    -H "Content-Type: application/json" \
+    -d '{"email":"ana@example.com","password":"strong-pass-12","phone":"5511999999999","is_producer":true}'
+{"user_id":"0e5cf2fc-…","activation_required":false,"activation_url":null,"access_token":"eyJ…","refresh_token":"eyJ…"}
+```
+
+Annotate the hook with **your** classes — the concrete model and the concrete
+schema — as above: that is what makes `user.phone = …` type-check on your side.
+
+The schema **must** subclass `SignupSchema` — the route reads `email`,
+`password` and `name` off it by name, so a body without them fails
+`make_auth_router` at wiring time, not on the first request. The new fields
+reach `/openapi.json` too: a generated client sees `phone` and `is_producer`
+without anyone hand-writing a schema.
+
+!!! danger "The hook runs **before** the commit, and that is the point"
+    `on_signup` is awaited right after the insert and before
+    `session.commit()`, inside the **same** transaction. A hook that raises
+    takes the account down with it.
+
+    The alternative — writing the fields afterwards, in a second commit — is
+    the classic defect: a rejected document leaves behind an account with an
+    email, a password and none of the fields that make it usable. It shows up
+    nowhere in the product, yet it holds the email (which is `UNIQUE`), answers
+    `POST /auth/password-reset/request`, and blocks the correct signup with a
+    409 nobody can explain.
+
+!!! tip "What does not change yet"
+    The response is still `SignupResponseSchema`. When the client needs the
+    full profile right after signup, `GET /auth/me` already returns it — and
+    takes your own schema through `me_response_model`.
+
+**Recap.** `signup_schema` is the input contract — a `SignupSchema` subclass,
+visible in OpenAPI. `on_signup` is where its fields become columns, inside the
+insert's transaction. Nothing else has to leave the SDK for your service.
+
 
 ## Password recovery
 

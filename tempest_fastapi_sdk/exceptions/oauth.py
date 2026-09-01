@@ -27,6 +27,9 @@ call — and answers 502. The classes here are the flow's own decisions
 about an exchange that succeeded.
 """
 
+from typing import Any, ClassVar
+
+from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.conflict import ConflictException
 from tempest_fastapi_sdk.exceptions.forbidden import ForbiddenException
 from tempest_fastapi_sdk.exceptions.not_found import NotFoundException
@@ -156,9 +159,66 @@ class OAuthAccountNotLinkedException(NotFoundException):
     code: str = "OAUTH_ACCOUNT_NOT_LINKED"
 
 
+class OAuthTokenRejectedException(UnauthorizedException):
+    """Raised when the provider refuses the token the client presented.
+
+    Only the token-in-hand endpoint can hit this: the redirect flow
+    never sees a token it did not mint itself. Expired, revoked, or
+    simply invented — the provider is the authority and it said no, so
+    the client's next step is to run the device flow again, not to
+    retry with the same value.
+    """
+
+    message: str = "The identity provider rejected the presented token"
+    code: str = "OAUTH_TOKEN_REJECTED"
+
+
+class OAuthTokenAudienceMismatchException(UnauthorizedException):
+    """Raised when the presented token was issued to a different app.
+
+    This is the attack the token-in-hand endpoint exists to survive. A
+    provider's userinfo endpoint answers *whose* token this is, never
+    *who it was minted for* — so any app that got the victim through a
+    consent screen holds a token that resolves to the victim's profile,
+    and posting it here would hand over the victim's session. Comparing
+    the token's audience against our own ``client_id`` is what closes
+    that: a token minted for somebody else's app is refused before any
+    account is touched.
+
+    Never raised by the redirect flow, whose token this service
+    exchanged itself.
+    """
+
+    message: str = "The presented token was issued to a different application"
+    code: str = "OAUTH_TOKEN_AUDIENCE_MISMATCH"
+    details_example: ClassVar[dict[str, Any]] = {"provider": "google"}
+
+
+class OAuthAudienceUnverifiableException(AppException):
+    """Raised when the registered client cannot check a token's audience.
+
+    Refusing is the only safe answer: without the audience check the
+    endpoint would accept a token minted for any other application (see
+    :class:`OAuthTokenAudienceMismatchException`), so a client that
+    cannot perform it disables the token-in-hand route rather than
+    weakening it.
+
+    It is a wiring fault, not a caller mistake — hence 501 and not 4xx.
+    Fix it by pointing the client at the provider's token-introspection
+    endpoint (``tokeninfo_url``), or by overriding
+    ``verify_token_audience`` with whatever the provider does offer.
+    """
+
+    status_code: int = 501
+    message: str = "This provider cannot verify who the token was issued to"
+    code: str = "OAUTH_AUDIENCE_UNVERIFIABLE"
+    details_example: ClassVar[dict[str, Any]] = {"provider": "github"}
+
+
 __all__: list[str] = [
     "OAuthAccountInactiveException",
     "OAuthAccountNotLinkedException",
+    "OAuthAudienceUnverifiableException",
     "OAuthCodeMissingException",
     "OAuthEmailMissingException",
     "OAuthEmailTakenException",
@@ -167,4 +227,6 @@ __all__: list[str] = [
     "OAuthProviderNotConfiguredException",
     "OAuthRegistrationDisabledException",
     "OAuthStateMismatchException",
+    "OAuthTokenAudienceMismatchException",
+    "OAuthTokenRejectedException",
 ]

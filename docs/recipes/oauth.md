@@ -231,12 +231,13 @@ OAUTH_GOOGLE_CLIENT_SECRET=GOCSPX-...
     um que faltar levanta `RuntimeError` na construção do router, dizendo qual
     é — mesmo idioma de `AUTH_MFA_ENABLED` sem `recovery_code_model`.
 
-## 4. As quatro rotas
+## 4. As cinco rotas
 
 | Método | Rota | O que faz |
 | --- | --- | --- |
 | `GET` | `/auth/oauth/{provider}/login` | Sorteia o `state`, grava no cookie `HttpOnly` e redireciona **302** para o provedor |
 | `GET` | `/auth/oauth/{provider}/callback` | Confere o `state`, troca o `code`, resolve a identidade e devolve o par JWT |
+| `POST` | `/auth/oauth/{provider}/token` | *(v0.278.0+)* Recebe um access token que o app já tem na mão, confere para qual aplicação ele foi emitido e devolve a mesma sessão |
 | `GET` | `/auth/oauth/accounts` | Autenticado. Lista os provedores ligados à conta |
 | `POST` | `/auth/oauth/accounts/unlink` | Autenticado. Desliga um provedor |
 
@@ -259,6 +260,95 @@ path, então provedor desconhecido é rota desconhecida.
     `AUTH_COOKIE_SAMESITE`**: o provedor devolve o usuário numa navegação
     top-level cross-site, e `Strict` reteria o cookie exatamente ali — todo
     login falharia a checagem que o cookie existe para passar.
+
+## 4.1. Cliente sem navegador: o fluxo token-in-hand *(v0.278.0+)*
+
+O app nativo não tem navegador para redirecionar. Ele roda o SDK do próprio
+provedor no dispositivo — `GoogleSignIn`, `Credential Manager`, o que for — e
+termina com um **access token na mão**. O `/login` → consentimento →
+`/callback` não tem onde acontecer.
+
+`POST /auth/oauth/{provider}/token` é essa metade:
+
+```console
+$ curl -s -X POST localhost:8000/auth/oauth/google/token \
+    -H "Content-Type: application/json" \
+    -d '{"access_token":"ya29.a0AfH6SM…"}'
+{"user_id":"0e5cf2fc-…","access_token":"eyJ…","refresh_token":"eyJ…","mfa_required":false,"mfa_token":null}
+```
+
+A sessão é a **mesma** que o callback devolve: mesmos claims, mesmo `typ`, mesma
+família de rotação, mesmo `POST /auth/logout`. Um cliente escrito contra o login
+por senha não ganha um segundo caminho para tratar.
+
+O token vai no **corpo**, nunca no path nem na query. Uma URL atravessa o log de
+acesso, o histórico do navegador e todo header `Referer` no caminho — e esse
+valor está vivo no provedor.
+
+!!! danger "Sem conferir a audiência, este endpoint entrega a conta da vítima"
+    O `userinfo` do provedor responde de **quem** é o token. Ele não responde
+    para **qual aplicação** o token foi emitido — e essa é a pergunta que
+    importa aqui, porque quem apresenta o token é quem está chamando.
+
+    O ataque tem três passos e nenhuma senha:
+
+    1. o atacante publica um app qualquer e pede consentimento `email profile`
+       — a tela mais banal do Google, que ninguém lê;
+    2. a vítima aceita, e o atacante fica com um access token que descreve a
+       vítima;
+    3. o atacante posta esse token neste endpoint. O `userinfo` confirma
+       lealmente que o token é da vítima, e a sessão sai no nome dela.
+
+    A rota **pergunta ao provedor para qual `client_id` o token foi emitido**
+    antes de olhar qualquer linha do banco. Token de outro app é recusado com
+    **401** `OAUTH_TOKEN_AUDIENCE_MISMATCH`, sem tocar em conta nenhuma.
+
+    O fluxo de redirect não precisa disso: lá o token foi trocado por este
+    serviço, a partir de um `code` que este serviço pediu.
+
+Quem responde a pergunta é o client registrado, por
+`verify_token_audience(tokens)`:
+
+| Client | Como confere |
+| --- | --- |
+| `GoogleOAuthClient` | `GET https://oauth2.googleapis.com/tokeninfo`, comparando `aud` e `azp` |
+| `GitHubOAuthClient` | `POST /applications/{client_id}/token` com o par `client_id:client_secret` em Basic — 200 só para token do próprio app, 404 para o de qualquer outro |
+| `OIDCProvider` | O endpoint de introspection (RFC 7662) que você passar em `tokeninfo_url=`; sem ele, a rota recusa |
+| Client próprio | Implemente `verify_token_audience`; sem o método, a rota recusa |
+
+```python
+# src/api/dependencies/resources.py
+
+from tempest_fastapi_sdk import OIDCProvider
+
+from src.core.settings import settings
+
+keycloak = OIDCProvider(
+    client_id=settings.OIDC_CLIENT_ID,
+    client_secret=settings.OIDC_CLIENT_SECRET,
+    redirect_uri="https://api.exemplo.com/auth/oauth/keycloak/callback",
+    authorize_url="https://id.exemplo.com/realms/app/protocol/openid-connect/auth",
+    token_url="https://id.exemplo.com/realms/app/protocol/openid-connect/token",
+    userinfo_url="https://id.exemplo.com/realms/app/protocol/openid-connect/userinfo",
+    tokeninfo_url="https://id.exemplo.com/realms/app/protocol/openid-connect/token/introspect",
+    provider_name="keycloak",
+)
+```
+
+!!! info "Recusar é o comportamento correto, não uma limitação"
+    Um provedor que não sabe dizer a audiência do token faz a rota responder
+    **501** `OAUTH_AUDIENCE_UNVERIFIABLE` — e o perfil nem é buscado. A
+    alternativa seria aceitar o token, que é exatamente o furo acima. O fluxo de
+    redirect desse mesmo provedor continua funcionando normalmente.
+
+!!! note "Não há `state` aqui, e não falta"
+    O `state` protege uma **navegação**: o navegador da vítima sendo mandado a
+    um callback forjado. Aqui não há navegação nenhuma — o chamador manda a
+    credencial no corpo de um POST.
+
+**Recap.** Um POST com o token no corpo, a audiência conferida antes de
+qualquer leitura, e a mesma sessão do resto do fluxo. Nada do que o app nativo
+precisa fica fora do SDK.
 
 ## 5. Criar conta, ou só autenticar quem já tem
 
@@ -536,13 +626,15 @@ provedor, não no cliente), com o corpo da resposta do provedor em `details`.
 Com `register_exception_handlers` montado, ela já sai no envelope canônico
 `{detail, code, details}`.
 
-O que o callback responde, por causa:
+O que o callback — e o token-in-hand — respondem, por causa:
 
 | Status | `code` | Quando |
 | --- | --- | --- |
 | **401** | `OAUTH_STATE_MISMATCH` | `state` ausente ou divergente do cookie |
 | **401** | `OAUTH_PROVIDER_DENIED` | Provedor devolveu `error=` (quase sempre, o usuário recusou o consentimento) |
 | **401** | `OAUTH_ACCOUNT_INACTIVE` | A identidade resolve para uma conta desativada |
+| **401** | `OAUTH_TOKEN_AUDIENCE_MISMATCH` | *(token-in-hand)* O token apresentado foi emitido para outra aplicação |
+| **401** | `OAUTH_TOKEN_REJECTED` | *(token-in-hand)* O provedor recusou o token apresentado |
 | **403** | `OAUTH_REGISTRATION_DISABLED` | Identidade nova e criação de conta desligada |
 | **404** | `OAUTH_PROVIDER_NOT_CONFIGURED` | `{provider}` não registrado |
 | **404** | `OAUTH_ACCOUNT_NOT_LINKED` | Unlink de um provedor que esta conta não ligou |
@@ -550,6 +642,7 @@ O que o callback responde, por causa:
 | **409** | `OAUTH_EMAIL_UNVERIFIED` | Vínculo permitido, mas o provedor não afirmou ter verificado o e-mail |
 | **422** | `OAUTH_EMAIL_MISSING` | Provedor não devolveu e-mail |
 | **422** | `OAUTH_CODE_MISSING` | Callback sem `code` e sem `error` |
+| **501** | `OAUTH_AUDIENCE_UNVERIFIABLE` | *(token-in-hand)* O client registrado não sabe conferir a audiência do token |
 | **502** | `OAUTH_ERROR` | O provedor recusou a troca ou o userinfo |
 
 !!! tip "Ramifique no `code`, nunca na mensagem *(v0.274.0+)*"
@@ -617,7 +710,7 @@ um `refresh_token` ao Google.
 
 ## Recap
 
-- `AUTH_OAUTH_ENABLED=true` + `oauth_clients={"google": ...}` monta quatro
+- `AUTH_OAUTH_ENABLED=true` + `oauth_clients={"google": ...}` monta cinco
   rotas em `/auth/oauth/*`; três pré-requisitos faltando falham no boot.
 - `OAuthSettings` guarda as credenciais e **deriva** o redirect URI com
   `oauth_redirect_uri(provider)` — cole no console o que ele imprime.
@@ -627,6 +720,9 @@ um `refresh_token` ao Google.
   opaco, rotação, detecção de reuso e `/auth/logout`.
 - Criar conta herda `AUTH_SIGNUP_ENABLED`; ligar por e-mail exige
   `email_verified is True` e está desligado por padrão.
+- Cliente nativo usa `POST /auth/oauth/{provider}/token` com o token no corpo —
+  e a audiência do token é conferida **antes** de qualquer leitura, porque
+  `userinfo` diz de quem é o token, nunca para quem ele foi emitido.
 - Provedor sem e-mail recebe 422, não um endereço inventado; provedor sem nome
   recebe `"Você"` / `"You"` conforme o locale.
 - Fluxo local completo (signup, ativação, reset) está na

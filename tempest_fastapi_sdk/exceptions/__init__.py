@@ -58,6 +58,9 @@ from tempest_fastapi_sdk.exceptions.oauth import (
     OAuthAccountNotLinkedException as OAuthAccountNotLinkedException,
 )
 from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthAudienceUnverifiableException as OAuthAudienceUnverifiableException,
+)
+from tempest_fastapi_sdk.exceptions.oauth import (
     OAuthCodeMissingException as OAuthCodeMissingException,
 )
 from tempest_fastapi_sdk.exceptions.oauth import (
@@ -80,6 +83,12 @@ from tempest_fastapi_sdk.exceptions.oauth import (
 )
 from tempest_fastapi_sdk.exceptions.oauth import (
     OAuthStateMismatchException as OAuthStateMismatchException,
+)
+from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthTokenAudienceMismatchException as OAuthTokenAudienceMismatchException,
+)
+from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthTokenRejectedException as OAuthTokenRejectedException,
 )
 from tempest_fastapi_sdk.exceptions.too_many_requests import (
     TooManyRequestsException as TooManyRequestsException,
@@ -115,6 +124,7 @@ __all__: list[str] = [
     "NotFoundException",
     "OAuthAccountInactiveException",
     "OAuthAccountNotLinkedException",
+    "OAuthAudienceUnverifiableException",
     "OAuthCodeMissingException",
     "OAuthEmailMissingException",
     "OAuthEmailTakenException",
@@ -123,6 +133,8 @@ __all__: list[str] = [
     "OAuthProviderNotConfiguredException",
     "OAuthRegistrationDisabledException",
     "OAuthStateMismatchException",
+    "OAuthTokenAudienceMismatchException",
+    "OAuthTokenRejectedException",
     "TooManyRequestsException",
     "UnauthorizedException",
     "ValidationException",

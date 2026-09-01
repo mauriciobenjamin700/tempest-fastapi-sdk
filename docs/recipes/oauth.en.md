@@ -232,12 +232,13 @@ OAUTH_GOOGLE_CLIENT_SECRET=GOCSPX-...
     naming which one — the same idiom as `AUTH_MFA_ENABLED` without a
     `recovery_code_model`.
 
-## 4. The four routes
+## 4. The five routes
 
 | Method | Route | What it does |
 | --- | --- | --- |
 | `GET` | `/auth/oauth/{provider}/login` | Mints the `state`, writes it to an `HttpOnly` cookie and redirects **302** to the provider |
 | `GET` | `/auth/oauth/{provider}/callback` | Checks the `state`, trades the `code`, resolves the identity and returns the JWT pair |
+| `POST` | `/auth/oauth/{provider}/token` | *(v0.278.0+)* Takes an access token the app already holds, checks which application it was issued to, and returns the same session |
 | `GET` | `/auth/oauth/accounts` | Authenticated. Lists the providers linked to the account |
 | `POST` | `/auth/oauth/accounts/unlink` | Authenticated. Detaches one provider |
 
@@ -260,6 +261,97 @@ unknown provider is an unknown route.
     `AUTH_COOKIE_SAMESITE`**: the provider returns the user with a cross-site
     top-level navigation, and `Strict` would withhold the cookie exactly there —
     every login would fail the very check the cookie exists to pass.
+
+## 4.1. Clients with no browser: the token-in-hand flow *(v0.278.0+)*
+
+A native app has no browser to redirect. It runs the provider's own SDK on the
+device — `GoogleSignIn`, Credential Manager, whatever it is — and ends up
+**holding an access token**. There is nowhere for `/login` → consent →
+`/callback` to happen.
+
+`POST /auth/oauth/{provider}/token` is that half:
+
+```console
+$ curl -s -X POST localhost:8000/auth/oauth/google/token \
+    -H "Content-Type: application/json" \
+    -d '{"access_token":"ya29.a0AfH6SM…"}'
+{"user_id":"0e5cf2fc-…","access_token":"eyJ…","refresh_token":"eyJ…","mfa_required":false,"mfa_token":null}
+```
+
+The session is the **same** one the callback returns: same claims, same `typ`,
+same rotation family, same `POST /auth/logout`. A client written against the
+password login gets no second path to handle.
+
+The token travels in the **body**, never in the path or the query. A URL
+crosses the access log, the browser history and every `Referer` header on the
+way — and this value is live at the provider.
+
+!!! danger "Without the audience check, this endpoint hands over the victim's account"
+    The provider's `userinfo` answers **whose** token this is. It does not
+    answer **which application** the token was issued for — and that is the
+    question that matters here, because whoever presents the token is whoever
+    is calling.
+
+    The attack is three steps and no password:
+
+    1. the attacker publishes any app and asks for `email profile` consent —
+       the most ordinary Google screen there is, the one nobody reads;
+    2. the victim accepts, and the attacker now holds an access token that
+       describes the victim;
+    3. the attacker posts that token to this endpoint. `userinfo` loyally
+       confirms the token is the victim's, and the session comes back in their
+       name.
+
+    The route therefore **asks the provider which `client_id` the token was
+    issued to** before it reads a single row. A token from another app is
+    refused with **401** `OAUTH_TOKEN_AUDIENCE_MISMATCH`, touching no account.
+
+    The redirect flow needs none of this: there, the token was exchanged by this
+    service, from a `code` this service asked for.
+
+The registered client is what answers the question, through
+`verify_token_audience(tokens)`:
+
+| Client | How it checks |
+| --- | --- |
+| `GoogleOAuthClient` | `GET https://oauth2.googleapis.com/tokeninfo`, comparing `aud` and `azp` |
+| `GitHubOAuthClient` | `POST /applications/{client_id}/token` with `client_id:client_secret` as Basic auth — 200 only for a token this app issued, 404 for anybody else's |
+| `OIDCProvider` | The introspection endpoint (RFC 7662) you pass as `tokeninfo_url=`; without it the route refuses |
+| Your own client | Implement `verify_token_audience`; without the method the route refuses |
+
+```python
+# src/api/dependencies/resources.py
+
+from tempest_fastapi_sdk import OIDCProvider
+
+from src.core.settings import settings
+
+keycloak = OIDCProvider(
+    client_id=settings.OIDC_CLIENT_ID,
+    client_secret=settings.OIDC_CLIENT_SECRET,
+    redirect_uri="https://api.example.com/auth/oauth/keycloak/callback",
+    authorize_url="https://id.example.com/realms/app/protocol/openid-connect/auth",
+    token_url="https://id.example.com/realms/app/protocol/openid-connect/token",
+    userinfo_url="https://id.example.com/realms/app/protocol/openid-connect/userinfo",
+    tokeninfo_url="https://id.example.com/realms/app/protocol/openid-connect/token/introspect",
+    provider_name="keycloak",
+)
+```
+
+!!! info "Refusing is the correct behavior, not a limitation"
+    A provider that cannot report a token's audience makes the route answer
+    **501** `OAUTH_AUDIENCE_UNVERIFIABLE` — and the profile is never fetched.
+    The alternative would be to accept the token, which is exactly the hole
+    above. The redirect flow for that same provider keeps working.
+
+!!! note "There is no `state` here, and none is missing"
+    `state` protects a **navigation**: the victim's browser being sent to a
+    forged callback. There is no navigation here — the caller sends the
+    credential in the body of a POST.
+
+**Recap.** One POST with the token in the body, the audience checked before any
+read, and the same session as the rest of the flow. Nothing a native app needs
+is left outside the SDK.
 
 ## 5. Create accounts, or only authenticate existing ones
 
@@ -547,6 +639,8 @@ What the callback answers, by cause:
 | **401** | `OAUTH_STATE_MISMATCH` | `state` missing or not matching the cookie |
 | **401** | `OAUTH_PROVIDER_DENIED` | The provider returned `error=` (almost always, the user declined consent) |
 | **401** | `OAUTH_ACCOUNT_INACTIVE` | The identity resolves to a deactivated account |
+| **401** | `OAUTH_TOKEN_AUDIENCE_MISMATCH` | *(token-in-hand)* The presented token was issued to another application |
+| **401** | `OAUTH_TOKEN_REJECTED` | *(token-in-hand)* The provider refused the presented token |
 | **403** | `OAUTH_REGISTRATION_DISABLED` | New identity and account creation is off |
 | **404** | `OAUTH_PROVIDER_NOT_CONFIGURED` | `{provider}` is not registered |
 | **404** | `OAUTH_ACCOUNT_NOT_LINKED` | Unlinking a provider this account never linked |
@@ -554,6 +648,7 @@ What the callback answers, by cause:
 | **409** | `OAUTH_EMAIL_UNVERIFIED` | Linking allowed, but the provider did not state it verified the email |
 | **422** | `OAUTH_EMAIL_MISSING` | The provider returned no email |
 | **422** | `OAUTH_CODE_MISSING` | The callback carried neither a `code` nor an `error` |
+| **501** | `OAUTH_AUDIENCE_UNVERIFIABLE` | *(token-in-hand)* The registered client cannot check the token's audience |
 | **502** | `OAUTH_ERROR` | The provider refused the exchange or the userinfo call |
 
 !!! tip "Branch on `code`, never on the message *(v0.274.0+)*"
@@ -621,7 +716,7 @@ Google for a `refresh_token`.
 
 ## Recap
 
-- `AUTH_OAUTH_ENABLED=true` + `oauth_clients={"google": ...}` mounts four routes
+- `AUTH_OAUTH_ENABLED=true` + `oauth_clients={"google": ...}` mounts five routes
   under `/auth/oauth/*`; any of the three missing prerequisites fails at boot.
 - `OAuthSettings` holds the credentials and **derives** the redirect URI with
   `oauth_redirect_uri(provider)` — paste what it prints into the console.
@@ -631,6 +726,9 @@ Google for a `refresh_token`.
   opaque refresh, rotation, reuse detection and `/auth/logout`.
 - Account creation inherits `AUTH_SIGNUP_ENABLED`; linking by email requires
   `email_verified is True` and is off by default.
+- A native client uses `POST /auth/oauth/{provider}/token` with the token in
+  the body — and the token's audience is checked **before** any read,
+  because `userinfo` says whose token it is, never who it was issued for.
 - A provider with no email gets a 422, not an invented address; a provider with
   no name gets `"Você"` / `"You"` depending on the locale.
 - The full local flow (signup, activation, reset) is in the

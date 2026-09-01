@@ -20,12 +20,18 @@ Requires the ``[http]`` extra (uses ``HTTPClient`` under the hood).
 
 from __future__ import annotations
 
+import base64
 import secrets
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlencode
 
 from tempest_fastapi_sdk.exceptions.base import AppException
+from tempest_fastapi_sdk.exceptions.oauth import (
+    OAuthAudienceUnverifiableException,
+    OAuthTokenAudienceMismatchException,
+    OAuthTokenRejectedException,
+)
 from tempest_fastapi_sdk.utils.http_client import HTTPClient
 
 
@@ -196,6 +202,38 @@ class OAuthClient(Protocol):
         ...
 
 
+@runtime_checkable
+class OAuthAudienceVerifier(Protocol):
+    """The extra call the token-in-hand endpoint makes on a provider.
+
+    Deliberately **not** part of :class:`OAuthClient`: the redirect flow
+    exchanges a code this service asked for, so it already knows the
+    token is its own and needs none of this. Only
+    ``POST /auth/oauth/{provider}/token`` — where the token is handed to
+    us by whoever is calling — has to ask who the token was minted for.
+
+    Keeping it separate also means a client written against an older
+    SDK still satisfies :class:`OAuthClient`; it just cannot be used
+    with the token-in-hand route, which refuses with
+    :class:`~tempest_fastapi_sdk.exceptions.oauth.OAuthAudienceUnverifiableException`
+    instead of trusting it.
+    """
+
+    async def verify_token_audience(self, tokens: OAuthTokens, /) -> None:
+        """Assert the token was issued to *this* application.
+
+        Args:
+            tokens (OAuthTokens): The bundle the caller presented.
+
+        Raises:
+            OAuthTokenAudienceMismatchException: When the provider says
+                the token belongs to another ``client_id``.
+            OAuthTokenRejectedException: When the provider rejects the
+                token outright.
+        """
+        ...
+
+
 class _BaseOAuthClient:
     """Shared scaffolding for every provider client.
 
@@ -350,6 +388,98 @@ class _BaseOAuthClient:
             raw=payload,
         )
 
+    @property
+    def tokeninfo_url(self) -> str | None:
+        """Endpoint that reports which application a token belongs to.
+
+        ``None`` — the default — means this client cannot answer the
+        question, and the token-in-hand route refuses rather than
+        guessing. Point it at the provider's tokeninfo / RFC 7662
+        introspection endpoint to enable that route.
+
+        Returns:
+            str | None: The configured endpoint, or ``None``.
+        """
+        return None
+
+    async def verify_token_audience(self, tokens: OAuthTokens) -> None:
+        """Refuse a token that was minted for a different application.
+
+        The check the userinfo endpoint cannot make: userinfo answers
+        *whose* token this is, which is exactly what an attacker's own
+        app can obtain about a victim. Comparing the audience the
+        provider reports against :attr:`client_id` is what separates
+        "this user consented to us" from "this user consented to
+        somebody, and somebody is replaying it here".
+
+        Reads ``aud``, ``azp`` and ``client_id`` — the three spellings
+        Google's tokeninfo and RFC 7662 introspection use between them —
+        and accepts when any of them is ours. RFC 7662's
+        ``active: false`` is treated as a rejection, since an inactive
+        token has no audience to compare.
+
+        Args:
+            tokens (OAuthTokens): The bundle the caller presented.
+
+        Raises:
+            OAuthAudienceUnverifiableException: When this client has no
+                :attr:`tokeninfo_url` to ask.
+            OAuthTokenRejectedException: When the provider refuses the
+                token, or answers with something that is not JSON.
+            OAuthTokenAudienceMismatchException: When the audience the
+                provider reports is not :attr:`client_id`.
+        """
+        url = self.tokeninfo_url
+        if url is None:
+            raise OAuthAudienceUnverifiableException(
+                details={"provider": self.provider_name},
+            )
+        response = await self._http.get(
+            url,
+            params={"access_token": tokens.access_token},
+            headers={"Accept": "application/json"},
+        )
+        if response.status_code >= 400:
+            raise OAuthTokenRejectedException(
+                details={
+                    "provider": self.provider_name,
+                    "status": response.status_code,
+                },
+            )
+        try:
+            payload: dict[str, Any] = response.json()
+        except ValueError as error:
+            raise OAuthTokenRejectedException(
+                details={"provider": self.provider_name},
+            ) from error
+        if payload.get("active") is False:
+            raise OAuthTokenRejectedException(
+                details={"provider": self.provider_name},
+            )
+        self._assert_audience(payload)
+
+    def _assert_audience(self, payload: dict[str, Any]) -> None:
+        """Compare the audience claims in ``payload`` with our client id.
+
+        Args:
+            payload (dict[str, Any]): The introspection response.
+
+        Raises:
+            OAuthTokenAudienceMismatchException: When none of the
+                audience claims is :attr:`client_id`.
+        """
+        audiences: set[str] = set()
+        for key in ("aud", "azp", "client_id"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                audiences.update(str(item) for item in value)
+            elif value:
+                audiences.add(str(value))
+        if self.client_id not in audiences:
+            raise OAuthTokenAudienceMismatchException(
+                details={"provider": self.provider_name},
+            )
+
     async def fetch_user(self, tokens: OAuthTokens) -> OAuthUser:
         """Resolve the access token to a normalized :class:`OAuthUser`.
 
@@ -421,6 +551,15 @@ class GoogleOAuthClient(_BaseOAuthClient):
         """
         return "https://openidconnect.googleapis.com/v1/userinfo"
 
+    @property
+    def tokeninfo_url(self) -> str | None:
+        """Google's tokeninfo endpoint, which reports ``aud`` and ``azp``.
+
+        Returns:
+            str | None: The endpoint the audience check queries.
+        """
+        return "https://oauth2.googleapis.com/tokeninfo"
+
     def _default_scopes(self) -> list[str]:
         return ["openid", "email", "profile"]
 
@@ -473,6 +612,48 @@ class GitHubOAuthClient(_BaseOAuthClient):
         """
         return "https://api.github.com/user"
 
+    async def verify_token_audience(self, tokens: OAuthTokens) -> None:
+        """Ask GitHub whether the token belongs to *this* OAuth app.
+
+        GitHub publishes no tokeninfo endpoint. What it does publish is
+        ``POST /applications/{client_id}/token``, authenticated with the
+        app's own ``client_id:client_secret`` — it answers 200 only for
+        a token that app issued, and 404 for anybody else's. That is the
+        same question :meth:`_BaseOAuthClient.verify_token_audience`
+        asks, so the refusals it raises are the same ones.
+
+        Args:
+            tokens (OAuthTokens): The bundle the caller presented.
+
+        Raises:
+            OAuthTokenAudienceMismatchException: When GitHub does not
+                recognize the token as this application's (404).
+            OAuthTokenRejectedException: When GitHub refuses the check
+                for any other reason.
+        """
+        credentials = base64.b64encode(
+            f"{self.client_id}:{self.client_secret}".encode(),
+        ).decode()
+        response = await self._http.post(
+            f"https://api.github.com/applications/{self.client_id}/token",
+            json={"access_token": tokens.access_token},
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Basic {credentials}",
+            },
+        )
+        if response.status_code == 404:
+            raise OAuthTokenAudienceMismatchException(
+                details={"provider": self.provider_name},
+            )
+        if response.status_code >= 400:
+            raise OAuthTokenRejectedException(
+                details={
+                    "provider": self.provider_name,
+                    "status": response.status_code,
+                },
+            )
+
     def _default_scopes(self) -> list[str]:
         return ["read:user", "user:email"]
 
@@ -514,6 +695,7 @@ class OIDCProvider(_BaseOAuthClient):
         authorize_url: str,
         token_url: str,
         userinfo_url: str | None = None,
+        tokeninfo_url: str | None = None,
         provider_name: str = "oidc",
         scopes: list[str] | None = None,
         http_client: HTTPClient | None = None,
@@ -530,6 +712,11 @@ class OIDCProvider(_BaseOAuthClient):
                 ``None`` requires you to override
                 :meth:`_parse_user` to read claims from the
                 ``id_token``.
+            tokeninfo_url (str | None): IdP's token-introspection
+                endpoint (RFC 7662), used to check which application a
+                presented token was issued to. ``None`` leaves
+                ``POST /auth/oauth/{provider}/token`` refusing for this
+                provider — the redirect flow is unaffected.
             provider_name (str): Key embedded in
                 :attr:`OAuthUser.provider` (e.g. ``"oidc:auth0"``).
             scopes (list[str] | None): Scopes to request.
@@ -538,6 +725,7 @@ class OIDCProvider(_BaseOAuthClient):
         self._authorize_url: str = authorize_url
         self._token_url: str = token_url
         self._userinfo_url: str | None = userinfo_url
+        self._tokeninfo_url: str | None = tokeninfo_url
         self.provider_name = provider_name
         super().__init__(
             client_id=client_id,
@@ -577,6 +765,17 @@ class OIDCProvider(_BaseOAuthClient):
                 advertises none.
         """
         return self._userinfo_url
+
+    @property
+    def tokeninfo_url(self) -> str | None:
+        """The IdP's token-introspection endpoint, when one was wired.
+
+        Returns:
+            str | None: The endpoint URL, or ``None`` — which keeps
+            ``POST /auth/oauth/{provider}/token`` refusing for this
+            provider, since its audience cannot be checked.
+        """
+        return self._tokeninfo_url
 
     def _parse_user(self, payload: dict[str, Any]) -> OAuthUser:
         return OAuthUser(

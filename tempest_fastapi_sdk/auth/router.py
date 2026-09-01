@@ -50,7 +50,12 @@ from sqlalchemy import inspect as sa_inspect
 
 from tempest_fastapi_sdk.api.cookies import clear_cookie, set_cookie
 from tempest_fastapi_sdk.api.dependencies import make_jwt_user_dependency
-from tempest_fastapi_sdk.api.oauth import OAuthClient, generate_oauth_state
+from tempest_fastapi_sdk.api.oauth import (
+    OAuthAudienceVerifier,
+    OAuthClient,
+    OAuthTokens,
+    generate_oauth_state,
+)
 from tempest_fastapi_sdk.auth.locale import (
     LOCALE_QUERY_PARAM,
     auth_page_message,
@@ -72,6 +77,7 @@ from tempest_fastapi_sdk.auth.schemas import (
     MFAEnrollResponseSchema,
     MFAVerifySchema,
     OAuthAccountSchema,
+    OAuthTokenLoginSchema,
     OAuthUnlinkSchema,
     PasswordChangeSchema,
     PasswordResetConfirmSchema,
@@ -98,6 +104,7 @@ from tempest_fastapi_sdk.exceptions import (
     ConflictException,
     InvalidTokenException,
     NotFoundException,
+    OAuthAudienceUnverifiableException,
     OAuthCodeMissingException,
     OAuthProviderDeniedException,
     OAuthProviderNotConfiguredException,
@@ -121,6 +128,33 @@ if TYPE_CHECKING:
     from tempest_fastapi_sdk.db.user_webauthn_credential_model import (
         BaseWebAuthnCredentialModel,
     )
+
+
+SignupHook = Callable[
+    ["AsyncSession", "Any", "Any"],
+    "Coroutine[Any, Any, None]",
+]
+"""Post-create hook for ``POST /auth/signup``.
+
+Awaited as ``on_signup(session, user, payload)`` right after the row is
+inserted and before the commit, which is what makes it the place to
+write the columns a product-specific ``signup_schema`` added: the
+account and its extra fields become one transaction, so a rejected
+field cannot leave a half-built user behind.
+
+The second argument is the created row — an instance of the service's
+own ``user_model`` — and the third is the validated body, an instance of
+whatever ``signup_schema`` declared. **Annotate your hook with those two
+concrete classes**, which is what makes ``user.phone = …`` type-check on
+your side.
+
+Both are ``Any`` here on purpose. Callable parameters are contravariant,
+so an alias naming ``BaseUserModel`` and ``SignupSchema`` would reject
+exactly the hook everyone writes — one typed against their own model and
+their own schema — and push every consumer into a ``cast`` for no gain:
+the SDK can only ever pass those two objects, so the narrowing is sound
+and it is the consumer, not the SDK, that knows the real types.
+"""
 
 
 async def _reload_if_expired(session: AsyncSession, user: BaseUserModel) -> None:
@@ -158,6 +192,8 @@ def make_auth_router(
     recovery_code_model: type[BaseUserRecoveryCodeModel] | None = None,
     me_response_model: type[BaseModel] | None = None,
     allow_signup: bool | None = None,
+    signup_schema: type[SignupSchema] | None = None,
+    on_signup: SignupHook | None = None,
     token_delivery: TokenDelivery | None = None,
     cookie_config: AuthCookieConfig | None = None,
     webauthn: WebAuthnService | None = None,
@@ -202,6 +238,22 @@ def make_auth_router(
             unmounted with it: an admin-created account still completes
             ``/auth/activate/{token}``. ``None`` (default) reads
             ``AuthSettings.AUTH_SIGNUP_ENABLED``.
+        signup_schema (type[SignupSchema] | None): Request body for
+            ``POST /auth/signup``. A subclass of :class:`SignupSchema`,
+            so ``email`` / ``password`` / ``name`` keep their validation
+            and the SDK keeps reading them by name; the extra fields are
+            whatever the product's account carries at birth — a phone,
+            a document, a role flag. The payload reaches ``on_signup``
+            as-is. ``None`` (default) uses :class:`SignupSchema`.
+        on_signup (SignupHook | None): Awaited right after the row is
+            created and **before** the commit, as
+            ``on_signup(session, user, payload)``. It is where the
+            fields :paramref:`signup_schema` added get written onto the
+            instance, and it runs inside the same transaction the row
+            was inserted in — so a hook that raises rolls the account
+            back instead of leaving a half-built one behind. Returning
+            anything is ignored: the response is still
+            :class:`SignupResponseSchema`.
         token_delivery (TokenDelivery | None): How login / refresh hand
             back the JWT pair — ``"bearer"`` (body only), ``"cookie"``
             (``HttpOnly`` cookies, body omits tokens) or ``"both"``
@@ -315,6 +367,13 @@ def make_auth_router(
     signup_enabled = (
         auth_settings.AUTH_SIGNUP_ENABLED if allow_signup is None else allow_signup
     )
+    signup_model: type[SignupSchema] = signup_schema or SignupSchema
+    if not issubclass(signup_model, SignupSchema):
+        raise RuntimeError(
+            "signup_schema must subclass SignupSchema: POST /auth/signup "
+            "reads 'email', 'password' and 'name' off the payload by name, "
+            f"and {signup_model.__name__} does not inherit them."
+        )
     login_url = auth_settings.AUTH_LOGIN_URL
     min_length = auth_settings.AUTH_PASSWORD_MIN_LENGTH
     default_locale = auth_settings.AUTH_DEFAULT_LOCALE
@@ -405,7 +464,67 @@ def make_auth_router(
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------
 
-    @_mount_if(
+    async def signup(
+        payload: SignupSchema,
+        session: AsyncSession = session_dep,
+    ) -> SignupResponseSchema:
+        """Register a new account.
+
+        The declared ``payload`` type is the base :class:`SignupSchema`,
+        but the registered annotation is :paramref:`signup_schema` when
+        the caller passed one — rebound below, before the route is
+        mounted, because ``from __future__ import annotations`` turns
+        the literal above into a string FastAPI would resolve against
+        this module's globals, where a factory-local name does not
+        exist.
+
+        ``on_signup`` runs after the insert and before the commit, so
+        the extra columns it writes and the row itself land in one
+        transaction: a hook that raises leaves no account behind.
+
+        Args:
+            payload (SignupSchema): Email, password and optional name —
+                or a subclass of those, when ``signup_schema`` is set.
+            session (AsyncSession): The request-scoped DB session.
+
+        Returns:
+            SignupResponseSchema: The created user, plus the activation
+            token or JWT pair depending on the configured flow.
+        """
+        user, activation = await service.signup(
+            session,
+            email=payload.email,
+            password=payload.password,
+            name=payload.name,
+        )
+        if on_signup is not None:
+            await on_signup(session, user, payload)
+        if activation is None:
+            access, refresh = await service.issue_token_pair(session, user)
+            await session.commit()
+            return SignupResponseSchema(
+                user_id=user.id,
+                activation_required=False,
+                activation_url=None,
+                access_token=access,
+                refresh_token=refresh,
+            )
+        await session.commit()
+        return_url = (
+            activation.url
+            if service.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE
+            or service.email is None
+            else None
+        )
+        return SignupResponseSchema(
+            user_id=user.id,
+            activation_required=True,
+            activation_url=return_url,
+        )
+
+    signup.__annotations__["payload"] = signup_model
+
+    _mount_if(
         signup_enabled,
         router.post(
             "/signup",
@@ -436,49 +555,7 @@ def make_auth_router(
                 "can complete activation without SMTP."
             ),
         ),
-    )
-    async def signup(
-        payload: SignupSchema,
-        session: AsyncSession = session_dep,
-    ) -> SignupResponseSchema:
-        """Register a new account.
-
-        Args:
-            payload (SignupSchema): Email, password and optional name.
-            session (AsyncSession): The request-scoped DB session.
-
-        Returns:
-            SignupResponseSchema: The created user, plus the activation
-            token or JWT pair depending on the configured flow.
-        """
-        user, activation = await service.signup(
-            session,
-            email=payload.email,
-            password=payload.password,
-            name=payload.name,
-        )
-        if activation is None:
-            access, refresh = await service.issue_token_pair(session, user)
-            await session.commit()
-            return SignupResponseSchema(
-                user_id=user.id,
-                activation_required=False,
-                activation_url=None,
-                access_token=access,
-                refresh_token=refresh,
-            )
-        await session.commit()
-        return_url = (
-            activation.url
-            if service.auth_settings.AUTH_RETURN_TOKEN_IN_RESPONSE
-            or service.email is None
-            else None
-        )
-        return SignupResponseSchema(
-            user_id=user.id,
-            activation_required=True,
-            activation_url=return_url,
-        )
+    )(signup)
 
     @router.post(
         "/activate/{token}",
@@ -1989,6 +2066,105 @@ def make_auth_router(
                     details={"provider": provider},
                 )
             tokens = await client.exchange_code(code)
+            profile = await client.fetch_user(tokens)
+            user, access, refresh = await service.login_with_oauth(
+                session,
+                profile,
+                locale=_page_locale(request),
+            )
+            await session.commit()
+            if cookie_enabled:
+                apply_auth_cookies(
+                    response,
+                    access_token=access,
+                    refresh_token=refresh,
+                    config=cookies,
+                )
+            if not mount_bearer:
+                return LoginResponseSchema(user_id=user.id)
+            return LoginResponseSchema(
+                user_id=user.id,
+                access_token=access,
+                refresh_token=refresh,
+            )
+
+        @router.post(
+            "/oauth/{provider}/token",
+            response_model=LoginResponseSchema,
+            summary="Log in with a provider token obtained on the device",
+            description=(
+                "The **token-in-hand** half of social login, for clients "
+                "that have no browser to redirect: a native app runs the "
+                "provider's own SDK, ends up holding an access token, and "
+                "posts it here.\n\n"
+                "The session it returns is the one "
+                "``/oauth/{provider}/callback`` returns — same claims, "
+                "same refresh family, same ``POST /auth/logout``.\n\n"
+                "**The token is checked against this application before "
+                "anything is looked up.** A provider's userinfo endpoint "
+                "answers *whose* token this is, never *who it was issued "
+                "for* — so without that check, any app that walked the "
+                "victim through a consent screen would hold a token that "
+                "resolves to the victim here, and posting it would hand "
+                "over the victim's session. A token minted for another "
+                "``client_id`` is refused with **401** "
+                "``OAUTH_TOKEN_AUDIENCE_MISMATCH``; a provider that "
+                "cannot answer the question at all makes this route "
+                "refuse with **501** ``OAUTH_AUDIENCE_UNVERIFIABLE`` "
+                "rather than trust the token.\n\n"
+                "There is no ``state`` to compare — nothing was "
+                "redirected — and none is needed: the caller supplies "
+                "the credential in the body, so there is no browser "
+                "navigation for a third-party page to forge.\n\n"
+                "Send the token in the **body**. A URL reaches the "
+                "access log, the browser history and every ``Referer`` "
+                "header on the way, and this value is live at the "
+                "provider."
+            ),
+        )
+        async def oauth_token(
+            provider: str,
+            payload: OAuthTokenLoginSchema,
+            request: Request,
+            response: Response,
+            session: AsyncSession = session_dep,
+        ) -> LoginResponseSchema:
+            """Log in from a provider token the client already holds.
+
+            Args:
+                provider (str): Key of the registered client.
+                payload (OAuthTokenLoginSchema): The provider's access
+                    token, as the device SDK returned it.
+                request (Request): Used only to negotiate the locale
+                    that names an account the provider left unnamed.
+                response (Response): Carries the session cookies when
+                    the cookie delivery is enabled.
+                session (AsyncSession): The request-scoped DB session.
+
+            Returns:
+                LoginResponseSchema: The session — the JWT pair in
+                bearer mode, the user id alone in cookie-only mode.
+
+            Raises:
+                OAuthAudienceUnverifiableException: When the registered
+                    client cannot check which application the token was
+                    issued to. Refusing is the safe answer: accepting
+                    would let a token minted for any other app log in.
+                OAuthTokenAudienceMismatchException: When the token
+                    belongs to a different application.
+                OAuthTokenRejectedException: When the provider refuses
+                    the token.
+            """
+            client = _client_for(provider)
+            if not isinstance(client, OAuthAudienceVerifier):
+                raise OAuthAudienceUnverifiableException(
+                    details={"provider": provider},
+                )
+            tokens = OAuthTokens(
+                access_token=payload.access_token,
+                token_type=payload.token_type,
+            )
+            await client.verify_token_audience(tokens)
             profile = await client.fetch_user(tokens)
             user, access, refresh = await service.login_with_oauth(
                 session,
