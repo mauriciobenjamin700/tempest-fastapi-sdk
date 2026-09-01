@@ -1855,6 +1855,9 @@ class OAuthSettings(BaseAppSettings):
             Cloud console. Default: ``""``.
         OAUTH_GOOGLE_CLIENT_SECRET (str): Matching client secret.
             Default: ``""``.
+        OAUTH_GOOGLE_EXTRA_AUDIENCES (list[str]): The project's other
+            Google client ids — the Android and iOS ones — whose tokens
+            ``POST /auth/oauth/google/token`` accepts. Default: ``[]``.
         OAUTH_GITHUB_CLIENT_ID (str): Client id of the GitHub OAuth
             app. Default: ``""``.
         OAUTH_GITHUB_CLIENT_SECRET (str): Matching client secret.
@@ -1893,6 +1896,20 @@ class OAuthSettings(BaseAppSettings):
             "frontend bundle."
         ),
         examples=["", "GOCSPX-…"],
+    )
+    OAUTH_GOOGLE_EXTRA_AUDIENCES: list[str] = Field(
+        default_factory=list,
+        title="Google client ids of this project's other platforms",
+        description=(
+            "Google issues one client id per platform, so a token minted "
+            "by the Android app carries the **Android** id in ``aud``, "
+            "not the one above. List those ids here and the token-in-hand "
+            "endpoint accepts them; leave them out and every mobile login "
+            "is refused as issued to another application.\n\n"
+            "Every value is an application allowed to log people into "
+            "this service — put this project's ids here, and only those."
+        ),
+        examples=[[], ["1234567890-android.apps.googleusercontent.com"]],
     )
     OAUTH_GITHUB_CLIENT_ID: str = Field(
         default="",
@@ -1954,14 +1971,18 @@ class OAuthSettings(BaseAppSettings):
                 :meth:`oauth_redirect_uri`. Defaults to ``"/auth"``.
 
         Returns:
-            dict[str, Any]: ``client_id``, ``client_secret`` and the
-            derived ``redirect_uri``. Scopes are left to the client's
-            own defaults (``openid email profile``).
+            dict[str, Any]: ``client_id``, ``client_secret``, the derived
+            ``redirect_uri`` and ``extra_audiences`` — the last one being
+            what lets a token minted by this project's Android or iOS
+            client pass the token-in-hand endpoint's audience check.
+            Scopes are left to the client's own defaults
+            (``openid email profile``).
         """
         return {
             "client_id": self.OAUTH_GOOGLE_CLIENT_ID,
             "client_secret": self.OAUTH_GOOGLE_CLIENT_SECRET,
             "redirect_uri": self.oauth_redirect_uri("google", prefix=prefix),
+            "extra_audiences": list(self.OAUTH_GOOGLE_EXTRA_AUDIENCES),
         }
 
     def github_kwargs(self, *, prefix: str = "/auth") -> dict[str, Any]:

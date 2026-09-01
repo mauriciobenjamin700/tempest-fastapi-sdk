@@ -340,6 +340,14 @@ The registered client is what answers the question, through
     Every value in that list is an application allowed to log people into this
     service. Put **your** project's ids there, and only those.
 
+    Through `OAuthSettings` that is `OAUTH_GOOGLE_EXTRA_AUDIENCES` in the
+    environment — and `google_kwargs()` already forwards it, so building the
+    client stays a splat:
+
+    ```python
+    google = GoogleOAuthClient(**settings.google_kwargs())
+    ```
+
     A client with no id configured at all — the `GoogleOAuthClient(client_id="")`
     that exists only for `fetch_user` — makes the route answer **501**: there is
     nothing to compare against, and comparing with the empty string would either

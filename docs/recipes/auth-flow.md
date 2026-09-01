@@ -761,6 +761,7 @@ Tem uma seção inteira só pra isso, explicada bem devagar: [Idioma dos e-mails
 | `AUTH_OAUTH_ALLOW_ACCOUNT_CREATION` | `bool` ou vazio | vazio | Se o callback pode criar conta. Vazio herda `AUTH_SIGNUP_ENABLED`, então fechar o cadastro fecha essa porta junto. |
 | `OAUTH_REDIRECT_BASE_URL` | `str` | `""` | Origem pública do serviço. O redirect URI é derivado dela por `oauth_redirect_uri(provider)`. |
 | `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | `str` | `""` | Credenciais do console do Google. `google_kwargs()` monta o client. |
+| `OAUTH_GOOGLE_EXTRA_AUDIENCES` | `list[str]` | `[]` | Os outros client ids **deste** projeto (Android, iOS). Sem eles, todo login mobile por `POST /auth/oauth/google/token` é recusado como token de outra aplicação. |
 | `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | `str` | `""` | Credenciais do OAuth app do GitHub. `github_kwargs()` monta o client. |
 
 ### Grupo 11 — Um link por vez (`AuthSettings`) *(v0.274.0+)*

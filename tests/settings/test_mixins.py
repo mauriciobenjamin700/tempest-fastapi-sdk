@@ -492,7 +492,25 @@ class TestOAuthSettings:
             "client_id": "the-id",
             "client_secret": "the-secret",
             "redirect_uri": "https://api.example.com/auth/oauth/google/callback",
+            "extra_audiences": [],
         }
+
+    def test_the_platform_client_ids_reach_the_client(self) -> None:
+        """A mobile token carries the Android id, not the backend's.
+
+        Without them in the splat, every native login would be refused
+        by the token-in-hand endpoint as issued to another application.
+        """
+        settings = OAuthSettings(
+            OAUTH_REDIRECT_BASE_URL="https://api.example.com",
+            OAUTH_GOOGLE_CLIENT_ID="the-id",
+            OAUTH_GOOGLE_CLIENT_SECRET="the-secret",
+            OAUTH_GOOGLE_EXTRA_AUDIENCES=["android-id", "ios-id"],
+        )
+
+        client = GoogleOAuthClient(**settings.google_kwargs())
+
+        assert client.extra_audiences == ("android-id", "ios-id")
 
     def test_github_kwargs_point_at_the_github_callback(self) -> None:
         settings = OAuthSettings(

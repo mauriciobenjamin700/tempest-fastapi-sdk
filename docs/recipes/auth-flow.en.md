@@ -765,6 +765,7 @@ There's a whole section dedicated to this, explained step by step:
 | `AUTH_OAUTH_ALLOW_ACCOUNT_CREATION` | `bool` or empty | empty | Whether the callback may create an account. Empty inherits `AUTH_SIGNUP_ENABLED`, so closing signup closes this door with it. |
 | `OAUTH_REDIRECT_BASE_URL` | `str` | `""` | Public origin of the service. The redirect URI is derived from it by `oauth_redirect_uri(provider)`. |
 | `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | `str` | `""` | Credentials from the Google console. `google_kwargs()` builds the client. |
+| `OAUTH_GOOGLE_EXTRA_AUDIENCES` | `list[str]` | `[]` | **This** project's other client ids (Android, iOS). Without them every mobile login through `POST /auth/oauth/google/token` is refused as another application's token. |
 | `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | `str` | `""` | Credentials of the GitHub OAuth app. `github_kwargs()` builds the client. |
 
 ### Group 11 — One link at a time (`AuthSettings`) *(v0.274.0+)*

@@ -5,6 +5,21 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.279.0] — 2026-09-01
+
+A metade que faltava da v0.278.0: a audiência extra existia no client, mas não
+no `Settings`.
+
+### Added
+
+- **`OAUTH_GOOGLE_EXTRA_AUDIENCES` no `OAuthSettings`**, repassado por
+  `google_kwargs()`. Sem ele, adotar o `POST /auth/oauth/google/token` num app
+  mobile exigia declarar o campo à mão em cada serviço — exatamente o que os
+  mixins de settings existem para evitar. O Google emite um client id por
+  plataforma, então o token do app Android carrega o id do Android em `aud`, e
+  sem esses ids listados todo login nativo é recusado como token de outra
+  aplicação.
+
 ## [0.278.0] — 2026-09-01
 
 Duas metades de auth que todo serviço reescrevia por fora do SDK, e a falha de

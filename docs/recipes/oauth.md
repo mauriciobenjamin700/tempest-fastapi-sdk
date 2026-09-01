@@ -337,6 +337,13 @@ Quem responde a pergunta é o client registrado, por
     Cada valor nessa lista é uma aplicação autorizada a logar gente neste
     serviço. Coloque os ids do **seu** projeto, e só eles.
 
+    Pelo `OAuthSettings`, isso é `OAUTH_GOOGLE_EXTRA_AUDIENCES` no ambiente — e
+    `google_kwargs()` já o repassa, então o client continua sendo um splat:
+
+    ```python
+    google = GoogleOAuthClient(**settings.google_kwargs())
+    ```
+
     Client sem nenhum id configurado — o `GoogleOAuthClient(client_id="")` que
     serve só para `fetch_user` — faz a rota responder **501**: não há contra o
     que comparar, e comparar com string vazia ou recusaria tudo ou casaria com
