@@ -30,6 +30,51 @@ def _handling_exception() -> bool:
     return sys.exc_info()[0] is not None
 
 
+_RESERVED_RECORD_KEYS: frozenset[str] = frozenset(
+    vars(logging.LogRecord("", 0, "", 0, "", None, None))
+) | {"message", "asctime"}
+"""The keys ``logging`` refuses to accept through ``extra``.
+
+Read off a real :class:`logging.LogRecord` rather than typed out, so the
+set tracks the interpreter instead of a snapshot of it —
+``Logger.makeRecord`` rejects exactly ``key in rv.__dict__`` plus
+``message`` and ``asctime``. Measured: 22 names on 3.11, 23 on 3.12
+and 3.13, the addition being ``taskName`` — a typed-out list would
+have been wrong on one of the versions this package supports.
+"""
+
+
+def _reject_reserved(fields: dict[str, Any]) -> None:
+    """Refuse structured fields that collide with ``LogRecord`` slots.
+
+    ``logging`` raises ``KeyError`` for these, but only inside
+    ``makeRecord`` — which runs after the level check. So
+    ``logger.debug("...", exc_info="auto")`` in a service running at
+    INFO is dormant, and detonates the day someone raises the
+    verbosity: during an incident, when the log is the only tool left.
+    Rejecting at the call turns that into a deterministic failure the
+    first time the line runs.
+
+    Args:
+        fields (dict[str, Any]): The ``**fields`` of a level method.
+
+    Raises:
+        TypeError: When any key shadows a ``LogRecord`` attribute. The
+            message names the offending keys.
+    """
+    clashes: list[str] = sorted(fields.keys() & _RESERVED_RECORD_KEYS)
+    if not clashes:
+        return
+    names: str = ", ".join(repr(name) for name in clashes)
+    raise TypeError(
+        f"LogUtils: reserved LogRecord attribute used as a structured field: "
+        f"{names}. logging would raise KeyError while building the record — "
+        f"after the level check, so the failure stays dormant until the "
+        f"verbosity goes up. Rename the field, or pass exc_info= as the "
+        f"named parameter every level method accepts."
+    )
+
+
 class LogUtils:
     """High-level logging facade used across SDK consumers.
 
@@ -192,11 +237,55 @@ class LogUtils:
         """
         return get_request_id()
 
+    def _emit(
+        self,
+        level: int,
+        message: str,
+        args: tuple[Any, ...],
+        fields: dict[str, Any],
+        *,
+        stacklevel: int,
+        exc_info: bool | Literal["auto"] = False,
+    ) -> None:
+        """Validate the fields and write one record at ``level``.
+
+        Every public level method routes through here, so the reserved
+        field check and the ``"auto"`` traceback resolution exist once
+        instead of six times — the asymmetry that shipped (``exc_info``
+        on ``error`` only) came from six near-copies drifting apart.
+
+        Args:
+            level (int): A ``logging`` level constant.
+            message (str): The log message or ``%``-style template.
+            args (tuple[Any, ...]): Interpolation arguments, passed
+                through untouched so the interpolation stays lazy.
+            fields (dict[str, Any]): Structured fields for ``extra``.
+            stacklevel (int): Frames to walk back **from the caller of
+                the public method**. One is added here to account for
+                this funnel, so ``2`` still means the call site.
+            exc_info (bool | Literal["auto"]): Whether to attach the
+                current traceback. ``"auto"`` resolves to whether an
+                exception is being handled.
+
+        Raises:
+            TypeError: When a field name is reserved by ``LogRecord``.
+        """
+        _reject_reserved(fields)
+        self.logger.log(
+            level,
+            message,
+            *args,
+            exc_info=_handling_exception() if exc_info == "auto" else exc_info,
+            extra=fields,
+            stacklevel=stacklevel + 1,
+        )
+
     def info(
         self,
         message: str,
         *args: Any,
         stacklevel: int = 2,
+        exc_info: bool | Literal["auto"] = False,
         **fields: Any,
     ) -> None:
         """Emit an INFO record.
@@ -212,16 +301,35 @@ class LogUtils:
             stacklevel (int): How many frames to walk back when resolving
                 ``funcName``/``lineno``. The default of ``2`` points the
                 record at **your** call site instead of at this facade.
-            **fields (Any): Extra structured fields merged into the
-                JSON payload.
+            exc_info (bool | Literal["auto"]): Whether to attach the
+                current traceback. ``"auto"`` attaches it only when an
+                exception is being handled, which is what lets one
+                helper serve a call site that is sometimes inside an
+                ``except`` and sometimes not — ``True`` outside an
+                ``except`` writes ``NoneType: None``.
+            **fields (Any): Extra structured fields merged into the JSON
+                payload. A key that shadows a ``LogRecord`` attribute
+                raises ``TypeError`` here rather than ``KeyError`` at
+                emission time.
+
+        Raises:
+            TypeError: When a field name is reserved by ``LogRecord``.
         """
-        self.logger.info(message, *args, extra=fields, stacklevel=stacklevel)
+        self._emit(
+            logging.INFO,
+            message,
+            args,
+            fields,
+            stacklevel=stacklevel,
+            exc_info=exc_info,
+        )
 
     def debug(
         self,
         message: str,
         *args: Any,
         stacklevel: int = 2,
+        exc_info: bool | Literal["auto"] = False,
         **fields: Any,
     ) -> None:
         """Emit a DEBUG record.
@@ -237,15 +345,35 @@ class LogUtils:
             stacklevel (int): How many frames to walk back when resolving
                 ``funcName``/``lineno``. The default of ``2`` points the
                 record at **your** call site instead of at this facade.
-            **fields (Any): Extra structured fields.
+            exc_info (bool | Literal["auto"]): Whether to attach the
+                current traceback. ``"auto"`` attaches it only when an
+                exception is being handled, which is what lets one
+                helper serve a call site that is sometimes inside an
+                ``except`` and sometimes not — ``True`` outside an
+                ``except`` writes ``NoneType: None``.
+            **fields (Any): Extra structured fields merged into the JSON
+                payload. A key that shadows a ``LogRecord`` attribute
+                raises ``TypeError`` here rather than ``KeyError`` at
+                emission time.
+
+        Raises:
+            TypeError: When a field name is reserved by ``LogRecord``.
         """
-        self.logger.debug(message, *args, extra=fields, stacklevel=stacklevel)
+        self._emit(
+            logging.DEBUG,
+            message,
+            args,
+            fields,
+            stacklevel=stacklevel,
+            exc_info=exc_info,
+        )
 
     def warning(
         self,
         message: str,
         *args: Any,
         stacklevel: int = 2,
+        exc_info: bool | Literal["auto"] = False,
         **fields: Any,
     ) -> None:
         """Emit a WARNING record.
@@ -261,9 +389,28 @@ class LogUtils:
             stacklevel (int): How many frames to walk back when resolving
                 ``funcName``/``lineno``. The default of ``2`` points the
                 record at **your** call site instead of at this facade.
-            **fields (Any): Extra structured fields.
+            exc_info (bool | Literal["auto"]): Whether to attach the
+                current traceback. ``"auto"`` attaches it only when an
+                exception is being handled, which is what lets one
+                helper serve a call site that is sometimes inside an
+                ``except`` and sometimes not — ``True`` outside an
+                ``except`` writes ``NoneType: None``.
+            **fields (Any): Extra structured fields merged into the JSON
+                payload. A key that shadows a ``LogRecord`` attribute
+                raises ``TypeError`` here rather than ``KeyError`` at
+                emission time.
+
+        Raises:
+            TypeError: When a field name is reserved by ``LogRecord``.
         """
-        self.logger.warning(message, *args, extra=fields, stacklevel=stacklevel)
+        self._emit(
+            logging.WARNING,
+            message,
+            args,
+            fields,
+            stacklevel=stacklevel,
+            exc_info=exc_info,
+        )
 
     def error(
         self,
@@ -290,17 +437,23 @@ class LogUtils:
                 current traceback. ``"auto"`` attaches it only when an
                 exception is being handled, which is what lets one
                 helper serve a call site that is sometimes inside an
-                ``except`` and sometimes not — :meth:`exception` raises
-                the question of the caller's context, and ``True``
-                outside an ``except`` writes ``NoneType: None``.
-            **fields (Any): Extra structured fields.
+                ``except`` and sometimes not — ``True`` outside an
+                ``except`` writes ``NoneType: None``.
+            **fields (Any): Extra structured fields merged into the JSON
+                payload. A key that shadows a ``LogRecord`` attribute
+                raises ``TypeError`` here rather than ``KeyError`` at
+                emission time.
+
+        Raises:
+            TypeError: When a field name is reserved by ``LogRecord``.
         """
-        self.logger.error(
+        self._emit(
+            logging.ERROR,
             message,
-            *args,
-            exc_info=_handling_exception() if exc_info == "auto" else exc_info,
-            extra=fields,
+            args,
+            fields,
             stacklevel=stacklevel,
+            exc_info=exc_info,
         )
 
     def error_500(
@@ -332,16 +485,21 @@ class LogUtils:
             *args (Any): Positional arguments for ``%``-style
                 interpolation, forwarded to ``logging`` untouched.
             stacklevel (int): How many frames to walk back when resolving
-                ``funcName``/``lineno``.
+                ``funcName``/``lineno``. The default of ``2`` points the
+                record at **your** call site instead of at this facade.
             **fields (Any): Extra structured fields. A ``http_500`` key
                 here is overridden by the marker.
+
+        Raises:
+            TypeError: When a field name is reserved by ``LogRecord``.
         """
-        self.logger.error(
+        self._emit(
+            logging.ERROR,
             message,
-            *args,
-            exc_info=_handling_exception(),
-            extra={**fields, HTTP_500_MARKER: True},
+            args,
+            {**fields, HTTP_500_MARKER: True},
             stacklevel=stacklevel,
+            exc_info="auto",
         )
 
     def critical(
@@ -349,6 +507,7 @@ class LogUtils:
         message: str,
         *args: Any,
         stacklevel: int = 2,
+        exc_info: bool | Literal["auto"] = False,
         **fields: Any,
     ) -> None:
         """Emit a CRITICAL record.
@@ -364,9 +523,28 @@ class LogUtils:
             stacklevel (int): How many frames to walk back when resolving
                 ``funcName``/``lineno``. The default of ``2`` points the
                 record at **your** call site instead of at this facade.
-            **fields (Any): Extra structured fields.
+            exc_info (bool | Literal["auto"]): Whether to attach the
+                current traceback. ``"auto"`` attaches it only when an
+                exception is being handled, which is what lets one
+                helper serve a call site that is sometimes inside an
+                ``except`` and sometimes not — ``True`` outside an
+                ``except`` writes ``NoneType: None``.
+            **fields (Any): Extra structured fields merged into the JSON
+                payload. A key that shadows a ``LogRecord`` attribute
+                raises ``TypeError`` here rather than ``KeyError`` at
+                emission time.
+
+        Raises:
+            TypeError: When a field name is reserved by ``LogRecord``.
         """
-        self.logger.critical(message, *args, extra=fields, stacklevel=stacklevel)
+        self._emit(
+            logging.CRITICAL,
+            message,
+            args,
+            fields,
+            stacklevel=stacklevel,
+            exc_info=exc_info,
+        )
 
     def exception(
         self,
@@ -377,8 +555,10 @@ class LogUtils:
     ) -> None:
         """Emit an ERROR record with the current exception traceback.
 
-        Must be called from inside an ``except`` block — relies on
-        ``logger.exception`` which inspects ``sys.exc_info()``.
+        Must be called from inside an ``except`` block — the traceback
+        is attached unconditionally, and ``True`` outside an ``except``
+        writes ``NoneType: None``. Use ``error(..., exc_info="auto")``
+        for a call site that is sometimes inside one.
 
         Args:
             message (str): The log message, or a ``%``-style template
@@ -391,9 +571,22 @@ class LogUtils:
             stacklevel (int): How many frames to walk back when resolving
                 ``funcName``/``lineno``. The default of ``2`` points the
                 record at **your** call site instead of at this facade.
-            **fields (Any): Extra structured fields.
+            **fields (Any): Extra structured fields merged into the JSON
+                payload. A key that shadows a ``LogRecord`` attribute
+                raises ``TypeError`` here rather than ``KeyError`` at
+                emission time.
+
+        Raises:
+            TypeError: When a field name is reserved by ``LogRecord``.
         """
-        self.logger.exception(message, *args, extra=fields, stacklevel=stacklevel)
+        self._emit(
+            logging.ERROR,
+            message,
+            args,
+            fields,
+            stacklevel=stacklevel,
+            exc_info=True,
+        )
 
 
 __all__: list[str] = [

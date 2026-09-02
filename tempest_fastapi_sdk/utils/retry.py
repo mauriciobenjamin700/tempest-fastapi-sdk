@@ -24,12 +24,61 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import ParamSpec, TypeVar
+from typing import ParamSpec, Protocol, TypeVar, runtime_checkable
 
 P = ParamSpec("P")
 T = TypeVar("T")
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class RetryLogger(Protocol):
+    """The two calls :func:`async_retry` makes on whatever it logs to.
+
+    ``async_retry`` writes exactly one WARNING per retry and one ERROR
+    when the budget runs out. Typing the parameter as
+    ``logging.Logger`` named the *implementation* the SDK happens to
+    use rather than that requirement — and excluded
+    :class:`~tempest_fastapi_sdk.LogUtils`, which is the logger this
+    same SDK hands the service. A module that opens with
+    ``logger: LogUtils = LogUtils(__name__)`` could not pass that
+    ``logger`` to a decorator shipped alongside it: the call worked at
+    runtime, because the shapes match, and failed under mypy with
+    ``Argument "logger" to "async_retry" has incompatible type
+    "LogUtils"``. The workaround, ``logger=logger.logger``, reaches
+    past the facade to the object it wraps.
+
+    Both parameters are positional-only. A protocol member written
+    ``def warning(self, msg: str)`` also demands the *name* ``msg``
+    from the implementer, and the two loggers disagree —
+    ``logging.Logger`` calls it ``msg``, ``LogUtils`` calls it
+    ``message``. mypy accepts either spelling; basedpyright rejects the
+    mismatch outright, which is the checker the consumer runs.
+
+    ``runtime_checkable`` makes ``isinstance`` work, but it only checks
+    that the two members *exist* — the signatures are the type
+    checker's job, and the recipe carries a typed example so both
+    checkers see it.
+    """
+
+    def warning(self, msg: str, /, *args: object) -> None:
+        """Emit a WARNING record.
+
+        Args:
+            msg (str): The ``%``-style template.
+            *args (object): Interpolation arguments, kept lazy.
+        """
+        ...
+
+    def error(self, msg: str, /, *args: object) -> None:
+        """Emit an ERROR record.
+
+        Args:
+            msg (str): The ``%``-style template.
+            *args (object): Interpolation arguments, kept lazy.
+        """
+        ...
 
 
 @dataclass(slots=True)
@@ -78,7 +127,7 @@ def async_retry(
     policy: RetryPolicy | None = None,
     exceptions: tuple[type[BaseException], ...] = (Exception,),
     *,
-    logger: logging.Logger | None = None,
+    logger: RetryLogger | None = None,
 ) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
     """Retry an async callable with the bounded backoff of ``policy``.
 
@@ -109,8 +158,11 @@ def async_retry(
         exceptions (tuple[type[BaseException], ...]): Exception types
             that count as transient. Anything outside the tuple
             propagates immediately, without consuming an attempt.
-        logger (logging.Logger | None): Where the retry and give-up
-            records go. ``None`` uses this module's logger.
+        logger (RetryLogger | None): Where the retry and give-up
+            records go. Anything with ``warning`` and ``error`` fits —
+            a ``logging.Logger``, or the
+            :class:`~tempest_fastapi_sdk.LogUtils` this SDK hands the
+            service. ``None`` uses this module's logger.
 
     Returns:
         Callable: A decorator wrapping the target coroutine function.
@@ -121,7 +173,7 @@ def async_retry(
             something annotated to return ``T``.
     """
     resolved: RetryPolicy = policy if policy is not None else RetryPolicy()
-    log: logging.Logger = logger if logger is not None else _LOGGER
+    log: RetryLogger = logger if logger is not None else _LOGGER
 
     if resolved.max_attempts < 1:
         raise ValueError("policy.max_attempts must be >= 1")
@@ -182,6 +234,7 @@ def async_retry(
 
 
 __all__: list[str] = [
+    "RetryLogger",
     "RetryPolicy",
     "async_retry",
 ]

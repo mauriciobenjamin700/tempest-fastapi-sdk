@@ -1442,6 +1442,9 @@ from tempest_fastapi_sdk.utils import (
     Region as Region,
 )
 from tempest_fastapi_sdk.utils import (
+    RetryLogger as RetryLogger,
+)
+from tempest_fastapi_sdk.utils import (
     RetryPolicy as RetryPolicy,
 )
 from tempest_fastapi_sdk.utils import (
@@ -2078,6 +2081,7 @@ __all__: list[str] = [
     "RequestIDMiddleware",
     "ResponseCacheMiddleware",
     "ResponseCacheStore",
+    "RetryLogger",
     "RetryPolicy",
     "SSEBroker",
     "SSEData",

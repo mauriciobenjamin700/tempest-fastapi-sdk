@@ -289,8 +289,28 @@ Resolução do `DATABASE_URL` na seguinte ordem:
 
 1. Flag `--database-url`.
 2. Env var `DATABASE_URL`.
-3. `src.core.settings.settings.DATABASE_URL` (quando rodando no diretório do projeto scaffoldado).
-4. `sqlalchemy.url` do `alembic.ini`.
+3. Uma instância de settings no `core/settings.py` do projeto, sob qualquer
+   raiz de código (`src` ou `app`). Vale **qualquer** instância de
+   `pydantic_settings.BaseSettings`: os nomes `settings` e `config` são
+   tentados primeiro, e depois o módulo é varrido por tipo.
+4. `DATABASE_URL` no `.env` do projeto.
+5. `sqlalchemy.url` do `alembic.ini`.
+
+!!! tip "O nome da instância não importa mais"
+    Até a 0.280.0 só o nome `settings` era aceito, e a falha era um
+    `ImportError` engolido por um `except Exception: return None`. Um serviço
+    que chamasse a instância de `config` recebia *"no database URL. Pass
+    --database-url, set DATABASE_URL, or run inside a project with
+    src/core/settings.py"* — apontando para duas condições que o projeto já
+    satisfazia. Hoje o que decide é o **tipo** da instância, o `.env` é lido, e
+    quando nada resolve cada tentativa reporta o motivo no stderr:
+
+    ```text
+    note: importing src.core.settings failed: ImportError("cannot import name ...")
+    error: no database URL. Pass --database-url, set DATABASE_URL, put it in
+           .env, or expose a settings instance with a DATABASE_URL on
+           src/core/settings.py (or app/core/settings.py).
+    ```
 
 ```bash
 tempest db init                                  # cria alembic.ini + alembic/env.py
@@ -529,7 +549,7 @@ tempest user list --admin                        # só admins
 
 `tempest user promote` / `tempest user revoke` localizam o usuário por email (case-insensitive) e só alternam `is_admin`. Quando nenhum usuário casa com o email, saem com código 1 e a mensagem `no user found`.
 
-Resolução do `DATABASE_URL` igual ao `tempest db` (env var > settings > alembic.ini).
+Resolução do `DATABASE_URL` igual ao `tempest db` (env var > instância de settings > `.env` > `alembic.ini`).
 
 ### Segredos — `tempest secrets`
 

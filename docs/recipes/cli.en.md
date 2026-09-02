@@ -290,8 +290,29 @@ Alembic wrapper backed by ``AlembicHelper`` — your project's ``alembic.ini`` +
 
 1. ``--database-url`` flag.
 2. ``DATABASE_URL`` env var.
-3. ``src.core.settings.settings.DATABASE_URL`` (when run from a scaffolded project root).
-4. ``sqlalchemy.url`` from ``alembic.ini``.
+3. A settings instance on the project's ``core/settings.py``, under either
+   code root (``src`` or ``app``). **Any**
+   ``pydantic_settings.BaseSettings`` instance qualifies: the names
+   ``settings`` and ``config`` are tried first, then the module is scanned
+   by type.
+4. ``DATABASE_URL`` in the project's ``.env``.
+5. ``sqlalchemy.url`` from ``alembic.ini``.
+
+!!! tip "The instance name no longer matters"
+    Up to 0.280.0 only the name ``settings`` was accepted, and the failure was
+    an ``ImportError`` swallowed by ``except Exception: return None``. A
+    service naming its instance ``config`` got *"no database URL. Pass
+    --database-url, set DATABASE_URL, or run inside a project with
+    src/core/settings.py"* — pointing at two conditions the project already
+    satisfied. Today the instance's **type** decides, ``.env`` is read, and
+    when nothing resolves each attempt reports why on stderr:
+
+    ```text
+    note: importing src.core.settings failed: ImportError("cannot import name ...")
+    error: no database URL. Pass --database-url, set DATABASE_URL, put it in
+           .env, or expose a settings instance with a DATABASE_URL on
+           src/core/settings.py (or app/core/settings.py).
+    ```
 
 ```bash
 tempest db init                                  # create alembic.ini + alembic/env.py

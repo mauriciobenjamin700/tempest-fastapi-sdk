@@ -10,9 +10,21 @@ Resolution order for the database URL:
 
 1. ``--database-url`` flag when given.
 2. The ``DATABASE_URL`` env var.
-3. The project's ``src.core.settings.settings.DATABASE_URL``
-   (when the scaffolded layout is detected).
-4. The ``sqlalchemy.url`` written in ``alembic.ini``.
+3. A settings instance on the project's ``core.settings`` module,
+   under either code root (``src`` or ``app``). Any
+   ``pydantic_settings.BaseSettings`` instance qualifies — the
+   names ``settings`` and ``config`` are tried first, then the
+   module is scanned, because the instance's *type* is the real
+   test and its *name* is a convention no service signed up for.
+4. ``DATABASE_URL`` in the project's ``.env``, which is where the
+   value actually lives in development.
+5. The ``sqlalchemy.url`` written in ``alembic.ini``.
+
+When every source comes up empty, each attempt reports why on
+stderr. The previous ``except Exception: return None`` erased the
+one clue available — an ``ImportError`` naming the attribute it
+could not find — and left an error message pointing at two
+conditions the project already satisfied.
 
 The async driver suffix (``+asyncpg`` / ``+aiosqlite``) is
 stripped automatically before Alembic runs.
@@ -27,7 +39,7 @@ import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 import typer
 
@@ -35,6 +47,134 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from sqlalchemy.ext.asyncio import AsyncSession
+
+
+_CODE_ROOTS: tuple[str, ...] = ("src", "app")
+"""The two directory names a service may use as its code root."""
+
+_SETTINGS_ATTRS: tuple[str, ...] = ("settings", "config")
+"""Instance names tried before scanning the module by type."""
+
+_NO_DATABASE_URL_HELP: str = (
+    "error: no database URL. Pass --database-url, set DATABASE_URL, put it in "
+    ".env, or expose a settings instance with a DATABASE_URL on "
+    "src/core/settings.py (or app/core/settings.py)."
+)
+"""Guidance printed when every resolution source came up empty."""
+
+
+def _dotenv_database_url(env_file: Path) -> str | None:
+    """Read ``DATABASE_URL`` out of a ``.env`` file.
+
+    ``pydantic-settings`` treats ``.env`` as a first-class source and
+    every service scaffolded by this SDK points at one, so a project
+    with the value only in the file is the normal development case —
+    checking ``os.environ`` alone reported "no database URL" to someone
+    looking at the URL in their editor.
+
+    Only the assignment form is honored: ``KEY=value``, optionally
+    ``export``-prefixed, optionally quoted. Interpolation and multi-line
+    values are not — a value needing either belongs in the environment.
+
+    Args:
+        env_file (Path): Path to the candidate ``.env``.
+
+    Returns:
+        str | None: The value, or ``None`` when the file is absent or
+        carries no usable assignment.
+    """
+    try:
+        lines: list[str] = env_file.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for raw in lines:
+        line: str = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.removeprefix("export ").partition("=")
+        if key.strip() != "DATABASE_URL":
+            continue
+        candidate: str = value.strip()
+        if len(candidate) >= 2 and candidate[0] == candidate[-1] in "\"'":
+            candidate = candidate[1:-1]
+        if candidate:
+            return candidate
+    return None
+
+
+def _settings_instances(module: object) -> list[object]:
+    """List the settings instances a project module exposes.
+
+    The preferred names come first so a module holding more than one
+    instance resolves predictably; the remainder is whatever else on the
+    module is a ``BaseSettings`` instance, in definition order.
+
+    Args:
+        module (object): The imported ``core.settings`` module.
+
+    Returns:
+        list[object]: Candidate instances, best first. Empty when the
+        module exposes none.
+    """
+    from pydantic_settings import BaseSettings
+
+    members: dict[str, Any] = vars(module)
+    found: list[object] = []
+    seen: set[int] = set()
+    for name in _SETTINGS_ATTRS:
+        value = members.get(name)
+        if isinstance(value, BaseSettings):
+            found.append(value)
+            seen.add(id(value))
+    for name, value in members.items():
+        if name.startswith("__") or id(value) in seen:
+            continue
+        if isinstance(value, BaseSettings):
+            found.append(value)
+            seen.add(id(value))
+    return found
+
+
+def _project_settings_database_url(cwd: Path, notes: list[str]) -> str | None:
+    """Import the project's settings module and read the URL off it.
+
+    Args:
+        cwd (Path): The project root, which is put on ``sys.path`` so
+            ``src``/``app`` import as top-level packages.
+        notes (list[str]): Collector for diagnostics, printed by the
+            caller only when the whole resolution fails.
+
+    Returns:
+        str | None: The URL, or ``None`` when no code root has a
+        settings module exposing a non-empty one.
+    """
+    for root in _CODE_ROOTS:
+        if not (cwd / root / "core" / "settings.py").is_file():
+            continue
+        if str(cwd) not in sys.path:
+            sys.path.insert(0, str(cwd))
+        dotted: str = f"{root}.core.settings"
+        try:
+            module = importlib.import_module(dotted)
+        except Exception as error:
+            notes.append(f"note: importing {dotted} failed: {error!r}")
+            continue
+        candidates: list[object] = _settings_instances(module)
+        if not candidates:
+            notes.append(
+                f"note: {dotted} imported, but exposes no "
+                f"pydantic_settings.BaseSettings instance."
+            )
+            continue
+        for candidate in candidates:
+            url = getattr(candidate, "DATABASE_URL", None)
+            if isinstance(url, str) and url:
+                return url
+        notes.append(
+            f"note: {dotted} exposes a settings instance, but its "
+            f"DATABASE_URL is empty or absent."
+        )
+    return None
 
 
 def _resolve_database_url(explicit: str | None) -> str | None:
@@ -45,7 +185,9 @@ def _resolve_database_url(explicit: str | None) -> str | None:
 
     Returns:
         str | None: The chosen URL, or ``None`` to let
-        :class:`AlembicHelper` fall back to ``alembic.ini``.
+        :class:`AlembicHelper` fall back to ``alembic.ini``. Every
+        attempt that failed is reported on stderr before ``None`` is
+        returned, so the caller's guidance arrives with the cause.
     """
     if explicit:
         return explicit
@@ -53,17 +195,26 @@ def _resolve_database_url(explicit: str | None) -> str | None:
     if env:
         return env
     cwd = Path.cwd()
-    if (cwd / "src" / "core" / "settings.py").is_file():
-        sys.path.insert(0, str(cwd))
-        try:
-            from src.core.settings import settings  # type: ignore[import-not-found]
-
-            url = getattr(settings, "DATABASE_URL", None)
-            if isinstance(url, str) and url:
-                return url
-        except Exception:
-            return None
+    notes: list[str] = []
+    from_settings: str | None = _project_settings_database_url(cwd, notes)
+    if from_settings:
+        return from_settings
+    from_dotenv: str | None = _dotenv_database_url(cwd / ".env")
+    if from_dotenv:
+        return from_dotenv
+    for note in notes:
+        typer.echo(note, err=True)
     return None
+
+
+def _fail_no_database_url() -> NoReturn:
+    """Print the resolution guidance and abort with exit code 2.
+
+    Raises:
+        typer.Exit: Always, with code ``2``.
+    """
+    typer.echo(_NO_DATABASE_URL_HELP, err=True)
+    raise typer.Exit(2)
 
 
 def _helper(
@@ -524,12 +675,7 @@ def db_backup(
     """
     url = _resolve_database_url(database_url)
     if url is None:
-        typer.echo(
-            "error: no database URL. Pass --database-url, set DATABASE_URL, "
-            "or run inside a project with src/core/settings.py.",
-            err=True,
-        )
-        raise typer.Exit(2)
+        _fail_no_database_url()
     from tempest_fastapi_sdk.db.backup import DatabaseBackup
 
     written = DatabaseBackup(url).backup(output, plain=plain)
@@ -575,12 +721,7 @@ def db_restore(
         raise typer.Exit(2)
     url = _resolve_database_url(database_url)
     if url is None:
-        typer.echo(
-            "error: no database URL. Pass --database-url, set DATABASE_URL, "
-            "or run inside a project with src/core/settings.py.",
-            err=True,
-        )
-        raise typer.Exit(2)
+        _fail_no_database_url()
     from tempest_fastapi_sdk.db.backup import DatabaseBackup
 
     DatabaseBackup(url).restore(source, clean=not no_clean)
@@ -615,12 +756,7 @@ def db_seed(
     """
     url = _resolve_database_url(database_url)
     if url is None:
-        typer.echo(
-            "error: no database URL. Pass --database-url, set DATABASE_URL, "
-            "or run inside a project with src/core/settings.py.",
-            err=True,
-        )
-        raise typer.Exit(2)
+        _fail_no_database_url()
     seed_callable = _load_seed_callable(seed_spec)
     result = asyncio.run(_run_seed(url, seed_callable))
     suffix = f" ({result} rows)" if isinstance(result, int) else ""

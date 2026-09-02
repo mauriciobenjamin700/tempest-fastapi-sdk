@@ -6,6 +6,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from tempest_fastapi_sdk import (
     LogUtils,
     clear_request_id,
@@ -412,3 +414,186 @@ class TestReinitializeLogging:
         LogUtils("tempest.reinit.b", log_dir=tmp_path)
 
         assert logging.getLogger().handlers
+
+
+class TestReservedFieldNames:
+    """A structured field that shadows a ``LogRecord`` slot is refused.
+
+    The defect this covers shipped as an asymmetry: ``error`` took an
+    ``exc_info`` parameter and the other four levels did not, so
+    ``warning(exc_info="auto")`` fell into ``**fields``, became
+    ``extra=``, and ``logging`` raised ``KeyError`` — inside
+    ``makeRecord``, which runs *after* the level check. Measured on
+    0.280.0: at level ``ERROR`` the same call did not raise; at
+    ``DEBUG`` it raised ``KeyError: "Attempt to overwrite 'exc_info'
+    in LogRecord"``. A service running at INFO carried a dormant
+    crash that woke up the moment someone raised the verbosity.
+    """
+
+    def _util(self, level: str) -> LogUtils:
+        """Build a facade at ``level`` with no file handlers.
+
+        Args:
+            level (str): Minimum level for this instance.
+
+        Returns:
+            LogUtils: The facade under test.
+        """
+        reinitialize_logging()
+        return LogUtils(
+            name=f"tempest.lu.reserved.{level}",
+            level=level,
+            file_output=False,
+        )
+
+    @pytest.mark.parametrize(
+        "method",
+        ["debug", "info", "warning", "error", "critical", "exception"],
+    )
+    @pytest.mark.parametrize("key", ["stack_info", "msg", "args", "levelname"])
+    def test_every_level_refuses_a_reserved_field(
+        self,
+        method: str,
+        key: str,
+    ) -> None:
+        util = self._util("DEBUG")
+        with pytest.raises(TypeError, match=key):
+            getattr(util, method)("x", **{key: 1})
+
+    def test_error_500_refuses_it_too(self) -> None:
+        util = self._util("DEBUG")
+        with pytest.raises(TypeError, match="levelname"):
+            util.error_500("x", levelname="FAKE")
+
+    def test_refusal_does_not_depend_on_the_level(self) -> None:
+        """The whole point: a filtered-out call fails just the same.
+
+        ``logging`` returns before ``makeRecord`` when the level is
+        disabled, so the ``KeyError`` never fired for a DEBUG line in a
+        service running at ERROR. Validating at the call makes the
+        failure deterministic on the first run instead of during the
+        incident that raised the verbosity.
+        """
+        util = self._util("CRITICAL")
+        assert not util.logger.isEnabledFor(logging.DEBUG)
+        with pytest.raises(TypeError, match="stack_info"):
+            util.debug("never emitted", stack_info=True)
+
+    def test_message_names_every_clashing_key(self) -> None:
+        util = self._util("DEBUG")
+        with pytest.raises(TypeError) as caught:
+            util.info("x", args=1, levelname="FAKE")
+        text = str(caught.value)
+        assert "'args'" in text
+        assert "'levelname'" in text
+
+    def test_a_field_that_is_not_reserved_still_lands(self) -> None:
+        reinitialize_logging()
+        buf = io.StringIO()
+        util = LogUtils(
+            name="tempest.lu.reserved.ok",
+            level="DEBUG",
+            file_output=False,
+        )
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.stream = buf
+        util.info("hello", exc_info_note="not the reserved name", user_id="42")
+        payload = json.loads(buf.getvalue().strip())
+        assert payload["exc_info_note"] == "not the reserved name"
+        assert payload["user_id"] == "42"
+
+
+class TestExcInfoOnEveryLevel:
+    """``exc_info`` is a named parameter of every level method."""
+
+    def _grab(self, level: str) -> tuple[LogUtils, list[logging.LogRecord]]:
+        """Build a facade whose records are collected in a list.
+
+        Args:
+            level (str): Minimum level for this instance.
+
+        Returns:
+            tuple[LogUtils, list[logging.LogRecord]]: The facade and the
+            records it emitted.
+        """
+        captured: list[logging.LogRecord] = []
+
+        class Grab(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                captured.append(record)
+
+        reinitialize_logging()
+        util = LogUtils(
+            name=f"tempest.lu.excinfo.{level}",
+            level=level,
+            file_output=False,
+        )
+        util.logger.handlers = [Grab()]
+        util.logger.propagate = False
+        return util, captured
+
+    @pytest.mark.parametrize(
+        "method",
+        ["debug", "info", "warning", "error", "critical"],
+    )
+    def test_auto_attaches_the_traceback_inside_an_except(
+        self,
+        method: str,
+    ) -> None:
+        util, captured = self._grab("DEBUG")
+        try:
+            raise RuntimeError("boom")
+        except RuntimeError:
+            getattr(util, method)("failed", exc_info="auto")
+        attached = captured[0].exc_info
+        assert attached is not None
+        assert attached[0] is RuntimeError
+
+    @pytest.mark.parametrize(
+        "method",
+        ["debug", "info", "warning", "error", "critical"],
+    )
+    def test_auto_attaches_nothing_outside_an_except(self, method: str) -> None:
+        """``exc_info=True`` out here would write ``NoneType: None``."""
+        util, captured = self._grab("DEBUG")
+        getattr(util, method)("nothing wrong", exc_info="auto")
+        assert not captured[0].exc_info
+
+    @pytest.mark.parametrize(
+        "method",
+        ["debug", "info", "warning", "error", "critical"],
+    )
+    def test_default_attaches_nothing_even_inside_an_except(
+        self,
+        method: str,
+    ) -> None:
+        util, captured = self._grab("DEBUG")
+        try:
+            raise RuntimeError("boom")
+        except RuntimeError:
+            getattr(util, method)("handled, and not worth a traceback")
+        assert not captured[0].exc_info
+
+    @pytest.mark.parametrize(
+        "method",
+        ["debug", "info", "warning", "error", "critical"],
+    )
+    def test_the_funnel_keeps_the_record_on_the_call_site(
+        self,
+        method: str,
+    ) -> None:
+        """Every level routes through ``_emit``, one extra frame.
+
+        The default ``stacklevel=2`` still has to name the caller, not
+        the facade — a funnel that forgot to account for itself would
+        blame ``utils/log.py`` on every record.
+        """
+        util, captured = self._grab("DEBUG")
+
+        def service_call() -> None:
+            getattr(util, method)("work done")
+
+        service_call()
+        assert captured[0].funcName == "service_call"
+        assert Path(captured[0].pathname).name != "log.py"

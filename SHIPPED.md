@@ -278,7 +278,11 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   (httpx wrapper with retry/backoff/circuit-breaker /
   `X-Request-ID` propagation), `async_retry` (v0.280.0 — applies a
   `RetryPolicy` to any coroutine, not just an HTTP call; `RetryPolicy`
-  moved to `utils/retry.py`, old import path kept). **Rotation is on by default
+  moved to `utils/retry.py`, old import path kept; **`logger=` is typed
+  `RetryLogger` since v0.281.0** — a `Protocol` with `warning`/`error`, so
+  the `LogUtils` this SDK hands the service is accepted where
+  `logging.Logger | None` rejected it, and `logger=logger.logger` is no
+  longer the workaround). **Rotation is on by default
   (v0.258.0):** the per-level handlers are `RotatingFileHandler` with
   `configure_logging(max_bytes=10_000_000, backup_count=5)` — ~60 MB per
   level, hard cap; `max_bytes=0` restores the plain `FileHandler` for a host
@@ -294,6 +298,19 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   silent absence for a single one, which a dashboard cannot tell from a disk
   nobody asked about); `disk_async` propagates, and `strict=True` carries
   that to the plural variants.
+  **Every level method takes `exc_info`, and a reserved field name is
+  refused at the call (v0.281.0)** — `exc_info` was a parameter of `error`
+  only, so on the other four levels it fell into `**fields`, became
+  `extra=`, and `logging` raised `KeyError` inside `makeRecord` — *after*
+  the level check, which made it dormant in a service running above that
+  level and made it fire during the incident that raised the verbosity.
+  `debug`/`info`/`warning`/`error`/`critical` now all accept
+  `exc_info: bool | Literal["auto"]`, and any field shadowing a
+  `LogRecord` attribute (`stack_info`, `msg`, `args`, `levelname`, `name`,
+  `asctime`, and the rest) raises `TypeError` naming the key, regardless of
+  level. The reserved set is read off a real `LogRecord`, not typed out:
+  measured at 22 names on 3.11 and 23 on 3.12/3.13, the addition being
+  `taskName`.
   **`LogUtils` configures the root logger (v0.280.0)** — `LogUtils(__name__)`
   in every module now shares one handler set instead of giving each module
   logger its own with `propagate=False`; the old shape opened `N` stdout and
@@ -1652,7 +1669,12 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   docker-compose + multi-stage uv `Dockerfile`/`.dockerignore`),
   `tempest generate --docker` (regen compose) / `--dockerfile`
   (regen Dockerfile + .dockerignore) / `--src` (extra source layers),
-  `tempest db init/revision/upgrade/downgrade/current/history/seed`,
+  `tempest db init/revision/upgrade/downgrade/current/history/seed`
+  (**URL resolution fixed in v0.281.0**: the settings instance is found by
+  *type* — any `pydantic_settings.BaseSettings` — under `src` **or** `app`,
+  instead of demanding the name `settings`; `.env` is read when the
+  environment has nothing; and a failed import reports its cause on stderr
+  instead of vanishing into `except Exception: return None`),
   `tempest user create [--admin] [--set col=value] / list / promote /
   revoke` (**`--set` (v0.240.0)** seeds the columns a concrete
   `UserModel` adds: validated against the mapped columns, converted to

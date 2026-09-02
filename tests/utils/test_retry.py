@@ -8,10 +8,17 @@ and whether a cancellation is fought or honored.
 """
 
 import asyncio
+import logging
 
 import pytest
 
-from tempest_fastapi_sdk import RetryPolicy, async_retry
+from tempest_fastapi_sdk import (
+    LogUtils,
+    RetryLogger,
+    RetryPolicy,
+    async_retry,
+    reinitialize_logging,
+)
 
 FAST = RetryPolicy(max_attempts=3, backoff_initial_seconds=0.001)
 
@@ -199,3 +206,49 @@ class TestPolicyValidation:
 
         await first()
         await second()
+
+
+class TestLoggerAcceptsBothFacades:
+    """``logger=`` takes whatever writes a WARNING and an ERROR.
+
+    Typing the parameter ``logging.Logger`` excluded ``LogUtils`` —
+    the logger this same SDK hands the service. The call worked at
+    runtime, because the shapes match, and mypy reported ``Argument
+    "logger" to "async_retry" has incompatible type "LogUtils";
+    expected "Logger | None"``. A service without a type-checker never
+    saw it; one with a type-checker wrote ``logger=logger.logger``,
+    reaching past the facade to the object it wraps.
+    """
+
+    def test_logging_logger_satisfies_the_protocol(self) -> None:
+        assert isinstance(logging.getLogger("t"), RetryLogger)
+
+    def test_logutils_satisfies_the_protocol(self) -> None:
+        assert isinstance(LogUtils.__new__(LogUtils), RetryLogger)
+
+    @pytest.mark.asyncio
+    async def test_logutils_receives_the_retry_and_give_up_records(
+        self,
+    ) -> None:
+        captured: list[logging.LogRecord] = []
+
+        class Grab(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                captured.append(record)
+
+        reinitialize_logging()
+        facade = LogUtils(name="tempest.retry.facade", file_output=False)
+        facade.logger.handlers = [Grab()]
+        facade.logger.propagate = False
+
+        @async_retry(FAST, (ConnectionError,), logger=facade)
+        async def always_fails() -> None:
+            """Fail every time so both record kinds are written."""
+            raise ConnectionError("down")
+
+        with pytest.raises(ConnectionError):
+            await always_fails()
+
+        levels = [record.levelname for record in captured]
+        assert levels == ["WARNING", "WARNING", "ERROR"]
+        assert "gave up after 3 attempts" in captured[-1].getMessage()

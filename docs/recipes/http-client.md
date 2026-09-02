@@ -134,10 +134,50 @@ explícitas:
     algo anotado para devolver `T`.
 
 
+### Para onde vão os registros — `logger=`
+
+`async_retry` escreve exatamente um WARNING por retry e um ERROR quando o
+budget acaba. O parâmetro `logger=` aceita qualquer coisa que saiba fazer essas
+duas chamadas — o `logging.Logger` da stdlib, ou o `LogUtils` que este próprio
+SDK entrega ao serviço:
+
+```python
+from tempest_fastapi_sdk import LogUtils, RetryPolicy, async_retry
+
+logger: LogUtils = LogUtils(__name__)
+BROKER: RetryPolicy = RetryPolicy(max_attempts=4, backoff_initial_seconds=0.2)
+
+
+@async_retry(BROKER, (ConnectionError,), logger=logger)
+async def publish(payload: dict[str, str]) -> None:
+    """Publica no broker, tolerando uma reconexão em andamento."""
+    raise ConnectionError(f"broker indisponível para {payload}")
+```
+
+!!! info "O contrato é `RetryLogger`, não `logging.Logger`"
+    Até a 0.280.0 a anotação era `logging.Logger | None`, e `LogUtils` **não é**
+    um `logging.Logger` — ele embrulha um. O código acima rodava, porque as
+    formas batem, e falhava só no type check:
+
+    ```text
+    error: Argument "logger" to "async_retry" has incompatible type "LogUtils";
+           expected "Logger | None"  [arg-type]
+    ```
+
+    Quem não roda type-checker nunca descobria; quem roda escrevia
+    `logger=logger.logger`, alcançando por baixo da fachada. Hoje o parâmetro é
+    tipado como `RetryLogger` — um `Protocol` com `warning` e `error`, que é
+    tudo o que a função usa — e os dois passam. Os parâmetros obrigatórios do
+    protocolo são posicionais-only de propósito: `logging.Logger` chama o
+    primeiro de `msg` e `LogUtils` chama de `message`, e um protocolo que
+    nomeasse o parâmetro recusaria um dos dois no basedpyright.
+
+
 ## Recap
 
 - `HTTPClient` = `httpx.AsyncClient` tipado + retry/backoff/circuit-breaker + X-Request-ID.
 - Extra `[http]`. Métodos `get/post/put/patch/delete/request` → `httpx.Response`.
 - `RetryPolicy(max_attempts, backoff_initial_seconds, backoff_max_seconds)` controla o retry.
+- `async_retry(policy, exceptions, logger=)` aplica a curva a qualquer corrotina; `logger=` aceita `logging.Logger` ou `LogUtils`.
 - `failure_threshold` / `recovery_seconds` controlam o breaker; `CircuitOpenError` quando aberto.
 - Compartilhe um singleton e feche com `aclose()` no shutdown.

@@ -301,6 +301,75 @@ traceback rides along whenever one is being handled.
 
     The default stays `False`, so existing call sites do not change output.
 
+
+## `exc_info` on every level, and the name `LogRecord` will not give up
+
+`debug`, `info`, `warning`, `error` and `critical` all take `exc_info` as a
+named parameter — a `bool` or `"auto"`:
+
+```python
+from tempest_fastapi_sdk import LogUtils
+
+logger: LogUtils = LogUtils(__name__)
+
+
+def refresh_cache(key: str) -> None:
+    """Reload one entry, tolerating an unavailable cache."""
+    try:
+        raise ConnectionError("redis down")
+    except ConnectionError:
+        logger.warning("Cache miss on %s", key, exc_info="auto", op="refresh")
+```
+
+!!! danger "Up to 0.280.0 that line was a dormant `KeyError`"
+    Only `error` had the parameter. On the other four levels `exc_info=` fell
+    into `**fields`, became `extra=`, and `logging` refuses to overwrite a
+    reserved `LogRecord` attribute — **inside `makeRecord`, after the level
+    check**. Measured on 0.280.0:
+
+    ```text
+    level ERROR, warning(exc_info=...) call: does NOT raise
+    level DEBUG, same call -> KeyError: "Attempt to overwrite 'exc_info'
+                                         in LogRecord"
+    ```
+
+    A service running at INFO carried the failure asleep until someone raised
+    the verbosity — which is to say it went off during the incident, the minute
+    the log was the only tool left.
+
+This holds for any name `LogRecord` already uses, not just `exc_info`:
+`stack_info`, `msg`, `args`, `levelname`, `name`, `asctime` and more. A
+field by one of those names is now refused **at the call**, with `TypeError`,
+regardless of level:
+
+```python
+from tempest_fastapi_sdk import LogUtils
+
+logger: LogUtils = LogUtils(__name__)
+
+try:
+    logger.info("order processed", levelname="FAKE")
+except TypeError as error:
+    print(error)
+```
+
+```text
+LogUtils: reserved LogRecord attribute used as a structured field:
+'levelname'. logging would raise KeyError while building the record — after
+the level check, so the failure stays dormant until the verbosity goes up.
+Rename the field, or pass exc_info= as the named parameter every level method
+accepts.
+```
+
+The set of names is read off a real `LogRecord` rather than typed out, so it
+tracks the interpreter. Measured: **22** names on 3.11, **23** on 3.12 and
+3.13 — the addition is `taskName`, which does not exist on 3.11.
+
+!!! tip "Rename the field, not the intent"
+    Need a structured field with that meaning? Prefix it: `op_name` instead of
+    `name`, `record_args` instead of `args`. The name `logging` reserves
+    belongs to the record's machinery, not to your domain.
+
 ## After Alembic — `reinitialize_logging`
 
 `logging.config.fileConfig()` disables, by default, every logger that already
@@ -579,3 +648,6 @@ would start attributing requests to whatever address they picked. See
   that is what separates structured logging from pretty logging.
 - `make_logs_router` mounts a paginated `GET /logs` over those files, newest
   first, so you can read them without shell access to the container.
+- Every level takes `exc_info` (`bool` or `"auto"`); a structured field that
+  collides with a `LogRecord` attribute is refused at the call, with
+  `TypeError`.

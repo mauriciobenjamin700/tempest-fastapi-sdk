@@ -689,6 +689,7 @@ disciplina (`hub`, `image`, `inventory`, `rag`, `audio`) vêm depois.
 ::: tempest_fastapi_sdk.utils.storage_backends.MinIOUploadStorage
 ::: tempest_fastapi_sdk.utils.http_client.HTTPClient
 ::: tempest_fastapi_sdk.utils.http_client.CircuitOpenError
+::: tempest_fastapi_sdk.utils.retry.RetryLogger
 ::: tempest_fastapi_sdk.utils.retry.RetryPolicy
 ::: tempest_fastapi_sdk.utils.retry.async_retry
 ::: tempest_fastapi_sdk.api.oauth.GoogleOAuthClient

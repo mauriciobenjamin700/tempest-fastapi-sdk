@@ -5,6 +5,87 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.281.0] — 2026-09-02
+
+Três defeitos que a adoção da 0.280.0 no `alofans-api` encontrou, todos na
+mesma fronteira: uma peça que o SDK entrega e outra do SDK que não a aceitava.
+Cada um foi reproduzido contra a 0.280.0 publicada antes de qualquer linha ser
+escrita, e cada teste novo foi rodado contra o código como shippou — 35 falhas
+no `LogUtils`, 12 na resolução da CLI.
+
+### Fixed
+
+- **`exc_info` era parâmetro de `error` e de mais nenhum nível**
+  ([#260](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/260)).
+  Nos outros quatro o kwarg caía no `**fields`, virava `extra=`, e o `logging`
+  recusa sobrescrever atributo reservado do `LogRecord` — dentro do
+  `makeRecord`, que roda **depois** da checagem de nível. Medido na 0.280.0:
+
+  ```text
+  nível ERROR, chamada warning(exc_info=...): NÃO levanta
+  nível DEBUG, mesma chamada -> KeyError: "Attempt to overwrite 'exc_info'
+                                          in LogRecord"
+  ```
+
+  É a forma mais desagradável de bug: `logger.debug("...", exc_info="auto")`
+  num serviço rodando em INFO fica dormente até alguém subir a verbosidade —
+  ou seja, detona durante o incidente, no minuto em que o log é a única
+  ferramenta que sobrou.
+
+  `debug`/`info`/`warning`/`error`/`critical` agora aceitam
+  `exc_info: bool | Literal["auto"]`, e **qualquer** campo que sombreie
+  atributo do `LogRecord` (`stack_info`, `msg`, `args`, `levelname`, `name`,
+  `asctime`, entre outros) levanta `TypeError` nomeando a chave, independente
+  do nível. O conjunto de nomes é lido de um `LogRecord` de verdade, não
+  digitado à mão, então acompanha o interpretador: medido em **22** nomes no
+  3.11 e **23** no 3.12/3.13 — a diferença é `taskName`, que o 3.11 não tem. Os seis métodos passaram a funilar
+  num `_emit` privado, porque a assimetria nasceu de seis quase-cópias
+  driftando.
+
+  **Isto muda comportamento de propósito:** um serviço que hoje passa nome
+  reservado num nível filtrado não levanta nada; a partir daqui levanta
+  `TypeError` na primeira execução da linha. Era esse o pedido — falha
+  determinística em vez de bomba-relógio.
+
+- **`async_retry(logger=)` recusava o `LogUtils` que o próprio SDK entrega**
+  ([#262](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/262)).
+  O parâmetro era `logging.Logger | None`, e `LogUtils` **não é** um
+  `logging.Logger` — embrulha um. O call site natural rodava, porque as formas
+  batem, e falhava só no type check com `Argument "logger" to "async_retry"
+  has incompatible type "LogUtils"; expected "Logger | None"`. Quem não roda
+  type-checker nunca descobria; quem roda escrevia `logger=logger.logger`.
+
+  Agora o parâmetro é `RetryLogger | None`. Os parâmetros obrigatórios do
+  protocolo são posicionais-only porque `logging.Logger` chama o primeiro de
+  `msg` e `LogUtils` chama de `message`: mypy aceita as duas grafias,
+  basedpyright recusa a divergência de nome — a regra da v0.263.0. Medido:
+  o exemplo da receita passa nos dois checkers, e volta a falhar nos dois se a
+  anotação for reestreitada, porque `tests/test_docs_type_guard.py` roda mypy
+  sobre ele.
+
+- **A CLI `db` exigia o nome `settings`, ignorava o `.env` e engolia a causa**
+  ([#261](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/261)).
+  `_resolve_database_url` importava `src.core.settings.settings`; um serviço
+  que chamasse a instância de `config` levantava `ImportError`, que o
+  `except Exception: return None` apagava. A mensagem resultante — *"no
+  database URL. Pass --database-url, set DATABASE_URL, or run inside a project
+  with src/core/settings.py"* — apontava para duas condições que o projeto já
+  satisfazia, então quem lia concluía que o bug era outro. Pegava
+  `seed`, `upgrade`, `current`, `backup`: a família toda.
+
+  Três mudanças: a instância é achada por **tipo** (qualquer
+  `pydantic_settings.BaseSettings`, com os nomes `settings` e `config`
+  tentados primeiro), sob `src` **ou** `app`; o `.env` do projeto é lido
+  quando o ambiente não tem nada, que é onde o valor mora em dev; e cada
+  tentativa que falha reporta o motivo no stderr — mas só quando a resolução
+  inteira falha, para o caminho feliz não virar ruído.
+
+### Added
+
+- **`RetryLogger`** — o `Protocol` com `warning`/`error` que `async_retry`
+  passou a exigir. Exportado no topo, sem extra: `utils/retry.py` importa só
+  stdlib.
+
 ## [0.280.0] — 2026-09-01
 
 Seis buracos de superfície que o `alofans-api` vinha tapando por fora, achados

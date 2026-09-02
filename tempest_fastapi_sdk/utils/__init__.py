@@ -312,6 +312,9 @@ from tempest_fastapi_sdk.utils.regex import (
     parse_phone_br as parse_phone_br,
 )
 from tempest_fastapi_sdk.utils.retry import (
+    RetryLogger as RetryLogger,
+)
+from tempest_fastapi_sdk.utils.retry import (
     RetryPolicy as RetryPolicy,
 )
 from tempest_fastapi_sdk.utils.retry import (
@@ -425,6 +428,7 @@ __all__: list[str] = [
     "RatingField",
     "RatioField",
     "Region",
+    "RetryLogger",
     "RetryPolicy",
     "SignedDecimalRatioField",
     "SlugField",

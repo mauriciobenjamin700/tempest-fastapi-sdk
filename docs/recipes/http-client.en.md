@@ -138,10 +138,50 @@ Three decisions a hand-written loop tends to get wrong, made explicit here:
     return `None` from something annotated to return `T`.
 
 
+### Where the records go — `logger=`
+
+`async_retry` writes exactly one WARNING per retry and one ERROR when the
+budget runs out. The `logger=` parameter takes anything that can make those
+two calls — the stdlib `logging.Logger`, or the `LogUtils` this same SDK
+hands the service:
+
+```python
+from tempest_fastapi_sdk import LogUtils, RetryPolicy, async_retry
+
+logger: LogUtils = LogUtils(__name__)
+BROKER: RetryPolicy = RetryPolicy(max_attempts=4, backoff_initial_seconds=0.2)
+
+
+@async_retry(BROKER, (ConnectionError,), logger=logger)
+async def publish(payload: dict[str, str]) -> None:
+    """Publish to the broker, tolerating a reconnect in flight."""
+    raise ConnectionError(f"broker unavailable for {payload}")
+```
+
+!!! info "The contract is `RetryLogger`, not `logging.Logger`"
+    Up to 0.280.0 the annotation was `logging.Logger | None`, and `LogUtils`
+    **is not** a `logging.Logger` — it wraps one. The code above ran, because
+    the shapes match, and failed only under the type checker:
+
+    ```text
+    error: Argument "logger" to "async_retry" has incompatible type "LogUtils";
+           expected "Logger | None"  [arg-type]
+    ```
+
+    A service without a type-checker never found out; one with a type-checker
+    wrote `logger=logger.logger`, reaching under the facade. The parameter is
+    now typed `RetryLogger` — a `Protocol` with `warning` and `error`, which is
+    all the function uses — and both pass. Its required parameters are
+    positional-only on purpose: `logging.Logger` calls the first one `msg` and
+    `LogUtils` calls it `message`, and a protocol that named the parameter
+    would reject one of the two under basedpyright.
+
+
 ## Recap
 
 - `HTTPClient` = typed `httpx.AsyncClient` + retry/backoff/circuit-breaker + X-Request-ID.
 - `[http]` extra. Methods `get/post/put/patch/delete/request` → `httpx.Response`.
 - `RetryPolicy(max_attempts, backoff_initial_seconds, backoff_max_seconds)` controls retries.
+- `async_retry(policy, exceptions, logger=)` applies the curve to any coroutine; `logger=` takes a `logging.Logger` or a `LogUtils`.
 - `failure_threshold` / `recovery_seconds` control the breaker; `CircuitOpenError` when open.
 - Share a singleton and close it with `aclose()` on shutdown.

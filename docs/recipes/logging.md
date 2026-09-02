@@ -297,6 +297,75 @@ traceback vai junto sempre que houver um sendo tratado.
 
     O default segue `False`, então call site existente não muda de saída.
 
+
+## `exc_info` em todos os níveis, e o nome que o `LogRecord` não cede
+
+`debug`, `info`, `warning`, `error` e `critical` aceitam `exc_info` como
+parâmetro nomeado — `bool` ou `"auto"`:
+
+```python
+from tempest_fastapi_sdk import LogUtils
+
+logger: LogUtils = LogUtils(__name__)
+
+
+def refresh_cache(key: str) -> None:
+    """Recarrega uma entrada, tolerando o cache indisponível."""
+    try:
+        raise ConnectionError("redis down")
+    except ConnectionError:
+        logger.warning("Cache miss em %s", key, exc_info="auto", op="refresh")
+```
+
+!!! danger "Até a 0.280.0 essa linha era um `KeyError` dormente"
+    Só `error` tinha o parâmetro. Nos outros quatro níveis o `exc_info=`
+    caía no `**fields`, virava `extra=`, e o `logging` recusa sobrescrever
+    atributo reservado do `LogRecord` — **dentro do `makeRecord`, depois da
+    checagem de nível**. Medido na 0.280.0:
+
+    ```text
+    nível ERROR, chamada warning(exc_info=...): NÃO levanta
+    nível DEBUG, mesma chamada -> KeyError: "Attempt to overwrite 'exc_info'
+                                            in LogRecord"
+    ```
+
+    Um serviço rodando em INFO carregava a falha adormecida até alguém subir a
+    verbosidade — ou seja, ela detonava durante o incidente, no minuto em que o
+    log é a única ferramenta que sobrou.
+
+Vale para qualquer nome que o `LogRecord` já usa, não só `exc_info`:
+`stack_info`, `msg`, `args`, `levelname`, `name`, `asctime` e mais. Um
+campo com esse nome agora é recusado **na chamada**, com `TypeError`,
+independente do nível:
+
+```python
+from tempest_fastapi_sdk import LogUtils
+
+logger: LogUtils = LogUtils(__name__)
+
+try:
+    logger.info("pedido processado", levelname="FAKE")
+except TypeError as error:
+    print(error)
+```
+
+```text
+LogUtils: reserved LogRecord attribute used as a structured field:
+'levelname'. logging would raise KeyError while building the record — after
+the level check, so the failure stays dormant until the verbosity goes up.
+Rename the field, or pass exc_info= as the named parameter every level method
+accepts.
+```
+
+O conjunto de nomes é lido de um `LogRecord` de verdade, não digitado à mão,
+então ele acompanha o interpretador. Medido: **22** nomes no 3.11, **23** no
+3.12 e no 3.13 — o que entra é `taskName`, que não existe no 3.11.
+
+!!! tip "Renomeie o campo, não a intenção"
+    Precisa de um campo estruturado com esse sentido? Prefixe:
+    `op_name` em vez de `name`, `record_args` em vez de `args`. O nome que o
+    `logging` reserva é da mecânica do registro, não do seu domínio.
+
 ## Depois do Alembic — `reinitialize_logging`
 
 `logging.config.fileConfig()` desabilita, por padrão, todo logger que já
@@ -575,3 +644,5 @@ atacante — e o log passaria a atribuir requests ao endereço que ele quis. Vej
   um `grep` — é isso que separa log estruturado de log bonito.
 - `make_logs_router` monta `GET /logs` paginado sobre esses arquivos, mais
   recentes primeiro, para ler sem acesso ao disco do container.
+- Todo nível aceita `exc_info` (`bool` ou `"auto"`); campo estruturado que
+  colide com atributo do `LogRecord` é recusado na chamada, com `TypeError`.
