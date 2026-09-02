@@ -86,11 +86,13 @@ class TestTransportFromTheScheme:
         assert type(queue.broker).__name__ == "AioPikaBroker"
 
     def test_an_unknown_scheme_is_refused_not_downgraded(self) -> None:
-        """Silently using memory would run every task in the web process.
+        """A scheme no transport handles raises, naming the scheme.
 
-        A typo in a deployed environment variable has to fail loudly:
-        falling back would mean the queue looks healthy while nothing
-        is queued and nothing survives a restart.
+        What this asserts is the refusal, and the refusal is the whole
+        point: falling back to the in-memory broker would leave a typo
+        in a deployed environment variable looking like a healthy queue.
+        The error names the scheme, so the typo is readable from the
+        message.
         """
         with pytest.raises(ValueError, match="unsupported scheme 'kafka'"):
             TaskQueue.from_settings(Settings("kafka://localhost:9092"))

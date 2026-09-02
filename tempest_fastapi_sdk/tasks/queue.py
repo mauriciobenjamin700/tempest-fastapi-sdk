@@ -418,9 +418,9 @@ class TaskQueue:
         url: str = (settings.TASKIQ_BROKER_URL or "").strip()
         if not url:
             logger.warning(
-                "TASKIQ_BROKER_URL is empty; using the in-memory broker, which"
-                " runs every task in this process and keeps nothing across a"
-                " restart.",
+                "TASKIQ_BROKER_URL is empty; using the in-memory broker, whose"
+                " enqueue runs the task synchronously in this process instead"
+                " of handing it to a worker.",
             )
             return cls.memory(resources=resources)
         scheme: str = url.split("://", 1)[0].lower()

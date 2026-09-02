@@ -1081,7 +1081,7 @@ tq: TaskQueue = TaskQueue.from_settings(settings)
 | --- | --- |
 | `redis://` / `rediss://` | Redis Streams, com result backend na mesma URL |
 | `amqp://` / `amqps://` | RabbitMQ; resultado vai pro `TASKIQ_RESULT_BACKEND_URL`, se houver |
-| vazio | in-memory — `@tq.task` continua registrando, nada atravessa restart |
+| vazio | in-memory — `@tq.task` continua registrando, e `enqueue` roda a tarefa neste processo em vez de entregar a um worker |
 | qualquer outro esquema | `ValueError` nomeando o esquema |
 
 !!! warning "O default do mixin é uma URL AMQP, não vazio"
