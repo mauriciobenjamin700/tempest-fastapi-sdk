@@ -5,6 +5,46 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.283.1] — 2026-09-02
+
+A v0.283.0 não chegou ao PyPI: o gate da CI parou no `Type check` e o
+`Publish to PyPI` foi pulado. Esta versão é essa correção, mais o defeito de
+CI que a deixou passar batido.
+
+### Fixed
+
+- **`librosa` entra no override do mypy, como o `numpy` já estava.** O bump de
+  pisos trouxe um segundo pacote que resolve por split de Python: `librosa`
+  1.0.0 exige Python `>=3.12` e a 0.11.0 exige `>=3.8`, então o lock carrega
+  as duas e só o split 3.12+ pega a nova — que usa a sintaxe `type X = ...`,
+  recusada pelo mypy enquanto ele mira `python_version = "3.11"`:
+
+  ```text
+  librosa/beat.py:26: error: Type statement is only supported in Python 3.12
+  and greater  [syntax]
+  ```
+
+  O `numpy` já carregava um override idêntico, escrito pelo mesmo motivo. A
+  lição que faltava é sobre o método: **`make check` local não é evidência
+  sobre a CI quando uma dependência resolve por split.** O gate rodou verde
+  aqui no 3.11, onde o lock dá `librosa` 0.11.0, e falhou na CI no 3.13.
+  Verificado agora nos três: mypy, ruff e a suíte completa (7733 testes)
+  passam em 3.11, 3.12 e 3.13.
+
+- **A matriz da CI rodava três vezes o mesmo Python.** `.python-version` fixa
+  `3.13` e o `uv sync` honra o arquivo, então `uv python install 3.11` seguido
+  de `uv sync` construía uma venv 3.13 — nos três jobs. A evidência está no
+  run da v0.283.0: o job chamado **"Python 3.11"** reportou o erro dentro de
+  `.venv/lib/python3.13/site-packages/librosa/beat.py`. Lint, type check e
+  testes eram, na prática, um job só; apenas os passos de smoke eram honestos,
+  porque passam `--python` explícito.
+
+  `UV_PYTHON: ${{ matrix.python-version }}` no `env:` do job resolve, porque
+  a variável sobrepõe o `.python-version`. Consequência: a escolha de piso
+  pelo **menor** das versões do lock, feita na v0.283.0, estava certa sem que
+  a CI tivesse verificado — medido agora, 3.12 e 3.13 resolvem `numpy` 2.5.2 e
+  só o 3.11 pega a 2.4.6, que é o piso declarado.
+
 ## [0.283.0] — 2026-09-02
 
 O lock foi para as versões mais recentes que a resolução alcança, e os **81

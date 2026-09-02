@@ -578,6 +578,26 @@ follow_imports_for_stubs = true
 ignore_errors = true
 ignore_missing_imports = true
 
+# librosa (transitive, via [genai-audio]) is the same story as numpy above,
+# and it only appears once the floors move: librosa 1.0.0 requires Python
+# >=3.12 while 0.11.0 requires >=3.8, so the lock carries both and only the
+# 3.12+ split resolves the newer one. That one uses the 3.12 ``type X = ...``
+# statement, which mypy rejects while targeting python_version 3.11:
+#
+#   librosa/beat.py:26: error: Type statement is only supported in Python
+#   3.12 and greater  [syntax]
+#
+# Measured the hard way in v0.283.0: the gate ran green locally on 3.11,
+# where the lock gives librosa 0.11.0, and failed in CI on 3.13. A local
+# `make check` is not evidence about CI when a dependency resolves per
+# Python split -- check `uv.lock` for a second version of the package first.
+[[tool.mypy.overrides]]
+module = ["librosa", "librosa.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+ignore_errors = true
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

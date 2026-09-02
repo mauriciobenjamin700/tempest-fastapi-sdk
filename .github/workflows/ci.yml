@@ -27,6 +27,16 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
+    env:
+      # `.python-version` pins 3.13, and `uv sync` honours it -- so every
+      # matrix job built a 3.13 venv and the matrix was vacuous for lint,
+      # type check and tests. Measured on the v0.283.0 run: the job named
+      # "Python 3.11" reported an error inside
+      # `.venv/lib/python3.13/site-packages/librosa/beat.py`. Only the smoke
+      # steps below were honest, because they pass `--python` explicitly.
+      # `UV_PYTHON` outranks `.python-version`, so this is what makes the
+      # three jobs three different Pythons.
+      UV_PYTHON: ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v4
 
