@@ -343,10 +343,19 @@ design system próprio, passe `classes=FormClasses(...)` tanto para
     round-trip.
 
 !!! info "Por que não usar `Input` / `Dropdown` do `tempest_core`"
-    Medido contra o renderizador HTML: `Form` sai como `<div>`, `Input`
-    sai **sem `name`** (logo não submete nada) e `Dropdown` / `TextArea`
-    saem como `<div>` vazio — os widgets são do cliente reativo, não do
-    SSR. Por isso `ui.forms` emite os elementos direto pelo escape hatch
+    Medido contra o renderizador HTML, no `tempest-core` 0.18.0: `Form()`
+    sai como `<div></div>` — sem `action`, sem `method`, não é um
+    `<form>` — e **nenhum** dos controles renderiza `name`, então um
+    formulário feito deles submete corpo vazio: falha sem mensagem de
+    erro em lugar nenhum. Os widgets são do cliente reativo, não do SSR.
+
+    A medição mudou de forma na 0.18.0, e vale registrar o que o upstream
+    corrigiu: até a 0.14.0 o `Dropdown` e o `TextArea` saíam como `<div>`
+    vazio, perdendo o tipo do elemento e a lista de opções. Hoje as tags
+    estão certas — `<input>`, `<textarea>` e um `<select>` com os seus
+    `<option>`. O que decide continua sendo a ausência do `name`.
+
+    Por isso `ui.forms` emite os elementos direto pelo escape hatch
     `tag`/`attrs`. A medição está fixada em
     `tests/ui/test_core_contract.py`.
 

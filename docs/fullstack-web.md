@@ -430,7 +430,8 @@ volta. `GET /api/health` continua respondendo normalmente.
 
     Os componentes que a `view` constrói resolvem a cor contra essa
     paleta sozinhos — o build instala o tema em volta da chamada da
-    `view`. Isso exige `tempestweb>=0.67.0`: é o piso que alcança o
+    `view`. Isso exige `tempestweb` 0.67.0 ou mais: é onde a capacidade
+    alcança o
     `tempest-core` 0.12.0, onde a ligação existe. Um `theme=` passado
     direto num widget ainda vence. A receita completa, com as duas
     metades do rebrand, está em [SSR](ssr.md#a-paleta-do-app-theme).

@@ -5,6 +5,160 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.283.0] — 2026-09-02
+
+O lock foi para as versões mais recentes que a resolução alcança, e os **81
+pisos declarados** subiram para o que foi medido. Sessenta e cinco deles
+propagam para quem consome o SDK.
+
+### ⚠️ Isto obriga o consumidor a subir dependência
+
+Piso declarado (`>=`) num pacote publicado não é preferência nossa: ele entra
+na resolução de todo serviço que instala o SDK. Sessenta e cinco pisos subiram,
+então um serviço que ainda estava em `numpy` 1.x, `redis` 5.x ou `torch` 2.2
+**não resolve** mais contra a 0.283.0 sem subir também.
+
+Os saltos que mais doem, porque atravessam major: `numpy` 1.24 → 2.4.6,
+`redis` 5.0 → 8.1.0, `chromadb` 0.5 → 1.5.9, `accelerate` 0.33 → 1.14,
+`pillow` 10.0 → 12.3, `torch` 2.2 → 2.14. Atualize o ambiente antes do merge.
+
+Nada de superfície pública mudou nesta release — o que muda é o que ela exige
+em volta.
+
+### Changed
+
+**Pisos que propagam para o consumidor (65):**
+
+| Pacote | De | Para |
+| --- | --- | --- |
+| `accelerate` | `>=0.33.0` | `>=1.14.0` |
+| `aiofiles` | `>=24.1.0` | `>=25.1.0` |
+| `aiosmtplib` | `>=4.0.0` | `>=5.1.2` |
+| `aiosqlite` | `>=0.20.0` | `>=0.22.1` |
+| `alembic` | `>=1.18.4` | `>=1.19.1` |
+| `asyncpg` | `>=0.30.0` | `>=0.31.0` |
+| `bitsandbytes` | `>=0.43.0` | `>=0.50.2` |
+| `chromadb` | `>=0.5.0` | `>=1.5.9` |
+| `click` | `>=8.0.0` | `>=8.5.0` |
+| `coqui-tts` | `>=0.24.0` | `>=0.27.5` |
+| `cryptography` | `>=50.0.0` | `>=50.0.1` |
+| `diffusers` | `>=0.31.0` | `>=0.39.0` |
+| `email-validator` | `>=2.0.0` | `>=2.3.0` |
+| `faster-whisper` | `>=1.0.0` | `>=1.2.1` |
+| `faststream[rabbit]` | `>=0.7.1` | `>=0.7.5` |
+| `fido2` | `>=2.0.0` | `>=2.2.1` |
+| `firebase-admin` | `>=7.0.0` | `>=7.5.0` |
+| `httpx` | `>=0.28.0` | `>=0.28.1` |
+| `huggingface-hub` | `>=0.24.0` | `>=0.36.2` |
+| `jinja2` | `>=3.1.0` | `>=3.1.6` |
+| `lm-format-enforcer` | `>=0.10.0` | `>=0.11.3` |
+| `minio` | `>=7.2.0` | `>=7.2.20` |
+| `numpy` | `>=1.24.0` | `>=2.4.6` |
+| `nvidia-ml-py` | `>=12.560.30` | `>=13.610.43` |
+| `onnx` | `>=1.16.0` | `>=1.22.0` |
+| `onnxruntime` | `>=1.28.0` | `>=1.29.0` |
+| `opentelemetry-exporter-otlp-proto-grpc` | `>=1.27.0` | `>=1.44.0` |
+| `opentelemetry-instrumentation-fastapi` | `>=0.48b0` | `>=0.65b0` |
+| `opentelemetry-instrumentation-httpx` | `>=0.48b0` | `>=0.65b0` |
+| `opentelemetry-instrumentation-sqlalchemy` | `>=0.48b0` | `>=0.65b0` |
+| `opentelemetry-sdk` | `>=1.27.0` | `>=1.44.0` |
+| `ort-vision-sdk` | `>=0.4.0` | `>=0.8.0` |
+| `pgvector` | `>=0.3.0` | `>=0.5.0` |
+| `pillow` | `>=10.0.0` | `>=12.3.0` |
+| `prometheus-client` | `>=0.20.0` | `>=0.26.0` |
+| `psutil` | `>=6.0.0` | `>=7.2.2` |
+| `pydantic` | `>=2.13.4` | `>=2.13.5` |
+| `pydantic-settings` | `>=2.14.2` | `>=2.15.0` |
+| `pyjwt` | `>=2.12.1` | `>=2.13.0` |
+| `pymupdf` | `>=1.24.0` | `>=1.28.2` |
+| `pyotp` | `>=2.9.0` | `>=2.10.0` |
+| `pypdf` | `>=5.0.0` | `>=6.16.2` |
+| `python-multipart` | `>=0.0.12` | `>=0.0.32` |
+| `pywebpush` | `>=2.0.0` | `>=2.5.0` |
+| `pyyaml` | `>=6.0` | `>=6.0.3` |
+| `redis` | `>=5.0.0` | `>=8.1.0` |
+| `safetensors` | `>=0.4.0` | `>=0.8.0` |
+| `sherpa-onnx` | `>=1.12.0` | `>=1.13.7` |
+| `skl2onnx` | `>=1.16.0` | `>=1.20.0` |
+| `sqlalchemy[asyncio]` | `>=2.0.49` | `>=2.0.52` |
+| `sqlglot` | `>=25.0.0` | `>=30.17.0` |
+| `taskiq` | `>=0.11.0` | `>=0.12.6` |
+| `taskiq-aio-pika` | `>=0.4.0` | `>=0.6.0` |
+| `taskiq-redis` | `>=1.0.3` | `>=1.2.3` |
+| `tempestweb` | `>=0.67.0` | `>=0.127.0` |
+| `tokenizers` | `>=0.20.0` | `>=0.22.2` |
+| `torch` | `>=2.2.0` | `>=2.14.0` |
+| `torchaudio` | `>=2.2.0` | `>=2.11.0` |
+| `torchcodec` | `>=0.8.0` | `>=0.16.0` |
+| `torchvision` | `>=0.17.0` | `>=0.29.0` |
+| `trafilatura` | `>=1.12.0` | `>=2.2.0` |
+| `transformers` | `>=4.44.0` | `>=4.57.6` |
+| `typer` | `>=0.12.0` | `>=0.27.2` |
+| `weasyprint` | `>=66.0` | `>=69.0` |
+| `websockets` | `>=13.0` | `>=17.1` |
+
+**Pisos de desenvolvimento, que não propagam (16):** `fakeredis` >=2.20.0 → >=2.37.1, `lupa` >=2.0 → >=2.8, `mkdocs` >=1.6.0 → >=1.6.1, `mkdocs-include-markdown-plugin` >=7.0.0 → >=7.3.0, `mkdocs-material` >=9.5.0 → >=9.7.7, `mkdocs-static-i18n` >=1.2 → >=1.3.1, `mkdocstrings[python]` >=0.27.0 → >=1.0.6, `mypy` >=1.13.0 → >=2.3.1, `onnxscript` >=0.1.0 → >=0.7.1, `pymdown-extensions` >=11.0.1 → >=11.0.2, `pytest` >=8.3.3 → >=9.1.1, `pytest-asyncio` >=0.24.0 → >=1.4.0, `pytest-cov` >=6.0.0 → >=7.1.0, `ruff` >=0.8.0 → >=0.16.5, `types-openpyxl` >=3.1.5 → >=3.1.5.20260827, `uvicorn` >=0.30.0 → >=0.52.4
+
+### Fixed
+
+- **O upgrade do `typer` expôs um `try/except ImportError` que engolia dois
+  outros símbolos.** `typer._click.exceptions` deixou de exportar `Abort` na
+  0.27.2, mas ainda exporta `UsageError` e `NoArgsIsHelpError` — e os três
+  eram importados no mesmo bloco. Medido em typer 0.27.2 com click 8.5.0:
+
+  ```text
+  typer._click.exceptions.Abort: False
+  typer._click.exceptions.UsageError: True
+  typer._click.exceptions.NoArgsIsHelpError: True
+  ```
+
+  Então o bloco todo caía no fallback e perdia o `UsageError` vendorizado e o
+  `NoArgsIsHelpError` com ele, em silêncio, num Typer que ainda os tinha — o
+  `FullHelpTyperGroup` deixaria de imprimir o help completo. `Abort` passou a
+  vir do `typer` público, e `typer.Abort` **não** é a mesma classe que
+  `click.exceptions.Abort`, então as duas são capturadas.
+
+- **O contrato do `tempest-core` documentava um defeito que o upstream
+  corrigiu.** `test_core_form_widgets_do_not_render_usable_html` afirmava que
+  `Dropdown` e `TextArea` saem como `<div>` vazio. Na `tempest-core` 0.18.0 as
+  tags estão certas — `<input>`, `<textarea>` e um `<select>` carregando os
+  seus `<option>`. O que decide continua valendo e ficou como o teste assere
+  agora: **nenhum** dos três renderiza `name`, e controle sem nome submete
+  corpo vazio. A receita de forms repetia a afirmação antiga nas duas línguas
+  e foi corrigida junto; `Form()` segue saindo `<div></div>`, medido, e agora
+  está fixado no mesmo teste.
+
+- **Doc afirmando piso que mudou.** `docs/ssr.*` e `docs/fullstack-web.*`
+  diziam "o piso é `tempestweb>=0.67.0`", juntando duas coisas: a versão em
+  que a capacidade nasceu (0.67.0, ainda verdade) e o piso declarado (hoje
+  `>=0.127.0`). Separadas. `docs/recipes/genai.*` citava
+  `torch>=2.2`/`torchcodec>=0.8`, que subiram.
+
+### Notas de medição
+
+- **`transformers<5` no `[genai-audio]` continua load-bearing.** Re-medido em
+  2026-09-02 com o coqui-tts mais recente (0.27.5), transformers 5.16.1 e
+  torch 2.14.0: `import TTS.api` ainda morre com
+  `ImportError: cannot import name 'isin_mps_friendly' from
+  'transformers.pytorch_utils'`.
+
+  O que o bound custa, rastreado no mesmo dia: transformers 4.57.6 declara
+  `huggingface-hub<1.0` e `tokenizers<=0.23.0`, o que segura este lock em hub
+  0.36.2 e tokenizers 0.22.2 — e diffusers 0.40.0 exige `huggingface-hub>=1.23.0`,
+  então `[genai-image]` fica em 0.39.0. **Um bound, quatro pacotes.** Só o
+  nosso lock é afetado: quem instala `[genai-image]` sem `[genai-audio]`
+  resolve diffusers 0.40.0 normalmente. Registrado no comentário do
+  `pyproject.toml`.
+
+- **Piso lido do lock não é piso satisfazível.** O lock carrega uma versão por
+  split de Python, e a mais nova pertence ao split mais novo: medido,
+  `numpy` 2.5.2 exige Python `>=3.12` e `numpy` 2.4.6 exige `>=3.11`. Elevar
+  para a mais nova deixou o `requires-python = ">=3.11"` insatisfazível e o
+  `uv lock` recusou, nomeando a causa. O piso é o **menor** das versões que o
+  lock carrega. Três pacotes têm split aqui: `numpy`, `scipy` e `librosa`.
+
+- `fastapi` fica em `>=0.141.1` porque **é** a última publicada.
+
 ## [0.282.0] — 2026-09-02
 
 O scheduler periódico passa a rodar dentro do lifespan do FastAPI, com

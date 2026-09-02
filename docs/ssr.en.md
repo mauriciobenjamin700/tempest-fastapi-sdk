@@ -722,7 +722,7 @@ def view(app: App[object]) -> Widget:
     return filled_button("Buy", key="buy")
 ```
 
-!!! info "Why the floor is `tempestweb>=0.67.0`"
+!!! info "Why the capability needs `tempestweb` 0.67.0 or newer"
     A component resolves its colour at **construction** and bakes it into
     an inline `style` — rebranding only the custom properties never
     reaches that. What connects the palette to the component is
@@ -753,7 +753,8 @@ def view(app: App[object]) -> Widget:
   with a history fallback; include it last. **`build_web_app(dir)`** —
   hosts a **server** (WebSocket/SSE) build as a mountable sub-app;
   `theme=` hands the palette to every session's `App`, and the components
-  the `view` builds resolve against it (floor `tempestweb>=0.67.0`).
+  the `view` builds resolve against it (capability since 0.67.0; declared
+  floor `tempestweb>=0.127.0`).
   **`detect_build_mode(dir)`** tells them apart.
 - Everything lives in the `[ssr]` extra
   (`uv add "tempest-fastapi-sdk[ssr]"`), loaded on demand —

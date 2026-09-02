@@ -1055,9 +1055,12 @@ preguiçosamente.
     ```
 
     Medido: `isin_mps_friendly` existe na transformers 5.0.0 e desaparece da
-    5.1.0 em diante. Agora `[genai-audio]` declara `torch>=2.2`,
-    `torchaudio>=2.2`, `torchcodec>=0.8` e `transformers<5` — o teto fica
-    confinado a este extra. Quem fixava esses quatro pins à mão pode removê-los.
+    5.1.0 em diante, e a medição foi repetida em 2026-09-02 contra o
+    coqui-tts mais recente (0.27.5) com transformers 5.16.1: o `ImportError`
+    é o mesmo, então o teto continua load-bearing. `[genai-audio]` declara
+    `torch>=2.14`, `torchaudio>=2.11`, `torchcodec>=0.16` e `transformers<5`
+    — o teto fica confinado a este extra. Quem fixava esses quatro pins à mão
+    pode removê-los.
 
 !!! danger "XTTS v2 pede aceite de licença, e num servidor não há quem responda"
     O model default do `TextToSpeech` é licence-gated. Lido no coqui-tts

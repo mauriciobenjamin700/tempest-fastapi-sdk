@@ -721,13 +721,17 @@ def view(app: App[object]) -> Widget:
     return filled_button("Comprar", key="buy")
 ```
 
-!!! info "Por que o piso é `tempestweb>=0.67.0`"
+!!! info "Por que a capacidade exige `tempestweb` 0.67.0 ou mais"
     O componente resolve a cor na **construção** e a assa num `style`
     inline — rebrandar só as custom properties não alcança isso. O que
     conecta a paleta ao componente é o `tempest-core` 0.12.0, que instala
     o tema em volta da chamada da `view`; a `tempestweb` 0.67.0 é onde
-    esse piso entra. Com `tempestweb` 0.66.0 o `theme=` é aceito e a
-    página pinta baseline em silêncio.
+    essa capacidade entra. Com `tempestweb` 0.66.0 o `theme=` é aceito e
+    a página pinta baseline em silêncio.
+
+    A 0.67.0 é onde a capacidade nasceu, não o que o SDK declara hoje: o
+    piso declarado é `tempestweb>=0.127.0`, a versão contra a qual esta
+    release foi medida.
 
 !!! tip "Um `theme=` explícito no widget ainda vence"
     O tema da sessão é o piso, não a gaiola: passar `theme=` direto num
@@ -752,7 +756,8 @@ def view(app: App[object]) -> Widget:
   com history fallback; inclua por último. **`build_web_app(dir)`** —
   hospeda um build **server** (WebSocket/SSE) como sub-app pra montar;
   `theme=` entrega a paleta ao `App` de cada sessão, e os componentes que a
-  `view` constrói resolvem contra ela (piso `tempestweb>=0.67.0`).
+  `view` constrói resolvem contra ela (capacidade desde a 0.67.0; piso
+  declarado `tempestweb>=0.127.0`).
   **`detect_build_mode(dir)`** distingue os dois.
 - Tudo mora no extra `[ssr]` (`uv add "tempest-fastapi-sdk[ssr]"`),
   carregado sob demanda — `import tempest_fastapi_sdk` nunca exige o extra.

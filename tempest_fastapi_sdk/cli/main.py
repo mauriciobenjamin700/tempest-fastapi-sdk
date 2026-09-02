@@ -28,22 +28,31 @@ from tempest_fastapi_sdk.cli.voice import voice_app
 # whether the installed Typer vendors Click or uses the public package
 # (``typer>=0.12``). ``NoArgsIsHelpError`` is the special case Typer raises
 # for ``no_args_is_help`` groups: its message already *is* the help text.
+#
+# The abort classes come from the public ``typer`` and ``click`` namespaces,
+# and are deliberately not part of the block below. Measured on typer 0.27.2
+# with click 8.5.0: ``typer._click.exceptions`` still exports ``UsageError``
+# and ``NoArgsIsHelpError`` but no longer exports ``Abort``, so importing all
+# three together sent this whole block into the fallback — dropping the
+# vendored usage error and ``NoArgsIsHelpError`` with it, silently, on a
+# Typer that still had them. ``typer.Abort`` is public and is a *different*
+# class from ``click.exceptions.Abort``, so both are caught.
 _NoArgsIsHelpError: type[Exception] | None
 _USAGE_ERRORS: tuple[type[Exception], ...]
-_ABORT_ERRORS: tuple[type[Exception], ...]
+_ABORT_ERRORS: tuple[type[Exception], ...] = (
+    typer.Abort,
+    click.exceptions.Abort,
+)
 
 try:  # pragma: no cover - import shape depends on the installed Typer
-    from typer._click.exceptions import Abort as _TyperAbort
     from typer._click.exceptions import NoArgsIsHelpError as _TyperNoArgs
     from typer._click.exceptions import UsageError as _TyperUsageError
 
     _NoArgsIsHelpError = _TyperNoArgs
     _USAGE_ERRORS = (_TyperUsageError, click.UsageError)
-    _ABORT_ERRORS = (_TyperAbort, click.exceptions.Abort)
 except ImportError:  # pragma: no cover - older Typer on public Click
     _NoArgsIsHelpError = None
     _USAGE_ERRORS = (click.UsageError,)
-    _ABORT_ERRORS = (click.exceptions.Abort,)
 
 
 class FullHelpTyperGroup(TyperGroup):

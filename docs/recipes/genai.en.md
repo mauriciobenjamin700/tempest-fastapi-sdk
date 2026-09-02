@@ -1054,8 +1054,11 @@ lazily.
     ```
 
     Measured: `isin_mps_friendly` exists in transformers 5.0.0 and is gone
-    from 5.1.0 on. `[genai-audio]` now declares `torch>=2.2`,
-    `torchaudio>=2.2`, `torchcodec>=0.8` and `transformers<5` — the upper
+    from 5.1.0 on, and the measurement was repeated on 2026-09-02 against
+    the newest coqui-tts (0.27.5) with transformers 5.16.1: the same
+    `ImportError`, so the ceiling is still load-bearing.
+    `[genai-audio]` declares `torch>=2.14`,
+    `torchaudio>=2.11`, `torchcodec>=0.16` and `transformers<5` — the upper
     bound stays confined to this extra. If you pinned those four by hand, you
     can drop them.
 

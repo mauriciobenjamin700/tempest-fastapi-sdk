@@ -431,7 +431,8 @@ and sent back. `GET /api/health` still answers normally.
 
     The components the `view` builds resolve their colours against that
     palette on their own — the build installs the theme around the `view`
-    call. This needs `tempestweb>=0.67.0`: that is the floor which reaches
+    call. This needs `tempestweb` 0.67.0 or newer: that is where the
+    capability reaches
     `tempest-core` 0.12.0, where the connection lives. A `theme=` passed
     straight to a widget still wins. The full recipe, with both halves of
     a rebrand, is in [SSR](ssr.en.md#the-apps-palette-theme).

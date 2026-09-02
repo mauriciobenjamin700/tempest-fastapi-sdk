@@ -31,86 +31,86 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "alembic>=1.18.4",
+    "alembic>=1.19.1",
     # The quality gate (`tempest lint` / `check` / `pr-prompt`) lives in
     # this framework-agnostic package. It is a dependency and not a copy
     # so both CLIs expose one implementation; it pulls only `typer`,
     # which the SDK already requires.
     "tempest-cli>=0.3.0",
-    "click>=8.0.0",
-    "email-validator>=2.0.0",
+    "click>=8.5.0",
+    "email-validator>=2.3.0",
     "fastapi>=0.141.1",
-    "httpx>=0.28.0",
-    "pydantic>=2.13.4",
-    "pydantic-settings>=2.14.2",
-    "sqlalchemy[asyncio]>=2.0.49",
-    "typer>=0.12.0",
+    "httpx>=0.28.1",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "sqlalchemy[asyncio]>=2.0.52",
+    "typer>=0.27.2",
 ]
 
 [project.optional-dependencies]
 auth = [
     "bcrypt>=5.0.0",
-    "pyjwt>=2.12.1",
+    "pyjwt>=2.13.0",
 ]
 email = [
-    "aiosmtplib>=4.0.0",
-    "jinja2>=3.1.0",
-    "email-validator>=2.0.0",
+    "aiosmtplib>=5.1.2",
+    "jinja2>=3.1.6",
+    "email-validator>=2.3.0",
 ]
 upload = [
-    "aiofiles>=24.1.0",
-    "python-multipart>=0.0.12",
+    "aiofiles>=25.1.0",
+    "python-multipart>=0.0.32",
 ]
 cache = [
-    "redis>=5.0.0",
+    "redis>=8.1.0",
 ]
 websocket = [
-    "websockets>=13.0",
+    "websockets>=17.1",
 ]
 webpush = [
-    "pywebpush>=2.0.0",
-    "cryptography>=50.0.0",
+    "pywebpush>=2.5.0",
+    "cryptography>=50.0.1",
 ]
 metrics = [
-    "psutil>=6.0.0",
-    "nvidia-ml-py>=12.560.30",
+    "psutil>=7.2.2",
+    "nvidia-ml-py>=13.610.43",
 ]
 queue = [
-    "faststream[rabbit]>=0.7.1",
+    "faststream[rabbit]>=0.7.5",
 ]
 tasks = [
-    "taskiq>=0.11.0",
-    "taskiq-aio-pika>=0.4.0",
+    "taskiq>=0.12.6",
+    "taskiq-aio-pika>=0.6.0",
 ]
 tasks-redis = [
-    "taskiq>=0.11.0",
-    "taskiq-redis>=1.0.3",
+    "taskiq>=0.12.6",
+    "taskiq-redis>=1.2.3",
 ]
 admin = [
-    "jinja2>=3.1.0",
+    "jinja2>=3.1.6",
     "itsdangerous>=2.2.0",
-    "python-multipart>=0.0.12",
+    "python-multipart>=0.0.32",
 ]
 admin-sql = [
-    "sqlglot>=25.0.0",
+    "sqlglot>=30.17.0",
 ]
 minio = [
-    "minio>=7.2.0",
+    "minio>=7.2.20",
 ]
 http = [
-    "httpx>=0.28.0",
+    "httpx>=0.28.1",
 ]
 openapi = [
-    "pyyaml>=6.0",
+    "pyyaml>=6.0.3",
 ]
 prometheus = [
-    "prometheus-client>=0.20.0",
+    "prometheus-client>=0.26.0",
 ]
 mfa = [
-    "pyotp>=2.9.0",
+    "pyotp>=2.10.0",
 ]
 webauthn = [
-    "fido2>=2.0.0",
+    "fido2>=2.2.1",
 ]
 firebase = [
     # Verifying a Firebase ID token has a long correctness tail (certificate
@@ -120,59 +120,71 @@ firebase = [
     # Storage clients, 33 packages measured on firebase-admin 7.5.0 -- which
     # is why it is an opt-in extra, is imported lazily at FirebaseAuth
     # construction time, and stays out of [all].
-    "firebase-admin>=7.0.0",
+    "firebase-admin>=7.5.0",
 ]
 pdf = [
-    "weasyprint>=66.0",
-    "jinja2>=3.1.0",
+    "weasyprint>=69.0",
+    "jinja2>=3.1.6",
 ]
 pdf-read = [
-    "pypdf>=5.0.0",
+    "pypdf>=6.16.2",
 ]
 spreadsheet = [
     "openpyxl>=3.1.5",
 ]
 vision = [
-    "ort-vision-sdk>=0.4.0",
+    "ort-vision-sdk>=0.8.0",
 ]
 genai = [
-    "transformers>=4.44.0",
-    "torch>=2.2.0",
-    "accelerate>=0.33.0",
-    "safetensors>=0.4.0",
-    "huggingface-hub>=0.24.0",
+    "transformers>=4.57.6",
+    "torch>=2.14.0",
+    "accelerate>=1.14.0",
+    "safetensors>=0.8.0",
+    "huggingface-hub>=0.36.2",
 ]
 genai-quant = [
-    "bitsandbytes>=0.43.0",
+    "bitsandbytes>=0.50.2",
 ]
 genai-rag = [
-    "httpx>=0.28.0",
-    "trafilatura>=1.12.0",
-    "pymupdf>=1.24.0",
-    "pgvector>=0.3.0",
+    "httpx>=0.28.1",
+    "trafilatura>=2.2.0",
+    "pymupdf>=1.28.2",
+    "pgvector>=0.5.0",
     "rank-bm25>=0.2.2",
 ]
 genai-audio = [
-    "faster-whisper>=1.0.0",
-    "coqui-tts>=0.24.0",
+    "faster-whisper>=1.2.1",
+    "coqui-tts>=0.27.5",
     # coqui-tts keeps its own runtime behind its extras ([cpu]/[cuda]/[codec]),
     # so installing it alone gives a TTS that refuses to import. Measured with
     # coqui-tts 0.27.5 and torch 2.13.0: without torchaudio, `import TTS.api`
     # dies with `ModuleNotFoundError: No module named 'torchaudio'`, and
     # TTS/__init__.py makes torchcodec mandatory once torch >= 2.9.
-    "torch>=2.2.0",
-    "torchaudio>=2.2.0",
-    "torchcodec>=0.8.0",
+    "torch>=2.14.0",
+    "torchaudio>=2.11.0",
+    "torchcodec>=0.16.0",
     # `import TTS.api` eagerly loads TTS.tts.layers.tortoise.autoregressive,
     # which does `from transformers.pytorch_utils import isin_mps_friendly`.
     # Measured: that symbol is present in transformers 5.0.0 and gone from
     # 5.1.0 on, so any fresh resolve breaks the import. The upper bound is
     # confined to this extra, and 5.0.0 is not carved out because it is the
     # only 5.x that would work.
+    #
+    # Re-measured 2026-09-02 against the newest coqui-tts (0.27.5) with
+    # transformers 5.16.1 and torch 2.14.0: the import still dies with
+    # `ImportError: cannot import name 'isin_mps_friendly' from
+    # 'transformers.pytorch_utils'`, so the bound is still load-bearing.
+    #
+    # What it costs, traced the same day: transformers 4.57.6 declares
+    # `huggingface-hub<1.0` and `tokenizers<=0.23.0`, which holds this lock's
+    # hub at 0.36.2 and tokenizers at 0.22.2 -- and diffusers 0.40.0 requires
+    # `huggingface-hub>=1.23.0`, so [genai-image] is held at 0.39.0 too. One
+    # bound, four packages. Only the lock is affected: a consumer installing
+    # [genai-image] without [genai-audio] resolves diffusers 0.40.0 fine.
     "transformers<5",
 ]
 genai-diarization = [
-    "sherpa-onnx>=1.12.0",
+    "sherpa-onnx>=1.13.7",
     # sherpa-onnx ships the Python wrapper and keeps the compiled
     # libraries (including libonnxruntime.so) in sherpa-onnx-core. Its
     # wheels declare that dependency but its sdist metadata does not,
@@ -183,106 +195,106 @@ genai-diarization = [
     # it as redundant. The version stays open because sherpa-onnx pins
     # the exact match itself.
     "sherpa-onnx-core",
-    "numpy>=1.24.0",
+    "numpy>=2.4.6",
 ]
 faces = [
-    "onnxruntime>=1.28",
-    "pillow>=10.0.0",
-    "numpy>=1.24.0",
+    "onnxruntime>=1.29.0",
+    "pillow>=12.3.0",
+    "numpy>=2.4.6",
 ]
 genai-ollama = [
-    "httpx>=0.28.0",
+    "httpx>=0.28.1",
 ]
 genai-chroma = [
-    "chromadb>=0.5.0",
+    "chromadb>=1.5.9",
 ]
 genai-structured = [
-    "lm-format-enforcer>=0.10.0",
+    "lm-format-enforcer>=0.11.3",
 ]
 genai-onnx = [
-    "onnxruntime>=1.28.0",
-    "tokenizers>=0.20.0",
+    "onnxruntime>=1.29.0",
+    "tokenizers>=0.22.2",
 ]
 genai-vlm = [
     "pillow>=12.3.0",
-    "torchvision>=0.17.0",
+    "torchvision>=0.29.0",
 ]
 genai-hub = [
-    "huggingface-hub>=0.24.0",
+    "huggingface-hub>=0.36.2",
 ]
 genai-image = [
-    "diffusers>=0.31.0",
+    "diffusers>=0.39.0",
     "pillow>=12.3.0",
 ]
 modelops = [
-    "psutil>=6.0.0",
-    "nvidia-ml-py>=12.560.30",
+    "psutil>=7.2.2",
+    "nvidia-ml-py>=13.610.43",
 ]
 modelops-onnx = [
-    "onnx>=1.16.0",
-    "onnxruntime>=1.28.0",
+    "onnx>=1.22.0",
+    "onnxruntime>=1.29.0",
 ]
 modelops-sklearn = [
-    "skl2onnx>=1.16.0",
+    "skl2onnx>=1.20.0",
 ]
 geo = [
-    "httpx>=0.28.0",
+    "httpx>=0.28.1",
 ]
 ssr = [
-    "tempestweb>=0.67.0",
+    "tempestweb>=0.127.0",
 ]
 sqlite = [
-    "aiosqlite>=0.20.0",
+    "aiosqlite>=0.22.1",
 ]
 postgres = [
-    "asyncpg>=0.30.0",
+    "asyncpg>=0.31.0",
 ]
 otel = [
-    "opentelemetry-sdk>=1.27.0",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.27.0",
-    "opentelemetry-instrumentation-fastapi>=0.48b0",
-    "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
-    "opentelemetry-instrumentation-httpx>=0.48b0",
+    "opentelemetry-sdk>=1.44.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.65b0",
+    "opentelemetry-instrumentation-httpx>=0.65b0",
 ]
 all = [
     "bcrypt>=5.0.0",
-    "pyjwt>=2.12.1",
-    "aiosmtplib>=4.0.0",
-    "aiofiles>=24.1.0",
-    "python-multipart>=0.0.12",
-    "redis>=5.0.0",
-    "websockets>=13.0",
-    "pywebpush>=2.0.0",
-    "cryptography>=50.0.0",
-    "psutil>=6.0.0",
-    "nvidia-ml-py>=12.560.30",
-    "faststream[rabbit]>=0.7.1",
-    "taskiq>=0.11.0",
-    "taskiq-aio-pika>=0.4.0",
-    "taskiq-redis>=1.0.3",
-    "jinja2>=3.1.0",
+    "pyjwt>=2.13.0",
+    "aiosmtplib>=5.1.2",
+    "aiofiles>=25.1.0",
+    "python-multipart>=0.0.32",
+    "redis>=8.1.0",
+    "websockets>=17.1",
+    "pywebpush>=2.5.0",
+    "cryptography>=50.0.1",
+    "psutil>=7.2.2",
+    "nvidia-ml-py>=13.610.43",
+    "faststream[rabbit]>=0.7.5",
+    "taskiq>=0.12.6",
+    "taskiq-aio-pika>=0.6.0",
+    "taskiq-redis>=1.2.3",
+    "jinja2>=3.1.6",
     "itsdangerous>=2.2.0",
-    "minio>=7.2.0",
-    "httpx>=0.28.0",
-    "prometheus-client>=0.20.0",
-    "pyotp>=2.9.0",
-    "fido2>=2.0.0",
-    "weasyprint>=66.0",
-    "pypdf>=5.0.0",
+    "minio>=7.2.20",
+    "httpx>=0.28.1",
+    "prometheus-client>=0.26.0",
+    "pyotp>=2.10.0",
+    "fido2>=2.2.1",
+    "weasyprint>=69.0",
+    "pypdf>=6.16.2",
     "openpyxl>=3.1.5",
-    "email-validator>=2.0.0",
-    "aiosqlite>=0.20.0",
-    "asyncpg>=0.30.0",
-    "opentelemetry-sdk>=1.27.0",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.27.0",
-    "opentelemetry-instrumentation-fastapi>=0.48b0",
-    "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
-    "opentelemetry-instrumentation-httpx>=0.48b0",
-    "ort-vision-sdk>=0.4.0",
-    "tempestweb>=0.67.0",
-    "chromadb>=0.5.0",
-    "pyyaml>=6.0",
-    "onnx>=1.16.0",
+    "email-validator>=2.3.0",
+    "aiosqlite>=0.22.1",
+    "asyncpg>=0.31.0",
+    "opentelemetry-sdk>=1.44.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.65b0",
+    "opentelemetry-instrumentation-httpx>=0.65b0",
+    "ort-vision-sdk>=0.8.0",
+    "tempestweb>=0.127.0",
+    "chromadb>=1.5.9",
+    "pyyaml>=6.0.3",
+    "onnx>=1.22.0",
 ]
 
 [project.urls]
@@ -334,66 +346,66 @@ exclude = ["**/CLAUDE.md"]
 
 [dependency-groups]
 dev = [
-    "aiofiles>=24.1.0",
-    "aiosmtplib>=4.0.0",
-    "aiosqlite>=0.20.0",
+    "aiofiles>=25.1.0",
+    "aiosmtplib>=5.1.2",
+    "aiosqlite>=0.22.1",
     "bcrypt>=5.0.0",
-    "httpx>=0.28.0",
+    "httpx>=0.28.1",
     "httpx2>=2.12.0",
-    "mypy>=1.13.0",
-    "pyjwt>=2.12.1",
-    "pytest>=8.3.3",
-    "pytest-asyncio>=0.24.0",
-    "pytest-cov>=6.0.0",
-    "python-multipart>=0.0.12",
-    "fakeredis>=2.20.0",
-    "pywebpush>=2.0.0",
-    "cryptography>=50.0.0",
-    "psutil>=6.0.0",
-    "nvidia-ml-py>=12.560.30",
-    "redis>=5.0.0",
-    "ruff>=0.8.0",
-    "trafilatura>=1.12.0",
-    "pymupdf>=1.24.0",
-    "pypdf>=5.0.0",
+    "mypy>=2.3.1",
+    "pyjwt>=2.13.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "python-multipart>=0.0.32",
+    "fakeredis>=2.37.1",
+    "pywebpush>=2.5.0",
+    "cryptography>=50.0.1",
+    "psutil>=7.2.2",
+    "nvidia-ml-py>=13.610.43",
+    "redis>=8.1.0",
+    "ruff>=0.16.5",
+    "trafilatura>=2.2.0",
+    "pymupdf>=1.28.2",
+    "pypdf>=6.16.2",
     "openpyxl>=3.1.5",
-    "types-openpyxl>=3.1.5",
+    "types-openpyxl>=3.1.5.20260827",
     "rank-bm25>=0.2.2",
     "pillow>=12.3.0",
-    "onnxruntime>=1.28.0",
-    "onnx>=1.16.0",
-    "onnxscript>=0.1.0",
-    "tokenizers>=0.20.0",
-    "faststream[rabbit]>=0.7.1",
-    "taskiq>=0.11.0",
-    "taskiq-aio-pika>=0.4.0",
-    "uvicorn>=0.30.0",
-    "jinja2>=3.1.0",
+    "onnxruntime>=1.29.0",
+    "onnx>=1.22.0",
+    "onnxscript>=0.7.1",
+    "tokenizers>=0.22.2",
+    "faststream[rabbit]>=0.7.5",
+    "taskiq>=0.12.6",
+    "taskiq-aio-pika>=0.6.0",
+    "uvicorn>=0.52.4",
+    "jinja2>=3.1.6",
     "itsdangerous>=2.2.0",
-    "minio>=7.2.0",
-    "prometheus-client>=0.20.0",
-    "pyotp>=2.9.0",
-    "fido2>=2.0.0",
-    "firebase-admin>=7.0.0",
-    "sherpa-onnx>=1.12.0",
+    "minio>=7.2.20",
+    "prometheus-client>=0.26.0",
+    "pyotp>=2.10.0",
+    "fido2>=2.2.1",
+    "firebase-admin>=7.5.0",
+    "sherpa-onnx>=1.13.7",
     "sherpa-onnx-core",
-    "email-validator>=2.0.0",
-    "opentelemetry-sdk>=1.27.0",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.27.0",
-    "opentelemetry-instrumentation-fastapi>=0.48b0",
-    "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
-    "opentelemetry-instrumentation-httpx>=0.48b0",
-    "tempestweb>=0.67.0",
-    "chromadb>=0.5.0",
-    "lupa>=2.0",
+    "email-validator>=2.3.0",
+    "opentelemetry-sdk>=1.44.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.65b0",
+    "opentelemetry-instrumentation-httpx>=0.65b0",
+    "tempestweb>=0.127.0",
+    "chromadb>=1.5.9",
+    "lupa>=2.8",
 ]
 docs = [
-    "mkdocs>=1.6.0",
-    "mkdocs-material>=9.5.0",
-    "mkdocstrings[python]>=0.27.0",
-    "pymdown-extensions>=11.0.1",
-    "mkdocs-include-markdown-plugin>=7.0.0",
-    "mkdocs-static-i18n>=1.2",
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.7.7",
+    "mkdocstrings[python]>=1.0.6",
+    "pymdown-extensions>=11.0.2",
+    "mkdocs-include-markdown-plugin>=7.3.0",
+    "mkdocs-static-i18n>=1.3.1",
 ]
 
 [tool.ruff]

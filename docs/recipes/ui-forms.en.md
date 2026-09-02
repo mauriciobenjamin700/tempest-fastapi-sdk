@@ -343,12 +343,22 @@ and `form_stylesheet` — the names follow.
     round trip.
 
 !!! info "Why not `tempest_core`'s `Input` / `Dropdown`"
-    Measured against the HTML renderer: `Form` renders as a `<div>`,
-    `Input` renders **without a `name`** (so nothing is submitted) and
-    `Dropdown` / `TextArea` render as an empty `<div>` — those widgets
-    belong to the reactive client, not to SSR. So `ui.forms` emits the
-    elements directly through the documented `tag`/`attrs` escape hatch.
-    The measurement is pinned in `tests/ui/test_core_contract.py`.
+    Measured against the HTML renderer, on `tempest-core` 0.18.0:
+    `Form()` renders as `<div></div>` — no `action`, no `method`, not a
+    `<form>` — and **none** of the controls renders a `name`, so a form
+    built from them posts an empty body: a failure with no error message
+    anywhere. Those widgets belong to the reactive client, not to SSR.
+
+    The measurement changed shape in 0.18.0, and what upstream fixed is
+    worth recording: up to 0.14.0 `Dropdown` and `TextArea` rendered an
+    empty `<div>`, losing both the element type and the option list.
+    Today the tags are right — `<input>`, `<textarea>`, and a `<select>`
+    carrying its `<option>` list. What decides is still the missing
+    `name`.
+
+    So `ui.forms` emits the elements directly through the documented
+    `tag`/`attrs` escape hatch. The measurement is pinned in
+    `tests/ui/test_core_contract.py`.
 
 ## Recap
 

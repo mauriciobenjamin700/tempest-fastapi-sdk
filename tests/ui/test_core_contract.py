@@ -48,17 +48,35 @@ def test_text_content_is_escaped() -> None:
     )
 
 
-def test_core_form_widgets_do_not_render_usable_html() -> None:
+def test_core_form_widgets_render_no_name_attribute() -> None:
     """Why ``ui.forms`` emits elements itself instead of reusing them.
 
-    Measured, not assumed: the client-side form widgets lose the ``name``
-    attribute (so nothing is submitted) and the option list.
+    Measured, not assumed, and the measurement moved: on
+    ``tempest-core`` 0.14.0 these widgets rendered a bare ``<div>``,
+    losing both the element type and the option list. On 0.18.0 the
+    element types are right — ``<input>``, ``<textarea>``, and a
+    ``<select>`` carrying its ``<option>`` list — so that half of the
+    reason is upstream's now.
+
+    What remains is the half that decides it: none of the three renders
+    a ``name`` attribute, and a control without a name submits nothing.
+    A form built out of them would post an empty body, which is a
+    failure with no error message anywhere.
     """
-    from tempest_core.widgets import Dropdown, Input, TextArea
+    from tempest_core.widgets import Dropdown, Form, Input, TextArea
+
+    dropdown = render_to_html(Dropdown(options=["a", "b"]))
+
+    assert render_to_html(Form()) == "<div></div>"
 
     assert "name=" not in render_to_html(Input(value=""))
-    assert render_to_html(Dropdown(options=["a", "b"])).endswith("></div>")
-    assert render_to_html(TextArea(value="")).endswith("></div>")
+    assert "name=" not in render_to_html(TextArea(value=""))
+    assert "name=" not in dropdown
+
+    assert render_to_html(Input(value="")).startswith("<input")
+    assert render_to_html(TextArea(value="")).startswith("<textarea")
+    assert dropdown.startswith("<select")
+    assert '<option value="a">a</option>' in dropdown
 
 
 def test_style_rejects_non_hex_colours() -> None:
