@@ -1007,19 +1007,24 @@ app: FastAPI = FastAPI(title=settings.TITLE, lifespan=lifespan)
     times a minute** — and nothing raises, nothing is logged. The effect
     arrives as duplicated work: the sweep that expires charges expires
     them three times, the backup runs three times, the e-mail goes out
-    three times.
+    three times. That `three` is measured, not reasoned — it is the
+    second line of the output below.
 
     `scheduler=True` does not have that problem because it does not run
     the loop directly: one replica holds a **lease** and runs, the others
-    stand by and take over when the lease lapses. Measured in
-    `tests/tasks/test_scheduler_lease.py`, with two lifespans open
-    against the same lease and the starts counted:
+    stand by and take over when the lease lapses. Three lifespans open
+    against the same lease, with the loops counted in both modes:
 
     ```text
-    expected exactly one scheduler loop, got 1 (first=1, second=0)
+    scheduler=True         loops running: 1   replica-1=1  replica-2=0  replica-3=0
+    scheduler='unlocked'   loops running: 3   replica-1=1  replica-2=1  replica-3=1
     ```
 
-    And when the leader leaves, the standby takes over within one TTL.
+    The `3` on the second line is the defect and the `1` on the first is
+    the lease fixing it. `tests/tasks/test_scheduler_lease.py` pins both
+    counts — the first parametrized over 2, 3 and 5 replicas — and a
+    separate case waits for the leader to leave and confirms the standby
+    takes over within one TTL.
 
 ### Where the lease comes from
 

@@ -1005,19 +1005,24 @@ app: FastAPI = FastAPI(title=settings.TITLE, lifespan=lifespan)
     réplicas de uvicorn, `@tq.cron(every_n_minutes(1))` dispara **três
     vezes por minuto** — e nada levanta, nada é logado. O efeito chega
     como trabalho duplicado: a varredura que expira cobrança expira três
-    vezes, o backup roda três vezes, o e-mail sai três vezes.
+    vezes, o backup roda três vezes, o e-mail sai três vezes. Esse `três`
+    é medido, não deduzido — é a segunda linha da saída abaixo.
 
     `scheduler=True` não tem esse problema porque não roda o loop
     direto: uma réplica segura um **lease** e roda; as outras ficam de
-    prontidão e assumem quando o lease lapsa. Medido em
-    `tests/tasks/test_scheduler_lease.py`, com dois lifespans abertos
-    contra o mesmo lease e os disparos contados:
+    prontidão e assumem quando o lease lapsa. Três lifespans abertos
+    contra o mesmo lease, com os loops contados nos dois modos:
 
     ```text
-    expected exactly one scheduler loop, got 1 (first=1, second=0)
+    scheduler=True         loops correndo: 1   replica-1=1  replica-2=0  replica-3=0
+    scheduler='unlocked'   loops correndo: 3   replica-1=1  replica-2=1  replica-3=1
     ```
 
-    E, ao sair o líder, a de prontidão assume dentro de um TTL.
+    O `3` da segunda linha é o defeito, e o `1` da primeira é o lease
+    resolvendo. `tests/tasks/test_scheduler_lease.py` fixa as duas
+    contagens — a primeira parametrizada em 2, 3 e 5 réplicas — e um
+    caso separado espera o líder sair e confirma que a de prontidão
+    assume dentro de um TTL.
 
 ### De onde vem o lease
 

@@ -161,39 +161,65 @@ class TestTheLeaseItself:
 class TestOnlyOneReplicaSchedules:
     """The property the whole feature exists for."""
 
+    @pytest.mark.parametrize("replicas", [2, 3, 5])
     @pytest.mark.asyncio
-    async def test_two_lifespans_start_exactly_one_scheduler(
+    async def test_n_lifespans_start_exactly_one_scheduler(
         self,
         leases: Callable[[str], SchedulerLock],
+        replicas: int,
     ) -> None:
         """This is the N-fold firing, counted.
 
-        Both queues open a lifespan asking for a scheduler against the
-        same lease. Exactly one loop may run: two would fire every
-        schedule twice, which is the defect the lease exists to prevent.
+        Every queue opens a lifespan asking for a scheduler against the
+        same lease. Exactly one loop may run, whatever N is: two loops
+        fire every schedule twice, three fire it three times, and that
+        is the defect the lease exists to prevent. The counts are
+        parametrized rather than fixed at two because the docs state the
+        property for three replicas.
         """
-        first = CountingQueue(InMemoryBroker())
-        second = CountingQueue(InMemoryBroker())
-
-        async with (
-            first.lifespan(
+        queues = [CountingQueue(InMemoryBroker()) for _ in range(replicas)]
+        contexts = [
+            queue.lifespan(
                 scheduler=True,
                 scheduler_lock=leases("k"),
                 lease_ttl_seconds=2.0,
-            ),
-            second.lifespan(
-                scheduler=True,
-                scheduler_lock=leases("k"),
-                lease_ttl_seconds=2.0,
-            ),
-        ):
+            )
+            for queue in queues
+        ]
+        for context in contexts:
+            await context.__aenter__()
+        try:
             await asyncio.sleep(0.2)
-            running = first.starts + second.starts
+            running = sum(queue.starts for queue in queues)
+        finally:
+            for context in reversed(contexts):
+                await context.__aexit__(None, None, None)
 
         assert running == 1, (
-            f"expected exactly one scheduler loop, got {running} "
-            f"(first={first.starts}, second={second.starts})"
+            f"expected exactly one scheduler loop across {replicas} replicas, "
+            f"got {running}: {[queue.starts for queue in queues]}"
         )
+
+    @pytest.mark.asyncio
+    async def test_unlocked_fires_once_per_replica(self) -> None:
+        """The number the guarded mode exists to avoid, measured.
+
+        Three replicas, three loops. Asserting it here is what makes the
+        danger admonition in the recipe a fact about this package rather
+        than an expectation about schedulers in general.
+        """
+        queues = [CountingQueue(InMemoryBroker()) for _ in range(3)]
+        contexts = [queue.lifespan(scheduler="unlocked") for queue in queues]
+        for context in contexts:
+            await context.__aenter__()
+        try:
+            await asyncio.sleep(0.1)
+            running = sum(queue.starts for queue in queues)
+        finally:
+            for context in reversed(contexts):
+                await context.__aexit__(None, None, None)
+
+        assert running == 3
 
     @pytest.mark.asyncio
     async def test_the_standby_takes_over_when_the_holder_leaves(

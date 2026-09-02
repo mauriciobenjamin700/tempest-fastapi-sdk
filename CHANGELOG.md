@@ -22,16 +22,19 @@ reescrevia para chegar até ali saíram junto. Issue
   razoáveis, então não é aviso: uma réplica segura um **lease** e roda o loop,
   as outras ficam de prontidão e assumem quando o lease lapsa.
 
-  Medido em `tests/tasks/test_scheduler_lease.py`, com dois lifespans abertos
-  contra o mesmo lease e os disparos contados:
+  Três lifespans abertos contra o mesmo lease, com os loops contados nos dois
+  modos:
 
   ```text
-  expected exactly one scheduler loop, got 1 (first=1, second=0)
+  scheduler=True         loops correndo: 1   replica-1=1  replica-2=0  replica-3=0
+  scheduler='unlocked'   loops correndo: 3   replica-1=1  replica-2=1  replica-3=1
   ```
 
-  A propriedade atravessa processos, então é medida com duas instâncias — e o
-  caso de take-over espera o líder sair e confirma que a de prontidão assume
-  dentro de um TTL.
+  A propriedade atravessa processo, então é medida atravessando:
+  `tests/tasks/test_scheduler_lease.py` fixa a primeira contagem parametrizada
+  em 2, 3 e 5 réplicas, fixa o `3` do modo `"unlocked"` — que é o número que o
+  modo guardado existe para evitar — e tem um caso que espera o líder sair e
+  confirma que a de prontidão assume dentro de um TTL.
 
   Sem lease derivável, `scheduler=True` **recusa no startup** com a mensagem
   que nomeia as três saídas, em vez de agendar N vezes. `scheduler="unlocked"`
