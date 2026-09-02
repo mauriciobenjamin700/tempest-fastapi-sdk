@@ -113,6 +113,7 @@ Feature-rich helpers pull in third-party dependencies that you only need when yo
 | `[metrics]` | `psutil`, `nvidia-ml-py` | `MetricsUtils` |
 | `[queue]` | `faststream[rabbit]` | `MessageBroker` (typed FastStream facade) |
 | `[tasks]` | `taskiq`, `taskiq-aio-pika` | `TaskQueue` (typed TaskIQ facade) |
+| `[tasks-redis]` | `taskiq`, `taskiq-redis` | `TaskQueue.redis` / `TaskQueue.from_settings` over Redis Streams, plus the result backend and the scheduler lease |
 | `[admin]` | `jinja2`, `itsdangerous` | `AdminSite`, `AdminModel`, `make_admin_router` |
 | `[admin-sql]` | `sqlglot` | Admin SQL console — `SqlShellService` + `SqlShellPolicy` (capabilities, allowed/denied tables, row cap, `require_where`, statement timeout) with real statement parsing, every attempt audited. Opt-in; the policy narrows and explains, the database GRANTs enforce |
 | `[minio]` | `minio` | `AsyncMinIOClient`, `ObjectStat`, `PutObjectItem`, `MinIOSettings` |

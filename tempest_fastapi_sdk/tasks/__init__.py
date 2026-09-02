@@ -94,6 +94,24 @@ from tempest_fastapi_sdk.tasks.jobs import (
     make_job_admin_model as make_job_admin_model,
 )
 from tempest_fastapi_sdk.tasks.jobs import make_job_model as make_job_model
+from tempest_fastapi_sdk.tasks.lock import (
+    DEFAULT_LOCK_NAME as DEFAULT_LOCK_NAME,
+)
+from tempest_fastapi_sdk.tasks.lock import (
+    DEFAULT_LOCK_TTL_SECONDS as DEFAULT_LOCK_TTL_SECONDS,
+)
+from tempest_fastapi_sdk.tasks.lock import (
+    RedisLockClient as RedisLockClient,
+)
+from tempest_fastapi_sdk.tasks.lock import (
+    RedisLockHandle as RedisLockHandle,
+)
+from tempest_fastapi_sdk.tasks.lock import (
+    RedisSchedulerLock as RedisSchedulerLock,
+)
+from tempest_fastapi_sdk.tasks.lock import (
+    SchedulerLock as SchedulerLock,
+)
 from tempest_fastapi_sdk.tasks.manager import (
     AsyncTaskBrokerManager as AsyncTaskBrokerManager,
 )
@@ -123,6 +141,9 @@ from tempest_fastapi_sdk.tasks.queue import Hook as Hook
 from tempest_fastapi_sdk.tasks.queue import LifecycleResource as LifecycleResource
 from tempest_fastapi_sdk.tasks.queue import LifecycleScope as LifecycleScope
 from tempest_fastapi_sdk.tasks.queue import Task as Task
+from tempest_fastapi_sdk.tasks.queue import (
+    TaskIQSettingsLike as TaskIQSettingsLike,
+)
 from tempest_fastapi_sdk.tasks.queue import TaskQueue as TaskQueue
 from tempest_fastapi_sdk.tasks.scheduler import AsyncTaskScheduler as AsyncTaskScheduler
 from tempest_fastapi_sdk.tasks.stages import (
@@ -137,6 +158,8 @@ from tempest_fastapi_sdk.tasks.stages import StageStatus as StageStatus
 
 __all__: list[str] = [
     "CANCELLABLE_JOB_STATUSES",
+    "DEFAULT_LOCK_NAME",
+    "DEFAULT_LOCK_TTL_SECONDS",
     "DEFAULT_POLL_SECONDS",
     "RUNNING_STAGE_STATUSES",
     "STALE_JOB_ERROR",
@@ -163,7 +186,11 @@ __all__: list[str] = [
     "PhasePlan",
     "ProgressSink",
     "ProgressTracker",
+    "RedisLockClient",
+    "RedisLockHandle",
+    "RedisSchedulerLock",
     "RetryPolicy",
+    "SchedulerLock",
     "StageColumns",
     "StageInterruptedError",
     "StageMap",
@@ -171,6 +198,7 @@ __all__: list[str] = [
     "Task",
     "TaskBinding",
     "TaskDef",
+    "TaskIQSettingsLike",
     "TaskInfo",
     "TaskMetrics",
     "TaskQueue",

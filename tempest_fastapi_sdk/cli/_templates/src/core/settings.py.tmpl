@@ -10,6 +10,7 @@ from tempest_fastapi_sdk import (
     JWTSettings,
     LogSettings,
     ServerSettings,
+    TaskIQSettings,
     TokenSettings,
 )
 
@@ -21,6 +22,7 @@ class Settings(
     JWTSettings,
     TokenSettings,
     CORSSettings,
+    TaskIQSettings,
     BaseAppSettings,
 ):
     """Service-wide settings backed by the ``.env`` file.

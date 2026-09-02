@@ -63,6 +63,8 @@ THIRD_PARTY_CLIENT_PROTOCOLS: dict[str, str] = {
     "_RedisHashClient": "tempest_fastapi_sdk/flags/backends.py",
     "RedisLike": "tempest_fastapi_sdk/api/middlewares/rate_limit.py",
     "RetryLogger": "tempest_fastapi_sdk/utils/retry.py",
+    "RedisLockClient": "tempest_fastapi_sdk/tasks/lock.py",
+    "RedisLockHandle": "tempest_fastapi_sdk/tasks/lock.py",
 }
 """Protocols describing a client we do not own, by defining module.
 

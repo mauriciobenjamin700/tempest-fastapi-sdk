@@ -5,6 +5,109 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.282.0] — 2026-09-02
+
+O scheduler periódico passa a rodar dentro do lifespan do FastAPI, com
+garantia de que **uma** réplica agenda — e as quatro peças que um serviço
+reescrevia para chegar até ali saíram junto. Issue
+[#263](https://github.com/mauriciobenjamin700/tempest-fastapi-sdk/issues/263).
+
+### Added
+
+- **`tq.lifespan(scheduler=True)`** — abre o broker, sobe o scheduler e derruba
+  os dois, plugável direto em `FastAPI(lifespan=...)`. Isso remove o segundo
+  processo de um deploy pequeno, e traz a falha que o `taskiq scheduler`
+  standalone nunca tinha: com N réplicas, cada agendamento dispara N vezes,
+  sem nada levantar e sem nada no log. Não é trade-off com duas respostas
+  razoáveis, então não é aviso: uma réplica segura um **lease** e roda o loop,
+  as outras ficam de prontidão e assumem quando o lease lapsa.
+
+  Medido em `tests/tasks/test_scheduler_lease.py`, com dois lifespans abertos
+  contra o mesmo lease e os disparos contados:
+
+  ```text
+  expected exactly one scheduler loop, got 1 (first=1, second=0)
+  ```
+
+  A propriedade atravessa processos, então é medida com duas instâncias — e o
+  caso de take-over espera o líder sair e confirma que a de prontidão assume
+  dentro de um TTL.
+
+  Sem lease derivável, `scheduler=True` **recusa no startup** com a mensagem
+  que nomeia as três saídas, em vez de agendar N vezes. `scheduler="unlocked"`
+  existe para réplica única e tem que ser digitado; `scheduler=False` segue o
+  default e mantém o comportamento anterior de `lifespan()`.
+
+- **`SchedulerLock` + `RedisSchedulerLock`** — o contrato do lease são três
+  chamadas (`acquire`/`renew`/`release`) e não conhece transporte, então
+  coordenação própria (etcd, advisory lock no Postgres) entra sem o SDK saber.
+  A implementação usa o lock que o `redis-py` já ships, que resolve as duas
+  partes que um lock à mão erra: o acquire é um `SET NX PX` só, e renew e
+  release são scripts Lua que conferem a posse do token antes de tocar a
+  chave. Renovar lease de outro é o bug que transforma eleição de líder em
+  dois líderes. Nenhuma dependência nova — `redis` já vem no `[cache]`.
+
+- **`TaskQueue.from_settings(settings)`** — decide as três coisas que o bloco
+  reescrito em cada serviço decidia: qual transporte a URL significa
+  (`redis://` → Redis Streams, `amqp://` → RabbitMQ), se resultado é guardado,
+  e o que uma URL **vazia** faz (broker in-memory, para o dev box e a suíte
+  sem broker continuarem registrando `@tq.task`). Esquema desconhecido levanta
+  `ValueError` nomeando o esquema, em vez de cair para memória — URL com typo
+  em ambiente deployado viraria fila que parece saudável enquanto nada é
+  enfileirado.
+
+- **Extra `[tasks-redis]`** — `taskiq-redis` não estava declarado em extra
+  nenhum, só na lista de override do mypy, então `TaskQueue.redis()` era
+  superfície documentada cuja dependência ninguém instalava e que a suíte
+  nunca exercitou. Piso medido, não deduzido: `RedisStreamBroker` **não existe
+  na 1.0.0**, então o piso é `>=1.0.3` — e as duas pontas do range trazem
+  bounds de `redis` diferentes (`<6,>=5` na 1.0.3, `<9,>=8` na 1.2.3), ambos
+  confinados ao extra. O lock foi exercitado nas duas.
+
+### Fixed
+
+- **`TaskQueue.redis()` deixava o result backend no dummy.** Medido contra a
+  0.281.0 publicada:
+
+  ```text
+  broker: RedisStreamBroker
+  result backend: DummyResultBackend
+  ```
+
+  Então `.enqueue` seguido de leitura de resultado não devolvia nada pela
+  fachada, e o serviço voltava a montar o broker na mão. Agora o default
+  guarda na URL do broker; `results="redis://..."` manda pra outro lugar e
+  `results=False` restaura o comportamento anterior.
+
+- **`TASKIQ_RESULT_BACKEND_URL` não tinha consumidor.** O campo existia no
+  `TaskIQSettings` e nenhum código do pacote o lia — `grep` no pacote
+  devolvia só o próprio mixin. `from_settings` passa a lê-lo, inclusive no
+  caminho AMQP, onde o `taskiq-aio-pika` não ships result backend nenhum e o
+  resultado precisa morar em outro lugar.
+
+- **O scaffold contradizia a própria docstring.** O `src/tasks/__init__.py`
+  gerado afirmava "connect/disconnect run from the app lifespan" e o
+  `src/api/app.py` gerado pelo mesmo scaffold não tinha **nenhuma** menção a
+  task manager ou broker. O layer também usava o legado
+  `AsyncTaskBrokerManager` + `AioPikaBroker` cru + `os.environ.get`, ignorando
+  o `TaskIQSettings` que a regra de settings manda compor e fixando RabbitMQ.
+  Agora usa `TaskQueue.from_settings`, expõe `broker`/`scheduler` já ligados
+  aos nomes que a CLI do TaskIQ resolve, e mostra o lifespan que o leitor
+  precisa colar — em vez de afirmar que ele já existe. O `Settings`
+  scaffoldado passou a compor `TaskIQSettings`, sem o que
+  `from_settings(settings)` levantava `AttributeError` no projeto gerado.
+
+  Os dois defeitos apareceram ao **rodar** o scaffold, não ao lê-lo: o
+  primeiro era um `SyntaxError` de `"""` aninhado na docstring do módulo, o
+  segundo o mixin ausente.
+
+### Changed
+
+- **A docstring de `start_scheduler` para de recomendar o processo separado
+  como a única saída** e nomeia o que ela realmente faz: o loop cru, uma vez
+  por processo que a chamar. `lifespan(scheduler=True)` é o caminho com
+  garantia.
+
 ## [0.281.0] — 2026-09-02
 
 Três defeitos que a adoção da 0.280.0 no `alofans-api` encontrou, todos na

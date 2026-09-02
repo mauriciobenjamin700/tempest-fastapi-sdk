@@ -96,45 +96,80 @@ __all__: list[str] = ["handle_example"]
 
 
 _TASKS_INIT = '''\
-"""TaskIQ (RabbitMQ) background-task wiring for this service.
+"""TaskIQ background-task wiring for this service.
 
-A single :class:`AsyncTaskBrokerManager` owns the broker for the whole
-process. Request handlers enqueue jobs via ``.kiq(...)``; a separate
-worker process consumes them. connect/disconnect run from the app
-lifespan.
+A single :class:`TaskQueue` owns the broker for the whole process.
+Request handlers enqueue jobs with ``await my_task.enqueue(...)``; a
+worker process consumes them.
+
+The transport comes from ``TASKIQ_BROKER_URL``: ``redis://`` selects
+Redis Streams, ``amqp://`` selects RabbitMQ, and an **empty** value
+selects the in-memory broker, so a dev box or a test suite without a
+broker still registers every ``@tq.task``.
+
+Wire it up in ``api/app.py``, which is what actually opens the queue —
+nothing here connects on import::
+
+    from collections.abc import AsyncGenerator
+    from contextlib import asynccontextmanager
+
+    from fastapi import FastAPI
+
+    from __ROOT__.tasks import tq
+
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        await db.connect()
+        try:
+            async with tq.lifespan():
+                yield
+        finally:
+            await db.disconnect()
+
+That opens the broker only. To run the periodic scheduler here instead
+of in a second process, ask for it — ``tq.lifespan(scheduler=True)``.
+It holds a lease, so scaling the API to N replicas still fires each
+schedule once, and it needs Redis to hold that lease: either as the
+broker (``TASKIQ_BROKER_URL=redis://...``) or as
+``TASKIQ_RESULT_BACKEND_URL``. Without one it refuses at startup and
+says so, rather than firing every schedule once per replica.
+
+The other way round is the standalone process:
+``taskiq scheduler __ROOT__.tasks:scheduler``.
 """
 
 from __future__ import annotations
 
-import os
+from tempest_fastapi_sdk.tasks import TaskQueue
 
-from taskiq_aio_pika import AioPikaBroker
-from tempest_fastapi_sdk import AsyncTaskBrokerManager
+from __ROOT__.core.settings import settings
 
-TASKIQ_BROKER_URL: str = os.environ.get(
-    "TASKIQ_BROKER_URL",
-    "amqp://guest:guest@localhost:5672/",
-)
-"""AMQP URL the TaskIQ broker connects to (override via ``.env``)."""
+tq: TaskQueue = TaskQueue.from_settings(settings)
+"""Process-wide task queue; tasks register against it."""
 
-broker: AioPikaBroker = AioPikaBroker(TASKIQ_BROKER_URL)
-"""Process-wide TaskIQ broker; tasks register against it."""
+broker = tq.broker
+"""Bound for ``taskiq worker __ROOT__.tasks:broker``.
 
-task_manager: AsyncTaskBrokerManager = AsyncTaskBrokerManager(broker)
-"""SDK manager wrapping :data:`broker` (connect/disconnect/task)."""
+The TaskIQ CLI resolves ``module:attr`` with a plain ``getattr``, so
+``__ROOT__.tasks:tq.broker`` raises ``AttributeError``.
+"""
+
+scheduler = tq.scheduler
+"""Bound for ``taskiq scheduler __ROOT__.tasks:scheduler``, same reason."""
 
 
-def get_task_manager() -> AsyncTaskBrokerManager:
-    """Return the process-wide TaskIQ broker manager.
+def get_task_queue() -> TaskQueue:
+    """Return the process-wide task queue.
 
     Returns:
-        AsyncTaskBrokerManager: The shared manager (connected during
-        the app lifespan).
+        TaskQueue: The shared queue (connected during the app
+        lifespan).
     """
-    return task_manager
+    return tq
 
 
-__all__: list[str] = ["broker", "get_task_manager", "task_manager"]
+__all__: list[str] = ["broker", "get_task_queue", "scheduler", "tq"]
 '''
 
 

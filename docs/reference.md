@@ -445,6 +445,9 @@ Gerada automaticamente a partir das docstrings do SDK via [`mkdocstrings`](https
       filters:
         - "!^_"
 
+::: tempest_fastapi_sdk.tasks.lock.SchedulerLock
+::: tempest_fastapi_sdk.tasks.lock.RedisSchedulerLock
+::: tempest_fastapi_sdk.tasks.queue.TaskIQSettingsLike
 ::: tempest_fastapi_sdk.tasks.queue.LifecycleResource
 ::: tempest_fastapi_sdk.tasks.queue.LifecycleScope
 ::: tempest_fastapi_sdk.tasks.queue.Hook

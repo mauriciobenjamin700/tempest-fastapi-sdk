@@ -1398,6 +1398,20 @@ The SDK currently covers (Sep 2025+, post-v0.31.x):
   hatch) and `TaskQueue` (`.rabbitmq`/`.redis`/`.memory`, `@tq.task` →
   `Task.enqueue`/`.run`, folded `@tq.cron`/`@tq.interval` +
   `start_scheduler`, `tq.broker`/`tq.scheduler` for the CLIs).
+  **Scheduler in the web process, with single firing (v0.282.0):**
+  `tq.lifespan(scheduler=True)` runs the periodic scheduler inside the
+  FastAPI lifespan behind a lease, so scaling the API to N replicas still
+  fires each schedule once — `SchedulerLock` (three calls, transport-free)
+  + `RedisSchedulerLock` over the lock `redis-py` ships. With no derivable
+  lease it refuses at startup rather than firing N times;
+  `scheduler="unlocked"` is the typed opt-out for a single replica.
+  **`TaskQueue.from_settings` (v0.282.0):** transport from the URL scheme,
+  result backend from `TASKIQ_RESULT_BACKEND_URL` (which had no consumer),
+  in-memory broker for an empty URL, `ValueError` for an unknown scheme.
+  `TaskQueue.redis()` now wires a result backend (it left TaskIQ's
+  `DummyResultBackend` in place, so reading a result through the facade was
+  impossible) and needs the new **`[tasks-redis]`** extra — `taskiq-redis`
+  was declared in no extra at all.
   **Jobs (v0.228.0):** `BaseJobModel` + `JobStore[JobT]` — a row per unit
   of long work so the interface can say queued / running / done / failed,
   with `enqueue`, a conditional-`UPDATE` `claim` (loser gets `None`),

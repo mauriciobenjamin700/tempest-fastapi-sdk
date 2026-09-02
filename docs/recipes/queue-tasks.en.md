@@ -973,6 +973,148 @@ taskiq scheduler src.tasks:scheduler
     (`tq.scheduler`, `scheduler.scheduler`). Hence the `broker = tq.broker`
     above.
 
+## The scheduler in the FastAPI lifespan — with one replica scheduling
+
+A small deployment does not want a second process just for cron.
+`tq.lifespan(scheduler=True)` runs the scheduler inside the web process, and
+plugs straight into FastAPI:
+
+```python
+# src/api/app.py
+
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from src.core.settings import settings
+from src.tasks import tq
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Open the queue and run periodic tasks in this process."""
+    async with tq.lifespan(scheduler=True):
+        yield
+
+
+app: FastAPI = FastAPI(title=settings.TITLE, lifespan=lifespan)
+```
+
+!!! danger "A raw `start_scheduler()` fires once per replica"
+    The scheduler loop does not know how many processes run it. With
+    three uvicorn replicas, `@tq.cron(every_n_minutes(1))` fires **three
+    times a minute** — and nothing raises, nothing is logged. The effect
+    arrives as duplicated work: the sweep that expires charges expires
+    them three times, the backup runs three times, the e-mail goes out
+    three times.
+
+    `scheduler=True` does not have that problem because it does not run
+    the loop directly: one replica holds a **lease** and runs, the others
+    stand by and take over when the lease lapses. Measured in
+    `tests/tasks/test_scheduler_lease.py`, with two lifespans open
+    against the same lease and the starts counted:
+
+    ```text
+    expected exactly one scheduler loop, got 1 (first=1, second=0)
+    ```
+
+    And when the leader leaves, the standby takes over within one TTL.
+
+### Where the lease comes from
+
+The lease is a Redis lock, and `TaskQueue` derives its URL from wherever one
+already is:
+
+* `TaskQueue.from_settings(settings)` or `TaskQueue.redis(url)` → the broker
+  itself.
+* `TaskQueue.from_settings(settings)` with an AMQP broker and
+  `TASKIQ_RESULT_BACKEND_URL` pointing at Redis → the result backend.
+* A broker built by hand → none. Pass `scheduler_lock=`.
+
+With no derivable lease, `scheduler=True` **refuses at startup** rather than
+scheduling N times:
+
+```text
+ValueError: lifespan(scheduler=True) needs a lease so only one replica runs
+the schedule, and none could be derived from this broker. Pass
+scheduler_lock=RedisSchedulerLock.from_url(...), build the queue with
+TaskQueue.from_settings(...) or TaskQueue.redis(...), or ask for
+scheduler="unlocked" if you accept every replica firing every schedule.
+```
+
+For coordination of your own — etcd, a Postgres advisory lock — implement
+`SchedulerLock`, which is three calls and knows nothing about Redis:
+
+```python
+from tempest_fastapi_sdk.tasks import RedisSchedulerLock, SchedulerLock
+
+lease: SchedulerLock = RedisSchedulerLock.from_url(
+    "redis://localhost:6379/0",
+    name="alofans:scheduler",
+    ttl_seconds=30.0,
+)
+```
+
+!!! warning "Two services on one Redis need different `name`s"
+    The default is `"tempest:tasks:scheduler"`. Two services sharing the
+    instance contend for the same key, and one of them **never**
+    schedules.
+
+!!! info "`scheduler="unlocked"` exists, and has to be typed"
+    A service that genuinely runs a single replica passes
+    `scheduler="unlocked"` and skips the lease. That is a choice; `True`
+    is the guarded default, because a service that forgot is not
+    choosing anything.
+
+## One line for the transport — `from_settings`
+
+The block every service rewrote decided three things: which transport the URL
+means, whether results are stored, and what an empty URL does.
+`TaskQueue.from_settings` decides all three:
+
+```python
+# src/tasks/__init__.py
+
+from tempest_fastapi_sdk.tasks import TaskQueue
+
+from src.core.settings import settings
+
+tq: TaskQueue = TaskQueue.from_settings(settings)
+```
+
+| `TASKIQ_BROKER_URL` | Broker |
+| --- | --- |
+| `redis://` / `rediss://` | Redis Streams, with the result backend on the same URL |
+| `amqp://` / `amqps://` | RabbitMQ; results go to `TASKIQ_RESULT_BACKEND_URL`, if set |
+| empty | in-memory — `@tq.task` still registers, nothing survives a restart |
+| any other scheme | `ValueError` naming the scheme |
+
+!!! warning "The mixin's default is an AMQP URL, not empty"
+    `TaskIQSettings.TASKIQ_BROKER_URL` defaults to
+    `"amqp://guest:guest@localhost:5672/"`. To get the in-memory
+    fallback in development you **declare `TASKIQ_BROKER_URL=` empty**
+    in `.env` — omitting it is not enough. And an unknown scheme raises
+    rather than downgrading to memory on purpose: a typo in a deployed
+    environment variable would otherwise become a queue that looks
+    healthy while nothing is queued.
+
+!!! check "Redis stores results now"
+    Up to v0.281.0 `TaskQueue.redis()` left TaskIQ's
+    `DummyResultBackend` in place and offered no way to ask for another,
+    so reading a result through the facade was impossible — measured:
+
+    ```text
+    broker: RedisStreamBroker
+    result backend: DummyResultBackend
+    ```
+
+    The default is now to store them on the broker's URL.
+    `results="redis://..."` sends them elsewhere, `results=False`
+    restores the previous behavior. Requires the **`[tasks-redis]`**
+    extra (new in v0.282.0) — `taskiq-redis` was declared in no extra at
+    all.
+
 ## Transactional outbox
 
 When a handler **writes a row AND publishes an event**, doing them separately is unsafe: a crash between the commit and the publish loses the event; between the publish and the commit creates a phantom event. The outbox pattern writes the business row **and** an outbox row in the **same transaction** — either both commit or neither. A relay then reads the outbox and publishes to the broker later.

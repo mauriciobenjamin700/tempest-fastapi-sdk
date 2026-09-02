@@ -82,6 +82,10 @@ tasks = [
     "taskiq>=0.11.0",
     "taskiq-aio-pika>=0.4.0",
 ]
+tasks-redis = [
+    "taskiq>=0.11.0",
+    "taskiq-redis>=1.0.3",
+]
 admin = [
     "jinja2>=3.1.0",
     "itsdangerous>=2.2.0",
@@ -255,6 +259,7 @@ all = [
     "faststream[rabbit]>=0.7.1",
     "taskiq>=0.11.0",
     "taskiq-aio-pika>=0.4.0",
+    "taskiq-redis>=1.0.3",
     "jinja2>=3.1.0",
     "itsdangerous>=2.2.0",
     "minio>=7.2.0",
