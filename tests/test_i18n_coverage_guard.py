@@ -141,3 +141,28 @@ def test_the_shipped_catalog_answers_in_portuguese() -> None:
     english = catalog.resolve("OAUTH_EMAIL_TAKEN", catalog.negotiate("en-US"))
     assert english is not None
     assert "already registered" in english
+
+
+def test_every_status_code_the_handler_maps_is_translated() -> None:
+    """A mapped code with no translation localizes nothing, silently.
+
+    ``_STATUS_ERROR_CODES`` is what lets a raw ``HTTPException`` answer
+    the envelope with a ``code``, and the same code is the catalog key
+    used to localize a generic ``detail``. A code added to the mapping
+    without an entry in the catalog leaves the English status phrase in
+    place and nothing complains — the response looks deliberate.
+
+    ``HTTP_<status>`` is not in the mapping and needs no entry: it is the
+    fallback for a status the SDK never modelled, and it deliberately
+    keeps the framework's own phrase.
+    """
+    from tempest_fastapi_sdk.api.handlers import _STATUS_ERROR_CODES
+
+    for locale, table in _BUILTIN_TRANSLATIONS.items():
+        missing = sorted(
+            {code for code in _STATUS_ERROR_CODES.values() if code not in table},
+        )
+        assert not missing, (
+            f"{locale} has no message for status code(s) the HTTP handler "
+            f"maps: {missing}"
+        )

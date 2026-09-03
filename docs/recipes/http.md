@@ -120,6 +120,77 @@ Pontos-chave:
 - `make_token_dependency(secret)` retorna uma dependência async que valida `X-Token` via `hmac.compare_digest`; passe uma string vazia para desabilitar no dev. A dependência vive ao lado do resto da cola de auth em `src/api/dependencies/auth.py` quando crescer além do one-liner acima.
 
 
+### Todo 4xx dentro do envelope
+
+O 422 era o furo mais visível, não o único. Os outros quatro caminhos de erro
+de cliente **passam pelo handler do SDK** — medido, todos os seis — e
+respondiam o corpo nu do Starlette, sem `code` e em inglês, mesmo num serviço
+com `MessageCatalog` configurado:
+
+| Caminho | Antes | Com `envelope_client_errors=True` |
+| --- | --- | --- |
+| `raise HTTPException(404, "pedido 42 não existe")` | `{"detail": "pedido 42 não existe"}` | mesma mensagem **+** `code: NOT_FOUND` |
+| `raise HTTPException(403)` | `{"detail": "Forbidden"}` | `Acesso negado` + `code: FORBIDDEN` |
+| `raise HTTPException(409)` | `{"detail": "Conflict"}` | `Conflito de recurso` + `code: CONFLICT` |
+| `Depends(HTTPBearer())` sem token | `{"detail": "Not authenticated"}` | mesma mensagem **+** `code: UNAUTHORIZED` |
+| rota inexistente | `{"detail": "Not Found"}` | `Recurso não encontrado` + `code: NOT_FOUND` |
+| método errado | `{"detail": "Method Not Allowed"}` | mesma mensagem + `code: HTTP_405` |
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import default_message_catalog, register_exception_handlers
+
+
+def create_app() -> FastAPI:
+    """Monta a aplicação.
+
+    Returns:
+        FastAPI: A aplicação configurada.
+    """
+    app: FastAPI = FastAPI()
+    register_exception_handlers(
+        app,
+        catalog=default_message_catalog(),
+        default_locale="pt-BR",
+        envelope_client_errors=True,       # ← todo 4xx, o 422 incluído
+    )
+    return app
+```
+
+!!! danger "Mensagem que você escreveu **não** é traduzida"
+    Essa é a linha que separa "localizar" de "perder informação". O
+    Starlette preenche `detail` com a *phrase* do status quando o caller não
+    passa uma, então os dois casos são distinguíveis:
+
+    - `HTTPException(404, "pedido 42 não existe")` → mensagem sua, **preservada**
+    - `HTTPException(404)` → `detail == "Not Found"`, que é a phrase → traduzida
+
+    Trocar a primeira pelo genérico do catálogo destruiria a mensagem mais
+    informativa das duas. O `"Not authenticated"` do `HTTPBearer` cai no
+    primeiro grupo também — medido — e é preservado.
+
+!!! info "Por que dois flags e não um renomeado"
+    `envelope_validation_errors` shippou na v0.284.0 cobrindo só o 422.
+    `envelope_client_errors` é o **superconjunto**: liga todo 4xx, o 422
+    incluído. Quem já tinha ligado o primeiro não muda de comportamento ao
+    atualizar — que é exatamente o que um rename silencioso faria.
+
+    Precisa de tudo? Só `envelope_client_errors=True`. Precisa só do 422?
+    Só o outro.
+
+!!! note "`HTTP_<status>` para status que o SDK não modela"
+    O mapa status→`code` é **declarado**, não derivado: medido, oito classes
+    de `AppException` carregam um code de 401 e três de 404, então não há
+    status de onde ler um code único.
+
+    Status fora do mapa responde `HTTP_<status>` e mantém a phrase do
+    framework. 400 e 405 estão nesse grupo hoje — nenhuma subclasse de
+    `AppException` carrega code para eles. O cliente ainda parseia um
+    formato só; o que falta é a tradução, não o `code`.
+
 ### O 422 dentro do envelope
 
 `register_exception_handlers` conecta três handlers, e o 422 não passa por

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import http
 import logging
 import traceback
-from collections.abc import Awaitable, Callable
-from typing import Any
+from collections.abc import Awaitable, Callable, Mapping
+from typing import Any, Final
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -105,6 +106,70 @@ ValidationExceptionHandler = Callable[
 
 VALIDATION_ERROR_CODE: str = "VALIDATION_ERROR"
 """The envelope ``code`` a request-validation failure answers with."""
+
+
+_STATUS_ERROR_CODES: Final[Mapping[int, str]] = {
+    401: "UNAUTHORIZED",
+    403: "FORBIDDEN",
+    404: "NOT_FOUND",
+    409: "CONFLICT",
+    413: "FILE_TOO_LARGE",
+    415: "INVALID_FILE_TYPE",
+    422: "VALIDATION_ERROR",
+    429: "TOO_MANY_REQUESTS",
+}
+"""Envelope ``code`` for a raw ``HTTPException`` of each status.
+
+**Declared, not derived.** The SDK has several exception classes per
+status — measured, eight carry a 401 code and three a 404 — so there is
+no status the mapping could read a single code off. A status absent here
+answers ``HTTP_<status>``, which keeps the response parseable by ``code``
+even where the SDK never modelled the status. 400 and 405 are in that
+group today: no :class:`AppException` subclass carries either.
+
+Every code here is one the built-in catalog translates, which is what
+makes localizing a generic ``detail`` possible.
+"""
+
+
+def _client_error_code(status_code: int) -> str:
+    """Return the envelope ``code`` for a client-error status.
+
+    Args:
+        status_code (int): The HTTP status of the response.
+
+    Returns:
+        str: The declared code, or ``HTTP_<status>`` for a status the SDK
+        does not model.
+    """
+    return _STATUS_ERROR_CODES.get(status_code, f"HTTP_{status_code}")
+
+
+def _detail_is_the_framework_default(exc: StarletteHTTPException) -> bool:
+    """Whether ``exc.detail`` is the status phrase rather than a message.
+
+    Starlette fills ``detail`` with ``HTTPStatus(status_code).phrase``
+    when the caller passes none, so the two cases are distinguishable:
+    ``HTTPException(404, "no such order")`` carries a sentence a developer
+    wrote, and ``HTTPException(404)`` carries ``"Not Found"``.
+
+    Only the second may be replaced with a catalog message. Localizing the
+    first would **destroy** the specific message — the more informative of
+    the two — which is why this is not a blanket translation. Measured,
+    FastAPI's own ``"Not authenticated"`` for a missing bearer token also
+    falls in the first group and is preserved.
+
+    Args:
+        exc (StarletteHTTPException): The exception being answered.
+
+    Returns:
+        bool: ``True`` when ``detail`` is the framework's own phrase.
+    """
+    try:
+        phrase = http.HTTPStatus(exc.status_code).phrase
+    except ValueError:
+        return False
+    return str(exc.detail) == phrase
 
 
 def make_app_exception_handler(
@@ -380,6 +445,9 @@ def make_http_exception_handler(
     log_level: int = logging.ERROR,
     logger: logging.Logger | None = None,
     on_server_error: ServerErrorCallback | None = None,
+    catalog: MessageCatalog | None = None,
+    default_locale: str = DEFAULT_LOCALE,
+    envelope_client_errors: bool = False,
 ) -> HTTPExceptionHandler:
     """Build the handler for raw :class:`starlette.exceptions.HTTPException`.
 
@@ -411,6 +479,18 @@ def make_http_exception_handler(
         log_traceback (bool): Whether to attach ``exc_info=exc`` to
             the 5xx log record. ``True`` by default.
         log_level (int): Logging level used for 5xx records.
+        catalog (MessageCatalog | None): Catalog used to localize a
+            generic 4xx ``detail`` when ``envelope_client_errors`` is on.
+            This handler had no catalog parameter at all before v0.285.0,
+            which is why a service configuring one still answered
+            ``{"detail": "Forbidden"}`` in English.
+        default_locale (str): Locale used when ``Accept-Language`` is
+            absent or matches nothing in the catalog.
+        envelope_client_errors (bool): Whether a 4xx answers the SDK
+            envelope (``detail`` / ``code`` / ``details``) instead of
+            Starlette's bare ``{"detail": ...}``. Off by default: adding
+            ``code`` is additive, but a client that pins the exact body
+            shape still sees a change.
         logger (logging.Logger | None): Where this handler logs.
             ``None`` uses the SDK's own
             ``tempest_fastapi_sdk.api.handlers`` logger — which a
@@ -490,6 +570,7 @@ def make_http_exception_handler(
                     log,
                 ),
             )
+        code: str = _client_error_code(exc.status_code)
         log.log(
             logging.INFO,
             "HTTPException %s during %s %s: %s",
@@ -501,11 +582,32 @@ def make_http_exception_handler(
                 "request_id": request_id,
                 "path": request.url.path,
                 "status_code": exc.status_code,
+                "code": code,
             },
         )
+        if not envelope_client_errors:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers=getattr(exc, "headers", None),
+            )
+
+        detail: str = str(exc.detail)
+        if catalog is not None and _detail_is_the_framework_default(exc):
+            locale = catalog.negotiate(
+                request.headers.get("accept-language"),
+                default_locale=default_locale,
+            )
+            localized = catalog.resolve(code, locale)
+            if localized is not None:
+                detail = localized
         return JSONResponse(
             status_code=exc.status_code,
-            content={"detail": exc.detail},
+            content={
+                "detail": detail,
+                "code": code,
+                "details": ({"request_id": request_id} if request_id else {}),
+            },
             headers=getattr(exc, "headers", None),
         )
 
@@ -647,6 +749,7 @@ def register_exception_handlers(
     logger: logging.Logger | None = None,
     on_server_error: ServerErrorCallback | None = None,
     envelope_validation_errors: bool = False,
+    envelope_client_errors: bool = False,
 ) -> None:
     """Register the SDK's exception handlers on a FastAPI app.
 
@@ -686,6 +789,34 @@ def register_exception_handlers(
             :meth:`MessageCatalog.merge`-d with domain codes.
         default_locale (str): Locale used when ``Accept-Language`` is
             absent or unmatched. Defaults to ``"pt-BR"``.
+        logger (logging.Logger | None): Where every handler logs.
+            ``None`` uses the SDK's own logger, which a service
+            configuring ``LogUtils(..., scope="logger")`` does not cover.
+            Pass ``LogUtils(...).logger``. See
+            :func:`make_unhandled_exception_handler` for the measurement.
+        on_server_error (ServerErrorCallback | None): Called with
+            ``(request, exc)`` after any 5xx response is built, as a
+            background task. Fires on all three 5xx paths and never on a
+            4xx; a failure inside it is logged and swallowed.
+        envelope_validation_errors (bool): Whether to register the
+            :class:`fastapi.exceptions.RequestValidationError` handler,
+            putting the ``422`` in the envelope and localizing it by
+            pydantic error type. Also rewrites the ``HTTPValidationError``
+            component of the OpenAPI schema so it does not contradict the
+            runtime. Off by default: the 422 body changes shape, which
+            breaks a client that models ``detail`` as an array.
+        envelope_client_errors (bool): Whether **every** 4xx answers the
+            envelope — the ``422`` included, so this implies
+            ``envelope_validation_errors``. A raw
+            ``HTTPException(403)``, the ``401`` from a security
+            dependency, an unknown route and a wrong method all reach
+            this SDK's handler and answered a bare
+            ``{"detail": "<English phrase>"}`` with no ``code`` before
+            v0.285.0. Off by default for the same reason as above.
+
+            A ``detail`` the caller wrote is **preserved**; only the
+            framework's own status phrase is localized. See
+            :func:`make_http_exception_handler`.
 
     Notes:
         Starlette types ``add_exception_handler`` to accept only callables
@@ -712,6 +843,9 @@ def register_exception_handlers(
             log_level=log_level,
             logger=logger,
             on_server_error=on_server_error,
+            catalog=catalog,
+            default_locale=default_locale,
+            envelope_client_errors=envelope_client_errors,
         ),
     )
     app.add_exception_handler(
@@ -724,7 +858,7 @@ def register_exception_handlers(
             on_server_error=on_server_error,
         ),
     )
-    if envelope_validation_errors:
+    if envelope_validation_errors or envelope_client_errors:
         app.add_exception_handler(
             RequestValidationError,
             make_validation_exception_handler(  # type: ignore[arg-type]
