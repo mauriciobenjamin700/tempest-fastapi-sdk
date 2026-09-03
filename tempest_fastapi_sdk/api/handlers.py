@@ -8,14 +8,21 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.background import BackgroundTask
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from tempest_fastapi_sdk.api.error_docs import describe_validation_envelope
 from tempest_fastapi_sdk.core.context import get_request_id
 from tempest_fastapi_sdk.core.logging import HTTP_500_MARKER
 from tempest_fastapi_sdk.exceptions.base import AppException
-from tempest_fastapi_sdk.exceptions.i18n import DEFAULT_LOCALE, MessageCatalog
+from tempest_fastapi_sdk.exceptions.i18n import (
+    DEFAULT_LOCALE,
+    VALIDATION_KEY_PREFIX,
+    MessageCatalog,
+)
 
 logger = logging.getLogger("tempest_fastapi_sdk.api.handlers")
 
@@ -89,6 +96,15 @@ HTTPExceptionHandler = Callable[
 
 UnhandledExceptionHandler = Callable[[Request, Exception], Awaitable[JSONResponse]]
 """Async callable resolving any uncaught exception to a JSON response."""
+
+ValidationExceptionHandler = Callable[
+    [Request, RequestValidationError],
+    Awaitable[JSONResponse],
+]
+"""Async callable resolving a request-validation failure to a response."""
+
+VALIDATION_ERROR_CODE: str = "VALIDATION_ERROR"
+"""The envelope ``code`` a request-validation failure answers with."""
 
 
 def make_app_exception_handler(
@@ -496,6 +512,130 @@ def make_http_exception_handler(
     return _handler
 
 
+def make_validation_exception_handler(
+    *,
+    log_level: int = logging.INFO,
+    catalog: MessageCatalog | None = None,
+    default_locale: str = DEFAULT_LOCALE,
+    logger: logging.Logger | None = None,
+) -> ValidationExceptionHandler:
+    """Build the handler for FastAPI's ``RequestValidationError``.
+
+    The 422 is the error a client sees most often and was the only one
+    outside the SDK's envelope: FastAPI intercepts
+    ``RequestValidationError`` in its own default handler, so it answered
+    with pydantic's raw list and no ``code``, and never passed through
+    the :class:`MessageCatalog` a service configured.
+
+    Two things this handler changes, both measured:
+
+    * **The envelope.** The response is
+      ``{"detail", "code": "VALIDATION_ERROR", "details": {"errors": [...]}}``,
+      so a client parses one shape for every failure instead of two.
+    * **The messages.** Each entry's message comes from the catalog,
+      keyed by the pydantic error *type* rather than by field, so a new
+      field on a schema is translated the day it is added. A type the
+      catalog does not carry keeps pydantic's own ``msg``, which is
+      already the English sentence — so English needs no table and
+      cannot drift from upstream.
+
+    It also stops echoing the submitted value. FastAPI's default 422
+    includes ``input`` for every failing field: measured, a
+    ``password`` field that fails ``min_length`` puts the password in the
+    response body, and ``SecretStr`` does **not** prevent it, because
+    validation runs before the secret wrapper is built. ``details``
+    carries ``loc`` and ``type`` and never ``input``.
+
+    Args:
+        log_level (int): Level for the log line. Defaults to
+            :data:`logging.INFO`, since a 422 is normal client flow.
+        catalog (MessageCatalog | None): Catalog used to localize each
+            entry. ``None`` keeps pydantic's own messages.
+        default_locale (str): Locale used when ``Accept-Language`` is
+            absent or matches nothing in the catalog.
+        logger (logging.Logger | None): Where this handler logs.
+            ``None`` uses the SDK's own logger.
+
+    Returns:
+        ValidationExceptionHandler: An async
+        ``(request, exc) -> JSONResponse`` callable ready to pass to
+        :meth:`FastAPI.add_exception_handler`.
+    """
+    log: logging.Logger = _DEFAULT_LOGGER if logger is None else logger
+
+    async def _handler(
+        request: Request,
+        exc: RequestValidationError,
+    ) -> JSONResponse:
+        request_id = (
+            get_request_id()
+            or request.headers.get("X-Request-ID")
+            or request.headers.get("x-request-id")
+        )
+        locale: str = default_locale
+        if catalog is not None:
+            locale = catalog.negotiate(
+                request.headers.get("accept-language"),
+                default_locale=default_locale,
+            )
+
+        errors: list[dict[str, Any]] = []
+        for error in exc.errors():
+            error_type = str(error.get("type", ""))
+            message = str(error.get("msg", ""))
+            if catalog is not None:
+                localized = catalog.resolve(
+                    f"{VALIDATION_KEY_PREFIX}{error_type}",
+                    locale,
+                    error.get("ctx"),
+                )
+                if localized is not None:
+                    message = localized
+            errors.append(
+                {
+                    "loc": list(error.get("loc", ())),
+                    "type": error_type,
+                    "msg": message,
+                },
+            )
+
+        detail: str = "Validation error"
+        if catalog is not None:
+            localized_detail = catalog.resolve(VALIDATION_ERROR_CODE, locale)
+            if localized_detail is not None:
+                detail = localized_detail
+
+        log.log(
+            log_level,
+            "Request validation failed during %s %s: %d error(s)",
+            request.method,
+            request.url.path,
+            len(errors),
+            extra={
+                "request_id": request_id,
+                "path": request.url.path,
+                "status_code": 422,
+                "code": VALIDATION_ERROR_CODE,
+            },
+        )
+
+        details: dict[str, Any] = {"errors": errors}
+        if request_id:
+            details["request_id"] = request_id
+        return JSONResponse(
+            status_code=422,
+            content=jsonable_encoder(
+                {
+                    "detail": detail,
+                    "code": VALIDATION_ERROR_CODE,
+                    "details": details,
+                },
+            ),
+        )
+
+    return _handler
+
+
 def register_exception_handlers(
     app: FastAPI,
     *,
@@ -506,6 +646,7 @@ def register_exception_handlers(
     default_locale: str = DEFAULT_LOCALE,
     logger: logging.Logger | None = None,
     on_server_error: ServerErrorCallback | None = None,
+    envelope_validation_errors: bool = False,
 ) -> None:
     """Register the SDK's exception handlers on a FastAPI app.
 
@@ -583,13 +724,26 @@ def register_exception_handlers(
             on_server_error=on_server_error,
         ),
     )
+    if envelope_validation_errors:
+        app.add_exception_handler(
+            RequestValidationError,
+            make_validation_exception_handler(  # type: ignore[arg-type]
+                catalog=catalog,
+                default_locale=default_locale,
+                logger=logger,
+            ),
+        )
+        describe_validation_envelope(app)
 
 
 __all__: list[str] = [
+    "VALIDATION_ERROR_CODE",
     "ServerErrorCallback",
+    "ValidationExceptionHandler",
     "app_exception_handler",
     "make_app_exception_handler",
     "make_http_exception_handler",
     "make_unhandled_exception_handler",
+    "make_validation_exception_handler",
     "register_exception_handlers",
 ]

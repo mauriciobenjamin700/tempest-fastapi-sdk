@@ -110,7 +110,7 @@ Key points:
 - `src/server.py` and `main.py` (one-liner) stay exactly as in [Section 2 of the tutorial](../tutorial.md#2-settings-server-app-factory-entry-point) — only `create_app()` changes when you add primitives. Never start uvicorn via `subprocess.run(["uvicorn", ...])`; always import `app` from `src.api.app` or call `uvicorn.run("src.api.app:app", ...)` programmatically from `src/server.py`.
 - `RequestIDMiddleware` reads/writes `X-Request-ID` and seeds `request_id_ctx` so every log line emitted during the request carries the correlation ID.
 - `apply_cors(app, settings)` reads `CORSSettings` defaults; pass keyword overrides for one-off changes.
-- `register_exception_handlers(app)` wires three handlers, each with its own log level:
+- `register_exception_handlers(app)` wires three handlers, each with its own log level (plus a fourth, for the 422, when `envelope_validation_errors=True` — see [The 422 inside the envelope](#the-422-inside-the-envelope)):
     - `AppException` → `{detail, code, details}` envelope + `INFO` log (4xx) or `ERROR` + traceback + `500.log` (5xx).
     - `HTTPException` → keeps Starlette's default body (`{"detail"}`) on 4xx with an `INFO` log; on 5xx swaps in the SDK envelope + traceback + `500.log`.
     - `Exception` (catch-all) → SDK envelope + traceback + `500.log` (fixes Starlette's default, which returns only `"Internal Server Error"` with no log entry).
@@ -119,6 +119,102 @@ Key points:
 - `make_health_router(db=db, checks={"redis": redis.health_check}, version=...)` mounts `GET /health/liveness` and `GET /health/readiness` (returns `503` when any check fails) at the root prefix.
 - `make_token_dependency(secret)` returns an async dependency that validates `X-Token` via `hmac.compare_digest`; pass an empty string to disable in dev. The dependency lives next to the rest of the auth glue in `src/api/dependencies/auth.py` once it grows beyond the one-liner above.
 
+
+### The 422 inside the envelope
+
+`register_exception_handlers` wires three handlers, and the 422 goes
+through none of them: FastAPI intercepts `RequestValidationError` in its
+own default handler. So the error a client sees most often was the only one
+outside the SDK's error model — no `code`, and never through the
+`MessageCatalog` the service configured.
+
+```python
+# src/api/app.py
+
+from fastapi import FastAPI
+
+from tempest_fastapi_sdk import default_message_catalog, register_exception_handlers
+
+
+def create_app() -> FastAPI:
+    """Build the application.
+
+    Returns:
+        FastAPI: The configured application.
+    """
+    app: FastAPI = FastAPI()
+    register_exception_handlers(
+        app,
+        catalog=default_message_catalog(),
+        default_locale="pt-BR",
+        envelope_validation_errors=True,        # ← put the 422 in the envelope
+    )
+    return app
+```
+
+With the flag on, `POST /login` with a short `password` answers:
+
+```json
+{
+  "detail": "Erro de validação",
+  "code": "VALIDATION_ERROR",
+  "details": {
+    "errors": [
+      {
+        "loc": ["body", "password"],
+        "type": "string_too_short",
+        "msg": "O texto deve ter no mínimo 12 caractere(s)"
+      }
+    ]
+  }
+}
+```
+
+!!! danger "The default 422 sends the submitted value back — the password included"
+    The body FastAPI generates includes `input` for every field that
+    failed. Measured, with `password` failing `min_length`:
+
+    ```json
+    {"detail": [{"type": "string_too_short", "loc": ["body", "password"],
+                 "msg": "String should have at least 12 characters",
+                 "input": "hunter2"}]}
+    ```
+
+    And `SecretStr` does **not** protect it: validation runs before the
+    secret wrapper exists, so a failing `SecretStr` field returns the raw
+    value too. Measured in both cases.
+
+    That is the strongest reason to turn the flag on. `details` carries
+    `loc` and `type` and **never** `input` — this is not a warning for you
+    to act on, it is a line the handler does not write.
+
+!!! info "The table is keyed by error type, not by field"
+    Messages come from the catalog under `VALIDATION.<pydantic type>` —
+    `string_too_short`, `missing`, `int_parsing` and the other 101. That is
+    pydantic's vocabulary, identical in every service, so **a new field on
+    a schema is born translated**: there is no per-field table to keep.
+
+    There are 104 types, exactly the set of `pydantic_core.ErrorType`, and
+    `tests/test_pydantic_error_types_guard.py` fails when the installed
+    pydantic and the table disagree in either direction.
+
+    The catalog carries **Portuguese only**, on purpose: pydantic's own
+    `msg` already *is* the English message, so the handler falls back to it
+    and the SDK keeps no copy that could drift from upstream. A type the
+    catalog does not know falls back the same way — it degrades to English,
+    never to blank.
+
+!!! warning "Turning the flag on changes the body, so it is opt-in"
+    A frontend doing `body.detail.map(...)` and a client generated from the
+    OpenAPI schema both model the 422 as an array. That is why the default
+    is `False`, and turning it on is the service's decision.
+
+    The schema follows: with the flag on, the `HTTPValidationError`
+    component is rewritten to the envelope (`detail` as a string, plus
+    `code` and `details`) and the item loses `input`. Every route
+    references that component, so the docs and the runtime agree in both
+    positions of the flag — without it the schema would lie in exactly the
+    response a generated client uses most.
 
 ### Telling someone, and choosing where the record lands
 

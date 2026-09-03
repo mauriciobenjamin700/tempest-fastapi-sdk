@@ -7,6 +7,11 @@ response and the ``422`` it generates itself, never the ``404`` / ``409``
 / ``403`` a handler raises. A frontend developer therefore discovers the
 error codes at runtime, or by reading the service's Python.
 
+The ``422`` is the one FastAPI does document, and it documents the shape
+*it* would answer with. :func:`describe_validation_envelope` rewrites that
+component when the SDK's validation handler is registered, so the schema
+does not contradict the runtime.
+
 This module closes that gap with two layers over the same data:
 
 * :func:`error_responses` — pass the exception classes, get the dict
@@ -28,7 +33,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from fastapi import APIRouter
+from fastapi import APIRouter, FastAPI
 
 from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.i18n import DEFAULT_LOCALE, MessageCatalog
@@ -38,6 +43,81 @@ RAISES_ATTRIBUTE: str = "__tempest_raises__"
 """Attribute :func:`raises` sets on the endpoint it decorates."""
 
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
+
+
+def describe_validation_envelope(app: FastAPI) -> None:
+    """Rewrite the ``422`` schema to the envelope the handler answers with.
+
+    FastAPI documents the ``422`` it generates itself as
+    ``HTTPValidationError`` with ``detail`` as an *array*, and every route
+    with a body or a parameter references that one component. Registering
+    :func:`~tempest_fastapi_sdk.make_validation_exception_handler` changes
+    the runtime shape to the SDK envelope, so leaving the schema alone
+    would ship the documented-versus-real divergence this SDK exists to
+    avoid — in the one response a generated client is most likely to
+    model.
+
+    Rewriting the single shared component is enough: each route's ``422``
+    is a ``$ref`` to it. The ``ValidationError`` item loses ``input``,
+    which the handler deliberately never emits.
+
+    Called by :func:`~tempest_fastapi_sdk.register_exception_handlers`
+    when ``envelope_validation_errors=True``. Wraps ``app.openapi`` so the
+    patch survives the schema being regenerated, and is idempotent.
+
+    Args:
+        app (FastAPI): The application whose schema to rewrite.
+    """
+    original = app.openapi
+
+    def patched() -> dict[str, Any]:
+        """Return the app's schema with the 422 envelope described.
+
+        Returns:
+            dict[str, Any]: The OpenAPI schema.
+        """
+        schema: dict[str, Any] = original()
+        schemas: dict[str, Any] = schema.get("components", {}).get("schemas", {})
+        envelope: dict[str, Any] | None = schemas.get("HTTPValidationError")
+        if envelope is None:
+            return schema
+        if envelope.get("properties", {}).get("detail", {}).get("type") == "string":
+            return schema
+
+        item: dict[str, Any] = schemas.get("ValidationError", {})
+        item.get("properties", {}).pop("input", None)
+        if "required" in item:
+            item["required"] = [name for name in item["required"] if name != "input"]
+
+        errors: dict[str, Any] = {
+            "type": "array",
+            "title": "Errors",
+            "items": (
+                {"$ref": "#/components/schemas/ValidationError"}
+                if item
+                else {"type": "object"}
+            ),
+        }
+        envelope["properties"] = {
+            "detail": {"type": "string", "title": "Detail"},
+            "code": {
+                "type": "string",
+                "title": "Code",
+                "default": "VALIDATION_ERROR",
+            },
+            "details": {
+                "type": "object",
+                "title": "Details",
+                "properties": {
+                    "errors": errors,
+                    "request_id": {"type": "string", "title": "Request Id"},
+                },
+            },
+        }
+        envelope["required"] = ["detail", "code", "details"]
+        return schema
+
+    app.openapi = patched  # type: ignore[method-assign]
 
 
 @dataclass(frozen=True, slots=True)
@@ -364,6 +444,7 @@ __all__: list[str] = [
     "RaisesSpec",
     "TempestAPIRouter",
     "declared_raises",
+    "describe_validation_envelope",
     "error_responses",
     "raises",
 ]

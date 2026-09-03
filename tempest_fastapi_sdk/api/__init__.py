@@ -40,16 +40,25 @@ from tempest_fastapi_sdk.api.error_docs import (
     declared_raises as declared_raises,
 )
 from tempest_fastapi_sdk.api.error_docs import (
+    describe_validation_envelope as describe_validation_envelope,
+)
+from tempest_fastapi_sdk.api.error_docs import (
     error_responses as error_responses,
 )
 from tempest_fastapi_sdk.api.error_docs import (
     raises as raises,
 )
 from tempest_fastapi_sdk.api.handlers import (
-    app_exception_handler as app_exception_handler,
+    VALIDATION_ERROR_CODE as VALIDATION_ERROR_CODE,
 )
 from tempest_fastapi_sdk.api.handlers import (
     ServerErrorCallback as ServerErrorCallback,
+)
+from tempest_fastapi_sdk.api.handlers import (
+    ValidationExceptionHandler as ValidationExceptionHandler,
+)
+from tempest_fastapi_sdk.api.handlers import (
+    app_exception_handler as app_exception_handler,
 )
 from tempest_fastapi_sdk.api.handlers import (
     make_app_exception_handler as make_app_exception_handler,
@@ -59,6 +68,9 @@ from tempest_fastapi_sdk.api.handlers import (
 )
 from tempest_fastapi_sdk.api.handlers import (
     make_unhandled_exception_handler as make_unhandled_exception_handler,
+)
+from tempest_fastapi_sdk.api.handlers import (
+    make_validation_exception_handler as make_validation_exception_handler,
 )
 from tempest_fastapi_sdk.api.handlers import (
     register_exception_handlers as register_exception_handlers,
@@ -320,6 +332,7 @@ __all__: list[str] = [
     "DEFAULT_STATIC_SECURITY_HEADERS",
     "IDEMPOTENCY_HEADER",
     "RAISES_ATTRIBUTE",
+    "VALIDATION_ERROR_CODE",
     "AccessLogMiddleware",
     "BanStore",
     "BodySizeLimitMiddleware",
@@ -367,8 +380,10 @@ __all__: list[str] = [
     "ResponseCacheMiddleware",
     "ResponseCacheStore",
     "SameSite",
+    "ServerErrorCallback",
     "StaticRateLimitPolicy",
     "TempestAPIRouter",
+    "ValidationExceptionHandler",
     "WebhookDelivery",
     "WebhookSender",
     "WebhookSignatureVerifier",
@@ -376,6 +391,7 @@ __all__: list[str] = [
     "apply_cors",
     "clear_cookie",
     "declared_raises",
+    "describe_validation_envelope",
     "error_responses",
     "generate_csrf_token",
     "generate_oauth_state",
@@ -384,7 +400,6 @@ __all__: list[str] = [
     "key_by_jwt_claim",
     "key_by_jwt_subject",
     "key_by_plan_principal",
-    "ServerErrorCallback",
     "make_app_exception_handler",
     "make_bearer_token_dependency",
     "make_csrf_token_dependency",
@@ -400,6 +415,7 @@ __all__: list[str] = [
     "make_token_dependency",
     "make_tool_spec_router",
     "make_unhandled_exception_handler",
+    "make_validation_exception_handler",
     "plan_by_header",
     "plan_by_jwt_claim",
     "raises",

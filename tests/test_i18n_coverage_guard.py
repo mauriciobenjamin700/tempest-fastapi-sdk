@@ -25,9 +25,28 @@ import tempest_fastapi_sdk.exceptions as exceptions_pkg
 from tempest_fastapi_sdk import AppException
 from tempest_fastapi_sdk.exceptions.i18n import (
     _BUILTIN_TRANSLATIONS,
+    VALIDATION_KEY_PREFIX,
     MessageCatalog,
     default_message_catalog,
 )
+
+
+def _code_keys(table: dict[str, str]) -> set[str]:
+    """Return the exception-code keys of one locale table.
+
+    The catalog also carries request-validation messages under
+    :data:`VALIDATION_KEY_PREFIX`. Those are keyed by pydantic error type
+    rather than by an SDK exception code, so they are neither orphans nor
+    something a locale has to match — ``tests/test_pydantic_error_types_guard.py``
+    is what holds that set to the installed pydantic.
+
+    Args:
+        table (dict[str, str]): One locale's translations.
+
+    Returns:
+        set[str]: The keys that name an SDK exception code.
+    """
+    return {key for key in table if not key.startswith(VALIDATION_KEY_PREFIX)}
 
 
 def _codes_with_an_exception() -> dict[str, str]:
@@ -73,13 +92,21 @@ def test_no_translation_without_an_exception() -> None:
     codes = set(_codes_with_an_exception())
 
     for locale, table in _BUILTIN_TRANSLATIONS.items():
-        orphans = sorted(set(table) - codes)
+        orphans = sorted(_code_keys(table) - codes)
         assert not orphans, f"{locale} translates codes no exception raises: {orphans}"
 
 
 def test_the_locales_agree_on_which_codes_they_cover() -> None:
-    """One locale ahead of another is the same silent English fallback."""
-    tables = {locale: set(table) for locale, table in _BUILTIN_TRANSLATIONS.items()}
+    """One locale ahead of another is the same silent English fallback.
+
+    Scoped to the exception codes. The validation namespace is
+    deliberately Portuguese-only: pydantic's own ``msg`` *is* the English
+    message, so the handler falls back to it instead of the SDK keeping a
+    copy that can drift from upstream wording.
+    """
+    tables = {
+        locale: _code_keys(table) for locale, table in _BUILTIN_TRANSLATIONS.items()
+    }
     reference = next(iter(tables.values()))
 
     for locale, keys in tables.items():

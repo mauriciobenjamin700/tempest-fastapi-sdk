@@ -189,6 +189,193 @@ class MessageCatalog:
         return MessageCatalog(merged)
 
 
+VALIDATION_KEY_PREFIX: str = "VALIDATION."
+"""Namespace for the request-validation messages in the catalog.
+
+Kept separate from the exception ``code`` keys so the two sets are
+*checkable* rather than merely non-colliding: a code is ``UPPER_SNAKE``
+and a pydantic error type is ``lower_snake``, which keeps them apart
+today by accident and not by rule.
+"""
+
+_PYDANTIC_ERROR_TYPES_PT_BR: dict[str, str] = {
+    "arguments_type": "Os argumentos devem ser uma tupla, uma lista ou um dicionário",
+    "assertion_error": "Falha na asserção: {error}",
+    "bool_parsing": "Deve ser um booleano válido; não foi possível interpretar o valor",
+    "bool_type": "Deve ser um booleano válido",
+    "bytes_invalid_encoding": (
+        "Os dados devem estar em {encoding} válido: {encoding_error}"
+    ),
+    "bytes_too_long": "Os dados devem ter no máximo {max_length} byte(s)",
+    "bytes_too_short": "Os dados devem ter no mínimo {min_length} byte(s)",
+    "bytes_type": "Deve ser uma sequência de bytes válida",
+    "callable_type": "Deve ser algo chamável",
+    "complex_str_parsing": "Deve ser um texto de número complexo válido",
+    "complex_type": (
+        "Deve ser um número complexo válido, um número, ou um texto de número complexo"
+        " válido"
+    ),
+    "dataclass_exact_type": "Deve ser uma instância de {class_name}",
+    "dataclass_type": "Deve ser um dicionário ou uma instância de {class_name}",
+    "date_from_datetime_inexact": (
+        "Data e hora informada onde se espera uma data deve ter a hora zerada, ou "
+        "seja, ser uma data exata"
+    ),
+    "date_from_datetime_parsing": (
+        "Deve ser uma data, ou uma data e hora, válida: {error}"
+    ),
+    "date_future": "A data deve estar no futuro",
+    "date_parsing": "Deve ser uma data válida no formato AAAA-MM-DD: {error}",
+    "date_past": "A data deve estar no passado",
+    "date_type": "Deve ser uma data válida",
+    "datetime_from_date_parsing": (
+        "Deve ser uma data e hora, ou uma data, válida: {error}"
+    ),
+    "datetime_future": "Deve estar no futuro",
+    "datetime_object_invalid": "Objeto de data e hora inválido: {error}",
+    "datetime_parsing": "Deve ser uma data e hora válida: {error}",
+    "datetime_past": "Deve estar no passado",
+    "datetime_type": "Deve ser uma data e hora válida",
+    "decimal_max_digits": (
+        "O decimal deve ter no máximo {max_digits} dígito(s) no total"
+    ),
+    "decimal_max_places": (
+        "O decimal deve ter no máximo {decimal_places} casa(s) decimal(is)"
+    ),
+    "decimal_parsing": "Deve ser um decimal válido",
+    "decimal_type": (
+        "O decimal deve ser um inteiro, um número, um texto ou um objeto Decimal"
+    ),
+    "decimal_whole_digits": (
+        "O decimal deve ter no máximo {whole_digits} dígito(s) antes da vírgula"
+    ),
+    "default_factory_not_called": (
+        "A fábrica de valor padrão usa dados validados, mas houve pelo menos um erro "
+        "de validação"
+    ),
+    "dict_type": "Deve ser um dicionário válido",
+    "enum": "Deve ser {expected}",
+    "extra_forbidden": "Campos extras não são permitidos",
+    "finite_number": "Deve ser um número finito",
+    "float_parsing": (
+        "Deve ser um número válido; não foi possível interpretar o texto como número"
+    ),
+    "float_type": "Deve ser um número válido",
+    "frozen_field": "O campo é somente leitura",
+    "frozen_instance": "O objeto é somente leitura",
+    "frozen_set_type": "Deve ser um frozenset válido",
+    "get_attribute_error": "Erro ao extrair o atributo: {error}",
+    "greater_than": "Deve ser maior que {gt}",
+    "greater_than_equal": "Deve ser maior ou igual a {ge}",
+    "int_from_float": (
+        "Deve ser um inteiro válido; foi recebido um número com parte fracionária"
+    ),
+    "int_parsing": (
+        "Deve ser um inteiro válido; não foi possível interpretar o texto como inteiro"
+    ),
+    "int_parsing_size": (
+        "Não foi possível interpretar o texto como inteiro: tamanho máximo excedido"
+    ),
+    "int_type": "Deve ser um inteiro válido",
+    "invalid_key": "As chaves devem ser textos",
+    "is_instance_of": "Deve ser uma instância de {class}",
+    "is_subclass_of": "Deve ser uma subclasse de {class}",
+    "iterable_type": "Deve ser iterável",
+    "iteration_error": "Erro ao iterar sobre o objeto: {error}",
+    "json_invalid": "JSON inválido: {error}",
+    "json_type": "A entrada JSON deve ser texto, bytes ou bytearray",
+    "less_than": "Deve ser menor que {lt}",
+    "less_than_equal": "Deve ser menor ou igual a {le}",
+    "list_type": "Deve ser uma lista válida",
+    "literal_error": "Deve ser {expected}",
+    "mapping_type": "Deve ser um mapeamento válido: {error}",
+    "missing": "Campo obrigatório",
+    "missing_argument": "Argumento obrigatório ausente",
+    "missing_keyword_only_argument": "Argumento nomeado obrigatório ausente",
+    "missing_positional_only_argument": "Argumento posicional obrigatório ausente",
+    "missing_sentinel_error": "Deve ser o sentinela 'MISSING'",
+    "model_attributes_type": (
+        "Deve ser um dicionário válido, ou um objeto do qual extrair os campos"
+    ),
+    "model_type": "Deve ser um dicionário válido ou uma instância de {class_name}",
+    "multiple_argument_values": "Foram recebidos vários valores para o mesmo argumento",
+    "multiple_of": "Deve ser múltiplo de {multiple_of}",
+    "needs_python_object": (
+        "Não é possível verificar `{method_name}` ao validar a partir de JSON; use um "
+        "validador JsonOrPython"
+    ),
+    "no_such_attribute": "O objeto não tem o atributo '{attribute}'",
+    "none_required": "Deve ser nulo",
+    "recursion_loop": "Erro de recursão: referência cíclica detectada",
+    "set_item_not_hashable": "Os itens do conjunto devem ser hasheáveis",
+    "set_type": "Deve ser um conjunto válido",
+    "string_not_ascii": "O texto deve conter apenas caracteres ASCII",
+    "string_pattern_mismatch": "O texto deve casar com o padrão '{pattern}'",
+    "string_sub_type": "Deve ser um texto, não uma instância de uma subclasse de str",
+    "string_too_long": "O texto deve ter no máximo {max_length} caractere(s)",
+    "string_too_short": "O texto deve ter no mínimo {min_length} caractere(s)",
+    "string_type": "Deve ser um texto válido",
+    "string_unicode": (
+        "Deve ser um texto válido; não foi possível interpretar os dados como texto "
+        "unicode"
+    ),
+    "time_delta_parsing": "Deve ser uma duração válida: {error}",
+    "time_delta_type": "Deve ser uma duração válida",
+    "time_parsing": "Deve estar em um formato de hora válido: {error}",
+    "time_type": "Deve ser uma hora válida",
+    "timezone_aware": "Deve incluir informação de fuso horário",
+    "timezone_naive": "Não deve incluir informação de fuso horário",
+    "timezone_offset": "É exigido o fuso {tz_expected}, e foi recebido {tz_actual}",
+    "too_long": (
+        "Deve ter no máximo {max_length} item(ns) após a validação, e tem "
+        "{actual_length}"
+    ),
+    "too_short": (
+        "Deve ter no mínimo {min_length} item(ns) após a validação, e tem "
+        "{actual_length}"
+    ),
+    "tuple_type": "Deve ser uma tupla válida",
+    "unexpected_keyword_argument": "Argumento nomeado inesperado",
+    "unexpected_positional_argument": "Argumento posicional inesperado",
+    "union_tag_invalid": (
+        "A tag '{tag}', encontrada por {discriminator}, não corresponde a nenhuma das "
+        "esperadas: {expected_tags}"
+    ),
+    "union_tag_not_found": (
+        "Não foi possível extrair a tag usando o discriminador {discriminator}"
+    ),
+    "url_parsing": "Deve ser uma URL válida: {error}",
+    "url_scheme": "O esquema da URL deve ser {expected_schemes}",
+    "url_syntax_violation": "A URL viola as regras estritas de sintaxe: {error}",
+    "url_too_long": "A URL deve ter no máximo {max_length} caractere(s)",
+    "url_type": "A URL deve ser um texto ou um objeto URL",
+    "uuid_parsing": "Deve ser um UUID válido: {error}",
+    "uuid_type": "O UUID deve ser um texto, bytes ou um objeto UUID",
+    "uuid_version": "É esperado UUID versão {expected_version}",
+    "value_error": "Valor inválido: {error}",
+}
+"""Portuguese message for every ``pydantic_core`` error type.
+
+Ported from pydantic-core's ``ErrorType``. The key set is the 104 members
+of ``typing.get_args(pydantic_core.ErrorType)``, which
+``pydantic_core.list_all_errors()`` reports identically — read on pydantic
+2.13.5 / pydantic-core 2.46.5, the version this repo's floor declares and
+the lock resolves. ``tests/test_pydantic_error_types_guard.py`` fails when
+the installed pydantic and this table disagree in either direction.
+
+Only Portuguese is carried, and that asymmetry is deliberate: pydantic's
+own ``msg`` **is** the English message, so the validation handler falls
+back to it instead of this SDK keeping a copy that can drift from
+upstream wording.
+
+Every placeholder used here is one pydantic actually puts in the error's
+``ctx``, checked against its ``example_context``. ``{expected_plural}``
+appears in upstream templates and is **not** in ``ctx``, so a template
+using it would reach the client with literal braces —
+:meth:`MessageCatalog.resolve` returns the template unformatted when a
+param is missing. The Portuguese here says ``caractere(s)`` instead.
+"""
+
 _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
     "pt-BR": {
         "INTERNAL_SERVER_ERROR": "Erro interno do servidor",
@@ -275,6 +462,14 @@ _BUILTIN_TRANSLATIONS: dict[str, dict[str, str]] = {
 }
 
 
+_BUILTIN_TRANSLATIONS["pt-BR"].update(
+    {
+        f"{VALIDATION_KEY_PREFIX}{error_type}": message
+        for error_type, message in _PYDANTIC_ERROR_TYPES_PT_BR.items()
+    },
+)
+
+
 def default_message_catalog() -> MessageCatalog:
     """Return a catalog with PT-BR + EN-US strings for the built-in codes.
 
@@ -291,6 +486,7 @@ def default_message_catalog() -> MessageCatalog:
 
 __all__: list[str] = [
     "DEFAULT_LOCALE",
+    "VALIDATION_KEY_PREFIX",
     "MessageCatalog",
     "default_message_catalog",
     "parse_accept_language",

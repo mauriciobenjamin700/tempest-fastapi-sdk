@@ -106,6 +106,9 @@ from tempest_fastapi_sdk.api import (
     RAISES_ATTRIBUTE as RAISES_ATTRIBUTE,
 )
 from tempest_fastapi_sdk.api import (
+    VALIDATION_ERROR_CODE as VALIDATION_ERROR_CODE,
+)
+from tempest_fastapi_sdk.api import (
     AccessLogMiddleware as AccessLogMiddleware,
 )
 from tempest_fastapi_sdk.api import (
@@ -250,6 +253,9 @@ from tempest_fastapi_sdk.api import (
     TempestAPIRouter as TempestAPIRouter,
 )
 from tempest_fastapi_sdk.api import (
+    ValidationExceptionHandler as ValidationExceptionHandler,
+)
+from tempest_fastapi_sdk.api import (
     WebhookDelivery as WebhookDelivery,
 )
 from tempest_fastapi_sdk.api import (
@@ -269,6 +275,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     declared_raises as declared_raises,
+)
+from tempest_fastapi_sdk.api import (
+    describe_validation_envelope as describe_validation_envelope,
 )
 from tempest_fastapi_sdk.api import (
     error_responses as error_responses,
@@ -338,6 +347,9 @@ from tempest_fastapi_sdk.api import (
 )
 from tempest_fastapi_sdk.api import (
     make_unhandled_exception_handler as make_unhandled_exception_handler,
+)
+from tempest_fastapi_sdk.api import (
+    make_validation_exception_handler as make_validation_exception_handler,
 )
 from tempest_fastapi_sdk.api import (
     plan_by_header as plan_by_header,
@@ -1800,6 +1812,7 @@ __all__: list[str] = [
     "REQUEST_ID_HEADER",
     "SUPPORTED_LOCALES",
     "UF",
+    "VALIDATION_ERROR_CODE",
     "AccessLogMiddleware",
     "ActivationResponseSchema",
     "ActivationToken",
@@ -2142,6 +2155,7 @@ __all__: list[str] = [
     "UserModelAuthBackend",
     "UserTokenPurpose",
     "ValidationException",
+    "ValidationExceptionHandler",
     "WSEnvelope",
     "WebAuthnAuthenticateBeginSchema",
     "WebAuthnAuthenticateCompleteSchema",
@@ -2194,6 +2208,7 @@ __all__: list[str] = [
     "default_display_name",
     "default_message_catalog",
     "default_registry",
+    "describe_validation_envelope",
     "detect_pix_key_type",
     "diff_snapshots",
     "discover_models",
@@ -2273,6 +2288,7 @@ __all__: list[str] = [
     "make_user_recovery_code_model",
     "make_user_refresh_token_model",
     "make_user_token_model",
+    "make_validation_exception_handler",
     "make_voice_profile_model",
     "make_web_authn_credential_model",
     "make_web_push_router",
