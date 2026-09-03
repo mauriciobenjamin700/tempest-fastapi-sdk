@@ -5,6 +5,158 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.284.0] — 2026-09-03
+
+Quatro issues abertas por um consumidor (`alofans-api`), todas medidas contra a
+0.283.1. Duas eram defeito de comportamento, duas eram superfície faltando — e
+duas das quatro descreviam a consequência errada, o que mudou o desenho.
+
+### Fixed
+
+- **O `cron_offset` que a receita ensina parava o agendamento do processo
+  inteiro.** `CronOffset.BRASILIA` é a string `"-03:00"`, e o TaskIQ lê
+  `cron_offset` string como **chave IANA**
+  (`taskiq/cli/scheduler/run.py:102` → `now.astimezone(ZoneInfo(offset))`). O
+  valor que a doc ensina levantava `ZoneInfoNotFoundError` dentro do tick, e o
+  loop guarda o tick com `except CronValueError` apenas — então a exceção
+  escapava e encerrava o `while True`. Medido, duas tasks `* * * * *`, uma com
+  offset e uma sem:
+
+  ```text
+  loop_done=True  exc="ZoneInfoNotFoundError: 'No time zone found with key
+  -03:00'"  health=False   fired=[]
+  ```
+
+  `fired=[]` inclui a task **sem** offset: uma declaração como a receita
+  ensina silenciava todas as tasks do processo. O loop morria 0,363 s depois
+  do startup. Depois: `loop_done=False  exc=None  health=True`.
+
+  `normalize_cron_offset` converte as formas numéricas (`CronOffset`,
+  `"±HH:MM"`) para o `timedelta` que o TaskIQ de fato aplica, e resolve
+  qualquer outra string como chave IANA na **declaração**. Offset fixo também
+  não depende de tz database — medido, sem um, até `ZoneInfo("UTC")` levanta.
+  Aplicado nos cinco caminhos que podem carregar offset, não só no que doeu.
+
+  A issue relatava "o painel mostra o horário errado". Estava certa sobre o
+  painel e errada sobre o runtime: a task não disparava.
+
+- **A linha do painel de tasks carregava uma projeção de duas chaves.**
+  `TaskPanelService.schedule()` lia `cron` e `interval` e descartava o resto.
+  Medido, com as tasks declaradas como a receita ensina: o offset era
+  descartado, um gatilho `time` (disparo único) aparecia como `on demand`, e
+  numa task com dois crons um deles desaparecia. `TaskTrigger` passa a
+  carregar a entrada como o registro a declara, e `ScheduledTask.triggers` é a
+  tupla delas.
+
+- **O result backend do Redis gravava sem expiração, e `from_settings` não
+  sabia dizer não.** `results=settings.TASKIQ_RESULT_BACKEND_URL or True` é
+  sempre truthy, e passar a opção pelo `**options` colidia
+  (`TypeError: TaskQueue.redis() got multiple values for keyword argument
+  'results'`). Medido contra Redis 8.2.9, com os defaults do `taskiq-redis`:
+  chave `task-abc-123` (o id pelado), `TTL -1`, 144 bytes. Uma task a cada
+  minuto deixa 1440 chaves/dia sem teto, e num Redis `allkeys-lru` isso
+  evicta as chaves de quem está usando o Redis para trabalhar.
+
+  E não havia escape hatch: `TaskQueue.redis(url, result_ex_time=3600)` é
+  aceito na construção — o `RedisStreamBroker` engole chave desconhecida nos
+  `**connection_kwargs` — e explode depois, no `connect()`, com
+  `TypeError: AbstractConnection.__init__() got an unexpected keyword argument
+  'result_ex_time'`.
+
+- **Esquema de broker inválido volta a levantar `ValueError`.** Introduzido e
+  corrigido dentro desta release: ler campo de settings antes do dispatch de
+  esquema fazia uma URL com typo responder `AttributeError` sobre um campo que
+  o caller nunca mencionou.
+
+### Added
+
+- **`TaskQueue` ganha `result_ttl_seconds` e `result_prefix`**, aplicados nos
+  **dois** transportes (`redis()` e `_attach_redis_results`). Default
+  `86400` — lido de `celery.app.defaults.NAMESPACES["result"]["expires"]` na
+  celery 5.6.3, que é `timedelta(days=1)` — e prefixo `tempest:results`, que
+  torna as chaves varríveis por `SCAN`. Medido depois:
+  `tempest:results:abc-123` com `TTL 86400`.
+
+- **`TaskIQSettings` ganha `TASKIQ_STORE_RESULTS` e
+  `TASKIQ_RESULT_TTL_SECONDS`.** `TASKIQ_STORE_RESULTS=False` deixa o
+  `DummyResultBackend` no lugar nos dois transportes — a configuração de um
+  serviço só de cron, onde nenhum chamador espera retorno. Também acerta a
+  assimetria: `TASKIQ_RESULT_BACKEND_URL` vazio significava "sem resultado" no
+  RabbitMQ e "resultado na URL do broker" no Redis.
+
+- **`from_settings` aceita `results`, `result_ttl_seconds` e
+  `result_prefix`**, com `None` = derivar das settings, então valor explícito
+  ganha em vez de colidir.
+
+- **`TaskTrigger` e `ScheduledTask.triggers`** no painel de admin, mais a
+  coluna `Schedule` (que substitui `Cron` + `Interval`) com uma linha por
+  gatilho e o fuso ao lado da expressão. Validado em browser real, 1280px e
+  400px.
+
+- **`register_exception_handlers(logger=...)`** roteia o registro dos handlers
+  para o logger do serviço. A issue afirmava que o marcador do `500.log` não
+  era aplicado — **é**: `handlers.py` o seta nos três caminhos de 5xx, e
+  medido com `LogUtils(scope="root")`, o default, o arquivo recebe a linha. O
+  furo real é de roteamento: com `scope="logger"` o logger do SDK fica fora da
+  árvore configurada e o registro não chega a **nenhum** arquivo (medido, 0 e
+  0; com `logger=`, 1 e 1).
+
+  O tipo é `logging.Logger`, e não o `Protocol` `RetryLogger` que a issue
+  sugeria: ele tem dois membros e nenhum `extra=`/`exc_info=`, e os handlers
+  passam os dois. Medido, nenhum tipo único cobre os dois candidatos —
+  `LogUtils.error(extra=...)` guarda um campo *chamado* `extra`, e
+  `logging.Logger.error(request_id=...)` levanta `TypeError`.
+
+- **`register_exception_handlers(on_server_error=...)`** chama um callback
+  `(request, exc)` como `BackgroundTask` depois de a resposta estar montada.
+  Dispara nos **três** caminhos que produzem 5xx, não só no catch-all, e não
+  dispara em 4xx. Exceção dentro do callback é logada e engolida: medido sem
+  isso, a exceção do notificador propaga pela pilha ASGI e passa a ser o que o
+  servidor relata em vez do erro original.
+
+- **`register_exception_handlers(envelope_validation_errors=True)`** registra
+  uma quarta forma, `RequestValidationError`, respondendo
+  `{"detail", "code": "VALIDATION_ERROR", "details": {"errors": [...]}}` com
+  as mensagens saindo do `MessageCatalog` por **tipo de erro do pydantic** —
+  104 chaves, o conjunto exato de `pydantic_core.ErrorType`. Campo novo num
+  schema nasce traduzido, porque a tabela não é por campo.
+
+  **O 422 default devolve o valor submetido.** Medido: um campo `password` que
+  reprova em `min_length` põe a senha no corpo da resposta, e `SecretStr`
+  **não** protege, porque a validação roda antes de o wrapper existir. O
+  envelope carrega `loc` e `type` e nunca `input`.
+
+  Ligar reescreve também o componente `HTTPValidationError` do schema, para
+  doc e runtime não discordarem na resposta que cliente gerado mais modela.
+
+### Changed
+
+- **Resultado de task guardado no Redis passa a expirar em 24 h.** Antes era
+  eterno. Quem lê resultado dias depois da execução para de achar; o opt-out é
+  `TASKIQ_RESULT_TTL_SECONDS=0` ou `result_ttl_seconds=0`.
+
+- **A chave do resultado ganha o prefixo `tempest:results`**, então resultado
+  gravado antes do deploy não é legível depois (janela de minutos, dentro do
+  TTL). Vai junto do TTL de propósito: fazer depois seria uma segunda quebra
+  no mesmo keyspace.
+
+- **O rótulo do `cron_offset` passa a carregar `timedelta`** onde o input era
+  `"±HH:MM"`, e string que não resolve como fuso é recusada na declaração com
+  `ValueError` em vez de matar o loop do scheduler depois.
+
+- **`TaskIQSettingsLike` ganha dois membros obrigatórios**
+  (`TASKIQ_STORE_RESULTS`, `TASKIQ_RESULT_TTL_SECONDS`). Quem compõe o mixin —
+  o caminho documentado e o que o `tempest new` gera — não sente nada; um
+  stand-in escrito à mão precisa carregá-los.
+
+- **A coluna `Cron` + `Interval` do painel de tasks vira uma coluna
+  `Schedule`.** Coluna `Timezone` própria foi recusada: seria vazia em quase
+  toda linha e alargaria uma tabela que ainda precisa caber em 400px.
+
+Nada muda com os defaults em `register_exception_handlers`:
+`envelope_validation_errors=False` preserva os caminhos medidos, e os 13
+testes existentes de `handlers.py` passam sem alteração.
+
 ## [0.283.1] — 2026-09-02
 
 A v0.283.0 não chegou ao PyPI: o gate da CI parou no `Type check` e o

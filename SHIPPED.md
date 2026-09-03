@@ -1799,3 +1799,28 @@ analysis (Django Admin, Laravel Nova, SQLAdmin, Starlette-Admin) run
 
 **Admin backlog: empty.** No queued admin work — pick the next theme from
 business need, not from a stale list. Keep this honest, not aspirational.
+
+## Issues do consumidor, v0.284.0 (2026-09-03)
+
+Quatro issues do `alofans-api`, todas entregues:
+
+1. **#264 — `cron_offset`.** `normalize_cron_offset` / `normalize_schedule`
+   em `tasks/cron.py`, aplicados nos cinco caminhos que podem carregar
+   offset. `TaskTrigger` + `ScheduledTask.triggers` + coluna `Schedule` no
+   painel de admin. Guard: `test_schedule_projection_guard`.
+2. **#265 — footprint do result backend.** `result_ttl_seconds` (default
+   86400) e `result_prefix` (`tempest:results`) em `TaskQueue.redis` e
+   `_attach_redis_results`; `TASKIQ_STORE_RESULTS` e
+   `TASKIQ_RESULT_TTL_SECONDS` no `TaskIQSettings`; `from_settings` aceita
+   os três como override. Guard: `test_settings_passthrough_guard`.
+3. **#266 — o 422 no envelope.** `make_validation_exception_handler` +
+   `envelope_validation_errors` + as 104 traduções PT-BR de
+   `pydantic_core.ErrorType` sob `VALIDATION.` +
+   `describe_validation_envelope` reescrevendo o schema. Guard:
+   `test_pydantic_error_types_guard`.
+4. **#267 — seams de 5xx.** `logger=` e `on_server_error=` em
+   `register_exception_handlers` e nas três factories públicas.
+
+Fora de escopo, medido e registrado: outros quatro caminhos de 4xx
+respondem sem `code` e sem localização — `HTTPException` 4xx cru, o 401 de
+dependência de segurança, rota inexistente e método errado.

@@ -5,6 +5,106 @@ existe: o defeito que shippou, o comando que mediu, o número que apareceu.
 Consulte quando a regra parecer exagerada — ela quase sempre é a cicatriz
 de algo que passou por revisão manual e escapou.
 
+## O teste fixava o rótulo e o runtime morria no primeiro tick (v0.284.0)
+
+`CronOffset.BRASILIA` é a string `"-03:00"`. O TaskIQ lê `cron_offset`
+**string** como chave IANA (`taskiq/cli/scheduler/run.py:102` →
+`now.astimezone(ZoneInfo(offset))`) e **`timedelta`** como soma. Então o
+valor que a receita `recipes/queue-tasks/` ensinava não era um fuso — era
+uma chave que não existe:
+
+```pycon
+>>> is_cron_task_now("0 2 * * *", _utc(5), offset="-03:00")
+ZoneInfoNotFoundError: 'No time zone found with key -03:00'
+>>> is_cron_task_now("0 2 * * *", _utc(5), offset=timedelta(hours=-3))
+True
+```
+
+O loop guarda o tick com `except CronValueError` apenas, então a exceção
+escapava de `_is_schedule_ready_to_send` e encerrava o `while True`.
+Medido ponta a ponta, duas tasks `* * * * *`, uma com offset e uma sem:
+
+| | `loop_done` | `exc` | `health_check()` | `fired` |
+| --- | --- | --- | --- | --- |
+| 0.283.1 | `True` | `ZoneInfoNotFoundError` | `False` | `[]` |
+| 0.284.0 | `False` | `None` | `True` | as duas |
+
+`fired=[]` inclui a task **sem** offset: uma declaração como a doc ensina
+silenciava o agendamento do processo inteiro, 0,363 s depois do startup.
+
+**Por que escapou:** três testes fixavam o rótulo
+(`tests/tasks/test_cron.py` chegava a assertar
+`type(sched["cron_offset"]) is str`) e nenhum media o efeito. O rótulo
+estava exatamente como o autor pretendia; o que ninguém rodou foi o
+scheduler com aquele valor. A regra que sai daqui é estreita e barata:
+**quando o SDK entrega um valor para uma biblioteca consumir, o teste
+chama a função que a biblioteca chama** — aqui `is_cron_task_now`, que é
+o predicado do `SchedulerLoop`. Asserção sobre o dicionário que a gente
+mesmo montou mede a nossa intenção, não o comportamento dela.
+
+Sem guard mecânico: exigiria resolver como o callee interpreta cada
+valor. O que existe é um teste de sobrevivência do loop
+(`tests/tasks/test_scheduler.py`), com orçamento cinco vezes o tempo
+medido de morte.
+
+## Duas chaves escolhidas a dedo falharam três vezes no mesmo arquivo (v0.284.0)
+
+`TaskPanelService.schedule()` lia `cron` e `interval` das entradas de
+schedule do registro. Terceira vez que a projeção perdeu uma declaração:
+
+| Release | O que evaporou | Como aparecia na tela |
+| --- | --- | --- |
+| v0.268.0 | `interval` | `on demand` |
+| v0.284.0 | `time` (disparo único) | `on demand` |
+| v0.284.0 | `cron_offset` | expressão nua, três horas errada |
+| v0.284.0 | segundo gatilho de uma task com dois crons | só um aparecia |
+
+O `cron_offset` é o pior porque uma expressão cron sem fuso **parece
+completa** — nada convida o leitor a conferir, ao contrário de uma coluna
+vazia.
+
+A correção que interessa não é ler a terceira chave: é parar de projetar.
+`TaskTrigger` carrega a entrada como o registro a declara, com `extra`
+para o que o SDK ainda não modela, e
+`tests/test_schedule_projection_guard.py` deriva o conjunto autoritativo
+do `ScheduledTask.model_fields` do próprio TaskIQ — chave nova upstream
+falha o teste em vez de evaporar na tela. Alimentado com a projeção da
+0.283.1, o guard reporta `{'cron_offset', 'time'}`.
+
+**Corolário sobre fake:** os testes do painel usavam um `_FakeTask` cujos
+dicts de schedule o próprio teste escrevia. Com isso, o painel podia ler
+uma chave com nome diferente do que o decorator grava e nenhum teste
+notaria. Passaram a atravessar `TaskQueue(InMemoryBroker())` + `@tq.cron`.
+
+## A issue descreve o sintoma; a consequência precisa ser medida (v0.284.0)
+
+Quatro issues de um consumidor, todas com bloco "Medido — 0.283.1". Duas
+descreviam a consequência errada, e em ambos os casos a medição mudou o
+desenho, não só a prosa:
+
+| Issue afirmava | Medido |
+| --- | --- |
+| "o painel mostra o horário errado" (#264) | o painel mostrava errado **e** a task não disparava; o loop do scheduler morria |
+| "o marcador não é aplicado e o `500.log` fica vazio" (#267) | o marcador **é** aplicado nos três caminhos de 5xx; com `LogUtils(scope="root")`, o default, o arquivo recebe a linha (1 e 1). O furo é de roteamento: com `scope="logger"` o registro não chega a **nenhum** arquivo (0 e 0) |
+| "reaproveita o `Protocol` que o `async_retry` já usa" (#267) | `RetryLogger` tem dois membros e nenhum `extra=`/`exc_info=`; nenhum tipo único cobre `LogUtils` e `logging.Logger` para estas chamadas |
+
+O sinal mais barato apareceu de novo: o docstring do `LogUtils.error_500`,
+**no mesmo repositório**, já dizia que os handlers do SDK setam o marcador.
+Como na v0.276.0, a frase certa estava a poucas linhas da que a negava —
+`grep` o assunto antes de acreditar na afirmação à sua frente, mesmo
+quando ela vem com um bloco "medido".
+
+E o inverso também: duas issues **subestimavam** o problema.
+
+- O 422 (#266) era descrito como fora do envelope. Também **devolve o
+  valor submetido**: medido, uma `password` que reprova em `min_length`
+  põe a senha no corpo, e `SecretStr` não protege — a validação roda
+  antes de o wrapper de segredo existir.
+- O result backend sem TTL (#265) era descrito como um toggle que faltava.
+  Não havia caminho nenhum para result com TTL: `result_ex_time` pelo
+  `**options` é **aceito na construção** (o `RedisStreamBroker` engole a
+  chave nos `**connection_kwargs`) e explode depois, no `connect()`.
+
 ## Prosa deduzida shippa errada (v0.218.0)
 
 Três afirmações escritas por leitura de código, todas falsas quando
