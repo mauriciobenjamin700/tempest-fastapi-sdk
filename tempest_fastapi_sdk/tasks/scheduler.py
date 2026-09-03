@@ -9,6 +9,11 @@ from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
+from tempest_fastapi_sdk.tasks.cron import (
+    normalize_cron_offset,
+    normalize_schedule,
+)
+
 if TYPE_CHECKING:
     from taskiq import AsyncBroker, AsyncTaskiqDecoratedTask
     from taskiq.abc.schedule_source import ScheduleSource
@@ -152,11 +157,7 @@ class AsyncTaskScheduler:
         expr_str: str = expr.value if isinstance(expr, BaseStrEnum) else expr
         schedule: list[dict[str, Any]] = [{"cron": expr_str}]
         if cron_offset is not None:
-            schedule[0]["cron_offset"] = (
-                cron_offset.value
-                if isinstance(cron_offset, BaseStrEnum)
-                else cron_offset
-            )
+            schedule[0]["cron_offset"] = normalize_cron_offset(cron_offset)
         return self.broker.task(task_name=task_name, schedule=schedule, **labels)
 
     def interval(
@@ -199,10 +200,14 @@ class AsyncTaskScheduler:
         datetime), multiple triggers on the same task, or any
         combination not covered by :meth:`cron` / :meth:`interval`.
 
+        Any ``cron_offset`` in ``spec`` goes through
+        :func:`~tempest_fastapi_sdk.tasks.normalize_cron_offset`, so a
+        numeric offset reaches the scheduler in the form it applies
+        rather than as an unresolvable time zone key.
+
         Args:
-            spec (list[dict[str, Any]]): The schedule list passed
-                verbatim to ``broker.task`` (each entry must carry one
-                of ``cron``, ``interval`` or ``time``).
+            spec (list[dict[str, Any]]): The schedule list (each entry
+                must carry one of ``cron``, ``interval`` or ``time``).
             task_name (str | None): Override the auto-generated task
                 name.
             **labels (Any): Extra TaskIQ labels forwarded to
@@ -210,8 +215,17 @@ class AsyncTaskScheduler:
 
         Returns:
             Any: The decorated task callable.
+
+        Raises:
+            ValueError: When an entry's ``cron_offset`` is a string that
+                is neither a ``"±HH:MM"`` offset nor a resolvable time
+                zone key.
         """
-        return self.broker.task(task_name=task_name, schedule=spec, **labels)
+        return self.broker.task(
+            task_name=task_name,
+            schedule=normalize_schedule(spec),
+            **labels,
+        )
 
     def register(
         self,
@@ -226,7 +240,8 @@ class AsyncTaskScheduler:
         Args:
             func (Any): The async callable to register.
             schedule (list[dict[str, Any]]): The schedule list (see
-                :meth:`schedule` for the format).
+                :meth:`schedule` for the format). Any ``cron_offset`` is
+                normalized the same way.
             task_name (str | None): Override the auto-generated task
                 name.
             **labels (Any): Extra TaskIQ labels forwarded to
@@ -234,10 +249,15 @@ class AsyncTaskScheduler:
 
         Returns:
             AsyncTaskiqDecoratedTask[Any, Any]: The registered task.
+
+        Raises:
+            ValueError: When an entry's ``cron_offset`` is a string that
+                is neither a ``"±HH:MM"`` offset nor a resolvable time
+                zone key.
         """
         decorator = self.broker.task(
             task_name=task_name,
-            schedule=schedule,
+            schedule=normalize_schedule(schedule),
             **labels,
         )
         return decorator(func)

@@ -34,6 +34,10 @@ from typing import (
     runtime_checkable,
 )
 
+from tempest_fastapi_sdk.tasks.cron import (
+    normalize_cron_offset,
+    normalize_schedule,
+)
 from tempest_fastapi_sdk.tasks.lock import (
     DEFAULT_LOCK_TTL_SECONDS,
     RedisSchedulerLock,
@@ -504,6 +508,7 @@ class TaskQueue:
         *,
         name: str | None = None,
         retry: RetryPolicy | None = None,
+        schedule: list[dict[str, Any]] | None = None,
         **options: Any,
     ) -> Any:
         """Register an async function as a background task.
@@ -525,14 +530,27 @@ class TaskQueue:
             retry (RetryPolicy | None): Per-task retry configuration; its
                 labels are merged into ``options``. Needs
                 :meth:`enable_retries` to have installed the retry middleware.
+            schedule (list[dict[str, Any]] | None): A raw TaskIQ schedule
+                spec, for the triggers :meth:`cron` and :meth:`interval`
+                do not cover (``time``, or several triggers on one task).
+                Any ``cron_offset`` it carries is normalized, which is
+                why this is a named parameter rather than a key read out
+                of ``options``.
             **options (Any): Extra TaskIQ labels / options forwarded to
                 ``broker.task``.
 
         Returns:
             Any: A :class:`Task` (bare form) or a decorator returning one.
+
+        Raises:
+            ValueError: When an entry's ``cron_offset`` is a string that
+                is neither a ``"±HH:MM"`` offset nor a resolvable time
+                zone key.
         """
         if retry is not None:
             options = {**retry.as_labels(), **options}
+        if schedule is not None:
+            options = {**options, "schedule": normalize_schedule(schedule)}
 
         def wrap(fn: Callable[P, Awaitable[R]]) -> Task[P, R]:
             decorator = self.broker.task(task_name=name, **options)
@@ -709,11 +727,7 @@ class TaskQueue:
         expr_str: str = expr.value if isinstance(expr, BaseStrEnum) else expr
         schedule: list[dict[str, Any]] = [{"cron": expr_str}]
         if cron_offset is not None:
-            schedule[0]["cron_offset"] = (
-                cron_offset.value
-                if isinstance(cron_offset, BaseStrEnum)
-                else cron_offset
-            )
+            schedule[0]["cron_offset"] = normalize_cron_offset(cron_offset)
 
         def wrap(fn: Callable[P, Awaitable[R]]) -> Task[P, R]:
             decorator = self.broker.task(task_name=name, schedule=schedule, **options)

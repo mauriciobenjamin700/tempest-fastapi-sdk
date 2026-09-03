@@ -791,7 +791,41 @@ async def heartbeat() -> None:
 
 `CronOffset` cobre os fusos do Brasil por nome — `BRASILIA` (-03:00),
 `FERNANDO_DE_NORONHA` (-02:00), `MANAUS` (-04:00), `ACRE` (-05:00) — mais
-`UTC`. Prefere cron cru ou intervalos? Continua valendo:
+`UTC`.
+
+!!! info "Duas formas de fuso, e o que cada uma faz"
+    O TaskIQ lê `cron_offset` de dois jeitos diferentes
+    (`taskiq/cli/scheduler/run.py`): um `timedelta` é **somado** ao instante
+    atual, e uma `str` vai para `ZoneInfo` como **chave IANA**. O SDK
+    normaliza na declaração, então você escolhe pelo que precisa:
+
+    | Você escreve | Chega ao scheduler como | Segue horário de verão? | Precisa de tz database? |
+    | --- | --- | --- | --- |
+    | `CronOffset.BRASILIA` | `timedelta(hours=-3)` | não | não |
+    | `"-03:00"` | `timedelta(hours=-3)` | não | não |
+    | `"America/Sao_Paulo"` | a chave, já validada | sim | **sim** |
+
+    Para o Brasil o offset fixo é o certo: o horário de verão foi extinto
+    depois de 2019 e, medido no tz database do sistema, `America/Sao_Paulo`
+    fica em `-03:00` em todos os 252 meses de 2020 a 2040.
+
+    Chave IANA precisa de um tz database na imagem. Sem ele até
+    `ZoneInfo("UTC")` levanta `ZoneInfoNotFoundError`, então numa imagem
+    slim instale o pacote `tzdata`.
+
+!!! warning "String que não é fuso é recusada na declaração"
+    `cron_offset="-0300"` (sem os dois-pontos) levanta `ValueError` na hora,
+    nomeando as duas formas aceitas.
+
+    A recusa existe porque o erro não era local antes. O loop do scheduler
+    guarda cada tick com `except CronValueError`, então um
+    `ZoneInfoNotFoundError` escapava e encerrava o `while True` — parando
+    **todas** as tasks do processo, não só a que declarou o offset. Medido
+    na 0.283.1: o loop terminava 0,363 s depois do startup e
+    `health_check()` passava a devolver `False`. Recusar na declaração troca
+    um serviço silenciosamente parado por um traceback que aponta a linha.
+
+Prefere cron cru ou intervalos? Continua valendo:
 
 ```python
 from datetime import timedelta

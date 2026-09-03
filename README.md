@@ -2924,7 +2924,7 @@ Decorator surface:
 
 | Method | When to use |
 | --- | --- |
-| `@scheduler.cron("*/5 * * * *", cron_offset=None)` | Cron expression; pass `cron_offset` (string like `"-03:00"` or `timedelta`) to anchor to a timezone other than UTC. |
+| `@scheduler.cron("*/5 * * * *", cron_offset=None)` | Cron expression; pass `cron_offset` to anchor to a timezone other than UTC. A `CronOffset` member, a `"±HH:MM"` string or a `timedelta` becomes a fixed offset; any other string is resolved as an IANA key (`"America/Sao_Paulo"`), which follows DST but needs a tz database on the image. A string that is neither raises `ValueError` at declaration. |
 | `@scheduler.interval(seconds=30)` / `@scheduler.interval(timedelta(...))` | Fixed-interval recurrence. |
 | `@scheduler.schedule([{...}, {...}])` | Raw TaskIQ schedule list — combine triggers, use one-shot `time`, etc. |
 | `scheduler.register(func, schedule=[...], task_name=...)` | Register without decorator syntax (third-party callables). |

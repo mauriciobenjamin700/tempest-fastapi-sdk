@@ -27,7 +27,16 @@ The module has **no** third-party dependency, so it imports without the
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
+from datetime import timedelta
+from typing import Any, Final
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from tempest_fastapi_sdk.core import BaseStrEnum
+
+_NUMERIC_OFFSET_RE: Final[re.Pattern[str]] = re.compile(r"^([+-])(\d{2}):(\d{2})$")
+"""Matches the ``"±HH:MM"`` offsets :class:`CronOffset` hands out."""
 
 
 class Weekday(BaseStrEnum):
@@ -252,6 +261,95 @@ def monthly(day: int = 1, hour: int = 0, minute: int = 0) -> str:
     return f"{m} {h} {d} * *"
 
 
+def normalize_cron_offset(value: str | timedelta) -> str | timedelta:
+    """Return ``cron_offset`` in the form TaskIQ actually applies.
+
+    TaskIQ reads ``cron_offset`` two different ways
+    (``taskiq/cli/scheduler/run.py``, measured on taskiq 0.12.6): a
+    :class:`~datetime.timedelta` is *added* to the current time, while a
+    :class:`str` is handed to :class:`zoneinfo.ZoneInfo` as an IANA key.
+    A numeric string such as ``"-03:00"`` is therefore not a key at all,
+    and reaches the scheduler loop as ``ZoneInfoNotFoundError`` — which
+    the loop does not catch (its ``except`` covers ``CronValueError``
+    only), so it stops scheduling for **every** task in the process, not
+    just the one that declared the offset.
+
+    So the numeric forms this SDK hands out (:class:`CronOffset`) are
+    converted to the ``timedelta`` TaskIQ applies, and any other string
+    is resolved as an IANA key here, at declaration time, where the
+    traceback still names the caller.
+
+    A fixed offset also needs no time zone database, which an IANA key
+    does: on an image without one, ``ZoneInfo("UTC")`` already raises.
+
+    Args:
+        value (str | timedelta): A :class:`CronOffset` member, a
+            ``"±HH:MM"`` offset, an IANA key
+            (``"America/Sao_Paulo"``), or a
+            :class:`~datetime.timedelta`.
+
+    Returns:
+        str | timedelta: A ``timedelta`` for the numeric forms, or the
+        IANA key unchanged once it is known to resolve.
+
+    Raises:
+        ValueError: When ``value`` is a string that is neither a
+            ``"±HH:MM"`` offset nor a resolvable time zone key.
+    """
+    if isinstance(value, timedelta):
+        return value
+
+    text: str = str(value)
+    match: re.Match[str] | None = _NUMERIC_OFFSET_RE.match(text)
+    if match is not None:
+        sign, hours, minutes = match.groups()
+        delta: timedelta = timedelta(hours=int(hours), minutes=int(minutes))
+        return -delta if sign == "-" else delta
+
+    try:
+        ZoneInfo(text)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ValueError(
+            f"cron_offset {text!r} is neither a '±HH:MM' offset nor a time "
+            f"zone key this interpreter can resolve. Pass a CronOffset "
+            f"member or a '±HH:MM' string for a fixed offset, or an IANA "
+            f"key such as 'America/Sao_Paulo' to follow daylight saving — "
+            f"the latter needs a time zone database on the image, so a "
+            f"slim one has to install the 'tzdata' package."
+        ) from exc
+    return text
+
+
+def normalize_schedule(spec: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return ``spec`` with every entry's ``cron_offset`` normalized.
+
+    Applies :func:`normalize_cron_offset` to each entry that declares
+    one, so a raw schedule spec reaches the broker in the form TaskIQ
+    applies. Entries are shallow-copied, leaving the caller's list and
+    dicts untouched.
+
+    Args:
+        spec (Iterable[dict[str, Any]]): Schedule entries, each carrying
+            one of ``cron``, ``interval`` or ``time``, and optionally
+            ``cron_offset``.
+
+    Returns:
+        list[dict[str, Any]]: The normalized entries, in order.
+
+    Raises:
+        ValueError: When an entry's ``cron_offset`` is a string that is
+            neither a ``"±HH:MM"`` offset nor a resolvable time zone key.
+    """
+    normalized: list[dict[str, Any]] = []
+    for entry in spec:
+        copied: dict[str, Any] = dict(entry)
+        offset: Any = copied.get("cron_offset")
+        if offset is not None:
+            copied["cron_offset"] = normalize_cron_offset(offset)
+        normalized.append(copied)
+    return normalized
+
+
 __all__: list[str] = [
     "Cron",
     "CronOffset",
@@ -261,6 +359,8 @@ __all__: list[str] = [
     "every_n_minutes",
     "hourly",
     "monthly",
+    "normalize_cron_offset",
+    "normalize_schedule",
     "weekdays",
     "weekends",
     "weekly",

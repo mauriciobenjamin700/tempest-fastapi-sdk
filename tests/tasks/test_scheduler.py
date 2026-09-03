@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import timedelta
 
 import pytest
 from taskiq import InMemoryBroker
 from taskiq.schedule_sources import LabelScheduleSource
 
-from tempest_fastapi_sdk.tasks import AsyncTaskScheduler
+from tempest_fastapi_sdk.tasks import (
+    AsyncTaskScheduler,
+    CronOffset,
+    TaskQueue,
+)
 
 
 class TestAsyncTaskScheduler:
@@ -156,3 +161,104 @@ class TestAsyncTaskScheduler:
         assert await scheduler.health_check() is True
         await scheduler.disconnect()
         assert await scheduler.health_check() is False
+
+
+class TestSchedulerLoopSurvivesADeclaredOffset:
+    """A ``CronOffset`` declaration must not end the scheduler loop.
+
+    ``SchedulerLoop`` guards its tick with ``except CronValueError``
+    only, so a ``ZoneInfoNotFoundError`` from an offset it cannot resolve
+    escapes and ends the ``while True`` — silencing every task in the
+    process, not only the one that declared the offset. Measured on
+    0.283.1: the loop ended 0.363s after startup. The budget below is
+    five times that.
+    """
+
+    async def test_loop_stays_alive_and_healthy(self) -> None:
+        scheduler = AsyncTaskScheduler(InMemoryBroker())
+
+        @scheduler.cron(
+            "* * * * *",
+            cron_offset=CronOffset.BRASILIA,
+            task_name="with_offset",
+        )
+        async def with_offset() -> None:
+            return None
+
+        @scheduler.cron("* * * * *", task_name="plain")
+        async def plain() -> None:
+            return None
+
+        await scheduler.connect()
+        loop_task = await scheduler.run_in_background()
+        try:
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(asyncio.shield(loop_task), timeout=2.0)
+            assert loop_task.done() is False
+            assert await scheduler.health_check() is True
+        finally:
+            await scheduler.disconnect()
+
+
+class TestOffsetNormalizedAtEveryDoor:
+    """All four registration paths normalize ``cron_offset`` alike.
+
+    A facade keyword the class path does not translate has produced
+    defects here before, so each door that can carry an offset is
+    asserted, not just the one the recipe shows.
+    """
+
+    async def test_queue_cron(self) -> None:
+        tq = TaskQueue(InMemoryBroker())
+
+        @tq.cron("0 2 * * *", cron_offset=CronOffset.BRASILIA)
+        async def a() -> None:
+            return None
+
+        entry = a.taskiq_task.labels["schedule"][0]
+        assert entry["cron_offset"] == timedelta(hours=-3)
+
+    async def test_queue_task_with_raw_schedule(self) -> None:
+        tq = TaskQueue(InMemoryBroker())
+
+        @tq.task(
+            schedule=[{"cron": "0 2 * * *", "cron_offset": CronOffset.BRASILIA}],
+        )
+        async def b() -> None:
+            return None
+
+        entry = b.taskiq_task.labels["schedule"][0]
+        assert entry["cron_offset"] == timedelta(hours=-3)
+
+    async def test_scheduler_cron(self) -> None:
+        scheduler = AsyncTaskScheduler(InMemoryBroker())
+
+        @scheduler.cron("0 2 * * *", cron_offset=CronOffset.BRASILIA)
+        async def c() -> None:
+            return None
+
+        assert c.labels["schedule"][0]["cron_offset"] == timedelta(hours=-3)
+
+    async def test_scheduler_schedule_spec(self) -> None:
+        scheduler = AsyncTaskScheduler(InMemoryBroker())
+
+        @scheduler.schedule(
+            [{"cron": "0 2 * * *", "cron_offset": CronOffset.BRASILIA}],
+        )
+        async def d() -> None:
+            return None
+
+        assert d.labels["schedule"][0]["cron_offset"] == timedelta(hours=-3)
+
+    async def test_scheduler_register(self) -> None:
+        scheduler = AsyncTaskScheduler(InMemoryBroker())
+
+        async def e() -> None:
+            return None
+
+        task = scheduler.register(
+            e,
+            schedule=[{"cron": "0 2 * * *", "cron_offset": CronOffset.BRASILIA}],
+            task_name="registered",
+        )
+        assert task.labels["schedule"][0]["cron_offset"] == timedelta(hours=-3)

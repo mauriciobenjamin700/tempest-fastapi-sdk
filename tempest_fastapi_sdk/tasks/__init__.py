@@ -44,6 +44,12 @@ from tempest_fastapi_sdk.tasks.cron import (
     monthly as monthly,
 )
 from tempest_fastapi_sdk.tasks.cron import (
+    normalize_cron_offset as normalize_cron_offset,
+)
+from tempest_fastapi_sdk.tasks.cron import (
+    normalize_schedule as normalize_schedule,
+)
+from tempest_fastapi_sdk.tasks.cron import (
     weekdays as weekdays,
 )
 from tempest_fastapi_sdk.tasks.cron import (
@@ -214,6 +220,8 @@ __all__: list[str] = [
     "make_job_model",
     "make_requeue_action",
     "monthly",
+    "normalize_cron_offset",
+    "normalize_schedule",
     "run_cancellable",
     "task_inventory",
     "task_method",

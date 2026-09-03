@@ -60,7 +60,12 @@ class TestTaskQueue:
         labels = heartbeat.taskiq_task.labels
         assert labels["schedule"] == [{"cron": "*/5 * * * *"}]
 
-    async def test_cron_offset_included(self) -> None:
+    async def test_cron_offset_normalized_to_the_form_taskiq_applies(self) -> None:
+        """A numeric offset reaches the label as the timedelta TaskIQ adds.
+
+        Stored as the ``"-03:00"`` string it was written as, TaskIQ would
+        read it as an IANA key and raise inside the scheduler loop.
+        """
         tq = TaskQueue(InMemoryBroker())
 
         @tq.cron("0 9 * * MON-FRI", cron_offset="-03:00")
@@ -68,7 +73,7 @@ class TestTaskQueue:
             return None
 
         assert digest.taskiq_task.labels["schedule"] == [
-            {"cron": "0 9 * * MON-FRI", "cron_offset": "-03:00"},
+            {"cron": "0 9 * * MON-FRI", "cron_offset": timedelta(hours=-3)},
         ]
 
     async def test_interval_coerces_seconds(self) -> None:
