@@ -1,3 +1,0 @@
-[      46ms] [ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://127.0.0.1:8765/favicon.ico:0
-[     251ms] [WARNING] No available adapters. @ http://127.0.0.1:8765/index.html:0
-[     251ms] [WARNING] removing requested execution provider "webgpu" from session options because it is not available: Error: Failed to get GPU adapter. You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome. @ http://127.0.0.1:8765/ort.webgpu.bundle.min.mjs:5
