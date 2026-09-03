@@ -209,6 +209,13 @@ logs/
     `500.log` dedicado, **além** do `error.log`. Assim a falha mais
     grave nunca fica soterrada no meio dos outros erros.
 
+    Isso vale para `scope="root"`, o default. Com `scope="logger"` a raiz
+    não é configurada, o logger do SDK fica fora da árvore, e o registro
+    não chega a nenhum dos dois arquivos — passe
+    `register_exception_handlers(app, logger=log.logger)` para roteá-lo.
+    Detalhe medido em
+    [Avisando alguém, e escolhendo para onde o registro vai](http.md#avisando-alguem-e-escolhendo-para-onde-o-registro-vai).
+
 !!! tip "Sempre nos logs, nunca no body"
     O traceback vai para os arquivos/terminal via logging — **não** para
     o corpo da resposta. O body de um 500 é só o envelope genérico

@@ -210,6 +210,13 @@ logs/
     `500.log` **in addition** to `error.log`. The gravest failure is
     never buried among the other errors.
 
+    That holds for `scope="root"`, the default. With `scope="logger"` the
+    root is not configured, the SDK's logger sits outside the tree, and
+    the record reaches neither file — pass
+    `register_exception_handlers(app, logger=log.logger)` to route it.
+    Measured detail in
+    [Telling someone, and choosing where the record lands](http.md#telling-someone-and-choosing-where-the-record-lands).
+
 !!! tip "Always in the logs, never in the body"
     The traceback goes to the files/terminal via logging — **not** to the
     response body. A 500 body is just the generic envelope

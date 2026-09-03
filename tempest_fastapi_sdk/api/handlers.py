@@ -9,6 +9,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.background import BackgroundTask
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from tempest_fastapi_sdk.core.context import get_request_id
@@ -17,6 +18,65 @@ from tempest_fastapi_sdk.exceptions.base import AppException
 from tempest_fastapi_sdk.exceptions.i18n import DEFAULT_LOCALE, MessageCatalog
 
 logger = logging.getLogger("tempest_fastapi_sdk.api.handlers")
+
+_DEFAULT_LOGGER = logger
+"""Where the handlers log when the caller names no logger.
+
+Aliased so a ``logger`` parameter can shadow the module name inside a
+factory without the closure below silently reading the wrong object.
+"""
+
+ServerErrorCallback = Callable[[Request, Exception], Awaitable[None]]
+"""Async callable invoked after a 5xx response has been built.
+
+Runs as a Starlette ``BackgroundTask``, so it never delays or alters the
+response the client receives.
+"""
+
+
+def _notify_after_response(
+    callback: ServerErrorCallback | None,
+    request: Request,
+    exc: Exception,
+    log: logging.Logger,
+) -> BackgroundTask | None:
+    """Wrap ``callback`` so a failure inside it cannot escape.
+
+    A raw ``BackgroundTask`` does deliver — measured on starlette 1.6.0,
+    a task attached to the response of an ``Exception`` handler and of an
+    ``HTTPException`` handler both run — but a callback that raises
+    propagates up the ASGI stack, so the notifier's exception replaces
+    the original one in whatever the server logs. Wrapping keeps the
+    500 the client already received from turning into a worse 500 with
+    no trace of the real cause.
+
+    Args:
+        callback (ServerErrorCallback | None): What to run, or ``None``
+            to attach nothing.
+        request (Request): The request that failed.
+        exc (Exception): The exception being reported.
+        log (logging.Logger): Where a failure inside the callback goes.
+
+    Returns:
+        BackgroundTask | None: The task to attach, or ``None`` when no
+        callback was given.
+    """
+    if callback is None:
+        return None
+
+    async def _run() -> None:
+        """Invoke the callback, logging and swallowing its failure."""
+        try:
+            await callback(request, exc)
+        except Exception:
+            log.exception(
+                "on_server_error callback failed while reporting %s %s",
+                request.method,
+                request.url.path,
+            )
+
+    return BackgroundTask(_run)
+
 
 AppExceptionHandler = Callable[[Request, AppException], Awaitable[JSONResponse]]
 """Async callable resolving an :class:`AppException` to a JSON response."""
@@ -36,6 +96,8 @@ def make_app_exception_handler(
     log_level: int = logging.INFO,
     catalog: MessageCatalog | None = None,
     default_locale: str = DEFAULT_LOCALE,
+    logger: logging.Logger | None = None,
+    on_server_error: ServerErrorCallback | None = None,
 ) -> AppExceptionHandler:
     """Build the handler for :class:`AppException` subclasses.
 
@@ -64,6 +126,30 @@ def make_app_exception_handler(
             localize ``detail``. ``None`` keeps the literal message.
         default_locale (str): Locale used when ``Accept-Language`` is
             absent or matches nothing in the catalog.
+        logger (logging.Logger | None): Where this handler logs.
+            ``None`` uses the SDK's own
+            ``tempest_fastapi_sdk.api.handlers`` logger — which a
+            service that configures logging with
+            ``LogUtils(..., scope="logger")`` does not cover: measured,
+            the records then reach neither ``500.log`` nor
+            ``error.log``. Pass ``LogUtils(...).logger`` to route them
+            into the service's own configuration.
+
+            Typed as ``logging.Logger`` and not as the
+            :class:`~tempest_fastapi_sdk.RetryLogger` protocol on
+            purpose. That protocol carries ``warning`` and ``error``
+            only, with no ``extra=`` and no ``exc_info=``, and these
+            handlers pass both plus the ``500.log`` marker. Measured, no
+            single type spans the two candidates:
+            ``LogUtils.error(extra=...)`` stores a field *named*
+            ``extra``, and ``logging.Logger.error(request_id=...)``
+            raises ``TypeError``.
+        on_server_error (ServerErrorCallback | None): Called with
+            ``(request, exc)`` after a 5xx response is built, as a
+            background task, so it never delays or alters the response.
+            A failure inside it is logged and swallowed — a notifier
+            that raises propagates up the ASGI stack and replaces the
+            original exception in whatever the server logs.
 
     Returns:
         AppExceptionHandler: An async ``(request, exc) -> JSONResponse``
@@ -76,6 +162,8 @@ def make_app_exception_handler(
         spawns a child task whose contextvars do not always reach the
         exception handler; and finally ``None``.
     """
+
+    log: logging.Logger = _DEFAULT_LOGGER if logger is None else logger
 
     async def _handler(
         request: Request,
@@ -95,7 +183,7 @@ def make_app_exception_handler(
         }
         if is_server_error:
             extra[HTTP_500_MARKER] = True
-        logger.log(
+        log.log(
             log_level if is_server_error else logging.INFO,
             "AppException %s (%s) during %s %s: %s",
             exc.status_code,
@@ -127,6 +215,11 @@ def make_app_exception_handler(
                 "details": exc.details,
             },
             headers=exc.headers,
+            background=(
+                _notify_after_response(on_server_error, request, exc, log)
+                if is_server_error
+                else None
+            ),
         )
 
     return _handler
@@ -159,6 +252,8 @@ def make_unhandled_exception_handler(
     log_traceback: bool = True,
     include_traceback: bool = False,
     log_level: int = logging.ERROR,
+    logger: logging.Logger | None = None,
+    on_server_error: ServerErrorCallback | None = None,
 ) -> UnhandledExceptionHandler:
     """Build the catch-all handler for non-:class:`AppException` errors.
 
@@ -194,6 +289,30 @@ def make_unhandled_exception_handler(
         include_traceback (bool): Whether to surface the traceback in
             the *response body*. Off in production.
         log_level (int): Logging level used by the catch-all handler.
+        logger (logging.Logger | None): Where this handler logs.
+            ``None`` uses the SDK's own
+            ``tempest_fastapi_sdk.api.handlers`` logger — which a
+            service that configures logging with
+            ``LogUtils(..., scope="logger")`` does not cover: measured,
+            the records then reach neither ``500.log`` nor
+            ``error.log``. Pass ``LogUtils(...).logger`` to route them
+            into the service's own configuration.
+
+            Typed as ``logging.Logger`` and not as the
+            :class:`~tempest_fastapi_sdk.RetryLogger` protocol on
+            purpose. That protocol carries ``warning`` and ``error``
+            only, with no ``extra=`` and no ``exc_info=``, and these
+            handlers pass both plus the ``500.log`` marker. Measured, no
+            single type spans the two candidates:
+            ``LogUtils.error(extra=...)`` stores a field *named*
+            ``extra``, and ``logging.Logger.error(request_id=...)``
+            raises ``TypeError``.
+        on_server_error (ServerErrorCallback | None): Called with
+            ``(request, exc)`` after a 5xx response is built, as a
+            background task, so it never delays or alters the response.
+            A failure inside it is logged and swallowed — a notifier
+            that raises propagates up the ASGI stack and replaces the
+            original exception in whatever the server logs.
 
     Returns:
         UnhandledExceptionHandler: An async
@@ -201,13 +320,15 @@ def make_unhandled_exception_handler(
         :meth:`FastAPI.add_exception_handler`.
     """
 
+    log: logging.Logger = _DEFAULT_LOGGER if logger is None else logger
+
     async def _handler(request: Request, exc: Exception) -> JSONResponse:
         request_id = (
             get_request_id()
             or request.headers.get("X-Request-ID")
             or request.headers.get("x-request-id")
         )
-        logger.log(
+        log.log(
             log_level,
             "Unhandled exception during %s %s",
             request.method,
@@ -228,7 +349,11 @@ def make_unhandled_exception_handler(
             body["details"]["traceback"] = traceback.format_exception(
                 type(exc), exc, exc.__traceback__
             )
-        return JSONResponse(status_code=500, content=body)
+        return JSONResponse(
+            status_code=500,
+            content=body,
+            background=_notify_after_response(on_server_error, request, exc, log),
+        )
 
     return _handler
 
@@ -237,6 +362,8 @@ def make_http_exception_handler(
     *,
     log_traceback: bool = True,
     log_level: int = logging.ERROR,
+    logger: logging.Logger | None = None,
+    on_server_error: ServerErrorCallback | None = None,
 ) -> HTTPExceptionHandler:
     """Build the handler for raw :class:`starlette.exceptions.HTTPException`.
 
@@ -268,6 +395,30 @@ def make_http_exception_handler(
         log_traceback (bool): Whether to attach ``exc_info=exc`` to
             the 5xx log record. ``True`` by default.
         log_level (int): Logging level used for 5xx records.
+        logger (logging.Logger | None): Where this handler logs.
+            ``None`` uses the SDK's own
+            ``tempest_fastapi_sdk.api.handlers`` logger — which a
+            service that configures logging with
+            ``LogUtils(..., scope="logger")`` does not cover: measured,
+            the records then reach neither ``500.log`` nor
+            ``error.log``. Pass ``LogUtils(...).logger`` to route them
+            into the service's own configuration.
+
+            Typed as ``logging.Logger`` and not as the
+            :class:`~tempest_fastapi_sdk.RetryLogger` protocol on
+            purpose. That protocol carries ``warning`` and ``error``
+            only, with no ``extra=`` and no ``exc_info=``, and these
+            handlers pass both plus the ``500.log`` marker. Measured, no
+            single type spans the two candidates:
+            ``LogUtils.error(extra=...)`` stores a field *named*
+            ``extra``, and ``logging.Logger.error(request_id=...)``
+            raises ``TypeError``.
+        on_server_error (ServerErrorCallback | None): Called with
+            ``(request, exc)`` after a 5xx response is built, as a
+            background task, so it never delays or alters the response.
+            A failure inside it is logged and swallowed — a notifier
+            that raises propagates up the ASGI stack and replaces the
+            original exception in whatever the server logs.
 
     Returns:
         HTTPExceptionHandler: An async
@@ -280,6 +431,8 @@ def make_http_exception_handler(
         failed without paying for a stack trace on normal client errors.
     """
 
+    log: logging.Logger = _DEFAULT_LOGGER if logger is None else logger
+
     async def _handler(
         request: Request,
         exc: StarletteHTTPException,
@@ -290,7 +443,7 @@ def make_http_exception_handler(
             or request.headers.get("x-request-id")
         )
         if exc.status_code >= 500:
-            logger.log(
+            log.log(
                 log_level,
                 "HTTPException %s during %s %s: %s",
                 exc.status_code,
@@ -314,8 +467,14 @@ def make_http_exception_handler(
                 status_code=exc.status_code,
                 content=body,
                 headers=getattr(exc, "headers", None),
+                background=_notify_after_response(
+                    on_server_error,
+                    request,
+                    exc,
+                    log,
+                ),
             )
-        logger.log(
+        log.log(
             logging.INFO,
             "HTTPException %s during %s %s: %s",
             exc.status_code,
@@ -345,6 +504,8 @@ def register_exception_handlers(
     log_level: int = logging.ERROR,
     catalog: MessageCatalog | None = None,
     default_locale: str = DEFAULT_LOCALE,
+    logger: logging.Logger | None = None,
+    on_server_error: ServerErrorCallback | None = None,
 ) -> None:
     """Register the SDK's exception handlers on a FastAPI app.
 
@@ -399,6 +560,8 @@ def register_exception_handlers(
             log_level=log_level,
             catalog=catalog,
             default_locale=default_locale,
+            logger=logger,
+            on_server_error=on_server_error,
         ),
     )
     app.add_exception_handler(
@@ -406,6 +569,8 @@ def register_exception_handlers(
         make_http_exception_handler(  # type: ignore[arg-type]
             log_traceback=log_traceback,
             log_level=log_level,
+            logger=logger,
+            on_server_error=on_server_error,
         ),
     )
     app.add_exception_handler(
@@ -414,11 +579,14 @@ def register_exception_handlers(
             log_traceback=log_traceback,
             include_traceback=include_traceback,
             log_level=log_level,
+            logger=logger,
+            on_server_error=on_server_error,
         ),
     )
 
 
 __all__: list[str] = [
+    "ServerErrorCallback",
     "app_exception_handler",
     "make_app_exception_handler",
     "make_http_exception_handler",

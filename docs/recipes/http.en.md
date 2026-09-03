@@ -120,6 +120,88 @@ Key points:
 - `make_token_dependency(secret)` returns an async dependency that validates `X-Token` via `hmac.compare_digest`; pass an empty string to disable in dev. The dependency lives next to the rest of the auth glue in `src/api/dependencies/auth.py` once it grows beyond the one-liner above.
 
 
+### Telling someone, and choosing where the record lands
+
+`log_level` decides the **severity** of a 5xx. Two things it does not
+decide: who finds out, and which logging configuration the record lands in.
+
+```python
+# src/api/app.py
+
+import logging
+
+from fastapi import FastAPI, Request
+
+from tempest_fastapi_sdk import EmailUtils, LogUtils, register_exception_handlers
+
+from src.core.settings import settings
+
+log: LogUtils = LogUtils(__name__, scope="logger")
+
+
+async def alert_ops(request: Request, exc: Exception) -> None:
+    """Alert operations about a 5xx, off the response path.
+
+    Args:
+        request (Request): The request that failed.
+        exc (Exception): The exception being reported.
+    """
+    mailer: EmailUtils = EmailUtils(**settings.email_kwargs())
+    await mailer.send(
+        to=[settings.OPS_EMAIL],
+        subject=f"5xx on {request.url.path}",
+        body=f"{type(exc).__name__}: {exc}",
+    )
+
+
+def create_app() -> FastAPI:
+    """Build the application.
+
+    Returns:
+        FastAPI: The configured application.
+    """
+    app: FastAPI = FastAPI()
+    register_exception_handlers(
+        app,
+        logger=log.logger,                # ← where the record lands
+        on_server_error=alert_ops,        # ← who finds out
+        log_level=logging.ERROR,
+    )
+    return app
+```
+
+!!! info "`on_server_error` runs as a background task"
+    Called with `(request, exc)` **after** the response is built, so it
+    never delays or alters what the client receives. It fires on all
+    **three** paths that produce a 5xx — the catch-all,
+    `HTTPException(500)` and a 5xx `AppException` — and does **not** fire
+    on 4xx: an alert that pages on a 404 is an alert nobody reads.
+
+!!! warning "An exception inside the callback is logged and swallowed"
+    On purpose. Measured without that protection: the 500 response is
+    still correct, but the notifier's exception **propagates up the ASGI
+    stack** and becomes what the server reports — the client's 500 turns
+    into a worse 500 with no trace of the real cause. With it, what
+    propagates is the original exception.
+
+!!! tip "`logger=` matters when logging is scoped to a logger"
+    The handlers log to **their own** logger
+    (`tempest_fastapi_sdk.api.handlers`). With
+    `LogUtils(..., scope="root")` — the default — that already reaches the
+    service's `500.log` and `error.log`; measured, one line in each.
+
+    With `scope="logger"`, which does not configure the root, the SDK's
+    logger sits outside the configured tree and the record reaches
+    **none** of the files — measured, 0 and 0. Passing `logger=log.logger`
+    closes that: 1 and 1.
+
+    The type is `logging.Logger` rather than the `RetryLogger` protocol
+    because the handlers pass `extra=` and `exc_info=` and the protocol
+    has neither. Measured: `LogUtils.error(extra=...)` stores a field
+    *named* `extra`, and `logging.Logger.error(request_id=...)` raises
+    `TypeError` — no single type spans the two. `LogUtils` exposes
+    `.logger`, which is the object that fits.
+
 ### Localized error messages (i18n)
 
 By default the envelope `detail` is the exception's literal message (English for the built-ins). To return the message **in the client's language** without translating at each `raise`, pass a `MessageCatalog` to `register_exception_handlers`:

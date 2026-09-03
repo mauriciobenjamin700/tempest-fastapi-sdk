@@ -241,6 +241,9 @@ from tempest_fastapi_sdk.api import (
     SameSite as SameSite,
 )
 from tempest_fastapi_sdk.api import (
+    ServerErrorCallback as ServerErrorCallback,
+)
+from tempest_fastapi_sdk.api import (
     StaticRateLimitPolicy as StaticRateLimitPolicy,
 )
 from tempest_fastapi_sdk.api import (
@@ -2087,6 +2090,7 @@ __all__: list[str] = [
     "SSEData",
     "SameSite",
     "SchemaSyncOutcome",
+    "ServerErrorCallback",
     "ServerSentEvent",
     "ServerSettings",
     "Session",

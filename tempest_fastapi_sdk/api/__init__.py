@@ -49,6 +49,9 @@ from tempest_fastapi_sdk.api.handlers import (
     app_exception_handler as app_exception_handler,
 )
 from tempest_fastapi_sdk.api.handlers import (
+    ServerErrorCallback as ServerErrorCallback,
+)
+from tempest_fastapi_sdk.api.handlers import (
     make_app_exception_handler as make_app_exception_handler,
 )
 from tempest_fastapi_sdk.api.handlers import (
@@ -381,6 +384,7 @@ __all__: list[str] = [
     "key_by_jwt_claim",
     "key_by_jwt_subject",
     "key_by_plan_principal",
+    "ServerErrorCallback",
     "make_app_exception_handler",
     "make_bearer_token_dependency",
     "make_csrf_token_dependency",

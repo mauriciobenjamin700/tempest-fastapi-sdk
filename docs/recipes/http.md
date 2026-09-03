@@ -120,6 +120,86 @@ Pontos-chave:
 - `make_token_dependency(secret)` retorna uma dependência async que valida `X-Token` via `hmac.compare_digest`; passe uma string vazia para desabilitar no dev. A dependência vive ao lado do resto da cola de auth em `src/api/dependencies/auth.py` quando crescer além do one-liner acima.
 
 
+### Avisando alguém, e escolhendo para onde o registro vai
+
+`log_level` decide a **severidade** do 5xx. Duas coisas que ele não decide:
+quem fica sabendo, e em qual configuração de logging o registro cai.
+
+```python
+# src/api/app.py
+
+import logging
+
+from fastapi import FastAPI, Request
+
+from tempest_fastapi_sdk import EmailUtils, LogUtils, register_exception_handlers
+
+from src.core.settings import settings
+
+log: LogUtils = LogUtils(__name__, scope="logger")
+
+
+async def alert_ops(request: Request, exc: Exception) -> None:
+    """Avisa a operação de um 5xx, fora do caminho da resposta.
+
+    Args:
+        request (Request): A requisição que falhou.
+        exc (Exception): A exceção relatada.
+    """
+    mailer: EmailUtils = EmailUtils(**settings.email_kwargs())
+    await mailer.send(
+        to=[settings.OPS_EMAIL],
+        subject=f"5xx em {request.url.path}",
+        body=f"{type(exc).__name__}: {exc}",
+    )
+
+
+def create_app() -> FastAPI:
+    """Monta a aplicação.
+
+    Returns:
+        FastAPI: A aplicação configurada.
+    """
+    app: FastAPI = FastAPI()
+    register_exception_handlers(
+        app,
+        logger=log.logger,                # ← onde o registro cai
+        on_server_error=alert_ops,        # ← quem fica sabendo
+        log_level=logging.ERROR,
+    )
+    return app
+```
+
+!!! info "`on_server_error` roda como background task"
+    Chamado com `(request, exc)` **depois** de a resposta estar montada,
+    então nunca atrasa nem altera o que o cliente recebe. Dispara nos
+    **três** caminhos que produzem 5xx — o catch-all, `HTTPException(500)`
+    e `AppException` de 5xx —, e **não** dispara em 4xx: alerta que
+    dispara em 404 é alerta que ninguém lê.
+
+!!! warning "Exceção dentro do callback é logada e engolida"
+    De propósito. Medido sem essa proteção: a resposta 500 sai correta,
+    mas a exceção do notificador **propaga pela pilha ASGI** e passa a ser
+    o que o servidor relata — o 500 do cliente vira um 500 pior, sem
+    rastro da causa real. Com a proteção, o que sobe é a exceção original.
+
+!!! tip "`logger=` importa quando o logging é de escopo isolado"
+    Os handlers logam no logger **deles**
+    (`tempest_fastapi_sdk.api.handlers`). Com
+    `LogUtils(..., scope="root")` — o default — isso já cai no `500.log` e
+    no `error.log` do serviço; medido, 1 linha em cada.
+
+    Com `scope="logger"`, que não configura a raiz, o logger do SDK fica
+    fora da árvore configurada e o registro não chega a **nenhum** dos
+    arquivos — medido, 0 e 0. Passar `logger=log.logger` fecha isso: 1 e 1.
+
+    O tipo é `logging.Logger`, e não o protocolo `RetryLogger`, porque os
+    handlers passam `extra=` e `exc_info=` e o protocolo não tem nenhum dos
+    dois. Medido: `LogUtils.error(extra=...)` guarda um campo *chamado*
+    `extra`, e `logging.Logger.error(request_id=...)` levanta `TypeError` —
+    nenhum tipo único cobre os dois. `LogUtils` expõe `.logger`, que é o
+    objeto que serve.
+
 ### Mensagens de erro localizadas (i18n)
 
 Por padrão o `detail` do envelope é a mensagem literal da exceção (em inglês nos built-ins). Para devolver a mensagem **no idioma do cliente** sem traduzir em cada `raise`, passe um `MessageCatalog` para `register_exception_handlers`:
