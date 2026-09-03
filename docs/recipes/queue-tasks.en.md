@@ -1123,12 +1123,67 @@ from src.core.settings import settings
 tq: TaskQueue = TaskQueue.from_settings(settings)
 ```
 
-| `TASKIQ_BROKER_URL` | Broker |
-| --- | --- |
-| `redis://` / `rediss://` | Redis Streams, with the result backend on the same URL |
-| `amqp://` / `amqps://` | RabbitMQ; results go to `TASKIQ_RESULT_BACKEND_URL`, if set |
-| empty | in-memory — `@tq.task` still registers, and `enqueue` runs the task in this process instead of handing it to a worker |
-| any other scheme | `ValueError` naming the scheme |
+| `TASKIQ_BROKER_URL` | Broker | Results |
+| --- | --- | --- |
+| `redis://` / `rediss://` | Redis Streams | on the same URL, with a TTL |
+| `amqp://` / `amqps://` | RabbitMQ | on `TASKIQ_RESULT_BACKEND_URL`, if set, with a TTL |
+| empty | in-memory — `@tq.task` still registers, and `enqueue` runs the task in this process instead of handing it to a worker | in-memory |
+| any other scheme | `ValueError` naming the scheme | — |
+
+!!! danger "A stored result now expires — it used not to"
+    `taskiq-redis` writes results with **no expiry** of its own
+    (`result_ex_time=None`, `result_px_time=None`, `keep_results=True`).
+    Measured against Redis 8.2.9, with all of its defaults:
+
+    ```text
+    keys written:  ['task-abc-123']      # the bare task id
+    TTL:           [-1]                  # -1 = never expires
+    MEMORY USAGE:  [144] bytes           # task returning None
+    ```
+
+    A `@tq.cron(Cron.EVERY_MINUTE)` task leaves **1440 keys a day**,
+    growing without a ceiling. On a shared Redis running `allkeys-lru`
+    that growth starts **evicting the keys of whoever is using Redis to
+    work** — a rate limit, an idempotency marker, the scheduler lease —
+    and the service that never reads a result pays the whole bill.
+
+    The SDK now applies `TASKIQ_RESULT_TTL_SECONDS` (default `86400`,
+    one day — the same as Celery's `result_expires`) and the
+    `tempest:results` prefix, on **both** transports. Measured after:
+
+    ```text
+    keys written:  ['tempest:results:abc-123']
+    TTL:           [86400]
+    ```
+
+    If you need the old behaviour, ask for it:
+    `TASKIQ_RESULT_TTL_SECONDS=0`, or
+    `TaskQueue.redis(url, result_ttl_seconds=0)`.
+
+!!! tip "A cron-only service does not need to store results"
+    `TASKIQ_STORE_RESULTS=False` leaves TaskIQ's `DummyResultBackend` in
+    place, on both transports. That is the shape of a service that only
+    runs crons: no caller is waiting on a return value, so every stored
+    result is cost with no reader.
+
+    It also settles an asymmetry between the transports. An empty
+    `TASKIQ_RESULT_BACKEND_URL` meant "no results" on RabbitMQ and
+    "results on the broker URL" on Redis — one environment, two
+    readings. The flag now decides, the same way on both.
+
+!!! warning "Result-backend arguments do not travel through `**options`"
+    `TaskQueue.redis(url, result_ex_time=3600)` is **accepted at
+    construction** — `RedisStreamBroker` swallows unknown keys into its
+    `**connection_kwargs` — and only blows up later, inside `connect()`:
+
+    ```text
+    TypeError: AbstractConnection.__init__() got an unexpected keyword
+    argument 'result_ex_time'
+    ```
+
+    Measured: the backend keeps `result_ex_time=None`. That is why the
+    TTL and the prefix are named parameters (`result_ttl_seconds`,
+    `result_prefix`) rather than keys in `**options`.
 
 !!! warning "The mixin's default is an AMQP URL, not empty"
     `TaskIQSettings.TASKIQ_BROKER_URL` defaults to

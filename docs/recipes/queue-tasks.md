@@ -1111,12 +1111,68 @@ from src.core.settings import settings
 tq: TaskQueue = TaskQueue.from_settings(settings)
 ```
 
-| `TASKIQ_BROKER_URL` | Broker |
-| --- | --- |
-| `redis://` / `rediss://` | Redis Streams, com result backend na mesma URL |
-| `amqp://` / `amqps://` | RabbitMQ; resultado vai pro `TASKIQ_RESULT_BACKEND_URL`, se houver |
-| vazio | in-memory — `@tq.task` continua registrando, e `enqueue` roda a tarefa neste processo em vez de entregar a um worker |
-| qualquer outro esquema | `ValueError` nomeando o esquema |
+| `TASKIQ_BROKER_URL` | Broker | Resultado |
+| --- | --- | --- |
+| `redis://` / `rediss://` | Redis Streams | na mesma URL, com TTL |
+| `amqp://` / `amqps://` | RabbitMQ | no `TASKIQ_RESULT_BACKEND_URL`, se houver, com TTL |
+| vazio | in-memory — `@tq.task` continua registrando, e `enqueue` roda a tarefa neste processo em vez de entregar a um worker | in-memory |
+| qualquer outro esquema | `ValueError` nomeando o esquema | — |
+
+!!! danger "Resultado guardado tem TTL — antes não tinha"
+    O `taskiq-redis` grava resultado **sem expiração** por conta própria
+    (`result_ex_time=None`, `result_px_time=None`, `keep_results=True`).
+    Medido contra Redis 8.2.9, com todos os defaults dele:
+
+    ```text
+    chaves escritas: ['task-abc-123']      # o id da task, pelado
+    TTL:             [-1]                  # -1 = nunca expira
+    MEMORY USAGE:    [144] bytes           # task devolvendo None
+    ```
+
+    Uma task `@tq.cron(Cron.EVERY_MINUTE)` deixa **1440 chaves por dia**,
+    crescendo sem teto. Num Redis compartilhado com `allkeys-lru`, esse
+    crescimento passa a **evictar as chaves de quem está usando o Redis
+    para trabalhar** — rate limit, marcador de idempotência, o lease do
+    scheduler — e o serviço que nunca lê resultado nenhum paga a conta
+    inteira.
+
+    O SDK passa a aplicar `TASKIQ_RESULT_TTL_SECONDS` (default `86400`,
+    um dia — o mesmo do `result_expires` do Celery) e o prefixo
+    `tempest:results`, nos **dois** transportes. Medido depois:
+
+    ```text
+    chaves escritas: ['tempest:results:abc-123']
+    TTL:             [86400]
+    ```
+
+    Quem precisa do comportamento antigo pede explicitamente:
+    `TASKIQ_RESULT_TTL_SECONDS=0`, ou
+    `TaskQueue.redis(url, result_ttl_seconds=0)`.
+
+!!! tip "Serviço só de cron não precisa guardar resultado"
+    `TASKIQ_STORE_RESULTS=False` deixa o `DummyResultBackend` do TaskIQ
+    no lugar, nos dois transportes. É a configuração de um serviço que só
+    roda cron: não há chamador esperando retorno, então cada resultado
+    guardado é custo sem leitor.
+
+    Isso também acerta uma assimetria entre os transportes.
+    `TASKIQ_RESULT_BACKEND_URL` vazio significava "sem resultado" no
+    RabbitMQ e "resultado na URL do broker" no Redis — o mesmo ambiente,
+    duas leituras. Agora quem decide é o flag, igual nos dois.
+
+!!! warning "Argumento de result backend não vai pelo `**options`"
+    `TaskQueue.redis(url, result_ex_time=3600)` é **aceito na
+    construção** — o `RedisStreamBroker` engole chave desconhecida nos
+    `**connection_kwargs` dele — e só explode depois, no `connect()`:
+
+    ```text
+    TypeError: AbstractConnection.__init__() got an unexpected keyword
+    argument 'result_ex_time'
+    ```
+
+    Medido: o backend fica com `result_ex_time=None`. Por isso TTL e
+    prefixo são parâmetros nomeados (`result_ttl_seconds`,
+    `result_prefix`), não chave de `**options`.
 
 !!! warning "O default do mixin é uma URL AMQP, não vazio"
     `TaskIQSettings.TASKIQ_BROKER_URL` tem default

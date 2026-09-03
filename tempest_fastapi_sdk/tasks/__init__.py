@@ -106,6 +106,12 @@ from tempest_fastapi_sdk.tasks.lock import (
 from tempest_fastapi_sdk.tasks.lock import (
     DEFAULT_LOCK_TTL_SECONDS as DEFAULT_LOCK_TTL_SECONDS,
 )
+from tempest_fastapi_sdk.tasks.queue import (
+    DEFAULT_RESULT_PREFIX as DEFAULT_RESULT_PREFIX,
+)
+from tempest_fastapi_sdk.tasks.queue import (
+    DEFAULT_RESULT_TTL_SECONDS as DEFAULT_RESULT_TTL_SECONDS,
+)
 from tempest_fastapi_sdk.tasks.lock import (
     RedisLockClient as RedisLockClient,
 )
@@ -166,6 +172,8 @@ __all__: list[str] = [
     "CANCELLABLE_JOB_STATUSES",
     "DEFAULT_LOCK_NAME",
     "DEFAULT_LOCK_TTL_SECONDS",
+    "DEFAULT_RESULT_PREFIX",
+    "DEFAULT_RESULT_TTL_SECONDS",
     "DEFAULT_POLL_SECONDS",
     "RUNNING_STAGE_STATUSES",
     "STALE_JOB_ERROR",

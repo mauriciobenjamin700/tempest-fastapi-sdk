@@ -26,6 +26,7 @@ from datetime import timedelta
 from typing import (
     TYPE_CHECKING,
     Any,
+    Final,
     Generic,
     Literal,
     ParamSpec,
@@ -44,6 +45,76 @@ from tempest_fastapi_sdk.tasks.lock import (
     SchedulerLock,
 )
 from tempest_fastapi_sdk.tasks.observability import make_dead_letter_middleware
+
+DEFAULT_RESULT_TTL_SECONDS: Final[int] = 86_400
+"""How long a stored task result lives, in seconds.
+
+Ported from Celery's ``result_expires``, whose default is
+``timedelta(days=1)`` — read from ``celery.app.defaults.NAMESPACES``
+on celery 5.6.3, not from memory.
+
+``taskiq_redis`` itself defaults to **no** expiry
+(``result_ex_time=None``, ``result_px_time=None``, ``keep_results=True``),
+so every execution used to leave a permanent key. Measured against Redis
+8.2.9: a result for a task returning ``None`` occupies 144 bytes with
+``TTL -1``, and a once-a-minute cron writes 1440 of them a day. On a
+shared Redis running ``allkeys-lru`` that growth evicts the keys of
+whoever is using Redis to work — a rate limit, an idempotency marker, the
+scheduler lease — while the service paying for it may never read a result
+at all.
+
+Pass ``0`` to restore the unbounded behaviour deliberately.
+"""
+
+DEFAULT_RESULT_PREFIX: Final[str] = "tempest:results"
+"""Key prefix for stored task results.
+
+``RedisAsyncResultBackend._task_name`` writes the bare task id when no
+prefix is given, which made results the only keys this SDK writes without
+a namespace — ``tasks/lock.py``, ``sessions/store.py``, ``queue/dedup.py``
+and the response cache all carry one. Without a prefix a shared Redis
+cannot even be swept for these keys, so the manual cleanup is unavailable
+too.
+
+Pass ``""`` to restore the bare task id.
+"""
+
+
+def _redis_result_backend(
+    url: str,
+    *,
+    result_ttl_seconds: int,
+    result_prefix: str,
+    missing_extra_hint: str,
+) -> Any:
+    """Build a Redis result backend with a bounded footprint.
+
+    Args:
+        url (str): Redis URL the results are written to.
+        result_ttl_seconds (int): Seconds a result survives; ``0`` means
+            no expiry.
+        result_prefix (str): Namespace for the keys; ``""`` means the
+            bare task id.
+        missing_extra_hint (str): The message to raise when
+            ``taskiq_redis`` is absent, phrased for the caller's entry
+            point.
+
+    Returns:
+        Any: A ``taskiq_redis.RedisAsyncResultBackend``.
+
+    Raises:
+        ImportError: When ``taskiq_redis`` is not installed.
+    """
+    try:
+        from taskiq_redis import RedisAsyncResultBackend
+    except ImportError as exc:
+        raise ImportError(missing_extra_hint) from exc
+    return RedisAsyncResultBackend(
+        url,
+        result_ex_time=result_ttl_seconds or None,
+        prefix_str=result_prefix or None,
+    )
+
 
 if TYPE_CHECKING:
     from taskiq import AsyncBroker
@@ -108,10 +179,19 @@ class TaskIQSettingsLike(Protocol):
         TASKIQ_RESULT_BACKEND_URL (str | None): Where task results go.
             ``None`` means "same place as the broker" when the broker
             can store results, and "nowhere" when it cannot.
+        TASKIQ_STORE_RESULTS (bool): Whether results are stored at all.
+            ``False`` leaves TaskIQ's ``DummyResultBackend`` in place on
+            both transports, which is the shape of a cron-only service:
+            no caller is waiting on a return value, so every stored
+            result is pure cost.
+        TASKIQ_RESULT_TTL_SECONDS (int): Seconds a stored result
+            survives; ``0`` keeps results forever.
     """
 
     TASKIQ_BROKER_URL: str
     TASKIQ_RESULT_BACKEND_URL: str | None
+    TASKIQ_STORE_RESULTS: bool
+    TASKIQ_RESULT_TTL_SECONDS: int
 
 
 def _require_taskiq() -> Any:
@@ -325,6 +405,8 @@ class TaskQueue:
         url: str,
         *,
         results: bool | str = True,
+        result_ttl_seconds: int = DEFAULT_RESULT_TTL_SECONDS,
+        result_prefix: str = DEFAULT_RESULT_PREFIX,
         resources: Sequence[LifecycleResource] = (),
         **options: Any,
     ) -> TaskQueue:
@@ -340,11 +422,24 @@ class TaskQueue:
                 backend at all and no way to ask for one, so every
                 service rebuilt the broker by hand to get ``.kiq`` +
                 result to work.
+            result_ttl_seconds (int): Seconds a stored result survives.
+                Defaults to :data:`DEFAULT_RESULT_TTL_SECONDS`; ``0``
+                keeps results forever, which is what ``taskiq_redis``
+                does on its own.
+            result_prefix (str): Namespace for the result keys. Defaults
+                to :data:`DEFAULT_RESULT_PREFIX`; ``""`` writes the bare
+                task id.
             resources (Sequence[LifecycleResource]): Resources the
                 worker opens on startup and closes on shutdown — see
                 :meth:`use`.
             **options (Any): Extra keyword arguments forwarded to
-                ``taskiq_redis.RedisStreamBroker``.
+                ``taskiq_redis.RedisStreamBroker``. Result-backend
+                arguments do **not** belong here: ``RedisStreamBroker``
+                absorbs unknown keys into its connection kwargs, so
+                ``result_ex_time=3600`` is accepted at construction, the
+                backend keeps its default, and the connection raises
+                ``TypeError`` later inside ``connect()``. That is why the
+                two knobs above are named parameters.
 
         Returns:
             TaskQueue: A facade around a Redis stream broker, carrying
@@ -355,26 +450,62 @@ class TaskQueue:
             ImportError: When ``taskiq_redis`` is not installed.
         """
         _require_taskiq()
+        hint: str = (
+            "Redis tasks require the optional [tasks-redis] extra. "
+            "Install with: pip install tempest-fastapi-sdk[tasks-redis]"
+        )
         try:
-            from taskiq_redis import RedisAsyncResultBackend, RedisStreamBroker
+            from taskiq_redis import RedisStreamBroker
         except ImportError as exc:
-            raise ImportError(
-                "Redis tasks require the optional [tasks-redis] extra. "
-                "Install with: pip install tempest-fastapi-sdk[tasks-redis]",
-            ) from exc
+            raise ImportError(hint) from exc
         broker: AsyncBroker = RedisStreamBroker(url, **options)
         result_url: str | None = (
             url if results is True else (results if isinstance(results, str) else None)
         )
         if result_url is not None:
-            broker = broker.with_result_backend(RedisAsyncResultBackend(result_url))
+            broker = broker.with_result_backend(
+                _redis_result_backend(
+                    result_url,
+                    result_ttl_seconds=result_ttl_seconds,
+                    result_prefix=result_prefix,
+                    missing_extra_hint=hint,
+                ),
+            )
         return cls(broker, resources=resources, lock_url=url)
+
+    @staticmethod
+    def _result_ttl(
+        settings: TaskIQSettingsLike,
+        override: int | None,
+    ) -> int:
+        """Return the result TTL, preferring the explicit override.
+
+        Read inside the transport branches rather than before them, so a
+        broker URL with an unsupported scheme still raises the
+        ``ValueError`` that names it — reading a settings field first
+        would answer a typo in a deployed variable with an
+        ``AttributeError`` about a field the caller never mentioned.
+
+        Args:
+            settings (TaskIQSettingsLike): The settings to derive from.
+            override (int | None): The caller's value, or ``None`` to
+                derive.
+
+        Returns:
+            int: Seconds a stored result survives; ``0`` means no expiry.
+        """
+        if override is not None:
+            return override
+        return settings.TASKIQ_RESULT_TTL_SECONDS
 
     @classmethod
     def from_settings(
         cls,
         settings: TaskIQSettingsLike,
         *,
+        results: bool | str | None = None,
+        result_ttl_seconds: int | None = None,
+        result_prefix: str | None = None,
         resources: Sequence[LifecycleResource] = (),
         **options: Any,
     ) -> TaskQueue:
@@ -399,10 +530,23 @@ class TaskQueue:
             >>> tq: TaskQueue = TaskQueue.from_settings(Settings())
 
         Args:
-            settings (TaskIQSettingsLike): Anything carrying
-                ``TASKIQ_BROKER_URL`` and ``TASKIQ_RESULT_BACKEND_URL``
-                — the :class:`~tempest_fastapi_sdk.settings.TaskIQSettings`
+            settings (TaskIQSettingsLike): Anything carrying the four
+                fields of that protocol — the
+                :class:`~tempest_fastapi_sdk.settings.TaskIQSettings`
                 mixin, or a service ``Settings`` composing it.
+            results (bool | str | None): Overrides where results go.
+                ``None`` (default) derives it from the settings, so the
+                environment stays in charge; a value wins over the
+                derived one instead of colliding with it, which is what
+                passing ``results=`` through ``**options`` used to do.
+            result_ttl_seconds (int | None): Overrides the result TTL.
+                ``None`` derives it from
+                ``TASKIQ_RESULT_TTL_SECONDS``; ``0`` keeps results
+                forever.
+            result_prefix (str | None): Overrides the result key
+                namespace. ``None`` uses
+                :data:`DEFAULT_RESULT_PREFIX`; ``""`` writes the bare
+                task id.
             resources (Sequence[LifecycleResource]): Resources the
                 worker opens on startup and closes on shutdown.
             **options (Any): Extra keyword arguments forwarded to the
@@ -427,19 +571,39 @@ class TaskQueue:
                 " of handing it to a worker.",
             )
             return cls.memory(resources=resources)
+        prefix: str = DEFAULT_RESULT_PREFIX if result_prefix is None else result_prefix
         scheme: str = url.split("://", 1)[0].lower()
         if scheme in {"redis", "rediss", "unix"}:
+            derived: bool | str = (
+                (settings.TASKIQ_RESULT_BACKEND_URL or True)
+                if settings.TASKIQ_STORE_RESULTS
+                else False
+            )
             return cls.redis(
                 url,
-                results=settings.TASKIQ_RESULT_BACKEND_URL or True,
+                results=derived if results is None else results,
+                result_ttl_seconds=cls._result_ttl(settings, result_ttl_seconds),
+                result_prefix=prefix,
                 resources=resources,
                 **options,
             )
         if scheme in {"amqp", "amqps"}:
             queue = cls.rabbitmq(url, resources=resources, **options)
-            result_url = settings.TASKIQ_RESULT_BACKEND_URL
-            if result_url:
-                queue._attach_redis_results(result_url)
+            result_url: bool | str | None = (
+                (
+                    settings.TASKIQ_RESULT_BACKEND_URL
+                    if settings.TASKIQ_STORE_RESULTS
+                    else None
+                )
+                if results is None
+                else results
+            )
+            if isinstance(result_url, str) and result_url:
+                queue._attach_redis_results(
+                    result_url,
+                    result_ttl_seconds=cls._result_ttl(settings, result_ttl_seconds),
+                    result_prefix=prefix,
+                )
             return queue
         raise ValueError(
             f"TASKIQ_BROKER_URL has an unsupported scheme {scheme!r}. "
@@ -448,7 +612,13 @@ class TaskQueue:
             f"broker.",
         )
 
-    def _attach_redis_results(self, url: str) -> None:
+    def _attach_redis_results(
+        self,
+        url: str,
+        *,
+        result_ttl_seconds: int = DEFAULT_RESULT_TTL_SECONDS,
+        result_prefix: str = DEFAULT_RESULT_PREFIX,
+    ) -> None:
         """Route results to Redis on a broker that cannot store them.
 
         ``taskiq-aio-pika`` ships no result backend, so a RabbitMQ
@@ -459,19 +629,26 @@ class TaskQueue:
 
         Args:
             url (str): Redis URL for the result backend.
+            result_ttl_seconds (int): Seconds a stored result survives;
+                ``0`` keeps results forever.
+            result_prefix (str): Namespace for the result keys; ``""``
+                writes the bare task id.
 
         Raises:
             ImportError: When ``taskiq_redis`` is not installed.
         """
-        try:
-            from taskiq_redis import RedisAsyncResultBackend
-        except ImportError as exc:
-            raise ImportError(
-                "TASKIQ_RESULT_BACKEND_URL points at Redis, which requires the "
-                "optional [tasks-redis] extra. Install with: "
-                "pip install tempest-fastapi-sdk[tasks-redis]",
-            ) from exc
-        self.broker = self.broker.with_result_backend(RedisAsyncResultBackend(url))
+        self.broker = self.broker.with_result_backend(
+            _redis_result_backend(
+                url,
+                result_ttl_seconds=result_ttl_seconds,
+                result_prefix=result_prefix,
+                missing_extra_hint=(
+                    "TASKIQ_RESULT_BACKEND_URL points at Redis, which requires "
+                    "the optional [tasks-redis] extra. Install with: "
+                    "pip install tempest-fastapi-sdk[tasks-redis]"
+                ),
+            ),
+        )
         self._lock_url = url
 
     @classmethod

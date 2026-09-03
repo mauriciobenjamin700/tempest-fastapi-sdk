@@ -19,34 +19,49 @@ from __future__ import annotations
 import pytest
 from taskiq.brokers.inmemory_broker import InMemoryBroker
 
-from tempest_fastapi_sdk.tasks import TaskIQSettingsLike, TaskQueue
+from tempest_fastapi_sdk.tasks import (
+    DEFAULT_RESULT_PREFIX,
+    DEFAULT_RESULT_TTL_SECONDS,
+    TaskIQSettingsLike,
+    TaskQueue,
+)
 
 REDIS_URL = "redis://localhost:6379/0"
 AMQP_URL = "amqp://guest:guest@localhost:5672/"
 
 
 class Settings:
-    """The two fields the factory reads, without pydantic in the way.
+    """The fields the factory reads, without pydantic in the way.
 
     Attributes:
         TASKIQ_BROKER_URL (str): Broker URL.
         TASKIQ_RESULT_BACKEND_URL (str | None): Result backend URL.
+        TASKIQ_STORE_RESULTS (bool): Whether results are stored at all.
+        TASKIQ_RESULT_TTL_SECONDS (int): Seconds a result survives.
     """
 
     def __init__(
         self,
         broker_url: str = "",
         result_url: str | None = None,
+        *,
+        store_results: bool = True,
+        result_ttl_seconds: int = DEFAULT_RESULT_TTL_SECONDS,
     ) -> None:
-        """Set the two fields.
+        """Set the fields.
 
         Args:
             broker_url (str): Value for ``TASKIQ_BROKER_URL``.
             result_url (str | None): Value for
                 ``TASKIQ_RESULT_BACKEND_URL``.
+            store_results (bool): Value for ``TASKIQ_STORE_RESULTS``.
+            result_ttl_seconds (int): Value for
+                ``TASKIQ_RESULT_TTL_SECONDS``.
         """
         self.TASKIQ_BROKER_URL: str = broker_url
         self.TASKIQ_RESULT_BACKEND_URL: str | None = result_url
+        self.TASKIQ_STORE_RESULTS: bool = store_results
+        self.TASKIQ_RESULT_TTL_SECONDS: int = result_ttl_seconds
 
 
 def test_the_stand_in_satisfies_the_protocol() -> None:
@@ -153,3 +168,106 @@ class TestTheLeaseUrlComesAlong:
         queue = TaskQueue.from_settings(Settings(AMQP_URL))
 
         assert queue._lock_url is None
+
+
+class TestTheResultFootprintIsBounded:
+    """A stored result expires and lives under a prefix.
+
+    ``taskiq_redis`` defaults to neither: measured against Redis 8.2.9,
+    a result key for a task returning ``None`` is 144 bytes with
+    ``TTL -1``, written under the bare task id. A once-a-minute cron
+    leaves 1440 such keys a day, and on a shared Redis running
+    ``allkeys-lru`` that growth evicts the keys of whoever is using
+    Redis to work.
+    """
+
+    def test_the_default_ttl_and_prefix_reach_the_backend(self) -> None:
+        queue = TaskQueue.from_settings(Settings(REDIS_URL))
+        backend = queue.broker.result_backend
+
+        assert backend.result_ex_time == DEFAULT_RESULT_TTL_SECONDS
+        assert backend.prefix_str == DEFAULT_RESULT_PREFIX
+
+    def test_the_amqp_branch_gets_the_same_treatment(self) -> None:
+        """Fixing only the branch that hurt is not fixing the rule."""
+        queue = TaskQueue.from_settings(Settings(AMQP_URL, REDIS_URL))
+        backend = queue.broker.result_backend
+
+        assert backend.result_ex_time == DEFAULT_RESULT_TTL_SECONDS
+        assert backend.prefix_str == DEFAULT_RESULT_PREFIX
+
+    def test_zero_restores_the_unbounded_behaviour_on_purpose(self) -> None:
+        queue = TaskQueue.from_settings(Settings(REDIS_URL), result_ttl_seconds=0)
+
+        assert queue.broker.result_backend.result_ex_time is None
+
+    def test_an_empty_prefix_restores_the_bare_task_id(self) -> None:
+        queue = TaskQueue.from_settings(Settings(REDIS_URL), result_prefix="")
+
+        assert queue.broker.result_backend.prefix_str is None
+
+    def test_the_settings_ttl_is_honoured(self) -> None:
+        queue = TaskQueue.from_settings(Settings(REDIS_URL, result_ttl_seconds=3600))
+
+        assert queue.broker.result_backend.result_ex_time == 3600
+
+
+class TestResultsCanBeTurnedOff:
+    """``results=False`` used to be unreachable through the factory.
+
+    The Redis branch hardcoded ``results=settings.TASKIQ_RESULT_BACKEND_URL
+    or True``, which is always truthy, and passing the keyword through
+    ``**options`` collided:
+    ``TypeError: TaskQueue.redis() got multiple values for keyword
+    argument 'results'``.
+    """
+
+    def test_an_explicit_false_no_longer_collides(self) -> None:
+        queue = TaskQueue.from_settings(Settings(REDIS_URL), results=False)
+
+        assert type(queue.broker.result_backend).__name__ == "DummyResultBackend"
+
+    def test_the_settings_flag_turns_them_off(self) -> None:
+        queue = TaskQueue.from_settings(Settings(REDIS_URL, store_results=False))
+
+        assert type(queue.broker.result_backend).__name__ == "DummyResultBackend"
+
+    def test_the_flag_is_symmetric_on_amqp(self) -> None:
+        """Redis used to read an empty result URL as "use the broker".
+
+        On AMQP the same configuration meant "no results", so the two
+        transports disagreed about what one environment said.
+        """
+        queue = TaskQueue.from_settings(
+            Settings(AMQP_URL, REDIS_URL, store_results=False),
+        )
+
+        assert type(queue.broker.result_backend).__name__ == "DummyResultBackend"
+
+    def test_an_explicit_url_wins_over_the_flag(self) -> None:
+        queue = TaskQueue.from_settings(
+            Settings(REDIS_URL, store_results=False),
+            results="redis://elsewhere:6379/9",
+        )
+
+        assert type(queue.broker.result_backend).__name__ == "RedisAsyncResultBackend"
+
+
+class TestTheUnknownSchemeStillNamesItself:
+    """A typo in a deployed variable must not become an AttributeError.
+
+    The result knobs are read inside the transport branches for exactly
+    this reason: reading a settings field before dispatching on the
+    scheme answered an unsupported URL with a complaint about a field
+    the caller never mentioned.
+    """
+
+    def test_a_bad_scheme_raises_value_error_even_without_the_new_fields(
+        self,
+    ) -> None:
+        class Minimal:
+            TASKIQ_BROKER_URL = "kafka://localhost:9092"
+            TASKIQ_RESULT_BACKEND_URL = None
+
+        with pytest.raises(ValueError, match="unsupported scheme 'kafka'"):
+            TaskQueue.from_settings(Minimal())  # type: ignore[arg-type]

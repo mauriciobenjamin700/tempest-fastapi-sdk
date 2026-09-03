@@ -1010,6 +1010,14 @@ class TaskIQSettings(BaseAppSettings):
             in-memory). Default: ``"amqp://guest:guest@localhost:5672/"``.
         TASKIQ_RESULT_BACKEND_URL (str | None): Optional result backend URL;
             ``None`` keeps results in-memory. Default: ``None``.
+        TASKIQ_STORE_RESULTS (bool): Whether task results are stored at
+            all. Default: ``True``. ``False`` leaves TaskIQ's
+            ``DummyResultBackend`` in place on both transports — the
+            shape of a cron-only service, where no caller waits on a
+            return value.
+        TASKIQ_RESULT_TTL_SECONDS (int): Seconds a stored result
+            survives. Default: ``86400`` (one day); ``0`` keeps results
+            forever, which is what ``taskiq_redis`` does on its own.
     """
 
     TASKIQ_BROKER_URL: str = Field(
@@ -1030,6 +1038,29 @@ class TaskIQSettings(BaseAppSettings):
             "in-memory (fine for fire-and-forget workloads)."
         ),
         examples=[None, "redis://localhost:6379/3"],
+    )
+    TASKIQ_STORE_RESULTS: bool = Field(
+        default=True,
+        title="Store task results",
+        description=(
+            "Whether task results are stored at all. ``False`` leaves "
+            "TaskIQ's DummyResultBackend in place on both transports, "
+            "which is what a cron-only service wants: no caller is "
+            "waiting on a return value, so every stored result is cost "
+            "with no reader."
+        ),
+        examples=[True, False],
+    )
+    TASKIQ_RESULT_TTL_SECONDS: int = Field(
+        default=86_400,
+        ge=0,
+        title="Task result TTL (seconds)",
+        description=(
+            "How long a stored result survives. ``0`` keeps results "
+            "forever, which is taskiq-redis' own default and leaves one "
+            "permanent key per execution."
+        ),
+        examples=[86400, 3600, 0],
     )
 
 
