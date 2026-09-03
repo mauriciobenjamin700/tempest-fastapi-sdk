@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from taskiq import InMemoryBroker
@@ -126,7 +126,7 @@ def _utc(hour: int, minute: int = 0) -> datetime:
         datetime: 2026-01-01 at ``hour:minute`` UTC, a date with no
         daylight-saving transition in any zone these tests name.
     """
-    return datetime(2026, 1, 1, hour, minute, tzinfo=timezone.utc)
+    return datetime(2026, 1, 1, hour, minute, tzinfo=UTC)
 
 
 class TestNormalizeCronOffset:
@@ -199,7 +199,7 @@ class TestNormalizeSchedule:
     """Raw specs get the same treatment, without losing their other keys."""
 
     def test_offset_normalized_and_siblings_preserved(self) -> None:
-        when = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+        when = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
         spec = [
             {"cron": "0 2 * * *", "cron_offset": CronOffset.BRASILIA},
             {"interval": timedelta(seconds=30)},

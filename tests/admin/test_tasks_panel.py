@@ -10,7 +10,7 @@ no screen.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -381,7 +381,7 @@ def _real_queue() -> TaskQueue:
 
     @tq.task(
         name="one_shot",
-        schedule=[{"time": datetime(2026, 1, 1, 12, tzinfo=timezone.utc)}],
+        schedule=[{"time": datetime(2026, 1, 1, 12, tzinfo=UTC)}],
     )
     async def one_shot() -> None:
         return None
@@ -441,7 +441,7 @@ class TestEveryDeclaredTriggerReachesTheRow:
         panel: TaskPanelService[Any] = TaskPanelService(queue=_real_queue())
         row = _row(panel, "one_shot")
         assert row.is_scheduled is True
-        assert row.run_at == datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+        assert row.run_at == datetime(2026, 1, 1, 12, tzinfo=UTC)
 
     def test_two_crons_are_two_triggers(self) -> None:
         panel: TaskPanelService[Any] = TaskPanelService(queue=_real_queue())

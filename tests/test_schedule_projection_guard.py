@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Mapping
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 import taskiq
@@ -108,7 +108,7 @@ class TestAnEntryWithEveryKeyReachesTheRow:
     """A single entry carrying all of them loses nothing."""
 
     def test_when_keys_land_on_fields_and_the_rest_lands_in_extra(self) -> None:
-        when = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
+        when = datetime(2026, 1, 1, 12, tzinfo=UTC)
         entry: dict[str, Any] = {
             "cron": "0 2 * * *",
             "cron_offset": timedelta(hours=-3),
