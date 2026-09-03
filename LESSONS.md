@@ -5,6 +5,73 @@ existe: o defeito que shippou, o comando que mediu, o número que apareceu.
 Consulte quando a regra parecer exagerada — ela quase sempre é a cicatriz
 de algo que passou por revisão manual e escapou.
 
+## O guard verde que não checava nada, e o teste que o pegou (v0.285.0)
+
+`tests/test_docs_type_guard.py` roda o mypy sobre todo bloco de código da
+doc e parseia a saída com
+
+```python
+ERROR_RE = re.compile(r"^(?P<file>.+?):(?P<line>\d+): error: ...")
+```
+
+O mypy honra `FORCE_COLOR`, que está setado em muitos terminais e imagens
+de CI. Com cor, a linha vira `": \x1b[1m\x1b[31merror:\x1b[m "`, o regex
+não casa, e o guard reporta **zero achados**.
+
+A direção da vacuidade é o que importa: **230 dos 233 casos do arquivo
+afirmam a ausência de achado** — `assert not problems` —, e ausência é
+exatamente o que uma saída não-parseável produz. Medido com
+`FORCE_COLOR=3`:
+
+```text
+3 failed, 230 passed
+```
+
+Os três que falharam são os `test_guard_fires_*`: o controle negativo,
+que alimenta o guard com um defeito histórico e exige que ele apareça.
+**Eles são a única razão pela qual isso foi percebido.** Sem eles, um
+contribuidor com cor forçada teria gate de tipo verde checando nada, e o
+sintoma seria indistinguível de "a doc está limpa".
+
+Duas regras que saem daqui:
+
+- **Guard que afirma ausência precisa de um caso que afirme presença.** A
+  regra do repo ("ele precisa provar que dispara") já pedia isso, e é
+  literalmente o que salvou. O valor do controle negativo não é achar o
+  defeito histórico de novo — é detectar que o mecanismo parou de
+  funcionar.
+- **Ferramenta invocada por API ainda lê o ambiente.** `mypy_api.run()`
+  parece hermético e não é: `FORCE_COLOR` atravessa. Toda invocação de
+  ferramenta cuja **saída** é parseada passa o flag que desliga
+  formatação. Já tínhamos a cicatriz do Rich pintando `--opt` sob
+  `GITHUB_ACTIONS`; é a mesma família, e o primeiro conserto não
+  generalizou.
+
+## Nomear o diretório não é enunciar a regra (v0.285.0)
+
+O sdist é o repositório inteiro menos um `exclude`, então tudo que uma
+ferramenta deixa na raiz shippa para o PyPI. Aconteceu duas vezes:
+
+| Artefato | Custo no tarball | Conserto |
+| --- | --- | --- |
+| `.claude/` | 33,7 kB de skill, agent e settings | `exclude = [".claude"]` |
+| `.playwright-mcp/` | 60 kB de console log e page snapshot, de **uma** sessão | `.gitignore` + `git rm -r --cached` |
+
+O segundo shippou em todo sdist até a 0.284.0, medido no tarball
+publicado. O primeiro conserto **nomeou um diretório**; por isso não
+preveniu o segundo.
+
+`tests/test_sdist_payload.py` enuncia a regra: entrada com ponto na raiz
+do sdist está numa allowlist **com o motivo pelo qual pertence a uma
+distribuição de fonte**, ou o teste falha nomeando-a. Construir o artefato
+e inspecioná-lo é o que o `test_wheel_payload` já fazia para o wheel — o
+lado do sdist simplesmente não existia.
+
+Detalhe medido, não deduzido: é o **`.gitignore`** que o hatchling lê para
+montar o sdist. Comentando a regra e reconstruindo, os 14 arquivos voltam
+ao tarball; com ela, zero. `exclude` no `pyproject.toml` é o segundo
+mecanismo, não o único.
+
 ## O teste fixava o rótulo e o runtime morria no primeiro tick (v0.284.0)
 
 `CronOffset.BRASILIA` é a string `"-03:00"`. O TaskIQ lê `cron_offset`

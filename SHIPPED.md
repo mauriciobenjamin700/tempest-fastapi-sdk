@@ -1824,3 +1824,22 @@ Quatro issues do `alofans-api`, todas entregues:
 Fora de escopo, medido e registrado: outros quatro caminhos de 4xx
 respondem sem `code` e sem localização — `HTTPException` 4xx cru, o 401 de
 dependência de segurança, rota inexistente e método errado.
+
+## Pendências da 0.284.0, fechadas na 0.285.0 (2026-09-03)
+
+As duas que a 0.284.0 registrou como fora de escopo:
+
+1. **Todo 4xx no envelope** — `envelope_client_errors` (superconjunto de
+   `envelope_validation_errors`) + `_STATUS_ERROR_CODES` declarado + a
+   regra que preserva mensagem escrita pelo caller e localiza só a phrase
+   do framework. Guard: a checagem de catálogo no
+   `test_i18n_coverage_guard`.
+2. **`.playwright-mcp/` fora do sdist** — `.gitignore` + destrack, e o
+   guard que faltava: `test_sdist_payload`.
+
+Mais um defeito achado no caminho: o `test_docs_type_guard` reportava zero
+achados sob `FORCE_COLOR`, com 230 dos 233 casos passando por vacuidade.
+
+Fora de escopo, registrado: o SDK não tem exceção para 400 nem para 405,
+então esses dois status respondem `HTTP_<status>` sem tradução. Criar as
+classes é decisão separada.

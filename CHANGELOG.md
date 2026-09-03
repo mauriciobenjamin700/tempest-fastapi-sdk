@@ -5,6 +5,93 @@ All notable changes to **tempest-fastapi-sdk** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.285.0] — 2026-09-05
+
+As duas pendências que a 0.284.0 deixou registradas, mais um defeito num guard
+que apareceu ao consertá-las.
+
+### Added
+
+- **`register_exception_handlers(envelope_client_errors=True)` põe todo 4xx no
+  envelope.** A 0.284.0 cobriu o 422 e deixou o resto. Medido, com catálogo
+  instalado e `Accept-Language: pt-BR`, e espionando o handler que o SDK
+  registra: `HTTPException` 4xx cru, o 401 do `HTTPBearer`, rota inexistente e
+  método errado **todos** passam por ele — são seis caminhos, não quatro como a
+  0.284.0 relatou — e respondiam o corpo nu do Starlette, sem `code` e em
+  inglês.
+
+  | Caminho | Antes | Agora |
+  | --- | --- | --- |
+  | `HTTPException(404, "pedido 42 não existe")` | `{"detail": "pedido 42 não existe"}` | mesma mensagem **+** `code: NOT_FOUND` |
+  | `HTTPException(403)` | `{"detail": "Forbidden"}` | `Acesso negado` + `code: FORBIDDEN` |
+  | `Depends(HTTPBearer())` sem token | `{"detail": "Not authenticated"}` | mesma mensagem **+** `code: UNAUTHORIZED` |
+  | rota inexistente | `{"detail": "Not Found"}` | `Recurso não encontrado` + `code: NOT_FOUND` |
+  | método errado | `{"detail": "Method Not Allowed"}` | mesma mensagem + `code: HTTP_405` |
+
+  **Mensagem que o caller escreveu não é traduzida.** O Starlette preenche
+  `detail` com a phrase do status quando não recebe uma, então os dois casos
+  são distinguíveis, e trocar a mensagem específica pelo genérico do catálogo
+  destruiria a mais informativa das duas.
+
+  O mapa status→`code` é **declarado**, não derivado: medido, oito classes de
+  `AppException` carregam code de 401 e três de 404. Status fora do mapa
+  responde `HTTP_<status>` e mantém a phrase — 400 e 405 estão nesse grupo.
+
+  Dois flags e não um renomeado: `envelope_client_errors` é o superconjunto
+  (liga o 422 também), e `envelope_validation_errors` segue sendo o opt-in
+  estreito, então quem ligou o segundo na 0.284.0 não muda de comportamento ao
+  atualizar.
+
+### Fixed
+
+- **60 kB de artefato de validação em browser saem do sdist.**
+  `.playwright-mcp/` estava rastreado: 14 arquivos de console e page snapshot
+  de 2026-08-01. Medido no tarball publicado da 0.284.0, `tar -tzf | grep -c
+  playwright` → `14`. O wheel nunca os levou; o sdist leva o repo inteiro menos
+  um `exclude`, e o `exclude` nomeava só `.claude`.
+
+  Mesma classe do defeito que o `.claude/` já tinha causado (33,7 kB). Aquele
+  conserto nomeou um diretório em vez de enunciar a regra, então não preveniu
+  este — daí o guard novo (abaixo) enunciar a regra.
+
+- **`make_http_exception_handler` não tinha parâmetro `catalog`.** Introduzido
+  na 0.284.0: um serviço que configurava `MessageCatalog` ainda respondia
+  `{"detail": "Forbidden"}` em inglês, porque o handler de `HTTPException` não
+  tinha por onde receber o catálogo. Agora recebe `catalog` e `default_locale`.
+
+- **A docstring do `register_exception_handlers` descrevia cinco dos oito
+  parâmetros.** `logger`, `on_server_error` e `envelope_validation_errors`
+  entraram na 0.284.0 sem entrada em `Args:`. Os quatro estão documentados.
+
+- **O guard de tipo da documentação reportava zero achados quando o mypy
+  pintava a saída.** `FORCE_COLOR` está setado em muitos terminais e imagens de
+  CI; o mypy o honra, e o `ERROR_RE` do guard casa `": error: "` como texto
+  puro. Com cor, nada parseia.
+
+  A direção da vacuidade é o que torna isso grave: 230 dos 233 casos do arquivo
+  afirmam a **ausência** de achado, e ausência é exatamente o que uma saída
+  não-parseável produz. Medido com `FORCE_COLOR=3`: `3 failed, 230 passed` — os
+  três são os `test_guard_fires_*`, o controle negativo, e são a única razão
+  pela qual isso foi percebido.
+
+  `--no-color-output` na invocação, mais um teste que fixa o flag setando
+  `FORCE_COLOR` e exigindo achado. O guard consertado pegou na hora um defeito
+  na doc desta release: um bloco de exemplo sem os imports, contra a regra de
+  exemplo completo.
+
+### Guards
+
+- **`tests/test_sdist_payload.py`** (novo). O wheel tem payload fixado desde
+  sempre; o sdist não tinha nada. Constrói um sdist em diretório temporário e
+  exige que toda entrada com ponto na raiz esteja numa allowlist **com
+  motivo**. Provado que reportaria `.playwright-mcp` e `.claude`.
+- **`test_i18n_coverage_guard`** passa a exigir que todo code de
+  `_STATUS_ERROR_CODES` tenha entrada no catálogo, nas duas línguas — code
+  mapeado sem tradução deixaria a phrase inglesa no lugar sem nada reclamar.
+
+Nenhuma quebra: `envelope_client_errors=False` é o default, e uma classe de
+teste fixa que o corpo de cada caminho segue idêntico com ele desligado.
+
 ## [0.284.0] — 2026-09-03
 
 Quatro issues abertas por um consumidor (`alofans-api`), todas medidas contra a
