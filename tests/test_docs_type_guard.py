@@ -315,11 +315,21 @@ def _run_mypy(workspace: Path) -> str:
     from the service they are teaching you to build (`src.core.settings`),
     which exists on the reader's machine and never here.
 
+    ``--no-color-output`` is not cosmetic. mypy honours ``FORCE_COLOR``,
+    and :data:`ERROR_RE` matches ``": error: "`` as plain text — with
+    colour on, every line becomes ``": \x1b[1m\x1b[31merror:\x1b[m "``,
+    nothing parses, and this guard reports **zero findings**. Measured:
+    with ``FORCE_COLOR=3`` in the environment, the three
+    ``test_guard_fires_*`` cases below failed and the other 230 passed —
+    because they assert the *absence* of findings, which an unparseable
+    output satisfies vacuously. A contributor with colour forced would
+    have had a green docs-type gate checking nothing.
+
     Args:
         workspace (Path): The scratch tree written by :func:`_write_blocks`.
 
     Returns:
-        str: mypy's stdout, one finding per line.
+        str: mypy's stdout, one finding per line, uncoloured.
     """
     stdout, _stderr, _status = mypy_api.run(
         [
@@ -327,6 +337,7 @@ def _run_mypy(workspace: Path) -> str:
             str(DOCS_ROOT / "pyproject.toml"),
             "--ignore-missing-imports",
             "--no-error-summary",
+            "--no-color-output",
             "--cache-dir",
             str(CACHE_DIR),
             str(workspace),
@@ -540,3 +551,29 @@ def test_guard_stays_quiet_on_the_elision_idiom(tmp_path: Path) -> None:
     page: Path = tmp_path / "elision.md"
     page.write_text(ELISION_IDIOM, encoding="utf-8")
     assert _findings([page], tag="elision") == []
+
+
+def test_findings_survive_a_coloured_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The whole guard reports nothing when mypy colours its output.
+
+    ``FORCE_COLOR`` is set by plenty of terminals and CI images. mypy
+    honours it, and :data:`ERROR_RE` matches ``": error: "`` literally, so
+    a coloured line parses to nothing. The 230 sweep cases assert the
+    *absence* of findings and would pass on an empty parse — a green gate
+    checking nothing. Measured before ``--no-color-output``: with
+    ``FORCE_COLOR=3`` the three ``test_guard_fires_*`` cases failed and
+    everything else passed.
+
+    This pins the flag, not the symptom: it fails if someone removes it.
+    """
+    monkeypatch.setenv("FORCE_COLOR", "3")
+    page: Path = tmp_path / "coloured.md"
+    page.write_text(SHIPPED_ARGUMENT_DEFECT, encoding="utf-8")
+
+    problems: list[str] = _findings([page], tag="coloured")
+
+    assert problems, "a coloured mypy output parsed to zero findings"
+    assert not any("\x1b[" in problem for problem in problems)
