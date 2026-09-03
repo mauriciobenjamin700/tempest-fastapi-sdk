@@ -106,12 +106,6 @@ from tempest_fastapi_sdk.tasks.lock import (
 from tempest_fastapi_sdk.tasks.lock import (
     DEFAULT_LOCK_TTL_SECONDS as DEFAULT_LOCK_TTL_SECONDS,
 )
-from tempest_fastapi_sdk.tasks.queue import (
-    DEFAULT_RESULT_PREFIX as DEFAULT_RESULT_PREFIX,
-)
-from tempest_fastapi_sdk.tasks.queue import (
-    DEFAULT_RESULT_TTL_SECONDS as DEFAULT_RESULT_TTL_SECONDS,
-)
 from tempest_fastapi_sdk.tasks.lock import (
     RedisLockClient as RedisLockClient,
 )
@@ -149,6 +143,12 @@ from tempest_fastapi_sdk.tasks.progress import Phase as Phase
 from tempest_fastapi_sdk.tasks.progress import PhasePlan as PhasePlan
 from tempest_fastapi_sdk.tasks.progress import ProgressSink as ProgressSink
 from tempest_fastapi_sdk.tasks.progress import ProgressTracker as ProgressTracker
+from tempest_fastapi_sdk.tasks.queue import (
+    DEFAULT_RESULT_PREFIX as DEFAULT_RESULT_PREFIX,
+)
+from tempest_fastapi_sdk.tasks.queue import (
+    DEFAULT_RESULT_TTL_SECONDS as DEFAULT_RESULT_TTL_SECONDS,
+)
 from tempest_fastapi_sdk.tasks.queue import Hook as Hook
 from tempest_fastapi_sdk.tasks.queue import LifecycleResource as LifecycleResource
 from tempest_fastapi_sdk.tasks.queue import LifecycleScope as LifecycleScope
@@ -172,9 +172,9 @@ __all__: list[str] = [
     "CANCELLABLE_JOB_STATUSES",
     "DEFAULT_LOCK_NAME",
     "DEFAULT_LOCK_TTL_SECONDS",
+    "DEFAULT_POLL_SECONDS",
     "DEFAULT_RESULT_PREFIX",
     "DEFAULT_RESULT_TTL_SECONDS",
-    "DEFAULT_POLL_SECONDS",
     "RUNNING_STAGE_STATUSES",
     "STALE_JOB_ERROR",
     "TERMINAL_JOB_STATUSES",

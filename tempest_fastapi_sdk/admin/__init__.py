@@ -51,8 +51,8 @@ from tempest_fastapi_sdk.admin.sql_shell import SqlShellService as SqlShellServi
 from tempest_fastapi_sdk.admin.sql_shell import SqlStatement as SqlStatement
 from tempest_fastapi_sdk.admin.sql_shell import analyze_sql as analyze_sql
 from tempest_fastapi_sdk.admin.tasks import ScheduledTask as ScheduledTask
-from tempest_fastapi_sdk.admin.tasks import TaskTrigger as TaskTrigger
 from tempest_fastapi_sdk.admin.tasks import TaskPanelService as TaskPanelService
+from tempest_fastapi_sdk.admin.tasks import TaskTrigger as TaskTrigger
 from tempest_fastapi_sdk.admin.theme import AdminTheme as AdminTheme
 
 __all__: list[str] = [
@@ -76,7 +76,6 @@ __all__: list[str] = [
     "MetricValue",
     "OrderRef",
     "ScheduledTask",
-    "TaskTrigger",
     "SessionStore",
     "SignedCookieSessionStore",
     "SqlAudit",
@@ -89,6 +88,7 @@ __all__: list[str] = [
     "SqlShellService",
     "SqlStatement",
     "TaskPanelService",
+    "TaskTrigger",
     "UserModelAuthBackend",
     "admin_action",
     "analyze_sql",
